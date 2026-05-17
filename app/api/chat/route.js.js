@@ -12,7 +12,7 @@ export async function POST(request) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-3-haiku-20240307",
         max_tokens: 800,
         system,
         messages,
@@ -20,6 +20,12 @@ export async function POST(request) {
     });
 
     const data = await res.json();
+
+    // Log si hay error
+    if (!res.ok) {
+      console.error("[chat] Anthropic error:", res.status, JSON.stringify(data));
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     console.error("[chat] Error:", err);
