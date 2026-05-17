@@ -53,12 +53,10 @@ REGLAS:
 
 export async function callClaude(messages, ctx, usuario) {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 800,
         system: buildSystemPrompt(ctx, usuario),
         messages: messages.map(m => ({ role: m.from === "user" ? "user" : "assistant", content: m.text })),
       }),
