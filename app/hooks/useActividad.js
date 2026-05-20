@@ -11,11 +11,14 @@ import { sb } from "../lib/supabase";
 
 const SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQaOMR5-0Gx416zErqhNl5LlQk-2PC0fQM92ye-aABky0Ey5BvdKiAYSiSBaqZ_Eveiv_OSSnA4YqJZ/pub?gid=2081284053&single=true&output=csv";
 
-// Parser CSV simple (maneja comillas y comas dentro de campos)
+// Parser CSV robusto para la hoja de proyectos del MRP.
+// Columnas fijas: A=(nro fila), B=CODIGO, C=DIVISION, D=OT, E=CLIENTE, F=OBRA, G=PROYECTO, H=CANTIDAD
+// Indices:         0              1         2           3     4          5       6           7
+// Recorre las 6800+ filas, saltea pulmones, headers repetidos, y filas sin OT.
 function parseCSV(text) {
-  const lines = text.split("\n").filter(l => l.trim());
-  if (lines.length < 2) return [];
-  
+  const allLines = text.split(/\r?\n/);
+  if (allLines.length < 2) return [];
+
   const parseRow = (line) => {
     const fields = [];
     let current = "";
@@ -30,14 +33,41 @@ function parseCSV(text) {
     return fields;
   };
 
-  const headers = parseRow(lines[0]).map(h => h.replace(/^\uFEFF/, '').trim().toUpperCase());
-  
-  return lines.slice(1).map(line => {
-    const vals = parseRow(line);
-    const row = {};
-    headers.forEach((h, i) => { row[h] = vals[i] || ""; });
-    return row;
-  });
+  // Posiciones fijas de columna
+  const COL_CODIGO = 1;
+  const COL_DIVISION = 2;
+  const COL_OT = 3;
+  const COL_CLIENTE = 4;
+  const COL_OBRA = 5;
+  const COL_PROYECTO = 6;
+  const COL_CANTIDAD = 7;
+
+  const results = [];
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+    if (!line.trim()) continue;
+
+    const fields = parseRow(line);
+    const ot = (fields[COL_OT] || "").replace(/^\uFEFF/, "").trim();
+
+    // Solo aceptar filas donde OT sea un número válido (ignorar headers, pulmones, basura)
+    if (!ot || !/^\d+$/.test(ot)) continue;
+
+    const division = (fields[COL_DIVISION] || "").trim();
+    if (!division) continue;
+
+    results.push({
+      CODIGO: (fields[COL_CODIGO] || "").trim(),
+      DIVISION: division,
+      OT: ot,
+      CLIENTE: (fields[COL_CLIENTE] || "").trim(),
+      OBRA: (fields[COL_OBRA] || "").trim(),
+      PROYECTO: (fields[COL_PROYECTO] || "").trim(),
+      CANTIDAD: (fields[COL_CANTIDAD] || "").trim(),
+    });
+  }
+
+  return results;
 }
 
 // Mapeo de división Sheets → Supabase
@@ -70,33 +100,32 @@ export function useActividad(empleado) {
 
   // ── Cargar proyectos desde Google Sheets ──
   const cargarProyectos = useCallback(async () => {
-    if (!empleado?.division) return;
+    if (!empleado?.id) return;
     setProyectosLoading(true);
     try {
       const res = await fetch(SHEETS_CSV_URL);
       const text = await res.text();
       const rows = parseCSV(text);
       
-      // Filtrar por división del empleado y mapear
-      const divisionEmpleado = empleado.division;
-      const proysFiltrados = rows
-        .filter(r => {
-          const divSheet = DIV_MAP[r["DIVISION"]?.toUpperCase()] || "";
-          return divSheet === divisionEmpleado;
+      // Mapear todos los proyectos (sin filtrar por división)
+      const todos = rows
+        .map(r => {
+          const divRaw = (r["DIVISION"] || "").trim().toUpperCase();
+          return {
+            ot: r["OT"]?.trim(),
+            codigo: r["CODIGO"]?.trim(),
+            division: DIV_MAP[divRaw] || "",
+            cliente: r["CLIENTE"]?.trim(),
+            obra: r["OBRA"]?.trim(),
+            proyecto: r["PROYECTO"]?.trim(),
+            cantidad: r["CANTIDAD"]?.trim(),
+          };
         })
-        .map(r => ({
-          ot: r["OT"]?.trim(),
-          codigo: r["CODIGO"]?.trim(),
-          cliente: r["CLIENTE"]?.trim(),
-          obra: r["OBRA"]?.trim(),
-          proyecto: r["PROYECTO"]?.trim(),
-          cantidad: r["CANTIDAD"]?.trim(),
-        }))
-        .filter(p => p.ot); // Solo los que tienen OT
+        .filter(p => p.ot);
 
       // Deduplicar por OT (puede haber repetidos en el sheet)
       const vistos = new Set();
-      const unicos = proysFiltrados.filter(p => {
+      const unicos = todos.filter(p => {
         if (vistos.has(p.ot)) return false;
         vistos.add(p.ot);
         return true;
@@ -108,7 +137,7 @@ export function useActividad(empleado) {
     } finally {
       setProyectosLoading(false);
     }
-  }, [empleado?.division]);
+  }, [empleado?.id]);
 
   useEffect(() => { cargarProyectos(); }, [cargarProyectos]);
 

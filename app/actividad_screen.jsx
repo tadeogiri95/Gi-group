@@ -51,12 +51,15 @@ export default function ActividadScreen({
   const [state, setState] = useState("idle");
   const [proyectoSeleccionado, setProyectoSeleccionado] = useState(null);
   const [busqueda, setBusqueda] = useState("");
+  const [manualOT, setManualOT] = useState("");
+  const [modoManual, setModoManual] = useState(false);
   const [etapaSeleccionada, setEtapaSeleccionada] = useState(null);
   const [tipoSeleccionado, setTipoSeleccionado] = useState("N");
   const [showHistorial, setShowHistorial] = useState(false);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
+  const manualInputRef = useRef(null);
 
   // ── Sincronizar estado de UI con tarea activa de Supabase ──
   useEffect(() => {
@@ -89,16 +92,20 @@ export default function ActividadScreen({
 
   // ── Acciones ──
   const iniciarTarea = async () => {
+    const otFinal = modoManual ? manualOT.trim() : proyectoSeleccionado?.ot;
+    if (!otFinal) return;
     setSaving(true);
     try {
       await onIniciar({
         etapa: etapaSeleccionada,
-        codigo_proyecto: etapaSeleccionada === 0 ? null : parseInt(proyectoSeleccionado.ot),
+        codigo_proyecto: etapaSeleccionada === 0 ? null : parseInt(otFinal),
         tipo: tipoSeleccionado,
         causa: null,
       });
       setProyectoSeleccionado(null);
       setBusqueda("");
+      setManualOT("");
+      setModoManual(false);
       setEtapaSeleccionada(null);
       setTipoSeleccionado("N");
       setStep(1);
@@ -284,94 +291,161 @@ export default function ActividadScreen({
             </div>
           )}
 
-          {/* STEP 2: Selector de proyecto (Google Sheets) */}
+          {/* STEP 2: Selector de proyecto (Google Sheets) + carga manual */}
           {step === 2 && (
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, fontFamily: fH }}>Proyecto</div>
-              <div style={{ fontSize: 12, color: C.dim, marginBottom: 12 }}>Buscá por OT, cliente u obra</div>
 
-              <input
-                ref={inputRef}
-                type="text"
-                inputMode="search"
-                value={busqueda}
-                onChange={e => { setBusqueda(e.target.value); setProyectoSeleccionado(null); }}
-                placeholder="🔍  Buscar proyecto..."
-                style={{
-                  width: "100%", padding: "14px 16px", borderRadius: 14,
-                  background: C.surface, border: `2px solid ${C.amber}40`, color: C.text,
-                  fontSize: 15, fontFamily: fB, outline: "none", caretColor: C.amber,
-                  boxSizing: "border-box", marginBottom: 12,
-                }}
-              />
+              {/* Toggle: Buscar / Manual */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                <button onClick={() => { setModoManual(false); setManualOT(""); }} style={{
+                  flex: 1, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                  background: !modoManual ? `${C.amber}22` : C.surface, color: !modoManual ? C.amber : C.dim,
+                  fontSize: 12, fontWeight: 700, fontFamily: fB,
+                }}>🔍 Buscar OT</button>
+                <button onClick={() => { setModoManual(true); setProyectoSeleccionado(null); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} style={{
+                  flex: 1, padding: "8px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                  background: modoManual ? `${C.amber}22` : C.surface, color: modoManual ? C.amber : C.dim,
+                  fontSize: 12, fontWeight: 700, fontFamily: fB,
+                }}>✏️ Cargar manual</button>
+              </div>
 
-              {etapaSelInfo && (
-                <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: `${etapaSelInfo.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{etapaSelInfo.icon}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 11, color: C.dim }}>Etapa seleccionada</div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{etapaSelInfo.nombre}</div>
+              {/* Modo búsqueda */}
+              {!modoManual && (<>
+                <div style={{ fontSize: 12, color: C.dim, marginBottom: 8 }}>Buscá por OT, cliente u obra</div>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  inputMode="search"
+                  value={busqueda}
+                  onChange={e => { setBusqueda(e.target.value); setProyectoSeleccionado(null); }}
+                  placeholder="🔍  Buscar proyecto..."
+                  style={{
+                    width: "100%", padding: "14px 16px", borderRadius: 14,
+                    background: C.surface, border: `2px solid ${C.amber}40`, color: C.text,
+                    fontSize: 15, fontFamily: fB, outline: "none", caretColor: C.amber,
+                    boxSizing: "border-box", marginBottom: 12,
+                  }}
+                />
+
+                {etapaSelInfo && (
+                  <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: `${etapaSelInfo.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{etapaSelInfo.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: C.dim }}>Etapa seleccionada</div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{etapaSelInfo.nombre}</div>
+                    </div>
+                    <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} style={{ background: "none", border: "none", color: C.amber, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: fB }}>Cambiar</button>
                   </div>
-                  <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} style={{ background: "none", border: "none", color: C.amber, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: fB }}>Cambiar</button>
-                </div>
-              )}
+                )}
 
-              <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-                {proyectosLoading ? (
-                  <div style={{ textAlign: "center", padding: 30, color: C.dim, fontSize: 13 }}>Cargando proyectos...</div>
-                ) : proyectosFiltrados.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: 30, color: C.dim, fontSize: 13 }}>
-                    {busqueda ? "Sin resultados" : "Sin proyectos disponibles"}
-                  </div>
-                ) : (
-                  proyectosFiltrados.slice(0, 20).map(p => {
-                    const sel = proyectoSeleccionado?.ot === p.ot;
-                    return (
-                      <button key={p.ot + p.codigo} onClick={() => setProyectoSeleccionado(p)} style={{
-                        padding: "12px 14px", borderRadius: 12, cursor: "pointer", textAlign: "left",
-                        background: sel ? `${C.amber}18` : C.surface,
-                        border: `2px solid ${sel ? C.amber : "transparent"}`,
-                        display: "flex", alignItems: "center", gap: 10, fontFamily: fB,
-                        transition: "all 0.15s",
-                      }}>
-                        <div style={{
-                          minWidth: 48, height: 36, borderRadius: 8,
-                          background: sel ? C.amberS : C.surfHi,
-                          color: sel ? C.amber : C.text,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontFamily: fM, fontSize: 13, fontWeight: 700, flexShrink: 0,
-                          padding: "0 6px",
-                        }}>{p.ot}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {p.cliente}
-                          </div>
-                          <div style={{ fontSize: 11, color: C.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-                            {p.proyecto}
-                          </div>
+                <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+                  {proyectosLoading ? (
+                    <div style={{ textAlign: "center", padding: 30, color: C.dim, fontSize: 13 }}>Cargando proyectos...</div>
+                  ) : proyectosFiltrados.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 13 }}>
+                      {busqueda ? (
+                        <div>
+                          <div style={{ marginBottom: 8 }}>No se encontró "{busqueda}"</div>
+                          <button onClick={() => { setModoManual(true); setManualOT(busqueda.replace(/\D/g, "")); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} style={{
+                            padding: "10px 16px", borderRadius: 10, border: `1px solid ${C.amber}40`,
+                            background: C.surface, color: C.amber, fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
+                          }}>✏️ Cargar OT manualmente</button>
                         </div>
-                        {sel && <span style={{ color: C.amber, fontSize: 16 }}>✓</span>}
-                      </button>
-                    );
-                  })
-                )}
-                {proyectosFiltrados.length > 20 && (
-                  <div style={{ textAlign: "center", padding: 8, color: C.dim, fontSize: 11 }}>
-                    +{proyectosFiltrados.length - 20} más — refiná la búsqueda
+                      ) : "Sin proyectos disponibles"}
+                    </div>
+                  ) : (
+                    proyectosFiltrados.slice(0, 20).map(p => {
+                      const sel = proyectoSeleccionado?.ot === p.ot;
+                      return (
+                        <button key={p.ot + p.codigo} onClick={() => setProyectoSeleccionado(p)} style={{
+                          padding: "12px 14px", borderRadius: 12, cursor: "pointer", textAlign: "left",
+                          background: sel ? `${C.amber}18` : C.surface,
+                          border: `2px solid ${sel ? C.amber : "transparent"}`,
+                          display: "flex", alignItems: "center", gap: 10, fontFamily: fB,
+                          transition: "all 0.15s",
+                        }}>
+                          <div style={{
+                            minWidth: 48, height: 36, borderRadius: 8,
+                            background: sel ? C.amberS : C.surfHi,
+                            color: sel ? C.amber : C.text,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontFamily: fM, fontSize: 13, fontWeight: 700, flexShrink: 0,
+                            padding: "0 6px",
+                          }}>{p.ot}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {p.cliente}
+                            </div>
+                            <div style={{ fontSize: 11, color: C.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+                              {p.proyecto}
+                            </div>
+                          </div>
+                          {sel && <span style={{ color: C.amber, fontSize: 16 }}>✓</span>}
+                        </button>
+                      );
+                    })
+                  )}
+                  {proyectosFiltrados.length > 20 && (
+                    <div style={{ textAlign: "center", padding: 8, color: C.dim, fontSize: 11 }}>
+                      +{proyectosFiltrados.length - 20} más — refiná la búsqueda
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} style={{ flex: 1, padding: 14, borderRadius: 14, background: C.surfHi, border: "none", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>Atrás</button>
+                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} style={{
+                    flex: 2, padding: 14, borderRadius: 14, border: "none",
+                    background: proyectoSeleccionado ? C.amber : C.surfHi,
+                    color: proyectoSeleccionado ? "#000" : C.mute,
+                    fontSize: 14, fontWeight: 700, fontFamily: fB,
+                    cursor: proyectoSeleccionado ? "pointer" : "default",
+                  }}>Siguiente →</button>
+                </div>
+              </>)}
+
+              {/* Modo manual */}
+              {modoManual && (<>
+                <div style={{ fontSize: 12, color: C.dim, marginBottom: 8 }}>Ingresá el número de OT manualmente</div>
+                <input
+                  ref={manualInputRef}
+                  type="number"
+                  inputMode="numeric"
+                  value={manualOT}
+                  onChange={e => setManualOT(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && manualOT.trim() && setStep(3)}
+                  placeholder="Número de OT"
+                  style={{
+                    width: "100%", padding: "18px 20px", borderRadius: 14,
+                    background: C.surface, border: `2px solid ${C.amber}40`, color: C.text,
+                    fontSize: 32, fontFamily: fM, fontWeight: 700, textAlign: "center",
+                    outline: "none", letterSpacing: 4, caretColor: C.amber,
+                    boxSizing: "border-box", marginBottom: 16,
+                  }}
+                />
+
+                {etapaSelInfo && (
+                  <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: `${etapaSelInfo.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{etapaSelInfo.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, color: C.dim }}>Etapa seleccionada</div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{etapaSelInfo.nombre}</div>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} style={{ flex: 1, padding: 14, borderRadius: 14, background: C.surfHi, border: "none", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>Atrás</button>
-                <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} style={{
-                  flex: 2, padding: 14, borderRadius: 14, border: "none",
-                  background: proyectoSeleccionado ? C.amber : C.surfHi,
-                  color: proyectoSeleccionado ? "#000" : C.mute,
-                  fontSize: 14, fontWeight: 700, fontFamily: fB,
-                  cursor: proyectoSeleccionado ? "pointer" : "default",
-                }}>Siguiente →</button>
-              </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => { setStep(1); setManualOT(""); setModoManual(false); }} style={{ flex: 1, padding: 14, borderRadius: 14, background: C.surfHi, border: "none", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>Atrás</button>
+                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} style={{
+                    flex: 2, padding: 14, borderRadius: 14, border: "none",
+                    background: manualOT.trim() ? C.amber : C.surfHi,
+                    color: manualOT.trim() ? "#000" : C.mute,
+                    fontSize: 14, fontWeight: 700, fontFamily: fB,
+                    cursor: manualOT.trim() ? "pointer" : "default",
+                  }}>Siguiente →</button>
+                </div>
+              </>)}
             </div>
           )}
 
@@ -406,7 +480,7 @@ export default function ActividadScreen({
                 ))}
               </div>
 
-              {etapaSelInfo && proyectoSeleccionado && (
+              {etapaSelInfo && (proyectoSeleccionado || modoManual) && (
                 <div style={{ background: C.surfHi, borderRadius: 16, padding: 16, border: `1px solid ${C.borderHi}`, marginBottom: 16 }}>
                   <div style={{ fontSize: 10, color: C.dim, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Resumen</div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
@@ -415,12 +489,20 @@ export default function ActividadScreen({
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, color: C.dim }}>Proyecto</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: fM }}>OT {proyectoSeleccionado.ot}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: fM }}>OT {modoManual ? manualOT : proyectoSeleccionado?.ot}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, color: C.dim }}>Cliente</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proyectoSeleccionado.cliente}</span>
-                  </div>
+                  {!modoManual && proyectoSeleccionado?.cliente && (
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: C.dim }}>Cliente</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proyectoSeleccionado.cliente}</span>
+                    </div>
+                  )}
+                  {modoManual && (
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, color: C.dim }}>Modo</span>
+                      <Tag color={C.amber}>Manual</Tag>
+                    </div>
+                  )}
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontSize: 12, color: C.dim }}>Tipo</span>
                     <Tag color={TIPOS.find(t => t.cod === tipoSeleccionado)?.color}>{tipoSeleccionado} — {TIPOS.find(t => t.cod === tipoSeleccionado)?.nombre}</Tag>
