@@ -6,6 +6,8 @@ import { C, fH, fB, fM, fmtTime, fmtDate, fmtDateLong, DIAS_KEY } from './lib/th
 import { callClaude, parseAction } from './lib/claude';
 import PushManager from '../components/PushManager';
 import { sendPushToLegajo } from '../lib/push';
+import ActividadScreen from './actividad_screen';
+import { useActividad } from './hooks/useActividad';
 
 /* ═══ ICONS ═══ */
 const Ic = {
@@ -31,6 +33,7 @@ const Ic = {
   trash:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
   logout:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
   refresh:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
+  hammer:<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 12l-8.5 8.5c-.83.83-2.17.83-3 0 0 0 0 0 0 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15L22 10.64"/><path d="M20.91 11.7l-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/></svg>,
 };
 
 /* ═══ PRIMITIVES ═══ */
@@ -235,7 +238,7 @@ function EquipoScreen({ctx}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencia"||role==="admin"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencia"||role==="admin"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -249,6 +252,9 @@ export default function Home() {
   const [ctx,setCtx]=useState({});
   const [ready,setReady]=useState(false);
   const [init,setInit]=useState(false);
+
+  // Hook de actividades (solo para operarios — carga etapas internamente)
+  const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division}:null);
 
   useEffect(()=>{try{const s=localStorage.getItem("gi-user");if(s)setUsuario(JSON.parse(s));}catch{}setInit(true);},[]);
   const login=u=>{setUsuario(u);try{localStorage.setItem("gi-user",JSON.stringify(u));}catch{}};
@@ -320,8 +326,8 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":"Recursos Humanos":"Tu jornada"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Equipo":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Equipo":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -333,6 +339,7 @@ export default function Home() {
       {/* Content */}
       <div className="se" key={`${usuario.legajo}-${screen}`} style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isChat?0:88}}>
         {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx}/>}
+        {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
         {isGer&&screen==="home"&&<HomeGer goto={setScreen} ctx={ctx}/>}
