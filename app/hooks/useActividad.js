@@ -5,17 +5,56 @@ import { sb } from "../lib/supabase";
 /*
  * useActividad — hook para el módulo de registro de actividades
  * 
- * Usa sb.get/post/patch directo contra Supabase REST (mismo patrón que el resto de la app).
- * 
- * Recibe: empleado = { id, legajo, division } (o null si no hay sesión)
- * Devuelve: { tareaActiva, elapsed, historial, loading, horasHoy, etapas,
- *             iniciarTarea, finalizarTarea, cambiarTarea, recargar }
+ * Usa sb.get/post/patch directo contra Supabase REST.
+ * Lee proyectos en vivo desde Google Sheets (CSV público).
  */
+
+const SHEETS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQaOMR5-0Gx416zErqhNl5LlQk-2PC0fQM92ye-aABky0Ey5BvdKiAYSiSBaqZ_Eveiv_OSSnA4YqJZ/pub?gid=2081284053&single=true&output=csv";
+
+// Parser CSV simple (maneja comillas y comas dentro de campos)
+function parseCSV(text) {
+  const lines = text.split("\n").filter(l => l.trim());
+  if (lines.length < 2) return [];
+  
+  const parseRow = (line) => {
+    const fields = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; }
+      else if (ch === ',' && !inQuotes) { fields.push(current.trim()); current = ""; }
+      else { current += ch; }
+    }
+    fields.push(current.trim());
+    return fields;
+  };
+
+  const headers = parseRow(lines[0]).map(h => h.replace(/^\uFEFF/, '').trim().toUpperCase());
+  
+  return lines.slice(1).map(line => {
+    const vals = parseRow(line);
+    const row = {};
+    headers.forEach((h, i) => { row[h] = vals[i] || ""; });
+    return row;
+  });
+}
+
+// Mapeo de división Sheets → Supabase
+const DIV_MAP = {
+  "MUEBLES": "muebles",
+  "HERRERÍA": "herreria",
+  "HERRERIA": "herreria",
+  "ALUMINIO": "aberturas",
+};
+
 export function useActividad(empleado) {
   const [tareaActiva, setTareaActiva] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [historial, setHistorial] = useState([]);
   const [etapas, setEtapas] = useState([]);
+  const [proyectos, setProyectos] = useState([]);
+  const [proyectosLoading, setProyectosLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const timerRef = useRef(null);
 
@@ -29,15 +68,57 @@ export function useActividad(empleado) {
       .catch(e => console.error("Error cargando etapas:", e));
   }, [empleado?.division]);
 
+  // ── Cargar proyectos desde Google Sheets ──
+  const cargarProyectos = useCallback(async () => {
+    if (!empleado?.division) return;
+    setProyectosLoading(true);
+    try {
+      const res = await fetch(SHEETS_CSV_URL);
+      const text = await res.text();
+      const rows = parseCSV(text);
+      
+      // Filtrar por división del empleado y mapear
+      const divisionEmpleado = empleado.division;
+      const proysFiltrados = rows
+        .filter(r => {
+          const divSheet = DIV_MAP[r["DIVISION"]?.toUpperCase()] || "";
+          return divSheet === divisionEmpleado;
+        })
+        .map(r => ({
+          ot: r["OT"]?.trim(),
+          codigo: r["CODIGO"]?.trim(),
+          cliente: r["CLIENTE"]?.trim(),
+          obra: r["OBRA"]?.trim(),
+          proyecto: r["PROYECTO"]?.trim(),
+          cantidad: r["CANTIDAD"]?.trim(),
+        }))
+        .filter(p => p.ot); // Solo los que tienen OT
+
+      // Deduplicar por OT (puede haber repetidos en el sheet)
+      const vistos = new Set();
+      const unicos = proysFiltrados.filter(p => {
+        if (vistos.has(p.ot)) return false;
+        vistos.add(p.ot);
+        return true;
+      });
+
+      setProyectos(unicos);
+    } catch (err) {
+      console.error("Error cargando proyectos desde Sheets:", err);
+    } finally {
+      setProyectosLoading(false);
+    }
+  }, [empleado?.division]);
+
+  useEffect(() => { cargarProyectos(); }, [cargarProyectos]);
+
   // ── Cargar tarea activa + historial del día ──
   const cargarDatos = useCallback(async () => {
     if (!empleado?.id) return;
     setLoading(true);
     try {
       const [activas, registros] = await Promise.all([
-        // Tarea abierta (hora_fin IS NULL)
         sb.get(`registro_actividades?empleado_id=eq.${empleado.id}&hora_fin=is.null&select=*&limit=1`),
-        // Historial del día (cerradas)
         sb.get(`registro_actividades?empleado_id=eq.${empleado.id}&fecha=eq.${hoy}&hora_fin=not.is.null&order=hora_inicio.desc&select=*`),
       ]);
 
@@ -77,7 +158,6 @@ export function useActividad(empleado) {
     if (!empleado?.id) return;
     const ahora = new Date().toISOString();
     try {
-      // El trigger trg_cerrar_tarea_previa en Supabase cierra la anterior automáticamente
       const res = await sb.post("registro_actividades", {
         empleado_id: empleado.id,
         legajo: String(empleado.legajo),
@@ -104,7 +184,6 @@ export function useActividad(empleado) {
     try {
       await sb.patch(`registro_actividades?id=eq.${tareaActiva.id}`, {
         hora_fin: ahora,
-        // duracion_min se calcula automáticamente via trigger trg_calcular_duracion
         ...(observaciones ? { observaciones } : {}),
       });
       await cargarDatos();
@@ -114,12 +193,12 @@ export function useActividad(empleado) {
     }
   }, [tareaActiva, cargarDatos]);
 
-  // ── Cambiar tarea (trigger cierra la anterior al insertar la nueva) ──
+  // ── Cambiar tarea ──
   const cambiarTarea = useCallback(async (nuevaTarea) => {
     return iniciarTarea(nuevaTarea);
   }, [iniciarTarea]);
 
-  // ── Horas totales hoy (historial cerrado + tarea activa en curso) ──
+  // ── Horas totales hoy ──
   const horasHoy = historial.reduce((acc, r) => acc + (r.duracion_min || 0) * 60, 0) + elapsed;
 
   return {
@@ -127,11 +206,14 @@ export function useActividad(empleado) {
     elapsed,
     historial,
     etapas,
+    proyectos,
+    proyectosLoading,
     loading,
     horasHoy,
     iniciarTarea,
     finalizarTarea,
     cambiarTarea,
     recargar: cargarDatos,
+    recargarProyectos: cargarProyectos,
   };
 }
