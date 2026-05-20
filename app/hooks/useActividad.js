@@ -50,8 +50,9 @@ function parseCSV(text) {
     const fields = parseRow(line);
     const ot = (fields[COL_OT] || "").replace(/^\uFEFF/, "").trim();
 
-    // Solo aceptar filas donde OT sea un número válido (ignorar headers, pulmones, basura)
-    if (!ot || !/^\d+$/.test(ot)) continue;
+    // Solo aceptar filas donde OT empiece con dígitos (acepta 7408, 7408-10, etc.)
+    // Descarta headers (OT, CODIGO), filas vacías, y basura
+    if (!ot || !/^\d/.test(ot)) continue;
 
     const division = (fields[COL_DIVISION] || "").trim();
     if (!division) continue;
@@ -192,7 +193,7 @@ export function useActividad(empleado) {
         legajo: String(empleado.legajo),
         fecha: ahora.slice(0, 10),
         hora_inicio: ahora,
-        codigo_proyecto: etapa === 0 ? null : (codigo_proyecto ? parseInt(codigo_proyecto) : null),
+        codigo_proyecto: etapa === 0 ? null : (codigo_proyecto || null),
         etapa,
         tipo: tipo || "N",
         causa: etapa === 0 ? causa : null,

@@ -98,7 +98,7 @@ export default function ActividadScreen({
     try {
       await onIniciar({
         etapa: etapaSeleccionada,
-        codigo_proyecto: etapaSeleccionada === 0 ? null : parseInt(otFinal),
+        codigo_proyecto: etapaSeleccionada === 0 ? null : otFinal,
         tipo: tipoSeleccionado,
         causa: null,
       });
