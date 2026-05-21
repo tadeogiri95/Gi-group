@@ -13,7 +13,7 @@ const DIVISIONES = [
   { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
 ];
 
-const ROLES = ["operario", "gerencia", "admin"];
+const ROLES = ["empleado", "gerencia", "admin"];
 const AREAS = ["produccion", "administracion", "logistica", "mantenimiento"];
 
 const TIPO_MO_MAP = {
@@ -103,7 +103,7 @@ function generarEmail(nombre) {
 
 /* ═══ MODAL ALTA MANUAL ═══ */
 function ModalAlta({ onClose, onSave, saving }) {
-  const [form, setForm] = useState({ nombre: "", legajo: "", email: "", apodo: "", area: "produccion", division: "", rol: "operario" });
+  const [form, setForm] = useState({ nombre: "", legajo: "", email: "", apodo: "", area: "produccion", division: "", rol: "empleado" });
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
   const valid = form.nombre.trim() && form.legajo.trim() && form.email.trim();
@@ -315,7 +315,7 @@ export default function GestionPersonalScreen({ reload }) {
           apodo: generarApodo(nombre),
           email: generarEmail(row.nombre),
           area: TIPO_MO_MAP[row.tipo_mo] || "produccion",
-          rol: "operario",
+          rol: "empleado",
           activo: true,
         });
         ok++;
@@ -341,7 +341,7 @@ export default function GestionPersonalScreen({ reload }) {
         apodo: generarApodo(nombre),
         email: generarEmail(row.nombre),
         area: TIPO_MO_MAP[row.tipo_mo] || "produccion",
-        rol: "operario",
+        rol: "empleado",
         activo: true,
       });
       await cargarEmpleados();
