@@ -4,7 +4,7 @@ import { sb } from "./lib/supabase";
 
 /* ═══ CONSTANTES ═══ */
 const SHEETS_CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGzSYSab3R6MnRfHxsQXfiScWHCT5hPuvp8Fg8TsdDsmBqMZW5L51S-RMT8DT40F6fJ5eonSdg_n2H/pub?gid=1919000183&single=true&output=csv";
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vROiNEjVuRZ8-xzAq22s3ZtyQExct1dFDHW5dVEQ3XGr6jc2_TfDngkwBYNYK33ZQ7PRJfgJdoOrGZM/pub?gid=1438199642&single=true&output=csv";
 
 const DIVISIONES = [
   { id: "", label: "Sin asignar" },
@@ -15,8 +15,18 @@ const DIVISIONES = [
 ];
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
-const AREAS = ["produccion", "administracion", "logistica"];
-const TIPO_MO_MAP = { DIRECTA: "produccion", INDIRECTA: "administracion" };
+const AREAS = ["produccion", "administracion", "logistica", "diseño"];
+
+/* Mapeo de SECTOR del CSV → división en Supabase */
+const SECTOR_DIV_MAP = {
+  "DIVISION AMOBLAMIENTOS": "muebles",
+  "DIVISION HERRERIA": "herreria",
+  "DIVISION ALUMINIO": "aberturas",
+  "LOGISTICA": "general",
+};
+
+/* Mapeo MOD/MOI → área */
+const TIPO_MO_MAP = { MOD: "produccion", MOI: "administracion" };
 
 /* ═══ PRIMITIVAS ═══ */
 const Tag = ({ color = C.amber, children, style = {} }) => (
@@ -45,18 +55,38 @@ function parsePersonalCSV(text) {
     fields.push(current.trim());
     return fields;
   };
+  // Columnas: A(0)=nombre completo, B(1)=apellido, C(2)=nombre, D(3)=fecha ingreso,
+  //           E(4)=fecha alta, F(5)=MOD/MOI, G(6)=sector, H(7)=obs,
+  //           I(8)=fecha baja, J(9)=DNI
+  const COL_NOMBRE = 0;
+  const COL_TIPO = 5;
+  const COL_SECTOR = 6;
+  const COL_BAJA = 8;
+  const COL_DNI = 9;
+
   const results = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i]; if (!line.trim()) continue;
     const f = parseRow(line);
-    const id = (f[0] || "").replace(/^\uFEFF/, "").trim();
-    if (!id || !/^\d/.test(id)) continue;
-    const nombre = (f[1] || "").trim();
-    if (!nombre) continue;
+    const nombre = (f[COL_NOMBRE] || "").replace(/^\uFEFF/, "").trim();
+    if (!nombre || nombre.length < 3) continue;
+
+    const dniRaw = (f[COL_DNI] || "").trim().replace(/\D/g, "");
+    const dni = dniRaw ? parseInt(dniRaw) : null;
+
+    const sector = (f[COL_SECTOR] || "").trim().toUpperCase();
+    const tipo = (f[COL_TIPO] || "").trim().toUpperCase();
+    const fechaBaja = (f[COL_BAJA] || "").trim();
+    const activo = !fechaBaja;
+
     results.push({
-      colaborador_id: parseInt(id), nombre,
-      tipo_mo: (f[2] || "").trim().toUpperCase(),
-      activo_csv: (f[5] || "").trim().toUpperCase() === "SI",
+      nombre,
+      dni,
+      sector,
+      tipo_mo: tipo,
+      division: SECTOR_DIV_MAP[sector] || "",
+      area: TIPO_MO_MAP[tipo] || "produccion",
+      activo_csv: activo,
     });
   }
   return results;
@@ -243,8 +273,8 @@ export default function GestionPersonalScreen({ ctx, reload }) {
   }, []);
   useEffect(() => { cargarCSV(); }, [cargarCSV]);
 
-  const legajosExistentes = new Set(empleados.map(e => e.legajo));
-  const nuevosCSV = csvData.filter(r => r.activo_csv && !legajosExistentes.has(r.colaborador_id));
+  const nombresExistentes = new Set(empleados.map(e => (e.nombre || "").toUpperCase()));
+  const nuevosCSV = csvData.filter(r => r.activo_csv && !nombresExistentes.has(r.nombre.toUpperCase()));
   const activos = empleados.filter(e => e.activo).length;
   const inactivos = empleados.filter(e => !e.activo).length;
 
@@ -270,7 +300,7 @@ export default function GestionPersonalScreen({ ctx, reload }) {
     for (const row of nuevosCSV) {
       const nombre = capitalizarNombre(row.nombre);
       try {
-        await sb.post("empleados", { legajo: row.colaborador_id, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: TIPO_MO_MAP[row.tipo_mo] || "produccion", rol: "operativo", activo: true });
+        await sb.post("empleados", { legajo: row.dni || 0, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: row.area || "produccion", division: row.division || null, rol: "operativo", activo: true });
         ok++;
       } catch (e) { console.error(e); }
     }
@@ -284,7 +314,7 @@ export default function GestionPersonalScreen({ ctx, reload }) {
     setSaving(true);
     const nombre = capitalizarNombre(row.nombre);
     try {
-      await sb.post("empleados", { legajo: row.colaborador_id, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: TIPO_MO_MAP[row.tipo_mo] || "produccion", rol: "operativo", activo: true });
+      await sb.post("empleados", { legajo: row.dni || 0, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: row.area || "produccion", division: row.division || null, rol: "operativo", activo: true });
       await cargarEmpleados(); if (reload) reload();
       showToast(`✅ ${nombre} dado de alta`, C.green);
     } catch (e) { showToast(`Error: ${e.message}`, C.red); } finally { setSaving(false); }
@@ -416,14 +446,14 @@ export default function GestionPersonalScreen({ ctx, reload }) {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {nuevosCSV.map(row => (
-              <div key={row.colaborador_id} style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.amber}30`, display: "flex", alignItems: "center", gap: 10 }}>
+            {nuevosCSV.map((row, idx) => (
+              <div key={row.dni || idx} style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.amber}30`, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 38, height: 38, borderRadius: 10, background: C.amberS, color: C.amber, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: fH, fontSize: 12, fontWeight: 700 }}>
                   {capitalizarNombre(row.nombre).split(" ").map(w => w[0]).slice(0, 2).join("")}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{capitalizarNombre(row.nombre)}</div>
-                  <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>ID {row.colaborador_id} · {row.tipo_mo}</div>
+                  <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>{row.dni ? `DNI ${row.dni}` : "Sin DNI"} · {row.sector}</div>
                 </div>
                 <button onClick={() => altaDesdeCSV(row)} disabled={saving} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: saving ? C.surface : C.green, color: saving ? C.dim : "#000", fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: saving ? "default" : "pointer" }}>+ Alta</button>
               </div>
