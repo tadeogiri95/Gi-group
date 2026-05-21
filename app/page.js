@@ -11,6 +11,7 @@ import { useActividad } from './hooks/useActividad';
 import GerenciaActividadScreen from './gerencia_actividad_screen';
 import GrillaHorarioScreen from './grilla_horario_screen';
 import GestionPersonalScreen from './gestion_personal_screen';
+import CalendarioScreen from './calendario_screen';
 
 /* ═══ ICONS ═══ */
 const Ic = {
@@ -202,6 +203,15 @@ function HomeGer({goto,ctx}){
       </div>
     </div>
 
+    {/* Calendario de producción */}
+    <div onClick={()=>goto("calendario")} style={{background:`linear-gradient(135deg,${C.violet}15,${C.surface} 70%)`,borderRadius:20,padding:20,border:`1px solid ${C.violet}30`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:-40,right:-40,width:160,height:160,borderRadius:"50%",background:`${C.violet}15`,filter:"blur(50px)"}}/>
+      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div><div style={{fontSize:11,color:C.violet,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>CALENDARIO</div><div style={{fontSize:15,fontWeight:700,color:C.text,marginTop:6,fontFamily:fH}}>Planificación mensual</div><div style={{fontSize:12,color:C.dim,marginTop:4}}>Horarios y actividad del equipo</div></div>
+        <div style={{width:56,height:56,borderRadius:16,background:`${C.violet}25`,color:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+      </div>
+    </div>
+
     {pend.length>0&&<div onClick={()=>goto("solicitudes")} style={{background:`linear-gradient(135deg,${C.amber}15,${C.surface} 70%)`,borderRadius:20,padding:20,border:`1px solid ${C.amber}30`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-50,right:-50,width:180,height:180,borderRadius:"50%",background:`${C.amber}20`,filter:"blur(60px)"}}/>
       <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:11,color:C.amber,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>BANDEJA DE ENTRADA</div><div style={{fontFamily:fH,fontSize:36,fontWeight:700,color:C.text,marginTop:4}}>{pend.length}</div></div><div style={{width:56,height:56,borderRadius:16,background:`${C.amber}25`,color:C.amber,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.inbox}</div></div>
     </div>}
@@ -245,7 +255,7 @@ function ReglasScreen({ctx,reload,usuario}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["grilla-horario","Horarios",Ic.history],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["calendario","Calendario",Ic.history],["equipo","Equipo",Ic.users],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -259,6 +269,7 @@ export default function Home() {
   const [ctx,setCtx]=useState({});
   const [ready,setReady]=useState(false);
   const [init,setInit]=useState(false);
+  const [refreshCounter,setRefreshCounter]=useState(0);
 
   // Hook de actividades (solo para operarios — carga etapas internamente)
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division}:null);
@@ -333,18 +344,18 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Recursos Humanos":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Recursos Humanos":screen==="calendario"?"Planificación":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="calendario"?"Calendario":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
-          <button onClick={loadData} style={{width:36,height:36,borderRadius:10,background:C.surface,color:C.dim,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>{Ic.refresh}</button>
+          <button onClick={()=>{loadData();setRefreshCounter(c=>c+1);}} style={{width:36,height:36,borderRadius:10,background:C.surface,color:C.dim,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>{Ic.refresh}</button>
           <button onClick={logout} style={{width:36,height:36,borderRadius:10,background:C.surface,color:C.dim,border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>{Ic.logout}</button>
         </div>
       </div>}
 
       {/* Content */}
-      <div className="se" key={`${usuario.legajo}-${screen}`} style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isChat?0:88}}>
+      <div className="se" key={`${usuario.legajo}-${screen}-${refreshCounter}`} style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isChat?0:88}}>
         {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx}/>}
         {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
@@ -354,6 +365,7 @@ export default function Home() {
         {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen/>}
         {isGer&&screen==="grilla-horario"&&<GrillaHorarioScreen/>}
+        {isGer&&screen==="calendario"&&<CalendarioScreen/>}
         {isGer&&screen==="reglas"&&<ReglasScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
       </div>
