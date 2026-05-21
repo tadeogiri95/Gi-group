@@ -9,6 +9,7 @@ import { sendPushToLegajo } from '../lib/push';
 import ActividadScreen from './actividad_screen';
 import { useActividad } from './hooks/useActividad';
 import GerenciaActividadScreen from './gerencia_actividad_screen';
+import GrillaHorarioScreen from './grilla_horario_screen';
 
 /* ═══ ICONS ═══ */
 const Ic = {
@@ -199,7 +200,8 @@ function HomeGer({goto,ctx}){
       <div style={{background:C.surface,borderRadius:16,padding:16,border:`1px solid ${C.border}`}}><div style={{width:34,height:34,borderRadius:10,background:C.greenS,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10}}>{Ic.enter}</div><div style={{fontSize:10,fontWeight:600,color:C.dim,letterSpacing:"0.08em",textTransform:"uppercase"}}>EN PLANTA</div><div style={{fontFamily:fH,fontSize:26,fontWeight:700,color:C.text,marginTop:2}}>{(ctx.fichadasHoy||[]).length}</div></div>
       <div style={{background:C.surface,borderRadius:16,padding:16,border:`1px solid ${C.border}`}}><div style={{width:34,height:34,borderRadius:10,background:C.cyanS,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10}}>{Ic.clock}</div><div style={{fontSize:10,fontWeight:600,color:C.dim,letterSpacing:"0.08em",textTransform:"uppercase"}}>PENDIENTES</div><div style={{fontFamily:fH,fontSize:26,fontWeight:700,color:C.text,marginTop:2}}>{pend.length}</div></div>
     </div>
-    <div onClick={()=>goto("reglas")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:18,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.violetS,color:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.gear}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Reglas del Bot</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>{(ctx.reglas||[]).length} activas</div></div>{Ic.chevR}</div>
+    <div onClick={()=>goto("reglas")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.violetS,color:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.gear}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Reglas del Bot</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>{(ctx.reglas||[]).length} activas</div></div>{Ic.chevR}</div>
+    <div onClick={()=>goto("grilla-horario")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:18,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.cyanS,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="22"/></svg></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Grilla de Horarios</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>Configurar y notificar horarios</div></div>{Ic.chevR}</div>
     <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>En planta</h3></div>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>{(ctx.fichadasHoy||[]).map(f=><div key={f.legajo} style={{background:C.surface,borderRadius:12,padding:12,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}><div style={{width:34,height:34,borderRadius:10,background:C.greenS,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:fH,fontSize:12,fontWeight:700}}>{(f.nombre||"").split(" ").map(w=>w[0]).slice(0,2).join("")}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{f.nombre}</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>L-{f.legajo}</div></div><div style={{fontFamily:fM,fontSize:13,fontWeight:700,color:C.green}}>{f.ingreso?.slice(0,5)}</div></div>)}</div>
   </div>;
@@ -290,7 +292,7 @@ export default function Home() {
   const isGer=usuario&&(usuario.rol==="gerencia"||usuario.rol==="admin");
   const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
   const isChat=screen==="chat";
-  const showBack=screen==="reglas";
+  const showBack=screen==="reglas"||screen==="grilla-horario";
 
   if(!init)return null;
 
@@ -327,8 +329,8 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Equipo":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Equipo":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -347,6 +349,7 @@ export default function Home() {
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="equipo"&&<EquipoScreen ctx={ctx}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen/>}
+        {isGer&&screen==="grilla-horario"&&<GrillaHorarioScreen/>}
         {isGer&&screen==="reglas"&&<ReglasScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
       </div>
