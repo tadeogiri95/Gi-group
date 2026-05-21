@@ -193,17 +193,29 @@ function HomeGer({goto,ctx}){
   const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente");
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
     <div style={{marginBottom:18}}><div style={{fontSize:13,color:C.dim,marginBottom:4}}>{fmtDate(new Date())} · {fmtTime(new Date())}</div><h2 style={{margin:0,fontFamily:fH,fontSize:28,fontWeight:700,color:C.text}}>Gerencia RRHH</h2><div style={{fontSize:14,color:C.dim,marginTop:6}}>{pend.length?`${pend.length} pendiente${pend.length===1?"":"s"}`:"Sin pendientes"}</div></div>
+
+    {/* Grilla de horarios — acceso rápido */}
+    <div onClick={()=>goto("grilla-horario")} style={{background:`linear-gradient(135deg,${C.cyan}15,${C.surface} 70%)`,borderRadius:20,padding:20,border:`1px solid ${C.cyan}30`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:-40,right:-40,width:160,height:160,borderRadius:"50%",background:`${C.cyan}15`,filter:"blur(50px)"}}/>
+      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div><div style={{fontSize:11,color:C.cyan,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>GRILLA DE HORARIOS</div><div style={{fontSize:15,fontWeight:700,color:C.text,marginTop:6,fontFamily:fH}}>Configurar y notificar</div><div style={{fontSize:12,color:C.dim,marginTop:4}}>Horario por defecto: 8:30 – 17:30</div></div>
+        <div style={{width:56,height:56,borderRadius:16,background:`${C.cyan}25`,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="22"/></svg></div>
+      </div>
+    </div>
+
     {pend.length>0&&<div onClick={()=>goto("solicitudes")} style={{background:`linear-gradient(135deg,${C.amber}15,${C.surface} 70%)`,borderRadius:20,padding:20,border:`1px solid ${C.amber}30`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-50,right:-50,width:180,height:180,borderRadius:"50%",background:`${C.amber}20`,filter:"blur(60px)"}}/>
       <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:11,color:C.amber,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>BANDEJA DE ENTRADA</div><div style={{fontFamily:fH,fontSize:36,fontWeight:700,color:C.text,marginTop:4}}>{pend.length}</div></div><div style={{width:56,height:56,borderRadius:16,background:`${C.amber}25`,color:C.amber,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.inbox}</div></div>
     </div>}
+
     {(ctx.notificaciones||[]).length>0&&<><div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Notificaciones</h3></div><div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>{(ctx.notificaciones||[]).slice(0,5).map(n=><div key={n.id} style={{background:C.surface,borderRadius:12,padding:12,border:`1px solid ${n.urgencia==="alta"?C.red+"30":C.border}`,display:"flex",alignItems:"center",gap:10}}><div style={{width:34,height:34,borderRadius:10,background:n.urgencia==="alta"?C.redS:C.violetS,color:n.urgencia==="alta"?C.red:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.bell}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{n.asunto}</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>{n.detalle}</div></div>{n.urgencia==="alta"&&<Tag color={C.red}>!</Tag>}</div>)}</div></>}
+
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:18}}>
       <div style={{background:C.surface,borderRadius:16,padding:16,border:`1px solid ${C.border}`}}><div style={{width:34,height:34,borderRadius:10,background:C.greenS,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10}}>{Ic.enter}</div><div style={{fontSize:10,fontWeight:600,color:C.dim,letterSpacing:"0.08em",textTransform:"uppercase"}}>EN PLANTA</div><div style={{fontFamily:fH,fontSize:26,fontWeight:700,color:C.text,marginTop:2}}>{(ctx.fichadasHoy||[]).length}</div></div>
       <div style={{background:C.surface,borderRadius:16,padding:16,border:`1px solid ${C.border}`}}><div style={{width:34,height:34,borderRadius:10,background:C.cyanS,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10}}>{Ic.clock}</div><div style={{fontSize:10,fontWeight:600,color:C.dim,letterSpacing:"0.08em",textTransform:"uppercase"}}>PENDIENTES</div><div style={{fontFamily:fH,fontSize:26,fontWeight:700,color:C.text,marginTop:2}}>{pend.length}</div></div>
     </div>
-    <div onClick={()=>goto("reglas")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.violetS,color:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.gear}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Reglas del Bot</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>{(ctx.reglas||[]).length} activas</div></div>{Ic.chevR}</div>
-    <div onClick={()=>goto("grilla-horario")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:10,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.cyanS,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="22"/></svg></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Grilla de Horarios</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>Configurar y notificar horarios</div></div>{Ic.chevR}</div>
-    <div onClick={()=>goto("gestion-personal")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:18,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.greenS,color:C.green,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Gestión de Personal</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>Alta, baja y sincronizar plantilla</div></div>{Ic.chevR}</div>
+
+    <div onClick={()=>goto("reglas")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:18,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.violetS,color:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.gear}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Reglas del Bot</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>{(ctx.reglas||[]).length} activas</div></div>{Ic.chevR}</div>
+
     <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>En planta</h3></div>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>{(ctx.fichadasHoy||[]).map(f=><div key={f.legajo} style={{background:C.surface,borderRadius:12,padding:12,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}><div style={{width:34,height:34,borderRadius:10,background:C.greenS,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:fH,fontSize:12,fontWeight:700}}>{(f.nombre||"").split(" ").map(w=>w[0]).slice(0,2).join("")}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{f.nombre}</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>L-{f.legajo}</div></div><div style={{fontFamily:fM,fontSize:13,fontWeight:700,color:C.green}}>{f.ingreso?.slice(0,5)}</div></div>)}</div>
   </div>;
@@ -232,18 +244,9 @@ function ReglasScreen({ctx,reload,usuario}){
   </div>;
 }
 
-/* ═══ EQUIPO ═══ */
-function EquipoScreen({ctx}){
-  const dH=DIAS_KEY[new Date().getDay()];
-  return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>{[["Total",(ctx.empleados||[]).length,C.text],["Planta",(ctx.fichadasHoy||[]).length,C.green],["Gerencia",(ctx.empleados||[]).filter(e=>e.rol==="gerencia").length,C.violet]].map(([l,v,c],i)=><div key={i} style={{background:C.surface,borderRadius:12,padding:14,border:`1px solid ${C.border}`,textAlign:"center"}}><div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:c}}>{v}</div><div style={{fontSize:10,color:C.dim,fontWeight:600,textTransform:"uppercase",marginTop:2}}>{l}</div></div>)}</div>
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>{(ctx.empleados||[]).map(e=>{const f=(ctx.fichadasHoy||[]).find(x=>x.legajo===e.legajo);const diagH=e.diagrama?.[dH];return<div key={e.legajo} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}><div style={{width:40,height:40,borderRadius:11,background:f?C.greenS:e.rol==="gerencia"?C.violetS:C.surfLo,color:f?C.green:e.rol==="gerencia"?C.violet:C.mute,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:fH,fontSize:13,fontWeight:700}}>{e.nombre.split(" ").map(w=>w[0]).slice(0,2).join("")}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.nombre}</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>L-{e.legajo} · {e.area}{diagH?` · ${diagH.in}-${diagH.out}`:""}</div></div>{f?<Tag color={C.green}>● {f.ingreso?.slice(0,5)}</Tag>:e.rol==="gerencia"?<Tag color={C.violet}>GER</Tag>:!diagH&&e.diagrama?<Tag color={C.cyan}>FRANCO</Tag>:<Tag color={C.mute}>—</Tag>}</div>})}</div>
-  </div>;
-}
-
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencia"||role==="admin"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencia"||role==="admin"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["grilla-horario","Horarios",Ic.history],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -294,7 +297,7 @@ export default function Home() {
   const isGer=usuario&&(usuario.rol==="gerencia"||usuario.rol==="admin");
   const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
   const isChat=screen==="chat";
-  const showBack=screen==="reglas"||screen==="grilla-horario"||screen==="gestion-personal";
+  const showBack=screen==="reglas";
 
   if(!init)return null;
 
@@ -331,8 +334,8 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="gestion-personal"?"Recursos Humanos":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Equipo":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="gestion-personal"?"Personal":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Recursos Humanos":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -349,10 +352,9 @@ export default function Home() {
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
         {isGer&&screen==="home"&&<HomeGer goto={setScreen} ctx={ctx}/>}
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
-        {isGer&&screen==="equipo"&&<EquipoScreen ctx={ctx}/>}
+        {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen/>}
         {isGer&&screen==="grilla-horario"&&<GrillaHorarioScreen/>}
-        {isGer&&screen==="gestion-personal"&&<GestionPersonalScreen reload={loadData}/>}
         {isGer&&screen==="reglas"&&<ReglasScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
       </div>
