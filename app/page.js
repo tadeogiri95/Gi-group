@@ -85,9 +85,9 @@ function LoginScreen({onLogin}) {
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",maxHeight:300}}>
         {users.map(u=><button key={u.email} onClick={()=>login(u.email)} disabled={loading} style={{display:"flex",alignItems:"center",gap:12,padding:12,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,cursor:"pointer",textAlign:"left",fontFamily:fB}}>
-          <div style={{width:36,height:36,borderRadius:10,background:u.rol==="gerencia"?C.violetS:u.rol==="admin"?C.cyanS:C.amberS,color:u.rol==="gerencia"?C.violet:u.rol==="admin"?C.cyan:C.amber,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:fH,fontSize:13,fontWeight:700}}>{u.apodo[0]}</div>
+          <div style={{width:36,height:36,borderRadius:10,background:u.rol==="gerencial"?C.violetS:u.rol==="administrativo"?C.cyanS:C.amberS,color:u.rol==="gerencial"?C.violet:u.rol==="administrativo"?C.cyan:C.amber,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:fH,fontSize:13,fontWeight:700}}>{u.apodo[0]}</div>
           <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{u.apodo}</div><div style={{fontSize:11,color:C.dim,marginTop:1}}>{u.email}</div></div>
-          <Tag color={u.rol==="gerencia"?C.violet:u.rol==="admin"?C.cyan:C.amber}>{u.rol}</Tag>
+          <Tag color={u.rol==="gerencial"?C.violet:u.rol==="administrativo"?C.cyan:C.amber}>{u.rol}</Tag>
         </button>)}
       </div>
     </>}
@@ -110,10 +110,10 @@ function ChatScreen({usuario,ctx,reload}){
     try{switch(action.type){
       case"FICHAR_INGRESO":{const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);if(!ex.length)await sb.post("fichadas",{empleado_id:usuario.id,legajo:usuario.legajo,fecha:today,ingreso:hora});card={type:"fichada",sub:"ingreso",hora};break;}
       case"FICHAR_EGRESO":{const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);if(ex.length)await sb.patch(`fichadas?id=eq.${ex[0].id}`,{egreso:hora});card={type:"fichada",sub:"egreso",hora};break;}
-      case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencia",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
-      case"AVISAR_TARDANZA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"tardanza",motivo:`Tardanza: ${action.motivo||""}`,fecha:"hoy",estado:"registrado"});await sb.post("notificaciones",{destinatario_rol:"gerencia",tipo:"alerta",asunto:`Tardanza de ${usuario.apodo}`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","⏰ Tardanza",`${usuario.apodo}: ${action.motivo||"sin detalle"}`).catch(()=>{});break;
-      case"AVISAR_AUSENCIA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"ausencia",motivo:action.motivo||"Ausencia",fecha:action.fecha||"hoy",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencia",tipo:"alerta",asunto:`Ausencia de ${usuario.apodo}`,detalle:action.motivo,urgencia:"alta"});sendPushToLegajo("1","🚨 Ausencia",`${usuario.apodo}: ${action.motivo||"Ausencia"}`).catch(()=>{});break;
-      case"NOTIFICAR_GERENCIA":await sb.post("notificaciones",{destinatario_rol:"gerencia",tipo:"info",asunto:action.asunto,detalle:action.detalle,urgencia:action.urgencia||"normal"});break;
+      case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
+      case"AVISAR_TARDANZA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"tardanza",motivo:`Tardanza: ${action.motivo||""}`,fecha:"hoy",estado:"registrado"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Tardanza de ${usuario.apodo}`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","⏰ Tardanza",`${usuario.apodo}: ${action.motivo||"sin detalle"}`).catch(()=>{});break;
+      case"AVISAR_AUSENCIA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"ausencia",motivo:action.motivo||"Ausencia",fecha:action.fecha||"hoy",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Ausencia de ${usuario.apodo}`,detalle:action.motivo,urgencia:"alta"});sendPushToLegajo("1","🚨 Ausencia",`${usuario.apodo}: ${action.motivo||"Ausencia"}`).catch(()=>{});break;
+      case"NOTIFICAR_GERENCIA":await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"info",asunto:action.asunto,detalle:action.detalle,urgencia:action.urgencia||"normal"});break;
     }reload&&reload();}catch(e){console.error(e);}return card;
   };
 
@@ -160,7 +160,6 @@ function SolCard({s,showActions,onResolve}){const ec={pendiente:C.amber,aprobado
 /* ═══ HOME EMPLEADO ═══ */
 function HomeEmp({goto,usuario,ctx}){
   const misSols=ctx.misSolicitudes||[];const dH=DIAS_KEY[new Date().getDay()];const diagH=usuario.diagrama?.[dH];
-  const hSem=(ctx.fichadasSemana||[]).reduce((a,d)=>a+(parseFloat(d.horas_trabajadas)||0),0);
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
     <div style={{marginBottom:18}}>
       <div style={{fontSize:13,color:C.dim,marginBottom:4}}>{fmtDate(new Date())} · {fmtTime(new Date())}</div>
@@ -179,9 +178,9 @@ function HomeEmp({goto,usuario,ctx}){
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:18}}>
       {[["Permiso",C.violet,Ic.history],["Tardanza",C.cyan,Ic.clock],["No vengo",C.red,Ic.alert]].map(([l,c,ic],i)=><button key={i} onClick={()=>goto("chat")} style={{background:C.surface,border:`1px solid ${C.border}`,padding:"14px 8px",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:fB}}><div style={{width:34,height:34,borderRadius:10,background:`${c}22`,color:c,display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</div><span style={{fontSize:11,color:C.text,fontWeight:600}}>{l}</span></button>)}
     </div>
-    <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Mi semana <span style={{fontWeight:400,fontSize:12,color:C.dim}}>· {hSem.toFixed(1)}h de {usuario.horas_semanales||41}h</span></h3></div>
+    <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Mi semana</h3></div>
     <div style={{background:C.surface,borderRadius:16,padding:14,border:`1px solid ${C.border}`,marginBottom:18}}>
-      {(ctx.fichadasSemana||[]).length===0?<div style={{padding:16,textAlign:"center",color:C.dim,fontSize:13}}>Sin fichadas</div>:(ctx.fichadasSemana||[]).map((d,i,a)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<a.length-1?`1px solid ${C.border}`:"none"}}><div><div style={{fontSize:13,fontWeight:600,color:C.text}}>{new Date(d.fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"2-digit",month:"2-digit"})}</div>{d.ingreso&&<div style={{fontSize:11,color:C.dim,marginTop:2,fontFamily:fM}}>{d.ingreso.slice(0,5)} → {d.egreso?d.egreso.slice(0,5):"en curso"}</div>}</div><span style={{fontFamily:fM,fontSize:14,fontWeight:700,color:d.horas_trabajadas?C.text:C.mute}}>{d.horas_trabajadas?`${parseFloat(d.horas_trabajadas).toFixed(1)}h`:"—"}</span></div>)}
+      {(ctx.fichadasSemana||[]).length===0?<div style={{padding:16,textAlign:"center",color:C.dim,fontSize:13}}>Sin fichadas</div>:(ctx.fichadasSemana||[]).map((d,i,a)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<a.length-1?`1px solid ${C.border}`:"none"}}><div><div style={{fontSize:13,fontWeight:600,color:C.text}}>{new Date(d.fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"2-digit",month:"2-digit"})}</div>{d.ingreso&&<div style={{fontSize:11,color:C.dim,marginTop:2,fontFamily:fM}}>{d.ingreso.slice(0,5)} → {d.egreso?d.egreso.slice(0,5):"en curso"}</div>}</div><span style={{fontFamily:fM,fontSize:14,fontWeight:700,color:d.ingreso?C.green:C.mute}}>{d.ingreso?"✓":"—"}</span></div>)}
     </div>
     <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Mis solicitudes</h3></div>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>{misSols.length===0?<div style={{background:C.surface,borderRadius:14,padding:30,textAlign:"center",border:`1px solid ${C.border}`,color:C.dim,fontSize:13}}>No tenés solicitudes</div>:misSols.map(s=><SolCard key={s.id} s={s}/>)}</div>
@@ -246,7 +245,7 @@ function ReglasScreen({ctx,reload,usuario}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencia"||role==="admin"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["grilla-horario","Horarios",Ic.history],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["grilla-horario","Horarios",Ic.history],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -273,7 +272,7 @@ export default function Home() {
     try{
       const today=new Date().toISOString().split("T")[0];
       const mon=new Date();mon.setDate(mon.getDate()-((mon.getDay()+6)%7));const monStr=mon.toISOString().split("T")[0];
-      const isGer=usuario.rol==="gerencia"||usuario.rol==="admin";
+      const isGer=usuario.rol==="gerencial"||usuario.rol==="administrativo";
       const [empleados,fichadasHoy,miFichada,fichadasSemana,solicitudes,misSolicitudes,reglas,notificaciones]=await Promise.all([
         sb.get("empleados?select=*&activo=eq.true&order=legajo.asc"),
         sb.get(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,empleados(nombre)&fecha=eq.${today}`),
@@ -282,7 +281,7 @@ export default function Home() {
         sb.get("solicitudes?select=*&order=created_at.desc&limit=50"),
         sb.get(`solicitudes?legajo=eq.${usuario.legajo}&order=created_at.desc&limit=20`),
         sb.get("reglas_bot?activa=eq.true&order=id.asc"),
-        sb.get(isGer?"notificaciones?destinatario_rol=eq.gerencia&order=created_at.desc&limit=10":`notificaciones?destinatario_rol=eq.${usuario.legajo}&order=created_at.desc&limit=10`),
+        sb.get(isGer?"notificaciones?destinatario_rol=eq.gerencial&order=created_at.desc&limit=10":`notificaciones?destinatario_rol=eq.${usuario.legajo}&order=created_at.desc&limit=10`),
       ]);
       const fHoy=fichadasHoy.map(f=>({...f,nombre:f.empleados?.nombre||""}));
       setCtx({empleados,fichadasHoy:fHoy,fichadaHoy:miFichada[0]||null,fichadasSemana,solicitudes,misSolicitudes,reglas:reglas.map(r=>r.regla),reglasRaw:reglas,notificaciones});
@@ -294,7 +293,7 @@ export default function Home() {
   useEffect(()=>{if(!usuario)return;const t=setInterval(loadData,15000);return()=>clearInterval(t);},[usuario,loadData]);
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),30000);return()=>clearInterval(t);},[]);
 
-  const isGer=usuario&&(usuario.rol==="gerencia"||usuario.rol==="admin");
+  const isGer=usuario&&(usuario.rol==="gerencial"||usuario.rol==="administrativo");
   const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
   const isChat=screen==="chat";
   const showBack=screen==="reglas";

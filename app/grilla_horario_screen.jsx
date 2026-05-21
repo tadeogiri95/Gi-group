@@ -14,6 +14,7 @@ const DIVISIONES = [
   { id: "herreria", label: "🔥 Herrería", color: C.amber },
   { id: "muebles", label: "🪵 Muebles", color: C.green },
   { id: "aberturas", label: "🪟 Aberturas", color: C.cyan },
+  { id: "general", label: "🏭 General", color: C.violet },
 ];
 
 /* ═══ PRIMITIVAS ═══ */
@@ -69,7 +70,9 @@ export default function GrillaHorarioScreen() {
     setLoading(true);
     try {
       const emps = await sb.get("empleados?activo=eq.true&order=nombre.asc&select=id,nombre,apodo,legajo,area,division,rol,diagrama,horas_semanales");
-      setEmpleados(emps || []);
+      // Solo operativos de producción y logística
+      const filtered = (emps || []).filter(e => e.rol === "operativo" && (e.area === "produccion" || e.area === "logistica"));
+      setEmpleados(filtered);
       const g = {}, o = {};
       (emps || []).forEach(e => {
         const diag = e.diagrama || {};

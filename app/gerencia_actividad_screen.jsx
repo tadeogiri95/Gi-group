@@ -8,6 +8,7 @@ const DIVISIONES = [
   { id: "herreria", label: "Herrería", icon: "🔥", color: C.amber },
   { id: "muebles", label: "Muebles", icon: "🪵", color: C.green },
   { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
+  { id: "general", label: "General", icon: "🏭", color: C.violet },
 ];
 
 const CAUSAS_MAP = { M: "Falta material", H: "Falta herramienta", I: "Indicación", O: "Otro" };

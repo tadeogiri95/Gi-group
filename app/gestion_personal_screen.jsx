@@ -11,10 +11,11 @@ const DIVISIONES = [
   { id: "herreria", label: "Herrería", icon: "🔥", color: C.amber },
   { id: "muebles", label: "Muebles", icon: "🪵", color: C.green },
   { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
+  { id: "general", label: "General", icon: "🏭", color: C.violet },
 ];
 
-const ROLES = ["empleado", "gerencia", "admin"];
-const AREAS = ["produccion", "administracion", "logistica", "mantenimiento"];
+const ROLES = ["operativo", "gerencial", "administrativo"];
+const AREAS = ["produccion", "administracion", "logistica"];
 const TIPO_MO_MAP = { DIRECTA: "produccion", INDIRECTA: "administracion" };
 
 /* ═══ PRIMITIVAS ═══ */
@@ -143,7 +144,7 @@ function ModalEditar({ emp, onClose, onSave, saving }) {
 
 /* ═══ MODAL ALTA MANUAL ═══ */
 function ModalAlta({ onClose, onSave, saving }) {
-  const [form, setForm] = useState({ nombre: "", legajo: "", email: "", apodo: "", area: "produccion", division: "", rol: "empleado" });
+  const [form, setForm] = useState({ nombre: "", legajo: "", email: "", apodo: "", area: "produccion", division: "", rol: "operativo" });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const valid = form.nombre.trim() && form.legajo.trim() && form.email.trim();
 
@@ -269,7 +270,7 @@ export default function GestionPersonalScreen({ ctx, reload }) {
     for (const row of nuevosCSV) {
       const nombre = capitalizarNombre(row.nombre);
       try {
-        await sb.post("empleados", { legajo: row.colaborador_id, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: TIPO_MO_MAP[row.tipo_mo] || "produccion", rol: "empleado", activo: true });
+        await sb.post("empleados", { legajo: row.colaborador_id, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: TIPO_MO_MAP[row.tipo_mo] || "produccion", rol: "operativo", activo: true });
         ok++;
       } catch (e) { console.error(e); }
     }
@@ -283,7 +284,7 @@ export default function GestionPersonalScreen({ ctx, reload }) {
     setSaving(true);
     const nombre = capitalizarNombre(row.nombre);
     try {
-      await sb.post("empleados", { legajo: row.colaborador_id, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: TIPO_MO_MAP[row.tipo_mo] || "produccion", rol: "empleado", activo: true });
+      await sb.post("empleados", { legajo: row.colaborador_id, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: TIPO_MO_MAP[row.tipo_mo] || "produccion", rol: "operativo", activo: true });
       await cargarEmpleados(); if (reload) reload();
       showToast(`✅ ${nombre} dado de alta`, C.green);
     } catch (e) { showToast(`Error: ${e.message}`, C.red); } finally { setSaving(false); }

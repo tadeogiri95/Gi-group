@@ -227,7 +227,6 @@ export default function ActividadScreen({
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.dim, marginTop: 4 }}>
                   <span style={{ fontFamily: fM }}>{horaIni} → {horaFin}</span>
-                  <span style={{ fontFamily: fM, fontWeight: 700, color: C.text }}>{fmtElapsed(durSec)}</span>
                 </div>
                 {r.causa && <div style={{ marginTop: 6, fontSize: 11, color: C.red }}>Causa: {CAUSAS.find(c => c.cod === r.causa)?.nombre}</div>}
               </div>
@@ -275,7 +274,7 @@ export default function ActividadScreen({
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: `${e.color}22`, color: e.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{e.icon}</div>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{e.nombre}</div>
-                      <div style={{ fontSize: 10, color: C.dim, fontFamily: fM }}>Etapa {e.codigo}</div>
+                      <div style={{ fontSize: 10, color: C.dim }}>{e.nombre}</div>
                     </div>
                   </button>
                 ))}
