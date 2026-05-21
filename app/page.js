@@ -12,6 +12,7 @@ import GerenciaActividadScreen from './gerencia_actividad_screen';
 import GrillaHorarioScreen from './grilla_horario_screen';
 import GestionPersonalScreen from './gestion_personal_screen';
 import CalendarioScreen from './calendario_screen';
+import DashboardGerencia from './dashboard_gerencia';
 
 /* ═══ ICONS ═══ */
 const Ic = {
@@ -188,48 +189,6 @@ function HomeEmp({goto,usuario,ctx}){
   </div>;
 }
 
-/* ═══ HOME GERENCIA ═══ */
-function HomeGer({goto,ctx}){
-  const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente");
-  return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
-    <div style={{marginBottom:18}}><div style={{fontSize:13,color:C.dim,marginBottom:4}}>{fmtDate(new Date())} · {fmtTime(new Date())}</div><h2 style={{margin:0,fontFamily:fH,fontSize:28,fontWeight:700,color:C.text}}>Gerencia RRHH</h2><div style={{fontSize:14,color:C.dim,marginTop:6}}>{pend.length?`${pend.length} pendiente${pend.length===1?"":"s"}`:"Sin pendientes"}</div></div>
-
-    {/* Grilla de horarios — acceso rápido */}
-    <div onClick={()=>goto("grilla-horario")} style={{background:`linear-gradient(135deg,${C.cyan}15,${C.surface} 70%)`,borderRadius:20,padding:20,border:`1px solid ${C.cyan}30`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",top:-40,right:-40,width:160,height:160,borderRadius:"50%",background:`${C.cyan}15`,filter:"blur(50px)"}}/>
-      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div><div style={{fontSize:11,color:C.cyan,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>GRILLA DE HORARIOS</div><div style={{fontSize:15,fontWeight:700,color:C.text,marginTop:6,fontFamily:fH}}>Configurar y notificar</div><div style={{fontSize:12,color:C.dim,marginTop:4}}>Horario por defecto: 8:30 – 17:30</div></div>
-        <div style={{width:56,height:56,borderRadius:16,background:`${C.cyan}25`,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="22"/></svg></div>
-      </div>
-    </div>
-
-    {/* Calendario de producción */}
-    <div onClick={()=>goto("calendario")} style={{background:`linear-gradient(135deg,${C.violet}15,${C.surface} 70%)`,borderRadius:20,padding:20,border:`1px solid ${C.violet}30`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",top:-40,right:-40,width:160,height:160,borderRadius:"50%",background:`${C.violet}15`,filter:"blur(50px)"}}/>
-      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div><div style={{fontSize:11,color:C.violet,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>CALENDARIO</div><div style={{fontSize:15,fontWeight:700,color:C.text,marginTop:6,fontFamily:fH}}>Planificación mensual</div><div style={{fontSize:12,color:C.dim,marginTop:4}}>Horarios y actividad del equipo</div></div>
-        <div style={{width:56,height:56,borderRadius:16,background:`${C.violet}25`,color:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-      </div>
-    </div>
-
-    {pend.length>0&&<div onClick={()=>goto("solicitudes")} style={{background:`linear-gradient(135deg,${C.amber}15,${C.surface} 70%)`,borderRadius:20,padding:20,border:`1px solid ${C.amber}30`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-50,right:-50,width:180,height:180,borderRadius:"50%",background:`${C.amber}20`,filter:"blur(60px)"}}/>
-      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:11,color:C.amber,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>BANDEJA DE ENTRADA</div><div style={{fontFamily:fH,fontSize:36,fontWeight:700,color:C.text,marginTop:4}}>{pend.length}</div></div><div style={{width:56,height:56,borderRadius:16,background:`${C.amber}25`,color:C.amber,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.inbox}</div></div>
-    </div>}
-
-    {(ctx.notificaciones||[]).length>0&&<><div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Notificaciones</h3></div><div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>{(ctx.notificaciones||[]).slice(0,5).map(n=><div key={n.id} style={{background:C.surface,borderRadius:12,padding:12,border:`1px solid ${n.urgencia==="alta"?C.red+"30":C.border}`,display:"flex",alignItems:"center",gap:10}}><div style={{width:34,height:34,borderRadius:10,background:n.urgencia==="alta"?C.redS:C.violetS,color:n.urgencia==="alta"?C.red:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.bell}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{n.asunto}</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>{n.detalle}</div></div>{n.urgencia==="alta"&&<Tag color={C.red}>!</Tag>}</div>)}</div></>}
-
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:18}}>
-      <div style={{background:C.surface,borderRadius:16,padding:16,border:`1px solid ${C.border}`}}><div style={{width:34,height:34,borderRadius:10,background:C.greenS,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10}}>{Ic.enter}</div><div style={{fontSize:10,fontWeight:600,color:C.dim,letterSpacing:"0.08em",textTransform:"uppercase"}}>EN PLANTA</div><div style={{fontFamily:fH,fontSize:26,fontWeight:700,color:C.text,marginTop:2}}>{(ctx.fichadasHoy||[]).length}</div></div>
-      <div style={{background:C.surface,borderRadius:16,padding:16,border:`1px solid ${C.border}`}}><div style={{width:34,height:34,borderRadius:10,background:C.cyanS,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10}}>{Ic.clock}</div><div style={{fontSize:10,fontWeight:600,color:C.dim,letterSpacing:"0.08em",textTransform:"uppercase"}}>PENDIENTES</div><div style={{fontFamily:fH,fontSize:26,fontWeight:700,color:C.text,marginTop:2}}>{pend.length}</div></div>
-    </div>
-
-    <div onClick={()=>goto("reglas")} style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,marginBottom:18,cursor:"pointer",display:"flex",alignItems:"center",gap:12}}><div style={{width:42,height:42,borderRadius:11,background:C.violetS,color:C.violet,display:"flex",alignItems:"center",justifyContent:"center"}}>{Ic.gear}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>Reglas del Bot</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>{(ctx.reglas||[]).length} activas</div></div>{Ic.chevR}</div>
-
-    <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>En planta</h3></div>
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>{(ctx.fichadasHoy||[]).map(f=><div key={f.legajo} style={{background:C.surface,borderRadius:12,padding:12,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}><div style={{width:34,height:34,borderRadius:10,background:C.greenS,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:fH,fontSize:12,fontWeight:700}}>{(f.nombre||"").split(" ").map(w=>w[0]).slice(0,2).join("")}</div><div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{f.nombre}</div><div style={{fontSize:11,color:C.dim,marginTop:2}}>L-{f.legajo}</div></div><div style={{fontFamily:fM,fontSize:13,fontWeight:700,color:C.green}}>{f.ingreso?.slice(0,5)}</div></div>)}</div>
-  </div>;
-}
-
 /* ═══ INBOX ═══ */
 function InboxScreen({ctx,reload,usuario}){
   const [f,setF]=useState("pendiente");const filtered=(ctx.solicitudes||[]).filter(s=>f==="todas"?true:s.estado===f);const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
@@ -340,6 +299,7 @@ export default function Home() {
         <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:C.text,fontFamily:fH}}>Asistente GI</div><div style={{display:"flex",alignItems:"center",gap:5,marginTop:1}}><span style={{width:6,height:6,borderRadius:3,background:C.green}}/><span style={{fontSize:11,color:C.dim}}>IA activa</span></div></div>
         <span style={{color:C.amber,opacity:.6}}>{Ic.sparkle}</span>
       </div>
+      :screen==="home"&&isGer?null
       :<div style={{padding:"8px 22px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
@@ -360,7 +320,7 @@ export default function Home() {
         {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
-        {isGer&&screen==="home"&&<HomeGer goto={setScreen} ctx={ctx}/>}
+        {isGer&&screen==="home"&&<DashboardGerencia goto={setScreen} ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen/>}
