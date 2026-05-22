@@ -14,8 +14,7 @@ import GestionPersonalScreen from './gestion_personal_screen';
 import CalendarioScreen from './calendario_screen';
 import DashboardGerencia from './dashboard_gerencia';
 import ReportesScreen from './reportes_screen';
-import GeolocalizacionScreen from './geolocalizacion_screen';
-import { validarGeoFichaje } from './geolocalizacion_screen';
+import InstaladorScreen from './instalador_screen';
 
 /* ═══ ICONS ═══ */
 const Ic = {
@@ -100,20 +99,7 @@ function LoginScreen({onLogin}) {
 }
 
 /* ═══ FICHADA CARD ═══ */
-function FichadaCard({tipo,hora,geoMsg}){
-  const color=tipo==="ingreso"?C.green:C.cyan;
-  return <div style={{marginTop:8,padding:14,background:`${color}12`,borderRadius:14,border:`1px solid ${color}30`,minWidth:220}}>
-    <div style={{display:"flex",alignItems:"center",gap:10}}>
-      <div style={{width:38,height:38,borderRadius:10,background:`${color}25`,color,display:"flex",alignItems:"center",justifyContent:"center"}}>{tipo==="ingreso"?Ic.enter:Ic.exit}</div>
-      <div style={{flex:1}}>
-        <div style={{fontSize:11,color,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{tipo==="ingreso"?"INGRESO":"SALIDA"} REGISTRAD{tipo==="ingreso"?"O":"A"}</div>
-        <div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:C.text,marginTop:2}}>{hora}</div>
-        {geoMsg && <div style={{fontSize:10,color:C.dim,marginTop:4}}>{geoMsg}</div>}
-      </div>
-      <span style={{color:C.green}}>{Ic.check}</span>
-    </div>
-  </div>;
-}
+function FichadaCard({tipo,hora}){const color=tipo==="ingreso"?C.green:C.cyan;return<div style={{marginTop:8,padding:14,background:`${color}12`,borderRadius:14,border:`1px solid ${color}30`,minWidth:220}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:38,height:38,borderRadius:10,background:`${color}25`,color,display:"flex",alignItems:"center",justifyContent:"center"}}>{tipo==="ingreso"?Ic.enter:Ic.exit}</div><div style={{flex:1}}><div style={{fontSize:11,color,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{tipo==="ingreso"?"INGRESO":"SALIDA"} REGISTRAD{tipo==="ingreso"?"O":"A"}</div><div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:C.text,marginTop:2}}>{hora}</div></div><span style={{color:C.green}}>{Ic.check}</span></div></div>;}
 function SolSentCard({motivo,fecha}){return<div style={{marginTop:8,padding:14,background:C.amberS,borderRadius:14,border:`1px solid ${C.amber}30`,minWidth:220}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{fontSize:11,color:C.amber,fontWeight:700,letterSpacing:"0.06em"}}>ENVIADA A GERENCIA</div><div style={{fontSize:13,color:C.text,fontWeight:600,marginTop:4}}>{motivo}</div><div style={{fontSize:11,color:C.dim,marginTop:4}}>📅 {fecha} · ⏳ Esperando</div></div><Tag color={C.amber}>{Ic.clock} PENDIENTE</Tag></div></div>;}
 
 /* ═══ CHAT ═══ */
@@ -126,28 +112,8 @@ function ChatScreen({usuario,ctx,reload}){
   const execAction=async(action)=>{
     let card=null;const hora=fmtTime(new Date());const today=new Date().toISOString().split("T")[0];
     try{switch(action.type){
-      case"FICHAR_INGRESO":{
-        const geo = await validarGeoFichaje(usuario);
-        if (!geo.ok) return { type: "geo_error", msg: geo.msg };
-        const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(!ex.length)await sb.post("fichadas",{
-          empleado_id:usuario.id,legajo:usuario.legajo,fecha:today,ingreso:hora,
-          geo_ingreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-        });
-        card={type:"fichada",sub:"ingreso",hora,geoMsg:geo.msg};
-        break;
-      }
-      case"FICHAR_EGRESO":{
-        const geo = await validarGeoFichaje(usuario);
-        if (!geo.ok) return { type: "geo_error", msg: geo.msg };
-        const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(ex.length)await sb.patch(`fichadas?id=eq.${ex[0].id}`,{
-          egreso:hora,
-          geo_egreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-        });
-        card={type:"fichada",sub:"egreso",hora,geoMsg:geo.msg};
-        break;
-      }
+      case"FICHAR_INGRESO":{const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);if(!ex.length)await sb.post("fichadas",{empleado_id:usuario.id,legajo:usuario.legajo,fecha:today,ingreso:hora});card={type:"fichada",sub:"ingreso",hora};break;}
+      case"FICHAR_EGRESO":{const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);if(ex.length)await sb.patch(`fichadas?id=eq.${ex[0].id}`,{egreso:hora});card={type:"fichada",sub:"egreso",hora};break;}
       case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
       case"AVISAR_TARDANZA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"tardanza",motivo:`Tardanza: ${action.motivo||""}`,fecha:"hoy",estado:"registrado"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Tardanza de ${usuario.apodo}`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","⏰ Tardanza",`${usuario.apodo}: ${action.motivo||"sin detalle"}`).catch(()=>{});break;
       case"AVISAR_AUSENCIA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"ausencia",motivo:action.motivo||"Ausencia",fecha:action.fecha||"hoy",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Ausencia de ${usuario.apodo}`,detalle:action.motivo,urgencia:"alta"});sendPushToLegajo("1","🚨 Ausencia",`${usuario.apodo}: ${action.motivo||"Ausencia"}`).catch(()=>{});break;
@@ -158,13 +124,7 @@ function ChatScreen({usuario,ctx,reload}){
   const handleSend=async(txt=input)=>{const t=txt.trim();if(!t||loading)return;
     const um={from:"user",text:t,time:new Date()};const nm=[...msgs,um];setMsgs(nm);setInput("");setLoading(true);
     sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"user",mensaje:t}).catch(()=>{});
-    try{const hist=nm.slice(-20).map(m=>({from:m.from,text:m.text}));const raw=await callClaude(hist,ctx,usuario);const{clean,action}=parseAction(raw);
-      let card=action?await execAction(action):null;
-      if (card?.type === "geo_error") {
-        setMsgs(m=>[...m,{from:"bot",text:card.msg,time:new Date()}]);
-        setLoading(false);
-        return;
-      }
+    try{const hist=nm.slice(-20).map(m=>({from:m.from,text:m.text}));const raw=await callClaude(hist,ctx,usuario);const{clean,action}=parseAction(raw);const card=action?await execAction(action):null;
       setMsgs(m=>[...m,{from:"bot",text:clean,card,time:new Date()}]);sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"bot",mensaje:clean}).catch(()=>{});
     }catch{setMsgs(m=>[...m,{from:"bot",text:"Error de conexión. Probá de nuevo.",time:new Date()}]);}setLoading(false);};
 
@@ -174,7 +134,7 @@ function ChatScreen({usuario,ctx,reload}){
         {m.from==="bot"&&<div style={{width:30,height:30,borderRadius:10,marginRight:8,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",flexShrink:0}}>{Ic.bot}</div>}
         <div style={{maxWidth:"78%",display:"flex",flexDirection:"column",alignItems:m.from==="bot"?"flex-start":"flex-end"}}>
           <div style={{padding:"10px 14px",background:m.from==="bot"?C.surfHi:C.amber,color:m.from==="bot"?C.text:"#000",borderRadius:m.from==="bot"?"16px 16px 16px 4px":"16px 16px 4px 16px",fontSize:14,fontFamily:fB,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",border:m.from==="bot"?`1px solid ${C.border}`:"none",fontWeight:m.from==="bot"?400:500}}>{m.text}</div>
-          {m.card?.type==="fichada"&&<FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg}/>}
+          {m.card?.type==="fichada"&&<FichadaCard tipo={m.card.sub} hora={m.card.hora}/>}
           {m.card?.type==="solicitud"&&<SolSentCard motivo={m.card.motivo} fecha={m.card.fecha}/>}
           {m.quickReplies&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>{m.quickReplies.map((c,j)=><button key={j} onClick={()=>handleSend(c)} style={{padding:"7px 12px",borderRadius:999,background:C.surfHi,border:`1px solid ${C.borderHi}`,color:C.text,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:fB}}>{c}</button>)}</div>}
           <span style={{fontSize:10,color:C.mute,marginTop:4,fontFamily:fM}}>{fmtTime(m.time)}</span>
@@ -273,7 +233,7 @@ function ReglasScreen({ctx,reload,usuario}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["equipo","Equipo",Ic.users],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["equipo","Equipo",Ic.users],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -362,8 +322,8 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Gestión de personal":screen==="calendario"?"Planificación":screen==="reportes"?"Control horario":screen==="geolocalizacion"?"Control GPS":"App GI":screen==="actividad"?"Registro de actividades":"App GI"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="calendario"?"Calendario":screen==="reportes"?"Reportes":screen==="geolocalizacion"?"Ubicaciones":"App GI"}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Gestión de personal":screen==="calendario"?"Planificación":screen==="reportes"?"Control horario":"App GI":screen==="actividad"?"Registro de actividades":"App GI"}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="calendario"?"Calendario":screen==="reportes"?"Reportes":screen==="obra"?"Reporte de Obra":"App GI"}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -377,6 +337,7 @@ export default function Home() {
         {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx}/>}
         {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
+        {!isGer&&screen==="obra"&&<InstaladorScreen usuario={usuario}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
         {isGer&&screen==="home"&&<DashboardGerencia goto={setScreen} ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
@@ -385,7 +346,6 @@ export default function Home() {
         {isGer&&screen==="grilla-horario"&&<GrillaHorarioScreen/>}
         {isGer&&screen==="calendario"&&<CalendarioScreen/>}
         {isGer&&screen==="reportes"&&<ReportesScreen/>}
-        {isGer&&screen==="geolocalizacion"&&<GeolocalizacionScreen/>}
         {isGer&&screen==="reglas"&&<ReglasScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
       </div>
