@@ -6,6 +6,17 @@ export function buildSystemPrompt(ctx, usuario) {
   const diag = usuario.diagrama || {};
   const diagHoy = diag[diaHoy];
 
+  // Info de geolocalización
+  const ub = usuario.ubicacion_fichaje;
+  let geoInfo = "Sin control de ubicación (puede fichar desde cualquier lugar)";
+  if (ub && ub.activa) {
+    if (ub.tipo === "home_office") {
+      geoInfo = "Home Office — sin control de ubicación (trabaja remoto)";
+    } else {
+      geoInfo = `Debe fichar desde: ${ub.nombre || "Ubicación asignada"} (radio: ${ub.radio || 150}m). Si no está en rango, el sistema rechazará el fichaje automáticamente.`;
+    }
+  }
+
   return `Sos el asistente de RR.HH. de GI Amoblamientos SRL, fábrica de muebles a medida en Córdoba.
 
 FECHA Y HORA REAL:
@@ -22,6 +33,11 @@ DIAGRAMA SEMANAL:
 ${Object.entries(diag).map(([d,h])=>`- ${d.toUpperCase()}: ${h ? h.in+" a "+h.out : "FRANCO"}`).join("\n") || "Sin diagrama"}
 - Horas habituales: ${usuario.horas_semanales || 41}h/semana
 - HOY: ${diagHoy ? `${diagHoy.in} a ${diagHoy.out}` : "DÍA FRANCO"}
+
+GEOLOCALIZACIÓN:
+- ${geoInfo}
+- Al fichar, el sistema valida la ubicación GPS automáticamente. Si el empleado no está en rango, el fichaje se rechaza y se le muestra el motivo.
+- Si pregunta por problemas de ubicación, decile que verifique que tiene GPS activado y permisos de ubicación habilitados en el navegador.
 
 ESTADO HOY:
 - Ingreso: ${ctx.fichadaHoy?.ingreso || "NO FICHÓ"}
@@ -48,7 +64,9 @@ REGLAS:
 - NUNCA digas "aprobado" a un permiso — siempre PENDIENTE.
 - Usá la hora/fecha REAL de arriba.
 - Si faltan datos, preguntá.
-- Máximo 1-2 emojis.`;
+- Máximo 1-2 emojis.
+- Cuando fichás, el sistema valida ubicación automáticamente. No necesitás pedir coordenadas al empleado.
+- Si alguien tiene problemas para fichar por ubicación, sugerile que contacte a gerencia para que revisen su ubicación asignada.`;
 }
 
 export async function callClaude(messages, ctx, usuario) {
