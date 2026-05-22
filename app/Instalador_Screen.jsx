@@ -102,6 +102,69 @@ export default function InstaladorScreen({ usuario }) {
   const [error, setError] = useState(null);
   const fileRef = useRef(null);
 
+  /* ── Audio: grabación con Web Speech API ── */
+  const [grabando, setGrabando] = useState(false);
+  const [transcribiendo, setTranscribiendo] = useState(false);
+  const recognitionRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  const soportaSpeech = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+
+  const iniciarGrabacion = () => {
+    if (!soportaSpeech) {
+      setError("Tu navegador no soporta reconocimiento de voz. Usá Chrome.");
+      return;
+    }
+    setError(null);
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SR();
+    recognition.lang = "es-AR";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    let finalTranscript = "";
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += t + " ";
+        } else {
+          interim = t;
+        }
+      }
+      setTexto((prev) => {
+        const base = prev.replace(/🎙️.*$/, "").trimEnd();
+        const combined = (base ? base + " " : "") + finalTranscript;
+        return interim ? combined + "🎙️" + interim : combined.trimEnd();
+      });
+    };
+
+    recognition.onerror = (e) => {
+      if (e.error !== "aborted") setError("Error de micrófono: " + e.error);
+      setGrabando(false);
+    };
+
+    recognition.onend = () => {
+      setGrabando(false);
+      setTexto((prev) => prev.replace(/🎙️.*$/, "").trimEnd());
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setGrabando(true);
+  };
+
+  const detenerGrabacion = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setGrabando(false);
+  };
+
   /* ── Llamada a la IA ── */
   const generarReporte = async () => {
     if (!texto.trim()) return;
@@ -180,6 +243,12 @@ export default function InstaladorScreen({ usuario }) {
         <>
           <div style={S.card}>
             <div style={S.label}>¿Qué se hizo hoy en obra?</div>
+            {grabando && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 12px", borderRadius: 10, background: `${C.red}15`, border: `1px solid ${C.red}33` }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: C.red, animation: "pulse 1s ease-in-out infinite" }} />
+                <span style={{ fontSize: 13, color: C.red, fontWeight: 600, fontFamily: fB }}>Grabando… hablá y tu voz se transcribirá</span>
+              </div>
+            )}
             <textarea
               style={S.textarea}
               placeholder={"Contá qué se avanzó, si faltó algo,\nsi hubo algún imprevisto o espera..."}
@@ -190,6 +259,19 @@ export default function InstaladorScreen({ usuario }) {
 
           {/* Adjuntar fotos (UI only) */}
           <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Botón de audio */}
+            <button
+              style={{
+                ...S.btnSecondary,
+                background: grabando ? `${C.red}22` : S.btnSecondary.background,
+                border: grabando ? `1px solid ${C.red}66` : S.btnSecondary.border,
+                color: grabando ? C.red : S.btnSecondary.color,
+                animation: grabando ? "pulse 1.5s ease-in-out infinite" : "none",
+              }}
+              onClick={grabando ? detenerGrabacion : iniciarGrabacion}
+            >
+              {grabando ? "⏹ Detener" : "🎤 Dictar reporte"}
+            </button>
             <button style={S.btnSecondary} onClick={() => fileRef.current?.click()}>
               📷 Adjuntar fotos{fotos.length > 0 ? ` (${fotos.length})` : ""}
             </button>
@@ -235,7 +317,7 @@ export default function InstaladorScreen({ usuario }) {
           <div style={{ fontSize: 38, marginBottom: 14, animation: "spin 1.2s linear infinite" }}>⚙️</div>
           <p style={{ margin: 0, fontSize: 17, fontFamily: fH, fontWeight: 700 }}>Analizando tu reporte...</p>
           <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>La IA está estructurando los datos</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.5 } }`}</style>
         </div>
       )}
 
