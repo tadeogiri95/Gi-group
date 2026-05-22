@@ -546,9 +546,10 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
       </div>
 
       {/* ─── Accesos rápidos ─── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
         {[
           { label: "Horarios", icon: "📅", color: C.cyan, target: "grilla-horario" },
+          { label: "Ubicaciones", icon: "📍", color: C.green, target: "geolocalizacion" },
           { label: "Calendario", icon: "🗓️", color: C.violet, target: "calendario" },
           { label: "Reglas Bot", icon: "⚙️", color: C.amber, target: "reglas" },
         ].map(item => (
