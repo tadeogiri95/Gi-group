@@ -13,6 +13,7 @@ import GrillaHorarioScreen from './grilla_horario_screen';
 import GestionPersonalScreen from './gestion_personal_screen';
 import CalendarioScreen from './calendario_screen';
 import DashboardGerencia from './dashboard_gerencia';
+import ReportesScreen from './reportes_screen';
 
 /* ═══ ICONS ═══ */
 const Ic = {
@@ -72,7 +73,7 @@ function LoginScreen({onLogin}) {
       <span style={{fontFamily:fH,fontSize:26,fontWeight:800}}>GI</span>
     </div>
     <h1 style={{margin:0,fontFamily:fH,fontSize:30,fontWeight:700,color:C.text,letterSpacing:"-0.025em"}}>Bienvenido</h1>
-    <div style={{fontSize:14,color:C.dim,marginTop:6,marginBottom:32}}>Iniciá sesión en el sistema de RRHH</div>
+    <div style={{fontSize:14,color:C.dim,marginTop:6,marginBottom:32}}>Iniciá sesión en App GI</div>
     <div style={{marginBottom:14}}>
       <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Email</label>
       <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="tunombre@gi-group.com" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
@@ -163,27 +164,44 @@ function SolCard({s,showActions,onResolve}){const ec={pendiente:C.amber,aprobado
 function HomeEmp({goto,usuario,ctx}){
   const misSols=ctx.misSolicitudes||[];const dH=DIAS_KEY[new Date().getDay()];const diagH=usuario.diagrama?.[dH];
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
-    <div style={{marginBottom:18}}>
-      <div style={{fontSize:13,color:C.dim,marginBottom:4}}>{fmtDate(new Date())} · {fmtTime(new Date())}</div>
-      <h2 style={{margin:0,fontFamily:fH,fontSize:28,fontWeight:700,color:C.text}}>Hola, {usuario.apodo}</h2>
-      {diagH&&<div style={{fontSize:12,color:C.dim,marginTop:4}}>Jornada: <span style={{color:C.text,fontWeight:600}}>{diagH.in} a {diagH.out}</span></div>}
-      {!diagH&&usuario.diagrama&&<div style={{fontSize:12,color:C.green,fontWeight:600,marginTop:4}}>Hoy es franco 🎉</div>}
-    </div>
-    <div onClick={()=>goto("chat")} style={{background:`linear-gradient(135deg,${ctx.fichadaHoy?.ingreso?C.green:C.amber}10,${C.surface} 70%)`,borderRadius:20,padding:18,border:`1px solid ${C.border}`,marginBottom:14,cursor:"pointer",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",top:-50,right:-50,width:170,height:170,borderRadius:"50%",background:`${ctx.fichadaHoy?.ingreso?C.green:C.amber}15`,filter:"blur(60px)"}}/>
-      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <div><div style={{fontSize:11,color:ctx.fichadaHoy?.ingreso?C.green:C.amber,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>{ctx.fichadaHoy?.ingreso?"EN JORNADA":"SIN FICHAR"}</div><div style={{fontFamily:fH,fontSize:26,fontWeight:700,color:C.text,marginTop:4}}>{ctx.fichadaHoy?.ingreso?`Ingreso ${ctx.fichadaHoy.ingreso.slice(0,5)}`:"Buen día!"}</div></div>
-        <div style={{width:44,height:44,borderRadius:14,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000"}}>{Ic.bot}</div>
+    {/* Hero card unificada — saludo + estado + acceso al bot */}
+    <div onClick={()=>goto("chat")} style={{background:`linear-gradient(135deg,${ctx.fichadaHoy?.ingreso?C.green:C.amber}08,${C.surface} 60%)`,borderRadius:20,padding:20,border:`1px solid ${ctx.fichadaHoy?.ingreso?C.green+"30":C.border}`,marginBottom:16,cursor:"pointer",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:-50,right:-50,width:170,height:170,borderRadius:"50%",background:`${ctx.fichadaHoy?.ingreso?C.green:C.amber}12`,filter:"blur(60px)"}}/>
+      <div style={{position:"relative"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div>
+            <div style={{fontSize:13,color:C.dim,marginBottom:4}}>{fmtDate(new Date())}</div>
+            <h2 style={{margin:0,fontFamily:fH,fontSize:24,fontWeight:700,color:C.text}}>Hola, {usuario.apodo}</h2>
+            {diagH&&<div style={{fontSize:12,color:C.dim,marginTop:4}}>Jornada: <span style={{color:C.text,fontWeight:600}}>{diagH.in} a {diagH.out}</span></div>}
+            {!diagH&&usuario.diagrama&&<div style={{fontSize:12,color:C.green,fontWeight:600,marginTop:4}}>Hoy es franco 🎉</div>}
+          </div>
+          <div style={{width:44,height:44,borderRadius:14,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",flexShrink:0}}>{Ic.bot}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{width:8,height:8,borderRadius:4,background:ctx.fichadaHoy?.ingreso?C.green:C.amber}}/>
+            <span style={{fontSize:13,fontWeight:600,color:ctx.fichadaHoy?.ingreso?C.green:C.amber}}>{ctx.fichadaHoy?.ingreso?`Ingreso ${ctx.fichadaHoy.ingreso.slice(0,5)}`:"Sin fichar"}</span>
+          </div>
+          <div style={{padding:"6px 12px",background:`${C.amber}15`,borderRadius:10,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{color:C.amber}}>{Ic.sparkle}</span>
+            <span style={{fontSize:12,color:C.text,fontWeight:600}}>Hablá con el bot</span>
+          </div>
+        </div>
       </div>
-      <div style={{position:"relative",marginTop:14,padding:"10px 14px",background:`${C.amber}15`,borderRadius:10,display:"flex",alignItems:"center",gap:8}}><span style={{color:C.amber}}>{Ic.sparkle}</span><span style={{fontSize:13,color:C.text,fontWeight:600}}>Bot con IA — hablale como quieras</span></div>
     </div>
+
+    {/* Acciones rápidas */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:18}}>
       {[["Permiso",C.violet,Ic.history],["Tardanza",C.cyan,Ic.clock],["No vengo",C.red,Ic.alert]].map(([l,c,ic],i)=><button key={i} onClick={()=>goto("chat")} style={{background:C.surface,border:`1px solid ${C.border}`,padding:"14px 8px",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:fB}}><div style={{width:34,height:34,borderRadius:10,background:`${c}22`,color:c,display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</div><span style={{fontSize:11,color:C.text,fontWeight:600}}>{l}</span></button>)}
     </div>
+
+    {/* Mi semana */}
     <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Mi semana</h3></div>
     <div style={{background:C.surface,borderRadius:16,padding:14,border:`1px solid ${C.border}`,marginBottom:18}}>
       {(ctx.fichadasSemana||[]).length===0?<div style={{padding:16,textAlign:"center",color:C.dim,fontSize:13}}>Sin fichadas</div>:(ctx.fichadasSemana||[]).map((d,i,a)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<a.length-1?`1px solid ${C.border}`:"none"}}><div><div style={{fontSize:13,fontWeight:600,color:C.text}}>{new Date(d.fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"2-digit",month:"2-digit"})}</div>{d.ingreso&&<div style={{fontSize:11,color:C.dim,marginTop:2,fontFamily:fM}}>{d.ingreso.slice(0,5)} → {d.egreso?d.egreso.slice(0,5):"en curso"}</div>}</div><span style={{fontFamily:fM,fontSize:14,fontWeight:700,color:d.ingreso?C.green:C.mute}}>{d.ingreso?"✓":"—"}</span></div>)}
     </div>
+
+    {/* Mis solicitudes */}
     <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Mis solicitudes</h3></div>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>{misSols.length===0?<div style={{background:C.surface,borderRadius:14,padding:30,textAlign:"center",border:`1px solid ${C.border}`,color:C.dim,fontSize:13}}>No tenés solicitudes</div>:misSols.map(s=><SolCard key={s.id} s={s}/>)}</div>
   </div>;
@@ -214,7 +232,7 @@ function ReglasScreen({ctx,reload,usuario}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["calendario","Calendario",Ic.history],["equipo","Equipo",Ic.users],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["equipo","Equipo",Ic.users],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -230,7 +248,6 @@ export default function Home() {
   const [init,setInit]=useState(false);
   const [refreshCounter,setRefreshCounter]=useState(0);
 
-  // Hook de actividades (solo para operarios — carga etapas internamente)
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division}:null);
 
   useEffect(()=>{try{const s=localStorage.getItem("gi-user");if(s)setUsuario(JSON.parse(s));}catch{}setInit(true);},[]);
@@ -271,7 +288,7 @@ export default function Home() {
   if(!init)return null;
 
   return<div style={{maxWidth:480,margin:"0 auto",height:"100dvh",background:C.bg,position:"relative",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-    {/* Status */}
+    {/* Status bar */}
     <div className="safe-top" style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 22px 0",color:C.text,fontSize:14,fontWeight:700,flexShrink:0}}>
       <span style={{fontVariantNumeric:"tabular-nums"}}>{fmtTime(time)}</span>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -289,10 +306,9 @@ export default function Home() {
         <div style={{fontSize:13,color:C.dim}}>Cargando datos...</div>
       </div>
     ):<>
-      {/* Push Notifications */}
       <PushManager legajo={String(usuario.legajo)} onNotification={()=>loadData()}/>
 
-      {/* Header */}
+      {/* Header — oculto en dashboard gerencia y chat */}
       {isChat?<div style={{padding:"8px 16px 14px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
         <button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:6,display:"flex"}}>{Ic.chevL}</button>
         <div style={{width:36,height:36,borderRadius:12,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000"}}>{Ic.bot}</div>
@@ -300,12 +316,13 @@ export default function Home() {
         <span style={{color:C.amber,opacity:.6}}>{Ic.sparkle}</span>
       </div>
       :screen==="home"&&isGer?null
+      :screen==="home"&&!isGer?null
       :<div style={{padding:"8px 22px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Recursos Humanos":screen==="calendario"?"Planificación":"Recursos Humanos":screen==="actividad"?"Registro de actividades":"Tu jornada"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="calendario"?"Calendario":isGer?"Gerencia":`Hola, ${usuario.apodo}`}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Gestión de personal":screen==="calendario"?"Planificación":screen==="reportes"?"Control horario":"App GI":screen==="actividad"?"Registro de actividades":"App GI"}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="calendario"?"Calendario":screen==="reportes"?"Reportes":"App GI"}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -326,6 +343,7 @@ export default function Home() {
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen/>}
         {isGer&&screen==="grilla-horario"&&<GrillaHorarioScreen/>}
         {isGer&&screen==="calendario"&&<CalendarioScreen/>}
+        {isGer&&screen==="reportes"&&<ReportesScreen/>}
         {isGer&&screen==="reglas"&&<ReglasScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
       </div>
