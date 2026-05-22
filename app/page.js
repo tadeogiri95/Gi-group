@@ -16,7 +16,7 @@ import DashboardGerencia from './dashboard_gerencia';
 import ReportesScreen from './reportes_screen';
 import GeolocalizacionScreen from './geolocalizacion_screen';
 import { validarGeoFichaje } from './geolocalizacion_screen';
-import InstaladorScreen from './instalador_screen';
+import InstaladorScreen from './instalador_screen.jsx';
 
 /* ═══ ICONS ═══ */
 const Ic = {
