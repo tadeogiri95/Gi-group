@@ -110,7 +110,7 @@ const PulseDot = ({ color = C.green, size = 8 }) => (
 );
 
 /* ─── Timeline Row ─── */
-function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas }) {
+function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas, onClick }) {
   const parseH = (t) => { if (!t) return 0; const [h, m] = t.split(":").map(Number); return h + m / 60; };
   const jStart = 7, jEnd = 19, jLen = jEnd - jStart;
   const inH = parseH(ingreso);
@@ -119,7 +119,7 @@ function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas }) {
   const width = Math.min(100 - left, ((outH - inH) / jLen) * 100);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0" }}>
+    <div onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", cursor: onClick ? "pointer" : "default" }}>
       <div style={{ width: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 600, color: C.text }}>{nombre}</div>
       <div style={{ flex: 1, height: 14, background: C.surfHi, borderRadius: 4, position: "relative", overflow: "hidden" }}>
         <div style={{
@@ -230,6 +230,16 @@ function ReportesObraPanel({ reportesObra }) {
                             {r.desvios.map((d, i) => (
                               <span key={i} style={{ padding: "4px 10px", borderRadius: 8, background: `${C.amber}20`, color: C.amber, fontSize: 12, fontWeight: 600 }}>{d}</span>
                             ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Texto original */}
+                      {r.texto_original && (
+                        <div style={{ padding: "8px 0" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>💬 Reporte original</div>
+                          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5, fontStyle: "italic", padding: "8px 10px", background: `${C.mute}08`, borderRadius: 8, borderLeft: `3px solid ${C.mute}30` }}>
+                            {r.texto_original}
                           </div>
                         </div>
                       )}
@@ -382,17 +392,19 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
   }, [prodF]);
 
   // Alertas activas
+  const permisosIngreso = pendientes.filter(s => s.tipo === "permiso_ingreso");
   const alertas = useMemo(() => {
     const items = [];
+    if (permisosIngreso.length > 0) items.push({ icon: "🔓", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} de ingreso pendiente${permisosIngreso.length > 1 ? "s" : ""}`, color: C.red, urgencia: "alta", target: "solicitudes" });
     if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: C.red, urgencia: "alta" });
-    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media" });
-    if (pendientes.length > 0) items.push({ icon: "📋", text: `${pendientes.length} solicitud${pendientes.length > 1 ? "es" : ""} pendiente${pendientes.length > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal" });
+    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media", target: "ger-actividad" });
+    if (pendientes.length > permisosIngreso.length) items.push({ icon: "📋", text: `${pendientes.length - permisosIngreso.length} solicitud${(pendientes.length - permisosIngreso.length) > 1 ? "es" : ""} pendiente${(pendientes.length - permisosIngreso.length) > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal", target: "solicitudes" });
     const urgentes = notificaciones.filter(n => n.urgencia === "alta");
     urgentes.slice(0, 2).forEach(n => {
-      items.push({ icon: "🔴", text: n.asunto, color: C.red, urgencia: "alta" });
+      items.push({ icon: "🔴", text: n.asunto, color: C.red, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
     });
     return items;
-  }, [ausentes, enEspera, pendientes, notificaciones]);
+  }, [ausentes, enEspera, pendientes, notificaciones, permisosIngreso]);
 
   // Productividad por división
   const prodPorDiv = useMemo(() => {
@@ -438,8 +450,10 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
               background: `${a.color}10`, borderRadius: 12, border: `1px solid ${a.color}25`,
               marginBottom: 6, cursor: "pointer",
             }} onClick={() => {
-              if (a.text.includes("solicitud")) goto?.("solicitudes");
-              if (a.text.includes("espera")) goto?.("ger-actividad");
+              if (a.target) goto?.(a.target);
+              else if (a.text.includes("solicitud")) goto?.("solicitudes");
+              else if (a.text.includes("espera")) goto?.("ger-actividad");
+              else if (a.text.includes("BLOQUEADO") || a.text.includes("permiso") || a.text.includes("ingreso")) goto?.("solicitudes");
             }}>
               <span style={{ fontSize: 14 }}>{a.icon}</span>
               <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text }}>{a.text}</span>
@@ -567,10 +581,11 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
             {fichadasHoy.map((f, i) => (
               <TimelineRow
                 key={f.legajo || i}
-                nombre={f.nombre || `L-\${f.legajo}`}
+                nombre={f.nombre || `L-${f.legajo}`}
                 ingreso={f.ingreso}
                 egreso={f.egreso}
                 horasTrabajadas={f.horas_trabajadas}
+                onClick={() => goto?.("historial-fichajes", f.legajo)}
               />
             ))}
           </div>

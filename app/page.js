@@ -227,6 +227,23 @@ function ChatScreen({usuario,ctx,reload}){
   const handleSend=async(txt=input)=>{const t=txt.trim();if(!t||loading)return;
     const um={from:"user",text:t,time:new Date()};const nm=[...msgs,um];setMsgs(nm);setInput("");setLoading(true);
     sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"user",mensaje:t}).catch(()=>{});
+    // Interceptar respuesta a solicitud de permiso de ingreso bloqueado
+    if(t==="✅ Sí, solicitar permiso"){
+      try{
+        const hoy=new Date().toISOString().split("T")[0];
+        const hora=fmtTime(new Date());
+        await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso_ingreso",motivo:`Solicitud de ingreso por bloqueo (${hora})`,fecha:hoy,desde:hora,hasta:"—",estado:"pendiente"});
+        await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`🔓 ${usuario.apodo} solicita permiso de INGRESO`,detalle:`Ingreso bloqueado a las ${hora}. Requiere autorización para fichar.`,urgencia:"alta",solicitud_id:null});
+        sendPushToLegajo("1","🔓 Permiso de ingreso",`${usuario.apodo} solicita autorización para ingresar (${hora})`).catch(()=>{});
+        setMsgs(m=>[...m,{from:"bot",text:"✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.",time:new Date(),card:{type:"solicitud",motivo:"Permiso de ingreso por bloqueo",fecha:hoy}}]);
+        reload&&reload();
+      }catch(e){console.error(e);setMsgs(m=>[...m,{from:"bot",text:"Error al enviar la solicitud. Probá de nuevo.",time:new Date()}]);}
+      setLoading(false);return;
+    }
+    if(t==="❌ No, cancelar"){
+      setMsgs(m=>[...m,{from:"bot",text:"Entendido. Si necesitás algo más, avisame.",time:new Date()}]);
+      setLoading(false);return;
+    }
     try{const hist=nm.slice(-20).map(m=>({from:m.from,text:m.text}));const raw=await callClaude(hist,ctx,usuario);const{clean,action}=parseAction(raw);
       let card=action?await execAction(action):null;
       if (card?.type === "geo_error") {
@@ -235,7 +252,7 @@ function ChatScreen({usuario,ctx,reload}){
         return;
       }
       if (card?.type === "fichada_bloqueada") {
-        setMsgs(m=>[...m,{from:"bot",text:card.msg,time:new Date()}]);
+        setMsgs(m=>[...m,{from:"bot",text:card.msg+"\n\n¿Querés que solicite el permiso de ingreso a gerencia?",time:new Date(),quickReplies:["✅ Sí, solicitar permiso","❌ No, cancelar"]}]);
         setLoading(false);
         return;
       }
@@ -266,14 +283,137 @@ function ChatScreen({usuario,ctx,reload}){
 }
 
 /* ═══ SOL CARD ═══ */
-function SolCard({s,showActions,onResolve}){const ec={pendiente:C.amber,aprobado:C.green,rechazado:C.red,registrado:C.cyan};return<div style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${s.estado==="pendiente"?C.amber+"30":C.border}`,position:"relative",overflow:"hidden"}}>
-  {s.estado==="pendiente"&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${C.amber},${C.red},${C.amber})`}}/>}
-  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}><div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontFamily:fM,fontSize:10,color:C.mute}}>#{s.id}</span><span style={{fontSize:13,fontWeight:700,color:C.text}}>{s.nombre_empleado}</span></div><Tag color={ec[s.estado]||C.dim}>{s.estado}</Tag></div>
+function SolCard({s,showActions,onResolve}){const ec={pendiente:C.amber,aprobado:C.green,rechazado:C.red,registrado:C.cyan};const esPermisoIngreso=s.tipo==="permiso_ingreso";return<div style={{background:esPermisoIngreso&&s.estado==="pendiente"?`${C.red}08`:C.surface,borderRadius:14,padding:14,border:`1px solid ${esPermisoIngreso&&s.estado==="pendiente"?C.red+"40":s.estado==="pendiente"?C.amber+"30":C.border}`,position:"relative",overflow:"hidden"}}>
+  {s.estado==="pendiente"&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:esPermisoIngreso?`linear-gradient(90deg,${C.red},${C.amber},${C.red})`:`linear-gradient(90deg,${C.amber},${C.red},${C.amber})`}}/>}
+  {esPermisoIngreso&&s.estado==="pendiente"&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"6px 10px",background:`${C.red}15`,borderRadius:8}}><span style={{fontSize:14}}>🔓</span><span style={{fontSize:11,fontWeight:700,color:C.red}}>PERMISO DE INGRESO — REQUIERE ACCIÓN INMEDIATA</span></div>}
+  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}><div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontFamily:fM,fontSize:10,color:C.mute}}>#{s.id}</span><span style={{fontSize:13,fontWeight:700,color:C.text}}>{s.nombre_empleado}</span></div><Tag color={ec[s.estado]||C.dim}>{esPermisoIngreso?"🔓 "+s.estado:s.estado}</Tag></div>
   <div style={{fontSize:13,color:C.text,marginTop:4,lineHeight:1.4}}>{s.motivo}</div>
   <div style={{display:"flex",gap:8,marginTop:6,fontSize:11,color:C.dim,flexWrap:"wrap"}}><span>📅 {s.fecha}</span>{s.desde&&s.desde!=="—"&&<span>⏰ {s.desde}–{s.hasta}</span>}<span>· {new Date(s.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span></div>
   {s.aprobador&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}`,fontSize:11,color:C.dim}}>✅ {s.aprobador}</div>}
   {showActions&&s.estado==="pendiente"&&<div style={{display:"flex",gap:8,marginTop:12}}><button onClick={()=>onResolve(s.id,"rechazado")} style={{flex:1,padding:9,borderRadius:10,background:"transparent",border:`1px solid ${C.red}40`,color:C.red,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:fB,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>{Ic.x} Rechazar</button><button onClick={()=>onResolve(s.id,"aprobado")} style={{flex:2,padding:9,borderRadius:10,background:C.green,border:"none",color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:fB,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>{Ic.check} Aprobar</button></div>}
 </div>;}
+
+/* ═══ HISTORIAL DE FICHAJES ═══ */
+function HistorialFichajesScreen({usuario,ctx,legajoVer,onBack}){
+  const [fichadas,setFichadas]=useState([]);const [loading,setLoading]=useState(true);const [mes,setMes]=useState(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;});
+  const [chatHistory,setChatHistory]=useState([]);const [showChat,setShowChat]=useState(false);
+  const legajo=legajoVer||usuario.legajo;
+  const isGer=usuario.rol==="gerencial"||usuario.rol==="administrativo";
+  const empNombre=isGer&&legajoVer?(ctx.empleados||[]).find(e=>e.legajo===legajo)?.apodo||`L-${legajo}`:usuario.apodo;
+
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      try{
+        const [y,m]=mes.split("-").map(Number);
+        const desde=`${y}-${String(m).padStart(2,"0")}-01`;
+        const hasta=new Date(y,m,0);const hastaStr=`${y}-${String(m).padStart(2,"0")}-${String(hasta.getDate()).padStart(2,"0")}`;
+        const f=await sb.get(`fichadas?legajo=eq.${legajo}&fecha=gte.${desde}&fecha=lte.${hastaStr}&order=fecha.desc&select=*`);
+        setFichadas(f||[]);
+        // Cargar historial de chat
+        const ch=await sb.get(`mensajes_chat?legajo=eq.${legajo}&order=created_at.desc&limit=100`);
+        setChatHistory(ch||[]);
+      }catch(e){console.error(e);}
+      setLoading(false);
+    })();
+  },[legajo,mes]);
+
+  const tardesComunes=fichadas.filter(f=>f.llegada_tarde&&f.minutos_tarde<=30&&!(fichadas.filter(ff=>ff.llegada_tarde&&ff.fecha<=f.fecha).length>=3));
+  const tardesConPerdida=fichadas.filter(f=>{
+    if(!f.llegada_tarde)return false;
+    if(f.minutos_tarde>30)return true;
+    const anteriores=fichadas.filter(ff=>ff.llegada_tarde&&ff.fecha<=f.fecha);
+    return anteriores.length>=3;
+  });
+  const totalTardes=fichadas.filter(f=>f.llegada_tarde).length;
+
+  const cambiarMes=(dir)=>{const [y,m]=mes.split("-").map(Number);const d=new Date(y,m-1+dir,1);setMes(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);};
+  const mesLabel=(()=>{const [y,m]=mes.split("-").map(Number);const meses=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];return `${meses[m-1]} ${y}`;})();
+
+  return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:6,display:"flex"}}>{Ic.chevL}</button>
+      <h2 style={{margin:0,fontFamily:fH,fontSize:20,fontWeight:700,color:C.text,flex:1}}>Fichajes de {empNombre}</h2>
+    </div>
+
+    {/* Selector de mes */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,background:C.surface,borderRadius:14,padding:"10px 16px",border:`1px solid ${C.border}`}}>
+      <button onClick={()=>cambiarMes(-1)} style={{background:"none",border:"none",color:C.text,cursor:"pointer",fontSize:18,padding:4}}>←</button>
+      <span style={{fontFamily:fH,fontSize:16,fontWeight:700,color:C.text}}>{mesLabel}</span>
+      <button onClick={()=>cambiarMes(1)} style={{background:"none",border:"none",color:C.text,cursor:"pointer",fontSize:18,padding:4}}>→</button>
+    </div>
+
+    {/* Resumen de tardanzas */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+      <div style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,textAlign:"center"}}>
+        <div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:totalTardes>0?"#F59E0B":C.green}}>{totalTardes}</div>
+        <div style={{fontSize:10,color:C.dim,fontWeight:600,marginTop:2}}>Tardes total</div>
+      </div>
+      <div style={{background:`${C.amber}08`,borderRadius:14,padding:14,border:`1px solid #F59E0B30`,textAlign:"center"}}>
+        <div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:"#F59E0B"}}>{tardesComunes.length}</div>
+        <div style={{fontSize:10,color:C.dim,fontWeight:600,marginTop:2}}>Comunes</div>
+      </div>
+      <div style={{background:`${C.red}08`,borderRadius:14,padding:14,border:`1px solid ${C.red}30`,textAlign:"center"}}>
+        <div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:C.red}}>{tardesConPerdida.length}</div>
+        <div style={{fontSize:10,color:C.dim,fontWeight:600,marginTop:2}}>Con pérdida</div>
+      </div>
+    </div>
+
+    {/* Leyenda */}
+    <div style={{background:C.surface,borderRadius:12,padding:12,border:`1px solid ${C.border}`,marginBottom:16,display:"flex",gap:16,flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.dim}}><span style={{width:10,height:10,borderRadius:3,background:C.green}}/> Puntual</div>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.dim}}><span style={{width:10,height:10,borderRadius:3,background:"#F59E0B"}}/> Tarde común</div>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.dim}}><span style={{width:10,height:10,borderRadius:3,background:C.red}}/> Pérdida presentismo</div>
+    </div>
+
+    {loading?<div style={{textAlign:"center",padding:30,color:C.dim}}>Cargando...</div>:
+    fichadas.length===0?<div style={{background:C.surface,borderRadius:14,padding:30,textAlign:"center",border:`1px solid ${C.border}`,color:C.dim,fontSize:13}}>Sin fichadas en este mes</div>:
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {fichadas.map((f,i)=>{
+        const esTardeComun=f.llegada_tarde&&f.minutos_tarde<=30&&!(fichadas.filter(ff=>ff.llegada_tarde&&ff.fecha<=f.fecha).length>=3);
+        const esTardeConPerdida=f.llegada_tarde&&(f.minutos_tarde>30||fichadas.filter(ff=>ff.llegada_tarde&&ff.fecha<=f.fecha).length>=3);
+        const bgColor=esTardeConPerdida?`${C.red}10`:esTardeComun?"rgba(245,158,11,0.08)":f.llegada_tarde?`${C.amber}08`:`${C.green}05`;
+        const borderColor=esTardeConPerdida?`${C.red}30`:esTardeComun?"#F59E0B30":C.border;
+        const statusColor=esTardeConPerdida?C.red:esTardeComun?"#F59E0B":C.green;
+        const statusIcon=esTardeConPerdida?"⛔":esTardeComun?"⚠️":"✓";
+        const statusLabel=esTardeConPerdida?"Pérdida de presentismo":esTardeComun?`Tarde +${f.minutos_tarde}min`:"Puntual";
+        const tardeCuenta=f.llegada_tarde?fichadas.filter(ff=>ff.llegada_tarde&&ff.fecha<=f.fecha).length:0;
+        return<div key={f.id||i} style={{background:bgColor,borderRadius:14,padding:14,border:`1px solid ${borderColor}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:C.text}}>{new Date(f.fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"2-digit",month:"2-digit"})}</div>
+              <div style={{fontSize:12,color:C.dim,marginTop:4,fontFamily:fM}}>{f.ingreso?.slice(0,5)||"—"} → {f.egreso?.slice(0,5)||"sin egreso"}</div>
+              {f.horas_trabajadas&&<div style={{fontSize:11,color:C.dim,marginTop:2}}>{Number(f.horas_trabajadas).toFixed(1)}h trabajadas</div>}
+            </div>
+            <div style={{textAlign:"right"}}>
+              <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:6,background:`${statusColor}22`,color:statusColor,fontSize:10,fontWeight:700}}>{statusIcon} {statusLabel}</span>
+              {f.llegada_tarde&&tardeCuenta>0&&<div style={{fontSize:10,color:statusColor,marginTop:4,fontWeight:600}}>Tarde #{tardeCuenta} del mes</div>}
+            </div>
+          </div>
+          {esTardeConPerdida&&<div style={{marginTop:8,padding:8,background:`${C.red}15`,borderRadius:8,fontSize:11,color:C.red,fontWeight:600}}>
+            {f.minutos_tarde>30?`⛔ Tardanza de ${f.minutos_tarde} min (supera 30min de tolerancia)`:`⛔ 3ra llegada tarde del mes — pérdida de presentismo`}
+          </div>}
+        </div>;
+      })}
+    </div>}
+
+    {/* Historial de conversaciones con el bot */}
+    <div style={{marginTop:24,marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>💬 Historial de conversaciones</h3></div>
+    <button onClick={()=>setShowChat(!showChat)} style={{width:"100%",padding:14,borderRadius:14,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:13,fontWeight:600,fontFamily:fB,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <span>{showChat?"Ocultar":"Ver"} conversaciones ({chatHistory.length})</span>
+      <span style={{fontSize:11,color:C.dim}}>{showChat?"▲":"▼"}</span>
+    </button>
+    {showChat&&<div style={{marginTop:10,background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,maxHeight:400,overflowY:"auto"}}>
+      {chatHistory.length===0?<div style={{textAlign:"center",color:C.dim,fontSize:13,padding:16}}>Sin conversaciones</div>:
+      chatHistory.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.rol==="user"?"flex-end":"flex-start",marginBottom:8}}>
+        <div style={{maxWidth:"80%",padding:"8px 12px",borderRadius:m.rol==="user"?"12px 12px 4px 12px":"12px 12px 12px 4px",background:m.rol==="user"?`${C.amber}30`:C.surfHi,fontSize:12,color:C.text,lineHeight:1.4}}>
+          <div style={{whiteSpace:"pre-wrap"}}>{m.mensaje}</div>
+          <div style={{fontSize:9,color:C.mute,marginTop:4,textAlign:m.rol==="user"?"right":"left"}}>{new Date(m.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+        </div>
+      </div>)}
+    </div>}
+  </div>;
+}
 
 /* ═══ HOME EMPLEADO ═══ */
 function HomeEmp({goto,usuario,ctx}){
@@ -309,6 +449,18 @@ function HomeEmp({goto,usuario,ctx}){
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:18}}>
       {[["Permiso",C.violet,Ic.history],["Tardanza",C.cyan,Ic.clock],["No vengo",C.red,Ic.alert]].map(([l,c,ic],i)=><button key={i} onClick={()=>goto("chat")} style={{background:C.surface,border:`1px solid ${C.border}`,padding:"14px 8px",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:fB}}><div style={{width:34,height:34,borderRadius:10,background:`${c}22`,color:c,display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</div><span style={{fontSize:11,color:C.text,fontWeight:600}}>{l}</span></button>)}
     </div>
+
+    {/* Historial de fichajes */}
+    <button onClick={()=>goto("historial-fichajes")} style={{width:"100%",padding:14,borderRadius:14,background:`linear-gradient(135deg,${C.cyan}08,${C.surface})`,border:`1px solid ${C.cyan}30`,color:C.text,fontSize:13,fontWeight:600,fontFamily:fB,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:34,height:34,borderRadius:10,background:`${C.cyan}22`,color:C.cyan,display:"flex",alignItems:"center",justifyContent:"center"}}>📊</div>
+        <div style={{textAlign:"left"}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.text}}>Historial de fichajes</div>
+          <div style={{fontSize:11,color:C.dim,marginTop:2}}>Tardanzas, presentismo y conversaciones</div>
+        </div>
+      </div>
+      <span style={{color:C.dim}}>{Ic.chevR}</span>
+    </button>
 
     {/* ═══ MI GRILLA SEMANAL ═══ */}
     {usuario.diagrama && (() => {
@@ -395,6 +547,7 @@ export default function Home() {
   const [ready,setReady]=useState(false);
   const [init,setInit]=useState(false);
   const [refreshCounter,setRefreshCounter]=useState(0);
+  const [historialLegajo,setHistorialLegajo]=useState(null);
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division}:null);
 
@@ -464,7 +617,7 @@ export default function Home() {
   const isGer=usuario&&(usuario.rol==="gerencial"||usuario.rol==="administrativo");
   const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
   const isChat=screen==="chat";
-  const showBack=screen==="reglas";
+  const showBack=screen==="reglas"||screen==="historial-fichajes";
 
   if(!init)return null;
 
@@ -502,8 +655,8 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Gestión de personal":screen==="calendario"?"Planificación":screen==="reportes"?"Control horario":screen==="geolocalizacion"?"Control GPS":"App GI":screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":"App GI"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="calendario"?"Calendario":screen==="reportes"?"Reportes":screen==="geolocalizacion"?"Ubicaciones":screen==="obra"?"Reporte de Obra":"App GI"}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="grilla-horario"?"Gestión de horarios":screen==="equipo"?"Gestión de personal":screen==="calendario"?"Planificación":screen==="reportes"?"Control horario":screen==="geolocalizacion"?"Control GPS":screen==="historial-fichajes"?"Control de asistencia":"App GI":screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":"App GI"}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="reglas"?"Reglas del Bot":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="grilla-horario"?"Horarios":screen==="calendario"?"Calendario":screen==="reportes"?"Reportes":screen==="geolocalizacion"?"Ubicaciones":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":"App GI"}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -515,11 +668,13 @@ export default function Home() {
       {/* Content */}
       <div className="se" key={`${usuario.legajo}-${screen}-${refreshCounter}`} style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isChat?0:88}}>
         {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx}/>}
+        {!isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} onBack={()=>setScreen("home")}/>}
         {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
         {!isGer&&screen==="obra"&&<InstaladorScreen usuario={usuario}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
-        {isGer&&screen==="home"&&<DashboardGerencia goto={setScreen} ctx={ctx} reload={loadData}/>}
+        {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData}/>}
+        {isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} legajoVer={historialLegajo} onBack={()=>setScreen("home")}/>}
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen/>}
