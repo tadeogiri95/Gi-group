@@ -242,9 +242,9 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
   // Alertas activas
   const alertas = useMemo(() => {
     const items = [];
-    if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente\${ausentes > 1 ? "s" : ""} hoy`, color: C.red, urgencia: "alta" });
-    if (enEspera > 0) items.push({ icon: "⏸", text: `\${enEspera} operario\${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media" });
-    if (pendientes.length > 0) items.push({ icon: "📋", text: `\${pendientes.length} solicitud\${pendientes.length > 1 ? "es" : ""} pendiente\${pendientes.length > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal" });
+    if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: C.red, urgencia: "alta" });
+    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media" });
+    if (pendientes.length > 0) items.push({ icon: "📋", text: `${pendientes.length} solicitud${pendientes.length > 1 ? "es" : ""} pendiente${pendientes.length > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal" });
     const urgentes = notificaciones.filter(n => n.urgencia === "alta");
     urgentes.slice(0, 2).forEach(n => {
       items.push({ icon: "🔴", text: n.asunto, color: C.red, urgencia: "alta" });
