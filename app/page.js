@@ -131,11 +131,72 @@ function ChatScreen({usuario,ctx,reload}){
         const geo = await validarGeoFichaje(usuario);
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
         const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(!ex.length)await sb.post("fichadas",{
+        if(ex.length){card={type:"fichada",sub:"ingreso",hora,geoMsg:"Ya fichaste ingreso hoy"};break;}
+
+        /* ── Calcular tardanza vs grilla ── */
+        const dH=DIAS_KEY[new Date().getDay()];
+        const diagHoy=usuario.diagrama?.[dH];
+        let tardanzaMin=0;
+        if(diagHoy&&diagHoy.in){
+          const [hE,mE]=diagHoy.in.split(":").map(Number);
+          const ahora=new Date();
+          const esperadoMin=hE*60+mE;
+          const realMin=ahora.getHours()*60+ahora.getMinutes();
+          tardanzaMin=Math.max(0,realMin-esperadoMin);
+        }
+
+        /* >30 min tarde → solicitar permiso a gerencia */
+        if(tardanzaMin>30){
+          await sb.post("solicitudes",{
+            empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,
+            tipo:"ingreso_tardio",motivo:`Ingreso tardío: ${tardanzaMin} min después del horario (${diagHoy.in})`,
+            fecha:today,estado:"pendiente"
+          });
+          await sb.post("notificaciones",{
+            destinatario_rol:"gerencial",tipo:"solicitud",
+            asunto:`⏰ ${usuario.apodo} solicita ingresar (${tardanzaMin}min tarde)`,
+            detalle:`Horario estipulado: ${diagHoy.in}. Intenta fichar a las ${hora}. Requiere aprobación.`,
+            urgencia:"alta",solicitud_legajo:usuario.legajo
+          });
+          sendPushToLegajo("1","⏰ Solicitud de ingreso tardío",`${usuario.apodo} quiere ingresar ${tardanzaMin}min tarde. Requiere aprobación.`).catch(()=>{});
+          card={type:"ingreso_tardio_pendiente",tardanzaMin,horarioEsperado:diagHoy.in,hora};
+          break;
+        }
+
+        /* Fichar normalmente */
+        const fichadaData={
           empleado_id:usuario.id,legajo:usuario.legajo,fecha:today,ingreso:hora,
           geo_ingreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-        });
-        card={type:"fichada",sub:"ingreso",hora,geoMsg:geo.msg};
+        };
+        if(tardanzaMin>0) fichadaData.llegada_tarde=true;
+        await sb.post("fichadas",fichadaData);
+
+        let extraMsg="";
+        /* 1-30 min tarde → llegada tarde + control presentismo */
+        if(tardanzaMin>0){
+          /* Contar llegadas tarde del mes */
+          const mesInicio=today.slice(0,8)+"01";
+          const tardesDelMes=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${mesInicio}&fecha=lte.${today}&llegada_tarde=eq.true`);
+          const totalTardes=(tardesDelMes||[]).length;
+
+          await sb.post("notificaciones",{
+            destinatario_rol:"gerencial",tipo:"alerta",
+            asunto:`Llegada tarde de ${usuario.apodo} (+${tardanzaMin}min)`,
+            detalle:`Horario: ${diagHoy.in}. Fichó: ${hora}. Llegadas tarde en el mes: ${totalTardes}`,
+            urgencia:"normal"
+          });
+
+          if(totalTardes>=3){
+            extraMsg=`\n⚠️ Tenés ${totalTardes} llegadas tarde este mes. Perdiste el premio por presentismo.`;
+            sendPushToLegajo(String(usuario.legajo),"⚠️ Presentismo",`Tenés ${totalTardes} llegadas tarde en el mes. Perdiste el premio por presentismo.`).catch(()=>{});
+            sendPushToLegajo("1","⚠️ Presentismo perdido",`${usuario.apodo} acumula ${totalTardes} llegadas tarde. Perdió presentismo.`).catch(()=>{});
+          }else{
+            extraMsg=`\n⏰ Llegada tarde (+${tardanzaMin}min). Recordá que a la 3er llegada tarde, perdés el premio por presentismo.`;
+            sendPushToLegajo(String(usuario.legajo),"⏰ Llegada tarde",`Llegaste ${tardanzaMin}min tarde. Recordá que a la 3er llegada tarde perdés el presentismo.`).catch(()=>{});
+          }
+        }
+
+        card={type:"fichada",sub:"ingreso",hora,geoMsg:(geo.msg||"")+extraMsg};
         break;
       }
       case"FICHAR_EGRESO":{
@@ -177,6 +238,7 @@ function ChatScreen({usuario,ctx,reload}){
           <div style={{padding:"10px 14px",background:m.from==="bot"?C.surfHi:C.amber,color:m.from==="bot"?C.text:"#000",borderRadius:m.from==="bot"?"16px 16px 16px 4px":"16px 16px 4px 16px",fontSize:14,fontFamily:fB,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",border:m.from==="bot"?`1px solid ${C.border}`:"none",fontWeight:m.from==="bot"?400:500}}>{m.text}</div>
           {m.card?.type==="fichada"&&<FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg}/>}
           {m.card?.type==="solicitud"&&<SolSentCard motivo={m.card.motivo} fecha={m.card.fecha}/>}
+          {m.card?.type==="ingreso_tardio_pendiente"&&<div style={{marginTop:8,padding:14,background:`${C.red}12`,borderRadius:14,border:`1px solid ${C.red}30`,minWidth:220}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:38,height:38,borderRadius:10,background:`${C.red}25`,color:C.red,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⛔</div><div style={{flex:1}}><div style={{fontSize:11,color:C.red,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>INGRESO BLOQUEADO</div><div style={{fontSize:13,color:C.text,fontWeight:600,marginTop:4}}>Llegaste {m.card.tardanzaMin}min tarde (horario: {m.card.horarioEsperado})</div><div style={{fontSize:11,color:C.dim,marginTop:4}}>Se envió solicitud a Gerencia. Esperá la respuesta.</div></div><Tag color={C.red}>⏳ PENDIENTE</Tag></div></div>}
           {m.quickReplies&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>{m.quickReplies.map((c,j)=><button key={j} onClick={()=>handleSend(c)} style={{padding:"7px 12px",borderRadius:999,background:C.surfHi,border:`1px solid ${C.borderHi}`,color:C.text,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:fB}}>{c}</button>)}</div>}
           <span style={{fontSize:10,color:C.mute,marginTop:4,fontFamily:fM}}>{fmtTime(m.time)}</span>
         </div>
@@ -252,7 +314,36 @@ function HomeEmp({goto,usuario,ctx}){
 /* ═══ INBOX ═══ */
 function InboxScreen({ctx,reload,usuario}){
   const [f,setF]=useState("pendiente");const filtered=(ctx.solicitudes||[]).filter(s=>f==="todas"?true:s.estado===f);const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
-  const resolver=async(id,estado)=>{try{const sol=(ctx.solicitudes||[]).find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});}reload();}catch(e){console.error(e);}};
+  const resolver=async(id,estado)=>{try{const sol=(ctx.solicitudes||[]).find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){
+    /* ── Ingreso tardío: lógica especial ── */
+    if(sol.tipo==="ingreso_tardio"){
+      const hoy=new Date().toISOString().split("T")[0];
+      if(estado==="aprobado"){
+        /* Fichar ingreso con llegada_tarde */
+        const hora=fmtTime(new Date());
+        const exF=await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=eq.${hoy}`);
+        if(!exF.length){
+          await sb.post("fichadas",{empleado_id:sol.empleado_id,legajo:sol.legajo,fecha:hoy,ingreso:hora,llegada_tarde:true});
+        }
+        /* Contar llegadas tarde del mes */
+        const mesInicio=hoy.slice(0,8)+"01";
+        const tardesDelMes=await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=gte.${mesInicio}&fecha=lte.${hoy}&llegada_tarde=eq.true`);
+        const totalTardes=(tardesDelMes||[]).length;
+        let msgPresentismo=totalTardes>=3?`Tenés ${totalTardes} llegadas tarde este mes. Perdiste el premio por presentismo.`:`Recordá que a la 3er llegada tarde, perdés el premio por presentismo.`;
+        await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Ingreso aprobado",detalle:`Se aceptó tu ingreso a planta. ${msgPresentismo}`,urgencia:"alta",solicitud_id:id});
+        sendPushToLegajo(String(sol.legajo),"✅ Ingreso aprobado",`Se aceptó tu ingreso. Llegada tarde registrada. ${msgPresentismo}`).catch(()=>{});
+        if(totalTardes>=3){sendPushToLegajo("1","⚠️ Presentismo perdido",`${sol.nombre_empleado} acumula ${totalTardes} llegadas tarde. Perdió presentismo.`).catch(()=>{});}
+      }else{
+        /* Rechazado: pierde el día */
+        await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"❌ Ingreso rechazado",detalle:`Tu solicitud de ingreso fue rechazada por ${usuario.apodo}. Perdiste el día de trabajo.`,urgencia:"alta",solicitud_id:id});
+        sendPushToLegajo(String(sol.legajo),"❌ Ingreso rechazado",`Tu ingreso fue rechazado por ${usuario.apodo}. Perdiste el día de trabajo.`).catch(()=>{});
+      }
+    }else{
+      /* ── Solicitudes normales ── */
+      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});
+      sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});
+    }
+  }reload();}catch(e){console.error(e);}};
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto"}}><Chip active={f==="pendiente"} onClick={()=>setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip><Chip active={f==="aprobado"} onClick={()=>setF("aprobado")} color={C.green}>Aprobados</Chip><Chip active={f==="rechazado"} onClick={()=>setF("rechazado")} color={C.red}>Rechazados</Chip><Chip active={f==="todas"} onClick={()=>setF("todas")}>Todas</Chip></div>
     <div style={{display:"flex",flexDirection:"column",gap:12}}>{filtered.length===0?<div style={{background:C.surface,borderRadius:14,padding:40,textAlign:"center",border:`1px solid ${C.border}`}}><div style={{color:C.green,display:"inline-flex",marginBottom:12}}>{Ic.check}</div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Todo al día</div></div>:filtered.map(s=><SolCard key={s.id} s={s} showActions onResolve={resolver}/>)}</div>

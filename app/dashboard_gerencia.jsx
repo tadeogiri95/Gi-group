@@ -234,16 +234,6 @@ function ReportesObraPanel({ reportesObra }) {
                         </div>
                       )}
 
-                      {/* Texto original */}
-                      {r.texto_original && (
-                        <div style={{ padding: "8px 0" }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>💬 Reporte original</div>
-                          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5, fontStyle: "italic", padding: "8px 10px", background: `${C.mute}08`, borderRadius: 8, borderLeft: `3px solid ${C.mute}30` }}>
-                            {r.texto_original}
-                          </div>
-                        </div>
-                      )}
-
                       {/* Fotos */}
                       {tieneFotos && (
                         <div style={{ padding: "8px 0" }}>
