@@ -392,7 +392,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
   }, [prodF]);
 
   // Alertas activas
-  const permisosIngreso = pendientes.filter(s => s.tipo === "permiso_ingreso");
+  const permisosIngreso = pendientes.filter(s => s.motivo?.includes("🔓") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo"));
   const alertas = useMemo(() => {
     const items = [];
     if (permisosIngreso.length > 0) items.push({ icon: "🔓", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} de ingreso pendiente${permisosIngreso.length > 1 ? "s" : ""}`, color: C.red, urgencia: "alta", target: "solicitudes" });

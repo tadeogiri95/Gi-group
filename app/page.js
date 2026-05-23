@@ -232,12 +232,12 @@ function ChatScreen({usuario,ctx,reload}){
       try{
         const hoy=new Date().toISOString().split("T")[0];
         const hora=fmtTime(new Date());
-        await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso_ingreso",motivo:`Solicitud de ingreso por bloqueo (${hora})`,fecha:hoy,desde:hora,hasta:"—",estado:"pendiente"});
-        await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`🔓 ${usuario.apodo} solicita permiso de INGRESO`,detalle:`Ingreso bloqueado a las ${hora}. Requiere autorización para fichar.`,urgencia:"alta",solicitud_id:null});
+        await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:`🔓 Permiso de INGRESO por bloqueo (${hora})`,fecha:hoy,desde:hora,hasta:"—",estado:"pendiente"});
+        await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`🔓 ${usuario.apodo} solicita permiso de INGRESO`,detalle:`Ingreso bloqueado a las ${hora}. Requiere autorización para fichar.`,urgencia:"alta"});
         sendPushToLegajo("1","🔓 Permiso de ingreso",`${usuario.apodo} solicita autorización para ingresar (${hora})`).catch(()=>{});
-        setMsgs(m=>[...m,{from:"bot",text:"✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.",time:new Date(),card:{type:"solicitud",motivo:"Permiso de ingreso por bloqueo",fecha:hoy}}]);
-        reload&&reload();
-      }catch(e){console.error(e);setMsgs(m=>[...m,{from:"bot",text:"Error al enviar la solicitud. Probá de nuevo.",time:new Date()}]);}
+        setMsgs(m=>[...m,{from:"bot",text:"✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.",time:new Date(),card:{type:"solicitud",motivo:"🔓 Permiso de INGRESO por bloqueo",fecha:hoy}}]);
+        if(reload)reload();
+      }catch(e){console.error("Error solicitud permiso ingreso:",e);setMsgs(m=>[...m,{from:"bot",text:"Error al enviar la solicitud. Probá de nuevo.",time:new Date()}]);}
       setLoading(false);return;
     }
     if(t==="❌ No, cancelar"){
@@ -283,7 +283,7 @@ function ChatScreen({usuario,ctx,reload}){
 }
 
 /* ═══ SOL CARD ═══ */
-function SolCard({s,showActions,onResolve}){const ec={pendiente:C.amber,aprobado:C.green,rechazado:C.red,registrado:C.cyan};const esPermisoIngreso=s.tipo==="permiso_ingreso";return<div style={{background:esPermisoIngreso&&s.estado==="pendiente"?`${C.red}08`:C.surface,borderRadius:14,padding:14,border:`1px solid ${esPermisoIngreso&&s.estado==="pendiente"?C.red+"40":s.estado==="pendiente"?C.amber+"30":C.border}`,position:"relative",overflow:"hidden"}}>
+function SolCard({s,showActions,onResolve}){const ec={pendiente:C.amber,aprobado:C.green,rechazado:C.red,registrado:C.cyan};const esPermisoIngreso=s.motivo?.includes("🔓")||s.motivo?.toLowerCase().includes("permiso de ingreso")||s.motivo?.toLowerCase().includes("ingreso por bloqueo");return<div style={{background:esPermisoIngreso&&s.estado==="pendiente"?`${C.red}08`:C.surface,borderRadius:14,padding:14,border:`1px solid ${esPermisoIngreso&&s.estado==="pendiente"?C.red+"40":s.estado==="pendiente"?C.amber+"30":C.border}`,position:"relative",overflow:"hidden"}}>
   {s.estado==="pendiente"&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:esPermisoIngreso?`linear-gradient(90deg,${C.red},${C.amber},${C.red})`:`linear-gradient(90deg,${C.amber},${C.red},${C.amber})`}}/>}
   {esPermisoIngreso&&s.estado==="pendiente"&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"6px 10px",background:`${C.red}15`,borderRadius:8}}><span style={{fontSize:14}}>🔓</span><span style={{fontSize:11,fontWeight:700,color:C.red}}>PERMISO DE INGRESO — REQUIERE ACCIÓN INMEDIATA</span></div>}
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}><div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}><span style={{fontFamily:fM,fontSize:10,color:C.mute}}>#{s.id}</span><span style={{fontSize:13,fontWeight:700,color:C.text}}>{s.nombre_empleado}</span></div><Tag color={ec[s.estado]||C.dim}>{esPermisoIngreso?"🔓 "+s.estado:s.estado}</Tag></div>
@@ -509,11 +509,45 @@ function HomeEmp({goto,usuario,ctx}){
 
 /* ═══ INBOX ═══ */
 function InboxScreen({ctx,reload,usuario}){
-  const [f,setF]=useState("pendiente");const filtered=(ctx.solicitudes||[]).filter(s=>f==="todas"?true:s.estado===f);const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
-  const resolver=async(id,estado)=>{try{const sol=(ctx.solicitudes||[]).find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});}reload();}catch(e){console.error(e);}};
+  const [f,setF]=useState("pendiente");
+  const [solicitudes,setSolicitudes]=useState(ctx.solicitudes||[]);
+  const [cargando,setCargando]=useState(false);
+
+  // Cargar solicitudes frescas al montar y al refrescar
+  const cargarSolicitudes=useCallback(async()=>{
+    setCargando(true);
+    try{
+      const sols=await sb.get("solicitudes?select=*&order=created_at.desc&limit=50");
+      setSolicitudes(sols||[]);
+    }catch(e){console.error("Error cargando solicitudes:",e);}
+    setCargando(false);
+  },[]);
+
+  useEffect(()=>{cargarSolicitudes();},[cargarSolicitudes]);
+  // Sincronizar si ctx cambia
+  useEffect(()=>{if(ctx.solicitudes&&ctx.solicitudes.length>0)setSolicitudes(ctx.solicitudes);},[ctx.solicitudes]);
+
+  const filtered=solicitudes.filter(s=>f==="todas"?true:s.estado===f);
+  const pend=solicitudes.filter(s=>s.estado==="pendiente").length;
+  // Ordenar: permisos de ingreso primero
+  const sortedFiltered=[...filtered].sort((a,b)=>{
+    const aIngreso=a.motivo?.includes("INGRESO")||a.motivo?.includes("ingreso")||a.motivo?.includes("🔓")?1:0;
+    const bIngreso=b.motivo?.includes("INGRESO")||b.motivo?.includes("ingreso")||b.motivo?.includes("🔓")?1:0;
+    if(aIngreso!==bIngreso)return bIngreso-aIngreso;
+    return 0;
+  });
+
+  const resolver=async(id,estado)=>{try{const sol=solicitudes.find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});}await cargarSolicitudes();reload();}catch(e){console.error(e);}};
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto"}}><Chip active={f==="pendiente"} onClick={()=>setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip><Chip active={f==="aprobado"} onClick={()=>setF("aprobado")} color={C.green}>Aprobados</Chip><Chip active={f==="rechazado"} onClick={()=>setF("rechazado")} color={C.red}>Rechazados</Chip><Chip active={f==="todas"} onClick={()=>setF("todas")}>Todas</Chip></div>
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>{filtered.length===0?<div style={{background:C.surface,borderRadius:14,padding:40,textAlign:"center",border:`1px solid ${C.border}`}}><div style={{color:C.green,display:"inline-flex",marginBottom:12}}>{Ic.check}</div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Todo al día</div></div>:filtered.map(s=><SolCard key={s.id} s={s} showActions onResolve={resolver}/>)}</div>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",alignItems:"center"}}>
+      <Chip active={f==="pendiente"} onClick={()=>setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip>
+      <Chip active={f==="aprobado"} onClick={()=>setF("aprobado")} color={C.green}>Aprobados</Chip>
+      <Chip active={f==="rechazado"} onClick={()=>setF("rechazado")} color={C.red}>Rechazados</Chip>
+      <Chip active={f==="todas"} onClick={()=>setF("todas")}>Todas</Chip>
+      <button onClick={cargarSolicitudes} style={{width:30,height:30,borderRadius:8,background:C.surface,border:`1px solid ${C.border}`,color:C.dim,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>{Ic.refresh}</button>
+    </div>
+    {cargando?<div style={{textAlign:"center",padding:30,color:C.dim,fontSize:13}}>Cargando solicitudes...</div>:
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>{sortedFiltered.length===0?<div style={{background:C.surface,borderRadius:14,padding:40,textAlign:"center",border:`1px solid ${C.border}`}}><div style={{color:C.green,display:"inline-flex",marginBottom:12}}>{Ic.check}</div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Todo al día</div></div>:sortedFiltered.map(s=><SolCard key={s.id} s={s} showActions onResolve={resolver}/>)}</div>}
   </div>;
 }
 
