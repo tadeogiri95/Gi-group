@@ -144,6 +144,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
   const [tab, setTab] = useState("resumen"); // resumen | asistencia | produccion | solicitudes
   const [resumenProd, setResumenProd] = useState([]);
   const [fichadasSemana, setFichadasSemana] = useState([]);
+  const [reportesObra, setReportesObra] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
 
@@ -166,12 +167,14 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
       const mon = new Date(); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
       const monStr = mon.toISOString().split("T")[0];
 
-      const [prodData, fichadasSem] = await Promise.all([
+      const [prodData, fichadasSem, repObra] = await Promise.all([
         sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`),
         sb.get(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc`),
+        sb.get(`reportes_obra?fecha=eq.${hoy}&order=created_at.desc`),
       ]);
       setResumenProd(prodData || []);
       setFichadasSemana(fichadasSem || []);
+      setReportesObra(repObra || []);
     } catch (e) {
       console.error("Dashboard error:", e);
     } finally {
@@ -191,7 +194,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
     division === "todas" ? arr : arr.filter(r => r[divField] === division);
 
   const fichadasHoyF = filterDiv(fichadasHoy, "legajo").length > 0
-    ? fichadasHoy // si filtrado no aplica por legajo, usar todo
+    ? fichadasHoy 
     : fichadasHoy;
 
   // Producción
@@ -239,10 +242,9 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
   // Alertas activas
   const alertas = useMemo(() => {
     const items = [];
-    if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: C.red, urgencia: "alta" });
-    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media" });
-    if (pendientes.length > 0) items.push({ icon: "📋", text: `${pendientes.length} solicitud${pendientes.length > 1 ? "es" : ""} pendiente${pendientes.length > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal" });
-    // Notificaciones de alta urgencia recientes
+    if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente\${ausentes > 1 ? "s" : ""} hoy`, color: C.red, urgencia: "alta" });
+    if (enEspera > 0) items.push({ icon: "⏸", text: `\${enEspera} operario\${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media" });
+    if (pendientes.length > 0) items.push({ icon: "📋", text: `\${pendientes.length} solicitud\${pendientes.length > 1 ? "es" : ""} pendiente\${pendientes.length > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal" });
     const urgentes = notificaciones.filter(n => n.urgencia === "alta");
     urgentes.slice(0, 2).forEach(n => {
       items.push({ icon: "🔴", text: n.asunto, color: C.red, urgencia: "alta" });
@@ -423,7 +425,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
             {fichadasHoy.map((f, i) => (
               <TimelineRow
                 key={f.legajo || i}
-                nombre={f.nombre || `L-${f.legajo}`}
+                nombre={f.nombre || `L-\${f.legajo}`}
                 ingreso={f.ingreso}
                 egreso={f.egreso}
                 horasTrabajadas={f.horas_trabajadas}
@@ -447,33 +449,33 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
 
         {/* Mini métricas de producción */}
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <div style={{ flex: 1, background: `${C.green}12`, borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ flex: 1, background: `\${C.green}12`, borderRadius: 10, padding: "10px 12px" }}>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Productivo</div>
             <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green, marginTop: 2 }}>{fmtMin(totalMinProd)}</div>
           </div>
-          <div style={{ flex: 1, background: `${C.red}12`, borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ flex: 1, background: `\${C.red}12`, borderRadius: 10, padding: "10px 12px" }}>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Espera</div>
             <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.red, marginTop: 2 }}>{fmtMin(totalMinEspera)}</div>
           </div>
-          <div style={{ flex: 1, background: `${pctColor(pctProd)}12`, borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ flex: 1, background: `\${pctColor(pctProd)}12`, borderRadius: 10, padding: "10px 12px" }}>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Eficiencia</div>
             <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: pctColor(pctProd), marginTop: 2 }}>{pctProd}%</div>
           </div>
         </div>
 
-        {/* Top productivos */}
+        {/* Top rendimiento */}
         {topProductivos.length > 0 && (
           <>
             <div style={{ fontSize: 11, color: C.dim, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Top rendimiento</div>
             {topProductivos.map((op, i) => {
               const pct = parseFloat(op.pct_productivo) || 0;
               return (
-                <div key={op.empleado_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < topProductivos.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                <div key={op.empleado_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < topProductivos.length - 1 ? `1px solid \${C.border}` : "none" }}>
                   <div style={{ width: 20, height: 20, borderRadius: 6, background: i === 0 ? C.amberS : C.surfHi, color: i === 0 ? C.amber : C.dim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, fontFamily: fM }}>{i + 1}</div>
                   <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{op.empleado_nombre}</div>
                   <div style={{ width: 60 }}>
                     <div style={{ height: 4, borderRadius: 2, background: C.surfHi, overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 2, background: pctColor(pct), width: `${Math.min(pct, 100)}%` }} />
+                      <div style={{ height: "100%", borderRadius: 2, background: pctColor(pct), width: `\${Math.min(pct, 100)}%` }} />
                     </div>
                   </div>
                   <span style={{ fontFamily: fM, fontSize: 12, fontWeight: 700, color: pctColor(pct), width: 36, textAlign: "right" }}>{Math.round(pct)}%</span>
@@ -486,7 +488,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         {/* Link a vista completa */}
         <button onClick={() => goto?.("ger-actividad")} style={{
           width: "100%", marginTop: 12, padding: 10, borderRadius: 10,
-          background: `${C.amber}12`, border: `1px solid ${C.amber}25`, color: C.amber,
+          background: `\${C.amber}12`, border: `1px solid \${C.amber}25`, color: C.amber,
           fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
         }}>
@@ -494,9 +496,41 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         </button>
       </div>
 
+      {/* ─── Reportes de Obra (Instaladores) ─── */}
+      <div style={{
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid \${C.border}`, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Reportes de Obra (Hoy)</div>
+          {reportesObra.length > 0 && <Tag color={C.cyan}>{reportesObra.length} reportes</Tag>}
+        </div>
+
+        {reportesObra.length === 0 ? (
+          <div style={{ padding: 20, textAlign: "center", color: C.dim, fontSize: 12 }}>Sin reportes de obra hoy</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {reportesObra.map(r => (
+              <div key={r.id} style={{ padding: 12, background: C.surfHi, borderRadius: 10, border: `1px solid \${C.borderHi}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.nombre}</span>
+                  <span style={{ fontSize: 10, color: C.dim }}>
+                    {new Date(r.created_at).toLocaleTimeString("es-AR", {hour: '2-digit', minute:'2-digit'})}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>
+                  <span style={{color: C.text}}><strong>Progreso:</strong> {r.progreso}</span><br/>
+                  {r.faltantes?.length > 0 && <span style={{color: C.red}}><strong>Faltantes:</strong> {r.faltantes.join(", ")}<br/></span>}
+                  {r.desvios?.length > 0 && <span style={{color: C.amber}}><strong>Desvíos:</strong> {r.desvios.join(", ")}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ─── Solicitudes resumen ─── */}
       <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid \${C.border}`, marginBottom: 14,
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Solicitudes</div>
@@ -504,15 +538,15 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.amber}12`, borderRadius: 10 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `\${C.amber}12`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.amber }}>{pendientes.length}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Pendientes</div>
           </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.green}12`, borderRadius: 10 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `\${C.green}12`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.green }}>{aprobadas.length}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Aprobadas</div>
           </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.red}12`, borderRadius: 10 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `\${C.red}12`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.red }}>{rechazadas.length}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Rechazadas</div>
           </div>
@@ -522,7 +556,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         {pendientes.slice(0, 3).map(s => (
           <div key={s.id} style={{
             display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
-            borderBottom: `1px solid ${C.border}`,
+            borderBottom: `1px solid \${C.border}`,
           }}>
             <div style={{ width: 6, height: 6, borderRadius: 3, background: C.amber, flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -536,7 +570,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         {pendientes.length > 0 && (
           <button onClick={() => goto?.("solicitudes")} style={{
             width: "100%", marginTop: 10, padding: 10, borderRadius: 10,
-            background: `${C.violet}12`, border: `1px solid ${C.violet}25`, color: C.violet,
+            background: `\${C.violet}12`, border: `1px solid \${	C.violet}25`, color: C.violet,
             fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
           }}>
@@ -554,12 +588,12 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
           { label: "Reglas Bot", icon: "⚙️", color: C.amber, target: "reglas" },
         ].map(item => (
           <button key={item.target} onClick={() => goto?.(item.target)} style={{
-            background: C.surface, border: `1px solid ${C.border}`, padding: "14px 8px",
+            background: C.surface, border: `1px solid \${C.border}`, padding: "14px 8px",
             borderRadius: 14, cursor: "pointer", display: "flex", flexDirection: "column",
             alignItems: "center", gap: 8, fontFamily: fB,
           }}>
             <div style={{
-              width: 36, height: 36, borderRadius: 10, background: `${item.color}22`,
+              width: 36, height: 36, borderRadius: 10, background: `\${item.color}22`,
               display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
             }}>{item.icon}</div>
             <span style={{ fontSize: 11, color: C.text, fontWeight: 600 }}>{item.label}</span>

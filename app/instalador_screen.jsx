@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { C, fH, fB, fM } from "./lib/theme";
 import { sb } from "./lib/supabase";
 
@@ -70,6 +70,20 @@ const S = {
     alignItems: "center",
     gap: 8,
   },
+  btnAudio: (grabando) => ({
+    padding: "12px 16px",
+    borderRadius: 12,
+    border: `1px solid ${grabando ? C.red : C.borderHi}`,
+    background: grabado ? `${C.red}15` : C.surfHi,
+    color: grabando ? C.red : C.text,
+    fontFamily: fB,
+    fontSize: 14,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    transition: "all 0.2s ease",
+  }),
   label: {
     fontSize: 11,
     fontWeight: 700,
@@ -100,74 +114,78 @@ export default function InstaladorScreen({ usuario }) {
   const [fotos, setFotos] = useState([]);
   const [reporte, setReporte] = useState(null);
   const [error, setError] = useState(null);
-  const fileRef = useRef(null);
-
-  /* ── Audio: grabación con Web Speech API ── */
   const [grabando, setGrabando] = useState(false);
-  const [transcribiendo, setTranscribiendo] = useState(false);
+  
+  const fileRef = useRef(null);
   const recognitionRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
 
-  const soportaSpeech = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
-
-  const iniciarGrabacion = () => {
-    if (!soportaSpeech) {
-      setError("Tu navegador no soporta reconocimiento de voz. Usá Chrome.");
-      return;
-    }
-    setError(null);
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SR();
-    recognition.lang = "es-AR";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    let finalTranscript = "";
-
-    recognition.onresult = (event) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += t + " ";
-        } else {
-          interim = t;
-        }
+  /* ── Lógica de Dictado por Voz Activa (Web Speech API) ── */
+  const toggleDictado = () => {
+    if (grabando) {
+      recognitionRef.current?.stop();
+      setGrabando(false);
+    } else {
+      setError(null);
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        setError("Tu navegador o celular no soporta el dictado por voz directo in-app.");
+        return;
       }
-      setTexto((prev) => {
-        const base = prev.replace(/🎙️.*$/, "").trimEnd();
-        const combined = (base ? base + " " : "") + finalTranscript;
-        return interim ? combined + "🎙️" + interim : combined.trimEnd();
-      });
-    };
 
-    recognition.onerror = (e) => {
-      if (e.error !== "aborted") setError("Error de micrófono: " + e.error);
-      setGrabando(false);
-    };
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.lang = "es-AR";
 
-    recognition.onend = () => {
-      setGrabando(false);
-      setTexto((prev) => prev.replace(/🎙️.*$/, "").trimEnd());
-    };
+      rec.onstart = () => {
+        setGrabando(true);
+      };
 
-    recognitionRef.current = recognition;
-    recognition.start();
-    setGrabando(true);
-  };
+      rec.onresult = (event) => {
+        const current = event.resultIndex;
+        const transcript = event.results[current][0].transcript;
+        
+        setTexto((prev) => {
+          const base = prev.trim();
+          return base ? `${base} ${transcript.trim()}` : transcript.trim();
+        });
+      };
 
-  const detenerGrabacion = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
+      rec.onerror = (e) => {
+        console.error("Speech error:", e);
+        if (e.error === "not-allowed") {
+          setError("Permiso bloqueado. Habilitá el acceso al micrófono en la barra del navegador.");
+        } else {
+          setError("Problema al escuchar el audio. Intentá dictar nuevamente.");
+        }
+        setGrabando(false);
+      };
+
+      rec.onend = () => {
+        setGrabando(false);
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
     }
-    setGrabando(false);
   };
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) recognitionRef.current.stop();
+    };
+  }, []);
 
   /* ── Llamada a la IA ── */
   const generarReporte = async () => {
     if (!texto.trim()) return;
+    
+    if (grabando) {
+      recognitionRef.current?.stop();
+      setGrabando(false);
+    }
+    
     setFase("procesando");
     setError(null);
     try {
@@ -219,36 +237,24 @@ export default function InstaladorScreen({ usuario }) {
     }
   };
 
-  /* ── Corregir ── */
   const corregir = () => {
     setFase("ingreso");
     setReporte(null);
   };
 
-  /* ═══ RENDER ═══ */
   return (
     <div style={S.wrap}>
 
-      {/* Error banner */}
       {error && (
         <div style={{ ...S.card, background: C.redS, border: `1px solid ${C.red}44`, marginBottom: 16 }}>
           <p style={{ margin: 0, fontSize: 14, color: C.red }}>⚠️ {error}</p>
         </div>
       )}
 
-      {/* ══════════════════════════════════════
-          FASE 1 — INGRESO
-         ══════════════════════════════════════ */}
       {fase === "ingreso" && (
         <>
           <div style={S.card}>
             <div style={S.label}>¿Qué se hizo hoy en obra?</div>
-            {grabando && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 12px", borderRadius: 10, background: `${C.red}15`, border: `1px solid ${C.red}33` }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: C.red, animation: "pulse 1s ease-in-out infinite" }} />
-                <span style={{ fontSize: 13, color: C.red, fontWeight: 600, fontFamily: fB }}>Grabando… hablá y tu voz se transcribirá</span>
-              </div>
-            )}
             <textarea
               style={S.textarea}
               placeholder={"Contá qué se avanzó, si faltó algo,\nsi hubo algún imprevisto o espera..."}
@@ -257,24 +263,20 @@ export default function InstaladorScreen({ usuario }) {
             />
           </div>
 
-          {/* Adjuntar fotos (UI only) */}
           <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-            {/* Botón de audio */}
-            <button
-              style={{
-                ...S.btnSecondary,
-                background: grabando ? `${C.red}22` : S.btnSecondary.background,
-                border: grabando ? `1px solid ${C.red}66` : S.btnSecondary.border,
-                color: grabando ? C.red : S.btnSecondary.color,
-                animation: grabando ? "pulse 1.5s ease-in-out infinite" : "none",
-              }}
-              onClick={grabando ? detenerGrabacion : iniciarGrabacion}
+            
+            <button 
+              style={S.btnAudio(grabando)} 
+              onClick={toggleDictado}
+              className={grabando ? "pulse-active" : ""}
             >
-              {grabando ? "⏹ Detener" : "🎤 Dictar reporte"}
+              {grabando ? "🛑 Detener Escucha" : "🎙️ Dictar Reporte"}
             </button>
+
             <button style={S.btnSecondary} onClick={() => fileRef.current?.click()}>
               📷 Adjuntar fotos{fotos.length > 0 ? ` (${fotos.length})` : ""}
             </button>
+            
             <input
               ref={fileRef}
               type="file"
@@ -286,6 +288,7 @@ export default function InstaladorScreen({ usuario }) {
                   setFotos((prev) => [...prev, ...Array.from(e.target.files).map((f) => f.name)]);
               }}
             />
+            
             {fotos.map((f, i) => (
               <span key={i} style={{ ...S.tag(C.cyan), display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 {f.length > 18 ? f.slice(0, 15) + "…" : f}
@@ -304,35 +307,27 @@ export default function InstaladorScreen({ usuario }) {
             disabled={!texto.trim()}
             onClick={generarReporte}
           >
-            🤖 Generar Reporte
+            {grabando ? "⏳ Procesando audio..." : "🤖 Generar Reporte"}
           </button>
         </>
       )}
 
-      {/* ══════════════════════════════════════
-          FASE 2 — PROCESANDO
-         ══════════════════════════════════════ */}
       {fase === "procesando" && (
         <div style={{ ...S.card, textAlign: "center", padding: "56px 16px" }}>
           <div style={{ fontSize: 38, marginBottom: 14, animation: "spin 1.2s linear infinite" }}>⚙️</div>
           <p style={{ margin: 0, fontSize: 17, fontFamily: fH, fontWeight: 700 }}>Analizando tu reporte...</p>
           <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>La IA está estructurando los datos</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.5 } }`}</style>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         </div>
       )}
 
-      {/* ══════════════════════════════════════
-          FASE 3 — DOBLE CHECK
-         ══════════════════════════════════════ */}
       {fase === "check" && reporte && (
         <>
-          {/* Progreso */}
           <div style={S.card}>
             <div style={S.label}>✅ Progreso efectivo</div>
             <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: C.text }}>{reporte.progreso || "—"}</p>
           </div>
 
-          {/* Faltantes */}
           {reporte.faltantes?.length > 0 && (
             <div style={{ ...S.card, background: C.redS, border: `1px solid ${C.red}33` }}>
               <div style={{ ...S.label, color: C.red }}>🚫 Faltantes</div>
@@ -344,7 +339,6 @@ export default function InstaladorScreen({ usuario }) {
             </div>
           )}
 
-          {/* Desvíos */}
           {reporte.desvios?.length > 0 && (
             <div style={{ ...S.card, background: C.amberS, border: `1px solid ${C.amber}33` }}>
               <div style={{ ...S.label, color: C.amber }}>⚠️ Desvíos / Imprevistos</div>
@@ -356,14 +350,12 @@ export default function InstaladorScreen({ usuario }) {
             </div>
           )}
 
-          {/* Mensaje doble check */}
           <div style={{ ...S.card, background: C.cyanS, border: `1px solid ${C.cyan}33` }}>
             <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: C.text }}>
               💬 {reporte.mensaje_doble_check || "¿Los datos están correctos?"}
             </p>
           </div>
 
-          {/* Botones */}
           <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
             <button
               style={{ ...S.btnSecondary, flex: 1, justifyContent: "center", padding: "14px 0", fontSize: 15, fontWeight: 700 }}
@@ -378,9 +370,6 @@ export default function InstaladorScreen({ usuario }) {
         </>
       )}
 
-      {/* ══════════════════════════════════════
-          FASE 4 — GUARDADO
-         ══════════════════════════════════════ */}
       {fase === "guardado" && (
         <div style={{ ...S.card, textAlign: "center", padding: "56px 16px", background: C.greenS, border: `1px solid ${C.green}33` }}>
           <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
@@ -388,6 +377,17 @@ export default function InstaladorScreen({ usuario }) {
           <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>Se guardó correctamente</p>
         </div>
       )}
+
+      <style>{`
+        @keyframes audioPulse {
+          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+          70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .pulse-active {
+          animation: audioPulse 1.6s infinite ease-in-out;
+        }
+      `}</style>
     </div>
   );
 }
