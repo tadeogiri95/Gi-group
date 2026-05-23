@@ -41,14 +41,44 @@ const distanciaMetros = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-/* ═══ MODAL UBICACIÓN (crear/editar) ═══ */
+/* ═══ HELPER: Decodificar Plus Code a coordenadas ═══ */
+function decodePlusCode(code) {
+  // Plus codes use base20 alphabet: 23456789CFGHJMPQRVWX
+  const ALPHABET = '23456789CFGHJMPQRVWX';
+  const clean = code.replace(/\s/g, '').toUpperCase().replace(/\+/g, '');
+  // Only handle full plus codes (10+ chars without the +)
+  if (clean.length < 8) return null;
+  
+  try {
+    let lat = 0, lng = 0;
+    const pairs = [];
+    for (let i = 0; i < Math.min(clean.length, 10); i += 2) {
+      pairs.push([
+        ALPHABET.indexOf(clean[i]),
+        ALPHABET.indexOf(clean[i + 1])
+      ]);
+    }
+    if (pairs.some(p => p[0] < 0 || p[1] < 0)) return null;
+    
+    lat = pairs[0][0] * 20 + (pairs[1]?.[0] || 0) + (pairs[2]?.[0] || 0) / 20 + (pairs[3]?.[0] || 0) / 400 + (pairs[4]?.[0] || 0) / 8000 - 90;
+    lng = pairs[0][1] * 20 + (pairs[1]?.[1] || 0) + (pairs[2]?.[1] || 0) / 20 + (pairs[3]?.[1] || 0) / 400 + (pairs[4]?.[1] || 0) / 8000 - 180;
+    
+    return { lat: parseFloat(lat.toFixed(6)), lng: parseFloat(lng.toFixed(6)) };
+  } catch {
+    return null;
+  }
+}
+
+/* ═══ MODAL UBICACIÓN (crear/editar) — con Plus Code y mapa ═══ */
 function ModalUbicacion({ initial, onClose, onSave, titulo }) {
   const [nombre, setNombre] = useState(initial?.nombre || initial?.label || "");
   const [lat, setLat] = useState(initial?.lat?.toString() || "");
   const [lng, setLng] = useState(initial?.lng?.toString() || "");
   const [radio, setRadio] = useState(initial?.radio?.toString() || "200");
+  const [plusCode, setPlusCode] = useState(initial?.plusCode || "");
   const [detectando, setDetectando] = useState(false);
   const [error, setError] = useState("");
+  const [modoInput, setModoInput] = useState("coords"); // coords | pluscode | mapa
 
   const detectarUbicacion = () => {
     if (!navigator.geolocation) { setError("Tu navegador no soporta geolocalización"); return; }
@@ -60,7 +90,25 @@ function ModalUbicacion({ initial, onClose, onSave, titulo }) {
     );
   };
 
+  const aplicarPlusCode = () => {
+    if (!plusCode.trim()) { setError("Ingresá un Plus Code"); return; }
+    const coords = decodePlusCode(plusCode.trim());
+    if (coords) {
+      setLat(coords.lat.toString());
+      setLng(coords.lng.toString());
+      setError("");
+    } else {
+      // Fallback: intentar buscar via Google Maps embed
+      setError("Plus Code no reconocido. Probá copiando las coordenadas directamente desde Google Maps, o usá 'Señalar en mapa'.");
+    }
+  };
+
   const valid = nombre.trim() && lat && lng && radio;
+
+  // URL del mapa estático para preview
+  const mapPreviewUrl = lat && lng
+    ? `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`
+    : null;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -74,16 +122,65 @@ function ModalUbicacion({ initial, onClose, onSave, titulo }) {
           <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Planta GI, Obra San Luis, Depósito Norte..." style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" }} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Latitud</label>
-            <input value={lat} onChange={e => setLat(e.target.value)} placeholder="-31.4135" type="number" step="any" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fM, outline: "none", boxSizing: "border-box" }} />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Longitud</label>
-            <input value={lng} onChange={e => setLng(e.target.value)} placeholder="-64.1811" type="number" step="any" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fM, outline: "none", boxSizing: "border-box" }} />
-          </div>
+        {/* Selector de modo de input */}
+        <div style={{ display: "flex", gap: 0, marginBottom: 14, background: C.surface, borderRadius: 10, padding: 3, border: `1px solid ${C.border}` }}>
+          <button onClick={() => setModoInput("coords")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", background: modoInput === "coords" ? C.cyan : "transparent", color: modoInput === "coords" ? "#000" : C.dim, fontSize: 11, fontWeight: 700, fontFamily: fB }}>📐 Coordenadas</button>
+          <button onClick={() => setModoInput("pluscode")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", background: modoInput === "pluscode" ? C.green : "transparent", color: modoInput === "pluscode" ? "#000" : C.dim, fontSize: 11, fontWeight: 700, fontFamily: fB }}>📌 Plus Code</button>
+          <button onClick={() => setModoInput("mapa")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", background: modoInput === "mapa" ? C.violet : "transparent", color: modoInput === "mapa" ? "#000" : C.dim, fontSize: 11, fontWeight: 700, fontFamily: fB }}>🗺️ Mapa</button>
         </div>
+
+        {modoInput === "coords" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Latitud</label>
+              <input value={lat} onChange={e => setLat(e.target.value)} placeholder="-31.4135" type="number" step="any" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fM, outline: "none", boxSizing: "border-box" }} />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Longitud</label>
+              <input value={lng} onChange={e => setLng(e.target.value)} placeholder="-64.1811" type="number" step="any" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fM, outline: "none", boxSizing: "border-box" }} />
+            </div>
+          </div>
+        )}
+
+        {modoInput === "pluscode" && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Plus Code de Google Maps</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={plusCode} onChange={e => setPlusCode(e.target.value)} placeholder="Ej: 47QR+2X Córdoba" style={{ flex: 1, padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fM, outline: "none", boxSizing: "border-box" }} />
+              <button onClick={aplicarPlusCode} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: C.green, color: "#000", fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer", whiteSpace: "nowrap" }}>Aplicar</button>
+            </div>
+            <div style={{ fontSize: 11, color: C.dim, marginTop: 6, lineHeight: 1.5 }}>
+              Abrí Google Maps → clic derecho en el punto → copiá el Plus Code o las coordenadas. El Plus Code es el código corto tipo "47QR+2X".
+            </div>
+            {lat && lng && <div style={{ fontSize: 12, color: C.green, marginTop: 6, fontWeight: 600 }}>✅ Coordenadas: {lat}, {lng}</div>}
+          </div>
+        )}
+
+        {modoInput === "mapa" && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ background: C.surfLo, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, marginBottom: 8 }}>
+              <iframe
+                src={`https://maps.google.com/maps?q=${lat || "-31.4135"},${lng || "-64.1811"}&z=15&output=embed`}
+                style={{ width: "100%", height: 220, border: "none" }}
+                allowFullScreen
+                loading="lazy"
+              />
+            </div>
+            <div style={{ fontSize: 11, color: C.dim, lineHeight: 1.5, marginBottom: 8 }}>
+              Para mayor precisión: abrí <a href={`https://www.google.com/maps/@${lat || "-31.4135"},${lng || "-64.1811"},17z`} target="_blank" rel="noopener" style={{ color: C.cyan }}>Google Maps</a>, hacé clic derecho en el punto exacto y copiá las coordenadas. Después pegálas arriba en el modo "Coordenadas".
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: C.dim, marginBottom: 4 }}>Latitud</label>
+                <input value={lat} onChange={e => setLat(e.target.value)} placeholder="-31.4135" type="number" step="any" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontFamily: fM, outline: "none", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: C.dim, marginBottom: 4 }}>Longitud</label>
+                <input value={lng} onChange={e => setLng(e.target.value)} placeholder="-64.1811" type="number" step="any" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontFamily: fM, outline: "none", boxSizing: "border-box" }} />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Radio permitido (metros)</label>
@@ -91,15 +188,27 @@ function ModalUbicacion({ initial, onClose, onSave, titulo }) {
           <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>Distancia máxima desde el punto para validar fichaje</div>
         </div>
 
-        <button onClick={detectarUbicacion} disabled={detectando} style={{ width: "100%", padding: 12, borderRadius: 12, border: `1px solid ${C.cyan}40`, background: `${C.cyan}12`, color: C.cyan, fontSize: 13, fontWeight: 700, fontFamily: fH, cursor: detectando ? "default" : "pointer", marginBottom: 14 }}>
+        <button onClick={detectarUbicacion} disabled={detectando} style={{ width: "100%", padding: 12, borderRadius: 12, border: `1px solid ${C.cyan}40`, background: `${C.cyan}12`, color: C.cyan, fontSize: 13, fontWeight: 700, fontFamily: fH, cursor: detectando ? "default" : "pointer", marginBottom: 8 }}>
           {detectando ? "📡 Detectando..." : "📡 Usar mi ubicación actual"}
         </button>
+
+        {/* Preview del mapa si hay coordenadas */}
+        {lat && lng && modoInput !== "mapa" && (
+          <div style={{ marginBottom: 12, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}` }}>
+            <iframe
+              src={`https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`}
+              style={{ width: "100%", height: 150, border: "none" }}
+              allowFullScreen
+              loading="lazy"
+            />
+          </div>
+        )}
 
         {error && <div style={{ padding: 10, background: C.redS, color: C.red, borderRadius: 10, fontSize: 12, marginBottom: 12 }}>{error}</div>}
 
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>Cancelar</button>
-          <button onClick={() => valid && onSave({ nombre: nombre.trim(), lat: parseFloat(lat), lng: parseFloat(lng), radio: parseInt(radio) })} disabled={!valid} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: valid ? C.green : C.surface, color: valid ? "#000" : C.mute, fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: valid ? "pointer" : "default" }}>Guardar</button>
+          <button onClick={() => valid && onSave({ nombre: nombre.trim(), lat: parseFloat(lat), lng: parseFloat(lng), radio: parseInt(radio), plusCode: plusCode.trim() || undefined })} disabled={!valid} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: valid ? C.green : C.surface, color: valid ? "#000" : C.mute, fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: valid ? "pointer" : "default" }}>Guardar</button>
         </div>
       </div>
     </div>
@@ -176,15 +285,17 @@ function PanelUbicaciones({ ubicaciones, setUbicaciones, onToast }) {
         </div>
 
         {ubicaciones.map(ub => (
-          <div key={ub.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfHi, borderRadius: 10, border: `1px solid ${C.border}` }}>
-            <span style={{ fontSize: 18 }}>📍</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ub.label}</div>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: fM, marginTop: 1 }}>
-                {ub.lat?.toFixed(4)}, {ub.lng?.toFixed(4)} · Radio: {ub.radio}m
+          <div key={ub.id} style={{ background: C.surfHi, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px" }}>
+              <span style={{ fontSize: 18 }}>📍</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ub.label}</div>
+                <div style={{ fontSize: 10, color: C.dim, fontFamily: fM, marginTop: 1 }}>
+                  {ub.lat?.toFixed(4)}, {ub.lng?.toFixed(4)} · Radio: {ub.radio}m
+                </div>
               </div>
-            </div>
-            <button onClick={() => setModalUb({ editing: ub })} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: fB }}>✏️</button>
+              <a href={`https://www.google.com/maps?q=${ub.lat},${ub.lng}`} target="_blank" rel="noopener" style={{ padding: "6px 8px", borderRadius: 8, border: `1px solid ${C.cyan}30`, background: `${C.cyan}08`, color: C.cyan, fontSize: 10, fontWeight: 600, textDecoration: "none", fontFamily: fB }}>🗺️ Ver</a>
+              <button onClick={() => setModalUb({ editing: ub })} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: fB }}>✏️</button>
             {confirmDelete === ub.id ? (
               <div style={{ display: "flex", gap: 4 }}>
                 <button onClick={() => eliminarUbicacion(ub)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: fB }}>Sí</button>
@@ -193,6 +304,7 @@ function PanelUbicaciones({ ubicaciones, setUbicaciones, onToast }) {
             ) : (
               <button onClick={() => setConfirmDelete(ub.id)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.red}30`, background: `${C.red}08`, color: C.red, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: fB }}>🗑️</button>
             )}
+            </div>
           </div>
         ))}
 

@@ -100,18 +100,46 @@ function LoginScreen({onLogin}) {
   </div>;
 }
 
-/* ═══ FICHADA CARD ═══ */
-function FichadaCard({tipo,hora,geoMsg}){
-  const color=tipo==="ingreso"?C.green:C.cyan;
-  return <div style={{marginTop:8,padding:14,background:`${color}12`,borderRadius:14,border:`1px solid ${color}30`,minWidth:220}}>
+/* ═══ FICHADA CARD (con colores según puntualidad) ═══ */
+function FichadaCard({tipo,hora,geoMsg,tardanza}){
+  // tardanza: { estado: "puntual"|"tarde"|"bloqueado", minutos, llegadasTarde, autoFichaje }
+  let color, bgColor, label, extraMsg;
+  if(tipo==="egreso"){
+    if(tardanza?.autoFichaje){
+      color="#F59E0B";bgColor="rgba(245,158,11,0.15)";
+      label="SALIDA AUTO-REGISTRADA";
+      extraMsg="⚠️ Fichaje automático por falta de registro";
+    } else {
+      color=C.cyan;bgColor=`${C.cyan}12`;label="SALIDA REGISTRADA";
+    }
+  } else {
+    // Ingreso: verde=puntual, amarillo=tarde, rojo=bloqueado
+    if(!tardanza||tardanza.estado==="puntual"){
+      color=C.green;bgColor=`${C.green}12`;label="INGRESO A HORARIO ✅";
+    } else if(tardanza.estado==="bloqueado"){
+      color=C.red;bgColor=`${C.red}20`;
+      label="⛔ REQUIERE PERMISO DE GERENCIA";
+      extraMsg=tardanza.llegadasTarde>=3
+        ?`3ra llegada tarde del mes — ingreso bloqueado`
+        :`Tardanza de ${tardanza.minutos} min (supera tolerancia de 30 min)`;
+    } else {
+      color="#F59E0B";bgColor="rgba(245,158,11,0.18)";
+      label=`⚠️ LLEGADA TARDE — ${tardanza.minutos} min`;
+      extraMsg=`Llegada tarde #${tardanza.llegadasTarde} del mes`;
+    }
+  }
+  return <div style={{marginTop:8,padding:16,background:bgColor,borderRadius:14,border:`2px solid ${color}50`,minWidth:220}}>
     <div style={{display:"flex",alignItems:"center",gap:10}}>
-      <div style={{width:38,height:38,borderRadius:10,background:`${color}25`,color,display:"flex",alignItems:"center",justifyContent:"center"}}>{tipo==="ingreso"?Ic.enter:Ic.exit}</div>
+      <div style={{width:42,height:42,borderRadius:12,background:`${color}30`,color,display:"flex",alignItems:"center",justifyContent:"center"}}>{tipo==="ingreso"?Ic.enter:Ic.exit}</div>
       <div style={{flex:1}}>
-        <div style={{fontSize:11,color,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>{tipo==="ingreso"?"INGRESO":"SALIDA"} REGISTRAD{tipo==="ingreso"?"O":"A"}</div>
-        <div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:C.text,marginTop:2}}>{hora}</div>
+        <div style={{fontSize:tardanza&&tardanza.estado!=="puntual"?14:11,color,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em"}}>{label}</div>
+        <div style={{fontFamily:fH,fontSize:tardanza&&tardanza.estado!=="puntual"?28:22,fontWeight:700,color:C.text,marginTop:2}}>{hora}</div>
+        {extraMsg && <div style={{fontSize:12,color,fontWeight:600,marginTop:4}}>{extraMsg}</div>}
         {geoMsg && <div style={{fontSize:10,color:C.dim,marginTop:4}}>{geoMsg}</div>}
       </div>
-      <span style={{color:C.green}}>{Ic.check}</span>
+      {(!tardanza||tardanza.estado==="puntual")&&<span style={{color:C.green}}>{Ic.check}</span>}
+      {tardanza?.estado==="bloqueado"&&<span style={{color:C.red,fontSize:24}}>⛔</span>}
+      {tardanza?.estado==="tarde"&&<span style={{color:"#F59E0B",fontSize:24}}>⚠️</span>}
     </div>
   </div>;
 }
@@ -130,73 +158,52 @@ function ChatScreen({usuario,ctx,reload}){
       case"FICHAR_INGRESO":{
         const geo = await validarGeoFichaje(usuario);
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
-        const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(ex.length){card={type:"fichada",sub:"ingreso",hora,geoMsg:"Ya fichaste ingreso hoy"};break;}
 
-        /* ── Calcular tardanza vs grilla ── */
+        // Calcular tardanza
         const dH=DIAS_KEY[new Date().getDay()];
         const diagHoy=usuario.diagrama?.[dH];
-        let tardanzaMin=0;
-        if(diagHoy&&diagHoy.in){
+        let tardanza=null;
+        if(diagHoy){
           const [hE,mE]=diagHoy.in.split(":").map(Number);
           const ahora=new Date();
-          const esperadoMin=hE*60+mE;
-          const realMin=ahora.getHours()*60+ahora.getMinutes();
-          tardanzaMin=Math.max(0,realMin-esperadoMin);
-        }
-
-        /* >30 min tarde → solicitar permiso a gerencia */
-        if(tardanzaMin>30){
-          await sb.post("solicitudes",{
-            empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,
-            tipo:"ingreso_tardio",motivo:`Ingreso tardío: ${tardanzaMin} min después del horario (${diagHoy.in})`,
-            fecha:today,estado:"pendiente"
-          });
-          await sb.post("notificaciones",{
-            destinatario_rol:"gerencial",tipo:"solicitud",
-            asunto:`⏰ ${usuario.apodo} solicita ingresar (${tardanzaMin}min tarde)`,
-            detalle:`Horario estipulado: ${diagHoy.in}. Intenta fichar a las ${hora}. Requiere aprobación.`,
-            urgencia:"alta",solicitud_legajo:usuario.legajo
-          });
-          sendPushToLegajo("1","⏰ Solicitud de ingreso tardío",`${usuario.apodo} quiere ingresar ${tardanzaMin}min tarde. Requiere aprobación.`).catch(()=>{});
-          card={type:"ingreso_tardio_pendiente",tardanzaMin,horarioEsperado:diagHoy.in,hora};
-          break;
-        }
-
-        /* Fichar normalmente */
-        const fichadaData={
-          empleado_id:usuario.id,legajo:usuario.legajo,fecha:today,ingreso:hora,
-          geo_ingreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-        };
-        if(tardanzaMin>0) fichadaData.llegada_tarde=true;
-        await sb.post("fichadas",fichadaData);
-
-        let extraMsg="";
-        /* 1-30 min tarde → llegada tarde + control presentismo */
-        if(tardanzaMin>0){
-          /* Contar llegadas tarde del mes */
-          const mesInicio=today.slice(0,8)+"01";
-          const tardesDelMes=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${mesInicio}&fecha=lte.${today}&llegada_tarde=eq.true`);
-          const totalTardes=(tardesDelMes||[]).length;
-
-          await sb.post("notificaciones",{
-            destinatario_rol:"gerencial",tipo:"alerta",
-            asunto:`Llegada tarde de ${usuario.apodo} (+${tardanzaMin}min)`,
-            detalle:`Horario: ${diagHoy.in}. Fichó: ${hora}. Llegadas tarde en el mes: ${totalTardes}`,
-            urgencia:"normal"
-          });
-
-          if(totalTardes>=3){
-            extraMsg=`\n⚠️ Tenés ${totalTardes} llegadas tarde este mes. Perdiste el premio por presentismo.`;
-            sendPushToLegajo(String(usuario.legajo),"⚠️ Presentismo",`Tenés ${totalTardes} llegadas tarde en el mes. Perdiste el premio por presentismo.`).catch(()=>{});
-            sendPushToLegajo("1","⚠️ Presentismo perdido",`${usuario.apodo} acumula ${totalTardes} llegadas tarde. Perdió presentismo.`).catch(()=>{});
-          }else{
-            extraMsg=`\n⏰ Llegada tarde (+${tardanzaMin}min). Recordá que a la 3er llegada tarde, perdés el premio por presentismo.`;
-            sendPushToLegajo(String(usuario.legajo),"⏰ Llegada tarde",`Llegaste ${tardanzaMin}min tarde. Recordá que a la 3er llegada tarde perdés el presentismo.`).catch(()=>{});
+          const entradaProg=hE*60+mE;
+          const entradaReal=ahora.getHours()*60+ahora.getMinutes();
+          const diffMin=entradaReal-entradaProg;
+          if(diffMin>0){
+            // Contar llegadas tarde del mes
+            const mesInicio=new Date(ahora.getFullYear(),ahora.getMonth(),1).toISOString().split("T")[0];
+            let llegadasTarde=0;
+            try{
+              const fichadasMes=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${mesInicio}&fecha=lt.${today}&select=ingreso,llegada_tarde`);
+              llegadasTarde=(fichadasMes||[]).filter(f=>f.llegada_tarde===true).length;
+            }catch(e){console.error(e);}
+            llegadasTarde++; // contar esta
+            const bloqueado=llegadasTarde>=3||diffMin>30;
+            tardanza={estado:bloqueado?"bloqueado":"tarde",minutos:diffMin,llegadasTarde};
+            // Notificar a gerencia sobre tardanza
+            const urgencia=bloqueado?"alta":"normal";
+            const asunto=bloqueado?`⛔ ${usuario.apodo} BLOQUEADO — requiere permiso`:`⚠️ Llegada tarde de ${usuario.apodo}`;
+            const detalle=bloqueado
+              ?(llegadasTarde>=3?`3ra llegada tarde del mes (+${diffMin}min). Requiere autorización de gerencia.`:`Tardanza de ${diffMin} min (supera 30min de tolerancia). Requiere autorización de gerencia.`)
+              :`Llegada tarde #${llegadasTarde}: +${diffMin} min`;
+            await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto,detalle,urgencia});
+            sendPushToLegajo("1",asunto,detalle).catch(()=>{});
+            // Notificar al operario
+            await sb.post("notificaciones",{destinatario_rol:String(usuario.legajo),tipo:bloqueado?"alerta":"info",asunto:bloqueado?"⛔ Ingreso bloqueado":("⚠️ Llegada tarde: +"+diffMin+" min"),detalle:bloqueado?"Contactá a gerencia para que autorice tu ingreso.":("Llegada tarde #"+llegadasTarde+" del mes."),urgencia});
+            if(bloqueado){
+              // No registrar fichaje, requiere permiso
+              return {type:"fichada_bloqueada",msg:`⛔ Tu ingreso está bloqueado.\n\n${llegadasTarde>=3?"Acumulaste 3 llegadas tarde este mes.":"Tu tardanza supera los 30 minutos de tolerancia."}\n\nNecesitás autorización de gerencia para ingresar.`};
+            }
           }
         }
-
-        card={type:"fichada",sub:"ingreso",hora,geoMsg:(geo.msg||"")+extraMsg};
+        const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
+        if(!ex.length)await sb.post("fichadas",{
+          empleado_id:usuario.id,legajo:usuario.legajo,fecha:today,ingreso:hora,
+          llegada_tarde:tardanza?true:false,
+          minutos_tarde:tardanza?tardanza.minutos:0,
+          geo_ingreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
+        });
+        card={type:"fichada",sub:"ingreso",hora,geoMsg:geo.msg,tardanza};
         break;
       }
       case"FICHAR_EGRESO":{
@@ -227,6 +234,11 @@ function ChatScreen({usuario,ctx,reload}){
         setLoading(false);
         return;
       }
+      if (card?.type === "fichada_bloqueada") {
+        setMsgs(m=>[...m,{from:"bot",text:card.msg,time:new Date()}]);
+        setLoading(false);
+        return;
+      }
       setMsgs(m=>[...m,{from:"bot",text:clean,card,time:new Date()}]);sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"bot",mensaje:clean}).catch(()=>{});
     }catch{setMsgs(m=>[...m,{from:"bot",text:"Error de conexión. Probá de nuevo.",time:new Date()}]);}setLoading(false);};
 
@@ -236,9 +248,8 @@ function ChatScreen({usuario,ctx,reload}){
         {m.from==="bot"&&<div style={{width:30,height:30,borderRadius:10,marginRight:8,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",flexShrink:0}}>{Ic.bot}</div>}
         <div style={{maxWidth:"78%",display:"flex",flexDirection:"column",alignItems:m.from==="bot"?"flex-start":"flex-end"}}>
           <div style={{padding:"10px 14px",background:m.from==="bot"?C.surfHi:C.amber,color:m.from==="bot"?C.text:"#000",borderRadius:m.from==="bot"?"16px 16px 16px 4px":"16px 16px 4px 16px",fontSize:14,fontFamily:fB,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",border:m.from==="bot"?`1px solid ${C.border}`:"none",fontWeight:m.from==="bot"?400:500}}>{m.text}</div>
-          {m.card?.type==="fichada"&&<FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg}/>}
+          {m.card?.type==="fichada"&&<FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg} tardanza={m.card.tardanza}/>}
           {m.card?.type==="solicitud"&&<SolSentCard motivo={m.card.motivo} fecha={m.card.fecha}/>}
-          {m.card?.type==="ingreso_tardio_pendiente"&&<div style={{marginTop:8,padding:14,background:`${C.red}12`,borderRadius:14,border:`1px solid ${C.red}30`,minWidth:220}}><div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:38,height:38,borderRadius:10,background:`${C.red}25`,color:C.red,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⛔</div><div style={{flex:1}}><div style={{fontSize:11,color:C.red,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em"}}>INGRESO BLOQUEADO</div><div style={{fontSize:13,color:C.text,fontWeight:600,marginTop:4}}>Llegaste {m.card.tardanzaMin}min tarde (horario: {m.card.horarioEsperado})</div><div style={{fontSize:11,color:C.dim,marginTop:4}}>Se envió solicitud a Gerencia. Esperá la respuesta.</div></div><Tag color={C.red}>⏳ PENDIENTE</Tag></div></div>}
           {m.quickReplies&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>{m.quickReplies.map((c,j)=><button key={j} onClick={()=>handleSend(c)} style={{padding:"7px 12px",borderRadius:999,background:C.surfHi,border:`1px solid ${C.borderHi}`,color:C.text,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:fB}}>{c}</button>)}</div>}
           <span style={{fontSize:10,color:C.mute,marginTop:4,fontFamily:fM}}>{fmtTime(m.time)}</span>
         </div>
@@ -299,6 +310,39 @@ function HomeEmp({goto,usuario,ctx}){
       {[["Permiso",C.violet,Ic.history],["Tardanza",C.cyan,Ic.clock],["No vengo",C.red,Ic.alert]].map(([l,c,ic],i)=><button key={i} onClick={()=>goto("chat")} style={{background:C.surface,border:`1px solid ${C.border}`,padding:"14px 8px",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:fB}}><div style={{width:34,height:34,borderRadius:10,background:`${c}22`,color:c,display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</div><span style={{fontSize:11,color:C.text,fontWeight:600}}>{l}</span></button>)}
     </div>
 
+    {/* ═══ MI GRILLA SEMANAL ═══ */}
+    {usuario.diagrama && (() => {
+      const DIAS_G = ["lun","mar","mie","jue","vie","sab","dom"];
+      const DIAS_LABEL = {lun:"Lunes",mar:"Martes",mie:"Miércoles",jue:"Jueves",vie:"Viernes",sab:"Sábado",dom:"Domingo"};
+      const diaHoy = DIAS_KEY[new Date().getDay()];
+      const diag = usuario.diagrama;
+      let totalH = 0;
+      DIAS_G.forEach(d=>{if(diag[d]){const [hI,mI]=diag[d].in.split(":").map(Number);const [hO,mO]=diag[d].out.split(":").map(Number);totalH+=(hO*60+mO-hI*60-mI)/60;}});
+      return <>
+        <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>📅 Mi grilla semanal</h3></div>
+        <div style={{background:C.surface,borderRadius:16,padding:14,border:`1px solid ${C.border}`,marginBottom:18}}>
+          {DIAS_G.map((d,i)=>{
+            const h=diag[d];
+            const esHoy=d===diaHoy;
+            return <div key={d} style={{display:"flex",alignItems:"center",padding:"10px 8px",borderRadius:10,background:esHoy?`${C.amber}12`:"transparent",border:esHoy?`1px solid ${C.amber}30`:"1px solid transparent",marginBottom:i<6?4:0}}>
+              <div style={{width:70,fontSize:13,fontWeight:esHoy?700:500,color:esHoy?C.amber:C.text,fontFamily:fH}}>{DIAS_LABEL[d]}</div>
+              {h?<div style={{flex:1,display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontFamily:fM,fontSize:14,fontWeight:600,color:esHoy?C.text:C.dim}}>{h.in}</span>
+                <span style={{color:C.mute,fontSize:10}}>→</span>
+                <span style={{fontFamily:fM,fontSize:14,fontWeight:600,color:esHoy?C.text:C.dim}}>{h.out}</span>
+                <span style={{fontSize:10,color:C.mute,marginLeft:"auto"}}>{((parseInt(h.out.split(":")[0])*60+parseInt(h.out.split(":")[1])-parseInt(h.in.split(":")[0])*60-parseInt(h.in.split(":")[1]))/60).toFixed(1)}h</span>
+              </div>:<div style={{flex:1,fontSize:13,color:C.green,fontWeight:600}}>Franco 🎉</div>}
+              {esHoy&&<span style={{fontSize:10,color:C.amber,fontWeight:700,background:`${C.amber}22`,padding:"2px 8px",borderRadius:6,marginLeft:6}}>HOY</span>}
+            </div>;
+          })}
+          <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",fontSize:12}}>
+            <span style={{color:C.dim}}>{DIAS_G.filter(d=>diag[d]).length} días laborales</span>
+            <span style={{color:C.text,fontWeight:700,fontFamily:fM}}>{totalH.toFixed(1)}h/semana</span>
+          </div>
+        </div>
+      </>;
+    })()}
+
     {/* Mi semana */}
     <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Mi semana</h3></div>
     <div style={{background:C.surface,borderRadius:16,padding:14,border:`1px solid ${C.border}`,marginBottom:18}}>
@@ -314,36 +358,7 @@ function HomeEmp({goto,usuario,ctx}){
 /* ═══ INBOX ═══ */
 function InboxScreen({ctx,reload,usuario}){
   const [f,setF]=useState("pendiente");const filtered=(ctx.solicitudes||[]).filter(s=>f==="todas"?true:s.estado===f);const pend=(ctx.solicitudes||[]).filter(s=>s.estado==="pendiente").length;
-  const resolver=async(id,estado)=>{try{const sol=(ctx.solicitudes||[]).find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){
-    /* ── Ingreso tardío: lógica especial ── */
-    if(sol.tipo==="ingreso_tardio"){
-      const hoy=new Date().toISOString().split("T")[0];
-      if(estado==="aprobado"){
-        /* Fichar ingreso con llegada_tarde */
-        const hora=fmtTime(new Date());
-        const exF=await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=eq.${hoy}`);
-        if(!exF.length){
-          await sb.post("fichadas",{empleado_id:sol.empleado_id,legajo:sol.legajo,fecha:hoy,ingreso:hora,llegada_tarde:true});
-        }
-        /* Contar llegadas tarde del mes */
-        const mesInicio=hoy.slice(0,8)+"01";
-        const tardesDelMes=await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=gte.${mesInicio}&fecha=lte.${hoy}&llegada_tarde=eq.true`);
-        const totalTardes=(tardesDelMes||[]).length;
-        let msgPresentismo=totalTardes>=3?`Tenés ${totalTardes} llegadas tarde este mes. Perdiste el premio por presentismo.`:`Recordá que a la 3er llegada tarde, perdés el premio por presentismo.`;
-        await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Ingreso aprobado",detalle:`Se aceptó tu ingreso a planta. ${msgPresentismo}`,urgencia:"alta",solicitud_id:id});
-        sendPushToLegajo(String(sol.legajo),"✅ Ingreso aprobado",`Se aceptó tu ingreso. Llegada tarde registrada. ${msgPresentismo}`).catch(()=>{});
-        if(totalTardes>=3){sendPushToLegajo("1","⚠️ Presentismo perdido",`${sol.nombre_empleado} acumula ${totalTardes} llegadas tarde. Perdió presentismo.`).catch(()=>{});}
-      }else{
-        /* Rechazado: pierde el día */
-        await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"❌ Ingreso rechazado",detalle:`Tu solicitud de ingreso fue rechazada por ${usuario.apodo}. Perdiste el día de trabajo.`,urgencia:"alta",solicitud_id:id});
-        sendPushToLegajo(String(sol.legajo),"❌ Ingreso rechazado",`Tu ingreso fue rechazado por ${usuario.apodo}. Perdiste el día de trabajo.`).catch(()=>{});
-      }
-    }else{
-      /* ── Solicitudes normales ── */
-      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});
-      sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});
-    }
-  }reload();}catch(e){console.error(e);}};
+  const resolver=async(id,estado)=>{try{const sol=(ctx.solicitudes||[]).find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});}reload();}catch(e){console.error(e);}};
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto"}}><Chip active={f==="pendiente"} onClick={()=>setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip><Chip active={f==="aprobado"} onClick={()=>setF("aprobado")} color={C.green}>Aprobados</Chip><Chip active={f==="rechazado"} onClick={()=>setF("rechazado")} color={C.red}>Rechazados</Chip><Chip active={f==="todas"} onClick={()=>setF("todas")}>Todas</Chip></div>
     <div style={{display:"flex",flexDirection:"column",gap:12}}>{filtered.length===0?<div style={{background:C.surface,borderRadius:14,padding:40,textAlign:"center",border:`1px solid ${C.border}`}}><div style={{color:C.green,display:"inline-flex",marginBottom:12}}>{Ic.check}</div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Todo al día</div></div>:filtered.map(s=><SolCard key={s.id} s={s} showActions onResolve={resolver}/>)}</div>
@@ -405,6 +420,39 @@ export default function Home() {
       ]);
       const fHoy=fichadasHoy.map(f=>({...f,nombre:f.empleados?.nombre||""}));
       setCtx({empleados,fichadasHoy:fHoy,fichadaHoy:miFichada[0]||null,fichadasSemana,solicitudes,misSolicitudes,reglas:reglas.map(r=>r.regla),reglasRaw:reglas,notificaciones});
+
+      // ═══ AUTO-FICHAJE DE SALIDA (solo gerencial ejecuta) ═══
+      if(isGer){
+        const ahora=new Date();
+        const diaHoy=DIAS_KEY[ahora.getDay()];
+        for(const f of fHoy){
+          if(f.ingreso&&!f.egreso){
+            // Buscar empleado y su diagrama
+            const emp=(empleados||[]).find(e=>e.legajo===f.legajo);
+            if(!emp||!emp.diagrama||!emp.diagrama[diaHoy])continue;
+            const salidaProg=emp.diagrama[diaHoy].out;
+            const [hS,mS]=salidaProg.split(":").map(Number);
+            const salidaMin=hS*60+mS;
+            const ahoraMin=ahora.getHours()*60+ahora.getMinutes();
+            // Si pasaron más de 3 horas de la salida programada
+            if(ahoraMin > salidaMin + 180){
+              try{
+                // Buscar fichada completa para hacer el patch
+                const fichadaCompleta=await sb.get(`fichadas?legajo=eq.${f.legajo}&fecha=eq.${today}&select=id`);
+                if(fichadaCompleta&&fichadaCompleta.length>0&&!fichadaCompleta[0].egreso_auto){
+                  await sb.patch(`fichadas?id=eq.${fichadaCompleta[0].id}`,{egreso:salidaProg,egreso_auto:true});
+                  // Notificar al operario
+                  await sb.post("notificaciones",{destinatario_rol:String(emp.legajo),tipo:"alerta",asunto:"⏰ Salida registrada automáticamente",detalle:`Se registró tu salida de las ${salidaProg} porque no fichaste al retirarte.`,urgencia:"alta"});
+                  sendPushToLegajo(String(emp.legajo),"⏰ Salida auto-registrada",`Se fichó tu salida de las ${salidaProg} por falta de registro.`).catch(()=>{});
+                  // Notificar a gerencia
+                  await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"info",asunto:`⏰ Auto-fichaje: ${emp.apodo||emp.nombre}`,detalle:`Salida ${salidaProg} registrada automáticamente. El operario no fichó su egreso.`,urgencia:"normal"});
+                }
+              }catch(e){console.error("Auto-fichaje error:",e);}
+            }
+          }
+        }
+      }
+
       setReady(true);
     }catch(e){console.error(e);setReady(true);}
   },[usuario]);
