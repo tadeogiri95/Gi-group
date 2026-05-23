@@ -11,14 +11,8 @@ const DIVISIONES = [
   { id: "general", label: "🏭 General", color: C.violet },
 ];
 
-/* Ubicaciones preconfiguradas — se pueden agregar más */
-const UBICACIONES_PRESET = [
-  { id: "planta", label: "🏭 Planta GI — Córdoba", lat: -31.4135, lng: -64.1811, radio: 150 },
-  { id: "bariloche", label: "🏔️ Obra Bariloche", lat: -41.1335, lng: -71.3103, radio: 300 },
-  { id: "corrientes", label: "🌊 Obra Corrientes", lat: -27.4692, lng: -58.8306, radio: 300 },
-  { id: "home_office", label: "🏠 Home Office", lat: null, lng: null, radio: null },
-  { id: "custom", label: "📍 Ubicación personalizada", lat: null, lng: null, radio: 200 },
-];
+/* Ubicación especial fija (no se borra) */
+const HOME_OFFICE = { id: "home_office", label: "🏠 Home Office", lat: null, lng: null, radio: null };
 
 /* ═══ PRIMITIVAS ═══ */
 const Tag = ({ color = C.amber, children }) => (
@@ -29,11 +23,11 @@ const Chip = ({ active, onClick, children, color = C.amber }) => (
 );
 
 /* Helper: texto de ubicación */
-const fmtUbicacion = (ub) => {
+const fmtUbicacion = (ub, ubicaciones) => {
   if (!ub || !ub.activa) return "Sin control";
   if (ub.tipo === "home_office") return "🏠 Home Office";
-  const preset = UBICACIONES_PRESET.find(p => p.id === ub.tipo);
-  if (preset && preset.id !== "custom") return preset.label;
+  const found = ubicaciones.find(u => u.id === ub.tipo);
+  if (found) return `📍 ${found.label}`;
   if (ub.nombre) return `📍 ${ub.nombre}`;
   if (ub.lat && ub.lng) return `📍 ${ub.lat.toFixed(4)}, ${ub.lng.toFixed(4)}`;
   return "Sin control";
@@ -47,9 +41,9 @@ const distanciaMetros = (lat1, lng1, lat2, lng2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-/* ═══ MODAL UBICACIÓN PERSONALIZADA ═══ */
-function ModalCustom({ initial, onClose, onSave }) {
-  const [nombre, setNombre] = useState(initial?.nombre || "");
+/* ═══ MODAL UBICACIÓN (crear/editar) ═══ */
+function ModalUbicacion({ initial, onClose, onSave, titulo }) {
+  const [nombre, setNombre] = useState(initial?.nombre || initial?.label || "");
   const [lat, setLat] = useState(initial?.lat?.toString() || "");
   const [lng, setLng] = useState(initial?.lng?.toString() || "");
   const [radio, setRadio] = useState(initial?.radio?.toString() || "200");
@@ -73,11 +67,11 @@ function ModalCustom({ initial, onClose, onSave }) {
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)" }} />
       <div style={{ position: "relative", width: "100%", maxWidth: 460, background: C.bg, borderRadius: "20px 20px 0 0", padding: "20px 18px 30px", maxHeight: "85vh", overflowY: "auto", border: `1px solid ${C.border}` }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: C.mute, margin: "0 auto 16px" }} />
-        <h3 style={{ margin: "0 0 16px", fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.text }}>📍 Ubicación personalizada</h3>
+        <h3 style={{ margin: "0 0 16px", fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.text }}>{titulo || "📍 Nueva ubicación"}</h3>
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Nombre del lugar</label>
-          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Obra San Luis, Depósito Zona Norte..." style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" }} />
+          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Planta GI, Obra San Luis, Depósito Norte..." style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" }} />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
@@ -105,9 +99,126 @@ function ModalCustom({ initial, onClose, onSave }) {
 
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>Cancelar</button>
-          <button onClick={() => valid && onSave({ nombre, lat: parseFloat(lat), lng: parseFloat(lng), radio: parseInt(radio) })} disabled={!valid} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: valid ? C.green : C.surface, color: valid ? "#000" : C.mute, fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: valid ? "pointer" : "default" }}>Guardar</button>
+          <button onClick={() => valid && onSave({ nombre: nombre.trim(), lat: parseFloat(lat), lng: parseFloat(lng), radio: parseInt(radio) })} disabled={!valid} style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", background: valid ? C.green : C.surface, color: valid ? "#000" : C.mute, fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: valid ? "pointer" : "default" }}>Guardar</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══ PANEL DE GESTIÓN DE UBICACIONES ═══ */
+function PanelUbicaciones({ ubicaciones, setUbicaciones, onToast }) {
+  const [modalUb, setModalUb] = useState(null); // null | "nueva" | { editing: ubicacion }
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const agregarUbicacion = (data) => {
+    const id = "ub_" + Date.now();
+    const nueva = { id, label: data.nombre, lat: data.lat, lng: data.lng, radio: data.radio };
+    const updated = [...ubicaciones, nueva];
+    setUbicaciones(updated);
+    guardarUbicacionesEnDB(updated);
+    onToast(`✅ Ubicación "${data.nombre}" creada`, C.green);
+    setModalUb(null);
+  };
+
+  const editarUbicacion = (data) => {
+    const updated = ubicaciones.map(u =>
+      u.id === modalUb.editing.id ? { ...u, label: data.nombre, lat: data.lat, lng: data.lng, radio: data.radio } : u
+    );
+    setUbicaciones(updated);
+    guardarUbicacionesEnDB(updated);
+    onToast(`✅ Ubicación "${data.nombre}" actualizada`, C.green);
+    setModalUb(null);
+  };
+
+  const eliminarUbicacion = (ub) => {
+    const updated = ubicaciones.filter(u => u.id !== ub.id);
+    setUbicaciones(updated);
+    guardarUbicacionesEnDB(updated);
+    onToast(`🗑️ Ubicación "${ub.label}" eliminada`, C.amber);
+    setConfirmDelete(null);
+  };
+
+  const guardarUbicacionesEnDB = async (list) => {
+    try {
+      // Guardar en tabla config_sistema como JSON
+      const payload = { clave: "ubicaciones_fichaje", valor: JSON.stringify(list) };
+      // Intentar update, si no existe, insert
+      try {
+        await sb.patch("config_sistema?clave=eq.ubicaciones_fichaje", payload);
+      } catch {
+        await sb.post("config_sistema", payload);
+      }
+    } catch (e) { console.error("Error guardando ubicaciones:", e); }
+  };
+
+  return (
+    <div style={{ background: `linear-gradient(135deg, ${C.violet}08, ${C.surface})`, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>📍 Ubicaciones de fichaje</div>
+          <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Gestioná los puntos donde se puede fichar</div>
+        </div>
+        <button onClick={() => setModalUb("nueva")} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: C.green, color: "#000", fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+          + Nueva
+        </button>
+      </div>
+
+      {/* Lista de ubicaciones */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {/* Home Office (fijo) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: `${C.violet}08`, borderRadius: 10, border: `1px solid ${C.violet}15` }}>
+          <span style={{ fontSize: 18 }}>🏠</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Home Office</div>
+            <div style={{ fontSize: 10, color: C.violet, marginTop: 1 }}>Sin control de ubicación · Opción fija</div>
+          </div>
+        </div>
+
+        {ubicaciones.map(ub => (
+          <div key={ub.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: C.surfHi, borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: 18 }}>📍</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ub.label}</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: fM, marginTop: 1 }}>
+                {ub.lat?.toFixed(4)}, {ub.lng?.toFixed(4)} · Radio: {ub.radio}m
+              </div>
+            </div>
+            <button onClick={() => setModalUb({ editing: ub })} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: fB }}>✏️</button>
+            {confirmDelete === ub.id ? (
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => eliminarUbicacion(ub)} style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: fB }}>Sí</button>
+                <button onClick={() => setConfirmDelete(null)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: fB }}>No</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDelete(ub.id)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.red}30`, background: `${C.red}08`, color: C.red, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: fB }}>🗑️</button>
+            )}
+          </div>
+        ))}
+
+        {ubicaciones.length === 0 && (
+          <div style={{ padding: 16, textAlign: "center", color: C.dim, fontSize: 12, background: C.surfHi, borderRadius: 10 }}>
+            No hay ubicaciones configuradas. Creá al menos una (ej: Planta GI).
+          </div>
+        )}
+      </div>
+
+      {/* Modal crear/editar ubicación */}
+      {modalUb === "nueva" && (
+        <ModalUbicacion
+          titulo="📍 Nueva ubicación de fichaje"
+          onClose={() => setModalUb(null)}
+          onSave={agregarUbicacion}
+        />
+      )}
+      {modalUb?.editing && (
+        <ModalUbicacion
+          titulo={`✏️ Editar: ${modalUb.editing.label}`}
+          initial={{ nombre: modalUb.editing.label, lat: modalUb.editing.lat, lng: modalUb.editing.lng, radio: modalUb.editing.radio }}
+          onClose={() => setModalUb(null)}
+          onSave={editarUbicacion}
+        />
+      )}
     </div>
   );
 }
@@ -117,6 +228,7 @@ export default function GeolocalizacionScreen() {
   const [empleados, setEmpleados] = useState([]);
   const [configs, setConfigs] = useState({});       // { empId: { activa, tipo, nombre, lat, lng, radio } }
   const [original, setOriginal] = useState({});
+  const [ubicaciones, setUbicaciones] = useState([]); // Ubicaciones dinámicas desde DB
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -124,23 +236,48 @@ export default function GeolocalizacionScreen() {
   const [modo, setModo] = useState("individual");
   const [filtroDivision, setFiltroDivision] = useState("todas");
   const [expandedId, setExpandedId] = useState(null);
-  const [modalCustom, setModalCustom] = useState(null); // { empId } o { masivo: true }
+  const [modalCustom, setModalCustom] = useState(null);
 
   // Masivo
   const [seleccionados, setSeleccionados] = useState(new Set());
-  const [configMasiva, setConfigMasiva] = useState({ activa: true, tipo: "planta" });
+  const [configMasiva, setConfigMasiva] = useState({ activa: true, tipo: null });
 
   const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500); };
 
-  /* ── Cargar ── */
+  /* ── Cargar ubicaciones desde DB ── */
+  const cargarUbicaciones = useCallback(async () => {
+    try {
+      const data = await sb.get("config_sistema?clave=eq.ubicaciones_fichaje&select=valor");
+      if (data && data.length > 0 && data[0].valor) {
+        const parsed = JSON.parse(data[0].valor);
+        setUbicaciones(parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.error("Error cargando ubicaciones:", e);
+    }
+    // Default: crear Planta GI si no hay nada
+    const defaults = [
+      { id: "planta", label: "Planta GI — Córdoba", lat: -31.4135, lng: -64.1811, radio: 150 },
+    ];
+    setUbicaciones(defaults);
+    // Guardar defaults en DB
+    try {
+      await sb.post("config_sistema", { clave: "ubicaciones_fichaje", valor: JSON.stringify(defaults) });
+    } catch { /* puede ya existir */ }
+    return defaults;
+  }, []);
+
+  /* ── Cargar empleados ── */
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
+      const ubList = await cargarUbicaciones();
       const emps = await sb.get("empleados?activo=eq.true&order=nombre.asc&select=id,nombre,apodo,legajo,area,division,rol,ubicacion_fichaje");
       setEmpleados(emps || []);
       const g = {}, o = {};
       (emps || []).forEach(e => {
-        const ub = e.ubicacion_fichaje || { activa: true, tipo: "planta", lat: -31.4135, lng: -64.1811, radio: 150 };
+        const ub = e.ubicacion_fichaje || { activa: true, tipo: ubList[0]?.id || "planta", lat: ubList[0]?.lat || -31.4135, lng: ubList[0]?.lng || -64.1811, radio: ubList[0]?.radio || 150 };
         g[e.id] = { ...ub };
         o[e.id] = JSON.parse(JSON.stringify(ub));
       });
@@ -148,7 +285,8 @@ export default function GeolocalizacionScreen() {
       setOriginal(o);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, []);
+  }, [cargarUbicaciones]);
+
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
   const tieneCambios = (id) => JSON.stringify(configs[id]) !== JSON.stringify(original[id]);
@@ -159,18 +297,14 @@ export default function GeolocalizacionScreen() {
     setConfigs(p => ({ ...p, [empId]: { ...p[empId], ...updates } }));
   };
 
-  const seleccionarPreset = (empId, presetId) => {
-    if (presetId === "custom") {
-      setModalCustom({ empId });
+  const seleccionarUbicacion = (empId, ubicacionId) => {
+    if (ubicacionId === "home_office") {
+      setConfig(empId, { tipo: "home_office", nombre: "Home Office", lat: null, lng: null, radio: null, activa: true });
       return;
     }
-    const preset = UBICACIONES_PRESET.find(p => p.id === presetId);
-    if (!preset) return;
-    if (presetId === "home_office") {
-      setConfig(empId, { tipo: "home_office", nombre: "Home Office", lat: null, lng: null, radio: null, activa: true });
-    } else {
-      setConfig(empId, { tipo: presetId, nombre: preset.label.replace(/^[^\s]+\s/, ""), lat: preset.lat, lng: preset.lng, radio: preset.radio, activa: true });
-    }
+    const ub = ubicaciones.find(u => u.id === ubicacionId);
+    if (!ub) return;
+    setConfig(empId, { tipo: ubicacionId, nombre: ub.label, lat: ub.lat, lng: ub.lng, radio: ub.radio, activa: true });
   };
 
   /* ── Masivo ── */
@@ -186,16 +320,18 @@ export default function GeolocalizacionScreen() {
 
   const aplicarMasivo = () => {
     if (seleccionados.size === 0) { showToast("Seleccioná al menos un empleado", C.amber); return; }
-    const preset = UBICACIONES_PRESET.find(p => p.id === configMasiva.tipo);
-    if (configMasiva.tipo === "custom") {
-      setModalCustom({ masivo: true });
-      return;
+    if (!configMasiva.tipo) { showToast("Seleccioná una ubicación primero", C.amber); return; }
+
+    let cfg;
+    if (configMasiva.activa === false) {
+      cfg = { activa: false, tipo: null, nombre: null, lat: null, lng: null, radio: null };
+    } else if (configMasiva.tipo === "home_office") {
+      cfg = { activa: true, tipo: "home_office", nombre: "Home Office", lat: null, lng: null, radio: null };
+    } else {
+      const ub = ubicaciones.find(u => u.id === configMasiva.tipo);
+      if (!ub) { showToast("Ubicación no encontrada", C.red); return; }
+      cfg = { activa: true, tipo: ub.id, nombre: ub.label, lat: ub.lat, lng: ub.lng, radio: ub.radio };
     }
-    const cfg = configMasiva.tipo === "home_office"
-      ? { activa: configMasiva.activa, tipo: "home_office", nombre: "Home Office", lat: null, lng: null, radio: null }
-      : configMasiva.activa === false
-        ? { activa: false, tipo: null, nombre: null, lat: null, lng: null, radio: null }
-        : { activa: true, tipo: configMasiva.tipo, nombre: preset?.label?.replace(/^[^\s]+\s/, "") || "", lat: preset?.lat, lng: preset?.lng, radio: preset?.radio || 200 };
 
     setConfigs(p => {
       const c = { ...p };
@@ -230,11 +366,20 @@ export default function GeolocalizacionScreen() {
   /* ── Filtrar ── */
   const empsFiltrados = filtroDivision === "todas" ? empleados : empleados.filter(e => e.division === filtroDivision);
 
+  // Opciones para seleccionar (ubicaciones dinámicas + home office)
+  const opcionesUbicacion = [
+    ...ubicaciones.map(u => ({ ...u, icon: "📍" })),
+    { ...HOME_OFFICE, icon: "🏠" },
+  ];
+
   /* ═══ RENDER ═══ */
   return (
     <div style={{ fontFamily: fB, flex: 1, overflowY: "auto", padding: "0 18px 110px", position: "relative" }}>
 
       {toast && <div style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 999, padding: "12px 20px", borderRadius: 12, background: C.bg, border: `1px solid ${toast.color}40`, boxShadow: `0 8px 32px ${toast.color}20`, fontSize: 13, fontWeight: 600, color: toast.color, animation: "fadeIn 0.25s ease", maxWidth: "90%" }}>{toast.msg}</div>}
+
+      {/* ═══ PANEL DE GESTIÓN DE UBICACIONES ═══ */}
+      <PanelUbicaciones ubicaciones={ubicaciones} setUbicaciones={setUbicaciones} onToast={showToast} />
 
       {/* Modo toggle */}
       <div style={{ display: "flex", gap: 0, marginBottom: 14, background: C.surface, borderRadius: 12, padding: 3, border: `1px solid ${C.border}` }}>
@@ -263,9 +408,9 @@ export default function GeolocalizacionScreen() {
 
                 {configMasiva.activa && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {UBICACIONES_PRESET.map(p => (
+                    {opcionesUbicacion.map(p => (
                       <Chip key={p.id} active={configMasiva.tipo === p.id} onClick={() => setConfigMasiva(prev => ({ ...prev, tipo: p.id }))} color={C.cyan}>
-                        {p.label}
+                        {p.icon} {p.label}
                       </Chip>
                     ))}
                   </div>
@@ -338,7 +483,7 @@ export default function GeolocalizacionScreen() {
                             {changed && <Tag color={C.amber}>editado</Tag>}
                           </div>
                           <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
-                            L-{emp.legajo} · {fmtUbicacion(cfg)}
+                            L-{emp.legajo} · {fmtUbicacion(cfg, ubicaciones)}
                           </div>
                         </div>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.dim} strokeWidth="2" style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9"/></svg>
@@ -360,19 +505,19 @@ export default function GeolocalizacionScreen() {
 
                           {cfg.activa && (
                             <>
-                              {/* Presets */}
+                              {/* Ubicaciones disponibles */}
                               <div style={{ fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Ubicación asignada</div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
-                                {UBICACIONES_PRESET.map(p => {
-                                  const activo = cfg.tipo === p.id || (p.id === "custom" && cfg.tipo === "custom");
+                                {opcionesUbicacion.map(p => {
+                                  const activo = cfg.tipo === p.id;
                                   return (
-                                    <button key={p.id} onClick={() => seleccionarPreset(emp.id, p.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${activo ? `${C.amber}60` : C.border}`, background: activo ? `${C.amber}12` : "transparent", cursor: "pointer", textAlign: "left" }}>
+                                    <button key={p.id} onClick={() => seleccionarUbicacion(emp.id, p.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${activo ? `${C.amber}60` : C.border}`, background: activo ? `${C.amber}12` : "transparent", cursor: "pointer", textAlign: "left" }}>
                                       <div style={{ width: 20, height: 20, borderRadius: 10, border: `2px solid ${activo ? C.amber : C.mute}`, background: activo ? C.amber : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                                         {activo && <div style={{ width: 8, height: 8, borderRadius: 4, background: "#000" }} />}
                                       </div>
                                       <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: 13, fontWeight: 600, color: activo ? C.text : C.dim }}>{p.label}</div>
-                                        {p.id !== "custom" && p.id !== "home_office" && p.lat && (
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: activo ? C.text : C.dim }}>{p.icon} {p.label}</div>
+                                        {p.id !== "home_office" && p.lat && (
                                           <div style={{ fontSize: 10, color: C.mute, fontFamily: fM, marginTop: 2 }}>Radio: {p.radio}m</div>
                                         )}
                                       </div>
@@ -381,23 +526,14 @@ export default function GeolocalizacionScreen() {
                                 })}
                               </div>
 
-                              {/* Info de la config actual */}
-                              {cfg.tipo === "custom" && cfg.lat && (
-                                <div style={{ padding: 10, background: `${C.amber}08`, borderRadius: 10, border: `1px solid ${C.amber}20`, marginBottom: 8 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>{cfg.nombre || "Personalizada"}</div>
-                                  <div style={{ fontSize: 11, color: C.dim, fontFamily: fM, marginTop: 4 }}>{cfg.lat}, {cfg.lng} · Radio: {cfg.radio}m</div>
-                                  <button onClick={() => setModalCustom({ empId: emp.id })} style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.amber}40`, background: "transparent", color: C.amber, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: fB }}>Editar coordenadas</button>
-                                </div>
-                              )}
-
                               {cfg.tipo === "home_office" && (
                                 <div style={{ padding: 10, background: `${C.violet}08`, borderRadius: 10, border: `1px solid ${C.violet}20` }}>
                                   <div style={{ fontSize: 12, color: C.violet, fontWeight: 600 }}>🏠 Sin control de ubicación — el empleado trabaja remoto</div>
                                 </div>
                               )}
 
-                              {/* Radio customizable para presets */}
-                              {cfg.tipo && cfg.tipo !== "home_office" && cfg.tipo !== "custom" && (
+                              {/* Radio customizable para ubicaciones seleccionadas */}
+                              {cfg.tipo && cfg.tipo !== "home_office" && (
                                 <div style={{ marginTop: 8 }}>
                                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, marginBottom: 4 }}>Radio permitido: {cfg.radio || 150}m</label>
                                   <input type="range" min={50} max={500} step={25} value={cfg.radio || 150} onChange={e => setConfig(emp.id, { radio: parseInt(e.target.value) })} style={{ width: "100%", accentColor: C.amber }} />
@@ -426,28 +562,12 @@ export default function GeolocalizacionScreen() {
         </>
       )}
 
-      {/* Modal custom */}
-      {modalCustom && (
-        <ModalCustom
-          initial={modalCustom.empId ? configs[modalCustom.empId] : null}
-          onClose={() => setModalCustom(null)}
-          onSave={(data) => {
-            if (modalCustom.masivo) {
-              setConfigs(p => {
-                const c = { ...p };
-                seleccionados.forEach(id => {
-                  c[id] = { activa: true, tipo: "custom", nombre: data.nombre, lat: data.lat, lng: data.lng, radio: data.radio };
-                });
-                return c;
-              });
-              showToast(`✅ Ubicación personalizada aplicada a ${seleccionados.size} empleados`, C.green);
-            } else if (modalCustom.empId) {
-              setConfig(modalCustom.empId, { tipo: "custom", nombre: data.nombre, lat: data.lat, lng: data.lng, radio: data.radio, activa: true });
-            }
-            setModalCustom(null);
-          }}
-        />
-      )}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

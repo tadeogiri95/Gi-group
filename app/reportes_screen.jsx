@@ -300,9 +300,25 @@ export default function ReportesScreen() {
       const extras = diasData.filter(d => d.estado === "extra");
 
       const totalMinEsperados = laborales.reduce((a, d) => a + (d.minEsperados || 0), 0);
-      const totalMinReales = presentes.reduce((a, d) => a + (d.minReales || 0), 0);
+      /* Solo sumar minReales de días con egreso registrado (minReales != null) */
+      const diasConEgreso = presentes.filter(d => d.minReales != null);
+      const totalMinReales = diasConEgreso.reduce((a, d) => a + d.minReales, 0);
+      /* Para días sin egreso, estimar con tiempo transcurrido hasta ahora si es hoy */
+      const hoy = new Date().toISOString().slice(0, 10);
+      const diasSinEgreso = presentes.filter(d => d.minReales == null);
+      const minEstimadosHoy = diasSinEgreso.reduce((a, d) => {
+        const f = fichadas.find(f2 => f2.empleado_id === emp.id && f2.fecha === hoy);
+        if (f && f.ingreso) {
+          const ahora = new Date();
+          const ingMin = parseHora(f.ingreso.slice(0, 5));
+          const ahoraMin = ahora.getHours() * 60 + ahora.getMinutes();
+          return a + Math.max(0, ahoraMin - (ingMin || 0));
+        }
+        return a;
+      }, 0);
+      const totalMinRealesAjustado = totalMinReales + minEstimadosHoy;
       const pctCumplimiento = laborales.length > 0 ? Math.round((presentes.length / laborales.length) * 100) : 100;
-      const pctHoras = totalMinEsperados > 0 ? Math.round((totalMinReales / totalMinEsperados) * 100) : 100;
+      const pctHoras = totalMinEsperados > 0 ? Math.round((totalMinRealesAjustado / totalMinEsperados) * 100) : 0;
 
       return {
         emp,
@@ -313,7 +329,7 @@ export default function ReportesScreen() {
         ausencias: ausencias.length,
         extras: extras.length,
         totalMinEsperados,
-        totalMinReales,
+        totalMinReales: totalMinRealesAjustado,
         pctCumplimiento,
         pctHoras,
         totalTardanzaMin: tardanzas.reduce((a, d) => a + (d.tardanza || 0), 0),
@@ -325,7 +341,9 @@ export default function ReportesScreen() {
   const metricas = useMemo(() => {
     const total = cumplimiento.length;
     const pctPromedio = total > 0 ? Math.round(cumplimiento.reduce((a, c) => a + c.pctCumplimiento, 0) / total) : 0;
-    const pctHorasPromedio = total > 0 ? Math.round(cumplimiento.reduce((a, c) => a + c.pctHoras, 0) / total) : 0;
+    /* Solo promediar empleados que tienen horas esperadas > 0 */
+    const conHorasEsperadas = cumplimiento.filter(c => c.totalMinEsperados > 0);
+    const pctHorasPromedio = conHorasEsperadas.length > 0 ? Math.round(conHorasEsperadas.reduce((a, c) => a + c.pctHoras, 0) / conHorasEsperadas.length) : 0;
     const totalAusencias = cumplimiento.reduce((a, c) => a + c.ausencias, 0);
     const totalTardanzas = cumplimiento.reduce((a, c) => a + c.tardanzas, 0);
     const perfectos = cumplimiento.filter(c => c.pctCumplimiento === 100 && c.tardanzas === 0).length;

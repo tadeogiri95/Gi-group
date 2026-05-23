@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { C, fH, fB, fM } from "./lib/theme";
-import { sb } from "./lib/supabase";
+import { sb, SUPABASE_URL, SUPABASE_KEY } from "./lib/supabase";
 
 /* ═══ SYSTEM PROMPT PARA REPORTE DE OBRA ═══ */
 const SYSTEM_OBRA = `Sos un asistente de obra de GI Amoblamientos. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
@@ -93,13 +93,38 @@ const S = {
   }),
 };
 
+/* ═══ Helper: subir foto a Supabase Storage ═══ */
+async function subirFoto(file, reporteId) {
+  const ext = file.name.split(".").pop() || "jpg";
+  const fileName = `${reporteId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/reportes-obra/${fileName}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": file.type || "image/jpeg",
+    },
+    body: file,
+  });
+
+  if (!res.ok) {
+    // Si el bucket no existe, intentar sin él y solo guardar el nombre
+    console.error("Error subiendo foto:", await res.text());
+    return null;
+  }
+
+  // URL pública
+  return `${SUPABASE_URL}/storage/v1/object/public/reportes-obra/${fileName}`;
+}
+
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function InstaladorScreen({ usuario }) {
   const [fase, setFase] = useState("ingreso"); // ingreso | procesando | check | guardado
   const [texto, setTexto] = useState("");
-  const [fotos, setFotos] = useState([]);
+  const [fotos, setFotos] = useState([]); // Array de { file: File, preview: string, name: string }
   const [reporte, setReporte] = useState(null);
   const [error, setError] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState("");
   const fileRef = useRef(null);
 
   /* ── Audio: grabación con Web Speech API ── */
@@ -165,6 +190,25 @@ export default function InstaladorScreen({ usuario }) {
     setGrabando(false);
   };
 
+  /* ── Manejo de fotos con preview ── */
+  const agregarFotos = (files) => {
+    const nuevas = Array.from(files).map(file => ({
+      file,
+      name: file.name,
+      preview: URL.createObjectURL(file),
+    }));
+    setFotos(prev => [...prev, ...nuevas]);
+  };
+
+  const quitarFoto = (index) => {
+    setFotos(prev => {
+      const updated = prev.filter((_, i) => i !== index);
+      // Liberar URL del preview
+      if (prev[index]?.preview) URL.revokeObjectURL(prev[index].preview);
+      return updated;
+    });
+  };
+
   /* ── Llamada a la IA ── */
   const generarReporte = async () => {
     if (!texto.trim()) return;
@@ -191,10 +235,26 @@ export default function InstaladorScreen({ usuario }) {
     }
   };
 
-  /* ── Guardar en Supabase ── */
+  /* ── Guardar en Supabase (con fotos) ── */
   const confirmar = async () => {
     setFase("procesando");
+    setUploadProgress("");
     try {
+      const reporteId = `${usuario?.id || "anon"}_${Date.now()}`;
+
+      // Subir fotos
+      const fotosUrls = [];
+      if (fotos.length > 0) {
+        setUploadProgress(`Subiendo fotos... 0/${fotos.length}`);
+        for (let i = 0; i < fotos.length; i++) {
+          setUploadProgress(`Subiendo fotos... ${i + 1}/${fotos.length}`);
+          const url = await subirFoto(fotos[i].file, reporteId);
+          if (url) fotosUrls.push(url);
+        }
+      }
+
+      setUploadProgress("Guardando reporte...");
+
       await sb.post("reportes_obra", {
         usuario_id: usuario?.id || null,
         nombre: usuario?.nombre || "Instalador",
@@ -204,18 +264,23 @@ export default function InstaladorScreen({ usuario }) {
         faltantes: reporte.faltantes,
         desvios: reporte.desvios,
         fotos: fotos.length,
+        fotos_urls: fotosUrls,
         created_at: new Date().toISOString(),
       });
       setFase("guardado");
+      setUploadProgress("");
       setTimeout(() => {
         setTexto("");
         setReporte(null);
+        // Liberar previews
+        fotos.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview); });
         setFotos([]);
         setFase("ingreso");
       }, 2500);
     } catch {
       setError("Error al guardar. Intentá de nuevo.");
       setFase("check");
+      setUploadProgress("");
     }
   };
 
@@ -257,7 +322,7 @@ export default function InstaladorScreen({ usuario }) {
             />
           </div>
 
-          {/* Adjuntar fotos (UI only) */}
+          {/* Adjuntar fotos */}
           <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
             {/* Botón de audio */}
             <button
@@ -282,22 +347,33 @@ export default function InstaladorScreen({ usuario }) {
               multiple
               hidden
               onChange={(e) => {
-                if (e.target.files.length)
-                  setFotos((prev) => [...prev, ...Array.from(e.target.files).map((f) => f.name)]);
+                if (e.target.files.length) agregarFotos(e.target.files);
+                e.target.value = ""; // Reset para permitir re-selección
               }}
             />
-            {fotos.map((f, i) => (
-              <span key={i} style={{ ...S.tag(C.cyan), display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                {f.length > 18 ? f.slice(0, 15) + "…" : f}
-                <span
-                  style={{ cursor: "pointer", opacity: 0.6, fontWeight: 700 }}
-                  onClick={() => setFotos((prev) => prev.filter((_, j) => j !== i))}
-                >
-                  ✕
-                </span>
-              </span>
-            ))}
           </div>
+
+          {/* Previews de fotos */}
+          {fotos.length > 0 && (
+            <div style={{ ...S.card, padding: 12 }}>
+              <div style={{ ...S.label, marginBottom: 10 }}>📷 Fotos adjuntas ({fotos.length})</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {fotos.map((f, i) => (
+                  <div key={i} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "1", background: C.surfHi }}>
+                    <img src={f.preview} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <button
+                      onClick={() => quitarFoto(i)}
+                      style={{
+                        position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: 12,
+                        background: "rgba(0,0,0,0.7)", border: "none", color: "#fff", fontSize: 12,
+                        fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button
             style={{ ...S.btnPrimary(), opacity: texto.trim() ? 1 : 0.4 }}
@@ -315,8 +391,12 @@ export default function InstaladorScreen({ usuario }) {
       {fase === "procesando" && (
         <div style={{ ...S.card, textAlign: "center", padding: "56px 16px" }}>
           <div style={{ fontSize: 38, marginBottom: 14, animation: "spin 1.2s linear infinite" }}>⚙️</div>
-          <p style={{ margin: 0, fontSize: 17, fontFamily: fH, fontWeight: 700 }}>Analizando tu reporte...</p>
-          <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>La IA está estructurando los datos</p>
+          <p style={{ margin: 0, fontSize: 17, fontFamily: fH, fontWeight: 700 }}>
+            {uploadProgress || "Analizando tu reporte..."}
+          </p>
+          <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>
+            {uploadProgress ? "Aguardá un momento" : "La IA está estructurando los datos"}
+          </p>
           <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.5 } }`}</style>
         </div>
       )}
@@ -356,6 +436,18 @@ export default function InstaladorScreen({ usuario }) {
             </div>
           )}
 
+          {/* Fotos adjuntas en el check */}
+          {fotos.length > 0 && (
+            <div style={S.card}>
+              <div style={S.label}>📷 {fotos.length} foto{fotos.length > 1 ? "s" : ""} adjunta{fotos.length > 1 ? "s" : ""}</div>
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                {fotos.map((f, i) => (
+                  <img key={i} src={f.preview} alt={f.name} style={{ width: 80, height: 80, borderRadius: 10, objectFit: "cover", flexShrink: 0, border: `1px solid ${C.border}` }} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Mensaje doble check */}
           <div style={{ ...S.card, background: C.cyanS, border: `1px solid ${C.cyan}33` }}>
             <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: C.text }}>
@@ -385,7 +477,7 @@ export default function InstaladorScreen({ usuario }) {
         <div style={{ ...S.card, textAlign: "center", padding: "56px 16px", background: C.greenS, border: `1px solid ${C.green}33` }}>
           <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
           <p style={{ margin: 0, fontSize: 20, fontFamily: fH, fontWeight: 700, color: C.green }}>Reporte enviado</p>
-          <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>Se guardó correctamente</p>
+          <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>Se guardó correctamente{fotos.length > 0 ? ` con ${fotos.length} foto${fotos.length > 1 ? "s" : ""}` : ""}</p>
         </div>
       )}
     </div>

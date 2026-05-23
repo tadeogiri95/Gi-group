@@ -136,6 +136,158 @@ function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas }) {
 }
 
 
+/* ─── Visor de fotos fullscreen ─── */
+function FotoViewer({ fotos, index, onClose, onNav }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(0,0,0,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, width: 40, height: 40, borderRadius: 20, background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", fontSize: 20, fontWeight: 700, cursor: "pointer", zIndex: 301 }}>✕</button>
+      <div style={{ position: "relative", maxWidth: "92vw", maxHeight: "80vh" }} onClick={e => e.stopPropagation()}>
+        <img src={fotos[index]} alt={`Foto ${index + 1}`} style={{ maxWidth: "92vw", maxHeight: "80vh", objectFit: "contain", borderRadius: 12 }} />
+      </div>
+      {fotos.length > 1 && (
+        <div style={{ display: "flex", gap: 12, marginTop: 16 }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => onNav(Math.max(0, index - 1))} disabled={index === 0} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: index === 0 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.15)", color: index === 0 ? "#555" : "#fff", fontSize: 16, fontWeight: 700, cursor: index === 0 ? "default" : "pointer" }}>‹ Anterior</button>
+          <span style={{ color: "#999", fontSize: 14, display: "flex", alignItems: "center" }}>{index + 1} / {fotos.length}</span>
+          <button onClick={() => onNav(Math.min(fotos.length - 1, index + 1))} disabled={index === fotos.length - 1} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: index === fotos.length - 1 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.15)", color: index === fotos.length - 1 ? "#555" : "#fff", fontSize: 16, fontWeight: 700, cursor: index === fotos.length - 1 ? "default" : "pointer" }}>Siguiente ›</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Panel de Reportes de Obra con fotos y detalle expandible ─── */
+function ReportesObraPanel({ reportesObra }) {
+  const [expandedReport, setExpandedReport] = useState(null);
+  const [fotoViewer, setFotoViewer] = useState(null); // { fotos: [], index: 0 }
+
+  return (
+    <>
+      <div style={{
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Reportes de Obra (Hoy)</div>
+          {reportesObra.length > 0 && <Tag color={C.cyan}>{reportesObra.length} reportes</Tag>}
+        </div>
+
+        {reportesObra.length === 0 ? (
+          <div style={{ padding: 20, textAlign: "center", color: C.dim, fontSize: 12 }}>Sin reportes de obra hoy</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {reportesObra.map(r => {
+              const isExpanded = expandedReport === r.id;
+              const tieneFotos = r.fotos_urls && r.fotos_urls.length > 0;
+
+              return (
+                <div key={r.id} style={{ background: C.surfHi, borderRadius: 12, border: `1px solid ${isExpanded ? `${C.cyan}30` : C.borderHi}`, overflow: "hidden", transition: "all 0.2s" }}>
+                  {/* Header clickeable */}
+                  <div onClick={() => setExpandedReport(isExpanded ? null : r.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, cursor: "pointer" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${C.cyan}18`, color: C.cyan, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🏗️</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.nombre}</span>
+                        {tieneFotos && <Tag color={C.cyan}>📷 {r.fotos_urls.length}</Tag>}
+                        {r.faltantes?.length > 0 && <Tag color={C.red}>⚠ {r.faltantes.length}</Tag>}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                      <span style={{ fontSize: 10, color: C.dim }}>
+                        {new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.dim} strokeWidth="2" style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9" /></svg>
+                    </div>
+                  </div>
+
+                  {/* Detalle expandido */}
+                  {isExpanded && (
+                    <div style={{ padding: "0 12px 14px", borderTop: `1px solid ${C.border}` }}>
+                      {/* Progreso */}
+                      <div style={{ padding: "12px 0 8px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>✅ Progreso</div>
+                        <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>{r.progreso || "—"}</div>
+                      </div>
+
+                      {/* Faltantes */}
+                      {r.faltantes?.length > 0 && (
+                        <div style={{ padding: "8px 10px", background: `${C.red}10`, borderRadius: 10, border: `1px solid ${C.red}18`, marginBottom: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.red, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>🚫 Faltantes</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {r.faltantes.map((f, i) => (
+                              <span key={i} style={{ padding: "4px 10px", borderRadius: 8, background: `${C.red}20`, color: C.red, fontSize: 12, fontWeight: 600 }}>{f}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Desvíos */}
+                      {r.desvios?.length > 0 && (
+                        <div style={{ padding: "8px 10px", background: `${C.amber}10`, borderRadius: 10, border: `1px solid ${C.amber}18`, marginBottom: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.amber, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>⚠️ Desvíos</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {r.desvios.map((d, i) => (
+                              <span key={i} style={{ padding: "4px 10px", borderRadius: 8, background: `${C.amber}20`, color: C.amber, fontSize: 12, fontWeight: 600 }}>{d}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Texto original */}
+                      {r.texto_original && (
+                        <div style={{ padding: "8px 0" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>💬 Reporte original</div>
+                          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5, fontStyle: "italic", padding: "8px 10px", background: `${C.mute}08`, borderRadius: 8, borderLeft: `3px solid ${C.mute}30` }}>
+                            {r.texto_original}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Fotos */}
+                      {tieneFotos && (
+                        <div style={{ padding: "8px 0" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.cyan, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>📷 Fotos ({r.fotos_urls.length})</div>
+                          <div style={{ display: "grid", gridTemplateColumns: r.fotos_urls.length === 1 ? "1fr" : "repeat(2, 1fr)", gap: 8 }}>
+                            {r.fotos_urls.map((url, i) => (
+                              <div key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} style={{ cursor: "pointer", borderRadius: 10, overflow: "hidden", aspectRatio: r.fotos_urls.length === 1 ? "16/9" : "1", background: C.surface, border: `1px solid ${C.border}`, position: "relative" }}>
+                                <img src={url} alt={`Foto ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
+                                <div style={{ position: "absolute", bottom: 6, right: 6, padding: "3px 8px", borderRadius: 6, background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 10, fontWeight: 600 }}>🔍 Ampliar</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sin fotos pero dice que adjuntó */}
+                      {!tieneFotos && r.fotos > 0 && (
+                        <div style={{ padding: "8px 10px", background: `${C.mute}08`, borderRadius: 8, fontSize: 11, color: C.dim }}>
+                          📷 El instalador indicó {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Visor de fotos fullscreen */}
+      {fotoViewer && (
+        <FotoViewer
+          fotos={fotoViewer.fotos}
+          index={fotoViewer.index}
+          onClose={() => setFotoViewer(null)}
+          onNav={(i) => setFotoViewer(prev => ({ ...prev, index: i }))}
+        />
+      )}
+    </>
+  );
+}
+
+
 /* ═══════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL: DashboardGerencia
    ═══════════════════════════════════════════════════════ */
@@ -496,37 +648,8 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         </button>
       </div>
 
-      {/* ─── Reportes de Obra (Instaladores) ─── */}
-      <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid \${C.border}`, marginBottom: 14,
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Reportes de Obra (Hoy)</div>
-          {reportesObra.length > 0 && <Tag color={C.cyan}>{reportesObra.length} reportes</Tag>}
-        </div>
-
-        {reportesObra.length === 0 ? (
-          <div style={{ padding: 20, textAlign: "center", color: C.dim, fontSize: 12 }}>Sin reportes de obra hoy</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {reportesObra.map(r => (
-              <div key={r.id} style={{ padding: 12, background: C.surfHi, borderRadius: 10, border: `1px solid \${C.borderHi}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.nombre}</span>
-                  <span style={{ fontSize: 10, color: C.dim }}>
-                    {new Date(r.created_at).toLocaleTimeString("es-AR", {hour: '2-digit', minute:'2-digit'})}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>
-                  <span style={{color: C.text}}><strong>Progreso:</strong> {r.progreso}</span><br/>
-                  {r.faltantes?.length > 0 && <span style={{color: C.red}}><strong>Faltantes:</strong> {r.faltantes.join(", ")}<br/></span>}
-                  {r.desvios?.length > 0 && <span style={{color: C.amber}}><strong>Desvíos:</strong> {r.desvios.join(", ")}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* ─── Reportes de Obra (Instaladores) — con fotos y detalle ─── */}
+      <ReportesObraPanel reportesObra={reportesObra} />
 
       {/* ─── Solicitudes resumen ─── */}
       <div style={{
