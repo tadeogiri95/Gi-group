@@ -125,7 +125,7 @@ function FichadaCard({tipo,hora,geoMsg,tardanza}){
     } else {
       color="#F59E0B";bgColor="rgba(245,158,11,0.18)";
       label=`⚠️ LLEGADA TARDE — ${tardanza.minutos} min`;
-      extraMsg=`Llegada tarde #${tardanza.llegadasTarde} del mes`;
+      extraMsg=`Llegada tarde #${tardanza.llegadasTarde} del mes — Recordá: a la 3ra llegada tarde perdés el premio por presentismo`;
     }
   }
   return <div style={{marginTop:8,padding:16,background:bgColor,borderRadius:14,border:`2px solid ${color}50`,minWidth:220}}>
@@ -210,10 +210,22 @@ function ChatScreen({usuario,ctx,reload}){
         const geo = await validarGeoFichaje(usuario);
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
         const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(ex.length)await sb.patch(`fichadas?id=eq.${ex[0].id}`,{
-          egreso:hora,
-          geo_egreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-        });
+        if(ex.length){
+          // Calcular horas trabajadas con hora REAL de egreso
+          let horasTrab=null;
+          if(ex[0].ingreso){
+            const [hI,mI]=ex[0].ingreso.split(":").map(Number);
+            const ahora=new Date();
+            const minIng=hI*60+mI;
+            const minEgr=ahora.getHours()*60+ahora.getMinutes();
+            horasTrab=((minEgr-minIng)/60).toFixed(2);
+          }
+          await sb.patch(`fichadas?id=eq.${ex[0].id}`,{
+            egreso:hora,
+            horas_trabajadas:horasTrab,
+            geo_egreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
+          });
+        }
         card={type:"fichada",sub:"egreso",hora,geoMsg:geo.msg};
         break;
       }
@@ -445,10 +457,15 @@ function HomeEmp({goto,usuario,ctx}){
       </div>
     </div>
 
-    {/* Acciones rápidas */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:18}}>
-      {[["Permiso",C.violet,Ic.history],["Tardanza",C.cyan,Ic.clock],["No vengo",C.red,Ic.alert]].map(([l,c,ic],i)=><button key={i} onClick={()=>goto("chat")} style={{background:C.surface,border:`1px solid ${C.border}`,padding:"14px 8px",borderRadius:14,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,fontFamily:fB}}><div style={{width:34,height:34,borderRadius:10,background:`${c}22`,color:c,display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</div><span style={{fontSize:11,color:C.text,fontWeight:600}}>{l}</span></button>)}
-    </div>
+    {/* Botón único de acceso al bot */}
+    <button onClick={()=>goto("chat")} style={{width:"100%",padding:"16px 20px",borderRadius:16,background:`linear-gradient(135deg,${C.amber}15,${C.violet}15)`,border:`1px solid ${C.amber}30`,cursor:"pointer",display:"flex",alignItems:"center",gap:14,fontFamily:fB,marginBottom:18}}>
+      <div style={{width:44,height:44,borderRadius:14,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",flexShrink:0}}>{Ic.bot}</div>
+      <div style={{flex:1,textAlign:"left"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.text,lineHeight:1.3}}>Tocame para fichar ingreso, salida,</div>
+        <div style={{fontSize:14,fontWeight:700,color:C.text,lineHeight:1.3}}>pedir permisos o dar avisos</div>
+      </div>
+      <span style={{color:C.amber,flexShrink:0}}>{Ic.chevR}</span>
+    </button>
 
     {/* Historial de fichajes */}
     <button onClick={()=>goto("historial-fichajes")} style={{width:"100%",padding:14,borderRadius:14,background:`linear-gradient(135deg,${C.cyan}08,${C.surface})`,border:`1px solid ${C.cyan}30`,color:C.text,fontSize:13,fontWeight:600,fontFamily:fB,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
@@ -537,7 +554,26 @@ function InboxScreen({ctx,reload,usuario}){
     return 0;
   });
 
-  const resolver=async(id,estado)=>{try{const sol=solicitudes.find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});}await cargarSolicitudes();reload();}catch(e){console.error(e);}};
+  const resolver=async(id,estado)=>{try{const sol=solicitudes.find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){
+    // Si es permiso de ingreso y se aprueba, fichar automáticamente
+    const esPermisoIngreso=sol.motivo?.includes("🔓")||sol.motivo?.toLowerCase().includes("permiso de ingreso")||sol.motivo?.toLowerCase().includes("ingreso por bloqueo");
+    if(esPermisoIngreso&&estado==="aprobado"){
+      const today=new Date().toISOString().split("T")[0];
+      // Extraer hora del motivo o usar hora de creación de la solicitud
+      const matchHora=sol.motivo?.match(/\((\d{1,2}:\d{2})/);
+      const horaIngreso=matchHora?matchHora[1]:sol.desde&&sol.desde!=="—"?sol.desde:new Date(sol.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false});
+      const ex=await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=eq.${today}`);
+      if(!ex||!ex.length){
+        const emp=(ctx.empleados||[]).find(e=>e.legajo===sol.legajo);
+        await sb.post("fichadas",{empleado_id:sol.empleado_id,legajo:sol.legajo,fecha:today,ingreso:horaIngreso,llegada_tarde:true,minutos_tarde:0,permiso_ingreso:true});
+      }
+      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Ingreso APROBADO — Ya quedaste fichado",detalle:`${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`,urgencia:"alta",solicitud_id:id});
+      sendPushToLegajo(String(sol.legajo),"✅ Ingreso aprobado",`Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`).catch(()=>{});
+    } else {
+      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});
+      sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});
+    }
+  }await cargarSolicitudes();reload();}catch(e){console.error(e);}};
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",alignItems:"center"}}>
       <Chip active={f==="pendiente"} onClick={()=>setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip>
@@ -566,7 +602,7 @@ function ReglasScreen({ctx,reload,usuario}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["equipo","Equipo",Ic.users],["ger-actividad","Taller",Ic.hammer],["chat","Bot",Ic.chat]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["ger-actividad","Taller",Ic.hammer],["equipo","Equipo",Ic.users]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["chat","Bot",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
