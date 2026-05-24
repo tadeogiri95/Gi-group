@@ -52,21 +52,18 @@ const Chip = ({active,onClick,children,color=C.amber}) => <button onClick={onCli
 /* ═══ LOGIN ═══ */
 function LoginScreen({onLogin}) {
   const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [showPwd,setShowPwd]=useState(false);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
-  const [users,setUsers]=useState([]);
 
-  useEffect(()=>{
-    sb.get("empleados?select=email,nombre,apodo,rol,legajo&activo=eq.true&order=legajo.asc")
-      .then(setUsers).catch(e=>setError("Error de conexión: "+e.message));
-  },[]);
-
-  const login=async(e)=>{
-    const em=e||email; if(!em)return;
+  const login=async()=>{
+    if(!email||!password)return;
     setLoading(true);setError("");
     try{
-      const r=await sb.get(`empleados?email=eq.${encodeURIComponent(em)}&select=*`);
+      const r=await sb.get(`empleados?email=eq.${encodeURIComponent(email)}&select=*`);
       if(!r||!r.length){setError("Usuario no encontrado");setLoading(false);return;}
+      if(r[0].password!==password){setError("Contraseña incorrecta");setLoading(false);return;}
       onLogin(r[0]);
     }catch(err){setError(err.message);setLoading(false);}
   };
@@ -79,24 +76,62 @@ function LoginScreen({onLogin}) {
     <div style={{fontSize:14,color:C.dim,marginTop:6,marginBottom:32}}>Iniciá sesión en App GI</div>
     <div style={{marginBottom:14}}>
       <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Email</label>
-      <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="tunombre@gi-group.com" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
+      <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tunombre@gi-group.com" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
     </div>
-    <button onClick={()=>login()} disabled={loading||!email} style={{width:"100%",padding:14,borderRadius:12,background:email&&!loading?C.amber:C.surface,color:email&&!loading?"#000":C.mute,border:"none",fontSize:15,fontWeight:700,fontFamily:fB,cursor:email&&!loading?"pointer":"default",marginBottom:8}}>
+    <div style={{marginBottom:18}}>
+      <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Contraseña</label>
+      <div style={{position:"relative"}}>
+        <input type={showPwd?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="Ingresá tu contraseña" style={{width:"100%",padding:"14px 16px",paddingRight:48,borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
+        <button onClick={()=>setShowPwd(!showPwd)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:12,fontFamily:fB,padding:4}}>{showPwd?"Ocultar":"Ver"}</button>
+      </div>
+    </div>
+    <button onClick={login} disabled={loading||!email||!password} style={{width:"100%",padding:14,borderRadius:12,background:email&&password&&!loading?C.amber:C.surface,color:email&&password&&!loading?"#000":C.mute,border:"none",fontSize:15,fontWeight:700,fontFamily:fB,cursor:email&&password&&!loading?"pointer":"default",marginBottom:8}}>
       {loading?"Conectando...":"Iniciar sesión"}
     </button>
     {error&&<div style={{padding:12,background:C.redS,color:C.red,borderRadius:10,fontSize:12,marginTop:8}}>{error}</div>}
-    {users.length>0&&<>
-      <div style={{display:"flex",alignItems:"center",gap:12,margin:"24px 0 16px"}}>
-        <div style={{flex:1,height:1,background:C.border}}/><span style={{fontSize:11,color:C.dim,fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase"}}>O elegí un usuario</span><div style={{flex:1,height:1,background:C.border}}/>
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",maxHeight:300}}>
-        {users.map(u=><button key={u.email} onClick={()=>login(u.email)} disabled={loading} style={{display:"flex",alignItems:"center",gap:12,padding:12,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,cursor:"pointer",textAlign:"left",fontFamily:fB}}>
-          <div style={{width:36,height:36,borderRadius:10,background:u.rol==="gerencial"?C.violetS:u.rol==="administrativo"?C.cyanS:C.amberS,color:u.rol==="gerencial"?C.violet:u.rol==="administrativo"?C.cyan:C.amber,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:fH,fontSize:13,fontWeight:700}}>{u.apodo[0]}</div>
-          <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{u.apodo}</div><div style={{fontSize:11,color:C.dim,marginTop:1}}>{u.email}</div></div>
-          <Tag color={u.rol==="gerencial"?C.violet:u.rol==="administrativo"?C.cyan:C.amber}>{u.rol}</Tag>
-        </button>)}
-      </div>
-    </>}
+  </div>;
+}
+
+/* ═══ CAMBIAR CONTRASEÑA (obligatorio en primer ingreso) ═══ */
+function CambiarPasswordScreen({usuario,onDone}) {
+  const [nueva,setNueva]=useState("");
+  const [confirmar,setConfirmar]=useState("");
+  const [showPwd,setShowPwd]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+
+  const cambiar=async()=>{
+    if(!nueva||!confirmar)return;
+    if(nueva.length<4){setError("La contraseña debe tener al menos 4 caracteres");return;}
+    if(nueva!==confirmar){setError("Las contraseñas no coinciden");return;}
+    if(nueva==="gigroup2025"){setError("Elegí una contraseña distinta a la inicial");return;}
+    setLoading(true);setError("");
+    try{
+      await sb.patch(`empleados?id=eq.${usuario.id}`,{password:nueva,debe_cambiar_password:false});
+      const updated={...usuario,password:nueva,debe_cambiar_password:false};
+      onDone(updated);
+    }catch(err){setError(err.message);setLoading(false);}
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",height:"100%",padding:"0 28px",justifyContent:"center"}}>
+    <div style={{width:56,height:56,borderRadius:16,background:C.amberS,display:"flex",alignItems:"center",justifyContent:"center",color:C.amber,marginBottom:20}}>
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </div>
+    <h1 style={{margin:0,fontFamily:fH,fontSize:24,fontWeight:700,color:C.text}}>Crear tu contraseña</h1>
+    <div style={{fontSize:13,color:C.dim,marginTop:6,marginBottom:28,lineHeight:1.5}}>Hola <b style={{color:C.text}}>{usuario.apodo}</b>, es tu primer ingreso. Elegí una contraseña personal para tu cuenta.</div>
+    <div style={{marginBottom:14}}>
+      <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Nueva contraseña</label>
+      <input type={showPwd?"text":"password"} value={nueva} onChange={e=>setNueva(e.target.value)} placeholder="Mínimo 4 caracteres" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
+    </div>
+    <div style={{marginBottom:8}}>
+      <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Confirmar contraseña</label>
+      <input type={showPwd?"text":"password"} value={confirmar} onChange={e=>setConfirmar(e.target.value)} onKeyDown={e=>e.key==="Enter"&&cambiar()} placeholder="Repetí la contraseña" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
+    </div>
+    <button onClick={()=>setShowPwd(!showPwd)} style={{background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:12,fontFamily:fB,padding:"4px 0",marginBottom:16,textAlign:"left"}}>{showPwd?"🙈 Ocultar contraseñas":"👁️ Mostrar contraseñas"}</button>
+    <button onClick={cambiar} disabled={loading||!nueva||!confirmar} style={{width:"100%",padding:14,borderRadius:12,background:nueva&&confirmar&&!loading?C.amber:C.surface,color:nueva&&confirmar&&!loading?"#000":C.mute,border:"none",fontSize:15,fontWeight:700,fontFamily:fB,cursor:nueva&&confirmar&&!loading?"pointer":"default"}}>
+      {loading?"Guardando...":"Confirmar contraseña"}
+    </button>
+    {error&&<div style={{padding:12,background:C.redS,color:C.red,borderRadius:10,fontSize:12,marginTop:8}}>{error}</div>}
   </div>;
 }
 
@@ -718,6 +753,8 @@ export default function Home() {
 
     {!usuario?(
       <div style={{flex:1,overflow:"hidden"}}><LoginScreen onLogin={login}/></div>
+    ):usuario.debe_cambiar_password?(
+      <div style={{flex:1,overflow:"hidden"}}><CambiarPasswordScreen usuario={usuario} onDone={(u)=>{login(u);}}/></div>
     ):!ready?(
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:14}}>
         <div style={{color:C.amber,animation:"spin 1s linear infinite",display:"flex"}}>{Ic.refresh}</div>
