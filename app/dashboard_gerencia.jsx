@@ -415,16 +415,30 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
   }, [resumenProd]);
 
 
+  /* ─── Datos de instalaciones ─── */
+  const instaladoresActivos = empActivos.filter(e => e.area === "instalacion" || e.division === "instalaciones" || e.rol === "instalador");
+  const instaladoresPresentes = fichadasHoy.filter(f => {
+    const emp = empActivos.find(e => e.legajo === f.legajo);
+    return emp && (emp.area === "instalacion" || emp.division === "instalaciones" || emp.rol === "instalador");
+  });
+  const obrasHoy = reportesObra.length;
+  const obrasConFotos = reportesObra.filter(r => r.fotos_urls && r.fotos_urls.length > 0).length;
+  const obrasConFaltantes = reportesObra.filter(r => r.faltantes && r.faltantes.length > 0).length;
+  const obrasConDesvios = reportesObra.filter(r => r.desvios && r.desvios.length > 0).length;
+
+  /* ─── Estado expandido de paneles ─── */
+  const [panelExpanded, setPanelExpanded] = useState(null); // "taller" | "instalaciones" | null
+
   /* ═══ RENDER ═══ */
   return (
     <div style={{ fontFamily: fB, flex: 1, overflowY: "auto", padding: "0 18px 110px" }}>
 
-      {/* ─── Header con hora en vivo ─── */}
+      {/* ─── Header con fecha/hora ─── */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontSize: 13, color: C.dim }}>{fmtDate(now)} · {fmtTime(now)}</div>
-            <h2 style={{ margin: "4px 0 0", fontFamily: fH, fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Dashboard</h2>
+            <h2 style={{ margin: "4px 0 0", fontFamily: fH, fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Panel de control</h2>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <PulseDot color={C.green} />
@@ -454,216 +468,6 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
           ))}
         </div>
       )}
-
-      {/* ─── KPIs principales (4 cards) ─── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
-        {/* Asistencia */}
-        <div onClick={() => setTab("asistencia")} style={{
-          background: `linear-gradient(135deg, ${C.green}10, ${C.surface} 70%)`,
-          borderRadius: 16, padding: 14, border: `1px solid ${tab === "asistencia" ? C.green + "50" : C.border}`,
-          cursor: "pointer", position: "relative", overflow: "hidden",
-        }}>
-          <div style={{ position: "absolute", top: -30, right: -30, width: 80, height: 80, borderRadius: "50%", background: `${C.green}10`, filter: "blur(30px)" }} />
-          <div style={{ position: "relative" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.08em" }}>Asistencia</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
-              <span style={{ fontFamily: fH, fontSize: 28, fontWeight: 700, color: C.green }}>{presentes}</span>
-              <span style={{ fontSize: 13, color: C.dim }}>/ {programados}</span>
-            </div>
-            <div style={{ fontSize: 11, color: pctAsist >= 90 ? C.green : pctAsist >= 70 ? C.amber : C.red, fontWeight: 600, marginTop: 2 }}>{pctAsist}% presente</div>
-          </div>
-        </div>
-
-        {/* Producción */}
-        <div onClick={() => setTab("produccion")} style={{
-          background: `linear-gradient(135deg, ${C.amber}10, ${C.surface} 70%)`,
-          borderRadius: 16, padding: 14, border: `1px solid ${tab === "produccion" ? C.amber + "50" : C.border}`,
-          cursor: "pointer", position: "relative", overflow: "hidden",
-        }}>
-          <div style={{ position: "absolute", top: -30, right: -30, width: 80, height: 80, borderRadius: "50%", background: `${C.amber}10`, filter: "blur(30px)" }} />
-          <div style={{ position: "relative" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.08em" }}>Productividad</div>
-            <div style={{ fontFamily: fH, fontSize: 28, fontWeight: 700, color: pctColor(pctProd), marginTop: 4 }}>{pctProd}%</div>
-            <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{enActividad} trabajando · {enEspera} espera</div>
-          </div>
-        </div>
-
-        {/* Solicitudes */}
-        <div onClick={() => { setTab("solicitudes"); goto?.("solicitudes"); }} style={{
-          background: `linear-gradient(135deg, ${C.violet}10, ${C.surface} 70%)`,
-          borderRadius: 16, padding: 14, border: `1px solid ${C.border}`,
-          cursor: "pointer", position: "relative", overflow: "hidden",
-        }}>
-          <div style={{ position: "relative" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.08em" }}>Solicitudes</div>
-            <div style={{ fontFamily: fH, fontSize: 28, fontWeight: 700, color: pendientes.length > 0 ? C.amber : C.green, marginTop: 4 }}>{pendientes.length}</div>
-            <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>pendientes</div>
-          </div>
-        </div>
-
-        {/* Equipo */}
-        <div onClick={() => goto?.("equipo")} style={{
-          background: `linear-gradient(135deg, ${C.cyan}10, ${C.surface} 70%)`,
-          borderRadius: 16, padding: 14, border: `1px solid ${C.border}`,
-          cursor: "pointer", position: "relative", overflow: "hidden",
-        }}>
-          <div style={{ position: "relative" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.08em" }}>Equipo</div>
-            <div style={{ fontFamily: fH, fontSize: 28, fontWeight: 700, color: C.cyan, marginTop: 4 }}>{totalEmp}</div>
-            <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>empleados activos</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Filtro por división ─── */}
-      <div style={{ display: "flex", gap: 5, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
-        {DIVISIONES.map(d => (
-          <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color}>
-            {d.icon} {d.label}
-          </Chip>
-        ))}
-      </div>
-
-      {/* ─── Productividad por División (donuts) ─── */}
-      {division === "todas" && (
-        <div style={{
-          background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
-        }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH, marginBottom: 14 }}>Productividad por división</div>
-          <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12 }}>
-            {prodPorDiv.map(d => (
-              <DonutChart key={d.id} value={d.prod} total={d.prod + d.espera} color={d.color} size={64} strokeWidth={6} label={d.label} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ─── Asistencia semanal (bar chart) ─── */}
-      <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Asistencia semanal</div>
-          <Tag color={C.green}>{presentes} hoy</Tag>
-        </div>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <MiniBarChart
-            data={fichadasPorDia.map(d => d.count)}
-            maxVal={programados || 20}
-            color={C.green}
-            height={70}
-            barWidth={28}
-            labels={fichadasPorDia.map(d => d.label)}
-          />
-        </div>
-      </div>
-
-      {/* ─── Timeline de presentes hoy ─── */}
-      <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Jornadas hoy</div>
-          <span style={{ fontSize: 10, color: C.mute, fontFamily: fM }}>7:00 ——— 19:00</span>
-        </div>
-        {fichadasHoy.length === 0 ? (
-          <div style={{ padding: 20, textAlign: "center", color: C.dim, fontSize: 12 }}>Sin fichadas hoy</div>
-        ) : (
-          <div style={{ maxHeight: 200, overflowY: "auto" }}>
-            {fichadasHoy.map((f, i) => (
-              <TimelineRow
-                key={f.legajo || i}
-                nombre={f.nombre || `L-${f.legajo}`}
-                ingreso={f.ingreso}
-                egreso={f.egreso}
-                horasTrabajadas={f.horas_trabajadas}
-                onClick={() => goto?.("historial-fichajes", f.legajo)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ─── Producción en vivo ─── */}
-      <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Producción en vivo</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <PulseDot color={enActividad > 0 ? C.green : C.mute} size={6} />
-            <span style={{ fontSize: 11, color: C.dim }}>{enActividad} activos</span>
-          </div>
-        </div>
-
-        {/* Mini métricas de producción */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <div style={{ flex: 1, background: `\${C.green}12`, borderRadius: 10, padding: "10px 12px" }}>
-            <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Productivo</div>
-            <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green, marginTop: 2 }}>{fmtMin(totalMinProd)}</div>
-          </div>
-          <div style={{ flex: 1, background: `\${C.red}12`, borderRadius: 10, padding: "10px 12px" }}>
-            <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Espera</div>
-            <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.red, marginTop: 2 }}>{fmtMin(totalMinEspera)}</div>
-          </div>
-          <div style={{ flex: 1, background: `\${pctColor(pctProd)}12`, borderRadius: 10, padding: "10px 12px" }}>
-            <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Eficiencia</div>
-            <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: pctColor(pctProd), marginTop: 2 }}>{pctProd}%</div>
-          </div>
-        </div>
-
-        {/* Top rendimiento */}
-        {topProductivos.length > 0 && (
-          <>
-            <div style={{ fontSize: 11, color: C.dim, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Top rendimiento</div>
-            {topProductivos.map((op, i) => {
-              const pct = parseFloat(op.pct_productivo) || 0;
-              return (
-                <div key={op.empleado_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < topProductivos.length - 1 ? `1px solid \${C.border}` : "none" }}>
-                  <div style={{ width: 20, height: 20, borderRadius: 6, background: i === 0 ? C.amberS : C.surfHi, color: i === 0 ? C.amber : C.dim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, fontFamily: fM }}>{i + 1}</div>
-                  <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{op.empleado_nombre}</div>
-                  <div style={{ width: 60 }}>
-                    <div style={{ height: 4, borderRadius: 2, background: C.surfHi, overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 2, background: pctColor(pct), width: `\${Math.min(pct, 100)}%` }} />
-                    </div>
-                  </div>
-                  <span style={{ fontFamily: fM, fontSize: 12, fontWeight: 700, color: pctColor(pct), width: 36, textAlign: "right" }}>{Math.round(pct)}%</span>
-                </div>
-              );
-            })}
-          </>
-        )}
-
-        {/* Link a vista completa */}
-        <button onClick={() => goto?.("ger-actividad")} style={{
-          width: "100%", marginTop: 12, padding: 10, borderRadius: 10,
-          background: `\${C.amber}12`, border: `1px solid \${C.amber}25`, color: C.amber,
-          fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-        }}>
-          🔥 Ver detalle por operario →
-        </button>
-      </div>
-
-      {/* ─── Accesos rápidos ─── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-        {[
-          { label: "Configuración", icon: "⚙️", color: C.amber, target: "config" },
-          { label: "Taller detalle", icon: "🔥", color: C.cyan, target: "ger-actividad" },
-        ].map(item => (
-          <button key={item.target} onClick={() => goto?.(item.target)} style={{
-            background: C.surface, border: `1px solid ${C.border}`, padding: "14px 8px",
-            borderRadius: 14, cursor: "pointer", display: "flex", flexDirection: "column",
-            alignItems: "center", gap: 8, fontFamily: fB,
-          }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, background: `${item.color}22`,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
-            }}>{item.icon}</div>
-            <span style={{ fontSize: 11, color: C.text, fontWeight: 600 }}>{item.label}</span>
-          </button>
-        ))}
-      </div>
 
       {/* ─── Solicitudes resumen ─── */}
       <div style={{
@@ -716,6 +520,291 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         )}
       </div>
 
+      {/* ─── Botones Estado Taller / Estado Instalaciones ─── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+        <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")} style={{
+          background: panelExpanded === "taller" ? `${C.amber}18` : C.surface,
+          border: `1px solid ${panelExpanded === "taller" ? C.amber + "50" : C.border}`,
+          padding: "14px 8px", borderRadius: 14, cursor: "pointer",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 8, fontFamily: fB,
+        }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10, background: `${C.amber}22`,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+          }}>🔥</div>
+          <span style={{ fontSize: 11, color: panelExpanded === "taller" ? C.amber : C.text, fontWeight: 600 }}>Estado Taller</span>
+        </button>
+        <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")} style={{
+          background: panelExpanded === "instalaciones" ? `${C.cyan}18` : C.surface,
+          border: `1px solid ${panelExpanded === "instalaciones" ? C.cyan + "50" : C.border}`,
+          padding: "14px 8px", borderRadius: 14, cursor: "pointer",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 8, fontFamily: fB,
+        }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10, background: `${C.cyan}22`,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+          }}>🏗️</div>
+          <span style={{ fontSize: 11, color: panelExpanded === "instalaciones" ? C.cyan : C.text, fontWeight: 600 }}>Estado Instalaciones</span>
+        </button>
+      </div>
+
+      {/* ─── Panel expandido: Estado Taller ─── */}
+      {panelExpanded === "taller" && (
+        <div style={{
+          background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.amber}30`, marginBottom: 14,
+          animation: "fadeIn 0.2s ease",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Producción en vivo</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <PulseDot color={enActividad > 0 ? C.green : C.mute} size={6} />
+              <span style={{ fontSize: 11, color: C.dim }}>{enActividad} activos</span>
+            </div>
+          </div>
+
+          {/* Métricas de producción */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+            <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.green}12`, borderRadius: 10 }}>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green }}>{enActividad}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Trabajando</div>
+            </div>
+            <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.amber}12`, borderRadius: 10 }}>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.amber }}>{enEspera}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>En espera</div>
+            </div>
+            <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.red}12`, borderRadius: 10 }}>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.red }}>{sinTarea}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Sin tarea</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1, background: `${C.green}08`, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>T. productivo</div>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green, marginTop: 2 }}>{fmtMin(totalMinProd)}</div>
+            </div>
+            <div style={{ flex: 1, background: `${C.red}08`, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>T. espera</div>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.red, marginTop: 2 }}>{fmtMin(totalMinEspera)}</div>
+            </div>
+            <div style={{ flex: 1, background: `${pctColor(pctProd)}08`, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>% Productivo</div>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: pctColor(pctProd), marginTop: 2 }}>{pctProd}%</div>
+            </div>
+          </div>
+
+          {/* Top rendimiento */}
+          {topProductivos.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: C.dim, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Top rendimiento</div>
+              {topProductivos.map((op, i) => {
+                const pct = parseFloat(op.pct_productivo) || 0;
+                return (
+                  <div key={op.empleado_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < topProductivos.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 6, background: i === 0 ? C.amberS : C.surfHi, color: i === 0 ? C.amber : C.dim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, fontFamily: fM }}>{i + 1}</div>
+                    <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{op.empleado_nombre}</div>
+                    <div style={{ width: 60 }}>
+                      <div style={{ height: 4, borderRadius: 2, background: C.surfHi, overflow: "hidden" }}>
+                        <div style={{ height: "100%", borderRadius: 2, background: pctColor(pct), width: `${Math.min(pct, 100)}%` }} />
+                      </div>
+                    </div>
+                    <span style={{ fontFamily: fM, fontSize: 12, fontWeight: 700, color: pctColor(pct), width: 36, textAlign: "right" }}>{Math.round(pct)}%</span>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          <button onClick={() => goto?.("ger-actividad")} style={{
+            width: "100%", marginTop: 12, padding: 10, borderRadius: 10,
+            background: `${C.amber}12`, border: `1px solid ${C.amber}25`, color: C.amber,
+            fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}>
+            🔥 Ver detalle por operario →
+          </button>
+        </div>
+      )}
+
+      {/* ─── Panel expandido: Estado Instalaciones ─── */}
+      {panelExpanded === "instalaciones" && (
+        <div style={{
+          background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.cyan}30`, marginBottom: 14,
+          animation: "fadeIn 0.2s ease",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Instalaciones hoy</div>
+            <Tag color={C.cyan}>{obrasHoy} reportes</Tag>
+          </div>
+
+          {/* KPIs de instalaciones */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+            <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.cyan}12`, borderRadius: 10 }}>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.cyan }}>{obrasHoy}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Obras reportadas</div>
+            </div>
+            <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.green}12`, borderRadius: 10 }}>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green }}>{obrasConFotos}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Con fotos</div>
+            </div>
+            <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.red}12`, borderRadius: 10 }}>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: obrasConFaltantes > 0 ? C.red : C.green }}>{obrasConFaltantes}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Con faltantes</div>
+            </div>
+            <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.amber}12`, borderRadius: 10 }}>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: obrasConDesvios > 0 ? C.amber : C.green }}>{obrasConDesvios}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Con desvíos</div>
+            </div>
+          </div>
+
+          {/* Instaladores presentes */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1, background: `${C.green}08`, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Instaladores activos</div>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green, marginTop: 2 }}>{instaladoresPresentes.length}</div>
+            </div>
+            <div style={{ flex: 1, background: `${C.cyan}08`, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase" }}>Total instaladores</div>
+              <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.cyan, marginTop: 2 }}>{instaladoresActivos.length}</div>
+            </div>
+          </div>
+
+          {/* Últimos reportes de obra */}
+          <ReportesObraPanel reportesObra={reportesObra} />
+        </div>
+      )}
+
+      {/* ─── Indicadores: Asistencia diaria/semanal ─── */}
+      <div style={{
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Asistencia</div>
+          <Tag color={C.green}>{presentes}/{programados} hoy</Tag>
+        </div>
+
+        {/* Asistencia diaria */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${C.green}10`, borderRadius: 10 }}>
+            <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.green }}>{presentes}</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Presentes</div>
+          </div>
+          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${C.red}10`, borderRadius: 10 }}>
+            <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: ausentes > 0 ? C.red : C.green }}>{ausentes}</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Ausentes</div>
+          </div>
+          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${pctColor(pctAsist)}10`, borderRadius: 10 }}>
+            <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: pctColor(pctAsist) }}>{pctAsist}%</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Cumplimiento</div>
+          </div>
+        </div>
+
+        {/* Asistencia semanal bar chart */}
+        <div style={{ fontSize: 11, color: C.dim, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Asistencia semanal</div>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <MiniBarChart
+            data={fichadasPorDia.map(d => d.count)}
+            maxVal={programados || 20}
+            color={C.green}
+            height={70}
+            barWidth={28}
+            labels={fichadasPorDia.map(d => d.label)}
+          />
+        </div>
+      </div>
+
+      {/* ─── Productividad divisional/general ─── */}
+      <div style={{
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Productividad</div>
+          <Tag color={pctColor(pctProd)}>{pctProd}% general</Tag>
+        </div>
+
+        {/* General */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${C.amber}10`, borderRadius: 10 }}>
+            <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: pctColor(pctProd) }}>{pctProd}%</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>General</div>
+          </div>
+          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${C.green}10`, borderRadius: 10 }}>
+            <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.green }}>{enActividad}</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Trabajando</div>
+          </div>
+          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${C.red}10`, borderRadius: 10 }}>
+            <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.amber }}>{enEspera + sinTarea}</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Inactivos</div>
+          </div>
+        </div>
+
+        {/* Por división (donuts) */}
+        <div style={{ fontSize: 11, color: C.dim, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Por división</div>
+        <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12 }}>
+          {prodPorDiv.map(d => (
+            <DonutChart key={d.id} value={d.prod} total={d.prod + d.espera} color={d.color} size={64} strokeWidth={6} label={d.label} />
+          ))}
+        </div>
+      </div>
+
+      {/* ─── Equipo ─── */}
+      <div style={{
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Equipo</div>
+          <Tag color={C.cyan}>{totalEmp} activos</Tag>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          {DIVISIONES.filter(d => d.id !== "todas").map(d => {
+            const count = empActivos.filter(e => e.division === d.id).length;
+            return (
+              <div key={d.id} style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: `${d.color}10`, borderRadius: 10 }}>
+                <div style={{ fontSize: 14 }}>{d.icon}</div>
+                <div style={{ fontFamily: fM, fontSize: 14, fontWeight: 700, color: d.color, marginTop: 2 }}>{count}</div>
+                <div style={{ fontSize: 8, color: C.dim, fontWeight: 600, marginTop: 1 }}>{d.label}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button onClick={() => goto?.("equipo")} style={{
+          width: "100%", padding: 10, borderRadius: 10,
+          background: `${C.cyan}12`, border: `1px solid ${C.cyan}25`, color: C.cyan,
+          fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+        }}>
+          👥 Gestión de personal →
+        </button>
+      </div>
+
+      {/* ─── Jornadas hoy ─── */}
+      <div style={{
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Jornadas hoy</div>
+          <span style={{ fontSize: 10, color: C.mute, fontFamily: fM }}>7:00 ——— 19:00</span>
+        </div>
+        {fichadasHoy.length === 0 ? (
+          <div style={{ padding: 20, textAlign: "center", color: C.dim, fontSize: 12 }}>Sin fichadas hoy</div>
+        ) : (
+          <div style={{ maxHeight: 200, overflowY: "auto" }}>
+            {fichadasHoy.map((f, i) => (
+              <TimelineRow
+                key={f.legajo || i}
+                nombre={f.nombre || `L-${f.legajo}`}
+                ingreso={f.ingreso}
+                egreso={f.egreso}
+                horasTrabajadas={f.horas_trabajadas}
+                onClick={() => goto?.("historial-fichajes", f.legajo)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ─── Footer info ─── */}
       <div style={{ textAlign: "center", padding: "8px 0 12px" }}>
         <div style={{ fontSize: 10, color: C.mute }}>
@@ -727,6 +816,10 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.4; transform: scale(1.5); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>

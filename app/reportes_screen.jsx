@@ -374,7 +374,7 @@ function ReportesObraTab() {
    COMPONENTE PRINCIPAL
    ═══════════════════════════════════════════════════════ */
 export default function ReportesScreen() {
-  const [tab, setTab] = useState("cumplimiento"); // cumplimiento | reportes
+  const [tab, setTab] = useState("cumplimiento"); // cumplimiento | reportes (sin obra)
   const [periodo, setPeriodo] = useState("semana"); // semana | mes
   const [weekOffset, setWeekOffset] = useState(0);
   const [mesYear, setMesYear] = useState(new Date().getFullYear());
@@ -566,10 +566,9 @@ export default function ReportesScreen() {
         }}>{toast.msg}</div>
       )}
 
-      {/* Tabs: Cumplimiento / Reportes */}
+      {/* Tabs: Cumplimiento / Exportar */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={C.amber}>📊 Cumplimiento</Chip>
-        <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={C.cyan}>🏗️ Obra</Chip>
         <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={C.violet}>📥 Exportar</Chip>
       </div>
 
@@ -734,9 +733,6 @@ export default function ReportesScreen() {
             </div>
           )}
         </>
-      ) : tab === "obra" ? (
-        /* ═══ TAB: REPORTES DE OBRA ═══ */
-        <ReportesObraTab />
       ) : (
         <>
           <div style={{
