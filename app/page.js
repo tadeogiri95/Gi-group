@@ -51,18 +51,18 @@ const Chip = ({active,onClick,children,color=C.amber}) => <button onClick={onCli
 
 /* ═══ LOGIN ═══ */
 function LoginScreen({onLogin}) {
-  const [email,setEmail]=useState("");
+  const [legajo,setLegajo]=useState("");
   const [password,setPassword]=useState("");
   const [showPwd,setShowPwd]=useState(false);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
 
   const login=async()=>{
-    if(!email||!password)return;
+    if(!legajo||!password)return;
     setLoading(true);setError("");
     try{
-      const r=await sb.get(`empleados?email=eq.${encodeURIComponent(email)}&select=*`);
-      if(!r||!r.length){setError("Usuario no encontrado");setLoading(false);return;}
+      const r=await sb.get(`empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&select=*`);
+      if(!r||!r.length){setError("Legajo no encontrado");setLoading(false);return;}
       if(r[0].password!==password){setError("Contraseña incorrecta");setLoading(false);return;}
       onLogin(r[0]);
     }catch(err){setError(err.message);setLoading(false);}
@@ -75,8 +75,8 @@ function LoginScreen({onLogin}) {
     <h1 style={{margin:0,fontFamily:fH,fontSize:30,fontWeight:700,color:C.text,letterSpacing:"-0.025em"}}>Bienvenido</h1>
     <div style={{fontSize:14,color:C.dim,marginTop:6,marginBottom:32}}>Iniciá sesión en App GI</div>
     <div style={{marginBottom:14}}>
-      <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Email</label>
-      <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tunombre@gi-group.com" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
+      <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Legajo / DNI</label>
+      <input value={legajo} onChange={e=>setLegajo(e.target.value)} inputMode="numeric" placeholder="Ingresá tu número de legajo" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
     </div>
     <div style={{marginBottom:18}}>
       <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Contraseña</label>
@@ -85,7 +85,7 @@ function LoginScreen({onLogin}) {
         <button onClick={()=>setShowPwd(!showPwd)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:12,fontFamily:fB,padding:4}}>{showPwd?"Ocultar":"Ver"}</button>
       </div>
     </div>
-    <button onClick={login} disabled={loading||!email||!password} style={{width:"100%",padding:14,borderRadius:12,background:email&&password&&!loading?C.amber:C.surface,color:email&&password&&!loading?"#000":C.mute,border:"none",fontSize:15,fontWeight:700,fontFamily:fB,cursor:email&&password&&!loading?"pointer":"default",marginBottom:8}}>
+    <button onClick={login} disabled={loading||!legajo||!password} style={{width:"100%",padding:14,borderRadius:12,background:legajo&&password&&!loading?C.amber:C.surface,color:legajo&&password&&!loading?"#000":C.mute,border:"none",fontSize:15,fontWeight:700,fontFamily:fB,cursor:legajo&&password&&!loading?"pointer":"default",marginBottom:8}}>
       {loading?"Conectando...":"Iniciar sesión"}
     </button>
     {error&&<div style={{padding:12,background:C.redS,color:C.red,borderRadius:10,fontSize:12,marginTop:8}}>{error}</div>}
