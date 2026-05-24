@@ -645,12 +645,29 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         </button>
       </div>
 
-      {/* ─── Reportes de Obra (Instaladores) — con fotos y detalle ─── */}
-      <ReportesObraPanel reportesObra={reportesObra} />
+      {/* ─── Accesos rápidos ─── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+        {[
+          { label: "Configuración", icon: "⚙️", color: C.amber, target: "config" },
+          { label: "Taller detalle", icon: "🔥", color: C.cyan, target: "ger-actividad" },
+        ].map(item => (
+          <button key={item.target} onClick={() => goto?.(item.target)} style={{
+            background: C.surface, border: `1px solid ${C.border}`, padding: "14px 8px",
+            borderRadius: 14, cursor: "pointer", display: "flex", flexDirection: "column",
+            alignItems: "center", gap: 8, fontFamily: fB,
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: `${item.color}22`,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+            }}>{item.icon}</div>
+            <span style={{ fontSize: 11, color: C.text, fontWeight: 600 }}>{item.label}</span>
+          </button>
+        ))}
+      </div>
 
       {/* ─── Solicitudes resumen ─── */}
       <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid \${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Solicitudes</div>
@@ -658,15 +675,15 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `\${C.amber}12`, borderRadius: 10 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.amber}12`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.amber }}>{pendientes.length}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Pendientes</div>
           </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `\${C.green}12`, borderRadius: 10 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.green}12`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.green }}>{aprobadas.length}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Aprobadas</div>
           </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `\${C.red}12`, borderRadius: 10 }}>
+          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.red}12`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.red }}>{rechazadas.length}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Rechazadas</div>
           </div>
@@ -676,7 +693,7 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         {pendientes.slice(0, 3).map(s => (
           <div key={s.id} style={{
             display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
-            borderBottom: `1px solid \${C.border}`,
+            borderBottom: `1px solid ${C.border}`,
           }}>
             <div style={{ width: 6, height: 6, borderRadius: 3, background: C.amber, flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -690,35 +707,13 @@ export default function DashboardGerencia({ goto, ctx, reload }) {
         {pendientes.length > 0 && (
           <button onClick={() => goto?.("solicitudes")} style={{
             width: "100%", marginTop: 10, padding: 10, borderRadius: 10,
-            background: `\${C.violet}12`, border: `1px solid \${	C.violet}25`, color: C.violet,
+            background: `${C.violet}12`, border: `1px solid ${C.violet}25`, color: C.violet,
             fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
           }}>
             📋 Gestionar solicitudes →
           </button>
         )}
-      </div>
-
-      {/* ─── Accesos rápidos ─── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-        {[
-          { label: "Horarios", icon: "📅", color: C.cyan, target: "grilla-horario" },
-          { label: "Ubicaciones", icon: "📍", color: C.green, target: "geolocalizacion" },
-          { label: "Calendario", icon: "🗓️", color: C.violet, target: "calendario" },
-          { label: "Reglas Bot", icon: "⚙️", color: C.amber, target: "reglas" },
-        ].map(item => (
-          <button key={item.target} onClick={() => goto?.(item.target)} style={{
-            background: C.surface, border: `1px solid \${C.border}`, padding: "14px 8px",
-            borderRadius: 14, cursor: "pointer", display: "flex", flexDirection: "column",
-            alignItems: "center", gap: 8, fontFamily: fB,
-          }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, background: `\${item.color}22`,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
-            }}>{item.icon}</div>
-            <span style={{ fontSize: 11, color: C.text, fontWeight: 600 }}>{item.label}</span>
-          </button>
-        ))}
       </div>
 
       {/* ─── Footer info ─── */}
