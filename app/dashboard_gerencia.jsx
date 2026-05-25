@@ -7,31 +7,12 @@ import { sb } from "./lib/supabase";
    ═══════════════════════════════════════════════════════ */
 
 /* ─── Constantes ─── */
-const DIVISIONES = [
-  { id: "todas", label: "Todas", icon: "📊", color: C.amber },
-  { id: "herreria", label: "Herrería", icon: "🔥", color: C.amber },
-  { id: "muebles", label: "Muebles", icon: "🪵", color: C.green },
-  { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
-  { id: "general", label: "General", icon: "🏭", color: C.violet },
-];
+import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
 
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 
-/* ─── Primitivas UI ─── */
-const Tag = ({ color = C.amber, children, style = {} }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: `${color}22`, color, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: fB, ...style }}>{children}</span>
-);
-
-const Chip = ({ active, onClick, children, color = C.amber }) => (
-  <button onClick={onClick} style={{
-    padding: "7px 12px", borderRadius: 20, border: "none", cursor: "pointer",
-    background: active ? `${color}22` : C.surface,
-    color: active ? color : C.dim,
-    fontSize: 11, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap",
-    transition: "all 0.15s",
-  }}>{children}</button>
-);
+import { Tag, Chip } from "./components/ui";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {

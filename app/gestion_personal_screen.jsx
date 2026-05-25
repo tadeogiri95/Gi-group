@@ -1,18 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { C, fH, fB, fM, DIAS_KEY } from "./lib/theme";
 import { sb } from "./lib/supabase";
+import { Tag, Chip } from "./components/ui";
 
 /* ═══ CONSTANTES ═══ */
 const SHEETS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vROiNEjVuRZ8-xzAq22s3ZtyQExct1dFDHW5dVEQ3XGr6jc2_TfDngkwBYNYK33ZQ7PRJfgJdoOrGZM/pub?gid=1438199642&single=true&output=csv";
 
-const DIVISIONES = [
-  { id: "", label: "Sin asignar" },
-  { id: "herreria", label: "Herrería", icon: "🔥", color: C.amber },
-  { id: "muebles", label: "Muebles", icon: "🪵", color: C.green },
-  { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
-  { id: "general", label: "General", icon: "🏭", color: C.violet },
-];
+import { DIVISIONES_CON_SIN_ASIGNAR as DIVISIONES } from "./lib/constants";
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
 const SECTOR_DIV_MAP = {
@@ -24,9 +19,7 @@ const SECTOR_DIV_MAP = {
 const TIPO_MO_MAP = { MOD: "produccion", MOI: "administracion" };
 
 /* ═══ PRIMITIVAS ═══ */
-const Tag = ({ color = C.amber, children }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: `${color}22`, color, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: fB }}>{children}</span>
-);
+
 const Chip = ({ active, onClick, children, color = C.amber }) => (
   <button onClick={onClick} style={{ padding: "8px 14px", borderRadius: 20, border: "none", cursor: "pointer", background: active ? `${color}22` : C.surface, color: active ? color : C.dim, fontSize: 12, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap", transition: "all 0.15s" }}>{children}</button>
 );

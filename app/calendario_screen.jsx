@@ -1,19 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { C, fH, fB, fM, DIAS_KEY } from "./lib/theme";
 import { sb } from "./lib/supabase";
+import { Tag, Chip } from "./components/ui";
 
 /* ═══ CONSTANTES ═══ */
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-const DIVISIONES = [
-  { id: "todas", label: "Todas" },
-  { id: "herreria", label: "🔥 Herrería", color: C.amber },
-  { id: "muebles", label: "🪵 Muebles", color: C.green },
-  { id: "aberturas", label: "🪟 Aberturas", color: C.cyan },
-  { id: "general", label: "🏭 General", color: C.violet },
-];
+import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
 
 const Tag = ({ color = C.amber, children }) => (
   <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 6px", borderRadius: 4, background: `${color}22`, color, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: fB }}>{children}</span>

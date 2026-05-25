@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { C, fH, fB, fM } from "./lib/theme";
 import { sb } from "./lib/supabase";
+import { Tag, Chip } from "./components/ui";
 
 /* ═══ CONSTANTES ═══ */
 const DIAS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
@@ -9,18 +10,10 @@ const DIAS_FULL = { lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves
 const DEFAULT_IN = "08:30";
 const DEFAULT_OUT = "17:30";
 
-const DIVISIONES = [
-  { id: "todas", label: "Todos" },
-  { id: "herreria", label: "🔥 Herrería", color: C.amber },
-  { id: "muebles", label: "🪵 Muebles", color: C.green },
-  { id: "aberturas", label: "🪟 Aberturas", color: C.cyan },
-  { id: "general", label: "🏭 General", color: C.violet },
-];
+import { DIVISIONES_CON_TODOS as DIVISIONES } from "./lib/constants";
 
 /* ═══ PRIMITIVAS ═══ */
-const Tag = ({ color = C.amber, children }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: `${color}22`, color, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: fB }}>{children}</span>
-);
+
 const Chip = ({ active, onClick, children, color = C.amber }) => (
   <button onClick={onClick} style={{ padding: "7px 12px", borderRadius: 20, border: "none", cursor: "pointer", background: active ? `${color}22` : C.surface, color: active ? color : C.dim, fontSize: 11, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap", transition: "all 0.15s" }}>{children}</button>
 );

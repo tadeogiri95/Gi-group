@@ -1,22 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { C, fH, fB, fM, fmtTime } from "./lib/theme";
 import { sb } from "./lib/supabase";
+import { Tag, Chip } from "./components/ui";
 
 /* ═══ CONSTANTES ═══ */
-const DIVISIONES = [
-  { id: "todas", label: "Todas" },
-  { id: "herreria", label: "Herrería", icon: "🔥", color: C.amber },
-  { id: "muebles", label: "Muebles", icon: "🪵", color: C.green },
-  { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
-  { id: "general", label: "General", icon: "🏭", color: C.violet },
-];
+import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
 
 const CAUSAS_MAP = { M: "Falta material", H: "Falta herramienta", I: "Indicación", O: "Otro" };
 const TIPOS_MAP = { N: { nombre: "Normal", color: C.green }, R: { nombre: "Retrabajo", color: C.red }, E: { nombre: "Error", color: C.amber }, C: { nombre: "Cambio", color: C.violet } };
 
-const Tag = ({ color = C.amber, children, style = {} }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: `${color}22`, color, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: fB, ...style }}>{children}</span>
-);
+
 
 const Chip = ({ active, onClick, children, color = C.amber }) => (
   <button onClick={onClick} style={{

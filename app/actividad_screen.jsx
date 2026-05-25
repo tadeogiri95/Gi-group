@@ -16,7 +16,7 @@ const CAUSAS = [
 ];
 
 /* ═══ HELPERS ═══ */
-const fmtTime = (d) => d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+import { fmtTime } from "./lib/theme";
 const fmtElapsed = (seconds) => {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -24,10 +24,7 @@ const fmtElapsed = (seconds) => {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 };
 
-/* ═══ TAG ═══ */
-const Tag = ({ color = C.amber, children, style = {} }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, background: `${color}22`, color, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: fB, ...style }}>{children}</span>
-);
+import { Tag } from "./components/ui";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {

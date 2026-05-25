@@ -3,13 +3,7 @@ import { C, fH, fB, fM } from "./lib/theme";
 import { sb } from "./lib/supabase";
 
 /* ═══ CONSTANTES ═══ */
-const DIVISIONES = [
-  { id: "todas", label: "Todos" },
-  { id: "herreria", label: "🔥 Herrería", color: C.amber },
-  { id: "muebles", label: "🪵 Muebles", color: C.green },
-  { id: "aberturas", label: "🪟 Aberturas", color: C.cyan },
-  { id: "general", label: "🏭 General", color: C.violet },
-];
+import { DIVISIONES_CON_TODOS as DIVISIONES } from "./lib/constants";
 
 /* Ubicación especial fija (no se borra) */
 const HOME_OFFICE = { id: "home_office", label: "🏠 Home Office", lat: null, lng: null, radio: null };

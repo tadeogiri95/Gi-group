@@ -12,13 +12,7 @@ const DIAS_LABEL = { lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie"
 const DIAS_SEMANA_JS = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-const DIVISIONES = [
-  { id: "todas", label: "Todos" },
-  { id: "herreria", label: "🔥 Herrería", color: C.amber },
-  { id: "muebles", label: "🪵 Muebles", color: C.green },
-  { id: "aberturas", label: "🪟 Aberturas", color: C.cyan },
-  { id: "general", label: "🏭 General", color: C.violet },
-];
+import { DIVISIONES_CON_TODOS as DIVISIONES } from "./lib/constants";
 
 /* ─── Primitivas UI ─── */
 const Tag = ({ color = C.amber, children, style = {} }) => (
