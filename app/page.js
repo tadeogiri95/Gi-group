@@ -61,10 +61,14 @@ function LoginScreen({onLogin}) {
     if(!legajo||!password)return;
     setLoading(true);setError("");
     try{
-      const r=await sb.get(`empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&select=*`);
-      if(!r||!r.length){setError("Legajo no encontrado");setLoading(false);return;}
-      if(r[0].password!==password){setError("Contraseña incorrecta");setLoading(false);return;}
-      onLogin(r[0]);
+      const res=await fetch("/api/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({legajo:legajo.trim(),password}),
+      });
+      const data=await res.json();
+      if(!res.ok||data.error){setError(data.error||"Error de conexión");setLoading(false);return;}
+      onLogin(data.usuario);
     }catch(err){setError(err.message);setLoading(false);}
   };
 
@@ -107,9 +111,14 @@ function CambiarPasswordScreen({usuario,onDone}) {
     if(nueva==="gigroup2025"){setError("Elegí una contraseña distinta a la inicial");return;}
     setLoading(true);setError("");
     try{
-      await sb.patch(`empleados?id=eq.${usuario.id}`,{password:nueva,debe_cambiar_password:false});
-      const updated={...usuario,password:nueva,debe_cambiar_password:false};
-      onDone(updated);
+      const res=await fetch("/api/login",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"cambiar_password",userId:usuario.id,nuevaPassword:nueva}),
+      });
+      const data=await res.json();
+      if(!res.ok||data.error){setError(data.error||"Error al cambiar");setLoading(false);return;}
+      onDone(data.usuario);
     }catch(err){setError(err.message);setLoading(false);}
   };
 
@@ -670,9 +679,9 @@ export default function Home() {
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division}:null);
 
-  useEffect(()=>{try{const s=localStorage.getItem("gi-user");if(s)setUsuario(JSON.parse(s));}catch{}setInit(true);},[]);
-  const login=u=>{setUsuario(u);try{localStorage.setItem("gi-user",JSON.stringify(u));}catch{}};
-  const logout=()=>{setUsuario(null);setScreen("home");try{localStorage.removeItem("gi-user");}catch{}};
+  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);setUsuario(parsed);}}catch{}setInit(true);},[]);
+  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));}catch{}};
+  const logout=()=>{setUsuario(null);setScreen("home");try{localStorage.removeItem("gi-session");}catch{}};
 
   const loadData=useCallback(async()=>{
     if(!usuario)return;
