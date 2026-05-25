@@ -677,8 +677,8 @@ export default function Home() {
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division}:null);
 
-  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);setUsuario(parsed);}}catch{}setInit(true);},[]);
-  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));}catch{}};
+  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
+  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{}};
   const logout=()=>{setUsuario(null);setScreen("home");try{localStorage.removeItem("gi-session");}catch{}};
 
   const loadData=useCallback(async()=>{
@@ -700,44 +700,12 @@ export default function Home() {
       const fHoy=fichadasHoy.map(f=>({...f,nombre:f.empleados?.nombre||""}));
       setCtx({empleados,fichadasHoy:fHoy,fichadaHoy:miFichada[0]||null,fichadasSemana,solicitudes,misSolicitudes,reglas:reglas.map(r=>r.regla),reglasRaw:reglas,notificaciones});
 
-      // ═══ AUTO-FICHAJE DE SALIDA (solo gerencial ejecuta) ═══
-      if(isGer){
-        const ahora=new Date();
-        const diaHoy=DIAS_KEY[ahora.getDay()];
-        for(const f of fHoy){
-          if(f.ingreso&&!f.egreso){
-            // Buscar empleado y su diagrama
-            const emp=(empleados||[]).find(e=>e.legajo===f.legajo);
-            if(!emp||!emp.diagrama||!emp.diagrama[diaHoy])continue;
-            const salidaProg=emp.diagrama[diaHoy].out;
-            const [hS,mS]=salidaProg.split(":").map(Number);
-            const salidaMin=hS*60+mS;
-            const ahoraMin=ahora.getHours()*60+ahora.getMinutes();
-            // Si pasaron más de 3 horas de la salida programada
-            if(ahoraMin > salidaMin + 180){
-              try{
-                // Buscar fichada completa para hacer el patch
-                const fichadaCompleta=await sb.get(`fichadas?legajo=eq.${f.legajo}&fecha=eq.${today}&select=id`);
-                if(fichadaCompleta&&fichadaCompleta.length>0&&!fichadaCompleta[0].egreso_auto){
-                  await sb.patch(`fichadas?id=eq.${fichadaCompleta[0].id}`,{egreso:salidaProg,egreso_auto:true});
-                  // Notificar al operario
-                  await sb.post("notificaciones",{destinatario_rol:String(emp.legajo),tipo:"alerta",asunto:"⏰ Salida registrada automáticamente",detalle:`Se registró tu salida de las ${salidaProg} porque no fichaste al retirarte.`,urgencia:"alta"});
-                  sendPushToLegajo(String(emp.legajo),"⏰ Salida auto-registrada",`Se fichó tu salida de las ${salidaProg} por falta de registro.`).catch(()=>{});
-                  // Notificar a gerencia
-                  await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"info",asunto:`⏰ Auto-fichaje: ${emp.apodo||emp.nombre}`,detalle:`Salida ${salidaProg} registrada automáticamente. El operario no fichó su egreso.`,urgencia:"normal"});
-                }
-              }catch(e){console.error("Auto-fichaje error:",e);}
-            }
-          }
-        }
-      }
-
       setReady(true);
     }catch(e){console.error(e);setReady(true);}
   },[usuario]);
 
   useEffect(()=>{if(usuario){setReady(false);loadData();}},[usuario,loadData]);
-  useEffect(()=>{if(!usuario)return;const t=setInterval(loadData,15000);return()=>clearInterval(t);},[usuario,loadData]);
+  useEffect(()=>{if(!usuario)return;const t=setInterval(loadData,60000);return()=>clearInterval(t);},[usuario,loadData]);
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),30000);return()=>clearInterval(t);},[]);
 
   const isGer=usuario&&(usuario.rol==="gerencial"||usuario.rol==="administrativo");
