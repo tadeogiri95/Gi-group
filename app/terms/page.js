@@ -14,7 +14,7 @@ export default function TermsOfService() {
       <h1 style={S.h1}>Términos y Condiciones de Uso</h1>
       <p style={S.date}>Última actualización: 25 de mayo de 2026</p>
 
-      <p style={S.p}>Estos términos regulan el uso de la aplicación GI Group RRHH ("la App"), operada por GI Amoblamientos SRL. Al usar la App, aceptás estos términos.</p>
+      <p style={S.p}>Estos términos regulan el uso de la aplicación Gypi (Gestión y productividad industrial) ("la App"), operada por Gypi Software. Al usar la App, aceptás estos términos.</p>
 
       <h2 style={S.h2}>1. Descripción del servicio</h2>
       <p style={S.p}>La App es una herramienta de gestión de recursos humanos que permite a las empresas administrar fichaje de asistencia, registro de actividades, reportes de obra y comunicación interna.</p>
@@ -26,7 +26,7 @@ export default function TermsOfService() {
       <p style={S.p}>Te comprometés a:{"\n"}• Usar la App solo para fines laborales legítimos.{"\n"}• No intentar acceder a datos de otros usuarios.{"\n"}• No modificar, descompilar o realizar ingeniería inversa de la App.{"\n"}• No usar la App para actividades ilegales o no autorizadas.{"\n"}• Proporcionar información veraz en los reportes y registros.</p>
 
       <h2 style={S.h2}>4. Propiedad intelectual</h2>
-      <p style={S.p}>Todos los derechos de propiedad intelectual sobre la App, incluyendo código fuente, diseño, marcas y contenido, pertenecen a GI Amoblamientos SRL. Se te otorga una licencia limitada, no exclusiva y revocable para usar la App según estos términos.</p>
+      <p style={S.p}>Todos los derechos de propiedad intelectual sobre la App, incluyendo código fuente, diseño, marcas y contenido, pertenecen a Gypi Software. Se te otorga una licencia limitada, no exclusiva y revocable para usar la App según estos términos.</p>
 
       <h2 style={S.h2}>5. Disponibilidad del servicio</h2>
       <p style={S.p}>Nos esforzamos por mantener la App disponible, pero no garantizamos un funcionamiento ininterrumpido. Podemos realizar mantenimiento programado o de emergencia que afecte temporalmente la disponibilidad.</p>

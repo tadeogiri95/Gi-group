@@ -3,7 +3,7 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.gigroup.rrhh",
+      "package_name": "com.gypi.app",
       "sha256_cert_fingerprints": ["7C:8C:D0:C7:93:B2:2C:A3:50:07:B8:DD:9D:21:A5:BA:DB:11:06:ED:D3:74:4F:CB:BE:5E:9D:76:4F:31:9F:53"]
     }
   }

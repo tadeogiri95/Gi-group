@@ -70,10 +70,7 @@
       "purpose": "maskable"
     }
   ],
-  "categories": [
-    "business",
-    "productivity"
-  ],
+  "categories": ["business", "productivity"],
   "lang": "es-AR",
   "dir": "ltr"
 }

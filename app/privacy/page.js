@@ -14,7 +14,7 @@ export default function PrivacyPolicy() {
       <h1 style={S.h1}>Política de Privacidad</h1>
       <p style={S.date}>Última actualización: 25 de mayo de 2026</p>
 
-      <p style={S.p}>GI Group RRHH ("la App") es operada por GI Amoblamientos SRL ("nosotros"). Esta política describe cómo recopilamos, usamos y protegemos tu información personal.</p>
+      <p style={S.p}>Gypi (Gestión y productividad industrial) ("la App") es operada por Gypi Software ("nosotros"). Esta política describe cómo recopilamos, usamos y protegemos tu información personal.</p>
 
       <h2 style={S.h2}>1. Información que recopilamos</h2>
       <p style={S.p}>Recopilamos la siguiente información cuando usás la App:</p>

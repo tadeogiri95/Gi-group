@@ -207,7 +207,7 @@ function exportPDF(title, headers, rows, meta = "") {
   // Footer
   ctx.fillStyle = "#44403C";
   ctx.font = "9px system-ui, sans-serif";
-  ctx.fillText(`GI Group · Generado ${new Date().toLocaleString("es-AR")}`, startX, H - 8);
+  ctx.fillText(`Gypi · Generado ${new Date().toLocaleString("es-AR")}`, startX, H - 8);
 
   // Download
   canvas.toBlob(blob => {

@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'GI Group RRHH',
-  description: 'Sistema de gestión de RRHH de GI Amoblamientos SRL',
+  title: 'Gestión y productividad industrial',
+  description: 'Gypi — Sistema de gestión y productividad industrial',
   manifest: '/manifest.json',}
 
 export const viewport = {themeColor: '#F97316',
@@ -10,7 +10,7 @@ export const viewport = {themeColor: '#F97316',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'GI Group',
+    title: 'Gypi',
   },
 };
 
