@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { C, fH, fB, fM } from "./lib/theme";
-import { sb, SUPABASE_URL, SUPABASE_KEY } from "./lib/supabase";
+import { sb } from "./lib/supabase";
 
 /* ═══ SYSTEM PROMPT PARA REPORTE DE OBRA ═══ */
 const SYSTEM_OBRA = `Sos un asistente de obra de GI Amoblamientos. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
@@ -93,12 +93,12 @@ const S = {
   }),
 };
 
-/* ═══ Helper: subir foto a Supabase Storage ═══ */
+/* ═══ Helper: subir foto via API route segura ═══ */
 async function subirFoto(file, reporteId) {
   const ext = file.name.split(".").pop() || "jpg";
   const fileName = `${reporteId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
-  /* Convertir a base64 para enviar como JSON — más compatible con policies RLS */
+  /* Convertir a base64 */
   const toBase64 = (f) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result.split(",")[1]);
@@ -109,29 +109,27 @@ async function subirFoto(file, reporteId) {
   try {
     const base64 = await toBase64(file);
 
-    /* Intentar subir via Storage API REST */
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/reportes-obra/${fileName}`, {
+    /* Subir via API route del servidor */
+    const res = await fetch("/api/upload", {
       method: "POST",
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": file.type || "image/jpeg",
-        "x-upsert": "true",
-      },
-      body: file,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName,
+        fileBase64: base64,
+        fileType: file.type || "image/jpeg",
+      }),
     });
 
-    if (res.ok) {
-      return `${SUPABASE_URL}/storage/v1/object/public/reportes-obra/${fileName}`;
+    const data = await res.json();
+    if (data.ok && data.url) {
+      return data.url;
     }
 
-    /* Si falla el storage (bucket no existe, sin policy, etc), guardar como data URI */
-    console.warn("Storage upload failed, saving as data URI:", await res.text());
-    const dataUri = `data:${file.type || "image/jpeg"};base64,${base64}`;
-    return dataUri;
+    /* Si falla el storage, guardar como data URI */
+    console.warn("Storage upload failed:", data.error);
+    return `data:${file.type || "image/jpeg"};base64,${base64}`;
   } catch (err) {
     console.error("Error subiendo foto:", err);
-    /* Fallback: guardar como data URI para no perder la foto */
     try {
       const base64 = await toBase64(file);
       return `data:${file.type || "image/jpeg"};base64,${base64}`;
