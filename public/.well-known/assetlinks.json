@@ -4,7 +4,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.gypi.app",
-      "sha256_cert_fingerprints": ["7C:8C:D0:C7:93:B2:2C:A3:50:07:B8:DD:9D:21:A5:BA:DB:11:06:ED:D3:74:4F:CB:BE:5E:9D:76:4F:31:9F:53"]
+      "sha256_cert_fingerprints": ["76:E5:AC:88:58:FD:9D:E6:2A:67:9F:C5:2A:F9:0C:2A:43:EC:AE:8E:69:64:50:33:11:0E:81:5C:60:DA:3E:FB"]
     }
   }
 ]
