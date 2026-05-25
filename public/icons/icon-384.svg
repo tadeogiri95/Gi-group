@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="384" height="384" viewBox="0 0 384 384">
+  <rect width="384" height="384" fill="#0C0A09" rx="77"/>
+  <circle cx="192" cy="192" r="161" fill="none" stroke="#F97316" stroke-width="8"/>
+  <text x="192" y="192" text-anchor="middle" dominant-baseline="central" font-family="system-ui, -apple-system, sans-serif" font-size="122" font-weight="800" fill="#F97316" letter-spacing="6">GI</text>
+</svg>
