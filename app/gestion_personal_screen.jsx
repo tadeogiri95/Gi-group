@@ -17,13 +17,6 @@ const SECTOR_DIV_MAP = {
   "LOGISTICA": "general",
 };
 const TIPO_MO_MAP = { MOD: "produccion", MOI: "administracion" };
-
-/* ═══ PRIMITIVAS ═══ */
-
-const Chip = ({ active, onClick, children, color = C.amber }) => (
-  <button onClick={onClick} style={{ padding: "8px 14px", borderRadius: 20, border: "none", cursor: "pointer", background: active ? `${color}22` : C.surface, color: active ? color : C.dim, fontSize: 12, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap", transition: "all 0.15s" }}>{children}</button>
-);
-
 /* ═══ PARSER CSV ═══ */
 function parsePersonalCSV(text) {
   const lines = text.split(/\r?\n/);

@@ -10,13 +10,6 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 
 import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
 
-const Tag = ({ color = C.amber, children }) => (
-  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 6px", borderRadius: 4, background: `${color}22`, color, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: fB }}>{children}</span>
-);
-const Chip = ({ active, onClick, children, color = C.amber }) => (
-  <button onClick={onClick} style={{ padding: "6px 10px", borderRadius: 16, border: "none", cursor: "pointer", background: active ? `${color}22` : C.surface, color: active ? color : C.dim, fontSize: 11, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap", transition: "all 0.15s" }}>{children}</button>
-);
-
 /* ═══ HELPERS ═══ */
 function getDiasDelMes(year, month) {
   const first = new Date(year, month, 1);

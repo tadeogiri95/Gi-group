@@ -13,11 +13,6 @@ const DEFAULT_OUT = "17:30";
 import { DIVISIONES_CON_TODOS as DIVISIONES } from "./lib/constants";
 
 /* ═══ PRIMITIVAS ═══ */
-
-const Chip = ({ active, onClick, children, color = C.amber }) => (
-  <button onClick={onClick} style={{ padding: "7px 12px", borderRadius: 20, border: "none", cursor: "pointer", background: active ? `${color}22` : C.surface, color: active ? color : C.dim, fontSize: 11, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap", transition: "all 0.15s" }}>{children}</button>
-);
-
 const calcHoras = (row) => {
   let t = 0;
   DIAS.forEach(d => {

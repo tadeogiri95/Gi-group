@@ -8,19 +8,6 @@ import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
 
 const CAUSAS_MAP = { M: "Falta material", H: "Falta herramienta", I: "Indicación", O: "Otro" };
 const TIPOS_MAP = { N: { nombre: "Normal", color: C.green }, R: { nombre: "Retrabajo", color: C.red }, E: { nombre: "Error", color: C.amber }, C: { nombre: "Cambio", color: C.violet } };
-
-
-
-const Chip = ({ active, onClick, children, color = C.amber }) => (
-  <button onClick={onClick} style={{
-    padding: "8px 14px", borderRadius: 20, border: "none", cursor: "pointer",
-    background: active ? `${color}22` : C.surface,
-    color: active ? color : C.dim,
-    fontSize: 12, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap",
-    transition: "all 0.15s",
-  }}>{children}</button>
-);
-
 const fmtElapsed = (seconds) => {
   if (!seconds || seconds < 0) return "00:00";
   const h = Math.floor(seconds / 3600);
