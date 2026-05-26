@@ -1,37 +1,51 @@
 // ═══════════════════════════════════════════════════════════
-// Constantes compartidas
-// Ubicación: app/lib/constants.js
+// Constantes compartidas — FASE 5.3: divisiones dinámicas
 // ═══════════════════════════════════════════════════════════
 
 import { C } from "./theme";
 
-// Divisiones base (con icon y color)
-export const DIVISIONES_BASE = [
+// Fallback (se usan si no se cargan las dinámicas)
+const DIVISIONES_FALLBACK = [
   { id: "herreria", label: "Herrería", icon: "🔥", color: C.amber },
   { id: "muebles", label: "Muebles", icon: "🪵", color: C.green },
   { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
   { id: "general", label: "General", icon: "🏭", color: C.violet },
 ];
 
-// Con filtro "Todas" al inicio (para dashboards, reportes, grillas)
-export const DIVISIONES_CON_TODAS = [
-  { id: "todas", label: "Todas", icon: "📊", color: C.amber },
-  ...DIVISIONES_BASE,
-];
+// Store global (se setea en page.js al login)
+let _divisiones = null;
 
-// Con filtro "Todos" al inicio (variante plural)
-export const DIVISIONES_CON_TODOS = [
-  { id: "todas", label: "Todos" },
-  ...DIVISIONES_BASE,
-];
+export function setDivisionesEmpresa(divs) {
+  if (divs && divs.length > 0) {
+    _divisiones = divs.map(d => ({
+      id: d.clave || d.id,
+      label: d.label || d.nombre,
+      icon: d.icon || "📦",
+      color: d.color || C.amber,
+    }));
+  }
+}
 
-// Con "Sin asignar" al inicio (para gestión de personal)
-export const DIVISIONES_CON_SIN_ASIGNAR = [
-  { id: "", label: "Sin asignar" },
-  ...DIVISIONES_BASE,
-];
+export function getDivisionesBase() {
+  return _divisiones || DIVISIONES_FALLBACK;
+}
+export function getDivisionesConTodas() {
+  return [{ id: "todas", label: "Todas", icon: "📊", color: C.amber }, ...getDivisionesBase()];
+}
+export function getDivisionesConTodos() {
+  return [{ id: "todas", label: "Todos" }, ...getDivisionesBase()];
+}
+export function getDivisionesConSinAsignar() {
+  return [{ id: "", label: "Sin asignar" }, ...getDivisionesBase()];
+}
 
-// Días de la semana
+// Exports estáticos retrocompatibles (fallback)
+export const DIVISIONES_BASE = DIVISIONES_FALLBACK;
+export const DIVISIONES_CON_TODAS = [{ id: "todas", label: "Todas", icon: "📊", color: C.amber }, ...DIVISIONES_FALLBACK];
+export const DIVISIONES_CON_TODOS = [{ id: "todas", label: "Todos" }, ...DIVISIONES_FALLBACK];
+export const DIVISIONES_CON_SIN_ASIGNAR = [{ id: "", label: "Sin asignar" }, ...DIVISIONES_FALLBACK];
+
+// Días (sin cambios)
 export const DIAS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
 export const DIAS_LABEL = { lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom" };
 export const DIAS_LABEL_FULL = { lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves", vie: "Viernes", sab: "Sábado", dom: "Domingo" };

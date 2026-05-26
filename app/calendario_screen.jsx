@@ -8,7 +8,7 @@ const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
+import { getDivisionesConTodas } from "./lib/constants";
 
 /* ═══ HELPERS ═══ */
 function getDiasDelMes(year, month) {
@@ -107,6 +107,7 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function CalendarioScreen() {
+  const DIVISIONES = getDivisionesConTodas();
   const hoy = new Date();
   const [year, setYear] = useState(hoy.getFullYear());
   const [month, setMonth] = useState(hoy.getMonth());

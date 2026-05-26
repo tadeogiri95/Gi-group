@@ -7,7 +7,7 @@ import { Tag, Chip } from "./components/ui";
 const SHEETS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vROiNEjVuRZ8-xzAq22s3ZtyQExct1dFDHW5dVEQ3XGr6jc2_TfDngkwBYNYK33ZQ7PRJfgJdoOrGZM/pub?gid=1438199642&single=true&output=csv";
 
-import { DIVISIONES_CON_SIN_ASIGNAR as DIVISIONES } from "./lib/constants";
+import { getDivisionesConSinAsignar } from "./lib/constants";
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
 const SECTOR_DIV_MAP = {
@@ -138,6 +138,7 @@ function ModalEmpleado({ mode, initialData, onClose, onSave, saving }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function GestionPersonalScreen({ ctx, reload }) {
+  const DIVISIONES = getDivisionesConSinAsignar();
   const [empleados, setEmpleados] = useState([]);
   const [csvData, setCsvData] = useState([]);
   const [csvLoading, setCsvLoading] = useState(false);

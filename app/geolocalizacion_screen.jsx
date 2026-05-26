@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { C, fH, fB, fM } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag } from "./components/ui";
-import { DIVISIONES_CON_TODOS as DIVISIONES } from "./lib/constants";
+import { getDivisionesConTodos } from "./lib/constants";
 
 /* Ubicación especial fija (no se borra) */
 const HOME_OFFICE = { id: "home_office", label: "🏠 Home Office", lat: null, lng: null, radio: null };
@@ -321,6 +321,7 @@ function PanelUbicaciones({ ubicaciones, setUbicaciones, onToast }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function GeolocalizacionScreen() {
+  const DIVISIONES = getDivisionesConTodos();
   const [empleados, setEmpleados] = useState([]);
   const [configs, setConfigs] = useState({});       // { empId: { activa, tipo, nombre, lat, lng, radio } }
   const [original, setOriginal] = useState({});

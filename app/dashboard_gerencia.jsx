@@ -7,7 +7,7 @@ import { sb } from "./lib/supabase";
    ═══════════════════════════════════════════════════════ */
 
 /* ─── Constantes ─── */
-import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
+import { getDivisionesConTodas } from "./lib/constants";
 
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
@@ -265,6 +265,7 @@ function ReportesObraPanel({ reportesObra }) {
    COMPONENTE PRINCIPAL: DashboardGerencia
    ═══════════════════════════════════════════════════════ */
 export default function DashboardGerencia({ goto, ctx, reload }) {
+  const DIVISIONES = getDivisionesConTodas();
   const [division, setDivision] = useState("todas");
   const [tab, setTab] = useState("resumen"); // resumen | asistencia | produccion | solicitudes
   const [resumenProd, setResumenProd] = useState([]);

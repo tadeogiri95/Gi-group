@@ -94,10 +94,10 @@ export function useActividad(empleado) {
   // ── Cargar catálogo de etapas por división ──
   useEffect(() => {
     if (!empleado?.division) return;
-    sb.get(`catalogo_etapas?division=eq.${empleado.division}&activo=eq.true&order=orden.asc`)
+    sb.get(`etapas?empresa_id=eq.${empleado.empresa_id}&activa=eq.true&order=orden.asc`)
       .then(setEtapas)
       .catch(e => console.error("Error cargando etapas:", e));
-  }, [empleado?.division]);
+  }, [empleado?.empresa_id]);
 
   // ── Cargar proyectos desde Google Sheets ──
   const cargarProyectos = useCallback(async () => {

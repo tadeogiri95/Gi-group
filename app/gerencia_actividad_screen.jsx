@@ -4,7 +4,7 @@ import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 
 /* ═══ CONSTANTES ═══ */
-import { DIVISIONES_CON_TODAS as DIVISIONES } from "./lib/constants";
+import { getDivisionesConTodas } from "./lib/constants";
 
 const CAUSAS_MAP = { M: "Falta material", H: "Falta herramienta", I: "Indicación", O: "Otro" };
 const TIPOS_MAP = { N: { nombre: "Normal", color: C.green }, R: { nombre: "Retrabajo", color: C.red }, E: { nombre: "Error", color: C.amber }, C: { nombre: "Cambio", color: C.violet } };
@@ -23,7 +23,8 @@ const fmtMinutos = (min) => {
 };
 
 /* ═══ COMPONENT ═══ */
-export default function GerenciaActividadScreen() {
+export default function GerenciaActividadScreen({ empresaId }) {
+  const DIVISIONES = getDivisionesConTodas();
   const [division, setDivision] = useState("todas");
   const [resumen, setResumen] = useState([]);
   const [etapas, setEtapas] = useState([]);
@@ -40,7 +41,7 @@ export default function GerenciaActividadScreen() {
 
   // ── Cargar etapas (todas las divisiones) ──
   useEffect(() => {
-    sb.get("catalogo_etapas?activo=eq.true&order=orden.asc")
+    sb.get(`etapas?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`)
       .then(setEtapas)
       .catch(e => console.error("Error cargando etapas:", e));
   }, []);

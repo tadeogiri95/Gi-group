@@ -10,7 +10,7 @@ const DIAS_FULL = { lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves
 const DEFAULT_IN = "08:30";
 const DEFAULT_OUT = "17:30";
 
-import { DIVISIONES_CON_TODOS as DIVISIONES } from "./lib/constants";
+import { getDivisionesConTodos } from "./lib/constants";
 
 /* ═══ PRIMITIVAS ═══ */
 const calcHoras = (row) => {
@@ -32,6 +32,7 @@ const fmtHorario = (row) => {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function GrillaHorarioScreen() {
+  const DIVISIONES = getDivisionesConTodos();
   // State
   const [empleados, setEmpleados] = useState([]);
   const [grilla, setGrilla] = useState({});
