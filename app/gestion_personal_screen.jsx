@@ -8,6 +8,10 @@ const SHEETS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vROiNEjVuRZ8-xzAq22s3ZtyQExct1dFDHW5dVEQ3XGr6jc2_TfDngkwBYNYK33ZQ7PRJfgJdoOrGZM/pub?gid=1438199642&single=true&output=csv";
 
 import { getDivisionesConSinAsignar } from "./lib/constants";
+
+// NOTA: se usa una función getter porque las divisiones se cargan dinámicamente
+let _getDivisiones = () => getDivisionesConSinAsignar();
+
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
 const SECTOR_DIV_MAP = {
@@ -106,7 +110,7 @@ function ModalEmpleado({ mode, initialData, onClose, onSave, saving }) {
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>División</label>
             <select value={form.division || ""} onChange={e => set("division", e.target.value)} style={{ width: "100%", padding: "11px 10px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontFamily: fB, outline: "none" }}>
-              {DIVISIONES.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+              {_getDivisiones().map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </div>
         </div>
@@ -137,7 +141,7 @@ function ModalEmpleado({ mode, initialData, onClose, onSave, saving }) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function GestionPersonalScreen({ ctx, reload }) {
+export default function GestionPersonalScreen({ ctx, reload, empresaId }) {
   const DIVISIONES = getDivisionesConSinAsignar();
   const [empleados, setEmpleados] = useState([]);
   const [csvData, setCsvData] = useState([]);
@@ -201,6 +205,8 @@ export default function GestionPersonalScreen({ ctx, reload }) {
           legajo, nombre: form.nombre, apodo: form.apodo || generarApodo(form.nombre),
           email: form.email || "", area: form.area || "produccion",
           division: form.division || null, rol: form.rol || "operativo", activo: true,
+          password: "gigroup2025", debe_cambiar_password: true,
+          empresa_id: empresaId || null,
         });
         showToast(`✅ ${form.nombre} dado de alta`, C.green);
       }
@@ -219,7 +225,7 @@ export default function GestionPersonalScreen({ ctx, reload }) {
       const nombre = capitalizarNombre(row.nombre);
       const legajo = row.dni || legajoProvisorio();
       try {
-        await sb.post("empleados", { legajo, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: row.area || "produccion", division: row.division || null, rol: "operativo", activo: true });
+        await sb.post("empleados", { legajo, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: row.area || "produccion", division: row.division || null, rol: "operativo", activo: true, password: "gigroup2025", debe_cambiar_password: true, empresa_id: empresaId || null });
         ok++;
       } catch (e) { console.error(`Error alta ${nombre}:`, e); }
     }

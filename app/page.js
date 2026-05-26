@@ -650,7 +650,7 @@ function ConfigScreen({goto,ctx,reload,usuario}){
       {tabs.map(([id,lbl])=><button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",borderRadius:20,border:"none",cursor:"pointer",background:tab===id?`${C.amber}22`:C.surface,color:tab===id?C.amber:C.dim,fontSize:12,fontWeight:700,fontFamily:fB,whiteSpace:"nowrap"}}>{lbl}</button>)}
     </div>
     <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-      {tab==="horarios"&&<GrillaHorarioScreen/>}
+      {tab==="horarios"&&<GrillaHorarioScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
       {tab==="ubicaciones"&&<GeolocalizacionScreen/>}
       {tab==="calendario"&&<CalendarioScreen/>}
       {tab==="reglas"&&<ReglasScreen ctx={ctx} reload={reload} usuario={usuario}/>}
@@ -679,13 +679,13 @@ export default function Home() {
   const [divisionesEmpresa, setDivisionesEmpresaState] = useState([]);
   const [etapasEmpresa, setEtapasEmpresa] = useState([]);
   const [empresa,setEmpresa]=useState({nombre:"Gypi",nombre_corto:"Gypi",color_primario:"#F97316",color_secundario:"#8B5CF6",prompt_ia_obra:"",prompt_ia_chat:""});
-  useEffect(()=>{fetch("/api/empresa").then(r=>r.json()).then(d=>{if(d&&!d.error)setEmpresa(d);
-      loadConfigEmpresa(d?.id);}).catch(()=>{});},[]);
+  useEffect(()=>{fetch("/api/empresa").then(r=>r.json()).then(d=>{if(d&&!d.error){setEmpresa(d);
+      loadConfigEmpresa(d?.id);}}).catch(()=>{});},[]);
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:empresa?.id||usuario?.empresa_id}:null);
 
   useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
-  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{}};
+  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} /* Cargar config con empresa_id del usuario */ if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};
   const logout=()=>{setUsuario(null);setScreen("home");try{localStorage.removeItem("gi-session");}catch{}};
 
   
@@ -794,12 +794,12 @@ const loadData=useCallback(async()=>{
         {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} legajoVer={historialLegajo} onBack={()=>setScreen("home")}/>}
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
-        {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData}/>}
+        {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={usuario?.empresa_id || empresa?.id}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen empresaId={empresa?.id}/>}
         {isGer&&screen==="config"&&<ConfigScreen goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="reportes"&&<ReportesScreen/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
-        {isGer&&screen==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={(e)=>setEmpresa({...empresa, ...e})} />}
+        {isGer&&screen==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={(e)=>{setEmpresa({...empresa, ...e}); loadConfigEmpresa(usuario?.empresa_id);}} />}
       </div>
 
       {!isChat&&<Nav active={screen} onChange={setScreen} role={usuario.rol} pend={pend}/>}

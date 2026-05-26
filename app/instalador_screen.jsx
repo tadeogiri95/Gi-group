@@ -280,6 +280,8 @@ export default function InstaladorScreen({ usuario, empresa }) {
       await sb.post("reportes_obra", {
         usuario_id: usuario?.id || null,
         nombre: usuario?.nombre || "Instalador",
+        legajo: usuario?.legajo || null,
+        empresa_id: usuario?.empresa_id || empresa?.id || null,
         fecha: new Date().toISOString().slice(0, 10),
         texto_original: texto,
         progreso: reporte.progreso,

@@ -31,7 +31,7 @@ const fmtHorario = (row) => {
 };
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function GrillaHorarioScreen() {
+export default function GrillaHorarioScreen({ empresaId }) {
   const DIVISIONES = getDivisionesConTodos();
   // State
   const [empleados, setEmpleados] = useState([]);
@@ -59,8 +59,8 @@ export default function GrillaHorarioScreen() {
     setLoading(true);
     try {
       const emps = await sb.get("empleados?activo=eq.true&order=nombre.asc&select=id,nombre,apodo,legajo,area,division,rol,diagrama,horas_semanales");
-      // Solo operativos de producción y logística
-      const filtered = (emps || []).filter(e => e.rol === "operativo" && (e.area === "produccion" || e.area === "logistica"));
+      // Mostrar todos los empleados activos (no solo operativos)
+      const filtered = (emps || []);
       setEmpleados(filtered);
       const g = {}, o = {};
       (emps || []).forEach(e => {
