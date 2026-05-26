@@ -106,7 +106,7 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function CalendarioScreen() {
+export default function CalendarioScreen({ empresaId }) {
   const DIVISIONES = getDivisionesConTodas();
   const hoy = new Date();
   const [year, setYear] = useState(hoy.getFullYear());
@@ -127,19 +127,30 @@ export default function CalendarioScreen() {
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
+      const empQ = empresaId
+        ? `empleados?activo=eq.true&empresa_id=eq.${empresaId}&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc`
+        : "empleados?activo=eq.true&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc";
+      const notasQ = empresaId
+        ? `notas_calendario?empresa_id=eq.${empresaId}&fecha=gte.${mesStr}-01&fecha=lte.${mesStr}-31&order=created_at.asc`
+        : `notas_calendario?fecha=gte.${mesStr}-01&fecha=lte.${mesStr}-31&order=created_at.asc`;
       const [emps, notasDB] = await Promise.all([
-        sb.get("empleados?activo=eq.true&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc"),
-        sb.get(`notas_calendario?fecha=gte.${mesStr}-01&fecha=lte.${mesStr}-31&order=created_at.asc`),
+        sb.get(empQ),
+        sb.get(notasQ),
       ]);
       setEmpleados(emps || []);
       setNotas(notasDB || []);
     } catch (e) {
       console.error(e);
       // Si la tabla notas_calendario no existe, seguir sin notas
-      try { setEmpleados(await sb.get("empleados?activo=eq.true&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc") || []); } catch (e2) { }
+      try {
+        const empQ = empresaId
+          ? `empleados?activo=eq.true&empresa_id=eq.${empresaId}&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc`
+          : "empleados?activo=eq.true&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc";
+        setEmpleados(await sb.get(empQ) || []);
+      } catch (e2) { }
       setNotas([]);
     } finally { setLoading(false); }
-  }, [mesStr]);
+  }, [mesStr, empresaId]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
@@ -148,7 +159,8 @@ export default function CalendarioScreen() {
   const guardarNota = async (nota) => {
     setSaving(true);
     try {
-      await sb.post("notas_calendario", nota);
+      const payload = empresaId ? { ...nota, empresa_id: empresaId } : nota;
+      await sb.post("notas_calendario", payload);
       await cargarDatos();
       setSelectedDate(null);
       showToast("✅ Nota agregada", C.green);

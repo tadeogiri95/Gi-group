@@ -651,8 +651,8 @@ function ConfigScreen({goto,ctx,reload,usuario,empresa}){
     </div>
     <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
       {tab==="horarios"&&<GrillaHorarioScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
-      {tab==="ubicaciones"&&<GeolocalizacionScreen/>}
-      {tab==="calendario"&&<CalendarioScreen/>}
+      {tab==="ubicaciones"&&<GeolocalizacionScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
+      {tab==="calendario"&&<CalendarioScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
       {tab==="reglas"&&<ReglasScreen ctx={ctx} reload={reload} usuario={usuario}/>}
     </div>
   </div>;

@@ -320,7 +320,7 @@ function PanelUbicaciones({ ubicaciones, setUbicaciones, onToast }) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function GeolocalizacionScreen() {
+export default function GeolocalizacionScreen({ empresaId }) {
   const DIVISIONES = getDivisionesConTodos();
   const [empleados, setEmpleados] = useState([]);
   const [configs, setConfigs] = useState({});       // { empId: { activa, tipo, nombre, lat, lng, radio } }
@@ -344,7 +344,10 @@ export default function GeolocalizacionScreen() {
   /* ── Cargar ubicaciones desde DB ── */
   const cargarUbicaciones = useCallback(async () => {
     try {
-      const data = await sb.get("config_sistema?clave=eq.ubicaciones_fichaje&select=valor");
+      const q = empresaId
+        ? `config_sistema?clave=eq.ubicaciones_fichaje&empresa_id=eq.${empresaId}&select=valor`
+        : "config_sistema?clave=eq.ubicaciones_fichaje&select=valor";
+      const data = await sb.get(q);
       if (data && data.length > 0 && data[0].valor) {
         const parsed = JSON.parse(data[0].valor);
         setUbicaciones(parsed);
@@ -353,24 +356,29 @@ export default function GeolocalizacionScreen() {
     } catch (e) {
       console.error("Error cargando ubicaciones:", e);
     }
-    // Default: crear Planta GI si no hay nada
+    // Default: crear Planta principal si no hay nada
     const defaults = [
       { id: "planta", label: "Planta principal", lat: -31.4135, lng: -64.1811, radio: 150 },
     ];
     setUbicaciones(defaults);
     // Guardar defaults en DB
     try {
-      await sb.post("config_sistema", { clave: "ubicaciones_fichaje", valor: JSON.stringify(defaults) });
+      const payload = { clave: "ubicaciones_fichaje", valor: JSON.stringify(defaults) };
+      if (empresaId) payload.empresa_id = empresaId;
+      await sb.post("config_sistema", payload);
     } catch { /* puede ya existir */ }
     return defaults;
-  }, []);
+  }, [empresaId]);
 
   /* ── Cargar empleados ── */
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
       const ubList = await cargarUbicaciones();
-      const emps = await sb.get("empleados?activo=eq.true&order=nombre.asc&select=id,nombre,apodo,legajo,area,division,rol,ubicacion_fichaje");
+      const q = empresaId
+        ? `empleados?activo=eq.true&empresa_id=eq.${empresaId}&order=nombre.asc&select=id,nombre,apodo,legajo,area,division,rol,ubicacion_fichaje`
+        : "empleados?activo=eq.true&order=nombre.asc&select=id,nombre,apodo,legajo,area,division,rol,ubicacion_fichaje";
+      const emps = await sb.get(q);
       setEmpleados(emps || []);
       const g = {}, o = {};
       (emps || []).forEach(e => {

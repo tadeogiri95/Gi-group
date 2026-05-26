@@ -30,11 +30,14 @@ const TABLAS_PERMITIDAS = [
   "reglas_bot", "catalogo_etapas", "registro_actividades",
   "reportes_obra", "proyectos", "push_subscriptions",
   "v_resumen_diario", "geo_zonas", "geo_registros",
+  // ── Tablas agregadas en Fase 5 ──
+  "config_sistema", "notas_calendario", "mensajes_chat",
+  "etapas", "divisiones", "empresa",
 ];
 
 // Tablas de solo lectura (no se pueden POST/PATCH/DELETE)
 const TABLAS_SOLO_LECTURA = [
-  "v_resumen_diario", "catalogo_etapas",
+  "v_resumen_diario",
 ];
 
 // Validar que el path no tenga inyección SQL o caracteres peligrosos
@@ -74,7 +77,6 @@ function validarBody(tabla, body, method) {
         if (!body.legajo || !body.fecha) {
           return { valido: false, error: "Fichada requiere legajo y fecha" };
         }
-        // Validar formato de hora (HH:MM)
         const horaRe = /^\d{2}:\d{2}$/;
         if (body.ingreso && !horaRe.test(body.ingreso)) {
           return { valido: false, error: "Formato de hora inválido para ingreso (usar HH:MM)" };
@@ -82,7 +84,6 @@ function validarBody(tabla, body, method) {
         if (body.egreso && !horaRe.test(body.egreso)) {
           return { valido: false, error: "Formato de hora inválido para egreso (usar HH:MM)" };
         }
-        // Validar formato de fecha (YYYY-MM-DD)
         if (!/^\d{4}-\d{2}-\d{2}$/.test(body.fecha)) {
           return { valido: false, error: "Formato de fecha inválido (usar YYYY-MM-DD)" };
         }
@@ -94,7 +95,7 @@ function validarBody(tabla, body, method) {
         if (!body.legajo || !body.tipo) {
           return { valido: false, error: "Solicitud requiere legajo y tipo" };
         }
-        const tiposValidos = ["permiso", "vacaciones", "justificacion", "otro"];
+        const tiposValidos = ["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "otro"];
         if (!tiposValidos.includes(body.tipo)) {
           return { valido: false, error: `Tipo de solicitud inválido. Usar: ${tiposValidos.join(", ")}` };
         }
@@ -123,7 +124,7 @@ function validarBody(tabla, body, method) {
 
     case "registro_actividades":
       if (method === "POST") {
-        if (!body.empleado_id || !body.etapa || body.etapa === undefined) {
+        if (!body.empleado_id || body.etapa === undefined) {
           return { valido: false, error: "Actividad requiere empleado_id y etapa" };
         }
       }
