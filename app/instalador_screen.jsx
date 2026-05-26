@@ -1,0 +1,531 @@
+'use client';
+
+import { useState, useRef } from "react";
+import { C, fH, fB, fM } from "./lib/theme";
+import { sb } from "./lib/supabase";
+
+/* ═══ SYSTEM PROMPT PARA REPORTE DE OBRA ═══ */
+const SYSTEM_OBRA_DEFAULT = `Sos un asistente de obra. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
+{
+  "progreso": "Resumen claro del avance efectivo del día",
+  "faltantes": ["lista de materiales o cosas que faltaron"],
+  "desvios": ["lista de imprevistos, esperas o desvíos"],
+  "mensaje_doble_check": "Frase amigable resumiendo lo que entendiste para que el instalador confirme. Ej: Entendí que montaron X pero faltó Y. ¿Es correcto?"
+}
+Si algo no se menciona, dejá el array vacío o string vacío. Siempre respondé SOLO el JSON.`;
+
+/* ═══ ESTILOS ═══ */
+const S = {
+  wrap: {
+    padding: "0 18px 110px",
+    overflowY: "auto",
+    flex: 1,
+    WebkitOverflowScrolling: "touch",
+  },
+  card: {
+    background: C.surface,
+    borderRadius: 16,
+    border: `1px solid ${C.border}`,
+    padding: 16,
+    marginBottom: 12,
+  },
+  textarea: {
+    width: "100%",
+    minHeight: 180,
+    background: C.surfHi,
+    border: `1px solid ${C.borderHi}`,
+    borderRadius: 12,
+    padding: 14,
+    color: C.text,
+    fontFamily: fB,
+    fontSize: 15,
+    resize: "vertical",
+    outline: "none",
+    boxSizing: "border-box",
+    lineHeight: 1.5,
+  },
+  btnPrimary: (bg = C.amber) => ({
+    width: "100%",
+    padding: "16px 0",
+    borderRadius: 14,
+    border: "none",
+    cursor: "pointer",
+    background: bg,
+    color: "#000",
+    fontFamily: fH,
+    fontSize: 17,
+    fontWeight: 700,
+    letterSpacing: "0.01em",
+  }),
+  btnSecondary: {
+    padding: "12px 16px",
+    borderRadius: 12,
+    border: `1px solid ${C.borderHi}`,
+    background: C.surfHi,
+    color: C.dim,
+    fontFamily: fB,
+    fontSize: 14,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: C.dim,
+    marginBottom: 8,
+    fontFamily: fB,
+  },
+  tag: (color) => ({
+    display: "inline-block",
+    padding: "5px 12px",
+    borderRadius: 10,
+    background: `${color}22`,
+    color,
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: fB,
+    marginRight: 6,
+    marginBottom: 6,
+  }),
+};
+
+/* ═══ Helper: subir foto via API route segura ═══ */
+async function subirFoto(file, reporteId) {
+  const ext = file.name.split(".").pop() || "jpg";
+  const fileName = `${reporteId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  /* Convertir a base64 */
+  const toBase64 = (f) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(f);
+  });
+
+  try {
+    const base64 = await toBase64(file);
+
+    /* Subir via API route del servidor */
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName,
+        fileBase64: base64,
+        fileType: file.type || "image/jpeg",
+      }),
+    });
+
+    const data = await res.json();
+    if (data.ok && data.url) {
+      return data.url;
+    }
+
+    /* Si falla el storage, guardar como data URI */
+    console.warn("Storage upload failed:", data.error);
+    return `data:${file.type || "image/jpeg"};base64,${base64}`;
+  } catch (err) {
+    console.error("Error subiendo foto:", err);
+    try {
+      const base64 = await toBase64(file);
+      return `data:${file.type || "image/jpeg"};base64,${base64}`;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/* ═══ COMPONENTE PRINCIPAL ═══ */
+export default function InstaladorScreen({ usuario, empresa }) {
+  const [fase, setFase] = useState("ingreso"); // ingreso | procesando | check | guardado
+  const [texto, setTexto] = useState("");
+  const [fotos, setFotos] = useState([]); // Array de { file: File, preview: string, name: string }
+  const [reporte, setReporte] = useState(null);
+  const [error, setError] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState("");
+  const fileRef = useRef(null);
+
+  /* ── Audio: grabación con Web Speech API ── */
+  const [grabando, setGrabando] = useState(false);
+  const [transcribiendo, setTranscribiendo] = useState(false);
+  const recognitionRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  const soportaSpeech = typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+
+  const iniciarGrabacion = () => {
+    if (!soportaSpeech) {
+      setError("Tu navegador no soporta reconocimiento de voz. Usá Chrome.");
+      return;
+    }
+    setError(null);
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SR();
+    recognition.lang = "es-AR";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    let finalTranscript = "";
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += t + " ";
+        } else {
+          interim = t;
+        }
+      }
+      setTexto((prev) => {
+        const base = prev.replace(/🎙️.*$/, "").trimEnd();
+        const combined = (base ? base + " " : "") + finalTranscript;
+        return interim ? combined + "🎙️" + interim : combined.trimEnd();
+      });
+    };
+
+    recognition.onerror = (e) => {
+      if (e.error !== "aborted") setError("Error de micrófono: " + e.error);
+      setGrabando(false);
+    };
+
+    recognition.onend = () => {
+      setGrabando(false);
+      setTexto((prev) => prev.replace(/🎙️.*$/, "").trimEnd());
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setGrabando(true);
+  };
+
+  const detenerGrabacion = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setGrabando(false);
+  };
+
+  /* ── Manejo de fotos con preview ── */
+  const agregarFotos = (files) => {
+    const nuevas = Array.from(files).map(file => ({
+      file,
+      name: file.name,
+      preview: URL.createObjectURL(file),
+    }));
+    setFotos(prev => [...prev, ...nuevas]);
+  };
+
+  const quitarFoto = (index) => {
+    setFotos(prev => {
+      const updated = prev.filter((_, i) => i !== index);
+      // Liberar URL del preview
+      if (prev[index]?.preview) URL.revokeObjectURL(prev[index].preview);
+      return updated;
+    });
+  };
+
+  /* ── Llamada a la IA ── */
+  const generarReporte = async () => {
+    if (!texto.trim()) return;
+    setFase("procesando");
+    setError(null);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system: empresa?.prompt_ia_obra || SYSTEM_OBRA_DEFAULT,
+          messages: [{ role: "user", content: texto }],
+        }),
+      });
+      const data = await res.json();
+      const raw = data.content?.map(b => (b.type === "text" ? b.text : "")).join("") || "";
+      const clean = raw.replace(/```json\s*|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setReporte(parsed);
+      setFase("check");
+    } catch {
+      setError("No se pudo procesar el reporte. Intentá de nuevo.");
+      setFase("ingreso");
+    }
+  };
+
+  /* ── Guardar en Supabase (con fotos) ── */
+  const confirmar = async () => {
+    setFase("procesando");
+    setUploadProgress("");
+    try {
+      const reporteId = `${usuario?.id || "anon"}_${Date.now()}`;
+
+      // Subir fotos
+      const fotosUrls = [];
+      if (fotos.length > 0) {
+        setUploadProgress(`Subiendo fotos... 0/${fotos.length}`);
+        for (let i = 0; i < fotos.length; i++) {
+          setUploadProgress(`Subiendo fotos... ${i + 1}/${fotos.length}`);
+          const url = await subirFoto(fotos[i].file, reporteId);
+          if (url) fotosUrls.push(url);
+        }
+      }
+
+      setUploadProgress("Guardando reporte...");
+
+      const payload = {
+        usuario_id: usuario?.id || null,
+        nombre: usuario?.nombre || "Instalador",
+        legajo: usuario?.legajo || null,
+        empresa_id: usuario?.empresa_id || empresa?.id || null,
+        fecha: new Date().toISOString().slice(0, 10),
+        texto_original: texto,
+        progreso: reporte.progreso || "",
+        faltantes: reporte.faltantes || [],
+        desvios: reporte.desvios || [],
+        fotos: fotos.length,
+        fotos_urls: fotosUrls,
+      };
+
+      try {
+        await sb.post("reportes_obra", payload);
+      } catch (dbErr) {
+        console.warn("Error con tabla reportes_obra, intentando con campos mínimos:", dbErr);
+        // Intentar con campos mínimos si la tabla tiene esquema diferente
+        try {
+          await sb.post("reportes_obra", {
+            usuario_id: payload.usuario_id,
+            nombre: payload.nombre,
+            legajo: payload.legajo,
+            empresa_id: payload.empresa_id,
+            fecha: payload.fecha,
+            texto_original: payload.texto_original,
+            progreso: payload.progreso,
+            faltantes: payload.faltantes,
+            desvios: payload.desvios,
+          });
+        } catch (dbErr2) {
+          console.error("Error definitivo guardando reporte:", dbErr2);
+          throw dbErr2;
+        }
+      }
+      setFase("guardado");
+      setUploadProgress("");
+      setTimeout(() => {
+        setTexto("");
+        setReporte(null);
+        // Liberar previews
+        fotos.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview); });
+        setFotos([]);
+        setFase("ingreso");
+      }, 2500);
+    } catch {
+      setError("Error al guardar. Intentá de nuevo.");
+      setFase("check");
+      setUploadProgress("");
+    }
+  };
+
+  /* ── Corregir ── */
+  const corregir = () => {
+    setFase("ingreso");
+    setReporte(null);
+  };
+
+  /* ═══ RENDER ═══ */
+  return (
+    <div style={S.wrap}>
+
+      {/* Error banner */}
+      {error && (
+        <div style={{ ...S.card, background: C.redS, border: `1px solid ${C.red}44`, marginBottom: 16 }}>
+          <p style={{ margin: 0, fontSize: 14, color: C.red }}>⚠️ {error}</p>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════
+          FASE 1 — INGRESO
+         ══════════════════════════════════════ */}
+      {fase === "ingreso" && (
+        <>
+          <div style={S.card}>
+            <div style={S.label}>¿Qué se hizo hoy en obra?</div>
+            {grabando && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 12px", borderRadius: 10, background: `${C.red}15`, border: `1px solid ${C.red}33` }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: C.red, animation: "pulse 1s ease-in-out infinite" }} />
+                <span style={{ fontSize: 13, color: C.red, fontWeight: 600, fontFamily: fB }}>Grabando… hablá y tu voz se transcribirá</span>
+              </div>
+            )}
+            <textarea
+              style={S.textarea}
+              placeholder={"Contá qué se avanzó, si faltó algo,\nsi hubo algún imprevisto o espera..."}
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+            />
+          </div>
+
+          {/* Adjuntar fotos */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Botón de audio */}
+            <button
+              style={{
+                ...S.btnSecondary,
+                background: grabando ? `${C.red}22` : S.btnSecondary.background,
+                border: grabando ? `1px solid ${C.red}66` : S.btnSecondary.border,
+                color: grabando ? C.red : S.btnSecondary.color,
+                animation: grabando ? "pulse 1.5s ease-in-out infinite" : "none",
+              }}
+              onClick={grabando ? detenerGrabacion : iniciarGrabacion}
+            >
+              {grabando ? "⏹ Detener" : "🎤 Dictar reporte"}
+            </button>
+            <button style={S.btnSecondary} onClick={() => fileRef.current?.click()}>
+              📷 Adjuntar fotos{fotos.length > 0 ? ` (${fotos.length})` : ""}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files.length) agregarFotos(e.target.files);
+                e.target.value = ""; // Reset para permitir re-selección
+              }}
+            />
+          </div>
+
+          {/* Previews de fotos */}
+          {fotos.length > 0 && (
+            <div style={{ ...S.card, padding: 12 }}>
+              <div style={{ ...S.label, marginBottom: 10 }}>📷 Fotos adjuntas ({fotos.length})</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {fotos.map((f, i) => (
+                  <div key={i} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "1", background: C.surfHi }}>
+                    <img src={f.preview} alt={f.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <button
+                      onClick={() => quitarFoto(i)}
+                      style={{
+                        position: "absolute", top: 4, right: 4, width: 24, height: 24, borderRadius: 12,
+                        background: "rgba(0,0,0,0.7)", border: "none", color: "#fff", fontSize: 12,
+                        fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            style={{ ...S.btnPrimary(), opacity: texto.trim() ? 1 : 0.4 }}
+            disabled={!texto.trim()}
+            onClick={generarReporte}
+          >
+            🤖 Generar Reporte
+          </button>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════
+          FASE 2 — PROCESANDO
+         ══════════════════════════════════════ */}
+      {fase === "procesando" && (
+        <div style={{ ...S.card, textAlign: "center", padding: "56px 16px" }}>
+          <div style={{ fontSize: 38, marginBottom: 14, animation: "spin 1.2s linear infinite" }}>⚙️</div>
+          <p style={{ margin: 0, fontSize: 17, fontFamily: fH, fontWeight: 700 }}>
+            {uploadProgress || "Analizando tu reporte..."}
+          </p>
+          <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>
+            {uploadProgress ? "Aguardá un momento" : "La IA está estructurando los datos"}
+          </p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.5 } }`}</style>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════
+          FASE 3 — DOBLE CHECK
+         ══════════════════════════════════════ */}
+      {fase === "check" && reporte && (
+        <>
+          {/* Progreso */}
+          <div style={S.card}>
+            <div style={S.label}>✅ Progreso efectivo</div>
+            <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: C.text }}>{reporte.progreso || "—"}</p>
+          </div>
+
+          {/* Faltantes */}
+          {reporte.faltantes?.length > 0 && (
+            <div style={{ ...S.card, background: C.redS, border: `1px solid ${C.red}33` }}>
+              <div style={{ ...S.label, color: C.red }}>🚫 Faltantes</div>
+              <div style={{ display: "flex", flexWrap: "wrap" }}>
+                {reporte.faltantes.map((f, i) => (
+                  <span key={i} style={S.tag(C.red)}>{f}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Desvíos */}
+          {reporte.desvios?.length > 0 && (
+            <div style={{ ...S.card, background: C.amberS, border: `1px solid ${C.amber}33` }}>
+              <div style={{ ...S.label, color: C.amber }}>⚠️ Desvíos / Imprevistos</div>
+              <div style={{ display: "flex", flexWrap: "wrap" }}>
+                {reporte.desvios.map((d, i) => (
+                  <span key={i} style={S.tag(C.amber)}>{d}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fotos adjuntas en el check */}
+          {fotos.length > 0 && (
+            <div style={S.card}>
+              <div style={S.label}>📷 {fotos.length} foto{fotos.length > 1 ? "s" : ""} adjunta{fotos.length > 1 ? "s" : ""}</div>
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                {fotos.map((f, i) => (
+                  <img key={i} src={f.preview} alt={f.name} style={{ width: 80, height: 80, borderRadius: 10, objectFit: "cover", flexShrink: 0, border: `1px solid ${C.border}` }} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mensaje doble check */}
+          <div style={{ ...S.card, background: C.cyanS, border: `1px solid ${C.cyan}33` }}>
+            <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: C.text }}>
+              💬 {reporte.mensaje_doble_check || "¿Los datos están correctos?"}
+            </p>
+          </div>
+
+          {/* Botones */}
+          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <button
+              style={{ ...S.btnSecondary, flex: 1, justifyContent: "center", padding: "14px 0", fontSize: 15, fontWeight: 700 }}
+              onClick={corregir}
+            >
+              ← Corregir
+            </button>
+            <button style={{ ...S.btnPrimary(C.green), flex: 2 }} onClick={confirmar}>
+              ✅ Confirmar y Enviar
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════
+          FASE 4 — GUARDADO
+         ══════════════════════════════════════ */}
+      {fase === "guardado" && (
+        <div style={{ ...S.card, textAlign: "center", padding: "56px 16px", background: C.greenS, border: `1px solid ${C.green}33` }}>
+          <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
+          <p style={{ margin: 0, fontSize: 20, fontFamily: fH, fontWeight: 700, color: C.green }}>Reporte enviado</p>
+          <p style={{ margin: "8px 0 0", color: C.dim, fontSize: 13 }}>Se guardó correctamente{fotos.length > 0 ? ` con ${fotos.length} foto${fotos.length > 1 ? "s" : ""}` : ""}</p>
+        </div>
+      )}
+    </div>
+  );
+}
