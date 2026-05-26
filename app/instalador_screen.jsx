@@ -277,20 +277,42 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
       setUploadProgress("Guardando reporte...");
 
-      await sb.post("reportes_obra", {
+      const payload = {
         usuario_id: usuario?.id || null,
         nombre: usuario?.nombre || "Instalador",
         legajo: usuario?.legajo || null,
         empresa_id: usuario?.empresa_id || empresa?.id || null,
         fecha: new Date().toISOString().slice(0, 10),
         texto_original: texto,
-        progreso: reporte.progreso,
-        faltantes: reporte.faltantes,
-        desvios: reporte.desvios,
+        progreso: reporte.progreso || "",
+        faltantes: reporte.faltantes || [],
+        desvios: reporte.desvios || [],
         fotos: fotos.length,
         fotos_urls: fotosUrls,
-        created_at: new Date().toISOString(),
-      });
+      };
+
+      try {
+        await sb.post("reportes_obra", payload);
+      } catch (dbErr) {
+        console.warn("Error con tabla reportes_obra, intentando con campos mínimos:", dbErr);
+        // Intentar con campos mínimos si la tabla tiene esquema diferente
+        try {
+          await sb.post("reportes_obra", {
+            usuario_id: payload.usuario_id,
+            nombre: payload.nombre,
+            legajo: payload.legajo,
+            empresa_id: payload.empresa_id,
+            fecha: payload.fecha,
+            texto_original: payload.texto_original,
+            progreso: payload.progreso,
+            faltantes: payload.faltantes,
+            desvios: payload.desvios,
+          });
+        } catch (dbErr2) {
+          console.error("Error definitivo guardando reporte:", dbErr2);
+          throw dbErr2;
+        }
+      }
       setFase("guardado");
       setUploadProgress("");
       setTimeout(() => {

@@ -315,7 +315,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
             <input
               value={config.nombre || ""}
               onChange={e => setConfig(prev => ({ ...prev, nombre: e.target.value }))}
-              onBlur={e => e.target.value !== empresa?.nombre && updateField("nombre", e.target.value)}
               style={inputStyle}
             />
           </div>
@@ -324,17 +323,16 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
             <input
               value={config.nombre_corto || ""}
               onChange={e => setConfig(prev => ({ ...prev, nombre_corto: e.target.value }))}
-              onBlur={e => e.target.value !== empresa?.nombre_corto && updateField("nombre_corto", e.target.value)}
               style={inputStyle}
               maxLength={12}
             />
             <div style={{ fontSize: 10, color: C.mute, marginTop: 4 }}>{(config.nombre_corto || "").length}/12 caracteres</div>
           </div>
-          <div>
+          <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>Rubro</label>
             <select
               value={config.rubro || "general"}
-              onChange={e => { setConfig(prev => ({ ...prev, rubro: e.target.value })); updateField("rubro", e.target.value); }}
+              onChange={e => setConfig(prev => ({ ...prev, rubro: e.target.value }))}
               style={{ ...inputStyle, cursor: "pointer" }}
             >
               {["general", "construccion", "industria", "servicios", "comercio", "tecnologia"].map(r => (
@@ -342,6 +340,29 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
               ))}
             </select>
           </div>
+          <button
+            onClick={async () => {
+              setSaving(true);
+              try {
+                const updates = {};
+                if (config.nombre !== empresa?.nombre) updates.nombre = config.nombre;
+                if (config.nombre_corto !== empresa?.nombre_corto) updates.nombre_corto = config.nombre_corto;
+                if (config.rubro !== empresa?.rubro) updates.rubro = config.rubro;
+                if (Object.keys(updates).length === 0) { showToast("Sin cambios", C.dim); setSaving(false); return; }
+                await sb.patch(`empresa?id=eq.${eid}`, updates);
+                if (onUpdate) onUpdate(updates);
+                showToast("✅ Cambios guardados");
+              } catch (e) { showToast(`Error: ${e.message}`, C.red); }
+              setSaving(false);
+            }}
+            disabled={saving}
+            style={{
+              width: "100%", padding: 14, borderRadius: 12, border: "none",
+              background: C.green, color: "#000",
+              fontSize: 15, fontWeight: 700, fontFamily: fB, cursor: saving ? "default" : "pointer",
+              opacity: saving ? 0.5 : 1,
+            }}
+          >{saving ? "Guardando..." : "💾 Guardar cambios"}</button>
         </div>
       )}
 
@@ -355,25 +376,45 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
                 type="color"
                 value={config.color_primario || "#F97316"}
                 onChange={e => setConfig(prev => ({ ...prev, color_primario: e.target.value }))}
-                onBlur={e => updateField("color_primario", e.target.value)}
                 style={{ width: 60, height: 48, border: `2px solid ${C.border}`, borderRadius: 12, cursor: "pointer", background: "transparent" }}
               />
               <div style={{ flex: 1, height: 48, borderRadius: 12, background: config.color_primario || "#F97316", display: "flex", alignItems: "center", justifyContent: "center", color: "#000", fontSize: 12, fontWeight: 700, fontFamily: fM }}>{config.color_primario || "#F97316"}</div>
             </div>
           </div>
-          <div>
+          <div style={{ marginBottom: 20 }}>
             <label style={labelStyle}>Color secundario</label>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <input
                 type="color"
                 value={config.color_secundario || "#8B5CF6"}
                 onChange={e => setConfig(prev => ({ ...prev, color_secundario: e.target.value }))}
-                onBlur={e => updateField("color_secundario", e.target.value)}
                 style={{ width: 60, height: 48, border: `2px solid ${C.border}`, borderRadius: 12, cursor: "pointer", background: "transparent" }}
               />
               <div style={{ flex: 1, height: 48, borderRadius: 12, background: config.color_secundario || "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: fM }}>{config.color_secundario || "#8B5CF6"}</div>
             </div>
           </div>
+          <button
+            onClick={async () => {
+              setSaving(true);
+              try {
+                const updates = {};
+                if (config.color_primario !== empresa?.color_primario) updates.color_primario = config.color_primario;
+                if (config.color_secundario !== empresa?.color_secundario) updates.color_secundario = config.color_secundario;
+                if (Object.keys(updates).length === 0) { showToast("Sin cambios", C.dim); setSaving(false); return; }
+                await sb.patch(`empresa?id=eq.${eid}`, updates);
+                if (onUpdate) onUpdate(updates);
+                showToast("✅ Colores guardados");
+              } catch (e) { showToast(`Error: ${e.message}`, C.red); }
+              setSaving(false);
+            }}
+            disabled={saving}
+            style={{
+              width: "100%", padding: 14, borderRadius: 12, border: "none",
+              background: C.green, color: "#000",
+              fontSize: 15, fontWeight: 700, fontFamily: fB, cursor: saving ? "default" : "pointer",
+              opacity: saving ? 0.5 : 1,
+            }}
+          >{saving ? "Guardando..." : "💾 Guardar colores"}</button>
         </div>
       )}
 
