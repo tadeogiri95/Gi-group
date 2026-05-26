@@ -354,7 +354,7 @@ export default function GeolocalizacionScreen() {
     }
     // Default: crear Planta GI si no hay nada
     const defaults = [
-      { id: "planta", label: "Planta GI — Córdoba", lat: -31.4135, lng: -64.1811, radio: 150 },
+      { id: "planta", label: "Planta principal", lat: -31.4135, lng: -64.1811, radio: 150 },
     ];
     setUbicaciones(defaults);
     // Guardar defaults en DB

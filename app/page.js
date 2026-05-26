@@ -48,7 +48,7 @@ const Ic = {
 import { Tag, Chip } from "./components/ui";
 
 /* ═══ LOGIN ═══ */
-function LoginScreen({onLogin}) {
+function LoginScreen({onLogin,empresa}) {
   const [legajo,setLegajo]=useState("");
   const [password,setPassword]=useState("");
   const [showPwd,setShowPwd]=useState(false);
@@ -72,10 +72,10 @@ function LoginScreen({onLogin}) {
 
   return <div style={{display:"flex",flexDirection:"column",height:"100%",padding:"0 28px",justifyContent:"center"}}>
     <div style={{width:72,height:72,borderRadius:20,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",marginBottom:24}}>
-      <span style={{fontFamily:fH,fontSize:26,fontWeight:800}}>GI</span>
+      <span style={{fontFamily:fH,fontSize:empresa?.nombre_corto?.length>4?18:26,fontWeight:800}}>{empresa?.nombre_corto||"Gypi"}</span>
     </div>
     <h1 style={{margin:0,fontFamily:fH,fontSize:30,fontWeight:700,color:C.text,letterSpacing:"-0.025em"}}>Bienvenido</h1>
-    <div style={{fontSize:14,color:C.dim,marginTop:6,marginBottom:32}}>Iniciá sesión en App GI</div>
+    <div style={{fontSize:14,color:C.dim,marginTop:6,marginBottom:32}}>{"Iniciá sesión en "+(empresa?.nombre_corto||"Gypi")}</div>
     <div style={{marginBottom:14}}>
       <label style={{display:"block",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Legajo / DNI</label>
       <input value={legajo} onChange={e=>setLegajo(e.target.value)} inputMode="numeric" placeholder="Ingresá tu número de legajo" style={{width:"100%",padding:"14px 16px",borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:15,fontFamily:fB,outline:"none",boxSizing:"border-box"}}/>
@@ -188,7 +188,7 @@ function FichadaCard({tipo,hora,geoMsg,tardanza}){
 function SolSentCard({motivo,fecha}){return<div style={{marginTop:8,padding:14,background:C.amberS,borderRadius:14,border:`1px solid ${C.amber}30`,minWidth:220}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{fontSize:11,color:C.amber,fontWeight:700,letterSpacing:"0.06em"}}>ENVIADA A GERENCIA</div><div style={{fontSize:13,color:C.text,fontWeight:600,marginTop:4}}>{motivo}</div><div style={{fontSize:11,color:C.dim,marginTop:4}}>📅 {fecha} · ⏳ Esperando</div></div><Tag color={C.amber}>{Ic.clock} PENDIENTE</Tag></div></div>;}
 
 /* ═══ CHAT ═══ */
-function ChatScreen({usuario,ctx,reload}){
+function ChatScreen({usuario,ctx,reload,empresa}){
   const dH=DIAS_KEY[new Date().getDay()];const diagH=usuario.diagrama?.[dH];
   const [msgs,setMsgs]=useState([{from:"bot",text:`¡Hola ${usuario.apodo}! 🤖\n\nHoy es ${fmtDate(new Date())}, son las ${fmtTime(new Date())}.\n${ctx.fichadaHoy?.ingreso?`Tu ingreso: ${ctx.fichadaHoy.ingreso.slice(0,5)}.`:diagH?`Jornada hoy: ${diagH.in} a ${diagH.out}.`:"Hoy es franco 🎉"}\n\nContame qué necesitás.`,quickReplies:["Ya llegué","Necesito un permiso","¿Cuántas horas llevo?","Me voy"],time:new Date()}]);
   const [input,setInput]=useState("");const [loading,setLoading]=useState(false);const ref=useRef(null);
@@ -674,6 +674,8 @@ export default function Home() {
   const [init,setInit]=useState(false);
   const [refreshCounter,setRefreshCounter]=useState(0);
   const [historialLegajo,setHistorialLegajo]=useState(null);
+  const [empresa,setEmpresa]=useState({nombre:"Gypi",nombre_corto:"Gypi",color_primario:"#F97316",color_secundario:"#8B5CF6",prompt_ia_obra:"",prompt_ia_chat:""});
+  useEffect(()=>{fetch("/api/empresa").then(r=>r.json()).then(d=>{if(d&&!d.error)setEmpresa(d);}).catch(()=>{});},[]);
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division}:null);
 
@@ -727,7 +729,7 @@ export default function Home() {
     </div>
 
     {!usuario?(
-      <div style={{flex:1,overflow:"hidden"}}><LoginScreen onLogin={login}/></div>
+      <div style={{flex:1,overflow:"hidden"}}><LoginScreen onLogin={login} empresa={empresa}/></div>
     ):usuario.debe_cambiar_password?(
       <div style={{flex:1,overflow:"hidden"}}><CambiarPasswordScreen usuario={usuario} onDone={(u)=>{login(u);}}/></div>
     ):!ready?(
@@ -742,7 +744,7 @@ export default function Home() {
       {isChat?<div style={{padding:"8px 16px 14px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
         <button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:6,display:"flex"}}>{Ic.chevL}</button>
         <div style={{width:36,height:36,borderRadius:12,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000"}}>{Ic.bot}</div>
-        <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:C.text,fontFamily:fH}}>Asistente GI</div><div style={{display:"flex",alignItems:"center",gap:5,marginTop:1}}><span style={{width:6,height:6,borderRadius:3,background:C.green}}/><span style={{fontSize:11,color:C.dim}}>IA activa</span></div></div>
+        <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700,color:C.text,fontFamily:fH}}>{"Asistente "+(empresa?.nombre_corto||"Gypi")}</div><div style={{display:"flex",alignItems:"center",gap:5,marginTop:1}}><span style={{width:6,height:6,borderRadius:3,background:C.green}}/><span style={{fontSize:11,color:C.dim}}>IA activa</span></div></div>
         <span style={{color:C.amber,opacity:.6}}>{Ic.sparkle}</span>
       </div>
       :screen==="home"&&isGer?null
@@ -751,8 +753,8 @@ export default function Home() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Ajustes del sistema":screen==="equipo"?"Gestión de personal":screen==="reportes"?"Control horario":screen==="historial-fichajes"?"Control de asistencia":"App GI":screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":"App GI"}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Configuración":screen==="reportes"?"Reportes":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":"App GI"}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Ajustes del sistema":screen==="equipo"?"Gestión de personal":screen==="reportes"?"Control horario":screen==="historial-fichajes"?"Control de asistencia":(empresa?.nombre_corto||"Gypi"):screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":(empresa?.nombre_corto||"Gypi")}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Configuración":screen==="reportes"?"Reportes":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":(empresa?.nombre_corto||"Gypi")}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -766,8 +768,8 @@ export default function Home() {
         {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx}/>}
         {!isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} onBack={()=>setScreen("home")}/>}
         {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
-        {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
-        {!isGer&&screen==="obra"&&<InstaladorScreen usuario={usuario}/>}
+        {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
+        {!isGer&&screen==="obra"&&<InstaladorScreen usuario={usuario} empresa={empresa}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
         {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData}/>}
         {isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} legajoVer={historialLegajo} onBack={()=>setScreen("home")}/>}
@@ -776,7 +778,7 @@ export default function Home() {
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen/>}
         {isGer&&screen==="config"&&<ConfigScreen goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="reportes"&&<ReportesScreen/>}
-        {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData}/>}
+        {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
       </div>
 
       {!isChat&&<Nav active={screen} onChange={setScreen} role={usuario.rol} pend={pend}/>}

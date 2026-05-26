@@ -5,7 +5,7 @@ import { C, fH, fB, fM } from "./lib/theme";
 import { sb } from "./lib/supabase";
 
 /* ═══ SYSTEM PROMPT PARA REPORTE DE OBRA ═══ */
-const SYSTEM_OBRA = `Sos un asistente de obra de GI Amoblamientos. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
+const SYSTEM_OBRA_DEFAULT = `Sos un asistente de obra. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
 {
   "progreso": "Resumen claro del avance efectivo del día",
   "faltantes": ["lista de materiales o cosas que faltaron"],
@@ -140,7 +140,7 @@ async function subirFoto(file, reporteId) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function InstaladorScreen({ usuario }) {
+export default function InstaladorScreen({ usuario, empresa }) {
   const [fase, setFase] = useState("ingreso"); // ingreso | procesando | check | guardado
   const [texto, setTexto] = useState("");
   const [fotos, setFotos] = useState([]); // Array de { file: File, preview: string, name: string }
@@ -241,7 +241,7 @@ export default function InstaladorScreen({ usuario }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: SYSTEM_OBRA,
+          system: empresa?.prompt_ia_obra || SYSTEM_OBRA_DEFAULT,
           messages: [{ role: "user", content: texto }],
         }),
       });
