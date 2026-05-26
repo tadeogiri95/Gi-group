@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { C, fH, fB, fM } from "./lib/theme";
 import { sb } from "./lib/supabase";
-import { Tag } from "./components/ui";
+import { Tag, Chip } from "./components/ui";
 import { getDivisionesConTodos } from "./lib/constants";
 
 /* Ubicación especial fija (no se borra) */
