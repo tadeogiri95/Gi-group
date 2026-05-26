@@ -18,6 +18,7 @@ import ReportesScreen from './reportes_screen';
 import GeolocalizacionScreen from './geolocalizacion_screen';
 import { validarGeoFichaje } from './geolocalizacion_screen';
 import InstaladorScreen from './instalador_screen.jsx';
+import AdminEmpresaScreen from './admin_empresa_screen';
 
 /* ═══ ICONS ═══ */
 const Ic = {
@@ -659,7 +660,7 @@ function ConfigScreen({goto,ctx,reload,usuario}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["config","Config",Ic.gear],["equipo","Equipo",Ic.users]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["config","Config",Ic.gear],["equipo","Equipo",Ic.users],["admin","Admin",Ic.gear]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -772,8 +773,8 @@ const loadData=useCallback(async()=>{
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Ajustes del sistema":screen==="equipo"?"Gestión de personal":screen==="reportes"?"Control horario":screen==="historial-fichajes"?"Control de asistencia":(empresa?.nombre_corto||"Gypi"):screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":(empresa?.nombre_corto||"Gypi")}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Configuración":screen==="reportes"?"Reportes":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":(empresa?.nombre_corto||"Gypi")}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Ajustes del sistema":screen==="equipo"?"Gestión de personal":screen==="reportes"?"Control horario":screen==="historial-fichajes"?"Control de asistencia":screen==="admin"?"Administración":(empresa?.nombre_corto||"Gypi"):screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":(empresa?.nombre_corto||"Gypi")}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Configuración":screen==="reportes"?"Reportes":screen==="admin"?"Admin Empresa":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":(empresa?.nombre_corto||"Gypi")}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -798,6 +799,7 @@ const loadData=useCallback(async()=>{
         {isGer&&screen==="config"&&<ConfigScreen goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="reportes"&&<ReportesScreen/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
+        {isGer&&screen==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={(e)=>setEmpresa({...empresa, ...e})} />}
       </div>
 
       {!isChat&&<Nav active={screen} onChange={setScreen} role={usuario.rol} pend={pend}/>}
