@@ -60,11 +60,19 @@ export async function POST(req) {
       return NextResponse.json({ error: "Legajo no encontrado" }, { status: 401 });
     }
 
-    // Si hay múltiples empleados con mismo legajo (distintas empresas), 
-    // intentar matchear por password
+    // Identificar la contraseña correcta (soporta texto plano antiguo y bcrypt nuevo)
     let usuario = null;
     for (const emp of empleados) {
-      const match = await bcrypt.compare(password, emp.password);
+      let match = false;
+      
+      // Los hashes de bcrypt siempre empiezan con $2a$, $2b$ o $2y$
+      if (emp.password && emp.password.startsWith('$2')) {
+        match = await bcrypt.compare(password, emp.password);
+      } else {
+        // Si no está encriptada aún en la base de datos, compara texto normal
+        match = (password === emp.password);
+      }
+
       if (match) {
         usuario = emp;
         break;
