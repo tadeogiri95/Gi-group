@@ -1,91 +1,89 @@
+// app/api/login-empresa/route.js
+// Login que identifica a qué empresa pertenece el usuario
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 
-// ─── Supabase server-side (usa env vars, no keys hardcodeadas) ───
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SB_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-function getKey() {
-  return SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
-}
-
-async function supabaseGet(path) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+async function sbGet(path) {
+  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
     headers: {
-      apikey: getKey(),
-      Authorization: `Bearer ${getKey()}`,
-      "Content-Type": "application/json",
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
     },
   });
-  if (!res.ok) throw new Error(`Supabase ${res.status}`);
   return res.json();
 }
 
-async function supabasePatch(path, data) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: {
-      apikey: getKey(),
-      Authorization: `Bearer ${getKey()}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error(`Supabase ${res.status}`);
-  return res.json();
-}
-
-// ─── POST /api/login ───
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const { legajo, password, action, nuevaPassword, userId } = await request.json();
+    const body = await req.json();
 
-    // ═══ CAMBIO DE CONTRASEÑA ═══
-    if (action === "cambiar_password") {
-      if (!nuevaPassword || !userId) {
-        return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
-      }
-      if (nuevaPassword.length < 4) {
-        return NextResponse.json({ error: "Mínimo 4 caracteres" }, { status: 400 });
-      }
-
-      const updated = await supabasePatch(`empleados?id=eq.${userId}`, {
-        password: nuevaPassword,
-        debe_cambiar_password: false,
+    // ─── Cambiar contraseña ───
+    if (body.action === "cambiar_password") {
+      const { userId, nuevaPassword } = body;
+      const hashed = await bcrypt.hash(nuevaPassword, 10);
+      const res = await fetch(`${SB_URL}/rest/v1/empleados?id=eq.${userId}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SB_KEY,
+          Authorization: `Bearer ${SB_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({ password: hashed, debe_cambiar_password: false }),
       });
-
-      if (!updated || !updated.length) {
+      const updated = await res.json();
+      if (!updated || updated.length === 0) {
         return NextResponse.json({ error: "No se pudo actualizar" }, { status: 500 });
       }
-
-      const { password: _, ...safe } = updated[0];
-      return NextResponse.json({ ok: true, usuario: safe });
+      const u = updated[0];
+      delete u.password;
+      return NextResponse.json({ usuario: u });
     }
 
-    // ═══ LOGIN ═══
+    // ─── Login normal ───
+    const { legajo, password, empresa_id } = body;
     if (!legajo || !password) {
-      return NextResponse.json({ error: "Faltan credenciales" }, { status: 400 });
+      return NextResponse.json({ error: "Ingresá legajo y contraseña" }, { status: 400 });
     }
 
-    const empleados = await supabaseGet(
-      `empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&select=*`
-    );
+    // Buscar empleado — si viene empresa_id, filtrar por empresa
+    let query = `empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&activo=eq.true&select=*`;
+    if (empresa_id) {
+      query += `&empresa_id=eq.${empresa_id}`;
+    }
+    const empleados = await sbGet(query);
 
-    if (!empleados || !empleados.length) {
+    if (!empleados || empleados.length === 0) {
       return NextResponse.json({ error: "Legajo no encontrado" }, { status: 401 });
     }
 
-    const emp = empleados[0];
+    // Si hay múltiples empleados con mismo legajo (distintas empresas), 
+    // intentar matchear por password
+    let usuario = null;
+    for (const emp of empleados) {
+      const match = await bcrypt.compare(password, emp.password);
+      if (match) {
+        usuario = emp;
+        break;
+      }
+    }
 
-    if (emp.password !== password) {
+    if (!usuario) {
       return NextResponse.json({ error: "Contraseña incorrecta" }, { status: 401 });
     }
 
-    const { password: _, ...usuarioSeguro } = emp;
-    return NextResponse.json({ ok: true, usuario: usuarioSeguro });
+    // Cargar datos de la empresa
+    const empresaData = await sbGet(`empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan,max_empleados`);
+    
+    const safe = { ...usuario };
+    delete safe.password;
+    safe.empresa = empresaData?.[0] || null;
+
+    return NextResponse.json({ usuario: safe });
   } catch (err) {
-    console.error("[login] Error:", err);
-    return NextResponse.json({ error: "Error del servidor" }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
