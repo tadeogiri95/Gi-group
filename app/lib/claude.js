@@ -1,6 +1,6 @@
 import { fmtTime, fmtDateLong, DIAS_KEY } from './theme';
 
-export function buildSystemPrompt(ctx, usuario) {
+export function buildSystemPrompt(ctx, usuario, empresa) {
   const now = new Date();
   const diaHoy = DIAS_KEY[now.getDay()];
   const diag = usuario.diagrama || {};
@@ -17,7 +17,11 @@ export function buildSystemPrompt(ctx, usuario) {
     }
   }
 
-  return `Sos el asistente de RR.HH. de GI Amoblamientos SRL, fábrica de muebles a medida en Córdoba.
+  // Nombre y rubro dinámicos de la empresa
+  const nombreEmpresa = empresa?.nombre || empresa?.nombre_corto || "la empresa";
+  const rubroEmpresa = empresa?.rubro || "general";
+
+  return `Sos el asistente de RR.HH. de ${nombreEmpresa}, rubro: ${rubroEmpresa}.
 
 FECHA Y HORA REAL:
 - ${fmtDateLong(now)}
@@ -28,6 +32,7 @@ EMPLEADO:
 - ${usuario.nombre} (apodo: ${usuario.apodo})
 - Legajo: ${usuario.legajo} | Área: ${usuario.area} | CC: ${usuario.cc || "—"}
 - Rol: ${usuario.rol}
+- División: ${usuario.division || "sin asignar"}
 
 DIAGRAMA SEMANAL:
 ${Object.entries(diag).map(([d,h])=>`- ${d.toUpperCase()}: ${h ? h.in+" a "+h.out : "FRANCO"}`).join("\n") || "Sin diagrama"}
@@ -36,8 +41,8 @@ ${Object.entries(diag).map(([d,h])=>`- ${d.toUpperCase()}: ${h ? h.in+" a "+h.ou
 
 GEOLOCALIZACIÓN:
 - ${geoInfo}
-- Al fichar, el sistema valida la ubicación GPS automáticamente. Si el empleado no está en rango, el fichaje se rechaza y se le muestra el motivo.
-- Si pregunta por problemas de ubicación, decile que verifique que tiene GPS activado y permisos de ubicación habilitados en el navegador.
+- Al fichar, el sistema valida la ubicación GPS automáticamente. No necesitás pedir coordenadas al empleado.
+- Si alguien tiene problemas para fichar por ubicación, sugerile que contacte a gerencia para que revisen su ubicación asignada.
 
 ESTADO HOY:
 - Ingreso: ${ctx.fichadaHoy?.ingreso || "NO FICHÓ"}
@@ -69,13 +74,13 @@ REGLAS:
 - Si alguien tiene problemas para fichar por ubicación, sugerile que contacte a gerencia para que revisen su ubicación asignada.`;
 }
 
-export async function callClaude(messages, ctx, usuario) {
+export async function callClaude(messages, ctx, usuario, empresa) {
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        system: buildSystemPrompt(ctx, usuario),
+        system: buildSystemPrompt(ctx, usuario, empresa),
         messages: messages.map(m => ({ role: m.from === "user" ? "user" : "assistant", content: m.text })),
       }),
     });

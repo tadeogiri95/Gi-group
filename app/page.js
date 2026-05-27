@@ -96,7 +96,7 @@ function LoginScreen({onLogin,empresa}) {
   </div>;
 }
 
-/* ═══ CAMBIAR CONTRASEÑA (obligatorio en primer ingreso) ═══ */
+/* ═══ CAMBIAR CONTRASEÑA ═══ */
 function CambiarPasswordScreen({usuario,onDone}) {
   const [nueva,setNueva]=useState("");
   const [confirmar,setConfirmar]=useState("");
@@ -144,9 +144,8 @@ function CambiarPasswordScreen({usuario,onDone}) {
   </div>;
 }
 
-/* ═══ FICHADA CARD (con colores según puntualidad) ═══ */
+/* ═══ FICHADA CARD ═══ */
 function FichadaCard({tipo,hora,geoMsg,tardanza}){
-  // tardanza: { estado: "puntual"|"tarde"|"bloqueado", minutos, llegadasTarde, autoFichaje }
   let color, bgColor, label, extraMsg;
   if(tipo==="egreso"){
     if(tardanza?.autoFichaje){
@@ -157,7 +156,6 @@ function FichadaCard({tipo,hora,geoMsg,tardanza}){
       color=C.cyan;bgColor=`${C.cyan}12`;label="SALIDA REGISTRADA";
     }
   } else {
-    // Ingreso: verde=puntual, amarillo=tarde, rojo=bloqueado
     if(!tardanza||tardanza.estado==="puntual"){
       color=C.green;bgColor=`${C.green}12`;label="INGRESO A HORARIO ✅";
     } else if(tardanza.estado==="bloqueado"){
@@ -202,8 +200,6 @@ function ChatScreen({usuario,ctx,reload,empresa}){
       case"FICHAR_INGRESO":{
         const geo = await validarGeoFichaje(usuario);
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
-
-        // Calcular tardanza
         const dH=DIAS_KEY[new Date().getDay()];
         const diagHoy=usuario.diagrama?.[dH];
         let tardanza=null;
@@ -214,28 +210,24 @@ function ChatScreen({usuario,ctx,reload,empresa}){
           const entradaReal=ahora.getHours()*60+ahora.getMinutes();
           const diffMin=entradaReal-entradaProg;
           if(diffMin>0){
-            // Contar llegadas tarde del mes
             const mesInicio=new Date(ahora.getFullYear(),ahora.getMonth(),1).toISOString().split("T")[0];
             let llegadasTarde=0;
             try{
               const fichadasMes=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${mesInicio}&fecha=lt.${today}&select=ingreso,llegada_tarde`);
               llegadasTarde=(fichadasMes||[]).filter(f=>f.llegada_tarde===true).length;
             }catch(e){console.error(e);}
-            llegadasTarde++; // contar esta
+            llegadasTarde++;
             const bloqueado=llegadasTarde>=3||diffMin>30;
             tardanza={estado:bloqueado?"bloqueado":"tarde",minutos:diffMin,llegadasTarde};
-            // Notificar a gerencia sobre tardanza
             const urgencia=bloqueado?"alta":"normal";
             const asunto=bloqueado?`⛔ ${usuario.apodo} BLOQUEADO — requiere permiso`:`⚠️ Llegada tarde de ${usuario.apodo}`;
             const detalle=bloqueado
               ?(llegadasTarde>=3?`3ra llegada tarde del mes (+${diffMin}min). Requiere autorización de gerencia.`:`Tardanza de ${diffMin} min (supera 30min de tolerancia). Requiere autorización de gerencia.`)
               :`Llegada tarde #${llegadasTarde}: +${diffMin} min`;
-            await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto,detalle,urgencia});
+            await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto,detalle,urgencia,empresa_id:usuario.empresa_id});
             sendPushToLegajo("1",asunto,detalle).catch(()=>{});
-            // Notificar al operario
-            await sb.post("notificaciones",{destinatario_rol:String(usuario.legajo),tipo:bloqueado?"alerta":"info",asunto:bloqueado?"⛔ Ingreso bloqueado":("⚠️ Llegada tarde: +"+diffMin+" min"),detalle:bloqueado?"Contactá a gerencia para que autorice tu ingreso.":("Llegada tarde #"+llegadasTarde+" del mes."),urgencia});
+            await sb.post("notificaciones",{destinatario_rol:String(usuario.legajo),tipo:bloqueado?"alerta":"info",asunto:bloqueado?"⛔ Ingreso bloqueado":("⚠️ Llegada tarde: +"+diffMin+" min"),detalle:bloqueado?"Contactá a gerencia para que autorice tu ingreso.":("Llegada tarde #"+llegadasTarde+" del mes."),urgencia,empresa_id:usuario.empresa_id});
             if(bloqueado){
-              // No registrar fichaje, requiere permiso
               return {type:"fichada_bloqueada",msg:`⛔ Tu ingreso está bloqueado.\n\n${llegadasTarde>=3?"Acumulaste 3 llegadas tarde este mes.":"Tu tardanza supera los 30 minutos de tolerancia."}\n\nNecesitás autorización de gerencia para ingresar.`};
             }
           }
@@ -246,6 +238,7 @@ function ChatScreen({usuario,ctx,reload,empresa}){
           llegada_tarde:tardanza?true:false,
           minutos_tarde:tardanza?tardanza.minutos:0,
           geo_ingreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
+          empresa_id:usuario.empresa_id,
         });
         card={type:"fichada",sub:"ingreso",hora,geoMsg:geo.msg,tardanza};
         break;
@@ -255,7 +248,6 @@ function ChatScreen({usuario,ctx,reload,empresa}){
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
         const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
         if(ex.length){
-          // Calcular horas trabajadas con hora REAL de egreso
           let horasTrab=null;
           if(ex[0].ingreso){
             const [hI,mI]=ex[0].ingreso.split(":").map(Number);
@@ -273,23 +265,22 @@ function ChatScreen({usuario,ctx,reload,empresa}){
         card={type:"fichada",sub:"egreso",hora,geoMsg:geo.msg};
         break;
       }
-      case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
-      case"AVISAR_TARDANZA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"tardanza",motivo:`Tardanza: ${action.motivo||""}`,fecha:"hoy",estado:"registrado"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Tardanza de ${usuario.apodo}`,detalle:action.motivo,urgencia:"normal"});sendPushToLegajo("1","⏰ Tardanza",`${usuario.apodo}: ${action.motivo||"sin detalle"}`).catch(()=>{});break;
-      case"AVISAR_AUSENCIA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"ausencia",motivo:action.motivo||"Ausencia",fecha:action.fecha||"hoy",estado:"pendiente"});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Ausencia de ${usuario.apodo}`,detalle:action.motivo,urgencia:"alta"});sendPushToLegajo("1","🚨 Ausencia",`${usuario.apodo}: ${action.motivo||"Ausencia"}`).catch(()=>{});break;
-      case"NOTIFICAR_GERENCIA":await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"info",asunto:action.asunto,detalle:action.detalle,urgencia:action.urgencia||"normal"});break;
+      case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal",empresa_id:usuario.empresa_id});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
+      case"AVISAR_TARDANZA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"tardanza",motivo:`Tardanza: ${action.motivo||""}`,fecha:"hoy",estado:"registrado",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Tardanza de ${usuario.apodo}`,detalle:action.motivo,urgencia:"normal",empresa_id:usuario.empresa_id});sendPushToLegajo("1","⏰ Tardanza",`${usuario.apodo}: ${action.motivo||"sin detalle"}`).catch(()=>{});break;
+      case"AVISAR_AUSENCIA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"ausencia",motivo:action.motivo||"Ausencia",fecha:action.fecha||"hoy",estado:"pendiente",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Ausencia de ${usuario.apodo}`,detalle:action.motivo,urgencia:"alta",empresa_id:usuario.empresa_id});sendPushToLegajo("1","🚨 Ausencia",`${usuario.apodo}: ${action.motivo||"Ausencia"}`).catch(()=>{});break;
+      case"NOTIFICAR_GERENCIA":await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"info",asunto:action.asunto,detalle:action.detalle,urgencia:action.urgencia||"normal",empresa_id:usuario.empresa_id});break;
     }reload&&reload();}catch(e){console.error(e);}return card;
   };
 
   const handleSend=async(txt=input)=>{const t=txt.trim();if(!t||loading)return;
     const um={from:"user",text:t,time:new Date()};const nm=[...msgs,um];setMsgs(nm);setInput("");setLoading(true);
-    sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"user",mensaje:t}).catch(()=>{});
-    // Interceptar respuesta a solicitud de permiso de ingreso bloqueado
+    sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"user",mensaje:t,empresa_id:usuario.empresa_id}).catch(()=>{});
     if(t==="✅ Sí, solicitar permiso"){
       try{
         const hoy=new Date().toISOString().split("T")[0];
         const hora=fmtTime(new Date());
-        await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:`🔓 Permiso de INGRESO por bloqueo (${hora})`,fecha:hoy,desde:hora,hasta:"—",estado:"pendiente"});
-        await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`🔓 ${usuario.apodo} solicita permiso de INGRESO`,detalle:`Ingreso bloqueado a las ${hora}. Requiere autorización para fichar.`,urgencia:"alta"});
+        await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:`🔓 Permiso de INGRESO por bloqueo (${hora})`,fecha:hoy,desde:hora,hasta:"—",estado:"pendiente",empresa_id:usuario.empresa_id});
+        await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`🔓 ${usuario.apodo} solicita permiso de INGRESO`,detalle:`Ingreso bloqueado a las ${hora}. Requiere autorización para fichar.`,urgencia:"alta",empresa_id:usuario.empresa_id});
         sendPushToLegajo("1","🔓 Permiso de ingreso",`${usuario.apodo} solicita autorización para ingresar (${hora})`).catch(()=>{});
         setMsgs(m=>[...m,{from:"bot",text:"✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.",time:new Date(),card:{type:"solicitud",motivo:"🔓 Permiso de INGRESO por bloqueo",fecha:hoy}}]);
         if(reload)reload();
@@ -300,7 +291,7 @@ function ChatScreen({usuario,ctx,reload,empresa}){
       setMsgs(m=>[...m,{from:"bot",text:"Entendido. Si necesitás algo más, avisame.",time:new Date()}]);
       setLoading(false);return;
     }
-    try{const hist=nm.slice(-20).map(m=>({from:m.from,text:m.text}));const raw=await callClaude(hist,ctx,usuario);const{clean,action}=parseAction(raw);
+    try{const hist=nm.slice(-20).map(m=>({from:m.from,text:m.text}));const raw=await callClaude(hist,ctx,usuario,empresa);const{clean,action}=parseAction(raw);
       let card=action?await execAction(action):null;
       if (card?.type === "geo_error") {
         setMsgs(m=>[...m,{from:"bot",text:card.msg,time:new Date()}]);
@@ -312,7 +303,7 @@ function ChatScreen({usuario,ctx,reload,empresa}){
         setLoading(false);
         return;
       }
-      setMsgs(m=>[...m,{from:"bot",text:clean,card,time:new Date()}]);sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"bot",mensaje:clean}).catch(()=>{});
+      setMsgs(m=>[...m,{from:"bot",text:clean,card,time:new Date()}]);sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"bot",mensaje:clean,empresa_id:usuario.empresa_id}).catch(()=>{});
     }catch{setMsgs(m=>[...m,{from:"bot",text:"Error de conexión. Probá de nuevo.",time:new Date()}]);}setLoading(false);};
 
   return<div style={{display:"flex",flexDirection:"column",height:"100%"}}>
@@ -366,7 +357,6 @@ function HistorialFichajesScreen({usuario,ctx,legajoVer,onBack}){
         const hasta=new Date(y,m,0);const hastaStr=`${y}-${String(m).padStart(2,"0")}-${String(hasta.getDate()).padStart(2,"0")}`;
         const f=await sb.get(`fichadas?legajo=eq.${legajo}&fecha=gte.${desde}&fecha=lte.${hastaStr}&order=fecha.desc&select=*`);
         setFichadas(f||[]);
-        // Cargar historial de chat
         const ch=await sb.get(`mensajes_chat?legajo=eq.${legajo}&order=created_at.desc&limit=100`);
         setChatHistory(ch||[]);
       }catch(e){console.error(e);}
@@ -392,14 +382,12 @@ function HistorialFichajesScreen({usuario,ctx,legajoVer,onBack}){
       <h2 style={{margin:0,fontFamily:fH,fontSize:20,fontWeight:700,color:C.text,flex:1}}>Fichajes de {empNombre}</h2>
     </div>
 
-    {/* Selector de mes */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,background:C.surface,borderRadius:14,padding:"10px 16px",border:`1px solid ${C.border}`}}>
       <button onClick={()=>cambiarMes(-1)} style={{background:"none",border:"none",color:C.text,cursor:"pointer",fontSize:18,padding:4}}>←</button>
       <span style={{fontFamily:fH,fontSize:16,fontWeight:700,color:C.text}}>{mesLabel}</span>
       <button onClick={()=>cambiarMes(1)} style={{background:"none",border:"none",color:C.text,cursor:"pointer",fontSize:18,padding:4}}>→</button>
     </div>
 
-    {/* Resumen de tardanzas */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
       <div style={{background:C.surface,borderRadius:14,padding:14,border:`1px solid ${C.border}`,textAlign:"center"}}>
         <div style={{fontFamily:fH,fontSize:22,fontWeight:700,color:totalTardes>0?"#F59E0B":C.green}}>{totalTardes}</div>
@@ -415,7 +403,6 @@ function HistorialFichajesScreen({usuario,ctx,legajoVer,onBack}){
       </div>
     </div>
 
-    {/* Leyenda */}
     <div style={{background:C.surface,borderRadius:12,padding:12,border:`1px solid ${C.border}`,marginBottom:16,display:"flex",gap:16,flexWrap:"wrap"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.dim}}><span style={{width:10,height:10,borderRadius:3,background:C.green}}/> Puntual</div>
       <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.dim}}><span style={{width:10,height:10,borderRadius:3,background:"#F59E0B"}}/> Tarde común</div>
@@ -453,7 +440,6 @@ function HistorialFichajesScreen({usuario,ctx,legajoVer,onBack}){
       })}
     </div>}
 
-    {/* Historial de conversaciones con el bot */}
     <div style={{marginTop:24,marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>💬 Historial de conversaciones</h3></div>
     <button onClick={()=>setShowChat(!showChat)} style={{width:"100%",padding:14,borderRadius:14,background:C.surface,border:`1px solid ${C.border}`,color:C.text,fontSize:13,fontWeight:600,fontFamily:fB,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
       <span>{showChat?"Ocultar":"Ver"} conversaciones ({chatHistory.length})</span>
@@ -472,10 +458,10 @@ function HistorialFichajesScreen({usuario,ctx,legajoVer,onBack}){
 }
 
 /* ═══ HOME EMPLEADO ═══ */
-function HomeEmp({goto,usuario,ctx}){
+function HomeEmp({goto,usuario,ctx,logout}){
   const misSols=ctx.misSolicitudes||[];const dH=DIAS_KEY[new Date().getDay()];const diagH=usuario.diagrama?.[dH];
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
-    {/* Hero card — saludo + estado */}
+    {/* Hero card con logout */}
     <div style={{background:`linear-gradient(135deg,${ctx.fichadaHoy?.ingreso?C.green:C.amber}08,${C.surface} 60%)`,borderRadius:20,padding:20,border:`1px solid ${ctx.fichadaHoy?.ingreso?C.green+"30":C.border}`,marginBottom:16,position:"relative",overflow:"hidden"}}>
       <div style={{position:"absolute",top:-50,right:-50,width:170,height:170,borderRadius:"50%",background:`${ctx.fichadaHoy?.ingreso?C.green:C.amber}12`,filter:"blur(60px)"}}/>
       <div style={{position:"relative"}}>
@@ -486,6 +472,8 @@ function HomeEmp({goto,usuario,ctx}){
             {diagH&&<div style={{fontSize:12,color:C.dim,marginTop:4}}>Jornada: <span style={{color:C.text,fontWeight:600}}>{diagH.in} a {diagH.out}</span></div>}
             {!diagH&&usuario.diagrama&&<div style={{fontSize:12,color:C.green,fontWeight:600,marginTop:4}}>Hoy es franco 🎉</div>}
           </div>
+          {/* FIX #1: Botón logout visible en home */}
+          <button onClick={logout} style={{width:36,height:36,borderRadius:10,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}} title="Cerrar sesión">{Ic.logout}</button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{width:8,height:8,borderRadius:4,background:ctx.fichadaHoy?.ingreso?C.green:C.amber}}/>
@@ -494,7 +482,7 @@ function HomeEmp({goto,usuario,ctx}){
       </div>
     </div>
 
-    {/* Botón único de acceso al bot */}
+    {/* Bot */}
     <button onClick={()=>goto("chat")} style={{width:"100%",padding:"16px 20px",borderRadius:16,background:`linear-gradient(135deg,${C.amber}15,${C.violet}15)`,border:`1px solid ${C.amber}30`,cursor:"pointer",display:"flex",alignItems:"center",gap:14,fontFamily:fB,marginBottom:18}}>
       <div style={{width:44,height:44,borderRadius:14,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000",flexShrink:0}}>{Ic.bot}</div>
       <div style={{flex:1,textAlign:"left"}}>
@@ -516,7 +504,7 @@ function HomeEmp({goto,usuario,ctx}){
       <span style={{color:C.dim}}>{Ic.chevR}</span>
     </button>
 
-    {/* ═══ MI GRILLA SEMANAL ═══ */}
+    {/* Grilla semanal */}
     {usuario.diagrama && (() => {
       const DIAS_G = ["lun","mar","mie","jue","vie","sab","dom"];
       const DIAS_LABEL = {lun:"Lunes",mar:"Martes",mie:"Miércoles",jue:"Jueves",vie:"Viernes",sab:"Sábado",dom:"Domingo"};
@@ -567,7 +555,6 @@ function InboxScreen({ctx,reload,usuario}){
   const [solicitudes,setSolicitudes]=useState(ctx.solicitudes||[]);
   const [cargando,setCargando]=useState(false);
 
-  // Cargar solicitudes frescas al montar y al refrescar
   const cargarSolicitudes=useCallback(async()=>{
     setCargando(true);
     try{
@@ -578,11 +565,9 @@ function InboxScreen({ctx,reload,usuario}){
   },[]);
 
   useEffect(()=>{cargarSolicitudes();},[cargarSolicitudes]);
-  // Sincronizar si ctx cambia
   useEffect(()=>{if(ctx.solicitudes&&ctx.solicitudes.length>0)setSolicitudes(ctx.solicitudes);},[ctx.solicitudes]);
 
   const filtered=solicitudes.filter(s=>{
-    // Excluir las que son solo avisos (no requieren acción)
     if(s.estado==="registrado")return false;
     if(f==="todas")return true;
     return s.estado===f;
@@ -596,22 +581,19 @@ function InboxScreen({ctx,reload,usuario}){
   });
 
   const resolver=async(id,estado)=>{try{const sol=solicitudes.find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){
-    // Si es permiso de ingreso y se aprueba, fichar automáticamente
     const esPermisoIngreso=sol.motivo?.includes("🔓")||sol.motivo?.toLowerCase().includes("permiso de ingreso")||sol.motivo?.toLowerCase().includes("ingreso por bloqueo");
     if(esPermisoIngreso&&estado==="aprobado"){
       const today=new Date().toISOString().split("T")[0];
-      // Extraer hora del motivo o usar hora de creación de la solicitud
       const matchHora=sol.motivo?.match(/\((\d{1,2}:\d{2})/);
       const horaIngreso=matchHora?matchHora[1]:sol.desde&&sol.desde!=="—"?sol.desde:new Date(sol.created_at).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",hour12:false});
       const ex=await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=eq.${today}`);
       if(!ex||!ex.length){
-        const emp=(ctx.empleados||[]).find(e=>e.legajo===sol.legajo);
-        await sb.post("fichadas",{empleado_id:sol.empleado_id,legajo:sol.legajo,fecha:today,ingreso:horaIngreso,llegada_tarde:true,minutos_tarde:0,permiso_ingreso:true});
+        await sb.post("fichadas",{empleado_id:sol.empleado_id,legajo:sol.legajo,fecha:today,ingreso:horaIngreso,llegada_tarde:true,minutos_tarde:0,permiso_ingreso:true,empresa_id:usuario.empresa_id});
       }
-      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Ingreso APROBADO — Ya quedaste fichado",detalle:`${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`,urgencia:"alta",solicitud_id:id});
+      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Ingreso APROBADO — Ya quedaste fichado",detalle:`${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`,urgencia:"alta",solicitud_id:id,empresa_id:usuario.empresa_id});
       sendPushToLegajo(String(sol.legajo),"✅ Ingreso aprobado",`Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`).catch(()=>{});
     } else {
-      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id});
+      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id,empresa_id:usuario.empresa_id});
       sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});
     }
   }await cargarSolicitudes();reload();}catch(e){console.error(e);}};
@@ -641,7 +623,7 @@ function ReglasScreen({ctx,reload,usuario}){
   </div>;
 }
 
-/* ═══ CONFIGURACIÓN (unifica horarios, ubicaciones, calendario, reglas) ═══ */
+/* ═══ CONFIGURACIÓN ═══ */
 function ConfigScreen({goto,ctx,reload,usuario,empresa}){
   const [tab,setTab]=useState("horarios");
   const tabs=[["horarios","📅 Horarios"],["ubicaciones","📍 Ubicaciones"],["calendario","🗓️ Calendario"],["reglas","⚙️ Reglas Bot"]];
@@ -685,11 +667,9 @@ export default function Home() {
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:empresa?.id||usuario?.empresa_id}:null);
 
   useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
-  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} /* Cargar config con empresa_id del usuario */ if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};
+  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};
   const logout=()=>{setUsuario(null);setScreen("home");try{localStorage.removeItem("gi-session");}catch{}};
 
-  
-  // ─── Cargar divisiones y etapas de la empresa (Fase 5.3) ───
   const loadConfigEmpresa = async (eid) => {
     if (!eid) return;
     try {
@@ -711,7 +691,7 @@ const loadData=useCallback(async()=>{
       const isGer=usuario.rol==="gerencial"||usuario.rol==="administrativo";
       const [empleados,fichadasHoy,miFichada,fichadasSemana,solicitudes,misSolicitudes,reglas,notificaciones]=await Promise.all([
         sb.get("empleados?select=*&activo=eq.true&order=legajo.asc"),
-        sb.get(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,empleados(nombre)&fecha=eq.${today}`),
+        sb.get(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}`),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${monStr}&order=fecha.asc`),
         sb.get("solicitudes?select=*&order=created_at.desc&limit=50"),
@@ -719,7 +699,7 @@ const loadData=useCallback(async()=>{
         sb.get("reglas_bot?activa=eq.true&order=id.asc"),
         sb.get(isGer?"notificaciones?destinatario_rol=eq.gerencial&order=created_at.desc&limit=10":`notificaciones?destinatario_rol=eq.${usuario.legajo}&order=created_at.desc&limit=10`),
       ]);
-      const fHoy=fichadasHoy.map(f=>({...f,nombre:f.empleados?.nombre||""}));
+      const fHoy=fichadasHoy.map(f=>({...f,nombre:f.empleados?.nombre||"",division:f.empleados?.division||""}));
       setCtx({empleados,fichadasHoy:fHoy,fichadaHoy:miFichada[0]||null,fichadasSemana,solicitudes,misSolicitudes,reglas:reglas.map(r=>r.regla),reglasRaw:reglas,notificaciones});
 
       setReady(true);
@@ -758,9 +738,10 @@ const loadData=useCallback(async()=>{
         <div style={{fontSize:13,color:C.dim}}>Cargando datos...</div>
       </div>
     ):<>
+      {/* FIX #2: PushManager ARRIBA, no fijo abajo */}
       <PushManager legajo={String(usuario.legajo)} onNotification={()=>loadData()}/>
 
-      {/* Header — oculto en dashboard gerencia y chat */}
+      {/* Header */}
       {isChat?<div style={{padding:"8px 16px 14px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
         <button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:6,display:"flex"}}>{Ic.chevL}</button>
         <div style={{width:36,height:36,borderRadius:12,background:`linear-gradient(135deg,${C.amber},${C.violet})`,display:"flex",alignItems:"center",justifyContent:"center",color:"#000"}}>{Ic.bot}</div>
@@ -785,13 +766,13 @@ const loadData=useCallback(async()=>{
 
       {/* Content */}
       <div className="se" key={`${usuario.legajo}-${screen}-${refreshCounter}`} style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isChat?0:88}}>
-        {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx}/>}
+        {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx} logout={logout}/>}
         {!isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} onBack={()=>setScreen("home")}/>}
         {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
         {!isGer&&screen==="obra"&&<InstaladorScreen usuario={usuario} empresa={empresa}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
-        {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData}/>}
+        {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} logout={logout}/>}
         {isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} legajoVer={historialLegajo} onBack={()=>setScreen("home")}/>}
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={usuario?.empresa_id || empresa?.id}/>}
