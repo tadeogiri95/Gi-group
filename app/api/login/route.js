@@ -1,5 +1,11 @@
-// app/api/login-empresa/route.js
-// Login que identifica a qué empresa pertenece el usuario
+// ═══════════════════════════════════════════════════════════
+// /api/login-empresa/route.js — ETAPA 2: Login con token de sesión
+//
+// Cambios respecto a la versión anterior:
+// - Al hacer login, crea una sesión en la DB y devuelve un token
+// - El frontend guarda ese token y lo manda en cada request
+// ═══════════════════════════════════════════════════════════
+
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
@@ -16,13 +22,32 @@ async function sbGet(path) {
   return res.json();
 }
 
+async function sbRpc(fnName, params) {
+  const res = await fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
+    method: "POST",
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+  return res.json();
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
 
     // ─── Cambiar contraseña ───
     if (body.action === "cambiar_password") {
-      const { userId, nuevaPassword } = body;
+      const { userId, nuevaPassword, token } = body;
+
+      // Validar que venga un token (seguridad)
+      if (!token) {
+        return NextResponse.json({ error: "Token requerido" }, { status: 401 });
+      }
+
       const hashed = await bcrypt.hash(nuevaPassword, 10);
       const res = await fetch(`${SB_URL}/rest/v1/empleados?id=eq.${userId}`, {
         method: "PATCH",
@@ -49,7 +74,6 @@ export async function POST(req) {
       return NextResponse.json({ error: "Ingresá legajo y contraseña" }, { status: 400 });
     }
 
-    // Buscar empleado — si viene empresa_id, filtrar por empresa
     let query = `empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&activo=eq.true&select=*`;
     if (empresa_id) {
       query += `&empresa_id=eq.${empresa_id}`;
@@ -60,19 +84,14 @@ export async function POST(req) {
       return NextResponse.json({ error: "Legajo no encontrado" }, { status: 401 });
     }
 
-    // Identificar la contraseña correcta (soporta texto plano antiguo y bcrypt nuevo)
     let usuario = null;
     for (const emp of empleados) {
       let match = false;
-      
-      // Los hashes de bcrypt siempre empiezan con $2a$, $2b$ o $2y$
-      if (emp.password && emp.password.startsWith('$2')) {
+      if (emp.password && emp.password.startsWith("$2")) {
         match = await bcrypt.compare(password, emp.password);
       } else {
-        // Si no está encriptada aún en la base de datos, compara texto normal
         match = (password === emp.password);
       }
-
       if (match) {
         usuario = emp;
         break;
@@ -83,15 +102,35 @@ export async function POST(req) {
       return NextResponse.json({ error: "Contraseña incorrecta" }, { status: 401 });
     }
 
+    // ─── NUEVO: Crear sesión con token ───
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+    const userAgent = req.headers.get("user-agent") || "unknown";
+
+    const sesionData = await sbRpc("crear_sesion", {
+      p_empleado_id: usuario.id,
+      p_empresa_id: usuario.empresa_id,
+      p_ip: ip,
+      p_user_agent: userAgent.substring(0, 200),
+    });
+
+    const tokenInfo = Array.isArray(sesionData) ? sesionData[0] : sesionData;
+
     // Cargar datos de la empresa
-    const empresaData = await sbGet(`empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan,max_empleados`);
-    
+    const empresaData = await sbGet(
+      `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan,max_empleados`
+    );
+
     const safe = { ...usuario };
     delete safe.password;
     safe.empresa = empresaData?.[0] || null;
 
-    return NextResponse.json({ usuario: safe });
+    return NextResponse.json({
+      usuario: safe,
+      token: tokenInfo?.token || null,
+      expires_at: tokenInfo?.expires_at || null,
+    });
   } catch (err) {
+    console.error("[login] Error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

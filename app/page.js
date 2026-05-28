@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb } from './lib/supabase';
+import { sb, setToken, getToken, clearToken, onUnauthorized } from './lib/supabase';
 import { setDivisionesEmpresa } from "./lib/constants";
 import { C, fH, fB, fM, fmtTime, fmtDate, fmtDateLong, DIAS_KEY, setColoresEmpresa } from './lib/theme';
 import { callClaude, parseAction } from './lib/claude';
@@ -61,13 +61,14 @@ function LoginScreen({onLogin,empresa}) {
     if(!legajo||!password)return;
     setLoading(true);setError("");
     try{
-      const res=await fetch("/api/login",{
+      const res=await fetch("/api/login-empresa",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({legajo:legajo.trim(),password}),
+        body:JSON.stringify({legajo:legajo.trim(),password,empresa_id:empresa?.id||null}),
       });
       const data=await res.json();
       if(!res.ok||data.error){setError(data.error||"Error de conexión");setLoading(false);return;}
+      if(data.token)setToken(data.token);
       onLogin(data.usuario);
     }catch(err){setError(err.message);setLoading(false);}
   };
@@ -112,10 +113,10 @@ function CambiarPasswordScreen({usuario,onDone}) {
     if(nueva==="gigroup2025"){setError("Elegí una contraseña distinta a la inicial");return;}
     setLoading(true);setError("");
     try{
-      const res=await fetch("/api/login",{
+      const res=await fetch("/api/login-empresa",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:"cambiar_password",userId:usuario.id,nuevaPassword:nueva}),
+        body:JSON.stringify({action:"cambiar_password",userId:usuario.id,nuevaPassword:nueva,token:getToken()}),
       });
       const data=await res.json();
       if(!res.ok||data.error){setError(data.error||"Error al cambiar");setLoading(false);return;}
@@ -802,9 +803,12 @@ export default function Home() {
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:empresa?.id||usuario?.empresa_id}:null);
 
-  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
+  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");clearToken();}else if(!getToken()){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
   const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};
-  const logout=()=>{setUsuario(null);setScreen("home");try{localStorage.removeItem("gi-session");}catch{}};
+  const logout=()=>{setUsuario(null);setScreen("home");clearToken();try{localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}catch{}};
+
+  // Auto-logout si el servidor responde 401 (sesión expirada)
+  useEffect(()=>{onUnauthorized(()=>{setUsuario(null);setScreen("home");clearToken();try{localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}catch{}});},[]);
 
   const loadConfigEmpresa = async (eid) => {
     if (!eid) return;
