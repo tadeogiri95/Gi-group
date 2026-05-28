@@ -264,7 +264,7 @@ function ReportesObraPanel({ reportesObra }) {
 /* ═══════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL: DashboardGerencia
    ═══════════════════════════════════════════════════════ */
-export default function DashboardGerencia({ goto, ctx, reload, logout }) {
+export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }) {
   const DIVISIONES = getDivisionesConTodas();
   const [division, setDivision] = useState("todas");
   const [tab, setTab] = useState("resumen"); // resumen | asistencia | produccion | solicitudes
@@ -420,9 +420,12 @@ export default function DashboardGerencia({ goto, ctx, reload, logout }) {
       {/* ─── Header con fecha/hora ─── */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {empresa?.logo_url&&<img src={empresa.logo_url} alt="" style={{width:40,height:40,borderRadius:10,objectFit:"contain"}}/>}
+            <div>
             <div style={{ fontSize: 13, color: C.dim }}>{fmtDate(now)} · {fmtTime(now)}</div>
             <h2 style={{ margin: "4px 0 0", fontFamily: fH, fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Panel de control</h2>
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <PulseDot color={C.green} />
@@ -459,32 +462,18 @@ export default function DashboardGerencia({ goto, ctx, reload, logout }) {
         </div>
       )}
 
-      {/* ─── Solicitudes resumen ─── */}
+      {/* ─── Solicitudes pendientes ─── */}
+      {pendientes.length > 0 && (
       <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.amber}30`, marginBottom: 14,
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Solicitudes</div>
-          {pendientes.length > 0 && <Tag color={C.amber}>{pendientes.length} pendientes</Tag>}
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.amber}12`, borderRadius: 10 }}>
-            <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.amber }}>{pendientes.length}</div>
-            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Pendientes</div>
-          </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.green}12`, borderRadius: 10 }}>
-            <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.green }}>{aprobadas.length}</div>
-            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Aprobadas</div>
-          </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "8px 0", background: `${C.red}12`, borderRadius: 10 }}>
-            <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.red }}>{rechazadas.length}</div>
-            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Rechazadas</div>
-          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Solicitudes pendientes</div>
+          <Tag color={C.amber}>{pendientes.length} pendientes</Tag>
         </div>
 
         {/* Últimas pendientes */}
-        {pendientes.slice(0, 3).map(s => (
+        {pendientes.slice(0, 5).map(s => (
           <div key={s.id} style={{
             display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
             borderBottom: `1px solid ${C.border}`,
@@ -498,17 +487,16 @@ export default function DashboardGerencia({ goto, ctx, reload, logout }) {
           </div>
         ))}
 
-        {pendientes.length > 0 && (
-          <button onClick={() => goto?.("solicitudes")} style={{
-            width: "100%", marginTop: 10, padding: 10, borderRadius: 10,
-            background: `${C.violet}12`, border: `1px solid ${C.violet}25`, color: C.violet,
-            fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-          }}>
-            📋 Gestionar solicitudes →
-          </button>
-        )}
+        <button onClick={() => goto?.("solicitudes")} style={{
+          width: "100%", marginTop: 10, padding: 10, borderRadius: 10,
+          background: `${C.violet}12`, border: `1px solid ${C.violet}25`, color: C.violet,
+          fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+        }}>
+          📋 Gestionar solicitudes →
+        </button>
       </div>
+      )}
 
       {/* ─── Botones Estado Taller / Estado Instalaciones ─── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
