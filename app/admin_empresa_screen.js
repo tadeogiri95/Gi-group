@@ -12,6 +12,7 @@ import { Tag } from "./components/ui";
 const TABS = [
   { id: "general", label: "🏢 General" },
   { id: "colores", label: "🎨 Colores" },
+  { id: "personalizacion", label: "✨ Personalizar" },
   { id: "logo", label: "🖼️ Logo" },
   { id: "divisiones", label: "🏭 Divisiones" },
   { id: "etapas", label: "📋 Etapas" },
@@ -237,19 +238,42 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
     if (!file) return;
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("empresa_id", eid);
+      // Convertir a base64
+      const toBase64 = (f) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      });
+      const base64 = await toBase64(file);
+      const ext = file.name.split(".").pop() || "png";
+      const fileName = `logos/${eid}_${Date.now()}.${ext}`;
 
-      const res = await fetch("/api/upload-logo", { method: "POST", body: formData });
+      // Intentar subir via /api/upload (mismo endpoint que fotos)
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName,
+          fileBase64: base64,
+          fileType: file.type || "image/png",
+        }),
+      });
       const data = await res.json();
-      if (data.logo_url) {
-        setConfig(prev => ({ ...prev, logo_url: data.logo_url }));
-        if (onUpdate) onUpdate({ logo_url: data.logo_url });
-        showToast("✅ Logo actualizado");
+      
+      let logoUrl;
+      if (data.ok && data.url) {
+        logoUrl = data.url;
       } else {
-        showToast(data.error || "Error subiendo logo", C.red);
+        // Fallback: usar data URI
+        logoUrl = `data:${file.type || "image/png"};base64,${base64}`;
       }
+
+      // Guardar URL en la empresa
+      await sb.patch(`empresa?id=eq.${eid}`, { logo_url: logoUrl });
+      setConfig(prev => ({ ...prev, logo_url: logoUrl }));
+      if (onUpdate) onUpdate({ logo_url: logoUrl });
+      showToast("✅ Logo actualizado");
     } catch (err) {
       showToast(`Error: ${err.message}`, C.red);
     }
@@ -415,6 +439,136 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
               opacity: saving ? 0.5 : 1,
             }}
           >{saving ? "Guardando..." : "💾 Guardar colores"}</button>
+        </div>
+      )}
+
+      {/* ═══ TAB: PERSONALIZACIÓN ═══ */}
+      {activeTab === "personalizacion" && (
+        <div>
+          {/* Color de fondo */}
+          <div style={cardStyle}>
+            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>🎨 Color de fondo</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              {[
+                { id: "oscuro", label: "Oscuro", bg: "#0C0A09", text: "#F5F0E8" },
+                { id: "carbon", label: "Carbón", bg: "#1A1A2E", text: "#E0E0E0" },
+                { id: "azul_noche", label: "Azul noche", bg: "#0D1B2A", text: "#E0E1DD" },
+                { id: "claro", label: "Claro", bg: "#F5F5F0", text: "#1C1917" },
+                { id: "crema", label: "Crema", bg: "#FFF8F0", text: "#292524" },
+                { id: "custom", label: "Personalizado", bg: config.color_fondo || "#0C0A09", text: "#F5F0E8" },
+              ].map(t => (
+                <button key={t.id} onClick={() => setConfig(prev => ({ ...prev, tema_fondo: t.id, color_fondo: t.bg, color_texto: t.text }))} style={{
+                  padding: "10px 14px", borderRadius: 12, cursor: "pointer", border: config.tema_fondo === t.id ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
+                  background: t.bg, color: t.text, fontSize: 12, fontWeight: 600, fontFamily: fB,
+                }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {config.tema_fondo === "custom" && (
+              <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ ...labelStyle, fontSize: 10 }}>Fondo</label>
+                  <input type="color" value={config.color_fondo || "#0C0A09"} onChange={e => setConfig(prev => ({ ...prev, color_fondo: e.target.value }))} style={{ width: "100%", height: 40, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ ...labelStyle, fontSize: 10 }}>Texto</label>
+                  <input type="color" value={config.color_texto || "#F5F0E8"} onChange={e => setConfig(prev => ({ ...prev, color_texto: e.target.value }))} style={{ width: "100%", height: 40, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tipografía */}
+          <div style={cardStyle}>
+            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>🔤 Tipografía</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { id: "default", label: "Bricolage + Geist (por defecto)", preview: "'Bricolage Grotesque', system-ui" },
+                { id: "moderna", label: "Moderna (sans-serif)", preview: "'Inter', 'Helvetica', sans-serif" },
+                { id: "elegante", label: "Elegante (serif)", preview: "'Georgia', 'Times', serif" },
+                { id: "tecnica", label: "Técnica (monospace)", preview: "'JetBrains Mono', monospace" },
+                { id: "casual", label: "Casual (rounded)", preview: "'Nunito', 'Quicksand', sans-serif" },
+              ].map(f => (
+                <button key={f.id} onClick={() => setConfig(prev => ({ ...prev, tipografia: f.id }))} style={{
+                  padding: "12px 14px", borderRadius: 12, cursor: "pointer", textAlign: "left",
+                  border: config.tipografia === f.id ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
+                  background: config.tipografia === f.id ? `${C.amber}12` : C.surface, color: C.text,
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: f.preview }}>{f.label}</div>
+                  <div style={{ fontSize: 12, color: C.dim, fontFamily: f.preview, marginTop: 4 }}>Vista previa del texto</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Orden del menú */}
+          <div style={cardStyle}>
+            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>📱 Formato de hora</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {[
+                { id: "24h", label: "24 horas (14:30)" },
+                { id: "12h", label: "12 horas (2:30 PM)" },
+              ].map(f => (
+                <button key={f.id} onClick={() => setConfig(prev => ({ ...prev, formato_hora: f.id }))} style={{
+                  flex: 1, padding: "12px 10px", borderRadius: 12, cursor: "pointer",
+                  border: (config.formato_hora || "24h") === f.id ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
+                  background: (config.formato_hora || "24h") === f.id ? `${C.amber}12` : C.surface, color: C.text,
+                  fontSize: 13, fontWeight: 600, fontFamily: fB, textAlign: "center",
+                }}>{f.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Idioma de notificaciones */}
+          <div style={cardStyle}>
+            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>🔔 Notificaciones</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, color: C.text }}>Sonido de notificación</span>
+                <button onClick={() => setConfig(prev => ({ ...prev, sonido_notif: !prev.sonido_notif }))} style={{
+                  width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
+                  background: config.sonido_notif !== false ? C.green : C.surfHi,
+                  position: "relative", transition: "background 0.2s",
+                }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 11, background: "#fff", position: "absolute", top: 3, left: config.sonido_notif !== false ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
+                </button>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, color: C.text }}>Resumen diario automático</span>
+                <button onClick={() => setConfig(prev => ({ ...prev, resumen_diario: !prev.resumen_diario }))} style={{
+                  width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
+                  background: config.resumen_diario ? C.green : C.surfHi,
+                  position: "relative", transition: "background 0.2s",
+                }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 11, background: "#fff", position: "absolute", top: 3, left: config.resumen_diario ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={async () => {
+              setSaving(true);
+              try {
+                const updates = {};
+                const campos = ["tema_fondo", "color_fondo", "color_texto", "tipografia", "formato_hora", "sonido_notif", "resumen_diario"];
+                campos.forEach(k => { if (config[k] !== empresa?.[k]) updates[k] = config[k]; });
+                if (Object.keys(updates).length === 0) { showToast("Sin cambios", C.dim); setSaving(false); return; }
+                await sb.patch(`empresa?id=eq.${eid}`, updates);
+                if (onUpdate) onUpdate(updates);
+                showToast("✅ Personalización guardada");
+              } catch (e) { showToast(`Error: ${e.message}`, C.red); }
+              setSaving(false);
+            }}
+            disabled={saving}
+            style={{
+              width: "100%", padding: 14, borderRadius: 12, border: "none",
+              background: C.green, color: "#000",
+              fontSize: 15, fontWeight: 700, fontFamily: fB, cursor: saving ? "default" : "pointer",
+              opacity: saving ? 0.5 : 1,
+            }}
+          >{saving ? "Guardando..." : "💾 Guardar personalización"}</button>
         </div>
       )}
 

@@ -261,32 +261,41 @@ export default function InstaladorScreen({ usuario, empresa }) {
   const confirmar = async () => {
     setFase("procesando");
     setUploadProgress("");
+    setError(null);
     try {
       const reporteId = `${usuario?.id || "anon"}_${Date.now()}`;
 
-      // Subir fotos
+      // Subir fotos una por una con retry
       const fotosUrls = [];
       if (fotos.length > 0) {
-        setUploadProgress(`Subiendo fotos... 0/${fotos.length}`);
         for (let i = 0; i < fotos.length; i++) {
-          setUploadProgress(`Subiendo fotos... ${i + 1}/${fotos.length}`);
-          const url = await subirFoto(fotos[i].file, reporteId);
-          if (url) fotosUrls.push(url);
+          setUploadProgress(`Subiendo foto ${i + 1} de ${fotos.length}...`);
+          try {
+            const url = await subirFoto(fotos[i].file, reporteId);
+            if (url) fotosUrls.push(url);
+          } catch (fotoErr) {
+            console.warn(`Error subiendo foto ${i+1}:`, fotoErr);
+            // Continuar con las demás fotos
+          }
         }
       }
 
       setUploadProgress("Guardando reporte...");
+
+      // Usar fecha local (no UTC)
+      const ahora = new Date();
+      const fechaLocal = `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,"0")}-${String(ahora.getDate()).padStart(2,"0")}`;
 
       const payload = {
         usuario_id: usuario?.id || null,
         nombre: usuario?.nombre || "Instalador",
         legajo: usuario?.legajo || null,
         empresa_id: usuario?.empresa_id || empresa?.id || null,
-        fecha: new Date().toISOString().slice(0, 10),
+        fecha: fechaLocal,
         texto_original: texto,
-        progreso: reporte.progreso || "",
-        faltantes: reporte.faltantes || [],
-        desvios: reporte.desvios || [],
+        progreso: reporte?.progreso || "",
+        faltantes: reporte?.faltantes || [],
+        desvios: reporte?.desvios || [],
         fotos: fotos.length,
         fotos_urls: fotosUrls,
       };
@@ -295,7 +304,6 @@ export default function InstaladorScreen({ usuario, empresa }) {
         await sb.post("reportes_obra", payload);
       } catch (dbErr) {
         console.warn("Error con tabla reportes_obra, intentando con campos mínimos:", dbErr);
-        // Intentar con campos mínimos si la tabla tiene esquema diferente
         try {
           await sb.post("reportes_obra", {
             usuario_id: payload.usuario_id,
@@ -318,13 +326,13 @@ export default function InstaladorScreen({ usuario, empresa }) {
       setTimeout(() => {
         setTexto("");
         setReporte(null);
-        // Liberar previews
-        fotos.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview); });
+        fotos.forEach(f => { if (f.preview) try{URL.revokeObjectURL(f.preview)}catch{} });
         setFotos([]);
         setFase("ingreso");
       }, 2500);
-    } catch {
-      setError("Error al guardar. Intentá de nuevo.");
+    } catch (err) {
+      console.error("Error en confirmar:", err);
+      setError("Error al guardar: " + (err?.message || "Intentá de nuevo"));
       setFase("check");
       setUploadProgress("");
     }

@@ -460,6 +460,8 @@ function HistorialFichajesScreen({usuario,ctx,legajoVer,onBack}){
 /* ═══ HOME EMPLEADO ═══ */
 function HomeEmp({goto,usuario,ctx,logout}){
   const misSols=ctx.misSolicitudes||[];const dH=DIAS_KEY[new Date().getDay()];const diagH=usuario.diagrama?.[dH];
+  /* Notificaciones de resolución no leídas */
+  const notisResolucion=(ctx.notificaciones||[]).filter(n=>n.tipo==="aprobacion"&&!n.leida);
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
     {/* Hero card con logout */}
     <div style={{background:`linear-gradient(135deg,${ctx.fichadaHoy?.ingreso?C.green:C.amber}08,${C.surface} 60%)`,borderRadius:20,padding:20,border:`1px solid ${ctx.fichadaHoy?.ingreso?C.green+"30":C.border}`,marginBottom:16,position:"relative",overflow:"hidden"}}>
@@ -472,15 +474,25 @@ function HomeEmp({goto,usuario,ctx,logout}){
             {diagH&&<div style={{fontSize:12,color:C.dim,marginTop:4}}>Jornada: <span style={{color:C.text,fontWeight:600}}>{diagH.in} a {diagH.out}</span></div>}
             {!diagH&&usuario.diagrama&&<div style={{fontSize:12,color:C.green,fontWeight:600,marginTop:4}}>Hoy es franco 🎉</div>}
           </div>
-          {/* FIX #1: Botón logout visible en home */}
           <button onClick={logout} style={{width:36,height:36,borderRadius:10,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}} title="Cerrar sesión">{Ic.logout}</button>
         </div>
+        {/* Fichada de hoy */}
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{width:8,height:8,borderRadius:4,background:ctx.fichadaHoy?.ingreso?C.green:C.amber}}/>
-          <span style={{fontSize:13,fontWeight:600,color:ctx.fichadaHoy?.ingreso?C.green:C.amber}}>{ctx.fichadaHoy?.ingreso?`Ingreso ${ctx.fichadaHoy.ingreso.slice(0,5)}`:"Sin fichar"}</span>
+          <span style={{fontSize:13,fontWeight:600,color:ctx.fichadaHoy?.ingreso?C.green:C.amber}}>{ctx.fichadaHoy?.ingreso?`Ingreso ${ctx.fichadaHoy.ingreso.slice(0,5)}${ctx.fichadaHoy?.egreso?" · Egreso "+ctx.fichadaHoy.egreso.slice(0,5):""}`:"Sin fichar"}</span>
         </div>
       </div>
     </div>
+
+    {/* Notificaciones de resoluciones */}
+    {notisResolucion.length>0&&<div style={{marginBottom:16}}>
+      <div style={{marginBottom:8}}><h3 style={{margin:0,fontSize:14,fontWeight:700,color:C.text,fontFamily:fH}}>🔔 Notificaciones</h3></div>
+      {notisResolucion.slice(0,5).map(n=><div key={n.id} style={{background:n.asunto?.includes("APROBADA")||n.asunto?.includes("aprobado")?`${C.green}10`:`${C.red}10`,borderRadius:12,padding:12,border:`1px solid ${n.asunto?.includes("APROBADA")||n.asunto?.includes("aprobado")?C.green+"30":C.red+"30"}`,marginBottom:6}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.text}}>{n.asunto}</div>
+        <div style={{fontSize:12,color:C.dim,marginTop:4}}>{n.detalle}</div>
+        <div style={{fontSize:10,color:C.mute,marginTop:4}}>{new Date(n.created_at).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+      </div>)}
+    </div>}
 
     {/* Bot */}
     <button onClick={()=>goto("chat")} style={{width:"100%",padding:"16px 20px",borderRadius:16,background:`linear-gradient(135deg,${C.amber}15,${C.violet}15)`,border:`1px solid ${C.amber}30`,cursor:"pointer",display:"flex",alignItems:"center",gap:14,fontFamily:fB,marginBottom:18}}>
@@ -540,7 +552,7 @@ function HomeEmp({goto,usuario,ctx,logout}){
     {/* Mi semana */}
     <div style={{marginBottom:12}}><h3 style={{margin:0,fontSize:16,fontWeight:700,color:C.text,fontFamily:fH}}>Mi semana</h3></div>
     <div style={{background:C.surface,borderRadius:16,padding:14,border:`1px solid ${C.border}`,marginBottom:18}}>
-      {(ctx.fichadasSemana||[]).length===0?<div style={{padding:16,textAlign:"center",color:C.dim,fontSize:13}}>Sin fichadas</div>:(ctx.fichadasSemana||[]).map((d,i,a)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<a.length-1?`1px solid ${C.border}`:"none"}}><div><div style={{fontSize:13,fontWeight:600,color:C.text}}>{new Date(d.fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"2-digit",month:"2-digit"})}</div>{d.ingreso&&<div style={{fontSize:11,color:C.dim,marginTop:2,fontFamily:fM}}>{d.ingreso.slice(0,5)} → {d.egreso?d.egreso.slice(0,5):"en curso"}</div>}</div><span style={{fontFamily:fM,fontSize:14,fontWeight:700,color:d.ingreso?C.green:C.mute}}>{d.ingreso?"✓":"—"}</span></div>)}
+      {(ctx.fichadasSemana||[]).length===0?<div style={{padding:16,textAlign:"center",color:C.dim,fontSize:13}}>Sin fichadas</div>:(ctx.fichadasSemana||[]).map((d,i,a)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<a.length-1?`1px solid ${C.border}`:"none"}}><div><div style={{fontSize:13,fontWeight:600,color:C.text}}>{new Date(d.fecha+"T12:00:00").toLocaleDateString("es-AR",{weekday:"short",day:"2-digit",month:"2-digit"})}</div>{d.ingreso&&<div style={{fontSize:11,color:C.dim,marginTop:2,fontFamily:fM}}>{d.ingreso.slice(0,5)} → {d.egreso?d.egreso.slice(0,5):"en curso"}</div>}</div><div style={{display:"flex",alignItems:"center",gap:6}}>{d.horas_trabajadas&&<span style={{fontSize:10,color:C.dim,fontFamily:fM}}>{Number(d.horas_trabajadas).toFixed(1)}h</span>}<span style={{fontFamily:fM,fontSize:14,fontWeight:700,color:d.ingreso?C.green:C.mute}}>{d.ingreso?"✓":"—"}</span></div></div>)}
     </div>
 
     {/* Mis solicitudes */}
@@ -625,13 +637,14 @@ function ReglasScreen({ctx,reload,usuario}){
 
 /* ═══ CONFIGURACIÓN ═══ */
 function ConfigScreen({goto,ctx,reload,usuario,empresa}){
-  const [tab,setTab]=useState("horarios");
-  const tabs=[["horarios","📅 Horarios"],["ubicaciones","📍 Ubicaciones"],["calendario","🗓️ Calendario"],["reglas","⚙️ Reglas Bot"]];
+  const [tab,setTab]=useState("reportes");
+  const tabs=[["reportes","📊 Asistencia"],["horarios","📅 Horarios"],["ubicaciones","📍 Ubicaciones"],["calendario","🗓️ Calendario"],["reglas","⚙️ Reglas Bot"]];
   return<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
     <div style={{padding:"0 18px 10px",display:"flex",gap:6,overflowX:"auto",flexShrink:0}}>
       {tabs.map(([id,lbl])=><button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",borderRadius:20,border:"none",cursor:"pointer",background:tab===id?`${C.amber}22`:C.surface,color:tab===id?C.amber:C.dim,fontSize:12,fontWeight:700,fontFamily:fB,whiteSpace:"nowrap"}}>{lbl}</button>)}
     </div>
     <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      {tab==="reportes"&&<ReportesScreen/>}
       {tab==="horarios"&&<GrillaHorarioScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
       {tab==="ubicaciones"&&<GeolocalizacionScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
       {tab==="calendario"&&<CalendarioScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
@@ -642,7 +655,7 @@ function ConfigScreen({goto,ctx,reload,usuario,empresa}){
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["reportes","Reportes",Ic.history],["config","Gestión RR.HH",Ic.gear],["equipo","Equipo",Ic.users],["admin","Configuración",Ic.gear]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["config","Gestión RR.HH",Ic.users],["admin","Configuración",Ic.gear]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -688,8 +701,11 @@ export default function Home() {
 const loadData=useCallback(async()=>{
     if(!usuario)return;
     try{
-      const today=new Date().toISOString().split("T")[0];
-      const mon=new Date();mon.setDate(mon.getDate()-((mon.getDay()+6)%7));const monStr=mon.toISOString().split("T")[0];
+      // Usar fecha local (Argentina UTC-3) en lugar de UTC
+      const now=new Date();
+      const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+      const mon=new Date(now);mon.setDate(mon.getDate()-((mon.getDay()+6)%7));
+      const monStr=`${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,"0")}-${String(mon.getDate()).padStart(2,"0")}`;
       const isGer=usuario.rol==="gerencial"||usuario.rol==="administrativo";
       const [empleados,fichadasHoy,miFichada,fichadasSemana,solicitudes,misSolicitudes,reglas,notificaciones]=await Promise.all([
         sb.get("empleados?select=*&activo=eq.true&order=legajo.asc"),
@@ -756,8 +772,8 @@ const loadData=useCallback(async()=>{
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Gestión de RR.HH":screen==="equipo"?"Gestión de personal":screen==="reportes"?"Control horario":screen==="historial-fichajes"?"Control de asistencia":screen==="admin"?"Configuración general":(empresa?.nombre_corto||"Gypi"):screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":(empresa?.nombre_corto||"Gypi")}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Gestión RR.HH":screen==="reportes"?"Reportes":screen==="admin"?"Configuración":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":(empresa?.nombre_corto||"Gypi")}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Gestión de RR.HH":screen==="equipo"?"Gestión de personal":screen==="historial-fichajes"?"Control de asistencia":screen==="admin"?"Configuración general":(empresa?.nombre_corto||"Gypi"):screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":(empresa?.nombre_corto||"Gypi")}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Gestión RR.HH":screen==="admin"?"Configuración":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":(empresa?.nombre_corto||"Gypi")}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -780,7 +796,6 @@ const loadData=useCallback(async()=>{
         {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={usuario?.empresa_id || empresa?.id}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen empresaId={empresa?.id}/>}
         {isGer&&screen==="config"&&<ConfigScreen goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} usuario={usuario} empresa={empresa}/>}
-        {isGer&&screen==="reportes"&&<ReportesScreen/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
         {isGer&&screen==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={(e)=>{const updated={...empresa, ...e}; setEmpresa(updated); setColoresEmpresa(updated.color_primario, updated.color_secundario); forceRender(n=>n+1); loadConfigEmpresa(usuario?.empresa_id);}} />}
       </div>
