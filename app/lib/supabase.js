@@ -1,15 +1,8 @@
-// ═══════════════════════════════════════════════════════════
-// lib/supabase.js — ETAPA 2: Cliente con autenticación por token
-//
-// Cambios respecto a la versión anterior:
-// - Guarda el token de sesión que viene del login
-// - Lo manda en el header Authorization de cada request
-// - Si el servidor responde 401, fuerza logout
-// ═══════════════════════════════════════════════════════════
+// lib/supabase.js
 
-// ─── Manejo del token ───
 let _token = null;
-let _onUnauthorized = null; // callback para forzar logout
+let _empresaId = null;
+let _onUnauthorized = null;
 
 export function setToken(token) {
   _token = token;
@@ -31,28 +24,47 @@ export function clearToken() {
   try { localStorage.removeItem("gypi_token"); } catch (e) {}
 }
 
+export function setEmpresaId(id) {
+  _empresaId = id;
+}
+
 export function onUnauthorized(callback) {
   _onUnauthorized = callback;
 }
 
-// ─── Request con token ───
 async function req(method, path, body) {
   const token = getToken();
   const headers = { "Content-Type": "application/json" };
-  
+
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Si no hay token, inyectar empresa_id en el path o body como fallback
+  let finalPath = path;
+  let finalBody = body;
+
+  if (!token && _empresaId) {
+    // Para GET: agregar empresa_id al path si no está ya
+    if ((!method || method === "GET") && !path.includes("empresa_id=")) {
+      finalPath = path.includes("?")
+        ? path + `&empresa_id=eq.${_empresaId}`
+        : path + `?empresa_id=eq.${_empresaId}`;
+    }
+    // Para POST: agregar empresa_id al body
+    if (method === "POST" && body) {
+      finalBody = { ...body, empresa_id: _empresaId };
+    }
   }
 
   const res = await fetch("/api/data", {
     method: "POST",
     headers,
-    body: JSON.stringify({ method, path, body }),
+    body: JSON.stringify({ method, path: finalPath, body: finalBody }),
   });
 
   const json = await res.json();
 
-  // Si el servidor dice 401, la sesión expiró → forzar logout
   if (res.status === 401) {
     clearToken();
     if (_onUnauthorized) _onUnauthorized();

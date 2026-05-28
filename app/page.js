@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sb, setToken, getToken, clearToken, onUnauthorized } from './lib/supabase';
+import { sb, setToken, getToken, clearToken, onUnauthorized, setEmpresaId } from './lib/supabase';
 import { setDivisionesEmpresa } from "./lib/constants";
 import { C, fH, fB, fM, fmtTime, fmtDate, fmtDateLong, DIAS_KEY, setColoresEmpresa } from './lib/theme';
 import { callClaude, parseAction } from './lib/claude';
@@ -735,8 +735,8 @@ export default function Home() {
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:empresa?.id||usuario?.empresa_id}:null);
 
-  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");clearToken();}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
-  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};
+  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");clearToken();}else{setUsuario(parsed);if(parsed.empresa_id)setEmpresaId(parsed.empresa_id);}}}catch{}setInit(true);},[]);
+  const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);if(safe.empresa_id)setEmpresaId(safe.empresa_id);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};
   const logout=()=>{setUsuario(null);setScreen("home");clearToken();try{localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}catch{}};
 
   // Auto-logout si el servidor responde 401 (sesión expirada)
