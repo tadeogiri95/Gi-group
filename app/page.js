@@ -16,7 +16,6 @@ import CalendarioScreen from './calendario_screen';
 import DashboardGerencia from './dashboard_gerencia';
 import ReportesScreen from './reportes_screen';
 import GeolocalizacionScreen from './geolocalizacion_screen';
-import { validarGeoFichaje } from './geolocalizacion_screen';
 import InstaladorScreen from './instalador_screen.jsx';
 import AdminEmpresaScreen from './admin_empresa_screen.js';
 
@@ -189,6 +188,44 @@ function FichadaCard({tipo,hora,geoMsg,tardanza}){
 }
 function SolSentCard({motivo,fecha}){return<div style={{marginTop:8,padding:14,background:C.amberS,borderRadius:14,border:`1px solid ${C.amber}30`,minWidth:220}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{fontSize:11,color:C.amber,fontWeight:700,letterSpacing:"0.06em"}}>ENVIADA A GERENCIA</div><div style={{fontSize:13,color:C.text,fontWeight:600,marginTop:4}}>{motivo}</div><div style={{fontSize:11,color:C.dim,marginTop:4}}>📅 {fecha} · ⏳ Esperando</div></div><Tag color={C.amber}>{Ic.clock} PENDIENTE</Tag></div></div>;}
 
+/* ═══ FICHAJE SERVER-SIDE (ETAPA 3) ═══ */
+async function ficharServer(accion, opciones = {}) {
+  const token = getToken();
+  if (!token) throw new Error("Sin sesión");
+  const res = await fetch("/api/fichar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({ accion, ...opciones }),
+  });
+  const data = await res.json();
+  if (res.status === 401) { clearToken(); throw new Error("Sesión expirada"); }
+  return data;
+}
+
+async function obtenerGeo(empleado) {
+  const ub = empleado.ubicacion_fichaje;
+  if (!ub || !ub.activa || ub.tipo === "home_office") return { ok: true, msg: ub?.tipo === "home_office" ? "Home Office" : "Sin control de ubicación" };
+  if (!navigator.geolocation) return { ok: false, msg: "Tu navegador no soporta geolocalización." };
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const R = 6371000;
+        const dLat = (ub.lat - pos.coords.latitude) * Math.PI / 180;
+        const dLng = (ub.lng - pos.coords.longitude) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(pos.coords.latitude * Math.PI / 180) * Math.cos(ub.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        const dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+        const ok = dist <= (ub.radio || 200);
+        resolve({
+          ok, lat: pos.coords.latitude, lng: pos.coords.longitude, distancia: dist,
+          msg: ok ? "✅ Ubicación verificada (" + dist + "m)" : "❌ Estás a " + dist + "m (máximo " + (ub.radio || 200) + "m)",
+        });
+      },
+      err => resolve({ ok: false, msg: err.code === 1 ? "⚠️ Necesitás dar permiso de ubicación." : "Error GPS: " + err.message }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    );
+  });
+}
+
 /* ═══ CHAT ═══ */
 function ChatScreen({usuario,ctx,reload,empresa}){
   const dH=DIAS_KEY[new Date().getDay()];const diagH=usuario.diagrama?.[dH];
@@ -197,165 +234,50 @@ function ChatScreen({usuario,ctx,reload,empresa}){
   useEffect(()=>{ref.current&&(ref.current.scrollTop=ref.current.scrollHeight)},[msgs,loading]);
 
   const execAction=async(action)=>{
-    let card=null;const hora=fmtTime(new Date());const today=new Date().toISOString().split("T")[0];
+    let card=null;const hora=fmtTime(new Date());
     try{switch(action.type){
       case"FICHAR_INGRESO":{
-        const geo = await validarGeoFichaje(usuario);
+        const geo = await obtenerGeo(usuario);
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
-        const dH=DIAS_KEY[new Date().getDay()];
-        const diagHoy=usuario.diagrama?.[dH];
-        let tardanza=null;
-        if(diagHoy){
-          const [hE,mE]=diagHoy.in.split(":").map(Number);
-          const [hS,mS]=diagHoy.out.split(":").map(Number);
-          const ahora=new Date();
-          const entradaProg=hE*60+mE;
-          const salidaProg=hS*60+mS;
-          const entradaReal=ahora.getHours()*60+ahora.getMinutes();
-          /* Punto 6: No permitir fichaje después del horario de salida */
-          if(entradaReal>=salidaProg){
-            return {type:"fichada_bloqueada",msg:`⛔ No se puede fichar ingreso después del horario de salida (${diagHoy.out}).\n\nTu jornada de hoy ya finalizó.`};
-          }
-          const diffMin=entradaReal-entradaProg;
-          if(diffMin>0){
-            const mesInicio=new Date(ahora.getFullYear(),ahora.getMonth(),1).toISOString().split("T")[0];
-            let llegadasTarde=0;
-            try{
-              const fichadasMes=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${mesInicio}&fecha=lt.${today}&select=ingreso,llegada_tarde`);
-              llegadasTarde=(fichadasMes||[]).filter(f=>f.llegada_tarde===true).length;
-            }catch(e){console.error(e);}
-            llegadasTarde++;
-            /* Punto 4: Si >30min tarde, solo permitir si hay solicitud aprobada previa */
-            if(diffMin>30){
-              let tienePermisoAprobado=false;
-              try{
-                const solsHoy=await sb.get(`solicitudes?legajo=eq.${usuario.legajo}&fecha=eq.${today}&estado=eq.aprobado&select=id,motivo`);
-                tienePermisoAprobado=(solsHoy||[]).some(s=>s.motivo?.includes("INGRESO")||s.motivo?.includes("ingreso")||s.motivo?.includes("🔓"));
-              }catch(e){console.error(e);}
-              if(!tienePermisoAprobado){
-                tardanza={estado:"bloqueado",minutos:diffMin,llegadasTarde};
-                await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`⛔ ${usuario.apodo} BLOQUEADO — requiere permiso`,detalle:`Tardanza de ${diffMin} min (supera 30min de tolerancia). Requiere autorización de gerencia.`,urgencia:"alta",empresa_id:usuario.empresa_id});
-                sendPushToLegajo("1",`⛔ ${usuario.apodo} BLOQUEADO — requiere permiso`,`Tardanza de ${diffMin} min. Requiere autorización.`).catch(()=>{});
-                await sb.post("notificaciones",{destinatario_rol:String(usuario.legajo),tipo:"alerta",asunto:"⛔ Ingreso bloqueado",detalle:"Contactá a gerencia para que autorice tu ingreso.",urgencia:"alta",empresa_id:usuario.empresa_id});
-                return {type:"fichada_bloqueada",msg:`⛔ Tu ingreso está bloqueado.\n\nTu tardanza supera los 30 minutos de tolerancia.\n\nNecesitás solicitar y tener aprobada la autorización de gerencia antes de poder fichar.`};
-              }
-              /* Tiene permiso aprobado, fichar con tardanza */
-              tardanza={estado:"tarde",minutos:diffMin,llegadasTarde};
-            } else if(llegadasTarde>=3){
-              /* 3ra llegada tarde: bloquear también */
-              let tienePermisoAprobado=false;
-              try{
-                const solsHoy=await sb.get(`solicitudes?legajo=eq.${usuario.legajo}&fecha=eq.${today}&estado=eq.aprobado&select=id,motivo`);
-                tienePermisoAprobado=(solsHoy||[]).some(s=>s.motivo?.includes("INGRESO")||s.motivo?.includes("ingreso")||s.motivo?.includes("🔓"));
-              }catch(e){console.error(e);}
-              if(!tienePermisoAprobado){
-                tardanza={estado:"bloqueado",minutos:diffMin,llegadasTarde};
-                await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`⛔ ${usuario.apodo} BLOQUEADO — 3ra llegada tarde`,detalle:`3ra llegada tarde del mes (+${diffMin}min). Requiere autorización de gerencia.`,urgencia:"alta",empresa_id:usuario.empresa_id});
-                sendPushToLegajo("1",`⛔ ${usuario.apodo} BLOQUEADO`,`3ra llegada tarde del mes.`).catch(()=>{});
-                await sb.post("notificaciones",{destinatario_rol:String(usuario.legajo),tipo:"alerta",asunto:"⛔ Ingreso bloqueado",detalle:"Contactá a gerencia para que autorice tu ingreso.",urgencia:"alta",empresa_id:usuario.empresa_id});
-                return {type:"fichada_bloqueada",msg:`⛔ Tu ingreso está bloqueado.\n\nAcumulaste 3 llegadas tarde este mes.\n\nNecesitás autorización de gerencia para ingresar.`};
-              }
-              tardanza={estado:"tarde",minutos:diffMin,llegadasTarde};
-            } else {
-              tardanza={estado:"tarde",minutos:diffMin,llegadasTarde};
-            }
-            const urgencia=tardanza.estado==="bloqueado"?"alta":"normal";
-            const asunto=`⚠️ Llegada tarde de ${usuario.apodo}`;
-            const detalle=`Llegada tarde #${llegadasTarde}: +${diffMin} min`;
-            await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto,detalle,urgencia,empresa_id:usuario.empresa_id});
-            sendPushToLegajo("1",asunto,detalle).catch(()=>{});
-            await sb.post("notificaciones",{destinatario_rol:String(usuario.legajo),tipo:"info",asunto:"⚠️ Llegada tarde: +"+diffMin+" min",detalle:"Llegada tarde #"+llegadasTarde+" del mes.",urgencia,empresa_id:usuario.empresa_id});
-          }
-        }
-        const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(!ex.length)await sb.post("fichadas",{
-          empleado_id:usuario.id,legajo:usuario.legajo,fecha:today,ingreso:hora,
-          llegada_tarde:tardanza?true:false,
-          minutos_tarde:tardanza?tardanza.minutos:0,
-          geo_ingreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-          empresa_id:usuario.empresa_id,
+        const res = await ficharServer("ingreso", {
+          geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia,
         });
-        card={type:"fichada",sub:"ingreso",hora,geoMsg:geo.msg,tardanza};
+        if (!res.ok) {
+          if (res.tipo === "bloqueado_tardanza" || res.tipo === "bloqueado_3ra_tarde") {
+            return { type: "fichada_bloqueada", msg: "⛔ " + res.error };
+          }
+          if (res.tipo === "bloqueado_horario") {
+            return { type: "fichada_bloqueada", msg: "⛔ " + res.error };
+          }
+          return { type: "fichada_bloqueada", msg: res.error };
+        }
+        card={type:"fichada",sub:"ingreso",hora:res.hora||hora,geoMsg:geo.msg,tardanza:res.tardanza};
         break;
       }
       case"FICHAR_EGRESO":{
-        /* ── Punto 3: Verificar si hay tarea activa ── */
-        try{
-          const tareasActivas=await sb.get(`registro_actividades?empleado_id=eq.${usuario.id}&hora_fin=is.null&limit=1`);
-          if(tareasActivas&&tareasActivas.length>0){
-            return {type:"tarea_activa",msg:`⚠️ Tenés una actividad activa en curso.\n\nSi fichás la salida, se finalizará automáticamente.\n\n¿Querés continuar?`,tareaId:tareasActivas[0].id};
-          }
-        }catch(e){console.error("Error verificando tareas activas:",e);}
-        const geo = await validarGeoFichaje(usuario);
+        const geo = await obtenerGeo(usuario);
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
-        const ex=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(ex.length){
-          let horasTrab=null;
-          let horasExtras=null;
-          if(ex[0].ingreso){
-            const [hI,mI]=ex[0].ingreso.split(":").map(Number);
-            const ahora=new Date();
-            const minIng=hI*60+mI;
-            const minEgr=ahora.getHours()*60+ahora.getMinutes();
-            horasTrab=((minEgr-minIng)/60).toFixed(2);
-            /* Punto 7: Horas extras = excedente de 9h jornada habitual (lun-vie) */
-            const diaSemana=ahora.getDay(); /* 0=dom, 1=lun...5=vie, 6=sab */
-            const JORNADA_HABITUAL_MIN=9*60; /* 9 horas = 540 min */
-            const minTrabajados=minEgr-minIng;
-            if(diaSemana>=1&&diaSemana<=5&&minTrabajados>JORNADA_HABITUAL_MIN){
-              horasExtras=((minTrabajados-JORNADA_HABITUAL_MIN)/60).toFixed(2);
-            } else if(diaSemana===0||diaSemana===6){
-              /* Sábado/Domingo: todo es extra */
-              horasExtras=horasTrab;
-            }
+        const res = await ficharServer("egreso", {
+          geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia,
+        });
+        if (!res.ok) {
+          if (res.tipo === "tarea_activa") {
+            return { type: "tarea_activa", msg: "⚠️ " + res.error, tareaId: res.tarea_id };
           }
-          await sb.patch(`fichadas?id=eq.${ex[0].id}`,{
-            egreso:hora,
-            horas_trabajadas:horasTrab,
-            horas_extras:horasExtras,
-            geo_egreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-          });
+          return { type: "fichada_bloqueada", msg: res.error };
         }
-        card={type:"fichada",sub:"egreso",hora,geoMsg:geo.msg};
+        card={type:"fichada",sub:"egreso",hora:res.hora||hora,geoMsg:geo.msg};
         break;
       }
       case"FICHAR_EGRESO_FORZAR":{
-        /* Finalizar tarea activa y luego fichar salida */
-        try{
-          const tareasActivas=await sb.get(`registro_actividades?empleado_id=eq.${usuario.id}&hora_fin=is.null&limit=1`);
-          if(tareasActivas&&tareasActivas.length>0){
-            await sb.patch(`registro_actividades?id=eq.${tareasActivas[0].id}`,{hora_fin:new Date().toISOString()});
-          }
-        }catch(e){console.error("Error finalizando tarea:",e);}
-        const geo = await validarGeoFichaje(usuario);
+        const geo = await obtenerGeo(usuario);
         if (!geo.ok) return { type: "geo_error", msg: geo.msg };
-        const ex2=await sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`);
-        if(ex2.length){
-          let horasTrab2=null;
-          let horasExtras2=null;
-          if(ex2[0].ingreso){
-            const [hI2,mI2]=ex2[0].ingreso.split(":").map(Number);
-            const ahora2=new Date();
-            const minIng2=hI2*60+mI2;
-            const minEgr2=ahora2.getHours()*60+ahora2.getMinutes();
-            horasTrab2=((minEgr2-minIng2)/60).toFixed(2);
-            const diaSemana2=ahora2.getDay();
-            const JORNADA_HABITUAL_MIN2=9*60;
-            const minTrab2=minEgr2-minIng2;
-            if(diaSemana2>=1&&diaSemana2<=5&&minTrab2>JORNADA_HABITUAL_MIN2){
-              horasExtras2=((minTrab2-JORNADA_HABITUAL_MIN2)/60).toFixed(2);
-            } else if(diaSemana2===0||diaSemana2===6){
-              horasExtras2=horasTrab2;
-            }
-          }
-          await sb.patch(`fichadas?id=eq.${ex2[0].id}`,{
-            egreso:hora,
-            horas_trabajadas:horasTrab2,
-            horas_extras:horasExtras2,
-            geo_egreso: geo.coords ? { lat: geo.coords.lat, lng: geo.coords.lng, distancia: geo.distancia } : null,
-          });
-        }
-        card={type:"fichada",sub:"egreso",hora,geoMsg:geo.msg};
+        const res = await ficharServer("egreso", {
+          forzar_cierre_tarea: true,
+          geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia,
+        });
+        if (!res.ok) return { type: "fichada_bloqueada", msg: res.error };
+        card={type:"fichada",sub:"egreso",hora:res.hora||hora,geoMsg:geo.msg};
         break;
       }
       case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal",empresa_id:usuario.empresa_id});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
