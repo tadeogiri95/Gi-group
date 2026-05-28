@@ -280,9 +280,9 @@ function ChatScreen({usuario,ctx,reload,empresa}){
         card={type:"fichada",sub:"egreso",hora:res.hora||hora,geoMsg:geo.msg};
         break;
       }
-      case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal",empresa_id:usuario.empresa_id});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
-      case"AVISAR_TARDANZA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"tardanza",motivo:`Tardanza: ${action.motivo||""}`,fecha:"hoy",estado:"registrado",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Tardanza de ${usuario.apodo}`,detalle:action.motivo,urgencia:"normal",empresa_id:usuario.empresa_id});sendPushToLegajo("1","⏰ Tardanza",`${usuario.apodo}: ${action.motivo||"sin detalle"}`).catch(()=>{});break;
-      case"AVISAR_AUSENCIA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"ausencia",motivo:action.motivo||"Ausencia",fecha:action.fecha||"hoy",estado:"pendiente",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Ausencia de ${usuario.apodo}`,detalle:action.motivo,urgencia:"alta",empresa_id:usuario.empresa_id});sendPushToLegajo("1","🚨 Ausencia",`${usuario.apodo}: ${action.motivo||"Ausencia"}`).catch(()=>{});break;
+      case"SOLICITAR_PERMISO":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:action.motivo||"",fecha:action.fecha||"",desde:action.desde||"—",hasta:action.hasta||"—",estado:"pendiente",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`${usuario.apodo} pidió permiso`,detalle:action.motivo,urgencia:"normal",empresa_id:usuario.empresa_id});sendPushToLegajo("1","📋 Nuevo permiso",`${usuario.apodo} solicitó permiso: ${action.motivo||"sin detalle"}`,{empresa_id:usuario.empresa_id}).catch(()=>{});card={type:"solicitud",motivo:action.motivo,fecha:action.fecha};break;
+      case"AVISAR_TARDANZA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"tardanza",motivo:`Tardanza: ${action.motivo||""}`,fecha:"hoy",estado:"registrado",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Tardanza de ${usuario.apodo}`,detalle:action.motivo,urgencia:"normal",empresa_id:usuario.empresa_id});sendPushToLegajo("1","⏰ Tardanza",`${usuario.apodo}: ${action.motivo||"sin detalle"}`,{empresa_id:usuario.empresa_id}).catch(()=>{});break;
+      case"AVISAR_AUSENCIA":await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"ausencia",motivo:action.motivo||"Ausencia",fecha:action.fecha||"hoy",estado:"pendiente",empresa_id:usuario.empresa_id});await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"alerta",asunto:`Ausencia de ${usuario.apodo}`,detalle:action.motivo,urgencia:"alta",empresa_id:usuario.empresa_id});sendPushToLegajo("1","🚨 Ausencia",`${usuario.apodo}: ${action.motivo||"Ausencia"}`,{empresa_id:usuario.empresa_id}).catch(()=>{});break;
       case"NOTIFICAR_GERENCIA":await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"info",asunto:action.asunto,detalle:action.detalle,urgencia:action.urgencia||"normal",empresa_id:usuario.empresa_id});break;
     }reload&&reload();}catch(e){console.error(e);}return card;
   };
@@ -296,7 +296,7 @@ function ChatScreen({usuario,ctx,reload,empresa}){
         const hora=fmtTime(new Date());
         await sb.post("solicitudes",{empleado_id:usuario.id,legajo:usuario.legajo,nombre_empleado:usuario.nombre,tipo:"permiso",motivo:`🔓 Permiso de INGRESO por bloqueo (${hora})`,fecha:hoy,desde:hora,hasta:"—",estado:"pendiente",empresa_id:usuario.empresa_id});
         await sb.post("notificaciones",{destinatario_rol:"gerencial",tipo:"solicitud",asunto:`🔓 ${usuario.apodo} solicita permiso de INGRESO`,detalle:`Ingreso bloqueado a las ${hora}. Requiere autorización para fichar.`,urgencia:"alta",empresa_id:usuario.empresa_id});
-        sendPushToLegajo("1","🔓 Permiso de ingreso",`${usuario.apodo} solicita autorización para ingresar (${hora})`).catch(()=>{});
+        sendPushToLegajo("1","🔓 Permiso de ingreso",`${usuario.apodo} solicita autorización para ingresar (${hora})`,{empresa_id:usuario.empresa_id}).catch(()=>{});
         setMsgs(m=>[...m,{from:"bot",text:"✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.",time:new Date(),card:{type:"solicitud",motivo:"🔓 Permiso de INGRESO por bloqueo",fecha:hoy}}]);
         if(reload)reload();
       }catch(e){console.error("Error solicitud permiso ingreso:",e);setMsgs(m=>[...m,{from:"bot",text:"Error al enviar la solicitud. Probá de nuevo.",time:new Date()}]);}
@@ -610,18 +610,24 @@ function InboxScreen({ctx,reload,usuario}){
   const [f,setF]=useState("pendiente");
   const [solicitudes,setSolicitudes]=useState(ctx.solicitudes||[]);
   const [cargando,setCargando]=useState(false);
+  const [pagina,setPagina]=useState(0);
+  const [hayMas,setHayMas]=useState(true);
+  const LIMIT=30;
 
-  const cargarSolicitudes=useCallback(async()=>{
+  const cargarSolicitudes=useCallback(async(pag=0)=>{
     setCargando(true);
     try{
-      const sols=await sb.get("solicitudes?select=*&order=created_at.desc&limit=50");
-      setSolicitudes(sols||[]);
+      const offset=pag*LIMIT;
+      const sols=await sb.get(`solicitudes?select=*&order=created_at.desc&limit=${LIMIT}&offset=${offset}`);
+      if(pag===0){setSolicitudes(sols||[]);}else{setSolicitudes(prev=>[...prev,...(sols||[])]);}
+      setHayMas((sols||[]).length===LIMIT);
+      setPagina(pag);
     }catch(e){console.error("Error cargando solicitudes:",e);}
     setCargando(false);
   },[]);
 
-  useEffect(()=>{cargarSolicitudes();},[cargarSolicitudes]);
-  useEffect(()=>{if(ctx.solicitudes&&ctx.solicitudes.length>0)setSolicitudes(ctx.solicitudes);},[ctx.solicitudes]);
+  useEffect(()=>{cargarSolicitudes(0);},[cargarSolicitudes]);
+  useEffect(()=>{if(ctx.solicitudes&&ctx.solicitudes.length>0&&pagina===0)setSolicitudes(ctx.solicitudes);},[ctx.solicitudes,pagina]);
 
   const filtered=solicitudes.filter(s=>{
     if(s.estado==="registrado")return false;
@@ -647,22 +653,25 @@ function InboxScreen({ctx,reload,usuario}){
         await sb.post("fichadas",{empleado_id:sol.empleado_id,legajo:sol.legajo,fecha:today,ingreso:horaIngreso,llegada_tarde:true,minutos_tarde:0,permiso_ingreso:true,empresa_id:usuario.empresa_id});
       }
       await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Ingreso APROBADO — Ya quedaste fichado",detalle:`${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`,urgencia:"alta",solicitud_id:id,empresa_id:usuario.empresa_id});
-      sendPushToLegajo(String(sol.legajo),"✅ Ingreso aprobado",`Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`).catch(()=>{});
+      sendPushToLegajo(String(sol.legajo),"✅ Ingreso aprobado",`Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`,{empresa_id:usuario.empresa_id}).catch(()=>{});
     } else {
       await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id,empresa_id:usuario.empresa_id});
-      sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`).catch(()=>{});
+      sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`,{empresa_id:usuario.empresa_id}).catch(()=>{});
     }
-  }await cargarSolicitudes();reload();}catch(e){console.error(e);}};
+  }await cargarSolicitudes(0);reload();}catch(e){console.error(e);}};
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",alignItems:"center"}}>
       <Chip active={f==="pendiente"} onClick={()=>setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip>
       <Chip active={f==="aprobado"} onClick={()=>setF("aprobado")} color={C.green}>Aprobados</Chip>
       <Chip active={f==="rechazado"} onClick={()=>setF("rechazado")} color={C.red}>Rechazados</Chip>
       <Chip active={f==="todas"} onClick={()=>setF("todas")}>Todas</Chip>
-      <button onClick={cargarSolicitudes} style={{width:30,height:30,borderRadius:8,background:C.surface,border:`1px solid ${C.border}`,color:C.dim,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>{Ic.refresh}</button>
+      <button onClick={()=>cargarSolicitudes(0)} style={{width:30,height:30,borderRadius:8,background:C.surface,border:`1px solid ${C.border}`,color:C.dim,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>{Ic.refresh}</button>
     </div>
-    {cargando?<div style={{textAlign:"center",padding:30,color:C.dim,fontSize:13}}>Cargando solicitudes...</div>:
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>{sortedFiltered.length===0?<div style={{background:C.surface,borderRadius:14,padding:40,textAlign:"center",border:`1px solid ${C.border}`}}><div style={{color:C.green,display:"inline-flex",marginBottom:12}}>{Ic.check}</div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Todo al día</div></div>:sortedFiltered.map(s=><SolCard key={s.id} s={s} showActions onResolve={resolver}/>)}</div>}
+    {cargando&&pagina===0?<div style={{textAlign:"center",padding:30,color:C.dim,fontSize:13}}>Cargando solicitudes...</div>:
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>{sortedFiltered.length===0?<div style={{background:C.surface,borderRadius:14,padding:40,textAlign:"center",border:`1px solid ${C.border}`}}><div style={{color:C.green,display:"inline-flex",marginBottom:12}}>{Ic.check}</div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Todo al día</div></div>:sortedFiltered.map(s=><SolCard key={s.id} s={s} showActions onResolve={resolver}/>)}
+    {hayMas&&!cargando&&<button onClick={()=>cargarSolicitudes(pagina+1)} style={{width:"100%",padding:14,borderRadius:14,background:C.surface,border:`1px solid ${C.border}`,color:C.amber,fontSize:13,fontWeight:700,fontFamily:fB,cursor:"pointer",marginTop:4}}>Cargar más solicitudes</button>}
+    {cargando&&pagina>0&&<div style={{textAlign:"center",padding:14,color:C.dim,fontSize:12}}>Cargando...</div>}
+    </div>}
   </div>;
 }
 
@@ -680,9 +689,9 @@ function ReglasScreen({ctx,reload,usuario}){
 }
 
 /* ═══ CONFIGURACIÓN ═══ */
-function ConfigScreen({goto,ctx,reload,usuario,empresa}){
+function ConfigScreen({goto,ctx,reload,usuario,empresa,onUpdateEmpresa}){
   const [tab,setTab]=useState("reportes");
-  const tabs=[["reportes","📊 Asistencia"],["horarios","📅 Horarios"],["ubicaciones","📍 Ubicaciones"],["calendario","🗓️ Calendario"],["reglas","⚙️ Reglas Bot"]];
+  const tabs=[["reportes","📊 Asistencia"],["horarios","📅 Horarios"],["ubicaciones","📍 Ubicaciones"],["calendario","🗓️ Calendario"],["reglas","⚙️ Reglas Bot"],["admin","🏢 Empresa"]];
   return<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
     <div style={{padding:"0 18px 10px",display:"flex",gap:6,overflowX:"auto",flexShrink:0}}>
       {tabs.map(([id,lbl])=><button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",borderRadius:20,border:"none",cursor:"pointer",background:tab===id?`${C.amber}22`:C.surface,color:tab===id?C.amber:C.dim,fontSize:12,fontWeight:700,fontFamily:fB,whiteSpace:"nowrap"}}>{lbl}</button>)}
@@ -693,13 +702,14 @@ function ConfigScreen({goto,ctx,reload,usuario,empresa}){
       {tab==="ubicaciones"&&<GeolocalizacionScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
       {tab==="calendario"&&<CalendarioScreen empresaId={usuario?.empresa_id || empresa?.id}/>}
       {tab==="reglas"&&<ReglasScreen ctx={ctx} reload={reload} usuario={usuario}/>}
+      {tab==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa}/>}
     </div>
   </div>;
 }
 
 /* ═══ NAV ═══ */
 function Nav({active,onChange,role,pend}){
-  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["config","Gestión RR.HH",Ic.gear],["admin","Config",Ic.gear]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["obra","Obra",Ic.gear],["mis-sols","Solicitudes",Ic.history]];
+  const items=role==="gerencial"||role==="administrativo"?[["home","Inicio",Ic.home],["solicitudes","Inbox",Ic.inbox,pend],["equipo","Equipo",Ic.users],["config","Gestión",Ic.gear]]:[["home","Inicio",Ic.home],["actividad","Actividad",Ic.hammer],["chat","Chat",Ic.chat],["mis-sols","Solicitudes",Ic.history]];
   return<div className="safe-bottom" style={{position:"fixed",bottom:0,left:0,right:0,background:`${C.bg}f0`,backdropFilter:"blur(20px)",borderTop:`1px solid ${C.border}`,padding:"8px 12px 22px",zIndex:50,display:"flex",justifyContent:"space-around",maxWidth:480,margin:"0 auto"}}>
     {items.map(([id,lbl,ic,badge])=>{const a=active===id;return<button key={id} onClick={()=>onChange(id)} style={{flex:1,background:"none",border:"none",padding:"6px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:4,color:a?C.amber:C.dim,cursor:"pointer",fontFamily:fB,fontSize:10,fontWeight:600}}><div style={{...(a?{background:C.amberS,borderRadius:12,padding:"4px 14px"}:{}),display:"flex",alignItems:"center",position:"relative"}}>{ic}{badge>0&&<span style={{position:"absolute",top:-2,right:-2,minWidth:16,height:16,padding:"0 4px",borderRadius:8,background:C.red,color:"#fff",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",border:`2px solid ${C.bg}`,fontFamily:fM}}>{badge}</span>}</div><span>{lbl}</span></button>})}
   </div>;
@@ -819,8 +829,8 @@ const loadData=useCallback(async()=>{
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {showBack&&<button onClick={()=>setScreen("home")} style={{background:"none",border:"none",color:C.text,cursor:"pointer",padding:4,display:"flex"}}>{Ic.chevL}</button>}
           <div>
-            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Gestión de RR.HH":screen==="equipo"?"Gestión de personal":screen==="historial-fichajes"?"Control de asistencia":screen==="admin"?"Configuración general":(empresa?.nombre_corto||"Gypi"):screen==="actividad"?"Registro de actividades":screen==="obra"?"Reporte diario":screen==="historial-fichajes"?"Mi asistencia":(empresa?.nombre_corto||"Gypi")}</div>
-            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Gestión RR.HH":screen==="admin"?"Configuración":screen==="obra"?"Reporte de Obra":screen==="historial-fichajes"?"Fichajes":(empresa?.nombre_corto||"Gypi")}</h1>
+            <div style={{fontSize:11,color:C.dim,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{isGer?showBack?"Configuración":screen==="ger-actividad"?"Producción en vivo":screen==="config"?"Configuración":screen==="equipo"?"Gestión de personal":screen==="historial-fichajes"?"Control de asistencia":(empresa?.nombre_corto||"Gypi"):screen==="actividad"?"Registro de actividades":screen==="historial-fichajes"?"Mi asistencia":(empresa?.nombre_corto||"Gypi")}</div>
+            <h1 style={{margin:0,fontSize:22,fontWeight:700,color:C.text,fontFamily:fH,letterSpacing:"-0.02em"}}>{screen==="solicitudes"?"Inbox":screen==="equipo"?"Personal":screen==="mis-sols"?"Solicitudes":screen==="actividad"?"Mi Jornada":screen==="ger-actividad"?"Taller":screen==="config"?"Gestión":screen==="historial-fichajes"?"Fichajes":(empresa?.nombre_corto||"Gypi")}</h1>
           </div>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -835,16 +845,14 @@ const loadData=useCallback(async()=>{
         {!isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} onBack={()=>setScreen("home")}/>}
         {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
-        {!isGer&&screen==="obra"&&<InstaladorScreen usuario={usuario} empresa={empresa}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
         {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} logout={logout} empresa={empresa}/>}
         {isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} legajoVer={historialLegajo} onBack={()=>setScreen("home")}/>}
         {isGer&&screen==="solicitudes"&&<InboxScreen ctx={ctx} reload={loadData} usuario={usuario}/>}
         {isGer&&screen==="equipo"&&<GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={usuario?.empresa_id || empresa?.id}/>}
         {isGer&&screen==="ger-actividad"&&<GerenciaActividadScreen empresaId={empresa?.id}/>}
-        {isGer&&screen==="config"&&<ConfigScreen goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} usuario={usuario} empresa={empresa}/>}
+        {isGer&&screen==="config"&&<ConfigScreen goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} usuario={usuario} empresa={empresa} onUpdateEmpresa={(e)=>{const updated={...empresa, ...e}; setEmpresa(updated); setColoresEmpresa(updated.color_primario, updated.color_secundario); forceRender(n=>n+1); loadConfigEmpresa(usuario?.empresa_id);}}/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
-        {isGer&&screen==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={(e)=>{const updated={...empresa, ...e}; setEmpresa(updated); setColoresEmpresa(updated.color_primario, updated.color_secundario); forceRender(n=>n+1); loadConfigEmpresa(usuario?.empresa_id);}} />}
       </div>
 
       {!isChat&&<Nav active={screen} onChange={setScreen} role={usuario.rol} pend={pend}/>}
