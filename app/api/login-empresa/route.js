@@ -126,8 +126,8 @@ export async function POST(req) {
 
     return NextResponse.json({
       usuario: safe,
-      token: tokenInfo?.token || null,
-      expires_at: tokenInfo?.expires_at || null,
+      token: tokenInfo?.out_token || null,
+      expires_at: tokenInfo?.out_expires_at || null,
     });
   } catch (err) {
     console.error("[login] Error:", err.message);
