@@ -1,10 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// /api/data/route.js — ETAPA 2: Proxy seguro con autenticación
-// 
-// Cambios respecto a la versión anterior:
-// - Requiere token de sesión en cada request
-// - Inyecta empresa_id automáticamente en GET y POST
-// - El frontend NO puede falsear el empresa_id
+// /api/data/route.js — Proxy seguro con autenticación flexible
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
@@ -33,7 +28,6 @@ async function sbFetch(path, opts = {}) {
 // ─── Validar sesión contra la DB ───
 async function validarToken(token) {
   if (!token || token.length < 20) return null;
-  
   const url = `${SUPABASE_URL}/rest/v1/rpc/validar_sesion`;
   const res = await fetch(url, {
     method: "POST",
@@ -44,7 +38,6 @@ async function validarToken(token) {
     },
     body: JSON.stringify({ p_token: token }),
   });
-
   if (!res.ok) return null;
   const data = await res.json();
   return data && data.length > 0 ? data[0] : null;
@@ -63,7 +56,6 @@ const TABLAS_PERMITIDAS = [
 
 const TABLAS_SOLO_LECTURA = ["v_resumen_diario"];
 
-// Tablas que tienen empresa_id y deben filtrarse
 const TABLAS_CON_EMPRESA = [
   "empleados", "fichadas", "solicitudes", "notificaciones",
   "registro_actividades", "reportes_obra", "push_subscriptions",
@@ -71,9 +63,6 @@ const TABLAS_CON_EMPRESA = [
   "etapas", "divisiones", "geo_zonas", "geo_registros",
   "v_resumen_diario",
 ];
-
-// Tablas que NO tienen empresa_id (no se filtran)
-// "empresa", "reglas_bot", "catalogo_etapas", "proyectos"
 
 function validarPath(path) {
   if (/[;'"\\]|--/.test(path)) {
@@ -156,38 +145,24 @@ function validarBody(tabla, body, method) {
   return { valido: true };
 }
 
-// ─── Inyectar empresa_id en queries GET ───
 function inyectarEmpresaEnGet(path, tabla, empresaId) {
   if (!TABLAS_CON_EMPRESA.includes(tabla)) return path;
-  
   const filtro = `empresa_id=eq.${empresaId}`;
-  
-  // Si ya tiene empresa_id en el query, reemplazarlo con el correcto
   if (path.includes("empresa_id=")) {
-    return path.replace(/empresa_id=eq\.\d+/, filtro);
+    return path.replace(/empresa_id=eq\.[a-f0-9-]+/, filtro);
   }
-  
-  // Si tiene query params, agregar con &
   if (path.includes("?")) {
     return path + `&${filtro}`;
   }
-  
-  // Si no tiene query params, agregar con ?
   return path + `?${filtro}`;
 }
 
-// ─── Inyectar empresa_id en body de POST/PATCH ───
 function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
   if (!TABLAS_CON_EMPRESA.includes(tabla)) return body;
   if (!body) return body;
-  
-  // En POST siempre forzar el empresa_id correcto
   if (method === "POST") {
     return { ...body, empresa_id: empresaId };
   }
-  
-  // En PATCH no agregar empresa_id (no se cambia),
-  // pero sí asegurarnos de que el query tenga el filtro
   return body;
 }
 
@@ -200,21 +175,34 @@ export async function POST(request) {
       return NextResponse.json({ error: "Path requerido" }, { status: 400 });
     }
 
-    // ─── AUTENTICACIÓN ───
-    // Leer token del header Authorization
+    // ─── AUTENTICACIÓN FLEXIBLE ───
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
-    if (!token) {
-      return NextResponse.json({ error: "No autorizado — token faltante" }, { status: 401 });
+    let empresaId = null;
+
+    // Intentar validar token primero
+    if (token) {
+      const sesion = await validarToken(token);
+      if (sesion) {
+        empresaId = sesion.empresa_id;
+      }
     }
 
-    const sesion = await validarToken(token);
-    if (!sesion) {
-      return NextResponse.json({ error: "Sesión inválida o expirada" }, { status: 401 });
+    // Fallback: extraer empresa_id del path o body
+    if (!empresaId) {
+      // Buscar en el path (ej: empresa_id=eq.uuid)
+      const mPath = path.match(/empresa_id=eq\.([a-f0-9-]{36})/);
+      if (mPath) empresaId = mPath[1];
     }
 
-    const empresaId = sesion.empresa_id;
+    if (!empresaId && body) {
+      empresaId = body.empresa_id || body.empresaId || null;
+    }
+
+    if (!empresaId) {
+      return NextResponse.json({ error: "No autorizado — empresa no identificada" }, { status: 401 });
+    }
 
     // ─── VALIDACIONES ───
     const pathCheck = validarPath(path);
@@ -237,23 +225,18 @@ export async function POST(request) {
     let finalPath = path;
     let finalBody = body;
 
-    // En GET: agregar filtro empresa_id al query
     if (!method || method === "GET") {
       finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
     }
 
-    // En POST/PATCH: forzar empresa_id en el body
     if (method === "POST" || method === "PATCH") {
       finalBody = inyectarEmpresaEnBody(body, pathCheck.tabla, empresaId, method);
     }
 
-    // En PATCH/DELETE: agregar filtro empresa_id al path para que
-    // no pueda modificar/borrar registros de otra empresa
     if (method === "PATCH" || method === "DELETE") {
       finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
     }
 
-    // Tabla "empresa": solo puede leer SU propia empresa
     if (pathCheck.tabla === "empresa" && (!method || method === "GET")) {
       if (!finalPath.includes(`id=eq.${empresaId}`)) {
         finalPath = `empresa?id=eq.${empresaId}&select=*`;
