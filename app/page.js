@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { sb } from './lib/supabase';
 import { setDivisionesEmpresa } from "./lib/constants";
-import { C, fH, fB, fM, fmtTime, fmtDate, fmtDateLong, DIAS_KEY } from './lib/theme';
+import { C, fH, fB, fM, fmtTime, fmtDate, fmtDateLong, DIAS_KEY, setColoresEmpresa } from './lib/theme';
 import { callClaude, parseAction } from './lib/claude';
 import PushManager from '../components/PushManager';
 import { sendPushToLegajo } from '../lib/push';
@@ -661,7 +661,9 @@ export default function Home() {
   const [divisionesEmpresa, setDivisionesEmpresaState] = useState([]);
   const [etapasEmpresa, setEtapasEmpresa] = useState([]);
   const [empresa,setEmpresa]=useState({nombre:"Gypi",nombre_corto:"Gypi",color_primario:"#F97316",color_secundario:"#8B5CF6",prompt_ia_obra:"",prompt_ia_chat:""});
+  const [,forceRender]=useState(0);
   useEffect(()=>{fetch("/api/empresa").then(r=>r.json()).then(d=>{if(d&&!d.error){setEmpresa(d);
+      setColoresEmpresa(d.color_primario, d.color_secundario); forceRender(n=>n+1);
       loadConfigEmpresa(d?.id);}}).catch(()=>{});},[]);
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:empresa?.id||usuario?.empresa_id}:null);
@@ -780,7 +782,7 @@ const loadData=useCallback(async()=>{
         {isGer&&screen==="config"&&<ConfigScreen goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} usuario={usuario} empresa={empresa}/>}
         {isGer&&screen==="reportes"&&<ReportesScreen/>}
         {isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
-        {isGer&&screen==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={(e)=>{setEmpresa({...empresa, ...e}); loadConfigEmpresa(usuario?.empresa_id);}} />}
+        {isGer&&screen==="admin"&&<AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={(e)=>{const updated={...empresa, ...e}; setEmpresa(updated); setColoresEmpresa(updated.color_primario, updated.color_secundario); forceRender(n=>n+1); loadConfigEmpresa(usuario?.empresa_id);}} />}
       </div>
 
       {!isChat&&<Nav active={screen} onChange={setScreen} role={usuario.rol} pend={pend}/>}

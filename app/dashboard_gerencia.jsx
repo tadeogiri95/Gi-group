@@ -398,11 +398,12 @@ export default function DashboardGerencia({ goto, ctx, reload, logout }) {
 
 
   /* ─── Datos de instalaciones ─── */
-  const instaladoresActivos = empActivos.filter(e => e.area === "instalacion" || e.division === "instalaciones" || e.rol === "instalador");
-  const instaladoresPresentes = fichadasHoy.filter(f => {
-    const emp = empActivos.find(e => e.legajo === f.legajo);
-    return emp && (emp.area === "instalacion" || emp.division === "instalaciones" || emp.rol === "instalador");
-  });
+  // Instalador = cualquier empleado que hoy hizo un reporte de obra (la tarea es "instalación")
+  const legajosConObra = new Set(reportesObra.map(r => r.legajo).filter(Boolean));
+  const instaladoresActivos = empActivos.filter(e => legajosConObra.has(e.legajo));
+  const instaladoresPresentes = fichadasHoy.filter(f => legajosConObra.has(f.legajo));
+  // Taller: el resto (producción sin reporte de obra hoy)
+  const tallerProd = resumenProd.filter(r => !legajosConObra.has(r.legajo));
   const obrasHoy = reportesObra.length;
   const obrasConFotos = reportesObra.filter(r => r.fotos_urls && r.fotos_urls.length > 0).length;
   const obrasConFaltantes = reportesObra.filter(r => r.faltantes && r.faltantes.length > 0).length;

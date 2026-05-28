@@ -139,7 +139,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
       const horas = calcHoras(row);
       try {
         await sb.patch(`empleados?id=eq.${emp.id}`, { diagrama, horas_semanales: Math.round(horas) });
-        await sb.post("notificaciones", { destinatario_rol: String(emp.legajo), tipo: "info", asunto: "📅 Horario actualizado", detalle: fmtHorario(row), urgencia: "normal" });
+        await sb.post("notificaciones", { destinatario_rol: String(emp.legajo), tipo: "info", asunto: "📅 Horario actualizado", detalle: fmtHorario(row), urgencia: "normal", empresa_id: empresaId });
         try { await fetch("/api/send-push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ legajo: String(emp.legajo), title: "📅 Horario actualizado", body: "Tu grilla horaria fue modificada. Revisá tu nuevo horario.", data: { tag: "horario-update" } }) }); } catch (e) { }
         ok++;
       } catch (e) { console.error(e); }
