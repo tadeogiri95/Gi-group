@@ -735,7 +735,7 @@ export default function Home() {
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:empresa?.id||usuario?.empresa_id}:null);
 
-  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");clearToken();}else if(!getToken()){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
+  useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");clearToken();}else{setUsuario(parsed);}}}catch{}setInit(true);},[]);
   const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};
   const logout=()=>{setUsuario(null);setScreen("home");clearToken();try{localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");}catch{}};
 
