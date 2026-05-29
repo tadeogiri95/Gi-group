@@ -111,7 +111,7 @@ function validarBody(tabla, body, method) {
         if (!body.legajo || !body.tipo) {
           return { valido: false, error: "Solicitud requiere legajo y tipo" };
         }
-        const tiposValidos = ["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "otro"];
+        const tiposValidos = ["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "cambio_horario", "otro"];
         if (!tiposValidos.includes(body.tipo)) {
           return { valido: false, error: `Tipo de solicitud inválido` };
         }
@@ -160,7 +160,7 @@ function inyectarEmpresaEnGet(path, tabla, empresaId) {
 function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
   if (!TABLAS_CON_EMPRESA.includes(tabla)) return body;
   if (!body) return body;
-  if (method === "POST") {
+  if (method === "POST" || method === "PATCH") {
     return { ...body, empresa_id: empresaId };
   }
   return body;
@@ -201,6 +201,7 @@ export async function POST(request) {
     }
 
     if (!empresaId) {
+      console.error("[data] 401: No empresa_id found. Token:", token ? "present" : "missing", "Path:", path, "Body keys:", body ? Object.keys(body).join(",") : "none");
       return NextResponse.json({ error: "No autorizado — empresa no identificada" }, { status: 401 });
     }
 

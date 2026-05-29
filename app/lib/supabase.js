@@ -40,17 +40,20 @@ async function req(method, path, body) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Si no hay token, inyectar empresa_id en el path o body como fallback
+  // SIEMPRE inyectar empresa_id como fallback de seguridad.
+  // El servidor lo necesita si validarToken falla (ej: PATCH sin empresa_id en path/body → 401)
   let finalPath = path;
   let finalBody = body;
 
-  if (!token && _empresaId) {
-    if ((!method || method === "GET") && !path.includes("empresa_id=")) {
+  if (_empresaId) {
+    // GET, PATCH, DELETE: agregar empresa_id al path si no está
+    if ((!method || method === "GET" || method === "PATCH" || method === "DELETE") && !path.includes("empresa_id=")) {
       finalPath = path.includes("?")
         ? path + `&empresa_id=eq.${_empresaId}`
         : path + `?empresa_id=eq.${_empresaId}`;
     }
-    if (method === "POST" && body) {
+    // POST y PATCH: agregar empresa_id al body si no está
+    if ((method === "POST" || method === "PATCH") && body && !body.empresa_id) {
       finalBody = { ...body, empresa_id: _empresaId };
     }
   }
