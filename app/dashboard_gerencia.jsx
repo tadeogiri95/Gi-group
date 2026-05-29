@@ -374,12 +374,24 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
     if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: C.red, urgencia: "alta" });
     if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media", target: "ger-actividad" });
     if (pendientes.length > permisosIngreso.length) items.push({ icon: "📋", text: `${pendientes.length - permisosIngreso.length} solicitud${(pendientes.length - permisosIngreso.length) > 1 ? "es" : ""} pendiente${(pendientes.length - permisosIngreso.length) > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal", target: "solicitudes" });
-    const urgentes = notificaciones.filter(n => n.urgencia === "alta");
+    const urgentes = notificaciones.filter(n => {
+      if (n.urgencia !== "alta") return false;
+      // Si la notificación tiene solicitud_id, verificar que siga pendiente
+      if (n.solicitud_id) {
+        const sol = solicitudes.find(s => s.id === n.solicitud_id);
+        if (sol && sol.estado !== "pendiente") return false;
+      }
+      // Si es notificación de permiso/ingreso, verificar que haya solicitudes pendientes relacionadas
+      if (n.asunto?.includes("permiso") || n.asunto?.includes("ingreso") || n.asunto?.includes("INGRESO")) {
+        if (pendientes.filter(s => s.motivo?.includes("🔓") || s.motivo?.toLowerCase().includes("permiso de ingreso")).length === 0) return false;
+      }
+      return true;
+    });
     urgentes.slice(0, 2).forEach(n => {
       items.push({ icon: "🔴", text: n.asunto, color: C.red, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
     });
     return items;
-  }, [ausentes, enEspera, pendientes, notificaciones, permisosIngreso]);
+  }, [ausentes, enEspera, pendientes, notificaciones, permisosIngreso, solicitudes]);
 
   // Productividad por división
   const prodPorDiv = useMemo(() => {
