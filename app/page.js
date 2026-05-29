@@ -318,6 +318,50 @@ function ChatScreen({usuario,ctx,reload,empresa}){
       }catch(e){console.error(e);setMsgs(m=>[...m,{from:"bot",text:"Error al fichar salida. Probá de nuevo.",time:new Date()}]);}
       setLoading(false);return;
     }
+    /* ═══ FICHAJE DIRECTO: "Ya llegué" ═══ */
+    if(t==="Ya llegué"){
+      try{
+        const cardResult=await execAction({type:"FICHAR_INGRESO"});
+        if(cardResult?.type==="geo_error"){
+          setMsgs(m=>[...m,{from:"bot",text:cardResult.msg,time:new Date()}]);
+        }else if(cardResult?.type==="fichada_bloqueada"){
+          setMsgs(m=>[...m,{from:"bot",text:cardResult.msg+"\n\n¿Querés que solicite el permiso de ingreso a gerencia?",time:new Date(),quickReplies:["✅ Sí, solicitar permiso","❌ No, cancelar"]}]);
+        }else if(cardResult){
+          // Armar mensaje con info de tardanza
+          let tardMsg="✅ ¡Fichado! Buen día, "+usuario.apodo+" 👋";
+          const trd=cardResult.tardanza;
+          if(trd&&trd.estado==="tarde"){
+            tardMsg=`⚠️ Fichado, pero llegás ${trd.minutos} min tarde.\nEs tu llegada tarde #${trd.llegadasTarde} del mes.`;
+            if(trd.llegadasTarde===2)tardMsg+="\n⚡ Recordá: a la 3ra llegada tarde perdés el premio por presentismo.";
+            if(trd.llegadasTarde>=3)tardMsg+="\n🚨 ¡PERDISTE EL PREMIO POR PRESENTISMO este mes!";
+          }
+          setMsgs(m=>[...m,{from:"bot",text:tardMsg,card:cardResult,time:new Date()}]);
+          sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"bot",mensaje:tardMsg,empresa_id:usuario.empresa_id}).catch(()=>{});
+        }else{
+          setMsgs(m=>[...m,{from:"bot",text:"✅ Ingreso registrado. ¡Buen día!",time:new Date()}]);
+        }
+        if(reload)reload();
+      }catch(e){console.error("Error fichando ingreso:",e);setMsgs(m=>[...m,{from:"bot",text:"Error al fichar ingreso. Probá de nuevo.",time:new Date()}]);}
+      setLoading(false);return;
+    }
+    /* ═══ FICHAJE DIRECTO: "Me voy" ═══ */
+    if(t==="Me voy"){
+      try{
+        const cardResult=await execAction({type:"FICHAR_EGRESO"});
+        if(cardResult?.type==="geo_error"){
+          setMsgs(m=>[...m,{from:"bot",text:cardResult.msg,time:new Date()}]);
+        }else if(cardResult?.type==="tarea_activa"){
+          setMsgs(m=>[...m,{from:"bot",text:cardResult.msg,time:new Date(),quickReplies:["✅ Sí, fichar salida","❌ No, cancelar"]}]);
+        }else if(cardResult?.type==="fichada_bloqueada"){
+          setMsgs(m=>[...m,{from:"bot",text:cardResult.msg,time:new Date()}]);
+        }else{
+          setMsgs(m=>[...m,{from:"bot",text:"✅ Salida registrada. ¡Hasta mañana, "+usuario.apodo+"! 👋",card:cardResult,time:new Date()}]);
+          sb.post("mensajes_chat",{legajo:usuario.legajo,rol:"bot",mensaje:"Salida registrada.",empresa_id:usuario.empresa_id}).catch(()=>{});
+        }
+        if(reload)reload();
+      }catch(e){console.error("Error fichando egreso:",e);setMsgs(m=>[...m,{from:"bot",text:"Error al fichar salida. Probá de nuevo.",time:new Date()}]);}
+      setLoading(false);return;
+    }
     try{const hist=nm.slice(-20).map(m=>({from:m.from,text:m.text}));const raw=await callClaude(hist,ctx,usuario,empresa);const{clean,action}=parseAction(raw);
       let card=action?await execAction(action):null;
       if (card?.type === "geo_error") {
@@ -858,7 +902,7 @@ const loadData=useCallback(async()=>{
       <div className="se" key={`${usuario.legajo}-${screen}-${refreshCounter}`} style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isChat?0:88}}>
         {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx} logout={logout} empresa={empresa}/>}
         {!isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} onBack={()=>setScreen("home")}/>}
-        {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad}/>}
+        {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad} usuario={usuario} empresa={empresa}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
         {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} logout={logout} empresa={empresa}/>}

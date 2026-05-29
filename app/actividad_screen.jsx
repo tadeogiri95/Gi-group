@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { C, fH, fB, fM } from "./lib/theme";
+import InstaladorScreen from "./instalador_screen";
 
 /* ═══ CONSTANTES UI ═══ */
 const TIPOS = [
@@ -44,8 +45,11 @@ export default function ActividadScreen({
   iniciarTarea: onIniciar,
   finalizarTarea: onFinalizar,
   cambiarTarea: onCambiar,
+  usuario,
+  empresa,
 }) {
   const [state, setState] = useState("idle");
+  const [showReporte, setShowReporte] = useState(false);
   const [proyectoSeleccionado, setProyectoSeleccionado] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [manualOT, setManualOT] = useState("");
@@ -152,6 +156,22 @@ export default function ActividadScreen({
     );
   }
 
+  // ═══ RENDER: REPORTE DE INSTALACIÓN ═══
+  if (showReporte) {
+    return (
+      <div style={{ fontFamily: fB, display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+        <div style={{ padding: "12px 20px 8px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          <button onClick={() => setShowReporte(false)} style={{ background: "none", border: "none", color: C.text, cursor: "pointer", padding: 6, fontSize: 20 }}>←</button>
+          <div>
+            <div style={{ fontSize: 11, color: C.cyan, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Reporte</div>
+            <div style={{ fontSize: 16, fontWeight: 700, fontFamily: fH }}>Instalación</div>
+          </div>
+        </div>
+        <InstaladorScreen usuario={usuario} empresa={empresa} />
+      </div>
+    );
+  }
+
   // ═══ RENDER: IDLE ═══
   if (state === "idle" && !showHistorial) {
     return (
@@ -178,6 +198,22 @@ export default function ActividadScreen({
               </button>
             </div>
           </div>
+
+          {/* Botón Reporte de Instalación */}
+          <button onClick={() => setShowReporte(true)} style={{
+            width: "100%", marginTop: 12, padding: 16, borderRadius: 16,
+            background: `linear-gradient(135deg, ${C.cyan}12, ${C.surface})`,
+            border: `1px solid ${C.cyan}30`, color: C.text,
+            fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 12,
+          }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: `${C.cyan}22`, color: C.cyan, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>📋</div>
+            <div style={{ textAlign: "left", flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Reporte de Instalación</div>
+              <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Reportar progreso, faltantes y desvíos</div>
+            </div>
+            <span style={{ color: C.dim, fontSize: 14 }}>→</span>
+          </button>
 
           {historial.length > 0 && (
             <button onClick={() => setShowHistorial(true)} style={{

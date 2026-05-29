@@ -185,12 +185,13 @@ export function useActividad(empleado) {
 
   // ── Iniciar tarea ──
   const iniciarTarea = useCallback(async ({ etapa, codigo_proyecto, tipo, causa }) => {
-    if (!empleado?.id) return;
+    if (!empleado?.id) throw new Error("Sin empleado");
     const ahora = new Date().toISOString();
     try {
+      // FIX: legajo como número (integer), no como string
       const res = await sb.post("registro_actividades", {
         empleado_id: empleado.id,
-        legajo: String(empleado.legajo),
+        legajo: Number(empleado.legajo),
         fecha: ahora.slice(0, 10),
         hora_inicio: ahora,
         codigo_proyecto: etapa === 0 ? null : (codigo_proyecto || null),
