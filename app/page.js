@@ -642,8 +642,11 @@ function InboxScreen({ctx,reload,usuario}){
     return 0;
   });
 
-  const resolver=async(id,estado)=>{try{const sol=solicitudes.find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  const resolver=async(id,estado)=>{setErrorMsg(null);try{const sol=solicitudes.find(s=>s.id===id);await sb.patch(`solicitudes?id=eq.${id}`,{estado,aprobador:usuario.apodo,resuelto_at:new Date().toISOString()});if(sol){
     const esPermisoIngreso=sol.motivo?.includes("🔓")||sol.motivo?.toLowerCase().includes("permiso de ingreso")||sol.motivo?.toLowerCase().includes("ingreso por bloqueo");
+    const esCambioHorario=sol.tipo==="cambio_horario"||sol.motivo?.toLowerCase().includes("cambio de horario")||sol.motivo?.toLowerCase().includes("cambiar horario");
     if(esPermisoIngreso&&estado==="aprobado"){
       const today=new Date().toISOString().split("T")[0];
       const matchHora=sol.motivo?.match(/\((\d{1,2}:\d{2})/);
@@ -654,12 +657,24 @@ function InboxScreen({ctx,reload,usuario}){
       }
       await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Ingreso APROBADO — Ya quedaste fichado",detalle:`${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`,urgencia:"alta",solicitud_id:id,empresa_id:usuario.empresa_id});
       sendPushToLegajo(String(sol.legajo),"✅ Ingreso aprobado",`Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`,{empresa_id:usuario.empresa_id}).catch(()=>{});
+    } else if(esCambioHorario&&estado==="aprobado"&&sol.datos_horario){
+      // Actualizar grilla del empleado con el nuevo horario aprobado
+      try{
+        const nuevoHorario=typeof sol.datos_horario==="string"?JSON.parse(sol.datos_horario):sol.datos_horario;
+        if(nuevoHorario&&sol.empleado_id){
+          const horas=Object.values(nuevoHorario).reduce((acc,v)=>{if(!v)return acc;const[hI,mI]=v.in.split(":").map(Number);const[hO,mO]=v.out.split(":").map(Number);return acc+(hO*60+mO-hI*60-mI)/60;},0);
+          await sb.patch(`empleados?id=eq.${sol.empleado_id}`,{diagrama:nuevoHorario,horas_semanales:Math.round(horas)});
+        }
+      }catch(e){console.error("Error actualizando grilla:",e);}
+      await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:"✅ Cambio de horario APROBADO",detalle:`${usuario.apodo} aprobó tu solicitud de cambio de horario. Tu grilla fue actualizada.`,urgencia:"alta",solicitud_id:id,empresa_id:usuario.empresa_id});
+      sendPushToLegajo(String(sol.legajo),"✅ Horario actualizado",`Tu cambio de horario fue aprobado por ${usuario.apodo}.`,{empresa_id:usuario.empresa_id}).catch(()=>{});
     } else {
       await sb.post("notificaciones",{destinatario_rol:String(sol.legajo),tipo:"aprobacion",asunto:`Solicitud ${estado==="aprobado"?"APROBADA ✅":"RECHAZADA ❌"}`,detalle:`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`,urgencia:"alta",solicitud_id:id,empresa_id:usuario.empresa_id});
       sendPushToLegajo(String(sol.legajo),estado==="aprobado"?"✅ Permiso aprobado":"❌ Permiso rechazado",estado==="aprobado"?`Tu ${sol.tipo} fue aprobado por ${usuario.apodo}`:`Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`,{empresa_id:usuario.empresa_id}).catch(()=>{});
     }
-  }await cargarSolicitudes(0);reload();}catch(e){console.error(e);}};
+  }await cargarSolicitudes(0);reload();}catch(e){console.error(e);setErrorMsg("Error al procesar la solicitud. Intentá de nuevo.");}};
   return<div style={{padding:"0 18px 110px",overflowY:"auto",flex:1}}>
+    {errorMsg&&<div style={{padding:12,background:C.redS,color:C.red,borderRadius:10,fontSize:12,marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>{errorMsg}</span><button onClick={()=>setErrorMsg(null)} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontWeight:700,fontSize:14}}>✕</button></div>}
     <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",alignItems:"center"}}>
       <Chip active={f==="pendiente"} onClick={()=>setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip>
       <Chip active={f==="aprobado"} onClick={()=>setF("aprobado")} color={C.green}>Aprobados</Chip>
@@ -733,7 +748,7 @@ export default function Home() {
       setColoresEmpresa(d.color_primario, d.color_secundario); forceRender(n=>n+1);
       loadConfigEmpresa(d?.id);}}).catch(()=>{});},[]);
 
-  const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:empresa?.id||usuario?.empresa_id}:null);
+  const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:usuario?.empresa_id||empresa?.id}:null);
 
   useEffect(()=>{try{const s=localStorage.getItem("gi-session");if(s){const parsed=JSON.parse(s);const guardado=localStorage.getItem("gi-session-time");const ahora=Date.now();const SIETE_DIAS=7*24*60*60*1000;if(guardado&&(ahora-Number(guardado))>SIETE_DIAS){localStorage.removeItem("gi-session");localStorage.removeItem("gi-session-time");clearToken();}else{setUsuario(parsed);if(parsed.empresa_id)setEmpresaId(parsed.empresa_id);}}}catch{}setInit(true);},[]);
   const login=u=>{const safe={...u};delete safe.password;setUsuario(safe);if(safe.empresa_id)setEmpresaId(safe.empresa_id);try{localStorage.setItem("gi-session",JSON.stringify(safe));localStorage.setItem("gi-session-time",String(Date.now()));}catch{} if(safe.empresa_id)loadConfigEmpresa(safe.empresa_id);};

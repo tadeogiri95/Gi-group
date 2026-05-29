@@ -55,6 +55,7 @@ export default function ActividadScreen({
   const [showHistorial, setShowHistorial] = useState(false);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
 
@@ -92,6 +93,7 @@ export default function ActividadScreen({
     const otFinal = modoManual ? manualOT.trim() : proyectoSeleccionado?.ot;
     if (!otFinal) return;
     setSaving(true);
+    setErrorMsg(null);
     try {
       await onIniciar({
         etapa: etapaSeleccionada,
@@ -107,13 +109,14 @@ export default function ActividadScreen({
       setTipoSeleccionado("N");
       setStep(1);
       setState("active");
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setErrorMsg("Error al iniciar la tarea. Intentá de nuevo."); }
     setSaving(false);
   };
 
   const finalizarTarea = async (nextAction = "idle") => {
     setSaving(true);
-    try { await onFinalizar(); } catch (e) { console.error(e); }
+    setErrorMsg(null);
+    try { await onFinalizar(); } catch (e) { console.error(e); setErrorMsg("Error al finalizar la tarea. Intentá de nuevo."); setSaving(false); return; }
     setSaving(false);
     if (nextAction === "cambiar") {
       setState("selecting");
@@ -125,10 +128,11 @@ export default function ActividadScreen({
 
   const confirmarPausa = async (causa) => {
     setSaving(true);
+    setErrorMsg(null);
     try {
       await onIniciar({ etapa: 0, codigo_proyecto: null, tipo: "N", causa });
       setState("active");
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setErrorMsg("Error al registrar tiempo muerto. Intentá de nuevo."); }
     setSaving(false);
   };
 
@@ -153,6 +157,7 @@ export default function ActividadScreen({
     return (
       <div style={{ fontFamily: fB, display: "flex", flexDirection: "column", flex: 1, overflowY: "auto" }}>
         <div style={{ padding: "24px 20px", flex: 1 }}>
+          {errorMsg&&<div style={{padding:12,background:C.redS,color:C.red,borderRadius:10,fontSize:12,marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>{errorMsg}</span><button onClick={()=>setErrorMsg(null)} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontWeight:700,fontSize:14}}>✕</button></div>}
           <div style={{
             background: `linear-gradient(135deg, ${C.amber}08, ${C.surface} 60%)`,
             borderRadius: 24, padding: 32, border: `1px solid ${C.border}`,
@@ -561,6 +566,7 @@ export default function ActividadScreen({
   return (
     <div style={{ fontFamily: fB, display: "flex", flexDirection: "column", flex: 1, overflowY: "auto" }}>
       <div style={{ padding: 20, flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+        {errorMsg&&<div style={{padding:12,background:C.redS,color:C.red,borderRadius:10,fontSize:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}><span>{errorMsg}</span><button onClick={()=>setErrorMsg(null)} style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontWeight:700,fontSize:14}}>✕</button></div>}
         <div style={{
           background: `linear-gradient(135deg, ${accentColor}12, ${C.surface} 60%)`,
           borderRadius: 24, padding: 24, border: `1px solid ${accentColor}30`,

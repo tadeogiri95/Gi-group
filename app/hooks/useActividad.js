@@ -93,9 +93,9 @@ export function useActividad(empleado) {
 
   // ── Cargar catálogo de etapas por división ──
   useEffect(() => {
-    if (!empleado?.division) return;
+    if (!empleado?.empresa_id) return;
     sb.get(`etapas?empresa_id=eq.${empleado.empresa_id}&activa=eq.true&order=orden.asc`)
-      .then(setEtapas)
+      .then(data => setEtapas(data || []))
       .catch(e => console.error("Error cargando etapas:", e));
   }, [empleado?.empresa_id]);
 
@@ -198,6 +198,7 @@ export function useActividad(empleado) {
         tipo: tipo || "N",
         causa: etapa === 0 ? causa : null,
         division: empleado.division,
+        empresa_id: empleado.empresa_id,
       });
       await cargarDatos();
       return res;

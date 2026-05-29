@@ -368,7 +368,7 @@ function ReportesObraTab() {
    COMPONENTE PRINCIPAL
    ═══════════════════════════════════════════════════════ */
 export default function ReportesScreen() {
-  const [tab, setTab] = useState("cumplimiento"); // cumplimiento | reportes (sin obra)
+  const [tab, setTab] = useState("cumplimiento"); // cumplimiento | taller | reportes
   const [periodo, setPeriodo] = useState("semana"); // semana | mes
   const [weekOffset, setWeekOffset] = useState(0);
   const [mesYear, setMesYear] = useState(new Date().getFullYear());
@@ -380,6 +380,12 @@ export default function ReportesScreen() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(null);
   const [toast, setToast] = useState(null);
+
+  /* ─── Taller: estado y datos ─── */
+  const [tallerData, setTallerData] = useState([]);
+  const [tallerEtapas, setTallerEtapas] = useState([]);
+  const [tallerLoading, setTallerLoading] = useState(false);
+  const [tallerVista, setTallerVista] = useState("operario"); // operario | etapa | proyecto
 
   const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3000); };
 
@@ -415,6 +421,23 @@ export default function ReportesScreen() {
   }, [fechaDesde, fechaHasta]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  /* ─── Cargar datos del taller (actividades) ─── */
+  const cargarTaller = useCallback(async () => {
+    if (tab !== "taller") return;
+    setTallerLoading(true);
+    try {
+      const [actividades, etps] = await Promise.all([
+        sb.get(`registro_actividades?fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=*&order=hora_inicio.asc`),
+        sb.get("etapas?activa=eq.true&order=orden.asc"),
+      ]);
+      setTallerData(actividades || []);
+      setTallerEtapas(etps || []);
+    } catch (e) { console.error(e); }
+    finally { setTallerLoading(false); }
+  }, [tab, fechaDesde, fechaHasta]);
+
+  useEffect(() => { cargarTaller(); }, [cargarTaller]);
 
   /* ─── Filtrar por división ─── */
   const empsFiltrados = division === "todas" ? empleados : empleados.filter(e => e.division === division);
@@ -484,6 +507,77 @@ export default function ReportesScreen() {
     const perfectos = cumplimiento.filter(c => c.pctCumplimiento === 100 && c.tardanzas === 0).length;
     return { total, pctPromedio, pctHorasPromedio, totalAusencias, totalTardanzas, perfectos };
   }, [cumplimiento]);
+
+  /* ─── Datos de Taller (calculados) ─── */
+  const tallerComputed = useMemo(() => {
+    if (!tallerData.length) return { porOperario: [], porEtapa: [], porProyecto: [], totalProd: 0, totalEspera: 0 };
+    const getEtapaName = (cod) => {
+      if (cod === 0) return "Espera / Tiempo muerto";
+      const e = tallerEtapas.find(et => et.codigo === cod);
+      return e ? e.nombre : `Etapa ${cod}`;
+    };
+    const getEtapaColor = (cod) => {
+      if (cod === 0) return C.red;
+      const e = tallerEtapas.find(et => et.codigo === cod);
+      return e?.color || C.amber;
+    };
+    const getEtapaIcon = (cod) => {
+      if (cod === 0) return "⏸";
+      const e = tallerEtapas.find(et => et.codigo === cod);
+      return e?.icon || "⚙️";
+    };
+
+    // Calcular duración de cada registro
+    const registros = tallerData.map(r => {
+      const ini = new Date(r.hora_inicio).getTime();
+      const fin = r.hora_fin ? new Date(r.hora_fin).getTime() : Date.now();
+      const minutos = Math.max(0, (fin - ini) / 60000);
+      return { ...r, minutos };
+    });
+
+    // Filtrar por división si aplica
+    const filtrados = division === "todas" ? registros : registros.filter(r => r.division === division);
+
+    // Por operario
+    const mapOp = {};
+    filtrados.forEach(r => {
+      const key = r.legajo || r.empleado_id;
+      if (!mapOp[key]) mapOp[key] = { legajo: r.legajo, empleado_id: r.empleado_id, prod: 0, espera: 0, tareas: 0 };
+      if (r.etapa === 0) mapOp[key].espera += r.minutos;
+      else { mapOp[key].prod += r.minutos; mapOp[key].tareas++; }
+    });
+    const porOperario = Object.values(mapOp).map(o => {
+      const emp = empleados.find(e => String(e.legajo) === String(o.legajo));
+      const total = o.prod + o.espera;
+      return { ...o, nombre: emp?.apodo || emp?.nombre || `L-${o.legajo}`, division: emp?.division, pct: total > 0 ? Math.round(o.prod * 100 / total) : 0 };
+    }).sort((a, b) => b.prod - a.prod);
+
+    // Por etapa
+    const mapEt = {};
+    filtrados.forEach(r => {
+      const key = r.etapa ?? "?";
+      if (!mapEt[key]) mapEt[key] = { etapa: key, nombre: getEtapaName(key), color: getEtapaColor(key), icon: getEtapaIcon(key), minutos: 0, count: 0 };
+      mapEt[key].minutos += r.minutos;
+      mapEt[key].count++;
+    });
+    const porEtapa = Object.values(mapEt).sort((a, b) => b.minutos - a.minutos);
+
+    // Por proyecto
+    const mapPr = {};
+    filtrados.filter(r => r.codigo_proyecto).forEach(r => {
+      const key = r.codigo_proyecto;
+      if (!mapPr[key]) mapPr[key] = { ot: key, minutos: 0, count: 0, operarios: new Set() };
+      mapPr[key].minutos += r.minutos;
+      mapPr[key].count++;
+      mapPr[key].operarios.add(r.legajo);
+    });
+    const porProyecto = Object.values(mapPr).map(p => ({ ...p, operarios: p.operarios.size })).sort((a, b) => b.minutos - a.minutos);
+
+    const totalProd = filtrados.filter(r => r.etapa !== 0).reduce((a, r) => a + r.minutos, 0);
+    const totalEspera = filtrados.filter(r => r.etapa === 0).reduce((a, r) => a + r.minutos, 0);
+
+    return { porOperario, porEtapa, porProyecto, totalProd, totalEspera };
+  }, [tallerData, tallerEtapas, empleados, division]);
 
   /* ─── Exportar ─── */
   const handleExportCSV = () => {
@@ -560,9 +654,10 @@ export default function ReportesScreen() {
         }}>{toast.msg}</div>
       )}
 
-      {/* Tabs: Cumplimiento / Exportar */}
+      {/* Tabs: Cumplimiento / Taller / Exportar */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={C.amber}>📊 Cumplimiento</Chip>
+        <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={C.amber}>📊 Asistencia</Chip>
+        <Chip active={tab === "taller"} onClick={() => setTab("taller")} color={C.green}>🔥 Taller</Chip>
         <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={C.violet}>📥 Exportar</Chip>
       </div>
 
@@ -594,8 +689,141 @@ export default function ReportesScreen() {
         ))}
       </div>
 
-      {loading ? (
+      {loading && tab !== "taller" ? (
         <div style={{ padding: 40, textAlign: "center", color: C.dim, fontSize: 13 }}>Cargando datos...</div>
+      ) : tab === "taller" ? (
+        /* ═══ TAB: TALLER (Productividad) ═══ */
+        tallerLoading ? (
+          <div style={{ padding: 40, textAlign: "center", color: C.dim, fontSize: 13 }}>Cargando actividades...</div>
+        ) : (
+        <>
+          {/* KPIs Taller */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+            <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: `1px solid ${C.border}`, textAlign: "center" }}>
+              <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.green }}>{Math.round(tallerComputed.totalProd)}m</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Productivo</div>
+            </div>
+            <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: `1px solid ${C.border}`, textAlign: "center" }}>
+              <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.red }}>{Math.round(tallerComputed.totalEspera)}m</div>
+              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Espera</div>
+            </div>
+            <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: `1px solid ${C.border}`, textAlign: "center" }}>
+              {(() => { const t = tallerComputed.totalProd + tallerComputed.totalEspera; const p = t > 0 ? Math.round(tallerComputed.totalProd * 100 / t) : 0; return (
+                <>
+                  <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: pctColor(p) }}>{p}%</div>
+                  <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Eficiencia</div>
+                </>
+              ); })()}
+            </div>
+          </div>
+
+          {/* Sub-tabs: vista */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+            <Chip active={tallerVista === "operario"} onClick={() => setTallerVista("operario")} color={C.cyan}>👤 Por operario</Chip>
+            <Chip active={tallerVista === "etapa"} onClick={() => setTallerVista("etapa")} color={C.amber}>⚙️ Por etapa</Chip>
+            <Chip active={tallerVista === "proyecto"} onClick={() => setTallerVista("proyecto")} color={C.violet}>📋 Por proyecto</Chip>
+          </div>
+
+          {tallerData.length === 0 ? (
+            <div style={{ background: C.surface, borderRadius: 14, padding: 40, textAlign: "center", border: `1px solid ${C.border}`, color: C.dim, fontSize: 13 }}>Sin actividades registradas en este periodo</div>
+          ) : tallerVista === "operario" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {tallerComputed.porOperario.map((op, i) => {
+                const total = op.prod + op.espera;
+                const prodH = Math.floor(op.prod / 60); const prodM = Math.round(op.prod % 60);
+                const espH = Math.floor(op.espera / 60); const espM = Math.round(op.espera % 60);
+                return (
+                  <div key={op.legajo || i} style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.border}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{op.nombre}</div>
+                        <div style={{ fontSize: 10, color: C.dim }}>L-{op.legajo} · {op.tareas} tarea{op.tareas !== 1 ? "s" : ""}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: fM, color: pctColor(op.pct) }}>{op.pct}%</div>
+                      </div>
+                    </div>
+                    {/* Barra de productividad */}
+                    <div style={{ height: 8, borderRadius: 4, background: C.surfHi, overflow: "hidden", marginBottom: 6 }}>
+                      <div style={{ height: "100%", borderRadius: 4, background: pctColor(op.pct), width: `${Math.min(op.pct, 100)}%`, transition: "width 0.5s ease" }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.dim }}>
+                      <span style={{ color: C.green }}>✅ {prodH > 0 ? `${prodH}h ${prodM}m` : `${prodM}m`}</span>
+                      <span style={{ color: C.red }}>⏸ {espH > 0 ? `${espH}h ${espM}m` : `${espM}m`}</span>
+                      <span>Total: {Math.floor(total / 60)}h {Math.round(total % 60)}m</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : tallerVista === "etapa" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {tallerComputed.porEtapa.map((et, i) => {
+                const totalAll = tallerComputed.porEtapa.reduce((a, e) => a + e.minutos, 0);
+                const pct = totalAll > 0 ? Math.round(et.minutos * 100 / totalAll) : 0;
+                const h = Math.floor(et.minutos / 60); const m = Math.round(et.minutos % 60);
+                return (
+                  <div key={et.etapa} style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 12, background: `${et.color}22`, color: et.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{et.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{et.nombre}</div>
+                      <div style={{ fontSize: 10, color: C.dim }}>{et.count} registro{et.count !== 1 ? "s" : ""}</div>
+                      <div style={{ height: 6, borderRadius: 3, background: C.surfHi, overflow: "hidden", marginTop: 4 }}>
+                        <div style={{ height: "100%", borderRadius: 3, background: et.color, width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: fM, color: et.color }}>{h > 0 ? `${h}h ${m}m` : `${m}m`}</div>
+                      <div style={{ fontSize: 10, color: C.dim }}>{pct}%</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {tallerComputed.porProyecto.length === 0 ? (
+                <div style={{ background: C.surface, borderRadius: 14, padding: 30, textAlign: "center", border: `1px solid ${C.border}`, color: C.dim, fontSize: 13 }}>Sin proyectos en este periodo</div>
+              ) : tallerComputed.porProyecto.map((pr, i) => {
+                const h = Math.floor(pr.minutos / 60); const m = Math.round(pr.minutos % 60);
+                return (
+                  <div key={pr.ot} style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ minWidth: 50, height: 36, borderRadius: 8, background: C.surfHi, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: fM, fontSize: 13, fontWeight: 700, color: C.text, padding: "0 6px", flexShrink: 0 }}>{pr.ot}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>OT {pr.ot}</div>
+                      <div style={{ fontSize: 10, color: C.dim }}>{pr.count} registro{pr.count !== 1 ? "s" : ""} · {pr.operarios} operario{pr.operarios !== 1 ? "s" : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: fM, color: C.amber }}>{h > 0 ? `${h}h ${m}m` : `${m}m`}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Export taller CSV */}
+          {tallerData.length > 0 && (
+            <button onClick={() => {
+              const headers = ["Fecha", "Legajo", "Operario", "División", "Etapa", "OT", "Tipo", "Causa", "Inicio", "Fin", "Duración (min)"];
+              const rows = tallerData.map(r => {
+                const emp = empleados.find(e => String(e.legajo) === String(r.legajo));
+                const etNombre = r.etapa === 0 ? "Espera" : (tallerEtapas.find(e => e.codigo === r.etapa)?.nombre || r.etapa);
+                const ini = r.hora_inicio ? new Date(r.hora_inicio).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "—";
+                const fin = r.hora_fin ? new Date(r.hora_fin).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : "en curso";
+                const dur = r.hora_fin ? Math.round((new Date(r.hora_fin) - new Date(r.hora_inicio)) / 60000) : "";
+                return [r.fecha, r.legajo, emp?.nombre || "", r.division || "", etNombre, r.codigo_proyecto || "", r.tipo || "", r.causa || "", ini, fin, dur];
+              });
+              exportCSV([headers, ...rows], `Taller_${labelPeriodo.replace(/ /g, "_")}.csv`);
+              showToast("✅ CSV de taller descargado", C.green);
+            }} style={{
+              width: "100%", marginTop: 14, padding: 12, borderRadius: 12, border: `1px solid ${C.green}30`,
+              background: `${C.green}12`, color: C.green, fontSize: 12, fontWeight: 700,
+              fontFamily: fB, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}>📥 Exportar taller (CSV)</button>
+          )}
+        </>
+        )
       ) : tab === "cumplimiento" ? (
         /* ═══ TAB: CUMPLIMIENTO ═══ */
         <>

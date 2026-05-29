@@ -132,6 +132,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
     if (!cambios.length) { showToast("No hay cambios para guardar", C.amber); return; }
     setSaving(true);
     let ok = 0;
+    let errores = 0;
     for (const emp of cambios) {
       const row = grilla[emp.id];
       const diagrama = {};
@@ -139,14 +140,25 @@ export default function GrillaHorarioScreen({ empresaId }) {
       const horas = calcHoras(row);
       try {
         await sb.patch(`empleados?id=eq.${emp.id}`, { diagrama, horas_semanales: Math.round(horas) });
-        await sb.post("notificaciones", { destinatario_rol: String(emp.legajo), tipo: "info", asunto: "📅 Horario actualizado", detalle: fmtHorario(row), urgencia: "normal", empresa_id: empresaId });
+        try {
+          await sb.post("notificaciones", { destinatario_rol: String(emp.legajo), tipo: "info", asunto: "📅 Horario actualizado", detalle: fmtHorario(row), urgencia: "normal", empresa_id: empresaId });
+        } catch (notifErr) { console.error("Error enviando notificación:", notifErr); }
         try { await fetch("/api/send-push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ legajo: String(emp.legajo), title: "📅 Horario actualizado", body: "Tu grilla horaria fue modificada. Revisá tu nuevo horario.", data: { tag: "horario-update" } }) }); } catch (e) { }
         ok++;
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error("Error guardando horario de", emp.nombre, ":", e);
+        errores++;
+      }
     }
-    setOriginal(JSON.parse(JSON.stringify(grilla)));
-    setSeleccionados(new Set());
-    showToast(`✅ ${ok} horario${ok > 1 ? "s" : ""} guardado${ok > 1 ? "s" : ""} y notificado${ok > 1 ? "s" : ""}`, C.green);
+    if (ok > 0) {
+      setOriginal(JSON.parse(JSON.stringify(grilla)));
+      setSeleccionados(new Set());
+    }
+    if (errores > 0) {
+      showToast(`⚠️ ${ok} guardado${ok !== 1 ? "s" : ""}, ${errores} con error. Intentá de nuevo.`, C.amber);
+    } else {
+      showToast(`✅ ${ok} horario${ok > 1 ? "s" : ""} guardado${ok > 1 ? "s" : ""} y notificado${ok > 1 ? "s" : ""}`, C.green);
+    }
     setSaving(false);
   };
 

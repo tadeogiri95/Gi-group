@@ -45,30 +45,44 @@ async function req(method, path, body) {
   let finalBody = body;
 
   if (!token && _empresaId) {
-    // Para GET: agregar empresa_id al path si no está ya
     if ((!method || method === "GET") && !path.includes("empresa_id=")) {
       finalPath = path.includes("?")
         ? path + `&empresa_id=eq.${_empresaId}`
         : path + `?empresa_id=eq.${_empresaId}`;
     }
-    // Para POST: agregar empresa_id al body
     if (method === "POST" && body) {
       finalBody = { ...body, empresa_id: _empresaId };
     }
   }
 
-  const res = await fetch("/api/data", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ method, path: finalPath, body: finalBody }),
-  });
+  let res;
+  try {
+    res = await fetch("/api/data", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ method, path: finalPath, body: finalBody }),
+    });
+  } catch (networkErr) {
+    throw new Error("Error de red. Verificá tu conexión.");
+  }
 
-  const json = await res.json();
+  let json;
+  try {
+    json = await res.json();
+  } catch (parseErr) {
+    throw new Error(`Error del servidor (${res.status}). Intentá de nuevo.`);
+  }
 
   if (res.status === 401) {
-    clearToken();
-    if (_onUnauthorized) _onUnauthorized();
-    throw new Error("Sesión expirada. Iniciá sesión de nuevo.");
+    // Solo hacer auto-logout en lecturas (GET). Para escrituras (POST/PATCH/DELETE),
+    // NO hacer logout — el usuario puede reintentar. El próximo GET periódico
+    // (loadData cada 60s) hará logout si el token realmente expiró.
+    const isRead = !method || method === "GET";
+    if (isRead) {
+      clearToken();
+      if (_onUnauthorized) _onUnauthorized();
+    }
+    throw new Error(isRead ? "Sesión expirada. Iniciá sesión de nuevo." : "Error de autorización. Intentá de nuevo o recargá la página.");
   }
 
   if (!res.ok || json.error) {
