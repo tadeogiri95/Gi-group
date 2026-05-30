@@ -101,7 +101,7 @@ export default function ActividadScreen({
     try {
       await onIniciar({
         etapa: etapaSeleccionada,
-        codigo_proyecto: etapaSeleccionada === 0 ? null : otFinal,
+        codigo_proyecto: etapaSeleccionada === 0 ? null : (otFinal ? Number(otFinal) || otFinal : null),
         tipo: tipoSeleccionado,
         causa: null,
       });
@@ -199,20 +199,14 @@ export default function ActividadScreen({
             </div>
           </div>
 
-          {/* Botón Reporte de Instalación */}
+          {/* Botón Reporte de Instalación — mismo estilo que Iniciar tarea */}
           <button onClick={() => setShowReporte(true)} style={{
-            width: "100%", marginTop: 12, padding: 16, borderRadius: 16,
-            background: `linear-gradient(135deg, ${C.cyan}12, ${C.surface})`,
-            border: `1px solid ${C.cyan}30`, color: C.text,
-            fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 12,
+            width: "100%", marginTop: 12, padding: "16px 24px", borderRadius: 16,
+            background: C.cyan, border: "none", color: "#000",
+            fontSize: 16, fontWeight: 700, fontFamily: fB, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: `${C.cyan}22`, color: C.cyan, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>📋</div>
-            <div style={{ textAlign: "left", flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Reporte de Instalación</div>
-              <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Reportar progreso, faltantes y desvíos</div>
-            </div>
-            <span style={{ color: C.dim, fontSize: 14 }}>→</span>
+            <span style={{ fontSize: 20 }}>📋</span> Reporte de Instalación
           </button>
 
           {historial.length > 0 && (

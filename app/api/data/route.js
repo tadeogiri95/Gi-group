@@ -83,7 +83,7 @@ function validarBody(tabla, body, method) {
     if (key.startsWith("__")) {
       return { valido: false, error: `Campo "${key}" no permitido` };
     }
-    if (typeof value === "string" && value.length > 10000) {
+    if (typeof value === "string" && value.length > 100000)  {
       return { valido: false, error: `Campo "${key}" excede el largo máximo` };
     }
   }

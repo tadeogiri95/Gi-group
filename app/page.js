@@ -229,7 +229,7 @@ async function obtenerGeo(empleado) {
 /* ═══ CHAT ═══ */
 function ChatScreen({usuario,ctx,reload,empresa}){
   const dH=DIAS_KEY[new Date().getDay()];const diagH=usuario.diagrama?.[dH];
-  const [msgs,setMsgs]=useState([{from:"bot",text:`¡Hola ${usuario.apodo}! 🤖\n\nHoy es ${fmtDate(new Date())}, son las ${fmtTime(new Date())}.\n${ctx.fichadaHoy?.ingreso?`Tu ingreso: ${ctx.fichadaHoy.ingreso.slice(0,5)}.`:diagH?`Jornada hoy: ${diagH.in} a ${diagH.out}.`:"Hoy es franco 🎉"}\n\nContame qué necesitás.`,quickReplies:["Ya llegué","Necesito un permiso","¿Cuántas horas llevo?","Me voy"],time:new Date()}]);
+  const [msgs,setMsgs]=useState([{from:"bot",text:`¡Hola ${usuario.apodo}! 🤖\n\nHoy es ${fmtDate(new Date())}, son las ${fmtTime(new Date())}.\n${ctx.fichadaHoy?.ingreso?`Tu ingreso: ${ctx.fichadaHoy.ingreso.slice(0,5)}.`:diagH?`Jornada hoy: ${diagH.in} a ${diagH.out}.`:"Hoy es franco 🎉"}\n\nContame qué necesitás.`,quickReplies:["Ya llegué","Necesito un permiso","Me voy"],time:new Date()}]);
   const [input,setInput]=useState("");const [loading,setLoading]=useState(false);const ref=useRef(null);
   useEffect(()=>{ref.current&&(ref.current.scrollTop=ref.current.scrollHeight)},[msgs,loading]);
 

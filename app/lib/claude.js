@@ -70,6 +70,7 @@ REGLAS:
 - Usá la hora/fecha REAL de arriba.
 - Si faltan datos, preguntá.
 - Máximo 1-2 emojis.
+- NUNCA informes horas trabajadas, horas acumuladas, ni des la opción de consultarlas. Si el empleado pregunta cuántas horas lleva, respondé: "Esa información la podés consultar con tu supervisor." No calcules ni estimes horas.
 - Cuando fichás, el sistema valida ubicación automáticamente. No necesitás pedir coordenadas al empleado.
 - Si alguien tiene problemas para fichar por ubicación, sugerile que contacte a gerencia para que revisen su ubicación asignada.`;
 }

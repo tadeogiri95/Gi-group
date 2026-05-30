@@ -194,7 +194,7 @@ export function useActividad(empleado) {
         legajo: Number(empleado.legajo),
         fecha: ahora.slice(0, 10),
         hora_inicio: ahora,
-        codigo_proyecto: etapa === 0 ? null : (codigo_proyecto || null),
+        codigo_proyecto: etapa === 0 ? null : (codigo_proyecto ? Number(codigo_proyecto) || codigo_proyecto : null),
         etapa,
         tipo: tipo || "N",
         causa: etapa === 0 ? causa : null,
