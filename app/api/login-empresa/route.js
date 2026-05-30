@@ -1,11 +1,12 @@
 // ═══════════════════════════════════════════════════════════
-// /api/login-empresa/route.js — VERSIÓN SEGURA
+// /api/login-empresa/route.js — VERSIÓN SEGURA CON MIGRACIÓN
 //
-// CAMBIOS DE SEGURIDAD:
-// 1. NUNCA compara contraseñas en texto plano. Si una contraseña
-//    guardada no está hasheada (no empieza con $2), se rechaza el
-//    login y se obliga a resetearla. Esto evita el agujero anterior.
-// 2. La nueva contraseña al cambiarla exige un mínimo de seguridad.
+// Si la contraseña guardada ya está hasheada (empieza con $2) →
+// compara con bcrypt como siempre.
+//
+// Si la contraseña guardada está en texto plano → la compara,
+// y SI COINCIDE, la hashea y la guarda encriptada en ese momento.
+// Así la próxima vez ya queda segura. El usuario no nota nada.
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
@@ -17,6 +18,20 @@ const SB_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_
 async function sbGet(path) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+  });
+  return res.json();
+}
+
+async function sbPatch(path, body) {
+  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(body),
   });
   return res.json();
 }
@@ -44,22 +59,15 @@ export async function POST(req) {
       if (!token) {
         return NextResponse.json({ error: "Token requerido" }, { status: 401 });
       }
-      if (!nuevaPassword || nuevaPassword.length < 6) {
-        return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 });
+      if (!nuevaPassword || nuevaPassword.length < 4) {
+        return NextResponse.json({ error: "La contraseña debe tener al menos 4 caracteres" }, { status: 400 });
       }
 
       const hashed = await bcrypt.hash(nuevaPassword, 10);
-      const res = await fetch(`${SB_URL}/rest/v1/empleados?id=eq.${userId}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SB_KEY,
-          Authorization: `Bearer ${SB_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify({ password: hashed, debe_cambiar_password: false }),
+      const updated = await sbPatch(`empleados?id=eq.${userId}`, {
+        password: hashed,
+        debe_cambiar_password: false,
       });
-      const updated = await res.json();
       if (!updated || updated.length === 0) {
         return NextResponse.json({ error: "No se pudo actualizar" }, { status: 500 });
       }
@@ -83,27 +91,32 @@ export async function POST(req) {
     }
 
     let usuario = null;
-    let necesitaReset = false;
 
     for (const emp of empleados) {
-      if (emp.password && emp.password.startsWith("$2")) {
-        // Contraseña hasheada → comparación segura
+      if (!emp.password) continue;
+
+      if (emp.password.startsWith("$2")) {
+        // ── Contraseña ya encriptada → comparar con bcrypt ──
         const match = await bcrypt.compare(password, emp.password);
         if (match) { usuario = emp; break; }
       } else {
-        // Contraseña NO hasheada en la DB → NO comparamos en texto plano.
-        // Marcamos que ese legajo necesita resetear su clave.
-        necesitaReset = true;
+        // ── Contraseña en texto plano → comparar y MIGRAR ──
+        if (password === emp.password) {
+          usuario = emp;
+          // Encriptar la contraseña y guardarla para que quede segura
+          try {
+            const hashed = await bcrypt.hash(password, 10);
+            await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
+            console.log(`[login] Contraseña migrada a bcrypt para legajo ${emp.legajo}`);
+          } catch (e) {
+            console.error("[login] Error migrando contraseña:", e.message);
+          }
+          break;
+        }
       }
     }
 
     if (!usuario) {
-      if (necesitaReset) {
-        return NextResponse.json(
-          { error: "Tu cuenta necesita restablecer la contraseña. Contactá a gerencia." },
-          { status: 401 }
-        );
-      }
       return NextResponse.json({ error: "Contraseña incorrecta" }, { status: 401 });
     }
 
