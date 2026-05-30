@@ -1,11 +1,21 @@
 // ═══════════════════════════════════════════════════════════
-// /api/data/route.js — Proxy seguro con autenticación flexible
+// /api/data/route.js — VERSIÓN SEGURA (multi-tenant blindado)
+//
+// CAMBIO CLAVE DE SEGURIDAD:
+// Antes, si el token fallaba, el servidor confiaba en el empresa_id
+// que mandaba el cliente (en el path o el body). Eso permitía que
+// cualquiera leyera/escribiera datos de OTRA empresa.
+//
+// Ahora: el empresa_id SIEMPRE sale del token de sesión validado.
+// Si no hay token válido → 401. Nunca se confía en el empresa_id
+// que venga del cliente.
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Una sola clave de servicio. NO caer en la anon key (rompe el aislamiento).
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 async function sbFetch(path, opts = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
@@ -16,7 +26,7 @@ async function sbFetch(path, opts = {}) {
     Prefer: "return=representation",
     ...opts.headers,
   };
-  const res = await fetch(url, { ...headers, ...opts, headers });
+  const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Supabase ${res.status}: ${err}`);
@@ -28,19 +38,22 @@ async function sbFetch(path, opts = {}) {
 // ─── Validar sesión contra la DB ───
 async function validarToken(token) {
   if (!token || token.length < 20) return null;
-  const url = `${SUPABASE_URL}/rest/v1/rpc/validar_sesion`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ p_token: token }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data && data.length > 0 ? data[0] : null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/validar_sesion`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ p_token: token }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data && data.length > 0 ? data[0] : null;
+  } catch {
+    return null;
+  }
 }
 
 // ═══ VALIDACIONES ═══
@@ -48,7 +61,7 @@ async function validarToken(token) {
 const TABLAS_PERMITIDAS = [
   "empleados", "fichadas", "solicitudes", "notificaciones",
   "reglas_bot", "catalogo_etapas", "registro_actividades",
-  "reportes_obra", "proyectos", "push_subscriptions",
+  "reportes_obra", "proyectos", "push_subscriptions", "push_tokens",
   "v_resumen_diario", "geo_zonas", "geo_registros",
   "config_sistema", "notas_calendario", "mensajes_chat",
   "etapas", "divisiones", "empresa",
@@ -58,10 +71,10 @@ const TABLAS_SOLO_LECTURA = ["v_resumen_diario"];
 
 const TABLAS_CON_EMPRESA = [
   "empleados", "fichadas", "solicitudes", "notificaciones",
-  "registro_actividades", "reportes_obra", "push_subscriptions",
+  "registro_actividades", "reportes_obra", "push_subscriptions", "push_tokens",
   "config_sistema", "notas_calendario", "mensajes_chat",
   "etapas", "divisiones", "geo_zonas", "geo_registros",
-  "v_resumen_diario",
+  "v_resumen_diario", "reglas_bot",
 ];
 
 function validarPath(path) {
@@ -83,7 +96,7 @@ function validarBody(tabla, body, method) {
     if (key.startsWith("__")) {
       return { valido: false, error: `Campo "${key}" no permitido` };
     }
-    if (typeof value === "string" && value.length > 100000)  {
+    if (typeof value === "string" && value.length > 100000) {
       return { valido: false, error: `Campo "${key}" excede el largo máximo` };
     }
   }
@@ -145,15 +158,17 @@ function validarBody(tabla, body, method) {
   return { valido: true };
 }
 
+// Inyecta SIEMPRE el empresa_id de la sesión, sobreescribiendo cualquier
+// valor que el cliente haya intentado mandar.
 function inyectarEmpresaEnGet(path, tabla, empresaId) {
-  if (!TABLAS_CON_EMPRESA.includes(tabla)) return path;
-  const filtro = `empresa_id=eq.${empresaId}`;
-  if (path.includes("empresa_id=")) {
-    return path.replace(/empresa_id=eq\.[a-f0-9-]+/, filtro);
+  if (!TABLAS_CON_EMPRESA.includes(tabla) && tabla !== "empresa") return path;
+  const filtro = tabla === "empresa" ? `id=eq.${empresaId}` : `empresa_id=eq.${empresaId}`;
+  const re = tabla === "empresa" ? /id=eq\.[a-zA-Z0-9-]+/ : /empresa_id=eq\.[a-zA-Z0-9-]+/;
+  if (re.test(path)) {
+    // Reemplazar cualquier valor que haya mandado el cliente por el real
+    return path.replace(re, filtro);
   }
-  if (path.includes("?")) {
-    return path + `&${filtro}`;
-  }
+  if (path.includes("?")) return path + `&${filtro}`;
   return path + `?${filtro}`;
 }
 
@@ -161,6 +176,7 @@ function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
   if (!TABLAS_CON_EMPRESA.includes(tabla)) return body;
   if (!body) return body;
   if (method === "POST" || method === "PATCH") {
+    // Forzar siempre el empresa_id real
     return { ...body, empresa_id: empresaId };
   }
   return body;
@@ -169,41 +185,28 @@ function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
 // ═══ POST /api/data ═══
 export async function POST(request) {
   try {
-    const { method, path, body } = await request.json();
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      console.error("[data] Falta configuración: SUPABASE_URL o SUPABASE_SERVICE_KEY");
+      return NextResponse.json({ error: "Servidor mal configurado" }, { status: 500 });
+    }
 
+    const { method, path, body } = await request.json();
     if (!path) {
       return NextResponse.json({ error: "Path requerido" }, { status: 400 });
     }
 
-    // ─── AUTENTICACIÓN FLEXIBLE ───
+    // ─── AUTENTICACIÓN OBLIGATORIA (sin fallback inseguro) ───
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
-    let empresaId = null;
-
-    // Intentar validar token primero
-    if (token) {
-      const sesion = await validarToken(token);
-      if (sesion) {
-        empresaId = sesion.empresa_id;
-      }
+    const sesion = await validarToken(token);
+    if (!sesion || !sesion.empresa_id) {
+      return NextResponse.json(
+        { error: "No autorizado — sesión inválida o expirada" },
+        { status: 401 }
+      );
     }
-
-    // Fallback: extraer empresa_id del path o body
-    if (!empresaId) {
-      // Buscar en el path (ej: empresa_id=eq.uuid)
-      const mPath = path.match(/empresa_id=eq\.([a-f0-9-]{36})/);
-      if (mPath) empresaId = mPath[1];
-    }
-
-    if (!empresaId && body) {
-      empresaId = body.empresa_id || body.empresaId || null;
-    }
-
-    if (!empresaId) {
-      console.error("[data] 401: No empresa_id found. Token:", token ? "present" : "missing", "Path:", path, "Body keys:", body ? Object.keys(body).join(",") : "none");
-      return NextResponse.json({ error: "No autorizado — empresa no identificada" }, { status: 401 });
-    }
+    const empresaId = sesion.empresa_id; // ← ÚNICA fuente de verdad
 
     // ─── VALIDACIONES ───
     const pathCheck = validarPath(path);
@@ -211,7 +214,7 @@ export async function POST(request) {
       return NextResponse.json({ error: pathCheck.error }, { status: 403 });
     }
 
-    if (TABLAS_SOLO_LECTURA.includes(pathCheck.tabla) && method !== "GET") {
+    if (TABLAS_SOLO_LECTURA.includes(pathCheck.tabla) && method && method !== "GET") {
       return NextResponse.json({ error: `Tabla "${pathCheck.tabla}" es de solo lectura` }, { status: 403 });
     }
 
@@ -222,39 +225,22 @@ export async function POST(request) {
       }
     }
 
-    // ─── INYECTAR empresa_id ───
+    // ─── INYECTAR empresa_id de la SESIÓN (no del cliente) ───
     let finalPath = path;
     let finalBody = body;
 
-    if (!method || method === "GET") {
+    if (!method || method === "GET" || method === "PATCH" || method === "DELETE") {
       finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
     }
-
     if (method === "POST" || method === "PATCH") {
       finalBody = inyectarEmpresaEnBody(body, pathCheck.tabla, empresaId, method);
     }
 
-    if (method === "PATCH" || method === "DELETE") {
-      finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
-    }
-
-    if (pathCheck.tabla === "empresa" && (!method || method === "GET")) {
-      if (!finalPath.includes(`id=eq.${empresaId}`)) {
-        finalPath = `empresa?id=eq.${empresaId}&select=*`;
-      }
-    }
-
     // ─── EJECUTAR ───
     const opts = {};
-    if (method === "POST") {
-      opts.method = "POST";
-      opts.body = JSON.stringify(finalBody);
-    } else if (method === "PATCH") {
-      opts.method = "PATCH";
-      opts.body = JSON.stringify(finalBody);
-    } else if (method === "DELETE") {
-      opts.method = "DELETE";
-    }
+    if (method === "POST") { opts.method = "POST"; opts.body = JSON.stringify(finalBody); }
+    else if (method === "PATCH") { opts.method = "PATCH"; opts.body = JSON.stringify(finalBody); }
+    else if (method === "DELETE") { opts.method = "DELETE"; }
 
     const data = await sbFetch(finalPath, opts);
     return NextResponse.json({ ok: true, data });

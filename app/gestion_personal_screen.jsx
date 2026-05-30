@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { C, fH, fB, fM, DIAS_KEY } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
+import { passwordInicial } from "./lib/passwords";
 
 /* ═══ CONSTANTES ═══ */
 const SHEETS_CSV_URL =
@@ -205,7 +206,7 @@ export default function GestionPersonalScreen({ ctx, reload, empresaId }) {
           legajo, nombre: form.nombre, apodo: form.apodo || generarApodo(form.nombre),
           email: form.email || "", area: form.area || "produccion",
           division: form.division || null, rol: form.rol || "operativo", activo: true,
-          password: "gigroup2025", debe_cambiar_password: true,
+          password: passwordInicial(), debe_cambiar_password: true,
           empresa_id: empresaId || null,
         });
         showToast(`✅ ${form.nombre} dado de alta`, C.green);
@@ -225,7 +226,7 @@ export default function GestionPersonalScreen({ ctx, reload, empresaId }) {
       const nombre = capitalizarNombre(row.nombre);
       const legajo = row.dni || legajoProvisorio();
       try {
-        await sb.post("empleados", { legajo, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: row.area || "produccion", division: row.division || null, rol: "operativo", activo: true, password: "gigroup2025", debe_cambiar_password: true, empresa_id: empresaId || null });
+        await sb.post("empleados", { legajo, nombre, apodo: generarApodo(nombre), email: generarEmail(row.nombre), area: row.area || "produccion", division: row.division || null, rol: "operativo", activo: true, password: passwordInicial(), debe_cambiar_password: true, empresa_id: empresaId || null });
         ok++;
       } catch (e) { console.error(`Error alta ${nombre}:`, e); }
     }
