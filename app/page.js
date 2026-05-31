@@ -902,7 +902,7 @@ const loadData=useCallback(async()=>{
       <div className="se" key={`${usuario.legajo}-${screen}-${refreshCounter}`} style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isChat?0:88}}>
         {!isGer&&screen==="home"&&<HomeEmp goto={setScreen} usuario={usuario} ctx={ctx} logout={logout} empresa={empresa}/>}
         {!isGer&&screen==="historial-fichajes"&&<HistorialFichajesScreen usuario={usuario} ctx={ctx} onBack={()=>setScreen("home")}/>}
-        {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad} usuario={usuario} empresa={empresa}/>}
+        {!isGer&&screen==="actividad"&&<ActividadScreen {...actividad} usuario={usuario} empresa={empresa} fichadaHoy={ctx.fichadaHoy}/>}
         {!isGer&&screen==="chat"&&<ChatScreen usuario={usuario} ctx={ctx} reload={loadData} empresa={empresa}/>}
         {!isGer&&screen==="mis-sols"&&<div style={{padding:"0 18px 20px",overflowY:"auto",flex:1}}><div style={{display:"flex",flexDirection:"column",gap:10}}>{(ctx.misSolicitudes||[]).map(s=><SolCard key={s.id} s={s}/>)}</div></div>}
         {isGer&&screen==="home"&&<DashboardGerencia goto={(s,leg)=>{if(leg)setHistorialLegajo(leg);setScreen(s);}} ctx={ctx} reload={loadData} logout={logout} empresa={empresa}/>}

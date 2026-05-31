@@ -47,6 +47,7 @@ export default function ActividadScreen({
   cambiarTarea: onCambiar,
   usuario,
   empresa,
+fichadaHoy,
 }) {
   const [state, setState] = useState("idle");
   const [showReporte, setShowReporte] = useState(false);
@@ -188,7 +189,7 @@ export default function ActividadScreen({
               <div style={{ width: 72, height: 72, borderRadius: 20, background: C.amberS, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 32 }}>🔨</div>
               <div style={{ fontSize: 18, fontWeight: 700, fontFamily: fH, marginBottom: 8 }}>Sin tarea activa</div>
               <div style={{ fontSize: 13, color: C.dim, marginBottom: 24, lineHeight: 1.5 }}>Iniciá una tarea para registrar tu actividad en el proyecto</div>
-              <button onClick={() => { setState("selecting"); setStep(1); }} style={{
+              <button onClick={() => { if(!fichadaHoy?.ingreso){ setErrorMsg("Debés fichar tu ingreso para comenzar a trabajar"); return; } setState("selecting"); setStep(1); }} style={{
                 width: "100%", padding: "16px 24px", borderRadius: 16,
                 background: C.amber, border: "none", color: "#000",
                 fontSize: 16, fontWeight: 700, fontFamily: fB, cursor: "pointer",
