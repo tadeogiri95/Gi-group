@@ -64,7 +64,7 @@ const TABLAS_PERMITIDAS = [
   "reportes_obra", "proyectos", "push_subscriptions", "push_tokens",
   "v_resumen_diario", "geo_zonas", "geo_registros",
   "config_sistema", "notas_calendario", "mensajes_chat",
-  "etapas", "divisiones", "empresa",
+  "etapas", "divisiones", "empresa", "invitaciones_empresa",
 ];
 
 const TABLAS_SOLO_LECTURA = ["v_resumen_diario"];
@@ -75,6 +75,7 @@ const TABLAS_CON_EMPRESA = [
   "config_sistema", "notas_calendario", "mensajes_chat",
   "etapas", "divisiones", "geo_zonas", "geo_registros",
   "v_resumen_diario", "reglas_bot",
+  "proyectos", "invitaciones_empresa",
 ];
 
 function validarPath(path) {
