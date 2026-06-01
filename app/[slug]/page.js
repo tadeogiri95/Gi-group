@@ -19,6 +19,7 @@ import ReportesScreen from '../reportes_screen';
 import GeolocalizacionScreen from '../geolocalizacion_screen';
 import InstaladorScreen from '../instalador_screen.jsx';
 import AdminEmpresaScreen from '../admin_empresa_screen.js';
+import OnboardingWizard from '../onboarding_wizard.jsx';
 
 /* ═══ ICONS ═══ */
 const Ic = {
