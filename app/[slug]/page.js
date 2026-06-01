@@ -912,6 +912,20 @@ const loadData=useCallback(async()=>{
       <div style={{flex:1,overflow:"hidden"}}><LoginScreen onLogin={login} empresa={empresa}/></div>
     ):usuario.debe_cambiar_password?(
       <div style={{flex:1,overflow:"hidden"}}><CambiarPasswordScreen usuario={usuario} onDone={(u)=>{login(u);}}/></div>
+):isGer&&empresa&&empresa.onboarding_completado===false?(
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        <OnboardingWizard
+          empresa={empresa}
+          usuario={usuario}
+          onComplete={(empActualizada)=>{
+            setEmpresa(empActualizada);
+            setColoresEmpresa(empActualizada.color_primario, empActualizada.color_secundario);
+            forceRender(n=>n+1);
+            loadConfigEmpresa(usuario?.empresa_id||empresa?.id);
+            loadData();
+          }}
+        />
+      </div>
     ):!ready?(
       <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:14}}>
         <div style={{color:C.amber,animation:"spin 1s linear infinite",display:"flex"}}>{Ic.refresh}</div>
