@@ -105,6 +105,18 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
           </div>
         </div>
 
+        {mode === "alta" && (
+          <div style={{ marginBottom: 16, padding: 12, background: `${C.cyan}10`, borderRadius: 10, border: `1px solid ${C.cyan}30` }}>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!form.pre_cargado} onChange={e => set("pre_cargado", e.target.checked)} style={{ width: 18, height: 18, marginTop: 2, accentColor: C.cyan }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Pre-cargar (pendiente de activación)</div>
+                <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>El empleado activa su cuenta con el link de invitación.</div>
+              </div>
+            </label>
+          </div>
+        )}
+
         <button onClick={() => onSave(form)} disabled={!valid || saving} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: valid && !saving ? btnColor : C.surface, color: valid && !saving ? "#000" : C.mute, fontSize: 15, fontWeight: 700, fontFamily: fH, cursor: valid && !saving ? "pointer" : "default" }}>
           {saving ? "Guardando..." : btnLabel}
         </button>
@@ -178,6 +190,8 @@ export default function GestionPersonalScreen({ ctx, reload, empresaId }) {
   const [modal, setModal] = useState(null);
   const [confirmBaja, setConfirmBaja] = useState(null);
   const [csvFilas, setCsvFilas] = useState(null);
+  const [showLink, setShowLink] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
   const [csvProgreso, setCsvProgreso] = useState("");
   const fileRef = useRef(null);
 
@@ -229,9 +243,9 @@ export default function GestionPersonalScreen({ ctx, reload, empresaId }) {
           activo: true,
           password: passwordInicial(),
           debe_cambiar_password: true,
-          estado_activacion: "activo",
+          estado_activacion: form.pre_cargado ? "pendiente_activacion" : "activo",
         });
-        showToast(`✅ ${form.nombre} dado de alta`, C.green);
+        showToast(form.pre_cargado ? `✅ ${form.nombre} pre-cargado (activa con el link)` : `✅ ${form.nombre} dado de alta`, C.green);
       }
       setModal(null);
       await cargarEmpleados();
@@ -320,7 +334,7 @@ export default function GestionPersonalScreen({ ctx, reload, empresaId }) {
     setSaving(false);
   };
 
-  const abrirAlta = () => setModal({ mode: "alta", data: { nombre: "", apodo: "", legajo: "", email: "", area: "produccion", division: "", rol: "operativo" } });
+  const abrirAlta = () => setModal({ mode: "alta", data: { nombre: "", apodo: "", legajo: "", email: "", area: "produccion", division: "", rol: "operativo", pre_cargado: false } });
   const abrirEditar = (emp) => setModal({ mode: "editar", data: { ...emp, legajo: String(emp.legajo || ""), division: emp.division || "" } });
 
   return (
@@ -366,12 +380,43 @@ export default function GestionPersonalScreen({ ctx, reload, empresaId }) {
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar por nombre o legajo..." style={{ width: "100%", padding: "11px 14px", borderRadius: 12, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
 
       {/* Acciones */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <button onClick={abrirAlta} style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "none", background: `${C.green}22`, color: C.green, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>➕ Alta manual</button>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <button onClick={abrirAlta} style={{ flex: "1 1 30%", padding: "10px 0", borderRadius: 12, border: "none", background: `${C.green}22`, color: C.green, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>➕ Alta</button>
         <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsvFile} />
-        <button onClick={() => fileRef.current?.click()} style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "none", background: `${C.cyan}22`, color: C.cyan, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>📤 Importar CSV</button>
+        <button onClick={() => fileRef.current?.click()} style={{ flex: "1 1 30%", padding: "10px 0", borderRadius: 12, border: "none", background: `${C.cyan}22`, color: C.cyan, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>📤 CSV</button>
+        <button onClick={() => { setShowLink(true); setLinkCopiado(false); }} style={{ flex: "1 1 30%", padding: "10px 0", borderRadius: 12, border: "none", background: `${C.violet}22`, color: C.violet, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>🔗 Invitar</button>
         <button onClick={cargarEmpleados} style={{ width: 44, height: 44, borderRadius: 12, border: "none", background: C.surface, color: C.dim, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🔄</button>
       </div>
+
+      {/* Modal Link de invitación */}
+      {showLink && (() => {
+        const slugMatch = typeof window !== "undefined" ? window.location.pathname.match(/^\/([^\/]+)/) : null;
+        const slug = slugMatch ? slugMatch[1] : "";
+        const link = typeof window !== "undefined" ? `${window.location.origin}/${slug}/unirse` : "";
+        const copiar = async () => {
+          try { await navigator.clipboard.writeText(link); setLinkCopiado(true); setTimeout(() => setLinkCopiado(false), 2000); }
+          catch { showToast("No se pudo copiar. Copialo manualmente.", C.red); }
+        };
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
+            <div onClick={() => setShowLink(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)" }} />
+            <div style={{ position: "relative", width: "100%", maxWidth: 420, background: C.bg, borderRadius: 20, padding: 24, border: `1px solid ${C.violet}30` }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: `${C.violet}22`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", fontSize: 28 }}>🔗</div>
+              <h3 style={{ margin: 0, fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.text, textAlign: "center" }}>Link de invitación</h3>
+              <p style={{ fontSize: 12, color: C.dim, textAlign: "center", lineHeight: 1.5, margin: "8px 0 16px" }}>
+                Compartí este link con tus empleados. Los que estén <b style={{ color: C.amber }}>pre-cargados</b> podrán activar su cuenta ingresando solo su legajo.
+              </p>
+              <div style={{ background: C.surface, borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 12, color: C.text, fontFamily: fM, wordBreak: "break-all", border: `1px solid ${C.border}` }}>{link}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setShowLink(false)} style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cerrar</button>
+                <button onClick={copiar} style={{ flex: 2, padding: 12, borderRadius: 12, border: "none", background: linkCopiado ? C.green : C.violet, color: linkCopiado ? "#000" : "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  {linkCopiado ? "✓ Copiado" : "📋 Copiar link"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ fontSize: 10, color: C.mute, marginBottom: 14, lineHeight: 1.5 }}>
         💡 <b>CSV:</b> primera fila con encabezados. Columnas reconocidas: <code>nombre</code>, <code>legajo</code> (opcional), <code>division</code>, <code>rol</code>, <code>area</code>, <code>email</code>.
