@@ -788,9 +788,21 @@ export default function Home() {
   const [etapasEmpresa, setEtapasEmpresa] = useState([]);
   const [empresa,setEmpresa]=useState({nombre:"Gypi",nombre_corto:"Gypi",color_primario:"#F97316",color_secundario:"#8B5CF6",prompt_ia_obra:"",prompt_ia_chat:""});
   const [,forceRender]=useState(0);
-  useEffect(()=>{fetch("/api/empresa").then(r=>r.json()).then(d=>{if(d&&!d.error){setEmpresa(d);
-      setColoresEmpresa(d.color_primario, d.color_secundario); forceRender(n=>n+1);
-      loadConfigEmpresa(d?.id);}}).catch(()=>{});},[]);
+  // Cargar empresa: requiere token, así que se hace después del login
+  const cargarEmpresa = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const r = await fetch("/api/empresa", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      if (d && !d.error) {
+        setEmpresa(d);
+        setColoresEmpresa(d.color_primario, d.color_secundario);
+        forceRender(n => n + 1);
+        loadConfigEmpresa(d?.id);
+      }
+    } catch {}
+  }, []);
 
   const actividad=useActividad(usuario?{id:usuario.id,legajo:usuario.legajo,division:usuario.division,empresa_id:usuario?.empresa_id||empresa?.id}:null);
 
@@ -840,7 +852,7 @@ const loadData=useCallback(async()=>{
     }catch(e){console.error(e);setReady(true);}
   },[usuario]);
 
-  useEffect(()=>{if(usuario){setReady(false);loadData();}},[usuario,loadData]);
+  useEffect(()=>{if(usuario){setReady(false);loadData();cargarEmpresa();}},[usuario,loadData,cargarEmpresa]);
   useEffect(()=>{if(!usuario)return;const t=setInterval(loadData,60000);return()=>clearInterval(t);},[usuario,loadData]);
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),30000);return()=>clearInterval(t);},[]);
 

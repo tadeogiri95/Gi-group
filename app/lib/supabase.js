@@ -1,16 +1,14 @@
-// lib/supabase.js
+// lib/supabase.js — VERSIÓN SEGURA
+// El cliente NO inyecta empresa_id. El servidor (/api/data) lo fuerza
+// desde la sesión validada del token.
 
 let _token = null;
-let _empresaId = null;
 let _onUnauthorized = null;
 
 export function setToken(token) {
   _token = token;
-  if (token) {
-    try { localStorage.setItem("gypi_token", token); } catch (e) {}
-  } else {
-    try { localStorage.removeItem("gypi_token"); } catch (e) {}
-  }
+  if (token) { try { localStorage.setItem("gypi_token", token); } catch (e) {} }
+  else { try { localStorage.removeItem("gypi_token"); } catch (e) {} }
 }
 
 export function getToken() {
@@ -24,9 +22,9 @@ export function clearToken() {
   try { localStorage.removeItem("gypi_token"); } catch (e) {}
 }
 
-export function setEmpresaId(id) {
-  _empresaId = id;
-}
+// Se mantiene como no-op para no romper imports existentes.
+// El empresa_id ahora se fuerza siempre desde el token en el servidor.
+export function setEmpresaId(_id) { /* no-op por seguridad */ }
 
 export function onUnauthorized(callback) {
   _onUnauthorized = callback;
@@ -35,51 +33,24 @@ export function onUnauthorized(callback) {
 async function req(method, path, body) {
   const token = getToken();
   const headers = { "Content-Type": "application/json" };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  // SIEMPRE inyectar empresa_id como fallback de seguridad.
-  // El servidor lo necesita si validarToken falla (ej: PATCH sin empresa_id en path/body → 401)
-  let finalPath = path;
-  let finalBody = body;
-
-  if (_empresaId) {
-    // GET, PATCH, DELETE: agregar empresa_id al path si no está
-    if ((!method || method === "GET" || method === "PATCH" || method === "DELETE") && !path.includes("empresa_id=")) {
-      finalPath = path.includes("?")
-        ? path + `&empresa_id=eq.${_empresaId}`
-        : path + `?empresa_id=eq.${_empresaId}`;
-    }
-    // POST y PATCH: agregar empresa_id al body si no está
-    if ((method === "POST" || method === "PATCH") && body && !body.empresa_id) {
-      finalBody = { ...body, empresa_id: _empresaId };
-    }
-  }
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   let res;
   try {
     res = await fetch("/api/data", {
       method: "POST",
       headers,
-      body: JSON.stringify({ method, path: finalPath, body: finalBody }),
+      body: JSON.stringify({ method, path, body }),
     });
-  } catch (networkErr) {
+  } catch {
     throw new Error("Error de red. Verificá tu conexión.");
   }
 
   let json;
-  try {
-    json = await res.json();
-  } catch (parseErr) {
-    throw new Error(`Error del servidor (${res.status}). Intentá de nuevo.`);
-  }
+  try { json = await res.json(); }
+  catch { throw new Error(`Error del servidor (${res.status}). Intentá de nuevo.`); }
 
   if (res.status === 401) {
-    // Solo hacer auto-logout en lecturas (GET). Para escrituras (POST/PATCH/DELETE),
-    // NO hacer logout — el usuario puede reintentar. El próximo GET periódico
-    // (loadData cada 60s) hará logout si el token realmente expiró.
     const isRead = !method || method === "GET";
     if (isRead) {
       clearToken();
@@ -88,9 +59,7 @@ async function req(method, path, body) {
     throw new Error(isRead ? "Sesión expirada. Iniciá sesión de nuevo." : "Error de autorización. Intentá de nuevo o recargá la página.");
   }
 
-  if (!res.ok || json.error) {
-    throw new Error(json.error || `Error ${res.status}`);
-  }
+  if (!res.ok || json.error) throw new Error(json.error || `Error ${res.status}`);
   return json.data;
 }
 

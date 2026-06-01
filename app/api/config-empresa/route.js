@@ -1,12 +1,35 @@
 // ═══════════════════════════════════════════════════════════
-// API: /api/config-empresa/route.js
-// CRUD de divisiones, etapas y logo por empresa
+// API: /api/config-empresa/route.js — VERSIÓN SEGURA
+// El empresa_id SIEMPRE sale del token validado, nunca del cliente
 // ═══════════════════════════════════════════════════════════
 import { NextResponse } from "next/server";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// ─── Validar token de sesión ───
+async function validarToken(token) {
+  if (!token || token.length < 20) return null;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/rpc/validar_sesion`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_token: token }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data && data.length > 0 ? data[0] : null;
+  } catch { return null; }
+}
+
+async function getEmpresaIdFromRequest(request) {
+  const auth = request.headers.get("authorization");
+  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+  const sesion = await validarToken(token);
+  return sesion?.empresa_id || null;
+}
+
+// ─── REST helpers ───
 async function sbGet(path) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
@@ -32,56 +55,61 @@ async function sbPatch(path, body) {
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
-async function sbDelete(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "DELETE",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  if (!r.ok) throw new Error(await r.text());
+
+// ─── Verificar que un id (división/etapa) pertenece a la empresa ───
+async function perteneceAEmpresa(tabla, id, empresaId) {
+  const rows = await sbGet(`${tabla}?id=eq.${id}&select=empresa_id`);
+  return rows.length > 0 && rows[0].empresa_id === empresaId;
 }
 
-// GET — Cargar divisiones y etapas de una empresa
+// ═══ GET — Cargar divisiones y etapas de la empresa del token ═══
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const empresaId = searchParams.get("empresa_id");
-    if (!empresaId) return NextResponse.json({ error: "empresa_id requerido" }, { status: 400 });
+    const empresaId = await getEmpresaIdFromRequest(request);
+    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const [divisiones, etapas] = await Promise.all([
       sbGet(`divisiones?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       sbGet(`etapas?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
     ]);
-
     return NextResponse.json({ divisiones: divisiones || [], etapas: etapas || [] });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// POST — Crear división o etapa, o subir logo
+// ═══ POST — Crear división, etapa o guardar logo ═══
 export async function POST(request) {
   try {
+    const empresaId = await getEmpresaIdFromRequest(request);
+    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
     const body = await request.json();
-    const { action, empresa_id } = body;
-    if (!empresa_id) return NextResponse.json({ error: "empresa_id requerido" }, { status: 400 });
+    const { action } = body;
 
     if (action === "add_division") {
       const { clave, label, icon, color, orden } = body;
       if (!clave || !label) return NextResponse.json({ error: "clave y label requeridos" }, { status: 400 });
-      const result = await sbPost("divisiones", { empresa_id, clave, label, icon: icon || "📦", color: color || "#F97316", orden: orden || 99 });
+      const result = await sbPost("divisiones", {
+        empresa_id: empresaId, clave, label,
+        icon: icon || "📦", color: color || "#F97316", orden: orden || 99,
+      });
       return NextResponse.json({ division: result[0] });
     }
 
     if (action === "add_etapa") {
       const { codigo, nombre, icon, color, orden } = body;
-      if (!codigo || !nombre) return NextResponse.json({ error: "codigo y nombre requeridos" }, { status: 400 });
-      const result = await sbPost("etapas", { empresa_id, codigo, nombre, icon: icon || "🔨", color: color || "#F97316", orden: orden || 99 });
+      if (codigo === undefined || !nombre) return NextResponse.json({ error: "codigo y nombre requeridos" }, { status: 400 });
+      const result = await sbPost("etapas", {
+        empresa_id: empresaId, codigo, nombre,
+        icon: icon || "🔨", color: color || "#F97316", orden: orden || 99,
+      });
       return NextResponse.json({ etapa: result[0] });
     }
 
     if (action === "save_logo") {
       const { logo_url } = body;
-      await sbPatch(`empresa?id=eq.${empresa_id}`, { logo_url });
+      await sbPatch(`empresa?id=eq.${empresaId}`, { logo_url });
       return NextResponse.json({ ok: true });
     }
 
@@ -91,14 +119,19 @@ export async function POST(request) {
   }
 }
 
-// PATCH — Actualizar división o etapa
+// ═══ PATCH — Actualizar división o etapa (sólo si pertenece a la empresa) ═══
 export async function PATCH(request) {
   try {
+    const empresaId = await getEmpresaIdFromRequest(request);
+    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
     const body = await request.json();
     const { action, id } = body;
     if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
 
     if (action === "update_division") {
+      if (!(await perteneceAEmpresa("divisiones", id, empresaId)))
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
       const { label, icon, color, orden, activa } = body;
       const updates = {};
       if (label !== undefined) updates.label = label;
@@ -106,11 +139,13 @@ export async function PATCH(request) {
       if (color !== undefined) updates.color = color;
       if (orden !== undefined) updates.orden = orden;
       if (activa !== undefined) updates.activa = activa;
-      const result = await sbPatch(`divisiones?id=eq.${id}`, updates);
+      const result = await sbPatch(`divisiones?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
       return NextResponse.json({ division: result[0] });
     }
 
     if (action === "update_etapa") {
+      if (!(await perteneceAEmpresa("etapas", id, empresaId)))
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
       const { nombre, icon, color, codigo, orden, activa } = body;
       const updates = {};
       if (nombre !== undefined) updates.nombre = nombre;
@@ -119,7 +154,7 @@ export async function PATCH(request) {
       if (codigo !== undefined) updates.codigo = codigo;
       if (orden !== undefined) updates.orden = orden;
       if (activa !== undefined) updates.activa = activa;
-      const result = await sbPatch(`etapas?id=eq.${id}`, updates);
+      const result = await sbPatch(`etapas?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
       return NextResponse.json({ etapa: result[0] });
     }
 
@@ -129,20 +164,24 @@ export async function PATCH(request) {
   }
 }
 
-// DELETE — Eliminar (soft delete → activa=false)
+// ═══ DELETE — Soft delete (sólo si pertenece a la empresa) ═══
 export async function DELETE(request) {
   try {
+    const empresaId = await getEmpresaIdFromRequest(request);
+    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
     const id = searchParams.get("id");
     if (!id || !type) return NextResponse.json({ error: "type e id requeridos" }, { status: 400 });
 
-    if (type === "division") {
-      await sbPatch(`divisiones?id=eq.${id}`, { activa: false });
-    } else if (type === "etapa") {
-      await sbPatch(`etapas?id=eq.${id}`, { activa: false });
-    }
+    const tabla = type === "division" ? "divisiones" : type === "etapa" ? "etapas" : null;
+    if (!tabla) return NextResponse.json({ error: "type inválido" }, { status: 400 });
 
+    if (!(await perteneceAEmpresa(tabla, id, empresaId)))
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+
+    await sbPatch(`${tabla}?id=eq.${id}&empresa_id=eq.${empresaId}`, { activa: false });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
