@@ -163,9 +163,13 @@ export async function POST(request) {
     }
 
     return NextResponse.json({ ok: true, ignorado: tipo });
-  } catch (err) {
+ } catch (err) {
+    // 404 de MP = simulación o ID viejo, no es error real
+    if (err.status === 404 || /not found/i.test(err.message)) {
+      console.log("[webhook] Recurso no encontrado (simulación o ID viejo):", err.message);
+      return NextResponse.json({ ok: true, ignorado: "not_found" });
+    }
     console.error("[webhook] Error:", err.message);
-    // Devolvemos 200 igual para que MP no reintente infinito
     return NextResponse.json({ ok: false, error: err.message });
   }
 }
