@@ -51,8 +51,12 @@ export default function BillingScreen({ onClose }) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ plan }),
       });
-      const d = await r.json();
-      if (!r.ok || !d.init_point) throw new Error(d.error || "Error creando suscripción");
+      const txt = await r.text();
+      let d = {};
+      try { d = txt ? JSON.parse(txt) : {}; } catch {}
+      if (!r.ok || !d.init_point) {
+        throw new Error(d.error || `Error ${r.status}: ${txt?.slice(0, 200) || "respuesta vacía"}`);
+      }
       // Redirigir a Mercado Pago
       window.location.href = d.init_point;
     } catch (e) {
