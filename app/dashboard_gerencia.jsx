@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { C, fH, fB, fM, fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import TrialBanner from "./components/TrialBanner";
+import BillingScreen from "./components/BillingScreen";
 /* ═══════════════════════════════════════════════════════
    DASHBOARD GERENCIAL — Vista en tiempo real
    ═══════════════════════════════════════════════════════ */
@@ -273,6 +274,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
   const [reportesObra, setReportesObra] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
+  const [showBilling, setShowBilling] = useState(false);
 
   const _now = new Date();
   const hoy = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}`;
@@ -453,7 +455,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
       </div>
 
       {/* ─── Banner de trial / vencimiento ─── */}
-      <TrialBanner onUpgrade={() => goto?.("config")} />
+      <TrialBanner onUpgrade={() => setShowBilling(true)} />
+
+      {/* Modal de billing */}
+      {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
 
       {/* ─── Alertas activas ─── */}
       {alertas.length > 0 && (
