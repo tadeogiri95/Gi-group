@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { C, fH, fB } from "../lib/theme";
 import { PLANES } from "../lib/plans";
-import { getToken } from "../lib/supabase";
+import { sb, getToken } from "../lib/supabase";
 
 const ORDEN_PLANES = ["free", "starter", "pro", "enterprise"];
 
@@ -23,14 +23,12 @@ export default function BillingScreen({ onClose }) {
 
       const [rInfo, rPagos] = await Promise.all([
         fetch("/api/billing/info", { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        fetch("/api/data?tabla=pagos&order=fecha_pago.desc&limit=20", {
-          headers: { Authorization: `Bearer ${token}` },
-        }).then(r => r.json()),
+        sb.get("pagos", "?order=fecha_pago.desc&limit=20").catch(() => []),
       ]);
 
       if (rInfo.error) throw new Error(rInfo.error);
       setInfo(rInfo);
-      setPagos(Array.isArray(rPagos?.data) ? rPagos.data : Array.isArray(rPagos) ? rPagos : []);
+      setPagos(Array.isArray(rPagos) ? rPagos : []);
     } catch (e) {
       setError(e.message);
     } finally {
