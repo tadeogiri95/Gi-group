@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { C, fH, fB, fM, fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
 import { sb } from "./lib/supabase";
-
+import TrialBanner from "./components/TrialBanner";
 /* ═══════════════════════════════════════════════════════
    DASHBOARD GERENCIAL — Vista en tiempo real
    ═══════════════════════════════════════════════════════ */
@@ -451,6 +451,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           </div>
         </div>
       </div>
+
+      {/* ─── Banner de trial / vencimiento ─── */}
+      <TrialBanner onUpgrade={() => goto?.("config")} />
 
       {/* ─── Alertas activas ─── */}
       {alertas.length > 0 && (

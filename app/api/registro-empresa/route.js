@@ -66,7 +66,8 @@ export async function POST(req) {
       admin_password: hashed,
       rubro: rubro || "general",
       slug,
-      plan: "free",
+      plan_activo: "free",
+      trial_usado: false,
       max_empleados: 10,
       activa: true,
     });
@@ -96,6 +97,22 @@ export async function POST(req) {
       // Si falla el empleado, borrar la empresa creada
       await sbFetch(`empresa?id=eq.${emp.id}`, "DELETE");
       return NextResponse.json({ error: "Error al crear el usuario admin: " + (adminEmp.message || JSON.stringify(adminEmp)) }, { status: 500 });
+    }
+
+    // ─── Iniciar trial Pro de 14 días para la empresa nueva ───
+    try {
+      await fetch(`${SB_URL}/rest/v1/rpc/iniciar_trial_pro`, {
+        method: "POST",
+        headers: {
+          apikey: SB_KEY,
+          Authorization: `Bearer ${SB_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ p_empresa_id: emp.id }),
+      });
+    } catch (e) {
+      console.error("[registro] No se pudo iniciar trial:", e.message);
+      // No bloquea el registro, la empresa queda en plan free
     }
 
     return NextResponse.json({
