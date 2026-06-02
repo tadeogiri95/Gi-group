@@ -12,6 +12,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
+import { validarLimite, invalidarCachePlan } from "@/app/lib/planEnforcement";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 // Una sola clave de servicio. NO caer en la anon key (rompe el aislamiento).
@@ -226,6 +227,27 @@ export async function POST(request) {
       if (!bodyCheck.valido) {
         return NextResponse.json({ error: bodyCheck.error }, { status: 400 });
       }
+    }
+
+    // ─── Enforcement de límites por plan (solo en POST) ───
+    if (method === "POST") {
+      const limCheck = await validarLimite({
+        tabla: pathCheck.tabla,
+        empresaId,
+        body,
+        method,
+      });
+      if (!limCheck.ok) {
+        return NextResponse.json(
+          { error: limCheck.error, upgrade_a: limCheck.upgrade_a, paywall: true },
+          { status: 402 }
+        );
+      }
+    }
+
+    // Si se modifica la empresa, invalidar cache de plan
+    if (pathCheck.tabla === "empresa" && (method === "PATCH" || method === "POST")) {
+      invalidarCachePlan(empresaId);
     }
 
     // ─── INYECTAR empresa_id de la SESIÓN (no del cliente) ───

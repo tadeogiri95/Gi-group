@@ -58,6 +58,12 @@ async function req(method, path, body) {
     }
     throw new Error(isRead ? "Sesión expirada. Iniciá sesión de nuevo." : "Error de autorización. Intentá de nuevo o recargá la página.");
   }
+if (res.status === 402) {
+    const err = new Error(json.error || "Función bloqueada por tu plan");
+    err.paywall = true;
+    err.upgrade_a = json.upgrade_a;
+    throw err;
+  }
 
   if (!res.ok || json.error) throw new Error(json.error || `Error ${res.status}`);
   return json.data;
