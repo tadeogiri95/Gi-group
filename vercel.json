@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/auto-fichaje",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/limpiar-tokens",
+      "schedule": "0 5 * * 0"
     }
   ]
 }

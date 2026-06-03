@@ -935,7 +935,7 @@ const loadData=useCallback(async()=>{
       </div>
     ):<>
       {/* FIX #2: PushManager ARRIBA, no fijo abajo */}
-      <PushManager legajo={String(usuario.legajo)} onNotification={()=>loadData()}/>
+      <PushManager legajo={String(usuario.legajo)} empresaId={usuario.empresa_id} onNotification={()=>loadData()}/>
 
       {/* Header */}
       {isChat?<div style={{padding:"8px 16px 14px",display:"flex",alignItems:"center",gap:12,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>

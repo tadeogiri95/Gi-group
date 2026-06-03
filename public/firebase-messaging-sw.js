@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-// GI GROUP — Service Worker para Push Notifications
-// Este archivo VA EN: public/firebase-messaging-sw.js
+// Gypi — Service Worker para Push Notifications (Bloque 4)
+// Claves Firebase públicas por diseño (la seguridad la dan las
+// Security Rules + service account del backend)
 // ═══════════════════════════════════════════════════════════════
 
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
@@ -17,19 +18,20 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Maneja notificaciones cuando la app está en segundo plano o cerrada
 messaging.onBackgroundMessage((payload) => {
   console.log('[SW] Push recibida en background:', payload);
 
-  const { title, body, icon, badge, data } = payload.notification || {};
-  const notifTitle = title || payload.data?.title || 'GI Group';
+  const { title, body, icon, badge } = payload.notification || {};
+  const empresaNombre = payload.data?.empresa_nombre;
+  const baseTitle = title || payload.data?.title || 'Gypi';
+  const notifTitle = empresaNombre ? `${empresaNombre} · ${baseTitle}` : baseTitle;
   const notifBody = body || payload.data?.body || 'Tenés una nueva notificación';
 
   const options = {
     body: notifBody,
-    icon: icon || '/icon-192.png',
-    badge: badge || '/icon-192.png',
-    tag: payload.data?.tag || 'gi-group-default',
+    icon: icon || '/icons/icon-192.png',
+    badge: badge || '/icons/icon-192.png',
+    tag: payload.data?.tag || 'gypi-default',
     vibrate: [200, 100, 200],
     data: {
       url: payload.data?.url || '/',
@@ -41,21 +43,21 @@ messaging.onBackgroundMessage((payload) => {
   return self.registration.showNotification(notifTitle, options);
 });
 
-// Cuando el usuario toca la notificación, abre la app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
   const urlToOpen = event.notification.data?.url || '/';
+  const origin = self.location.origin;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Si ya hay una ventana abierta, enfocala
       for (const client of windowClients) {
-        if (client.url.includes('gi-group-app.vercel.app') && 'focus' in client) {
+        if (client.url.startsWith(origin) && 'focus' in client) {
+          if (urlToOpen !== '/' && 'navigate' in client) {
+            return client.navigate(urlToOpen).then(() => client.focus());
+          }
           return client.focus();
         }
       }
-      // Si no, abrí una nueva
       return clients.openWindow(urlToOpen);
     })
   );
