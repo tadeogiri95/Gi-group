@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 async function validarToken(token) {
   if (!token || token.length < 20) return null;

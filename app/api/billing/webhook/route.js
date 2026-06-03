@@ -9,7 +9,7 @@ import crypto from "crypto";
 import { getPreapproval, getPago } from "../../../lib/mercadopago";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const WH_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
 async function sbGet(path) {

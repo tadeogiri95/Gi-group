@@ -44,7 +44,7 @@ export default function TermsOfService() {
       <p style={S.p}>Estos términos se rigen por las leyes de la República Argentina. Cualquier disputa será sometida a la jurisdicción de los tribunales ordinarios de la ciudad de Córdoba, Argentina.</p>
 
       <h2 style={S.h2}>10. Contacto</h2>
-      <p style={S.p}>Para consultas sobre estos términos:{"\n"}Email: contacto@gigroup.com.ar{"\n"}Dirección: Córdoba, Argentina</p>
+      <p style={S.p}>Para consultas sobre estos términos:{"\n"}Email: contacto@gypi.app{"\n"}Dirección: Córdoba, Argentina</p>
     </div>
   );
 }

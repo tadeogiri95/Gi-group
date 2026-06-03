@@ -9,8 +9,8 @@ import { crearPreapproval } from "../../../lib/mercadopago";
 import { PLANES } from "../../../lib/plans";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://gi-group-app.vercel.app";
+const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
 async function validarToken(token) {
   if (!token || token.length < 20) return null;

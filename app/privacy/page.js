@@ -33,7 +33,7 @@ export default function PrivacyPolicy() {
       <p style={S.p}>La App puede solicitar acceso a tu ubicación para verificar el fichaje en el lugar de trabajo. Este permiso es opcional y podés revocarlo en cualquier momento desde la configuración de tu dispositivo. La ubicación solo se registra en el momento del fichaje y no se rastrea de forma continua.</p>
 
       <h2 style={S.h2}>6. Tus derechos</h2>
-      <p style={S.p}>Tenés derecho a:{"\n"}• Acceder a tus datos personales.{"\n"}• Solicitar la corrección de datos inexactos.{"\n"}• Solicitar la eliminación de tus datos (sujeto a obligaciones legales de retención).{"\n"}• Revocar el consentimiento para la geolocalización.{"\n"}{"\n"}Para ejercer estos derechos, contactá a tu empleador o escribinos a contacto@gigroup.com.ar.</p>
+      <p style={S.p}>Tenés derecho a:{"\n"}• Acceder a tus datos personales.{"\n"}• Solicitar la corrección de datos inexactos.{"\n"}• Solicitar la eliminación de tus datos (sujeto a obligaciones legales de retención).{"\n"}• Revocar el consentimiento para la geolocalización.{"\n"}{"\n"}Para ejercer estos derechos, contactá a tu empleador o escribinos a contacto@gypi.app.</p>
 
       <h2 style={S.h2}>7. Retención de datos</h2>
       <p style={S.p}>Conservamos tus datos mientras dure tu relación laboral con la empresa que utiliza la App, y por el período adicional que exija la legislación laboral argentina vigente.</p>
