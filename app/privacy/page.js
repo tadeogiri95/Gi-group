@@ -42,7 +42,7 @@ export default function PrivacyPolicy() {
       <p style={S.p}>Podemos actualizar esta política ocasionalmente. Te notificaremos de cambios significativos a través de la App. El uso continuado de la App después de los cambios constituye aceptación de la política actualizada.</p>
 
       <h2 style={S.h2}>9. Contacto</h2>
-      <p style={S.p}>Si tenés preguntas sobre esta política, contactanos en:{"\n"}Email: contacto@gigroup.com.ar{"\n"}Dirección: Córdoba, Argentina</p>
+      <p style={S.p}>Si tenés preguntas sobre esta política, contactanos en:{"\n"}Email: contacto@gypi.app{"\n"}Dirección: Córdoba, Argentina</p>
     </div>
   );
 }

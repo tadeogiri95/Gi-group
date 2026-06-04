@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { validarLimite, invalidarCachePlan } from "../../lib/planEnforcement";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 // Una sola clave de servicio. NO caer en la anon key (rompe el aislamiento).
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 

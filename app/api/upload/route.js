@@ -2,7 +2,7 @@
 // Valida token; el archivo se sube prefijado con empresa_id
 import { NextResponse } from "next/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 async function validarToken(token) {

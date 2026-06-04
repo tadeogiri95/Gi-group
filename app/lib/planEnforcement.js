@@ -5,8 +5,8 @@
 
 import { PLANES, planTieneModulo, planLimite, planPermite } from "./plans";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 // Cache simple en memoria (5 min) para no consultar plan en cada request
 const cache = new Map();

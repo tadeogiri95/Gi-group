@@ -3,6 +3,7 @@ import { C, fH, fB, fM } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConTodos } from "./lib/constants";
+import { haversine } from "./lib/calc";
 
 /* Ubicación especial fija (no se borra) */
 const HOME_OFFICE = { id: "home_office", label: "🏠 Home Office", lat: null, lng: null, radio: null };
@@ -17,13 +18,7 @@ const fmtUbicacion = (ub, ubicaciones) => {
   return "Sin control";
 };
 
-const distanciaMetros = (lat1, lng1, lat2, lng2) => {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
+// distanciaMetros → reemplazada por haversine de calc.js
 
 /* ═══ HELPER: Decodificar Plus Code a coordenadas ═══ */
 function decodePlusCode(code) {
@@ -693,7 +688,7 @@ export async function validarGeoFichaje(empleado) {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       pos => {
-        const dist = distanciaMetros(pos.coords.latitude, pos.coords.longitude, ub.lat, ub.lng);
+        const dist = haversine(pos.coords.latitude, pos.coords.longitude, ub.lat, ub.lng);
         const dentroDelRadio = dist <= (ub.radio || 200);
         resolve({
           ok: dentroDelRadio,

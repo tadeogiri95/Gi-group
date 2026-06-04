@@ -6,6 +6,7 @@ import { sb, setToken, getToken, clearToken, onUnauthorized, setEmpresaId } from
 import { setDivisionesEmpresa } from '../lib/constants';
 import { C, fH, fB, fM, fmtTime, fmtDate, fmtDateLong, DIAS_KEY, setColoresEmpresa } from '../lib/theme';
 import { callClaude, parseAction } from '../lib/claude';
+import { haversine } from '../lib/calc';
 import PushManager from '../../components/PushManager';
 import { sendPushToLegajo } from '../../lib/push';
 import ActividadScreen from '../actividad_screen';
@@ -112,7 +113,7 @@ function CambiarPasswordScreen({usuario,onDone}) {
     if(!nueva||!confirmar)return;
     if(nueva.length<4){setError("La contraseña debe tener al menos 4 caracteres");return;}
     if(nueva!==confirmar){setError("Las contraseñas no coinciden");return;}
-    if(nueva==="gigroup2025"){setError("Elegí una contraseña distinta a la inicial");return;}
+    
     setLoading(true);setError("");
     try{
       const res=await fetch("/api/login-empresa",{
@@ -212,11 +213,7 @@ async function obtenerGeo(empleado) {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       pos => {
-        const R = 6371000;
-        const dLat = (ub.lat - pos.coords.latitude) * Math.PI / 180;
-        const dLng = (ub.lng - pos.coords.longitude) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) ** 2 + Math.cos(pos.coords.latitude * Math.PI / 180) * Math.cos(ub.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-        const dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+        const dist = Math.round(haversine(pos.coords.latitude, pos.coords.longitude, ub.lat, ub.lng));
         const ok = dist <= (ub.radio || 200);
         resolve({
           ok, lat: pos.coords.latitude, lng: pos.coords.longitude, distancia: dist,
