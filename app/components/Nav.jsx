@@ -1,5 +1,16 @@
 "use client";
-// Extraído de [slug]/page.js líneas 771-776
+// ═══════════════════════════════════════════════════════════
+// Nav — Barra de navegación inferior
+//
+// ENTREGA 2F: Ahora usa useUI() del context. Cada tab actualiza
+// la URL via setScreen (que internamente hace router.push).
+// Browser back/forward funciona automáticamente.
+//
+// Nota: sigue aceptando props { active, onChange } como fallback
+// para compatibilidad con page.js que aún no usa contexts.
+// Si no recibe props, usa useUI().
+// ═══════════════════════════════════════════════════════════
+
 import { C, fB } from "../lib/theme";
 import { Ic } from "./Icons";
 
