@@ -1,9 +1,28 @@
-// /api/unirse — Activación de empleado pre-cargado (público, sin auth)
+// ═══════════════════════════════════════════════════════════
+// /api/unirse — Activación de empleado pre-cargado (público)
+//
+// ENTREGA 1C: Este endpoint es público por diseño (el empleado
+// aún no tiene sesión). El mecanismo de "auth" es:
+//   slug + legajo + estado_activacion === "pendiente_activacion"
+// Solo puede activar cuentas que el admin pre-cargó.
+//
+// CAMBIO: password policy reforzada (min 8 chars, complejidad).
+// ═══════════════════════════════════════════════════════════
+
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+// ─── Password validation (misma regla que auth.js para consistencia) ───
+function validarPassword(pw) {
+  if (!pw || pw.length < 8) return { valido: false, error: "La contraseña debe tener al menos 8 caracteres" };
+  if (!/[A-Z]/.test(pw)) return { valido: false, error: "Debe contener al menos una mayúscula" };
+  if (!/[a-z]/.test(pw)) return { valido: false, error: "Debe contener al menos una minúscula" };
+  if (!/[0-9]/.test(pw)) return { valido: false, error: "Debe contener al menos un número" };
+  return { valido: true };
+}
 
 async function sbGet(path) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
@@ -30,14 +49,12 @@ export async function POST(request) {
       return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
     }
 
-    // Resolver empresa por slug
     const slugClean = slug.toLowerCase().replace(/[^a-z0-9-]/g, "");
     const emp = await sbGet(`empresa?slug=eq.${encodeURIComponent(slugClean)}&select=id,nombre,nombre_corto,activa&limit=1`);
     if (!emp || emp.length === 0) return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });
     if (emp[0].activa === false) return NextResponse.json({ error: "Empresa inactiva" }, { status: 403 });
     const empresaId = emp[0].id;
 
-    // Buscar empleado pendiente con ese legajo
     const legajoNum = String(legajo).trim();
     const empleados = await sbGet(`empleados?empresa_id=eq.${empresaId}&legajo=eq.${encodeURIComponent(legajoNum)}&activo=eq.true&select=id,nombre,apodo,estado_activacion&limit=1`);
     if (!empleados || empleados.length === 0) {
@@ -48,7 +65,6 @@ export async function POST(request) {
       return NextResponse.json({ error: "Esta cuenta ya está activada. Iniciá sesión normalmente." }, { status: 409 });
     }
 
-    // ─── action: verificar ───
     if (action === "verificar") {
       return NextResponse.json({
         ok: true,
@@ -58,11 +74,13 @@ export async function POST(request) {
       });
     }
 
-    // ─── action: activar ───
     if (action === "activar") {
-      if (!password || password.length < 4) {
-        return NextResponse.json({ error: "La contraseña debe tener al menos 4 caracteres" }, { status: 400 });
+      // ═══ CAMBIO 1C/1B: Password policy reforzada ═══
+      const pwCheck = validarPassword(password);
+      if (!pwCheck.valido) {
+        return NextResponse.json({ error: pwCheck.error }, { status: 400 });
       }
+
       const hashed = await bcrypt.hash(password, 10);
       await sbPatch(`empleados?id=eq.${empleado.id}`, {
         password: hashed,

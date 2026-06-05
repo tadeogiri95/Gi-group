@@ -1,16 +1,15 @@
 // ═══════════════════════════════════════════════════════════
 // /api/login-empresa/route.js — VERSIÓN SEGURA CON MIGRACIÓN
 //
-// Si la contraseña guardada ya está hasheada (empieza con $2) →
-// compara con bcrypt como siempre.
+// ENTREGA 1B: Password policy reforzada (min 8, mayúscula,
+// minúscula, número). Usa validarPassword de lib/auth.js.
 //
-// Si la contraseña guardada está en texto plano → la compara,
-// y SI COINCIDE, la hashea y la guarda encriptada en ese momento.
-// Así la próxima vez ya queda segura. El usuario no nota nada.
+// Migración de texto plano a bcrypt se mantiene intacta.
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { validarPassword } from "../../lib/auth";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -59,8 +58,11 @@ export async function POST(req) {
       if (!token) {
         return NextResponse.json({ error: "Token requerido" }, { status: 401 });
       }
-      if (!nuevaPassword || nuevaPassword.length < 4) {
-        return NextResponse.json({ error: "La contraseña debe tener al menos 4 caracteres" }, { status: 400 });
+
+      // ═══ CAMBIO 1B: Usar validarPassword compartida ═══
+      const pwCheck = validarPassword(nuevaPassword);
+      if (!pwCheck.valido) {
+        return NextResponse.json({ error: pwCheck.error }, { status: 400 });
       }
 
       const hashed = await bcrypt.hash(nuevaPassword, 10);
@@ -96,14 +98,12 @@ export async function POST(req) {
       if (!emp.password) continue;
 
       if (emp.password.startsWith("$2")) {
-        // ── Contraseña ya encriptada → comparar con bcrypt ──
         const match = await bcrypt.compare(password, emp.password);
         if (match) { usuario = emp; break; }
       } else {
-        // ── Contraseña en texto plano → comparar y MIGRAR ──
+        // Texto plano → comparar y MIGRAR
         if (password === emp.password) {
           usuario = emp;
-          // Encriptar la contraseña y guardarla para que quede segura
           try {
             const hashed = await bcrypt.hash(password, 10);
             await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
