@@ -1,3 +1,80 @@
+/* ═══════════════════════════════════════════════════════════
+   globals.css — ENTREGA 2A
+   Tailwind v4 + design tokens de Gypi.
+   
+   En Tailwind v4, toda la config va en CSS con @theme.
+   No se necesita tailwind.config.js.
+   ═══════════════════════════════════════════════════════════ */
+
+@import "tailwindcss";
+
+/* ═══ DESIGN TOKENS (Gypi theme) ═══
+   Estos custom properties son la fuente de verdad de colores.
+   theme.js los lee para mantener compatibilidad con inline styles
+   existentes. A medida que se migran pantallas a Tailwind,
+   los inline styles se reemplazan por clases como bg-gypi-surface.
+   ═══════════════════════════════════════════════════════════ */
+
+@theme {
+  /* ─── Colores base (dark theme) ─── */
+  --color-gypi-bg: #0C0A09;
+  --color-gypi-surface: #171311;
+  --color-gypi-surface-hi: #1F1A17;
+  --color-gypi-surface-lo: #100D0B;
+
+  /* ─── Borders ─── */
+  --color-gypi-border: rgba(255, 240, 220, 0.06);
+  --color-gypi-border-hi: rgba(255, 240, 220, 0.12);
+
+  /* ─── Texto ─── */
+  --color-gypi-text: #F5F0E8;
+  --color-gypi-dim: #A39A8E;
+  --color-gypi-mute: #615A52;
+
+  /* ─── Accent (dinámico por empresa vía CSS vars) ─── */
+  --color-gypi-amber: var(--empresa-primario, #F97316);
+  --color-gypi-amber-s: var(--empresa-primario-s, rgba(249, 115, 22, 0.14));
+
+  /* ─── Semánticos ─── */
+  --color-gypi-green: #22C55E;
+  --color-gypi-green-s: rgba(34, 197, 94, 0.12);
+  --color-gypi-red: #EF4444;
+  --color-gypi-red-s: rgba(239, 68, 68, 0.12);
+  --color-gypi-cyan: #06B6D4;
+  --color-gypi-cyan-s: rgba(6, 182, 212, 0.12);
+  --color-gypi-violet: var(--empresa-secundario, #A78BFA);
+  --color-gypi-violet-s: var(--empresa-secundario-s, rgba(167, 139, 250, 0.12));
+
+  /* ─── Fuentes ─── */
+  --font-heading: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', monospace;
+
+  /* ─── Radios ─── */
+  --radius-card: 14px;
+  --radius-btn: 10px;
+  --radius-pill: 20px;
+  --radius-full: 9999px;
+
+  /* ─── Animaciones ─── */
+  --animate-fade-in: fadeIn 0.25s ease;
+  --animate-spin: spin 1s linear infinite;
+  --animate-typing: typing 1.2s ease-in-out infinite;
+}
+
+/* ═══ CSS VARS dinámicas para colores de empresa ═══
+   setColoresEmpresa() en theme.js actualiza estas vars en :root.
+   Tailwind las consume via var(--empresa-primario) arriba.
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --empresa-primario: #F97316;
+  --empresa-primario-s: rgba(249, 115, 22, 0.14);
+  --empresa-secundario: #A78BFA;
+  --empresa-secundario-s: rgba(167, 139, 250, 0.12);
+}
+
+/* ═══ RESETS EXISTENTES (mantenidos de globals.css original) ═══ */
+
 * {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -8,9 +85,9 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: #0C0A09;
-  color: #F5F0E8;
-  font-family: 'Geist', system-ui, sans-serif;
+  background: var(--color-gypi-bg);
+  color: var(--color-gypi-text);
+  font-family: var(--font-body);
   overflow: hidden;
   height: 100%;
   height: 100dvh;
@@ -34,6 +111,8 @@ input, textarea {
   -webkit-appearance: none;
   appearance: none;
 }
+
+/* ═══ KEYFRAMES ═══ */
 
 @keyframes typing {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }

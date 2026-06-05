@@ -1,6 +1,15 @@
 // ═══════════════════════════════════════════════════════════
 // Theme — Colores dinámicos por empresa
-// Los colores base se pueden sobreescribir con setColoresEmpresa()
+//
+// ENTREGA 2A: Los colores base ahora están definidos como
+// CSS custom properties en globals.css (@theme).
+// Este archivo mantiene el objeto C para compatibilidad con
+// los 1,473 inline styles existentes. A medida que se migran
+// pantallas a Tailwind (entrega 2E), los imports de C se
+// van reemplazando por clases como bg-gypi-surface, text-gypi-dim.
+//
+// setColoresEmpresa() ahora TAMBIÉN actualiza las CSS vars
+// para que Tailwind las use via var(--empresa-primario).
 // ═══════════════════════════════════════════════════════════
 
 const _base = {
@@ -26,6 +35,20 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// ═══ CAMBIO 2A: también actualizar CSS custom properties ═══
+function updateCSSVars(primario, primarioS, secundario, secundarioS) {
+  if (typeof document === "undefined") return; // SSR safety
+  const root = document.documentElement;
+  if (primario) {
+    root.style.setProperty("--empresa-primario", primario);
+    root.style.setProperty("--empresa-primario-s", primarioS);
+  }
+  if (secundario) {
+    root.style.setProperty("--empresa-secundario", secundario);
+    root.style.setProperty("--empresa-secundario-s", secundarioS);
+  }
+}
+
 // Llamar desde page.js cuando se carga la empresa
 export function setColoresEmpresa(primario, secundario) {
   if (primario && /^#[0-9A-Fa-f]{6}$/.test(primario)) {
@@ -36,11 +59,14 @@ export function setColoresEmpresa(primario, secundario) {
     C.violet = secundario;
     C.violetS = hexToRgba(secundario, 0.14);
   }
+  // Sincronizar con CSS vars para que Tailwind use los colores de empresa
+  updateCSSVars(C.amber, C.amberS, C.violet, C.violetS);
 }
 
 // Resetear a colores por defecto
 export function resetColores() {
   Object.assign(C, _base);
+  updateCSSVars(_base.amber, _base.amberS, _base.violet, _base.violetS);
 }
 
 export const fH = `'Bricolage Grotesque', system-ui`;
