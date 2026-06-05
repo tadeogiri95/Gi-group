@@ -1,15 +1,16 @@
 // ═══════════════════════════════════════════════════════════
-// /api/login-empresa/route.js — VERSIÓN SEGURA CON MIGRACIÓN
+// /api/login-empresa/route.js — LOGIN + CAMBIAR PASSWORD
 //
-// ENTREGA 1B: Password policy reforzada (min 8, mayúscula,
-// minúscula, número). Usa validarPassword de lib/auth.js.
-//
-// Migración de texto plano a bcrypt se mantiene intacta.
+// ENTREGA 1B: Password policy reforzada
+// ENTREGA 1E: Login ahora emite JWT (access + refresh tokens).
+//   Se mantiene crear_sesion RPC para guardar el jti en la DB
+//   (necesario para revocación de sesiones).
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { validarPassword } from "../../lib/auth";
+import { signAccessToken, signRefreshToken } from "../../lib/jwt";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -44,6 +45,32 @@ async function sbRpc(fnName, params) {
   return res.json();
 }
 
+// Guardar jti en la tabla sesiones (para poder revocar)
+async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, userAgent }) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/sesiones`, {
+      method: "POST",
+      headers: {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        empleado_id: empleadoId,
+        empresa_id: empresaId,
+        token: jti,  // guardamos el jti como "token" para compatibilidad
+        jti,
+        refresh_jti: refreshJti,
+        ip,
+        user_agent: userAgent,
+        expira_en: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+  } catch (e) {
+    console.error("[login] Error guardando sesión JWT:", e.message);
+  }
+}
+
 export async function POST(req) {
   try {
     if (!SB_URL || !SB_KEY) {
@@ -59,7 +86,6 @@ export async function POST(req) {
         return NextResponse.json({ error: "Token requerido" }, { status: 401 });
       }
 
-      // ═══ CAMBIO 1B: Usar validarPassword compartida ═══
       const pwCheck = validarPassword(nuevaPassword);
       if (!pwCheck.valido) {
         return NextResponse.json({ error: pwCheck.error }, { status: 400 });
@@ -101,7 +127,6 @@ export async function POST(req) {
         const match = await bcrypt.compare(password, emp.password);
         if (match) { usuario = emp; break; }
       } else {
-        // Texto plano → comparar y MIGRAR
         if (password === emp.password) {
           usuario = emp;
           try {
@@ -120,18 +145,65 @@ export async function POST(req) {
       return NextResponse.json({ error: "Contraseña incorrecta" }, { status: 401 });
     }
 
-    // ─── Crear sesión con token ───
+    // ─── Generar JWT tokens ───
     const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
     const userAgent = req.headers.get("user-agent") || "unknown";
 
-    const sesionData = await sbRpc("crear_sesion", {
-      p_empleado_id: usuario.id,
-      p_empresa_id: usuario.empresa_id,
-      p_ip: ip,
-      p_user_agent: userAgent.substring(0, 200),
-    });
-    const tokenInfo = Array.isArray(sesionData) ? sesionData[0] : sesionData;
+    let accessToken, refreshToken, accessJti, refreshJti;
 
+    try {
+      const access = await signAccessToken({
+        empleadoId: usuario.id,
+        empresaId: usuario.empresa_id,
+        legajo: usuario.legajo,
+        rol: usuario.rol,
+      });
+      accessToken = access.token;
+      accessJti = access.jti;
+
+      const refresh = await signRefreshToken({
+        empleadoId: usuario.id,
+        empresaId: usuario.empresa_id,
+      });
+      refreshToken = refresh.token;
+      refreshJti = refresh.jti;
+    } catch (e) {
+      // Si JWT falla (ej: JWT_SECRET no configurada), caer al flujo legacy
+      console.error("[login] Error generando JWT, usando flujo legacy:", e.message);
+
+      const sesionData = await sbRpc("crear_sesion", {
+        p_empleado_id: usuario.id,
+        p_empresa_id: usuario.empresa_id,
+        p_ip: ip,
+        p_user_agent: userAgent.substring(0, 200),
+      });
+      const tokenInfo = Array.isArray(sesionData) ? sesionData[0] : sesionData;
+
+      const empresaData = await sbGet(
+        `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan,max_empleados`
+      );
+      const safe = { ...usuario };
+      delete safe.password;
+      safe.empresa = empresaData?.[0] || null;
+
+      return NextResponse.json({
+        usuario: safe,
+        token: tokenInfo?.out_token || null,
+        expires_at: tokenInfo?.out_expires_at || null,
+      });
+    }
+
+    // Guardar sesión en DB (para revocación)
+    await guardarSesionJWT({
+      empleadoId: usuario.id,
+      empresaId: usuario.empresa_id,
+      jti: accessJti,
+      refreshJti,
+      ip,
+      userAgent: userAgent.substring(0, 200),
+    });
+
+    // Datos de empresa
     const empresaData = await sbGet(
       `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan,max_empleados`
     );
@@ -142,8 +214,9 @@ export async function POST(req) {
 
     return NextResponse.json({
       usuario: safe,
-      token: tokenInfo?.out_token || null,
-      expires_at: tokenInfo?.out_expires_at || null,
+      token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 7 * 24 * 60 * 60,  // 7 días en segundos
     });
   } catch (err) {
     console.error("[login] Error:", err.message);
