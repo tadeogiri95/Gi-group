@@ -1,29 +1,14 @@
 // ═══════════════════════════════════════════════════════════
 // /api/fichar/route.js — REESCRITO: usa REST directo (no RPC)
-// Ya no depende de funciones SQL fichar_ingreso/fichar_egreso
+//
+// ENTREGA 1A: validarToken ahora viene de app/lib/auth.js
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
+import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-
-// ─── Validar sesión (RPC que sí funciona) ───
-async function validarToken(token) {
-  if (!token || token.length < 20) return null;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/validar_sesion`, {
-    method: "POST",
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ p_token: token }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data && data.length > 0 ? data[0] : null;
-}
 
 // ─── REST helpers ───
 async function sbGet(path) {
@@ -73,13 +58,9 @@ function getArgTime() {
 // ═══ POST ═══
 export async function POST(request) {
   try {
-    // ─── Auth ───
-    const authHeader = request.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (!token) return NextResponse.json({ ok: false, error: "Token faltante" }, { status: 401 });
-
-    const sesion = await validarToken(token);
-    if (!sesion) return NextResponse.json({ ok: false, error: "Sesión inválida o expirada" }, { status: 401 });
+    // ─── Auth (ahora desde lib/auth.js) ───
+    const sesion = await validarToken(request);
+    if (!sesion) return respuestaNoAutorizado("Token faltante o sesión inválida");
 
     const { accion, geo_lat, geo_lng, geo_distancia, forzar_cierre_tarea } = await request.json();
     if (!accion || !["ingreso", "egreso"].includes(accion)) {
@@ -95,7 +76,6 @@ export async function POST(request) {
     // INGRESO
     // ═══════════════════════════════════
     if (accion === "ingreso") {
-      // ¿Ya fichó hoy?
       const existentes = await sbGet(
         `fichadas?empleado_id=eq.${empleadoId}&fecha=eq.${fecha}&empresa_id=eq.${empresaId}&select=id,ingreso`
       );
@@ -107,7 +87,6 @@ export async function POST(request) {
         });
       }
 
-      // Chequear tardanza
       let tardanza = { estado: "puntual", minutos: 0, llegadasTarde: 0 };
       try {
         const emps = await sbGet(`empleados?id=eq.${empleadoId}&select=diagrama`);
@@ -119,7 +98,6 @@ export async function POST(request) {
             const diff = (hR * 60 + mR) - (hE * 60 + mE);
 
             if (diff > 5) {
-              // Contar tardes del mes
               const mesInicio = fecha.slice(0, 7) + "-01";
               const tardes = await sbGet(
                 `fichadas?legajo=eq.${legajo}&empresa_id=eq.${empresaId}&fecha=gte.${mesInicio}&fecha=lte.${fecha}&llegada_tarde=eq.true&select=id`
@@ -145,7 +123,6 @@ export async function POST(request) {
         console.error("[fichar] Error tardanza:", e.message);
       }
 
-      // Crear fichada
       await sbPost("fichadas", {
         empleado_id: empleadoId,
         legajo,
@@ -162,7 +139,6 @@ export async function POST(request) {
     // ═══════════════════════════════════
     // EGRESO
     // ═══════════════════════════════════
-    // Chequear tarea activa
     if (!forzar_cierre_tarea) {
       try {
         const activas = await sbGet(
@@ -177,11 +153,9 @@ export async function POST(request) {
           });
         }
       } catch (e) {
-        // Tabla puede no existir, seguir
         console.error("[fichar] Error check tareas:", e.message);
       }
     } else {
-      // Cerrar tareas activas
       try {
         await sbPatch(
           `registro_actividades?empleado_id=eq.${empleadoId}&hora_fin=is.null`,
@@ -192,7 +166,6 @@ export async function POST(request) {
       }
     }
 
-    // Buscar fichada de hoy
     const fichadas = await sbGet(
       `fichadas?empleado_id=eq.${empleadoId}&fecha=eq.${fecha}&empresa_id=eq.${empresaId}&select=*`
     );
@@ -213,12 +186,10 @@ export async function POST(request) {
       });
     }
 
-    // Calcular horas
     const [hIn, mIn] = fichadas[0].ingreso.split(":").map(Number);
     const [hOut, mOut] = hora.split(":").map(Number);
     const horasTrab = Math.max(0, ((hOut * 60 + mOut) - (hIn * 60 + mIn)) / 60);
 
-    // Actualizar fichada
     await sbPatch(`fichadas?id=eq.${fichadas[0].id}`, {
       egreso: hora,
       horas_trabajadas: horasTrab.toFixed(2),

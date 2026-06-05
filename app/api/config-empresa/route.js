@@ -1,31 +1,18 @@
 // ═══════════════════════════════════════════════════════════
 // API: /api/config-empresa/route.js — VERSIÓN SEGURA
-// El empresa_id SIEMPRE sale del token validado, nunca del cliente
+//
+// ENTREGA 1A: validarToken ahora viene de app/lib/auth.js
+// Se elimina validarToken local y getEmpresaIdFromRequest.
 // ═══════════════════════════════════════════════════════════
 import { NextResponse } from "next/server";
+import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-// ─── Validar token de sesión ───
-async function validarToken(token) {
-  if (!token || token.length < 20) return null;
-  try {
-    const r = await fetch(`${SB_URL}/rest/v1/rpc/validar_sesion`, {
-      method: "POST",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_token: token }),
-    });
-    if (!r.ok) return null;
-    const data = await r.json();
-    return data && data.length > 0 ? data[0] : null;
-  } catch { return null; }
-}
-
+// ─── Helper: extraer empresa_id del request via auth compartido ───
 async function getEmpresaIdFromRequest(request) {
-  const auth = request.headers.get("authorization");
-  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-  const sesion = await validarToken(token);
+  const sesion = await validarToken(request);
   return sesion?.empresa_id || null;
 }
 
@@ -56,17 +43,16 @@ async function sbPatch(path, body) {
   return r.json();
 }
 
-// ─── Verificar que un id (división/etapa) pertenece a la empresa ───
 async function perteneceAEmpresa(tabla, id, empresaId) {
   const rows = await sbGet(`${tabla}?id=eq.${id}&select=empresa_id`);
   return rows.length > 0 && rows[0].empresa_id === empresaId;
 }
 
-// ═══ GET — Cargar divisiones y etapas de la empresa del token ═══
+// ═══ GET ═══
 export async function GET(request) {
   try {
     const empresaId = await getEmpresaIdFromRequest(request);
-    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (!empresaId) return respuestaNoAutorizado();
 
     const [divisiones, etapas] = await Promise.all([
       sbGet(`divisiones?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
@@ -78,11 +64,11 @@ export async function GET(request) {
   }
 }
 
-// ═══ POST — Crear división, etapa o guardar logo ═══
+// ═══ POST ═══
 export async function POST(request) {
   try {
     const empresaId = await getEmpresaIdFromRequest(request);
-    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (!empresaId) return respuestaNoAutorizado();
 
     const body = await request.json();
     const { action } = body;
@@ -119,11 +105,11 @@ export async function POST(request) {
   }
 }
 
-// ═══ PATCH — Actualizar división o etapa (sólo si pertenece a la empresa) ═══
+// ═══ PATCH ═══
 export async function PATCH(request) {
   try {
     const empresaId = await getEmpresaIdFromRequest(request);
-    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (!empresaId) return respuestaNoAutorizado();
 
     const body = await request.json();
     const { action, id } = body;
@@ -164,11 +150,11 @@ export async function PATCH(request) {
   }
 }
 
-// ═══ DELETE — Soft delete (sólo si pertenece a la empresa) ═══
+// ═══ DELETE ═══
 export async function DELETE(request) {
   try {
     const empresaId = await getEmpresaIdFromRequest(request);
-    if (!empresaId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    if (!empresaId) return respuestaNoAutorizado();
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");

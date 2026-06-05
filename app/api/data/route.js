@@ -1,21 +1,15 @@
 // ═══════════════════════════════════════════════════════════
 // /api/data/route.js — VERSIÓN SEGURA (multi-tenant blindado)
 //
-// CAMBIO CLAVE DE SEGURIDAD:
-// Antes, si el token fallaba, el servidor confiaba en el empresa_id
-// que mandaba el cliente (en el path o el body). Eso permitía que
-// cualquiera leyera/escribiera datos de OTRA empresa.
-//
-// Ahora: el empresa_id SIEMPRE sale del token de sesión validado.
-// Si no hay token válido → 401. Nunca se confía en el empresa_id
-// que venga del cliente.
+// ENTREGA 1A: validarToken ahora viene de app/lib/auth.js
+// (antes estaba duplicado inline acá).
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
+import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validarLimite, invalidarCachePlan } from "../../lib/planEnforcement";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-// Una sola clave de servicio. NO caer en la anon key (rompe el aislamiento).
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 async function sbFetch(path, opts = {}) {
@@ -34,27 +28,6 @@ async function sbFetch(path, opts = {}) {
   }
   const txt = await res.text();
   return txt ? JSON.parse(txt) : null;
-}
-
-// ─── Validar sesión contra la DB ───
-async function validarToken(token) {
-  if (!token || token.length < 20) return null;
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/validar_sesion`, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ p_token: token }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data && data.length > 0 ? data[0] : null;
-  } catch {
-    return null;
-  }
 }
 
 // ═══ VALIDACIONES ═══
@@ -162,14 +135,11 @@ function validarBody(tabla, body, method) {
   return { valido: true };
 }
 
-// Inyecta SIEMPRE el empresa_id de la sesión, sobreescribiendo cualquier
-// valor que el cliente haya intentado mandar.
 function inyectarEmpresaEnGet(path, tabla, empresaId) {
   if (!TABLAS_CON_EMPRESA.includes(tabla) && tabla !== "empresa") return path;
   const filtro = tabla === "empresa" ? `id=eq.${empresaId}` : `empresa_id=eq.${empresaId}`;
   const re = tabla === "empresa" ? /id=eq\.[a-zA-Z0-9-]+/ : /empresa_id=eq\.[a-zA-Z0-9-]+/;
   if (re.test(path)) {
-    // Reemplazar cualquier valor que haya mandado el cliente por el real
     return path.replace(re, filtro);
   }
   if (path.includes("?")) return path + `&${filtro}`;
@@ -180,7 +150,6 @@ function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
   if (!TABLAS_CON_EMPRESA.includes(tabla)) return body;
   if (!body) return body;
   if (method === "POST" || method === "PATCH") {
-    // Forzar siempre el empresa_id real
     return { ...body, empresa_id: empresaId };
   }
   return body;
@@ -199,18 +168,12 @@ export async function POST(request) {
       return NextResponse.json({ error: "Path requerido" }, { status: 400 });
     }
 
-    // ─── AUTENTICACIÓN OBLIGATORIA (sin fallback inseguro) ───
-    const authHeader = request.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-    const sesion = await validarToken(token);
+    // ─── AUTENTICACIÓN (ahora desde lib/auth.js) ───
+    const sesion = await validarToken(request);
     if (!sesion || !sesion.empresa_id) {
-      return NextResponse.json(
-        { error: "No autorizado — sesión inválida o expirada" },
-        { status: 401 }
-      );
+      return respuestaNoAutorizado();
     }
-    const empresaId = sesion.empresa_id; // ← ÚNICA fuente de verdad
+    const empresaId = sesion.empresa_id;
 
     // ─── VALIDACIONES ───
     const pathCheck = validarPath(path);
@@ -229,7 +192,7 @@ export async function POST(request) {
       }
     }
 
-    // ─── Enforcement de límites por plan (solo en POST) ───
+    // ─── Enforcement de límites por plan ───
     if (method === "POST") {
       const limCheck = await validarLimite({
         tabla: pathCheck.tabla,
@@ -245,12 +208,11 @@ export async function POST(request) {
       }
     }
 
-    // Si se modifica la empresa, invalidar cache de plan
     if (pathCheck.tabla === "empresa" && (method === "PATCH" || method === "POST")) {
       invalidarCachePlan(empresaId);
     }
 
-    // ─── INYECTAR empresa_id de la SESIÓN (no del cliente) ───
+    // ─── INYECTAR empresa_id de la SESIÓN ───
     let finalPath = path;
     let finalBody = body;
 

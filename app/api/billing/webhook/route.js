@@ -1,7 +1,9 @@
 // ═══════════════════════════════════════════════════════════
 // POST /api/billing/webhook
 // Recibe notificaciones de MP: pago aprobado, suscripción cancelada, etc.
-// Docs: https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks
+//
+// ENTREGA 1D: Firma HMAC OBLIGATORIA. Si MERCADOPAGO_WEBHOOK_SECRET
+// no está configurada, el endpoint retorna 500 en lugar de bypasear.
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
@@ -36,9 +38,13 @@ async function sbPost(path, body) {
   return r.ok ? r.json() : null;
 }
 
-// Validar firma de MP (HMAC SHA256)
-function validarFirma(request, rawBody) {
-  if (!WH_SECRET) return true; // Si no hay secret configurado, no validar (testing)
+// ═══════════════════════════════════════════════════════════
+// CAMBIO 1D: Firma OBLIGATORIA
+// Antes: if (!WH_SECRET) return true  ← PELIGROSO
+// Ahora: si no hay secret, el POST entero retorna 500 antes
+//        de llegar a validarFirma. La función SIEMPRE valida.
+// ═══════════════════════════════════════════════════════════
+function validarFirma(request) {
   const signature = request.headers.get("x-signature");
   const requestId = request.headers.get("x-request-id");
   if (!signature || !requestId) return false;
@@ -48,7 +54,6 @@ function validarFirma(request, rawBody) {
   const v1 = parts.v1;
   if (!ts || !v1) return false;
 
-  // dataID viene en query string o body
   const url = new URL(request.url);
   const dataId = url.searchParams.get("data.id") || "";
 
@@ -59,13 +64,26 @@ function validarFirma(request, rawBody) {
 
 export async function POST(request) {
   try {
+    // ═══ CAMBIO 1D: Bloquear si no hay secret configurado ═══
+    if (!WH_SECRET) {
+      console.error("[webhook] MERCADOPAGO_WEBHOOK_SECRET no configurada — rechazando request");
+      return NextResponse.json(
+        { ok: false, error: "Webhook no configurado (falta MERCADOPAGO_WEBHOOK_SECRET)" },
+        { status: 500 }
+      );
+    }
+
     const rawBody = await request.text();
     let body;
     try { body = JSON.parse(rawBody); } catch { body = {}; }
 
-    // Validación de firma (no bloquea si no hay secret configurado)
-    if (WH_SECRET && !validarFirma(request, rawBody)) {
-      console.warn("[webhook] Firma inválida — ignorando");
+    // ═══ CAMBIO 1D: Validación SIEMPRE activa ═══
+    if (!validarFirma(request)) {
+      console.warn("[webhook] Firma HMAC inválida — posible ataque. Headers:", {
+        signature: request.headers.get("x-signature")?.slice(0, 30) + "...",
+        requestId: request.headers.get("x-request-id"),
+        ip: request.headers.get("x-forwarded-for"),
+      });
       return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
     }
 
@@ -77,7 +95,6 @@ export async function POST(request) {
     if (tipo === "subscription_preapproval" || tipo === "preapproval") {
       const preapproval = await getPreapproval(dataId);
       const externalRef = preapproval.external_reference || "";
-      // formato: gypi-{empresaId}-{suscripcionId}
       const match = externalRef.match(/^gypi-([0-9a-f-]+)-([0-9a-f-]+)$/i);
       if (!match) {
         console.warn("[webhook] external_reference inválido:", externalRef);
@@ -86,7 +103,6 @@ export async function POST(request) {
       const empresaId = match[1];
       const suscId = match[2];
 
-      // Mapear estado de MP a nuestro estado
       let nuevoEstado = "suspendida";
       if (preapproval.status === "authorized") nuevoEstado = "activa";
       else if (preapproval.status === "paused") nuevoEstado = "suspendida";
@@ -100,18 +116,15 @@ export async function POST(request) {
         periodo_fin: preapproval.next_payment_date || null,
       });
 
-      // Si quedó activa, esta es la nueva suscripción de la empresa
       if (nuevoEstado === "activa") {
         const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan`);
         const plan = susc?.[0]?.plan || "free";
 
-        // Cancelar otras suscripciones activas previas de la misma empresa
         await sbPatch(
           `suscripciones?empresa_id=eq.${empresaId}&estado=in.(trial,activa)&id=neq.${suscId}`,
           { estado: "cancelada" }
         );
 
-        // Actualizar cache de la empresa
         await sbPatch(`empresa?id=eq.${empresaId}`, {
           plan_activo: plan,
           suscripcion_activa_id: suscId,
@@ -145,7 +158,6 @@ export async function POST(request) {
         fecha_pago: pago.date_approved || pago.date_created,
       });
 
-      // Si el pago fue aprobado y hay suscripción asociada, asegurar que esté activa
       if (estadoPago === "aprobado" && suscId) {
         await sbPatch(`suscripciones?id=eq.${suscId}`, { estado: "activa" });
         if (empresaId) {
@@ -163,8 +175,7 @@ export async function POST(request) {
     }
 
     return NextResponse.json({ ok: true, ignorado: tipo });
- } catch (err) {
-    // 404 de MP = simulación o ID viejo, no es error real
+  } catch (err) {
     if (err.status === 404 || /not found/i.test(err.message)) {
       console.log("[webhook] Recurso no encontrado (simulación o ID viejo):", err.message);
       return NextResponse.json({ ok: true, ignorado: "not_found" });
@@ -174,7 +185,6 @@ export async function POST(request) {
   }
 }
 
-// MP a veces hace GET de healthcheck
 export async function GET() {
   return NextResponse.json({ ok: true, service: "gypi-billing-webhook" });
 }

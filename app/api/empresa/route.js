@@ -1,5 +1,6 @@
 // app/api/empresa/route.js — Resolución por slug (público) + por token (privado)
 import { NextResponse } from "next/server";
+import { validarToken } from "../../lib/auth";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -14,20 +15,6 @@ const DEFAULTS = {
 
 // Campos seguros para exponer pre-login (sin token)
 const CAMPOS_PUBLICOS = "id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,rubro,activa";
-
-async function validarToken(token) {
-  if (!token || token.length < 20) return null;
-  try {
-    const r = await fetch(`${SB_URL}/rest/v1/rpc/validar_sesion`, {
-      method: "POST",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_token: token }),
-    });
-    if (!r.ok) return null;
-    const data = await r.json();
-    return data && data.length > 0 ? data[0] : null;
-  } catch { return null; }
-}
 
 export async function GET(request) {
   try {
@@ -54,12 +41,7 @@ export async function GET(request) {
     }
 
     // ─── CASO 2: viene con token (post-login, datos completos) ───
-    const auth = request.headers.get("authorization");
-    const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-
-    if (!token) return NextResponse.json(DEFAULTS);
-
-    const sesion = await validarToken(token);
+    const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return NextResponse.json(DEFAULTS);
 
     const res = await fetch(

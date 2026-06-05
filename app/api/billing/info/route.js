@@ -1,29 +1,20 @@
-// Devuelve la info de suscripción y trial de la empresa del usuario logueado
+// ═══════════════════════════════════════════════════════════
+// GET /api/billing/info — Info de suscripción y trial
+//
+// ENTREGA 1A: validarToken ahora viene de app/lib/auth.js
+// ═══════════════════════════════════════════════════════════
+
 import { NextResponse } from "next/server";
+import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-async function validarToken(token) {
-  if (!token || token.length < 20) return null;
-  const r = await fetch(`${SB_URL}/rest/v1/rpc/validar_sesion`, {
-    method: "POST",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ p_token: token }),
-  });
-  if (!r.ok) return null;
-  const d = await r.json();
-  return d && d.length > 0 ? d[0] : null;
-}
-
 export async function GET(request) {
   try {
-    const auth = request.headers.get("authorization");
-    const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-    const sesion = await validarToken(token);
-    if (!sesion?.empresa_id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
 
-    // Suscripción activa (trial o activa) más reciente
     const r = await fetch(
       `${SB_URL}/rest/v1/suscripciones?empresa_id=eq.${sesion.empresa_id}&estado=in.(trial,activa)&order=created_at.desc&limit=1`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
@@ -35,7 +26,6 @@ export async function GET(request) {
       return NextResponse.json({ plan: "free", estado: "activa", trial: null });
     }
 
-    // Calcular días restantes si es trial
     let dias_restantes = null;
     if (sub.estado === "trial" && sub.trial_fin) {
       const ahora = new Date();

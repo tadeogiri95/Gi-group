@@ -1,30 +1,15 @@
 // API: /api/upload-logo/route.js — VERSIÓN SEGURA
 // empresa_id se saca del token, no del formData
 import { NextResponse } from "next/server";
+import { validarToken } from "../../lib/auth";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-async function validarToken(token) {
-  if (!token || token.length < 20) return null;
-  try {
-    const r = await fetch(`${SB_URL}/rest/v1/rpc/validar_sesion`, {
-      method: "POST",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_token: token }),
-    });
-    if (!r.ok) return null;
-    const data = await r.json();
-    return data && data.length > 0 ? data[0] : null;
-  } catch { return null; }
-}
-
 export async function POST(request) {
   try {
     // ─── Auth ───
-    const auth = request.headers.get("authorization");
-    const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-    const sesion = await validarToken(token);
+    const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     const empresaId = sesion.empresa_id;
 
