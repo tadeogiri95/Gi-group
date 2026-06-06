@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { C, THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
+import { getToken } from "./lib/supabase";
 
 /* ─── Icon list for selectors ─── */
 const ICON_OPTIONS = [
@@ -57,10 +58,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
   // Apariencia
   const [themePreset, setThemePreset] = useState(empresa?.theme_preset || "default");
   const [colorPrimario, setColorPrimario] = useState(empresa?.color_primario || "#F97316");
-  const [colorSecundario, setColorSecundario] = useState(empresa?.color_secundario || "#A78BFA");
-  const [colorFondo, setColorFondo] = useState(empresa?.color_fondo || "#0C0A09");
-  const [colorTexto, setColorTexto] = useState(empresa?.color_texto || "#F5F0E8");
-  const [typography, setTypography] = useState(empresa?.typography || "bricolage");
+  const [colorSecundario, setColorSecundario] = useState(empresa?.color_secundario || "#7C3AED");
+  const [colorFondo, setColorFondo] = useState(empresa?.color_fondo || "#F7F7F5");
+  const [colorTexto, setColorTexto] = useState(empresa?.color_texto || "#1A1A1A");
+  const [typography, setTypography] = useState(empresa?.typography || "system");
   const [customMode, setCustomMode] = useState(false);
 
   // Logo
@@ -91,10 +92,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
     setNombreCorto(empresa.nombre_corto || "");
     setRubro(empresa.rubro || "");
     setColorPrimario(empresa.color_primario || "#F97316");
-    setColorSecundario(empresa.color_secundario || "#A78BFA");
-    setColorFondo(empresa.color_fondo || "#0C0A09");
-    setColorTexto(empresa.color_texto || "#F5F0E8");
-    setTypography(empresa.typography || "bricolage");
+    setColorSecundario(empresa.color_secundario || "#7C3AED");
+    setColorFondo(empresa.color_fondo || "#F7F7F5");
+    setColorTexto(empresa.color_texto || "#1A1A1A");
+    setTypography(empresa.typography || "system");
     setThemePreset(empresa.theme_preset || "default");
     setLogoUrl(empresa.logo_url || "");
     setLogoPreview(empresa.logo_url || "");
@@ -118,14 +119,13 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
 
   // Preview en vivo al cambiar color individual
   const previewColors = (overrides = {}) => {
-    const vals = {
+    setColoresEmpresa({
       color_primario: overrides.color_primario ?? colorPrimario,
       color_secundario: overrides.color_secundario ?? colorSecundario,
       color_fondo: overrides.color_fondo ?? colorFondo,
       color_texto: overrides.color_texto ?? colorTexto,
       typography: overrides.typography ?? typography,
-    };
-    setColoresEmpresa(vals);
+    });
   };
 
   // Logo
@@ -142,8 +142,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const eid = empresaId || empresa?.id;
-      if (!eid) throw new Error("No empresa ID");
+      const token = getToken();
+      if (!token) throw new Error("Sin sesión");
 
       const body = {};
       if (tab === "general") {
@@ -163,7 +163,11 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
       if (tab === "logo" && logoFile) {
         const formData = new FormData();
         formData.append("logo", logoFile);
-        const lr = await fetch(`/api/empresa/logo?empresa_id=${eid}`, { method: "POST", body: formData });
+        const lr = await fetch(`/api/empresa/logo?empresa_id=${empresaId || empresa?.id}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
         if (!lr.ok) throw new Error("Error subiendo logo");
         const ld = await lr.json();
         body.logo_url = ld.url || ld.logo_url;
@@ -172,10 +176,16 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
       if (Object.keys(body).length > 0) {
         const r = await fetch("/api/empresa", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("token") : ""}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify(body),
         });
-        if (!r.ok) throw new Error("Error guardando");
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || "Error guardando");
+        }
         const updated = await r.json();
         onUpdate?.(updated);
       }
@@ -283,7 +293,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
                     onClick={() => applyPreset(key)}
                     style={{
                       display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12,
-                      border: sel ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
+                      border: sel ? `2px solid ${p.primary}` : `1px solid rgba(128,128,128,0.2)`,
                       background: p.bg, cursor: "pointer", transition: "all 0.15s",
                     }}
                   >
@@ -292,7 +302,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
                       <div style={{ width: 14, height: 14, borderRadius: 4, background: p.secondary }} />
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 600, color: p.text }}>{p.label}</span>
-                    {sel && <span style={{ marginLeft: "auto", fontSize: 10, color: C.amber }}>✓</span>}
+                    {sel && <span style={{ marginLeft: "auto", fontSize: 14, color: p.primary, fontWeight: 700 }}>✓</span>}
                   </button>
                 );
               })}
@@ -336,7 +346,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
           <div style={card}>
             <div style={lbl}>Vista previa</div>
             <div style={{
-              background: colorFondo, borderRadius: 12, padding: 16, border: `1px solid ${C.border}`,
+              background: colorFondo, borderRadius: 12, padding: 16, border: `1px solid rgba(128,128,128,0.15)`,
             }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: colorTexto, marginBottom: 8, fontFamily: FONT_OPTIONS[typography]?.heading || "system-ui" }}>
                 {nombreCorto || "Mi Empresa"}

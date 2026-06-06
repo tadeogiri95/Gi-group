@@ -4,14 +4,14 @@
 // ═══════════════════════════════════════════════════════════
 
 const _base = {
-  bg:"#0C0A09", surface:"#171311", surfHi:"#1F1A17", surfLo:"#100D0B",
-  border:"rgba(255,240,220,0.06)", borderHi:"rgba(255,240,220,0.12)",
-  text:"#F5F0E8", dim:"#A39A8E", mute:"#615A52",
-  amber:"#F97316", amberS:"rgba(249,115,22,0.14)",
-  green:"#22C55E", greenS:"rgba(34,197,94,0.12)",
-  red:"#EF4444", redS:"rgba(239,68,68,0.12)",
-  cyan:"#06B6D4", cyanS:"rgba(6,182,212,0.12)",
-  violet:"#A78BFA", violetS:"rgba(167,139,250,0.12)",
+  bg:"#F7F7F5", surface:"#FFFFFF", surfHi:"#EDEDED", surfLo:"#F0F0EE",
+  border:"rgba(0,0,0,0.08)", borderHi:"rgba(0,0,0,0.14)",
+  text:"#1A1A1A", dim:"#6B6B6B", mute:"#A0A0A0",
+  amber:"#F97316", amberS:"rgba(249,115,22,0.10)",
+  green:"#16A34A", greenS:"rgba(22,163,74,0.10)",
+  red:"#DC2626", redS:"rgba(220,38,38,0.10)",
+  cyan:"#0891B2", cyanS:"rgba(8,145,178,0.10)",
+  violet:"#7C3AED", violetS:"rgba(124,58,237,0.10)",
 };
 
 // Objeto mutable que toda la app importa
@@ -35,19 +35,17 @@ function deriveSurfaces(bgHex) {
   const lum = (r * 299 + g * 587 + b * 114) / 1000;
   const isLight = lum > 140;
   if (isLight) {
-    // Tema claro: surfaces más oscuros que el fondo
     return {
-      surface: hexToRgba("#000000", 0.04),
-      surfHi: hexToRgba("#000000", 0.08),
+      surface: "#FFFFFF",
+      surfHi: hexToRgba("#000000", 0.06),
       surfLo: hexToRgba("#000000", 0.02),
       border: "rgba(0,0,0,0.08)",
       borderHi: "rgba(0,0,0,0.14)",
     };
   }
-  // Tema oscuro: surfaces más claros que el fondo
   return {
-    surface: hexToRgba("#ffffff", 0.04),
-    surfHi: hexToRgba("#ffffff", 0.07),
+    surface: hexToRgba("#ffffff", 0.05),
+    surfHi: hexToRgba("#ffffff", 0.08),
     surfLo: hexToRgba("#ffffff", 0.02),
     border: "rgba(255,240,220,0.06)",
     borderHi: "rgba(255,240,220,0.12)",
@@ -61,31 +59,31 @@ function deriveDimMute(textHex) {
   const g = parseInt(h.substring(2, 4), 16);
   const b = parseInt(h.substring(4, 6), 16);
   return {
-    dim: `rgba(${r},${g},${b},0.55)`,
-    mute: `rgba(${r},${g},${b},0.35)`,
+    dim: `rgba(${r},${g},${b},0.50)`,
+    mute: `rgba(${r},${g},${b},0.30)`,
   };
 }
 
 // ═══ Temas preestablecidos ═══
 export const THEME_PRESETS = {
-  default:     { label: "Gypi Oscuro",  bg: "#0C0A09", text: "#F5F0E8", primary: "#F97316", secondary: "#A78BFA" },
-  carbon:      { label: "Carbón",       bg: "#1c1c1e", text: "#f5f5f7", primary: "#0A84FF", secondary: "#BF5AF2" },
-  medianoche:  { label: "Medianoche",   bg: "#0d1117", text: "#c9d1d9", primary: "#58A6FF", secondary: "#D2A8FF" },
-  oceano:      { label: "Océano",       bg: "#0B1929", text: "#B2BAC2", primary: "#5090D3", secondary: "#CE93D8" },
-  claro:       { label: "Claro",        bg: "#F5F5F5", text: "#1A1A1A", primary: "#2563EB", secondary: "#7C3AED" },
-  crema:       { label: "Crema",        bg: "#FAF8F5", text: "#2C2C2C", primary: "#D97706", secondary: "#9333EA" },
-  bosque:      { label: "Bosque",       bg: "#1A2E1A", text: "#D4E7D4", primary: "#4ADE80", secondary: "#FACC15" },
-  industrial:  { label: "Industrial",   bg: "#18181B", text: "#E4E4E7", primary: "#F59E0B", secondary: "#EF4444" },
+  default:     { label: "Gypi Claro",    bg: "#F7F7F5", text: "#1A1A1A", primary: "#F97316", secondary: "#7C3AED" },
+  crema:       { label: "Crema",         bg: "#FAF6F1", text: "#2C2216", primary: "#D97706", secondary: "#9333EA" },
+  hielo:       { label: "Hielo",         bg: "#F0F4F8", text: "#1E293B", primary: "#2563EB", secondary: "#7C3AED" },
+  menta:       { label: "Menta",         bg: "#F0FDF4", text: "#14532D", primary: "#16A34A", secondary: "#0891B2" },
+  oscuro:      { label: "Oscuro",        bg: "#0C0A09", text: "#F5F0E8", primary: "#F97316", secondary: "#A78BFA" },
+  carbon:      { label: "Carbón",        bg: "#1C1C1E", text: "#F5F5F7", primary: "#0A84FF", secondary: "#BF5AF2" },
+  medianoche:  { label: "Medianoche",    bg: "#0D1117", text: "#C9D1D9", primary: "#58A6FF", secondary: "#D2A8FF" },
+  industrial:  { label: "Industrial",    bg: "#18181B", text: "#E4E4E7", primary: "#F59E0B", secondary: "#EF4444" },
 };
 
 // ═══ Tipografías disponibles ═══
 export const FONT_OPTIONS = {
-  system:   { label: "Sistema",        heading: "system-ui, sans-serif",                        body: "system-ui, sans-serif" },
-  bricolage:{ label: "Bricolage",      heading: "'Bricolage Grotesque', system-ui",              body: "'Geist', system-ui" },
-  inter:    { label: "Inter",          heading: "'Inter', system-ui, sans-serif",                body: "'Inter', system-ui, sans-serif" },
-  roboto:   { label: "Roboto",         heading: "'Roboto', system-ui, sans-serif",               body: "'Roboto', system-ui, sans-serif" },
-  poppins:  { label: "Poppins",        heading: "'Poppins', system-ui, sans-serif",              body: "'Poppins', system-ui, sans-serif" },
-  mono:     { label: "Monoespaciada",  heading: "'Geist Mono', 'JetBrains Mono', monospace",    body: "'Geist Mono', 'JetBrains Mono', monospace" },
+  system:    { label: "Sistema",        heading: "system-ui, sans-serif",                         body: "system-ui, sans-serif" },
+  bricolage: { label: "Bricolage",      heading: "'Bricolage Grotesque', system-ui",              body: "'Geist', system-ui" },
+  inter:     { label: "Inter",          heading: "'Inter', system-ui, sans-serif",                body: "'Inter', system-ui, sans-serif" },
+  roboto:    { label: "Roboto",         heading: "'Roboto', system-ui, sans-serif",               body: "'Roboto', system-ui, sans-serif" },
+  poppins:   { label: "Poppins",        heading: "'Poppins', system-ui, sans-serif",              body: "'Poppins', system-ui, sans-serif" },
+  mono:      { label: "Monoespaciada",  heading: "'Geist Mono', 'JetBrains Mono', monospace",    body: "'Geist Mono', 'JetBrains Mono', monospace" },
 };
 
 // Llamar desde page.js cuando se carga la empresa
@@ -144,19 +142,18 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
 // Resetear a colores por defecto
 export function resetColores() {
   Object.assign(C, _base);
-  _currentFH = FONT_OPTIONS.bricolage.heading;
-  _currentFB = FONT_OPTIONS.bricolage.body;
+  _currentFH = FONT_OPTIONS.system.heading;
+  _currentFB = FONT_OPTIONS.system.body;
 }
 
 // Fonts como getters para que sean dinámicos
-let _currentFH = `'Bricolage Grotesque', system-ui`;
-let _currentFB = `'Geist', system-ui`;
+let _currentFH = `system-ui, sans-serif`;
+let _currentFB = `system-ui, sans-serif`;
 
 export const getFH = () => _currentFH;
 export const getFB = () => _currentFB;
 
-// Backward compat — exports constantes (se actualizan solo al importar)
-// Usar getFH()/getFB() para valores dinámicos
+// Backward compat — exports constantes
 export const fH = `'Bricolage Grotesque', system-ui`;
 export const fB = `'Geist', system-ui`;
 export const fM = `'Geist Mono', 'JetBrains Mono', monospace`;

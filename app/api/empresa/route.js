@@ -9,7 +9,9 @@ const DEFAULTS = {
   nombre: "Gypi",
   nombre_corto: "Gypi",
   color_primario: "#F97316",
-  color_secundario: "#8B5CF6",
+  color_secundario: "#7C3AED",
+  color_fondo: "#F7F7F5",
+  color_texto: "#1A1A1A",
   rubro: "general",
 };
 

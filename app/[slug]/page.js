@@ -824,7 +824,7 @@ export default function Home() {
   const [historialLegajo,setHistorialLegajo]=useState(null);
   const [divisionesEmpresa, setDivisionesEmpresaState] = useState([]);
   const [etapasEmpresa, setEtapasEmpresa] = useState([]);
-  const [empresa,setEmpresa]=useState({nombre:"Gypi",nombre_corto:"Gypi",color_primario:"#F97316",color_secundario:"#8B5CF6",prompt_ia_obra:"",prompt_ia_chat:""});
+  const [empresa,setEmpresa]=useState({nombre:"Gypi",nombre_corto:"Gypi",color_primario:"#F97316",color_secundario:"#7C3AED",color_fondo:"#F7F7F5",color_texto:"#1A1A1A",prompt_ia_obra:"",prompt_ia_chat:""});
   const [,forceRender]=useState(0);
   // Cargar empresa: requiere token, así que se hace después del login
   // Resolver empresa por slug (pre-login) o por token (post-login)
