@@ -1,25 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { C, setColoresEmpresa } from "./lib/theme";
-import { sb } from "./lib/supabase";
-
-/* ─── Reusable Tailwind class strings ─── */
-const inputCls =
-  "w-full py-[11px] px-3.5 rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-sm font-body outline-none box-border focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all";
-const labelCls =
-  "block text-[11px] font-bold text-[var(--color-text-muted)] uppercase tracking-[0.06em] mb-1.5";
-const cardCls =
-  "bg-[var(--color-surface)] rounded-2xl p-[18px] border border-[var(--color-border)] mb-3.5";
-
-/* ─── Tabs ─── */
-const TABS = [
-  { key: "general", label: "General" },
-  { key: "colores", label: "Colores" },
-  { key: "logo", label: "Logo" },
-  { key: "divisiones", label: "Divisiones" },
-  { key: "etapas", label: "Etapas" },
-];
+import { C, THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
 
 /* ─── Icon list for selectors ─── */
 const ICON_OPTIONS = [
@@ -27,8 +9,42 @@ const ICON_OPTIONS = [
   "💼", "🎯", "🚀", "💡", "🔑", "📋", "📝", "✅", "⭐", "🔔",
 ];
 
+/* ─── Tabs ─── */
+const TABS = [
+  { key: "general", label: "General" },
+  { key: "apariencia", label: "Apariencia" },
+  { key: "logo", label: "Logo" },
+  { key: "divisiones", label: "Divisiones" },
+  { key: "etapas", label: "Etapas" },
+];
+
+/* ─── Hex validation ─── */
+const isHex = (v) => v && /^#[0-9A-Fa-f]{6}$/.test(v);
+
+/* ─── Color picker row ─── */
+function ColorRow({ label, value, onChange }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", padding: 0 }}
+        />
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 14, fontFamily: "'Geist Mono', monospace", outline: "none" }}
+        />
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: value, border: `1px solid ${C.border}`, flexShrink: 0 }} />
+      </div>
+    </div>
+  );
+}
+
 export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
-  /* ─── State ─── */
   const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -38,9 +54,14 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
   const [nombreCorto, setNombreCorto] = useState(empresa?.nombre_corto || "");
   const [rubro, setRubro] = useState(empresa?.rubro || "");
 
-  // Colores
+  // Apariencia
+  const [themePreset, setThemePreset] = useState(empresa?.theme_preset || "default");
   const [colorPrimario, setColorPrimario] = useState(empresa?.color_primario || "#F97316");
   const [colorSecundario, setColorSecundario] = useState(empresa?.color_secundario || "#A78BFA");
+  const [colorFondo, setColorFondo] = useState(empresa?.color_fondo || "#0C0A09");
+  const [colorTexto, setColorTexto] = useState(empresa?.color_texto || "#F5F0E8");
+  const [typography, setTypography] = useState(empresa?.typography || "bricolage");
+  const [customMode, setCustomMode] = useState(false);
 
   // Logo
   const [logoUrl, setLogoUrl] = useState(empresa?.logo_url || "");
@@ -50,36 +71,64 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
 
   // Divisiones
   const [divisiones, setDivisiones] = useState(empresa?.divisiones || []);
-  const [divForm, setDivForm] = useState({ icon: "📁", label: "", color: "#F97316", clave: "" });
+  const [divForm, setDivForm] = useState({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
   const [editDivId, setEditDivId] = useState(null);
 
   // Etapas
   const [etapas, setEtapas] = useState(empresa?.etapas || []);
-  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: "", nombre: "", color: "#F97316" });
+  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
   const [editEtapaId, setEditEtapaId] = useState(null);
 
-  /* ─── Toast helper ─── */
   const showToast = useCallback((msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2500);
   }, []);
 
-  /* ─── Sync from prop ─── */
+  // Sync from prop
   useEffect(() => {
-    if (empresa) {
-      setNombre(empresa.nombre || "");
-      setNombreCorto(empresa.nombre_corto || "");
-      setRubro(empresa.rubro || "");
-      setColorPrimario(empresa.color_primario || "#F97316");
-      setColorSecundario(empresa.color_secundario || "#A78BFA");
-      setLogoUrl(empresa.logo_url || "");
-      setLogoPreview(empresa.logo_url || "");
-      setDivisiones(empresa.divisiones || []);
-      setEtapas(empresa.etapas || []);
-    }
+    if (!empresa) return;
+    setNombre(empresa.nombre || "");
+    setNombreCorto(empresa.nombre_corto || "");
+    setRubro(empresa.rubro || "");
+    setColorPrimario(empresa.color_primario || "#F97316");
+    setColorSecundario(empresa.color_secundario || "#A78BFA");
+    setColorFondo(empresa.color_fondo || "#0C0A09");
+    setColorTexto(empresa.color_texto || "#F5F0E8");
+    setTypography(empresa.typography || "bricolage");
+    setThemePreset(empresa.theme_preset || "default");
+    setLogoUrl(empresa.logo_url || "");
+    setLogoPreview(empresa.logo_url || "");
+    setDivisiones(empresa.divisiones || []);
+    setEtapas(empresa.etapas || []);
   }, [empresa]);
 
-  /* ─── Logo preview ─── */
+  // Aplicar preset al seleccionar
+  const applyPreset = (key) => {
+    const p = THEME_PRESETS[key];
+    if (!p) return;
+    setThemePreset(key);
+    setColorPrimario(p.primary);
+    setColorSecundario(p.secondary);
+    setColorFondo(p.bg);
+    setColorTexto(p.text);
+    setCustomMode(false);
+    // Preview en vivo
+    setColoresEmpresa({ theme_preset: key, color_primario: p.primary, color_secundario: p.secondary, color_fondo: p.bg, color_texto: p.text, typography });
+  };
+
+  // Preview en vivo al cambiar color individual
+  const previewColors = (overrides = {}) => {
+    const vals = {
+      color_primario: overrides.color_primario ?? colorPrimario,
+      color_secundario: overrides.color_secundario ?? colorSecundario,
+      color_fondo: overrides.color_fondo ?? colorFondo,
+      color_texto: overrides.color_texto ?? colorTexto,
+      typography: overrides.typography ?? typography,
+    };
+    setColoresEmpresa(vals);
+  };
+
+  // Logo
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,67 +138,69 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
     reader.readAsDataURL(file);
   };
 
-  /* ─── Save handler — ahora guarda en Supabase directamente ─── */
+  // Save
   const handleSave = async () => {
     setSaving(true);
     try {
       const eid = empresaId || empresa?.id;
-      if (!eid) throw new Error("Sin empresa_id");
+      if (!eid) throw new Error("No empresa ID");
 
-      const data = {
-        nombre,
-        nombre_corto: nombreCorto,
-        rubro,
-        color_primario: colorPrimario,
-        color_secundario: colorSecundario,
-      };
-
-      // Subir logo si hay archivo nuevo
-      if (logoFile) {
-        const formData = new FormData();
-        formData.append("file", logoFile);
-        formData.append("empresa_id", eid);
-        const logoRes = await fetch("/api/upload-logo", { method: "POST", body: formData });
-        const logoData = await logoRes.json();
-        if (logoData.url) data.logo_url = logoData.url;
+      const body = {};
+      if (tab === "general") {
+        Object.assign(body, { nombre, nombre_corto: nombreCorto, rubro });
+      } else if (tab === "apariencia") {
+        Object.assign(body, {
+          color_primario: colorPrimario,
+          color_secundario: colorSecundario,
+          color_fondo: colorFondo,
+          color_texto: colorTexto,
+          typography,
+          theme_preset: customMode ? "custom" : themePreset,
+        });
       }
 
-      // Guardar en Supabase
-      await sb.patch(`empresa?id=eq.${eid}`, data);
+      // Logo upload se maneja aparte si hay archivo
+      if (tab === "logo" && logoFile) {
+        const formData = new FormData();
+        formData.append("logo", logoFile);
+        const lr = await fetch(`/api/empresa/logo?empresa_id=${eid}`, { method: "POST", body: formData });
+        if (!lr.ok) throw new Error("Error subiendo logo");
+        const ld = await lr.json();
+        body.logo_url = ld.url || ld.logo_url;
+      }
 
-      // Aplicar colores en vivo inmediatamente
-      setColoresEmpresa(colorPrimario, colorSecundario);
-
-      // Notificar al componente padre para que actualice su estado
-      if (onUpdate) {
-        onUpdate({ ...empresa, ...data });
+      if (Object.keys(body).length > 0) {
+        const r = await fetch("/api/empresa", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("token") : ""}` },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error("Error guardando");
+        const updated = await r.json();
+        onUpdate?.(updated);
       }
 
       showToast("Guardado correctamente");
     } catch (err) {
-      console.error("Error guardando:", err);
-      showToast("Error al guardar: " + err.message, "error");
+      showToast(err.message || "Error al guardar", "error");
     } finally {
       setSaving(false);
     }
   };
 
-  /* ─── Division CRUD ─── */
+  // Division CRUD
   const handleAddDivision = () => {
     if (!divForm.label.trim()) return showToast("El nombre es requerido", "error");
     if (!divForm.clave.trim()) return showToast("La clave es requerida", "error");
     if (editDivId !== null) {
-      setDivisiones((prev) =>
-        prev.map((d) => (d.id === editDivId ? { ...d, ...divForm } : d))
-      );
+      setDivisiones((prev) => prev.map((d) => (d.id === editDivId ? { ...d, ...divForm } : d)));
       setEditDivId(null);
       showToast("División actualizada");
     } else {
-      const newDiv = { ...divForm, id: Date.now() };
-      setDivisiones((prev) => [...prev, newDiv]);
+      setDivisiones((prev) => [...prev, { ...divForm, id: Date.now() }]);
       showToast("División agregada");
     }
-    setDivForm({ icon: "📁", label: "", color: "#F97316", clave: "" });
+    setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
   };
 
   const handleEditDivision = (div) => {
@@ -159,29 +210,23 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
 
   const handleDeleteDivision = (id) => {
     setDivisiones((prev) => prev.filter((d) => d.id !== id));
-    if (editDivId === id) {
-      setEditDivId(null);
-      setDivForm({ icon: "📁", label: "", color: "#F97316", clave: "" });
-    }
+    if (editDivId === id) { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }
     showToast("División eliminada");
   };
 
-  /* ─── Etapa CRUD ─── */
+  // Etapa CRUD
   const handleAddEtapa = () => {
     if (!etapaForm.nombre.trim()) return showToast("El nombre es requerido", "error");
     if (!etapaForm.codigo.trim()) return showToast("El código es requerido", "error");
     if (editEtapaId !== null) {
-      setEtapas((prev) =>
-        prev.map((e) => (e.id === editEtapaId ? { ...e, ...etapaForm } : e))
-      );
+      setEtapas((prev) => prev.map((e) => (e.id === editEtapaId ? { ...e, ...etapaForm } : e)));
       setEditEtapaId(null);
       showToast("Etapa actualizada");
     } else {
-      const newEtapa = { ...etapaForm, id: Date.now() };
-      setEtapas((prev) => [...prev, newEtapa]);
+      setEtapas((prev) => [...prev, { ...etapaForm, id: Date.now() }]);
       showToast("Etapa agregada");
     }
-    setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#F97316" });
+    setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
   };
 
   const handleEditEtapa = (etapa) => {
@@ -191,574 +236,317 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
 
   const handleDeleteEtapa = (id) => {
     setEtapas((prev) => prev.filter((e) => e.id !== id));
-    if (editEtapaId === id) {
-      setEditEtapaId(null);
-      setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#F97316" });
-    }
+    if (editEtapaId === id) { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" }); }
     showToast("Etapa eliminada");
   };
 
-  /* ─── Toggle component ─── */
-  const Toggle = ({ value, onChange }) => (
-    <button
-      onClick={() => onChange(!value)}
-      className="relative border-none cursor-pointer rounded-full"
-      style={{
-        width: 48,
-        height: 28,
-        background: value ? C.green : C.surface,
-        transition: "background 0.2s",
-      }}
-    >
-      <div
-        className="absolute rounded-full bg-white shadow-sm"
-        style={{
-          width: 22,
-          height: 22,
-          top: 3,
-          left: value ? 23 : 3,
-          transition: "left 0.2s",
-        }}
-      />
-    </button>
-  );
+  // ═══ Styles ═══
+  const card = { background: C.surface, borderRadius: 16, padding: 18, border: `1px solid ${C.border}`, marginBottom: 14 };
+  const lbl = { fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
+  const inp = { width: "100%", padding: "11px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box" };
+  const btnPrimary = { width: "100%", padding: "14px 0", borderRadius: 12, border: "none", background: C.amber, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" };
 
-  /* ─── Render tab content ─── */
-  const renderTabContent = () => {
+  // ═══ Tab content ═══
+  const renderTab = () => {
     switch (tab) {
-      /* ═══ GENERAL ═══ */
+
+      // ── GENERAL ──
       case "general":
-        return (
-          <div className="flex flex-col gap-5">
-            <div className={cardCls}>
-              <label className={labelCls}>Nombre de la empresa</label>
-              <input
-                className={inputCls}
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Ej: Mi Empresa S.A."
-              />
-            </div>
-
-            <div className={cardCls}>
-              <label className={labelCls}>Nombre corto</label>
-              <input
-                className={inputCls}
-                value={nombreCorto}
-                onChange={(e) => setNombreCorto(e.target.value)}
-                placeholder="Ej: MIEMPRESA"
-              />
-            </div>
-
-            <div className={cardCls}>
-              <label className={labelCls}>Rubro</label>
-              <input
-                className={inputCls}
-                value={rubro}
-                onChange={(e) => setRubro(e.target.value)}
-                placeholder="Ej: Tecnología, Construcción..."
-              />
-            </div>
-
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full py-3.5 rounded-xl text-white font-display font-bold text-sm border-none cursor-pointer disabled:opacity-50 transition-colors"
-              style={{ background: C.amber }}
-            >
-              {saving ? "Guardando..." : "Guardar cambios"}
-            </button>
+        return <>
+          <div style={card}>
+            <div style={lbl}>Nombre de la empresa</div>
+            <input style={inp} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Mi Empresa S.A." />
           </div>
-        );
-
-      /* ═══ COLORES ═══ */
-      case "colores":
-        const TEMAS = [
-          { nombre: "Naranja Gypi", primario: "#F97316", secundario: "#A78BFA", icon: "🟠" },
-          { nombre: "Azul Corporativo", primario: "#2563EB", secundario: "#0EA5E9", icon: "🔵" },
-          { nombre: "Verde Industrial", primario: "#16A34A", secundario: "#059669", icon: "🟢" },
-          { nombre: "Rojo Fuerte", primario: "#DC2626", secundario: "#F97316", icon: "🔴" },
-          { nombre: "Violeta Tech", primario: "#7C3AED", secundario: "#EC4899", icon: "🟣" },
-          { nombre: "Turquesa", primario: "#0891B2", secundario: "#06B6D4", icon: "🩵" },
-          { nombre: "Oscuro Pro", primario: "#1E293B", secundario: "#475569", icon: "⚫" },
-          { nombre: "Dorado Premium", primario: "#B45309", secundario: "#D97706", icon: "🟡" },
-        ];
-        return (
-          <div className="flex flex-col gap-5">
-            {/* Temas predefinidos */}
-            <div className={cardCls}>
-              <label className={labelCls}>Temas predefinidos</label>
-              <p className="text-xs text-[var(--color-text-muted)] mb-3">Elegí un tema base o personalizá los colores abajo.</p>
-              <div className="grid grid-cols-2 gap-2">
-                {TEMAS.map((t) => {
-                  const activo = colorPrimario === t.primario && colorSecundario === t.secundario;
-                  return (
-                    <button
-                      key={t.nombre}
-                      onClick={() => { setColorPrimario(t.primario); setColorSecundario(t.secundario); }}
-                      className="flex items-center gap-2 p-3 rounded-xl border text-left transition-all"
-                      style={{
-                        borderColor: activo ? t.primario : "var(--color-border)",
-                        background: activo ? `${t.primario}11` : "var(--color-bg-subtle)",
-                        boxShadow: activo ? `0 0 0 2px ${t.primario}33` : "none",
-                      }}
-                    >
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
-                        style={{ background: `linear-gradient(135deg, ${t.primario}, ${t.secundario})` }}>
-                        {t.icon}
-                      </div>
-                      <span className="text-xs font-medium" style={{ color: activo ? t.primario : "var(--color-text)" }}>
-                        {t.nombre}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className={cardCls}>
-              <label className={labelCls}>Color primario</label>
-              <p className="text-xs text-[var(--color-text-muted)] mb-3">Este color se usa en botones, navegación y acentos principales.</p>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={colorPrimario}
-                  onChange={(e) => setColorPrimario(e.target.value)}
-                  className="w-12 h-12 rounded-xl border border-[var(--color-border)] cursor-pointer bg-transparent p-1"
-                />
-                <input
-                  className={inputCls}
-                  value={colorPrimario}
-                  onChange={(e) => setColorPrimario(e.target.value)}
-                  placeholder="#F97316"
-                />
-              </div>
-              <div
-                className="mt-3 h-12 rounded-xl flex items-center justify-center text-white text-sm font-bold"
-                style={{ background: colorPrimario }}
-              >
-                Vista previa
-              </div>
-            </div>
-
-            <div className={cardCls}>
-              <label className={labelCls}>Color secundario</label>
-              <p className="text-xs text-[var(--color-text-muted)] mb-3">Se usa en badges, acentos secundarios y gradientes.</p>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={colorSecundario}
-                  onChange={(e) => setColorSecundario(e.target.value)}
-                  className="w-12 h-12 rounded-xl border border-[var(--color-border)] cursor-pointer bg-transparent p-1"
-                />
-                <input
-                  className={inputCls}
-                  value={colorSecundario}
-                  onChange={(e) => setColorSecundario(e.target.value)}
-                  placeholder="#A78BFA"
-                />
-              </div>
-              <div
-                className="mt-3 h-12 rounded-xl flex items-center justify-center text-white text-sm font-bold"
-                style={{ background: colorSecundario }}
-              >
-                Vista previa
-              </div>
-            </div>
-
-            {/* Preview combinado */}
-            <div className={cardCls}>
-              <label className={labelCls}>Combinación</label>
-              <div className="h-16 rounded-xl flex items-center justify-center text-white font-bold"
-                style={{ background: `linear-gradient(135deg, ${colorPrimario}, ${colorSecundario})` }}
-              >
-                {nombreCorto || "Tu Marca"}
-              </div>
-            </div>
-
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full py-3.5 rounded-xl text-white font-display font-bold text-sm border-none cursor-pointer disabled:opacity-50 transition-colors"
-              style={{ background: colorPrimario }}
-            >
-              {saving ? "Guardando..." : "Guardar colores"}
-            </button>
+          <div style={card}>
+            <div style={lbl}>Nombre corto</div>
+            <input style={inp} value={nombreCorto} onChange={(e) => setNombreCorto(e.target.value)} placeholder="Ej: MIEMPRESA" />
           </div>
-        );
+          <div style={card}>
+            <div style={lbl}>Rubro</div>
+            <input style={inp} value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="Ej: Tecnología, Construcción..." />
+          </div>
+          <button style={{ ...btnPrimary, opacity: saving ? 0.5 : 1 }} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar cambios"}</button>
+        </>;
 
-      /* ═══ LOGO ═══ */
-      case "logo":
-        return (
-          <div className="flex flex-col gap-5">
-            <div className={cardCls}>
-              <label className={labelCls}>Logo de la empresa</label>
+      // ── APARIENCIA ──
+      case "apariencia":
+        return <>
+          {/* Temas preestablecidos */}
+          <div style={card}>
+            <div style={lbl}>Temas preestablecidos</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {Object.entries(THEME_PRESETS).map(([key, p]) => {
+                const sel = !customMode && themePreset === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => applyPreset(key)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12,
+                      border: sel ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
+                      background: p.bg, cursor: "pointer", transition: "all 0.15s",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <div style={{ width: 14, height: 14, borderRadius: 4, background: p.primary }} />
+                      <div style={{ width: 14, height: 14, borderRadius: 4, background: p.secondary }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: p.text }}>{p.label}</span>
+                    {sel && <span style={{ marginLeft: "auto", fontSize: 10, color: C.amber }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-              <div className="flex items-center justify-center mb-4 rounded-xl bg-[var(--color-bg-subtle)] border border-[var(--color-border)] overflow-hidden"
-                style={{ height: 160 }}
-              >
-                {logoPreview ? (
-                  <img
-                    src={logoPreview}
-                    alt="Logo preview"
-                    className="max-w-full max-h-full object-contain"
-                  />
-                ) : (
-                  <span className="text-[var(--color-text-muted)] text-sm">
-                    Sin logo
-                  </span>
-                )}
+          {/* Modo personalizado toggle */}
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Personalización individual</div>
+                <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>Ajustar cada color por separado</div>
               </div>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleLogoChange}
-                className="hidden"
-              />
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full py-3 rounded-xl font-display font-bold text-sm border border-[var(--color-border)] cursor-pointer bg-[var(--color-surface-raised)] text-[var(--color-text)] hover:bg-[var(--color-surface)] transition-colors"
+                onClick={() => setCustomMode(!customMode)}
+                style={{
+                  width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer", position: "relative",
+                  background: customMode ? C.green : C.surfHi, transition: "background 0.2s",
+                }}
               >
-                {logoPreview ? "Cambiar logo" : "Subir logo"}
+                <div style={{
+                  width: 22, height: 22, borderRadius: 11, background: "#fff",
+                  position: "absolute", top: 3, left: customMode ? 23 : 3, transition: "left 0.2s",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }} />
               </button>
-
-              {logoPreview && (
-                <button
-                  onClick={() => {
-                    setLogoFile(null);
-                    setLogoPreview("");
-                    setLogoUrl("");
-                  }}
-                  className="w-full mt-2 py-2.5 rounded-xl text-sm border-none cursor-pointer text-red-500 bg-transparent hover:bg-red-50 transition-colors"
-                >
-                  Eliminar logo
-                </button>
-              )}
             </div>
+          </div>
 
+          {/* Colores individuales */}
+          {customMode && (
+            <div style={card}>
+              <ColorRow label="Color primario (botones, acentos)" value={colorPrimario} onChange={(v) => { setColorPrimario(v); if (isHex(v)) previewColors({ color_primario: v }); }} />
+              <ColorRow label="Color secundario (etiquetas, complementos)" value={colorSecundario} onChange={(v) => { setColorSecundario(v); if (isHex(v)) previewColors({ color_secundario: v }); }} />
+              <ColorRow label="Color de fondo" value={colorFondo} onChange={(v) => { setColorFondo(v); if (isHex(v)) previewColors({ color_fondo: v }); }} />
+              <ColorRow label="Color de texto" value={colorTexto} onChange={(v) => { setColorTexto(v); if (isHex(v)) previewColors({ color_texto: v }); }} />
+            </div>
+          )}
+
+          {/* Preview miniatura */}
+          <div style={card}>
+            <div style={lbl}>Vista previa</div>
+            <div style={{
+              background: colorFondo, borderRadius: 12, padding: 16, border: `1px solid ${C.border}`,
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: colorTexto, marginBottom: 8, fontFamily: FONT_OPTIONS[typography]?.heading || "system-ui" }}>
+                {nombreCorto || "Mi Empresa"}
+              </div>
+              <div style={{ fontSize: 12, color: colorTexto, opacity: 0.6, marginBottom: 12, fontFamily: FONT_OPTIONS[typography]?.body || "system-ui" }}>
+                Texto de ejemplo para ver la tipografía
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorPrimario, color: "#fff", fontSize: 12, fontWeight: 700 }}>
+                  Primario
+                </div>
+                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorSecundario, color: "#fff", fontSize: 12, fontWeight: 700 }}>
+                  Secundario
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tipografía */}
+          <div style={card}>
+            <div style={lbl}>Tipografía</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {Object.entries(FONT_OPTIONS).map(([key, f]) => {
+                const sel = typography === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => { setTypography(key); previewColors({ typography: key }); }}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "12px 14px", borderRadius: 10,
+                      border: sel ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
+                      background: sel ? `${C.amber}15` : C.surface, cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontFamily: f.heading, color: C.text, fontWeight: sel ? 700 : 500 }}>
+                      {f.label}
+                    </span>
+                    <span style={{ fontSize: 11, fontFamily: f.body, color: C.dim }}>
+                      Aa Bb Cc 123
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button style={{ ...btnPrimary, opacity: saving ? 0.5 : 1 }} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar apariencia"}</button>
+        </>;
+
+      // ── LOGO ──
+      case "logo":
+        return <>
+          <div style={card}>
+            <div style={lbl}>Logo de la empresa</div>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14,
+              borderRadius: 12, background: C.surfLo, border: `1px solid ${C.border}`, overflow: "hidden", height: 160,
+            }}>
+              {logoPreview
+                ? <img src={logoPreview} alt="Logo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                : <span style={{ color: C.mute, fontSize: 13 }}>Sin logo</span>}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full py-3.5 rounded-xl text-white font-display font-bold text-sm border-none cursor-pointer disabled:opacity-50 transition-colors"
-              style={{ background: C.amber }}
+              onClick={() => fileInputRef.current?.click()}
+              style={{ ...btnPrimary, background: C.surfHi, color: C.text, border: `1px solid ${C.border}` }}
             >
-              {saving ? "Guardando..." : "Guardar logo"}
+              {logoPreview ? "Cambiar logo" : "Subir logo"}
             </button>
+            {logoPreview && (
+              <button
+                onClick={() => { setLogoFile(null); setLogoPreview(""); setLogoUrl(""); }}
+                style={{ width: "100%", marginTop: 8, padding: "10px 0", borderRadius: 10, border: "none", background: "transparent", color: C.red, fontSize: 13, cursor: "pointer" }}
+              >
+                Eliminar logo
+              </button>
+            )}
           </div>
-        );
+          <button style={{ ...btnPrimary, opacity: saving ? 0.5 : 1 }} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar logo"}</button>
+        </>;
 
-      /* ═══ DIVISIONES ═══ */
+      // ── DIVISIONES ──
       case "divisiones":
-        return (
-          <div className="flex flex-col gap-5">
-            <div className={cardCls}>
-              <label className={labelCls}>
-                {editDivId !== null ? "Editar división" : "Nueva división"}
-              </label>
-
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {ICON_OPTIONS.map((ic) => (
-                  <button
-                    key={ic}
-                    onClick={() => setDivForm((f) => ({ ...f, icon: ic }))}
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg cursor-pointer border transition-colors ${
-                      divForm.icon === ic
-                        ? 'border-brand-500 bg-brand-50'
-                        : 'border-[var(--color-border)] bg-[var(--color-surface)]'
-                    }`}
-                  >
-                    {ic}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className={labelCls}>Nombre</label>
-                  <input
-                    className={inputCls}
-                    value={divForm.label}
-                    onChange={(e) => setDivForm((f) => ({ ...f, label: e.target.value }))}
-                    placeholder="Ej: Producción"
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Clave</label>
-                  <input
-                    className={inputCls}
-                    value={divForm.clave}
-                    onChange={(e) => setDivForm((f) => ({ ...f, clave: e.target.value.toUpperCase() }))}
-                    placeholder="Ej: PROD"
-                    maxLength={6}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Color</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={divForm.color}
-                      onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))}
-                      className="w-10 h-10 rounded-lg border border-[var(--color-border)] cursor-pointer bg-transparent p-0.5"
-                    />
-                    <input
-                      className={inputCls}
-                      value={divForm.color}
-                      onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 mt-4">
-                <button
-                  onClick={handleAddDivision}
-                  className="flex-1 py-3 rounded-xl text-white font-display font-bold text-sm border-none cursor-pointer"
-                  style={{ background: C.amber }}
-                >
-                  {editDivId !== null ? "Actualizar" : "Agregar"}
-                </button>
-                {editDivId !== null && (
-                  <button
-                    onClick={() => {
-                      setEditDivId(null);
-                      setDivForm({ icon: "📁", label: "", color: "#F97316", clave: "" });
-                    }}
-                    className="py-3 px-5 rounded-xl text-sm border border-[var(--color-border)] cursor-pointer bg-[var(--color-surface)] text-[var(--color-text)]"
-                  >
-                    Cancelar
-                  </button>
-                )}
-              </div>
+        return <>
+          <div style={card}>
+            <div style={lbl}>{editDivId !== null ? "Editar división" : "Nueva división"}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+              {ICON_OPTIONS.map((ic) => (
+                <button key={ic} onClick={() => setDivForm((f) => ({ ...f, icon: ic }))}
+                  style={{
+                    width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 18, cursor: "pointer", border: `1px solid ${divForm.icon === ic ? C.amber : C.border}`,
+                    background: divForm.icon === ic ? `${C.amber}22` : C.surface,
+                  }}>{ic}</button>
+              ))}
             </div>
-
-            {divisiones.length > 0 && (
-              <div className={cardCls}>
-                <label className={labelCls}>Divisiones ({divisiones.length})</label>
-                <div className="flex flex-col gap-2">
-                  {divisiones.map((div) => (
-                    <div
-                      key={div.id}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-subtle)]"
-                    >
-                      <div
-                        className="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
-                        style={{ background: div.color + "22" }}
-                      >
-                        {div.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-display font-bold text-[var(--color-text)] truncate">
-                          {div.label}
-                        </div>
-                        <div className="text-xs font-mono text-[var(--color-text-muted)]">
-                          {div.clave}
-                        </div>
-                      </div>
-                      <div className="w-4 h-4 rounded-full" style={{ background: div.color }} />
-                      <button
-                        onClick={() => handleEditDivision(div)}
-                        className="text-xs border-none bg-transparent cursor-pointer text-blue-500 hover:underline"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleDeleteDivision(div.id)}
-                        className="text-xs border-none bg-transparent cursor-pointer text-red-500 hover:underline"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div style={lbl}>Nombre</div>
+            <input style={{ ...inp, marginBottom: 10 }} value={divForm.label} onChange={(e) => setDivForm((f) => ({ ...f, label: e.target.value }))} placeholder="Ej: Producción" />
+            <div style={lbl}>Clave</div>
+            <input style={{ ...inp, marginBottom: 10 }} value={divForm.clave} onChange={(e) => setDivForm((f) => ({ ...f, clave: e.target.value.toUpperCase() }))} placeholder="Ej: PROD" maxLength={6} />
+            <div style={lbl}>Color</div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              <input type="color" value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
+              <input style={inp} value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={handleAddDivision} style={{ ...btnPrimary, flex: 1 }}>{editDivId !== null ? "Actualizar" : "Agregar"}</button>
+              {editDivId !== null && <button onClick={() => { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.text, cursor: "pointer" }}>Cancelar</button>}
+            </div>
           </div>
-        );
+          {divisiones.length > 0 && <div style={card}>
+            <div style={lbl}>Divisiones ({divisiones.length})</div>
+            {divisiones.map((div) => (
+              <div key={div.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfLo, marginBottom: 6 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: div.color + "22" }}>{div.icon}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{div.label}</div>
+                  <div style={{ fontSize: 11, color: C.dim, fontFamily: "'Geist Mono', monospace" }}>{div.clave}</div>
+                </div>
+                <div style={{ width: 16, height: 16, borderRadius: 8, background: div.color }} />
+                <button onClick={() => handleEditDivision(div)} style={{ fontSize: 11, color: C.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
+                <button onClick={() => handleDeleteDivision(div.id)} style={{ fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
+              </div>
+            ))}
+          </div>}
+        </>;
 
-      /* ═══ ETAPAS ═══ */
+      // ── ETAPAS ──
       case "etapas":
-        return (
-          <div className="flex flex-col gap-5">
-            <div className={cardCls}>
-              <label className={labelCls}>
-                {editEtapaId !== null ? "Editar etapa" : "Nueva etapa"}
-              </label>
-
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {ICON_OPTIONS.map((ic) => (
-                  <button
-                    key={ic}
-                    onClick={() => setEtapaForm((f) => ({ ...f, icon: ic }))}
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg cursor-pointer border transition-colors ${
-                      etapaForm.icon === ic
-                        ? 'border-brand-500 bg-brand-50'
-                        : 'border-[var(--color-border)] bg-[var(--color-surface)]'
-                    }`}
-                  >
-                    {ic}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className={labelCls}>Código</label>
-                  <input
-                    className={inputCls}
-                    value={etapaForm.codigo}
-                    onChange={(e) => setEtapaForm((f) => ({ ...f, codigo: e.target.value.toUpperCase() }))}
-                    placeholder="Ej: PLAN"
-                    maxLength={6}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Nombre</label>
-                  <input
-                    className={inputCls}
-                    value={etapaForm.nombre}
-                    onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))}
-                    placeholder="Ej: Planificación"
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Color</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={etapaForm.color}
-                      onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))}
-                      className="w-10 h-10 rounded-lg border border-[var(--color-border)] cursor-pointer bg-transparent p-0.5"
-                    />
-                    <input
-                      className={inputCls}
-                      value={etapaForm.color}
-                      onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 mt-4">
-                <button
-                  onClick={handleAddEtapa}
-                  className="flex-1 py-3 rounded-xl text-white font-display font-bold text-sm border-none cursor-pointer"
-                  style={{ background: C.amber }}
-                >
-                  {editEtapaId !== null ? "Actualizar" : "Agregar"}
-                </button>
-                {editEtapaId !== null && (
-                  <button
-                    onClick={() => {
-                      setEditEtapaId(null);
-                      setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#F97316" });
-                    }}
-                    className="py-3 px-5 rounded-xl text-sm border border-[var(--color-border)] cursor-pointer bg-[var(--color-surface)] text-[var(--color-text)]"
-                  >
-                    Cancelar
-                  </button>
-                )}
-              </div>
+        return <>
+          <div style={card}>
+            <div style={lbl}>{editEtapaId !== null ? "Editar etapa" : "Nueva etapa"}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+              {ICON_OPTIONS.map((ic) => (
+                <button key={ic} onClick={() => setEtapaForm((f) => ({ ...f, icon: ic }))}
+                  style={{
+                    width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 18, cursor: "pointer", border: `1px solid ${etapaForm.icon === ic ? C.amber : C.border}`,
+                    background: etapaForm.icon === ic ? `${C.amber}22` : C.surface,
+                  }}>{ic}</button>
+              ))}
             </div>
-
-            {etapas.length > 0 && (
-              <div className={cardCls}>
-                <label className={labelCls}>Etapas ({etapas.length})</label>
-                <div className="flex flex-col gap-2">
-                  {etapas.map((etapa) => (
-                    <div
-                      key={etapa.id}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-subtle)]"
-                    >
-                      <div
-                        className="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
-                        style={{ background: etapa.color + "22" }}
-                      >
-                        {etapa.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-display font-bold text-[var(--color-text)] truncate">
-                          {etapa.nombre}
-                        </div>
-                        <div className="text-xs font-mono text-[var(--color-text-muted)]">
-                          {etapa.codigo}
-                        </div>
-                      </div>
-                      <div className="w-4 h-4 rounded-full" style={{ background: etapa.color }} />
-                      <button
-                        onClick={() => handleEditEtapa(etapa)}
-                        className="text-xs border-none bg-transparent cursor-pointer text-blue-500 hover:underline"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleDeleteEtapa(etapa.id)}
-                        className="text-xs border-none bg-transparent cursor-pointer text-red-500 hover:underline"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div style={lbl}>Código</div>
+            <input style={{ ...inp, marginBottom: 10 }} value={etapaForm.codigo} onChange={(e) => setEtapaForm((f) => ({ ...f, codigo: e.target.value.toUpperCase() }))} placeholder="Ej: PLAN" maxLength={6} />
+            <div style={lbl}>Nombre</div>
+            <input style={{ ...inp, marginBottom: 10 }} value={etapaForm.nombre} onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Ej: Planificación" />
+            <div style={lbl}>Color</div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+              <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
+              <input style={inp} value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={handleAddEtapa} style={{ ...btnPrimary, flex: 1 }}>{editEtapaId !== null ? "Actualizar" : "Agregar"}</button>
+              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.text, cursor: "pointer" }}>Cancelar</button>}
+            </div>
           </div>
-        );
+          {etapas.length > 0 && <div style={card}>
+            <div style={lbl}>Etapas ({etapas.length})</div>
+            {etapas.map((etapa) => (
+              <div key={etapa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfLo, marginBottom: 6 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: etapa.color + "22" }}>{etapa.icon}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{etapa.nombre}</div>
+                  <div style={{ fontSize: 11, color: C.dim, fontFamily: "'Geist Mono', monospace" }}>{etapa.codigo}</div>
+                </div>
+                <div style={{ width: 16, height: 16, borderRadius: 8, background: etapa.color }} />
+                <button onClick={() => handleEditEtapa(etapa)} style={{ fontSize: 11, color: C.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
+                <button onClick={() => handleDeleteEtapa(etapa.id)} style={{ fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
+              </div>
+            ))}
+          </div>}
+        </>;
 
-      default:
-        return null;
+      default: return null;
     }
   };
 
-  /* ─── Main render ─── */
   return (
-    <div className="flex flex-col h-full text-[var(--color-text)] font-body overflow-hidden">
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", color: C.text }}>
       {/* Tab bar */}
-      <div className="flex overflow-x-auto px-4 py-3 gap-1.5 border-b border-[var(--color-border)] shrink-0">
+      <div style={{ display: "flex", overflowX: "auto", padding: "0 14px 10px", gap: 4, flexShrink: 0 }}>
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-xl text-xs font-display font-bold whitespace-nowrap border-none cursor-pointer shrink-0 transition-colors ${
-              tab === t.key
-                ? 'text-white'
-                : 'bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface)]'
-            }`}
-            style={tab === t.key ? { background: C.amber } : {}}
-          >
-            {t.label}
-          </button>
+            style={{
+              padding: "8px 16px", borderRadius: 20, border: "none", cursor: "pointer",
+              background: tab === t.key ? C.amber : "transparent",
+              color: tab === t.key ? "#fff" : C.dim,
+              fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0,
+            }}
+          >{t.label}</button>
         ))}
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        {renderTabContent()}
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 18px 110px" }}>
+        {renderTab()}
       </div>
 
       {/* Toast */}
       {toast && (
-        <div
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3 rounded-2xl text-sm font-semibold text-white shadow-lg animate-fade-in"
-          style={{ background: toast.type === "error" ? C.red : C.green }}
-        >
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 9999,
+          padding: "12px 20px", borderRadius: 16, fontSize: 13, fontWeight: 600, color: "#fff",
+          background: toast.type === "error" ? C.red : C.green,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}>
           {toast.msg}
-        </div>
-      )}
-
-      {/* Saving overlay */}
-      {saving && (
-        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="bg-[var(--color-surface-raised)] rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl border border-[var(--color-border)]">
-            <div
-              className="w-8 h-8 rounded-full border-[3px] border-t-transparent animate-spin"
-              style={{ borderColor: `${C.amber} transparent ${C.amber} ${C.amber}` }}
-            />
-            <span className="text-sm font-display font-bold text-[var(--color-text)]">
-              Guardando...
-            </span>
-          </div>
         </div>
       )}
     </div>

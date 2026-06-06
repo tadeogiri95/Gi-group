@@ -842,7 +842,7 @@ export default function Home() {
         const d = await r.json();
         if (r.status === 404 || d?.error) { setSlugInvalido(true); return; }
         setEmpresa(d);
-        setColoresEmpresa(d.color_primario, d.color_secundario);
+        setColoresEmpresa(d);
         forceRender(n => n + 1);
         return;
       }
@@ -852,7 +852,7 @@ export default function Home() {
         const d = await r.json();
         if (d && !d.error) {
           setEmpresa(d);
-          setColoresEmpresa(d.color_primario, d.color_secundario);
+          setColoresEmpresa(d);
           forceRender(n => n + 1);
           loadConfigEmpresa(d?.id);
         }
@@ -948,7 +948,7 @@ const loadData=useCallback(async()=>{
           usuario={usuario}
           onComplete={(empActualizada)=>{
             setEmpresa(empActualizada);
-            setColoresEmpresa(empActualizada.color_primario, empActualizada.color_secundario);
+            setColoresEmpresa(empActualizada);
             forceRender(n=>n+1);
             loadConfigEmpresa(usuario?.empresa_id||empresa?.id);
             loadData();
