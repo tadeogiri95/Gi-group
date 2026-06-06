@@ -117,7 +117,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
       }
 
       // Guardar en Supabase
-      await sb.patch(`empresas?id=eq.${eid}`, data);
+      await sb.patch(`empresa?id=eq.${eid}`, data);
 
       // Aplicar colores en vivo inmediatamente
       setColoresEmpresa(colorPrimario, colorSecundario);
@@ -275,8 +275,48 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
 
       /* ═══ COLORES ═══ */
       case "colores":
+        const TEMAS = [
+          { nombre: "Naranja Gypi", primario: "#F97316", secundario: "#A78BFA", icon: "🟠" },
+          { nombre: "Azul Corporativo", primario: "#2563EB", secundario: "#0EA5E9", icon: "🔵" },
+          { nombre: "Verde Industrial", primario: "#16A34A", secundario: "#059669", icon: "🟢" },
+          { nombre: "Rojo Fuerte", primario: "#DC2626", secundario: "#F97316", icon: "🔴" },
+          { nombre: "Violeta Tech", primario: "#7C3AED", secundario: "#EC4899", icon: "🟣" },
+          { nombre: "Turquesa", primario: "#0891B2", secundario: "#06B6D4", icon: "🩵" },
+          { nombre: "Oscuro Pro", primario: "#1E293B", secundario: "#475569", icon: "⚫" },
+          { nombre: "Dorado Premium", primario: "#B45309", secundario: "#D97706", icon: "🟡" },
+        ];
         return (
           <div className="flex flex-col gap-5">
+            {/* Temas predefinidos */}
+            <div className={cardCls}>
+              <label className={labelCls}>Temas predefinidos</label>
+              <p className="text-xs text-[var(--color-text-muted)] mb-3">Elegí un tema base o personalizá los colores abajo.</p>
+              <div className="grid grid-cols-2 gap-2">
+                {TEMAS.map((t) => {
+                  const activo = colorPrimario === t.primario && colorSecundario === t.secundario;
+                  return (
+                    <button
+                      key={t.nombre}
+                      onClick={() => { setColorPrimario(t.primario); setColorSecundario(t.secundario); }}
+                      className="flex items-center gap-2 p-3 rounded-xl border text-left transition-all"
+                      style={{
+                        borderColor: activo ? t.primario : "var(--color-border)",
+                        background: activo ? `${t.primario}11` : "var(--color-bg-subtle)",
+                        boxShadow: activo ? `0 0 0 2px ${t.primario}33` : "none",
+                      }}
+                    >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
+                        style={{ background: `linear-gradient(135deg, ${t.primario}, ${t.secundario})` }}>
+                        {t.icon}
+                      </div>
+                      <span className="text-xs font-medium" style={{ color: activo ? t.primario : "var(--color-text)" }}>
+                        {t.nombre}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className={cardCls}>
               <label className={labelCls}>Color primario</label>
               <p className="text-xs text-[var(--color-text-muted)] mb-3">Este color se usa en botones, navegación y acentos principales.</p>
