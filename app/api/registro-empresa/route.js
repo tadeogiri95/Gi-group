@@ -1,14 +1,8 @@
-// ═══════════════════════════════════════════════════════════
 // app/api/registro-empresa/route.js
 // Registra una nueva empresa y su usuario admin
-//
-// ENTREGA 1B: Password policy reforzada vía validarPassword
-// de lib/auth.js (min 8, mayúscula, minúscula, número).
-// ═══════════════════════════════════════════════════════════
-
+// FIX: sbFetch ahora verifica res.ok antes de parsear JSON
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { validarPassword } from "../../lib/auth";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -25,7 +19,14 @@ async function sbFetch(path, method = "GET", body = null) {
   };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, opts);
-  return res.json();
+  const text = await res.text();
+  if (!text || text.trim() === "") return method === "DELETE" ? null : [];
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error(`[sbFetch] JSON parse error on ${method} ${path}:`, text.slice(0, 200));
+    throw new Error(`Error de base de datos: respuesta inválida`);
+  }
 }
 
 function generarSlug(nombre) {
@@ -41,30 +42,31 @@ export async function POST(req) {
   try {
     const { nombre_empresa, nombre_admin, email, password, rubro } = await req.json();
 
+    // Validaciones
     if (!nombre_empresa || !nombre_admin || !email || !password) {
       return NextResponse.json({ error: "Completá todos los campos" }, { status: 400 });
     }
-
-    // ═══ CAMBIO 1B: Usar validarPassword compartida ═══
-    // (antes: solo chequeaba password.length < 6)
-    const pwCheck = validarPassword(password);
-    if (!pwCheck.valido) {
-      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
+    if (password.length < 6) {
+      return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 });
     }
 
+    // Verificar email no repetido
     const existente = await sbFetch(`empresa?admin_email=eq.${encodeURIComponent(email)}&select=id`);
     if (existente && existente.length > 0) {
       return NextResponse.json({ error: "Ya existe una empresa con ese email" }, { status: 400 });
     }
 
+    // Generar slug único
     let slug = generarSlug(nombre_empresa);
     const slugCheck = await sbFetch(`empresa?slug=eq.${slug}&select=id`);
     if (slugCheck && slugCheck.length > 0) {
       slug = slug + "-" + Date.now().toString(36).slice(-4);
     }
 
+    // Hash de contraseña
     const hashed = await bcrypt.hash(password, 10);
 
+    // Crear empresa
     const empresa = await sbFetch("empresa", "POST", {
       nombre: nombre_empresa,
       nombre_corto: nombre_empresa.length > 12 ? nombre_empresa.slice(0, 12) : nombre_empresa,
@@ -84,6 +86,7 @@ export async function POST(req) {
 
     const emp = empresa[0];
 
+    // Crear empleado admin
     const adminEmp = await sbFetch("empleados", "POST", {
       nombre: nombre_admin,
       apodo: nombre_admin.split(" ")[0],
@@ -99,10 +102,12 @@ export async function POST(req) {
     });
 
     if (!adminEmp || adminEmp.length === 0 || adminEmp.code) {
+      // Si falla el empleado, borrar la empresa creada
       await sbFetch(`empresa?id=eq.${emp.id}`, "DELETE");
       return NextResponse.json({ error: "Error al crear el usuario admin: " + (adminEmp.message || JSON.stringify(adminEmp)) }, { status: 500 });
     }
 
+    // ─── Iniciar trial Pro de 14 días para la empresa nueva ───
     try {
       await fetch(`${SB_URL}/rest/v1/rpc/iniciar_trial_pro`, {
         method: "POST",

@@ -1,751 +1,846 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
-import { sb } from "./lib/supabase";
-import { C, fH, fB, fM } from "./lib/theme";
-import { Tag } from "./components/ui";
 
-/* ═══════════════════════════════════════════════════════════
-   AdminEmpresaScreen — Fase 5.3 / 5.4 COMPLETA
-   Tabs: General, Colores, Logo, Divisiones, Etapas
-   ═══════════════════════════════════════════════════════════ */
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { C } from "./lib/theme";
 
+/* ─── Reusable Tailwind class strings ─── */
+const inputCls =
+  "w-full py-[11px] px-3.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-gypi-text text-sm font-body outline-none box-border";
+const labelCls =
+  "block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5";
+const cardCls =
+  "bg-gypi-surface rounded-2xl p-[18px] border border-gypi-border mb-3.5";
+
+/* ─── Tabs ─── */
 const TABS = [
-  { id: "general", label: "🏢 General" },
-  { id: "colores", label: "🎨 Colores" },
-  { id: "personalizacion", label: "✨ Personalizar" },
-  { id: "logo", label: "🖼️ Logo" },
-  { id: "divisiones", label: "🏭 Divisiones" },
-  { id: "etapas", label: "📋 Etapas" },
+  { key: "general", label: "General" },
+  { key: "colores", label: "Colores" },
+  { key: "personalizar", label: "Personalizar" },
+  { key: "logo", label: "Logo" },
+  { key: "divisiones", label: "Divisiones" },
+  { key: "etapas", label: "Etapas" },
 ];
 
-export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
-  const eid = empresaId || empresa?.id;
-  const [config, setConfig] = useState(empresa || {});
-  const [activeTab, setActiveTab] = useState("general");
+/* ─── Theme presets ─── */
+const THEME_PRESETS = [
+  { key: "oscuro", label: "Oscuro", bg: "#111111", surface: "#1a1a1a", text: "#ffffff" },
+  { key: "carbon", label: "Carbón", bg: "#1c1c1e", surface: "#2c2c2e", text: "#f5f5f7" },
+  { key: "medianoche", label: "Medianoche", bg: "#0d1117", surface: "#161b22", text: "#c9d1d9" },
+  { key: "claro", label: "Claro", bg: "#f5f5f5", surface: "#ffffff", text: "#1a1a1a" },
+  { key: "crema", label: "Crema", bg: "#faf8f5", surface: "#ffffff", text: "#2c2c2c" },
+];
+
+/* ─── Icon list for selectors ─── */
+const ICON_OPTIONS = [
+  "📁", "📂", "🏢", "🏗️", "🏭", "🔧", "⚙️", "🛠️", "📊", "📈",
+  "💼", "🎯", "🚀", "💡", "🔑", "📋", "📝", "✅", "⭐", "🔔",
+];
+
+export default function AdminEmpresaScreen({ empresa, onSave, onClose }) {
+  /* ─── State ─── */
+  const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Divisiones y Etapas
-  const [divisiones, setDivisiones] = useState([]);
-  const [etapas, setEtapas] = useState([]);
-  const [loadingConfig, setLoadingConfig] = useState(true);
+  // General
+  const [nombre, setNombre] = useState(empresa?.nombre || "");
+  const [nombreCorto, setNombreCorto] = useState(empresa?.nombre_corto || "");
+  const [rubro, setRubro] = useState(empresa?.rubro || "");
 
-  // Form para nuevas divisiones/etapas
-  const [newDiv, setNewDiv] = useState({ clave: "", label: "", icon: "📦", color: "#F97316" });
-  const [newEtapa, setNewEtapa] = useState({ codigo: "", nombre: "", icon: "🔨", color: "#F97316" });
+  // Colores
+  const [colorPrimario, setColorPrimario] = useState(empresa?.color_primario || "#4f8cff");
+  const [colorSecundario, setColorSecundario] = useState(empresa?.color_secundario || "#38d68a");
 
-  // Edición inline
-  const [editingDiv, setEditingDiv] = useState(null);
-  const [editingEtapa, setEditingEtapa] = useState(null);
+  // Personalización
+  const [themePreset, setThemePreset] = useState(empresa?.theme_preset || "oscuro");
+  const [typography, setTypography] = useState(empresa?.typography || "system");
+  const [timeFormat, setTimeFormat] = useState(empresa?.time_format || "24h");
+  const [notifEmail, setNotifEmail] = useState(empresa?.notif_email ?? true);
+  const [notifPush, setNotifPush] = useState(empresa?.notif_push ?? true);
+  const [notifSound, setNotifSound] = useState(empresa?.notif_sound ?? false);
 
-  // Logo upload
-  const fileRef = useRef(null);
-  const [uploading, setUploading] = useState(false);
+  // Logo
+  const [logoUrl, setLogoUrl] = useState(empresa?.logo_url || "");
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(empresa?.logo_url || "");
+  const fileInputRef = useRef(null);
 
-  const showToast = (msg, color = C.green) => {
-    setToast({ msg, color });
-    setTimeout(() => setToast(null), 3000);
-  };
+  // Divisiones
+  const [divisiones, setDivisiones] = useState(empresa?.divisiones || []);
+  const [divForm, setDivForm] = useState({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
+  const [editDivId, setEditDivId] = useState(null);
 
-  // ── Sincronizar config local cuando cambia empresa prop ──
+  // Etapas
+  const [etapas, setEtapas] = useState(empresa?.etapas || []);
+  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
+  const [editEtapaId, setEditEtapaId] = useState(null);
+
+  /* ─── Toast helper ─── */
+  const showToast = useCallback((msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  /* ─── Sync from prop ─── */
   useEffect(() => {
-    if (empresa) setConfig(empresa);
+    if (empresa) {
+      setNombre(empresa.nombre || "");
+      setNombreCorto(empresa.nombre_corto || "");
+      setRubro(empresa.rubro || "");
+      setColorPrimario(empresa.color_primario || "#4f8cff");
+      setColorSecundario(empresa.color_secundario || "#38d68a");
+      setThemePreset(empresa.theme_preset || "oscuro");
+      setTypography(empresa.typography || "system");
+      setTimeFormat(empresa.time_format || "24h");
+      setNotifEmail(empresa.notif_email ?? true);
+      setNotifPush(empresa.notif_push ?? true);
+      setNotifSound(empresa.notif_sound ?? false);
+      setLogoUrl(empresa.logo_url || "");
+      setLogoPreview(empresa.logo_url || "");
+      setDivisiones(empresa.divisiones || []);
+      setEtapas(empresa.etapas || []);
+    }
   }, [empresa]);
 
-  // ── Cargar divisiones y etapas ──
-  const loadDivEtapas = useCallback(async () => {
-    if (!eid) return;
-    setLoadingConfig(true);
-    try {
-      const res = await fetch(`/api/config-empresa?empresa_id=${eid}`);
-      const data = await res.json();
-      if (data.divisiones) setDivisiones(data.divisiones);
-      if (data.etapas) setEtapas(data.etapas);
-    } catch (e) {
-      console.error("Error cargando config:", e);
-    }
-    setLoadingConfig(false);
-  }, [eid]);
-
-  useEffect(() => { loadDivEtapas(); }, [loadDivEtapas]);
-
-  // ═══ GUARDAR CAMPO DE EMPRESA ═══
-  const updateField = async (key, value) => {
-    if (!eid) return;
-    setSaving(true);
-    try {
-      await sb.patch(`empresa?id=eq.${eid}`, { [key]: value });
-      const updated = { ...config, [key]: value };
-      setConfig(updated);
-      if (onUpdate) onUpdate({ [key]: value });
-      showToast(`✅ "${key}" guardado`);
-    } catch (e) {
-      showToast(`Error: ${e.message}`, C.red);
-    }
-    setSaving(false);
-  };
-
-  // ═══ DIVISIONES CRUD ═══
-  const addDivision = async () => {
-    if (!newDiv.clave.trim() || !newDiv.label.trim()) {
-      showToast("Completá clave y nombre", C.amber);
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/config-empresa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "add_division",
-          empresa_id: eid,
-          clave: newDiv.clave.toLowerCase().replace(/\s+/g, "_"),
-          label: newDiv.label,
-          icon: newDiv.icon || "📦",
-          color: newDiv.color || "#F97316",
-          orden: divisiones.length + 1,
-        }),
-      });
-      const data = await res.json();
-      if (data.division) {
-        setDivisiones(prev => [...prev, data.division]);
-        setNewDiv({ clave: "", label: "", icon: "📦", color: "#F97316" });
-        showToast("✅ División creada");
-      } else {
-        showToast(data.error || "Error al crear", C.red);
-      }
-    } catch (e) {
-      showToast(`Error: ${e.message}`, C.red);
-    }
-    setSaving(false);
-  };
-
-  const updateDivision = async (div) => {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/config-empresa", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_division",
-          id: div.id,
-          label: div.label,
-          icon: div.icon,
-          color: div.color,
-        }),
-      });
-      const data = await res.json();
-      if (data.division) {
-        setDivisiones(prev => prev.map(d => d.id === div.id ? data.division : d));
-        setEditingDiv(null);
-        showToast("✅ División actualizada");
-      }
-    } catch (e) {
-      showToast(`Error: ${e.message}`, C.red);
-    }
-    setSaving(false);
-  };
-
-  const deleteDivision = async (id) => {
-    setSaving(true);
-    try {
-      await fetch(`/api/config-empresa?type=division&id=${id}`, { method: "DELETE" });
-      setDivisiones(prev => prev.filter(d => d.id !== id));
-      showToast("División eliminada", C.amber);
-    } catch (e) {
-      showToast(`Error: ${e.message}`, C.red);
-    }
-    setSaving(false);
-  };
-
-  // ═══ ETAPAS CRUD ═══
-  const addEtapa = async () => {
-    if (!newEtapa.codigo.toString().trim() || !newEtapa.nombre.trim()) {
-      showToast("Completá código y nombre", C.amber);
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/config-empresa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "add_etapa",
-          empresa_id: eid,
-          codigo: parseInt(newEtapa.codigo) || etapas.length,
-          nombre: newEtapa.nombre,
-          icon: newEtapa.icon || "🔨",
-          color: newEtapa.color || "#F97316",
-          orden: etapas.length + 1,
-        }),
-      });
-      const data = await res.json();
-      if (data.etapa) {
-        setEtapas(prev => [...prev, data.etapa]);
-        setNewEtapa({ codigo: "", nombre: "", icon: "🔨", color: "#F97316" });
-        showToast("✅ Etapa creada");
-      } else {
-        showToast(data.error || "Error al crear", C.red);
-      }
-    } catch (e) {
-      showToast(`Error: ${e.message}`, C.red);
-    }
-    setSaving(false);
-  };
-
-  const updateEtapa = async (etapa) => {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/config-empresa", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_etapa",
-          id: etapa.id,
-          nombre: etapa.nombre,
-          icon: etapa.icon,
-          color: etapa.color,
-          codigo: etapa.codigo,
-        }),
-      });
-      const data = await res.json();
-      if (data.etapa) {
-        setEtapas(prev => prev.map(e => e.id === etapa.id ? data.etapa : e));
-        setEditingEtapa(null);
-        showToast("✅ Etapa actualizada");
-      }
-    } catch (e) {
-      showToast(`Error: ${e.message}`, C.red);
-    }
-    setSaving(false);
-  };
-
-  const deleteEtapa = async (id) => {
-    setSaving(true);
-    try {
-      await fetch(`/api/config-empresa?type=etapa&id=${id}`, { method: "DELETE" });
-      setEtapas(prev => prev.filter(e => e.id !== id));
-      showToast("Etapa eliminada", C.amber);
-    } catch (e) {
-      showToast(`Error: ${e.message}`, C.red);
-    }
-    setSaving(false);
-  };
-
-  // ═══ LOGO UPLOAD ═══
-  const handleLogoUpload = async (e) => {
+  /* ─── Logo preview ─── */
+  const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true);
+    setLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setLogoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  /* ─── Save handler ─── */
+  const handleSave = async () => {
+    setSaving(true);
     try {
-      // Convertir a base64
-      const toBase64 = (f) => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(f);
-      });
-      const base64 = await toBase64(file);
-      const ext = file.name.split(".").pop() || "png";
-      const fileName = `logos/${eid}_${Date.now()}.${ext}`;
-
-      // Intentar subir via /api/upload (mismo endpoint que fotos)
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName,
-          fileBase64: base64,
-          fileType: file.type || "image/png",
-        }),
-      });
-      const data = await res.json();
-      
-      let logoUrl;
-      if (data.ok && data.url) {
-        logoUrl = data.url;
-      } else {
-        // Fallback: usar data URI
-        logoUrl = `data:${file.type || "image/png"};base64,${base64}`;
-      }
-
-      // Guardar URL en la empresa
-      await sb.patch(`empresa?id=eq.${eid}`, { logo_url: logoUrl });
-      setConfig(prev => ({ ...prev, logo_url: logoUrl }));
-      if (onUpdate) onUpdate({ logo_url: logoUrl });
-      showToast("✅ Logo actualizado");
+      const data = {
+        nombre,
+        nombre_corto: nombreCorto,
+        rubro,
+        color_primario: colorPrimario,
+        color_secundario: colorSecundario,
+        theme_preset: themePreset,
+        typography,
+        time_format: timeFormat,
+        notif_email: notifEmail,
+        notif_push: notifPush,
+        notif_sound: notifSound,
+        divisiones,
+        etapas,
+      };
+      if (logoFile) data.logoFile = logoFile;
+      await onSave?.(data);
+      showToast("Guardado correctamente");
     } catch (err) {
-      showToast(`Error: ${err.message}`, C.red);
+      showToast("Error al guardar", "error");
+    } finally {
+      setSaving(false);
     }
-    setUploading(false);
-    if (fileRef.current) fileRef.current.value = "";
   };
 
-  // ═══ ESTILOS HELPERS ═══
-  const inputStyle = {
-    width: "100%", padding: "11px 14px", borderRadius: 10,
-    background: C.surface, border: `1px solid ${C.border}`,
-    color: C.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box",
+  /* ─── Division CRUD ─── */
+  const handleAddDivision = () => {
+    if (!divForm.label.trim()) return showToast("El nombre es requerido", "error");
+    if (!divForm.clave.trim()) return showToast("La clave es requerida", "error");
+    if (editDivId !== null) {
+      setDivisiones((prev) =>
+        prev.map((d) => (d.id === editDivId ? { ...d, ...divForm } : d))
+      );
+      setEditDivId(null);
+      showToast("División actualizada");
+    } else {
+      const newDiv = { ...divForm, id: Date.now() };
+      setDivisiones((prev) => [...prev, newDiv]);
+      showToast("División agregada");
+    }
+    setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
   };
-  const labelStyle = {
-    display: "block", fontSize: 11, fontWeight: 700, color: C.dim,
-    textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6,
-  };
-  const cardStyle = {
-    background: C.surface, borderRadius: 16, padding: 18,
-    border: `1px solid ${C.border}`, marginBottom: 14,
+
+  const handleEditDivision = (div) => {
+    setDivForm({ icon: div.icon, label: div.label, color: div.color, clave: div.clave });
+    setEditDivId(div.id);
   };
 
-  // ═══ RENDER ═══
-  return (
-    <div style={{ fontFamily: fB, flex: 1, overflowY: "auto", padding: "0 18px 110px", position: "relative" }}>
+  const handleDeleteDivision = (id) => {
+    setDivisiones((prev) => prev.filter((d) => d.id !== id));
+    if (editDivId === id) {
+      setEditDivId(null);
+      setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
+    }
+    showToast("División eliminada");
+  };
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 999,
-          padding: "12px 20px", borderRadius: 12, background: C.bg,
-          border: `1px solid ${toast.color}40`, boxShadow: `0 8px 32px ${toast.color}20`,
-          fontSize: 13, fontWeight: 600, color: toast.color, maxWidth: "90%",
-        }}>{toast.msg}</div>
-      )}
+  /* ─── Etapa CRUD ─── */
+  const handleAddEtapa = () => {
+    if (!etapaForm.nombre.trim()) return showToast("El nombre es requerido", "error");
+    if (!etapaForm.codigo.trim()) return showToast("El código es requerido", "error");
+    if (editEtapaId !== null) {
+      setEtapas((prev) =>
+        prev.map((e) => (e.id === editEtapaId ? { ...e, ...etapaForm } : e))
+      );
+      setEditEtapaId(null);
+      showToast("Etapa actualizada");
+    } else {
+      const newEtapa = { ...etapaForm, id: Date.now() };
+      setEtapas((prev) => [...prev, newEtapa]);
+      showToast("Etapa agregada");
+    }
+    setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
+  };
 
-      {/* Saving indicator */}
-      {saving && (
-        <div style={{
-          position: "fixed", top: 10, right: 10, zIndex: 999,
-          background: `${C.amber}22`, border: `1px solid ${C.amber}40`,
-          padding: "6px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, color: C.amber,
-        }}>Guardando...</div>
-      )}
+  const handleEditEtapa = (etapa) => {
+    setEtapaForm({ icon: etapa.icon, codigo: etapa.codigo, nombre: etapa.nombre, color: etapa.color });
+    setEditEtapaId(etapa.id);
+  };
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 14, marginBottom: 4 }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-            padding: "8px 14px", borderRadius: 20, border: "none", cursor: "pointer",
-            background: activeTab === t.id ? `${C.amber}22` : C.surface,
-            color: activeTab === t.id ? C.amber : C.dim,
-            fontSize: 11, fontWeight: 700, fontFamily: fB, whiteSpace: "nowrap",
-          }}>{t.label}</button>
-        ))}
-      </div>
+  const handleDeleteEtapa = (id) => {
+    setEtapas((prev) => prev.filter((e) => e.id !== id));
+    if (editEtapaId === id) {
+      setEditEtapaId(null);
+      setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
+    }
+    showToast("Etapa eliminada");
+  };
 
-      {/* ═══ TAB: GENERAL ═══ */}
-      {activeTab === "general" && (
-        <div style={cardStyle}>
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Nombre de la empresa</label>
-            <input
-              value={config.nombre || ""}
-              onChange={e => setConfig(prev => ({ ...prev, nombre: e.target.value }))}
-              style={inputStyle}
-            />
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Nombre corto (se muestra en la app)</label>
-            <input
-              value={config.nombre_corto || ""}
-              onChange={e => setConfig(prev => ({ ...prev, nombre_corto: e.target.value }))}
-              style={inputStyle}
-              maxLength={12}
-            />
-            <div style={{ fontSize: 10, color: C.mute, marginTop: 4 }}>{(config.nombre_corto || "").length}/12 caracteres</div>
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Rubro</label>
-            <select
-              value={config.rubro || "general"}
-              onChange={e => setConfig(prev => ({ ...prev, rubro: e.target.value }))}
-              style={{ ...inputStyle, cursor: "pointer" }}
+  /* ─── Toggle component ─── */
+  const Toggle = ({ value, onChange }) => (
+    <button
+      onClick={() => onChange(!value)}
+      className="relative border-none cursor-pointer rounded-full"
+      style={{
+        width: 48,
+        height: 28,
+        background: value ? C.green : C.surfHi,
+        transition: "background 0.2s",
+      }}
+    >
+      <div
+        className="absolute rounded-full bg-white shadow-sm"
+        style={{
+          width: 22,
+          height: 22,
+          top: 3,
+          left: value ? 23 : 3,
+          transition: "left 0.2s",
+        }}
+      />
+    </button>
+  );
+
+  /* ─── Render tab content ─── */
+  const renderTabContent = () => {
+    switch (tab) {
+      /* ═══ GENERAL ═══ */
+      case "general":
+        return (
+          <div className="flex flex-col gap-5">
+            <div className={cardCls}>
+              <label className={labelCls}>Nombre de la empresa</label>
+              <input
+                className={inputCls}
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Ej: Mi Empresa S.A."
+              />
+            </div>
+
+            <div className={cardCls}>
+              <label className={labelCls}>Nombre corto</label>
+              <input
+                className={inputCls}
+                value={nombreCorto}
+                onChange={(e) => setNombreCorto(e.target.value)}
+                placeholder="Ej: MIEMPRESA"
+              />
+            </div>
+
+            <div className={cardCls}>
+              <label className={labelCls}>Rubro</label>
+              <input
+                className={inputCls}
+                value={rubro}
+                onChange={(e) => setRubro(e.target.value)}
+                placeholder="Ej: Tecnología, Construcción..."
+              />
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-3.5 rounded-xl text-white font-heading font-bold text-sm border-none cursor-pointer disabled:opacity-50"
+              style={{ background: C.amber }}
             >
-              {["general", "construccion", "industria", "servicios", "comercio", "tecnologia"].map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+              {saving ? "Guardando..." : "Guardar cambios"}
+            </button>
           </div>
-          <button
-            onClick={async () => {
-              setSaving(true);
-              try {
-                const updates = {};
-                if (config.nombre !== empresa?.nombre) updates.nombre = config.nombre;
-                if (config.nombre_corto !== empresa?.nombre_corto) updates.nombre_corto = config.nombre_corto;
-                if (config.rubro !== empresa?.rubro) updates.rubro = config.rubro;
-                if (Object.keys(updates).length === 0) { showToast("Sin cambios", C.dim); setSaving(false); return; }
-                await sb.patch(`empresa?id=eq.${eid}`, updates);
-                if (onUpdate) onUpdate(updates);
-                showToast("✅ Cambios guardados");
-              } catch (e) { showToast(`Error: ${e.message}`, C.red); }
-              setSaving(false);
-            }}
-            disabled={saving}
-            style={{
-              width: "100%", padding: 14, borderRadius: 12, border: "none",
-              background: C.green, color: "#000",
-              fontSize: 15, fontWeight: 700, fontFamily: fB, cursor: saving ? "default" : "pointer",
-              opacity: saving ? 0.5 : 1,
-            }}
-          >{saving ? "Guardando..." : "💾 Guardar cambios"}</button>
-        </div>
-      )}
+        );
 
-      {/* ═══ TAB: COLORES ═══ */}
-      {activeTab === "colores" && (
-        <div style={cardStyle}>
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Color primario</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input
-                type="color"
-                value={config.color_primario || "#F97316"}
-                onChange={e => setConfig(prev => ({ ...prev, color_primario: e.target.value }))}
-                style={{ width: 60, height: 48, border: `2px solid ${C.border}`, borderRadius: 12, cursor: "pointer", background: "transparent" }}
+      /* ═══ COLORES ═══ */
+      case "colores":
+        return (
+          <div className="flex flex-col gap-5">
+            <div className={cardCls}>
+              <label className={labelCls}>Color primario</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={colorPrimario}
+                  onChange={(e) => setColorPrimario(e.target.value)}
+                  className="w-10 h-10 rounded-lg border border-gypi-border cursor-pointer bg-transparent p-0"
+                />
+                <input
+                  className={inputCls}
+                  value={colorPrimario}
+                  onChange={(e) => setColorPrimario(e.target.value)}
+                  placeholder="#4f8cff"
+                />
+              </div>
+              <div
+                className="mt-3 h-10 rounded-lg"
+                style={{ background: colorPrimario }}
               />
-              <div style={{ flex: 1, height: 48, borderRadius: 12, background: config.color_primario || "#F97316", display: "flex", alignItems: "center", justifyContent: "center", color: "#000", fontSize: 12, fontWeight: 700, fontFamily: fM }}>{config.color_primario || "#F97316"}</div>
             </div>
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Color secundario</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input
-                type="color"
-                value={config.color_secundario || "#8B5CF6"}
-                onChange={e => setConfig(prev => ({ ...prev, color_secundario: e.target.value }))}
-                style={{ width: 60, height: 48, border: `2px solid ${C.border}`, borderRadius: 12, cursor: "pointer", background: "transparent" }}
-              />
-              <div style={{ flex: 1, height: 48, borderRadius: 12, background: config.color_secundario || "#8B5CF6", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: fM }}>{config.color_secundario || "#8B5CF6"}</div>
-            </div>
-          </div>
-          <button
-            onClick={async () => {
-              setSaving(true);
-              try {
-                const updates = {};
-                if (config.color_primario !== empresa?.color_primario) updates.color_primario = config.color_primario;
-                if (config.color_secundario !== empresa?.color_secundario) updates.color_secundario = config.color_secundario;
-                if (Object.keys(updates).length === 0) { showToast("Sin cambios", C.dim); setSaving(false); return; }
-                await sb.patch(`empresa?id=eq.${eid}`, updates);
-                if (onUpdate) onUpdate(updates);
-                showToast("✅ Colores guardados");
-              } catch (e) { showToast(`Error: ${e.message}`, C.red); }
-              setSaving(false);
-            }}
-            disabled={saving}
-            style={{
-              width: "100%", padding: 14, borderRadius: 12, border: "none",
-              background: C.green, color: "#000",
-              fontSize: 15, fontWeight: 700, fontFamily: fB, cursor: saving ? "default" : "pointer",
-              opacity: saving ? 0.5 : 1,
-            }}
-          >{saving ? "Guardando..." : "💾 Guardar colores"}</button>
-        </div>
-      )}
 
-      {/* ═══ TAB: PERSONALIZACIÓN ═══ */}
-      {activeTab === "personalizacion" && (
-        <div>
-          {/* Color de fondo */}
-          <div style={cardStyle}>
-            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>🎨 Color de fondo</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-              {[
-                { id: "oscuro", label: "Oscuro", bg: "#0C0A09", text: "#F5F0E8" },
-                { id: "carbon", label: "Carbón", bg: "#1A1A2E", text: "#E0E0E0" },
-                { id: "azul_noche", label: "Azul noche", bg: "#0D1B2A", text: "#E0E1DD" },
-                { id: "claro", label: "Claro", bg: "#F5F5F0", text: "#1C1917" },
-                { id: "crema", label: "Crema", bg: "#FFF8F0", text: "#292524" },
-                { id: "custom", label: "Personalizado", bg: config.color_fondo || "#0C0A09", text: "#F5F0E8" },
-              ].map(t => (
-                <button key={t.id} onClick={() => setConfig(prev => ({ ...prev, tema_fondo: t.id, color_fondo: t.bg, color_texto: t.text }))} style={{
-                  padding: "10px 14px", borderRadius: 12, cursor: "pointer", border: config.tema_fondo === t.id ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
-                  background: t.bg, color: t.text, fontSize: 12, fontWeight: 600, fontFamily: fB,
-                }}>
-                  {t.label}
-                </button>
-              ))}
+            <div className={cardCls}>
+              <label className={labelCls}>Color secundario</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={colorSecundario}
+                  onChange={(e) => setColorSecundario(e.target.value)}
+                  className="w-10 h-10 rounded-lg border border-gypi-border cursor-pointer bg-transparent p-0"
+                />
+                <input
+                  className={inputCls}
+                  value={colorSecundario}
+                  onChange={(e) => setColorSecundario(e.target.value)}
+                  placeholder="#38d68a"
+                />
+              </div>
+              <div
+                className="mt-3 h-10 rounded-lg"
+                style={{ background: colorSecundario }}
+              />
             </div>
-            {config.tema_fondo === "custom" && (
-              <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ ...labelStyle, fontSize: 10 }}>Fondo</label>
-                  <input type="color" value={config.color_fondo || "#0C0A09"} onChange={e => setConfig(prev => ({ ...prev, color_fondo: e.target.value }))} style={{ width: "100%", height: 40, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-3.5 rounded-xl text-white font-heading font-bold text-sm border-none cursor-pointer disabled:opacity-50"
+              style={{ background: C.amber }}
+            >
+              {saving ? "Guardando..." : "Guardar colores"}
+            </button>
+          </div>
+        );
+
+      /* ═══ PERSONALIZAR ═══ */
+      case "personalizar":
+        return (
+          <div className="flex flex-col gap-5">
+            {/* Theme presets */}
+            <div className={cardCls}>
+              <label className={labelCls}>Tema</label>
+              <div className="grid grid-cols-2 gap-2.5">
+                {THEME_PRESETS.map((preset) => (
+                  <button
+                    key={preset.key}
+                    onClick={() => setThemePreset(preset.key)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl border cursor-pointer"
+                    style={{
+                      background: preset.bg,
+                      borderColor: themePreset === preset.key ? C.amber : C.border,
+                      borderWidth: themePreset === preset.key ? 2 : 1,
+                    }}
+                  >
+                    <div
+                      className="w-6 h-6 rounded-md"
+                      style={{ background: preset.surface }}
+                    />
+                    <span
+                      className="text-xs font-body font-semibold"
+                      style={{ color: preset.text }}
+                    >
+                      {preset.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Typography */}
+            <div className={cardCls}>
+              <label className={labelCls}>Tipografía</label>
+              <select
+                className={inputCls}
+                value={typography}
+                onChange={(e) => setTypography(e.target.value)}
+              >
+                <option value="system">Sistema</option>
+                <option value="inter">Inter</option>
+                <option value="roboto">Roboto</option>
+                <option value="poppins">Poppins</option>
+                <option value="mono">Monoespaciada</option>
+              </select>
+            </div>
+
+            {/* Time format */}
+            <div className={cardCls}>
+              <label className={labelCls}>Formato de hora</label>
+              <div className="flex gap-2.5">
+                {["24h", "12h"].map((fmt) => (
+                  <button
+                    key={fmt}
+                    onClick={() => setTimeFormat(fmt)}
+                    className="flex-1 py-2.5 rounded-xl font-body text-sm font-semibold border cursor-pointer"
+                    style={{
+                      background: timeFormat === fmt ? C.amber : C.surface,
+                      color: timeFormat === fmt ? "#fff" : C.text,
+                      borderColor: timeFormat === fmt ? C.amber : C.border,
+                    }}
+                  >
+                    {fmt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notification toggles */}
+            <div className={cardCls}>
+              <label className={labelCls}>Notificaciones</label>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-body text-gypi-text">Email</span>
+                  <Toggle value={notifEmail} onChange={setNotifEmail} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ ...labelStyle, fontSize: 10 }}>Texto</label>
-                  <input type="color" value={config.color_texto || "#F5F0E8"} onChange={e => setConfig(prev => ({ ...prev, color_texto: e.target.value }))} style={{ width: "100%", height: 40, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-body text-gypi-text">Push</span>
+                  <Toggle value={notifPush} onChange={setNotifPush} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-body text-gypi-text">Sonido</span>
+                  <Toggle value={notifSound} onChange={setNotifSound} />
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-3.5 rounded-xl text-white font-heading font-bold text-sm border-none cursor-pointer disabled:opacity-50"
+              style={{ background: C.amber }}
+            >
+              {saving ? "Guardando..." : "Guardar preferencias"}
+            </button>
+          </div>
+        );
+
+      /* ═══ LOGO ═══ */
+      case "logo":
+        return (
+          <div className="flex flex-col gap-5">
+            <div className={cardCls}>
+              <label className={labelCls}>Logo de la empresa</label>
+
+              {/* Preview */}
+              <div className="flex items-center justify-center mb-4 rounded-xl bg-gypi-surf-lo border border-gypi-border overflow-hidden"
+                style={{ height: 160 }}
+              >
+                {logoPreview ? (
+                  <img
+                    src={logoPreview}
+                    alt="Logo preview"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : (
+                  <span className="text-gypi-mute text-sm font-body">
+                    Sin logo
+                  </span>
+                )}
+              </div>
+
+              {/* File input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoChange}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-3 rounded-xl font-heading font-bold text-sm border border-gypi-border cursor-pointer bg-gypi-surf-hi text-gypi-text"
+              >
+                {logoPreview ? "Cambiar logo" : "Subir logo"}
+              </button>
+
+              {logoPreview && (
+                <button
+                  onClick={() => {
+                    setLogoFile(null);
+                    setLogoPreview("");
+                    setLogoUrl("");
+                  }}
+                  className="w-full mt-2 py-2.5 rounded-xl font-body text-sm border-none cursor-pointer text-gypi-red bg-transparent"
+                >
+                  Eliminar logo
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full py-3.5 rounded-xl text-white font-heading font-bold text-sm border-none cursor-pointer disabled:opacity-50"
+              style={{ background: C.amber }}
+            >
+              {saving ? "Guardando..." : "Guardar logo"}
+            </button>
+          </div>
+        );
+
+      /* ═══ DIVISIONES ═══ */
+      case "divisiones":
+        return (
+          <div className="flex flex-col gap-5">
+            {/* Add / Edit form */}
+            <div className={cardCls}>
+              <label className={labelCls}>
+                {editDivId !== null ? "Editar división" : "Nueva división"}
+              </label>
+
+              {/* Icon selector */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {ICON_OPTIONS.map((ic) => (
+                  <button
+                    key={ic}
+                    onClick={() => setDivForm((f) => ({ ...f, icon: ic }))}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-lg cursor-pointer border"
+                    style={{
+                      background: divForm.icon === ic ? C.amber + "22" : C.surface,
+                      borderColor: divForm.icon === ic ? C.amber : C.border,
+                    }}
+                  >
+                    {ic}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className={labelCls}>Nombre</label>
+                  <input
+                    className={inputCls}
+                    value={divForm.label}
+                    onChange={(e) => setDivForm((f) => ({ ...f, label: e.target.value }))}
+                    placeholder="Ej: Producción"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Clave</label>
+                  <input
+                    className={inputCls}
+                    value={divForm.clave}
+                    onChange={(e) => setDivForm((f) => ({ ...f, clave: e.target.value.toUpperCase() }))}
+                    placeholder="Ej: PROD"
+                    maxLength={6}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Color</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={divForm.color}
+                      onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))}
+                      className="w-10 h-10 rounded-lg border border-gypi-border cursor-pointer bg-transparent p-0"
+                    />
+                    <input
+                      className={inputCls}
+                      value={divForm.color}
+                      onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 mt-4">
+                <button
+                  onClick={handleAddDivision}
+                  className="flex-1 py-3 rounded-xl text-white font-heading font-bold text-sm border-none cursor-pointer"
+                  style={{ background: C.amber }}
+                >
+                  {editDivId !== null ? "Actualizar" : "Agregar"}
+                </button>
+                {editDivId !== null && (
+                  <button
+                    onClick={() => {
+                      setEditDivId(null);
+                      setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
+                    }}
+                    className="py-3 px-5 rounded-xl font-body text-sm border border-gypi-border cursor-pointer bg-gypi-surface text-gypi-text"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Division list */}
+            {divisiones.length > 0 && (
+              <div className={cardCls}>
+                <label className={labelCls}>Divisiones ({divisiones.length})</label>
+                <div className="flex flex-col gap-2">
+                  {divisiones.map((div) => (
+                    <div
+                      key={div.id}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-gypi-border bg-gypi-surf-lo"
+                    >
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                        style={{ background: div.color + "22" }}
+                      >
+                        {div.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-heading font-bold text-gypi-text truncate">
+                          {div.label}
+                        </div>
+                        <div className="text-xs font-mono text-gypi-dim">
+                          {div.clave}
+                        </div>
+                      </div>
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ background: div.color }}
+                      />
+                      <button
+                        onClick={() => handleEditDivision(div)}
+                        className="text-xs font-body border-none bg-transparent cursor-pointer text-gypi-cyan"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDivision(div.id)}
+                        className="text-xs font-body border-none bg-transparent cursor-pointer text-gypi-red"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
           </div>
+        );
 
-          {/* Tipografía */}
-          <div style={cardStyle}>
-            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>🔤 Tipografía</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {[
-                { id: "default", label: "Bricolage + Geist (por defecto)", preview: "'Bricolage Grotesque', system-ui" },
-                { id: "moderna", label: "Moderna (sans-serif)", preview: "'Inter', 'Helvetica', sans-serif" },
-                { id: "elegante", label: "Elegante (serif)", preview: "'Georgia', 'Times', serif" },
-                { id: "tecnica", label: "Técnica (monospace)", preview: "'JetBrains Mono', monospace" },
-                { id: "casual", label: "Casual (rounded)", preview: "'Nunito', 'Quicksand', sans-serif" },
-              ].map(f => (
-                <button key={f.id} onClick={() => setConfig(prev => ({ ...prev, tipografia: f.id }))} style={{
-                  padding: "12px 14px", borderRadius: 12, cursor: "pointer", textAlign: "left",
-                  border: config.tipografia === f.id ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
-                  background: config.tipografia === f.id ? `${C.amber}12` : C.surface, color: C.text,
-                }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: f.preview }}>{f.label}</div>
-                  <div style={{ fontSize: 12, color: C.dim, fontFamily: f.preview, marginTop: 4 }}>Vista previa del texto</div>
-                </button>
-              ))}
-            </div>
-          </div>
+      /* ═══ ETAPAS ═══ */
+      case "etapas":
+        return (
+          <div className="flex flex-col gap-5">
+            {/* Add / Edit form */}
+            <div className={cardCls}>
+              <label className={labelCls}>
+                {editEtapaId !== null ? "Editar etapa" : "Nueva etapa"}
+              </label>
 
-          {/* Orden del menú */}
-          <div style={cardStyle}>
-            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>📱 Formato de hora</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {[
-                { id: "24h", label: "24 horas (14:30)" },
-                { id: "12h", label: "12 horas (2:30 PM)" },
-              ].map(f => (
-                <button key={f.id} onClick={() => setConfig(prev => ({ ...prev, formato_hora: f.id }))} style={{
-                  flex: 1, padding: "12px 10px", borderRadius: 12, cursor: "pointer",
-                  border: (config.formato_hora || "24h") === f.id ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
-                  background: (config.formato_hora || "24h") === f.id ? `${C.amber}12` : C.surface, color: C.text,
-                  fontSize: 13, fontWeight: 600, fontFamily: fB, textAlign: "center",
-                }}>{f.label}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Idioma de notificaciones */}
-          <div style={cardStyle}>
-            <div style={{ ...labelStyle, marginBottom: 12, fontSize: 13, color: C.amber }}>🔔 Notificaciones</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, color: C.text }}>Sonido de notificación</span>
-                <button onClick={() => setConfig(prev => ({ ...prev, sonido_notif: !prev.sonido_notif }))} style={{
-                  width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
-                  background: config.sonido_notif !== false ? C.green : C.surfHi,
-                  position: "relative", transition: "background 0.2s",
-                }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 11, background: "#fff", position: "absolute", top: 3, left: config.sonido_notif !== false ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
-                </button>
+              {/* Icon selector */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {ICON_OPTIONS.map((ic) => (
+                  <button
+                    key={ic}
+                    onClick={() => setEtapaForm((f) => ({ ...f, icon: ic }))}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-lg cursor-pointer border"
+                    style={{
+                      background: etapaForm.icon === ic ? C.amber + "22" : C.surface,
+                      borderColor: etapaForm.icon === ic ? C.amber : C.border,
+                    }}
+                  >
+                    {ic}
+                  </button>
+                ))}
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, color: C.text }}>Resumen diario automático</span>
-                <button onClick={() => setConfig(prev => ({ ...prev, resumen_diario: !prev.resumen_diario }))} style={{
-                  width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
-                  background: config.resumen_diario ? C.green : C.surfHi,
-                  position: "relative", transition: "background 0.2s",
-                }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 11, background: "#fff", position: "absolute", top: 3, left: config.resumen_diario ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
-                </button>
-              </div>
-            </div>
-          </div>
 
-          <button
-            onClick={async () => {
-              setSaving(true);
-              try {
-                const updates = {};
-                const campos = ["tema_fondo", "color_fondo", "color_texto", "tipografia", "formato_hora", "sonido_notif", "resumen_diario"];
-                campos.forEach(k => { if (config[k] !== empresa?.[k]) updates[k] = config[k]; });
-                if (Object.keys(updates).length === 0) { showToast("Sin cambios", C.dim); setSaving(false); return; }
-                await sb.patch(`empresa?id=eq.${eid}`, updates);
-                if (onUpdate) onUpdate(updates);
-                showToast("✅ Personalización guardada");
-              } catch (e) { showToast(`Error: ${e.message}`, C.red); }
-              setSaving(false);
-            }}
-            disabled={saving}
-            style={{
-              width: "100%", padding: 14, borderRadius: 12, border: "none",
-              background: C.green, color: "#000",
-              fontSize: 15, fontWeight: 700, fontFamily: fB, cursor: saving ? "default" : "pointer",
-              opacity: saving ? 0.5 : 1,
-            }}
-          >{saving ? "Guardando..." : "💾 Guardar personalización"}</button>
-        </div>
-      )}
-
-      {/* ═══ TAB: LOGO ═══ */}
-      {activeTab === "logo" && (
-        <div style={cardStyle}>
-          <label style={labelStyle}>Logo de la empresa</label>
-          {config.logo_url ? (
-            <div style={{ marginBottom: 16, textAlign: "center" }}>
-              <img
-                src={config.logo_url}
-                alt="Logo"
-                style={{ maxWidth: 180, maxHeight: 180, borderRadius: 16, border: `1px solid ${C.border}`, objectFit: "contain", background: C.bg }}
-              />
-            </div>
-          ) : (
-            <div style={{ padding: 40, textAlign: "center", background: C.surfHi, borderRadius: 14, border: `2px dashed ${C.border}`, marginBottom: 16 }}>
-              <div style={{ fontSize: 40, marginBottom: 8 }}>🖼️</div>
-              <div style={{ fontSize: 13, color: C.dim }}>Sin logo cargado</div>
-            </div>
-          )}
-          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={handleLogoUpload} />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            style={{
-              width: "100%", padding: 14, borderRadius: 12, border: "none",
-              background: uploading ? C.surface : `${C.amber}22`,
-              color: uploading ? C.dim : C.amber,
-              fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: uploading ? "default" : "pointer",
-            }}
-          >{uploading ? "⏳ Subiendo..." : config.logo_url ? "🔄 Cambiar logo" : "📤 Subir logo"}</button>
-          <div style={{ fontSize: 10, color: C.mute, marginTop: 8, textAlign: "center" }}>PNG, JPG, WebP o SVG · Máx 2MB</div>
-        </div>
-      )}
-
-      {/* ═══ TAB: DIVISIONES ═══ */}
-      {activeTab === "divisiones" && (
-        <>
-          {loadingConfig ? (
-            <div style={{ textAlign: "center", padding: 40, color: C.dim }}>Cargando divisiones...</div>
-          ) : (
-            <>
-              {/* Lista de divisiones existentes */}
-              {divisiones.length === 0 ? (
-                <div style={{ ...cardStyle, textAlign: "center", padding: 40 }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>🏭</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Sin divisiones</div>
-                  <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>Creá la primera debajo</div>
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className={labelCls}>Código</label>
+                  <input
+                    className={inputCls}
+                    value={etapaForm.codigo}
+                    onChange={(e) => setEtapaForm((f) => ({ ...f, codigo: e.target.value.toUpperCase() }))}
+                    placeholder="Ej: PLAN"
+                    maxLength={6}
+                  />
                 </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                  {divisiones.map(div => (
-                    <div key={div.id} style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${div.color || C.amber}30` }}>
-                      {editingDiv === div.id ? (
-                        /* Modo edición */
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <input value={div.icon} onChange={e => setDivisiones(prev => prev.map(d => d.id === div.id ? { ...d, icon: e.target.value } : d))} style={{ ...inputStyle, width: 50, textAlign: "center", fontSize: 20, padding: "6px" }} maxLength={4} />
-                            <input value={div.label} onChange={e => setDivisiones(prev => prev.map(d => d.id === div.id ? { ...d, label: e.target.value } : d))} style={{ ...inputStyle, flex: 1 }} placeholder="Nombre" />
-                            <input type="color" value={div.color || "#F97316"} onChange={e => setDivisiones(prev => prev.map(d => d.id === div.id ? { ...d, color: e.target.value } : d))} style={{ width: 44, height: 44, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
-                          </div>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => setEditingDiv(null)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
-                            <button onClick={() => updateDivision(div)} style={{ flex: 1, padding: 8, borderRadius: 8, border: "none", background: C.green, color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Guardar</button>
-                          </div>
+                <div>
+                  <label className={labelCls}>Nombre</label>
+                  <input
+                    className={inputCls}
+                    value={etapaForm.nombre}
+                    onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))}
+                    placeholder="Ej: Planificación"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Color</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={etapaForm.color}
+                      onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))}
+                      className="w-10 h-10 rounded-lg border border-gypi-border cursor-pointer bg-transparent p-0"
+                    />
+                    <input
+                      className={inputCls}
+                      value={etapaForm.color}
+                      onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 mt-4">
+                <button
+                  onClick={handleAddEtapa}
+                  className="flex-1 py-3 rounded-xl text-white font-heading font-bold text-sm border-none cursor-pointer"
+                  style={{ background: C.amber }}
+                >
+                  {editEtapaId !== null ? "Actualizar" : "Agregar"}
+                </button>
+                {editEtapaId !== null && (
+                  <button
+                    onClick={() => {
+                      setEditEtapaId(null);
+                      setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
+                    }}
+                    className="py-3 px-5 rounded-xl font-body text-sm border border-gypi-border cursor-pointer bg-gypi-surface text-gypi-text"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Etapa list */}
+            {etapas.length > 0 && (
+              <div className={cardCls}>
+                <label className={labelCls}>Etapas ({etapas.length})</label>
+                <div className="flex flex-col gap-2">
+                  {etapas.map((etapa) => (
+                    <div
+                      key={etapa.id}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-gypi-border bg-gypi-surf-lo"
+                    >
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-lg"
+                        style={{ background: etapa.color + "22" }}
+                      >
+                        {etapa.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-heading font-bold text-gypi-text truncate">
+                          {etapa.nombre}
                         </div>
-                      ) : (
-                        /* Modo vista */
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 10, background: `${div.color || C.amber}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{div.icon || "📦"}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{div.label}</div>
-                            <div style={{ fontSize: 11, color: C.dim, fontFamily: fM }}>{div.clave}</div>
-                          </div>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <button onClick={() => setEditingDiv(div.id)} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: `${C.cyan}18`, color: C.cyan, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✏️</button>
-                            <button onClick={() => deleteDivision(div.id)} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: `${C.red}18`, color: C.red, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
-                          </div>
+                        <div className="text-xs font-mono text-gypi-dim">
+                          {etapa.codigo}
                         </div>
-                      )}
+                      </div>
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ background: etapa.color }}
+                      />
+                      <button
+                        onClick={() => handleEditEtapa(etapa)}
+                        className="text-xs font-body border-none bg-transparent cursor-pointer text-gypi-cyan"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeleteEtapa(etapa.id)}
+                        className="text-xs font-body border-none bg-transparent cursor-pointer text-gypi-red"
+                      >
+                        Eliminar
+                      </button>
                     </div>
                   ))}
                 </div>
-              )}
-
-              {/* Formulario nueva división */}
-              <div style={{ ...cardStyle, border: `1px dashed ${C.amber}40` }}>
-                <div style={{ ...labelStyle, color: C.amber, marginBottom: 12 }}>➕ Nueva división</div>
-                <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 44px", gap: 8, marginBottom: 10 }}>
-                  <input value={newDiv.icon} onChange={e => setNewDiv(p => ({ ...p, icon: e.target.value }))} style={{ ...inputStyle, textAlign: "center", fontSize: 20, padding: "6px" }} maxLength={4} placeholder="📦" />
-                  <input value={newDiv.label} onChange={e => setNewDiv(p => ({ ...p, label: e.target.value }))} style={inputStyle} placeholder="Nombre (ej: Herrería)" />
-                  <input type="color" value={newDiv.color} onChange={e => setNewDiv(p => ({ ...p, color: e.target.value }))} style={{ width: 44, height: 44, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <input value={newDiv.clave} onChange={e => setNewDiv(p => ({ ...p, clave: e.target.value }))} style={inputStyle} placeholder="Clave interna (ej: herreria)" />
-                  <div style={{ fontSize: 10, color: C.mute, marginTop: 4 }}>Identificador único, sin espacios ni acentos</div>
-                </div>
-                <button onClick={addDivision} disabled={saving || !newDiv.clave.trim() || !newDiv.label.trim()} style={{
-                  width: "100%", padding: 12, borderRadius: 12, border: "none",
-                  background: newDiv.clave.trim() && newDiv.label.trim() ? C.green : C.surface,
-                  color: newDiv.clave.trim() && newDiv.label.trim() ? "#000" : C.mute,
-                  fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: newDiv.clave.trim() && newDiv.label.trim() ? "pointer" : "default",
-                }}>Crear división</button>
               </div>
-            </>
-          )}
-        </>
+            )}
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  /* ─── Main render ─── */
+  return (
+    <div className="flex flex-col h-full bg-gypi-bg text-gypi-text font-body">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gypi-border bg-gypi-surface">
+        <button
+          onClick={onClose}
+          className="text-sm font-body border-none bg-transparent cursor-pointer text-gypi-dim"
+        >
+          ← Volver
+        </button>
+        <h1 className="text-base font-heading font-bold text-gypi-text m-0">
+          Administrar Empresa
+        </h1>
+        <div className="w-12" />
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex overflow-x-auto px-4 py-2.5 gap-1 border-b border-gypi-border bg-gypi-surface scrollbar-none">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-4 py-2 rounded-xl text-xs font-heading font-bold whitespace-nowrap border-none cursor-pointer shrink-0"
+            style={{
+              background: tab === t.key ? C.amber : "transparent",
+              color: tab === t.key ? "#fff" : C.dim,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-4 py-5">
+        {renderTabContent()}
+      </div>
+
+      {/* Toast overlay */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3 rounded-2xl font-body text-sm font-semibold text-white shadow-lg"
+          style={{
+            background: toast.type === "error" ? C.red : C.green,
+            animation: "fadeInUp 0.25s ease-out",
+          }}
+        >
+          {toast.msg}
+        </div>
       )}
 
-      {/* ═══ TAB: ETAPAS ═══ */}
-      {activeTab === "etapas" && (
-        <>
-          {loadingConfig ? (
-            <div style={{ textAlign: "center", padding: 40, color: C.dim }}>Cargando etapas...</div>
-          ) : (
-            <>
-              {/* Lista de etapas existentes */}
-              {etapas.length === 0 ? (
-                <div style={{ ...cardStyle, textAlign: "center", padding: 40 }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Sin etapas</div>
-                  <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>Creá la primera debajo</div>
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                  {etapas.map(et => (
-                    <div key={et.id} style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${et.color || C.amber}30` }}>
-                      {editingEtapa === et.id ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <input value={et.icon} onChange={e => setEtapas(prev => prev.map(x => x.id === et.id ? { ...x, icon: e.target.value } : x))} style={{ ...inputStyle, width: 50, textAlign: "center", fontSize: 20, padding: "6px" }} maxLength={4} />
-                            <input value={et.nombre} onChange={e => setEtapas(prev => prev.map(x => x.id === et.id ? { ...x, nombre: e.target.value } : x))} style={{ ...inputStyle, flex: 1 }} placeholder="Nombre" />
-                            <input type="color" value={et.color || "#F97316"} onChange={e => setEtapas(prev => prev.map(x => x.id === et.id ? { ...x, color: e.target.value } : x))} style={{ width: 44, height: 44, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
-                          </div>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => setEditingEtapa(null)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
-                            <button onClick={() => updateEtapa(et)} style={{ flex: 1, padding: 8, borderRadius: 8, border: "none", background: C.green, color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Guardar</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 10, background: `${et.color || C.amber}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{et.icon || "🔨"}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{et.nombre}</div>
-                            <div style={{ fontSize: 11, color: C.dim, fontFamily: fM }}>Código: {et.codigo}</div>
-                          </div>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <button onClick={() => setEditingEtapa(et.id)} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: `${C.cyan}18`, color: C.cyan, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✏️</button>
-                            <button onClick={() => deleteEtapa(et.id)} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: `${C.red}18`, color: C.red, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Formulario nueva etapa */}
-              <div style={{ ...cardStyle, border: `1px dashed ${C.amber}40` }}>
-                <div style={{ ...labelStyle, color: C.amber, marginBottom: 12 }}>➕ Nueva etapa</div>
-                <div style={{ display: "grid", gridTemplateColumns: "50px 60px 1fr 44px", gap: 8, marginBottom: 12 }}>
-                  <input value={newEtapa.icon} onChange={e => setNewEtapa(p => ({ ...p, icon: e.target.value }))} style={{ ...inputStyle, textAlign: "center", fontSize: 20, padding: "6px" }} maxLength={4} placeholder="🔨" />
-                  <input value={newEtapa.codigo} onChange={e => setNewEtapa(p => ({ ...p, codigo: e.target.value }))} inputMode="numeric" style={{ ...inputStyle, textAlign: "center" }} placeholder="Cód" />
-                  <input value={newEtapa.nombre} onChange={e => setNewEtapa(p => ({ ...p, nombre: e.target.value }))} style={inputStyle} placeholder="Nombre (ej: Soldadura)" />
-                  <input type="color" value={newEtapa.color} onChange={e => setNewEtapa(p => ({ ...p, color: e.target.value }))} style={{ width: 44, height: 44, border: `1px solid ${C.border}`, borderRadius: 8, cursor: "pointer", background: "transparent" }} />
-                </div>
-                <button onClick={addEtapa} disabled={saving || !newEtapa.nombre.trim()} style={{
-                  width: "100%", padding: 12, borderRadius: 12, border: "none",
-                  background: newEtapa.nombre.trim() ? C.green : C.surface,
-                  color: newEtapa.nombre.trim() ? "#000" : C.mute,
-                  fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: newEtapa.nombre.trim() ? "pointer" : "default",
-                }}>Crear etapa</button>
-              </div>
-            </>
-          )}
-        </>
+      {/* Saving overlay */}
+      {saving && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/40">
+          <div className="bg-gypi-surface rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-xl">
+            <div
+              className="w-8 h-8 rounded-full border-[3px] border-t-transparent animate-spin"
+              style={{ borderColor: `${C.amber} transparent ${C.amber} ${C.amber}` }}
+            />
+            <span className="text-sm font-heading font-bold text-gypi-text">
+              Guardando...
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );
