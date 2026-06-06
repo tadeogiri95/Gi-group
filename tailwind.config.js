@@ -15,13 +15,13 @@ module.exports = {
           200: '#FED7AA',
           300: '#FDBA74',
           400: '#FB923C',
-          500: '#F97316', // naranja principal
+          500: '#F97316',
           600: '#EA580C',
           700: '#C2410C',
           800: '#9A3412',
           900: '#7C2D12',
         },
-        // Superficie (modo claro)
+        // Superficie
         surface: {
           0:   '#FFFFFF',
           50:  '#F9FAFB',
@@ -69,19 +69,34 @@ module.exports = {
           500: '#A78BFA',
           600: '#7C3AED',
         },
+        // ─── Aliases "gypi-*" usados en AdminEmpresaScreen ───
+        'gypi-bg':      'var(--color-bg)',
+        'gypi-surface': 'var(--color-surface)',
+        'gypi-surf-hi': 'var(--color-surface-raised)',
+        'gypi-surf-lo': 'var(--color-bg-subtle)',
+        'gypi-border':  'var(--color-border)',
+        'gypi-text':    'var(--color-text)',
+        'gypi-dim':     'var(--color-text-muted)',
+        'gypi-mute':    'var(--color-text-muted)',
+        'gypi-amber':   'var(--color-empresa-primary)',
+        'gypi-green':   'var(--color-success)',
+        'gypi-red':     'var(--color-danger)',
+        'gypi-cyan':    'var(--color-info)',
+        'gypi-violet':  'var(--color-empresa-secondary)',
       },
       fontFamily: {
         display: ['Bricolage Grotesque', 'system-ui', 'sans-serif'],
+        heading: ['Bricolage Grotesque', 'system-ui', 'sans-serif'],
         body:    ['Geist', 'system-ui', 'sans-serif'],
         mono:    ['Geist Mono', 'JetBrains Mono', 'monospace'],
       },
       fontSize: {
-        '2xs': ['0.625rem', { lineHeight: '0.875rem' }],  // 10px
+        '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
       },
       borderRadius: {
-        'xl':  '0.75rem',  // 12px
-        '2xl': '1rem',     // 16px
-        '3xl': '1.25rem',  // 20px
+        'xl':  '0.75rem',
+        '2xl': '1rem',
+        '3xl': '1.25rem',
       },
       boxShadow: {
         'card':    '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
@@ -100,6 +115,10 @@ module.exports = {
         fadeIn: {
           '0%':   { opacity: '0', transform: 'translateY(4px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        fadeInUp: {
+          '0%':   { opacity: '0', transform: 'translate(-50%, 10px)' },
+          '100%': { opacity: '1', transform: 'translate(-50%, 0)' },
         },
         slideUp: {
           '0%':   { opacity: '0', transform: 'translateY(100%)' },
