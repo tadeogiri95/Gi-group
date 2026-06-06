@@ -102,8 +102,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
         rubro,
         color_primario: colorPrimario,
         color_secundario: colorSecundario,
-        divisiones,
-        etapas,
       };
 
       // Subir logo si hay archivo nuevo
