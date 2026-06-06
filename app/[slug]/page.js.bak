@@ -51,8 +51,6 @@ const Ic = {
 };
 
 import { Tag, Chip } from "../components/ui";
-import LoginScreenNew from '../components/LoginScreen';
-import CambiarPasswordScreenNew from '../components/CambiarPasswordScreen';
 
 /* ═══ LOGIN ═══ */
 /* ═══ LOGIN ═══ */
@@ -931,9 +929,9 @@ const loadData=useCallback(async()=>{
     </div>
 
     {!usuario?(
-      <div style={{flex:1,overflow:"hidden"}}><LoginScreenNew onLogin={login} empresa={empresa}/></div>
+      <div style={{flex:1,overflow:"hidden"}}><LoginScreen onLogin={login} empresa={empresa}/></div>
     ):usuario.debe_cambiar_password?(
-      <div style={{flex:1,overflow:"hidden"}}><CambiarPasswordScreenNew usuario={usuario} onDone={(u)=>{login(u);}}/></div>
+      <div style={{flex:1,overflow:"hidden"}}><CambiarPasswordScreen usuario={usuario} onDone={(u)=>{login(u);}}/></div>
 ):isGer&&empresa&&empresa.onboarding_completado===false?(
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <OnboardingWizard
