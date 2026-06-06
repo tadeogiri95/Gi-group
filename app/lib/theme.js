@@ -1,26 +1,17 @@
 // ═══════════════════════════════════════════════════════════
-// Theme — Colores dinámicos por empresa
-//
-// ENTREGA 2A: Los colores base ahora están definidos como
-// CSS custom properties en globals.css (@theme).
-// Este archivo mantiene el objeto C para compatibilidad con
-// los 1,473 inline styles existentes. A medida que se migran
-// pantallas a Tailwind (entrega 2E), los imports de C se
-// van reemplazando por clases como bg-gypi-surface, text-gypi-dim.
-//
-// setColoresEmpresa() ahora TAMBIÉN actualiza las CSS vars
-// para que Tailwind las use via var(--empresa-primario).
+// Theme — Colores dinámicos por empresa (LIGHT MODE)
+// Los colores base se pueden sobreescribir con setColoresEmpresa()
 // ═══════════════════════════════════════════════════════════
 
 const _base = {
-  bg:"#0C0A09", surface:"#171311", surfHi:"#1F1A17", surfLo:"#100D0B",
-  border:"rgba(255,240,220,0.06)", borderHi:"rgba(255,240,220,0.12)",
-  text:"#F5F0E8", dim:"#A39A8E", mute:"#615A52",
-  amber:"#F97316", amberS:"rgba(249,115,22,0.14)",
-  green:"#22C55E", greenS:"rgba(34,197,94,0.12)",
-  red:"#EF4444", redS:"rgba(239,68,68,0.12)",
-  cyan:"#06B6D4", cyanS:"rgba(6,182,212,0.12)",
-  violet:"#A78BFA", violetS:"rgba(167,139,250,0.12)",
+  bg:"#FFFFFF", surface:"#F3F4F6", surfHi:"#FFFFFF", surfLo:"#F9FAFB",
+  border:"rgba(0,0,0,0.08)", borderHi:"rgba(0,0,0,0.14)",
+  text:"#111827", dim:"#6B7280", mute:"#9CA3AF",
+  amber:"#F97316", amberS:"rgba(249,115,22,0.10)",
+  green:"#22C55E", greenS:"rgba(34,197,94,0.10)",
+  red:"#EF4444", redS:"rgba(239,68,68,0.10)",
+  cyan:"#06B6D4", cyanS:"rgba(6,182,212,0.10)",
+  violet:"#A78BFA", violetS:"rgba(167,139,250,0.10)",
 };
 
 // Objeto mutable que toda la app importa
@@ -35,38 +26,38 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// ═══ CAMBIO 2A: también actualizar CSS custom properties ═══
-function updateCSSVars(primario, primarioS, secundario, secundarioS) {
-  if (typeof document === "undefined") return; // SSR safety
-  const root = document.documentElement;
-  if (primario) {
-    root.style.setProperty("--empresa-primario", primario);
-    root.style.setProperty("--empresa-primario-s", primarioS);
-  }
-  if (secundario) {
-    root.style.setProperty("--empresa-secundario", secundario);
-    root.style.setProperty("--empresa-secundario-s", secundarioS);
-  }
-}
-
 // Llamar desde page.js cuando se carga la empresa
 export function setColoresEmpresa(primario, secundario) {
   if (primario && /^#[0-9A-Fa-f]{6}$/.test(primario)) {
     C.amber = primario;
-    C.amberS = hexToRgba(primario, 0.14);
+    C.amberS = hexToRgba(primario, 0.10);
   }
   if (secundario && /^#[0-9A-Fa-f]{6}$/.test(secundario)) {
     C.violet = secundario;
-    C.violetS = hexToRgba(secundario, 0.14);
+    C.violetS = hexToRgba(secundario, 0.10);
   }
-  // Sincronizar con CSS vars para que Tailwind use los colores de empresa
-  updateCSSVars(C.amber, C.amberS, C.violet, C.violetS);
+  // Actualizar CSS variables para que Tailwind y los componentes nuevos también se enteren
+  if (typeof document !== 'undefined') {
+    const root = document.documentElement;
+    if (primario && /^#[0-9A-Fa-f]{6}$/.test(primario)) {
+      root.style.setProperty('--color-empresa-primary', primario);
+      root.style.setProperty('--color-brand', primario);
+    }
+    if (secundario && /^#[0-9A-Fa-f]{6}$/.test(secundario)) {
+      root.style.setProperty('--color-empresa-secondary', secundario);
+    }
+  }
 }
 
 // Resetear a colores por defecto
 export function resetColores() {
   Object.assign(C, _base);
-  updateCSSVars(_base.amber, _base.amberS, _base.violet, _base.violetS);
+  if (typeof document !== 'undefined') {
+    const root = document.documentElement;
+    root.style.setProperty('--color-empresa-primary', '#F97316');
+    root.style.setProperty('--color-empresa-secondary', '#A78BFA');
+    root.style.setProperty('--color-brand', '#F97316');
+  }
 }
 
 export const fH = `'Bricolage Grotesque', system-ui`;
