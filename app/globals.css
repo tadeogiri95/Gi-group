@@ -1,131 +1,77 @@
 @import "tailwindcss";
 
-/* ============================================
-   GYPI — Design System CSS Variables
-   Light mode by default
-   ============================================ */
+@source "../app/**/*.{js,jsx,ts,tsx}";
+@source "../components/**/*.{js,jsx,ts,tsx}";
 
-:root {
-  /* Superficie */
-  --color-bg: #FFFFFF;
-  --color-bg-subtle: #F9FAFB;
-  --color-surface: #F3F4F6;
-  --color-surface-raised: #FFFFFF;
-  --color-border: #E5E7EB;
-  --color-border-strong: #D1D5DB;
+@theme {
+  --color-gypi-bg: #0C0A09;
+  --color-gypi-surface: #171311;
+  --color-gypi-surf-hi: #1F1A17;
+  --color-gypi-surf-lo: #100D0B;
+  --color-gypi-border: rgba(255,240,220,0.06);
+  --color-gypi-text: #F5F0E8;
+  --color-gypi-dim: #A39A8E;
+  --color-gypi-mute: #615A52;
+  --color-gypi-amber: #F97316;
+  --color-gypi-green: #22C55E;
+  --color-gypi-red: #EF4444;
+  --color-gypi-cyan: #06B6D4;
+  --color-gypi-violet: #A78BFA;
 
-  /* Texto */
-  --color-text: #111827;
-  --color-text-secondary: #4B5563;
-  --color-text-muted: #9CA3AF;
-  --color-text-inverse: #FFFFFF;
-
-  /* Brand */
-  --color-brand: #F97316;
-  --color-brand-hover: #EA580C;
-  --color-brand-subtle: #FFF7ED;
-
-  /* Semánticos */
-  --color-success: #22C55E;
-  --color-success-subtle: #F0FDF4;
-  --color-danger: #EF4444;
-  --color-danger-subtle: #FEF2F2;
-  --color-warning: #F59E0B;
-  --color-warning-subtle: #FFFBEB;
-  --color-info: #06B6D4;
-  --color-info-subtle: #ECFEFF;
-  --color-accent: #A78BFA;
-  --color-accent-subtle: #F5F3FF;
-
-  /* Personalización por empresa (overridden via JS) */
-  --color-empresa-primary: #F97316;
-  --color-empresa-secondary: #A78BFA;
+  --font-heading: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-body: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", monospace;
 }
-
-/* ============================================
-   Base
-   ============================================ */
 
 * {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   box-sizing: border-box;
-}
-
-html {
-  -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
 }
 
-body {
+html, body {
   margin: 0;
-  font-family: 'Geist', system-ui, sans-serif;
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  padding: 0;
+  background: #0C0A09;
+  color: #F5F0E8;
+  font-family: "Geist", system-ui, sans-serif;
+  overflow: hidden;
+  height: 100%;
+  height: 100dvh;
+  width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-/* Safe area para móviles con notch */
-.safe-top { padding-top: env(safe-area-inset-top); }
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+button { transition: transform 0.1s, background 0.2s; }
+button:active { transform: scale(0.97); }
 
-/* ============================================
-   Animaciones
-   ============================================ */
+::-webkit-scrollbar { display: none; }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+input, textarea {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 @keyframes typing {
-  from { width: 0; }
-  to   { width: 100%; }
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
-/* Clase utilitaria para la animación de spin existente */
-.animate-spin-legacy {
-  animation: spin 1s linear infinite;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* ============================================
-   Scrollbar
-   ============================================ */
-
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+@keyframes spin {
+  from { transform: rotate(0); }
+  to { transform: rotate(360deg); }
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+.se { animation: fadeIn 0.25s ease; }
 
-::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 9999px;
-}
-
-/* ============================================
-   Focus
-   ============================================ */
-
-:focus-visible {
-  outline: 2px solid var(--color-brand);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-/* ============================================
-   Clase para el contenido scrolleable (usada en page.js)
-   ============================================ */
-.se {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
+@supports (padding: max(0px)) {
+  .safe-bottom { padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+  .safe-top { padding-top: max(12px, env(safe-area-inset-top)); }
 }
