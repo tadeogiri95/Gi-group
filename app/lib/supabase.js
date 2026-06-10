@@ -65,6 +65,7 @@ async function intentarRefresh() {
       const res = await fetch("/api/refresh-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!res.ok) return false;
@@ -94,6 +95,7 @@ async function req(method, path, body) {
     res = await fetch("/api/data", {
       method: "POST",
       headers,
+      credentials: "include",
       body: JSON.stringify({ method, path, body }),
     });
   } catch {
@@ -117,6 +119,7 @@ async function req(method, path, body) {
         const retryRes = await fetch("/api/data", {
           method: "POST",
           headers: retryHeaders,
+          credentials: "include",
           body: JSON.stringify({ method, path, body }),
         });
         const retryJson = await retryRes.json();

@@ -64,6 +64,10 @@ function deriveDimMute(textHex) {
   };
 }
 
+// Fuente activa en runtime (modificada por setColoresEmpresa)
+let _currentFH = `'Bricolage Grotesque', system-ui`;
+let _currentFB = `'Geist', system-ui`;
+
 // ═══ Temas preestablecidos ═══
 export const THEME_PRESETS = {
   default:     { label: "Gypi Claro",    bg: "#F7F7F5", text: "#1A1A1A", primary: "#F97316", secondary: "#7C3AED" },
@@ -137,26 +141,67 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
     _currentFH = f.heading;
     _currentFB = f.body;
   }
+
+  // Sincronizar CSS variables al DOM para clases Tailwind var()
+  if (typeof document !== 'undefined') {
+    const s = document.documentElement.style;
+    // Backgrounds
+    s.setProperty('--color-bg', C.bg);
+    s.setProperty('--color-surface', C.surface);
+    s.setProperty('--color-surf-hi', C.surfHi);
+    s.setProperty('--color-surf-lo', C.surfLo);
+    // Borders
+    s.setProperty('--color-border', C.border);
+    s.setProperty('--color-border-hi', C.borderHi);
+    // Text
+    s.setProperty('--color-text', C.text);
+    s.setProperty('--color-text-muted', C.dim);
+    s.setProperty('--color-text-secondary', C.mute);
+    // Brand
+    s.setProperty('--color-empresa-primary', C.amber);
+    s.setProperty('--color-empresa-primary-subtle', C.amberS);
+    s.setProperty('--color-empresa-secondary', C.violet);
+    s.setProperty('--color-empresa-secondary-subtle', C.violetS);
+    // Semantic
+    s.setProperty('--color-green', C.green);
+    s.setProperty('--color-green-subtle', C.greenS);
+    s.setProperty('--color-red', C.red);
+    s.setProperty('--color-red-subtle', C.redS);
+    s.setProperty('--color-cyan', C.cyan);
+    s.setProperty('--color-cyan-subtle', C.cyanS);
+    // Typography
+    s.setProperty('--font-heading', _currentFH);
+    s.setProperty('--font-body', _currentFB);
+    // Nav: fondo adaptativo — blanco para temas claros, oscuro elevado para temas oscuros
+    if (C.bg.startsWith('#') && C.bg.length === 7) {
+      const r = parseInt(C.bg.slice(1, 3), 16);
+      const g = parseInt(C.bg.slice(3, 5), 16);
+      const b = parseInt(C.bg.slice(5, 7), 16);
+      const lum = (r * 299 + g * 587 + b * 114) / 1000;
+      const navBg = lum > 140
+        ? 'rgba(255,255,255,0.95)'
+        : `rgba(${Math.min(255, r + 20)},${Math.min(255, g + 20)},${Math.min(255, b + 20)},0.95)`;
+      s.setProperty('--color-nav-bg', navBg);
+    }
+  }
 }
 
 // Resetear a colores por defecto
 export function resetColores() {
   Object.assign(C, _base);
-  _currentFH = FONT_OPTIONS.system.heading;
-  _currentFB = FONT_OPTIONS.system.body;
+  _currentFH = FONT_OPTIONS.bricolage.heading;
+  _currentFB = FONT_OPTIONS.bricolage.body;
+  if (typeof document !== 'undefined') {
+    const s = document.documentElement.style;
+    s.setProperty('--font-heading', _currentFH);
+    s.setProperty('--font-body', _currentFB);
+  }
 }
 
-// Fonts como getters para que sean dinámicos
-let _currentFH = `system-ui, sans-serif`;
-let _currentFB = `system-ui, sans-serif`;
-
-export const getFH = () => _currentFH;
-export const getFB = () => _currentFB;
-
-// Backward compat — exports constantes
-export const fH = `'Bricolage Grotesque', system-ui`;
-export const fB = `'Geist', system-ui`;
-export const fM = `'Geist Mono', 'JetBrains Mono', monospace`;
+// Apuntan al CSS var → el browser resuelve el valor actual sin re-render
+export const fH = `var(--font-heading)`;
+export const fB = `var(--font-body)`;
+export const fM = `var(--font-mono)`;
 
 export const fmtTime = d => d.toLocaleTimeString("es-AR", { hour:"2-digit", minute:"2-digit", hour12:false });
 export const fmtDate = d => d.toLocaleDateString("es-AR", { weekday:"long", day:"numeric", month:"long" });

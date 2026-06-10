@@ -2,11 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/auto-fichaje",
-      "schedule": "0 4 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/limpiar-tokens",
       "schedule": "0 5 * * 0"
+    },
+    {
+      "path": "/api/cron/trial-reminder",
+      "schedule": "0 12 * * *"
     }
   ]
 }

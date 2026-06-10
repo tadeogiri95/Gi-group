@@ -6,6 +6,8 @@
 
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
+import { logAudit } from "../../lib/audit";
+import { broadcastRefresh } from "../../lib/broadcast";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -37,21 +39,22 @@ async function sbPatch(path, body) {
   return r.json();
 }
 
-// ─── Hora Argentina ───
+// ─── Hora local según timezone de empresa ───
 const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
+const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
 
-function getArgTime() {
+function getLocalTime(tz = TZ_DEFAULT) {
   const now = new Date();
-  const arg = new Date(now.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
-  const y = arg.getFullYear();
-  const m = String(arg.getMonth() + 1).padStart(2, "0");
-  const d = String(arg.getDate()).padStart(2, "0");
-  const hh = String(arg.getHours()).padStart(2, "0");
-  const mm = String(arg.getMinutes()).padStart(2, "0");
+  const local = new Date(now.toLocaleString("en-US", { timeZone: tz }));
+  const y = local.getFullYear();
+  const m = String(local.getMonth() + 1).padStart(2, "0");
+  const d = String(local.getDate()).padStart(2, "0");
+  const hh = String(local.getHours()).padStart(2, "0");
+  const mm = String(local.getMinutes()).padStart(2, "0");
   return {
     fecha: `${y}-${m}-${d}`,
     hora: `${hh}:${mm}`,
-    diaKey: DIAS_KEY[arg.getDay()],
+    diaKey: DIAS_KEY[local.getDay()],
   };
 }
 
@@ -67,7 +70,14 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "Acción inválida" }, { status: 400 });
     }
 
-    const { fecha, hora, diaKey } = getArgTime();
+    // Timezone de la empresa (un solo fetch liviano, cacheado por Supabase)
+    let empresaTz = TZ_DEFAULT;
+    try {
+      const tzData = await sbGet(`empresa?id=eq.${sesion.empresa_id}&select=timezone&limit=1`);
+      if (tzData?.[0]?.timezone) empresaTz = tzData[0].timezone;
+    } catch { /* usa default */ }
+
+    const { fecha, hora, diaKey } = getLocalTime(empresaTz);
     const empleadoId = sesion.empleado_id;
     const legajo = sesion.legajo;
     const empresaId = sesion.empresa_id;
@@ -133,6 +143,17 @@ export async function POST(request) {
         empresa_id: empresaId,
       });
 
+      logAudit({
+        empresa_id: empresaId,
+        actor_id: empleadoId,
+        actor_legajo: legajo,
+        actor_rol: sesion.rol,
+        accion: "fichar_ingreso",
+        entidad: "fichada",
+        ip: request.headers.get("x-forwarded-for") || "unknown",
+        datos_despues: { fecha, hora, tardanza: tardanza.estado },
+      });
+      broadcastRefresh(empresaId, "fichadas");
       return NextResponse.json({ ok: true, hora, tardanza });
     }
 
@@ -195,6 +216,17 @@ export async function POST(request) {
       horas_trabajadas: horasTrab.toFixed(2),
     });
 
+    logAudit({
+      empresa_id: empresaId,
+      actor_id: empleadoId,
+      actor_legajo: legajo,
+      actor_rol: sesion.rol,
+      accion: "fichar_egreso",
+      entidad: "fichada",
+      ip: request.headers.get("x-forwarded-for") || "unknown",
+      datos_despues: { fecha, hora },
+    });
+    broadcastRefresh(empresaId, "fichadas");
     return NextResponse.json({ ok: true, hora });
 
   } catch (err) {

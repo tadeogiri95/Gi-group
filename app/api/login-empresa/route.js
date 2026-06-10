@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { validarPassword } from "../../lib/auth";
 import { signAccessToken, signRefreshToken } from "../../lib/jwt";
+import { logAudit } from "../../lib/audit";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -212,12 +213,43 @@ export async function POST(req) {
     delete safe.password;
     safe.empresa = empresaData?.[0] || null;
 
-    return NextResponse.json({
+    logAudit({
+      empresa_id: usuario.empresa_id,
+      actor_id: usuario.id,
+      actor_legajo: usuario.legajo,
+      actor_rol: usuario.rol,
+      accion: "login",
+      entidad: "empleado",
+      entidad_id: String(usuario.id),
+      ip,
+    });
+
+    const isProd = process.env.NODE_ENV === "production";
+    const res = NextResponse.json({
       usuario: safe,
       token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 7 * 24 * 60 * 60,  // 7 días en segundos
+      expires_in: 7 * 24 * 60 * 60,
     });
+    res.cookies.set({
+      name: "gypi_token",
+      value: accessToken,
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60,
+    });
+    res.cookies.set({
+      name: "gypi_refresh",
+      value: refreshToken,
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60,
+    });
+    return res;
   } catch (err) {
     console.error("[login] Error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });

@@ -11,14 +11,18 @@
 
 import { NextResponse } from "next/server";
 import { verifyToken } from "./jwt";
+export { validarPassword } from "./validators";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 // ─── Validar sesión: JWT primero, fallback a DB ───
 export async function validarToken(request) {
+  // Cookie httpOnly tiene prioridad (Sprint 2); Authorization header como fallback
+  const cookieToken = request.cookies?.get?.('gypi_token')?.value;
   const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const headerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const token = cookieToken || headerToken;
   if (!token || token.length < 20) return null;
 
   // ═══ INTENTO 1: JWT (rápido, sin DB) ═══
@@ -47,28 +51,6 @@ export async function validarToken(request) {
     }
   }
 
-  // ═══ INTENTO 2: Token legacy (hex random → validar_sesion RPC) ═══
-  // TEMPORAL: eliminar este bloque 30 días después del deploy de 1E.
-  // Para esa fecha todas las sesiones legacy habrán expirado.
-  try {
-    const res = await fetch(`${SB_URL}/rest/v1/rpc/validar_sesion`, {
-      method: "POST",
-      headers: {
-        apikey: SB_KEY,
-        Authorization: `Bearer ${SB_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ p_token: token }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data && data.length > 0) {
-      return { ...data[0], _auth_method: "legacy_rpc" };
-    }
-  } catch {
-    // silently fail
-  }
-
   return null;
 }
 
@@ -80,22 +62,3 @@ export function respuestaNoAutorizado(mensaje) {
   );
 }
 
-// ─── Validar contraseña (policy compartida) ───
-export function validarPassword(pw) {
-  if (!pw || typeof pw !== "string") {
-    return { valido: false, error: "La contraseña es requerida" };
-  }
-  if (pw.length < 8) {
-    return { valido: false, error: "La contraseña debe tener al menos 8 caracteres" };
-  }
-  if (!/[A-Z]/.test(pw)) {
-    return { valido: false, error: "Debe contener al menos una letra mayúscula" };
-  }
-  if (!/[a-z]/.test(pw)) {
-    return { valido: false, error: "Debe contener al menos una letra minúscula" };
-  }
-  if (!/[0-9]/.test(pw)) {
-    return { valido: false, error: "Debe contener al menos un número" };
-  }
-  return { valido: true };
-}

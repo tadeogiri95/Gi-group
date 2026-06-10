@@ -25,7 +25,9 @@ async function sbGet(path) {
 
 export async function POST(request) {
   try {
-    const { refresh_token } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    // Cookie httpOnly tiene prioridad; body como fallback para clientes legacy
+    const refresh_token = request.cookies?.get?.('gypi_refresh')?.value || body.refresh_token;
 
     if (!refresh_token) {
       return NextResponse.json({ error: "refresh_token requerido" }, { status: 400 });
@@ -86,10 +88,21 @@ export async function POST(request) {
       console.error("[refresh] Error actualizando jti:", e.message);
     }
 
-    return NextResponse.json({
+    const isProd = process.env.NODE_ENV === "production";
+    const res = NextResponse.json({
       token: newAccessToken,
       expires_in: 7 * 24 * 60 * 60,
     });
+    res.cookies.set({
+      name: "gypi_token",
+      value: newAccessToken,
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60,
+    });
+    return res;
   } catch (err) {
     console.error("[refresh-token] Error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });

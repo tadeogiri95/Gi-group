@@ -30,11 +30,45 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+:root {
+  /* Backgrounds */
+  --color-bg: #F7F7F5;
+  --color-surface: #FFFFFF;
+  --color-surf-hi: rgba(0,0,0,0.06);
+  --color-surf-lo: rgba(0,0,0,0.02);
+
+  /* Borders */
+  --color-border: rgba(0,0,0,0.08);
+  --color-border-hi: rgba(0,0,0,0.14);
+
+  /* Text */
+  --color-text: #1A1A1A;
+  --color-text-muted: rgba(26,26,26,0.50);
+  --color-text-secondary: rgba(26,26,26,0.30);
+
+  /* Brand (overwritten by empresa) */
+  --color-empresa-primary: #F97316;
+  --color-empresa-primary-subtle: rgba(249,115,22,0.10);
+  --color-empresa-secondary: #7C3AED;
+  --color-empresa-secondary-subtle: rgba(124,58,237,0.10);
+
+  /* Semantic (status colors) */
+  --color-green: #16A34A;
+  --color-green-subtle: rgba(22,163,74,0.10);
+  --color-red: #DC2626;
+  --color-red-subtle: rgba(220,38,38,0.10);
+  --color-cyan: #0891B2;
+  --color-cyan-subtle: rgba(8,145,178,0.10);
+
+  /* Nav */
+  --color-nav-bg: rgba(255,255,255,0.95);
+}
+
 html, body {
   margin: 0;
   padding: 0;
-  background: #0C0A09;
-  color: #F5F0E8;
+  background: var(--color-bg, #F7F7F5);
+  color: var(--color-text, #1A1A1A);
   font-family: "Geist", system-ui, sans-serif;
   overflow: hidden;
   height: 100%;

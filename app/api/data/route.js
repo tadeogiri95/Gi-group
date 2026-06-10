@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validarLimite, invalidarCachePlan } from "../../lib/planEnforcement";
+import { broadcastRefresh } from "../../lib/broadcast";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -230,6 +231,13 @@ export async function POST(request) {
     else if (method === "DELETE") { opts.method = "DELETE"; }
 
     const data = await sbFetch(finalPath, opts);
+
+    // Broadcast de cambios para tablas monitoreadas en tiempo real
+    const BROADCAST_EN = ["solicitudes", "notificaciones", "registro_actividades"];
+    if (BROADCAST_EN.includes(pathCheck.tabla) && method && method !== "GET") {
+      broadcastRefresh(empresaId, pathCheck.tabla);
+    }
+
     return NextResponse.json({ ok: true, data });
   } catch (err) {
     console.error("[data] Error:", err.message);

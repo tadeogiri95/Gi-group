@@ -3,6 +3,8 @@
 // FIX: sbFetch ahora verifica res.ok antes de parsear JSON
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { sendBienvenida } from "../../lib/email";
+import { validarPassword } from "../../lib/validators";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -46,8 +48,9 @@ export async function POST(req) {
     if (!nombre_empresa || !nombre_admin || !email || !password) {
       return NextResponse.json({ error: "Completá todos los campos" }, { status: 400 });
     }
-    if (password.length < 6) {
-      return NextResponse.json({ error: "La contraseña debe tener al menos 6 caracteres" }, { status: 400 });
+    const pwCheck = validarPassword(password);
+    if (!pwCheck.valido) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }
 
     // Verificar email no repetido
@@ -90,7 +93,7 @@ export async function POST(req) {
     const adminEmp = await sbFetch("empleados", "POST", {
       nombre: nombre_admin,
       apodo: nombre_admin.split(" ")[0],
-      legajo: "1",
+      legajo: 1,
       email,
       password: hashed,
       rol: "gerencial",
@@ -121,6 +124,14 @@ export async function POST(req) {
     } catch (e) {
       console.error("[registro] No se pudo iniciar trial:", e.message);
     }
+
+    // Fire-and-forget — no bloquea la respuesta
+    sendBienvenida({
+      to: email,
+      nombre: nombre_admin,
+      empresa: emp.nombre,
+      slug: emp.slug,
+    });
 
     return NextResponse.json({
       ok: true,

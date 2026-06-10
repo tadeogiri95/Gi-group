@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getPreapproval, getPago } from "../../../lib/mercadopago";
+import { sendFalloPago } from "../../../lib/email";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -168,6 +169,23 @@ export async function POST(request) {
               suscripcion_activa_id: suscId,
             });
           }
+        }
+      }
+
+      if (estadoPago === "rechazado" && empresaId) {
+        try {
+          const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=admin_email,nombre_corto,nombre,slug`);
+          if (emp?.admin_email) {
+            sendFalloPago({
+              to: emp.admin_email,
+              nombre: emp.nombre_corto || emp.nombre,
+              empresa: emp.nombre_corto || emp.nombre,
+              slug: emp.slug,
+              monto: pago.transaction_amount,
+            });
+          }
+        } catch (e) {
+          console.error("[webhook] Error enviando email fallo pago:", e.message);
         }
       }
 

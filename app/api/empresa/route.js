@@ -1,6 +1,7 @@
 // app/api/empresa/route.js — Resolución por slug (público) + por token (privado) + PATCH
 import { NextResponse } from "next/server";
 import { validarToken } from "../../lib/auth";
+import { logAudit } from "../../lib/audit";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -109,7 +110,19 @@ export async function PATCH(request) {
       return NextResponse.json({ error: data?.message || "Error actualizando" }, { status: res.status });
     }
 
-    return NextResponse.json(data?.[0] || data);
+    const updated = data?.[0] || data;
+    logAudit({
+      empresa_id: sesion.empresa_id,
+      actor_id: sesion.empleado_id,
+      actor_legajo: sesion.legajo,
+      actor_rol: sesion.rol,
+      accion: "editar_empresa",
+      entidad: "empresa",
+      entidad_id: sesion.empresa_id,
+      datos_despues: updates,
+      ip: request.headers.get("x-forwarded-for") || "unknown",
+    });
+    return NextResponse.json(updated);
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

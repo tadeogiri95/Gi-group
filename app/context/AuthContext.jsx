@@ -50,7 +50,7 @@ export function AuthProvider({ children }) {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch("/api/config-empresa", { headers });
       const data = await res.json();
-      if (data.divisiones?.length > 0) {
+      if (data.divisiones) {
         setDivisionesState(data.divisiones);
         setDivisionesEmpresa(data.divisiones);
       }
@@ -83,7 +83,9 @@ export function AuthProvider({ children }) {
           loadConfigEmpresa(d.id);
         }
       }
-    } catch {}
+    } catch (e) {
+      if (process.env.NODE_ENV !== "production") console.error("cargarEmpresa error:", e);
+    }
   }, [slug, loadConfigEmpresa]);
 
   // ─── Resolver branding al montar ───
@@ -145,13 +147,15 @@ export function AuthProvider({ children }) {
   }, [loadConfigEmpresa, cargarEmpresa]);
 
   // ─── Logout ───
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     setUsuario(null);
     clearToken();
     try {
       localStorage.removeItem("gi-session");
       localStorage.removeItem("gi-session-time");
     } catch {}
+    // Limpiar cookies httpOnly desde el servidor
+    await fetch("/api/logout", { method: "POST", credentials: "include" }).catch(() => {});
     router.push("/");
   }, [router]);
 
@@ -159,7 +163,7 @@ export function AuthProvider({ children }) {
   const updateEmpresa = useCallback((updates) => {
     setEmpresa(prev => {
       const updated = { ...prev, ...updates };
-      setColoresEmpresa(updated.color_primario, updated.color_secundario);
+      setColoresEmpresa(updated);
       return updated;
     });
     if (usuario?.empresa_id) loadConfigEmpresa(usuario.empresa_id);
@@ -180,6 +184,7 @@ export function AuthProvider({ children }) {
       logout,
       updateEmpresa,
       loadConfigEmpresa,
+      cargarEmpresa,
     }}>
       {children}
     </AuthContext.Provider>

@@ -45,7 +45,7 @@ function ColorRow({ label, value, onChange }) {
   );
 }
 
-export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
+export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [] }) {
   const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -71,13 +71,13 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
   const fileInputRef = useRef(null);
 
   // Divisiones
-  const [divisiones, setDivisiones] = useState(empresa?.divisiones || []);
+  const [divisiones, setDivisiones] = useState(divisionesProp);
   const [divForm, setDivForm] = useState({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
   const [editDivId, setEditDivId] = useState(null);
 
   // Etapas
-  const [etapas, setEtapas] = useState(empresa?.etapas || []);
-  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
+  const [etapas, setEtapas] = useState(etapasProp);
+  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" });
   const [editEtapaId, setEditEtapaId] = useState(null);
 
   const showToast = useCallback((msg, type = "success") => {
@@ -85,7 +85,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
     setTimeout(() => setToast(null), 2500);
   }, []);
 
-  // Sync from prop
+  // Sync empresa fields from prop
   useEffect(() => {
     if (!empresa) return;
     setNombre(empresa.nombre || "");
@@ -99,9 +99,11 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
     setThemePreset(empresa.theme_preset || "default");
     setLogoUrl(empresa.logo_url || "");
     setLogoPreview(empresa.logo_url || "");
-    setDivisiones(empresa.divisiones || []);
-    setEtapas(empresa.etapas || []);
   }, [empresa]);
+
+  // Sync divisiones/etapas from context props
+  useEffect(() => { setDivisiones(divisionesProp); }, [divisionesProp]);
+  useEffect(() => { setEtapas(etapasProp); }, [etapasProp]);
 
   // Aplicar preset al seleccionar
   const applyPreset = (key) => {
@@ -159,18 +161,27 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
         });
       }
 
-      // Logo upload se maneja aparte si hay archivo
+      // Logo upload: ruta correcta + campo "file"
       if (tab === "logo" && logoFile) {
         const formData = new FormData();
-        formData.append("logo", logoFile);
-        const lr = await fetch(`/api/empresa/logo?empresa_id=${empresaId || empresa?.id}`, {
+        formData.append("file", logoFile);
+        const lr = await fetch("/api/upload-logo", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: formData,
         });
-        if (!lr.ok) throw new Error("Error subiendo logo");
+        if (!lr.ok) {
+          const e = await lr.json().catch(() => ({}));
+          throw new Error(e.error || "Error subiendo logo");
+        }
         const ld = await lr.json();
-        body.logo_url = ld.url || ld.logo_url;
+        const newLogoUrl = ld.logo_url || ld.url;
+        setLogoUrl(newLogoUrl);
+        setLogoPreview(newLogoUrl);
+        setLogoFile(null);
+        onUpdate?.({ logo_url: newLogoUrl });
+        showToast("Logo guardado");
+        return;
       }
 
       if (Object.keys(body).length > 0) {
@@ -199,18 +210,39 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
   };
 
   // Division CRUD
-  const handleAddDivision = () => {
+  const handleAddDivision = async () => {
     if (!divForm.label.trim()) return showToast("El nombre es requerido", "error");
     if (!divForm.clave.trim()) return showToast("La clave es requerida", "error");
-    if (editDivId !== null) {
-      setDivisiones((prev) => prev.map((d) => (d.id === editDivId ? { ...d, ...divForm } : d)));
-      setEditDivId(null);
-      showToast("División actualizada");
-    } else {
-      setDivisiones((prev) => [...prev, { ...divForm, id: Date.now() }]);
-      showToast("División agregada");
+    const token = getToken();
+    if (!token) return showToast("Sin sesión", "error");
+    try {
+      if (editDivId !== null) {
+        const r = await fetch("/api/config-empresa", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "update_division", id: editDivId, ...divForm }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || "Error actualizando");
+        const { division } = await r.json();
+        setDivisiones((prev) => prev.map((d) => (d.id === editDivId ? division : d)));
+        setEditDivId(null);
+        showToast("División actualizada");
+      } else {
+        const r = await fetch("/api/config-empresa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "add_division", ...divForm }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || "Error agregando");
+        const { division } = await r.json();
+        setDivisiones((prev) => [...prev, division]);
+        showToast("División agregada");
+      }
+      setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
+      onUpdate?.({});
+    } catch (err) {
+      showToast(err.message || "Error al guardar", "error");
     }
-    setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
   };
 
   const handleEditDivision = (div) => {
@@ -218,25 +250,58 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
     setEditDivId(div.id);
   };
 
-  const handleDeleteDivision = (id) => {
-    setDivisiones((prev) => prev.filter((d) => d.id !== id));
-    if (editDivId === id) { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }
-    showToast("División eliminada");
+  const handleDeleteDivision = async (id) => {
+    const token = getToken();
+    if (!token) return showToast("Sin sesión", "error");
+    try {
+      const r = await fetch(`/api/config-empresa?type=division&id=${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Error eliminando");
+      setDivisiones((prev) => prev.filter((d) => d.id !== id));
+      if (editDivId === id) { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }
+      showToast("División eliminada");
+      onUpdate?.({});
+    } catch (err) {
+      showToast(err.message || "Error al eliminar", "error");
+    }
   };
 
   // Etapa CRUD
-  const handleAddEtapa = () => {
+  const handleAddEtapa = async () => {
     if (!etapaForm.nombre.trim()) return showToast("El nombre es requerido", "error");
-    if (!etapaForm.codigo.trim()) return showToast("El código es requerido", "error");
-    if (editEtapaId !== null) {
-      setEtapas((prev) => prev.map((e) => (e.id === editEtapaId ? { ...e, ...etapaForm } : e)));
-      setEditEtapaId(null);
-      showToast("Etapa actualizada");
-    } else {
-      setEtapas((prev) => [...prev, { ...etapaForm, id: Date.now() }]);
-      showToast("Etapa agregada");
+    if (!etapaForm.codigo || etapaForm.codigo < 1) return showToast("El código debe ser un número positivo", "error");
+    const token = getToken();
+    if (!token) return showToast("Sin sesión", "error");
+    try {
+      if (editEtapaId !== null) {
+        const r = await fetch("/api/config-empresa", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "update_etapa", id: editEtapaId, ...etapaForm }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || "Error actualizando");
+        const { etapa } = await r.json();
+        setEtapas((prev) => prev.map((e) => (e.id === editEtapaId ? etapa : e)));
+        setEditEtapaId(null);
+        showToast("Etapa actualizada");
+      } else {
+        const r = await fetch("/api/config-empresa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "add_etapa", ...etapaForm }),
+        });
+        if (!r.ok) throw new Error((await r.json()).error || "Error agregando");
+        const { etapa } = await r.json();
+        setEtapas((prev) => [...prev, etapa]);
+        showToast("Etapa agregada");
+      }
+      setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" });
+      onUpdate?.({});
+    } catch (err) {
+      showToast(err.message || "Error al guardar", "error");
     }
-    setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" });
   };
 
   const handleEditEtapa = (etapa) => {
@@ -244,10 +309,22 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
     setEditEtapaId(etapa.id);
   };
 
-  const handleDeleteEtapa = (id) => {
-    setEtapas((prev) => prev.filter((e) => e.id !== id));
-    if (editEtapaId === id) { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" }); }
-    showToast("Etapa eliminada");
+  const handleDeleteEtapa = async (id) => {
+    const token = getToken();
+    if (!token) return showToast("Sin sesión", "error");
+    try {
+      const r = await fetch(`/api/config-empresa?type=etapa&id=${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Error eliminando");
+      setEtapas((prev) => prev.filter((e) => e.id !== id));
+      if (editEtapaId === id) { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" }); }
+      showToast("Etapa eliminada");
+      onUpdate?.({});
+    } catch (err) {
+      showToast(err.message || "Error al eliminar", "error");
+    }
   };
 
   // ═══ Styles ═══
@@ -491,7 +568,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
               ))}
             </div>
             <div style={lbl}>Código</div>
-            <input style={{ ...inp, marginBottom: 10 }} value={etapaForm.codigo} onChange={(e) => setEtapaForm((f) => ({ ...f, codigo: e.target.value.toUpperCase() }))} placeholder="Ej: PLAN" maxLength={6} />
+            <input type="number" min="1" max="999" style={{ ...inp, marginBottom: 10 }} value={etapaForm.codigo} onChange={(e) => setEtapaForm((f) => ({ ...f, codigo: parseInt(e.target.value) || 1 }))} placeholder="Ej: 1" />
             <div style={lbl}>Nombre</div>
             <input style={{ ...inp, marginBottom: 10 }} value={etapaForm.nombre} onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Ej: Planificación" />
             <div style={lbl}>Color</div>
@@ -501,7 +578,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate }) {
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={handleAddEtapa} style={{ ...btnPrimary, flex: 1 }}>{editEtapaId !== null ? "Actualizar" : "Agregar"}</button>
-              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: "", nombre: "", color: "#4f8cff" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.text, cursor: "pointer" }}>Cancelar</button>}
+              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.text, cursor: "pointer" }}>Cancelar</button>}
             </div>
           </div>
           {etapas.length > 0 && <div style={card}>

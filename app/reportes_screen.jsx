@@ -13,7 +13,7 @@ const DIAS_LABEL = { lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie"
 const DIAS_SEMANA_JS = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-import { DIVISIONES_CON_TODOS as DIVISIONES } from "./lib/constants";
+import { getDivisionesConTodas } from "./lib/constants";
 
 /* ─── Helpers ─── */
 const parseHora = (str) => { if (!str) return null; const [h, m] = str.split(":").map(Number); return h * 60 + m; };
@@ -239,6 +239,7 @@ function ReportesObraTab() {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ReportesScreen() {
+  const DIVISIONES = getDivisionesConTodas();
   const [tab, setTab] = useState("cumplimiento");
   const [periodo, setPeriodo] = useState("semana");
   const [weekOffset, setWeekOffset] = useState(0);

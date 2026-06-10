@@ -10,7 +10,7 @@ import CalendarioScreen from "../../calendario_screen";
 import ReglasScreen from "./ReglasScreen";
 import AdminEmpresaScreen from "../../admin_empresa_screen";
 
-export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUpdateEmpresa }) {
+export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [] }) {
   const [tab, setTab] = useState("reportes");
   const tabs = [["reportes", "📊 Asistencia"], ["horarios", "📅 Horarios"], ["proyectos", "📋 Proyectos"], ["ubicaciones", "📍 Ubicaciones"], ["calendario", "🗓️ Calendario"], ["reglas", "⚙️ Reglas Bot"], ["admin", "🏢 Empresa"]];
 
@@ -26,7 +26,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
         {tab === "ubicaciones" && <GeolocalizacionScreen empresaId={usuario?.empresa_id || empresa?.id} />}
         {tab === "calendario" && <CalendarioScreen empresaId={usuario?.empresa_id || empresa?.id} />}
         {tab === "reglas" && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
-        {tab === "admin" && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} />}
+        {tab === "admin" && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
       </div>
     </div>
   );
