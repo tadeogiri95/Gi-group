@@ -40,7 +40,7 @@ const SECTIONS = ["Inicio rápido", "Fichaje", "Actividades", "Gestión", "FAQs"
 const FAQS = [
   {
     q: "¿Cómo registro una empresa nueva?",
-    a: "Desde la landing de gypi.app, hacé clic en "Probar gratis". Completá el nombre, slug y email del administrador. Recibirás un email de bienvenida con el link de acceso.",
+    a: "Desde la landing de gypi.app, hacé clic en «Probar gratis». Completá el nombre, slug y email del administrador. Recibirás un email de bienvenida con el link de acceso.",
   },
   {
     q: "¿Cómo invito empleados?",
