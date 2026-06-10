@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { sendBienvenida, sendVerificacionEmail } from "../../lib/email";
 import { validarPassword } from "../../lib/validators";
+import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -26,7 +27,7 @@ async function sbFetch(path, method = "GET", body = null) {
   try {
     return JSON.parse(text);
   } catch (e) {
-    console.error(`[sbFetch] JSON parse error on ${method} ${path}:`, text.slice(0, 200));
+    logger.error(`sbFetch JSON parse error on ${method} ${path}`, new Error(text.slice(0, 200)));
     throw new Error(`Error de base de datos: respuesta inválida`);
   }
 }
@@ -129,7 +130,7 @@ export async function POST(req) {
         body: JSON.stringify({ p_empresa_id: emp.id }),
       });
     } catch (e) {
-      console.error("[registro] No se pudo iniciar trial:", e.message);
+      logger.error("No se pudo iniciar trial", e);
     }
 
     // Fire-and-forget — no bloquea la respuesta

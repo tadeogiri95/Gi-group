@@ -1,17 +1,20 @@
 "use client";
-// Extraído de [slug]/page.js líneas 56-102
-// ENTREGA 2D: Componente independiente
-
 import { useState } from "react";
 import { C, fH, fB } from "../../lib/theme";
 import { setToken } from "../../lib/supabase";
 
 export default function LoginScreen({ onLogin, empresa }) {
-  const [legajo, setLegajo] = useState("");
+  const [legajo, setLegajo]   = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError]     = useState("");
+
+  // ── Recuperar contraseña ──
+  const [modoRecuperar, setModoRecuperar] = useState(false);
+  const [emailReset, setEmailReset]       = useState("");
+  const [resetLoading, setResetLoading]   = useState(false);
+  const [resetMsg, setResetMsg]           = useState("");
 
   const login = async () => {
     if (!legajo || !password) return;
@@ -31,6 +34,63 @@ export default function LoginScreen({ onLogin, empresa }) {
       onLogin(data.usuario, { token: data.token, refresh_token: data.refresh_token });
     } catch (err) { setError(err.message); setLoading(false); }
   };
+
+  const solicitarReset = async () => {
+    if (!emailReset.trim()) return;
+    setResetLoading(true); setResetMsg("");
+    try {
+      await fetch("/api/recuperar-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailReset.trim(), empresa_id: empresa?.id }),
+      });
+      // Siempre mostramos el mismo mensaje — no filtramos si el email existe
+      setResetMsg("Si el email está registrado, recibirás el link en minutos. Revisá tu bandeja y spam.");
+    } catch {
+      setResetMsg("No se pudo enviar el email. Intentá de nuevo.");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  if (modoRecuperar) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "0 28px", justifyContent: "center" }}>
+        <button onClick={() => { setModoRecuperar(false); setResetMsg(""); setEmailReset(""); }}
+          style={{ alignSelf: "flex-start", background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, marginBottom: 24, padding: 0 }}>
+          ← Volver al login
+        </button>
+        <h1 style={{ margin: "0 0 6px", fontFamily: fH, fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Recuperar contraseña</h1>
+        <div style={{ fontSize: 14, color: C.dim, marginBottom: 28, lineHeight: 1.5 }}>
+          Ingresá el email con el que te registraste. Te enviamos un link para crear una nueva contraseña.
+        </div>
+
+        {resetMsg ? (
+          <div style={{ padding: "14px 16px", background: C.greenS || "#E8F5E9", borderRadius: 12, color: C.green || "#2E7D32", fontSize: 14, lineHeight: 1.5 }}>
+            {resetMsg}
+          </div>
+        ) : (
+          <>
+            <input
+              value={emailReset}
+              onChange={e => setEmailReset(e.target.value)}
+              placeholder="tu@email.com"
+              type="email"
+              autoComplete="email"
+              style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${C.borderHi}`, background: C.surface, color: C.text, fontSize: 16, fontFamily: fB, marginBottom: 16, outline: "none" }}
+              onKeyDown={e => e.key === "Enter" && solicitarReset()}
+            />
+            <button
+              onClick={solicitarReset}
+              disabled={resetLoading || !emailReset.trim()}
+              style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: "#000", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: (resetLoading || !emailReset.trim()) ? 0.6 : 1 }}>
+              {resetLoading ? "Enviando..." : "Enviar link"}
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "0 28px", justifyContent: "center" }}>
@@ -56,6 +116,10 @@ export default function LoginScreen({ onLogin, empresa }) {
       <button onClick={login} disabled={loading || !legajo || !password}
         style={{ marginTop: 20, width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: "#000", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
         {loading ? "Ingresando..." : "Ingresar"}
+      </button>
+      <button onClick={() => setModoRecuperar(true)}
+        style={{ marginTop: 16, background: "none", border: "none", color: C.dim, fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>
+        ¿Olvidaste tu contraseña?
       </button>
     </div>
   );

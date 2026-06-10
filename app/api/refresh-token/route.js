@@ -9,8 +9,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
-import { verifyToken } from "../../lib/jwt";
-import { signAccessToken } from "../../lib/jwt";
+import { verifyToken, signAccessToken } from "../../lib/jwt";
+import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -85,7 +85,7 @@ export async function POST(request) {
       });
     } catch (e) {
       // No bloquea el refresh si falla el update
-      console.error("[refresh] Error actualizando jti:", e.message);
+      logger.error("Error actualizando jti en sesión", e);
     }
 
     const isProd = process.env.NODE_ENV === "production";
@@ -104,7 +104,7 @@ export async function POST(request) {
     });
     return res;
   } catch (err) {
-    console.error("[refresh-token] Error:", err.message);
+    logger.error("refresh-token error", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

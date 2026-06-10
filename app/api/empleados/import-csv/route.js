@@ -120,12 +120,18 @@ export async function POST(req) {
     // Contraseña inicial aleatoria segura — el empleado debe cambiarla en primer login
     const passwordHash = await bcrypt.hash(passwordInicial(), 10);
 
+    const emailRaw = row.email?.trim() || null;
+    if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+      results.errors.push(`Fila ${rowNum}: email inválido ("${emailRaw}")`);
+      continue;
+    }
+
     const nuevo = {
       empresa_id: empresaId,
       legajo,
       nombre,
       apodo: nombre.split(" ")[0],
-      email: row.email?.trim() || null,
+      email: emailRaw,
       area: row.area?.trim() || "produccion",
       division: row.division?.trim() || null,
       rol,

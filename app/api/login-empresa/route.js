@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import { validarPassword } from "../../lib/auth";
 import { signAccessToken, signRefreshToken } from "../../lib/jwt";
 import { logAudit } from "../../lib/audit";
+import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -94,10 +95,10 @@ async function guardarSesionJWT({ empleadoId, empresaId, jti, ip, userAgent }) {
     });
     if (!r.ok) {
       const err = await r.text();
-      console.error("[login] Error guardando sesión:", err);
+      logger.error("Error guardando sesión", new Error(err));
     }
   } catch (e) {
-    console.error("[login] Error guardando sesión JWT:", e.message);
+    logger.error("Error guardando sesión JWT", e);
   }
 }
 
@@ -175,9 +176,9 @@ export async function POST(req) {
           try {
             const hashed = await bcrypt.hash(password, 10);
             await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
-            console.log(`[login] Contraseña migrada a bcrypt para legajo ${emp.legajo}`);
+            if (process.env.NODE_ENV !== "production") console.log(`[login] Contraseña migrada a bcrypt para legajo ${emp.legajo}`);
           } catch (e) {
-            console.error("[login] Error migrando contraseña:", e.message);
+            logger.error("Error migrando contraseña", e);
           }
           break;
         }
@@ -212,7 +213,7 @@ export async function POST(req) {
       refreshJti = refresh.jti;
     } catch (e) {
       // Si JWT falla (ej: JWT_SECRET no configurada), caer al flujo legacy
-      console.error("[login] Error generando JWT, usando flujo legacy:", e.message);
+      logger.warn("Error generando JWT, usando flujo legacy", { error: e.message });
 
       const sesionData = await sbRpc("crear_sesion", {
         p_empleado_id: usuario.id,
@@ -292,7 +293,7 @@ export async function POST(req) {
     });
     return res;
   } catch (err) {
-    console.error("[login] Error:", err.message);
+    logger.error("login error", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

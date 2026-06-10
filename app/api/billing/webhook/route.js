@@ -9,7 +9,8 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getPreapproval, getPago } from "../../../lib/mercadopago";
-import { sendFalloPago } from "../../../lib/email";
+import { sendFalloPago, sendPlanSuspendido } from "../../../lib/email";
+import { logger } from "../../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -35,7 +36,7 @@ async function sbPost(path, body) {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify(body),
   });
-  if (!r.ok) console.error("[webhook] sbPost falló:", await r.text());
+  if (!r.ok) logger.error("webhook sbPost falló", new Error(await r.text()));
   return r.ok ? r.json() : null;
 }
 
@@ -67,7 +68,7 @@ export async function POST(request) {
   try {
     // ═══ CAMBIO 1D: Bloquear si no hay secret configurado ═══
     if (!WH_SECRET) {
-      console.error("[webhook] MERCADOPAGO_WEBHOOK_SECRET no configurada — rechazando request");
+      logger.error("MERCADOPAGO_WEBHOOK_SECRET no configurada — rechazando request");
       return NextResponse.json(
         { ok: false, error: "Webhook no configurado (falta MERCADOPAGO_WEBHOOK_SECRET)" },
         { status: 500 }
@@ -80,7 +81,7 @@ export async function POST(request) {
 
     // ═══ CAMBIO 1D: Validación SIEMPRE activa ═══
     if (!validarFirma(request)) {
-      console.warn("[webhook] Firma HMAC inválida — posible ataque. Headers:", {
+      logger.warn("Firma HMAC inválida — posible ataque", {
         signature: request.headers.get("x-signature")?.slice(0, 30) + "...",
         requestId: request.headers.get("x-request-id"),
         ip: request.headers.get("x-forwarded-for"),
@@ -90,7 +91,7 @@ export async function POST(request) {
 
     const tipo = body.type || body.topic;
     const dataId = body.data?.id || body.id;
-    console.log("[webhook] Recibido:", tipo, dataId);
+    logger.debug("[webhook] Recibido:", tipo, dataId);
 
     // ─── Suscripción (preapproval) ───
     if (tipo === "subscription_preapproval" || tipo === "preapproval") {
@@ -98,7 +99,7 @@ export async function POST(request) {
       const externalRef = preapproval.external_reference || "";
       const match = externalRef.match(/^gypi-([0-9a-f-]+)-([0-9a-f-]+)$/i);
       if (!match) {
-        console.warn("[webhook] external_reference inválido:", externalRef);
+        logger.warn("external_reference inválido", { externalRef });
         return NextResponse.json({ ok: true });
       }
       const empresaId = match[1];
@@ -121,6 +122,7 @@ export async function POST(request) {
         const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan`);
         const plan = susc?.[0]?.plan || "free";
 
+        // Cancelar otras suscripciones activas/trial de la misma empresa
         await sbPatch(
           `suscripciones?empresa_id=eq.${empresaId}&estado=in.(trial,activa)&id=neq.${suscId}`,
           { estado: "cancelada" }
@@ -130,6 +132,28 @@ export async function POST(request) {
           plan_activo: plan,
           suscripcion_activa_id: suscId,
         });
+      } else if (nuevoEstado === "suspendida" || nuevoEstado === "cancelada") {
+        // Downgrade a free cuando MP suspende o cancela la suscripción
+        await sbPatch(`empresa?id=eq.${empresaId}`, {
+          plan_activo: "free",
+          suscripcion_activa_id: null,
+        });
+
+        // Notificar al admin (fire-and-forget)
+        try {
+          const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=admin_email,nombre_corto,nombre,slug`);
+          if (emp?.admin_email) {
+            sendPlanSuspendido({
+              to: emp.admin_email,
+              nombre: emp.nombre_corto || emp.nombre,
+              empresa: emp.nombre_corto || emp.nombre,
+              slug: emp.slug,
+              motivo: nuevoEstado === "suspendida" ? "impago" : "cancelación",
+            });
+          }
+        } catch (e) {
+          logger.error("Error enviando email de suspensión", e);
+        }
       }
 
       return NextResponse.json({ ok: true, accion: `susc_${nuevoEstado}` });
@@ -185,7 +209,7 @@ export async function POST(request) {
             });
           }
         } catch (e) {
-          console.error("[webhook] Error enviando email fallo pago:", e.message);
+          logger.error("Error enviando email fallo pago", e);
         }
       }
 
@@ -195,10 +219,10 @@ export async function POST(request) {
     return NextResponse.json({ ok: true, ignorado: tipo });
   } catch (err) {
     if (err.status === 404 || /not found/i.test(err.message)) {
-      console.log("[webhook] Recurso no encontrado (simulación o ID viejo):", err.message);
+      logger.debug("Recurso no encontrado (simulación o ID viejo):", err.message);
       return NextResponse.json({ ok: true, ignorado: "not_found" });
     }
-    console.error("[webhook] Error:", err.message);
+    logger.error("webhook error", err);
     return NextResponse.json({ ok: false, error: err.message });
   }
 }

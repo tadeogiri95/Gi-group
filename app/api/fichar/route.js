@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { logAudit } from "../../lib/audit";
 import { broadcastRefresh } from "../../lib/broadcast";
+import { logger } from "../../lib/logger";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -122,7 +123,7 @@ export async function POST(request) {
         }
       }
     } catch (e) {
-      console.error("[fichar] Error validando geolocalización:", e.message);
+      logger.error("Error validando geolocalización", e);
     }
 
     // ═══════════════════════════════════
@@ -173,7 +174,7 @@ export async function POST(request) {
           }
         }
       } catch (e) {
-        console.error("[fichar] Error tardanza:", e.message);
+        logger.error("Error calculando tardanza", e);
       }
 
       await sbPost("fichadas", {
@@ -217,7 +218,7 @@ export async function POST(request) {
           });
         }
       } catch (e) {
-        console.error("[fichar] Error check tareas:", e.message);
+        logger.error("Error verificando tareas activas", e);
       }
     } else {
       try {
@@ -226,7 +227,7 @@ export async function POST(request) {
           { hora_fin: new Date().toISOString() }
         );
       } catch (e) {
-        console.error("[fichar] Error cerrando tareas:", e.message);
+        logger.error("Error cerrando tareas activas", e);
       }
     }
 
@@ -273,7 +274,7 @@ export async function POST(request) {
     return NextResponse.json({ ok: true, hora });
 
   } catch (err) {
-    console.error("[fichar] Error:", err.message);
+    logger.error("fichar error", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }

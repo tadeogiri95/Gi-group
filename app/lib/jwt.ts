@@ -66,6 +66,25 @@ export async function verifyToken(token: string | undefined | null): Promise<JWT
   }
 }
 
+export async function signPasswordResetToken(input: { empleadoId: string; empresaId: string }): Promise<string> {
+  const jti = generateJti();
+  return new SignJWT({ sub: input.empleadoId, eid: input.empresaId, type: "password_reset", jti })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .setIssuer("gypi")
+    .sign(getSecret());
+}
+
+export async function verifyPasswordResetToken(
+  token: string | undefined | null
+): Promise<{ empleadoId: string; empresaId: string } | null> {
+  const payload = await verifyToken(token);
+  if (!payload || payload.type !== "password_reset") return null;
+  if (!payload.sub || !payload.eid) return null;
+  return { empleadoId: payload.sub as string, empresaId: payload.eid as string };
+}
+
 export async function signAdminToken(): Promise<string> {
   const jti = generateJti();
   return new SignJWT({ sub: "superadmin", jti })

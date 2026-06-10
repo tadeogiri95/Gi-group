@@ -19,6 +19,7 @@ import PushManager from "../../components/PushManager";
 // Screens
 import LoginScreen from "../components/screens/LoginScreen";
 import CambiarPasswordScreen from "../components/screens/CambiarPasswordScreen";
+import ResetPasswordScreen from "../components/screens/ResetPasswordScreen";
 import ChatScreen from "../components/screens/ChatScreen";
 import HomeEmp from "../components/screens/HomeEmp";
 import InboxScreen from "../components/screens/InboxScreen";
@@ -139,6 +140,17 @@ export default function HomeContent() {
     </div>
   );
   if (!init) return null;
+
+  // Reset de contraseña via link de email — no requiere estar logueado
+  const resetToken = searchParams.get("token");
+  if (!usuario && screenFromUrl === "reset_password" && resetToken) return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", maxWidth: 480, margin: "0 auto", width: "100%" }}>
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <ResetPasswordScreen token={resetToken} empresa={empresa} onVolver={() => router.push(pathname)} />
+      </div>
+    </div>
+  );
+
   if (!usuario) return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh", maxWidth: 480, margin: "0 auto", width: "100%" }}>
       <div style={{ flex: 1, overflow: "hidden" }}>

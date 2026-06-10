@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { logAudit } from "../../lib/audit";
+import { logger } from "../../lib/logger";
 
 const RATE_LIMIT = 20;
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -52,7 +53,7 @@ export async function POST(request) {
     const { system, messages } = await request.json();
 
     if (!process.env.ANTHROPIC_API_KEY) {
-      console.error("[chat] ANTHROPIC_API_KEY no configurada");
+      logger.error("ANTHROPIC_API_KEY no configurada");
       return NextResponse.json({ error: "API key no configurada" }, { status: 500 });
     }
 
@@ -74,7 +75,7 @@ export async function POST(request) {
     const data = await res.json();
 
     if (!res.ok) {
-      console.error("[chat] Anthropic error:", res.status, JSON.stringify(data));
+      logger.error("Anthropic API error", new Error(`status ${res.status}`), { status: res.status, data });
       return NextResponse.json({
         content: [{ type: "text", text: JSON.stringify({
           progreso: "Error al procesar con IA. Revisá la consola del servidor.",
@@ -103,7 +104,7 @@ export async function POST(request) {
 
     return NextResponse.json(data);
   } catch (err) {
-    console.error("[chat] Error:", err);
+    logger.error("chat error", err);
     return NextResponse.json(
       { content: [{ type: "text", text: JSON.stringify({
         progreso: "Error de conexión con el servidor.",

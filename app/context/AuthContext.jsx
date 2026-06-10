@@ -8,7 +8,7 @@
 //
 // Reemplaza:
 //   - 5 useStates (usuario, empresa, init, slugInvalido, forceRender)
-//   - Lógica de localStorage gi-session / gi-session-time
+//   - Lógica de sessionStorage gi-session / gi-session-time
 //   - cargarEmpresa() con pre-login (slug) y post-login (token)
 //   - loadConfigEmpresa() para divisiones/etapas
 //   - onUnauthorized callback
@@ -61,11 +61,11 @@ export function AuthProvider({ children }) {
   }, []);
 
   // ─── Cargar empresa (pre-login: por slug, post-login: via cookie) ───
-  // No usa getToken() — la sesión autenticada se detecta por gi-session en localStorage.
+  // No usa getToken() — la sesión autenticada se detecta por gi-session en sessionStorage.
   // Las cookies httpOnly autentican las llamadas al servidor automáticamente.
   const cargarEmpresa = useCallback(async () => {
     let hasSession = false;
-    try { hasSession = !!localStorage.getItem("gi-session"); } catch {}
+    try { hasSession = !!sessionStorage.getItem("gi-session"); } catch {}
 
     try {
       if (!hasSession && slug) {
@@ -95,17 +95,17 @@ export function AuthProvider({ children }) {
   // ─── Resolver branding al montar ───
   useEffect(() => { cargarEmpresa(); }, [cargarEmpresa]);
 
-  // ─── Restaurar sesión de localStorage ───
+  // ─── Restaurar sesión de sessionStorage ───
   useEffect(() => {
     try {
-      const s = localStorage.getItem("gi-session");
+      const s = sessionStorage.getItem("gi-session");
       if (s) {
         const parsed = JSON.parse(s);
-        const guardado = localStorage.getItem("gi-session-time");
+        const guardado = sessionStorage.getItem("gi-session-time");
         const ahora = Date.now();
         if (guardado && (ahora - Number(guardado)) > SIETE_DIAS) {
-          localStorage.removeItem("gi-session");
-          localStorage.removeItem("gi-session-time");
+          sessionStorage.removeItem("gi-session");
+          sessionStorage.removeItem("gi-session-time");
           clearToken();
         } else {
           setUsuario(parsed);
@@ -122,8 +122,8 @@ export function AuthProvider({ children }) {
       setUsuario(null);
       clearToken();
       try {
-        localStorage.removeItem("gi-session");
-        localStorage.removeItem("gi-session-time");
+        sessionStorage.removeItem("gi-session");
+        sessionStorage.removeItem("gi-session-time");
       } catch {}
     });
   }, []);
@@ -141,8 +141,8 @@ export function AuthProvider({ children }) {
 
     // Persistir sesión
     try {
-      localStorage.setItem("gi-session", JSON.stringify(safe));
-      localStorage.setItem("gi-session-time", String(Date.now()));
+      sessionStorage.setItem("gi-session", JSON.stringify(safe));
+      sessionStorage.setItem("gi-session-time", String(Date.now()));
     } catch {}
 
     // Cargar config de empresa
@@ -155,8 +155,8 @@ export function AuthProvider({ children }) {
     setUsuario(null);
     clearToken();
     try {
-      localStorage.removeItem("gi-session");
-      localStorage.removeItem("gi-session-time");
+      sessionStorage.removeItem("gi-session");
+      sessionStorage.removeItem("gi-session-time");
     } catch {}
     // Limpiar cookies httpOnly desde el servidor
     await fetch("/api/logout", { method: "POST", credentials: "include" }).catch(() => {});

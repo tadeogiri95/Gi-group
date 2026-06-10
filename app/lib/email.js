@@ -94,6 +94,29 @@ export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRest
   }).catch((e) => console.error("[email] sendTrialVencimiento error:", e.message));
 }
 
+// ─── Recuperación de contraseña ───
+export async function sendRecuperarPassword({ to, nombre, empresa, resetUrl }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      Recibimos una solicitud para restablecer la contraseña de tu cuenta en <strong>${empresa}</strong>.
+      Si no fuiste vos, ignorá este mensaje — tu contraseña no cambiará.
+    </p>
+    <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:14px 18px;margin:0 0 20px;font-size:14px;color:#9A3412">
+      🔐 Este link es válido por <strong>1 hora</strong> y solo puede usarse una vez.
+    </div>
+    ${btn(resetUrl, "Restablecer contraseña →")}
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">Si no solicitaste este cambio, podés ignorar este email.</p>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Restablecer contraseña — Gypi`,
+    html: buildHtml("Restablecer contraseña", empresa, cuerpo),
+  }).catch((e) => console.error("[email] sendRecuperarPassword error:", e.message));
+}
+
 // ─── Verificación de email post-registro ───
 export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) {
   if (!process.env.RESEND_API_KEY) return;
@@ -114,6 +137,54 @@ export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) 
     subject: `Confirmá tu email — Gypi`,
     html: buildHtml("Confirmá tu email", empresa, cuerpo),
   }).catch((e) => console.error("[email] sendVerificacionEmail error:", e.message));
+}
+
+// ─── Trial expirado (downgrade automático a free) ───
+export async function sendTrialExpirado({ to, nombre, empresa, slug }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const url = `https://gypi.app/${slug}`;
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      El trial Pro de <strong>${empresa}</strong> ha finalizado. Tu cuenta pasó automáticamente al plan gratuito.
+    </p>
+    <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#991B1B">
+      🔒 Las funciones Pro (reportes, proyectos, geolocalización, grilla de horarios) ya no están disponibles.
+      Suscribite para recuperar el acceso completo.
+    </div>
+    ${btn(`${url}?screen=config`, "Ver planes y suscribirme →")}
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">Tus datos están seguros — podés suscribirte en cualquier momento y retomar donde dejaste.</p>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Tu trial de Gypi finalizó — ${empresa}`,
+    html: buildHtml("Tu trial finalizó", empresa, cuerpo),
+  }).catch((e) => console.error("[email] sendTrialExpirado error:", e.message));
+}
+
+// ─── Plan suspendido por impago / cancelación ───
+export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "cancelación" }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const url = `https://gypi.app/${slug}`;
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      La suscripción de <strong>${empresa}</strong> fue ${motivo === "impago" ? "suspendida por falta de pago" : "cancelada"}.
+      Tu cuenta pasó automáticamente al plan gratuito.
+    </p>
+    <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#991B1B">
+      🔒 Las funciones de tu plan anterior ya no están disponibles.
+      ${motivo === "impago" ? "Actualizá tu método de pago para reactivar." : "Podés suscribirte nuevamente en cualquier momento."}
+    </div>
+    ${btn(`${url}?screen=config`, "Reactivar suscripción →")}
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Suscripción ${motivo === "impago" ? "suspendida" : "cancelada"} — ${empresa}`,
+    html: buildHtml(motivo === "impago" ? "Suscripción suspendida" : "Suscripción cancelada", empresa, cuerpo),
+  }).catch((e) => console.error("[email] sendPlanSuspendido error:", e.message));
 }
 
 // ─── Fallo de pago ───
