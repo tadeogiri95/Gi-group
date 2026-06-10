@@ -39,12 +39,14 @@ export async function POST(request) {
       return NextResponse.json({ error: "Refresh token inválido o expirado" }, { status: 401 });
     }
 
-    // Verificar que la sesión no fue revocada
-    // (buscamos por refresh_jti en la tabla sesiones)
+    // Verificar que la sesión no fue revocada buscando por refresh_jti.
+    // Fail-open: si el resultado es null (columna inexistente, error de DB) se
+    // continúa para no expulsar usuarios con sesiones válidas sin refresh_jti.
+    // Solo se bloquea si el array está vacío (revocación explícita confirmada).
     const sesiones = await sbGet(
       `sesiones?refresh_jti=eq.${payload.jti}&select=id,empleado_id,empresa_id`
     );
-    if (!sesiones || sesiones.length === 0) {
+    if (Array.isArray(sesiones) && sesiones.length === 0) {
       return NextResponse.json(
         { error: "Sesión revocada. Iniciá sesión de nuevo." },
         { status: 401 }

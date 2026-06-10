@@ -71,34 +71,52 @@ async function checkLoginRateLimit(ip) {
 }
 
 // Guardar sesión en la tabla sesiones (para poder revocar).
-// Solo insertamos columnas garantizadas por el schema base (001_tablas_base.sql).
-// El campo `token` almacena el jti — validarToken y logout lo usan para revocar.
-// Las columnas `jti` y `refresh_jti` (migración 010) no se incluyen aquí para
-// evitar que el INSERT falle si la migración no fue aplicada todavía.
-async function guardarSesionJWT({ empleadoId, empresaId, jti, ip, userAgent }) {
-  try {
+// Intenta primero con todos los campos opcionales (refresh_jti, user_agent).
+// Si falla (columna inexistente, constraint, etc.), hace fallback al set mínimo.
+async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, userAgent }) {
+  if (!SB_URL || !SB_KEY) return;
+
+  const baseBody = {
+    empleado_id: empleadoId,
+    empresa_id: empresaId,
+    token: jti,
+    ip: ip || null,
+    expira_en: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+
+  const tryInsert = async (body) => {
     const r = await fetch(`${SB_URL}/rest/v1/sesiones`, {
       method: "POST",
       headers: {
         apikey: SB_KEY,
         Authorization: `Bearer ${SB_KEY}`,
         "Content-Type": "application/json",
+        Prefer: "return=minimal",
       },
-      body: JSON.stringify({
-        empleado_id: empleadoId,
-        empresa_id: empresaId,
-        token: jti,
-        ip,
-        user_agent: userAgent,
-        expira_en: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      }),
+      body: JSON.stringify(body),
     });
-    if (!r.ok) {
-      const err = await r.text();
-      logger.error("Error guardando sesión", new Error(err));
+    return { ok: r.ok, status: r.status, text: r.ok ? "" : await r.text() };
+  };
+
+  try {
+    // Intento completo: con user_agent y refresh_jti
+    const full = {
+      ...baseBody,
+      user_agent: userAgent || null,
+      ...(refreshJti ? { refresh_jti: refreshJti } : {}),
+    };
+    const r1 = await tryInsert(full);
+    if (r1.ok) return;
+
+    logger.error(`guardarSesionJWT fallo completo [${r1.status}]`, new Error(r1.text));
+
+    // Fallback: solo columnas garantizadas (schema base)
+    const r2 = await tryInsert(baseBody);
+    if (!r2.ok) {
+      logger.error(`guardarSesionJWT fallo minimal [${r2.status}]`, new Error(r2.text));
     }
   } catch (e) {
-    logger.error("Error guardando sesión JWT", e);
+    logger.error("guardarSesionJWT excepción", e);
   }
 }
 
@@ -242,6 +260,7 @@ export async function POST(req) {
       empleadoId: usuario.id,
       empresaId: usuario.empresa_id,
       jti: accessJti,
+      refreshJti: refreshJti,
       ip,
       userAgent: userAgent.substring(0, 200),
     });
