@@ -479,7 +479,13 @@ export default function Landing() {
             <button onClick={() => scrollTo("login")} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13 }}>Ingresar</button>
           </div>
         </div>
-        <div style={{ textAlign: "center", fontSize: 12, color: C.mute, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${C.border}`, flexWrap: "wrap" }}>
+          <a href="/docs" style={{ fontSize: 12, color: C.dim, textDecoration: "none" }}>Documentación</a>
+          <a href="/terms" style={{ fontSize: 12, color: C.dim, textDecoration: "none" }}>Términos</a>
+          <a href="/privacy" style={{ fontSize: 12, color: C.dim, textDecoration: "none" }}>Privacidad</a>
+          <a href="mailto:contacto@gypi.app" style={{ fontSize: 12, color: C.dim, textDecoration: "none" }}>Contacto</a>
+        </div>
+        <div style={{ textAlign: "center", fontSize: 12, color: C.mute, marginTop: 12 }}>
           © {new Date().getFullYear()} Gypi · Gestión y productividad industrial · Todos los derechos reservados
         </div>
       </footer>
