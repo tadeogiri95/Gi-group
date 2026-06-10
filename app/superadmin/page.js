@@ -1,13 +1,14 @@
 import { cookies } from "next/headers";
 import LoginForm from "./LoginForm";
 import Dashboard from "./Dashboard";
+import { verifyAdminToken } from "../lib/jwt";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 async function fetchData() {
   const [empresasRes, suscripcionesRes, empleadosRes] = await Promise.all([
-    fetch(`${SB_URL}/rest/v1/empresa?select=id,nombre,nombre_corto,slug,plan,activa,created_at,onboarding_completado&order=created_at.desc`, {
+    fetch(`${SB_URL}/rest/v1/empresa?select=id,nombre,nombre_corto,slug,plan_activo,activa,created_at,onboarding_completado&order=created_at.desc`, {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
       cache: "no-store",
     }),
@@ -44,10 +45,9 @@ async function fetchData() {
 
 export default async function SuperadminPage() {
   const cookieStore = await cookies();
-  const key = cookieStore.get("gypi_superadmin")?.value;
-  const secret = process.env.SUPERADMIN_SECRET;
+  const adminToken = cookieStore.get("gypi_superadmin")?.value;
 
-  if (!secret || key !== secret) {
+  if (!adminToken || !(await verifyAdminToken(adminToken))) {
     return <LoginForm />;
   }
 

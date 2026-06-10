@@ -1,12 +1,5 @@
 // ═══════════════════════════════════════════════════════════
 // app/lib/auth.js — Middleware de autenticación compartido
-//
-// ENTREGA 1A: validarToken + respuestaNoAutorizado
-// ENTREGA 1B: + validarPassword
-// ENTREGA 1E: validarToken ahora intenta JWT primero (rápido,
-//   sin DB hit). Si falla, fallback a RPC validar_sesion
-//   para tokens legacy que aún estén activos.
-//   Después de 30 días del deploy, eliminar el fallback.
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
@@ -16,42 +9,51 @@ export { validarPassword } from "./validators";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-// ─── Validar sesión: JWT primero, fallback a DB ───
+// ─── Validar sesión: verifica firma JWT + revocación en DB ───
 export async function validarToken(request) {
-  // Cookie httpOnly tiene prioridad (Sprint 2); Authorization header como fallback
-  const cookieToken = request.cookies?.get?.('gypi_token')?.value;
+  const cookieToken = request.cookies?.get?.("gypi_token")?.value;
   const authHeader = request.headers.get("authorization");
   const headerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
   const token = cookieToken || headerToken;
   if (!token || token.length < 20) return null;
 
-  // ═══ INTENTO 1: JWT (rápido, sin DB) ═══
-  // Los JWT de Gypi empiezan con "eyJ" (base64 de {"alg":...})
-  if (token.startsWith("eyJ")) {
-    try {
-      const payload = await verifyToken(token);
-      if (payload && payload.sub && payload.eid) {
-        // Verificar que no sea un refresh token usado como access token
-        if (payload.type === "refresh") return null;
+  if (!token.startsWith("eyJ")) return null;
 
-        return {
-          empleado_id: payload.sub,
-          empresa_id: payload.eid,
-          legajo: payload.leg,
-          rol: payload.rol,
-          jti: payload.jti,
-          // Marcar que vino por JWT (útil para logging/debugging)
-          _auth_method: "jwt",
-        };
-      }
+  let payload;
+  try {
+    payload = await verifyToken(token);
+  } catch {
+    return null;
+  }
+
+  if (!payload || !payload.sub || !payload.eid) return null;
+  if (payload.type === "refresh") return null;
+
+  // Tokens de impersonación (1h) se validan solo por firma — no tienen sesión en DB.
+  // Consultamos por la columna `token` (existe desde el schema base) que almacena el jti.
+  // La columna `jti` (migración 010) es un alias indexado que puede no estar aplicada aún.
+  if (!payload.imp && payload.jti && SB_URL && SB_KEY) {
+    try {
+      const r = await fetch(
+        `${SB_URL}/rest/v1/sesiones?token=eq.${payload.jti}&select=id&limit=1`,
+        { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
+      );
+      const rows = await r.json();
+      if (!Array.isArray(rows) || rows.length === 0) return null;
     } catch {
-      // JWT inválido o expirado → no intentar fallback si era JWT
-      // (un JWT malformado no debería caer al flujo legacy)
-      return null;
+      // Fallo de DB: fail-open para no tumbar la app si Supabase está caído
     }
   }
 
-  return null;
+  return {
+    empleado_id: payload.sub,
+    empresa_id: payload.eid,
+    legajo: payload.leg,
+    rol: payload.rol,
+    jti: payload.jti,
+    imp: payload.imp || false,
+    _auth_method: "jwt",
+  };
 }
 
 // ─── Respuesta estándar 401 ───

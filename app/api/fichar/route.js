@@ -39,6 +39,17 @@ async function sbPatch(path, body) {
   return r.json();
 }
 
+// ─── Validación de geolocalización ───
+function distanciaMetros(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const p1 = (lat1 * Math.PI) / 180;
+  const p2 = (lat2 * Math.PI) / 180;
+  const dp = ((lat2 - lat1) * Math.PI) / 180;
+  const dl = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ─── Hora local según timezone de empresa ───
 const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
@@ -65,7 +76,7 @@ export async function POST(request) {
     const sesion = await validarToken(request);
     if (!sesion) return respuestaNoAutorizado("Token faltante o sesión inválida");
 
-    const { accion, geo_lat, geo_lng, geo_distancia, forzar_cierre_tarea } = await request.json();
+    const { accion, geo_lat, geo_lng, forzar_cierre_tarea } = await request.json();
     if (!accion || !["ingreso", "egreso"].includes(accion)) {
       return NextResponse.json({ ok: false, error: "Acción inválida" }, { status: 400 });
     }
@@ -81,6 +92,38 @@ export async function POST(request) {
     const empleadoId = sesion.empleado_id;
     const legajo = sesion.legajo;
     const empresaId = sesion.empresa_id;
+
+    // ─── Enforcement de geolocalización (plan Starter+) ───
+    try {
+      const empRes = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo&limit=1`);
+      const plan = empRes?.[0]?.plan_activo || "free";
+      const planesConGeo = ["starter", "pro", "enterprise", "trial"];
+      if (planesConGeo.includes(plan)) {
+        const zonas = await sbGet(`geo_zonas?empresa_id=eq.${empresaId}&select=lat,lng,radio,label`);
+        if (zonas && zonas.length > 0) {
+          if (!geo_lat || !geo_lng) {
+            return NextResponse.json({
+              ok: false,
+              error: "Esta empresa requiere geolocalización para fichar. Habilitá el GPS e intentá de nuevo.",
+              tipo: "geo_requerida",
+            });
+          }
+          const dentroDeAlgunaZona = zonas.some((z) => {
+            const dist = distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng));
+            return dist <= z.radio;
+          });
+          if (!dentroDeAlgunaZona) {
+            return NextResponse.json({
+              ok: false,
+              error: "Estás fuera de la zona de fichaje permitida. Acercate al lugar de trabajo.",
+              tipo: "fuera_de_zona",
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[fichar] Error validando geolocalización:", e.message);
+    }
 
     // ═══════════════════════════════════
     // INGRESO

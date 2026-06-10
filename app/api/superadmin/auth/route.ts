@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { signAdminToken } from "../../../lib/jwt";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -8,10 +9,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!secret) return NextResponse.json({ error: "SUPERADMIN_SECRET no configurado" }, { status: 500 });
     if (!key || key !== secret) return NextResponse.json({ error: "Clave incorrecta" }, { status: 401 });
 
+    const adminToken = await signAdminToken();
+
     const res = NextResponse.json({ ok: true });
     res.cookies.set({
       name: "gypi_superadmin",
-      value: secret,
+      value: adminToken,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",

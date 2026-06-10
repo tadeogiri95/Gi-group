@@ -8,7 +8,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import tsx/esm --test tests/calc.test.js tests/auth.test.js tests/jwt.test.js tests/plans.test.js"
+    "test": "node --import tsx/esm --test tests/calc.test.js tests/auth.test.js tests/jwt.test.js tests/plans.test.js tests/csv.test.js tests/geo.test.js"
   },
   "keywords": [],
   "author": "",

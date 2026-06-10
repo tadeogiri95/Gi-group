@@ -3,7 +3,7 @@
 // FIX: sbFetch ahora verifica res.ok antes de parsear JSON
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { sendBienvenida } from "../../lib/email";
+import { sendBienvenida, sendVerificacionEmail } from "../../lib/email";
 import { validarPassword } from "../../lib/validators";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -69,7 +69,12 @@ export async function POST(req) {
     // Hash de contraseña
     const hashed = await bcrypt.hash(password, 10);
 
-    // Crear empresa
+    // Token de verificación de email (UUID hex)
+    const verifyTokenBytes = new Uint8Array(24);
+    crypto.getRandomValues(verifyTokenBytes);
+    const verifyToken = Array.from(verifyTokenBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+
+    // Crear empresa (email_verificado: false hasta confirmar el link)
     const empresa = await sbFetch("empresa", "POST", {
       nombre: nombre_empresa,
       nombre_corto: nombre_empresa.length > 12 ? nombre_empresa.slice(0, 12) : nombre_empresa,
@@ -81,6 +86,8 @@ export async function POST(req) {
       trial_usado: false,
       max_empleados: 10,
       activa: true,
+      email_verificado: false,
+      email_verify_token: verifyToken,
     });
 
     if (!empresa || empresa.length === 0 || empresa.code) {
@@ -126,12 +133,10 @@ export async function POST(req) {
     }
 
     // Fire-and-forget — no bloquea la respuesta
-    sendBienvenida({
-      to: email,
-      nombre: nombre_admin,
-      empresa: emp.nombre,
-      slug: emp.slug,
-    });
+    const appBase = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
+    const verifyUrl = `${appBase}/api/verificar-email?token=${verifyToken}&e=${emp.id}`;
+    sendVerificacionEmail({ to: email, nombre: nombre_admin, empresa: emp.nombre, verifyUrl });
+    sendBienvenida({ to: email, nombre: nombre_admin, empresa: emp.nombre, slug: emp.slug });
 
     return NextResponse.json({
       ok: true,

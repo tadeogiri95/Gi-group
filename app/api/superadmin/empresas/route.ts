@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { verifyAdminToken } from "../../../lib/jwt";
 import type { Empresa } from "../../../types";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -17,17 +18,15 @@ interface EmpleadoCount { empresa_id: string }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const cookieStore = await cookies();
-  const cookieKey = cookieStore.get("gypi_superadmin")?.value;
-  const headerKey = req.headers.get("x-superadmin-key");
-  const secret = process.env.SUPERADMIN_SECRET;
+  const adminToken = cookieStore.get("gypi_superadmin")?.value;
 
-  if (!secret || (cookieKey !== secret && headerKey !== secret)) {
+  if (!adminToken || !(await verifyAdminToken(adminToken))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
   const [empresas, suscripciones, empleados]: [Empresa[], Suscripcion[], EmpleadoCount[]] =
     await Promise.all([
-      sbFetch("empresa?select=id,nombre,nombre_corto,slug,plan,activa,created_at,onboarding_completado&order=created_at.desc"),
+      sbFetch("empresa?select=id,nombre,nombre_corto,slug,plan_activo,activa,created_at,onboarding_completado&order=created_at.desc"),
       sbFetch("suscripciones?select=empresa_id,estado,plan,monto,created_at&order=created_at.desc"),
       sbFetch("empleados?select=empresa_id&activo=eq.true"),
     ]);

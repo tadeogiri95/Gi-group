@@ -65,3 +65,19 @@ export async function verifyToken(token: string | undefined | null): Promise<JWT
     return null;
   }
 }
+
+export async function signAdminToken(): Promise<string> {
+  const jti = generateJti();
+  return new SignJWT({ sub: "superadmin", jti })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("8h")
+    .setIssuer("gypi")
+    .sign(getSecret());
+}
+
+export async function verifyAdminToken(token: string | undefined | null): Promise<boolean> {
+  if (!token) return false;
+  const payload = await verifyToken(token);
+  return payload?.sub === "superadmin";
+}

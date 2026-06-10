@@ -46,10 +46,37 @@ async function sbRpc(fnName, params) {
   return res.json();
 }
 
-// Guardar jti en la tabla sesiones (para poder revocar)
-async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, userAgent }) {
+// Rate limit de login: 10 intentos por IP por ventana de 15 minutos.
+// Fail-open intencional: si la DB no responde, el login continúa (disponibilidad > seguridad en edge case).
+const MAX_LOGIN_ATTEMPTS = 10;
+async function checkLoginRateLimit(ip) {
+  if (!SB_URL || !SB_KEY) return false;
   try {
-    await fetch(`${SB_URL}/rest/v1/sesiones`, {
+    const now = new Date();
+    // Ventana de 15 min: redondear al múltiplo inferior de 15
+    const mins = Math.floor(now.getUTCMinutes() / 15) * 15;
+    const ventana = `${now.toISOString().slice(0, 13)}:${String(mins).padStart(2, "0")}`;
+    const res = await fetch(`${SB_URL}/rest/v1/rpc/rpc_login_attempt`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_ip: ip, p_ventana: ventana }),
+    });
+    if (!res.ok) return false;
+    const count = await res.json();
+    return typeof count === "number" && count > MAX_LOGIN_ATTEMPTS;
+  } catch {
+    return false;
+  }
+}
+
+// Guardar sesión en la tabla sesiones (para poder revocar).
+// Solo insertamos columnas garantizadas por el schema base (001_tablas_base.sql).
+// El campo `token` almacena el jti — validarToken y logout lo usan para revocar.
+// Las columnas `jti` y `refresh_jti` (migración 010) no se incluyen aquí para
+// evitar que el INSERT falle si la migración no fue aplicada todavía.
+async function guardarSesionJWT({ empleadoId, empresaId, jti, ip, userAgent }) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/sesiones`, {
       method: "POST",
       headers: {
         apikey: SB_KEY,
@@ -59,14 +86,16 @@ async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, us
       body: JSON.stringify({
         empleado_id: empleadoId,
         empresa_id: empresaId,
-        token: jti,  // guardamos el jti como "token" para compatibilidad
-        jti,
-        refresh_jti: refreshJti,
+        token: jti,
         ip,
         user_agent: userAgent,
         expira_en: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       }),
     });
+    if (!r.ok) {
+      const err = await r.text();
+      console.error("[login] Error guardando sesión:", err);
+    }
   } catch (e) {
     console.error("[login] Error guardando sesión JWT:", e.message);
   }
@@ -82,9 +111,13 @@ export async function POST(req) {
 
     // ─── Cambiar contraseña ───
     if (body.action === "cambiar_password") {
-      const { userId, nuevaPassword, token } = body;
-      if (!token) {
-        return NextResponse.json({ error: "Token requerido" }, { status: 401 });
+      const { userId, nuevaPassword } = body;
+
+      // Verificar sesión válida y que el token pertenece al mismo usuario
+      const { validarToken } = await import("../../lib/auth");
+      const sesion = await validarToken(req);
+      if (!sesion || sesion.empleado_id !== userId) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 401 });
       }
 
       const pwCheck = validarPassword(nuevaPassword);
@@ -107,12 +140,21 @@ export async function POST(req) {
 
     // ─── Login normal ───
     const { legajo, password, empresa_id } = body;
-    if (!legajo || !password) {
+    if (!legajo || !password || !empresa_id) {
       return NextResponse.json({ error: "Ingresá legajo y contraseña" }, { status: 400 });
     }
 
-    let query = `empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&activo=eq.true&select=*`;
-    if (empresa_id) query += `&empresa_id=eq.${empresa_id}`;
+    // Rate limiting por IP — bloquea brute force (migración 013 requerida)
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (await checkLoginRateLimit(clientIp)) {
+      return NextResponse.json(
+        { error: "Demasiados intentos. Intentá de nuevo en 15 minutos." },
+        { status: 429 }
+      );
+    }
+
+    // empresa_id siempre incluido — previene búsquedas cross-tenant
+    const query = `empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`;
     const empleados = await sbGet(query);
 
     if (!empleados || empleados.length === 0) {
@@ -199,14 +241,13 @@ export async function POST(req) {
       empleadoId: usuario.id,
       empresaId: usuario.empresa_id,
       jti: accessJti,
-      refreshJti,
       ip,
       userAgent: userAgent.substring(0, 200),
     });
 
     // Datos de empresa
     const empresaData = await sbGet(
-      `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan,max_empleados`
+      `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan_activo,max_empleados`
     );
 
     const safe = { ...usuario };

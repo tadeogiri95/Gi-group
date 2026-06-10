@@ -60,11 +60,15 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // ─── Cargar empresa (pre-login: por slug, post-login: por token) ───
+  // ─── Cargar empresa (pre-login: por slug, post-login: via cookie) ───
+  // No usa getToken() — la sesión autenticada se detecta por gi-session en localStorage.
+  // Las cookies httpOnly autentican las llamadas al servidor automáticamente.
   const cargarEmpresa = useCallback(async () => {
-    const token = getToken();
+    let hasSession = false;
+    try { hasSession = !!localStorage.getItem("gi-session"); } catch {}
+
     try {
-      if (!token && slug) {
+      if (!hasSession && slug) {
         // Pre-login: resolver por slug (público)
         const r = await fetch(`/api/empresa?slug=${encodeURIComponent(slug)}`);
         const d = await r.json();
@@ -73,9 +77,9 @@ export function AuthProvider({ children }) {
         setColoresEmpresa(d.color_primario, d.color_secundario);
         return;
       }
-      if (token) {
-        // Post-login: traer empresa completa con token
-        const r = await fetch("/api/empresa", { headers: { Authorization: `Bearer ${token}` } });
+      if (hasSession) {
+        // Post-login: traer empresa completa (autenticado via cookie httpOnly)
+        const r = await fetch("/api/empresa", { credentials: "include" });
         const d = await r.json();
         if (d && !d.error) {
           setEmpresa(d);

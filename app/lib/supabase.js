@@ -12,34 +12,29 @@ let _refreshToken = null;
 let _onUnauthorized = null;
 let _refreshing = null; // Promise en curso para evitar refresh concurrentes
 
+// Tokens sólo en memoria — los httpOnly cookies son la fuente de verdad.
+// Nunca se persisten en localStorage para no exponerlos a XSS.
+
 export function setToken(token) {
-  _token = token;
-  if (token) { try { localStorage.setItem("gypi_token", token); } catch (e) {} }
-  else { try { localStorage.removeItem("gypi_token"); } catch (e) {} }
+  _token = token || null;
 }
 
 export function getToken() {
-  if (_token) return _token;
-  try { _token = localStorage.getItem("gypi_token"); } catch (e) {}
   return _token;
 }
 
-// ─── Refresh token (nuevo en 1E) ───
 export function setRefreshToken(token) {
-  _refreshToken = token;
-  if (token) { try { localStorage.setItem("gypi_refresh_token", token); } catch (e) {} }
-  else { try { localStorage.removeItem("gypi_refresh_token"); } catch (e) {} }
+  _refreshToken = token || null;
 }
 
 export function getRefreshToken() {
-  if (_refreshToken) return _refreshToken;
-  try { _refreshToken = localStorage.getItem("gypi_refresh_token"); } catch (e) {}
   return _refreshToken;
 }
 
 export function clearToken() {
   _token = null;
   _refreshToken = null;
+  // Limpiar valores legacy que puedan haber quedado en localStorage
   try { localStorage.removeItem("gypi_token"); } catch (e) {}
   try { localStorage.removeItem("gypi_refresh_token"); } catch (e) {}
 }
@@ -51,11 +46,8 @@ export function onUnauthorized(callback) {
 }
 
 // ─── Intentar refresh del token ───
+// Confía en la httpOnly cookie gypi_refresh — no necesita el token en memoria
 async function intentarRefresh() {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
-  // Evitar múltiples refresh concurrentes
   if (_refreshing) {
     try { return await _refreshing; } catch { return false; }
   }
@@ -66,7 +58,6 @@ async function intentarRefresh() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!res.ok) return false;
       const data = await res.json();

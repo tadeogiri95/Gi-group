@@ -94,6 +94,28 @@ export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRest
   }).catch((e) => console.error("[email] sendTrialVencimiento error:", e.message));
 }
 
+// ─── Verificación de email post-registro ───
+export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      Gracias por registrar <strong>${empresa}</strong> en Gypi. Para activar tu cuenta, confirmá tu dirección de email haciendo clic en el botón.
+    </p>
+    <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:14px 18px;margin:0 0 20px;font-size:14px;color:#9A3412">
+      📧 Este link es válido por <strong>72 horas</strong>.
+    </div>
+    ${btn(verifyUrl, "Confirmar mi email →")}
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">Si no registraste una empresa en Gypi, ignorá este email.</p>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Confirmá tu email — Gypi`,
+    html: buildHtml("Confirmá tu email", empresa, cuerpo),
+  }).catch((e) => console.error("[email] sendVerificacionEmail error:", e.message));
+}
+
 // ─── Fallo de pago ───
 export async function sendFalloPago({ to, nombre, empresa, slug, monto }) {
   if (!process.env.RESEND_API_KEY) return;

@@ -4,6 +4,24 @@
 // ═══════════════════════════════════════════════════════════
 
 export const PLANES = {
+  trial: {
+    id: "trial",
+    nombre: "Trial Pro",
+    precio: 0,
+    moneda: "ARS",
+    max_empleados: 50,
+    max_ubicaciones: 999,
+    modulos: ["fichaje", "chat", "actividad", "proyectos", "reportes", "obra", "calendario"],
+    exportar_csv: true,
+    exportar_pdf: true,
+    calendario: true,
+    geolocalizacion: true,
+    reglas_bot: true,
+    reportes_avanzados: true,
+    soporte: "email",
+    branding_gypi: false,
+    api_access: false,
+  },
   free: {
     id: "free",
     nombre: "Free",

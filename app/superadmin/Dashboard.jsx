@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 
-const PLAN_LABEL = { trial: "Trial", starter: "Starter", pro: "Pro", enterprise: "Enterprise" };
-const PLAN_COLOR = { trial: "#6B7280", starter: "#3B82F6", pro: "#F97316", enterprise: "#A78BFA" };
+const PLAN_LABEL = { free: "Free", trial: "Trial", starter: "Starter", pro: "Pro", enterprise: "Enterprise" };
+const PLAN_COLOR = { free: "#6B7280", trial: "#0F6E56", starter: "#3B82F6", pro: "#F97316", enterprise: "#A78BFA" };
+const PLANES_OPCIONES = ["free", "trial", "starter", "pro", "enterprise"];
 
 function StatCard({ label, value, sub }) {
   return (
@@ -18,6 +19,7 @@ export default function Dashboard({ initialData }) {
   const [empresas, setEmpresas] = useState(initialData?.empresas || []);
   const [loading, setLoading] = useState(false);
   const [impersonating, setImpersonating] = useState(null);
+  const [changingPlan, setChangingPlan] = useState(null);
   const [search, setSearch] = useState("");
 
   const refresh = async () => {
@@ -45,8 +47,25 @@ export default function Dashboard({ initialData }) {
     }
   };
 
+  const cambiarPlan = async (empresaId, nuevoPlan) => {
+    setChangingPlan(empresaId);
+    const r = await fetch("/api/superadmin/cambiar-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ empresa_id: empresaId, plan: nuevoPlan }),
+    });
+    const d = await r.json();
+    setChangingPlan(null);
+    if (d.ok) {
+      setEmpresas((prev) => prev.map((e) => e.id === empresaId ? { ...e, plan_activo: nuevoPlan } : e));
+    } else {
+      alert(d.error || "Error cambiando plan");
+    }
+  };
+
   const activas = empresas.filter((e) => e.activa);
-  const trials = empresas.filter((e) => e.plan === "trial");
+  const trials = empresas.filter((e) => e.plan_activo === "trial");
   const mrr = empresas.reduce((acc, e) => acc + (e.suscripcion?.monto || 0), 0);
   const filtered = empresas.filter((e) =>
     !search || e.nombre?.toLowerCase().includes(search.toLowerCase()) || e.slug?.includes(search.toLowerCase())
@@ -101,9 +120,19 @@ export default function Dashboard({ initialData }) {
                   </td>
                   <td style={{ padding: "14px 16px", color: "#9B8F85", fontFamily: "monospace" }}>{e.slug}</td>
                   <td style={{ padding: "14px 16px" }}>
-                    <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: `${PLAN_COLOR[e.plan] || "#6B7280"}22`, color: PLAN_COLOR[e.plan] || "#9B8F85" }}>
-                      {PLAN_LABEL[e.plan] || e.plan || "—"}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: `${PLAN_COLOR[e.plan_activo] || "#6B7280"}22`, color: PLAN_COLOR[e.plan_activo] || "#9B8F85", whiteSpace: "nowrap" }}>
+                        {PLAN_LABEL[e.plan_activo] || e.plan_activo || "—"}
+                      </span>
+                      <select
+                        value={e.plan_activo || "free"}
+                        onChange={(ev) => cambiarPlan(e.id, ev.target.value)}
+                        disabled={changingPlan === e.id}
+                        style={{ fontSize: 11, padding: "2px 4px", borderRadius: 5, border: "1px solid rgba(255,240,220,0.1)", background: "rgba(255,255,255,0.05)", color: "#9B8F85", cursor: "pointer" }}
+                      >
+                        {PLANES_OPCIONES.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
                   </td>
                   <td style={{ padding: "14px 16px", color: "#C4B8AE" }}>{e.empleados_activos}</td>
                   <td style={{ padding: "14px 16px" }}>

@@ -15,13 +15,20 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 function getAdminApp() {
   if (admin.apps.length > 0) return admin.app();
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT no configurada");
+
+  // Acepta la credencial en JSON directo (FIREBASE_SERVICE_ACCOUNT)
+  // o en base64 (FIREBASE_SERVICE_ACCOUNT_B64) para compatibilidad con Vercel
+  const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const rawB64  = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
+  const raw = rawJson || (rawB64 ? Buffer.from(rawB64, "base64").toString("utf-8") : null);
+
+  if (!raw) throw new Error("Falta FIREBASE_SERVICE_ACCOUNT o FIREBASE_SERVICE_ACCOUNT_B64");
+
   let credentials;
   try {
     credentials = typeof raw === "string" ? JSON.parse(raw) : raw;
-  } catch (e) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT no es JSON válido");
+  } catch {
+    throw new Error("Las credenciales de Firebase no son JSON válido");
   }
   return admin.initializeApp({
     credential: admin.credential.cert(credentials),

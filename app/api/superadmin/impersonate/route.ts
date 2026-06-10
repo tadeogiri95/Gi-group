@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { signImpersonateToken } from "../../../lib/jwt";
+import { signImpersonateToken, verifyAdminToken } from "../../../lib/jwt";
+import { logAudit } from "../../../lib/audit";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const cookieStore = await cookies();
-  const cookieKey = cookieStore.get("gypi_superadmin")?.value;
-  const secret = process.env.SUPERADMIN_SECRET;
+  const adminToken = cookieStore.get("gypi_superadmin")?.value;
 
-  if (!secret || cookieKey !== secret) {
+  if (!adminToken || !(await verifyAdminToken(adminToken))) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
@@ -38,6 +38,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
   });
   const [empresa] = await er.json() as { slug: string }[];
+
+  logAudit({
+    empresa_id: empresa_id,
+    actor_id: "superadmin",
+    actor_rol: "superadmin",
+    accion: "impersonate",
+    entidad: "empresa",
+    entidad_id: empresa_id,
+    datos_despues: { empleado: u.nombre, legajo: u.legajo },
+    ip: req.headers.get("x-forwarded-for") || "unknown",
+  });
 
   return NextResponse.json({
     token,
