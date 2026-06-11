@@ -221,6 +221,30 @@ export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, pla
   }).catch((e) => console.error("[email] sendPagoConfirmado error:", e.message));
 }
 
+// ─── Invitación a empleado ───
+export async function sendInvitacionEmpleado({ to, nombre, empresa, slug, legajo }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const url = `${APP_BASE}/${slug}`;
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      <strong>${escapeHtml(empresa)}</strong> te sumó a Gypi. Para activar tu cuenta
+      ingresá con tu legajo y creá tu contraseña.
+    </p>
+    <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:14px 18px;margin:0 0 20px;font-size:14px;color:#0C4A6E">
+      Tu legajo: <strong>${escapeHtml(String(legajo))}</strong>
+    </div>
+    ${btn(`${url}?screen=unirse`, "Activar mi cuenta →")}
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">Si no esperabas este mensaje, podés ignorarlo.</p>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `${empresa} te invitó a Gypi`,
+    html: buildHtml("Activá tu cuenta en Gypi", empresa, cuerpo),
+  }).catch((e) => console.error("[email] sendInvitacionEmpleado error:", e.message));
+}
+
 // ─── Fallo de pago ───
 export async function sendFalloPago({ to, nombre, empresa, slug, monto }) {
   if (!process.env.RESEND_API_KEY) return;
