@@ -119,7 +119,8 @@ Gypi es una PWA SaaS multi-tenant de RRHH industrial con stack sólido (Next.js 
 
 | Archivo | Cambio |
 |---------|--------|
-| `app/dashboard_gerencia.jsx` | Query `fichadasSemana` ahora incluye `llegada_tarde,minutos_tarde`. Nueva métrica "Tardes sem." en la tarjeta Asistencia (4ta columna, amber cuando > 0, green cuando 0). |
+| `app/dashboard_gerencia.jsx` | Query `fichadasSemana` ahora incluye `llegada_tarde,minutos_tarde`. Nueva métrica "Tardes sem." en tarjeta Asistencia (4ta col, amber>0). Query adicional de tardanzas desde inicio del mes. Promedio horas/día semana (solo egreso registrado). Card "Top tardanzas del mes": top 3 empleados por frecuencia + minutos acumulados. |
+| `app/reportes_screen.jsx` | Fix bug `f2.empleado_id → f2.legajo` (empleado_id no estaba en SELECT; siempre devolvía undefined, horas en curso siempre 0). KPI "Tiempo perdido" (totalMinTardanzas) en grid de métricas. CSV export incluye columna "Min. tardanza". |
 
 ---
 
