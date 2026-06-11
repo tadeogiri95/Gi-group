@@ -171,7 +171,7 @@ export function AuthProvider({ children }) {
   const updateEmpresa = useCallback((updates) => {
     setEmpresa(prev => {
       const updated = { ...prev, ...updates };
-      setColoresEmpresa(updated);
+      setColoresEmpresa(updated.color_primario, updated.color_secundario);
       return updated;
     });
     if (usuario?.empresa_id) loadConfigEmpresa(usuario.empresa_id);
