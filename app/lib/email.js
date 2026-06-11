@@ -9,6 +9,15 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM || "Gypi <noreply@gypi.app>";
 
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // ─── Estilos base compartidos ───
 const BASE = `
   <div style="font-family:'Segoe UI',system-ui,sans-serif;max-width:520px;margin:0 auto;background:#FAFAF8;border-radius:16px;overflow:hidden;border:1px solid #E5E5E3">
@@ -185,6 +194,30 @@ export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "
     subject: `Suscripción ${motivo === "impago" ? "suspendida" : "cancelada"} — ${empresa}`,
     html: buildHtml(motivo === "impago" ? "Suscripción suspendida" : "Suscripción cancelada", empresa, cuerpo),
   }).catch((e) => console.error("[email] sendPlanSuspendido error:", e.message));
+}
+
+// ─── Confirmación de pago exitoso ───
+export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, plan }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const url = `https://gypi.app/${slug}`;
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      Tu pago de <strong>$${monto?.toLocaleString("es-AR") || "—"}</strong> para el plan
+      <strong>${escapeHtml(plan)}</strong> de <strong>${escapeHtml(empresa)}</strong>
+      fue procesado exitosamente.
+    </p>
+    <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#14532D">
+      Tu suscripción está activa. Podés acceder a todas las funciones de tu plan.
+    </div>
+    ${btn(url, "Ir a mi empresa →")}
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Pago confirmado — ${empresa}`,
+    html: buildHtml("Pago confirmado", empresa, cuerpo),
+  }).catch((e) => console.error("[email] sendPagoConfirmado error:", e.message));
 }
 
 // ─── Fallo de pago ───

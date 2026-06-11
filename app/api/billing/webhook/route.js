@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getPreapproval, getPago } from "../../../lib/mercadopago";
-import { sendFalloPago, sendPlanSuspendido } from "../../../lib/email";
+import { sendFalloPago, sendPlanSuspendido, sendPagoConfirmado } from "../../../lib/email";
 import { logger } from "../../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -61,7 +61,16 @@ function validarFirma(request) {
 
   const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
   const hash = crypto.createHmac("sha256", WH_SECRET).update(manifest).digest("hex");
-  return hash === v1;
+
+  // Comparación constant-time para prevenir timing attacks
+  try {
+    const hashBuf = Buffer.from(hash, "hex");
+    const v1Buf   = Buffer.from(v1,   "hex");
+    if (hashBuf.length !== v1Buf.length) return false;
+    return crypto.timingSafeEqual(hashBuf, v1Buf);
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(request) {
@@ -167,6 +176,15 @@ export async function POST(request) {
       const empresaId = match?.[1];
       const suscId = match?.[2];
 
+      // Idempotencia: MP reintenta webhooks — no insertar si ya existe este pago
+      if (pago.id) {
+        const existing = await sbGet(`pagos?gateway_payment_id=eq.${pago.id}&select=id&limit=1`);
+        if (Array.isArray(existing) && existing.length > 0) {
+          logger.debug("[webhook] Pago ya procesado, ignorando reintento:", pago.id);
+          return NextResponse.json({ ok: true, accion: "pago_ya_procesado" });
+        }
+      }
+
       let estadoPago = "pendiente";
       if (pago.status === "approved") estadoPago = "aprobado";
       else if (pago.status === "rejected") estadoPago = "rechazado";
@@ -193,6 +211,19 @@ export async function POST(request) {
               suscripcion_activa_id: suscId,
             });
           }
+          try {
+            const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=admin_email,nombre_corto,nombre,slug`);
+            if (emp?.admin_email) {
+              sendPagoConfirmado({
+                to: emp.admin_email,
+                nombre: emp.nombre_corto || emp.nombre,
+                empresa: emp.nombre_corto || emp.nombre,
+                slug: emp.slug,
+                monto: pago.transaction_amount,
+                plan: susc?.[0]?.plan || "Pro",
+              });
+            }
+          } catch (e) { logger.error("Error enviando email pago confirmado", e); }
         }
       }
 
