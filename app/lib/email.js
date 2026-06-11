@@ -38,8 +38,8 @@ const BASE = `
 
 function buildHtml(titulo, subtitulo, cuerpo) {
   return BASE
-    .replace("{{TITULO}}", titulo)
-    .replace("{{SUBTITULO}}", subtitulo)
+    .replace("{{TITULO}}", escapeHtml(titulo))
+    .replace("{{SUBTITULO}}", escapeHtml(subtitulo))
     .replace("{{CUERPO}}", cuerpo);
 }
 
@@ -52,9 +52,9 @@ export async function sendBienvenida({ to, nombre, empresa, slug }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
-    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      <strong>${empresa}</strong> ya está lista en Gypi. Tenés <strong>14 días de trial Pro</strong> para explorar todas las funciones sin límites.
+      <strong>${escapeHtml(empresa)}</strong> ya está lista en Gypi. Tenés <strong>14 días de trial Pro</strong> para explorar todas las funciones sin límites.
     </p>
     <p style="margin:0 0 8px;color:#444;font-size:14px">¿Por dónde empezar?</p>
     <ul style="margin:0 0 20px;padding-left:20px;color:#555;font-size:14px;line-height:1.8">
@@ -79,9 +79,9 @@ export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRest
   const url = `${APP_BASE}/${slug}`;
   const urgente = diasRestantes === 1;
   const cuerpo = `
-    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      El trial Pro de <strong>${empresa}</strong> ${urgente ? "vence <strong>mañana</strong>" : `vence en <strong>${diasRestantes} días</strong>`}.
+      El trial Pro de <strong>${escapeHtml(empresa)}</strong> ${urgente ? "vence <strong>mañana</strong>" : `vence en <strong>${diasRestantes} días</strong>`}.
       ${urgente ? "Después de mañana, la cuenta pasará al plan gratuito." : "Aprovechá para suscribirte y mantener el acceso completo."}
     </p>
     <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#9A3412">
@@ -108,9 +108,9 @@ export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRest
 export async function sendRecuperarPassword({ to, nombre, empresa, resetUrl }) {
   if (!process.env.RESEND_API_KEY) return;
   const cuerpo = `
-    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      Recibimos una solicitud para restablecer la contraseña de tu cuenta en <strong>${empresa}</strong>.
+      Recibimos una solicitud para restablecer la contraseña de tu cuenta en <strong>${escapeHtml(empresa)}</strong>.
       Si no fuiste vos, ignorá este mensaje — tu contraseña no cambiará.
     </p>
     <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:14px 18px;margin:0 0 20px;font-size:14px;color:#9A3412">
@@ -131,9 +131,9 @@ export async function sendRecuperarPassword({ to, nombre, empresa, resetUrl }) {
 export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) {
   if (!process.env.RESEND_API_KEY) return;
   const cuerpo = `
-    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      Gracias por registrar <strong>${empresa}</strong> en Gypi. Para activar tu cuenta, confirmá tu dirección de email haciendo clic en el botón.
+      Gracias por registrar <strong>${escapeHtml(empresa)}</strong> en Gypi. Para activar tu cuenta, confirmá tu dirección de email haciendo clic en el botón.
     </p>
     <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:14px 18px;margin:0 0 20px;font-size:14px;color:#9A3412">
       📧 Este link es válido por <strong>72 horas</strong>.
@@ -154,9 +154,9 @@ export async function sendTrialExpirado({ to, nombre, empresa, slug }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
-    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      El trial Pro de <strong>${empresa}</strong> ha finalizado. Tu cuenta pasó automáticamente al plan gratuito.
+      El trial Pro de <strong>${escapeHtml(empresa)}</strong> ha finalizado. Tu cuenta pasó automáticamente al plan gratuito.
     </p>
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#991B1B">
       🔒 Las funciones Pro (reportes, proyectos, geolocalización, grilla de horarios) ya no están disponibles.
@@ -178,9 +178,9 @@ export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
-    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      La suscripción de <strong>${empresa}</strong> fue ${motivo === "impago" ? "suspendida por falta de pago" : "cancelada"}.
+      La suscripción de <strong>${escapeHtml(empresa)}</strong> fue ${motivo === "impago" ? "suspendida por falta de pago" : "cancelada"}.
       Tu cuenta pasó automáticamente al plan gratuito.
     </p>
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#991B1B">
@@ -226,9 +226,9 @@ export async function sendFalloPago({ to, nombre, empresa, slug, monto }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
-    <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      No pudimos procesar el pago de <strong>$${monto?.toLocaleString("es-AR") || "—"}</strong> para la suscripción de <strong>${empresa}</strong>.
+      No pudimos procesar el pago de <strong>$${monto?.toLocaleString("es-AR") || "—"}</strong> para la suscripción de <strong>${escapeHtml(empresa)}</strong>.
     </p>
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#991B1B">
       🔴 Tu suscripción puede verse afectada si el pago no se regulariza.
