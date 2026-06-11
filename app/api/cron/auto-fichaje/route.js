@@ -3,7 +3,7 @@
 // CRON inteligente: revisa CADA empleado individualmente
 // en vez de fichar a una hora fija para todos.
 //
-// Vercel CRON lo llama cada 30 min (ver vercel.json nuevo).
+// Vercel CRON lo llama una vez al día a las 3am UTC (ver vercel.json).
 // Llama a la función de Supabase que hace el trabajo pesado.
 // ═══════════════════════════════════════════════════════════
 
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   // Verificar que viene del CRON de Vercel (no de un usuario random)
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
