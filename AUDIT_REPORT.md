@@ -103,6 +103,17 @@ Gypi es una PWA SaaS multi-tenant de RRHH industrial con stack sólido (Next.js 
 | `app/components/screens/InboxScreen.jsx` | Verificado — tiene manejo básico de estado vacío. |
 | `app/[slug]/HomeContent.jsx` | Loading state: reemplazado `return null` por spinner animado con logo de empresa y 3 dots pulsantes en amber |
 | `app/components/screens/HistorialFichajesScreen.jsx` | Empty state mejorado: `EmptyState` con icon calendar + copy accionable. Loading reemplazado por dots pulsantes. |
+| `app/globals.css` | Agrega `@keyframes gypi-pulse` + `.gypi-dots` — clase utilitaria reutilizable para todos los loading states |
+| `app/components/Nav.jsx` | Active indicator: línea amber animada (width 0→18px) bajo la tab activa; label en bold cuando activa; transición suave de color |
+| `app/components/screens/ReglasScreen.jsx` | Empty state cuando no hay reglas configuradas (🤖 icon + descripción accionable) |
+| `app/actividad_screen.jsx` | Loading → gypi-dots; historial vacío → tarjeta descriptiva con copy; proyectos cargando → dots inline |
+| `app/reportes_screen.jsx` | Loading → gypi-dots (obra y cumplimiento); empty state obra con 🏗️ icon; empty state empleados con 👥 icon |
+| `app/calendario_screen.jsx` | Loading → gypi-dots |
+| `app/proyectos_screen.jsx` | Loading → gypi-dots; empty state con copy diferenciado (sin resultados vs sin proyectos) |
+| `app/geolocalizacion_screen.jsx` | Loading → gypi-dots (cyan) |
+| `app/grilla_horario_screen.jsx` | Loading → gypi-dots |
+| `app/gerencia_actividad_screen.jsx` | Loading → gypi-dots |
+| `app/gestion_personal_screen.jsx` | Loading → gypi-dots |
 
 ### Prioridad 5 — Métricas accionables
 
