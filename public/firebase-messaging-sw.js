@@ -1,9 +1,37 @@
 // ═══════════════════════════════════════════════════════════════
-// Gypi — Service Worker para Push Notifications (Bloque 4)
-// Claves Firebase públicas por diseño (la seguridad la dan las
-// Security Rules + service account del backend)
+// Gypi — Service Worker
+// · Sección 1: caché offline (network-first con fallback)
+// · Sección 2: push notifications via Firebase
 // ═══════════════════════════════════════════════════════════════
 
+// ─── 1. Caché offline ───────────────────────────────────────────
+const CACHE_NAME = "gypi-offline-v1";
+const OFFLINE_URL = "/offline.html";
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(
+    caches.open(CACHE_NAME).then(c => c.addAll([OFFLINE_URL, "/icons/icon-192.png"]))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+// Interceptar solo requests de navegación — los requests de API
+// y assets pasan directo para no interferir con el polling de datos.
+self.addEventListener("fetch", (e) => {
+  if (e.request.mode !== "navigate") return;
+  e.respondWith(fetch(e.request).catch(() => caches.match(OFFLINE_URL)));
+});
+
+// ─── 2. Firebase push notifications ────────────────────────────
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 

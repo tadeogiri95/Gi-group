@@ -85,6 +85,7 @@ export async function callClaude(messages, ctx, usuario, empresa) {
         messages: messages.map(m => ({ role: m.from === "user" ? "user" : "assistant", content: m.text })),
       }),
     });
+    if (!res.ok) return "Disculpá, tuve un problema con la IA. Intentá de nuevo.";
     const data = await res.json();
     return data.content?.map(b => b.type === "text" ? b.text : "").join("") || "Disculpá, tuve un problema.";
   } catch {

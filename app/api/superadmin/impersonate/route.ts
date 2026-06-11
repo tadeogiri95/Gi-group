@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { signImpersonateToken, verifyAdminToken } from "../../../lib/jwt";
+import { signImpersonateCode, verifyAdminToken } from "../../../lib/jwt";
 import { logAudit } from "../../../lib/audit";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -27,7 +27,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const u = empleados[0];
-  const { token } = await signImpersonateToken({
+  // Short-lived code (60s) — el token completo nunca va en la URL
+  const { token: code } = await signImpersonateCode({
     empleadoId: u.id,
     empresaId: u.empresa_id,
     legajo: u.legajo,
@@ -51,8 +52,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
 
   return NextResponse.json({
-    token,
-    url: `/${empresa.slug}?impersonate=${token}`,
+    url: `/${empresa.slug}?imp=${code}`,
     empleado: { nombre: u.nombre, legajo: u.legajo, rol: u.rol },
   });
 }

@@ -5,6 +5,7 @@
 //   "Gypi <noreply@gypi.app>"
 
 import { Resend } from "resend";
+import { logger } from "./logger";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM || "Gypi <noreply@gypi.app>";
@@ -17,6 +18,20 @@ function escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function stripHtml(html) {
+  return html
+    .replace(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, "$2: $1")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&nbsp;/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ─── Estilos base compartidos ───
@@ -70,7 +85,8 @@ export async function sendBienvenida({ to, nombre, empresa, slug }) {
     to,
     subject: `¡Bienvenido a Gypi, ${empresa}! 🚀`,
     html: buildHtml("¡Ya estás en Gypi!", "Tu trial Pro de 14 días comenzó", cuerpo),
-  }).catch((e) => console.error("[email] sendBienvenida error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendBienvenida", e));
 }
 
 // ─── Alerta de trial próximo a vencer ───
@@ -101,7 +117,8 @@ export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRest
       empresa,
       cuerpo
     ),
-  }).catch((e) => console.error("[email] sendTrialVencimiento error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendTrialVencimiento", e));
 }
 
 // ─── Recuperación de contraseña ───
@@ -124,7 +141,8 @@ export async function sendRecuperarPassword({ to, nombre, empresa, resetUrl }) {
     to,
     subject: `Restablecer contraseña — Gypi`,
     html: buildHtml("Restablecer contraseña", empresa, cuerpo),
-  }).catch((e) => console.error("[email] sendRecuperarPassword error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendRecuperarPassword", e));
 }
 
 // ─── Verificación de email post-registro ───
@@ -146,7 +164,8 @@ export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) 
     to,
     subject: `Confirmá tu email — Gypi`,
     html: buildHtml("Confirmá tu email", empresa, cuerpo),
-  }).catch((e) => console.error("[email] sendVerificacionEmail error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendVerificacionEmail", e));
 }
 
 // ─── Trial expirado (downgrade automático a free) ───
@@ -170,7 +189,8 @@ export async function sendTrialExpirado({ to, nombre, empresa, slug }) {
     to,
     subject: `Tu trial de Gypi finalizó — ${empresa}`,
     html: buildHtml("Tu trial finalizó", empresa, cuerpo),
-  }).catch((e) => console.error("[email] sendTrialExpirado error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendTrialExpirado", e));
 }
 
 // ─── Plan suspendido por impago / cancelación ───
@@ -194,7 +214,8 @@ export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "
     to,
     subject: `Suscripción ${motivo === "impago" ? "suspendida" : "cancelada"} — ${empresa}`,
     html: buildHtml(motivo === "impago" ? "Suscripción suspendida" : "Suscripción cancelada", empresa, cuerpo),
-  }).catch((e) => console.error("[email] sendPlanSuspendido error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendPlanSuspendido", e));
 }
 
 // ─── Confirmación de pago exitoso ───
@@ -218,7 +239,8 @@ export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, pla
     to,
     subject: `Pago confirmado — ${empresa}`,
     html: buildHtml("Pago confirmado", empresa, cuerpo),
-  }).catch((e) => console.error("[email] sendPagoConfirmado error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendPagoConfirmado", e));
 }
 
 // ─── Invitación a empleado ───
@@ -242,7 +264,8 @@ export async function sendInvitacionEmpleado({ to, nombre, empresa, slug, legajo
     to,
     subject: `${empresa} te invitó a Gypi`,
     html: buildHtml("Activá tu cuenta en Gypi", empresa, cuerpo),
-  }).catch((e) => console.error("[email] sendInvitacionEmpleado error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendInvitacionEmpleado", e));
 }
 
 // ─── Fallo de pago ───
@@ -266,5 +289,6 @@ export async function sendFalloPago({ to, nombre, empresa, slug, monto }) {
     to,
     subject: `Problema con tu pago en Gypi — ${empresa}`,
     html: buildHtml("Problema con tu pago", empresa, cuerpo),
-  }).catch((e) => console.error("[email] sendFalloPago error:", e.message));
+    text: stripHtml(cuerpo),
+  }).catch((e) => logger.error("email sendFalloPago", e));
 }

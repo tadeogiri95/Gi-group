@@ -180,7 +180,7 @@ export async function POST(req) {
     const empleados = await sbGet(query);
 
     if (!empleados || empleados.length === 0) {
-      return NextResponse.json({ error: "Legajo no encontrado" }, { status: 401 });
+      return NextResponse.json({ error: "Legajo o contraseña incorrectos" }, { status: 401 });
     }
 
     let usuario = null;
@@ -207,7 +207,7 @@ export async function POST(req) {
     }
 
     if (!usuario) {
-      return NextResponse.json({ error: "Contraseña incorrecta" }, { status: 401 });
+      return NextResponse.json({ error: "Legajo o contraseña incorrectos" }, { status: 401 });
     }
 
     // ─── Generar JWT tokens ───
@@ -260,6 +260,7 @@ export async function POST(req) {
 
     const safe = { ...usuario };
     delete safe.password;
+    delete safe.password_reset_jti;
     safe.empresa = empresaData?.[0] || null;
 
     logAudit({

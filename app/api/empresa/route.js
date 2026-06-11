@@ -56,7 +56,7 @@ export async function GET(request) {
     if (!sesion?.empresa_id) return NextResponse.json(DEFAULTS);
 
     const res = await fetch(
-      `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=*&limit=1`,
+      `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=id,nombre,nombre_corto,slug,admin_email,rubro,plan_activo,activa,onboarding_completado,trial_usado,max_empleados,timezone,color_primario,color_secundario,color_fondo,color_texto,typography,theme_preset,logo_url,prompt_ia_obra,prompt_ia_chat,created_at&limit=1`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
     );
     const data = await res.json();

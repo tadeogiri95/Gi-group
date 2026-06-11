@@ -33,10 +33,11 @@ async function sbPatch(path: string, body: Record<string, unknown>) {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = request.headers.get("authorization");
-  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
+  try {
   const now = new Date().toISOString();
 
   // Trials cuyo período ya expiró y todavía no fueron procesados
@@ -49,7 +50,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const empresaIds = [...new Set(trialsVencidos.map((s) => s.empresa_id))];
-  const suscIds = trialsVencidos.map((s) => s.id);
 
   // Obtener datos de empresas para enviar emails
   const empresas: { id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string }[] =
@@ -62,16 +62,38 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   for (const { id: suscId, empresa_id } of trialsVencidos) {
     try {
-      // 1. Marcar suscripción como vencida
-      await sbPatch(`suscripciones?id=eq.${suscId}`, { estado: "vencida" });
-
-      // 2. Downgrade empresa a free
-      await sbPatch(`empresa?id=eq.${empresa_id}`, {
-        plan_activo: "free",
-        suscripcion_activa_id: null,
+      // Downgrade atómico vía RPC (migración 019).
+      // Ambos UPDATEs corren en la misma transacción PostgreSQL: si uno falla
+      // se revierten los dos y el cron puede reintentar en la próxima ejecución.
+      const rpcRes = await fetch(`${SB_URL}/rest/v1/rpc/vencer_trial_atomico`, {
+        method: "POST",
+        headers: {
+          apikey: SB_KEY,
+          Authorization: `Bearer ${SB_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ p_suscripcion_id: suscId, p_empresa_id: empresa_id }),
+        signal: AbortSignal.timeout(10000),
       });
 
-      // 3. Notificar al admin (fire-and-forget)
+      if (!rpcRes.ok) {
+        const errText = await rpcRes.text();
+        // Si la migración 019 aún no se aplicó, caer al orden seguro: empresa primero.
+        // Actualizar empresa primero garantiza que si el segundo PATCH falla, el próximo
+        // cron run encontrará plan_activo='trial' y reintentará (idempotente).
+        if (errText.includes("vencer_trial_atomico") || rpcRes.status === 404) {
+          logger.error(`RPC vencer_trial_atomico no disponible — usando fallback secuencial`, new Error(errText));
+          await sbPatch(`empresa?id=eq.${empresa_id}`, {
+            plan_activo: "free",
+            suscripcion_activa_id: null,
+          });
+          await sbPatch(`suscripciones?id=eq.${suscId}`, { estado: "vencida" });
+        } else {
+          throw new Error(`RPC vencer_trial_atomico status ${rpcRes.status}: ${errText}`);
+        }
+      }
+
+      // Notificar al admin (fire-and-forget)
       const emp = empMap[empresa_id];
       if (emp?.admin_email) {
         sendTrialExpirado({
@@ -91,4 +113,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   logger.debug(`[vencer-trials] Procesados: ${procesados}, Errores: ${errores}`);
   return NextResponse.json({ ok: true, vencidos: procesados, errores });
+
+  } catch (e) {
+    logger.error("[vencer-trials] Error fatal — cron abortado", e as Error);
+    return NextResponse.json({ error: "Error interno del cron", detail: (e as Error).message }, { status: 500 });
+  }
 }

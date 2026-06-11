@@ -104,11 +104,6 @@ export default function RootLayout({ children }) {
       priceCurrency: 'ARS',
       description: 'Plan Free — hasta 5 empleados',
     },
-    aggregateRating: {
-      '@type': 'AggregateRating',
-      ratingValue: '4.8',
-      ratingCount: '50',
-    },
     featureList: [
       'Fichaje digital desde el celular',
       'Geolocalización de fichadas',

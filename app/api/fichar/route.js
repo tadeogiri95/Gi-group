@@ -177,15 +177,22 @@ export async function POST(request) {
         logger.error("Error calculando tardanza", e);
       }
 
-      await sbPost("fichadas", {
-        empleado_id: empleadoId,
-        legajo,
-        fecha,
-        ingreso: hora,
-        llegada_tarde: tardanza.estado === "tarde",
-        minutos_tarde: tardanza.minutos || 0,
-        empresa_id: empresaId,
-      });
+      try {
+        await sbPost("fichadas", {
+          empleado_id: empleadoId,
+          legajo,
+          fecha,
+          ingreso: hora,
+          llegada_tarde: tardanza.estado === "tarde",
+          minutos_tarde: tardanza.minutos || 0,
+          empresa_id: empresaId,
+        });
+      } catch (e) {
+        if (e.message.includes("23505")) {
+          return NextResponse.json({ ok: false, error: `Ya fichaste ingreso hoy a las ${hora.slice(0, 5)}`, tipo: "ya_fichado" });
+        }
+        throw e;
+      }
 
       logAudit({
         empresa_id: empresaId,
@@ -207,7 +214,7 @@ export async function POST(request) {
     if (!forzar_cierre_tarea) {
       try {
         const activas = await sbGet(
-          `registro_actividades?empleado_id=eq.${empleadoId}&hora_fin=is.null&select=id&limit=1`
+          `registro_actividades?empleado_id=eq.${empleadoId}&empresa_id=eq.${empresaId}&hora_fin=is.null&select=id&limit=1`
         );
         if (activas.length > 0) {
           return NextResponse.json({
@@ -223,7 +230,7 @@ export async function POST(request) {
     } else {
       try {
         await sbPatch(
-          `registro_actividades?empleado_id=eq.${empleadoId}&hora_fin=is.null`,
+          `registro_actividades?empleado_id=eq.${empleadoId}&empresa_id=eq.${empresaId}&hora_fin=is.null`,
           { hora_fin: new Date().toISOString() }
         );
       } catch (e) {
@@ -231,31 +238,44 @@ export async function POST(request) {
       }
     }
 
-    const fichadas = await sbGet(
-      `fichadas?empleado_id=eq.${empleadoId}&fecha=eq.${fecha}&empresa_id=eq.${empresaId}&select=*`
+    // 1. Buscar la fichada de hoy primero
+    const fichadasHoy = await sbGet(
+      `fichadas?empleado_id=eq.${empleadoId}&fecha=eq.${fecha}&empresa_id=eq.${empresaId}&select=*&limit=1`
     );
 
-    if (fichadas.length === 0 || !fichadas[0].ingreso) {
+    // Si la de hoy ya tiene egreso → ya fichó salida
+    if (fichadasHoy.length > 0 && fichadasHoy[0].egreso) {
       return NextResponse.json({
         ok: false,
-        error: "No tenés fichada de ingreso hoy. Fichá ingreso primero.",
-        tipo: "sin_ingreso",
-      });
-    }
-
-    if (fichadas[0].egreso) {
-      return NextResponse.json({
-        ok: false,
-        error: `Ya fichaste egreso hoy a las ${fichadas[0].egreso.slice(0, 5)}`,
+        error: `Ya fichaste egreso hoy a las ${fichadasHoy[0].egreso.slice(0, 5)}`,
         tipo: "ya_fichado",
       });
     }
 
-    const [hIn, mIn] = fichadas[0].ingreso.split(":").map(Number);
-    const [hOut, mOut] = hora.split(":").map(Number);
-    const horasTrab = Math.max(0, ((hOut * 60 + mOut) - (hIn * 60 + mIn)) / 60);
+    // 2. Determinar qué fichada usar: la de hoy (si tiene ingreso) o la última
+    //    abierta (turno nocturno: ingresó ayer antes de medianoche)
+    let fichada = fichadasHoy.length > 0 && fichadasHoy[0].ingreso ? fichadasHoy[0] : null;
 
-    await sbPatch(`fichadas?id=eq.${fichadas[0].id}`, {
+    if (!fichada) {
+      const [ultima] = await sbGet(
+        `fichadas?empleado_id=eq.${empleadoId}&empresa_id=eq.${empresaId}&egreso=is.null&order=fecha.desc&limit=1`
+      );
+      if (!ultima?.ingreso) {
+        return NextResponse.json({
+          ok: false,
+          error: "No tenés fichada de ingreso hoy. Fichá ingreso primero.",
+          tipo: "sin_ingreso",
+        });
+      }
+      fichada = ultima;
+    }
+
+    // 3. Calcular horas con aritmética de timestamps — soporta turno nocturno
+    const inDate = new Date(`${fichada.fecha}T${fichada.ingreso}:00`);
+    const outDate = new Date(`${fecha}T${hora}:00`);
+    const horasTrab = Math.max(0, (outDate.getTime() - inDate.getTime()) / 3600000);
+
+    await sbPatch(`fichadas?id=eq.${fichada.id}`, {
       egreso: hora,
       horas_trabajadas: horasTrab.toFixed(2),
     });

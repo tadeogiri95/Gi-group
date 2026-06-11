@@ -67,8 +67,12 @@ export async function GET(request) {
 // ═══ POST ═══
 export async function POST(request) {
   try {
-    const empresaId = await getEmpresaIdFromRequest(request);
-    if (!empresaId) return respuestaNoAutorizado();
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
+      return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+    }
+    const empresaId = sesion.empresa_id;
 
     const body = await request.json();
     const { action } = body;
@@ -108,8 +112,12 @@ export async function POST(request) {
 // ═══ PATCH ═══
 export async function PATCH(request) {
   try {
-    const empresaId = await getEmpresaIdFromRequest(request);
-    if (!empresaId) return respuestaNoAutorizado();
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
+      return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+    }
+    const empresaId = sesion.empresa_id;
 
     const body = await request.json();
     const { action, id } = body;
@@ -153,8 +161,12 @@ export async function PATCH(request) {
 // ═══ DELETE ═══
 export async function DELETE(request) {
   try {
-    const empresaId = await getEmpresaIdFromRequest(request);
-    if (!empresaId) return respuestaNoAutorizado();
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
+      return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+    }
+    const empresaId = sesion.empresa_id;
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");

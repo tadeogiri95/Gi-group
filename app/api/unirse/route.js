@@ -11,18 +11,10 @@
 
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { validarPassword } from "../../lib/validators";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
-
-// ─── Password validation (misma regla que auth.js para consistencia) ───
-function validarPassword(pw) {
-  if (!pw || pw.length < 8) return { valido: false, error: "La contraseña debe tener al menos 8 caracteres" };
-  if (!/[A-Z]/.test(pw)) return { valido: false, error: "Debe contener al menos una mayúscula" };
-  if (!/[a-z]/.test(pw)) return { valido: false, error: "Debe contener al menos una minúscula" };
-  if (!/[0-9]/.test(pw)) return { valido: false, error: "Debe contener al menos un número" };
-  return { valido: true };
-}
 
 async function sbGet(path) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {

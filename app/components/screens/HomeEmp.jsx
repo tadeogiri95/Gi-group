@@ -1,8 +1,8 @@
 "use client";
-// Extraído de [slug]/page.js líneas 537-650
 import { C, fH, fB, fM, fmtDate, DIAS_KEY } from "../../lib/theme";
 import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
+import EmptyState from "../ui/EmptyState";
 
 export default function HomeEmp({ goto, usuario, ctx, logout, empresa }) {
   const misSols = ctx.misSolicitudes || [];
@@ -29,7 +29,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa }) {
               {diagH && <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>Jornada: <span style={{ color: C.text, fontWeight: 600 }}>{diagH.in} a {diagH.out}</span></div>}
               {!diagH && usuario.diagrama && <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginTop: 4 }}>Hoy es franco</div>}
             </div>
-            <button onClick={logout} style={{ width: 36, height: 36, borderRadius: 10, background: C.surface, color: C.dim, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }} title="Cerrar sesión"><Ic.logout /></button>
+            <button onClick={logout} aria-label="Cerrar sesión" style={{ width: 36, height: 36, borderRadius: 10, background: C.surface, color: C.dim, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Ic.logout /></button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: 4, background: ctx.fichadaHoy?.ingreso ? C.green : C.amber }} />
@@ -81,12 +81,39 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa }) {
       {/* Mi semana */}
       <div style={{ marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.text, fontFamily: fH }}>Mi semana</h3></div>
       <div style={{ background: C.surface, borderRadius: 16, padding: 14, border: `1px solid ${C.border}`, marginBottom: 18 }}>
-        {(ctx.fichadasSemana || []).length === 0 ? <div style={{ padding: 16, textAlign: "center", color: C.dim, fontSize: 13 }}>Sin fichadas</div> : (ctx.fichadasSemana || []).map((d, i, a) => <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < a.length - 1 ? `1px solid ${C.border}` : "none" }}><div><div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{new Date(d.fecha + "T12:00:00").toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" })}</div>{d.ingreso && <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: fM }}>{d.ingreso.slice(0, 5)} → {d.egreso ? d.egreso.slice(0, 5) : "en curso"}</div>}</div><div style={{ display: "flex", alignItems: "center", gap: 6 }}>{d.horas_trabajadas && <span style={{ fontSize: 10, color: C.dim, fontFamily: fM }}>{Number(d.horas_trabajadas).toFixed(1)}h</span>}<span style={{ fontFamily: fM, fontSize: 14, fontWeight: 700, color: d.ingreso ? C.green : C.mute }}>{d.ingreso ? "✓" : "—"}</span></div></div>)}
+        {(ctx.fichadasSemana || []).length === 0
+          ? <EmptyState icon="clock" title="Sin fichadas esta semana" description="Tus registros de entrada y salida aparecerán acá." color={C.cyan} style={{ padding: "24px 16px" }} />
+          : (ctx.fichadasSemana || []).map((d, i, a) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < a.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{new Date(d.fecha + "T12:00:00").toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" })}</div>
+                {d.ingreso && <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: fM }}>{d.ingreso.slice(0, 5)} → {d.egreso ? d.egreso.slice(0, 5) : "en curso"}</div>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {d.horas_trabajadas && <span style={{ fontSize: 10, color: C.dim, fontFamily: fM }}>{Number(d.horas_trabajadas).toFixed(1)}h</span>}
+                <span style={{ fontFamily: fM, fontSize: 14, fontWeight: 700, color: d.ingreso ? C.green : C.mute }}>{d.ingreso ? "✓" : "—"}</span>
+              </div>
+            </div>
+          ))}
       </div>
 
       {/* Mis solicitudes */}
       <div style={{ marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.text, fontFamily: fH }}>Mis solicitudes</h3></div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{misSols.length === 0 ? <div style={{ background: C.surface, borderRadius: 14, padding: 30, textAlign: "center", border: `1px solid ${C.border}`, color: C.dim, fontSize: 13 }}>No tenés solicitudes</div> : misSols.map(s => <SolCard key={s.id} s={s} />)}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {misSols.length === 0
+          ? (
+            <div style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}` }}>
+              <EmptyState
+                icon="inbox"
+                title="Sin solicitudes"
+                description="Cuando pidas permisos o justifiques ausencias desde el chat, aparecerán acá."
+                color={C.violet}
+                style={{ padding: "28px 16px" }}
+              />
+            </div>
+          )
+          : misSols.map(s => <SolCard key={s.id} s={s} />)}
+      </div>
     </div>
   );
 }

@@ -176,10 +176,27 @@ export async function POST(request) {
       const empresaId = match?.[1];
       const suscId = match?.[2];
 
-      // Idempotencia: MP reintenta webhooks — no insertar si ya existe este pago
+      // Idempotencia: MP reintenta webhooks — no insertar si ya existe este pago.
+      // Si el pago existe pero empresa.plan_activo no fue actualizado (ej: el PATCH
+      // falló en el intento anterior), repararlo antes de retornar.
       if (pago.id) {
         const existing = await sbGet(`pagos?gateway_payment_id=eq.${pago.id}&select=id&limit=1`);
         if (Array.isArray(existing) && existing.length > 0) {
+          if (pago.status === "approved" && suscId && empresaId) {
+            try {
+              const [susc] = await sbGet(`suscripciones?id=eq.${suscId}&select=plan&limit=1`);
+              const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo&limit=1`);
+              if (susc?.plan && emp?.plan_activo !== susc.plan) {
+                logger.warn("[webhook] Reparando plan_activo tras retry", { empresaId, suscId, plan: susc.plan });
+                await sbPatch(`empresa?id=eq.${empresaId}`, {
+                  plan_activo: susc.plan,
+                  suscripcion_activa_id: suscId,
+                });
+              }
+            } catch (e) {
+              logger.error("[webhook] Error en reparación de plan_activo", e, { empresaId, suscId });
+            }
+          }
           logger.debug("[webhook] Pago ya procesado, ignorando reintento:", pago.id);
           return NextResponse.json({ ok: true, accion: "pago_ya_procesado" });
         }

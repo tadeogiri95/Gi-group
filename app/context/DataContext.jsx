@@ -50,7 +50,7 @@ export function DataProvider({ children }) {
       const monStr = `${mon.getFullYear()}-${String(mon.getMonth() + 1).padStart(2, "0")}-${String(mon.getDate()).padStart(2, "0")}`;
 
       const [empleados, fichadasHoy, miFichada, fichadasSemana, solicitudes, misSolicitudes, reglas, notificaciones] = await Promise.all([
-        sb.get("empleados?select=*&activo=eq.true&order=legajo.asc"),
+        sb.get("empleados?select=*&activo=eq.true&order=legajo.asc&limit=500"),
         sb.get(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}`),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${monStr}&order=fecha.asc`),
@@ -96,11 +96,16 @@ export function DataProvider({ children }) {
     }
   }, [usuario, loadData]);
 
-  // Polling cada 60 segundos
+  // Polling cada 60 segundos — se pausa cuando la tab está en background
   useEffect(() => {
     if (!usuario) return;
-    const t = setInterval(loadData, 60000);
-    return () => clearInterval(t);
+    const t = setInterval(() => { if (!document.hidden) loadData(); }, 60000);
+    const onVisible = () => { if (!document.hidden) loadData(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [usuario, loadData]);
 
   // Forzar recarga manual (para después de fichar, aprobar solicitud, etc.)

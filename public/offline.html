@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sin conexión — Gypi</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0C0A09;
+      color: #F5F5F4;
+      padding: 24px;
+    }
+    .card { text-align: center; max-width: 320px; width: 100%; }
+    .icon { width: 72px; height: 72px; border-radius: 20px; margin: 0 auto 24px; display: block; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+    p { font-size: 15px; color: #A8A29E; line-height: 1.6; margin-bottom: 28px; }
+    button {
+      padding: 13px 28px;
+      border-radius: 12px;
+      background: #F97316;
+      color: #000;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+    }
+    button:active { opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/icons/icon-192.png" alt="Gypi" class="icon" />
+    <h1>Sin conexión</h1>
+    <p>No pudimos cargar esta página. Verificá tu conexión a internet y volvé a intentarlo.</p>
+    <button onclick="location.reload()">Reintentar</button>
+  </div>
+</body>
+</html>

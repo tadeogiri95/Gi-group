@@ -70,9 +70,32 @@ export default function HomeContent() {
     }
   };
 
+  // ─── Impersonation exchange (superadmin → ?imp=code) ───
+  useEffect(() => {
+    const impCode = searchParams.get("imp");
+    if (!impCode || usuario) return;
+    fetch("/api/superadmin/impersonate-exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ code: impCode }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.usuario && d.token) {
+          login(d.usuario, { token: d.token });
+          // Limpiar el código de la URL
+          router.replace(pathname, { scroll: false });
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   // ─── Estado local: solo datos de app, no auth ───
   const [ctx, setCtx] = useState({});
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [historialLegajo, setHistorialLegajo] = useState(null);
   const [paywallInfo, setPaywallInfo] = useState(null);
   const [showBilling, setShowBilling] = useState(false);
@@ -80,6 +103,7 @@ export default function HomeContent() {
   // ─── Carga de datos de la app ───
   const loadData = async () => {
     if (!usuario) return;
+    setLoadError(null);
     try {
       const now = new Date();
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -88,8 +112,8 @@ export default function HomeContent() {
       const isG = usuario.rol === "gerencial" || usuario.rol === "administrativo";
 
       const [empleados, fichadasHoy, miFichada, fichadasSemana, solicitudes, misSolicitudes, reglas, notificaciones] = await Promise.all([
-        sb.get("empleados?select=*&activo=eq.true&order=legajo.asc"),
-        sb.get(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}`),
+        sb.get("empleados?select=id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at&activo=eq.true&order=legajo.asc"),
+        sb.get(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}&limit=200`),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${monStr}&order=fecha.asc`),
         sb.get("solicitudes?select=*&order=created_at.desc&limit=50"),
@@ -113,6 +137,7 @@ export default function HomeContent() {
         setPaywallInfo({ upgrade_a: e.upgrade_a, mensaje: e.message });
       } else {
         console.error(e);
+        setLoadError("No se pudieron cargar los datos. Tocá para reintentar.");
       }
       setReady(true);
     }
@@ -131,6 +156,21 @@ export default function HomeContent() {
   const pend = (ctx.solicitudes || []).filter(s => s.estado === "pendiente").length;
   const isChat = screen === "chat";
   const showBack = screen === "reglas" || screen === "historial-fichajes" || screen === "ger-actividad";
+
+  const getScreenSubtitle = () => {
+    if (isGer) {
+      if (showBack) return "Configuración";
+      const subtitles = { "ger-actividad": "Producción en vivo", config: "Configuración", equipo: "Gestión de personal", "historial-fichajes": "Control de asistencia" };
+      return subtitles[screen] || empresa?.nombre_corto || "Gypi";
+    }
+    const subtitles = { actividad: "Registro de actividades", "historial-fichajes": "Mi asistencia" };
+    return subtitles[screen] || empresa?.nombre_corto || "Gypi";
+  };
+
+  const getScreenTitle = () => {
+    const titles = { solicitudes: "Inbox", equipo: "Personal", "mis-sols": "Solicitudes", actividad: "Mi Jornada", "ger-actividad": "Taller", config: "Gestión", "historial-fichajes": "Fichajes" };
+    return titles[screen] || empresa?.nombre_corto || "Gypi";
+  };
 
   // ─── Early returns ───
   if (slugInvalido) return (
@@ -181,14 +221,33 @@ export default function HomeContent() {
       {!isChat && (
         <div className="safe-top" style={{ padding: "16px 18px 10px", flexShrink: 0 }}>
           <div style={{ fontSize: 11, color: C.dim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 2 }}>
-            {isGer
-              ? (showBack ? "Configuración" : screen === "ger-actividad" ? "Producción en vivo" : screen === "config" ? "Configuración" : screen === "equipo" ? "Gestión de personal" : screen === "historial-fichajes" ? "Control de asistencia" : (empresa?.nombre_corto || "Gypi"))
-              : screen === "actividad" ? "Registro de actividades" : screen === "historial-fichajes" ? "Mi asistencia" : (empresa?.nombre_corto || "Gypi")}
+            {getScreenSubtitle()}
           </div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.text, fontFamily: fH, letterSpacing: "-0.02em" }}>
-            {screen === "solicitudes" ? "Inbox" : screen === "equipo" ? "Personal" : screen === "mis-sols" ? "Solicitudes" : screen === "actividad" ? "Mi Jornada" : screen === "ger-actividad" ? "Taller" : screen === "config" ? "Gestión" : screen === "historial-fichajes" ? "Fichajes" : (empresa?.nombre_corto || "Gypi")}
+            {getScreenTitle()}
           </h1>
         </div>
+      )}
+
+      {loadError && (
+        <button
+          onClick={loadData}
+          style={{
+            margin: "0 18px 8px",
+            padding: "10px 14px",
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 10,
+            color: "#B91C1C",
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: "pointer",
+            textAlign: "left",
+            flexShrink: 0,
+          }}
+        >
+          ⚠ {loadError}
+        </button>
       )}
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>

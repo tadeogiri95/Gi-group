@@ -322,10 +322,6 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
   const filterDiv = (arr, divField = "division") =>
     division === "todas" ? arr : arr.filter(r => r[divField] === division);
 
-  const fichadasHoyF = filterDiv(fichadasHoy, "legajo").length > 0
-    ? fichadasHoy 
-    : fichadasHoy;
-
   // Producción
   const prodF = filterDiv(resumenProd);
   const enActividad = prodF.filter(r => r.etapa_actual != null && r.etapa_actual > 0).length;
@@ -444,10 +440,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <PulseDot color={C.green} />
             <span style={{ fontSize: 11, color: C.dim, fontWeight: 600 }}>En vivo</span>
-            <button onClick={()=>{if(reload)reload();}} style={{width:32,height:32,borderRadius:8,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginLeft:4}}>
+            <button onClick={()=>{if(reload)reload();}} aria-label="Actualizar datos" style={{width:32,height:32,borderRadius:8,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginLeft:4}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
-            <button onClick={logout} className="show-mobile-only" style={{width:32,height:32,borderRadius:8,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} title="Cerrar sesión">
+            <button onClick={logout} aria-label="Cerrar sesión" className="show-mobile-only" style={{width:32,height:32,borderRadius:8,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
           </div>

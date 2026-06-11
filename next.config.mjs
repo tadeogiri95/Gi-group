@@ -34,7 +34,7 @@ const securityHeaders = [
   // Fuerza HTTPS por 2 años, incluye subdominios, apto para preload list
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   // Previene clickjacking — la app no debe embeberse en iframes externos
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-Frame-Options", value: "DENY" },
   // Previene MIME sniffing
   { key: "X-Content-Type-Options", value: "nosniff" },
   // Controla qué se incluye en el header Referer

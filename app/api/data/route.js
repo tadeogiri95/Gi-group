@@ -45,6 +45,30 @@ const TABLAS_PERMITIDAS = [
 
 const TABLAS_SOLO_LECTURA = ["v_resumen_diario"];
 
+const CAMPOS_EXCLUIDOS = {
+  empleados: ["password", "password_reset_jti"],
+  empresa:   ["admin_password", "email_verify_token", "email_verify_expires"],
+};
+
+function filtrarCamposSensibles(data, tabla) {
+  const excluidos = CAMPOS_EXCLUIDOS[tabla];
+  if (!excluidos || !data) return data;
+  if (Array.isArray(data)) {
+    return data.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const clean = { ...row };
+      for (const campo of excluidos) delete clean[campo];
+      return clean;
+    });
+  }
+  if (typeof data === "object") {
+    const clean = { ...data };
+    for (const campo of excluidos) delete clean[campo];
+    return clean;
+  }
+  return data;
+}
+
 const TABLAS_CON_EMPRESA = [
   "empleados", "fichadas", "solicitudes", "notificaciones",
   "registro_actividades", "reportes_obra", "push_subscriptions", "push_tokens",
@@ -238,7 +262,7 @@ export async function POST(request) {
       broadcastRefresh(empresaId, pathCheck.tabla);
     }
 
-    return NextResponse.json({ ok: true, data });
+    return NextResponse.json({ ok: true, data: filtrarCamposSensibles(data, pathCheck.tabla) });
   } catch (err) {
     console.error("[data] Error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });

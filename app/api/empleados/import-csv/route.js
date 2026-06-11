@@ -9,6 +9,7 @@ import bcrypt from "bcryptjs";
 import { validarToken } from "../../../lib/auth";
 import { parseCsv } from "../../../lib/csv";
 import { passwordInicial } from "../../../lib/passwords";
+import { PLANES } from "../../../lib/plans";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -80,9 +81,10 @@ export async function POST(req) {
   const existentes = await sbGet(`empleados?empresa_id=eq.${empresaId}&select=legajo`);
   const legajosExistentes = new Set((existentes || []).map((e) => Number(e.legajo)));
 
-  // Verificar límite de plan
-  const empresaData = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo,max_empleados`);
-  const maxEmpleados = empresaData?.[0]?.max_empleados ?? 10;
+  // Verificar límite de plan — fuente de verdad: PLANES[], no empresa.max_empleados
+  const empresaData = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo`);
+  const planActivo = empresaData?.[0]?.plan_activo || "free";
+  const maxEmpleados = (PLANES[planActivo] ?? PLANES.free).max_empleados;
   const actuales = legajosExistentes.size;
 
   const results = { created: 0, skipped: 0, errors: [...parseErrors] };

@@ -17,7 +17,7 @@
 import { AuthProvider } from "./AuthContext";
 import { DataProvider } from "./DataContext";
 import { UIProvider } from "./UIContext";
-import { ToastProvider } from "../components/Toast";
+import { ToastProvider } from "../components/ui/Toast";
 
 export default function AppProvider({ children }) {
   return (

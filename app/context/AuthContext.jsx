@@ -74,7 +74,7 @@ export function AuthProvider({ children }) {
         const d = await r.json();
         if (r.status === 404 || d?.error) { setSlugInvalido(true); return; }
         setEmpresa(d);
-        setColoresEmpresa(d.color_primario, d.color_secundario);
+        setColoresEmpresa(d);
         return;
       }
       if (hasSession) {
@@ -85,7 +85,7 @@ export function AuthProvider({ children }) {
         const d = await r.json();
         if (d && !d.error && d.id) {
           setEmpresa(d);
-          setColoresEmpresa(d.color_primario, d.color_secundario);
+          setColoresEmpresa(d);
           loadConfigEmpresa(d.id);
         }
       }
@@ -171,7 +171,7 @@ export function AuthProvider({ children }) {
   const updateEmpresa = useCallback((updates) => {
     setEmpresa(prev => {
       const updated = { ...prev, ...updates };
-      setColoresEmpresa(updated.color_primario, updated.color_secundario);
+      setColoresEmpresa(updated);
       return updated;
     });
     if (usuario?.empresa_id) loadConfigEmpresa(usuario.empresa_id);

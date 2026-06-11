@@ -2,7 +2,6 @@
 import { useState, useRef } from 'react';
 import { sb, getToken } from './lib/supabase';
 import { C, fH, fB, fM, setColoresEmpresa } from './lib/theme';
-import { passwordInicial } from './lib/passwords';
 
 /* ═══ PLANTILLAS POR RUBRO ═══ */
 const PLANTILLAS = {
@@ -291,23 +290,28 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
       if (logoUrl) updEmp.logo_url = logoUrl;
       await sb.patch(`empresa?id=eq.${eid}`, updEmp);
 
-      // 5. Crear empleados
+      // 5. Crear empleados — vía /api/empleados para que el hash de password
+      //    se haga en el servidor (bcrypt), nunca en texto plano en la DB.
       for (const e of empleados) {
         if (!e.nombre?.trim()) continue;
         const legajo = (e.legajo && /^\d+$/.test(e.legajo.trim())) ? parseInt(e.legajo.trim()) : legajoProv();
         try {
-          await sb.post("empleados", {
-            legajo,
-            nombre: e.nombre.trim(),
-            apodo: apodoDe(e.nombre.trim()),
-            email: "",
-            area: "produccion",
-            division: e.division || null,
-            rol: e.rol || "operativo",
-            activo: true,
-            password: passwordInicial(),
-            debe_cambiar_password: true,
+          const r = await fetch("/api/empleados", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify({
+              legajo,
+              nombre: e.nombre.trim(),
+              email: null,
+              area: "produccion",
+              division: e.division || null,
+              rol: e.rol || "operativo",
+            }),
           });
+          if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            console.error("Alta empleado falló:", d.error || r.status);
+          }
         } catch (err) { console.error("Alta empleado falló:", err); }
       }
 

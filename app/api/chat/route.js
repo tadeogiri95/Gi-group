@@ -50,7 +50,14 @@ export async function POST(request) {
       );
     }
 
-    const { system, messages } = await request.json();
+    const rawBody = await request.text();
+    if (rawBody.length > 100_000) {
+      return NextResponse.json({ error: "Payload demasiado grande (máximo 100 KB)" }, { status: 413 });
+    }
+    const { system, messages } = JSON.parse(rawBody);
+    if (!Array.isArray(messages) || messages.length > 30) {
+      return NextResponse.json({ error: "Historial de mensajes demasiado largo" }, { status: 400 });
+    }
 
     if (!process.env.ANTHROPIC_API_KEY) {
       logger.error("ANTHROPIC_API_KEY no configurada");
@@ -70,20 +77,17 @@ export async function POST(request) {
         system: system || "",
         messages: messages || [],
       }),
+      signal: AbortSignal.timeout(25000),
     });
 
     const data = await res.json();
 
     if (!res.ok) {
       logger.error("Anthropic API error", new Error(`status ${res.status}`), { status: res.status, data });
-      return NextResponse.json({
-        content: [{ type: "text", text: JSON.stringify({
-          progreso: "Error al procesar con IA. Revisá la consola del servidor.",
-          faltantes: [],
-          desvios: [],
-          mensaje_doble_check: "Hubo un error con la IA. Intentá de nuevo o contactá soporte."
-        })}]
-      });
+      return NextResponse.json(
+        { error: "La IA no está disponible en este momento. Intentá de nuevo en unos segundos." },
+        { status: 502 }
+      );
     }
 
     // Auditoría de uso del chatbot
@@ -106,13 +110,8 @@ export async function POST(request) {
   } catch (err) {
     logger.error("chat error", err);
     return NextResponse.json(
-      { content: [{ type: "text", text: JSON.stringify({
-        progreso: "Error de conexión con el servidor.",
-        faltantes: [],
-        desvios: [],
-        mensaje_doble_check: "No se pudo conectar con la IA. Intentá de nuevo."
-      })}]},
-      { status: 200 }
+      { error: "Error interno. Intentá de nuevo en unos segundos." },
+      { status: 500 }
     );
   }
 }

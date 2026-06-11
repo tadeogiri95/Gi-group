@@ -49,6 +49,13 @@ export async function POST(req) {
     if (!nombre_empresa || !nombre_admin || !email || !password) {
       return NextResponse.json({ error: "Completá todos los campos" }, { status: 400 });
     }
+    if (
+      typeof nombre_empresa !== "string" || nombre_empresa.length > 100 ||
+      typeof nombre_admin !== "string" || nombre_admin.length > 100 ||
+      typeof email !== "string" || email.length > 254
+    ) {
+      return NextResponse.json({ error: "Los datos ingresados son demasiado largos" }, { status: 400 });
+    }
     const pwCheck = validarPassword(password);
     if (!pwCheck.valido) {
       return NextResponse.json({ error: pwCheck.error }, { status: 400 });
@@ -83,8 +90,8 @@ export async function POST(req) {
       admin_password: hashed,
       rubro: rubro || "general",
       slug,
-      plan_activo: "free",
-      trial_usado: false,
+      plan_activo: "trial",
+      trial_usado: true,
       max_empleados: 10,
       activa: true,
       email_verificado: false,
@@ -92,7 +99,16 @@ export async function POST(req) {
     });
 
     if (!empresa || empresa.length === 0 || empresa.code) {
-      return NextResponse.json({ error: "Error al crear la empresa: " + (empresa.message || JSON.stringify(empresa)) }, { status: 500 });
+      if (empresa?.code === "23505") {
+        const msg = empresa.message || "";
+        if (msg.includes("slug")) {
+          return NextResponse.json({ error: "Ese nombre de empresa ya está en uso. Intentá con otro nombre." }, { status: 409 });
+        }
+        if (msg.includes("email") || msg.includes("admin_email")) {
+          return NextResponse.json({ error: "Ya existe una empresa registrada con ese email." }, { status: 409 });
+        }
+      }
+      return NextResponse.json({ error: "Error al crear la empresa: " + (empresa?.message || JSON.stringify(empresa)) }, { status: 500 });
     }
 
     const emp = empresa[0];
@@ -118,19 +134,45 @@ export async function POST(req) {
       return NextResponse.json({ error: "Error al crear el usuario admin: " + (adminEmp.message || JSON.stringify(adminEmp)) }, { status: 500 });
     }
 
-    // ─── Iniciar trial Pro de 14 días para la empresa nueva ───
+    // ─── Crear entrada de trial en suscripciones ───
+    // Intenta el RPC primero (crea suscripcion + actualiza empresa atómicamente en DB).
+    // Si falla, cae a INSERT directo. La empresa ya fue creada con plan_activo:"trial"
+    // así que el peor caso es trial sin suscripcion_activa_id (acceso garantizado, vencimiento no).
+    const trialFin = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    let trialIniciado = false;
     try {
-      await fetch(`${SB_URL}/rest/v1/rpc/iniciar_trial_pro`, {
+      const rpcRes = await fetch(`${SB_URL}/rest/v1/rpc/iniciar_trial_pro`, {
         method: "POST",
-        headers: {
-          apikey: SB_KEY,
-          Authorization: `Bearer ${SB_KEY}`,
-          "Content-Type": "application/json",
-        },
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({ p_empresa_id: emp.id }),
+        signal: AbortSignal.timeout(5000),
       });
+      if (rpcRes.ok) trialIniciado = true;
+      else logger.error(`RPC iniciar_trial_pro status ${rpcRes.status} — usando fallback`);
     } catch (e) {
-      logger.error("No se pudo iniciar trial", e);
+      logger.error("RPC iniciar_trial_pro excepción — usando fallback", e);
+    }
+
+    if (!trialIniciado) {
+      try {
+        const susc = await sbFetch("suscripciones", "POST", {
+          empresa_id: emp.id,
+          plan: "pro",
+          estado: "trial",
+          trial_fin: trialFin,
+          precio: 0,
+          moneda: "ARS",
+          gateway: "gypi_trial",
+        });
+        if (Array.isArray(susc) && susc[0]?.id) {
+          await sbFetch(`empresa?id=eq.${emp.id}`, "PATCH", { suscripcion_activa_id: susc[0].id });
+          trialIniciado = true;
+        } else {
+          logger.error("Fallback trial: INSERT suscripciones sin id para empresa " + emp.id, new Error(JSON.stringify(susc)));
+        }
+      } catch (e) {
+        logger.error("Fallback trial también falló para empresa " + emp.id, e);
+      }
     }
 
     // Fire-and-forget — no bloquea la respuesta

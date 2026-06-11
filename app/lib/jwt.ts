@@ -66,28 +66,57 @@ export async function verifyToken(token: string | undefined | null): Promise<JWT
   }
 }
 
-export async function signPasswordResetToken(input: { empleadoId: string; empresaId: string }): Promise<string> {
+export async function signPasswordResetToken(input: { empleadoId: string; empresaId: string }): Promise<TokenResult> {
   const jti = generateJti();
-  return new SignJWT({ sub: input.empleadoId, eid: input.empresaId, type: "password_reset", jti })
+  const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, type: "password_reset", jti })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("1h")
     .setIssuer("gypi")
     .sign(getSecret());
+  return { token, jti };
 }
 
 export async function verifyPasswordResetToken(
   token: string | undefined | null
-): Promise<{ empleadoId: string; empresaId: string } | null> {
+): Promise<{ empleadoId: string; empresaId: string; jti: string } | null> {
   const payload = await verifyToken(token);
   if (!payload || payload.type !== "password_reset") return null;
-  if (!payload.sub || !payload.eid) return null;
-  return { empleadoId: payload.sub as string, empresaId: payload.eid as string };
+  if (!payload.sub || !payload.eid || !payload.jti) return null;
+  return { empleadoId: payload.sub as string, empresaId: payload.eid as string, jti: payload.jti as string };
+}
+
+export async function signImpersonateCode(input: AccessTokenInput): Promise<TokenResult> {
+  const jti = generateJti();
+  const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, leg: input.legajo, rol: input.rol, jti, imp: true, code: true })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("60s")
+    .setIssuer("gypi")
+    .sign(getSecret());
+  return { token, jti };
+}
+
+export async function verifyImpersonateCode(
+  token: string | undefined | null
+): Promise<AccessTokenInput | null> {
+  const payload = await verifyToken(token);
+  if (!payload || !payload.imp || !payload.code) return null;
+  if (!payload.sub || !payload.eid || payload.leg === undefined || !payload.rol) return null;
+  return {
+    empleadoId: payload.sub as string,
+    empresaId: payload.eid as string,
+    legajo: payload.leg as number,
+    rol: payload.rol as string,
+  };
 }
 
 export async function signAdminToken(): Promise<string> {
   const jti = generateJti();
-  return new SignJWT({ sub: "superadmin", jti })
+  // ver permite invalidar todos los tokens de admin sin cambiar JWT_SECRET:
+  // basta con cambiar ADMIN_TOKEN_VERSION en las variables de entorno de Vercel.
+  const ver = process.env.ADMIN_TOKEN_VERSION || "1";
+  return new SignJWT({ sub: "superadmin", jti, ver })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("8h")
@@ -98,5 +127,7 @@ export async function signAdminToken(): Promise<string> {
 export async function verifyAdminToken(token: string | undefined | null): Promise<boolean> {
   if (!token) return false;
   const payload = await verifyToken(token);
-  return payload?.sub === "superadmin";
+  if (payload?.sub !== "superadmin") return false;
+  const expectedVer = process.env.ADMIN_TOKEN_VERSION || "1";
+  return payload.ver === expectedVer;
 }

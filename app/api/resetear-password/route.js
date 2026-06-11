@@ -32,17 +32,36 @@ export async function POST(req) {
       return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }
 
-    // Verificar que el empleado sigue activo
-    const r = await fetch(
-      `${SB_URL}/rest/v1/empleados?id=eq.${resetData.empleadoId}&empresa_id=eq.${resetData.empresaId}&activo=eq.true&select=id&limit=1`,
-      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
-    );
-    const rows = await r.json();
+    // Verificar que el empleado sigue activo + leer JTI almacenado (si la columna existe)
+    const baseUrl = `${SB_URL}/rest/v1/empleados?id=eq.${resetData.empleadoId}&empresa_id=eq.${resetData.empresaId}&activo=eq.true&limit=1`;
+    const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
+
+    let rows, storedJti;
+    const rJti = await fetch(`${baseUrl}&select=id,password_reset_jti`, { headers });
+    if (rJti.ok) {
+      rows = await rJti.json();
+      storedJti = Array.isArray(rows) && rows[0] ? rows[0].password_reset_jti : undefined;
+    } else {
+      // Columna no existe aún (migración 018 pendiente): fallback sin JTI
+      const rBase = await fetch(`${baseUrl}&select=id`, { headers });
+      rows = await rBase.json();
+      storedJti = undefined;
+    }
+
     if (!Array.isArray(rows) || rows.length === 0) {
       return NextResponse.json({ error: "Empleado no encontrado o inactivo" }, { status: 404 });
     }
 
-    // Actualizar contraseña
+    // Validar uso único: JTI debe coincidir con el almacenado
+    // Si storedJti es undefined, la migración 018 no se aplicó aún — se omite la validación
+    if (storedJti !== undefined && storedJti !== resetData.jti) {
+      return NextResponse.json(
+        { error: "El link expiró o ya fue usado. Solicitá uno nuevo." },
+        { status: 401 }
+      );
+    }
+
+    // Actualizar contraseña y limpiar JTI (token queda invalidado)
     const hashed = await bcrypt.hash(nueva_password, 10);
     const patch = await fetch(
       `${SB_URL}/rest/v1/empleados?id=eq.${resetData.empleadoId}&empresa_id=eq.${resetData.empresaId}`,
@@ -54,7 +73,11 @@ export async function POST(req) {
           "Content-Type": "application/json",
           Prefer: "return=minimal",
         },
-        body: JSON.stringify({ password: hashed, debe_cambiar_password: false }),
+        body: JSON.stringify({
+          password: hashed,
+          debe_cambiar_password: false,
+          ...(storedJti !== undefined ? { password_reset_jti: null } : {}),
+        }),
       }
     );
 

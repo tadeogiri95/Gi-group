@@ -3,13 +3,12 @@
 // Body: { refresh_token: "eyJ..." }
 // Retorna: { token, expires_in }
 //
-// ENTREGA 1E: Recibe un refresh token válido y devuelve
-// un nuevo access token. No genera nuevo refresh token
-// (el refresh original sigue válido hasta su expiración de 30d).
+// Recibe un refresh token válido, emite un nuevo access token
+// y rota el refresh token (el viejo queda invalidado inmediatamente).
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
-import { verifyToken, signAccessToken } from "../../lib/jwt";
+import { verifyToken, signAccessToken, signRefreshToken } from "../../lib/jwt";
 import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -48,13 +47,14 @@ export async function POST(request) {
       `sesiones?refresh_jti=eq.${payload.jti}&select=id&limit=1`
     );
     if (!Array.isArray(sesiones) || sesiones.length === 0) {
-      // Fallback: chequear por empleado_id
+      // Fallback solo para sesiones legacy (refresh_jti IS NULL — anteriores a la rotación).
+      // Sesiones nuevas que no matchean por JTI son tokens ya rotados: 401.
       sesiones = await sbGet(
-        `sesiones?empleado_id=eq.${payload.sub}&select=id&limit=1`
+        `sesiones?empleado_id=eq.${payload.sub}&refresh_jti=is.null&select=id&limit=1`
       );
-      if (Array.isArray(sesiones) && sesiones.length === 0) {
+      if (!Array.isArray(sesiones) || sesiones.length === 0) {
         return NextResponse.json(
-          { error: "Sesión revocada. Iniciá sesión de nuevo." },
+          { error: "Sesión revocada o token ya usado. Iniciá sesión de nuevo." },
           { status: 401 }
         );
       }
@@ -73,32 +73,41 @@ export async function POST(request) {
 
     const emp = empleados[0];
 
-    // Generar nuevo access token
-    const { token: newAccessToken, jti: newJti } = await signAccessToken({
-      empleadoId: emp.id,
-      empresaId: emp.empresa_id,
-      legajo: emp.legajo,
-      rol: emp.rol,
-    });
+    // Generar nuevo access token + nuevo refresh token (rotación)
+    const [{ token: newAccessToken, jti: newJti }, { token: newRefreshToken, jti: newRefreshJti }] =
+      await Promise.all([
+        signAccessToken({
+          empleadoId: emp.id,
+          empresaId: emp.empresa_id,
+          legajo: emp.legajo,
+          rol: emp.rol,
+        }),
+        signRefreshToken({
+          empleadoId: emp.id,
+          empresaId: emp.empresa_id,
+        }),
+      ]);
 
-    // Actualizar token + jti en la sesión.
-    // CRÍTICO: validarToken consulta la columna `token` (no `jti`).
-    // Si solo actualizamos `jti`, el retry tras 401 falla porque busca
-    // token=eq.newJti pero la fila todavía tiene token=eq.originalJti → 401.
-    try {
-      if (sesiones?.[0]?.id) {
-        await fetch(`${SB_URL}/rest/v1/sesiones?id=eq.${sesiones[0].id}`, {
-          method: "PATCH",
-          headers: {
-            apikey: SB_KEY,
-            Authorization: `Bearer ${SB_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ token: newJti, jti: newJti }),
-        });
+    // Actualizar sesión: nuevo access JTI + nuevo refresh JTI.
+    // El viejo refresh_jti queda invalidado — si alguien lo intenta usar
+    // ya no matchea por refresh_jti=eq.{oldJti} ni por el fallback legacy.
+    // Este PATCH es parte del camino crítico: si falla no emitimos tokens
+    // para mantener la garantía de rotación. El cliente reintentará.
+    if (sesiones?.[0]?.id) {
+      const patchRes = await fetch(`${SB_URL}/rest/v1/sesiones?id=eq.${sesiones[0].id}`, {
+        method: "PATCH",
+        headers: {
+          apikey: SB_KEY,
+          Authorization: `Bearer ${SB_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: newJti, jti: newJti, refresh_jti: newRefreshJti }),
+      });
+      if (!patchRes.ok) {
+        const errText = await patchRes.text();
+        logger.error("refresh-token: fallo al actualizar sesión — abortando rotación", new Error(errText));
+        return NextResponse.json({ error: "Error de sesión. Reintentá en unos segundos." }, { status: 503 });
       }
-    } catch (e) {
-      logger.error("Error actualizando sesión en refresh", e);
     }
 
     const isProd = process.env.NODE_ENV === "production";
@@ -114,6 +123,15 @@ export async function POST(request) {
       sameSite: "lax",
       path: "/",
       maxAge: 7 * 24 * 60 * 60,
+    });
+    res.cookies.set({
+      name: "gypi_refresh",
+      value: newRefreshToken,
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60,
     });
     return res;
   } catch (err) {

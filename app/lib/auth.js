@@ -28,6 +28,7 @@ export async function validarToken(request) {
 
   if (!payload || !payload.sub || !payload.eid) return null;
   if (payload.type === "refresh") return null;
+  if (payload.code) return null; // impersonate codes son de un solo intercambio, no sesiones
 
   // Tokens de impersonación (1h) se validan solo por firma — no tienen sesión en DB.
   // Consultamos por la columna `token` (existe desde el schema base) que almacena el jti.
@@ -45,6 +46,27 @@ export async function validarToken(request) {
         if (Array.isArray(rows) && rows.length === 0) return null;
       }
       // r.ok = false → error de DB/RLS → fail-open (no expulsamos si Supabase falla)
+    } catch {
+      // Error de red o parsing → fail-open
+    }
+  }
+
+  // Verificar que el email de la empresa está confirmado.
+  // No aplica a tokens de impersonación (superadmin siempre tiene acceso).
+  // Usa === false para fail-open si la columna no existe todavía (migración pendiente).
+  if (!payload.imp && SB_URL && SB_KEY) {
+    try {
+      const re = await fetch(
+        `${SB_URL}/rest/v1/empresa?id=eq.${payload.eid}&select=email_verificado&limit=1`,
+        { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
+      );
+      if (re.ok) {
+        const rows = await re.json();
+        if (Array.isArray(rows) && rows.length > 0 && rows[0].email_verificado === false) {
+          return null;
+        }
+      }
+      // re.ok = false → fail-open (consistente con el check de JTI)
     } catch {
       // Error de red o parsing → fail-open
     }
