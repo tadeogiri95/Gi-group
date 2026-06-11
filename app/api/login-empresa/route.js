@@ -76,12 +76,12 @@ async function checkLoginRateLimit(ip) {
 async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, userAgent }) {
   if (!SB_URL || !SB_KEY) return;
 
+  // Columnas absolutamente garantizadas (existían antes de cualquier migración)
   const baseBody = {
     empleado_id: empleadoId,
     empresa_id: empresaId,
     token: jti,
     ip: ip || null,
-    expira_en: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   };
 
   const tryInsert = async (body) => {
@@ -98,10 +98,13 @@ async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, us
     return { ok: r.ok, status: r.status, text: r.ok ? "" : await r.text() };
   };
 
+  const expira_en = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
   try {
-    // Intento completo: con user_agent y refresh_jti
+    // Intento completo: con expira_en, user_agent y refresh_jti
     const full = {
       ...baseBody,
+      expira_en,
       user_agent: userAgent || null,
       ...(refreshJti ? { refresh_jti: refreshJti } : {}),
     };
@@ -110,7 +113,7 @@ async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, us
 
     logger.error(`guardarSesionJWT fallo completo [${r1.status}]`, new Error(r1.text));
 
-    // Fallback: solo columnas garantizadas (schema base)
+    // Fallback sin columnas opcionales (expira_en puede no existir todavía)
     const r2 = await tryInsert(baseBody);
     if (!r2.ok) {
       logger.error(`guardarSesionJWT fallo minimal [${r2.status}]`, new Error(r2.text));
