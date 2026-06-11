@@ -310,7 +310,7 @@ export default function ReportesScreen() {
       const hoy = new Date().toISOString().slice(0, 10);
       const diasSinEgreso = presentes.filter(d => d.minReales == null);
       const minEstimadosHoy = diasSinEgreso.reduce((a, d) => {
-        const f = fichadas.find(f2 => f2.empleado_id === emp.id && f2.fecha === hoy);
+        const f = fichadas.find(f2 => f2.legajo === emp.legajo && f2.fecha === hoy);
         if (f && f.ingreso) { const ahora = new Date(); const ingMin = parseHora(f.ingreso.slice(0, 5)); const ahoraMin = ahora.getHours() * 60 + ahora.getMinutes(); return a + Math.max(0, ahoraMin - (ingMin || 0)); }
         return a;
       }, 0);
@@ -328,14 +328,15 @@ export default function ReportesScreen() {
     const pctHorasPromedio = conHorasEsperadas.length > 0 ? Math.round(conHorasEsperadas.reduce((a, c) => a + c.pctHoras, 0) / conHorasEsperadas.length) : 0;
     const totalAusencias = cumplimiento.reduce((a, c) => a + c.ausencias, 0);
     const totalTardanzas = cumplimiento.reduce((a, c) => a + c.tardanzas, 0);
+    const totalMinTardanzas = cumplimiento.reduce((a, c) => a + (c.totalTardanzaMin || 0), 0);
     const perfectos = cumplimiento.filter(c => c.pctCumplimiento === 100 && c.tardanzas === 0).length;
-    return { total, pctPromedio, pctHorasPromedio, totalAusencias, totalTardanzas, perfectos };
+    return { total, pctPromedio, pctHorasPromedio, totalAusencias, totalTardanzas, totalMinTardanzas, perfectos };
   }, [cumplimiento]);
 
   const handleExportCSV = () => {
     setExporting("csv");
-    const headers = ["Empleado", "Legajo", "División", "Días laborales", "Presentes", "Ausencias", "Tardanzas", "% Asistencia", "Hs esperadas", "Hs reales", "% Horas"];
-    const rows = cumplimiento.map(c => [c.emp.nombre, c.emp.legajo, c.emp.division || "—", c.laborales, c.presentes, c.ausencias, c.tardanzas, c.pctCumplimiento + "%", fmtHora(c.totalMinEsperados), fmtHora(c.totalMinReales), c.pctHoras + "%"]);
+    const headers = ["Empleado", "Legajo", "División", "Días laborales", "Presentes", "Ausencias", "Tardanzas", "Min. tardanza", "% Asistencia", "Hs esperadas", "Hs reales", "% Horas"];
+    const rows = cumplimiento.map(c => [c.emp.nombre, c.emp.legajo, c.emp.division || "—", c.laborales, c.presentes, c.ausencias, c.tardanzas, c.totalTardanzaMin || 0, c.pctCumplimiento + "%", fmtHora(c.totalMinEsperados), fmtHora(c.totalMinReales), c.pctHoras + "%"]);
     exportCSV([headers, ...rows], `Cumplimiento_${labelPeriodo.replace(/ /g, "_")}.csv`);
     showToast("✅ CSV descargado", C.green); setTimeout(() => setExporting(null), 1000);
   };
@@ -417,14 +418,15 @@ export default function ReportesScreen() {
       ) : tab === "cumplimiento" ? (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-3 gap-2 mb-3.5">
+          <div className="grid grid-cols-3 gap-2 mb-2">
             <KPI value={`${metricas.pctPromedio}%`} label="Asistencia" color={pctColor(metricas.pctPromedio)} />
             <KPI value={metricas.totalAusencias} label="Ausencias" color={C.red} />
             <KPI value={metricas.totalTardanzas} label="Tardanzas" color={C.amber} />
           </div>
-          <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="grid grid-cols-3 gap-2 mb-4">
             <KPI value={`${metricas.pctHorasPromedio}%`} label="Cumpl. horas" color={pctColor(metricas.pctHorasPromedio)} />
             <KPI value={metricas.perfectos} label="Sin falta ni tard." color={C.green} />
+            <KPI value={metricas.totalMinTardanzas > 0 ? fmtHora(metricas.totalMinTardanzas) : "0m"} label="Tiempo perdido" color={metricas.totalMinTardanzas > 0 ? C.amber : C.green} />
           </div>
 
           <div className="mb-2"><div className="text-xs font-bold text-gypi-text font-heading">Detalle por empleado</div></div>

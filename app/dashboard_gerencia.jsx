@@ -272,6 +272,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
   const [resumenProd, setResumenProd] = useState([]);
   const [fichadasSemana, setFichadasSemana] = useState([]);
   const [reportesObra, setReportesObra] = useState([]);
+  const [tardanzasMes, setTardanzasMes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [showBilling, setShowBilling] = useState(false);
@@ -296,14 +297,17 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
       const mon = new Date(); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
       const monStr = mon.toISOString().split("T")[0];
 
-      const [prodData, fichadasSem, repObra] = await Promise.all([
+      const primerDiaMes = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-01`;
+      const [prodData, fichadasSem, repObra, tardesMes] = await Promise.all([
         sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`),
         sb.get(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc`),
         sb.get(`reportes_obra?fecha=eq.${hoy}&order=created_at.desc`),
+        sb.get(`fichadas?select=legajo,minutos_tarde,empleados(apodo,nombre)&llegada_tarde=eq.true&fecha=gte.${primerDiaMes}&order=fecha.asc`),
       ]);
       setResumenProd(prodData || []);
       setFichadasSemana(fichadasSem || []);
       setReportesObra(repObra || []);
+      setTardanzasMes(tardesMes || []);
     } catch (e) {
       console.error("Dashboard error:", e);
     } finally {
@@ -345,6 +349,23 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
 
   // Tardanzas semana
   const tardesEstaSemana = fichadasSemana.filter(f => f.llegada_tarde).length;
+
+  // Promedio horas trabajadas por día esta semana (solo fichadas con egreso registrado)
+  const fichadasConHoras = fichadasSemana.filter(f => f.horas_trabajadas && parseFloat(f.horas_trabajadas) > 0);
+  const promedioHorasDia = fichadasConHoras.length > 0
+    ? (fichadasConHoras.reduce((a, f) => a + parseFloat(f.horas_trabajadas), 0) / fichadasConHoras.length)
+    : 0;
+
+  // Top tardadores del mes (agrupado por legajo, top 3)
+  const topTardadores = useMemo(() => {
+    const map = {};
+    tardanzasMes.forEach(f => {
+      if (!map[f.legajo]) map[f.legajo] = { legajo: f.legajo, nombre: f.empleados?.apodo || f.empleados?.nombre || `L-${f.legajo}`, count: 0, minTotal: 0 };
+      map[f.legajo].count++;
+      map[f.legajo].minTotal += parseFloat(f.minutos_tarde) || 0;
+    });
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 3);
+  }, [tardanzasMes]);
 
   // Fichadas semana — por día para gráfico
   const fichadasPorDia = useMemo(() => {
@@ -712,7 +733,43 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
             labels={fichadasPorDia.map(d => d.label)}
           />
         </div>
+
+        {/* Promedio horas / día semana */}
+        {promedioHorasDia > 0 && (
+          <div style={{ marginTop: 10, padding: "8px 12px", background: `${C.cyan}10`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 11, color: C.dim, fontWeight: 600 }}>Prom. horas/día semana</span>
+            <span style={{ fontFamily: fH, fontSize: 14, fontWeight: 700, color: C.cyan }}>{promedioHorasDia.toFixed(1)}h</span>
+          </div>
+        )}
       </div>
+
+      {/* ─── Top tardadores del mes ─── */}
+      {topTardadores.length > 0 && (
+        <div className="card-hover" style={{
+          background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Top tardanzas del mes</div>
+            <Tag color={C.amber}>{tardanzasMes.length} registros</Tag>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {topTardadores.map((t, i) => (
+              <div key={t.legajo} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 11, background: `${C.amber}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: C.amber }}>{i + 1}</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.nombre}</div>
+                  <div style={{ fontSize: 10, color: C.dim }}>{t.count} {t.count === 1 ? "tardanza" : "tardanzas"} · {fmtMin(t.minTotal)} acum.</div>
+                </div>
+                <div style={{ padding: "3px 8px", background: `${C.amber}15`, borderRadius: 8, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.amber }}>{t.count}×</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ─── Productividad divisional/general ─── */}
       <div className="card-hover" style={{
