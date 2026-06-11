@@ -159,9 +159,13 @@ function ReportesObraTab() {
       </div>
 
       {loading ? (
-        <div className="p-10 text-center text-gypi-dim text-[13px]">Cargando reportes...</div>
+        <div className="gypi-dots"><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /></div>
       ) : reportesObra.length === 0 ? (
-        <div className="bg-gypi-surface rounded-[14px] p-10 text-center border border-gypi-border text-gypi-dim text-[13px]">Sin reportes de obra en esta fecha</div>
+        <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
+          <div className="text-[32px] mb-2">🏗️</div>
+          <div className="text-sm font-bold text-gypi-text">Sin reportes en esta fecha</div>
+          <div className="text-xs text-gypi-dim mt-1.5">Los reportes de obra enviados por instaladores aparecerán acá.</div>
+        </div>
       ) : (
         <div className="flex flex-col gap-2">
           <Tag color={C.cyan} style={{ alignSelf: "flex-start", marginBottom: 4 }}>{reportesObra.length} reportes</Tag>
@@ -407,7 +411,7 @@ export default function ReportesScreen() {
       </div>
 
       {loading ? (
-        <div className="p-10 text-center text-gypi-dim text-[13px]">Cargando datos...</div>
+        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
       ) : tab === "obra" ? (
         <ReportesObraTab />
       ) : tab === "cumplimiento" ? (
@@ -426,7 +430,11 @@ export default function ReportesScreen() {
           <div className="mb-2"><div className="text-xs font-bold text-gypi-text font-heading">Detalle por empleado</div></div>
 
           {cumplimiento.length === 0 ? (
-            <div className="bg-gypi-surface rounded-[14px] py-[30px] text-center border border-gypi-border text-gypi-dim text-[13px]">Sin empleados en esta división</div>
+            <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
+              <div className="text-[28px] mb-2">👥</div>
+              <div className="text-sm font-bold text-gypi-text">Sin empleados en esta división</div>
+              <div className="text-xs text-gypi-dim mt-1.5">Seleccioná otra división o verificá que haya empleados asignados.</div>
+            </div>
           ) : (
             <div className="flex flex-col gap-2">
               {cumplimiento.map(c => {

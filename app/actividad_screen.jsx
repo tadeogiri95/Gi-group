@@ -151,8 +151,10 @@ export default function ActividadScreen({
   // ═══ RENDER: LOADING ═══
   if (loading && !tareaActiva && historial.length === 0) {
     return (
-      <div className="font-body py-10 px-5 text-center text-gypi-dim text-[13px]">
-        Cargando actividades...
+      <div className="gypi-dots">
+        <span style={{ background: "var(--color-empresa-primary, #F97316)" }} />
+        <span style={{ background: "var(--color-empresa-primary, #F97316)" }} />
+        <span style={{ background: "var(--color-empresa-primary, #F97316)" }} />
       </div>
     );
   }
@@ -258,7 +260,11 @@ export default function ActividadScreen({
             );
           })}
           {historial.length === 0 && (
-            <div className="text-center py-10 text-gypi-dim">Sin registros todavía</div>
+            <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
+              <div className="text-[28px] mb-2">🔨</div>
+              <div className="text-sm font-bold text-gypi-text">Sin registros todavía</div>
+              <div className="text-xs text-gypi-dim mt-1.5">Tus tareas del día aparecerán acá una vez que las inicies.</div>
+            </div>
           )}
         </div>
       </div>
@@ -342,7 +348,7 @@ export default function ActividadScreen({
 
                 <div className="max-h-[300px] overflow-y-auto flex flex-col gap-1.5 mb-4">
                   {proyectosLoading ? (
-                    <div className="text-center py-[30px] text-gypi-dim text-[13px]">Cargando proyectos...</div>
+                    <div className="gypi-dots" style={{ padding: "20px 0" }}><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
                   ) : proyectosFiltrados.length === 0 ? (
                     <div className="text-center py-5 text-gypi-dim text-[13px]">
                       {busqueda ? (

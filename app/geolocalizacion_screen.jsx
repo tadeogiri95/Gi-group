@@ -627,7 +627,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
       />
 
       {loading ? (
-        <div className="text-center p-10 text-gypi-dim text-[13px]">Cargando personal...</div>
+        <div className="gypi-dots"><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /></div>
       ) : modo === "masivo" ? (
         <>
           {/* Paso 1: Configuración masiva */}

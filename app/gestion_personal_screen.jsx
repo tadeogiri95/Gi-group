@@ -500,7 +500,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
 
       {/* Lista empleados */}
       {loading && empleados.length === 0 ? (
-        <div className="text-center p-10 text-gypi-dim text-[13px]">Cargando personal...</div>
+        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
       ) : filtrados.length === 0 ? (
         <div className="bg-gypi-surface rounded-2xl p-10 text-center border border-gypi-border">
           <div className="text-[32px] mb-3">👥</div>

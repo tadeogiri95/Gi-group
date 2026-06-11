@@ -97,7 +97,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
       </div>
 
       {loading && resumen.length === 0 ? (
-        <div className="text-center p-10 text-gypi-dim text-[13px]">Cargando actividades...</div>
+        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
       ) : (
         <>
           {/* Cards resumen */}

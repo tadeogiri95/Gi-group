@@ -292,10 +292,16 @@ export default function ProyectosScreen({ empresaId }) {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: 40, color: C.dim, fontSize: 13 }}>Cargando...</div>
+        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
       ) : filtrados.length === 0 ? (
-        <div style={{ background: C.surface, borderRadius: 16, padding: 40, textAlign: "center", border: `1px solid ${C.border}`, color: C.dim, fontSize: 13 }}>
-          {search || filtroDiv ? "Sin resultados" : "Sin proyectos. Creá el primero o importá un CSV."}
+        <div style={{ background: C.surface, borderRadius: 16, padding: "32px 24px", textAlign: "center", border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+            {search || filtroDiv ? "Sin resultados" : "Sin proyectos"}
+          </div>
+          <div style={{ fontSize: 12, color: C.dim }}>
+            {search || filtroDiv ? "Probá con otro filtro o búsqueda." : "Creá el primero con el botón o importá un CSV."}
+          </div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

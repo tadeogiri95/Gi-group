@@ -46,10 +46,16 @@ export default function Nav({ active, onChange, role, pend }) {
             display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
             background: "none", border: "none", cursor: "pointer", padding: "4px 12px",
             color: isActive ? C.amber : C.mute, position: "relative",
-            fontFamily: fB,
+            fontFamily: fB, transition: "color 0.15s",
           }}>
             {IconComp && <IconComp size={22} />}
-            <span style={{ fontSize: 10, fontWeight: 600 }}>{t.label}</span>
+            <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 600 }}>{t.label}</span>
+            <span style={{
+              display: "block", height: 2, borderRadius: 1,
+              background: C.amber, marginTop: 2,
+              width: isActive ? 18 : 0,
+              transition: "width 0.2s ease",
+            }} />
             {t.key === "solicitudes" && pend > 0 && (
               <span style={{
                 position: "absolute", top: 0, right: 4, minWidth: 16, height: 16,

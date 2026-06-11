@@ -211,7 +211,7 @@ export default function CalendarioScreen({ empresaId }) {
       </div>
 
       {loading ? (
-        <div className="text-center p-10 text-gypi-dim text-[13px]">Cargando calendario...</div>
+        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
       ) : (
         <>
           {/* Headers días */}
