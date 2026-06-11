@@ -101,6 +101,14 @@ Gypi es una PWA SaaS multi-tenant de RRHH industrial con stack sólido (Next.js 
 | `app/[slug]/HomeContent.jsx` | Lógica de título extraída a función `getScreenTitle()` y `getScreenSubtitle()` — de 2 ternarios de 200 chars a funciones legibles. |
 | `app/components/screens/HomeEmp.jsx` | Empty states mejorados en "Mi semana" y "Mis solicitudes" — usan `EmptyState` component con copy accionable. |
 | `app/components/screens/InboxScreen.jsx` | Verificado — tiene manejo básico de estado vacío. |
+| `app/[slug]/HomeContent.jsx` | Loading state: reemplazado `return null` por spinner animado con logo de empresa y 3 dots pulsantes en amber |
+| `app/components/screens/HistorialFichajesScreen.jsx` | Empty state mejorado: `EmptyState` con icon calendar + copy accionable. Loading reemplazado por dots pulsantes. |
+
+### Prioridad 5 — Métricas accionables
+
+| Archivo | Cambio |
+|---------|--------|
+| `app/dashboard_gerencia.jsx` | Query `fichadasSemana` ahora incluye `llegada_tarde,minutos_tarde`. Nueva métrica "Tardes sem." en la tarjeta Asistencia (4ta columna, amber cuando > 0, green cuando 0). |
 
 ---
 
@@ -110,13 +118,12 @@ Gypi es una PWA SaaS multi-tenant de RRHH industrial con stack sólido (Next.js 
 |-----------|-----------|---------------|
 | Alta | **Verificar `reportes_obra` columnas `fotos`/`fotos_urls`** contra Supabase Studio — si hay discrepancia, crear migración SQL correctiva. | Sprint siguiente |
 | Alta | **`solicitudes.fecha` cambiar de text a date** — requiere migración con conversión de datos existentes. | Sprint siguiente |
-| Alta | **Loading state inicial** — reemplazar `return null` (pantalla en blanco) con un spinner/skeleton mínimo mientras `!init`. | Sprint siguiente |
 | Media | **Mover `lib/push.js` y `components/PushManager.jsx`** a `app/lib/` y `app/components/`. Requiere actualizar todos los imports relativos. | Refactor planificado |
 | Media | **Renombrar `admin_empresa_screen.js`** → `.jsx` — trivial pero requiere verificar que el sistema de build lo maneje sin breaking changes. | Próxima sesión |
 | Media | **Consolidar sbGet/sbPost/sbPatch inline** de billing routes en `app/lib/sbAdmin.js`. | Refactor planificado |
 | Media | **`catalogo_etapas`** — auditar si tiene datos, si la app la lee. Si está obsoleta, migrar sus datos a `etapas` y dropear la tabla. | Sprint siguiente |
 | Baja | **Badges de mensajes no leídos en Chat tab** | Feature nueva |
-| Baja | **Métrica tardanzas del mes en Dashboard Gerencial** | Feature nueva |
+| Baja | **Tardanzas del mes (acumulado mensual)** en Dashboard — la métrica actual muestra semana. Para el mes necesita query separada. | Feature nueva |
 | Baja | **Internacionalización de precios** en plans.js | Largo plazo |
 | Baja | **Tests de integración para API routes** — los tests actuales son unitarios. | Largo plazo |
 

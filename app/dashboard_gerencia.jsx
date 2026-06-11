@@ -298,7 +298,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
 
       const [prodData, fichadasSem, repObra] = await Promise.all([
         sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`),
-        sb.get(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc`),
+        sb.get(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc`),
         sb.get(`reportes_obra?fecha=eq.${hoy}&order=created_at.desc`),
       ]);
       setResumenProd(prodData || []);
@@ -342,6 +342,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
   const programados = empActivos.filter(e => e.diagrama && e.diagrama[diaKey]).length;
   const ausentes = Math.max(0, programados - presentes);
   const pctAsist = programados > 0 ? Math.round((presentes / programados) * 100) : 0;
+
+  // Tardanzas semana
+  const tardesEstaSemana = fichadasSemana.filter(f => f.llegada_tarde).length;
 
   // Fichadas semana — por día para gráfico
   const fichadasPorDia = useMemo(() => {
@@ -678,18 +681,22 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
         </div>
 
         {/* Asistencia diaria */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${C.green}10`, borderRadius: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+          <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.green}10`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.green }}>{presentes}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Presentes</div>
           </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${C.red}10`, borderRadius: 10 }}>
+          <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.red}10`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: ausentes > 0 ? C.red : C.green }}>{ausentes}</div>
             <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Ausentes</div>
           </div>
-          <div style={{ flex: 1, textAlign: "center", padding: "10px 6px", background: `${pctColor(pctAsist)}10`, borderRadius: 10 }}>
+          <div style={{ textAlign: "center", padding: "10px 6px", background: `${pctColor(pctAsist)}10`, borderRadius: 10 }}>
             <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: pctColor(pctAsist) }}>{pctAsist}%</div>
-            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Cumplimiento</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Cumplim.</div>
+          </div>
+          <div style={{ textAlign: "center", padding: "10px 6px", background: tardesEstaSemana > 0 ? `${C.amber}10` : `${C.green}05`, borderRadius: 10 }}>
+            <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: tardesEstaSemana > 0 ? C.amber : C.green }}>{tardesEstaSemana}</div>
+            <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginTop: 2 }}>Tardes sem.</div>
           </div>
         </div>
 
