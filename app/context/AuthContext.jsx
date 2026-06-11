@@ -78,10 +78,12 @@ export function AuthProvider({ children }) {
         return;
       }
       if (hasSession) {
-        // Post-login: traer empresa completa (autenticado via cookie httpOnly)
+        // Post-login: traer empresa completa (autenticado via cookie httpOnly).
+        // Solo actualizamos si la respuesta contiene un id real — el servidor
+        // puede devolver DEFAULTS (sin id) si la sesión aún no fue validada.
         const r = await fetch("/api/empresa", { credentials: "include" });
         const d = await r.json();
-        if (d && !d.error) {
+        if (d && !d.error && d.id) {
           setEmpresa(d);
           setColoresEmpresa(d.color_primario, d.color_secundario);
           loadConfigEmpresa(d.id);
@@ -125,8 +127,10 @@ export function AuthProvider({ children }) {
         sessionStorage.removeItem("gi-session");
         sessionStorage.removeItem("gi-session-time");
       } catch {}
+      // Re-cargar empresa por slug para que empresa.id esté disponible al re-loguear
+      cargarEmpresa();
     });
-  }, []);
+  }, [cargarEmpresa]);
 
   // ─── Login ───
   const login = useCallback((u, tokens = {}) => {

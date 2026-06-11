@@ -20,10 +20,15 @@ export default function LoginScreen({ onLogin, empresa }) {
     if (!legajo || !password) return;
     setLoading(true); setError("");
     try {
+      if (!empresa?.id) {
+        setError("Error cargando datos de la empresa. Recargá la página.");
+        setLoading(false);
+        return;
+      }
       const res = await fetch("/api/login-empresa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ legajo: legajo.trim(), password, empresa_id: empresa?.id }),
+        body: JSON.stringify({ legajo: legajo.trim(), password, empresa_id: empresa.id }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error de login");

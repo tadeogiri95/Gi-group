@@ -39,18 +39,25 @@ export async function POST(request) {
       return NextResponse.json({ error: "Refresh token inválido o expirado" }, { status: 401 });
     }
 
-    // Verificar que la sesión no fue revocada buscando por refresh_jti.
-    // Fail-open: si el resultado es null (columna inexistente, error de DB) se
-    // continúa para no expulsar usuarios con sesiones válidas sin refresh_jti.
-    // Solo se bloquea si el array está vacío (revocación explícita confirmada).
-    const sesiones = await sbGet(
-      `sesiones?refresh_jti=eq.${payload.jti}&select=id,empleado_id,empresa_id`
+    // Verificar que la sesión no fue revocada.
+    // Primero intenta por refresh_jti (preciso). Si falla o no encuentra nada
+    // (columna con NULL en sesiones viejas), hace fallback: chequea que exista
+    // al menos una sesión activa para este empleado. Solo bloquea si el
+    // empleado no tiene NINGUNA sesión (logout-all o revocación explícita).
+    let sesiones = await sbGet(
+      `sesiones?refresh_jti=eq.${payload.jti}&select=id&limit=1`
     );
-    if (Array.isArray(sesiones) && sesiones.length === 0) {
-      return NextResponse.json(
-        { error: "Sesión revocada. Iniciá sesión de nuevo." },
-        { status: 401 }
+    if (!Array.isArray(sesiones) || sesiones.length === 0) {
+      // Fallback: chequear por empleado_id
+      sesiones = await sbGet(
+        `sesiones?empleado_id=eq.${payload.sub}&select=id&limit=1`
       );
+      if (Array.isArray(sesiones) && sesiones.length === 0) {
+        return NextResponse.json(
+          { error: "Sesión revocada. Iniciá sesión de nuevo." },
+          { status: 401 }
+        );
+      }
     }
 
     // Verificar que el empleado sigue activo
