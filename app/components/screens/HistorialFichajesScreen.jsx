@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { C, fH, fB, fM, DIAS_KEY } from "../../lib/theme";
 import { sb } from "../../lib/supabase";
 import { Ic } from "../Icons";
+import EmptyState from "../ui/EmptyState";
 
 export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBack }) {
   const [fichadas, setFichadas] = useState([]);
@@ -56,8 +57,16 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
         <div style={{ background: `${C.amber}08`, borderRadius: 14, padding: 14, border: "1px solid #F59E0B30", textAlign: "center" }}><div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: "#F59E0B" }}>{tardesComunes.length}</div><div style={{ fontSize: 10, color: C.dim, fontWeight: 600, marginTop: 2 }}>Comunes</div></div>
         <div style={{ background: `${C.red}08`, borderRadius: 14, padding: 14, border: `1px solid ${C.red}30`, textAlign: "center" }}><div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.red }}>{tardesConPerdida.length}</div><div style={{ fontSize: 10, color: C.dim, fontWeight: 600, marginTop: 2 }}>Con pérdida</div></div>
       </div>
-      {loading ? <div style={{ textAlign: "center", padding: 30, color: C.dim }}>Cargando...</div> :
-        fichadas.length === 0 ? <div style={{ background: C.surface, borderRadius: 14, padding: 30, textAlign: "center", border: `1px solid ${C.border}`, color: C.dim, fontSize: 13 }}>Sin fichadas en este mes</div> :
+      {loading ? (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: 40, gap: 6 }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ width: 6, height: 6, borderRadius: 3, background: C.amber, animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+          ))}
+          <style>{`@keyframes pulse { 0%,100%{opacity:.2;transform:scale(.7)} 50%{opacity:1;transform:scale(1)} }`}</style>
+        </div>
+      ) : fichadas.length === 0 ? (
+        <EmptyState icon="calendar" title="Sin fichadas este mes" description="No hay registros de asistencia para este período." color={C.cyan} style={{ padding: "32px 16px" }} />
+      ) :
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {fichadas.map((f, i) => {
               const esTardeComun = f.llegada_tarde && f.minutos_tarde <= 30 && !(fichadas.filter(ff => ff.llegada_tarde && ff.fecha <= f.fecha).length >= 3);

@@ -179,7 +179,23 @@ export default function HomeContent() {
       <p style={{ color: C.dim, fontSize: 14 }}>El link no es válido o la empresa fue desactivada.</p>
     </div>
   );
-  if (!init) return null;
+  if (!init) return (
+    <div style={{ display: "flex", height: "100dvh", alignItems: "center", justifyContent: "center", background: C.bg }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+        {empresa?.logo_url
+          ? <img src={empresa.logo_url} alt="" style={{ width: 56, height: 56, borderRadius: 14, objectFit: "contain" }} />
+          : <div style={{ width: 56, height: 56, borderRadius: 14, background: `${C.amber}22`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+            </div>}
+        <div style={{ display: "flex", gap: 5 }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{ width: 6, height: 6, borderRadius: 3, background: C.amber, opacity: 0.9, animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+          ))}
+        </div>
+      </div>
+      <style>{`@keyframes pulse { 0%,100%{opacity:.2;transform:scale(.7)} 50%{opacity:1;transform:scale(1)} }`}</style>
+    </div>
+  );
 
   // Reset de contraseña via link de email — no requiere estar logueado
   const resetToken = searchParams.get("token");
