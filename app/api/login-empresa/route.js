@@ -230,29 +230,14 @@ export async function POST(req) {
       refreshToken = refresh.token;
       refreshJti = refresh.jti;
     } catch (e) {
-      // Si JWT falla (ej: JWT_SECRET no configurada), caer al flujo legacy
-      logger.warn("Error generando JWT, usando flujo legacy", { error: e.message });
-
-      const sesionData = await sbRpc("crear_sesion", {
-        p_empleado_id: usuario.id,
-        p_empresa_id: usuario.empresa_id,
-        p_ip: ip,
-        p_user_agent: userAgent.substring(0, 200),
-      });
-      const tokenInfo = Array.isArray(sesionData) ? sesionData[0] : sesionData;
-
-      const empresaData = await sbGet(
-        `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan,max_empleados`
+      // JWT_SECRET no configurada u otro error fatal.
+      // El flujo legacy (UUID token) no es compatible con el validarToken actual
+      // (requiere JWT con prefijo "eyJ"), así que fallamos explícitamente.
+      logger.error("Error generando JWT — JWT_SECRET configurada en Vercel?", { error: e.message });
+      return NextResponse.json(
+        { error: "Error de configuración del servidor. Configurá JWT_SECRET en las variables de entorno." },
+        { status: 500 }
       );
-      const safe = { ...usuario };
-      delete safe.password;
-      safe.empresa = empresaData?.[0] || null;
-
-      return NextResponse.json({
-        usuario: safe,
-        token: tokenInfo?.out_token || null,
-        expires_at: tokenInfo?.out_expires_at || null,
-      });
     }
 
     // Guardar sesión en DB (para revocación)

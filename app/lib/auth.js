@@ -38,10 +38,15 @@ export async function validarToken(request) {
         `${SB_URL}/rest/v1/sesiones?token=eq.${payload.jti}&select=id&limit=1`,
         { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
       );
-      const rows = await r.json();
-      if (!Array.isArray(rows) || rows.length === 0) return null;
+      if (r.ok) {
+        // Solo bloqueamos si Supabase confirmó explícitamente que no existe la sesión.
+        // Si la respuesta no es un array (error de schema, permiso, etc.) → fail-open.
+        const rows = await r.json();
+        if (Array.isArray(rows) && rows.length === 0) return null;
+      }
+      // r.ok = false → error de DB/RLS → fail-open (no expulsamos si Supabase falla)
     } catch {
-      // Fallo de DB: fail-open para no tumbar la app si Supabase está caído
+      // Error de red o parsing → fail-open
     }
   }
 

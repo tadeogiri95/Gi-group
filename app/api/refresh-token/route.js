@@ -81,20 +81,24 @@ export async function POST(request) {
       rol: emp.rol,
     });
 
-    // Actualizar el jti en la sesión (para tracking)
+    // Actualizar token + jti en la sesión.
+    // CRÍTICO: validarToken consulta la columna `token` (no `jti`).
+    // Si solo actualizamos `jti`, el retry tras 401 falla porque busca
+    // token=eq.newJti pero la fila todavía tiene token=eq.originalJti → 401.
     try {
-      await fetch(`${SB_URL}/rest/v1/sesiones?id=eq.${sesiones[0].id}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SB_KEY,
-          Authorization: `Bearer ${SB_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ jti: newJti }),
-      });
+      if (sesiones?.[0]?.id) {
+        await fetch(`${SB_URL}/rest/v1/sesiones?id=eq.${sesiones[0].id}`, {
+          method: "PATCH",
+          headers: {
+            apikey: SB_KEY,
+            Authorization: `Bearer ${SB_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: newJti, jti: newJti }),
+        });
+      }
     } catch (e) {
-      // No bloquea el refresh si falla el update
-      logger.error("Error actualizando jti en sesión", e);
+      logger.error("Error actualizando sesión en refresh", e);
     }
 
     const isProd = process.env.NODE_ENV === "production";
