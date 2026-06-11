@@ -8,6 +8,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM || "Gypi <noreply@gypi.app>";
+const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -49,7 +50,7 @@ function btn(url, label) {
 // ─── Email de bienvenida post-registro ───
 export async function sendBienvenida({ to, nombre, empresa, slug }) {
   if (!process.env.RESEND_API_KEY) return;
-  const url = `https://gypi.app/${slug}`;
+  const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
@@ -75,7 +76,7 @@ export async function sendBienvenida({ to, nombre, empresa, slug }) {
 // ─── Alerta de trial próximo a vencer ───
 export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRestantes }) {
   if (!process.env.RESEND_API_KEY) return;
-  const url = `https://gypi.app/${slug}`;
+  const url = `${APP_BASE}/${slug}`;
   const urgente = diasRestantes === 1;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
@@ -151,7 +152,7 @@ export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) 
 // ─── Trial expirado (downgrade automático a free) ───
 export async function sendTrialExpirado({ to, nombre, empresa, slug }) {
   if (!process.env.RESEND_API_KEY) return;
-  const url = `https://gypi.app/${slug}`;
+  const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
@@ -175,7 +176,7 @@ export async function sendTrialExpirado({ to, nombre, empresa, slug }) {
 // ─── Plan suspendido por impago / cancelación ───
 export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "cancelación" }) {
   if (!process.env.RESEND_API_KEY) return;
-  const url = `https://gypi.app/${slug}`;
+  const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
@@ -199,7 +200,7 @@ export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "
 // ─── Confirmación de pago exitoso ───
 export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, plan }) {
   if (!process.env.RESEND_API_KEY) return;
-  const url = `https://gypi.app/${slug}`;
+  const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
@@ -223,7 +224,7 @@ export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, pla
 // ─── Fallo de pago ───
 export async function sendFalloPago({ to, nombre, empresa, slug, monto }) {
   if (!process.env.RESEND_API_KEY) return;
-  const url = `https://gypi.app/${slug}`;
+  const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${nombre}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
