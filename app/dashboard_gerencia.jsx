@@ -145,10 +145,10 @@ function ReportesObraPanel({ reportesObra }) {
   return (
     <>
       <div className="card-hover" style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.border}`, marginBottom: "var(--sp-4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Reportes de Obra (Hoy)</div>
+          <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Reportes de Obra (Hoy)</div>
           {reportesObra.length > 0 && <Tag color={C.cyan}>{reportesObra.length} reportes</Tag>}
         </div>
 
@@ -271,11 +271,15 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
   const [tab, setTab] = useState("resumen"); // resumen | asistencia | produccion | solicitudes
   const [resumenProd, setResumenProd] = useState([]);
   const [fichadasSemana, setFichadasSemana] = useState([]);
+  const [fichadasMes, setFichadasMes] = useState([]);
+  const [solsAprobadas, setSolsAprobadas] = useState([]);
   const [reportesObra, setReportesObra] = useState([]);
-  const [tardanzasMes, setTardanzasMes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [showBilling, setShowBilling] = useState(false);
+  const [scoreDetail, setScoreDetail] = useState(null);
+  const [showFullRanking, setShowFullRanking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const _now = new Date();
   const hoy = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-${String(_now.getDate()).padStart(2,"0")}`;
@@ -296,18 +300,20 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
     try {
       const mon = new Date(); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
       const monStr = mon.toISOString().split("T")[0];
+      const mesInicio = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-01`;
 
-      const primerDiaMes = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,"0")}-01`;
-      const [prodData, fichadasSem, repObra, tardesMes] = await Promise.all([
+      const [prodData, fichadasSem, fichadasMesData, solsApData, repObra] = await Promise.all([
         sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`),
         sb.get(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc`),
+        sb.get(`fichadas?select=empleado_id,legajo,fecha,horas_trabajadas,llegada_tarde,minutos_tarde&fecha=gte.${mesInicio}&order=fecha.asc`),
+        sb.get(`solicitudes?select=empleado_id,legajo,tipo,estado,created_at&estado=eq.aprobado&created_at=gte.${mesInicio}&limit=500`),
         sb.get(`reportes_obra?fecha=eq.${hoy}&order=created_at.desc`),
-        sb.get(`fichadas?select=legajo,minutos_tarde,empleados(apodo,nombre)&llegada_tarde=eq.true&fecha=gte.${primerDiaMes}&order=fecha.asc`),
       ]);
       setResumenProd(prodData || []);
       setFichadasSemana(fichadasSem || []);
+      setFichadasMes(fichadasMesData || []);
+      setSolsAprobadas(solsApData || []);
       setReportesObra(repObra || []);
-      setTardanzasMes(tardesMes || []);
     } catch (e) {
       console.error("Dashboard error:", e);
     } finally {
@@ -356,16 +362,71 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
     ? (fichadasConHoras.reduce((a, f) => a + parseFloat(f.horas_trabajadas), 0) / fichadasConHoras.length)
     : 0;
 
-  // Top tardadores del mes (agrupado por legajo, top 3)
-  const topTardadores = useMemo(() => {
-    const map = {};
-    tardanzasMes.forEach(f => {
-      if (!map[f.legajo]) map[f.legajo] = { legajo: f.legajo, nombre: f.empleados?.apodo || f.empleados?.nombre || `L-${f.legajo}`, count: 0, minTotal: 0 };
-      map[f.legajo].count++;
-      map[f.legajo].minTotal += parseFloat(f.minutos_tarde) || 0;
-    });
-    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 3);
-  }, [tardanzasMes]);
+  // Ranking mensual de empleados operativos
+  const ranking = useMemo(() => {
+    const operativos = empleados.filter(e => e.rol === "operativo" && e.area === "produccion" && e.activo !== false);
+    if (!operativos.length) return [];
+
+    const ahora = new Date();
+    const anio = ahora.getFullYear();
+    const mes = ahora.getMonth();
+    const DIAS_SEM = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
+
+    const diasTranscurridos = (() => {
+      const dias = [];
+      const d = new Date(anio, mes, 1);
+      const hoyDate = new Date(anio, mes, ahora.getDate());
+      while (d <= hoyDate) { dias.push(new Date(d)); d.setDate(d.getDate() + 1); }
+      return dias;
+    })();
+
+    return operativos.map(emp => {
+      const diag = emp.diagrama || {};
+      const horasSemanales = emp.horas_semanales || 45;
+
+      const diasProgramados = diasTranscurridos.filter(d => {
+        const key = DIAS_SEM[d.getDay()];
+        return diag[key] && diag[key].in;
+      }).length;
+
+      const horasDiarias = horasSemanales / Math.max(1, Object.keys(diag).filter(k => diag[k]).length || 5);
+      const horasEsperadas = diasProgramados * horasDiarias;
+
+      const fichasEmp = fichadasMes.filter(f => f.empleado_id === emp.id || f.legajo === emp.legajo);
+      const diasTrabajados = fichasEmp.length;
+      const tardanzas = fichasEmp.filter(f => f.llegada_tarde).length;
+      const horasTrabajadas = fichasEmp.reduce((a, f) => a + (parseFloat(f.horas_trabajadas) || 0), 0);
+      const horasExtra = Math.max(0, horasTrabajadas - horasEsperadas);
+
+      const solsEmp = solsAprobadas.filter(s =>
+        (s.empleado_id === emp.id || s.legajo === emp.legajo) &&
+        ["permiso", "vacaciones", "ausencia"].includes(s.tipo)
+      );
+      const diasPermiso = solsEmp.length;
+      const horasPermiso = diasPermiso * horasDiarias;
+
+      const pAsistencia = diasProgramados > 0 ? Math.min(1, diasTrabajados / diasProgramados) : 0;
+      const pPuntualidad = diasTrabajados > 0 ? Math.max(0, 1 - (tardanzas / diasTrabajados)) : 0;
+      const pDisponibilidad = horasEsperadas > 0 ? Math.max(0, 1 - (horasPermiso / horasEsperadas)) : 1;
+      const pEsfuerzo = horasTrabajadas > 0 ? Math.min(1, horasExtra / horasTrabajadas) : 0;
+
+      const score = Math.round(
+        (pAsistencia * 40 + pPuntualidad * 25 + pDisponibilidad * 20 + pEsfuerzo * 15)
+      );
+
+      return {
+        id: emp.id, nombre: emp.nombre, apodo: emp.apodo, legajo: emp.legajo, division: emp.division,
+        score: Math.min(100, Math.max(0, score)),
+        diasProgramados, diasTrabajados, tardanzas, horasTrabajadas: +horasTrabajadas.toFixed(1),
+        horasExtra: +horasExtra.toFixed(1), diasPermiso, horasPermiso: +horasPermiso.toFixed(1),
+        horasEsperadas: +horasEsperadas.toFixed(1),
+        pAsistencia: Math.round(pAsistencia * 100),
+        pPuntualidad: Math.round(pPuntualidad * 100),
+        pDisponibilidad: Math.round(pDisponibilidad * 100),
+        pEsfuerzo: Math.round(pEsfuerzo * 100),
+      };
+    }).sort((a, b) => b.score - a.score);
+  }, [empleados, fichadasMes, solsAprobadas]);
 
   // Fichadas semana — por día para gráfico
   const fichadasPorDia = useMemo(() => {
@@ -449,26 +510,28 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
 
   /* ═══ RENDER ═══ */
   return (
-    <div style={{ fontFamily: fB, flex: 1, overflowY: "auto", padding: "0 18px 110px" }}>
+    <div className="g-fade-in safe-top" style={{ fontFamily: fB, flex: 1, overflowY: "auto", padding: "0 16px 110px" }}>
 
       {/* ─── Header con fecha/hora ─── */}
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 20, paddingTop: 4 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {empresa?.logo_url&&<img src={empresa.logo_url} alt="" style={{width:40,height:40,borderRadius:10,objectFit:"contain"}}/>}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {empresa?.logo_url&&<img src={empresa.logo_url} alt="" style={{width:44,height:44,borderRadius:14,objectFit:"contain",boxShadow:"0 2px 8px rgba(0,0,0,0.08)"}}/>}
             <div>
-            <div style={{ fontSize: 13, color: C.dim }}>{fmtDate(now)} · {fmtTime(now)}</div>
-            <h2 style={{ margin: "4px 0 0", fontFamily: fH, fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Panel de control</h2>
+            <div style={{ fontSize: 13, color: C.dim, fontWeight: 500 }}>{fmtDate(now)} · {fmtTime(now)}</div>
+            <h2 style={{ margin: "2px 0 0", fontFamily: fH, fontSize: 28, fontWeight: 800, color: C.text, letterSpacing: "-0.03em", lineHeight: 1.1 }}>Panel de control</h2>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <PulseDot color={C.green} />
-            <span style={{ fontSize: 11, color: C.dim, fontWeight: 600 }}>En vivo</span>
-            <button onClick={()=>{if(reload)reload();}} aria-label="Actualizar datos" style={{width:32,height:32,borderRadius:8,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginLeft:4}}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, background: `${C.green}10`, border: `1px solid ${C.green}20` }}>
+              <PulseDot color={C.green} />
+              <span style={{ fontSize: 11, color: C.green, fontWeight: 700 }}>En vivo</span>
+            </div>
+            <button onClick={async()=>{setRefreshing(true);try{await Promise.all([reload?.(),cargarDatos()])}finally{setNow(new Date());setRefreshing(false)}}} aria-label="Actualizar datos" style={{width:40,height:40,borderRadius:12,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"transform 0.3s ease",transform:refreshing?"rotate(360deg)":"none"}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={refreshing?C.amber:"currentColor"} strokeWidth="2.5" style={{animation:refreshing?"spin 0.8s linear infinite":"none"}}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
-            <button onClick={logout} aria-label="Cerrar sesión" className="show-mobile-only" style={{width:32,height:32,borderRadius:8,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <button onClick={logout} aria-label="Cerrar sesión" className="show-mobile-only" style={{width:40,height:40,borderRadius:12,background:C.surface,color:C.dim,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </button>
           </div>
         </div>
@@ -482,12 +545,14 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
 
       {/* ─── Alertas activas ─── */}
       {alertas.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 16 }}>
           {alertas.map((a, i) => (
             <div key={i} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-              background: `${a.color}10`, borderRadius: 12, border: `1px solid ${a.color}25`,
-              marginBottom: 6, cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+              background: `${a.color}08`, borderRadius: 14, border: `1.5px solid ${a.color}20`,
+              marginBottom: 8, cursor: "pointer",
+              boxShadow: `0 2px 8px ${a.color}10`,
+              transition: "transform 0.15s ease, box-shadow 0.15s ease",
             }} onClick={() => {
               if (a.target) goto?.(a.target);
               else if (a.text.includes("solicitud")) goto?.("solicitudes");
@@ -505,10 +570,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
       {/* ─── Solicitudes pendientes ─── */}
       {pendientes.length > 0 && (
       <div style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.amber}30`, marginBottom: 14,
+        background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.amber}30`, marginBottom: "var(--sp-4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Solicitudes pendientes</div>
+          <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Solicitudes pendientes</div>
           <Tag color={C.amber}>{pendientes.length} pendientes</Tag>
         </div>
 
@@ -528,7 +593,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
         ))}
 
         <button onClick={() => goto?.("solicitudes")} style={{
-          width: "100%", marginTop: 10, padding: 10, borderRadius: 10,
+          width: "100%", marginTop: "var(--sp-3)", padding: "var(--sp-3)", borderRadius: "var(--radius-md)",
           background: `${C.violet}12`, border: `1px solid ${C.violet}25`, color: C.violet,
           fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -569,11 +634,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
       {/* ─── Panel expandido: Estado Taller ─── */}
       {panelExpanded === "taller" && (
         <div style={{
-          background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.amber}30`, marginBottom: 14,
+          background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.amber}30`, marginBottom: "var(--sp-4)",
           animation: "fadeIn 0.2s ease",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Producción en vivo</div>
+            <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Producción en vivo</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <PulseDot color={enActividad > 0 ? C.green : C.mute} size={6} />
               <span style={{ fontSize: 11, color: C.dim }}>{enActividad} activos</span>
@@ -584,15 +649,15 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
             <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.green}12`, borderRadius: 10 }}>
               <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green }}>{enActividad}</div>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Trabajando</div>
+              <div style={{ font: "var(--text-overline)", color: C.dim, textTransform: "uppercase", marginTop: 2 }}>Trabajando</div>
             </div>
             <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.amber}12`, borderRadius: 10 }}>
               <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.amber }}>{enEspera}</div>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>En espera</div>
+              <div style={{ font: "var(--text-overline)", color: C.dim, textTransform: "uppercase", marginTop: 2 }}>En espera</div>
             </div>
             <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.red}12`, borderRadius: 10 }}>
               <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.red }}>{sinTarea}</div>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Sin tarea</div>
+              <div style={{ font: "var(--text-overline)", color: C.dim, textTransform: "uppercase", marginTop: 2 }}>Sin tarea</div>
             </div>
           </div>
 
@@ -614,7 +679,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           {/* Top rendimiento */}
           {topProductivos.length > 0 && (
             <>
-              <div style={{ fontSize: 11, color: C.dim, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Top rendimiento</div>
+              <div style={{ font: "var(--text-label)", color: C.dim, marginBottom: "var(--sp-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Top rendimiento</div>
               {topProductivos.map((op, i) => {
                 const pct = parseFloat(op.pct_productivo) || 0;
                 return (
@@ -634,7 +699,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           )}
 
           <button onClick={() => goto?.("ger-actividad")} style={{
-            width: "100%", marginTop: 12, padding: 10, borderRadius: 10,
+            width: "100%", marginTop: "var(--sp-3)", padding: "var(--sp-3)", borderRadius: "var(--radius-md)",
             background: `${C.amber}12`, border: `1px solid ${C.amber}25`, color: C.amber,
             fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -647,11 +712,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
       {/* ─── Panel expandido: Estado Instalaciones ─── */}
       {panelExpanded === "instalaciones" && (
         <div style={{
-          background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.cyan}30`, marginBottom: 14,
+          background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.cyan}30`, marginBottom: "var(--sp-4)",
           animation: "fadeIn 0.2s ease",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Instalaciones hoy</div>
+            <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Instalaciones hoy</div>
             <Tag color={C.cyan}>{obrasHoy} reportes</Tag>
           </div>
 
@@ -659,19 +724,19 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
             <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.cyan}12`, borderRadius: 10 }}>
               <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.cyan }}>{obrasHoy}</div>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Obras reportadas</div>
+              <div style={{ font: "var(--text-overline)", color: C.dim, textTransform: "uppercase", marginTop: 2 }}>Obras reportadas</div>
             </div>
             <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.green}12`, borderRadius: 10 }}>
               <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: C.green }}>{obrasConFotos}</div>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Con fotos</div>
+              <div style={{ font: "var(--text-overline)", color: C.dim, textTransform: "uppercase", marginTop: 2 }}>Con fotos</div>
             </div>
             <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.red}12`, borderRadius: 10 }}>
               <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: obrasConFaltantes > 0 ? C.red : C.green }}>{obrasConFaltantes}</div>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Con faltantes</div>
+              <div style={{ font: "var(--text-overline)", color: C.dim, textTransform: "uppercase", marginTop: 2 }}>Con faltantes</div>
             </div>
             <div style={{ textAlign: "center", padding: "10px 6px", background: `${C.amber}12`, borderRadius: 10 }}>
               <div style={{ fontFamily: fM, fontSize: 16, fontWeight: 700, color: obrasConDesvios > 0 ? C.amber : C.green }}>{obrasConDesvios}</div>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Con desvíos</div>
+              <div style={{ font: "var(--text-overline)", color: C.dim, textTransform: "uppercase", marginTop: 2 }}>Con desvíos</div>
             </div>
           </div>
 
@@ -694,10 +759,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
 
       {/* ─── Indicadores: Asistencia diaria/semanal ─── */}
       <div className="card-hover" style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.border}`, marginBottom: "var(--sp-4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Asistencia</div>
+          <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Asistencia</div>
           <Tag color={C.green}>{presentes}/{programados} hoy</Tag>
         </div>
 
@@ -722,7 +787,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
         </div>
 
         {/* Asistencia semanal bar chart */}
-        <div style={{ fontSize: 11, color: C.dim, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Asistencia semanal</div>
+        <div style={{ font: "var(--text-label)", color: C.dim, marginBottom: "var(--sp-2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Asistencia semanal</div>
         <div style={{ display: "flex", justifyContent: "center" }}>
           <MiniBarChart
             data={fichadasPorDia.map(d => d.count)}
@@ -743,40 +808,57 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
         )}
       </div>
 
-      {/* ─── Top tardadores del mes ─── */}
-      {topTardadores.length > 0 && (
-        <div className="card-hover" style={{
-          background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Top tardanzas del mes</div>
-            <Tag color={C.amber}>{tardanzasMes.length} registros</Tag>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {topTardadores.map((t, i) => (
-              <div key={t.legajo} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 22, height: 22, borderRadius: 11, background: `${C.amber}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: C.amber }}>{i + 1}</span>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.nombre}</div>
-                  <div style={{ fontSize: 10, color: C.dim }}>{t.count} {t.count === 1 ? "tardanza" : "tardanzas"} · {fmtMin(t.minTotal)} acum.</div>
-                </div>
-                <div style={{ padding: "3px 8px", background: `${C.amber}15`, borderRadius: 8, flexShrink: 0 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: C.amber }}>{t.count}×</span>
-                </div>
+      {/* ─── Ranking de empleados ─── */}
+      {ranking.length > 0 && (() => {
+        const top3 = ranking.slice(0, 3);
+        const medals = ["🥇", "🥈", "🥉"];
+        return (
+          <button onClick={() => setShowFullRanking(true)} className="card-hover" style={{
+            background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)",
+            border: `1px solid ${C.amber}30`, marginBottom: "var(--sp-4)", width: "100%",
+            cursor: "pointer", textAlign: "left", display: "block",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 16 }}>🏆</span>
+                <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Ranking de empleados</div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <Tag color={C.amber}>Este mes</Tag>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {top3.map((e, i) => (
+                <div key={e.id} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "6px 4px", borderRadius: 8,
+                }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{medals[i]}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {e.nombre}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.dim, marginTop: 1 }}>
+                      {e.division || "Sin división"} · {e.diasTrabajados}d · {e.horasTrabajadas}h · {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tard.`}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: C.green, fontFamily: fH }}>{e.score}</div>
+                    <div style={{ fontSize: 9, color: C.dim, fontWeight: 600 }}>pts</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 10, textAlign: "center", fontSize: 11, color: C.amber, fontWeight: 600 }}>
+              Ver ranking completo ({ranking.length})
+            </div>
+          </button>
+        );
+      })()}
 
       {/* ─── Productividad divisional/general ─── */}
       <div className="card-hover" style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.border}`, marginBottom: "var(--sp-4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Productividad</div>
+          <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Productividad</div>
           <Tag color={pctColor(pctProd)}>{pctProd}% general</Tag>
         </div>
 
@@ -807,10 +889,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
 
       {/* ─── Equipo ─── */}
       <div className="card-hover" style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.border}`, marginBottom: "var(--sp-4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Equipo</div>
+          <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Equipo</div>
           <Tag color={C.cyan}>{totalEmp} activos</Tag>
         </div>
 
@@ -827,22 +909,14 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           })}
         </div>
 
-        <button onClick={() => goto?.("equipo")} style={{
-          width: "100%", padding: 10, borderRadius: 10,
-          background: `${C.cyan}12`, border: `1px solid ${C.cyan}25`, color: C.cyan,
-          fontSize: 12, fontWeight: 700, fontFamily: fB, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-        }}>
-          👥 Gestión de personal →
-        </button>
       </div>
 
       {/* ─── Jornadas hoy ─── */}
       <div className="card-hover" style={{
-        background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 14,
+        background: C.surface, borderRadius: "var(--radius-lg)", padding: "var(--sp-4)", border: `1px solid ${C.border}`, marginBottom: "var(--sp-4)",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: fH }}>Jornadas hoy</div>
+          <div style={{ font: "var(--text-caption)", fontWeight: 700, color: C.text, fontFamily: fH }}>Jornadas hoy</div>
           <span style={{ fontSize: 10, color: C.mute, fontFamily: fM }}>7:00 ——— 19:00</span>
         </div>
         {fichadasHoy.length === 0 ? (
@@ -869,6 +943,167 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa }
           Actualización automática cada 60s · Último refresh: {fmtTime(now)}
         </div>
       </div>
+
+      {/* ─── Full Ranking Modal ─── */}
+      {showFullRanking && ranking.length > 0 && (() => {
+        const len = ranking.length;
+        const rowColor = (i) => {
+          if (i === 0) return { bg: `${C.green}18`, border: `${C.green}35` };
+          if (i === 1) return { bg: `${C.green}12`, border: `${C.green}25` };
+          if (i === 2) return { bg: `${C.green}08`, border: `${C.green}18` };
+          if (i === len - 1) return { bg: `${C.red}18`, border: `${C.red}35` };
+          if (i === len - 2) return { bg: `${C.red}12`, border: `${C.red}25` };
+          if (i === len - 3) return { bg: `${C.red}08`, border: `${C.red}18` };
+          return { bg: "transparent", border: `${C.border}` };
+        };
+        const medals = ["🥇", "🥈", "🥉"];
+        return (
+          <div onClick={() => setShowFullRanking(false)} style={{
+            position: "fixed", inset: 0, zIndex: 999,
+            background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 16, animation: "fadeIn 0.2s ease",
+          }}>
+            <div onClick={ev => ev.stopPropagation()} style={{
+              background: C.surface, borderRadius: 20, width: "100%", maxWidth: 400,
+              maxHeight: "80vh", display: "flex", flexDirection: "column",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+            }}>
+              <div style={{ padding: "20px 20px 14px", flexShrink: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.dim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Este mes</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: C.text, fontFamily: fH, marginTop: 2 }}>Ranking de empleados</div>
+                  </div>
+                  <button onClick={() => setShowFullRanking(false)} style={{
+                    width: 32, height: 32, borderRadius: 10, border: "none", background: C.surfHi,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 16, color: C.dim,
+                  }}>✕</button>
+                </div>
+                <div style={{ marginTop: 12, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {[
+                    { label: "Asistencia", w: "40%", color: C.green },
+                    { label: "Puntualidad", w: "25%", color: C.cyan },
+                    { label: "Disponibilidad", w: "20%", color: C.violet },
+                    { label: "Esfuerzo Extra", w: "15%", color: C.amber },
+                  ].map(c => (
+                    <span key={c.label} style={{
+                      fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
+                      background: `${c.color}12`, color: c.color,
+                    }}>{c.label} {c.w}</span>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 12px", scrollbarWidth: "none" }}>
+                {ranking.map((e, i) => {
+                  const rc = rowColor(i);
+                  return (
+                    <button key={e.id} onClick={() => setScoreDetail(e)} style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 10px",
+                      borderRadius: 10, marginBottom: 4, width: "100%", textAlign: "left",
+                      background: rc.bg, border: `1px solid ${rc.border}`,
+                      cursor: "pointer", transition: "background 0.15s",
+                    }}>
+                      <div style={{ width: 24, textAlign: "center", flexShrink: 0, fontSize: i < 3 ? 16 : 12, fontWeight: 700, color: C.dim }}>
+                        {i < 3 ? medals[i] : `${i + 1}`}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.nombre}
+                        </div>
+                        <div style={{ fontSize: 10, color: C.dim, marginTop: 1 }}>
+                          {e.division || "Sin división"} · {e.diasTrabajados}d · {e.horasTrabajadas}h · {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tard.`}{e.diasPermiso > 0 ? ` · ${e.diasPermiso} perm.` : ""}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: i < 3 ? C.green : i >= len - 3 ? C.red : C.text, fontFamily: fH }}>{e.score}</div>
+                        <div style={{ fontSize: 9, color: C.dim, fontWeight: 600 }}>pts</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ─── Score Detail Modal ─── */}
+      {scoreDetail && (() => {
+        const d = scoreDetail;
+        const rows = [
+          { label: "Asistencia", pct: d.pAsistencia, weight: "40%", detail: `${d.diasTrabajados} / ${d.diasProgramados} días`, color: C.green },
+          { label: "Puntualidad", pct: d.pPuntualidad, weight: "25%", detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}`, color: C.cyan },
+          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: "20%", detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}`, color: C.violet },
+          { label: "Esfuerzo Extra", pct: d.pEsfuerzo, weight: "15%", detail: `${d.horasExtra}h extra de ${d.horasTrabajadas}h`, color: C.amber },
+        ];
+        return (
+          <div onClick={() => setScoreDetail(null)} style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20, animation: "fadeIn 0.2s ease",
+          }}>
+            <div onClick={ev => ev.stopPropagation()} style={{
+              background: C.surface, borderRadius: 20, padding: 24, width: "100%", maxWidth: 360,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: C.dim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Desglose</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.text, fontFamily: fH, marginTop: 2 }}>{d.nombre}</div>
+                  <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{d.division || "Sin división"} · L-{d.legajo}</div>
+                </div>
+                <div style={{
+                  width: 48, height: 48, borderRadius: 14, background: `${C.amber}12`,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.amber, fontFamily: fH, lineHeight: 1 }}>{d.score}</div>
+                  <div style={{ fontSize: 8, color: C.dim, fontWeight: 700 }}>pts</div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {rows.map((r) => (
+                  <div key={r.label} style={{
+                    padding: "10px 12px", background: `${r.color}08`, borderRadius: 10, border: `1px solid ${r.color}15`,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{r.label} <span style={{ fontWeight: 500, color: C.dim }}>({r.weight})</span></span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: r.color, fontFamily: fH }}>{r.pct}%</span>
+                    </div>
+                    <div style={{ height: 4, borderRadius: 2, background: `${r.color}15`, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${r.pct}%`, background: r.color, borderRadius: 2, transition: "width 0.4s ease" }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{r.detail}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{
+                marginTop: 14, padding: "10px 12px", background: `${C.amber}08`, borderRadius: 10,
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                border: `1.5px solid ${C.amber}25`,
+              }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Score total (0–100)</span>
+                <span style={{ fontSize: 18, fontWeight: 800, color: C.amber, fontFamily: fH }}>{d.score} pts</span>
+              </div>
+
+              <div style={{ fontSize: 10, color: C.mute, marginTop: 12, lineHeight: 1.4, textAlign: "center" }}>
+                Asist. 40% + Punt. 25% + Disp. 20% + Esfuerzo 15%
+              </div>
+
+              <button onClick={() => setScoreDetail(null)} style={{
+                marginTop: 16, width: "100%", padding: 12, borderRadius: 12, border: "none",
+                background: C.surfHi, color: C.text, fontSize: 14, fontWeight: 700,
+                cursor: "pointer", fontFamily: fB,
+              }}>Cerrar</button>
+            </div>
+          </div>
+        );
+      })()}
 
       <style>{`
         @keyframes pulse {
