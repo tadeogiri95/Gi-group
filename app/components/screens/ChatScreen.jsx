@@ -24,6 +24,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
   }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [geoError, setGeoError] = useState(null);
   const ref = useRef(null);
 
   useEffect(() => { ref.current && (ref.current.scrollTop = ref.current.scrollHeight); }, [msgs, loading]);
@@ -75,6 +76,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
     } catch (e) {
       if (e.tipo === "bloqueado_tardanza" || e.tipo === "bloqueado_3ra_tarde") return { type: "fichada_bloqueada", msg: "⛔ " + e.message };
       if (e.tipo === "tarea_activa") return { type: "tarea_activa", msg: "⚠️ " + e.message, tareaId: e.tarea_id };
+      if (e.tipo === "geo_error") { setGeoError(e.message); return { type: "fichada_bloqueada", msg: e.message }; }
       if (e.tipo) return { type: "fichada_bloqueada", msg: e.message };
       console.error(e);
     }
@@ -147,9 +149,35 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
     // AI chat
     try {
       const hist = nm.slice(-20).map(m => ({ from: m.from, text: m.text }));
-      const raw = await callClaude(hist, ctx, usuario, empresa);
-      const { clean, action } = parseAction(raw);
-      let card = action ? await execAction(action) : null;
+      let raw = await callClaude(hist, ctx, usuario, empresa);
+      let { clean, action } = parseAction(raw);
+
+      // Si Claude pide consultar datos, ejecutar query y re-llamar con contexto
+      if (action?.type === "CONSULTAR_DATOS" && action.query_type) {
+        try {
+          const qRes = await fetch("/api/chat/query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query_type: action.query_type, params: action.params || {} }),
+          });
+          const qData = await qRes.json();
+          const resultado = qData.resultado || "Sin resultados.";
+          const histConDatos = [
+            ...hist,
+            { from: "bot", text: clean || "(consultando datos...)" },
+            { from: "user", text: `[DATOS DEL SISTEMA — resultado de ${action.query_type}]:\n${resultado}\n\nResumí esta info de forma clara y concisa para el empleado.` },
+          ];
+          const raw2 = await callClaude(histConDatos, ctx, usuario, empresa);
+          const parsed2 = parseAction(raw2);
+          clean = parsed2.clean;
+          action = parsed2.action;
+        } catch {
+          clean = clean || "Tuve un problema consultando los datos. Probá de nuevo.";
+          action = null;
+        }
+      }
+
+      let card = action && action.type !== "CONSULTAR_DATOS" ? await execAction(action) : null;
       if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: card.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); setLoading(false); return; }
       if (card?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); setLoading(false); return; }
       setMsgs(m => [...m, { from: "bot", text: clean, card, time: new Date() }]);
@@ -160,6 +188,13 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {geoError && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: `${C.red}12`, borderBottom: `1px solid ${C.red}30` }}>
+          <span style={{ fontSize: 14 }}>📍</span>
+          <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.red, fontFamily: fB }}>{geoError}</span>
+          <button onClick={() => setGeoError(null)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16, padding: 4, minHeight: 44, minWidth: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        </div>
+      )}
       <div ref={ref} style={{ flex: 1, overflowY: "auto", padding: "8px 18px 12px", WebkitOverflowScrolling: "touch" }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: "flex", justifyContent: m.from === "bot" ? "flex-start" : "flex-end", marginBottom: 12 }}>
@@ -168,7 +203,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
               <div style={{ padding: "10px 14px", background: m.from === "bot" ? C.surfHi : C.amber, color: m.from === "bot" ? C.text : "#000", borderRadius: m.from === "bot" ? "16px 16px 16px 4px" : "16px 16px 4px 16px", fontSize: 14, fontFamily: fB, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", border: m.from === "bot" ? `1px solid ${C.border}` : "none", fontWeight: m.from === "bot" ? 400 : 500 }}>{m.text}</div>
               {m.card?.type === "fichada" && <FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg} tardanza={m.card.tardanza} />}
               {m.card?.type === "solicitud" && <SolSentCard motivo={m.card.motivo} fecha={m.card.fecha} />}
-              {m.quickReplies && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{m.quickReplies.map((c, j) => <button key={j} onClick={() => handleSend(c)} style={{ padding: "7px 12px", borderRadius: 999, background: C.surfHi, border: `1px solid ${C.borderHi}`, color: C.text, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: fB }}>{c}</button>)}</div>}
+              {m.quickReplies && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{m.quickReplies.map((c, j) => <button key={j} onClick={() => handleSend(c)} style={{ padding: "10px 16px", borderRadius: 999, background: C.surfHi, border: `1px solid ${C.borderHi}`, color: C.text, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: fB, minHeight: 44 }}>{c}</button>)}</div>}
               <span style={{ fontSize: 10, color: C.mute, marginTop: 4, fontFamily: fM }}>{fmtTime(m.time)}</span>
             </div>
           </div>
