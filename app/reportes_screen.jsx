@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { C, fmtTime, DIAS_KEY } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
+import { useToast } from "./components/ui/Toast";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
@@ -126,6 +127,147 @@ function FotoViewer({ fotos, index, onClose, onNav }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ─── Tab de Reporte de Producción ─── */
+function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo }) {
+  const [datos, setDatos] = useState([]);
+  const [proyectos, setProyectos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedOT, setExpandedOT] = useState(null);
+
+  useEffect(() => {
+    if (!fechaDesde || !fechaHasta) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const [regs, proys] = await Promise.all([
+          sb.get(`registro_actividades?fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,codigo_proyecto,etapa,division,duracion_min,observaciones&order=fecha.desc`),
+          sb.get("proyectos?estado=eq.activo&select=id,codigo,nombre"),
+        ]);
+        setDatos(regs || []);
+        setProyectos(proys || []);
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
+    })();
+  }, [fechaDesde, fechaHasta]);
+
+  const resumen = useMemo(() => {
+    const map = {};
+    datos.forEach(r => {
+      const key = r.codigo_proyecto || "SIN_OT";
+      if (!map[key]) map[key] = { ot: key, empleados: {}, totalMin: 0, registros: 0 };
+      map[key].registros++;
+      const min = parseFloat(r.duracion_min) || 0;
+      map[key].totalMin += min;
+      const empKey = r.empleado_id || r.legajo;
+      if (!map[key].empleados[empKey]) map[key].empleados[empKey] = { legajo: r.legajo, min: 0, registros: 0 };
+      map[key].empleados[empKey].min += min;
+      map[key].empleados[empKey].registros++;
+    });
+    return Object.values(map)
+      .map(p => ({
+        ...p,
+        nombre: proyectos.find(pr => pr.codigo === p.ot)?.nombre || "",
+        empleadosList: Object.values(p.empleados).sort((a, b) => b.min - a.min),
+      }))
+      .sort((a, b) => b.totalMin - a.totalMin);
+  }, [datos, proyectos]);
+
+  const fmtMin = (min) => {
+    if (!min || min <= 0) return "0m";
+    const h = Math.floor(min / 60);
+    const m = Math.round(min % 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
+  const exportarCSV = () => {
+    const rows = [["OT", "Proyecto", "Legajo", "Tiempo", "Registros"]];
+    resumen.forEach(p => {
+      p.empleadosList.forEach(e => {
+        rows.push([p.ot, p.nombre, e.legajo, fmtMin(e.min), e.registros]);
+      });
+    });
+    exportCSV(rows, `reporte_produccion_${fechaDesde}_${fechaHasta}.csv`);
+  };
+
+  if (loading) return <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>;
+
+  if (resumen.length === 0) return (
+    <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
+      <div className="text-[32px] mb-2">📦</div>
+      <div className="text-sm font-bold text-gypi-text">Sin registros de producción</div>
+      <div className="text-xs text-gypi-dim mt-1.5">No hay actividad productiva registrada en este período.</div>
+    </div>
+  );
+
+  const totalMin = resumen.reduce((a, p) => a + p.totalMin, 0);
+  const totalRegs = resumen.reduce((a, p) => a + p.registros, 0);
+  const empsUnicos = new Set(datos.map(d => d.empleado_id || d.legajo)).size;
+
+  return (
+    <>
+      {/* KPIs */}
+      <div className="grid grid-cols-3 gap-2 mb-3.5">
+        <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
+          <div className="font-heading text-xl font-bold text-gypi-green">{resumen.length}</div>
+          <div className="text-[9px] text-gypi-dim font-bold">Proyectos</div>
+        </div>
+        <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
+          <div className="font-heading text-xl font-bold text-gypi-cyan">{empsUnicos}</div>
+          <div className="text-[9px] text-gypi-dim font-bold">Empleados</div>
+        </div>
+        <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
+          <div className="font-heading text-xl font-bold text-gypi-amber">{fmtMin(totalMin)}</div>
+          <div className="text-[9px] text-gypi-dim font-bold">Tiempo total</div>
+        </div>
+      </div>
+
+      {/* Botón exportar */}
+      <button onClick={exportarCSV} className="w-full py-2.5 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-xs font-bold text-gypi-text cursor-pointer mb-3.5 font-body">
+        📥 Exportar CSV producción
+      </button>
+
+      {/* Lista por proyecto */}
+      <div className="flex flex-col gap-2">
+        {resumen.map(p => {
+          const isExpanded = expandedOT === p.ot;
+          return (
+            <div key={p.ot} className="bg-gypi-surface rounded-xl overflow-hidden border border-gypi-border">
+              <button onClick={() => setExpandedOT(isExpanded ? null : p.ot)} className="w-full flex items-center gap-3 p-3 text-left cursor-pointer bg-transparent border-none">
+                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: `${C.amber}15` }}>
+                  <span className="text-base">📋</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-gypi-text truncate">OT {p.ot}{p.nombre ? ` — ${p.nombre}` : ""}</div>
+                  <div className="text-[10px] text-gypi-dim mt-0.5">{Object.keys(p.empleados).length} empleado{Object.keys(p.empleados).length !== 1 ? "s" : ""} · {p.registros} registro{p.registros !== 1 ? "s" : ""}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-heading text-sm font-bold text-gypi-amber">{fmtMin(p.totalMin)}</div>
+                  <div className="text-[9px] text-gypi-dim">{isExpanded ? "▲" : "▼"}</div>
+                </div>
+              </button>
+
+              {isExpanded && (
+                <div className="px-3 pb-3 pt-0 border-t border-gypi-border">
+                  <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.06em] mt-2.5 mb-1.5">Detalle por empleado</div>
+                  {p.empleadosList.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-gypi-border last:border-b-0">
+                      <div className="text-xs text-gypi-text font-semibold">L-{e.legajo}</div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-gypi-dim">{e.registros} reg.</span>
+                        <span className="text-xs font-bold text-gypi-cyan font-heading">{fmtMin(e.min)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -255,9 +397,9 @@ export default function ReportesScreen() {
   const [fichadas, setFichadas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(null);
-  const [toast, setToast] = useState(null);
+  const toast = useToast();
 
-  const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3000); };
+  const showToast = (msg, color) => toast.show(msg, color);
 
   const fechasPeriodo = useMemo(() => {
     if (periodo === "semana") return getWeekDates(weekOffset);
@@ -382,11 +524,12 @@ export default function ReportesScreen() {
 
   return (
     <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px]">
-      {toast && <div className="fixed top-[60px] left-1/2 -translate-x-1/2 z-[999] py-2.5 px-5 rounded-xl text-[13px] font-bold font-body" style={{ background: toast.color || C.green, color: "#000", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>{toast.msg}</div>}
+
 
       {/* Tabs */}
-      <div className="flex gap-1.5 mb-3.5">
+      <div className="flex gap-1.5 mb-3.5 overflow-x-auto pb-0.5">
         <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={C.amber}>📊 Cumplimiento</Chip>
+        <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={C.green}>⚙️ Producción</Chip>
         <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={C.cyan}>🏗️ Obra</Chip>
         <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={C.violet}>📥 Exportar</Chip>
       </div>
@@ -413,6 +556,8 @@ export default function ReportesScreen() {
 
       {loading ? (
         <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
+      ) : tab === "produccion" ? (
+        <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} />
       ) : tab === "obra" ? (
         <ReportesObraTab />
       ) : tab === "cumplimiento" ? (
