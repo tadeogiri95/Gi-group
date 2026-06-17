@@ -171,9 +171,22 @@ export async function POST(req) {
     for (const emp of empleados) {
       if (!emp.password) continue;
 
-      if (!emp.password.startsWith("$2")) continue;
-      const match = await bcrypt.compare(password, emp.password);
-      if (match) { usuario = emp; break; }
+      if (emp.password.startsWith("$2")) {
+        const match = await bcrypt.compare(password, emp.password);
+        if (match) { usuario = emp; break; }
+      } else {
+        // Contraseña en texto plano (legacy) — comparar y migrar a bcrypt
+        if (password === emp.password) {
+          usuario = emp;
+          try {
+            const hashed = await bcrypt.hash(password, 10);
+            await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
+          } catch (e) {
+            logger.error("Error migrando contraseña a bcrypt", e);
+          }
+          break;
+        }
+      }
     }
 
     if (!usuario) {
