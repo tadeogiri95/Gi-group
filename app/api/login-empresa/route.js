@@ -50,29 +50,29 @@ async function checkLoginRateLimit(ip) {
 // Intenta múltiples combinaciones de columnas porque el schema de producción
 // puede diferir del schema base (migraciones 010/015/016/037 agregaron columnas
 // que pueden o no estar aplicadas).
-async function guardarSesionJWT({ empleadoId, empresaId, legajo, jti, refreshJti }) {
+async function guardarSesionJWT({ empleadoId, empresaId, legajo, jti, refreshJti, ip, userAgent }) {
   if (!SB_URL || !SB_KEY) throw new Error("SB_URL o SB_KEY no configuradas");
 
-  const expira_en = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const crypto = await import("crypto");
+  const tokenHash = crypto.createHash("sha256").update(jti).digest("hex");
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const expiraEn = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const deviceInfo = [ip, userAgent].filter(Boolean).join(" | ") || null;
 
-  // Tier 1: todas las columnas conocidas de producción
-  // Tier 2: sin token/jti/refresh_jti (columnas de migraciones posteriores)
-  const tiers = [
-    { empleado_id: empleadoId, empresa_id: empresaId, legajo, token: jti, jti: jti, refresh_jti: refreshJti || null, expira_en },
-    { empleado_id: empleadoId, empresa_id: empresaId, legajo, token: jti, expira_en },
-    { empleado_id: empleadoId, empresa_id: empresaId, legajo, expira_en },
-  ];
-
-  let lastErr = "";
-  for (const body of tiers) {
-    try {
-      await sbPost("sesiones", body);
-      return;
-    } catch (e) {
-      lastErr = e.message;
-    }
-  }
-  throw new Error(lastErr);
+  await sbPost("sesiones", {
+    empleado_id: empleadoId,
+    empresa_id: empresaId,
+    legajo,
+    token_hash: tokenHash,
+    expires_at: expiresAt,
+    revocada: false,
+    device_info: deviceInfo,
+    jti,
+    refresh_jti: refreshJti || null,
+    expira_en: expiraEn,
+    token: jti,
+  });
 }
 
 export async function POST(req) {

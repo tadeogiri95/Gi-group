@@ -36,8 +36,10 @@ export async function validarToken(request) {
   // La columna `jti` (migración 010) es un alias indexado que puede no estar aplicada aún.
   if (!payload.imp && payload.jti && SB_URL && SB_KEY) {
     try {
+      const crypto = await import("crypto");
+      const tokenHash = crypto.createHash("sha256").update(payload.jti).digest("hex");
       const r = await fetch(
-        `${SB_URL}/rest/v1/sesiones?token=eq.${payload.jti}&select=id&limit=1`,
+        `${SB_URL}/rest/v1/sesiones?token_hash=eq.${tokenHash}&revocada=eq.false&select=id&limit=1`,
         { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
       );
       if (r.ok) {

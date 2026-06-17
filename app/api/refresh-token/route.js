@@ -10,17 +10,10 @@
 import { NextResponse } from "next/server";
 import { verifyToken, signAccessToken, signRefreshToken } from "../../lib/jwt";
 import { logger } from "../../lib/logger";
+import { sbGet } from "../../lib/sbHelpers";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
-
-async function sbGet(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  if (!r.ok) return null;
-  return r.json();
-}
 
 export async function POST(request) {
   try {
@@ -39,30 +32,25 @@ export async function POST(request) {
     }
 
     // Verificar que la sesión no fue revocada.
-    // Primero intenta por refresh_jti (preciso). Si falla o no encuentra nada
-    // (columna con NULL en sesiones viejas), hace fallback: chequea que exista
-    // al menos una sesión activa para este empleado. Solo bloquea si el
-    // empleado no tiene NINGUNA sesión (logout-all o revocación explícita).
-    let sesiones = await sbGet(
-      `sesiones?refresh_jti=eq.${payload.jti}&select=id&limit=1`
+    // Solo acepta sesiones con refresh_jti exacto. Sesiones sin refresh_jti
+    // (legacy anteriores a la migración JTI) quedan inválidas — el usuario
+    // debe iniciar sesión nuevamente. No existe fallback: un JTI que no
+    // matchea puede ser un token robado o ya rotado → 401 inmediato.
+    const sesiones = await sbGet(
+      `sesiones?refresh_jti=eq.${payload.jti}&select=id&limit=1`,
+      { silent: true }
     );
     if (!Array.isArray(sesiones) || sesiones.length === 0) {
-      // Fallback solo para sesiones legacy (refresh_jti IS NULL — anteriores a la rotación).
-      // Sesiones nuevas que no matchean por JTI son tokens ya rotados: 401.
-      sesiones = await sbGet(
-        `sesiones?empleado_id=eq.${payload.sub}&refresh_jti=is.null&select=id&limit=1`
+      return NextResponse.json(
+        { error: "Sesión expirada, iniciá sesión de nuevo." },
+        { status: 401 }
       );
-      if (!Array.isArray(sesiones) || sesiones.length === 0) {
-        return NextResponse.json(
-          { error: "Sesión revocada o token ya usado. Iniciá sesión de nuevo." },
-          { status: 401 }
-        );
-      }
     }
 
     // Verificar que el empleado sigue activo
     const empleados = await sbGet(
-      `empleados?id=eq.${payload.sub}&activo=eq.true&select=id,legajo,empresa_id,rol`
+      `empleados?id=eq.${payload.sub}&activo=eq.true&select=id,legajo,empresa_id,rol`,
+      { silent: true }
     );
     if (!empleados || empleados.length === 0) {
       return NextResponse.json(
@@ -90,7 +78,7 @@ export async function POST(request) {
 
     // Actualizar sesión: nuevo access JTI + nuevo refresh JTI.
     // El viejo refresh_jti queda invalidado — si alguien lo intenta usar
-    // ya no matchea por refresh_jti=eq.{oldJti} ni por el fallback legacy.
+    // ya no matchea por refresh_jti=eq.{oldJti} y recibe 401.
     // Este PATCH es parte del camino crítico: si falla no emitimos tokens
     // para mantener la garantía de rotación. El cliente reintentará.
     if (sesiones?.[0]?.id) {
@@ -101,7 +89,12 @@ export async function POST(request) {
           Authorization: `Bearer ${SB_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token: newJti, jti: newJti, refresh_jti: newRefreshJti }),
+        body: JSON.stringify({
+          token: newJti,
+          jti: newJti,
+          token_hash: (await import("crypto")).createHash("sha256").update(newJti).digest("hex"),
+          refresh_jti: newRefreshJti,
+        }),
       });
       if (!patchRes.ok) {
         const errText = await patchRes.text();
@@ -113,7 +106,7 @@ export async function POST(request) {
     const isProd = process.env.NODE_ENV === "production";
     const res = NextResponse.json({
       token: newAccessToken,
-      expires_in: 7 * 24 * 60 * 60,
+      expires_in: 30 * 60,
     });
     res.cookies.set({
       name: "gypi_token",
@@ -122,7 +115,7 @@ export async function POST(request) {
       secure: isProd,
       sameSite: "lax",
       path: "/",
-      maxAge: 7 * 24 * 60 * 60,
+      maxAge: 30 * 60,
     });
     res.cookies.set({
       name: "gypi_refresh",
@@ -136,6 +129,6 @@ export async function POST(request) {
     return res;
   } catch (err) {
     logger.error("refresh-token error", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });
   }
 }
