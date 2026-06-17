@@ -50,55 +50,24 @@ async function checkLoginRateLimit(ip) {
 // Intenta múltiples combinaciones de columnas porque el schema de producción
 // puede diferir del schema base (migraciones 010/015/016/037 agregaron columnas
 // que pueden o no estar aplicadas).
-async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, userAgent }) {
+async function guardarSesionJWT({ empleadoId, empresaId, legajo, jti, refreshJti, ip, userAgent }) {
   if (!SB_URL || !SB_KEY) throw new Error("SB_URL o SB_KEY no configuradas");
 
   const expira_en = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Tiers ordenados de más completo a más mínimo.
-  // Cada tier omite columnas que pueden no existir en producción.
-  const tiers = [
-    // Tier 1: todas las columnas conocidas (token + jti + refresh_jti + expira_en)
-    {
-      empleado_id: empleadoId, empresa_id: empresaId,
-      token: jti, jti: jti, refresh_jti: refreshJti,
-      ip: ip || null, user_agent: userAgent || null, expira_en,
-    },
-    // Tier 2: sin columna jti (pre-migración 010)
-    {
-      empleado_id: empleadoId, empresa_id: empresaId,
-      token: jti, refresh_jti: refreshJti,
-      ip: ip || null, user_agent: userAgent || null, expira_en,
-    },
-    // Tier 3: sin refresh_jti (pre-migración 010/015)
-    {
-      empleado_id: empleadoId, empresa_id: empresaId,
-      token: jti, jti: jti,
-      ip: ip || null, user_agent: userAgent || null, expira_en,
-    },
-    // Tier 4: sin token ni jti (pre-migración 037, pre-010) — schema original sin esas columnas
-    {
-      empleado_id: empleadoId, empresa_id: empresaId,
-      ip: ip || null, user_agent: userAgent || null, expira_en,
-    },
-    // Tier 5: absoluto mínimo — solo FKs + expira_en
-    {
-      empleado_id: empleadoId, empresa_id: empresaId, expira_en,
-    },
-  ];
+  const body = {
+    empleado_id: empleadoId,
+    empresa_id: empresaId,
+    legajo: legajo,
+    token: jti,
+    jti: jti,
+    refresh_jti: refreshJti || null,
+    ip: ip || null,
+    user_agent: userAgent || null,
+    expira_en,
+  };
 
-  let lastErr = "";
-  for (let i = 0; i < tiers.length; i++) {
-    try {
-      await sbPost("sesiones", tiers[i], { silent: false });
-      return;
-    } catch (e) {
-      lastErr = e.message;
-      logger.error(`guardarSesionJWT tier ${i + 1} falló`, new Error(lastErr));
-    }
-  }
-
-  throw new Error(lastErr);
+  await sbPost("sesiones", body);
 }
 
 export async function POST(req) {
@@ -233,6 +202,7 @@ export async function POST(req) {
       await guardarSesionJWT({
         empleadoId: usuario.id,
         empresaId: usuario.empresa_id,
+        legajo: usuario.legajo,
         jti: accessJti,
         refreshJti: refreshJti,
         ip,
