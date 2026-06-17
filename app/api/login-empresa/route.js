@@ -50,24 +50,29 @@ async function checkLoginRateLimit(ip) {
 // Intenta múltiples combinaciones de columnas porque el schema de producción
 // puede diferir del schema base (migraciones 010/015/016/037 agregaron columnas
 // que pueden o no estar aplicadas).
-async function guardarSesionJWT({ empleadoId, empresaId, legajo, jti, refreshJti, ip, userAgent }) {
+async function guardarSesionJWT({ empleadoId, empresaId, legajo, jti, refreshJti }) {
   if (!SB_URL || !SB_KEY) throw new Error("SB_URL o SB_KEY no configuradas");
 
   const expira_en = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const body = {
-    empleado_id: empleadoId,
-    empresa_id: empresaId,
-    legajo: legajo,
-    token: jti,
-    jti: jti,
-    refresh_jti: refreshJti || null,
-    ip: ip || null,
-    user_agent: userAgent || null,
-    expira_en,
-  };
+  // Tier 1: todas las columnas conocidas de producción
+  // Tier 2: sin token/jti/refresh_jti (columnas de migraciones posteriores)
+  const tiers = [
+    { empleado_id: empleadoId, empresa_id: empresaId, legajo, token: jti, jti: jti, refresh_jti: refreshJti || null, expira_en },
+    { empleado_id: empleadoId, empresa_id: empresaId, legajo, token: jti, expira_en },
+    { empleado_id: empleadoId, empresa_id: empresaId, legajo, expira_en },
+  ];
 
-  await sbPost("sesiones", body);
+  let lastErr = "";
+  for (const body of tiers) {
+    try {
+      await sbPost("sesiones", body);
+      return;
+    } catch (e) {
+      lastErr = e.message;
+    }
+  }
+  throw new Error(lastErr);
 }
 
 export async function POST(req) {
