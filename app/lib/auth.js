@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { verifyToken } from "./jwt";
+import { logger } from "./logger";
 export { validarPassword } from "./validators";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,20 +41,25 @@ export async function validarToken(request) {
         { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
       );
       if (r.ok) {
-        // Solo bloqueamos si Supabase confirmó explícitamente que no existe la sesión.
-        // Si la respuesta no es un array (error de schema, permiso, etc.) → fail-open.
+        // Solo bloqueamos si Supabase confirmó explícitamente que la sesión no existe.
         const rows = await r.json();
-        if (Array.isArray(rows) && rows.length === 0) return null;
+        if (!Array.isArray(rows) || rows.length === 0) return null;
+      } else {
+        // Error de DB/RLS — registramos para diagnóstico pero NO bloqueamos
+        // (fail-open: una caída de Supabase no debe expulsar a todos los usuarios).
+        const errText = await r.text().catch(() => "");
+        logger.error(`validarToken: chequeo de sesión falló [${r.status}]`, new Error(errText));
       }
-      // r.ok = false → error de DB/RLS → fail-open (no expulsamos si Supabase falla)
-    } catch {
-      // Error de red o parsing → fail-open
+    } catch (e) {
+      logger.error("validarToken: error de red en chequeo de sesión", e);
+      // fail-open
     }
   }
 
-  // Verificar que el email de la empresa está confirmado.
-  // No aplica a tokens de impersonación (superadmin siempre tiene acceso).
-  // Usa === false para fail-open si la columna no existe todavía (migración pendiente).
+  // email_verificado se expone como flag informativo pero NO bloquea el acceso.
+  // Bloquear aquí causaba logout inmediato post-login para empresas sin verificar,
+  // sin dar al usuario contexto de por qué falla. Se maneja en la UI con un banner.
+  let emailVerificado = true;
   if (!payload.imp && SB_URL && SB_KEY) {
     try {
       const re = await fetch(
@@ -63,12 +69,11 @@ export async function validarToken(request) {
       if (re.ok) {
         const rows = await re.json();
         if (Array.isArray(rows) && rows.length > 0 && rows[0].email_verificado === false) {
-          return null;
+          emailVerificado = false;
         }
       }
-      // re.ok = false → fail-open (consistente con el check de JTI)
     } catch {
-      // Error de red o parsing → fail-open
+      // fail-open
     }
   }
 
@@ -79,6 +84,7 @@ export async function validarToken(request) {
     rol: payload.rol,
     jti: payload.jti,
     imp: payload.imp || false,
+    email_verificado: emailVerificado,
     _auth_method: "jwt",
   };
 }

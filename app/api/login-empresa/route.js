@@ -13,114 +13,92 @@ import { validarPassword } from "../../lib/auth";
 import { signAccessToken, signRefreshToken } from "../../lib/jwt";
 import { logAudit } from "../../lib/audit";
 import { logger } from "../../lib/logger";
+import { sbGet, sbPatch, sbPost } from "../../lib/sbHelpers";
+import { ventana15min } from "../../lib/rateLimit";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-async function sbGet(path) {
-  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  return res.json();
-}
-
-async function sbPatch(path, body) {
-  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: {
-      apikey: SB_KEY,
-      Authorization: `Bearer ${SB_KEY}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(body),
-  });
-  return res.json();
-}
-
-async function sbRpc(fnName, params) {
-  const res = await fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
-    method: "POST",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  return res.json();
-}
-
 // Rate limit de login: 10 intentos por IP por ventana de 15 minutos.
-// Fail-open intencional: si la DB no responde, el login continúa (disponibilidad > seguridad en edge case).
+// Fail-closed: si la DB no responde, se bloquea el intento (seguridad > disponibilidad en edge case).
 const MAX_LOGIN_ATTEMPTS = 10;
 async function checkLoginRateLimit(ip) {
   if (!SB_URL || !SB_KEY) return false;
   try {
-    const now = new Date();
-    // Ventana de 15 min: redondear al múltiplo inferior de 15
-    const mins = Math.floor(now.getUTCMinutes() / 15) * 15;
-    const ventana = `${now.toISOString().slice(0, 13)}:${String(mins).padStart(2, "0")}`;
+    const ventana = ventana15min();
     const res = await fetch(`${SB_URL}/rest/v1/rpc/rpc_login_attempt`, {
       method: "POST",
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ p_ip: ip, p_ventana: ventana }),
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      logger.warn("checkLoginRateLimit: DB no disponible (respuesta no-ok) — bloqueando petición por seguridad", { ip, status: res.status });
+      return true;
+    }
     const count = await res.json();
     return typeof count === "number" && count > MAX_LOGIN_ATTEMPTS;
-  } catch {
-    return false;
+  } catch (e) {
+    logger.warn("checkLoginRateLimit: DB no disponible (excepción) — bloqueando petición por seguridad", { ip, error: e?.message });
+    return true;
   }
 }
 
 // Guardar sesión en la tabla sesiones (para poder revocar).
 // Intenta primero con todos los campos opcionales (refresh_jti, user_agent).
 // Si falla (columna inexistente, constraint, etc.), hace fallback al set mínimo.
+// Guardar sesión en la tabla sesiones (para poder revocar).
+// Intenta múltiples combinaciones de columnas porque el schema de producción
+// puede diferir del schema base (migraciones 010/015/016/037 agregaron columnas
+// que pueden o no estar aplicadas).
 async function guardarSesionJWT({ empleadoId, empresaId, jti, refreshJti, ip, userAgent }) {
-  if (!SB_URL || !SB_KEY) return;
-
-  // Columnas absolutamente garantizadas (existían antes de cualquier migración)
-  const baseBody = {
-    empleado_id: empleadoId,
-    empresa_id: empresaId,
-    token: jti,
-    ip: ip || null,
-  };
-
-  const tryInsert = async (body) => {
-    const r = await fetch(`${SB_URL}/rest/v1/sesiones`, {
-      method: "POST",
-      headers: {
-        apikey: SB_KEY,
-        Authorization: `Bearer ${SB_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify(body),
-    });
-    return { ok: r.ok, status: r.status, text: r.ok ? "" : await r.text() };
-  };
+  if (!SB_URL || !SB_KEY) throw new Error("SB_URL o SB_KEY no configuradas");
 
   const expira_en = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  try {
-    // Intento completo: con expira_en, user_agent y refresh_jti
-    const full = {
-      ...baseBody,
-      expira_en,
-      user_agent: userAgent || null,
-      ...(refreshJti ? { refresh_jti: refreshJti } : {}),
-    };
-    const r1 = await tryInsert(full);
-    if (r1.ok) return;
+  // Tiers ordenados de más completo a más mínimo.
+  // Cada tier omite columnas que pueden no existir en producción.
+  const tiers = [
+    // Tier 1: todas las columnas conocidas (token + jti + refresh_jti + expira_en)
+    {
+      empleado_id: empleadoId, empresa_id: empresaId,
+      token: jti, jti: jti, refresh_jti: refreshJti,
+      ip: ip || null, user_agent: userAgent || null, expira_en,
+    },
+    // Tier 2: sin columna jti (pre-migración 010)
+    {
+      empleado_id: empleadoId, empresa_id: empresaId,
+      token: jti, refresh_jti: refreshJti,
+      ip: ip || null, user_agent: userAgent || null, expira_en,
+    },
+    // Tier 3: sin refresh_jti (pre-migración 010/015)
+    {
+      empleado_id: empleadoId, empresa_id: empresaId,
+      token: jti, jti: jti,
+      ip: ip || null, user_agent: userAgent || null, expira_en,
+    },
+    // Tier 4: sin token ni jti (pre-migración 037, pre-010) — schema original sin esas columnas
+    {
+      empleado_id: empleadoId, empresa_id: empresaId,
+      ip: ip || null, user_agent: userAgent || null, expira_en,
+    },
+    // Tier 5: absoluto mínimo — solo FKs + expira_en
+    {
+      empleado_id: empleadoId, empresa_id: empresaId, expira_en,
+    },
+  ];
 
-    logger.error(`guardarSesionJWT fallo completo [${r1.status}]`, new Error(r1.text));
-
-    // Fallback sin columnas opcionales (expira_en puede no existir todavía)
-    const r2 = await tryInsert(baseBody);
-    if (!r2.ok) {
-      logger.error(`guardarSesionJWT fallo minimal [${r2.status}]`, new Error(r2.text));
+  let lastErr = "";
+  for (let i = 0; i < tiers.length; i++) {
+    try {
+      await sbPost("sesiones", tiers[i], { silent: false });
+      return;
+    } catch (e) {
+      lastErr = e.message;
+      logger.error(`guardarSesionJWT tier ${i + 1} falló`, new Error(lastErr));
     }
-  } catch (e) {
-    logger.error("guardarSesionJWT excepción", e);
   }
+
+  throw new Error(lastErr);
 }
 
 export async function POST(req) {
@@ -162,8 +140,9 @@ export async function POST(req) {
 
     // ─── Login normal ───
     const { legajo, password, empresa_id } = body;
-    if (!legajo || !password || !empresa_id) {
-      return NextResponse.json({ error: "Ingresá legajo y contraseña" }, { status: 400 });
+    const identifier = (legajo || "").toString().trim();
+    if (!identifier || !password || !empresa_id) {
+      return NextResponse.json({ error: "Ingresá legajo o email y contraseña" }, { status: 400 });
     }
 
     // Rate limiting por IP — bloquea brute force (migración 013 requerida)
@@ -176,7 +155,11 @@ export async function POST(req) {
     }
 
     // empresa_id siempre incluido — previene búsquedas cross-tenant
-    const query = `empleados?legajo=eq.${encodeURIComponent(legajo.trim())}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`;
+    // Si el identifier contiene @ se trata como email, si no como legajo numérico
+    const isEmail = identifier.includes("@");
+    const query = isEmail
+      ? `empleados?email=eq.${encodeURIComponent(identifier.toLowerCase())}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`
+      : `empleados?legajo=eq.${encodeURIComponent(identifier)}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`;
     const empleados = await sbGet(query);
 
     if (!empleados || empleados.length === 0) {
@@ -188,22 +171,9 @@ export async function POST(req) {
     for (const emp of empleados) {
       if (!emp.password) continue;
 
-      if (emp.password.startsWith("$2")) {
-        const match = await bcrypt.compare(password, emp.password);
-        if (match) { usuario = emp; break; }
-      } else {
-        if (password === emp.password) {
-          usuario = emp;
-          try {
-            const hashed = await bcrypt.hash(password, 10);
-            await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
-            if (process.env.NODE_ENV !== "production") console.log(`[login] Contraseña migrada a bcrypt para legajo ${emp.legajo}`);
-          } catch (e) {
-            logger.error("Error migrando contraseña", e);
-          }
-          break;
-        }
-      }
+      if (!emp.password.startsWith("$2")) continue;
+      const match = await bcrypt.compare(password, emp.password);
+      if (match) { usuario = emp; break; }
     }
 
     if (!usuario) {
@@ -243,15 +213,25 @@ export async function POST(req) {
       );
     }
 
-    // Guardar sesión en DB (para revocación)
-    await guardarSesionJWT({
-      empleadoId: usuario.id,
-      empresaId: usuario.empresa_id,
-      jti: accessJti,
-      refreshJti: refreshJti,
-      ip,
-      userAgent: userAgent.substring(0, 200),
-    });
+    // Guardar sesión en DB (para revocación).
+    // Si falla, el login NO puede continuar: sin sesión en DB, validarToken
+    // rechazará todas las requests y el usuario será expulsado inmediatamente.
+    try {
+      await guardarSesionJWT({
+        empleadoId: usuario.id,
+        empresaId: usuario.empresa_id,
+        jti: accessJti,
+        refreshJti: refreshJti,
+        ip,
+        userAgent: userAgent.substring(0, 200),
+      });
+    } catch (e) {
+      logger.error("Login abortado: no se pudo guardar sesión en DB", e);
+      return NextResponse.json(
+        { error: `Error guardando sesión: ${e.message}` },
+        { status: 500 }
+      );
+    }
 
     // Datos de empresa
     const empresaData = await sbGet(
@@ -277,9 +257,7 @@ export async function POST(req) {
     const isProd = process.env.NODE_ENV === "production";
     const res = NextResponse.json({
       usuario: safe,
-      token: accessToken,
-      refresh_token: refreshToken,
-      expires_in: 7 * 24 * 60 * 60,
+      expires_in: 30 * 60,
     });
     res.cookies.set({
       name: "gypi_token",
@@ -288,7 +266,7 @@ export async function POST(req) {
       secure: isProd,
       sameSite: "lax",
       path: "/",
-      maxAge: 7 * 24 * 60 * 60,
+      maxAge: 30 * 60,
     });
     res.cookies.set({
       name: "gypi_refresh",
@@ -302,6 +280,6 @@ export async function POST(req) {
     return res;
   } catch (err) {
     logger.error("login error", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });
   }
 }
