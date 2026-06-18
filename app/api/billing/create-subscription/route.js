@@ -8,28 +8,11 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { crearPreapproval } from "../../../lib/mercadopago";
-import { PLANES } from "../../../lib/plans";
+import { PLANES, precioAnual } from "../../../lib/plans";
+import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
+import { logEvent, EVT } from "../../../lib/analytics";
 
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
-
-async function sbGet(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  return r.json();
-}
-
-async function sbPost(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "POST",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
 
 export async function POST(request) {
   try {
@@ -39,13 +22,18 @@ export async function POST(request) {
       return NextResponse.json({ error: "Solo el administrador puede cambiar el plan" }, { status: 403 });
     }
 
-    const { plan } = await request.json();
+    const { plan, periodo = "mensual" } = await request.json();
     if (!plan || !["starter", "pro"].includes(plan)) {
       return NextResponse.json({ error: "Plan inválido. Usá 'starter' o 'pro'." }, { status: 400 });
+    }
+    if (!["mensual", "anual"].includes(periodo)) {
+      return NextResponse.json({ error: "Periodo inválido. Usá 'mensual' o 'anual'." }, { status: 400 });
     }
 
     const planInfo = PLANES[plan];
     if (!planInfo?.precio) return NextResponse.json({ error: "Plan sin precio configurado" }, { status: 400 });
+
+    const precioMensual = periodo === "anual" ? precioAnual(plan) : planInfo.precio;
 
     const emp = await sbGet(`empresa?id=eq.${sesion.empresa_id}&select=admin_email,nombre,slug`);
     if (!emp?.[0]) return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });
@@ -57,9 +45,10 @@ export async function POST(request) {
       empresa_id: sesion.empresa_id,
       plan,
       estado: "suspendida",
-      precio: planInfo.precio,
+      precio: precioMensual,
       moneda: "ARS",
       gateway: "mercadopago",
+      periodo,
     });
     const suscId = localSusc[0].id;
 
@@ -70,21 +59,24 @@ export async function POST(request) {
     try {
       mp = await crearPreapproval({
         payerEmail,
-        monto: planInfo.precio,
+        monto: precioMensual,
         plan: planInfo.nombre,
         empresaId: sesion.empresa_id,
         externalReference: externalRef,
         backUrl,
+        periodo,
       });
     } catch (err) {
       console.error("[create-subscription] Error MP:", err.message, err.body);
       return NextResponse.json({ error: `Error de Mercado Pago: ${err.message}` }, { status: 500 });
     }
 
-    await fetch(`${SB_URL}/rest/v1/suscripciones?id=eq.${suscId}`, {
-      method: "PATCH",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ gateway_subscription_id: mp.id }),
+    await sbPatchOk(`suscripciones?id=eq.${suscId}`, { gateway_subscription_id: mp.id });
+
+    logEvent(EVT.UPGRADE_INIT, {
+      empresa_id: sesion.empresa_id,
+      plan,
+      meta: { periodo, precio: precioMensual },
     });
 
     return NextResponse.json({

@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendTrialExpirado } from "../../../lib/email";
 import { logger } from "../../../lib/logger";
+import { logEvent, EVT } from "../../../lib/analytics";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
@@ -40,7 +41,47 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
   const now = new Date().toISOString();
 
-  // Trials cuyo período ya expiró y todavía no fueron procesados
+  // ─── Intento 1: RPC batch (migración 036) — una sola transacción para
+  // TODOS los trials vencidos, sin loop por fila. ───
+  type EmpresaAfectada = { empresa_id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string };
+  let afectadas: EmpresaAfectada[] | null = null;
+
+  const batchRes = await fetch(`${SB_URL}/rest/v1/rpc/vencer_trials_batch`, {
+    method: "POST",
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (batchRes.ok) {
+    afectadas = await batchRes.json();
+  } else {
+    const errText = await batchRes.text();
+    if (!(errText.includes("vencer_trials_batch") || batchRes.status === 404)) {
+      throw new Error(`RPC vencer_trials_batch status ${batchRes.status}: ${errText}`);
+    }
+    logger.error("RPC vencer_trials_batch no disponible (migración 036 pendiente) — usando fallback fila por fila", new Error(errText));
+  }
+
+  if (afectadas) {
+    let enviados = 0;
+    for (const e of afectadas) {
+      logEvent(EVT.TRIAL_EXPIRED, { empresa_id: e.empresa_id });
+      if (e.admin_email) {
+        sendTrialExpirado({
+          to: e.admin_email,
+          nombre: e.nombre_corto || e.nombre,
+          empresa: e.nombre_corto || e.nombre,
+          slug: e.slug,
+        });
+        enviados++;
+      }
+    }
+    logger.debug(`[vencer-trials] Procesados (batch): ${afectadas.length}, emails: ${enviados}`);
+    return NextResponse.json({ ok: true, vencidos: afectadas.length });
+  }
+
+  // ─── Fallback: comportamiento anterior fila por fila (migración 036 no aplicada) ───
   const trialsVencidos: { id: number; empresa_id: string }[] = await sbGet(
     `suscripciones?estado=eq.trial&trial_fin=lt.${now}&select=id,empresa_id`
   );
@@ -51,7 +92,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const empresaIds = [...new Set(trialsVencidos.map((s) => s.empresa_id))];
 
-  // Obtener datos de empresas para enviar emails
   const empresas: { id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string }[] =
     await sbGet(`empresa?id=in.(${empresaIds.join(",")})&select=id,nombre,nombre_corto,slug,admin_email`);
 
@@ -62,9 +102,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   for (const { id: suscId, empresa_id } of trialsVencidos) {
     try {
-      // Downgrade atómico vía RPC (migración 019).
-      // Ambos UPDATEs corren en la misma transacción PostgreSQL: si uno falla
-      // se revierten los dos y el cron puede reintentar en la próxima ejecución.
       const rpcRes = await fetch(`${SB_URL}/rest/v1/rpc/vencer_trial_atomico`, {
         method: "POST",
         headers: {
@@ -78,9 +115,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
       if (!rpcRes.ok) {
         const errText = await rpcRes.text();
-        // Si la migración 019 aún no se aplicó, caer al orden seguro: empresa primero.
-        // Actualizar empresa primero garantiza que si el segundo PATCH falla, el próximo
-        // cron run encontrará plan_activo='trial' y reintentará (idempotente).
         if (errText.includes("vencer_trial_atomico") || rpcRes.status === 404) {
           logger.error(`RPC vencer_trial_atomico no disponible — usando fallback secuencial`, new Error(errText));
           await sbPatch(`empresa?id=eq.${empresa_id}`, {
@@ -93,7 +127,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         }
       }
 
-      // Notificar al admin (fire-and-forget)
       const emp = empMap[empresa_id];
       if (emp?.admin_email) {
         sendTrialExpirado({

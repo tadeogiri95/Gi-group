@@ -15,6 +15,9 @@ import { logAudit } from "../../lib/audit";
 import { logger } from "../../lib/logger";
 import { sbGet, sbPatch, sbPost } from "../../lib/sbHelpers";
 import { ventana15min } from "../../lib/rateLimit";
+import { loginBody, cambiarPasswordBody } from "../../lib/schemas";
+import { validateBody, safeErrorMessage } from "../../lib/validate";
+import { logEvent, EVT } from "../../lib/analytics";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -85,9 +88,10 @@ export async function POST(req) {
 
     // ─── Cambiar contraseña ───
     if (body.action === "cambiar_password") {
-      const { userId, nuevaPassword } = body;
+      const parsedPw = validateBody(cambiarPasswordBody, body);
+      if (parsedPw.response) return parsedPw.response;
+      const { userId, nuevaPassword } = parsedPw.data;
 
-      // Verificar sesión válida y que el token pertenece al mismo usuario
       const { validarToken } = await import("../../lib/auth");
       const sesion = await validarToken(req);
       if (!sesion || sesion.empleado_id !== userId) {
@@ -113,9 +117,11 @@ export async function POST(req) {
     }
 
     // ─── Login normal ───
-    const { legajo, password, empresa_id } = body;
-    const identifier = (legajo || "").toString().trim();
-    if (!identifier || !password || !empresa_id) {
+    const parsedLogin = validateBody(loginBody, body);
+    if (parsedLogin.response) return parsedLogin.response;
+    const { legajo, password, empresa_id } = parsedLogin.data;
+    const identifier = legajo.toString().trim();
+    if (!identifier) {
       return NextResponse.json({ error: "Ingresá legajo o email y contraseña" }, { status: 400 });
     }
 
@@ -149,12 +155,20 @@ export async function POST(req) {
         const match = await bcrypt.compare(password, emp.password);
         if (match) { usuario = emp; break; }
       } else {
-        // Contraseña en texto plano (legacy) — comparar y migrar a bcrypt
+        // Contraseña en texto plano (legacy) — comparar y migrar a bcrypt.
+        // DEPRECATION: soporte para plaintext se elimina el 2026-09-01.
+        const PLAINTEXT_DEADLINE = new Date("2026-09-01T00:00:00Z");
+        if (new Date() >= PLAINTEXT_DEADLINE) {
+          logger.warn("Plaintext password rechazada post-deadline", { empleado_id: emp.id, empresa_id: emp.empresa_id });
+          continue;
+        }
         if (password === emp.password) {
           usuario = emp;
+          logger.warn("Login con plaintext password (legacy) — migrando a bcrypt", { empleado_id: emp.id, empresa_id: emp.empresa_id });
           try {
             const hashed = await bcrypt.hash(password, 10);
             await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
+            logger.info("Password migrada a bcrypt exitosamente", { empleado_id: emp.id });
           } catch (e) {
             logger.error("Error migrando contraseña a bcrypt", e);
           }
@@ -240,6 +254,13 @@ export async function POST(req) {
       entidad: "empleado",
       entidad_id: String(usuario.id),
       ip,
+    });
+
+    logEvent(EVT.LOGIN, {
+      empresa_id: usuario.empresa_id,
+      empleado_id: usuario.id,
+      plan: safe.empresa?.plan_activo,
+      meta: { rol: usuario.rol },
     });
 
     const isProd = process.env.NODE_ENV === "production";

@@ -11,34 +11,10 @@ import crypto from "crypto";
 import { getPreapproval, getPago } from "../../../lib/mercadopago";
 import { sendFalloPago, sendPlanSuspendido, sendPagoConfirmado } from "../../../lib/email";
 import { logger } from "../../../lib/logger";
+import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
+import { logEvent, EVT } from "../../../lib/analytics";
 
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const WH_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
-
-async function sbGet(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  return r.json();
-}
-async function sbPatch(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return r.ok;
-}
-async function sbPost(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "POST",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) logger.error("webhook sbPost falló", new Error(await r.text()));
-  return r.ok ? r.json() : null;
-}
 
 // ═══════════════════════════════════════════════════════════
 // CAMBIO 1D: Firma OBLIGATORIA
@@ -98,6 +74,41 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
     }
 
+    // ═══ Freshness check: previene replay attacks ═══
+    // ts viene en el header x-signature como "ts=<unix_ms>,v1=<hash>"
+    const sigHeader = request.headers.get("x-signature") || "";
+    const sigParts = Object.fromEntries(sigHeader.split(",").map(p => p.trim().split("=")));
+    const tsRaw = sigParts.ts;
+    if (tsRaw) {
+      const tsMs = Number(tsRaw);
+      const nowMs = Date.now();
+      const diffMs = nowMs - tsMs;
+      // Más de 5 minutos en el pasado → posible replay
+      if (diffMs > 5 * 60 * 1000) {
+        logger.warn("Webhook replay detectado: timestamp demasiado antiguo", {
+          ts: tsRaw,
+          diffSeconds: Math.floor(diffMs / 1000),
+          ip: request.headers.get("x-forwarded-for"),
+        });
+        return NextResponse.json(
+          { ok: false, error: "Webhook replay detected: timestamp too old" },
+          { status: 403 }
+        );
+      }
+      // Más de 30 segundos en el futuro → timestamp manipulado
+      if (diffMs < -30 * 1000) {
+        logger.warn("Webhook rechazado: timestamp en el futuro", {
+          ts: tsRaw,
+          diffSeconds: Math.floor(diffMs / 1000),
+          ip: request.headers.get("x-forwarded-for"),
+        });
+        return NextResponse.json(
+          { ok: false, error: "Webhook replay detected: timestamp in the future" },
+          { status: 403 }
+        );
+      }
+    }
+
     const tipo = body.type || body.topic;
     const dataId = body.data?.id || body.id;
     logger.debug("[webhook] Recibido:", tipo, dataId);
@@ -120,7 +131,7 @@ export async function POST(request) {
       else if (preapproval.status === "cancelled") nuevoEstado = "cancelada";
       else if (preapproval.status === "pending") nuevoEstado = "suspendida";
 
-      await sbPatch(`suscripciones?id=eq.${suscId}`, {
+      await sbPatchOk(`suscripciones?id=eq.${suscId}`, {
         estado: nuevoEstado,
         gateway_customer_id: preapproval.payer_id?.toString() || null,
         periodo_inicio: preapproval.date_created || null,
@@ -132,18 +143,18 @@ export async function POST(request) {
         const plan = susc?.[0]?.plan || "free";
 
         // Cancelar otras suscripciones activas/trial de la misma empresa
-        await sbPatch(
+        await sbPatchOk(
           `suscripciones?empresa_id=eq.${empresaId}&estado=in.(trial,activa)&id=neq.${suscId}`,
           { estado: "cancelada" }
         );
 
-        await sbPatch(`empresa?id=eq.${empresaId}`, {
+        await sbPatchOk(`empresa?id=eq.${empresaId}`, {
           plan_activo: plan,
           suscripcion_activa_id: suscId,
         });
       } else if (nuevoEstado === "suspendida" || nuevoEstado === "cancelada") {
         // Downgrade a free cuando MP suspende o cancela la suscripción
-        await sbPatch(`empresa?id=eq.${empresaId}`, {
+        await sbPatchOk(`empresa?id=eq.${empresaId}`, {
           plan_activo: "free",
           suscripcion_activa_id: null,
         });
@@ -163,6 +174,12 @@ export async function POST(request) {
         } catch (e) {
           logger.error("Error enviando email de suspensión", e);
         }
+      }
+
+      if (nuevoEstado === "activa") {
+        logEvent(EVT.UPGRADE_COMPLETE, { empresa_id: empresaId, plan: (await sbGet(`suscripciones?id=eq.${suscId}&select=plan`).catch(() => []))?.[0]?.plan, meta: { gateway: "mercadopago" } });
+      } else if (nuevoEstado === "cancelada" || nuevoEstado === "suspendida") {
+        logEvent(EVT.CHURN, { empresa_id: empresaId, meta: { motivo: nuevoEstado, gateway: "mercadopago" } });
       }
 
       return NextResponse.json({ ok: true, accion: `susc_${nuevoEstado}` });
@@ -188,7 +205,7 @@ export async function POST(request) {
               const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo&limit=1`);
               if (susc?.plan && emp?.plan_activo !== susc.plan) {
                 logger.warn("[webhook] Reparando plan_activo tras retry", { empresaId, suscId, plan: susc.plan });
-                await sbPatch(`empresa?id=eq.${empresaId}`, {
+                await sbPatchOk(`empresa?id=eq.${empresaId}`, {
                   plan_activo: susc.plan,
                   suscripcion_activa_id: suscId,
                 });
@@ -219,11 +236,11 @@ export async function POST(request) {
       });
 
       if (estadoPago === "aprobado" && suscId) {
-        await sbPatch(`suscripciones?id=eq.${suscId}`, { estado: "activa" });
+        await sbPatchOk(`suscripciones?id=eq.${suscId}`, { estado: "activa" });
         if (empresaId) {
           const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan`);
           if (susc?.[0]?.plan) {
-            await sbPatch(`empresa?id=eq.${empresaId}`, {
+            await sbPatchOk(`empresa?id=eq.${empresaId}`, {
               plan_activo: susc[0].plan,
               suscripcion_activa_id: suscId,
             });
@@ -261,6 +278,12 @@ export async function POST(request) {
         }
       }
 
+      if (estadoPago === "aprobado") {
+        logEvent(EVT.PAGO_APROBADO, { empresa_id: empresaId, meta: { monto: pago.transaction_amount, moneda: pago.currency_id } });
+      } else if (estadoPago === "rechazado") {
+        logEvent(EVT.PAGO_RECHAZADO, { empresa_id: empresaId, meta: { monto: pago.transaction_amount, moneda: pago.currency_id } });
+      }
+
       return NextResponse.json({ ok: true, accion: `pago_${estadoPago}` });
     }
 
@@ -271,7 +294,7 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, ignorado: "not_found" });
     }
     logger.error("webhook error", err);
-    return NextResponse.json({ ok: false, error: err.message });
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
 

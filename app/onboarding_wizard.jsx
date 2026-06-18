@@ -2,6 +2,16 @@
 import { useState, useRef } from 'react';
 import { sb, getToken } from './lib/supabase';
 import { C, fH, fB, fM, setColoresEmpresa } from './lib/theme';
+import { Button } from './components/ui';
+
+function trackOnboarding(evento, meta = {}) {
+  const token = getToken();
+  fetch('/api/analytics/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ evento, meta }),
+  }).catch(() => {});
+}
 
 /* ═══ PLANTILLAS POR RUBRO ═══ */
 const PLANTILLAS = {
@@ -175,7 +185,13 @@ function apodoDe(n) { const p = n.split(" ").filter(Boolean); return p.length >=
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function OnboardingWizard({ empresa, usuario, onComplete }) {
-  const [step, setStep] = useState(1);
+  const [step, setStepRaw] = useState(1);
+  const stepRef = useRef(1);
+  const setStep = (s) => {
+    trackOnboarding('onboarding_step', { from: stepRef.current, to: s });
+    stepRef.current = s;
+    setStepRaw(s);
+  };
   const [rubro, setRubro] = useState(empresa?.rubro || "");
   const [divisiones, setDivisiones] = useState([]);
   const [etapas, setEtapas] = useState([]);
@@ -281,14 +297,14 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         } catch { logoUrl = `data:${logoBase64.type};base64,${logoBase64.base64}`; }
       }
       // 4. Actualizar empresa: rubro, colores, logo, onboarding_completado
-      const updEmp = {
+      const empresaUpdates = {
         rubro: rubro || "otro",
         color_primario: colorPrim,
         color_secundario: colorSec,
         onboarding_completado: true,
       };
-      if (logoUrl) updEmp.logo_url = logoUrl;
-      await sb.patch(`empresa?id=eq.${eid}`, updEmp);
+      if (logoUrl) empresaUpdates.logo_url = logoUrl;
+      await sb.patch(`empresa?id=eq.${eid}`, empresaUpdates);
 
       // 5. Crear empleados — vía /api/empleados para que el hash de password
       //    se haga en el servidor (bcrypt), nunca en texto plano en la DB.
@@ -317,6 +333,13 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
 
       // 6. Aplicar colores en vivo y avisar al padre
       setColoresEmpresa(colorPrim, colorSec);
+      trackOnboarding('onboarding_complete', {
+        rubro: rubro || 'otro',
+        divisiones: divisiones.length,
+        etapas: etapas.length,
+        empleados: empleados.length,
+        tienelogo: !!logoUrl,
+      });
       onComplete && onComplete({ ...empresa, ...updEmp, logo_url: logoUrl });
     } catch (err) {
       setError(err.message || "Error finalizando onboarding");
@@ -328,7 +351,6 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
   const card = { background: C.surface, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 12 };
   const input = { width: "100%", padding: "10px 12px", borderRadius: 10, background: C.surfHi, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontFamily: fB, outline: "none", boxSizing: "border-box" };
   const lbl = { display: "block", fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
-  const btnP = (bg) => ({ padding: "12px 20px", borderRadius: 12, border: "none", background: bg, color: "#000", fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: "pointer" });
   const btnS = { padding: "12px 20px", borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" };
 
   return (
@@ -391,8 +413,8 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </>}
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 16 }}>
-          <button onClick={() => { saltarPlantilla(); setStep(2); }} style={btnS}>Saltar este paso</button>
-          <button onClick={() => setStep(2)} style={btnP(C.amber)}>Siguiente →</button>
+          <Button variant="secondary" onClick={() => { saltarPlantilla(); trackOnboarding('onboarding_skip', { step: 1 }); setStep(2); }}>Saltar este paso</Button>
+          <Button variant="primary" onClick={() => setStep(2)}>Siguiente →</Button>
         </div>
       </>}
 
@@ -426,8 +448,8 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <button onClick={() => setStep(1)} style={btnS}>← Atrás</button>
-          <button onClick={() => setStep(3)} style={btnP(C.amber)}>Siguiente →</button>
+          <Button variant="secondary" onClick={() => setStep(1)}>← Atrás</Button>
+          <Button variant="primary" onClick={() => setStep(3)}>Siguiente →</Button>
         </div>
       </>}
 
@@ -463,8 +485,8 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <button onClick={() => setStep(2)} style={btnS}>← Atrás</button>
-          <button onClick={() => setStep(4)} style={btnP(C.amber)}>Siguiente →</button>
+          <Button variant="secondary" onClick={() => setStep(2)}>← Atrás</Button>
+          <Button variant="primary" onClick={() => setStep(4)}>Siguiente →</Button>
         </div>
       </>}
 
@@ -485,10 +507,10 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         {error && <div style={{ padding: 12, background: `${C.red}15`, color: C.red, borderRadius: 10, fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <button onClick={() => setStep(3)} disabled={saving} style={btnS}>← Atrás</button>
-          <button onClick={finalizar} disabled={saving} style={{ ...btnP(C.green), opacity: saving ? 0.6 : 1 }}>
+          <Button variant="secondary" onClick={() => setStep(3)} disabled={saving}>← Atrás</Button>
+          <Button variant="primary" onClick={finalizar} disabled={saving} loading={saving}>
             {saving ? "Guardando..." : "🚀 Empezar a usar Gypi"}
-          </button>
+          </Button>
         </div>
       </>}
     </div>

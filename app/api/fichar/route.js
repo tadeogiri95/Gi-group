@@ -9,47 +9,9 @@ import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { logAudit } from "../../lib/audit";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-
-// ─── REST helpers ───
-async function sbGet(path) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
-  });
-  if (!r.ok) throw new Error(`GET ${path}: ${await r.text()}`);
-  return r.json();
-}
-async function sbPost(path, body) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method: "POST",
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`POST ${path}: ${await r.text()}`);
-  return r.json();
-}
-async function sbPatch(path, body) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`PATCH ${path}: ${await r.text()}`);
-  return r.json();
-}
-
-// ─── Validación de geolocalización ───
-function distanciaMetros(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const p1 = (lat1 * Math.PI) / 180;
-  const p2 = (lat2 * Math.PI) / 180;
-  const dp = ((lat2 - lat1) * Math.PI) / 180;
-  const dl = ((lng2 - lng1) * Math.PI) / 180;
-  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
+import { haversine as distanciaMetros } from "../../lib/calc";
+import { logEvent, EVT } from "../../lib/analytics";
 
 // ─── Hora local según timezone de empresa ───
 const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
@@ -77,17 +39,31 @@ export async function POST(request) {
     const sesion = await validarToken(request);
     if (!sesion) return respuestaNoAutorizado("Token faltante o sesión inválida");
 
-    const { accion, geo_lat, geo_lng, forzar_cierre_tarea } = await request.json();
-    if (!accion || !["ingreso", "egreso"].includes(accion)) {
-      return NextResponse.json({ ok: false, error: "Acción inválida" }, { status: 400 });
+    // ─── RATE LIMIT (10 fichajes/min por empleado) ───
+    const { checkRateLimit } = await import("../../lib/rateLimitMemory");
+    const rl = checkRateLimit(`fichar:${sesion.empleado_id}`, 10, 60_000);
+    if (rl.limited) {
+      return NextResponse.json(
+        { ok: false, error: "Demasiados intentos de fichaje. Esperá un momento.", tipo: "rate_limit" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rl.resetMs / 1000)) } }
+      );
     }
 
-    // Timezone de la empresa (un solo fetch liviano, cacheado por Supabase)
+    const rawBody = await request.json();
+    const { ficharBody } = await import("../../lib/schemas");
+    const { validateBody } = await import("../../lib/validate");
+    const parsed = validateBody(ficharBody, rawBody);
+    if (parsed.response) return parsed.response;
+    const { accion, geo_lat, geo_lng, forzar_cierre_tarea } = parsed.data;
+
+    // Timezone y plan de la empresa en una sola consulta
     let empresaTz = TZ_DEFAULT;
+    let plan = "free";
     try {
-      const tzData = await sbGet(`empresa?id=eq.${sesion.empresa_id}&select=timezone&limit=1`);
-      if (tzData?.[0]?.timezone) empresaTz = tzData[0].timezone;
-    } catch { /* usa default */ }
+      const empData = await sbGet(`empresa?id=eq.${sesion.empresa_id}&select=timezone,plan_activo&limit=1`);
+      if (empData?.[0]?.timezone) empresaTz = empData[0].timezone;
+      if (empData?.[0]?.plan_activo) plan = empData[0].plan_activo;
+    } catch { /* usa defaults */ }
 
     const { fecha, hora, diaKey } = getLocalTime(empresaTz);
     const empleadoId = sesion.empleado_id;
@@ -96,11 +72,9 @@ export async function POST(request) {
 
     // ─── Enforcement de geolocalización (plan Starter+) ───
     try {
-      const empRes = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo&limit=1`);
-      const plan = empRes?.[0]?.plan_activo || "free";
       const planesConGeo = ["starter", "pro", "enterprise", "trial"];
       if (planesConGeo.includes(plan)) {
-        const zonas = await sbGet(`geo_zonas?empresa_id=eq.${empresaId}&select=lat,lng,radio,label`);
+        const zonas = await sbGet(`geo_zonas?empresa_id=eq.${empresaId}&select=lat,lng,radio,nombre`);
         if (zonas && zonas.length > 0) {
           if (!geo_lat || !geo_lng) {
             return NextResponse.json({
@@ -124,6 +98,10 @@ export async function POST(request) {
       }
     } catch (e) {
       logger.error("Error validando geolocalización", e);
+      return NextResponse.json(
+        { ok: false, error: "Error verificando ubicación. Intentá de nuevo en unos segundos.", tipo: "geo_error" },
+        { status: 500 }
+      );
     }
 
     // ═══════════════════════════════════
@@ -194,6 +172,16 @@ export async function POST(request) {
         throw e;
       }
 
+      if (geo_lat && geo_lng) {
+        sbPost("geo_registros", {
+          empresa_id: empresaId,
+          empleado_id: empleadoId,
+          lat: geo_lat,
+          lng: geo_lng,
+          accion: "ingreso",
+        }).catch((e) => logger.error("Error guardando geo_registro ingreso", e));
+      }
+
       logAudit({
         empresa_id: empresaId,
         actor_id: empleadoId,
@@ -205,6 +193,16 @@ export async function POST(request) {
         datos_despues: { fecha, hora, tardanza: tardanza.estado },
       });
       broadcastRefresh(empresaId, "fichadas");
+
+      // Analytics: detectar primer fichaje de la empresa
+      sbGet(`fichadas?empresa_id=eq.${empresaId}&select=id&limit=2`).then(rows => {
+        const esPrimero = Array.isArray(rows) && rows.length <= 1;
+        if (esPrimero) {
+          logEvent(EVT.PRIMER_FICHAJE, { empresa_id: empresaId, empleado_id: empleadoId, plan });
+        }
+      }).catch(() => {});
+      logEvent(EVT.FICHAJE, { empresa_id: empresaId, empleado_id: empleadoId, plan, meta: { accion: "ingreso" } });
+
       return NextResponse.json({ ok: true, hora, tardanza });
     }
 
@@ -275,10 +273,66 @@ export async function POST(request) {
     const outDate = new Date(`${fecha}T${hora}:00`);
     const horasTrab = Math.max(0, (outDate.getTime() - inDate.getTime()) / 3600000);
 
+    // 4. Calcular horas extra comparando con diagrama
+    let horasExtra = 0;
+    let solicitarHoraExtra = false;
+    let datosJornada = null;
+    try {
+      const emps = await sbGet(`empleados?id=eq.${empleadoId}&select=diagrama`);
+      if (emps.length > 0 && emps[0].diagrama) {
+        const diagHoy = emps[0].diagrama[diaKey];
+        if (diagHoy && diagHoy.in && diagHoy.out) {
+          const [hIn, mIn] = diagHoy.in.split(":").map(Number);
+          const [hOut, mOut] = diagHoy.out.split(":").map(Number);
+          const [hIngReal, mIngReal] = fichada.ingreso.split(":").map(Number);
+          const [hEgReal, mEgReal] = hora.split(":").map(Number);
+
+          const minGrillaIn = hIn * 60 + mIn;
+          const minGrillaOut = hOut * 60 + mOut;
+          const minIngresoReal = hIngReal * 60 + mIngReal;
+          const minEgresoReal = hEgReal * 60 + mEgReal;
+
+          const jornadaGrilla = minGrillaOut - minGrillaIn;
+          const jornadaReal = minEgresoReal - minIngresoReal;
+          const minutosMasTarde = minEgresoReal - minGrillaOut;
+
+          const fuePuntual = minIngresoReal <= minGrillaIn + 5;
+
+          if (fuePuntual && minutosMasTarde > 0) {
+            horasExtra = +(minutosMasTarde / 60).toFixed(2);
+          } else if (!fuePuntual && jornadaReal > jornadaGrilla) {
+            solicitarHoraExtra = true;
+            datosJornada = {
+              ingreso_grilla: diagHoy.in,
+              egreso_grilla: diagHoy.out,
+              ingreso_real: fichada.ingreso,
+              egreso_real: hora,
+              jornada_grilla_min: jornadaGrilla,
+              jornada_real_min: jornadaReal,
+              excedente_min: jornadaReal - jornadaGrilla,
+            };
+          }
+        }
+      }
+    } catch (e) {
+      logger.error("Error calculando horas extra", e);
+    }
+
     await sbPatch(`fichadas?id=eq.${fichada.id}`, {
       egreso: hora,
       horas_trabajadas: horasTrab.toFixed(2),
+      horas_extra: horasExtra,
     });
+
+    if (geo_lat && geo_lng) {
+      sbPost("geo_registros", {
+        empresa_id: empresaId,
+        empleado_id: empleadoId,
+        lat: geo_lat,
+        lng: geo_lng,
+        accion: "egreso",
+      }).catch((e) => logger.error("Error guardando geo_registro egreso", e));
+    }
 
     logAudit({
       empresa_id: empresaId,
@@ -288,13 +342,20 @@ export async function POST(request) {
       accion: "fichar_egreso",
       entidad: "fichada",
       ip: request.headers.get("x-forwarded-for") || "unknown",
-      datos_despues: { fecha, hora },
+      datos_despues: { fecha, hora, horas_extra: horasExtra },
     });
     broadcastRefresh(empresaId, "fichadas");
-    return NextResponse.json({ ok: true, hora });
+
+    const respuesta = { ok: true, hora, horas_extra: horasExtra };
+    if (solicitarHoraExtra) {
+      respuesta.solicitar_hora_extra = true;
+      respuesta.datos_jornada = datosJornada;
+    }
+    return NextResponse.json(respuesta);
 
   } catch (err) {
     logger.error("fichar error", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    const { safeErrorMessage } = await import("../../lib/validate");
+    return NextResponse.json({ ok: false, error: safeErrorMessage(err) }, { status: 500 });
   }
 }
