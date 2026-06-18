@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { C, fH, fB } from "../lib/theme";
-import { PLANES } from "../lib/plans";
+import { PLANES, precioAnual } from "../lib/plans";
 import { sb, getToken } from "../lib/supabase";
 
 const ORDEN_PLANES = ["free", "starter", "pro", "enterprise"];
@@ -13,6 +12,7 @@ export default function BillingScreen({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [anual, setAnual] = useState(false);
 
   const cargar = async () => {
     setLoading(true);
@@ -23,7 +23,7 @@ export default function BillingScreen({ onClose }) {
 
       const [rInfo, rPagos] = await Promise.all([
         fetch("/api/billing/info", { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-        sb.get("pagos", "?order=fecha_pago.desc&limit=20").catch(() => []),
+        sb.get("pagos?order=fecha_pago.desc&limit=20").catch(() => []),
       ]);
 
       if (rInfo.error) throw new Error(rInfo.error);
@@ -44,10 +44,11 @@ export default function BillingScreen({ onClose }) {
     setError("");
     try {
       const token = getToken();
+      const periodo = anual ? "anual" : "mensual";
       const r = await fetch("/api/billing/create-subscription", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, periodo }),
       });
       const txt = await r.text();
       let d = {};
@@ -96,140 +97,188 @@ export default function BillingScreen({ onClose }) {
   const planActual = info?.plan || "free";
   const estado = info?.estado || "activa";
 
-  const estadoLabel = {
-    trial: { txt: "Período de prueba", color: C.amber },
-    activa: { txt: "Activa", color: C.green },
-    vencida: { txt: "Vencida", color: C.red },
-    suspendida: { txt: "Suspendida", color: C.amber },
-    cancelada: { txt: "Cancelada", color: C.dim },
-  }[estado] || { txt: estado, color: C.dim };
+  const estadoMap = {
+    trial:      { txt: "Período de prueba", colorClass: "text-gypi-amber",  bgStyle: "var(--color-empresa-primary)" },
+    activa:     { txt: "Activa",            colorClass: "text-gypi-green",  bgStyle: "var(--color-green)" },
+    vencida:    { txt: "Vencida",           colorClass: "text-gypi-red",    bgStyle: "var(--color-red)" },
+    suspendida: { txt: "Suspendida",        colorClass: "text-gypi-amber",  bgStyle: "var(--color-empresa-primary)" },
+    cancelada:  { txt: "Cancelada",         colorClass: "text-gypi-dim",    bgStyle: "var(--color-text-muted)" },
+  };
+  const estadoLabel = estadoMap[estado] || { txt: estado, colorClass: "text-gypi-dim", bgStyle: "var(--color-text-muted)" };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: C.bg, overflowY: "auto" }}>
+    <div className="fixed inset-0 z-[200] bg-gypi-bg overflow-y-auto">
       {/* Header */}
-      <div style={{ position: "sticky", top: 0, background: C.bg, borderBottom: `1px solid ${C.border}`, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, zIndex: 10 }}>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: C.text, fontSize: 20, cursor: "pointer", padding: 4 }}>←</button>
-        <h1 style={{ margin: 0, fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.text }}>Plan y facturación</h1>
+      <div className="sticky top-0 bg-gypi-bg border-b border-gypi-border flex items-center gap-3 z-10 px-[18px] py-[14px]">
+        <button
+          onClick={onClose}
+          aria-label="Volver"
+          className="bg-transparent border-none text-gypi-text text-xl cursor-pointer p-1"
+        >
+          ←
+        </button>
+        <h1 className="m-0 font-heading text-lg font-bold text-gypi-text">Plan y facturación</h1>
       </div>
 
-      <div style={{ padding: 18, maxWidth: 720, margin: "0 auto" }}>
-        {loading && <div style={{ color: C.dim, textAlign: "center", padding: 40 }}>Cargando…</div>}
+      <div className="p-[18px] max-w-[720px] mx-auto">
+        {loading && <div className="text-gypi-dim text-center py-10">Cargando...</div>}
 
         {error && (
-          <div style={{ background: `${C.red}15`, border: `1px solid ${C.red}50`, color: C.red, padding: 12, borderRadius: 10, marginBottom: 14, fontSize: 13 }}>
-            ⚠️ {error}
+          <div
+            className="text-gypi-red text-[13px] rounded-[10px] mb-[14px] p-3"
+            style={{ background: "var(--color-red-subtle)", border: "1px solid color-mix(in srgb, var(--color-red) 30%, transparent)" }}
+          >
+            <span aria-hidden="true">&#x26A0;&#xFE0F;</span> {error}
           </div>
         )}
 
         {!loading && info && (
           <>
-            {/* ─── Plan actual ─── */}
-            <div style={{ background: C.surface, borderRadius: 16, padding: 18, border: `1px solid ${C.border}`, marginBottom: 18 }}>
-              <div style={{ fontSize: 11, color: C.dim, fontWeight: 600, letterSpacing: 0.5, marginBottom: 6 }}>TU PLAN ACTUAL</div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
-                <span style={{ fontFamily: fH, fontSize: 28, fontWeight: 700, color: C.amber }}>
+            {/* --- Plan actual --- */}
+            <div className="g-card mb-[18px] p-[18px]">
+              <div className="text-[11px] text-gypi-dim font-semibold tracking-wide mb-1.5">TU PLAN ACTUAL</div>
+              <div className="flex items-baseline gap-2.5 mb-2">
+                <span className="font-heading text-[28px] font-bold text-gypi-amber">
                   {PLANES[planActual]?.nombre || planActual}
                 </span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: estadoLabel.color, background: `${estadoLabel.color}20`, padding: "3px 8px", borderRadius: 6 }}>
+                <span
+                  className={`text-[11px] font-bold ${estadoLabel.colorClass} py-[3px] px-2 rounded-md`}
+                  style={{ background: `${estadoLabel.bgStyle}20` }}
+                >
                   {estadoLabel.txt}
                 </span>
               </div>
 
               {estado === "trial" && info.dias_restantes !== null && (
-                <div style={{ fontSize: 13, color: C.text, marginBottom: 6 }}>
-                  🎁 Te quedan <b>{info.dias_restantes} día{info.dias_restantes !== 1 ? "s" : ""}</b> de prueba.
+                <div className="text-[13px] text-gypi-text mb-1.5">
+                  <span aria-hidden="true">&#x1F381;</span> Te quedan <b>{info.dias_restantes} día{info.dias_restantes !== 1 ? "s" : ""}</b> de prueba.
                 </div>
               )}
 
               {info.periodo_fin && estado === "activa" && (
-                <div style={{ fontSize: 12, color: C.dim }}>
+                <div className="text-xs text-gypi-dim">
                   Próximo cobro: {new Date(info.periodo_fin).toLocaleDateString("es-AR")}
                 </div>
               )}
 
               {info.precio > 0 && (
-                <div style={{ fontSize: 13, color: C.dim, marginTop: 4 }}>
+                <div className="text-[13px] text-gypi-dim mt-1">
                   ${Number(info.precio).toLocaleString("es-AR")} {info.moneda}/mes
                 </div>
               )}
 
               {/* Botones gestión */}
               {(estado === "activa" || estado === "suspendida") && info.gateway === "mercadopago" && (
-                <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-                  <button onClick={abrirPortalMP} style={btnSecundario}>Ver historial en MP</button>
-                  <button onClick={() => setConfirmCancel(true)} style={{ ...btnSecundario, color: C.red, borderColor: `${C.red}50` }}>
+                <div className="flex gap-2 mt-3.5 flex-wrap">
+                  <button onClick={abrirPortalMP} className="g-btn g-btn-secondary text-xs">
+                    Ver historial en MP
+                  </button>
+                  <button
+                    onClick={() => setConfirmCancel(true)}
+                    className="g-btn g-btn-secondary text-xs"
+                    style={{ color: "var(--color-red)", borderColor: "color-mix(in srgb, var(--color-red) 30%, transparent)" }}
+                  >
                     Cancelar suscripción
                   </button>
                 </div>
               )}
             </div>
 
-            {/* ─── Planes disponibles ─── */}
-            <div style={{ marginBottom: 8, fontSize: 12, color: C.dim, fontWeight: 600, letterSpacing: 0.5 }}>
-              {planActual === "free" || estado === "trial" || estado === "vencida" ? "ELEGÍ TU PLAN" : "CAMBIAR DE PLAN"}
+            {/* --- Planes disponibles --- */}
+            <div className="flex items-center justify-between mb-3.5">
+              <div className="text-xs text-gypi-dim font-semibold tracking-wide">
+                {planActual === "free" || estado === "trial" || estado === "vencida" ? "ELEGÍ TU PLAN" : "CAMBIAR DE PLAN"}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs ${anual ? "text-gypi-dim font-normal" : "text-gypi-text font-bold"}`}>Mensual</span>
+                <button
+                  onClick={() => setAnual(!anual)}
+                  aria-label={anual ? "Cambiar a mensual" : "Cambiar a anual"}
+                  className="relative w-11 h-6 rounded-full border cursor-pointer p-0 transition-all duration-300"
+                  style={{
+                    background: anual ? "var(--color-empresa-primary)" : "var(--color-surface)",
+                    borderColor: anual ? "var(--color-empresa-primary)" : "var(--color-border)",
+                  }}
+                >
+                  <div
+                    className="w-[18px] h-[18px] rounded-full absolute top-[2px] transition-[left] duration-300"
+                    style={{
+                      background: anual ? "#000" : "var(--color-text-muted)",
+                      left: anual ? 22 : 3,
+                    }}
+                  />
+                </button>
+                <span className={`text-xs ${anual ? "text-gypi-text font-bold" : "text-gypi-dim font-normal"}`}>
+                  Anual <span className="text-[10px] text-gypi-green font-bold">-20%</span>
+                </span>
+              </div>
             </div>
 
-            <div style={{ display: "grid", gap: 12, marginBottom: 24 }}>
+            <div className="grid gap-3 mb-6">
               {ORDEN_PLANES.map((pid) => {
                 const p = PLANES[pid];
                 const esActual = pid === planActual && estado === "activa";
                 const esEnterprise = pid === "enterprise";
                 return (
-                  <div key={pid} style={{
-                    background: C.surface,
-                    borderRadius: 14,
-                    padding: 16,
-                    border: `1px solid ${esActual ? C.amber : C.border}`,
-                    opacity: esActual ? 0.7 : 1,
-                  }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <div
+                    key={pid}
+                    className="g-card p-4"
+                    style={{
+                      borderColor: esActual ? "var(--color-empresa-primary)" : undefined,
+                      opacity: esActual ? 0.7 : 1,
+                    }}
+                  >
+                    <div className="flex justify-between items-start mb-2.5">
                       <div>
-                        <div style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.text }}>{p.nombre}</div>
-                        <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>
+                        <div className="font-heading text-lg font-bold text-gypi-text">{p.nombre}</div>
+                        <div className="text-xs text-gypi-dim mt-0.5">
                           Hasta {p.max_empleados.toLocaleString("es-AR")} empleados
                         </div>
                       </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontFamily: fH, fontSize: 20, fontWeight: 700, color: C.amber }}>
-                          {p.precio === 0 ? "Gratis" : p.precio ? `$${p.precio.toLocaleString("es-AR")}` : "A convenir"}
+                      <div className="text-right">
+                        <div className="font-heading text-xl font-bold text-gypi-amber">
+                          {p.precio === 0 ? "Gratis" : p.precio ? `$${(anual ? precioAnual(pid) : p.precio).toLocaleString("es-AR")}` : "A convenir"}
                         </div>
-                        {p.precio > 0 && <div style={{ fontSize: 11, color: C.dim }}>{p.moneda}/mes</div>}
+                        {p.precio > 0 && <div className="text-[11px] text-gypi-dim">{p.moneda}/mes</div>}
+                        {p.precio > 0 && anual && <div className="text-[10px] text-gypi-green">Total anual: ${(precioAnual(pid) * 12).toLocaleString("es-AR")}</div>}
                       </div>
                     </div>
 
-                    <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.7, marginBottom: 12 }}>
-                      {p.geolocalizacion && <>✓ Geo {p.max_ubicaciones >= 999 ? "ilimitada" : `(${p.max_ubicaciones} ubic.)`}<br /></>}
-                      {p.exportar_csv && <>✓ Exportar CSV<br /></>}
-                      {p.exportar_pdf && <>✓ Reportes PDF<br /></>}
-                      {p.calendario && <>✓ Calendario con notas<br /></>}
-                      {p.reglas_bot && <>✓ Reglas personalizadas del bot<br /></>}
-                      {p.soporte && <>✓ Soporte {p.soporte}<br /></>}
-                      {p.api_access && <>✓ Acceso API<br /></>}
+                    <div className="text-xs text-gypi-dim leading-[1.7] mb-3">
+                      {p.geolocalizacion && <>&#x2713; Geo {p.max_ubicaciones >= 999 ? "ilimitada" : `(${p.max_ubicaciones} ubic.)`}<br /></>}
+                      {p.exportar_csv && <>&#x2713; Exportar CSV<br /></>}
+                      {p.exportar_pdf && <>&#x2713; Reportes PDF<br /></>}
+                      {p.calendario && <>&#x2713; Calendario con notas<br /></>}
+                      {p.reglas_bot && <>&#x2713; Reglas personalizadas del bot<br /></>}
+                      {p.soporte && <>&#x2713; Soporte {p.soporte}<br /></>}
+                      {p.api_access && <>&#x2713; Acceso API<br /></>}
                     </div>
 
                     {esActual ? (
-                      <div style={{ background: `${C.amber}20`, color: C.amber, textAlign: "center", padding: 10, borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                      <div
+                        className="text-gypi-amber text-center py-2.5 rounded-lg text-xs font-bold"
+                        style={{ background: "var(--color-empresa-primary-subtle)" }}
+                      >
                         Plan actual
                       </div>
                     ) : esEnterprise ? (
-                      <a href="mailto:tadeogiri@gmail.com?subject=Consulta plan Enterprise" style={{
-                        display: "block", textAlign: "center", padding: 11, borderRadius: 10,
-                        background: "transparent", border: `1px solid ${C.amber}`, color: C.amber,
-                        fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: fB,
-                      }}>
+                      <a
+                        href="mailto:contacto@gypi.app?subject=Consulta plan Enterprise"
+                        className="block text-center py-[11px] rounded-[10px] bg-transparent font-body text-[13px] font-bold no-underline"
+                        style={{
+                          border: "1px solid var(--color-empresa-primary)",
+                          color: "var(--color-empresa-primary)",
+                        }}
+                      >
                         Contactanos
                       </a>
                     ) : pid === "free" ? null : (
                       <button
                         onClick={() => upgrade(pid)}
                         disabled={busy}
-                        style={{
-                          width: "100%", padding: 11, borderRadius: 10, border: "none",
-                          background: C.amber, color: "#000", fontSize: 13, fontWeight: 700,
-                          cursor: busy ? "wait" : "pointer", fontFamily: fB, opacity: busy ? 0.6 : 1,
-                        }}
+                        className="g-btn g-btn-primary w-full"
                       >
-                        {busy ? "Redirigiendo a MP…" : `Suscribirme a ${p.nombre}`}
+                        {busy ? "Redirigiendo a MP..." : `Suscribirme a ${p.nombre}`}
                       </button>
                     )}
                   </div>
@@ -237,30 +286,34 @@ export default function BillingScreen({ onClose }) {
               })}
             </div>
 
-            {/* ─── Historial de pagos ─── */}
-            <div style={{ marginBottom: 8, fontSize: 12, color: C.dim, fontWeight: 600, letterSpacing: 0.5 }}>HISTORIAL DE PAGOS</div>
-            <div style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, overflow: "hidden", marginBottom: 30 }}>
+            {/* --- Historial de pagos --- */}
+            <div className="mb-2 text-xs text-gypi-dim font-semibold tracking-wide">HISTORIAL DE PAGOS</div>
+            <div className="bg-gypi-surface rounded-[14px] border border-gypi-border overflow-hidden mb-[30px]">
               {pagos.length === 0 ? (
-                <div style={{ padding: 24, textAlign: "center", color: C.dim, fontSize: 13 }}>Aún no hay pagos registrados.</div>
+                <div className="p-6 text-center text-gypi-dim text-[13px]">Aún no hay pagos registrados.</div>
               ) : (
                 pagos.map((p, i) => {
-                  const estadoCol = p.estado === "aprobado" ? C.green : p.estado === "rechazado" ? C.red : C.amber;
+                  const estadoCol = p.estado === "aprobado" ? "text-gypi-green" : p.estado === "rechazado" ? "text-gypi-red" : "text-gypi-amber";
+                  const estadoBgVar = p.estado === "aprobado" ? "var(--color-green)" : p.estado === "rechazado" ? "var(--color-red)" : "var(--color-empresa-primary)";
                   return (
-                    <div key={p.id || i} style={{
-                      padding: 13,
-                      borderBottom: i < pagos.length - 1 ? `1px solid ${C.border}` : "none",
-                      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
-                    }}>
+                    <div
+                      key={p.id || i}
+                      className="flex justify-between items-center gap-2.5 p-[13px]"
+                      style={{ borderBottom: i < pagos.length - 1 ? "1px solid var(--color-border)" : "none" }}
+                    >
                       <div>
-                        <div style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>
+                        <div className="text-[13px] text-gypi-text font-semibold">
                           ${Number(p.monto).toLocaleString("es-AR")} {p.moneda}
                         </div>
-                        <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
+                        <div className="text-[11px] text-gypi-dim mt-0.5">
                           {p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString("es-AR") : "—"}
                           {p.gateway && ` · ${p.gateway}`}
                         </div>
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: estadoCol, background: `${estadoCol}20`, padding: "3px 8px", borderRadius: 6 }}>
+                      <span
+                        className={`text-[11px] font-bold ${estadoCol} py-[3px] px-2 rounded-md`}
+                        style={{ background: `${estadoBgVar}20` }}
+                      >
                         {p.estado}
                       </span>
                     </div>
@@ -272,20 +325,35 @@ export default function BillingScreen({ onClose }) {
         )}
       </div>
 
-      {/* ─── Modal confirmar cancelación ─── */}
+      {/* --- Modal confirmar cancelación --- */}
       {confirmCancel && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
-          <div onClick={() => setConfirmCancel(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)" }} />
-          <div style={{ position: "relative", width: "100%", maxWidth: 380, background: C.bg, borderRadius: 20, padding: 24, border: `1px solid ${C.red}40` }}>
-            <h2 style={{ margin: 0, fontFamily: fH, fontSize: 18, fontWeight: 700, color: C.text, textAlign: "center" }}>
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center p-[18px]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirmar cancelación de suscripción"
+        >
+          <div onClick={() => setConfirmCancel(false)} className="absolute inset-0 bg-black/70" />
+          <div
+            className="relative w-full max-w-[380px] bg-gypi-bg rounded-[20px] p-6"
+            style={{ border: "1px solid color-mix(in srgb, var(--color-red) 25%, transparent)" }}
+          >
+            <h2 className="m-0 font-heading text-lg font-bold text-gypi-text text-center">
               ¿Cancelar suscripción?
             </h2>
-            <p style={{ fontSize: 13, color: C.dim, textAlign: "center", lineHeight: 1.5, margin: "10px 0 18px" }}>
+            <p className="text-[13px] text-gypi-dim text-center leading-normal mx-0 mt-2.5 mb-[18px]">
               Vas a seguir teniendo acceso hasta el fin del período pago. Después pasarás al plan Free.
             </p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setConfirmCancel(false)} style={{ ...btnSecundario, flex: 1 }}>Volver</button>
-              <button onClick={cancelar} disabled={busy} style={{ flex: 1, padding: 11, borderRadius: 10, border: "none", background: C.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: busy ? "wait" : "pointer", fontFamily: fB, opacity: busy ? 0.6 : 1 }}>
+            <div className="flex gap-2.5">
+              <button onClick={() => setConfirmCancel(false)} className="g-btn g-btn-secondary flex-1">
+                Volver
+              </button>
+              <button
+                onClick={cancelar}
+                disabled={busy}
+                className="g-btn g-btn-danger flex-1"
+                style={{ opacity: busy ? 0.6 : 1, cursor: busy ? "wait" : "pointer" }}
+              >
                 {busy ? "..." : "Sí, cancelar"}
               </button>
             </div>
@@ -295,15 +363,3 @@ export default function BillingScreen({ onClose }) {
     </div>
   );
 }
-
-const btnSecundario = {
-  padding: "9px 14px",
-  borderRadius: 8,
-  background: "transparent",
-  border: `1px solid ${C.border}`,
-  color: C.text,
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: "pointer",
-  fontFamily: fB,
-};

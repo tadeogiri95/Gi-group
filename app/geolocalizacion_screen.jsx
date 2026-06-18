@@ -1,9 +1,69 @@
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { haversine } from "./lib/calc";
 import { getDivisionesConTodos } from "./lib/constants";
+import { useAuth } from "./context/AuthContext";
+import { useToast } from "./components/ui/Toast";
+import { useConfirm } from "./components/ui/ConfirmDialog";
+
+/* ═══ GOOGLE MAPS PARSER ═══ */
+/**
+ * Acepta cualquiera de estos formatos:
+ *  1. Coordenadas crudas:  -34.6037, -58.3816
+ *  2. @lat,lng,zoom:        @-34.6037,-58.3816,16z  (con o sin URL)
+ *  3. maps.google.com URL:  ?q=lat,lng  /  ?center=lat,lng  /  ll=lat,lng
+ *  4. Share desktop Maps:   !3d{lat}!4d{lng}
+ *  5. /place/.../@lat,lng   (URL completa de resultado de búsqueda)
+ */
+const parseMapsInput = (input) => {
+  const s = input?.trim() ?? "";
+  if (!s) return null;
+
+  // 1. Coordenadas crudas: "-34.6037, -58.3816" o "-34.6037 -58.3816"
+  const rawCoord = s.match(/^(-?\d{1,3}\.?\d*)[,\s]+(-?\d{1,3}\.?\d*)$/);
+  if (rawCoord) {
+    const lat = parseFloat(rawCoord[1]);
+    const lng = parseFloat(rawCoord[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) return { lat, lng };
+  }
+
+  // 2. @lat,lng (con zoom opcional) — funciona dentro de URLs o como texto
+  const atMatch = s.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+  if (atMatch) {
+    const lat = parseFloat(atMatch[1]);
+    const lng = parseFloat(atMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) return { lat, lng };
+  }
+
+  // 3. !3d{lat}!4d{lng} — formato de links "Compartir" de Maps en desktop
+  const dataMatch = s.match(/!3d(-?\d+\.?\d*).*?!4d(-?\d+\.?\d*)/);
+  if (dataMatch) {
+    const lat = parseFloat(dataMatch[1]);
+    const lng = parseFloat(dataMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) return { lat, lng };
+  }
+
+  // 4. ?q=lat,lng / &q=lat,lng
+  const qMatch = s.match(/[?&]q=(-?\d+\.?\d*)[,+](-?\d+\.?\d*)/);
+  if (qMatch) {
+    const lat = parseFloat(qMatch[1]);
+    const lng = parseFloat(qMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) return { lat, lng };
+  }
+
+  // 5. ?center=lat,lng o ll=lat,lng (formatos legacy de Maps)
+  const centerMatch = s.match(/(?:[?&]center=|[?&]ll=)(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+  if (centerMatch) {
+    const lat = parseFloat(centerMatch[1]);
+    const lng = parseFloat(centerMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) return { lat, lng };
+  }
+
+  return null;
+};
 
 /* ═══ PLUS CODE DECODER ═══ */
 const PLUS_CODE_CHARS = "23456789CFGHJMPQRVWX";
@@ -39,6 +99,18 @@ const decodePlusCode = (code) => {
   }
 };
 
+/* ═══ LEAFLET MAP (dynamic import — SSR-safe) ═══ */
+const LeafletMap = dynamic(() => import("./components/LeafletMap"), { ssr: false, loading: () => <div style={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f0ee", borderRadius: 12 }}>Cargando mapa...</div> });
+
+/* ═══ GEOCODING via server-side proxy ═══ */
+async function geocodeAddress(query) {
+  const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (data.error) return [];
+  return data;
+}
+
 /* ═══ MODAL UBICACIÓN ═══ */
 function ModalUbicacion({ ubicacion, onClose, onSave, saving }) {
   const isEdit = !!ubicacion?.id;
@@ -46,246 +118,274 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving }) {
   const [lat, setLat] = useState(ubicacion?.lat != null ? String(ubicacion.lat) : "");
   const [lng, setLng] = useState(ubicacion?.lng != null ? String(ubicacion.lng) : "");
   const [radio, setRadio] = useState(ubicacion?.radio || 150);
-  const [plusCode, setPlusCode] = useState("");
-  const [modo, setModo] = useState("coords");
-  const [mapaUrl, setMapaUrl] = useState("");
+  const [modo, setModo] = useState("direccion");
   const [error, setError] = useState(null);
+
+  // Dirección
+  const [addressQuery, setAddressQuery] = useState("");
+  const [addressResults, setAddressResults] = useState([]);
+  const [addressLoading, setAddressLoading] = useState(false);
+
+  // Plus Code
+  const [plusCode, setPlusCode] = useState("");
+
+  // Link de Maps
+  const [mapaUrl, setMapaUrl] = useState("");
+
+  // GPS
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   const latNum = parseFloat(lat);
   const lngNum = parseFloat(lng);
   const latValid = !isNaN(latNum) && latNum >= -90 && latNum <= 90;
   const lngValid = !isNaN(lngNum) && lngNum >= -180 && lngNum <= 180;
-  const canSave = nombre.trim() && latValid && lngValid;
+  const hasCoords = latValid && lngValid;
+  const canSave = nombre.trim() && hasCoords;
 
+  const setCoords = (newLat, newLng) => {
+    setLat(String(parseFloat(newLat).toFixed(6)));
+    setLng(String(parseFloat(newLng).toFixed(6)));
+    setError(null);
+  };
+
+  // Buscar dirección
+  const handleAddressSearch = async () => {
+    if (!addressQuery.trim()) return;
+    setAddressLoading(true);
+    setError(null);
+    setAddressResults([]);
+    try {
+      // Primero intentar como link de Maps o coordenadas crudas
+      const parsed = parseMapsInput(addressQuery);
+      if (parsed) { setCoords(parsed.lat, parsed.lng); setAddressLoading(false); return; }
+      // Intentar como Plus Code
+      const pc = decodePlusCode(addressQuery);
+      if (pc) { setCoords(pc.lat, pc.lng); setAddressLoading(false); return; }
+      // Geocoding
+      const results = await geocodeAddress(addressQuery);
+      if (results.length === 0) { setError("No se encontraron resultados para esa dirección."); }
+      else if (results.length === 1) { setCoords(results[0].lat, results[0].lng); if (!nombre.trim()) setNombre(results[0].label.split(",")[0]); }
+      else setAddressResults(results);
+    } catch (e) { console.error("Geocode error:", e); setError("Error buscando dirección. Verificá tu conexión."); }
+    setAddressLoading(false);
+  };
+
+  const selectAddressResult = (r) => {
+    setCoords(r.lat, r.lng);
+    if (!nombre.trim()) setNombre(r.label.split(",")[0]);
+    setAddressResults([]);
+  };
+
+  // Plus Code
   const handlePlusCodeDecode = () => {
     setError(null);
-    const result = decodePlusCode(plusCode);
-    if (result) {
-      setLat(String(result.lat));
-      setLng(String(result.lng));
-      setError(null);
-    } else {
-      setError("Plus Code inválido. Formato esperado: 87GC+2G o similar.");
+    const input = plusCode.trim();
+    // Extraer solo la parte del Plus Code (quitar nombre de ciudad/area)
+    const parts = input.split(/\s+/);
+    let decoded = null;
+    for (const part of parts) {
+      if (part.includes("+")) { decoded = decodePlusCode(part); if (decoded) break; }
+    }
+    if (!decoded) decoded = decodePlusCode(input);
+    if (decoded) { setCoords(decoded.lat, decoded.lng); }
+    else { setError("Plus Code inválido. Formato esperado: 87GC+2G (sin la ciudad, solo el código)."); }
+  };
+
+  // Link de Maps
+  const handleMapaChange = (val) => {
+    setMapaUrl(val);
+    if (val.length > 8) {
+      const result = parseMapsInput(val);
+      if (result) { setCoords(result.lat, result.lng); }
     }
   };
 
-  const handleMapaConfirm = () => {
+  // GPS del dispositivo
+  const handleUseGPS = () => {
+    if (!navigator?.geolocation) { setError("Tu navegador no soporta geolocalización."); return; }
+    setGpsLoading(true);
     setError(null);
-    try {
-      const url = new URL(mapaUrl);
-      const match = mapaUrl.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
-      if (match) {
-        setLat(match[1]);
-        setLng(match[2]);
-        return;
-      }
-      const qMatch = mapaUrl.match(/q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
-      if (qMatch) {
-        setLat(qMatch[1]);
-        setLng(qMatch[2]);
-        return;
-      }
-      setError("No se pudieron extraer coordenadas de la URL. Usá una URL de Google Maps con @lat,lng.");
-    } catch {
-      setError("URL inválida. Pegá un link de Google Maps.");
-    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setCoords(pos.coords.latitude, pos.coords.longitude); setGpsLoading(false); },
+      (err) => {
+        const msgs = { 1: "Permiso de ubicación denegado", 2: "No se pudo obtener ubicación", 3: "Tiempo agotado" };
+        setError(msgs[err.code] || "Error GPS");
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
+
+  // Click en mapa
+  const handleMapClick = (newLat, newLng) => { setCoords(newLat, newLng); };
 
   const handleSave = () => {
     if (!canSave) return;
-    onSave({
-      ...(isEdit ? { id: ubicacion.id } : {}),
-      nombre: nombre.trim(),
-      lat: latNum,
-      lng: lngNum,
-      radio,
-    });
+    onSave({ ...(isEdit ? { id: ubicacion.id } : {}), nombre: nombre.trim(), lat: latNum, lng: lngNum, radio });
   };
 
+  const MODOS = [
+    { key: "direccion", icon: "🔍", label: "Dirección" },
+    { key: "mapa", icon: "🗺️", label: "Mapa" },
+    { key: "pluscode", icon: "🔢", label: "Plus Code" },
+    { key: "link", icon: "🔗", label: "Link" },
+  ];
+
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
-      <div onClick={onClose} className="absolute inset-0 bg-black/60" />
-      <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
-        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={isEdit ? "Editar ubicación" : "Nueva ubicación"}>
+      <div onClick={onClose} className="absolute inset-0 bg-black/60" style={{ backdropFilter: "blur(4px)" }} />
+      <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[90vh] overflow-y-auto border border-gypi-border">
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">
           {isEdit ? "Editar ubicación" : "Nueva ubicación"}
         </h3>
         <div className="text-xs text-gypi-dim mb-4">
-          {isEdit ? "Modificá los datos de esta ubicación" : "Agregá un punto de fichaje con coordenadas"}
+          {isEdit ? "Modificá los datos de esta ubicación" : "Buscá por dirección, seleccioná en el mapa, o pegá un Plus Code"}
         </div>
 
         {/* Nombre */}
         <div className="mb-3">
           <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Nombre</label>
-          <input
-            value={nombre}
-            onChange={e => setNombre(e.target.value)}
-            placeholder="Ej: Oficina Central, Planta 2"
-            className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-body outline-none box-border"
-          />
+          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Oficina Central, Planta 2"
+            className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-body outline-none box-border" />
         </div>
 
         {/* Modo toggle */}
         <div className="flex mb-3 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
-          <button
-            onClick={() => setModo("coords")}
-            className="flex-1 py-2 rounded-[10px] border-none cursor-pointer text-[12px] font-bold font-heading transition-all"
-            style={{ background: modo === "coords" ? C.cyan : "transparent", color: modo === "coords" ? "#000" : C.dim }}
-          >
-            📍 Coordenadas
-          </button>
-          <button
-            onClick={() => setModo("pluscode")}
-            className="flex-1 py-2 rounded-[10px] border-none cursor-pointer text-[12px] font-bold font-heading transition-all"
-            style={{ background: modo === "pluscode" ? C.cyan : "transparent", color: modo === "pluscode" ? "#000" : C.dim }}
-          >
-            🔢 Plus Code
-          </button>
-          <button
-            onClick={() => setModo("mapa")}
-            className="flex-1 py-2 rounded-[10px] border-none cursor-pointer text-[12px] font-bold font-heading transition-all"
-            style={{ background: modo === "mapa" ? C.cyan : "transparent", color: modo === "mapa" ? "#000" : C.dim }}
-          >
-            🗺️ Mapa
-          </button>
+          {MODOS.map(m => (
+            <button key={m.key} onClick={() => setModo(m.key)}
+              className="flex-1 py-2 rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-heading transition-all"
+              style={{ background: modo === m.key ? C.cyan : "transparent", color: modo === m.key ? "#000" : C.dim, minHeight: 40 }}>
+              {m.icon} {m.label}
+            </button>
+          ))}
         </div>
 
         {/* Error */}
         {error && (
-          <div className="mb-3 p-2.5 rounded-lg text-[12px] font-semibold font-body" style={{ background: `${C.red}15`, color: C.red, border: `1px solid ${C.red}30` }}>
-            ⚠️ {error}
+          <div role="alert" className="mb-3 p-2.5 rounded-lg text-[12px] font-semibold font-body" style={{ background: `${C.red}15`, color: C.red, border: `1px solid ${C.red}30` }}>
+            {error}
           </div>
         )}
 
-        {/* Modo Coords */}
-        {modo === "coords" && (
-          <div className="flex gap-2 mb-3">
-            <div className="flex-1">
-              <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Latitud</label>
-              <input
-                type="number"
-                step="any"
-                value={lat}
-                onChange={e => setLat(e.target.value)}
-                placeholder="-34.6037"
-                className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border"
-              />
+        {/* ── Modo Dirección ── */}
+        {modo === "direccion" && (
+          <div className="mb-3">
+            <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Dirección, ciudad o lugar</label>
+            <div className="flex gap-2">
+              <input value={addressQuery} onChange={e => setAddressQuery(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleAddressSearch()}
+                placeholder="Av. Corrientes 1234, CABA"
+                className="flex-1 py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-body outline-none box-border" />
+              <button onClick={handleAddressSearch} disabled={!addressQuery.trim() || addressLoading}
+                className="py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading cursor-pointer shrink-0"
+                style={{ background: addressQuery.trim() && !addressLoading ? C.cyan : C.surface, color: addressQuery.trim() && !addressLoading ? "#000" : C.mute, minHeight: 44 }}>
+                {addressLoading ? "..." : "Buscar"}
+              </button>
             </div>
-            <div className="flex-1">
-              <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Longitud</label>
-              <input
-                type="number"
-                step="any"
-                value={lng}
-                onChange={e => setLng(e.target.value)}
-                placeholder="-58.3816"
-                className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border"
-              />
+            <div className="mt-1.5 text-[10px] text-gypi-mute">
+              También acepta: link de Google Maps, coordenadas, o Plus Code
+            </div>
+            {/* Resultados de búsqueda */}
+            {addressResults.length > 0 && (
+              <div className="mt-2 flex flex-col gap-1">
+                <div className="text-[10px] font-bold text-gypi-dim uppercase mb-1">Seleccioná un resultado:</div>
+                {addressResults.map((r, i) => (
+                  <button key={i} onClick={() => selectAddressResult(r)}
+                    className="text-left w-full py-2.5 px-3 rounded-lg border cursor-pointer text-[12px] font-body"
+                    style={{ background: C.surface, borderColor: C.border, color: C.text }}>
+                    📍 {r.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Modo Mapa interactivo ── */}
+        {modo === "mapa" && (
+          <div className="mb-3">
+            <div className="text-[11px] text-gypi-dim mb-2">Tocá en el mapa para ubicar el punto de fichaje</div>
+            <div className="rounded-xl overflow-hidden border border-gypi-border" style={{ height: 260 }}>
+              <LeafletMap lat={hasCoords ? latNum : -34.6037} lng={hasCoords ? lngNum : -58.3816}
+                zoom={hasCoords ? 16 : 12} radio={radio} onMapClick={handleMapClick} />
             </div>
           </div>
         )}
 
-        {/* Modo Plus Code */}
+        {/* ── Modo Plus Code ── */}
         {modo === "pluscode" && (
           <div className="mb-3">
-            <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Plus Code</label>
+            <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Plus Code de Google Maps</label>
             <div className="flex gap-2">
-              <input
-                value={plusCode}
-                onChange={e => setPlusCode(e.target.value)}
-                placeholder="Ej: 87GC+2G Buenos Aires"
-                className="flex-1 py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border"
-              />
-              <button
-                onClick={handlePlusCodeDecode}
-                disabled={!plusCode.trim()}
+              <input value={plusCode} onChange={e => setPlusCode(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handlePlusCodeDecode()}
+                placeholder="Ej: 87GC+2G"
+                className="flex-1 py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border" />
+              <button onClick={handlePlusCodeDecode} disabled={!plusCode.trim()}
                 className="py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading cursor-pointer shrink-0"
-                style={{
-                  background: plusCode.trim() ? C.cyan : C.surface,
-                  color: plusCode.trim() ? "#000" : C.mute,
-                }}
-              >
+                style={{ background: plusCode.trim() ? C.cyan : C.surface, color: plusCode.trim() ? "#000" : C.mute, minHeight: 44 }}>
                 Decodificar
               </button>
             </div>
-            {latValid && lngValid && (
-              <div className="mt-2 text-[11px] text-gypi-dim font-mono">
-                Resultado: {latNum.toFixed(6)}, {lngNum.toFixed(6)}
-              </div>
-            )}
+            <div className="mt-1.5 text-[10px] text-gypi-mute">
+              Encontrá el Plus Code en Google Maps: tocá en el mapa → copiá el código corto (ej: 87GC+2G)
+            </div>
           </div>
         )}
 
-        {/* Modo Mapa */}
-        {modo === "mapa" && (
+        {/* ── Modo Link ── */}
+        {modo === "link" && (
           <div className="mb-3">
-            <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">URL de Google Maps</label>
+            <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Link de Google Maps o coordenadas</label>
             <div className="flex gap-2">
-              <input
-                value={mapaUrl}
-                onChange={e => setMapaUrl(e.target.value)}
-                placeholder="Pegá el link de Google Maps"
-                className="flex-1 py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-body outline-none box-border"
-              />
-              <button
-                onClick={handleMapaConfirm}
+              <input value={mapaUrl} onChange={e => handleMapaChange(e.target.value)}
+                onPaste={e => { const pasted = e.clipboardData.getData("text"); setTimeout(() => handleMapaChange(pasted), 0); }}
+                placeholder="Pegá un link de Google Maps"
+                className="flex-1 py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-body outline-none box-border" />
+              <button onClick={() => { const result = parseMapsInput(mapaUrl); if (result) setCoords(result.lat, result.lng); else setError("No se pudieron extraer coordenadas del link."); }}
                 disabled={!mapaUrl.trim()}
                 className="py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading cursor-pointer shrink-0"
-                style={{
-                  background: mapaUrl.trim() ? C.cyan : C.surface,
-                  color: mapaUrl.trim() ? "#000" : C.mute,
-                }}
-              >
+                style={{ background: mapaUrl.trim() ? C.cyan : C.surface, color: mapaUrl.trim() ? "#000" : C.mute, minHeight: 44 }}>
                 Extraer
               </button>
             </div>
-            {latValid && lngValid && (
-              <div className="mt-2 text-[11px] text-gypi-dim font-mono">
-                Coordenadas: {latNum.toFixed(6)}, {lngNum.toFixed(6)}
+            <div className="mt-1.5 text-[10px] text-gypi-mute">
+              Abrí Google Maps → click derecho → "¿Qué hay aquí?" → copiá el link
+            </div>
+          </div>
+        )}
+
+        {/* Botón GPS */}
+        <button onClick={handleUseGPS} disabled={gpsLoading}
+          className="w-full py-2.5 rounded-xl border text-[13px] font-bold font-body cursor-pointer mb-3 flex items-center justify-center gap-2"
+          style={{ background: "transparent", borderColor: C.border, color: C.cyan, minHeight: 44 }}>
+          {gpsLoading ? "Obteniendo ubicación..." : "📡 Usar mi ubicación actual"}
+        </button>
+
+        {/* Coords actuales */}
+        {hasCoords && (
+          <>
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1">
+                <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Latitud</label>
+                <input type="number" step="any" value={lat} onChange={e => setLat(e.target.value)}
+                  className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Longitud</label>
+                <input type="number" step="any" value={lng} onChange={e => setLng(e.target.value)}
+                  className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border" />
+              </div>
+            </div>
+
+            {/* Mapa preview (en modos que no son "mapa") */}
+            {modo !== "mapa" && (
+              <div className="mb-3 rounded-xl overflow-hidden border border-gypi-border" style={{ height: 180 }}>
+                <LeafletMap lat={latNum} lng={lngNum} zoom={16} radio={radio} onMapClick={handleMapClick} />
               </div>
             )}
-          </div>
-        )}
-
-        {/* Coords preview (si se obtuvieron por pluscode/mapa) */}
-        {(modo === "pluscode" || modo === "mapa") && latValid && lngValid && (
-          <div className="flex gap-2 mb-3">
-            <div className="flex-1">
-              <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Latitud</label>
-              <input
-                type="number"
-                step="any"
-                value={lat}
-                onChange={e => setLat(e.target.value)}
-                className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Longitud</label>
-              <input
-                type="number"
-                step="any"
-                value={lng}
-                onChange={e => setLng(e.target.value)}
-                className="w-full py-3 px-3.5 rounded-[10px] bg-gypi-surf-lo border border-gypi-border text-gypi-text text-sm font-mono outline-none box-border"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Google Maps iframe preview */}
-        {latValid && lngValid && (
-          <div className="mb-3 rounded-xl overflow-hidden border border-gypi-border">
-            <iframe
-              title="preview-mapa"
-              width="100%"
-              height="180"
-              frameBorder="0"
-              style={{ border: 0, display: "block" }}
-              src={`https://maps.google.com/maps?q=${latNum},${lngNum}&z=16&output=embed`}
-              allowFullScreen
-            />
-          </div>
+          </>
         )}
 
         {/* Radio */}
@@ -293,32 +393,17 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving }) {
           <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">
             Radio de tolerancia: {radio}m
           </label>
-          <input
-            type="range"
-            min={50}
-            max={500}
-            step={10}
-            value={radio}
-            onChange={e => setRadio(Number(e.target.value))}
-            className="w-full"
-            style={{ accentColor: C.cyan }}
-          />
+          <input type="range" min={50} max={500} step={10} value={radio} onChange={e => setRadio(Number(e.target.value))}
+            className="w-full" style={{ accentColor: C.cyan }} />
           <div className="flex justify-between text-[10px] text-gypi-mute mt-1">
-            <span>50m</span>
-            <span>500m</span>
+            <span>50m</span><span>500m</span>
           </div>
         </div>
 
         {/* Botón guardar */}
-        <button
-          onClick={handleSave}
-          disabled={!canSave || saving}
+        <button onClick={handleSave} disabled={!canSave || saving}
           className="w-full py-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer"
-          style={{
-            background: canSave && !saving ? C.green : C.surface,
-            color: canSave && !saving ? "#000" : C.mute,
-          }}
-        >
+          style={{ background: canSave && !saving ? C.green : C.surface, color: canSave && !saving ? "#000" : C.mute, minHeight: 48 }}>
           {saving ? "Guardando..." : isEdit ? "Actualizar ubicación" : "Crear ubicación"}
         </button>
       </div>
@@ -377,6 +462,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting }) {
             <div className="flex gap-1.5 shrink-0">
               <button
                 onClick={() => onEdit(u)}
+                aria-label={`Editar ${u.nombre}`}
                 className="w-8 h-8 rounded-lg border-none cursor-pointer flex items-center justify-center text-[14px]"
                 style={{ background: `${C.amber}18`, color: C.amber }}
               >
@@ -385,6 +471,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting }) {
               <button
                 onClick={() => onDelete(u.id)}
                 disabled={deleting}
+                aria-label={`Eliminar ${u.nombre}`}
                 className="w-8 h-8 rounded-lg border-none cursor-pointer flex items-center justify-center text-[14px]"
                 style={{ background: `${C.red}18`, color: C.red }}
               >
@@ -400,7 +487,8 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function GeolocalizacionScreen({ empresaId }) {
-  const DIVISIONES = getDivisionesConTodos();
+  const { divisiones: divisionesCtx } = useAuth();
+  const DIVISIONES = getDivisionesConTodos(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [ubicaciones, setUbicaciones] = useState([]);
   const [config, setConfig] = useState({});
@@ -408,7 +496,8 @@ export default function GeolocalizacionScreen({ empresaId }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [toast, setToast] = useState(null);
+  const toast = useToast();
+  const [confirmFn, ConfirmDialog] = useConfirm();
   const [modo, setModo] = useState("individual");
   const [filtroDivision, setFiltroDivision] = useState("todas");
   const [expandedId, setExpandedId] = useState(null);
@@ -417,14 +506,14 @@ export default function GeolocalizacionScreen({ empresaId }) {
   const [modalUbicacion, setModalUbicacion] = useState(null);
   const [savingUbicacion, setSavingUbicacion] = useState(false);
 
-  const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500); };
+  const showToast = (msg, color) => toast.show(msg, color);
 
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
       const [emps, ubis] = await Promise.all([
         sb.get("empleados?activo=eq.true&order=nombre.asc&select=id,nombre,apodo,legajo,area,division,rol,geo_config"),
-        sb.get(`ubicaciones?empresa_id=eq.${empresaId}&order=nombre.asc`),
+        sb.get(`geo_zonas?empresa_id=eq.${empresaId}&order=nombre.asc`),
       ]);
       setEmpleados(emps || []);
       setUbicaciones(ubis || []);
@@ -526,7 +615,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
     setSavingUbicacion(true);
     try {
       if (data.id) {
-        await sb.patch(`ubicaciones?id=eq.${data.id}`, {
+        await sb.patch(`geo_zonas?id=eq.${data.id}`, {
           nombre: data.nombre,
           lat: data.lat,
           lng: data.lng,
@@ -534,7 +623,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
         });
         showToast("Ubicación actualizada", C.green);
       } else {
-        await sb.post("ubicaciones", {
+        await sb.post("geo_zonas", {
           empresa_id: empresaId,
           nombre: data.nombre,
           lat: data.lat,
@@ -554,10 +643,10 @@ export default function GeolocalizacionScreen({ empresaId }) {
   };
 
   const handleDeleteUbicacion = async (id) => {
-    if (!confirm("¿Eliminar esta ubicación? Los empleados asignados perderán esta referencia.")) return;
+    if (!await confirmFn("¿Eliminar esta ubicación? Los empleados asignados perderán esta referencia.", { title: "Eliminar ubicación", confirmLabel: "Eliminar", destructive: true })) return;
     setDeleting(true);
     try {
-      await sb.delete(`ubicaciones?id=eq.${id}`);
+      await sb.del(`geo_zonas?id=eq.${id}`);
       showToast("Ubicación eliminada", C.green);
       cargarDatos();
     } catch (e) {
@@ -574,9 +663,11 @@ export default function GeolocalizacionScreen({ empresaId }) {
   };
 
   /* ── Toggle switch reusable ── */
-  const Toggle = ({ on, onClick, color = C.green }) => (
+  const Toggle = ({ on, onClick, color = C.green, label }) => (
     <button
       onClick={onClick}
+      aria-label={label || (on ? "Desactivar" : "Activar")}
+      aria-pressed={on}
       className="relative border-none cursor-pointer rounded-full shrink-0"
       style={{ width: 48, height: 28, background: on ? color : C.mute, transition: "all 0.2s" }}
     >
@@ -588,16 +679,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
   );
 
   return (
-    <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
-      {/* Toast */}
-      {toast && (
-        <div
-          className="fixed top-[60px] left-1/2 -translate-x-1/2 z-[999] py-3 px-5 rounded-xl text-[13px] font-semibold max-w-[90%]"
-          style={{ background: C.bg, border: `1px solid ${toast.color}40`, boxShadow: `0 8px 32px ${toast.color}20`, color: toast.color }}
-        >
-          {toast.msg}
-        </div>
-      )}
+    <section aria-label="Geolocalización" className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
 
       {/* Modo toggle */}
       <div className="flex mb-3.5 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
@@ -611,7 +693,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
         <button
           onClick={() => setModo("individual")}
           className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all"
-          style={{ background: modo === "individual" ? C.amber : "transparent", color: modo === "individual" ? "#000" : C.dim }}
+          style={{ background: modo === "individual" ? C.amber : "transparent", color: modo === "individual" ? C.amberText : C.dim }}
         >
           ✏️ Individual
         </button>
@@ -787,6 +869,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   {/* Header */}
                   <button
                     onClick={() => setExpandedId(isExp ? null : emp.id)}
+                    aria-expanded={isExp}
                     className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left"
                   >
                     <div className="flex-1 min-w-0">
@@ -924,7 +1007,8 @@ export default function GeolocalizacionScreen({ empresaId }) {
           saving={savingUbicacion}
         />
       )}
-    </div>
+      {ConfirmDialog}
+    </section>
   );
 }
 

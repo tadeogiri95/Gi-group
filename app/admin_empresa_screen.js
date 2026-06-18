@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { C, THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
-import { getToken } from "./lib/supabase";
+import { getToken, apiFetch } from "./lib/supabase";
+import { useToast } from "./components/ui/Toast";
 
 /* ─── Icon list for selectors ─── */
 const ICON_OPTIONS = [
@@ -48,7 +49,7 @@ function ColorRow({ label, value, onChange }) {
 export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [] }) {
   const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
+  const toast = useToast();
 
   // General
   const [nombre, setNombre] = useState(empresa?.nombre || "");
@@ -81,9 +82,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const [editEtapaId, setEditEtapaId] = useState(null);
 
   const showToast = useCallback((msg, type = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 2500);
-  }, []);
+    if (type === "error") toast.error(msg);
+    else toast.success(msg);
+  }, [toast]);
 
   // Sync empresa fields from prop
   useEffect(() => {
@@ -331,7 +332,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const card = { background: C.surface, borderRadius: 16, padding: 18, border: `1px solid ${C.border}`, marginBottom: 14 };
   const lbl = { fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
   const inp = { width: "100%", padding: "11px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box" };
-  const btnPrimary = { width: "100%", padding: "14px 0", borderRadius: 12, border: "none", background: C.amber, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" };
+  const btnPrimary = { width: "100%", padding: "14px 0", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 14, fontWeight: 700, cursor: "pointer" };
 
   // ═══ Tab content ═══
   const renderTab = () => {
@@ -395,6 +396,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
               </div>
               <button
                 onClick={() => setCustomMode(!customMode)}
+                aria-pressed={customMode}
+                aria-label="Personalización individual de colores"
                 style={{
                   width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer", position: "relative",
                   background: customMode ? C.green : C.surfHi, transition: "background 0.2s",
@@ -432,7 +435,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 Texto de ejemplo para ver la tipografía
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorPrimario, color: "#fff", fontSize: 12, fontWeight: 700 }}>
+                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorPrimario, color: C.amberText, fontSize: 12, fontWeight: 700 }}>
                   Primario
                 </div>
                 <div style={{ padding: "8px 16px", borderRadius: 8, background: colorSecundario, color: "#fff", fontSize: 12, fontWeight: 700 }}>
@@ -605,15 +608,17 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", color: C.text }}>
       {/* Tab bar */}
-      <div style={{ display: "flex", overflowX: "auto", padding: "0 14px 10px", gap: 4, flexShrink: 0 }}>
+      <div role="tablist" aria-label="Configuración de empresa" style={{ display: "flex", overflowX: "auto", padding: "0 14px 10px", gap: 4, flexShrink: 0 }}>
         {TABS.map((t) => (
           <button
             key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             style={{
               padding: "8px 16px", borderRadius: 20, border: "none", cursor: "pointer",
               background: tab === t.key ? C.amber : "transparent",
-              color: tab === t.key ? "#fff" : C.dim,
+              color: tab === t.key ? C.amberText : C.dim,
               fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0,
             }}
           >{t.label}</button>
@@ -621,21 +626,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 18px 110px" }}>
+      <div role="tabpanel" aria-label={`Contenido de ${TABS.find(t => t.key === tab)?.label || tab}`} style={{ flex: 1, overflowY: "auto", padding: "0 18px 110px" }}>
         {renderTab()}
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 9999,
-          padding: "12px 20px", borderRadius: 16, fontSize: 13, fontWeight: 600, color: "#fff",
-          background: toast.type === "error" ? C.red : C.green,
-          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-        }}>
-          {toast.msg}
-        </div>
-      )}
     </div>
   );
 }

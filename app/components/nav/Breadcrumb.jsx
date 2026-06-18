@@ -1,5 +1,5 @@
 'use client';
-import { C, fB, fH } from '../../lib/theme';
+import { C, fB } from '../../lib/theme';
 
 // ═══════════════════════════════════════════════════════
 // Breadcrumb — Navegación contextual para tablet/desktop
@@ -25,7 +25,7 @@ export default function Breadcrumb({ items = [] }) {
           <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {i > 0 && <span style={{ color: C.mute, display: 'flex' }}>{ChevRight}</span>}
             {isLast ? (
-              <span style={{ color: C.text, fontWeight: 600 }}>{item.label}</span>
+              <span aria-current="page" style={{ color: C.text, fontWeight: 600 }}>{item.label}</span>
             ) : (
               <button
                 onClick={item.onClick}

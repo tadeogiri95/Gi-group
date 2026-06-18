@@ -58,7 +58,7 @@ export default function Paywall({ planActual = "free", planRequerido = "starter"
           <button onClick={onClose} style={{ flex: 1, padding: 13, borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>
             Ahora no
           </button>
-          <button onClick={onUpgrade} style={{ flex: 2, padding: 13, borderRadius: 12, border: "none", background: C.amber, color: "#000", fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>
+          <button onClick={onUpgrade} style={{ flex: 2, padding: 13, borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>
             🚀 Actualizar plan
           </button>
         </div>

@@ -2,33 +2,20 @@
 
 /**
  * GYPI — Componentes UI Base (Design System)
- *
- * Ubicación destino: app/components/ui.jsx
- * Reemplaza el archivo actual que solo tiene Tag y Chip.
- *
- * Todos los componentes usan Tailwind CSS + CSS variables.
- * Compatible con dark mode vía clase .dark en <html>.
+ * Todos los componentes usan CSS variables de globals.css.
  */
 
+import { useId } from 'react';
 import Icon from './Icon';
+
+// Re-export canonical versions from standalone files
+export { default as Avatar } from './ui/Avatar';
+export { default as EmptyState } from './ui/EmptyState';
+export { default as Modal } from './ui/Modal';
 
 // ============================================
 // BUTTON
 // ============================================
-
-const buttonVariants = {
-  primary:   'bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700 shadow-sm',
-  secondary: 'bg-surface-100 text-surface-700 hover:bg-surface-200 active:bg-surface-300 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600',
-  danger:    'bg-danger-500 text-white hover:bg-danger-600 active:bg-danger-700',
-  ghost:     'text-surface-600 hover:bg-surface-100 active:bg-surface-200 dark:text-surface-300 dark:hover:bg-surface-700',
-  outline:   'border border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-800',
-};
-
-const buttonSizes = {
-  sm: 'h-8 px-3 text-sm gap-1.5 rounded-lg',
-  md: 'h-10 px-4 text-sm gap-2 rounded-xl',
-  lg: 'h-12 px-6 text-base gap-2.5 rounded-xl',
-};
 
 export function Button({
   children,
@@ -39,24 +26,41 @@ export function Button({
   loading = false,
   disabled = false,
   className = '',
+  style,
   ...props
 }) {
+  const sizes = {
+    sm: { minHeight: 32, padding: '0 12px', fontSize: 13, gap: 6, borderRadius: 'var(--radius-sm)' },
+    md: { minHeight: 40, padding: '0 16px', fontSize: 14, gap: 8, borderRadius: 'var(--radius-md)' },
+    lg: { minHeight: 48, padding: '0 24px', fontSize: 15, gap: 10, borderRadius: 'var(--radius-md)' },
+  };
+
+  const variants = {
+    primary:   { background: 'var(--color-empresa-primary)', color: '#000', fontWeight: 700 },
+    secondary: { background: 'var(--color-surf-hi)', color: 'var(--color-text)', border: '1px solid var(--color-border)' },
+    danger:    { background: 'var(--color-red-subtle)', color: 'var(--color-red)', fontWeight: 700 },
+    ghost:     { background: 'transparent', color: 'var(--color-text-muted)' },
+    outline:   { background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border-hi)' },
+  };
+
+  const s = sizes[size] || sizes.md;
+  const v = variants[variant] || variants.primary;
+
   return (
     <button
       disabled={disabled || loading}
-      className={`
-        inline-flex items-center justify-center font-medium
-        transition-all duration-150 ease-out
-        disabled:opacity-50 disabled:cursor-not-allowed
-        focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500
-        ${buttonVariants[variant]}
-        ${buttonSizes[size]}
-        ${className}
-      `.trim().replace(/\s+/g, ' ')}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'var(--font-body)', fontWeight: 500, border: 'none', cursor: 'pointer',
+        transition: 'all var(--duration-fast) var(--ease-default)',
+        opacity: (disabled || loading) ? 0.5 : 1,
+        ...s, ...v, ...style,
+      }}
+      className={className}
       {...props}
     >
       {loading ? (
-        <Icon name="refresh" size={size === 'sm' ? 14 : 16} className="animate-spin" />
+        <Icon name="refresh" size={size === 'sm' ? 14 : 16} style={{ animation: 'spin 1s linear infinite' }} />
       ) : icon ? (
         <Icon name={icon} size={size === 'sm' ? 14 : 16} />
       ) : null}
@@ -70,16 +74,18 @@ export function Button({
 // CARD
 // ============================================
 
-export function Card({ children, className = '', padding = true, hover = false, ...props }) {
+export function Card({ children, className = '', padding = true, hover = false, style, ...props }) {
   return (
     <div
-      className={`
-        bg-[var(--color-surface-raised)] border border-[var(--color-border)]
-        rounded-xl shadow-card
-        ${padding ? 'p-4' : ''}
-        ${hover ? 'hover:shadow-card-lg hover:-translate-y-0.5 transition-all duration-200' : ''}
-        ${className}
-      `.trim().replace(/\s+/g, ' ')}
+      style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        padding: padding ? 'var(--sp-4)' : undefined,
+        transition: hover ? 'box-shadow var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default)' : undefined,
+        ...style,
+      }}
+      className={`${hover ? 'card-hover' : ''} ${className}`}
       {...props}
     >
       {children}
@@ -88,41 +94,106 @@ export function Card({ children, className = '', padding = true, hover = false, 
 }
 
 // ============================================
-// BADGE (reemplaza Tag)
+// TAG — pill con color dinámico
 // ============================================
 
-const badgeVariants = {
-  default: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
-  brand:   'bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-300',
-  success: 'bg-success-100 text-success-700 dark:bg-green-900 dark:text-green-300',
-  danger:  'bg-danger-100 text-danger-700 dark:bg-red-900 dark:text-red-300',
-  warning: 'bg-warning-100 text-warning-600 dark:bg-amber-900 dark:text-amber-300',
-  info:    'bg-info-100 text-info-600 dark:bg-cyan-900 dark:text-cyan-300',
-  accent:  'bg-accent-100 text-accent-600 dark:bg-violet-900 dark:text-violet-300',
-};
+export function Tag({ children, color, className = '', style, ...props }) {
+  const bg = color ? hexToSubtle(color, 0.12) : 'var(--color-surf-hi)';
+  const fg = color || 'var(--color-text-muted)';
 
-export function Badge({ children, variant = 'default', dot = false, className = '', ...props }) {
   return (
     <span
-      className={`
-        inline-flex items-center gap-1 px-2 py-0.5 rounded-full
-        text-xs font-medium whitespace-nowrap
-        ${badgeVariants[variant]}
-        ${className}
-      `.trim().replace(/\s+/g, ' ')}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '2px 8px', borderRadius: 'var(--radius-full)',
+        fontSize: 11, fontWeight: 600, lineHeight: 1.4,
+        whiteSpace: 'nowrap',
+        background: bg, color: fg,
+        ...style,
+      }}
+      className={className}
       {...props}
     >
-      {dot && (
-        <span className={`w-1.5 h-1.5 rounded-full ${
-          variant === 'success' ? 'bg-success-500' :
-          variant === 'danger' ? 'bg-danger-500' :
-          variant === 'warning' ? 'bg-warning-500' :
-          variant === 'brand' ? 'bg-brand-500' :
-          'bg-current'
-        }`} />
-      )}
       {children}
     </span>
+  );
+}
+
+function hexToSubtle(color, alpha = 0.12) {
+  if (!color) return `rgba(0,0,0,${alpha})`;
+  if (color.startsWith('rgba')) return color;
+  if (color.startsWith('var(')) return color;
+  const hex = color.replace('#', '');
+  if (hex.length !== 6) return `rgba(0,0,0,${alpha})`;
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ============================================
+// BADGE — variant-based (alternativa a Tag)
+// ============================================
+
+export function Badge({ children, variant = 'default', color, dot = false, className = '', style, ...props }) {
+  if (color) return <Tag color={color} style={style} className={className} {...props}>{children}</Tag>;
+
+  const variants = {
+    default: { bg: 'var(--color-surf-hi)', fg: 'var(--color-text-muted)' },
+    brand:   { bg: 'var(--color-empresa-primary-subtle)', fg: 'var(--color-empresa-primary)' },
+    success: { bg: 'var(--color-green-subtle)', fg: 'var(--color-green)' },
+    danger:  { bg: 'var(--color-red-subtle)', fg: 'var(--color-red)' },
+    info:    { bg: 'var(--color-cyan-subtle)', fg: 'var(--color-cyan)' },
+  };
+
+  const v = variants[variant] || variants.default;
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '2px 8px', borderRadius: 'var(--radius-full)',
+        fontSize: 11, fontWeight: 600, lineHeight: 1.4,
+        whiteSpace: 'nowrap',
+        background: v.bg, color: v.fg,
+        ...style,
+      }}
+      className={className}
+      {...props}
+    >
+      {dot && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />}
+      {children}
+    </span>
+  );
+}
+
+// ============================================
+// CHIP — filtro seleccionable
+// ============================================
+
+export function Chip({ children, active = false, onClick, color, className = '', style, ...props }) {
+  const activeBg = color ? hexToSubtle(color, 0.15) : 'var(--color-empresa-primary-subtle)';
+  const activeFg = color || 'var(--color-empresa-primary)';
+
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'inline-flex', alignItems: 'center',
+        padding: '6px 12px', borderRadius: 'var(--radius-full)',
+        fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+        border: active ? `1.5px solid ${activeFg}` : '1.5px solid transparent',
+        background: active ? activeBg : 'var(--color-surf-hi)',
+        color: active ? activeFg : 'var(--color-text-muted)',
+        cursor: 'pointer',
+        transition: 'all var(--duration-fast) var(--ease-default)',
+        ...style,
+      }}
+      className={className}
+      {...props}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -136,39 +207,37 @@ export function Input({
   icon,
   className = '',
   inputClassName = '',
+  style,
+  id: externalId,
   ...props
 }) {
+  const autoId = useId();
+  const id = externalId || autoId;
   return (
-    <div className={`flex flex-col gap-1.5 ${className}`}>
+    <div className={className} style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>
       {label && (
-        <label className="text-sm font-medium text-[var(--color-text-secondary)]">
+        <label htmlFor={id} style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-muted)' }}>
           {label}
         </label>
       )}
-      <div className="relative">
+      <div style={{ position: 'relative' }}>
         {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]">
+          <div style={{
+            position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+            color: 'var(--color-text-muted)', pointerEvents: 'none',
+          }}>
             <Icon name={icon} size={18} />
           </div>
         )}
         <input
-          className={`
-            w-full h-10 px-3 rounded-xl
-            bg-[var(--color-bg)] border border-[var(--color-border)]
-            text-[var(--color-text)] text-sm
-            placeholder:text-[var(--color-text-muted)]
-            focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500
-            transition-all duration-150
-            disabled:opacity-50 disabled:cursor-not-allowed
-            ${icon ? 'pl-10' : ''}
-            ${error ? 'border-danger-500 focus:ring-danger-500/30 focus:border-danger-500' : ''}
-            ${inputClassName}
-          `.trim().replace(/\s+/g, ' ')}
+          id={id}
+          className={`g-input ${inputClassName}`}
+          style={{ paddingLeft: icon ? 40 : undefined, borderColor: error ? 'var(--color-red)' : undefined }}
           {...props}
         />
       </div>
       {error && (
-        <p className="text-xs text-danger-500 flex items-center gap-1">
+        <p style={{ fontSize: 12, color: 'var(--color-red)', display: 'flex', alignItems: 'center', gap: 4, margin: 0 }}>
           <Icon name="alert-circle" size={12} />
           {error}
         </p>
@@ -187,26 +256,27 @@ export function Select({
   options = [],
   placeholder = 'Seleccionar...',
   className = '',
+  style,
+  id: externalId,
   ...props
 }) {
+  const autoId = useId();
+  const id = externalId || autoId;
   return (
-    <div className={`flex flex-col gap-1.5 ${className}`}>
+    <div className={className} style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>
       {label && (
-        <label className="text-sm font-medium text-[var(--color-text-secondary)]">
+        <label htmlFor={id} style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-muted)' }}>
           {label}
         </label>
       )}
-      <div className="relative">
+      <div style={{ position: 'relative' }}>
         <select
-          className={`
-            w-full h-10 px-3 pr-10 rounded-xl appearance-none
-            bg-[var(--color-bg)] border border-[var(--color-border)]
-            text-[var(--color-text)] text-sm
-            focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500
-            transition-all duration-150
-            disabled:opacity-50 disabled:cursor-not-allowed
-            ${error ? 'border-danger-500' : ''}
-          `.trim().replace(/\s+/g, ' ')}
+          id={id}
+          className="g-input"
+          style={{
+            paddingRight: 36, appearance: 'none',
+            borderColor: error ? 'var(--color-red)' : undefined,
+          }}
           {...props}
         >
           <option value="">{placeholder}</option>
@@ -216,135 +286,51 @@ export function Select({
             </option>
           ))}
         </select>
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--color-text-muted)]">
+        <div style={{
+          position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+          pointerEvents: 'none', color: 'var(--color-text-muted)',
+        }}>
           <Icon name="chevron-down" size={16} />
         </div>
       </div>
-      {error && (
-        <p className="text-xs text-danger-500">{error}</p>
-      )}
+      {error && <p style={{ fontSize: 12, color: 'var(--color-red)', margin: 0 }}>{error}</p>}
     </div>
   );
 }
 
-// ============================================
-// MODAL
-// ============================================
-
-export function Modal({ open, onClose, title, children, size = 'md', className = '' }) {
-  if (!open) return null;
-
-  const sizeClasses = {
-    sm: 'max-w-sm',
-    md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
-    full: 'max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)]',
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Overlay */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
-      />
-      {/* Panel */}
-      <div
-        className={`
-          relative w-full ${sizeClasses[size]}
-          bg-[var(--color-surface-raised)] border border-[var(--color-border)]
-          rounded-2xl shadow-modal
-          animate-fade-in
-          flex flex-col max-h-[85vh]
-          ${className}
-        `.trim().replace(/\s+/g, ' ')}
-      >
-        {/* Header */}
-        {title && (
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
-            <h2 className="text-base font-semibold text-[var(--color-text)] font-display">
-              {title}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
-            >
-              <Icon name="x" size={18} />
-            </button>
-          </div>
-        )}
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// AVATAR
-// ============================================
-
-const avatarSizes = {
-  xs: 'w-6 h-6 text-2xs',
-  sm: 'w-8 h-8 text-xs',
-  md: 'w-10 h-10 text-sm',
-  lg: 'w-12 h-12 text-base',
-  xl: 'w-16 h-16 text-lg',
-};
-
-export function Avatar({ name, src, size = 'md', className = '' }) {
-  const initials = name
-    ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-    : '?';
-
-  return (
-    <div
-      className={`
-        ${avatarSizes[size]}
-        rounded-full flex items-center justify-center
-        bg-brand-100 text-brand-700 font-semibold
-        dark:bg-brand-900 dark:text-brand-300
-        overflow-hidden shrink-0
-        ${className}
-      `.trim().replace(/\s+/g, ' ')}
-    >
-      {src ? (
-        <img src={src} alt={name || ''} className="w-full h-full object-cover" />
-      ) : (
-        initials
-      )}
-    </div>
-  );
-}
+// Modal, Avatar → re-exported from ./ui/Modal and ./ui/Avatar at top of file
 
 // ============================================
 // STAT CARD
 // ============================================
 
-export function StatCard({ label, value, icon, trend, trendUp, className = '' }) {
+export function StatCard({ label, value, icon, trend, trendUp, className = '', style }) {
   return (
-    <Card className={`flex flex-col gap-2 ${className}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-[var(--color-text-muted)] font-medium uppercase tracking-wide">
+    <Card className={className} style={{ display: 'flex', flexDirection: 'column', gap: 8, ...style }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ font: 'var(--text-overline)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           {label}
         </span>
         {icon && (
-          <div className="p-1.5 rounded-lg bg-brand-50 text-brand-500 dark:bg-brand-900/30">
+          <div style={{
+            padding: 6, borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-empresa-primary-subtle)',
+            color: 'var(--color-empresa-primary)',
+          }}>
             <Icon name={icon} size={16} />
           </div>
         )}
       </div>
-      <div className="flex items-end gap-2">
-        <span className="text-2xl font-bold text-[var(--color-text)] font-display">
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+        <span style={{ font: 'var(--text-h1)', color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
           {value}
         </span>
         {trend && (
-          <span className={`text-xs font-medium flex items-center gap-0.5 ${
-            trendUp ? 'text-success-600' : 'text-danger-600'
-          }`}>
+          <span style={{
+            fontSize: 12, fontWeight: 500,
+            display: 'flex', alignItems: 'center', gap: 2,
+            color: trendUp ? 'var(--color-green)' : 'var(--color-red)',
+          }}>
             <Icon name={trendUp ? 'trending-up' : 'chevron-down'} size={12} />
             {trend}
           </span>
@@ -354,51 +340,7 @@ export function StatCard({ label, value, icon, trend, trendUp, className = '' })
   );
 }
 
-// ============================================
-// CHIP (filtros seleccionables)
-// ============================================
-
-export function Chip({ children, active = false, onClick, className = '', ...props }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`
-        inline-flex items-center px-3 py-1.5 rounded-full
-        text-xs font-medium whitespace-nowrap
-        transition-all duration-150 ease-out
-        ${active
-          ? 'bg-brand-500 text-white shadow-sm'
-          : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-700 dark:text-surface-300 dark:hover:bg-surface-600'
-        }
-        ${className}
-      `.trim().replace(/\s+/g, ' ')}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-// ============================================
-// EMPTY STATE
-// ============================================
-
-export function EmptyState({ icon = 'folder', title, description, action, className = '' }) {
-  return (
-    <div className={`flex flex-col items-center justify-center py-12 px-4 text-center ${className}`}>
-      <div className="p-4 rounded-full bg-surface-100 dark:bg-surface-700 mb-4">
-        <Icon name={icon} size={32} className="text-[var(--color-text-muted)]" />
-      </div>
-      {title && (
-        <h3 className="text-base font-semibold text-[var(--color-text)] mb-1">{title}</h3>
-      )}
-      {description && (
-        <p className="text-sm text-[var(--color-text-muted)] max-w-xs">{description}</p>
-      )}
-      {action && <div className="mt-4">{action}</div>}
-    </div>
-  );
-}
+// EmptyState → re-exported from ./ui/EmptyState at top of file
 
 // ============================================
 // SPINNER
@@ -406,39 +348,52 @@ export function EmptyState({ icon = 'folder', title, description, action, classN
 
 export function Spinner({ size = 20, className = '' }) {
   return (
-    <Icon name="refresh" size={size} className={`animate-spin text-brand-500 ${className}`} />
+    <Icon
+      name="refresh"
+      size={size}
+      style={{ animation: 'spin 1s linear infinite', color: 'var(--color-empresa-primary)' }}
+      className={className}
+    />
   );
 }
 
 // ============================================
-// TOAST (para notificaciones inline)
+// TOAST
 // ============================================
 
-const toastVariants = {
-  success: { icon: 'check-circle', color: 'text-success-500', bg: 'bg-success-50 dark:bg-success-700/20' },
-  error:   { icon: 'x-circle',     color: 'text-danger-500',  bg: 'bg-danger-50 dark:bg-danger-700/20' },
-  warning: { icon: 'alert-triangle', color: 'text-warning-500', bg: 'bg-warning-50 dark:bg-warning-700/20' },
-  info:    { icon: 'info',          color: 'text-info-500',    bg: 'bg-info-50 dark:bg-info-700/20' },
+const toastConfig = {
+  success: { icon: 'check-circle', fg: 'var(--color-green)', bg: 'var(--color-green-subtle)' },
+  error:   { icon: 'x-circle',     fg: 'var(--color-red)',   bg: 'var(--color-red-subtle)' },
+  warning: { icon: 'alert-triangle', fg: 'var(--color-empresa-primary)', bg: 'var(--color-empresa-primary-subtle)' },
+  info:    { icon: 'info',          fg: 'var(--color-cyan)',  bg: 'var(--color-cyan-subtle)' },
 };
 
 export function Toast({ message, variant = 'info', onClose, className = '' }) {
-  const v = toastVariants[variant];
+  const v = toastConfig[variant] || toastConfig.info;
   return (
-    <div className={`
-      flex items-center gap-3 px-4 py-3 rounded-xl shadow-toast
-      border border-[var(--color-border)] ${v.bg}
-      animate-slide-down ${className}
-    `.trim().replace(/\s+/g, ' ')}>
-      <Icon name={v.icon} size={18} className={v.color} />
-      <span className="text-sm text-[var(--color-text)] flex-1">{message}</span>
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '12px 16px', borderRadius: 'var(--radius-lg)',
+        border: '1px solid var(--color-border)', background: v.bg,
+        boxShadow: 'var(--shadow-md)',
+        animation: 'fadeIn var(--duration-normal) var(--ease-out)',
+      }}
+      className={className}
+    >
+      <Icon name={v.icon} size={18} style={{ color: v.fg, flexShrink: 0 }} />
+      <span style={{ font: 'var(--text-body)', color: 'var(--color-text)', flex: 1 }}>{message}</span>
       {onClose && (
-        <button onClick={onClose} className="p-1 rounded-md hover:bg-surface-200 dark:hover:bg-surface-600">
-          <Icon name="x" size={14} className="text-[var(--color-text-muted)]" />
+        <button
+          onClick={onClose}
+          style={{
+            padding: 4, borderRadius: 'var(--radius-sm)', border: 'none',
+            background: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer',
+          }}
+        >
+          <Icon name="x" size={14} />
         </button>
       )}
     </div>
   );
 }
-
-// Re-exportar Tag como alias de Badge para compatibilidad
-export const Tag = Badge;

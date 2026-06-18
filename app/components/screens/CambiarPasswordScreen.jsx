@@ -58,7 +58,7 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
         style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${confirmar && confirmar !== nueva ? C.red : C.borderHi}`, background: C.surface, color: C.text, fontSize: 16, fontFamily: fB, outline: "none", marginBottom: 4 }} />
       {confirmar && confirmar !== nueva && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>No coinciden</div>}
       <button onClick={cambiar} disabled={loading || !nueva || nueva !== confirmar || strength < 3}
-        style={{ marginTop: 16, width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: "#000", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: loading || strength < 3 ? 0.5 : 1 }}>
+        style={{ marginTop: 16, width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: loading || strength < 3 ? 0.5 : 1 }}>
         {loading ? "Guardando..." : "Guardar"}
       </button>
     </div>

@@ -70,7 +70,7 @@ export default function EmptyState({
           onClick={action.onClick}
           style={{
             marginTop: 18, padding: '10px 20px', borderRadius: 10,
-            background: C.amber, color: '#000', border: 'none',
+            background: C.amber, color: C.amberText, border: 'none',
             fontSize: 13, fontWeight: 700, fontFamily: fB,
             cursor: 'pointer',
           }}

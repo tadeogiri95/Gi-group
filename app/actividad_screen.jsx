@@ -198,7 +198,7 @@ export default function ActividadScreen({
               <button
                 onClick={() => { if (!fichadaHoy?.ingreso) { setErrorMsg("Debés fichar tu ingreso para comenzar a trabajar"); return; } setState("selecting"); setStep(1); }}
                 className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2"
-                style={{ background: C.amber, color: "#000" }}
+                style={{ background: C.amber, color: C.amberText }}
               >
                 <span className="text-xl">▶</span> Iniciar tarea
               </button>
@@ -382,7 +382,7 @@ export default function ActividadScreen({
 
                 <div className="flex gap-2">
                   <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: C.surfHi, color: C.dim }}>Atrás</button>
-                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: proyectoSeleccionado ? C.amber : C.surfHi, color: proyectoSeleccionado ? "#000" : C.mute, cursor: proyectoSeleccionado ? "pointer" : "default" }}>Siguiente →</button>
+                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: proyectoSeleccionado ? C.amber : C.surfHi, color: proyectoSeleccionado ? C.amberText : C.mute, cursor: proyectoSeleccionado ? "pointer" : "default" }}>Siguiente →</button>
                 </div>
               </>)}
 
@@ -413,7 +413,7 @@ export default function ActividadScreen({
 
                 <div className="flex gap-2">
                   <button onClick={() => { setStep(1); setManualOT(""); setModoManual(false); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: C.surfHi, color: C.dim }}>Atrás</button>
-                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: manualOT.trim() ? C.amber : C.surfHi, color: manualOT.trim() ? "#000" : C.mute, cursor: manualOT.trim() ? "pointer" : "default" }}>Siguiente →</button>
+                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: manualOT.trim() ? C.amber : C.surfHi, color: manualOT.trim() ? C.amberText : C.mute, cursor: manualOT.trim() ? "pointer" : "default" }}>Siguiente →</button>
                 </div>
               </>)}
             </div>
@@ -545,7 +545,7 @@ export default function ActividadScreen({
         </div>
 
         <div className="flex gap-2.5">
-          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className="flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5" style={{ background: C.amber, color: "#000", opacity: saving ? 0.5 : 1 }}>🔄 Cambiar tarea</button>
+          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className="flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5" style={{ background: C.amber, color: C.amberText, opacity: saving ? 0.5 : 1 }}>🔄 Cambiar tarea</button>
           {!isEspera && (
             <button onClick={() => setState("pausing")} disabled={saving} className="flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer" style={{ background: C.redS, border: `1px solid ${C.red}30`, color: C.red, opacity: saving ? 0.5 : 1 }}>⏸</button>
           )}

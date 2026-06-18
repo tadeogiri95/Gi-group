@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { C, DIAS_KEY } from "./lib/theme";
+import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
-import { Tag, Chip } from "./components/ui";
+import { hoyArg } from "./lib/dates";
+import { Chip } from "./components/ui";
 import { getDivisionesConTodas } from "./lib/constants";
+import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
 
 /* ═══ CONSTANTES ═══ */
@@ -43,10 +45,10 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
   const notasDelDia = notas.filter(n => n.fecha === fecha.toISOString().slice(0, 10));
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={`Nota para ${fechaStr}`}>
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[80vh] overflow-y-auto border border-gypi-border">
-        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">{fechaStr}</h3>
         <div className="text-xs text-gypi-dim mb-4">Planificá tareas o asignaciones para este día</div>
 
@@ -115,10 +117,10 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
   const empsDisponibles = empleados.filter(e => e.activo !== false && !turnosDia.some(t => t.empleado_id === e.id));
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Planificar turno">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[80vh] overflow-y-auto border border-gypi-border">
-        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">Planificar turno</h3>
         <div className="text-xs text-gypi-dim mb-4">{fechaStr}</div>
 
@@ -134,7 +136,7 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
                     <div className="text-xs font-bold text-gypi-text">{emp?.nombre || "?"}</div>
                     <div className="text-[10px] text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
                   </div>
-                  <button onClick={() => onDelete(t.id)} className="text-[10px] px-2 py-1 rounded-md border-none cursor-pointer" style={{ background: `${C.red}15`, color: C.red }}>✕</button>
+                  <button onClick={() => onDelete(t.id)} aria-label="Eliminar turno" className="text-[10px] px-2 py-1 rounded-md border-none cursor-pointer" style={{ background: `${C.red}15`, color: C.red }}>✕</button>
                 </div>
               );
             })}
@@ -178,10 +180,10 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function CalendarioScreen({ empresaId }) {
-  const DIVISIONES = getDivisionesConTodas();
-  const hoy = new Date();
-  const [year, setYear] = useState(hoy.getFullYear());
-  const [month, setMonth] = useState(hoy.getMonth());
+  const { divisiones: divisionesCtx } = useAuth();
+  const DIVISIONES = getDivisionesConTodas(divisionesCtx);
+  const [year, setYear] = useState(() => Number(hoyArg().slice(0, 4)));
+  const [month, setMonth] = useState(() => Number(hoyArg().slice(5, 7)) - 1);
   const [selectedDate, setSelectedDate] = useState(null);
   const [turnoDate, setTurnoDate] = useState(null);
   const [empleados, setEmpleados] = useState([]);
@@ -194,7 +196,7 @@ export default function CalendarioScreen({ empresaId }) {
   const toast = useToast();
 
   const dias = getDiasDelMes(year, month);
-  const hoyStr = hoy.toISOString().slice(0, 10);
+  const hoyStr = hoyArg();
   const mesStr = `${year}-${String(month + 1).padStart(2, "0")}`;
   // Último día real del mes (e.g. junio=30, no 31)
   const ultimoDiaMes = String(new Date(year, month + 1, 0).getDate()).padStart(2, "0");
@@ -302,7 +304,7 @@ export default function CalendarioScreen({ empresaId }) {
   };
 
   return (
-    <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
+    <section className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative" aria-label="Calendario">
 
 
       {selectedDate && <ModalNota fecha={selectedDate} empleados={empleados} notas={notas} onClose={() => setSelectedDate(null)} onSave={guardarNota} saving={saving} />}
@@ -310,12 +312,12 @@ export default function CalendarioScreen({ empresaId }) {
 
       {/* Navegación mes */}
       <div className="flex justify-between items-center mb-3.5">
-        <button onClick={() => cambiarMes(-1)} className="w-9 h-9 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">◀</button>
+        <button onClick={() => cambiarMes(-1)} aria-label="Mes anterior" className="w-9 h-9 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">◀</button>
         <div className="text-center">
           <div className="font-heading text-xl font-bold text-gypi-text">{MESES[month]}</div>
           <div className="text-xs text-gypi-dim">{year}</div>
         </div>
-        <button onClick={() => cambiarMes(1)} className="w-9 h-9 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">▶</button>
+        <button onClick={() => cambiarMes(1)} aria-label="Mes siguiente" className="w-9 h-9 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">▶</button>
       </div>
 
       {/* Filtro división */}
@@ -330,9 +332,9 @@ export default function CalendarioScreen({ empresaId }) {
       ) : (
         <>
           {/* Headers días */}
-          <div className="grid grid-cols-7 gap-0.5 mb-1">
+          <div role="row" className="grid grid-cols-7 gap-0.5 mb-1">
             {DIAS_LABEL.map(d => (
-              <div key={d} className="text-center text-[10px] font-bold text-gypi-mute py-1 uppercase">{d}</div>
+              <div key={d} role="columnheader" className="text-center text-[10px] font-bold text-gypi-mute py-1 uppercase">{d}</div>
             ))}
           </div>
 
@@ -346,7 +348,7 @@ export default function CalendarioScreen({ empresaId }) {
               const esFinDeSemana = new Date(year, month, dia).getDay() === 0 || new Date(year, month, dia).getDay() === 6;
 
               return (
-                <button key={dia} onClick={() => setVistaDetalle(vistaDetalle === dia ? null : dia)} className="py-1.5 px-0.5 rounded-[10px] cursor-pointer flex flex-col items-center gap-0.5 min-h-[52px] transition-all duration-150" style={{
+                <button key={dia} onClick={() => setVistaDetalle(vistaDetalle === dia ? null : dia)} aria-label={`${dia} de ${MESES[month]}${isHoy ? ' (hoy)' : ''}`} aria-pressed={vistaDetalle === dia} className="py-1.5 px-0.5 rounded-[10px] cursor-pointer flex flex-col items-center gap-0.5 min-h-[52px] transition-all duration-150" style={{
                   border: isHoy ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
                   background: isHoy ? `${C.amber}12` : tieneNotas ? `${C.cyan}08` : C.surface,
                 }}>
@@ -460,6 +462,6 @@ export default function CalendarioScreen({ empresaId }) {
           </div>
         </>
       )}
-    </div>
+    </section>
   );
 }

@@ -34,7 +34,7 @@ export default function ReglasScreen({ ctx, reload, usuario }) {
       <div style={{ marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text, fontFamily: fH }}>Agregar regla</h3></div>
       <div style={{ display: "flex", gap: 8 }}>
         <input value={nr} onChange={e => setNr(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} placeholder='Ej: "Si piden permiso un viernes..."' style={{ flex: 1, padding: "11px 14px", borderRadius: 10, background: C.surfLo, border: `1px solid ${C.border}`, color: C.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" }} />
-        <button onClick={add} disabled={!nr.trim()} style={{ width: 44, height: 44, borderRadius: 12, border: "none", background: nr.trim() ? C.amber : C.surface, color: nr.trim() ? "#000" : C.mute, cursor: nr.trim() ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.plus /></button>
+        <button onClick={add} disabled={!nr.trim()} style={{ width: 44, height: 44, borderRadius: 12, border: "none", background: nr.trim() ? C.amber : C.surface, color: nr.trim() ? C.amberText : C.mute, cursor: nr.trim() ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.plus /></button>
       </div>
     </div>
   );

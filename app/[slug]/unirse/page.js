@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { C, fH, fB } from "../../lib/theme";
 
 export default function UnirseScreen() {
@@ -49,7 +50,8 @@ export default function UnirseScreen() {
   };
 
   const activar = async () => {
-    if (!password || password.length < 4) { setError("Mínimo 4 caracteres"); return; }
+    if (!password || password.length < 8) { setError("Mínimo 8 caracteres con mayúscula, minúscula y número"); return; }
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) { setError("Debe tener mayúscula, minúscula y número"); return; }
     if (password !== confirm) { setError("Las contraseñas no coinciden"); return; }
     setLoading(true); setError("");
     try {
@@ -73,7 +75,7 @@ export default function UnirseScreen() {
         <div style={{ fontSize: 52, marginBottom: 16 }}>🔍</div>
         <h2 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, margin: 0 }}>Empresa no encontrada</h2>
         <p style={{ color: C.dim, fontSize: 14, marginTop: 8 }}>El enlace <code style={{ color: C.amber }}>gypi.app/{slug}/unirse</code> no es válido.</p>
-        <button onClick={() => router.push("/")} style={{ marginTop: 24, padding: "12px 24px", borderRadius: 12, background: C.amber, color: "#000", border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Volver al inicio</button>
+        <button onClick={() => router.push("/")} style={{ marginTop: 24, padding: "12px 24px", borderRadius: 12, background: C.amber, color: C.amberText, border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Volver al inicio</button>
       </div>
     );
   }
@@ -87,7 +89,7 @@ export default function UnirseScreen() {
     <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "0 28px", justifyContent: "center", color: C.text, fontFamily: fB }}>
       {/* Logo */}
       {empresa.logo_url ? (
-        <img src={empresa.logo_url} alt={empresa.nombre_corto} style={{ width: 72, height: 72, borderRadius: 20, objectFit: "contain", marginBottom: 24 }} />
+        <Image src={empresa.logo_url} alt={empresa.nombre_corto} width={72} height={72} style={{ borderRadius: 20, objectFit: "contain", marginBottom: 24 }} />
       ) : (
         <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg,${C.amber},${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", marginBottom: 24 }}>
           <span style={{ fontFamily: fH, fontSize: empresa.nombre_corto?.length > 4 ? 18 : 26, fontWeight: 800 }}>{empresa.nombre_corto || "Gypi"}</span>
@@ -112,7 +114,7 @@ export default function UnirseScreen() {
             style={{ ...inputStyle, marginBottom: 16 }}
           />
 
-          <button onClick={verificarLegajo} disabled={loading || !legajo.trim()} style={{ width: "100%", padding: 14, borderRadius: 12, background: legajo.trim() && !loading ? C.amber : C.surface, color: legajo.trim() && !loading ? "#000" : C.mute, border: "none", fontSize: 15, fontWeight: 700, cursor: legajo.trim() && !loading ? "pointer" : "default" }}>
+          <button onClick={verificarLegajo} disabled={loading || !legajo.trim()} style={{ width: "100%", padding: 14, borderRadius: 12, background: legajo.trim() && !loading ? C.amber : C.surface, color: legajo.trim() && !loading ? C.amberText : C.mute, border: "none", fontSize: 15, fontWeight: 700, cursor: legajo.trim() && !loading ? "pointer" : "default" }}>
             {loading ? "Verificando..." : "Continuar"}
           </button>
 
@@ -138,7 +140,7 @@ export default function UnirseScreen() {
 
           <div style={{ marginBottom: 14 }}>
             <label style={lblStyle}>Nueva contraseña</label>
-            <input type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 4 caracteres" style={inputStyle} />
+            <input type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" style={inputStyle} />
           </div>
           <div style={{ marginBottom: 10 }}>
             <label style={lblStyle}>Confirmar contraseña</label>

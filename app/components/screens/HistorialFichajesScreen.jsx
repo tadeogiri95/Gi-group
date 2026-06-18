@@ -1,15 +1,16 @@
 "use client";
 // Extraído de [slug]/page.js líneas 420-534
-import { useState, useEffect } from "react";
-import { C, fH, fB, fM, DIAS_KEY } from "../../lib/theme";
+import { useState, useEffect, useMemo } from "react";
+import { C, fH, fB, fM } from "../../lib/theme";
 import { sb } from "../../lib/supabase";
+import { hoyArg } from "../../lib/dates";
 import { Ic } from "../Icons";
 import EmptyState from "../ui/EmptyState";
 
 export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBack }) {
   const [fichadas, setFichadas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [mes, setMes] = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; });
+  const [mes, setMes] = useState(() => hoyArg().slice(0, 7));
   const [chatHistory, setChatHistory] = useState([]);
   const [showChat, setShowChat] = useState(false);
   const legajo = legajoVer || usuario.legajo;
@@ -34,23 +35,35 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
   }, [legajo, mes]);
 
   const totalTardes = fichadas.filter(f => f.llegada_tarde).length;
-  const tardesComunes = fichadas.filter(f => f.llegada_tarde && f.minutos_tarde <= 30 && !(fichadas.filter(ff => ff.llegada_tarde && ff.fecha <= f.fecha).length >= 3));
-  const tardesConPerdida = fichadas.filter(f => { if (!f.llegada_tarde) return false; if (f.minutos_tarde > 30) return true; return fichadas.filter(ff => ff.llegada_tarde && ff.fecha <= f.fecha).length >= 3; });
-  const cambiarMes = (dir) => { const [y, m] = mes.split("-").map(Number); const d = new Date(y, m - 1 + dir, 1); setMes(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
+  const tardanzasMap = useMemo(() => {
+    const sorted = [...fichadas].sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const map = new Map();
+    let acumulado = 0;
+    for (const f of sorted) {
+      if (!f.llegada_tarde) continue;
+      acumulado++;
+      const conPerdida = f.minutos_tarde > 30 || acumulado >= 3;
+      map.set(f.id ?? f.fecha, { conPerdida, numero: acumulado });
+    }
+    return map;
+  }, [fichadas]);
+  const tardesComunes = fichadas.filter(f => f.llegada_tarde && !tardanzasMap.get(f.id ?? f.fecha)?.conPerdida);
+  const tardesConPerdida = fichadas.filter(f => f.llegada_tarde && tardanzasMap.get(f.id ?? f.fecha)?.conPerdida);
+  const cambiarMes = (dir) => { const [y, m] = mes.split("-").map(Number); const d = new Date(y, m - 1 + dir, 1); setMes(hoyArg(d).slice(0, 7)); };
   const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const [y2, m2] = mes.split("-").map(Number);
   const mesLabel = `${meses[m2 - 1]} ${y2}`;
 
   return (
-    <div style={{ padding: "0 18px 110px", overflowY: "auto", flex: 1 }}>
+    <section aria-label={`Fichajes de ${empNombre}`} style={{ padding: "0 18px 110px", overflowY: "auto", flex: 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <button onClick={onBack} style={{ background: "none", border: "none", color: C.text, cursor: "pointer", padding: 6, display: "flex" }}><Ic.chevL /></button>
+        <button onClick={onBack} aria-label="Volver" style={{ background: "none", border: "none", color: C.text, cursor: "pointer", padding: 6, display: "flex" }}><Ic.chevL /></button>
         <h2 style={{ margin: 0, fontFamily: fH, fontSize: 20, fontWeight: 700, color: C.text, flex: 1 }}>Fichajes de {empNombre}</h2>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, background: C.surface, borderRadius: 14, padding: "10px 16px", border: `1px solid ${C.border}` }}>
-        <button onClick={() => cambiarMes(-1)} style={{ background: "none", border: "none", color: C.text, cursor: "pointer", fontSize: 18, padding: 4 }}>←</button>
+        <button onClick={() => cambiarMes(-1)} aria-label="Mes anterior" style={{ background: "none", border: "none", color: C.text, cursor: "pointer", fontSize: 18, padding: 4 }}>←</button>
         <span style={{ fontFamily: fH, fontSize: 16, fontWeight: 700, color: C.text }}>{mesLabel}</span>
-        <button onClick={() => cambiarMes(1)} style={{ background: "none", border: "none", color: C.text, cursor: "pointer", fontSize: 18, padding: 4 }}>→</button>
+        <button onClick={() => cambiarMes(1)} aria-label="Mes siguiente" style={{ background: "none", border: "none", color: C.text, cursor: "pointer", fontSize: 18, padding: 4 }}>→</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
         <div style={{ background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.border}`, textAlign: "center" }}><div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: totalTardes > 0 ? "#F59E0B" : C.green }}>{totalTardes}</div><div style={{ fontSize: 10, color: C.dim, fontWeight: 600, marginTop: 2 }}>Tardes total</div></div>
@@ -69,14 +82,15 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
       ) :
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {fichadas.map((f, i) => {
-              const esTardeComun = f.llegada_tarde && f.minutos_tarde <= 30 && !(fichadas.filter(ff => ff.llegada_tarde && ff.fecha <= f.fecha).length >= 3);
-              const esTardeConPerdida = f.llegada_tarde && (f.minutos_tarde > 30 || fichadas.filter(ff => ff.llegada_tarde && ff.fecha <= f.fecha).length >= 3);
+              const info = tardanzasMap.get(f.id ?? f.fecha);
+              const esTardeComun = f.llegada_tarde && info && !info.conPerdida;
+              const esTardeConPerdida = f.llegada_tarde && info?.conPerdida;
               const bgColor = esTardeConPerdida ? `${C.red}10` : esTardeComun ? "rgba(245,158,11,0.08)" : `${C.green}05`;
               const borderColor = esTardeConPerdida ? `${C.red}30` : esTardeComun ? "#F59E0B30" : C.border;
               const statusColor = esTardeConPerdida ? C.red : esTardeComun ? "#F59E0B" : C.green;
               const statusIcon = esTardeConPerdida ? "⛔" : esTardeComun ? "⚠️" : "✓";
               const statusLabel = esTardeConPerdida ? "Pérdida de presentismo" : esTardeComun ? `Tarde +${f.minutos_tarde}min` : "Puntual";
-              const tardeCuenta = f.llegada_tarde ? fichadas.filter(ff => ff.llegada_tarde && ff.fecha <= f.fecha).length : 0;
+              const tardeCuenta = info?.numero || 0;
               return (
                 <div key={f.id || i} style={{ background: bgColor, borderRadius: 14, padding: 14, border: `1px solid ${borderColor}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -95,10 +109,10 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
             })}
           </div>}
       <div style={{ marginTop: 24, marginBottom: 12 }}><h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.text, fontFamily: fH }}>Historial de conversaciones</h3></div>
-      <button onClick={() => setShowChat(!showChat)} style={{ width: "100%", padding: 14, borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 600, fontFamily: fB, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>{showChat ? "Ocultar" : "Ver"} conversaciones ({chatHistory.length})</span><span style={{ fontSize: 11, color: C.dim }}>{showChat ? "▲" : "▼"}</span>
+      <button onClick={() => setShowChat(!showChat)} aria-expanded={showChat} style={{ width: "100%", padding: 14, borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 600, fontFamily: fB, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>{showChat ? "Ocultar" : "Ver"} conversaciones ({chatHistory.length})</span><span aria-hidden="true" style={{ fontSize: 11, color: C.dim }}>{showChat ? "▲" : "▼"}</span>
       </button>
-      {showChat && <div style={{ marginTop: 10, background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.border}`, maxHeight: 400, overflowY: "auto" }}>
+      {showChat && <div role="log" aria-label="Historial de conversaciones" style={{ marginTop: 10, background: C.surface, borderRadius: 14, padding: 14, border: `1px solid ${C.border}`, maxHeight: 400, overflowY: "auto" }}>
         {chatHistory.length === 0 ? <div style={{ textAlign: "center", color: C.dim, fontSize: 13, padding: 16 }}>Sin conversaciones</div> :
           chatHistory.map((m, i) => <div key={i} style={{ display: "flex", justifyContent: m.rol === "user" ? "flex-end" : "flex-start", marginBottom: 8 }}>
             <div style={{ maxWidth: "80%", padding: "8px 12px", borderRadius: m.rol === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px", background: m.rol === "user" ? `${C.amber}30` : C.surfHi, fontSize: 12, color: C.text, lineHeight: 1.4 }}>
@@ -107,6 +121,6 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
             </div>
           </div>)}
       </div>}
-    </div>
+    </section>
   );
 }

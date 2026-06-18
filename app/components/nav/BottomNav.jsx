@@ -1,10 +1,7 @@
 'use client';
-import { C, fB, fM } from '../../lib/theme';
 
-// ═══════════════════════════════════════════════════════
-// BottomNav — Barra de navegación mobile modernizada
-// Ubicación: app/components/nav/BottomNav.jsx
-// ═══════════════════════════════════════════════════════
+// BottomNav -- Barra de navegacion mobile modernizada
+// Ubicacion: app/components/nav/BottomNav.jsx
 
 const Icons = {
   home: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
@@ -36,17 +33,13 @@ function getItems(role, pend) {
 export default function BottomNav({ active, onChange, role, pend }) {
   const items = getItems(role, pend);
   return (
-    <div
-      className="safe-bottom"
+    <nav
+      role="navigation"
+      aria-label="Navegación principal"
+      className="safe-bottom fixed bottom-0 left-0 right-0 backdrop-blur-[20px] border-t border-gypi-border z-50 flex justify-around max-w-[480px] mx-auto px-2 pt-1.5 pb-[22px]"
       style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: `${C.bg}f0`,
-        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        borderTop: `1px solid ${C.border}`,
-        padding: '6px 8px 22px',
-        zIndex: 50,
-        display: 'flex', justifyContent: 'space-around',
-        maxWidth: 480, margin: '0 auto',
+        background: 'var(--color-nav-bg)',
+        WebkitBackdropFilter: 'blur(20px)',
       }}
     >
       {items.map(item => {
@@ -55,42 +48,42 @@ export default function BottomNav({ active, onChange, role, pend }) {
           <button
             key={item.id}
             onClick={() => onChange(item.id)}
-            style={{
-              flex: 1, background: 'none', border: 'none',
-              padding: '4px 0', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', gap: 2,
-              color: isActive ? C.amber : C.dim,
-              cursor: 'pointer', fontFamily: fB,
-              fontSize: 10, fontWeight: isActive ? 700 : 500,
-              transition: 'color 0.15s',
-            }}
+            aria-label={item.label}
+            aria-current={isActive ? 'page' : undefined}
+            className={`flex-1 bg-transparent border-none py-1 px-0 flex flex-col items-center gap-0.5 cursor-pointer font-body text-[10px] transition-colors duration-150 ${
+              isActive ? 'text-gypi-amber font-bold' : 'text-gypi-dim font-medium'
+            }`}
           >
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              position: 'relative',
-              width: isActive ? 56 : 36, height: 28, borderRadius: 14,
-              background: isActive ? `${C.amber}18` : 'transparent',
-              transition: 'all 0.2s ease',
-            }}>
-              <span style={{ display: 'flex', transition: 'transform 0.15s', transform: isActive ? 'scale(1.05)' : 'scale(1)' }}>
+            <div
+              className="flex items-center justify-center relative h-7 rounded-[14px] transition-all duration-200 ease-out"
+              style={{
+                width: isActive ? 56 : 36,
+                background: isActive ? 'var(--color-empresa-primary-subtle)' : 'transparent',
+              }}
+            >
+              <span
+                className="flex transition-transform duration-150"
+                style={{ transform: isActive ? 'scale(1.05)' : 'scale(1)' }}
+              >
                 {item.icon}
               </span>
               {item.badge > 0 && (
-                <span style={{
-                  position: 'absolute', top: -2, right: isActive ? 2 : -2,
-                  minWidth: 17, height: 17, padding: '0 5px',
-                  borderRadius: 9, background: C.red, color: '#fff',
-                  fontSize: 9, fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: `2px solid ${C.bg}`, fontFamily: fM,
-                  animation: 'fadeIn 0.3s ease',
-                }}>{item.badge > 99 ? '99+' : item.badge}</span>
+                <span
+                  className="absolute -top-0.5 flex items-center justify-center min-w-[17px] h-[17px] px-[5px] rounded-full bg-gypi-red text-white text-[9px] font-extrabold font-mono"
+                  style={{
+                    right: isActive ? 2 : -2,
+                    border: '2px solid var(--color-bg)',
+                    animation: 'fadeIn 0.3s ease',
+                  }}
+                >
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
               )}
             </div>
-            <span style={{ lineHeight: 1, letterSpacing: '0.01em' }}>{item.label}</span>
+            <span className="leading-none tracking-[0.01em]">{item.label}</span>
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }

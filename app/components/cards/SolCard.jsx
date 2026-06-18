@@ -1,6 +1,5 @@
 // Extraído de [slug]/page.js líneas 409-417
-import { C, fH, fM } from "../../lib/theme";
-import { Ic } from "../Icons";
+import { C, fM } from "../../lib/theme";
 import { Tag } from "../ui";
 
 export default function SolCard({ s, showActions, onResolve }) {
@@ -8,7 +7,7 @@ export default function SolCard({ s, showActions, onResolve }) {
   const esPermisoIngreso = s.motivo?.includes("🔓") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo");
 
   return (
-    <div style={{
+    <article aria-label={`Solicitud: ${s.motivo || s.tipo} - ${s.estado}`} style={{
       background: esPermisoIngreso && s.estado === "pendiente" ? `${C.red}08` : C.surface,
       borderRadius: 14, padding: 14,
       border: `1px solid ${esPermisoIngreso && s.estado === "pendiente" ? C.red + "40" : s.estado === "pendiente" ? C.amber + "30" : C.border}`,
@@ -26,10 +25,10 @@ export default function SolCard({ s, showActions, onResolve }) {
       </div>
       {showActions && s.estado === "pendiente" && (
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button onClick={() => onResolve?.(s.id, "aprobado")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: C.greenS, color: C.green, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Aprobar</button>
-          <button onClick={() => onResolve?.(s.id, "rechazado")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: C.redS, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Rechazar</button>
+          <button onClick={() => onResolve?.(s.id, "aprobado")} aria-label={`Aprobar solicitud de legajo ${s.legajo}`} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: C.greenS, color: C.green, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Aprobar</button>
+          <button onClick={() => onResolve?.(s.id, "rechazado")} aria-label={`Rechazar solicitud de legajo ${s.legajo}`} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", background: C.redS, color: C.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Rechazar</button>
         </div>
       )}
-    </div>
+    </article>
   );
 }

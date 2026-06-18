@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Image from "next/image";
 import { C, fH, fB } from "../../lib/theme";
 
 export default function ResetPasswordScreen({ token, empresa, onVolver }) {
@@ -14,6 +15,8 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
     setError("");
     if (!nueva || !confirmar) { setError("Completá ambos campos."); return; }
     if (nueva !== confirmar) { setError("Las contraseñas no coinciden."); return; }
+    if (nueva.length < 8) { setError("Mínimo 8 caracteres"); return; }
+    if (!/[A-Z]/.test(nueva) || !/[a-z]/.test(nueva) || !/[0-9]/.test(nueva)) { setError("Debe tener mayúscula, minúscula y número"); return; }
     setLoading(true);
     try {
       const res = await fetch("/api/resetear-password", {
@@ -33,13 +36,13 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "0 28px", justifyContent: "center" }}>
-      <button onClick={onVolver}
+      <button onClick={onVolver} aria-label="Volver al login"
         style={{ alignSelf: "flex-start", background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, marginBottom: 24, padding: 0 }}>
         ← Volver al login
       </button>
 
       {empresa?.logo_url ? (
-        <img src={empresa.logo_url} alt={empresa?.nombre_corto || "Logo"} style={{ width: 56, height: 56, borderRadius: 14, objectFit: "contain", marginBottom: 20 }} />
+        <Image src={empresa.logo_url} alt={empresa?.nombre_corto || "Logo"} width={56} height={56} style={{ borderRadius: 14, objectFit: "contain", marginBottom: 20 }} />
       ) : (
         <div style={{ width: 56, height: 56, borderRadius: 14, background: `linear-gradient(135deg,${C.amber},${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
           <span style={{ fontFamily: fH, fontSize: 18, fontWeight: 800, color: "#000" }}>{empresa?.nombre_corto?.slice(0, 2) || "Gy"}</span>
@@ -51,23 +54,25 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
 
       {ok ? (
         <div>
-          <div style={{ padding: "14px 16px", background: C.greenS || "#E8F5E9", borderRadius: 12, color: C.green || "#2E7D32", fontSize: 14, marginBottom: 20 }}>
+          <div role="status" style={{ padding: "14px 16px", background: C.greenS || "#E8F5E9", borderRadius: 12, color: C.green || "#2E7D32", fontSize: 14, marginBottom: 20 }}>
             ✓ Contraseña actualizada. Ya podés iniciar sesión.
           </div>
           <button onClick={onVolver}
-            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: "#000", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
+            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
             Ir al login
           </button>
         </div>
       ) : (
         <>
           {error && (
-            <div style={{ color: C.red, fontSize: 13, marginBottom: 12, padding: "10px 14px", background: C.redS, borderRadius: 10 }}>
+            <div role="alert" style={{ color: C.red, fontSize: 13, marginBottom: 12, padding: "10px 14px", background: C.redS, borderRadius: 10 }}>
               {error}
             </div>
           )}
           <div style={{ position: "relative", marginBottom: 12 }}>
+            <label htmlFor="reset-nueva" className="sr-only">Nueva contraseña</label>
             <input
+              id="reset-nueva"
               value={nueva}
               onChange={e => setNueva(e.target.value)}
               placeholder="Nueva contraseña"
@@ -77,11 +82,14 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
               onKeyDown={e => e.key === "Enter" && resetear()}
             />
             <button onClick={() => setShowPwd(!showPwd)}
+              aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
               style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13 }}>
               {showPwd ? "Ocultar" : "Ver"}
             </button>
           </div>
+          <label htmlFor="reset-confirmar" className="sr-only">Repetir contraseña</label>
           <input
+            id="reset-confirmar"
             value={confirmar}
             onChange={e => setConfirmar(e.target.value)}
             placeholder="Repetí la contraseña"
@@ -93,7 +101,7 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
           <button
             onClick={resetear}
             disabled={loading || !nueva || !confirmar}
-            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: "#000", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: (loading || !nueva || !confirmar) ? 0.6 : 1 }}>
+            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: (loading || !nueva || !confirmar) ? 0.6 : 1 }}>
             {loading ? "Guardando..." : "Guardar nueva contraseña"}
           </button>
         </>

@@ -1,36 +1,42 @@
 "use client";
 // Extraído de [slug]/page.js líneas 653-735
 import { useState, useEffect, useCallback } from "react";
-import { C, fH, fB, fM } from "../../lib/theme";
+import { C, fB } from "../../lib/theme";
 import { sb } from "../../lib/supabase";
-import { sendPushToLegajo } from "../../../lib/push";
+import { sendPushToLegajo } from "../../lib/push";
 import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
 import { Chip } from "../ui";
+import { hoyArg } from "../../lib/dates";
 
 export default function InboxScreen({ ctx, reload, usuario }) {
   const [f, setF] = useState("pendiente");
   const [solicitudes, setSolicitudes] = useState(ctx.solicitudes || []);
   const [cargando, setCargando] = useState(false);
-  const [pagina, setPagina] = useState(0);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  // cursor de paginación keyset: null = primera página. Evita el costo de
+  // OFFSET en una tabla que puede acumular miles de filas por empresa.
+  const [cursor, setCursor] = useState(null);
+  const [enPrimeraPagina, setEnPrimeraPagina] = useState(true);
   const [hayMas, setHayMas] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const LIMIT = 30;
 
-  const cargarSolicitudes = useCallback(async (pag = 0) => {
-    setCargando(true);
+  const cargarSolicitudes = useCallback(async (cursorActual = null) => {
+    const esPrimera = !cursorActual;
+    if (esPrimera) setCargando(true); else setCargandoMas(true);
     try {
-      const offset = pag * LIMIT;
-      const sols = await sb.get(`solicitudes?select=*&order=created_at.desc&limit=${LIMIT}&offset=${offset}`);
-      if (pag === 0) setSolicitudes(sols || []); else setSolicitudes(prev => [...prev, ...(sols || [])]);
+      const { data: sols, nextCursor } = await sb.getPage(`solicitudes?select=*&order=created_at.desc&limit=${LIMIT}`, cursorActual);
+      if (esPrimera) setSolicitudes(sols || []); else setSolicitudes(prev => [...prev, ...(sols || [])]);
       setHayMas((sols || []).length === LIMIT);
-      setPagina(pag);
+      setCursor(nextCursor || null);
+      setEnPrimeraPagina(esPrimera);
     } catch (e) { console.error("Error cargando solicitudes:", e); }
-    setCargando(false);
+    if (esPrimera) setCargando(false); else setCargandoMas(false);
   }, []);
 
-  useEffect(() => { cargarSolicitudes(0); }, [cargarSolicitudes]);
-  useEffect(() => { if (ctx.solicitudes?.length > 0 && pagina === 0) setSolicitudes(ctx.solicitudes); }, [ctx.solicitudes, pagina]);
+  useEffect(() => { cargarSolicitudes(); }, [cargarSolicitudes]);
+  useEffect(() => { if (ctx.solicitudes?.length > 0 && enPrimeraPagina) setSolicitudes(ctx.solicitudes); }, [ctx.solicitudes, enPrimeraPagina]);
 
   const filtered = solicitudes.filter(s => { if (s.estado === "registrado") return false; if (f === "todas") return true; return s.estado === f; });
   const pend = solicitudes.filter(s => s.estado === "pendiente").length;
@@ -50,7 +56,7 @@ export default function InboxScreen({ ctx, reload, usuario }) {
         const esCambioHorario = sol.tipo === "cambio_horario" || sol.motivo?.toLowerCase().includes("cambio de horario");
 
         if (esPermisoIngreso && estado === "aprobado") {
-          const today = new Date().toISOString().split("T")[0];
+          const today = hoyArg();
           const matchHora = sol.motivo?.match(/\((\d{1,2}:\d{2})/);
           const horaIngreso = matchHora ? matchHora[1] : sol.desde && sol.desde !== "—" ? sol.desde : new Date(sol.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
           const ex = await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=eq.${today}`);
@@ -74,26 +80,26 @@ export default function InboxScreen({ ctx, reload, usuario }) {
           sendPushToLegajo(String(sol.legajo), estado === "aprobado" ? "✅ Permiso aprobado" : "❌ Permiso rechazado", estado === "aprobado" ? `Tu ${sol.tipo} fue aprobado por ${usuario.apodo}` : `Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`, { empresa_id: usuario.empresa_id }).catch(() => {});
         }
       }
-      await cargarSolicitudes(0); reload();
+      await cargarSolicitudes(); reload();
     } catch (e) { console.error(e); setErrorMsg("Error al procesar la solicitud. Intentá de nuevo."); }
   };
 
   return (
-    <div style={{ padding: "0 18px 110px", overflowY: "auto", flex: 1 }}>
-      {errorMsg && <div style={{ padding: 12, background: C.redS, color: C.red, borderRadius: 10, fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}><span>{errorMsg}</span><button onClick={() => setErrorMsg(null)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>✕</button></div>}
-      <div style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", alignItems: "center" }}>
+    <section aria-label="Bandeja de solicitudes" style={{ padding: "0 18px 110px", overflowY: "auto", flex: 1 }}>
+      {errorMsg && <div role="alert" style={{ padding: 12, background: C.redS, color: C.red, borderRadius: 10, fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}><span>{errorMsg}</span><button onClick={() => setErrorMsg(null)} aria-label="Cerrar error" style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>✕</button></div>}
+      <div role="group" aria-label="Filtros de solicitudes" style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", alignItems: "center" }}>
         <Chip active={f === "pendiente"} onClick={() => setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip>
         <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={C.green}>Aprobados</Chip>
         <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={C.red}>Rechazados</Chip>
         <Chip active={f === "todas"} onClick={() => setF("todas")}>Todas</Chip>
-        <button onClick={() => cargarSolicitudes(0)} style={{ width: 30, height: 30, borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, color: C.dim, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Ic.refresh /></button>
+        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" style={{ width: 30, height: 30, borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, color: C.dim, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Ic.refresh /></button>
       </div>
-      {cargando && pagina === 0 ? <div style={{ textAlign: "center", padding: 30, color: C.dim, fontSize: 13 }}>Cargando solicitudes...</div> :
+      {cargando ? <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 30, color: C.dim, fontSize: 13 }}>Cargando solicitudes...</div> :
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {sortedFiltered.length === 0 ? <div style={{ background: C.surface, borderRadius: 14, padding: 40, textAlign: "center", border: `1px solid ${C.border}` }}><div style={{ color: C.green, display: "inline-flex", marginBottom: 12 }}><Ic.check size={20} /></div><div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Todo al día</div></div> : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={resolver} />)}
-          {hayMas && !cargando && <button onClick={() => cargarSolicitudes(pagina + 1)} style={{ width: "100%", padding: 14, borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, color: C.amber, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer", marginTop: 4 }}>Cargar más solicitudes</button>}
-          {cargando && pagina > 0 && <div style={{ textAlign: "center", padding: 14, color: C.dim, fontSize: 12 }}>Cargando...</div>}
+          {hayMas && !cargandoMas && <button onClick={() => cargarSolicitudes(cursor)} style={{ width: "100%", padding: 14, borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, color: C.amber, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer", marginTop: 4 }}>Cargar más solicitudes</button>}
+          {cargandoMas && <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 14, color: C.dim, fontSize: 12 }}>Cargando...</div>}
         </div>}
-    </div>
+    </section>
   );
 }

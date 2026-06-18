@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
+import { useToast } from "./components/ui/Toast";
 
 const DIAS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
 const DIAS_L = { lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom" };
@@ -9,6 +10,7 @@ const DEFAULT_IN = "08:30";
 const DEFAULT_OUT = "17:30";
 
 import { getDivisionesConTodos } from "./lib/constants";
+import { useAuth } from "./context/AuthContext";
 
 const calcHoras = (row) => {
   let t = 0;
@@ -27,13 +29,14 @@ const fmtHorario = (row) => {
 };
 
 export default function GrillaHorarioScreen({ empresaId }) {
-  const DIVISIONES = getDivisionesConTodos();
+  const { divisiones: divisionesCtx } = useAuth();
+  const DIVISIONES = getDivisionesConTodos(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [grilla, setGrilla] = useState({});
   const [original, setOriginal] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
+  const toast = useToast();
   const [modo, setModo] = useState("individual");
   const [horarioMasivo, setHorarioMasivo] = useState(() => {
     const h = {}; DIAS.forEach(d => { h[d] = (d === "sab" || d === "dom") ? null : { in: DEFAULT_IN, out: DEFAULT_OUT }; }); return h;
@@ -61,7 +64,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
 
   const tienesCambios = (id) => JSON.stringify(grilla[id]) !== JSON.stringify(original[id]);
   const totalCambios = empleados.filter(e => tienesCambios(e.id)).length;
-  const showToast = (msg, color) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500); };
+  const showToast = (msg, color) => toast.show(msg, color);
 
   const setHorario = (empId, dia, campo, valor) => {
     setGrilla(p => { const c = { ...p }; const row = { ...c[empId] }; if (!row[dia]) row[dia] = { in: DEFAULT_IN, out: DEFAULT_OUT }; row[dia] = { ...row[dia], [campo]: valor }; c[empId] = row; return c; });
@@ -113,7 +116,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
   const Toggle = ({ on, onClick, color = C.green, size = "sm" }) => {
     const w = size === "sm" ? 34 : 48; const h = size === "sm" ? 20 : 28; const d = size === "sm" ? 16 : 22;
     return (
-      <button onClick={onClick} className="relative border-none cursor-pointer shrink-0 rounded-full" style={{ width: w, height: h, background: on ? color : C.mute, transition: "background 0.2s" }}>
+      <button onClick={onClick} aria-pressed={on} aria-label={on ? "Desactivar" : "Activar"} className="relative border-none cursor-pointer shrink-0 rounded-full" style={{ width: w, height: h, background: on ? color : C.mute, transition: "background 0.2s" }}>
         <div className="absolute rounded-full bg-white" style={{ width: d, height: d, top: (h - d) / 2, left: on ? w - d - 2 : 2, transition: "left 0.2s" }} />
       </button>
     );
@@ -125,13 +128,12 @@ export default function GrillaHorarioScreen({ empresaId }) {
   );
 
   return (
-    <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
-      {toast && <div className="fixed top-[60px] left-1/2 -translate-x-1/2 z-[999] py-3 px-5 rounded-xl text-[13px] font-semibold max-w-[90%]" style={{ background: C.bg, border: `1px solid ${toast.color}40`, boxShadow: `0 8px 32px ${toast.color}20`, color: toast.color }}>{toast.msg}</div>}
+    <section aria-label="Grilla de horarios" className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
 
       {/* Modo toggle */}
       <div className="flex mb-3.5 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
         <button onClick={() => setModo("masivo")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "masivo" ? C.cyan : "transparent", color: modo === "masivo" ? "#000" : C.dim }}>⚡ Asignación masiva</button>
-        <button onClick={() => setModo("individual")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "individual" ? C.amber : "transparent", color: modo === "individual" ? "#000" : C.dim }}>✏️ Individual</button>
+        <button onClick={() => setModo("individual")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "individual" ? C.amber : "transparent", color: modo === "individual" ? C.amberText : C.dim }}>✏️ Individual</button>
       </div>
 
       {loading ? (
@@ -184,8 +186,8 @@ export default function GrillaHorarioScreen({ empresaId }) {
                   <button key={emp.id} onClick={() => toggleEmpleado(emp.id)} className="flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] cursor-pointer font-body text-left transition-all" style={{ border: `1px solid ${sel ? `${C.cyan}40` : C.border}`, background: sel ? `${C.cyan}10` : "transparent" }}>
                     <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0" style={{ border: `2px solid ${sel ? C.cyan : C.mute}`, background: sel ? C.cyan : "transparent", color: "#000" }}>{sel && "✓"}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.apodo || emp.nombre}</div>
-                      <div className="text-[10px] text-gypi-dim">L-{emp.legajo}</div>
+                      <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.nombre}</div>
+                      <div className="text-[10px] text-gypi-dim truncate">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}</div>
                     </div>
                     {changed && <Tag color={C.amber}>Editado</Tag>}
                   </button>
@@ -214,10 +216,10 @@ export default function GrillaHorarioScreen({ empresaId }) {
               const diasActivos = DIAS.filter(d => row[d]).length;
               return (
                 <div key={emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${changed ? `${C.amber}40` : C.border}` }}>
-                  <button onClick={() => setExpandedId(isExp ? null : emp.id)} className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left">
+                  <button onClick={() => setExpandedId(isExp ? null : emp.id)} aria-expanded={isExp} className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left">
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-bold text-gypi-text truncate">{emp.apodo || emp.nombre}</div>
-                      <div className="text-[10px] text-gypi-dim mt-0.5">L-{emp.legajo} · {diasActivos}d · {horas.toFixed(1)}h/sem</div>
+                      <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
+                      <div className="text-[10px] text-gypi-dim mt-0.5">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"} · {diasActivos}d · {horas.toFixed(1)}h/sem</div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {changed && <Tag color={C.amber}>Editado</Tag>}
@@ -267,12 +269,12 @@ export default function GrillaHorarioScreen({ empresaId }) {
         <div className="fixed bottom-[100px] left-1/2 -translate-x-1/2 z-50 max-w-[440px] w-[calc(100%-36px)]">
           <button onClick={guardarYNotificar} disabled={saving} className="w-full py-4 rounded-2xl border-none text-[15px] font-bold font-heading flex items-center justify-center gap-2" style={{
             background: saving ? C.surface : `linear-gradient(135deg, ${C.amber}, ${C.violet})`,
-            color: saving ? C.dim : "#000", cursor: saving ? "default" : "pointer", boxShadow: `0 8px 32px ${C.amber}30`,
+            color: saving ? C.dim : C.amberText, cursor: saving ? "default" : "pointer", boxShadow: `0 8px 32px ${C.amber}30`,
           }}>{saving ? "⏳ Guardando..." : `📤 Guardar y notificar ${totalCambios} empleado${totalCambios > 1 ? "s" : ""}`}</button>
         </div>
       )}
 
       <div className="text-center mt-4 text-[10px] text-gypi-mute">{empleados.length} empleados activos · {totalCambios} con cambios</div>
-    </div>
+    </section>
   );
 }

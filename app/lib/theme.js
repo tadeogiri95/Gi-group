@@ -6,8 +6,8 @@
 const _base = {
   bg:"#F7F7F5", surface:"#FFFFFF", surfHi:"#EDEDED", surfLo:"#F0F0EE",
   border:"rgba(0,0,0,0.08)", borderHi:"rgba(0,0,0,0.14)",
-  text:"#1A1A1A", dim:"#6B6B6B", mute:"#A0A0A0",
-  amber:"#F97316", amberS:"rgba(249,115,22,0.10)",
+  text:"#1A1A1A", dim:"#595959", mute:"#A0A0A0",
+  amber:"#F97316", amberText:"#FFFFFF", amberS:"rgba(249,115,22,0.10)",
   green:"#16A34A", greenS:"rgba(22,163,74,0.10)",
   red:"#DC2626", redS:"rgba(220,38,38,0.10)",
   cyan:"#0891B2", cyanS:"rgba(8,145,178,0.10)",
@@ -16,6 +16,19 @@ const _base = {
 
 // Objeto mutable que toda la app importa
 export const C = { ..._base };
+
+// WCAG contrast: picks black or white text for maximum readability on a colored bg
+export function textOnColor(hex) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  // Linearize sRGB channels
+  const lin = (c) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  // White text on dark bg, black text on light bg (threshold ~0.18 gives 4.5:1)
+  return L > 0.18 ? "#000000" : "#FFFFFF";
+}
 
 // Convierte hex a rgba string
 function hexToRgba(hex, alpha) {
@@ -43,21 +56,42 @@ function deriveSurfaces(bgHex) {
       borderHi: "rgba(0,0,0,0.14)",
     };
   }
+  // Dark themes: higher border alpha for WCAG AA visibility
+  // Note: borders are supplemental to surface bg differences;
+  // full 3:1 would require ~36% alpha which is visually heavy.
+  // borderHi raised to 0.25 for interactive focus/hover states.
   return {
     surface: hexToRgba("#ffffff", 0.05),
-    surfHi: hexToRgba("#ffffff", 0.08),
-    surfLo: hexToRgba("#ffffff", 0.02),
-    border: "rgba(255,240,220,0.06)",
-    borderHi: "rgba(255,240,220,0.12)",
+    surfHi: hexToRgba("#ffffff", 0.10),
+    surfLo: hexToRgba("#ffffff", 0.03),
+    border: "rgba(255,255,255,0.10)",
+    borderHi: "rgba(255,255,255,0.25)",
   };
 }
 
 // Genera dim/mute a partir de color de texto
-function deriveDimMute(textHex) {
+// WCAG AA: dim (text-muted) needs 4.5:1 for normal text;
+//          mute (text-secondary/placeholders) needs 3:1 min for large text/UI.
+// Alpha 0.60/0.42 passes AA across all dark presets including medianoche.
+function deriveDimMute(textHex, bgHex) {
   const h = textHex.replace('#', '');
   const r = parseInt(h.substring(0, 2), 16);
   const g = parseInt(h.substring(2, 4), 16);
   const b = parseInt(h.substring(4, 6), 16);
+  // Detect dark vs light to pick correct alpha ramp
+  if (bgHex) {
+    const bh = bgHex.replace('#', '');
+    const br = parseInt(bh.substring(0, 2), 16);
+    const bg = parseInt(bh.substring(2, 4), 16);
+    const bb = parseInt(bh.substring(4, 6), 16);
+    const lum = (br * 299 + bg * 587 + bb * 114) / 1000;
+    if (lum <= 140) {
+      return {
+        dim: `rgba(${r},${g},${b},0.60)`,
+        mute: `rgba(${r},${g},${b},0.42)`,
+      };
+    }
+  }
   return {
     dim: `rgba(${r},${g},${b},0.50)`,
     mute: `rgba(${r},${g},${b},0.30)`,
@@ -110,16 +144,18 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
     C.bg = p.bg;
     C.text = p.text;
     C.amber = p.primary;
+    C.amberText = textOnColor(p.primary);
     C.amberS = hexToRgba(p.primary, 0.14);
     C.violet = p.secondary;
     C.violetS = hexToRgba(p.secondary, 0.12);
     Object.assign(C, deriveSurfaces(p.bg));
-    Object.assign(C, deriveDimMute(p.text));
+    Object.assign(C, deriveDimMute(p.text, p.bg));
   }
 
   // Sobreescribir con valores individuales si vienen
   if (isHex(d.color_primario)) {
     C.amber = d.color_primario;
+    C.amberText = textOnColor(d.color_primario);
     C.amberS = hexToRgba(d.color_primario, 0.14);
   }
   if (isHex(d.color_secundario)) {
@@ -132,7 +168,7 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
   }
   if (isHex(d.color_texto)) {
     C.text = d.color_texto;
-    Object.assign(C, deriveDimMute(d.color_texto));
+    Object.assign(C, deriveDimMute(d.color_texto, C.bg));
   }
 
   // Tipografía
@@ -159,6 +195,7 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
     s.setProperty('--color-text-secondary', C.mute);
     // Brand
     s.setProperty('--color-empresa-primary', C.amber);
+    s.setProperty('--color-empresa-primary-text', C.amberText);
     s.setProperty('--color-empresa-primary-subtle', C.amberS);
     s.setProperty('--color-empresa-secondary', C.violet);
     s.setProperty('--color-empresa-secondary-subtle', C.violetS);
@@ -172,6 +209,12 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
     // Typography
     s.setProperty('--font-heading', _currentFH);
     s.setProperty('--font-body', _currentFB);
+    // Design tokens — radius & shadow (syncables)
+    s.setProperty('--radius-sm', '8px');
+    s.setProperty('--radius-md', '12px');
+    s.setProperty('--radius-lg', '16px');
+    s.setProperty('--radius-xl', '20px');
+
     // Nav: fondo adaptativo — blanco para temas claros, oscuro elevado para temas oscuros
     if (C.bg.startsWith('#') && C.bg.length === 7) {
       const r = parseInt(C.bg.slice(1, 3), 16);

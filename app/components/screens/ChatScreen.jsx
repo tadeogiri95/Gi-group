@@ -4,14 +4,19 @@
 // Depende de fichar.js helpers (ficharServer, obtenerGeo)
 
 import { useState, useEffect, useRef } from "react";
-import { C, fH, fB, fM, fmtTime, fmtDate, DIAS_KEY } from "../../lib/theme";
+import { C, fB, fM, fmtTime, fmtDate, DIAS_KEY } from "../../lib/theme";
 import { sb } from "../../lib/supabase";
 import { callClaude, parseAction } from "../../lib/claude";
-import { sendPushToLegajo } from "../../../lib/push";
+import { sendPushToLegajo } from "../../lib/push";
 import { ficharServer, obtenerGeo } from "../../lib/fichar";
 import { Ic } from "../Icons";
 import FichadaCard from "../cards/FichadaCard";
 import SolSentCard from "../cards/SolSentCard";
+import { hoyArg } from "../../lib/dates";
+
+// solicitudes.fecha es DATE en la DB — nunca debe recibir literales como "hoy"
+// o un string vacío. Si la IA no extrajo una fecha válida, usamos hoy.
+const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f || "") ? f : hoyArg();
 
 export default function ChatScreen({ usuario, ctx, reload, empresa }) {
   const dH = DIAS_KEY[new Date().getDay()];
@@ -43,28 +48,28 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
         case "FICHAR_EGRESO": {
           const geo = await obtenerGeo(usuario);
           const res = await ficharServer("egreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia });
-          card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg };
+          card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg, horas_extra: res.horas_extra, solicitar_hora_extra: res.solicitar_hora_extra, datos_jornada: res.datos_jornada };
           break;
         }
         case "FICHAR_EGRESO_FORZAR": {
           const geo = await obtenerGeo(usuario);
           const res = await ficharServer("egreso", { forzar_cierre_tarea: true, geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia });
-          card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg };
+          card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg, horas_extra: res.horas_extra, solicitar_hora_extra: res.solicitar_hora_extra, datos_jornada: res.datos_jornada };
           break;
         }
         case "SOLICITAR_PERMISO":
-          await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "permiso", motivo: action.motivo || "", fecha: action.fecha || "", desde: action.desde || "—", hasta: action.hasta || "—", estado: "pendiente", empresa_id: usuario.empresa_id });
+          await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "permiso", motivo: action.motivo || "", fecha: fechaValida(action.fecha), desde: action.desde || "—", hasta: action.hasta || "—", estado: "pendiente", empresa_id: usuario.empresa_id });
           await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `${usuario.apodo} pidió permiso`, detalle: action.motivo, urgencia: "normal", empresa_id: usuario.empresa_id });
           sendPushToLegajo("1", "📋 Nuevo permiso", `${usuario.apodo} solicitó permiso: ${action.motivo || "sin detalle"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
           card = { type: "solicitud", motivo: action.motivo, fecha: action.fecha };
           break;
         case "AVISAR_TARDANZA":
-          await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "tardanza", motivo: `Tardanza: ${action.motivo || ""}`, fecha: "hoy", estado: "registrado", empresa_id: usuario.empresa_id });
+          await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "tardanza", motivo: `Tardanza: ${action.motivo || ""}`, fecha: fechaValida(), estado: "registrado", empresa_id: usuario.empresa_id });
           await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "alerta", asunto: `Tardanza de ${usuario.apodo}`, detalle: action.motivo, urgencia: "normal", empresa_id: usuario.empresa_id });
           sendPushToLegajo("1", "⏰ Tardanza", `${usuario.apodo}: ${action.motivo || "sin detalle"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
           break;
         case "AVISAR_AUSENCIA":
-          await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "ausencia", motivo: action.motivo || "Ausencia", fecha: action.fecha || "hoy", estado: "pendiente", empresa_id: usuario.empresa_id });
+          await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "ausencia", motivo: action.motivo || "Ausencia", fecha: fechaValida(action.fecha), estado: "pendiente", empresa_id: usuario.empresa_id });
           await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "alerta", asunto: `Ausencia de ${usuario.apodo}`, detalle: action.motivo, urgencia: "alta", empresa_id: usuario.empresa_id });
           sendPushToLegajo("1", "🚨 Ausencia", `${usuario.apodo}: ${action.motivo || "Ausencia"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
           break;
@@ -94,7 +99,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
     // Quick-action shortcuts
     if (t === "✅ Sí, solicitar permiso") {
       try {
-        const hoy = new Date().toISOString().split("T")[0];
+        const hoy = hoyArg();
         const hora2 = fmtTime(new Date());
         await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "permiso", motivo: `🔓 Permiso de INGRESO por bloqueo (${hora2})`, fecha: hoy, desde: hora2, hasta: "—", estado: "pendiente", empresa_id: usuario.empresa_id });
         await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `🔓 ${usuario.apodo} solicita permiso de INGRESO`, detalle: `Ingreso bloqueado a las ${hora2}. Requiere autorización para fichar.`, urgencia: "alta", empresa_id: usuario.empresa_id });
@@ -108,9 +113,29 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
     if (t === "✅ Sí, fichar salida") {
       try {
         const cr = await execAction({ type: "FICHAR_EGRESO_FORZAR" });
-        setMsgs(m => [...m, { from: "bot", text: cr?.type === "fichada_bloqueada" ? cr.msg : "✅ Actividad finalizada y salida registrada.", card: cr?.type !== "fichada_bloqueada" ? cr : undefined, time: new Date() }]);
+        if (cr?.type === "fichada_bloqueada") {
+          setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]);
+        } else if (cr?.solicitar_hora_extra) {
+          const dj = cr.datos_jornada;
+          setMsgs(m => [...m, { from: "bot", text: `✅ Salida registrada.\n\nLlegaste tarde (${dj.ingreso_real} vs ${dj.ingreso_grilla}) pero trabajaste ${Math.round(dj.excedente_min)}min más de tu jornada habitual.\n\n¿Querés solicitar hora extra a gerencia?`, card: cr, time: new Date(), quickReplies: ["✅ Sí, solicitar hora extra", "❌ No, cancelar"] }]);
+        } else {
+          let msg = "✅ Actividad finalizada y salida registrada.";
+          if (cr?.horas_extra > 0) msg += `\n🕐 Horas extra: ${cr.horas_extra}h`;
+          setMsgs(m => [...m, { from: "bot", text: msg, card: cr, time: new Date() }]);
+        }
         if (reload) reload();
       } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al fichar salida.", time: new Date() }]); }
+      setLoading(false); return;
+    }
+    if (t === "✅ Sí, solicitar hora extra") {
+      try {
+        const hoy = hoyArg();
+        await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "hora_extra", motivo: "Solicitud de hora extra — llegó tarde pero trabajó más de la jornada habitual", fecha: hoy, estado: "pendiente", empresa_id: usuario.empresa_id });
+        await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `${usuario.apodo} solicita hora extra`, detalle: "Llegó tarde pero trabajó más tiempo que su jornada habitual.", urgencia: "normal", empresa_id: usuario.empresa_id });
+        sendPushToLegajo("1", "🕐 Hora extra", `${usuario.apodo} solicita aprobación de hora extra`, { empresa_id: usuario.empresa_id }).catch(() => {});
+        setMsgs(m => [...m, { from: "bot", text: "✅ Solicitud de hora extra enviada a gerencia. Te aviso cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: "Hora extra", fecha: hoy } }]);
+        if (reload) reload();
+      } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud.", time: new Date() }]); }
       setLoading(false); return;
     }
 
@@ -140,7 +165,14 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
         const cr = await execAction({ type: "FICHAR_EGRESO" });
         if (cr?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); }
         else if (cr?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
-        else { setMsgs(m => [...m, { from: "bot", text: "✅ Salida registrada. ¡Hasta mañana, " + usuario.apodo + "! 👋", card: cr, time: new Date() }]); }
+        else if (cr?.solicitar_hora_extra) {
+          const dj = cr.datos_jornada;
+          setMsgs(m => [...m, { from: "bot", text: `✅ Salida registrada. ¡Hasta mañana, ${usuario.apodo}! 👋\n\nLlegaste tarde (${dj.ingreso_real} vs ${dj.ingreso_grilla}) pero trabajaste ${Math.round(dj.excedente_min)}min más de tu jornada.\n\n¿Querés solicitar hora extra a gerencia?`, card: cr, time: new Date(), quickReplies: ["✅ Sí, solicitar hora extra", "❌ No, cancelar"] }]);
+        } else {
+          let msg = "✅ Salida registrada. ¡Hasta mañana, " + usuario.apodo + "! 👋";
+          if (cr?.horas_extra > 0) msg += `\n🕐 Horas extra registradas: ${cr.horas_extra}h`;
+          setMsgs(m => [...m, { from: "bot", text: msg, card: cr, time: new Date() }]);
+        }
         if (reload) reload();
       } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al fichar salida.", time: new Date() }]); }
       setLoading(false); return;
@@ -189,18 +221,18 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {geoError && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: `${C.red}12`, borderBottom: `1px solid ${C.red}30` }}>
-          <span style={{ fontSize: 14 }}>📍</span>
+        <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: `${C.red}12`, borderBottom: `1px solid ${C.red}30` }}>
+          <span style={{ fontSize: 14 }} aria-hidden="true">📍</span>
           <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.red, fontFamily: fB }}>{geoError}</span>
-          <button onClick={() => setGeoError(null)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16, padding: 4, minHeight: 44, minWidth: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+          <button onClick={() => setGeoError(null)} aria-label="Cerrar alerta de ubicación" style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16, padding: 4, minHeight: 44, minWidth: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
       )}
-      <div ref={ref} style={{ flex: 1, overflowY: "auto", padding: "8px 18px 12px", WebkitOverflowScrolling: "touch" }}>
+      <div ref={ref} role="log" aria-label="Historial de mensajes" aria-live="polite" style={{ flex: 1, overflowY: "auto", padding: "8px 18px 12px", WebkitOverflowScrolling: "touch" }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: "flex", justifyContent: m.from === "bot" ? "flex-start" : "flex-end", marginBottom: 12 }}>
             {m.from === "bot" && <div style={{ width: 30, height: 30, borderRadius: 10, marginRight: 8, background: `linear-gradient(135deg,${C.amber},${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", flexShrink: 0 }}><Ic.bot size={16} /></div>}
             <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: m.from === "bot" ? "flex-start" : "flex-end" }}>
-              <div style={{ padding: "10px 14px", background: m.from === "bot" ? C.surfHi : C.amber, color: m.from === "bot" ? C.text : "#000", borderRadius: m.from === "bot" ? "16px 16px 16px 4px" : "16px 16px 4px 16px", fontSize: 14, fontFamily: fB, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", border: m.from === "bot" ? `1px solid ${C.border}` : "none", fontWeight: m.from === "bot" ? 400 : 500 }}>{m.text}</div>
+              <div style={{ padding: "10px 14px", background: m.from === "bot" ? C.surfHi : C.amber, color: m.from === "bot" ? C.text : C.amberText, borderRadius: m.from === "bot" ? "16px 16px 16px 4px" : "16px 16px 4px 16px", fontSize: 14, fontFamily: fB, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", border: m.from === "bot" ? `1px solid ${C.border}` : "none", fontWeight: m.from === "bot" ? 400 : 500 }}>{m.text}</div>
               {m.card?.type === "fichada" && <FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg} tardanza={m.card.tardanza} />}
               {m.card?.type === "solicitud" && <SolSentCard motivo={m.card.motivo} fecha={m.card.fecha} />}
               {m.quickReplies && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{m.quickReplies.map((c, j) => <button key={j} onClick={() => handleSend(c)} style={{ padding: "10px 16px", borderRadius: 999, background: C.surfHi, border: `1px solid ${C.borderHi}`, color: C.text, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: fB, minHeight: 44 }}>{c}</button>)}</div>}
@@ -212,9 +244,9 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
       </div>
       <div className="safe-bottom" style={{ padding: "10px 14px 12px", borderTop: `1px solid ${C.border}`, background: C.bg, display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", background: C.surface, borderRadius: 22, padding: "4px 8px 4px 16px", border: `1px solid ${C.border}` }}>
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Hablale al bot..." disabled={loading} style={{ flex: 1, border: "none", background: "transparent", color: C.text, fontSize: 14, fontFamily: fB, outline: "none", padding: "10px 0", opacity: loading ? .5 : 1 }} />
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Hablale al bot..." aria-label="Mensaje para el asistente" disabled={loading} style={{ flex: 1, border: "none", background: "transparent", color: C.text, fontSize: 14, fontFamily: fB, outline: "none", padding: "10px 0", opacity: loading ? .5 : 1 }} />
         </div>
-        <button onClick={() => handleSend()} disabled={!input.trim() || loading} style={{ width: 44, height: 44, borderRadius: 22, border: "none", background: input.trim() && !loading ? C.amber : C.surface, color: input.trim() && !loading ? "#000" : C.mute, cursor: input.trim() && !loading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.send size={18} /></button>
+        <button onClick={() => handleSend()} disabled={!input.trim() || loading} aria-label="Enviar mensaje" style={{ width: 44, height: 44, borderRadius: 22, border: "none", background: input.trim() && !loading ? C.amber : C.surface, color: input.trim() && !loading ? C.amberText : C.mute, cursor: input.trim() && !loading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.send size={18} /></button>
       </div>
     </div>
   );

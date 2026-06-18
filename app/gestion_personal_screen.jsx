@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { C, DIAS_KEY } from "./lib/theme";
+import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { passwordInicial } from "./lib/passwords";
 import { getDivisionesConSinAsignar } from "./lib/constants";
+import { useAuth } from "./context/AuthContext";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
@@ -64,10 +65,10 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
   const btnColor = mode === "editar" ? C.amber : C.green;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={titulo}>
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
-        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-4 font-heading text-lg font-bold text-gypi-text">{titulo}</h3>
 
         {[["Nombre completo", "nombre"], ["Legajo / DNI", "legajo"], ["Apodo", "apodo"], ["Email", "email"]].map(([label, key]) => (
@@ -134,10 +135,10 @@ function ModalCSVPreview({ filas, empleadosExistentes, divisiones, onClose, onCo
   const duplicados = filasConEstado.filter(r => r.duplicado);
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Vista previa CSV">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
-        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">Vista previa CSV</h3>
         <p className="text-xs text-gypi-dim mb-3.5">
           <Tag color={C.green}>{nuevos.length} nuevos</Tag> <Tag color={C.mute}>{duplicados.length} duplicados (se omiten)</Tag>
@@ -176,10 +177,10 @@ function ModalCSVPreview({ filas, empleadosExistentes, divisiones, onClose, onCo
 /* ═══ MODAL CONFIRMAR BAJA ═══ */
 function ModalConfirmarBaja({ empleado, onClose, onConfirm, saving }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Confirmar baja de empleado">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] border border-gypi-border">
-        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-2 font-heading text-lg font-bold text-gypi-text">Confirmar baja</h3>
         <p className="text-sm text-gypi-dim mb-4">
           ¿Dar de baja a <strong className="text-gypi-text">{empleado.nombre}</strong> (L-{empleado.legajo})? Se desactivará su cuenta y no podrá fichar.
@@ -205,10 +206,10 @@ function ModalInvitacion({ link, onClose }) {
     });
   };
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Link de invitación">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] border border-gypi-border">
-        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-2 font-heading text-lg font-bold text-gypi-text">Link de invitación</h3>
         <p className="text-xs text-gypi-dim mb-3">Compartí este link con los empleados pre-cargados para que activen su cuenta.</p>
         <div className="bg-gypi-surface border border-gypi-border rounded-[10px] p-3 mb-3 flex items-center gap-2">
@@ -225,7 +226,8 @@ function ModalInvitacion({ link, onClose }) {
 
 /* ═══ MAIN COMPONENT ═══ */
 export default function GestionPersonalScreen({ empresaId, slug }) {
-  const DIVISIONES = getDivisionesConSinAsignar();
+  const { divisiones: divisionesCtx } = useAuth();
+  const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -318,7 +320,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       const payload = {
         nombre,
         apodo: form.apodo?.trim() || generarApodo(nombre),
-        legajo: form.legajo?.trim() || form.legajo,
+        legajo: String(form.legajo ?? "").trim() || form.legajo,
         division: form.division || null,
         rol: form.rol || "operativo",
         area: form.area || "produccion",
@@ -420,7 +422,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
 
   /* ═══ RENDER ═══ */
   return (
-    <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px]">
+    <section aria-label="Gestión de personal" className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px]">
       {/* Métricas */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-gypi-surface rounded-[14px] p-3 border border-gypi-border text-center">
@@ -437,8 +439,8 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
         </div>
       </div>
 
-      {/* Filtros división */}
-      <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1">
+      {/* Filtro división */}
+      <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
         <Chip active={filtroDiv === "todas"} onClick={() => setFiltroDiv("todas")} color={C.amber}>Todas</Chip>
         {DIVISIONES.map(d => (
           <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || C.cyan}>
@@ -447,20 +449,25 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
         ))}
       </div>
 
-      {/* Filtros estado */}
-      <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
-        {[["activos", "Activos", C.green], ["inactivos", "Inactivos", C.mute], ["todos", "Todos", C.dim]].map(([key, label, color]) => (
-          <Chip key={key} active={filtroEstado === key} onClick={() => setFiltroEstado(key)} color={color}>{label}</Chip>
-        ))}
-        <div className="w-px" />
+      {/* Filtro rol */}
+      <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
         {[["todos", "Todos", C.dim], ...ROLES.map(r => [r, r, C.amber])].map(([key, label, color]) => (
           <Chip key={`rol-${key}`} active={filtroRol === key} onClick={() => setFiltroRol(key)} color={color}>{label}</Chip>
         ))}
       </div>
 
+      {/* Filtro estado */}
+      <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
+        {[["activos", "Activos", C.green], ["inactivos", "Inactivos", C.mute], ["todos", "Todos", C.dim]].map(([key, label, color]) => (
+          <Chip key={key} active={filtroEstado === key} onClick={() => setFiltroEstado(key)} color={color}>{label}</Chip>
+        ))}
+      </div>
+
       {/* Buscador */}
       <div className="mb-3">
+        <label htmlFor="search-personal" className="sr-only">Buscar empleado</label>
         <input
+          id="search-personal"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por nombre, legajo o apodo..."
@@ -529,9 +536,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
                     <div className="text-[11px] text-gypi-dim mt-px truncate">
-                      L-{emp.legajo}
-                      {emp.apodo && ` · ${emp.apodo}`}
-                      {emp.rol && emp.rol !== "operativo" && <span className="ml-1"><Tag color={C.amber}>{emp.rol}</Tag></span>}
+                      {divInfo?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}
                     </div>
                   </div>
 
@@ -613,6 +618,6 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
           onClose={() => setModalInvitacion(null)}
         />
       )}
-    </div>
+    </section>
   );
 }

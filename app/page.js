@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { C, fH, fB, fM } from "./lib/theme";
-import { PLANES } from "./lib/plans";
+import { C, fH, fB } from "./lib/theme";
+import { PLANES, precioAnual } from "./lib/plans";
 
 /* ═══════════════════════════════════════════════════
    SVG Icons (inline para zero deps)
@@ -70,11 +70,6 @@ const FEATURES_CHECK = [
   { key: "soporte",     label: "Soporte dedicado" },
   { key: "api_access",  label: "Acceso API" },
 ];
-
-function precioAnual(precio) {
-  if (!precio) return null;
-  return Math.round(precio * 0.8);
-}
 
 function formatPrecio(n) {
   if (n == null) return "A medida";
@@ -194,7 +189,7 @@ export default function Landing() {
           </div>
         </div>
         <button onClick={registrar} disabled={loading}
-          style={{ width: "100%", padding: 14, borderRadius: 12, background: C.amber, color: "#000", border: "none", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
+          style={{ width: "100%", padding: 14, borderRadius: 12, background: C.amber, color: C.amberText, border: "none", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
           {loading ? "Creando empresa..." : "Crear empresa gratis"}
         </button>
         {error && <div style={{ padding: 12, background: C.redS, color: C.red, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
@@ -232,7 +227,7 @@ export default function Landing() {
   const sectionSub = { fontFamily: fB, fontSize: 15, color: C.dim, textAlign: "center", margin: "0 0 48px", maxWidth: 520, marginLeft: "auto", marginRight: "auto" };
 
   return (
-    <div style={{ background: C.bg, color: C.text, fontFamily: fB, minHeight: "100dvh" }}>
+    <div style={{ background: C.bg, color: C.text, fontFamily: fB, height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
 
       {/* ═══ NAV STICKY ═══ */}
       <nav style={{
@@ -272,7 +267,7 @@ export default function Landing() {
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <button onClick={() => setShowRegistro(true)}
-            style={{ padding: "14px 32px", borderRadius: 12, background: C.amber, color: "#000", border: "none", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
+            style={{ padding: "14px 32px", borderRadius: 12, background: C.amber, color: C.amberText, border: "none", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
             Empezar gratis
           </button>
           <button onClick={() => scrollTo("features")}
@@ -374,7 +369,7 @@ export default function Landing() {
             const p = PLANES[pid];
             const isPopular = pid === "pro";
             const precio = p.precio;
-            const precioShow = anual ? precioAnual(precio) : precio;
+            const precioShow = anual ? precioAnual(pid) : precio;
 
             return (
               <div key={pid} style={{
@@ -389,7 +384,7 @@ export default function Landing() {
 
                 {/* Badge POPULAR */}
                 {isPopular && (
-                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: C.amber, color: "#000", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
+                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: C.amber, color: C.amberText, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
                     POPULAR
                   </div>
                 )}
@@ -444,7 +439,7 @@ export default function Landing() {
             Unite a las empresas que ya gestionan su equipo con Gypi. Plan Free sin límite de tiempo.
           </p>
           <button onClick={() => setShowRegistro(true)}
-            style={{ padding: "16px 40px", borderRadius: 14, background: C.amber, color: "#000", border: "none", fontSize: 17, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
+            style={{ padding: "16px 40px", borderRadius: 14, background: C.amber, color: C.amberText, border: "none", fontSize: 17, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
             Crear mi empresa gratis
           </button>
         </div>
@@ -459,7 +454,7 @@ export default function Landing() {
             style={{ flex: 1, padding: "14px 4px", border: "none", background: "transparent", color: C.text, fontSize: 15, outline: "none", fontFamily: fB }} />
         </div>
         <button onClick={entrar} disabled={!slug.trim()}
-          style={{ width: "100%", padding: 14, borderRadius: 12, background: slug.trim() ? C.amber : C.surface, color: slug.trim() ? "#000" : C.mute, border: "none", fontSize: 15, fontWeight: 700, cursor: slug.trim() ? "pointer" : "default", fontFamily: fH }}>
+          style={{ width: "100%", padding: 14, borderRadius: 12, background: slug.trim() ? C.amber : C.surface, color: slug.trim() ? C.amberText : C.mute, border: "none", fontSize: 15, fontWeight: 700, cursor: slug.trim() ? "pointer" : "default", fontFamily: fH }}>
           Ir a mi empresa
         </button>
       </section>

@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
+import { hoyArg } from "./lib/dates";
 
 /* ═══ SYSTEM PROMPT PARA REPORTE DE OBRA ═══ */
 const SYSTEM_OBRA_DEFAULT = `Sos un asistente de obra. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
@@ -114,8 +115,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
         }
       }
       setUploadProgress("Guardando reporte...");
-      const ahora = new Date();
-      const fechaLocal = `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,"0")}-${String(ahora.getDate()).padStart(2,"0")}`;
+      const fechaLocal = hoyArg();
       const payload = { usuario_id: usuario?.id || null, nombre: usuario?.nombre || "Instalador", legajo: usuario?.legajo || null, empresa_id: usuario?.empresa_id || empresa?.id || null, fecha: fechaLocal, texto_original: texto, progreso: reporte?.progreso || "", faltantes: reporte?.faltantes || [], desvios: reporte?.desvios || [], fotos: fotos.length, fotos_urls: fotosUrls };
       try { await sb.post("reportes_obra", payload); } catch (dbErr) {
         console.warn("Error con tabla reportes_obra, intentando con campos mínimos:", dbErr);
@@ -130,11 +130,11 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
   /* ═══ RENDER ═══ */
   return (
-    <div className="px-[18px] pb-[110px] overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
+    <section aria-label="Reporte de obra" className="px-[18px] pb-[110px] overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
 
       {/* Error banner */}
       {error && (
-        <div className="bg-gypi-red-s rounded-2xl p-4 mb-4" style={{ border: `1px solid ${C.red}44` }}>
+        <div role="alert" className="bg-gypi-red-s rounded-2xl p-4 mb-4" style={{ border: `1px solid ${C.red}44` }}>
           <p className="m-0 text-sm text-gypi-red">⚠️ {error}</p>
         </div>
       )}
@@ -150,7 +150,9 @@ export default function InstaladorScreen({ usuario, empresa }) {
                 <span className="text-[13px] font-semibold font-body" style={{ color: C.red }}>Grabando… hablá y tu voz se transcribirá</span>
               </div>
             )}
+            <label htmlFor="reporte-texto" className="sr-only">Reporte de obra</label>
             <textarea
+              id="reporte-texto"
               className="w-full min-h-[180px] bg-gypi-surf-hi border border-gypi-border-hi rounded-xl p-3.5 text-gypi-text font-body text-[15px] resize-y outline-none box-border leading-relaxed"
               placeholder={"Contá qué se avanzó, si faltó algo,\nsi hubo algún imprevisto o espera..."}
               value={texto}
@@ -186,7 +188,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
                 {fotos.map((f, i) => (
                   <div key={i} className="relative rounded-[10px] overflow-hidden aspect-square bg-gypi-surf-hi">
                     <img src={f.preview} alt={f.name} className="w-full h-full object-cover" />
-                    <button onClick={() => quitarFoto(i)} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 border-none text-white text-xs font-bold cursor-pointer flex items-center justify-center">✕</button>
+                    <button onClick={() => quitarFoto(i)} aria-label={`Quitar foto ${i + 1}`} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 border-none text-white text-xs font-bold cursor-pointer flex items-center justify-center">✕</button>
                   </div>
                 ))}
               </div>
@@ -195,7 +197,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
           <button
             className="w-full py-4 rounded-[14px] border-none cursor-pointer font-heading text-[17px] font-bold tracking-[0.01em]"
-            style={{ background: C.amber, color: "#000", opacity: texto.trim() ? 1 : 0.4 }}
+            style={{ background: C.amber, color: C.amberText, opacity: texto.trim() ? 1 : 0.4 }}
             disabled={!texto.trim()}
             onClick={generarReporte}
           >
@@ -206,8 +208,8 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
       {/* FASE 2 — PROCESANDO */}
       {fase === "procesando" && (
-        <div className="bg-gypi-surface rounded-2xl border border-gypi-border text-center py-14 px-4">
-          <div className="text-[38px] mb-3.5" style={{ animation: "spin 1.2s linear infinite" }}>⚙️</div>
+        <div role="status" aria-live="polite" className="bg-gypi-surface rounded-2xl border border-gypi-border text-center py-14 px-4">
+          <div className="text-[38px] mb-3.5" style={{ animation: "spin 1.2s linear infinite" }} aria-hidden="true">⚙️</div>
           <p className="m-0 text-[17px] font-heading font-bold">{uploadProgress || "Analizando tu reporte..."}</p>
           <p className="mt-2 text-gypi-dim text-[13px]">{uploadProgress ? "Aguardá un momento" : "La IA está estructurando los datos"}</p>
           <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.5 } }`}</style>
@@ -268,12 +270,12 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
       {/* FASE 4 — GUARDADO */}
       {fase === "guardado" && (
-        <div className="bg-gypi-green-s rounded-2xl text-center py-14 px-4" style={{ border: `1px solid ${C.green}33` }}>
-          <div className="text-[52px] mb-3.5">✅</div>
+        <div role="status" className="bg-gypi-green-s rounded-2xl text-center py-14 px-4" style={{ border: `1px solid ${C.green}33` }}>
+          <div className="text-[52px] mb-3.5" aria-hidden="true">✅</div>
           <p className="m-0 text-xl font-heading font-bold text-gypi-green">Reporte enviado</p>
           <p className="mt-2 text-gypi-dim text-[13px]">Se guardó correctamente{fotos.length > 0 ? ` con ${fotos.length} foto${fotos.length > 1 ? "s" : ""}` : ""}</p>
         </div>
       )}
-    </div>
+    </section>
   );
 }

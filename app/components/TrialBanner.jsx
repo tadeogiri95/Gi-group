@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { C, fH, fB } from "../lib/theme";
+import { C, fB } from "../lib/theme";
 import { getToken } from "../lib/supabase";
 
 /**
@@ -30,8 +30,8 @@ export default function TrialBanner({ onUpgrade }) {
     const urgente = info.dias_restantes <= 3;
     const color = urgente ? C.red : C.amber;
     return (
-      <div style={{ background: `${color}10`, border: `1px solid ${color}40`, borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 22, flexShrink: 0 }}>{urgente ? "⚠️" : "🎁"}</span>
+      <div role="status" aria-live="polite" style={{ background: `${color}10`, border: `1px solid ${color}40`, borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+        <span aria-hidden="true" style={{ fontSize: 22, flexShrink: 0 }}>{urgente ? "⚠️" : "🎁"}</span>
         <div style={{ flex: 1, fontFamily: fB }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
             {info.dias_restantes === 0
@@ -48,7 +48,7 @@ export default function TrialBanner({ onUpgrade }) {
           Suscribirme
         </button>
         {!urgente && (
-          <button onClick={() => setDismissed(true)} style={{ flexShrink: 0, background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: 4 }}>✕</button>
+          <button onClick={() => setDismissed(true)} aria-label="Cerrar aviso" style={{ flexShrink: 0, background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: 4 }}>✕</button>
         )}
       </div>
     );
@@ -57,8 +57,8 @@ export default function TrialBanner({ onUpgrade }) {
   // ─── Suscripción vencida ───
   if (info.estado === "vencida") {
     return (
-      <div style={{ background: `${C.red}12`, border: `1px solid ${C.red}50`, borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 22, flexShrink: 0 }}>🔒</span>
+      <div role="alert" style={{ background: `${C.red}12`, border: `1px solid ${C.red}50`, borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+        <span aria-hidden="true" style={{ fontSize: 22, flexShrink: 0 }}>🔒</span>
         <div style={{ flex: 1, fontFamily: fB }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Tu prueba terminó</div>
           <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>
