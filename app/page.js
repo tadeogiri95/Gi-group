@@ -216,10 +216,10 @@ export default function Landing() {
   ];
 
   const KPIS = [
-    { value: 500, suffix: "+", label: "Empresas activas" },
-    { value: 12000, suffix: "+", label: "Fichajes diarios" },
+    { value: 14, suffix: " días", label: "Trial Pro gratis" },
+    { value: 50, suffix: "+", label: "Empleados por plan" },
     { value: 99, suffix: "%", label: "Uptime garantizado" },
-    { value: 4, suffix: ".8★", label: "Satisfacción" },
+    { value: 0, suffix: "$", label: "Setup — sin costo" },
   ];
 
   const sectionPad = { padding: "80px 24px", maxWidth: 1100, margin: "0 auto" };
@@ -436,7 +436,7 @@ export default function Landing() {
         <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${C.surface}, ${C.surfHi})`, borderRadius: 28, border: `1px solid ${C.border}` }}>
           <h2 style={{ fontFamily: fH, fontSize: 28, fontWeight: 800, margin: "0 0 12px" }}>¿Listo para transformar tu gestión?</h2>
           <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.6, margin: "0 0 28px" }}>
-            Unite a las empresas que ya gestionan su equipo con Gypi. Plan Free sin límite de tiempo.
+            Empezá con 14 días de trial Pro gratis. Plan Free disponible sin límite de tiempo.
           </p>
           <button onClick={() => setShowRegistro(true)}
             style={{ padding: "16px 40px", borderRadius: 14, background: C.amber, color: C.amberText, border: "none", fontSize: 17, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
