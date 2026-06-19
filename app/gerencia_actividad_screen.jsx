@@ -5,31 +5,21 @@ import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { hoyArg } from "./lib/dates";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  green: "#16A34A",
-  red: "#DC2626",
-  redS: "rgba(220,38,38,0.10)",
-  greenS: "rgba(22,163,74,0.10)",
-  cyan: "#0891B2",
-  violet: "#7C3AED",
-  dim: "var(--color-text-dim)",
-  mute: "var(--color-text-muted)",
-  text: "var(--color-text)",
-  surface: "var(--color-surface)",
-  surfLo: "var(--color-surf-lo)",
-  surfHi: "var(--color-surf-hi)",
-  border: "var(--color-border)",
-  bg: "var(--color-bg)",
-};
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const GREEN = "#16A34A";
+const RED = "#DC2626";
+const RED_S = "rgba(220,38,38,0.10)";
+const GREEN_S = "rgba(22,163,74,0.10)";
+const CYAN = "#0891B2";
+const VIOLET = "#7C3AED";
 
 /* ═══ CONSTANTES ═══ */
 const CAUSAS_MAP = { M: "Falta material", H: "Falta herramienta", I: "Indicación", O: "Otro" };
 const TIPOS_MAP = {
-  N: { nombre: "Normal", color: V.green },
-  R: { nombre: "Retrabajo", color: V.red },
-  E: { nombre: "Error", color: V.amber },
-  C: { nombre: "Cambio", color: V.violet },
+  N: { nombre: "Normal", color: GREEN },
+  R: { nombre: "Retrabajo", color: RED },
+  E: { nombre: "Error", color: AMBER },
+  C: { nombre: "Cambio", color: VIOLET },
 };
 
 const fmtElapsed = (seconds) => {
@@ -124,7 +114,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
   };
 
   const datos = division === "todas" ? resumen : resumen.filter(r => r.division === division);
-  const getEtapa = (div, codigo) => etapas.find(e => e.division === div && e.codigo === codigo) || { nombre: "?", icon: "❓", color: V.dim };
+  const getEtapa = (div, codigo) => etapas.find(e => e.division === div && e.codigo === codigo) || { nombre: "?", icon: "❓", color: "var(--color-text-dim)" };
 
   const totalOperarios = datos.length;
   const enActividad = datos.filter(r => r.etapa_actual != null && r.etapa_actual > 0).length;
@@ -140,9 +130,9 @@ export default function GerenciaActividadScreen({ empresaId }) {
   });
 
   const getTipoActividad = (etapaCodigo) => {
-    if (etapaCodigo === 0) return { label: "Espera", color: V.red, bg: V.redS };
-    if (etapaCodigo > 0) return { label: "Productivo", color: V.green, bg: V.greenS };
-    return { label: "Improductivo", color: V.mute, bg: V.surfLo };
+    if (etapaCodigo === 0) return { label: "Espera", color: RED, bg: RED_S };
+    if (etapaCodigo > 0) return { label: "Productivo", color: GREEN, bg: GREEN_S };
+    return { label: "Improductivo", color: "var(--color-text-muted)", bg: "var(--color-surf-lo)" };
   };
 
   /* ═══ RENDER ═══ */
@@ -151,7 +141,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
       {/* Filtros */}
       <div role="group" aria-label="Filtros por división" className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
         {DIVISIONES.map(d => (
-          <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || V.amber}>
+          <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || AMBER}>
             {d.icon ? `${d.icon} ` : ""}{d.label}
           </Chip>
         ))}
@@ -180,7 +170,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
             </div>
             <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
               <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.08em]">% Productivo</div>
-              <div className="font-heading text-[28px] font-bold mt-1" style={{ color: (totalMinProd + totalMinEspera) > 0 ? (totalMinProd / (totalMinProd + totalMinEspera) >= 0.7 ? V.green : V.amber) : V.mute }}>
+              <div className="font-heading text-[28px] font-bold mt-1" style={{ color: (totalMinProd + totalMinEspera) > 0 ? (totalMinProd / (totalMinProd + totalMinEspera) >= 0.7 ? GREEN : AMBER) : "var(--color-text-muted)" }}>
                 {(totalMinProd + totalMinEspera) > 0 ? Math.round(totalMinProd * 100 / (totalMinProd + totalMinEspera)) : 0}%
               </div>
               <div className="text-[11px] text-gypi-dim mt-0.5">prod / (prod+espera)</div>
@@ -198,7 +188,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
             </div>
           ) : (
             Object.entries(porDivision).sort(([a], [b]) => a.localeCompare(b)).map(([div, operarios]) => {
-              const divInfo = DIVISIONES.find(d => d.id === div) || { label: div, icon: "📦", color: V.dim };
+              const divInfo = DIVISIONES.find(d => d.id === div) || { label: div, icon: "📦", color: "var(--color-text-dim)" };
               return (
                 <div key={div} className="mb-5">
                   {division === "todas" && (
@@ -226,7 +216,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
 
                         return (
                           <div key={op.empleado_id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{
-                            border: `1px solid ${tieneActiva ? (isEspera ? `${V.red}30` : `${etapa?.color}30`) : V.border}`,
+                            border: `1px solid ${tieneActiva ? (isEspera ? `${RED}30` : `${etapa?.color}30`) : "var(--color-border)"}`,
                           }}>
                             {/* Card clickeable */}
                             <div
@@ -242,8 +232,8 @@ export default function GerenciaActividadScreen({ empresaId }) {
                               {/* Row 1: nombre + estado */}
                               <div className="flex items-center gap-2.5 mb-2">
                                 <div className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center font-heading text-xs font-bold" style={{
-                                  background: tieneActiva ? (isEspera ? V.redS : `${etapa?.color}22`) : V.surfLo,
-                                  color: tieneActiva ? (isEspera ? V.red : etapa?.color) : V.mute,
+                                  background: tieneActiva ? (isEspera ? RED_S : `${etapa?.color}22`) : "var(--color-surf-lo)",
+                                  color: tieneActiva ? (isEspera ? RED : etapa?.color) : "var(--color-text-muted)",
                                 }}>
                                   {tieneActiva ? etapa?.icon : nombre.split(" ").map(w => w[0]).slice(0, 2).join("")}
                                 </div>
@@ -259,13 +249,13 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                   {tieneActiva ? (
                                     <div className="text-right">
                                       {isEspera ? (
-                                        <Tag color={V.red}>⏸ Espera</Tag>
+                                        <Tag color={RED}>⏸ Espera</Tag>
                                       ) : (
                                         <Tag color={etapa?.color}>● {fmtElapsed(elapsedSec)}</Tag>
                                       )}
                                     </div>
                                   ) : (
-                                    <Tag color={V.mute}>—</Tag>
+                                    <Tag color={"var(--color-text-muted)"}>—</Tag>
                                   )}
                                   <span className="text-[10px] text-gypi-mute" style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
                                 </div>
@@ -284,14 +274,14 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                   <span className="font-mono font-semibold text-gypi-text">{fmtMinutos(parseFloat(op.minutos_espera))}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <span className="font-mono font-bold" style={{ color: pctProd >= 80 ? V.green : pctProd >= 60 ? V.amber : V.red }}>{Math.round(pctProd)}%</span>
+                                  <span className="font-mono font-bold" style={{ color: pctProd >= 80 ? GREEN : pctProd >= 60 ? AMBER : RED }}>{Math.round(pctProd)}%</span>
                                 </div>
                               </div>
 
                               {/* Progress bar */}
                               <div className="mt-2 h-1 rounded-sm bg-gypi-surf-hi overflow-hidden">
                                 <div className="h-full rounded-sm transition-[width] duration-500" style={{
-                                  background: pctProd >= 80 ? V.green : pctProd >= 60 ? V.amber : V.red,
+                                  background: pctProd >= 80 ? GREEN : pctProd >= 60 ? AMBER : RED,
                                   width: `${Math.min(pctProd, 100)}%`,
                                 }} />
                               </div>
@@ -299,7 +289,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
 
                             {/* ═══ PANEL DE DETALLE EXPANDIBLE ═══ */}
                             {isExpanded && (
-                              <div style={{ borderTop: `1px solid ${V.border}`, background: V.surfLo, padding: "12px 14px" }}>
+                              <div style={{ borderTop: `1px solid ${"var(--color-border)"}`, background: "var(--color-surf-lo)", padding: "12px 14px" }}>
                                 {/* Fichada del día */}
                                 {fichadaDetalle && (
                                   <div className="flex flex-wrap gap-2.5 mb-3 text-[11px]">
@@ -318,13 +308,13 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                       </div>
                                     )}
                                     {parseFloat(fichadaDetalle.horas_extra) > 0 && (
-                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: `${V.amber}20` }}>
-                                        <span className="font-bold" style={{ color: V.amber }}>+{parseFloat(fichadaDetalle.horas_extra).toFixed(1)}h extra</span>
+                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: `${AMBER}20` }}>
+                                        <span className="font-bold" style={{ color: AMBER }}>+{parseFloat(fichadaDetalle.horas_extra).toFixed(1)}h extra</span>
                                       </div>
                                     )}
                                     {fichadaDetalle.llegada_tarde && (
-                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: V.redS }}>
-                                        <span className="font-bold" style={{ color: V.red }}>Tarde {fichadaDetalle.minutos_tarde}min</span>
+                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: RED_S }}>
+                                        <span className="font-bold" style={{ color: RED }}>Tarde {fichadaDetalle.minutos_tarde}min</span>
                                       </div>
                                     )}
                                   </div>
@@ -357,8 +347,8 @@ export default function GerenciaActividadScreen({ empresaId }) {
 
                                       return (
                                         <div key={act.id || idx} className="rounded-[10px] p-2.5" style={{
-                                          background: V.surface,
-                                          border: `1px solid ${enCurso ? `${tipoAct.color}40` : V.border}`,
+                                          background: "var(--color-surface)",
+                                          border: `1px solid ${enCurso ? `${tipoAct.color}40` : "var(--color-border)"}`,
                                         }}>
                                           {/* Línea 1: horario + tipo */}
                                           <div className="flex items-center gap-2 mb-1">
@@ -369,7 +359,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                               {tipoAct.label}
                                             </span>
                                             {enCurso && (
-                                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${V.amber}20`, color: V.amber }}>
+                                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${AMBER}20`, color: AMBER }}>
                                                 EN CURSO
                                               </span>
                                             )}
@@ -378,7 +368,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                           {/* Línea 2: proyecto + etapa + duración */}
                                           <div className="flex items-center gap-1.5 text-[11px]">
                                             {act.codigo_proyecto && (
-                                              <span className="font-mono font-semibold" style={{ color: V.amber }}>
+                                              <span className="font-mono font-semibold" style={{ color: AMBER }}>
                                                 OT {act.codigo_proyecto}
                                               </span>
                                             )}
@@ -388,7 +378,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                               </span>
                                             )}
                                             {act.etapa === 0 && (
-                                              <span style={{ color: V.red }}>⏸ En espera</span>
+                                              <span style={{ color: RED }}>⏸ En espera</span>
                                             )}
                                             <span className="ml-auto font-mono font-semibold text-gypi-text">
                                               {fmtMinutos(durMin)}
@@ -420,16 +410,16 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                     })}
 
                                     {/* Resumen del detalle */}
-                                    <div className="mt-1 pt-2 flex gap-3 text-[10px] text-gypi-dim" style={{ borderTop: `1px solid ${V.border}` }}>
+                                    <div className="mt-1 pt-2 flex gap-3 text-[10px] text-gypi-dim" style={{ borderTop: `1px solid ${"var(--color-border)"}` }}>
                                       <span>{actividades.length} actividad{actividades.length !== 1 ? "es" : ""}</span>
                                       <span>·</span>
-                                      <span className="font-semibold" style={{ color: V.green }}>
+                                      <span className="font-semibold" style={{ color: GREEN }}>
                                         {fmtMinutos(actividades.filter(a => a.etapa > 0).reduce((s, a) => {
                                           const d = a.duracion_min ? parseFloat(a.duracion_min) : a.hora_fin ? (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000 : (Date.now() - new Date(a.hora_inicio).getTime()) / 60000;
                                           return s + d;
                                         }, 0))} prod
                                       </span>
-                                      <span className="font-semibold" style={{ color: V.red }}>
+                                      <span className="font-semibold" style={{ color: RED }}>
                                         {fmtMinutos(actividades.filter(a => a.etapa === 0).reduce((s, a) => {
                                           const d = a.duracion_min ? parseFloat(a.duracion_min) : a.hora_fin ? (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000 : (Date.now() - new Date(a.hora_inicio).getTime()) / 60000;
                                           return s + d;

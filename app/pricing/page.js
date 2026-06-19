@@ -2,19 +2,17 @@ import Link from "next/link";
 import { fH, fB } from "../lib/theme";
 import { PLANES } from "../lib/plans";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  amberText: "#000",
-  violet: "var(--color-empresa-secondary, #7C3AED)",
-  green: "#16A34A",
-  mute: "var(--color-text-muted)",
-  dim: "var(--color-text-dim)",
-  text: "var(--color-text)",
-  bg: "var(--color-bg)",
-  surface: "var(--color-surface)",
-  surfHi: "var(--color-surface-hi)",
-  border: "var(--color-border)",
-};
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const AMBER_TEXT = "#000";
+const VIOLET = "var(--color-empresa-secondary, #7C3AED)";
+const GREEN = "#16A34A";
+const MUTE = "var(--color-text-muted)";
+const DIM = "var(--color-text-dim)";
+const TEXT = "var(--color-text)";
+const BG = "var(--color-bg)";
+const SURFACE = "var(--color-surface)";
+const SURF_HI = "var(--color-surface-hi)";
+const BORDER = "var(--color-border)";
 
 const SITE_URL = "https://gypi.app";
 const TITLE = "Precios — Gypi";
@@ -67,10 +65,10 @@ const FILAS = [
 ];
 
 function Celda({ value }) {
-  if (typeof value === "string") return <span style={{ fontSize: 13, color: V.text }}>{value}</span>;
+  if (typeof value === "string") return <span style={{ fontSize: 13, color: TEXT }}>{value}</span>;
   return value
-    ? <span style={{ color: V.green, fontSize: 16 }}>✓</span>
-    : <span style={{ color: V.mute, fontSize: 16 }}>–</span>;
+    ? <span style={{ color: GREEN, fontSize: 16 }}>✓</span>
+    : <span style={{ color: MUTE, fontSize: 16 }}>–</span>;
 }
 
 export default function PricingPage() {
@@ -89,21 +87,21 @@ export default function PricingPage() {
   };
 
   return (
-    <div style={{ background: V.bg, color: V.text, minHeight: "100dvh", fontFamily: fB }}>
+    <div style={{ background: BG, color: TEXT, minHeight: "100dvh", fontFamily: fB }}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <header style={{ padding: "24px 24px 0", maxWidth: 1100, margin: "0 auto" }}>
         <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg,${V.amber},${V.violet})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ fontFamily: fH, fontSize: 12, fontWeight: 800, color: "#000" }}>G</span>
           </div>
-          <span style={{ fontFamily: fH, fontSize: 15, fontWeight: 700, color: V.text }}>Gypi</span>
+          <span style={{ fontFamily: fH, fontSize: 15, fontWeight: 700, color: TEXT }}>Gypi</span>
         </Link>
       </header>
 
       <section style={{ padding: "48px 24px 16px", maxWidth: 1100, margin: "0 auto", textAlign: "center" }}>
         <h1 style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, margin: "0 0 8px" }}>Planes simples, sin sorpresas</h1>
-        <p style={{ fontSize: 15, color: V.dim, maxWidth: 520, margin: "0 auto" }}>
+        <p style={{ fontSize: 15, color: DIM, maxWidth: 520, margin: "0 auto" }}>
           Empezá gratis y escalá cuando lo necesites. Todos los planes pagos incluyen soporte.
         </p>
       </section>
@@ -116,29 +114,29 @@ export default function PricingPage() {
             return (
               <div key={id} style={{
                 padding: 28, borderRadius: 20,
-                background: isPopular ? `linear-gradient(160deg, ${V.surface}, ${V.surfHi})` : V.surface,
-                border: isPopular ? `2px solid ${V.amber}` : `1px solid ${V.border}`,
+                background: isPopular ? `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})` : SURFACE,
+                border: isPopular ? `2px solid ${AMBER}` : `1px solid ${BORDER}`,
                 position: "relative",
               }}>
                 {isPopular && (
-                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: V.amber, color: V.amberText, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
+                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: AMBER, color: AMBER_TEXT, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
                     POPULAR
                   </div>
                 )}
                 <h2 style={{ fontFamily: fH, fontSize: 20, fontWeight: 700, margin: isPopular ? "8px 0 4px" : "0 0 4px" }}>{p.nombre}</h2>
-                <div style={{ fontSize: 13, color: V.dim, marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: DIM, marginBottom: 16 }}>
                   Hasta {p.max_empleados >= 99999 ? "ilimitados" : p.max_empleados} empleados
                 </div>
                 <div style={{ marginBottom: 20 }}>
-                  <span style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, color: isPopular ? V.amber : V.text }}>
+                  <span style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, color: isPopular ? AMBER : TEXT }}>
                     {formatPrecio(p.precio)}
                   </span>
                 </div>
                 <Link href="/" style={{
                   display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 12,
                   textDecoration: "none", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                  background: isPopular ? V.amber : V.surfHi,
-                  color: isPopular ? "#000" : V.text,
+                  background: isPopular ? AMBER : SURF_HI,
+                  color: isPopular ? "#000" : TEXT,
                 }}>
                   {id === "free" ? "Empezar gratis" : id === "enterprise" ? "Contactanos" : "Elegir plan"}
                 </Link>
@@ -154,9 +152,9 @@ export default function PricingPage() {
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 12, color: V.dim, fontWeight: 600, borderBottom: `1px solid ${V.border}` }}>Característica</th>
+              <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 12, color: DIM, fontWeight: 600, borderBottom: `1px solid ${BORDER}` }}>Característica</th>
               {PLAN_IDS.map((id) => (
-                <th key={id} style={{ textAlign: "center", padding: "10px 12px", fontSize: 13, color: V.text, fontWeight: 700, borderBottom: `1px solid ${V.border}` }}>
+                <th key={id} style={{ textAlign: "center", padding: "10px 12px", fontSize: 13, color: TEXT, fontWeight: 700, borderBottom: `1px solid ${BORDER}` }}>
                   {PLANES[id].nombre}
                 </th>
               ))}
@@ -165,9 +163,9 @@ export default function PricingPage() {
           <tbody>
             {FILAS.map((fila) => (
               <tr key={fila.label}>
-                <td style={{ padding: "10px 12px", fontSize: 13, color: V.dim, borderBottom: `1px solid ${V.border}` }}>{fila.label}</td>
+                <td style={{ padding: "10px 12px", fontSize: 13, color: DIM, borderBottom: `1px solid ${BORDER}` }}>{fila.label}</td>
                 {PLAN_IDS.map((id) => (
-                  <td key={id} style={{ textAlign: "center", padding: "10px 12px", borderBottom: `1px solid ${V.border}` }}>
+                  <td key={id} style={{ textAlign: "center", padding: "10px 12px", borderBottom: `1px solid ${BORDER}` }}>
                     <Celda value={fila.get(PLANES[id])} />
                   </td>
                 ))}
@@ -178,19 +176,19 @@ export default function PricingPage() {
       </section>
 
       <section style={{ padding: "0 24px 80px", textAlign: "center" }}>
-        <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${V.surface}, ${V.surfHi})`, borderRadius: 28, border: `1px solid ${V.border}` }}>
+        <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})`, borderRadius: 28, border: `1px solid ${BORDER}` }}>
           <h2 style={{ fontFamily: fH, fontSize: 24, fontWeight: 800, margin: "0 0 12px" }}>¿Listo para transformar tu gestión?</h2>
-          <p style={{ fontSize: 15, color: V.dim, lineHeight: 1.6, margin: "0 0 28px" }}>
+          <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, margin: "0 0 28px" }}>
             Unite a las empresas que ya gestionan su equipo con Gypi. Plan Free sin límite de tiempo.
           </p>
-          <Link href="/" style={{ display: "inline-block", padding: "16px 40px", borderRadius: 14, background: V.amber, color: V.amberText, textDecoration: "none", fontSize: 17, fontWeight: 700, fontFamily: fH }}>
+          <Link href="/" style={{ display: "inline-block", padding: "16px 40px", borderRadius: 14, background: AMBER, color: AMBER_TEXT, textDecoration: "none", fontSize: 17, fontWeight: 700, fontFamily: fH }}>
             Crear mi empresa gratis
           </Link>
         </div>
       </section>
 
-      <footer style={{ padding: "24px", borderTop: `1px solid ${V.border}`, textAlign: "center", fontSize: 12, color: V.dim }}>
-        <Link href="/" style={{ color: V.dim, textDecoration: "none" }}>Gypi</Link> · <Link href="/privacy" style={{ color: V.dim, textDecoration: "none" }}>Privacidad</Link> · <Link href="/terms" style={{ color: V.dim, textDecoration: "none" }}>Términos</Link>
+      <footer style={{ padding: "24px", borderTop: `1px solid ${BORDER}`, textAlign: "center", fontSize: 12, color: DIM }}>
+        <Link href="/" style={{ color: DIM, textDecoration: "none" }}>Gypi</Link> · <Link href="/privacy" style={{ color: DIM, textDecoration: "none" }}>Privacidad</Link> · <Link href="/terms" style={{ color: DIM, textDecoration: "none" }}>Términos</Link>
       </footer>
     </div>
   );

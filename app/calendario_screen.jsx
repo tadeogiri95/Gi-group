@@ -3,18 +3,11 @@ import { sb } from "./lib/supabase";
 import { hoyArg } from "./lib/dates";
 import { Chip } from "./components/ui";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  green: "#16A34A",
-  red: "#DC2626",
-  cyan: "#0891B2",
-  violet: "#7C3AED",
-  dim: "var(--color-text-dim)",
-  mute: "var(--color-text-muted)",
-  text: "var(--color-text)",
-  surface: "var(--color-surface)",
-  border: "var(--color-border)",
-};
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const GREEN = "#16A34A";
+const RED = "#DC2626";
+const CYAN = "#0891B2";
+const VIOLET = "#7C3AED";
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
@@ -51,7 +44,7 @@ function getHorario(diagrama, fecha) {
 function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
   const [empId, setEmpId] = useState("");
   const [texto, setTexto] = useState("");
-  const [color, setColor] = useState(V.amber);
+  const [color, setColor] = useState(AMBER);
 
   const fechaStr = fecha.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
   const notasDelDia = notas.filter(n => n.fecha === fecha.toISOString().slice(0, 10));
@@ -69,8 +62,8 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
             {notasDelDia.map((n, i) => {
               const emp = empleados.find(e => e.id === n.empleado_id);
               return (
-                <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${n.color || V.amber}12`, border: `1px solid ${n.color || V.amber}30` }}>
-                  <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: n.color || V.amber }} />
+                <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${n.color || AMBER}12`, border: `1px solid ${n.color || AMBER}30` }}>
+                  <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: n.color || AMBER }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold text-gypi-text">{n.texto}</div>
                     {emp && <div className="text-[10px] text-gypi-dim mt-0.5">{emp.apodo || emp.nombre}</div>}
@@ -98,7 +91,7 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
         <div className="mb-4">
           <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Color</label>
           <div className="flex gap-2">
-            {[V.amber, V.green, V.cyan, V.violet, V.red].map(c => (
+            {[AMBER, GREEN, CYAN, VIOLET, RED].map(c => (
               <button key={c} onClick={() => setColor(c)} className="w-8 h-8 rounded-[10px] cursor-pointer flex items-center justify-center" style={{ background: `${c}22`, border: `2px solid ${color === c ? c : "transparent"}` }}>
                 <div className="w-3.5 h-3.5 rounded-full" style={{ background: c }} />
               </button>
@@ -107,8 +100,8 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
         </div>
 
         <button onClick={() => { if (texto.trim()) onSave({ fecha: fecha.toISOString().slice(0, 10), empleado_id: empId || null, texto: texto.trim(), color }); }} disabled={!texto.trim() || saving} className="w-full p-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer" style={{
-          background: texto.trim() && !saving ? V.amber : V.surface,
-          color: texto.trim() && !saving ? "#000" : V.mute,
+          background: texto.trim() && !saving ? AMBER : "var(--color-surface)",
+          color: texto.trim() && !saving ? "#000" : "var(--color-text-muted)",
         }}>
           {saving ? "Guardando..." : "Agregar nota"}
         </button>
@@ -142,13 +135,13 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
             {turnosDia.map((t, i) => {
               const emp = empleados.find(e => e.id === t.empleado_id);
               return (
-                <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${V.cyan}10`, border: `1px solid ${V.cyan}25` }}>
-                  <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: V.cyan }} />
+                <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${CYAN}10`, border: `1px solid ${CYAN}25` }}>
+                  <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: CYAN }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold text-gypi-text">{emp?.nombre || "?"}</div>
                     <div className="text-[10px] text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
                   </div>
-                  <button onClick={() => onDelete(t.id)} aria-label="Eliminar turno" className="text-[10px] px-2 py-1 rounded-md border-none cursor-pointer" style={{ background: `${V.red}15`, color: V.red }}>✕</button>
+                  <button onClick={() => onDelete(t.id)} aria-label="Eliminar turno" className="text-[10px] px-2 py-1 rounded-md border-none cursor-pointer" style={{ background: `${RED}15`, color: RED }}>✕</button>
                 </div>
               );
             })}
@@ -180,8 +173,8 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
         </div>
 
         <button onClick={() => { if (empId) onSave({ fecha: fecha.toISOString().slice(0, 10), empleado_id: empId, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota.trim() }); }} disabled={!empId || saving} className="w-full p-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer" style={{
-          background: empId && !saving ? V.cyan : V.surface,
-          color: empId && !saving ? "#000" : V.mute,
+          background: empId && !saving ? CYAN : "var(--color-surface)",
+          color: empId && !saving ? "#000" : "var(--color-text-muted)",
         }}>
           {saving ? "Guardando..." : "Asignar turno"}
         </button>
@@ -253,9 +246,9 @@ export default function CalendarioScreen({ empresaId }) {
       await sb.post("notas_calendario", payload);
       await cargarDatos();
       setSelectedDate(null);
-      showToast("✅ Nota agregada", V.green);
+      showToast("✅ Nota agregada", GREEN);
     } catch (e) {
-      showToast(`Error: ${e.message}`, V.red);
+      showToast(`Error: ${e.message}`, RED);
     } finally { setSaving(false); }
   };
 
@@ -265,12 +258,12 @@ export default function CalendarioScreen({ empresaId }) {
       const payload = empresaId ? { ...turno, empresa_id: empresaId } : turno;
       await sb.post("turnos_planificados", payload);
       await cargarDatos();
-      showToast("✅ Turno asignado", V.cyan);
+      showToast("✅ Turno asignado", CYAN);
     } catch (e) {
       if (e.message?.includes("duplicate") || e.message?.includes("unique")) {
-        showToast("Ya tiene turno asignado ese día", V.amber);
+        showToast("Ya tiene turno asignado ese día", AMBER);
       } else {
-        showToast(`Error: ${e.message}`, V.red);
+        showToast(`Error: ${e.message}`, RED);
       }
     } finally { setSaving(false); }
   };
@@ -279,9 +272,9 @@ export default function CalendarioScreen({ empresaId }) {
     try {
       await sb.del(`turnos_planificados?id=eq.${turnoId}`);
       await cargarDatos();
-      showToast("Turno eliminado", V.mute);
+      showToast("Turno eliminado", "var(--color-text-muted)");
     } catch (e) {
-      showToast(`Error: ${e.message}`, V.red);
+      showToast(`Error: ${e.message}`, RED);
     }
   };
 
@@ -335,7 +328,7 @@ export default function CalendarioScreen({ empresaId }) {
       {/* Filtro división */}
       <div className="flex gap-1 mb-3 overflow-x-auto pb-0.5">
         {DIVISIONES.map(d => (
-          <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || V.cyan}>{d.label}</Chip>
+          <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || CYAN}>{d.label}</Chip>
         ))}
       </div>
 
@@ -361,15 +354,15 @@ export default function CalendarioScreen({ empresaId }) {
 
               return (
                 <button key={dia} onClick={() => setVistaDetalle(vistaDetalle === dia ? null : dia)} aria-label={`${dia} de ${MESES[month]}${isHoy ? ' (hoy)' : ''}`} aria-pressed={vistaDetalle === dia} className="py-1.5 px-0.5 rounded-[10px] cursor-pointer flex flex-col items-center gap-0.5 min-h-[52px] transition-all duration-150" style={{
-                  border: isHoy ? `2px solid ${V.amber}` : `1px solid ${V.border}`,
-                  background: isHoy ? `${V.amber}12` : tieneNotas ? `${V.cyan}08` : V.surface,
+                  border: isHoy ? `2px solid ${AMBER}` : `1px solid ${"var(--color-border)"}`,
+                  background: isHoy ? `${AMBER}12` : tieneNotas ? `${CYAN}08` : "var(--color-surface)",
                 }}>
-                  <div className="font-heading" style={{ fontSize: 14, fontWeight: isHoy ? 800 : 600, color: isHoy ? V.amber : esFinDeSemana ? V.mute : V.text }}>{dia}</div>
-                  {info.disponibles > 0 && <div className="text-[8px] font-bold" style={{ color: V.green }}>{info.disponibles}👷</div>}
-                  {info.turnos.length > 0 && <div className="text-[8px] font-bold" style={{ color: V.cyan }}>{info.turnos.length}⏱</div>}
+                  <div className="font-heading" style={{ fontSize: 14, fontWeight: isHoy ? 800 : 600, color: isHoy ? AMBER : esFinDeSemana ? "var(--color-text-muted)" : "var(--color-text)" }}>{dia}</div>
+                  {info.disponibles > 0 && <div className="text-[8px] font-bold" style={{ color: GREEN }}>{info.disponibles}👷</div>}
+                  {info.turnos.length > 0 && <div className="text-[8px] font-bold" style={{ color: CYAN }}>{info.turnos.length}⏱</div>}
                   {tieneNotas && (
                     <div className="flex gap-0.5">
-                      {info.notas.slice(0, 3).map((n, i) => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: n.color || V.amber }} />)}
+                      {info.notas.slice(0, 3).map((n, i) => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: n.color || AMBER }} />)}
                     </div>
                   )}
                 </button>
@@ -391,8 +384,8 @@ export default function CalendarioScreen({ empresaId }) {
                     <div className="text-[11px] text-gypi-dim mt-0.5">{info.disponibles} disponibles · {info.francos} franco · {info.turnos.length} turno{info.turnos.length !== 1 ? "s" : ""}</div>
                   </div>
                   <div className="flex gap-1.5">
-                    <button onClick={() => setTurnoDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `${V.cyan}22`, color: V.cyan }}>+ Turno</button>
-                    <button onClick={() => setSelectedDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `${V.amber}22`, color: V.amber }}>+ Nota</button>
+                    <button onClick={() => setTurnoDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `${CYAN}22`, color: CYAN }}>+ Turno</button>
+                    <button onClick={() => setSelectedDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `${AMBER}22`, color: AMBER }}>+ Nota</button>
                   </div>
                 </div>
 
@@ -402,7 +395,7 @@ export default function CalendarioScreen({ empresaId }) {
                     {info.turnos.map((t, i) => {
                       const emp = empleados.find(e => e.id === t.empleado_id);
                       return (
-                        <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${V.cyan}10`, borderLeft: `3px solid ${V.cyan}` }}>
+                        <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${CYAN}10`, borderLeft: `3px solid ${CYAN}` }}>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text">{emp?.nombre || "?"} <span className="font-normal text-gypi-dim">· {emp?.division || "sin div."}</span></div>
                             <div className="text-[10px] text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
@@ -418,7 +411,7 @@ export default function CalendarioScreen({ empresaId }) {
                     {info.notas.map((n, i) => {
                       const emp = empleados.find(e => e.id === n.empleado_id);
                       return (
-                        <div key={i} className="p-2 rounded-lg mb-1.5" style={{ background: `${n.color || V.amber}10`, borderLeft: `3px solid ${n.color || V.amber}` }}>
+                        <div key={i} className="p-2 rounded-lg mb-1.5" style={{ background: `${n.color || AMBER}10`, borderLeft: `3px solid ${n.color || AMBER}` }}>
                           <div className="text-xs font-semibold text-gypi-text">{n.texto}</div>
                           {emp && <div className="text-[10px] text-gypi-dim mt-0.5">{emp.apodo || emp.nombre} · {emp.division || "general"}</div>}
                         </div>
@@ -433,9 +426,9 @@ export default function CalendarioScreen({ empresaId }) {
                     const franco = isFranco(emp.diagrama, fecha);
                     const horario = getHorario(emp.diagrama, fecha);
                     return (
-                      <div key={emp.id} className="py-1 px-2 rounded-md flex items-center gap-1" style={{ background: franco ? `${V.mute}15` : `${V.green}12` }}>
-                        <div className="w-[5px] h-[5px] rounded-full" style={{ background: franco ? V.mute : V.green }} />
-                        <span className="text-[10px] font-semibold" style={{ color: franco ? V.mute : V.text }}>{emp.apodo || emp.nombre.split(" ")[0]}</span>
+                      <div key={emp.id} className="py-1 px-2 rounded-md flex items-center gap-1" style={{ background: franco ? `${"var(--color-text-muted)"}15` : `${GREEN}12` }}>
+                        <div className="w-[5px] h-[5px] rounded-full" style={{ background: franco ? "var(--color-text-muted)" : GREEN }} />
+                        <span className="text-[10px] font-semibold" style={{ color: franco ? "var(--color-text-muted)" : "var(--color-text)" }}>{emp.apodo || emp.nombre.split(" ")[0]}</span>
                         {horario && <span className="text-[9px] text-gypi-dim font-mono">{horario.in}</span>}
                       </div>
                     );

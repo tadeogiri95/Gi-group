@@ -5,18 +5,16 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { fH, fB } from "../../lib/theme";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  amberText: "#000",
-  green: "#16A34A",
-  red: "#DC2626",
-  violet: "#7C3AED",
-  dim: "var(--color-text-dim)",
-  mute: "var(--color-text-muted)",
-  text: "var(--color-text)",
-  surface: "var(--color-surface)",
-  border: "var(--color-border)",
-};
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const AMBER_TEXT = "#000";
+const GREEN = "#16A34A";
+const RED = "#DC2626";
+const VIOLET = "#7C3AED";
+const DIM = "var(--color-text-dim)";
+const MUTE = "var(--color-text-muted)";
+const TEXT = "var(--color-text)";
+const SURFACE = "var(--color-surface)";
+const BORDER = "var(--color-border)";
 
 export default function UnirseScreen() {
   const params = useParams();
@@ -84,27 +82,27 @@ export default function UnirseScreen() {
   // Slug inválido
   if (empresaNotFound) {
     return (
-      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, color: V.text, fontFamily: fB, textAlign: "center" }}>
+      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, color: TEXT, fontFamily: fB, textAlign: "center" }}>
         <div style={{ fontSize: 52, marginBottom: 16 }}>🔍</div>
         <h2 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, margin: 0 }}>Empresa no encontrada</h2>
-        <p style={{ color: V.dim, fontSize: 14, marginTop: 8 }}>El enlace <code style={{ color: V.amber }}>gypi.app/{slug}/unirse</code> no es válido.</p>
-        <button onClick={() => router.push("/")} style={{ marginTop: 24, padding: "12px 24px", borderRadius: 12, background: V.amber, color: V.amberText, border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Volver al inicio</button>
+        <p style={{ color: DIM, fontSize: 14, marginTop: 8 }}>El enlace <code style={{ color: AMBER }}>gypi.app/{slug}/unirse</code> no es válido.</p>
+        <button onClick={() => router.push("/")} style={{ marginTop: 24, padding: "12px 24px", borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Volver al inicio</button>
       </div>
     );
   }
 
   if (!empresa) return null;
 
-  const inputStyle = { width: "100%", padding: "14px 16px", borderRadius: 12, background: V.surface, border: `1px solid ${V.border}`, color: V.text, fontSize: 15, fontFamily: fB, outline: "none", boxSizing: "border-box" };
-  const lblStyle = { display: "block", fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 };
+  const inputStyle = { width: "100%", padding: "14px 16px", borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 15, fontFamily: fB, outline: "none", boxSizing: "border-box" };
+  const lblStyle = { display: "block", fontSize: 11, fontWeight: 700, color: DIM, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 };
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "0 28px", justifyContent: "center", color: V.text, fontFamily: fB }}>
+    <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "0 28px", justifyContent: "center", color: TEXT, fontFamily: fB }}>
       {/* Logo */}
       {empresa.logo_url ? (
         <Image src={empresa.logo_url} alt={empresa.nombre_corto} width={72} height={72} style={{ borderRadius: 20, objectFit: "contain", marginBottom: 24 }} />
       ) : (
-        <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg,${V.amber},${V.violet})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", marginBottom: 24 }}>
+        <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", marginBottom: 24 }}>
           <span style={{ fontFamily: fH, fontSize: empresa.nombre_corto?.length > 4 ? 18 : 26, fontWeight: 800 }}>{empresa.nombre_corto || "Gypi"}</span>
         </div>
       )}
@@ -112,8 +110,8 @@ export default function UnirseScreen() {
       {/* STEP 1: Legajo */}
       {step === 1 && (
         <>
-          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 28, fontWeight: 700, color: V.text, letterSpacing: "-0.025em" }}>Unite a {empresa.nombre_corto || empresa.nombre}</h1>
-          <p style={{ fontSize: 13, color: V.dim, marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
+          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 28, fontWeight: 700, color: TEXT, letterSpacing: "-0.025em" }}>Unite a {empresa.nombre_corto || empresa.nombre}</h1>
+          <p style={{ fontSize: 13, color: DIM, marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
             Ingresá tu legajo o DNI para activar tu cuenta. Si no lo sabés, pedíselo a tu administrador.
           </p>
 
@@ -127,15 +125,15 @@ export default function UnirseScreen() {
             style={{ ...inputStyle, marginBottom: 16 }}
           />
 
-          <button onClick={verificarLegajo} disabled={loading || !legajo.trim()} style={{ width: "100%", padding: 14, borderRadius: 12, background: legajo.trim() && !loading ? V.amber : V.surface, color: legajo.trim() && !loading ? V.amberText : V.mute, border: "none", fontSize: 15, fontWeight: 700, cursor: legajo.trim() && !loading ? "pointer" : "default" }}>
+          <button onClick={verificarLegajo} disabled={loading || !legajo.trim()} style={{ width: "100%", padding: 14, borderRadius: 12, background: legajo.trim() && !loading ? AMBER : SURFACE, color: legajo.trim() && !loading ? AMBER_TEXT : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: legajo.trim() && !loading ? "pointer" : "default" }}>
             {loading ? "Verificando..." : "Continuar"}
           </button>
 
-          {error && <div style={{ padding: 12, background: `${V.red}15`, color: V.red, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
+          {error && <div style={{ padding: 12, background: `${RED}15`, color: RED, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
 
-          <div style={{ textAlign: "center", marginTop: 24, fontSize: 13, color: V.dim }}>
+          <div style={{ textAlign: "center", marginTop: 24, fontSize: 13, color: DIM }}>
             ¿Ya tenés cuenta?{" "}
-            <button onClick={() => router.push(`/${slug}`)} style={{ background: "none", border: "none", color: V.amber, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+            <button onClick={() => router.push(`/${slug}`)} style={{ background: "none", border: "none", color: AMBER, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
               Iniciar sesión
             </button>
           </div>
@@ -145,10 +143,10 @@ export default function UnirseScreen() {
       {/* STEP 2: Crear contraseña */}
       {step === 2 && (
         <>
-          <div style={{ width: 56, height: 56, borderRadius: 16, background: `${V.green}22`, display: "flex", alignItems: "center", justifyContent: "center", color: V.green, marginBottom: 16, fontSize: 28 }}>✓</div>
-          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 24, fontWeight: 700, color: V.text }}>¡Hola, {empleado?.apodo || empleado?.nombre}!</h1>
-          <p style={{ fontSize: 13, color: V.dim, marginTop: 8, marginBottom: 24, lineHeight: 1.5 }}>
-            Creá tu contraseña para terminar de activar tu cuenta en <b style={{ color: V.text }}>{empleado?.empresaNombre}</b>.
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: `${GREEN}22`, display: "flex", alignItems: "center", justifyContent: "center", color: GREEN, marginBottom: 16, fontSize: 28 }}>✓</div>
+          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 24, fontWeight: 700, color: TEXT }}>¡Hola, {empleado?.apodo || empleado?.nombre}!</h1>
+          <p style={{ fontSize: 13, color: DIM, marginTop: 8, marginBottom: 24, lineHeight: 1.5 }}>
+            Creá tu contraseña para terminar de activar tu cuenta en <b style={{ color: TEXT }}>{empleado?.empresaNombre}</b>.
           </p>
 
           <div style={{ marginBottom: 14 }}>
@@ -159,15 +157,15 @@ export default function UnirseScreen() {
             <label style={lblStyle}>Confirmar contraseña</label>
             <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === "Enter" && activar()} placeholder="Repetí la contraseña" style={inputStyle} />
           </div>
-          <button onClick={() => setShowPwd(!showPwd)} style={{ background: "none", border: "none", color: V.dim, cursor: "pointer", fontSize: 12, fontFamily: fB, padding: "4px 0", marginBottom: 16, textAlign: "left" }}>
+          <button onClick={() => setShowPwd(!showPwd)} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 12, fontFamily: fB, padding: "4px 0", marginBottom: 16, textAlign: "left" }}>
             {showPwd ? "🙈 Ocultar contraseñas" : "👁️ Mostrar contraseñas"}
           </button>
 
-          <button onClick={activar} disabled={loading || !password || !confirm} style={{ width: "100%", padding: 14, borderRadius: 12, background: password && confirm && !loading ? V.green : V.surface, color: password && confirm && !loading ? "#000" : V.mute, border: "none", fontSize: 15, fontWeight: 700, cursor: password && confirm && !loading ? "pointer" : "default" }}>
+          <button onClick={activar} disabled={loading || !password || !confirm} style={{ width: "100%", padding: 14, borderRadius: 12, background: password && confirm && !loading ? GREEN : SURFACE, color: password && confirm && !loading ? "#000" : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: password && confirm && !loading ? "pointer" : "default" }}>
             {loading ? "Activando..." : "🚀 Activar mi cuenta"}
           </button>
 
-          {error && <div style={{ padding: 12, background: `${V.red}15`, color: V.red, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
+          {error && <div style={{ padding: 12, background: `${RED}15`, color: RED, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
         </>
       )}
 
@@ -175,8 +173,8 @@ export default function UnirseScreen() {
       {step === 3 && (
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
-          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 26, fontWeight: 700, color: V.green }}>¡Cuenta activada!</h1>
-          <p style={{ fontSize: 14, color: V.dim, marginTop: 12 }}>Redirigiendo al login...</p>
+          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 26, fontWeight: 700, color: GREEN }}>¡Cuenta activada!</h1>
+          <p style={{ fontSize: 14, color: DIM, marginTop: 12 }}>Redirigiendo al login...</p>
         </div>
       )}
     </div>

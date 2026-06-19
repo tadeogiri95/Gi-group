@@ -4,28 +4,26 @@ import { useRouter } from "next/navigation";
 import { fH, fB } from "./lib/theme";
 import { PLANES, precioAnual } from "./lib/plans";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  amberText: "#000",
-  amberS: "var(--color-empresa-primary-subtle, rgba(249,115,22,0.12))",
-  violet: "var(--color-empresa-secondary, #7C3AED)",
-  violetS: "var(--color-empresa-secondary-subtle, rgba(124,58,237,0.12))",
-  green: "#16A34A",
-  red: "#DC2626",
-  redS: "rgba(220,38,38,0.12)",
-  dim: "var(--color-text-dim)",
-  mute: "var(--color-text-muted)",
-  text: "var(--color-text)",
-  bg: "var(--color-bg)",
-  surface: "var(--color-surface)",
-  surfHi: "var(--color-surface-hi)",
-  border: "var(--color-border)",
-};
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const AMBER_TEXT = "#000";
+const AMBER_S = "var(--color-empresa-primary-subtle, rgba(249,115,22,0.12))";
+const VIOLET = "var(--color-empresa-secondary, #7C3AED)";
+const VIOLET_S = "var(--color-empresa-secondary-subtle, rgba(124,58,237,0.12))";
+const GREEN = "#16A34A";
+const RED = "#DC2626";
+const RED_S = "rgba(220,38,38,0.12)";
+const DIM = "var(--color-text-dim)";
+const MUTE = "var(--color-text-muted)";
+const TEXT = "var(--color-text)";
+const BG = "var(--color-bg)";
+const SURFACE = "var(--color-surface)";
+const SURF_HI = "var(--color-surface-hi)";
+const BORDER = "var(--color-border)";
 
 /* ═══════════════════════════════════════════════════
    SVG Icons (inline para zero deps)
    ═══════════════════════════════════════════════════ */
-const Icon = ({ d, size = 22, color = V.amber }) => (
+const Icon = ({ d, size = 22, color = AMBER }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <path d={d} />
   </svg>
@@ -67,7 +65,7 @@ function AnimatedTagline() {
     return () => clearInterval(t);
   }, []);
   return (
-    <span style={{ display: "inline-block", transition: "opacity 0.4s, transform 0.4s", opacity: fade ? 1 : 0, transform: fade ? "translateY(0)" : "translateY(8px)", color: V.amber }}>
+    <span style={{ display: "inline-block", transition: "opacity 0.4s, transform 0.4s", opacity: fade ? 1 : 0, transform: fade ? "translateY(0)" : "translateY(8px)", color: AMBER }}>
       {TAGLINES[idx]}
     </span>
   );
@@ -181,10 +179,10 @@ export default function Landing() {
   /* ─── Registro Wizard (pantalla completa) ─── */
   if (showRegistro) {
     return (
-      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", padding: "40px 28px", color: V.text, fontFamily: fB, overflowY: "auto" }}>
-        <button onClick={() => setShowRegistro(false)} style={{ background: "none", border: "none", color: V.amber, cursor: "pointer", fontSize: 13, padding: "8px 0", marginBottom: 8 }}>← Volver</button>
+      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", padding: "40px 28px", color: TEXT, fontFamily: fB, overflowY: "auto" }}>
+        <button onClick={() => setShowRegistro(false)} style={{ background: "none", border: "none", color: AMBER, cursor: "pointer", fontSize: 13, padding: "8px 0", marginBottom: 8 }}>← Volver</button>
         <h1 style={{ margin: 0, fontFamily: fH, fontSize: 26, fontWeight: 700 }}>Registrar empresa</h1>
-        <div style={{ fontSize: 13, color: V.dim, marginTop: 6, marginBottom: 24 }}>Creá tu cuenta para empezar a usar Gypi</div>
+        <div style={{ fontSize: 13, color: DIM, marginTop: 6, marginBottom: 24 }}>Creá tu cuenta para empezar a usar Gypi</div>
         {[
           { k: "nombre_empresa", l: "Nombre de tu empresa", p: "Ej: Metalúrgica García" },
           { k: "nombre_admin", l: "Tu nombre completo", p: "Ej: Juan García" },
@@ -192,25 +190,25 @@ export default function Landing() {
           { k: "password", l: "Contraseña", p: "Mínimo 6 caracteres", type: "password" },
         ].map(f => (
           <div key={f.k} style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{f.l}</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: DIM, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{f.l}</label>
             <input type={f.type || "text"} value={form[f.k]} onChange={e => setForm({ ...form, [f.k]: e.target.value })} placeholder={f.p}
-              style={{ width: "100%", padding: "12px 14px", borderRadius: 12, background: V.surface, border: `1px solid ${V.border}`, color: V.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" }} />
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" }} />
           </div>
         ))}
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Rubro</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: DIM, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Rubro</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {["general", "industria", "construcción", "servicios", "comercio", "tecnología"].map(r => (
               <button key={r} onClick={() => setForm({ ...form, rubro: r })}
-                style={{ padding: "6px 12px", borderRadius: 20, border: `1px solid ${form.rubro === r ? V.amber : V.border}`, background: form.rubro === r ? `${V.amber}22` : "transparent", color: form.rubro === r ? V.amber : V.dim, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{r}</button>
+                style={{ padding: "6px 12px", borderRadius: 20, border: `1px solid ${form.rubro === r ? AMBER : BORDER}`, background: form.rubro === r ? `${AMBER}22` : "transparent", color: form.rubro === r ? AMBER : DIM, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{r}</button>
             ))}
           </div>
         </div>
         <button onClick={registrar} disabled={loading}
-          style={{ width: "100%", padding: 14, borderRadius: 12, background: V.amber, color: V.amberText, border: "none", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
+          style={{ width: "100%", padding: 14, borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
           {loading ? "Creando empresa..." : "Crear empresa gratis"}
         </button>
-        {error && <div style={{ padding: 12, background: V.redS, color: V.red, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
+        {error && <div style={{ padding: 12, background: RED_S, color: RED, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
       </div>
     );
   }
@@ -241,11 +239,11 @@ export default function Landing() {
   ];
 
   const sectionPad = { padding: "80px 24px", maxWidth: 1100, margin: "0 auto" };
-  const sectionTitle = { fontFamily: fH, fontSize: 28, fontWeight: 700, color: V.text, textAlign: "center", margin: "0 0 8px" };
-  const sectionSub = { fontFamily: fB, fontSize: 15, color: V.dim, textAlign: "center", margin: "0 0 48px", maxWidth: 520, marginLeft: "auto", marginRight: "auto" };
+  const sectionTitle = { fontFamily: fH, fontSize: 28, fontWeight: 700, color: TEXT, textAlign: "center", margin: "0 0 8px" };
+  const sectionSub = { fontFamily: fB, fontSize: 15, color: DIM, textAlign: "center", margin: "0 0 48px", maxWidth: 520, marginLeft: "auto", marginRight: "auto" };
 
   return (
-    <div style={{ background: V.bg, color: V.text, fontFamily: fB, height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+    <div style={{ background: BG, color: TEXT, fontFamily: fB, height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
 
       {/* ═══ NAV STICKY ═══ */}
       <nav style={{
@@ -254,42 +252,42 @@ export default function Landing() {
         background: scrolled ? "rgba(12,10,9,0.85)" : "transparent",
         backdropFilter: scrolled ? "blur(16px)" : "none",
         WebkitBackdropFilter: scrolled ? "blur(16px)" : "none",
-        borderBottom: scrolled ? `1px solid ${V.border}` : "1px solid transparent",
+        borderBottom: scrolled ? `1px solid ${BORDER}` : "1px solid transparent",
         transition: "all 0.3s ease",
         display: "flex", alignItems: "center", justifyContent: "space-between",
         maxWidth: 1200, margin: "0 auto",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg,${V.amber},${V.violet})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <span style={{ fontFamily: fH, fontSize: 14, fontWeight: 800, color: "#000" }}>G</span>
           </div>
           <span style={{ fontFamily: fH, fontSize: 18, fontWeight: 700 }}>Gypi</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <button onClick={() => scrollTo("features")} style={{ background: "none", border: "none", color: V.dim, cursor: "pointer", fontSize: 13, fontFamily: fB }}>Features</button>
-          <button onClick={() => scrollTo("pricing")} style={{ background: "none", border: "none", color: V.dim, cursor: "pointer", fontSize: 13, fontFamily: fB }}>Precios</button>
-          <button onClick={() => scrollTo("login")} style={{ background: "none", border: "none", color: V.amber, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: fB }}>Ingresar</button>
+          <button onClick={() => scrollTo("features")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13, fontFamily: fB }}>Features</button>
+          <button onClick={() => scrollTo("pricing")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13, fontFamily: fB }}>Precios</button>
+          <button onClick={() => scrollTo("login")} style={{ background: "none", border: "none", color: AMBER, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: fB }}>Ingresar</button>
         </div>
       </nav>
 
       {/* ═══ HERO ═══ */}
       <section style={{ padding: "140px 24px 80px", textAlign: "center", maxWidth: 800, margin: "0 auto" }}>
-        <div style={{ display: "inline-block", padding: "6px 16px", borderRadius: 20, background: V.amberS, color: V.amber, fontSize: 12, fontWeight: 700, marginBottom: 24, letterSpacing: "0.04em" }}>
+        <div style={{ display: "inline-block", padding: "6px 16px", borderRadius: 20, background: AMBER_S, color: AMBER, fontSize: 12, fontWeight: 700, marginBottom: 24, letterSpacing: "0.04em" }}>
           GESTIÓN DE PERSONAL INTELIGENTE
         </div>
         <h1 style={{ fontFamily: fH, fontSize: "clamp(32px, 6vw, 52px)", fontWeight: 800, lineHeight: 1.1, margin: "0 0 16px", letterSpacing: "-0.03em" }}>
           Tu equipo necesita<br /><AnimatedTagline />
         </h1>
-        <p style={{ fontSize: 17, color: V.dim, lineHeight: 1.6, maxWidth: 540, margin: "0 auto 36px" }}>
+        <p style={{ fontSize: 17, color: DIM, lineHeight: 1.6, maxWidth: 540, margin: "0 auto 36px" }}>
           Gypi es la plataforma todo-en-uno para gestionar fichaje, comunicación y productividad de tu equipo operativo. Sin instalaciones, desde cualquier dispositivo.
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <button onClick={() => setShowRegistro(true)}
-            style={{ padding: "14px 32px", borderRadius: 12, background: V.amber, color: V.amberText, border: "none", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
+            style={{ padding: "14px 32px", borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
             Empezar gratis
           </button>
           <button onClick={() => scrollTo("features")}
-            style={{ padding: "14px 32px", borderRadius: 12, background: V.surface, color: V.text, border: `1px solid ${V.border}`, fontSize: 16, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>
+            style={{ padding: "14px 32px", borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 16, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>
             Ver features
           </button>
         </div>
@@ -299,11 +297,11 @@ export default function Landing() {
       <section style={{ padding: "0 24px 80px", maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
           {KPIS.map((k, i) => (
-            <div key={i} style={{ textAlign: "center", padding: "28px 16px", background: V.surface, borderRadius: 16, border: `1px solid ${V.border}` }}>
-              <div style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, color: V.amber }}>
+            <div key={i} style={{ textAlign: "center", padding: "28px 16px", background: SURFACE, borderRadius: 16, border: `1px solid ${BORDER}` }}>
+              <div style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, color: AMBER }}>
                 <AnimatedNumber target={k.value} suffix={k.suffix} />
               </div>
-              <div style={{ fontSize: 13, color: V.dim, marginTop: 6 }}>{k.label}</div>
+              <div style={{ fontSize: 13, color: DIM, marginTop: 6 }}>{k.label}</div>
             </div>
           ))}
         </div>
@@ -315,14 +313,14 @@ export default function Landing() {
         <p style={sectionSub}>Herramientas diseñadas para equipos operativos que necesitan simplicidad y control.</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
           {FEATURES.map((f, i) => (
-            <div key={i} style={{ padding: 28, background: V.surface, borderRadius: 16, border: `1px solid ${V.border}`, transition: "border-color 0.2s, transform 0.2s" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = V.amber; e.currentTarget.style.transform = "translateY(-2px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = V.border; e.currentTarget.style.transform = "translateY(0)"; }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: V.amberS, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-                <Icon d={f.icon} size={22} color={V.amber} />
+            <div key={i} style={{ padding: 28, background: SURFACE, borderRadius: 16, border: `1px solid ${BORDER}`, transition: "border-color 0.2s, transform 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = AMBER; e.currentTarget.style.transform = "translateY(-2px)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.transform = "translateY(0)"; }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: AMBER_S, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                <Icon d={f.icon} size={22} color={AMBER} />
               </div>
               <h3 style={{ fontFamily: fH, fontSize: 17, fontWeight: 700, margin: "0 0 8px" }}>{f.title}</h3>
-              <p style={{ fontSize: 14, color: V.dim, lineHeight: 1.5, margin: 0 }}>{f.desc}</p>
+              <p style={{ fontSize: 14, color: DIM, lineHeight: 1.5, margin: 0 }}>{f.desc}</p>
             </div>
           ))}
         </div>
@@ -335,11 +333,11 @@ export default function Landing() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24 }}>
           {PASOS.map((p, i) => (
             <div key={i} style={{ textAlign: "center", padding: 32 }}>
-              <div style={{ width: 56, height: 56, borderRadius: "50%", background: `linear-gradient(135deg,${V.amber},${V.violet})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 22, fontWeight: 800, fontFamily: fH, color: "#000" }}>
+              <div style={{ width: 56, height: 56, borderRadius: "50%", background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 22, fontWeight: 800, fontFamily: fH, color: "#000" }}>
                 {p.num}
               </div>
               <h3 style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, margin: "0 0 8px" }}>{p.title}</h3>
-              <p style={{ fontSize: 14, color: V.dim, lineHeight: 1.5, margin: 0 }}>{p.desc}</p>
+              <p style={{ fontSize: 14, color: DIM, lineHeight: 1.5, margin: 0 }}>{p.desc}</p>
             </div>
           ))}
         </div>
@@ -347,15 +345,15 @@ export default function Landing() {
 
       {/* ═══ HIGHLIGHT PWA ═══ */}
       <section style={{ padding: "60px 24px", maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
-        <div style={{ padding: 40, background: `linear-gradient(135deg, ${V.amberS}, ${V.violetS})`, borderRadius: 24, border: `1px solid ${V.border}` }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: V.amber, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+        <div style={{ padding: 40, background: `linear-gradient(135deg, ${AMBER_S}, ${VIOLET_S})`, borderRadius: 24, border: `1px solid ${BORDER}` }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: AMBER, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
             <Icon d={icons.download} size={28} color="#000" />
           </div>
           <h2 style={{ fontFamily: fH, fontSize: 24, fontWeight: 700, margin: "0 0 12px" }}>App progresiva (PWA)</h2>
-          <p style={{ fontSize: 15, color: V.dim, lineHeight: 1.6, maxWidth: 500, margin: "0 auto 24px" }}>
+          <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, maxWidth: 500, margin: "0 auto 24px" }}>
             Gypi se instala como una app nativa desde el navegador. Sin App Store, sin actualizaciones manuales. Funciona offline y envía notificaciones push.
           </p>
-          <div style={{ display: "flex", gap: 24, justifyContent: "center", flexWrap: "wrap", fontSize: 13, color: V.text }}>
+          <div style={{ display: "flex", gap: 24, justifyContent: "center", flexWrap: "wrap", fontSize: 13, color: TEXT }}>
             <span>✓ Sin descarga</span>
             <span>✓ Funciona offline</span>
             <span>✓ Push notifications</span>
@@ -371,13 +369,13 @@ export default function Landing() {
 
         {/* Toggle mensual / anual */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 40 }}>
-          <span style={{ fontSize: 14, color: anual ? V.dim : V.text, fontWeight: anual ? 400 : 700 }}>Mensual</span>
+          <span style={{ fontSize: 14, color: anual ? DIM : TEXT, fontWeight: anual ? 400 : 700 }}>Mensual</span>
           <button onClick={() => setAnual(!anual)}
-            style={{ width: 52, height: 28, borderRadius: 14, background: anual ? V.amber : V.surface, border: `1px solid ${anual ? V.amber : V.border}`, cursor: "pointer", position: "relative", transition: "all 0.3s" }}>
-            <div style={{ width: 22, height: 22, borderRadius: 11, background: anual ? "#000" : V.dim, position: "absolute", top: 2, left: anual ? 27 : 3, transition: "left 0.3s" }} />
+            style={{ width: 52, height: 28, borderRadius: 14, background: anual ? AMBER : SURFACE, border: `1px solid ${anual ? AMBER : BORDER}`, cursor: "pointer", position: "relative", transition: "all 0.3s" }}>
+            <div style={{ width: 22, height: 22, borderRadius: 11, background: anual ? "#000" : DIM, position: "absolute", top: 2, left: anual ? 27 : 3, transition: "left 0.3s" }} />
           </button>
-          <span style={{ fontSize: 14, color: anual ? V.text : V.dim, fontWeight: anual ? 700 : 400 }}>
-            Anual <span style={{ fontSize: 11, color: V.green, fontWeight: 700 }}>-20%</span>
+          <span style={{ fontSize: 14, color: anual ? TEXT : DIM, fontWeight: anual ? 700 : 400 }}>
+            Anual <span style={{ fontSize: 11, color: GREEN, fontWeight: 700 }}>-20%</span>
           </span>
         </div>
 
@@ -392,34 +390,34 @@ export default function Landing() {
             return (
               <div key={pid} style={{
                 padding: 28, borderRadius: 20,
-                background: isPopular ? `linear-gradient(160deg, ${V.surface}, ${V.surfHi})` : V.surface,
-                border: isPopular ? `2px solid ${V.amber}` : `1px solid ${V.border}`,
+                background: isPopular ? `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})` : SURFACE,
+                border: isPopular ? `2px solid ${AMBER}` : `1px solid ${BORDER}`,
                 position: "relative",
                 transition: "transform 0.2s, box-shadow 0.2s",
               }}
-                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = `0 8px 32px ${V.amberS}`; }}
+                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = `0 8px 32px ${AMBER_S}`; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
 
                 {/* Badge POPULAR */}
                 {isPopular && (
-                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: V.amber, color: V.amberText, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
+                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: AMBER, color: AMBER_TEXT, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
                     POPULAR
                   </div>
                 )}
 
                 <h3 style={{ fontFamily: fH, fontSize: 20, fontWeight: 700, margin: isPopular ? "8px 0 4px" : "0 0 4px" }}>{p.nombre}</h3>
-                <div style={{ fontSize: 13, color: V.dim, marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: DIM, marginBottom: 16 }}>
                   Hasta {p.max_empleados >= 99999 ? "ilimitados" : p.max_empleados} empleados
                 </div>
 
                 <div style={{ marginBottom: 20 }}>
-                  <span style={{ fontFamily: fH, fontSize: 36, fontWeight: 800, color: isPopular ? V.amber : V.text }}>
+                  <span style={{ fontFamily: fH, fontSize: 36, fontWeight: 800, color: isPopular ? AMBER : TEXT }}>
                     {formatPrecio(precioShow)}
                   </span>
                   {precio != null && precio > 0 && (
-                    <span style={{ fontSize: 13, color: V.dim }}>/{anual ? "mes" : "mes"}</span>
+                    <span style={{ fontSize: 13, color: DIM }}>/{anual ? "mes" : "mes"}</span>
                   )}
-                  {precio === 0 && <span style={{ fontSize: 13, color: V.dim }}> forever</span>}
+                  {precio === 0 && <span style={{ fontSize: 13, color: DIM }}> forever</span>}
                 </div>
 
                 {/* Feature checklist */}
@@ -427,8 +425,8 @@ export default function Landing() {
                   {FEATURES_CHECK.map(f => {
                     const has = p[f.key] === true || (typeof p[f.key] === "string") || (f.key === "fichaje" && p.modulos?.includes("fichaje")) || (f.key === "chat" && p.modulos?.includes("chat"));
                     return (
-                      <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13, color: has ? V.text : V.mute }}>
-                        <span style={{ color: has ? V.green : V.mute, fontSize: 14 }}>{has ? "✓" : "–"}</span>
+                      <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13, color: has ? TEXT : MUTE }}>
+                        <span style={{ color: has ? GREEN : MUTE, fontSize: 14 }}>{has ? "✓" : "–"}</span>
                         <span style={{ textDecoration: has ? "none" : "line-through" }}>{f.label}</span>
                       </div>
                     );
@@ -438,8 +436,8 @@ export default function Landing() {
                 <button onClick={() => pid === "enterprise" ? scrollTo("login") : setShowRegistro(true)}
                   style={{
                     width: "100%", padding: 12, borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                    background: isPopular ? V.amber : V.surfHi,
-                    color: isPopular ? "#000" : V.text,
+                    background: isPopular ? AMBER : SURF_HI,
+                    color: isPopular ? "#000" : TEXT,
                   }}>
                   {pid === "free" ? "Empezar gratis" : pid === "enterprise" ? "Contactanos" : "Elegir plan"}
                 </button>
@@ -451,13 +449,13 @@ export default function Landing() {
 
       {/* ═══ CTA FINAL ═══ */}
       <section style={{ padding: "80px 24px", textAlign: "center" }}>
-        <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${V.surface}, ${V.surfHi})`, borderRadius: 28, border: `1px solid ${V.border}` }}>
+        <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})`, borderRadius: 28, border: `1px solid ${BORDER}` }}>
           <h2 style={{ fontFamily: fH, fontSize: 28, fontWeight: 800, margin: "0 0 12px" }}>¿Listo para transformar tu gestión?</h2>
-          <p style={{ fontSize: 15, color: V.dim, lineHeight: 1.6, margin: "0 0 28px" }}>
+          <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, margin: "0 0 28px" }}>
             Empezá con 14 días de trial Pro gratis. Plan Free disponible sin límite de tiempo.
           </p>
           <button onClick={() => setShowRegistro(true)}
-            style={{ padding: "16px 40px", borderRadius: 14, background: V.amber, color: V.amberText, border: "none", fontSize: 17, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
+            style={{ padding: "16px 40px", borderRadius: 14, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 17, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
             Crear mi empresa gratis
           </button>
         </div>
@@ -466,39 +464,39 @@ export default function Landing() {
       {/* ═══ LOGIN / INGRESAR ═══ */}
       <section id="login" style={{ padding: "60px 24px 40px", maxWidth: 420, margin: "0 auto" }}>
         <h2 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, textAlign: "center", margin: "0 0 20px" }}>¿Ya tenés cuenta?</h2>
-        <div style={{ display: "flex", alignItems: "center", background: V.surface, border: `1px solid ${V.border}`, borderRadius: 12, padding: "0 14px", marginBottom: 8 }}>
-          <span style={{ color: V.mute, fontSize: 14 }}>gypi.app/</span>
+        <div style={{ display: "flex", alignItems: "center", background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "0 14px", marginBottom: 8 }}>
+          <span style={{ color: MUTE, fontSize: 14 }}>gypi.app/</span>
           <input value={slug} onChange={e => setSlug(e.target.value)} onKeyDown={e => e.key === "Enter" && entrar()} placeholder="mi-empresa"
-            style={{ flex: 1, padding: "14px 4px", border: "none", background: "transparent", color: V.text, fontSize: 15, outline: "none", fontFamily: fB }} />
+            style={{ flex: 1, padding: "14px 4px", border: "none", background: "transparent", color: TEXT, fontSize: 15, outline: "none", fontFamily: fB }} />
         </div>
         <button onClick={entrar} disabled={!slug.trim()}
-          style={{ width: "100%", padding: 14, borderRadius: 12, background: slug.trim() ? V.amber : V.surface, color: slug.trim() ? V.amberText : V.mute, border: "none", fontSize: 15, fontWeight: 700, cursor: slug.trim() ? "pointer" : "default", fontFamily: fH }}>
+          style={{ width: "100%", padding: 14, borderRadius: 12, background: slug.trim() ? AMBER : SURFACE, color: slug.trim() ? AMBER_TEXT : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: slug.trim() ? "pointer" : "default", fontFamily: fH }}>
           Ir a mi empresa
         </button>
       </section>
 
       {/* ═══ FOOTER ═══ */}
-      <footer style={{ padding: "40px 24px", borderTop: `1px solid ${V.border}`, maxWidth: 1100, margin: "0 auto" }}>
+      <footer style={{ padding: "40px 24px", borderTop: `1px solid ${BORDER}`, maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg,${V.amber},${V.violet})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontFamily: fH, fontSize: 12, fontWeight: 800, color: "#000" }}>G</span>
             </div>
             <span style={{ fontFamily: fH, fontSize: 15, fontWeight: 700 }}>Gypi</span>
           </div>
-          <div style={{ display: "flex", gap: 24, fontSize: 13, color: V.dim }}>
-            <button onClick={() => scrollTo("features")} style={{ background: "none", border: "none", color: V.dim, cursor: "pointer", fontSize: 13 }}>Features</button>
-            <button onClick={() => scrollTo("pricing")} style={{ background: "none", border: "none", color: V.dim, cursor: "pointer", fontSize: 13 }}>Precios</button>
-            <button onClick={() => scrollTo("login")} style={{ background: "none", border: "none", color: V.dim, cursor: "pointer", fontSize: 13 }}>Ingresar</button>
+          <div style={{ display: "flex", gap: 24, fontSize: 13, color: DIM }}>
+            <button onClick={() => scrollTo("features")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13 }}>Features</button>
+            <button onClick={() => scrollTo("pricing")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13 }}>Precios</button>
+            <button onClick={() => scrollTo("login")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13 }}>Ingresar</button>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${V.border}`, flexWrap: "wrap" }}>
-          <a href="/docs" style={{ fontSize: 12, color: V.dim, textDecoration: "none" }}>Documentación</a>
-          <a href="/terms" style={{ fontSize: 12, color: V.dim, textDecoration: "none" }}>Términos</a>
-          <a href="/privacy" style={{ fontSize: 12, color: V.dim, textDecoration: "none" }}>Privacidad</a>
-          <a href="mailto:contacto@gypi.app" style={{ fontSize: 12, color: V.dim, textDecoration: "none" }}>Contacto</a>
+        <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}`, flexWrap: "wrap" }}>
+          <a href="/docs" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Documentación</a>
+          <a href="/terms" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Términos</a>
+          <a href="/privacy" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Privacidad</a>
+          <a href="mailto:contacto@gypi.app" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Contacto</a>
         </div>
-        <div style={{ textAlign: "center", fontSize: 12, color: V.mute, marginTop: 12 }}>
+        <div style={{ textAlign: "center", fontSize: 12, color: MUTE, marginTop: 12 }}>
           © {new Date().getFullYear()} Gypi · Gestión y productividad industrial · Todos los derechos reservados
         </div>
       </footer>

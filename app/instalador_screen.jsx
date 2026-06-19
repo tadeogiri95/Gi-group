@@ -4,16 +4,10 @@ import { useState, useRef } from "react";
 import { sb } from "./lib/supabase";
 import { hoyArg } from "./lib/dates";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  amberText: "#000",
-  green: "#16A34A",
-  red: "#DC2626",
-  cyan: "#0891B2",
-  dim: "var(--color-text-dim)",
-  surfHi: "var(--color-surf-hi)",
-  borderHi: "var(--color-border-hi, rgba(255,255,255,0.12))",
-};
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const GREEN = "#16A34A";
+const RED = "#DC2626";
+const CYAN = "#0891B2";
 
 /* ═══ SYSTEM PROMPT PARA REPORTE DE OBRA ═══ */
 const SYSTEM_OBRA_DEFAULT = `Sos un asistente de obra. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
@@ -144,7 +138,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
       {/* Error banner */}
       {error && (
-        <div role="alert" className="bg-gypi-red-s rounded-2xl p-4 mb-4" style={{ border: `1px solid ${V.red}44` }}>
+        <div role="alert" className="bg-gypi-red-s rounded-2xl p-4 mb-4" style={{ border: `1px solid ${RED}44` }}>
           <p className="m-0 text-sm text-gypi-red">⚠️ {error}</p>
         </div>
       )}
@@ -155,9 +149,9 @@ export default function InstaladorScreen({ usuario, empresa }) {
           <div className="bg-gypi-surface rounded-2xl border border-gypi-border p-4 mb-3">
             <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2 font-body">¿Qué se hizo hoy en obra?</div>
             {grabando && (
-              <div className="flex items-center gap-2 mb-2.5 py-2 px-3 rounded-[10px]" style={{ background: `${V.red}15`, border: `1px solid ${V.red}33` }}>
-                <span className="w-2 h-2 rounded-full" style={{ background: V.red, animation: "pulse 1s ease-in-out infinite" }} />
-                <span className="text-[13px] font-semibold font-body" style={{ color: V.red }}>Grabando… hablá y tu voz se transcribirá</span>
+              <div className="flex items-center gap-2 mb-2.5 py-2 px-3 rounded-[10px]" style={{ background: `${RED}15`, border: `1px solid ${RED}33` }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: RED, animation: "pulse 1s ease-in-out infinite" }} />
+                <span className="text-[13px] font-semibold font-body" style={{ color: RED }}>Grabando… hablá y tu voz se transcribirá</span>
               </div>
             )}
             <label htmlFor="reporte-texto" className="sr-only">Reporte de obra</label>
@@ -175,9 +169,9 @@ export default function InstaladorScreen({ usuario, empresa }) {
             <button
               className="py-3 px-4 rounded-xl text-sm font-body cursor-pointer inline-flex items-center gap-2"
               style={{
-                background: grabando ? `${V.red}22` : V.surfHi,
-                border: grabando ? `1px solid ${V.red}66` : `1px solid ${V.borderHi}`,
-                color: grabando ? V.red : V.dim,
+                background: grabando ? `${RED}22` : "var(--color-surf-hi)",
+                border: grabando ? `1px solid ${RED}66` : "1px solid var(--color-border-hi, rgba(255,255,255,0.12))",
+                color: grabando ? RED : "var(--color-text-dim)",
                 animation: grabando ? "pulse 1.5s ease-in-out infinite" : "none",
               }}
               onClick={grabando ? detenerGrabacion : iniciarGrabacion}
@@ -207,7 +201,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
           <button
             className="w-full py-4 rounded-[14px] border-none cursor-pointer font-heading text-[17px] font-bold tracking-[0.01em]"
-            style={{ background: V.amber, color: V.amberText, opacity: texto.trim() ? 1 : 0.4 }}
+            style={{ background: AMBER, color: AMBERText, opacity: texto.trim() ? 1 : 0.4 }}
             disabled={!texto.trim()}
             onClick={generarReporte}
           >
@@ -235,22 +229,22 @@ export default function InstaladorScreen({ usuario, empresa }) {
           </div>
 
           {reporte.faltantes?.length > 0 && (
-            <div className="bg-gypi-red-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${V.red}33` }}>
+            <div className="bg-gypi-red-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${RED}33` }}>
               <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-red mb-2 font-body">🚫 Faltantes</div>
               <div className="flex flex-wrap">
                 {reporte.faltantes.map((f, i) => (
-                  <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `${V.red}22`, color: V.red }}>{f}</span>
+                  <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `${RED}22`, color: RED }}>{f}</span>
                 ))}
               </div>
             </div>
           )}
 
           {reporte.desvios?.length > 0 && (
-            <div className="bg-gypi-amber-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${V.amber}33` }}>
+            <div className="bg-gypi-amber-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${AMBER}33` }}>
               <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-amber mb-2 font-body">⚠️ Desvíos / Imprevistos</div>
               <div className="flex flex-wrap">
                 {reporte.desvios.map((d, i) => (
-                  <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `${V.amber}22`, color: V.amber }}>{d}</span>
+                  <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `${AMBER}22`, color: AMBER }}>{d}</span>
                 ))}
               </div>
             </div>
@@ -267,20 +261,20 @@ export default function InstaladorScreen({ usuario, empresa }) {
             </div>
           )}
 
-          <div className="bg-gypi-cyan-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${V.cyan}33` }}>
+          <div className="bg-gypi-cyan-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${CYAN}33` }}>
             <p className="m-0 text-[15px] leading-normal text-gypi-text">💬 {reporte.mensaje_doble_check || "¿Los datos están correctos?"}</p>
           </div>
 
           <div className="flex gap-2.5 mt-1">
             <button onClick={corregir} className="flex-1 py-3.5 rounded-xl bg-gypi-surf-hi border border-gypi-border-hi text-gypi-dim text-[15px] font-bold font-body cursor-pointer text-center">← Corregir</button>
-            <button onClick={confirmar} className="flex-[2] py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading cursor-pointer" style={{ background: V.green, color: "#000" }}>✅ Confirmar y Enviar</button>
+            <button onClick={confirmar} className="flex-[2] py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading cursor-pointer" style={{ background: GREEN, color: "#000" }}>✅ Confirmar y Enviar</button>
           </div>
         </>
       )}
 
       {/* FASE 4 — GUARDADO */}
       {fase === "guardado" && (
-        <div role="status" className="bg-gypi-green-s rounded-2xl text-center py-14 px-4" style={{ border: `1px solid ${V.green}33` }}>
+        <div role="status" className="bg-gypi-green-s rounded-2xl text-center py-14 px-4" style={{ border: `1px solid ${GREEN}33` }}>
           <div className="text-[52px] mb-3.5" aria-hidden="true">✅</div>
           <p className="m-0 text-xl font-heading font-bold text-gypi-green">Reporte enviado</p>
           <p className="mt-2 text-gypi-dim text-[13px]">Se guardó correctamente{fotos.length > 0 ? ` con ${fotos.length} foto${fotos.length > 1 ? "s" : ""}` : ""}</p>
