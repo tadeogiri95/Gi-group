@@ -1,18 +1,5 @@
 "use client";
-// Extraído de [slug]/page.js líneas 653-735
 import { useState, useEffect, useCallback } from "react";
-import { fB } from "../../lib/theme";
-
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  green: "#16A34A",
-  red: "#DC2626",
-  redS: "#DC262620",
-  dim: "var(--color-text-dim)",
-  text: "var(--color-text)",
-  surface: "var(--color-surface)",
-  border: "var(--color-border)",
-};
 import { sb } from "../../lib/supabase";
 import { sendPushToLegajo } from "../../lib/push";
 import { Ic } from "../Icons";
@@ -20,13 +7,15 @@ import SolCard from "../cards/SolCard";
 import { Chip } from "../ui";
 import { hoyArg } from "../../lib/dates";
 
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const GREEN = "#16A34A";
+const RED = "#DC2626";
+
 export default function InboxScreen({ ctx, reload, usuario }) {
   const [f, setF] = useState("pendiente");
   const [solicitudes, setSolicitudes] = useState(ctx.solicitudes || []);
   const [cargando, setCargando] = useState(false);
   const [cargandoMas, setCargandoMas] = useState(false);
-  // cursor de paginación keyset: null = primera página. Evita el costo de
-  // OFFSET en una tabla que puede acumular miles de filas por empresa.
   const [cursor, setCursor] = useState(null);
   const [enPrimeraPagina, setEnPrimeraPagina] = useState(true);
   const [hayMas, setHayMas] = useState(true);
@@ -96,21 +85,36 @@ export default function InboxScreen({ ctx, reload, usuario }) {
   };
 
   return (
-    <section aria-label="Bandeja de solicitudes" style={{ padding: "0 18px 110px", overflowY: "auto", flex: 1 }}>
-      {errorMsg && <div role="alert" style={{ padding: 12, background: V.redS, color: V.red, borderRadius: 10, fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}><span>{errorMsg}</span><button onClick={() => setErrorMsg(null)} aria-label="Cerrar error" style={{ background: "none", border: "none", color: V.red, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>✕</button></div>}
-      <div role="group" aria-label="Filtros de solicitudes" style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", alignItems: "center" }}>
-        <Chip active={f === "pendiente"} onClick={() => setF("pendiente")} color={V.amber}>Pendientes · {pend}</Chip>
-        <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={V.green}>Aprobados</Chip>
-        <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={V.red}>Rechazados</Chip>
+    <section aria-label="Bandeja de solicitudes" className="px-[18px] pb-[110px] overflow-y-auto flex-1">
+      {errorMsg && (
+        <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red rounded-[10px] text-xs mb-3 flex items-center justify-between">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} aria-label="Cerrar error" className="bg-transparent border-none text-gypi-red cursor-pointer font-bold text-sm">✕</button>
+        </div>
+      )}
+      <div role="group" aria-label="Filtros de solicitudes" className="flex gap-1.5 mb-3.5 overflow-x-auto items-center">
+        <Chip active={f === "pendiente"} onClick={() => setF("pendiente")} color={AMBER}>Pendientes · {pend}</Chip>
+        <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={GREEN}>Aprobados</Chip>
+        <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={RED}>Rechazados</Chip>
         <Chip active={f === "todas"} onClick={() => setF("todas")}>Todas</Chip>
-        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" style={{ width: 30, height: 30, borderRadius: 8, background: V.surface, border: `1px solid ${V.border}`, color: V.dim, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Ic.refresh /></button>
+        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" className="w-[30px] h-[30px] rounded-lg bg-gypi-surface border border-gypi-border text-gypi-dim flex items-center justify-center cursor-pointer shrink-0"><Ic.refresh /></button>
       </div>
-      {cargando ? <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 30, color: V.dim, fontSize: 13 }}>Cargando solicitudes...</div> :
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {sortedFiltered.length === 0 ? <div style={{ background: V.surface, borderRadius: 14, padding: 40, textAlign: "center", border: `1px solid ${V.border}` }}><div style={{ color: V.green, display: "inline-flex", marginBottom: 12 }}><Ic.check size={20} /></div><div style={{ fontSize: 14, fontWeight: 700, color: V.text }}>Todo al día</div></div> : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={resolver} />)}
-          {hayMas && !cargandoMas && <button onClick={() => cargarSolicitudes(cursor)} style={{ width: "100%", padding: 14, borderRadius: 14, background: V.surface, border: `1px solid ${V.border}`, color: V.amber, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer", marginTop: 4 }}>Cargar más solicitudes</button>}
-          {cargandoMas && <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 14, color: V.dim, fontSize: 12 }}>Cargando...</div>}
-        </div>}
+      {cargando ? (
+        <div role="status" aria-live="polite" className="text-center py-8 text-gypi-dim text-[13px]">Cargando solicitudes...</div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {sortedFiltered.length === 0 ? (
+            <div className="g-card py-10 text-center">
+              <div className="text-gypi-green inline-flex mb-3"><Ic.check size={20} /></div>
+              <div className="text-sm font-bold text-gypi-text">Todo al día</div>
+            </div>
+          ) : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={resolver} />)}
+          {hayMas && !cargandoMas && (
+            <button onClick={() => cargarSolicitudes(cursor)} className="w-full py-3.5 rounded-[14px] bg-gypi-surface border border-gypi-border text-gypi-amber text-[13px] font-bold font-body cursor-pointer mt-1">Cargar más solicitudes</button>
+          )}
+          {cargandoMas && <div role="status" aria-live="polite" className="text-center py-3.5 text-gypi-dim text-xs">Cargando...</div>}
+        </div>
+      )}
     </section>
   );
 }

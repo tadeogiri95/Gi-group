@@ -1,14 +1,5 @@
 "use client";
 import { useState } from "react";
-import { fB } from "../../lib/theme";
-
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  surface: "var(--color-surface)",
-  surfHi: "var(--color-surface-hi, rgba(255,255,255,0.06))",
-  text: "var(--color-text)",
-  dim: "var(--color-text-dim)",
-};
 import ReportesScreen from "../../reportes_screen";
 import GrillaHorarioScreen from "../../grilla_horario_screen";
 import ProyectosScreen from "../../proyectos_screen.jsx";
@@ -78,18 +69,10 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
   const currentSubtabs = SUBTABS[section] || [];
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div className="flex-1 flex flex-col overflow-hidden">
       {/* Section segmented control */}
-      <div style={{
-        padding: "0 var(--sp-4) var(--sp-2)",
-        flexShrink: 0,
-      }}>
-        <div role="tablist" aria-label="Secciones de gestión" style={{
-          display: "flex",
-          background: V.surfHi,
-          borderRadius: "var(--radius-md)",
-          padding: 3,
-        }}>
+      <div className="px-4 pb-2 shrink-0">
+        <div role="tablist" aria-label="Secciones de gestión" className="flex bg-gypi-surf-hi rounded-[var(--radius-md)] p-[3px]">
           {SECTIONS.map(({ id, label }) => {
             const isActive = section === id;
             return (
@@ -98,18 +81,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => handleSectionChange(id)}
-                style={{
-                  flex: 1,
-                  padding: "10px 4px",
-                  borderRadius: "calc(var(--radius-md) - 2px)",
-                  border: "none",
-                  cursor: "pointer",
-                  background: isActive ? V.surface : "transparent",
-                  color: isActive ? V.text : V.dim,
-                  font: "var(--text-caption)", fontWeight: 700, fontFamily: fB,
-                  boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                  transition: "all var(--duration-fast) var(--ease-default)",
-                }}
+                className={`flex-1 py-2.5 px-1 rounded-[calc(var(--radius-md)-2px)] border-none cursor-pointer text-xs font-bold font-body transition-all ${isActive ? "bg-gypi-surface text-gypi-text shadow-sm" : "bg-transparent text-gypi-dim"}`}
               >
                 {label}
               </button>
@@ -120,11 +92,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
 
       {/* Subtab pills */}
       {currentSubtabs.length > 1 && (
-        <div role="tablist" aria-label="Opciones de la sección" style={{
-          padding: "var(--sp-2) var(--sp-4) var(--sp-2)",
-          display: "flex", gap: "var(--sp-1)", overflowX: "auto", flexShrink: 0,
-          scrollbarWidth: "none",
-        }}>
+        <div role="tablist" aria-label="Opciones de la sección" className="px-4 py-2 flex gap-1 overflow-x-auto shrink-0 scrollbar-none">
           {currentSubtabs.map(({ id, label, icon }) => {
             const isActive = subtab === id;
             return (
@@ -133,17 +101,9 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setSubtab(id)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 5,
-                  padding: "var(--sp-2) var(--sp-3)", borderRadius: "var(--radius-full)", border: "none",
-                  cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-                  background: isActive ? `${V.amber}15` : "transparent",
-                  color: isActive ? V.amber : V.dim,
-                  font: "var(--text-caption)", fontWeight: isActive ? 700 : 500, fontFamily: fB,
-                  transition: "all var(--duration-fast) var(--ease-default)",
-                }}
+                className={`flex items-center gap-[5px] py-2 px-3 rounded-full border-none cursor-pointer whitespace-nowrap shrink-0 text-xs font-body transition-all ${isActive ? "bg-gypi-amber/10 text-gypi-amber font-bold" : "bg-transparent text-gypi-dim font-medium"}`}
               >
-                <span style={{ display: "flex", opacity: isActive ? 1 : 0.6 }}>{icon}</span>
+                <span className={`flex ${isActive ? "opacity-100" : "opacity-60"}`}>{icon}</span>
                 {label}
               </button>
             );
@@ -152,7 +112,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
       )}
 
       {/* Content */}
-      <div role="tabpanel" aria-label={`Contenido de ${(currentSubtabs.find(t => t.id === subtab) || {}).label || subtab}`} style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div role="tabpanel" aria-label={`Contenido de ${(currentSubtabs.find(t => t.id === subtab) || {}).label || subtab}`} className="flex-1 overflow-hidden flex flex-col">
         {subtab === "asistencia"  && <ReportesScreen />}
         {subtab === "horarios"    && <GrillaHorarioScreen empresaId={empresaId} />}
         {subtab === "proyectos"   && <ProyectosScreen empresaId={empresaId} />}

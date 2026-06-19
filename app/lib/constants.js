@@ -2,19 +2,17 @@
 // Constantes compartidas
 // ═══════════════════════════════════════════════════════════
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  green: "#16A34A",
-  cyan: "#0891B2",
-  violet: "#7C3AED",
-};
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const GREEN = "#16A34A";
+const CYAN = "#0891B2";
+const VIOLET = "#7C3AED";
 
 // Fallback genérico (se usa cuando empresa no tiene divisiones configuradas)
 export const DIVISIONES_FALLBACK = [
-  { id: "produccion", label: "Producción", icon: "🏭", color: V.amber },
-  { id: "administracion", label: "Administración", icon: "🏢", color: V.violet },
-  { id: "logistica", label: "Logística", icon: "🚛", color: V.cyan },
-  { id: "general", label: "General", icon: "📦", color: V.green },
+  { id: "produccion", label: "Producción", icon: "🏭", color: AMBER },
+  { id: "administracion", label: "Administración", icon: "🏢", color: VIOLET },
+  { id: "logistica", label: "Logística", icon: "🚛", color: CYAN },
+  { id: "general", label: "General", icon: "📦", color: GREEN },
 ];
 
 // Helpers puros: reciben las divisiones del contexto (o DIVISIONES_FALLBACK si no hay)
@@ -22,7 +20,7 @@ export function getDivisionesBase(divisiones) {
   return divisiones && divisiones.length > 0 ? divisiones : DIVISIONES_FALLBACK;
 }
 export function getDivisionesConTodas(divisiones) {
-  return [{ id: "todas", label: "Todas", icon: "📊", color: V.amber }, ...getDivisionesBase(divisiones)];
+  return [{ id: "todas", label: "Todas", icon: "📊", color: AMBER }, ...getDivisionesBase(divisiones)];
 }
 export function getDivisionesConTodos(divisiones) {
   return [{ id: "todas", label: "Todos" }, ...getDivisionesBase(divisiones)];
@@ -33,7 +31,7 @@ export function getDivisionesConSinAsignar(divisiones) {
 
 // Exports estáticos retrocompatibles (fallback sin contexto)
 export const DIVISIONES_BASE = DIVISIONES_FALLBACK;
-export const DIVISIONES_CON_TODAS = [{ id: "todas", label: "Todas", icon: "📊", color: V.amber }, ...DIVISIONES_FALLBACK];
+export const DIVISIONES_CON_TODAS = [{ id: "todas", label: "Todas", icon: "📊", color: AMBER }, ...DIVISIONES_FALLBACK];
 export const DIVISIONES_CON_TODOS = [{ id: "todas", label: "Todos" }, ...DIVISIONES_FALLBACK];
 export const DIVISIONES_CON_SIN_ASIGNAR = [{ id: "", label: "Sin asignar" }, ...DIVISIONES_FALLBACK];
 

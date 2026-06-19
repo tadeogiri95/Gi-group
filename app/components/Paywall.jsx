@@ -1,10 +1,6 @@
 "use client";
 import { PLANES } from "../lib/plans";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)", violet: "#7C3AED",
-};
-
 export default function Paywall({ planActual = "free", planRequerido = "starter", feature, mensaje, onClose, onUpgrade }) {
   const target = PLANES[planRequerido] || PLANES.starter;
   const actual = PLANES[planActual] || PLANES.free;
@@ -12,8 +8,8 @@ export default function Paywall({ planActual = "free", planRequerido = "starter"
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-[18px]">
       <div onClick={onClose} className="absolute inset-0 bg-black/70 backdrop-blur-[4px]" />
-      <div className="relative w-full max-w-[420px] bg-gypi-bg rounded-3xl p-7 border border-gypi-amber/20" style={{ boxShadow: `0 24px 60px ${V.amber}20` }}>
-        <div className="w-16 h-16 rounded-[18px] flex items-center justify-center mx-auto mb-4 text-[32px]" style={{ background: `linear-gradient(135deg,${V.amber},${V.violet})` }}>🔒</div>
+      <div className="relative w-full max-w-[420px] bg-gypi-bg rounded-3xl p-7 border border-gypi-amber/20" style={{ boxShadow: "0 24px 60px var(--color-empresa-primary, #F97316)20" }}>
+        <div className="w-16 h-16 rounded-[18px] flex items-center justify-center mx-auto mb-4 text-[32px]" style={{ background: "linear-gradient(135deg, var(--color-empresa-primary, #F97316), #7C3AED)" }}>🔒</div>
 
         <h2 className="m-0 font-heading text-[22px] font-bold text-gypi-text text-center">Función bloqueada</h2>
         <p className="text-[13px] text-gypi-dim text-center leading-relaxed my-2.5 mb-5">
