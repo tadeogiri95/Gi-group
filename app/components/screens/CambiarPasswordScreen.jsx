@@ -1,8 +1,9 @@
 "use client";
-// Extraído de [slug]/page.js líneas 105-150
 import { useState } from "react";
-import { C, fH, fB } from "../../lib/theme";
 import { getToken } from "../../lib/supabase";
+
+const STRENGTH_COLORS = ["transparent", "var(--color-red)", "var(--color-empresa-primary)", "var(--color-green)"];
+const STRENGTH_LABELS = ["", "Débil", "Regular", "Fuerte"];
 
 export default function CambiarPasswordScreen({ usuario, onDone }) {
   const [nueva, setNueva] = useState("");
@@ -30,35 +31,68 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
     } catch (err) { setError(err.message); setLoading(false); }
   };
 
-  // Password strength indicator
   const strength = nueva.length === 0 ? 0 : nueva.length < 8 ? 1 : (!/[A-Z]/.test(nueva) || !/[a-z]/.test(nueva) || !/[0-9]/.test(nueva)) ? 2 : 3;
-  const strengthColor = ["transparent", C.red, C.amber, C.green][strength];
-  const strengthLabel = ["", "Débil", "Regular", "Fuerte"][strength];
+  const strengthColor = STRENGTH_COLORS[strength];
+  const canSubmit = !loading && nueva && nueva === confirmar && strength >= 3;
+  const mismatch = confirmar && confirmar !== nueva;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "0 28px", justifyContent: "center" }}>
-      <h1 style={{ margin: 0, fontFamily: fH, fontSize: 24, fontWeight: 700, color: C.text }}>Cambiá tu contraseña</h1>
-      <div style={{ fontSize: 13, color: C.dim, marginTop: 6, marginBottom: 28 }}>Elegí una contraseña segura (mín. 8 chars, mayúscula, minúscula, número)</div>
-      {error && <div style={{ color: C.red, fontSize: 13, marginBottom: 12, padding: "10px 14px", background: C.redS, borderRadius: 10 }}>{error}</div>}
-      <div style={{ position: "relative", marginBottom: 12 }}>
-        <input value={nueva} onChange={e => setNueva(e.target.value)} placeholder="Nueva contraseña" type={showPwd ? "text" : "password"}
-          style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${C.borderHi}`, background: C.surface, color: C.text, fontSize: 16, fontFamily: fB, outline: "none" }} />
-        <button onClick={() => setShowPwd(!showPwd)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13 }}>{showPwd ? "Ocultar" : "Ver"}</button>
+    <div className="flex flex-col h-full px-7 justify-center">
+      <h1 className="m-0 font-heading text-2xl font-bold text-gypi-text">Cambiá tu contraseña</h1>
+      <div className="text-[13px] text-gypi-dim mt-1.5 mb-7">Elegí una contraseña segura (mín. 8 chars, mayúscula, minúscula, número)</div>
+
+      {error && (
+        <div className="text-gypi-red text-[13px] mb-3 py-2.5 px-3.5 bg-gypi-red/10 rounded-[10px]">{error}</div>
+      )}
+
+      {/* Password input */}
+      <div className="relative mb-3">
+        <input
+          value={nueva}
+          onChange={e => setNueva(e.target.value)}
+          placeholder="Nueva contraseña"
+          type={showPwd ? "text" : "password"}
+          className="g-input w-full text-base py-3.5 px-4 rounded-xl"
+        />
+        <button
+          onClick={() => setShowPwd(!showPwd)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-gypi-dim cursor-pointer text-[13px]"
+        >
+          {showPwd ? "Ocultar" : "Ver"}
+        </button>
       </div>
+
       {/* Strength bar */}
       {nueva.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ height: 4, borderRadius: 2, background: C.surfHi, overflow: "hidden" }}>
-            <div style={{ width: `${(strength / 3) * 100}%`, height: "100%", background: strengthColor, borderRadius: 2, transition: "all 0.3s" }} />
+        <div className="mb-3">
+          <div className="h-1 rounded-sm bg-gypi-surface-hi overflow-hidden">
+            <div
+              className="h-full rounded-sm transition-all duration-300"
+              style={{ width: `${(strength / 3) * 100}%`, background: strengthColor }}
+            />
           </div>
-          <div style={{ fontSize: 11, color: strengthColor, marginTop: 4, fontWeight: 600 }}>{strengthLabel}</div>
+          <div className="text-[11px] mt-1 font-semibold" style={{ color: strengthColor }}>{STRENGTH_LABELS[strength]}</div>
         </div>
       )}
-      <input value={confirmar} onChange={e => setConfirmar(e.target.value)} placeholder="Repetí la contraseña" type={showPwd ? "text" : "password"}
-        style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${confirmar && confirmar !== nueva ? C.red : C.borderHi}`, background: C.surface, color: C.text, fontSize: 16, fontFamily: fB, outline: "none", marginBottom: 4 }} />
-      {confirmar && confirmar !== nueva && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>No coinciden</div>}
-      <button onClick={cambiar} disabled={loading || !nueva || nueva !== confirmar || strength < 3}
-        style={{ marginTop: 16, width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: loading || strength < 3 ? 0.5 : 1 }}>
+
+      {/* Confirm input */}
+      <input
+        value={confirmar}
+        onChange={e => setConfirmar(e.target.value)}
+        placeholder="Repetí la contraseña"
+        type={showPwd ? "text" : "password"}
+        className={`g-input w-full text-base py-3.5 px-4 rounded-xl mb-1 ${mismatch ? "border-gypi-red" : ""}`}
+      />
+      {mismatch && <div className="text-[11px] text-gypi-red mb-2">No coinciden</div>}
+
+      {/* Submit */}
+      <button
+        onClick={cambiar}
+        disabled={!canSubmit}
+        className={`mt-4 w-full py-3.5 rounded-xl border-none bg-gypi-amber text-white text-base font-bold font-heading cursor-pointer ${
+          canSubmit ? "opacity-100" : "opacity-50 cursor-default"
+        }`}
+      >
         {loading ? "Guardando..." : "Guardar"}
       </button>
     </div>
