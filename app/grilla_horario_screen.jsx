@@ -1,8 +1,23 @@
 import { useState, useEffect, useCallback } from "react";
-import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
+
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)",
+  amberText: "#000",
+  green: "#16A34A",
+  red: "#DC2626",
+  cyan: "#0891B2",
+  violet: "#7C3AED",
+  dim: "var(--color-text-dim)",
+  mute: "var(--color-text-muted)",
+  text: "var(--color-text)",
+  surface: "var(--color-surface)",
+  surfLo: "var(--color-surf-lo)",
+  surfHi: "var(--color-surf-hi)",
+  border: "var(--color-border)",
+};
 
 const DIAS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
 const DIAS_L = { lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom" };
@@ -85,14 +100,14 @@ export default function GrillaHorarioScreen({ empresaId }) {
     else setSeleccionados(p => { const n = new Set(p); ids.forEach(id => n.add(id)); return n; });
   };
   const aplicarMasivo = () => {
-    if (seleccionados.size === 0) { showToast("Seleccioná al menos un empleado", C.amber); return; }
+    if (seleccionados.size === 0) { showToast("Seleccioná al menos un empleado", V.amber); return; }
     setGrilla(p => { const c = { ...p }; seleccionados.forEach(id => { c[id] = JSON.parse(JSON.stringify(horarioMasivo)); }); return c; });
-    showToast(`✅ Horario aplicado a ${seleccionados.size} empleado${seleccionados.size > 1 ? "s" : ""}`, C.green);
+    showToast(`✅ Horario aplicado a ${seleccionados.size} empleado${seleccionados.size > 1 ? "s" : ""}`, V.green);
   };
 
   const guardarYNotificar = async () => {
     const cambios = empleados.filter(e => tienesCambios(e.id));
-    if (!cambios.length) { showToast("No hay cambios para guardar", C.amber); return; }
+    if (!cambios.length) { showToast("No hay cambios para guardar", V.amber); return; }
     setSaving(true); let ok = 0, errores = 0;
     for (const emp of cambios) {
       const row = grilla[emp.id]; const diagrama = {};
@@ -106,17 +121,17 @@ export default function GrillaHorarioScreen({ empresaId }) {
       } catch (e) { console.error("Error guardando horario de", emp.nombre, ":", e); errores++; }
     }
     if (ok > 0) { setOriginal(JSON.parse(JSON.stringify(grilla))); setSeleccionados(new Set()); }
-    showToast(errores > 0 ? `⚠️ ${ok} guardado${ok !== 1 ? "s" : ""}, ${errores} con error.` : `✅ ${ok} horario${ok > 1 ? "s" : ""} guardado${ok > 1 ? "s" : ""} y notificado${ok > 1 ? "s" : ""}`, errores > 0 ? C.amber : C.green);
+    showToast(errores > 0 ? `⚠️ ${ok} guardado${ok !== 1 ? "s" : ""}, ${errores} con error.` : `✅ ${ok} horario${ok > 1 ? "s" : ""} guardado${ok > 1 ? "s" : ""} y notificado${ok > 1 ? "s" : ""}`, errores > 0 ? V.amber : V.green);
     setSaving(false);
   };
 
   const empsFiltrados = filtroDivision === "todas" ? empleados : empleados.filter(e => e.division === filtroDivision);
 
   /* ── Toggle switch reusable ── */
-  const Toggle = ({ on, onClick, color = C.green, size = "sm" }) => {
+  const Toggle = ({ on, onClick, color = V.green, size = "sm" }) => {
     const w = size === "sm" ? 34 : 48; const h = size === "sm" ? 20 : 28; const d = size === "sm" ? 16 : 22;
     return (
-      <button onClick={onClick} aria-pressed={on} aria-label={on ? "Desactivar" : "Activar"} className="relative border-none cursor-pointer shrink-0 rounded-full" style={{ width: w, height: h, background: on ? color : C.mute, transition: "background 0.2s" }}>
+      <button onClick={onClick} aria-pressed={on} aria-label={on ? "Desactivar" : "Activar"} className="relative border-none cursor-pointer shrink-0 rounded-full" style={{ width: w, height: h, background: on ? color : V.mute, transition: "background 0.2s" }}>
         <div className="absolute rounded-full bg-white" style={{ width: d, height: d, top: (h - d) / 2, left: on ? w - d - 2 : 2, transition: "left 0.2s" }} />
       </button>
     );
@@ -132,8 +147,8 @@ export default function GrillaHorarioScreen({ empresaId }) {
 
       {/* Modo toggle */}
       <div className="flex mb-3.5 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
-        <button onClick={() => setModo("masivo")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "masivo" ? C.cyan : "transparent", color: modo === "masivo" ? "#000" : C.dim }}>⚡ Asignación masiva</button>
-        <button onClick={() => setModo("individual")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "individual" ? C.amber : "transparent", color: modo === "individual" ? C.amberText : C.dim }}>✏️ Individual</button>
+        <button onClick={() => setModo("masivo")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "masivo" ? V.cyan : "transparent", color: modo === "masivo" ? "#000" : V.dim }}>⚡ Asignación masiva</button>
+        <button onClick={() => setModo("individual")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "individual" ? V.amber : "transparent", color: modo === "individual" ? V.amberText : V.dim }}>✏️ Individual</button>
       </div>
 
       {loading ? (
@@ -141,15 +156,15 @@ export default function GrillaHorarioScreen({ empresaId }) {
       ) : modo === "masivo" ? (
         <>
           {/* Paso 1: horario */}
-          <div className="bg-gypi-surface rounded-2xl p-4 mb-3.5" style={{ border: `1px solid ${C.cyan}30` }}>
-            <div className="text-[11px] font-bold uppercase tracking-[0.08em] mb-3" style={{ color: C.cyan }}>① Definí el horario</div>
+          <div className="bg-gypi-surface rounded-2xl p-4 mb-3.5" style={{ border: `1px solid ${V.cyan}30` }}>
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] mb-3" style={{ color: V.cyan }}>① Definí el horario</div>
             <div className="flex flex-col gap-1.5">
               {DIAS.map(d => {
                 const activo = !!horarioMasivo[d];
                 return (
                   <div key={d} className="flex items-center gap-2 py-1.5">
                     <Toggle on={activo} onClick={() => toggleDiaMasivo(d)} />
-                    <span className="w-[34px] text-xs font-bold font-heading" style={{ color: activo ? C.text : C.mute }}>{DIAS_L[d]}</span>
+                    <span className="w-[34px] text-xs font-bold font-heading" style={{ color: activo ? V.text : V.mute }}>{DIAS_L[d]}</span>
                     {activo ? (
                       <div className="flex items-center gap-1.5 flex-1">
                         <TimeInput value={horarioMasivo[d].in} onChange={e => setHorarioMasivoField(d, "in", e.target.value)} />
@@ -169,13 +184,13 @@ export default function GrillaHorarioScreen({ empresaId }) {
           {/* Paso 2: seleccionar empleados */}
           <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3.5">
             <div className="flex justify-between items-center mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.cyan }}>② Seleccioná empleados</div>
-              <Tag color={seleccionados.size > 0 ? C.amber : C.dim}>{seleccionados.size} seleccionados</Tag>
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: V.cyan }}>② Seleccioná empleados</div>
+              <Tag color={seleccionados.size > 0 ? V.amber : V.dim}>{seleccionados.size} seleccionados</Tag>
             </div>
             <div className="flex gap-1 mb-2.5 overflow-x-auto pb-0.5">
-              {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || C.cyan}>{d.label}</Chip>)}
+              {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || V.cyan}>{d.label}</Chip>)}
             </div>
-            <button onClick={seleccionarTodosFiltrados} className="w-full py-2 rounded-lg text-gypi-cyan text-xs font-bold font-body cursor-pointer mb-2 bg-transparent" style={{ border: `1px dashed ${C.border}` }}>
+            <button onClick={seleccionarTodosFiltrados} className="w-full py-2 rounded-lg text-gypi-cyan text-xs font-bold font-body cursor-pointer mb-2 bg-transparent" style={{ border: `1px dashed ${V.border}` }}>
               {empsFiltrados.every(e => seleccionados.has(e.id)) && empsFiltrados.length > 0 ? "✕ Deseleccionar todos" : `☑ Seleccionar todos (${empsFiltrados.length})`}
             </button>
             <div className="flex flex-col gap-1 max-h-[280px] overflow-y-auto">
@@ -183,13 +198,13 @@ export default function GrillaHorarioScreen({ empresaId }) {
                 const sel = seleccionados.has(emp.id);
                 const changed = tienesCambios(emp.id);
                 return (
-                  <button key={emp.id} onClick={() => toggleEmpleado(emp.id)} className="flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] cursor-pointer font-body text-left transition-all" style={{ border: `1px solid ${sel ? `${C.cyan}40` : C.border}`, background: sel ? `${C.cyan}10` : "transparent" }}>
-                    <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0" style={{ border: `2px solid ${sel ? C.cyan : C.mute}`, background: sel ? C.cyan : "transparent", color: "#000" }}>{sel && "✓"}</div>
+                  <button key={emp.id} onClick={() => toggleEmpleado(emp.id)} className="flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] cursor-pointer font-body text-left transition-all" style={{ border: `1px solid ${sel ? `${V.cyan}40` : V.border}`, background: sel ? `${V.cyan}10` : "transparent" }}>
+                    <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0" style={{ border: `2px solid ${sel ? V.cyan : V.mute}`, background: sel ? V.cyan : "transparent", color: "#000" }}>{sel && "✓"}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.nombre}</div>
                       <div className="text-[10px] text-gypi-dim truncate">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}</div>
                     </div>
-                    {changed && <Tag color={C.amber}>Editado</Tag>}
+                    {changed && <Tag color={V.amber}>Editado</Tag>}
                   </button>
                 );
               })}
@@ -197,15 +212,15 @@ export default function GrillaHorarioScreen({ empresaId }) {
           </div>
 
           <button onClick={aplicarMasivo} disabled={seleccionados.size === 0} className="w-full py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading mb-2.5" style={{
-            background: seleccionados.size > 0 ? `linear-gradient(135deg, ${C.cyan}, ${C.green})` : C.surface,
-            color: seleccionados.size > 0 ? "#000" : C.mute, cursor: seleccionados.size > 0 ? "pointer" : "default",
+            background: seleccionados.size > 0 ? `linear-gradient(135deg, ${V.cyan}, ${V.green})` : V.surface,
+            color: seleccionados.size > 0 ? "#000" : V.mute, cursor: seleccionados.size > 0 ? "pointer" : "default",
           }}>⚡ Aplicar horario a {seleccionados.size || "..."} empleado{seleccionados.size !== 1 ? "s" : ""}</button>
         </>
       ) : (
         /* ═══ MODO INDIVIDUAL ═══ */
         <>
           <div className="flex gap-1 mb-2.5 overflow-x-auto pb-0.5">
-            {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || C.amber}>{d.label}</Chip>)}
+            {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || V.amber}>{d.label}</Chip>)}
           </div>
           <div className="flex flex-col gap-2">
             {empsFiltrados.map(emp => {
@@ -215,33 +230,33 @@ export default function GrillaHorarioScreen({ empresaId }) {
               const horas = calcHoras(row);
               const diasActivos = DIAS.filter(d => row[d]).length;
               return (
-                <div key={emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${changed ? `${C.amber}40` : C.border}` }}>
+                <div key={emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${changed ? `${V.amber}40` : V.border}` }}>
                   <button onClick={() => setExpandedId(isExp ? null : emp.id)} aria-expanded={isExp} className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left">
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
                       <div className="text-[10px] text-gypi-dim mt-0.5">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"} · {diasActivos}d · {horas.toFixed(1)}h/sem</div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {changed && <Tag color={C.amber}>Editado</Tag>}
+                      {changed && <Tag color={V.amber}>Editado</Tag>}
                       <span className="text-gypi-dim text-xs transition-transform" style={{ transform: isExp ? "rotate(90deg)" : "rotate(0)" }}>▶</span>
                     </div>
                   </button>
                   {!isExp && (
                     <div className="px-3.5 pb-2.5 flex gap-[3px]">
                       {DIAS.map(d => (
-                        <div key={d} className="flex-1 text-center py-[3px] rounded-[5px] text-[8px] font-bold font-mono uppercase" style={{ background: row[d] ? `${C.green}15` : `${C.mute}10`, color: row[d] ? C.green : C.mute }}>{DIAS_L[d]}</div>
+                        <div key={d} className="flex-1 text-center py-[3px] rounded-[5px] text-[8px] font-bold font-mono uppercase" style={{ background: row[d] ? `${V.green}15` : `${V.mute}10`, color: row[d] ? V.green : V.mute }}>{DIAS_L[d]}</div>
                       ))}
                     </div>
                   )}
                   {isExp && (
                     <div className="px-3.5 pb-3.5">
-                      <button onClick={() => aplicarDefault(emp.id)} className="py-1.5 px-3 rounded-lg border-none text-[11px] font-bold font-body cursor-pointer mb-2.5" style={{ background: `${C.cyan}22`, color: C.cyan }}>🔄 Default L-V</button>
+                      <button onClick={() => aplicarDefault(emp.id)} className="py-1.5 px-3 rounded-lg border-none text-[11px] font-bold font-body cursor-pointer mb-2.5" style={{ background: `${V.cyan}22`, color: V.cyan }}>🔄 Default L-V</button>
                       <div className="flex flex-col gap-[5px]">
                         {DIAS.map(d => {
                           const activo = !!row[d];
                           return (
-                            <div key={d} className="flex items-center gap-2 py-1.5 px-2 rounded-lg" style={{ background: activo ? `${C.green}08` : C.surfLo, border: `1px solid ${activo ? `${C.green}20` : C.border}` }}>
-                              <span className="w-[30px] text-[11px] font-bold font-heading" style={{ color: activo ? C.text : C.mute }}>{DIAS_L[d]}</span>
+                            <div key={d} className="flex items-center gap-2 py-1.5 px-2 rounded-lg" style={{ background: activo ? `${V.green}08` : V.surfLo, border: `1px solid ${activo ? `${V.green}20` : V.border}` }}>
+                              <span className="w-[30px] text-[11px] font-bold font-heading" style={{ color: activo ? V.text : V.mute }}>{DIAS_L[d]}</span>
                               <Toggle on={activo} onClick={() => toggleFranco(emp.id, d)} size="sm" />
                               {activo ? (
                                 <div className="flex items-center gap-1 flex-1">
@@ -254,7 +269,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                           );
                         })}
                       </div>
-                      <div className="mt-2 text-[11px] text-gypi-dim">{diasActivos} días · {horas.toFixed(1)}h/semana {changed && <Tag color={C.amber}>sin guardar</Tag>}</div>
+                      <div className="mt-2 text-[11px] text-gypi-dim">{diasActivos} días · {horas.toFixed(1)}h/semana {changed && <Tag color={V.amber}>sin guardar</Tag>}</div>
                     </div>
                   )}
                 </div>
@@ -268,8 +283,8 @@ export default function GrillaHorarioScreen({ empresaId }) {
       {totalCambios > 0 && (
         <div className="fixed bottom-[100px] left-1/2 -translate-x-1/2 z-50 max-w-[440px] w-[calc(100%-36px)]">
           <button onClick={guardarYNotificar} disabled={saving} className="w-full py-4 rounded-2xl border-none text-[15px] font-bold font-heading flex items-center justify-center gap-2" style={{
-            background: saving ? C.surface : `linear-gradient(135deg, ${C.amber}, ${C.violet})`,
-            color: saving ? C.dim : C.amberText, cursor: saving ? "default" : "pointer", boxShadow: `0 8px 32px ${C.amber}30`,
+            background: saving ? V.surface : `linear-gradient(135deg, ${V.amber}, ${V.violet})`,
+            color: saving ? V.dim : V.amberText, cursor: saving ? "default" : "pointer", boxShadow: `0 8px 32px ${V.amber}30`,
           }}>{saving ? "⏳ Guardando..." : `📤 Guardar y notificar ${totalCambios} empleado${totalCambios > 1 ? "s" : ""}`}</button>
         </div>
       )}

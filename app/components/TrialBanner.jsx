@@ -1,15 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
-import { C, fB } from "../lib/theme";
 import { getToken } from "../lib/supabase";
 
-/**
- * Banner que muestra estado de trial / vencimiento.
- * Se incluye en el dashboard del admin.
- *
- * Props:
- *  - onUpgrade: callback al tocar "Actualizar plan" (lleva a billing)
- */
 export default function TrialBanner({ onUpgrade }) {
   const [info, setInfo] = useState(null);
   const [dismissed, setDismissed] = useState(false);
@@ -25,47 +17,41 @@ export default function TrialBanner({ onUpgrade }) {
 
   if (!info || dismissed) return null;
 
-  // ─── Trial activo ───
   if (info.estado === "trial" && info.dias_restantes !== null) {
     const urgente = info.dias_restantes <= 3;
-    const color = urgente ? C.red : C.amber;
+    const color = urgente ? "#DC2626" : "var(--color-empresa-primary, #F97316)";
     return (
-      <div role="status" aria-live="polite" style={{ background: `${color}10`, border: `1px solid ${color}40`, borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-        <span aria-hidden="true" style={{ fontSize: 22, flexShrink: 0 }}>{urgente ? "⚠️" : "🎁"}</span>
-        <div style={{ flex: 1, fontFamily: fB }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+      <div role="status" aria-live="polite" className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 mb-3.5" style={{ background: `${color}10`, border: `1px solid ${color}40` }}>
+        <span aria-hidden="true" className="text-[22px] shrink-0">{urgente ? "⚠️" : "🎁"}</span>
+        <div className="flex-1 font-body">
+          <div className="text-[13px] font-bold text-gypi-text">
             {info.dias_restantes === 0
               ? "Tu prueba gratuita termina HOY"
               : info.dias_restantes === 1
               ? "Te queda 1 día de prueba Pro"
               : `Te quedan ${info.dias_restantes} días de prueba Pro`}
           </div>
-          <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>
-            Al vencer pasarás al plan Free (límite: 5 empleados).
-          </div>
+          <div className="text-[11px] text-gypi-dim mt-px">Al vencer pasarás al plan Free (límite: 5 empleados).</div>
         </div>
-        <button onClick={onUpgrade} style={{ flexShrink: 0, background: color, color: "#000", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fB }}>
+        <button onClick={onUpgrade} className="shrink-0 border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body text-black" style={{ background: color }}>
           Suscribirme
         </button>
         {!urgente && (
-          <button onClick={() => setDismissed(true)} aria-label="Cerrar aviso" style={{ flexShrink: 0, background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: 4 }}>✕</button>
+          <button onClick={() => setDismissed(true)} aria-label="Cerrar aviso" className="shrink-0 bg-transparent border-none text-gypi-dim cursor-pointer text-sm p-1">✕</button>
         )}
       </div>
     );
   }
 
-  // ─── Suscripción vencida ───
   if (info.estado === "vencida") {
     return (
-      <div role="alert" style={{ background: `${C.red}12`, border: `1px solid ${C.red}50`, borderRadius: 12, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-        <span aria-hidden="true" style={{ fontSize: 22, flexShrink: 0 }}>🔒</span>
-        <div style={{ flex: 1, fontFamily: fB }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Tu prueba terminó</div>
-          <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>
-            Estás en plan Free. Suscribite para recuperar todas las funciones.
-          </div>
+      <div role="alert" className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 mb-3.5 bg-gypi-red/[0.07] border border-gypi-red/30">
+        <span aria-hidden="true" className="text-[22px] shrink-0">🔒</span>
+        <div className="flex-1 font-body">
+          <div className="text-[13px] font-bold text-gypi-text">Tu prueba terminó</div>
+          <div className="text-[11px] text-gypi-dim mt-px">Estás en plan Free. Suscribite para recuperar todas las funciones.</div>
         </div>
-        <button onClick={onUpgrade} style={{ flexShrink: 0, background: C.red, color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: fB }}>
+        <button onClick={onUpgrade} className="shrink-0 bg-gypi-red text-white border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body">
           Ver planes
         </button>
       </div>

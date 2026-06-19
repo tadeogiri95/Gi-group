@@ -1,49 +1,38 @@
 "use client";
-import { C, fH, fB } from "../lib/theme";
 import { PLANES } from "../lib/plans";
 
-/**
- * Modal/banner para mostrar cuando el usuario intenta acceder
- * a una feature que su plan no incluye.
- *
- * Props:
- *  - planActual: "free" | "starter" | "pro" | "enterprise"
- *  - planRequerido: el mínimo necesario
- *  - feature: descripción de qué necesita (ej: "exportar a PDF")
- *  - mensaje?: mensaje custom opcional
- *  - onClose: cerrar el modal
- *  - onUpgrade: callback al tocar "Actualizar plan"
- */
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)", violet: "#7C3AED",
+};
+
 export default function Paywall({ planActual = "free", planRequerido = "starter", feature, mensaje, onClose, onUpgrade }) {
   const target = PLANES[planRequerido] || PLANES.starter;
   const actual = PLANES[planActual] || PLANES.free;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }} />
-      <div style={{ position: "relative", width: "100%", maxWidth: 420, background: C.bg, borderRadius: 24, padding: 28, border: `1px solid ${C.amber}30`, boxShadow: `0 24px 60px ${C.amber}20` }}>
-        <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg,${C.amber},${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 32 }}>🔒</div>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-[18px]">
+      <div onClick={onClose} className="absolute inset-0 bg-black/70 backdrop-blur-[4px]" />
+      <div className="relative w-full max-w-[420px] bg-gypi-bg rounded-3xl p-7 border border-gypi-amber/20" style={{ boxShadow: `0 24px 60px ${V.amber}20` }}>
+        <div className="w-16 h-16 rounded-[18px] flex items-center justify-center mx-auto mb-4 text-[32px]" style={{ background: `linear-gradient(135deg,${V.amber},${V.violet})` }}>🔒</div>
 
-        <h2 style={{ margin: 0, fontFamily: fH, fontSize: 22, fontWeight: 700, color: C.text, textAlign: "center" }}>
-          Función bloqueada
-        </h2>
-        <p style={{ fontSize: 13, color: C.dim, textAlign: "center", lineHeight: 1.5, margin: "10px 0 20px" }}>
+        <h2 className="m-0 font-heading text-[22px] font-bold text-gypi-text text-center">Función bloqueada</h2>
+        <p className="text-[13px] text-gypi-dim text-center leading-relaxed my-2.5 mb-5">
           {mensaje || (
             <>
-              <b style={{ color: C.text }}>{feature || "Esta función"}</b> no está disponible en tu plan <b style={{ color: C.text }}>{actual.nombre}</b>.
-              Actualizá a <b style={{ color: C.amber }}>{target.nombre}</b> para desbloquearla.
+              <b className="text-gypi-text">{feature || "Esta función"}</b> no está disponible en tu plan <b className="text-gypi-text">{actual.nombre}</b>.
+              Actualizá a <b className="text-gypi-amber">{target.nombre}</b> para desbloquearla.
             </>
           )}
         </p>
 
-        <div style={{ background: C.surface, borderRadius: 14, padding: 16, border: `1px solid ${C.border}`, marginBottom: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.amber }}>Plan {target.nombre}</span>
-            <span style={{ fontSize: 16, fontWeight: 700, color: C.text, fontFamily: fH }}>
+        <div className="bg-gypi-surface rounded-[14px] p-4 border border-gypi-border mb-[18px]">
+          <div className="flex justify-between items-center mb-2.5">
+            <span className="text-sm font-bold text-gypi-amber">Plan {target.nombre}</span>
+            <span className="text-base font-bold text-gypi-text font-heading">
               {target.precio ? `$${target.precio.toLocaleString("es-AR")}/mes` : "A convenir"}
             </span>
           </div>
-          <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.6 }}>
+          <div className="text-xs text-gypi-dim leading-relaxed">
             ✓ Hasta {target.max_empleados.toLocaleString("es-AR")} empleados<br />
             {target.geolocalizacion && <>✓ Geolocalización ({target.max_ubicaciones >= 999 ? "ilimitada" : target.max_ubicaciones + " ubicación"})<br /></>}
             {target.exportar_csv && <>✓ Exportación CSV<br /></>}
@@ -54,11 +43,11 @@ export default function Paywall({ planActual = "free", planRequerido = "starter"
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 13, borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>
+        <div className="flex gap-2.5">
+          <button onClick={onClose} className="flex-1 py-3.5 rounded-xl border border-gypi-border bg-transparent text-gypi-dim text-sm font-semibold font-body cursor-pointer">
             Ahora no
           </button>
-          <button onClick={onUpgrade} style={{ flex: 2, padding: 13, borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: "pointer" }}>
+          <button onClick={onUpgrade} className="flex-[2] py-3.5 rounded-xl border-none bg-gypi-amber text-white text-sm font-bold font-heading cursor-pointer">
             🚀 Actualizar plan
           </button>
         </div>

@@ -1,13 +1,31 @@
 import { useState, useEffect, useRef } from "react";
-import { C } from "./lib/theme";
 import InstaladorScreen from "./instalador_screen";
+
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)",
+  amberS: "rgba(249,115,22,0.12)",
+  amberText: "#000",
+  green: "#16A34A",
+  red: "#DC2626",
+  redS: "rgba(220,38,38,0.10)",
+  cyan: "#0891B2",
+  violet: "#7C3AED",
+  dim: "var(--color-text-dim)",
+  mute: "var(--color-text-muted)",
+  text: "var(--color-text)",
+  surface: "var(--color-surface)",
+  surfHi: "var(--color-surf-hi)",
+  border: "var(--color-border)",
+  borderHi: "var(--color-border-hi, rgba(255,255,255,0.12))",
+  bg: "var(--color-bg)",
+};
 
 /* ═══ CONSTANTES UI ═══ */
 const TIPOS = [
-  { cod: "N", nombre: "Normal", color: C.green },
-  { cod: "R", nombre: "Retrabajo", color: C.red },
-  { cod: "E", nombre: "Error previo", color: C.amber },
-  { cod: "C", nombre: "Cambio cliente", color: C.violet },
+  { cod: "N", nombre: "Normal", color: V.green },
+  { cod: "R", nombre: "Retrabajo", color: V.red },
+  { cod: "E", nombre: "Error previo", color: V.amber },
+  { cod: "C", nombre: "Cambio cliente", color: V.violet },
 ];
 const CAUSAS = [
   { cod: "M", nombre: "Falta material", icon: "📦" },
@@ -29,7 +47,7 @@ import { Tag } from "./components/ui";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
-  return etapas.find(e => e.codigo === codigo) || { codigo, nombre: "?", icon: "❓", color: C.dim };
+  return etapas.find(e => e.codigo === codigo) || { codigo, nombre: "?", icon: "❓", color: V.dim };
 }
 
 /* ═══ MAIN COMPONENT ═══ */
@@ -166,7 +184,7 @@ export default function ActividadScreen({
         <div className="py-3 px-5 flex items-center gap-3 shrink-0">
           <button onClick={() => setShowReporte(false)} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: C.cyan }}>Reporte</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: V.cyan }}>Reporte</div>
             <div className="text-base font-bold font-heading">Instalación</div>
           </div>
         </div>
@@ -177,9 +195,9 @@ export default function ActividadScreen({
 
   /* ── Error banner (reusable) ── */
   const ErrorBanner = () => errorMsg ? (
-    <div className="p-3 rounded-[10px] text-xs flex items-center justify-between mb-3.5" style={{ background: C.redS, color: C.red }}>
+    <div className="p-3 rounded-[10px] text-xs flex items-center justify-between mb-3.5" style={{ background: V.redS, color: V.red }}>
       <span>{errorMsg}</span>
-      <button onClick={() => setErrorMsg(null)} className="bg-transparent border-none cursor-pointer text-sm font-bold" style={{ color: C.red }}>✕</button>
+      <button onClick={() => setErrorMsg(null)} className="bg-transparent border-none cursor-pointer text-sm font-bold" style={{ color: V.red }}>✕</button>
     </div>
   ) : null;
 
@@ -189,16 +207,16 @@ export default function ActividadScreen({
       <div className="font-body flex flex-col flex-1 overflow-y-auto">
         <div className="py-6 px-5 flex-1">
           <ErrorBanner />
-          <div className="rounded-3xl p-8 text-center relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${C.amber}08, ${C.surface} 60%)`, border: `1px solid ${C.border}` }}>
-            <div className="absolute -top-[60px] -right-[60px] w-[200px] h-[200px] rounded-full blur-[80px]" style={{ background: `${C.amber}10` }} />
+          <div className="rounded-3xl p-8 text-center relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${V.amber}08, ${V.surface} 60%)`, border: `1px solid ${V.border}` }}>
+            <div className="absolute -top-[60px] -right-[60px] w-[200px] h-[200px] rounded-full blur-[80px]" style={{ background: `${V.amber}10` }} />
             <div className="relative">
-              <div className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mx-auto mb-4 text-[32px]" style={{ background: C.amberS }}>🔨</div>
+              <div className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mx-auto mb-4 text-[32px]" style={{ background: V.amberS }}>🔨</div>
               <div className="text-lg font-bold font-heading mb-2">Sin tarea activa</div>
               <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Iniciá una tarea para registrar tu actividad en el proyecto</div>
               <button
                 onClick={() => { if (!fichadaHoy?.ingreso) { setErrorMsg("Debés fichar tu ingreso para comenzar a trabajar"); return; } setState("selecting"); setStep(1); }}
                 className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2"
-                style={{ background: C.amber, color: C.amberText }}
+                style={{ background: V.amber, color: V.amberText }}
               >
                 <span className="text-xl">▶</span> Iniciar tarea
               </button>
@@ -206,14 +224,14 @@ export default function ActividadScreen({
           </div>
 
           {/* Botón Reporte de Instalación */}
-          <button onClick={() => setShowReporte(true)} className="w-full mt-3 py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2" style={{ background: C.cyan, color: "#000" }}>
+          <button onClick={() => setShowReporte(true)} className="w-full mt-3 py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2" style={{ background: V.cyan, color: "#000" }}>
             <span className="text-xl">📋</span> Reporte de Instalación
           </button>
 
           {historial.length > 0 && (
             <button onClick={() => setShowHistorial(true)} className="w-full mt-4 p-4 rounded-2xl bg-gypi-surface border border-gypi-border text-gypi-text text-sm font-semibold font-body cursor-pointer flex items-center justify-between">
               <span>📋 Historial de hoy</span>
-              <Tag color={C.dim}>{historial.length} tramos</Tag>
+              <Tag color={V.dim}>{historial.length} tramos</Tag>
             </button>
           )}
         </div>
@@ -228,7 +246,7 @@ export default function ActividadScreen({
         <div className="pt-5 px-5 flex items-center gap-3">
           <button onClick={() => setShowHistorial(false)} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
           <h2 className="m-0 font-heading text-[22px] font-bold flex-1">Historial de hoy</h2>
-          <Tag color={C.green}>{historial.length} tramos</Tag>
+          <Tag color={V.green}>{historial.length} tramos</Tag>
         </div>
         <div className="p-5 flex flex-col gap-2.5">
           {historial.map((r, i) => {
@@ -255,7 +273,7 @@ export default function ActividadScreen({
                 <div className="flex justify-between text-[11px] text-gypi-dim mt-1">
                   <span className="font-mono">{horaIni} → {horaFin}</span>
                 </div>
-                {r.causa && <div className="mt-1.5 text-[11px]" style={{ color: C.red }}>Causa: {CAUSAS.find(c => c.cod === r.causa)?.nombre}</div>}
+                {r.causa && <div className="mt-1.5 text-[11px]" style={{ color: V.red }}>Causa: {CAUSAS.find(c => c.cod === r.causa)?.nombre}</div>}
               </div>
             );
           })}
@@ -278,12 +296,12 @@ export default function ActividadScreen({
         <div className="pt-5 px-5 flex items-center gap-3">
           <button onClick={() => { setState(tareaActiva ? "active" : "idle"); setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
           <div className="flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: C.amber }}>Nueva tarea</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: V.amber }}>Nueva tarea</div>
             <div className="text-base font-bold font-heading">Paso {step} de 3</div>
           </div>
           <div className="flex gap-1">
             {[1, 2, 3].map(s => (
-              <div key={s} className="h-2 rounded transition-all" style={{ width: s === step ? 24 : 8, background: s <= step ? C.amber : C.surfHi }} />
+              <div key={s} className="h-2 rounded transition-all" style={{ width: s === step ? 24 : 8, background: s <= step ? V.amber : V.surfHi }} />
             ))}
           </div>
         </div>
@@ -304,7 +322,7 @@ export default function ActividadScreen({
                   </button>
                 ))}
               </div>
-              <button onClick={() => setState("pausing")} className="w-full mt-3 p-3.5 rounded-[14px] text-[13px] font-bold font-body cursor-pointer flex items-center justify-center gap-2" style={{ background: C.redS, border: `1px solid ${C.red}30`, color: C.red }}>
+              <button onClick={() => setState("pausing")} className="w-full mt-3 p-3.5 rounded-[14px] text-[13px] font-bold font-body cursor-pointer flex items-center justify-center gap-2" style={{ background: V.redS, border: `1px solid ${V.red}30`, color: V.red }}>
                 ⏸ Registrar espera / tiempo muerto
               </button>
             </div>
@@ -317,8 +335,8 @@ export default function ActividadScreen({
 
               {/* Toggle: Buscar / Manual */}
               <div className="flex gap-1.5 mb-3">
-                <button onClick={() => { setModoManual(false); setManualOT(""); }} className="flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body" style={{ background: !modoManual ? `${C.amber}22` : C.surface, color: !modoManual ? C.amber : C.dim }}>🔍 Buscar OT</button>
-                <button onClick={() => { setModoManual(true); setProyectoSeleccionado(null); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className="flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body" style={{ background: modoManual ? `${C.amber}22` : C.surface, color: modoManual ? C.amber : C.dim }}>✏️ Cargar manual</button>
+                <button onClick={() => { setModoManual(false); setManualOT(""); }} className="flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body" style={{ background: !modoManual ? `${V.amber}22` : V.surface, color: !modoManual ? V.amber : V.dim }}>🔍 Buscar OT</button>
+                <button onClick={() => { setModoManual(true); setProyectoSeleccionado(null); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className="flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body" style={{ background: modoManual ? `${V.amber}22` : V.surface, color: modoManual ? V.amber : V.dim }}>✏️ Cargar manual</button>
               </div>
 
               {/* Modo búsqueda */}
@@ -332,7 +350,7 @@ export default function ActividadScreen({
                   onChange={e => { setBusqueda(e.target.value); setProyectoSeleccionado(null); }}
                   placeholder="🔍  Buscar proyecto..."
                   className="w-full py-3.5 px-4 rounded-[14px] bg-gypi-surface text-gypi-text text-[15px] font-body outline-none box-border mb-3"
-                  style={{ border: `2px solid ${C.amber}40`, caretColor: C.amber }}
+                  style={{ border: `2px solid ${V.amber}40`, caretColor: V.amber }}
                 />
 
                 {etapaSelInfo && (
@@ -342,7 +360,7 @@ export default function ActividadScreen({
                       <div className="text-[11px] text-gypi-dim">Etapa seleccionada</div>
                       <div className="text-[13px] font-bold">{etapaSelInfo.nombre}</div>
                     </div>
-                    <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="bg-transparent border-none cursor-pointer text-xs font-semibold font-body" style={{ color: C.amber }}>Cambiar</button>
+                    <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="bg-transparent border-none cursor-pointer text-xs font-semibold font-body" style={{ color: V.amber }}>Cambiar</button>
                   </div>
                 )}
 
@@ -354,7 +372,7 @@ export default function ActividadScreen({
                       {busqueda ? (
                         <div>
                           <div className="mb-2">No se encontró "{busqueda}"</div>
-                          <button onClick={() => { setModoManual(true); setManualOT(busqueda.replace(/\D/g, "")); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className="py-2.5 px-4 rounded-[10px] bg-gypi-surface text-xs font-bold font-body cursor-pointer" style={{ border: `1px solid ${C.amber}40`, color: C.amber }}>✏️ Cargar OT manualmente</button>
+                          <button onClick={() => { setModoManual(true); setManualOT(busqueda.replace(/\D/g, "")); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className="py-2.5 px-4 rounded-[10px] bg-gypi-surface text-xs font-bold font-body cursor-pointer" style={{ border: `1px solid ${V.amber}40`, color: V.amber }}>✏️ Cargar OT manualmente</button>
                         </div>
                       ) : "Sin proyectos disponibles"}
                     </div>
@@ -362,13 +380,13 @@ export default function ActividadScreen({
                     proyectosFiltrados.slice(0, 20).map(p => {
                       const sel = proyectoSeleccionado?.ot === p.ot;
                       return (
-                        <button key={p.ot + p.codigo} onClick={() => setProyectoSeleccionado(p)} className="py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all" style={{ background: sel ? `${C.amber}18` : C.surface, border: `2px solid ${sel ? C.amber : "transparent"}` }}>
-                          <div className="min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5" style={{ background: sel ? C.amberS : C.surfHi, color: sel ? C.amber : C.text }}>{p.ot}</div>
+                        <button key={p.ot + p.codigo} onClick={() => setProyectoSeleccionado(p)} className="py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all" style={{ background: sel ? `${V.amber}18` : V.surface, border: `2px solid ${sel ? V.amber : "transparent"}` }}>
+                          <div className="min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5" style={{ background: sel ? V.amberS : V.surfHi, color: sel ? V.amber : V.text }}>{p.ot}</div>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text truncate">{p.cliente}</div>
                             <div className="text-[11px] text-gypi-dim truncate mt-[1px]">{p.proyecto}</div>
                           </div>
-                          {sel && <span className="text-base" style={{ color: C.amber }}>✓</span>}
+                          {sel && <span className="text-base" style={{ color: V.amber }}>✓</span>}
                         </button>
                       );
                     })
@@ -381,8 +399,8 @@ export default function ActividadScreen({
                 </div>
 
                 <div className="flex gap-2">
-                  <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: C.surfHi, color: C.dim }}>Atrás</button>
-                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: proyectoSeleccionado ? C.amber : C.surfHi, color: proyectoSeleccionado ? C.amberText : C.mute, cursor: proyectoSeleccionado ? "pointer" : "default" }}>Siguiente →</button>
+                  <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: V.surfHi, color: V.dim }}>Atrás</button>
+                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: proyectoSeleccionado ? V.amber : V.surfHi, color: proyectoSeleccionado ? V.amberText : V.mute, cursor: proyectoSeleccionado ? "pointer" : "default" }}>Siguiente →</button>
                 </div>
               </>)}
 
@@ -398,7 +416,7 @@ export default function ActividadScreen({
                   onKeyDown={e => e.key === "Enter" && manualOT.trim() && setStep(3)}
                   placeholder="Número de OT"
                   className="w-full py-[18px] px-5 rounded-[14px] bg-gypi-surface text-gypi-text text-[32px] font-mono font-bold text-center outline-none box-border mb-4"
-                  style={{ border: `2px solid ${C.amber}40`, letterSpacing: 4, caretColor: C.amber }}
+                  style={{ border: `2px solid ${V.amber}40`, letterSpacing: 4, caretColor: V.amber }}
                 />
 
                 {etapaSelInfo && (
@@ -412,8 +430,8 @@ export default function ActividadScreen({
                 )}
 
                 <div className="flex gap-2">
-                  <button onClick={() => { setStep(1); setManualOT(""); setModoManual(false); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: C.surfHi, color: C.dim }}>Atrás</button>
-                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: manualOT.trim() ? C.amber : C.surfHi, color: manualOT.trim() ? C.amberText : C.mute, cursor: manualOT.trim() ? "pointer" : "default" }}>Siguiente →</button>
+                  <button onClick={() => { setStep(1); setManualOT(""); setModoManual(false); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: V.surfHi, color: V.dim }}>Atrás</button>
+                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body" style={{ background: manualOT.trim() ? V.amber : V.surfHi, color: manualOT.trim() ? V.amberText : V.mute, cursor: manualOT.trim() ? "pointer" : "default" }}>Siguiente →</button>
                 </div>
               </>)}
             </div>
@@ -426,8 +444,8 @@ export default function ActividadScreen({
               <div className="text-xs text-gypi-dim mb-4">¿Es trabajo normal o hay algo especial?</div>
               <div className="flex flex-col gap-2 mb-6">
                 {TIPOS.map(t => (
-                  <button key={t.cod} onClick={() => setTipoSeleccionado(t.cod)} className="py-3.5 px-4 rounded-[14px] cursor-pointer flex items-center gap-3 font-body transition-all" style={{ background: tipoSeleccionado === t.cod ? `${t.color}18` : C.surface, border: `2px solid ${tipoSeleccionado === t.cod ? t.color : "transparent"}` }}>
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center transition-all" style={{ border: `2px solid ${tipoSeleccionado === t.cod ? t.color : C.mute}`, background: tipoSeleccionado === t.cod ? t.color : "transparent" }}>
+                  <button key={t.cod} onClick={() => setTipoSeleccionado(t.cod)} className="py-3.5 px-4 rounded-[14px] cursor-pointer flex items-center gap-3 font-body transition-all" style={{ background: tipoSeleccionado === t.cod ? `${t.color}18` : V.surface, border: `2px solid ${tipoSeleccionado === t.cod ? t.color : "transparent"}` }}>
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center transition-all" style={{ border: `2px solid ${tipoSeleccionado === t.cod ? t.color : V.mute}`, background: tipoSeleccionado === t.cod ? t.color : "transparent" }}>
                       {tipoSeleccionado === t.cod && <span className="text-xs font-black" style={{ color: "#000" }}>✓</span>}
                     </div>
                     <div className="text-left">
@@ -439,7 +457,7 @@ export default function ActividadScreen({
               </div>
 
               {etapaSelInfo && (proyectoSeleccionado || modoManual) && (
-                <div className="rounded-2xl p-4 mb-4" style={{ background: C.surfHi, border: `1px solid ${C.borderHi}` }}>
+                <div className="rounded-2xl p-4 mb-4" style={{ background: V.surfHi, border: `1px solid ${V.borderHi}` }}>
                   <div className="text-[10px] text-gypi-dim font-bold uppercase tracking-[0.1em] mb-2.5">Resumen</div>
                   <div className="flex justify-between mb-1.5">
                     <span className="text-xs text-gypi-dim">Etapa</span>
@@ -458,7 +476,7 @@ export default function ActividadScreen({
                   {modoManual && (
                     <div className="flex justify-between mb-1.5">
                       <span className="text-xs text-gypi-dim">Modo</span>
-                      <Tag color={C.amber}>Manual</Tag>
+                      <Tag color={V.amber}>Manual</Tag>
                     </div>
                   )}
                   <div className="flex justify-between">
@@ -469,8 +487,8 @@ export default function ActividadScreen({
               )}
 
               <div className="flex gap-2">
-                <button onClick={() => setStep(2)} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: C.surfHi, color: C.dim }}>Atrás</button>
-                <button onClick={iniciarTarea} disabled={saving} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body flex items-center justify-center gap-1.5" style={{ background: saving ? C.surfHi : C.green, color: saving ? C.mute : "#000", cursor: saving ? "default" : "pointer" }}>{saving ? "Guardando..." : "▶ Iniciar"}</button>
+                <button onClick={() => setStep(2)} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer" style={{ background: V.surfHi, color: V.dim }}>Atrás</button>
+                <button onClick={iniciarTarea} disabled={saving} className="flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body flex items-center justify-center gap-1.5" style={{ background: saving ? V.surfHi : V.green, color: saving ? V.mute : "#000", cursor: saving ? "default" : "pointer" }}>{saving ? "Guardando..." : "▶ Iniciar"}</button>
               </div>
             </div>
           )}
@@ -486,14 +504,14 @@ export default function ActividadScreen({
         <div className="pt-5 px-5 flex items-center gap-3">
           <button onClick={() => setState(tareaActiva ? "active" : "selecting")} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: C.red }}>Tiempo muerto</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: V.red }}>Tiempo muerto</div>
             <div className="text-base font-bold font-heading">¿Cuál es la causa?</div>
           </div>
         </div>
         <div className="p-5 flex flex-col gap-2.5">
           {CAUSAS.map(c => (
-            <button key={c.cod} onClick={() => confirmarPausa(c.cod)} disabled={saving} className="p-[18px] rounded-2xl bg-gypi-surface cursor-pointer flex items-center gap-3.5 font-body" style={{ border: `1px solid ${C.red}20`, opacity: saving ? 0.5 : 1 }}>
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-[22px]" style={{ background: C.redS }}>{c.icon}</div>
+            <button key={c.cod} onClick={() => confirmarPausa(c.cod)} disabled={saving} className="p-[18px] rounded-2xl bg-gypi-surface cursor-pointer flex items-center gap-3.5 font-body" style={{ border: `1px solid ${V.red}20`, opacity: saving ? 0.5 : 1 }}>
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-[22px]" style={{ background: V.redS }}>{c.icon}</div>
               <div className="text-left">
                 <div className="text-sm font-bold text-gypi-text">{c.nombre}</div>
                 <div className="text-[11px] text-gypi-dim font-mono">Código: {c.cod}</div>
@@ -507,14 +525,14 @@ export default function ActividadScreen({
 
   // ═══ RENDER: ACTIVE TASK ═══
   const isEspera = tareaActiva?.etapa === 0;
-  const accentColor = isEspera ? C.red : (etapaActiva?.color || C.amber);
+  const accentColor = isEspera ? V.red : (etapaActiva?.color || V.amber);
   const horaInicioFmt = tareaActiva?.hora_inicio ? fmtTime(new Date(tareaActiva.hora_inicio)) : "—";
 
   return (
     <div className="font-body flex flex-col flex-1 overflow-y-auto">
       <div className="p-5 flex-1 flex flex-col gap-4">
         <ErrorBanner />
-        <div className="rounded-3xl p-6 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${accentColor}12, ${C.surface} 60%)`, border: `1px solid ${accentColor}30` }}>
+        <div className="rounded-3xl p-6 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${accentColor}12, ${V.surface} 60%)`, border: `1px solid ${accentColor}30` }}>
           <div className="absolute -top-[80px] -right-[80px] w-[240px] h-[240px] rounded-full blur-[80px]" style={{ background: `${accentColor}12` }} />
           <div className="relative">
             <div className="flex items-center gap-3 mb-4">
@@ -527,7 +545,7 @@ export default function ActividadScreen({
                     {proyectoActivo && <span> · {proyectoActivo.cliente}</span>}
                   </div>
                 )}
-                {isEspera && <div className="text-[13px]" style={{ color: C.red }}>Causa: {CAUSAS.find(c => c.cod === tareaActiva?.causa)?.nombre}</div>}
+                {isEspera && <div className="text-[13px]" style={{ color: V.red }}>Causa: {CAUSAS.find(c => c.cod === tareaActiva?.causa)?.nombre}</div>}
               </div>
               <Tag color={TIPOS.find(t => t.cod === tareaActiva?.tipo)?.color}>{tareaActiva?.tipo}</Tag>
             </div>
@@ -545,9 +563,9 @@ export default function ActividadScreen({
         </div>
 
         <div className="flex gap-2.5">
-          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className="flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5" style={{ background: C.amber, color: C.amberText, opacity: saving ? 0.5 : 1 }}>🔄 Cambiar tarea</button>
+          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className="flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5" style={{ background: V.amber, color: V.amberText, opacity: saving ? 0.5 : 1 }}>🔄 Cambiar tarea</button>
           {!isEspera && (
-            <button onClick={() => setState("pausing")} disabled={saving} className="flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer" style={{ background: C.redS, border: `1px solid ${C.red}30`, color: C.red, opacity: saving ? 0.5 : 1 }}>⏸</button>
+            <button onClick={() => setState("pausing")} disabled={saving} className="flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer" style={{ background: V.redS, border: `1px solid ${V.red}30`, color: V.red, opacity: saving ? 0.5 : 1 }}>⏸</button>
           )}
         </div>
 

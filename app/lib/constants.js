@@ -1,47 +1,39 @@
 // ═══════════════════════════════════════════════════════════
-// Constantes compartidas — FASE 5.3: divisiones dinámicas
+// Constantes compartidas
 // ═══════════════════════════════════════════════════════════
 
-import { C } from "./theme";
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)",
+  green: "#16A34A",
+  cyan: "#0891B2",
+  violet: "#7C3AED",
+};
 
-// Fallback (se usan si no se cargan las dinámicas)
-const DIVISIONES_FALLBACK = [
-  { id: "herreria", label: "Herrería", icon: "🔥", color: C.amber },
-  { id: "muebles", label: "Muebles", icon: "🪵", color: C.green },
-  { id: "aberturas", label: "Aberturas", icon: "🪟", color: C.cyan },
-  { id: "general", label: "General", icon: "🏭", color: C.violet },
+// Fallback genérico (se usa cuando empresa no tiene divisiones configuradas)
+export const DIVISIONES_FALLBACK = [
+  { id: "produccion", label: "Producción", icon: "🏭", color: V.amber },
+  { id: "administracion", label: "Administración", icon: "🏢", color: V.violet },
+  { id: "logistica", label: "Logística", icon: "🚛", color: V.cyan },
+  { id: "general", label: "General", icon: "📦", color: V.green },
 ];
 
-// Store global (se setea en page.js al login)
-let _divisiones = null;
-
-export function setDivisionesEmpresa(divs) {
-  if (divs && divs.length > 0) {
-    _divisiones = divs.map(d => ({
-      id: d.clave || d.id,
-      label: d.label || d.nombre,
-      icon: d.icon || "📦",
-      color: d.color || C.amber,
-    }));
-  }
+// Helpers puros: reciben las divisiones del contexto (o DIVISIONES_FALLBACK si no hay)
+export function getDivisionesBase(divisiones) {
+  return divisiones && divisiones.length > 0 ? divisiones : DIVISIONES_FALLBACK;
+}
+export function getDivisionesConTodas(divisiones) {
+  return [{ id: "todas", label: "Todas", icon: "📊", color: V.amber }, ...getDivisionesBase(divisiones)];
+}
+export function getDivisionesConTodos(divisiones) {
+  return [{ id: "todas", label: "Todos" }, ...getDivisionesBase(divisiones)];
+}
+export function getDivisionesConSinAsignar(divisiones) {
+  return [{ id: "", label: "Sin asignar" }, ...getDivisionesBase(divisiones)];
 }
 
-export function getDivisionesBase() {
-  return _divisiones || DIVISIONES_FALLBACK;
-}
-export function getDivisionesConTodas() {
-  return [{ id: "todas", label: "Todas", icon: "📊", color: C.amber }, ...getDivisionesBase()];
-}
-export function getDivisionesConTodos() {
-  return [{ id: "todas", label: "Todos" }, ...getDivisionesBase()];
-}
-export function getDivisionesConSinAsignar() {
-  return [{ id: "", label: "Sin asignar" }, ...getDivisionesBase()];
-}
-
-// Exports estáticos retrocompatibles (fallback)
+// Exports estáticos retrocompatibles (fallback sin contexto)
 export const DIVISIONES_BASE = DIVISIONES_FALLBACK;
-export const DIVISIONES_CON_TODAS = [{ id: "todas", label: "Todas", icon: "📊", color: C.amber }, ...DIVISIONES_FALLBACK];
+export const DIVISIONES_CON_TODAS = [{ id: "todas", label: "Todas", icon: "📊", color: V.amber }, ...DIVISIONES_FALLBACK];
 export const DIVISIONES_CON_TODOS = [{ id: "todas", label: "Todos" }, ...DIVISIONES_FALLBACK];
 export const DIVISIONES_CON_SIN_ASIGNAR = [{ id: "", label: "Sin asignar" }, ...DIVISIONES_FALLBACK];
 

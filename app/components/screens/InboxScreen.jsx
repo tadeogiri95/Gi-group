@@ -1,7 +1,18 @@
 "use client";
 // Extraído de [slug]/page.js líneas 653-735
 import { useState, useEffect, useCallback } from "react";
-import { C, fB } from "../../lib/theme";
+import { fB } from "../../lib/theme";
+
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)",
+  green: "#16A34A",
+  red: "#DC2626",
+  redS: "#DC262620",
+  dim: "var(--color-text-dim)",
+  text: "var(--color-text)",
+  surface: "var(--color-surface)",
+  border: "var(--color-border)",
+};
 import { sb } from "../../lib/supabase";
 import { sendPushToLegajo } from "../../lib/push";
 import { Ic } from "../Icons";
@@ -86,19 +97,19 @@ export default function InboxScreen({ ctx, reload, usuario }) {
 
   return (
     <section aria-label="Bandeja de solicitudes" style={{ padding: "0 18px 110px", overflowY: "auto", flex: 1 }}>
-      {errorMsg && <div role="alert" style={{ padding: 12, background: C.redS, color: C.red, borderRadius: 10, fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}><span>{errorMsg}</span><button onClick={() => setErrorMsg(null)} aria-label="Cerrar error" style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>✕</button></div>}
+      {errorMsg && <div role="alert" style={{ padding: 12, background: V.redS, color: V.red, borderRadius: 10, fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}><span>{errorMsg}</span><button onClick={() => setErrorMsg(null)} aria-label="Cerrar error" style={{ background: "none", border: "none", color: V.red, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>✕</button></div>}
       <div role="group" aria-label="Filtros de solicitudes" style={{ display: "flex", gap: 6, marginBottom: 14, overflowX: "auto", alignItems: "center" }}>
-        <Chip active={f === "pendiente"} onClick={() => setF("pendiente")} color={C.amber}>Pendientes · {pend}</Chip>
-        <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={C.green}>Aprobados</Chip>
-        <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={C.red}>Rechazados</Chip>
+        <Chip active={f === "pendiente"} onClick={() => setF("pendiente")} color={V.amber}>Pendientes · {pend}</Chip>
+        <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={V.green}>Aprobados</Chip>
+        <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={V.red}>Rechazados</Chip>
         <Chip active={f === "todas"} onClick={() => setF("todas")}>Todas</Chip>
-        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" style={{ width: 30, height: 30, borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, color: C.dim, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Ic.refresh /></button>
+        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" style={{ width: 30, height: 30, borderRadius: 8, background: V.surface, border: `1px solid ${V.border}`, color: V.dim, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Ic.refresh /></button>
       </div>
-      {cargando ? <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 30, color: C.dim, fontSize: 13 }}>Cargando solicitudes...</div> :
+      {cargando ? <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 30, color: V.dim, fontSize: 13 }}>Cargando solicitudes...</div> :
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {sortedFiltered.length === 0 ? <div style={{ background: C.surface, borderRadius: 14, padding: 40, textAlign: "center", border: `1px solid ${C.border}` }}><div style={{ color: C.green, display: "inline-flex", marginBottom: 12 }}><Ic.check size={20} /></div><div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Todo al día</div></div> : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={resolver} />)}
-          {hayMas && !cargandoMas && <button onClick={() => cargarSolicitudes(cursor)} style={{ width: "100%", padding: 14, borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, color: C.amber, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer", marginTop: 4 }}>Cargar más solicitudes</button>}
-          {cargandoMas && <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 14, color: C.dim, fontSize: 12 }}>Cargando...</div>}
+          {sortedFiltered.length === 0 ? <div style={{ background: V.surface, borderRadius: 14, padding: 40, textAlign: "center", border: `1px solid ${V.border}` }}><div style={{ color: V.green, display: "inline-flex", marginBottom: 12 }}><Ic.check size={20} /></div><div style={{ fontSize: 14, fontWeight: 700, color: V.text }}>Todo al día</div></div> : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={resolver} />)}
+          {hayMas && !cargandoMas && <button onClick={() => cargarSolicitudes(cursor)} style={{ width: "100%", padding: 14, borderRadius: 14, background: V.surface, border: `1px solid ${V.border}`, color: V.amber, fontSize: 13, fontWeight: 700, fontFamily: fB, cursor: "pointer", marginTop: 4 }}>Cargar más solicitudes</button>}
+          {cargandoMas && <div role="status" aria-live="polite" style={{ textAlign: "center", padding: 14, color: V.dim, fontSize: 12 }}>Cargando...</div>}
         </div>}
     </section>
   );

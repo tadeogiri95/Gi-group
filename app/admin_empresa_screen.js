@@ -1,9 +1,24 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { C, THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
+import { THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
 import { getToken, apiFetch } from "./lib/supabase";
 import { useToast } from "./components/ui/Toast";
+
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)",
+  amberText: "#000",
+  green: "#16A34A",
+  red: "#DC2626",
+  cyan: "#06B6D4",
+  dim: "var(--color-text-dim)",
+  mute: "var(--color-text-muted)",
+  text: "var(--color-text)",
+  surface: "var(--color-surface)",
+  surfLo: "var(--color-surface-lo)",
+  surfHi: "var(--color-surface-hi)",
+  border: "var(--color-border)",
+};
 
 /* ─── Icon list for selectors ─── */
 const ICON_OPTIONS = [
@@ -27,20 +42,20 @@ const isHex = (v) => v && /^#[0-9A-Fa-f]{6}$/.test(v);
 function ColorRow({ label, value, onChange }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <input
           type="color"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", padding: 0 }}
+          style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${V.border}`, cursor: "pointer", background: "transparent", padding: 0 }}
         />
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 14, fontFamily: "'Geist Mono', monospace", outline: "none" }}
+          style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${V.border}`, background: V.surface, color: V.text, fontSize: 14, fontFamily: "'Geist Mono', monospace", outline: "none" }}
         />
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: value, border: `1px solid ${C.border}`, flexShrink: 0 }} />
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: value, border: `1px solid ${V.border}`, flexShrink: 0 }} />
       </div>
     </div>
   );
@@ -329,10 +344,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   };
 
   // ═══ Styles ═══
-  const card = { background: C.surface, borderRadius: 16, padding: 18, border: `1px solid ${C.border}`, marginBottom: 14 };
-  const lbl = { fontSize: 11, fontWeight: 700, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
-  const inp = { width: "100%", padding: "11px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 14, outline: "none", boxSizing: "border-box" };
-  const btnPrimary = { width: "100%", padding: "14px 0", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 14, fontWeight: 700, cursor: "pointer" };
+  const card = { background: V.surface, borderRadius: 16, padding: 18, border: `1px solid ${V.border}`, marginBottom: 14 };
+  const lbl = { fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
+  const inp = { width: "100%", padding: "11px 14px", borderRadius: 10, border: `1px solid ${V.border}`, background: V.surface, color: V.text, fontSize: 14, outline: "none", boxSizing: "border-box" };
+  const btnPrimary = { width: "100%", padding: "14px 0", borderRadius: 12, border: "none", background: V.amber, color: V.amberText, fontSize: 14, fontWeight: 700, cursor: "pointer" };
 
   // ═══ Tab content ═══
   const renderTab = () => {
@@ -391,8 +406,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
           <div style={card}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Personalización individual</div>
-                <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>Ajustar cada color por separado</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: V.text }}>Personalización individual</div>
+                <div style={{ fontSize: 12, color: V.dim, marginTop: 2 }}>Ajustar cada color por separado</div>
               </div>
               <button
                 onClick={() => setCustomMode(!customMode)}
@@ -400,7 +415,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 aria-label="Personalización individual de colores"
                 style={{
                   width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer", position: "relative",
-                  background: customMode ? C.green : C.surfHi, transition: "background 0.2s",
+                  background: customMode ? V.green : V.surfHi, transition: "background 0.2s",
                 }}
               >
                 <div style={{
@@ -435,7 +450,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 Texto de ejemplo para ver la tipografía
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorPrimario, color: C.amberText, fontSize: 12, fontWeight: 700 }}>
+                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorPrimario, color: V.amberText, fontSize: 12, fontWeight: 700 }}>
                   Primario
                 </div>
                 <div style={{ padding: "8px 16px", borderRadius: 8, background: colorSecundario, color: "#fff", fontSize: 12, fontWeight: 700 }}>
@@ -458,14 +473,14 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       padding: "12px 14px", borderRadius: 10,
-                      border: sel ? `2px solid ${C.amber}` : `1px solid ${C.border}`,
-                      background: sel ? `${C.amber}15` : C.surface, cursor: "pointer",
+                      border: sel ? `2px solid ${V.amber}` : `1px solid ${V.border}`,
+                      background: sel ? `${V.amber}15` : V.surface, cursor: "pointer",
                     }}
                   >
-                    <span style={{ fontSize: 14, fontFamily: f.heading, color: C.text, fontWeight: sel ? 700 : 500 }}>
+                    <span style={{ fontSize: 14, fontFamily: f.heading, color: V.text, fontWeight: sel ? 700 : 500 }}>
                       {f.label}
                     </span>
-                    <span style={{ fontSize: 11, fontFamily: f.body, color: C.dim }}>
+                    <span style={{ fontSize: 11, fontFamily: f.body, color: V.dim }}>
                       Aa Bb Cc 123
                     </span>
                   </button>
@@ -484,23 +499,23 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             <div style={lbl}>Logo de la empresa</div>
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14,
-              borderRadius: 12, background: C.surfLo, border: `1px solid ${C.border}`, overflow: "hidden", height: 160,
+              borderRadius: 12, background: V.surfLo, border: `1px solid ${V.border}`, overflow: "hidden", height: 160,
             }}>
               {logoPreview
                 ? <img src={logoPreview} alt="Logo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                : <span style={{ color: C.mute, fontSize: 13 }}>Sin logo</span>}
+                : <span style={{ color: V.mute, fontSize: 13 }}>Sin logo</span>}
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
             <button
               onClick={() => fileInputRef.current?.click()}
-              style={{ ...btnPrimary, background: C.surfHi, color: C.text, border: `1px solid ${C.border}` }}
+              style={{ ...btnPrimary, background: V.surfHi, color: V.text, border: `1px solid ${V.border}` }}
             >
               {logoPreview ? "Cambiar logo" : "Subir logo"}
             </button>
             {logoPreview && (
               <button
                 onClick={() => { setLogoFile(null); setLogoPreview(""); setLogoUrl(""); }}
-                style={{ width: "100%", marginTop: 8, padding: "10px 0", borderRadius: 10, border: "none", background: "transparent", color: C.red, fontSize: 13, cursor: "pointer" }}
+                style={{ width: "100%", marginTop: 8, padding: "10px 0", borderRadius: 10, border: "none", background: "transparent", color: V.red, fontSize: 13, cursor: "pointer" }}
               >
                 Eliminar logo
               </button>
@@ -519,8 +534,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 <button key={ic} onClick={() => setDivForm((f) => ({ ...f, icon: ic }))}
                   style={{
                     width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 18, cursor: "pointer", border: `1px solid ${divForm.icon === ic ? C.amber : C.border}`,
-                    background: divForm.icon === ic ? `${C.amber}22` : C.surface,
+                    fontSize: 18, cursor: "pointer", border: `1px solid ${divForm.icon === ic ? V.amber : V.border}`,
+                    background: divForm.icon === ic ? `${V.amber}22` : V.surface,
                   }}>{ic}</button>
               ))}
             </div>
@@ -530,26 +545,26 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             <input style={{ ...inp, marginBottom: 10 }} value={divForm.clave} onChange={(e) => setDivForm((f) => ({ ...f, clave: e.target.value.toUpperCase() }))} placeholder="Ej: PROD" maxLength={6} />
             <div style={lbl}>Color</div>
             <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <input type="color" value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
+              <input type="color" value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${V.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
               <input style={inp} value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={handleAddDivision} style={{ ...btnPrimary, flex: 1 }}>{editDivId !== null ? "Actualizar" : "Agregar"}</button>
-              {editDivId !== null && <button onClick={() => { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.text, cursor: "pointer" }}>Cancelar</button>}
+              {editDivId !== null && <button onClick={() => { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${V.border}`, background: V.surface, color: V.text, cursor: "pointer" }}>Cancelar</button>}
             </div>
           </div>
           {divisiones.length > 0 && <div style={card}>
             <div style={lbl}>Divisiones ({divisiones.length})</div>
             {divisiones.map((div) => (
-              <div key={div.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfLo, marginBottom: 6 }}>
+              <div key={div.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${V.border}`, background: V.surfLo, marginBottom: 6 }}>
                 <div style={{ width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: div.color + "22" }}>{div.icon}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{div.label}</div>
-                  <div style={{ fontSize: 11, color: C.dim, fontFamily: "'Geist Mono', monospace" }}>{div.clave}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: V.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{div.label}</div>
+                  <div style={{ fontSize: 11, color: V.dim, fontFamily: "'Geist Mono', monospace" }}>{div.clave}</div>
                 </div>
                 <div style={{ width: 16, height: 16, borderRadius: 8, background: div.color }} />
-                <button onClick={() => handleEditDivision(div)} style={{ fontSize: 11, color: C.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
-                <button onClick={() => handleDeleteDivision(div.id)} style={{ fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
+                <button onClick={() => handleEditDivision(div)} style={{ fontSize: 11, color: V.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
+                <button onClick={() => handleDeleteDivision(div.id)} style={{ fontSize: 11, color: V.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
               </div>
             ))}
           </div>}
@@ -565,8 +580,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 <button key={ic} onClick={() => setEtapaForm((f) => ({ ...f, icon: ic }))}
                   style={{
                     width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 18, cursor: "pointer", border: `1px solid ${etapaForm.icon === ic ? C.amber : C.border}`,
-                    background: etapaForm.icon === ic ? `${C.amber}22` : C.surface,
+                    fontSize: 18, cursor: "pointer", border: `1px solid ${etapaForm.icon === ic ? V.amber : V.border}`,
+                    background: etapaForm.icon === ic ? `${V.amber}22` : V.surface,
                   }}>{ic}</button>
               ))}
             </div>
@@ -576,26 +591,26 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             <input style={{ ...inp, marginBottom: 10 }} value={etapaForm.nombre} onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Ej: Planificación" />
             <div style={lbl}>Color</div>
             <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
+              <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${V.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
               <input style={inp} value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={handleAddEtapa} style={{ ...btnPrimary, flex: 1 }}>{editEtapaId !== null ? "Actualizar" : "Agregar"}</button>
-              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.text, cursor: "pointer" }}>Cancelar</button>}
+              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${V.border}`, background: V.surface, color: V.text, cursor: "pointer" }}>Cancelar</button>}
             </div>
           </div>
           {etapas.length > 0 && <div style={card}>
             <div style={lbl}>Etapas ({etapas.length})</div>
             {etapas.map((etapa) => (
-              <div key={etapa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surfLo, marginBottom: 6 }}>
+              <div key={etapa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${V.border}`, background: V.surfLo, marginBottom: 6 }}>
                 <div style={{ width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: etapa.color + "22" }}>{etapa.icon}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{etapa.nombre}</div>
-                  <div style={{ fontSize: 11, color: C.dim, fontFamily: "'Geist Mono', monospace" }}>{etapa.codigo}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: V.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{etapa.nombre}</div>
+                  <div style={{ fontSize: 11, color: V.dim, fontFamily: "'Geist Mono', monospace" }}>{etapa.codigo}</div>
                 </div>
                 <div style={{ width: 16, height: 16, borderRadius: 8, background: etapa.color }} />
-                <button onClick={() => handleEditEtapa(etapa)} style={{ fontSize: 11, color: C.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
-                <button onClick={() => handleDeleteEtapa(etapa.id)} style={{ fontSize: 11, color: C.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
+                <button onClick={() => handleEditEtapa(etapa)} style={{ fontSize: 11, color: V.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
+                <button onClick={() => handleDeleteEtapa(etapa.id)} style={{ fontSize: 11, color: V.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
               </div>
             ))}
           </div>}
@@ -606,7 +621,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", color: C.text }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", color: V.text }}>
       {/* Tab bar */}
       <div role="tablist" aria-label="Configuración de empresa" style={{ display: "flex", overflowX: "auto", padding: "0 14px 10px", gap: 4, flexShrink: 0 }}>
         {TABS.map((t) => (
@@ -617,8 +632,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             onClick={() => setTab(t.key)}
             style={{
               padding: "8px 16px", borderRadius: 20, border: "none", cursor: "pointer",
-              background: tab === t.key ? C.amber : "transparent",
-              color: tab === t.key ? C.amberText : C.dim,
+              background: tab === t.key ? V.amber : "transparent",
+              color: tab === t.key ? V.amberText : V.dim,
               fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0,
             }}
           >{t.label}</button>

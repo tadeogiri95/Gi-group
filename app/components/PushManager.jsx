@@ -1,8 +1,3 @@
-// ═══════════════════════════════════════════════════════════════
-// Componente de Notificaciones Push — Bloque 4
-// Acepta empresaId, muestra nombre de empresa en toasts
-// ═══════════════════════════════════════════════════════════════
-
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -11,7 +6,6 @@ import {
   isPushSupported,
   getPushPermissionStatus,
 } from "../lib/push";
-import { C, fB } from "../lib/theme";
 
 export default function PushManager({ legajo, empresaId, onNotification }) {
   const [status, setStatus] = useState("loading");
@@ -20,10 +14,7 @@ export default function PushManager({ legajo, empresaId, onNotification }) {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (!isPushSupported()) {
-      setStatus("unsupported");
-      return;
-    }
+    if (!isPushSupported()) { setStatus("unsupported"); return; }
     setStatus(getPushPermissionStatus());
   }, []);
 
@@ -44,109 +35,55 @@ export default function PushManager({ legajo, empresaId, onNotification }) {
     if (!legajo) return;
     setRegistering(true);
     const result = await requestPushPermission(legajo, empresaId);
-    if (result.ok) {
-      setStatus("granted");
-    } else if (result.reason === "denied") {
-      setStatus("denied");
-    }
+    if (result.ok) setStatus("granted");
+    else if (result.reason === "denied") setStatus("denied");
     setRegistering(false);
   }, [legajo, empresaId]);
 
-  const handleDismiss = () => {
-    setDismissed(true);
-  };
+  if (status === "loading" || status === "unsupported" || (status === "granted" && !toast) || dismissed) return null;
 
-  if (status === "loading" || status === "unsupported" || status === "granted" || dismissed) {
-    if (status === "granted" && toast) {
-      return (
-        <div style={styles.toast} onClick={() => setToast(null)}>
-          <div style={styles.toastHeader}>
-            <span style={{ fontSize: 18 }}>🔔</span>
-            <strong style={{ color: C.text }}>{toast.title}</strong>
-          </div>
-          <p style={styles.toastBody}>{toast.body}</p>
+  if (status === "granted" && toast) {
+    return (
+      <div className="fixed top-4 left-4 right-4 z-[10000] bg-gypi-surface border border-gypi-border rounded-[14px] py-3.5 px-4 shadow-lg cursor-pointer max-w-[480px] mx-auto" onClick={() => setToast(null)}>
+        <div className="flex items-center gap-2 mb-1 text-sm font-body">
+          <span className="text-lg">🔔</span>
+          <strong className="text-gypi-text">{toast.title}</strong>
         </div>
-      );
-    }
-    return null;
+        <p className="m-0 text-xs text-gypi-dim pl-[26px] font-body">{toast.body}</p>
+      </div>
+    );
   }
 
   return (
     <>
       {status === "default" && (
-        <div style={styles.banner}>
-          <div style={styles.bannerContent}>
-            <span style={{ fontSize: 20, flexShrink: 0 }}>🔔</span>
-            <div style={styles.bannerText}>
-              <strong style={{ color: C.text, fontSize: 13 }}>Activá las notificaciones</strong>
-              <span style={{ fontSize: 11, color: C.dim }}>
-                Recibí avisos de permisos y novedades
-              </span>
+        <div className="relative mx-4 mt-2 z-10 bg-gypi-surface border border-gypi-amber/25 rounded-xl py-2.5 px-3.5 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl shrink-0">🔔</span>
+            <div className="flex-1 flex flex-col gap-px font-body">
+              <strong className="text-gypi-text text-[13px]">Activá las notificaciones</strong>
+              <span className="text-[11px] text-gypi-dim">Recibí avisos de permisos y novedades</span>
             </div>
-            <button onClick={handleEnable} disabled={registering} style={styles.bannerBtn}>
+            <button onClick={handleEnable} disabled={registering} className="shrink-0 bg-gypi-amber text-white border-none rounded-lg py-1.5 px-3.5 text-xs font-bold cursor-pointer font-body">
               {registering ? "..." : "Activar"}
             </button>
-            <button onClick={handleDismiss} style={styles.dismissBtn}>✕</button>
+            <button onClick={() => setDismissed(true)} className="shrink-0 bg-transparent border-none text-gypi-dim cursor-pointer text-sm p-1 leading-none">✕</button>
           </div>
         </div>
       )}
 
       {status === "denied" && (
-        <div style={{ ...styles.banner, background: `${C.red}10`, borderColor: `${C.red}40` }}>
-          <div style={styles.bannerContent}>
-            <span style={{ fontSize: 20, flexShrink: 0 }}>🔕</span>
-            <div style={styles.bannerText}>
-              <strong style={{ color: C.text, fontSize: 13 }}>Notificaciones bloqueadas</strong>
-              <span style={{ fontSize: 11, color: C.dim }}>
-                Desbloqueá desde config del navegador
-              </span>
+        <div className="relative mx-4 mt-2 z-10 bg-gypi-red/[0.06] border border-gypi-red/25 rounded-xl py-2.5 px-3.5 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl shrink-0">🔕</span>
+            <div className="flex-1 flex flex-col gap-px font-body">
+              <strong className="text-gypi-text text-[13px]">Notificaciones bloqueadas</strong>
+              <span className="text-[11px] text-gypi-dim">Desbloqueá desde config del navegador</span>
             </div>
-            <button onClick={handleDismiss} style={styles.dismissBtn}>✕</button>
+            <button onClick={() => setDismissed(true)} className="shrink-0 bg-transparent border-none text-gypi-dim cursor-pointer text-sm p-1 leading-none">✕</button>
           </div>
-        </div>
-      )}
-
-      {toast && (
-        <div style={styles.toast} onClick={() => setToast(null)}>
-          <div style={styles.toastHeader}>
-            <span style={{ fontSize: 18 }}>🔔</span>
-            <strong style={{ color: C.text }}>{toast.title}</strong>
-          </div>
-          <p style={styles.toastBody}>{toast.body}</p>
         </div>
       )}
     </>
   );
 }
-
-const styles = {
-  banner: {
-    position: "relative",
-    margin: "8px 16px 0",
-    zIndex: 10,
-    background: `${C.surface}`,
-    border: `1px solid ${C.amber}40`,
-    borderRadius: 12,
-    padding: "10px 14px",
-    flexShrink: 0,
-  },
-  bannerContent: { display: "flex", alignItems: "center", gap: 10 },
-  bannerText: { flex: 1, display: "flex", flexDirection: "column", gap: 1, fontFamily: fB },
-  bannerBtn: {
-    flexShrink: 0, background: C.amber, color: C.amberText, border: "none",
-    borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700,
-    cursor: "pointer", fontFamily: fB,
-  },
-  dismissBtn: {
-    flexShrink: 0, background: "none", border: "none", color: C.dim,
-    cursor: "pointer", fontSize: 14, padding: "4px 6px", lineHeight: 1,
-  },
-  toast: {
-    position: "fixed", top: 16, left: 16, right: 16, zIndex: 10000,
-    background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
-    padding: "14px 16px", boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
-    cursor: "pointer", maxWidth: 480, margin: "0 auto",
-  },
-  toastHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4, fontSize: 14, fontFamily: fB },
-  toastBody: { margin: 0, fontSize: 12, color: C.dim, paddingLeft: 26, fontFamily: fB },
-};

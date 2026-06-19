@@ -1,15 +1,14 @@
 "use client";
 import { useState } from "react";
 import Image from "next/image";
-import { C, fH, fB } from "../../lib/theme";
 
 export default function ResetPasswordScreen({ token, empresa, onVolver }) {
-  const [nueva, setNueva]         = useState("");
+  const [nueva, setNueva] = useState("");
   const [confirmar, setConfirmar] = useState("");
-  const [showPwd, setShowPwd]     = useState(false);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState("");
-  const [ok, setOk]               = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState(false);
 
   const resetear = async () => {
     setError("");
@@ -27,49 +26,44 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error al resetear");
       setOk(true);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "0 28px", justifyContent: "center" }}>
+    <div className="flex flex-col h-full px-7 justify-center">
       <button onClick={onVolver} aria-label="Volver al login"
-        style={{ alignSelf: "flex-start", background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13, marginBottom: 24, padding: 0 }}>
+        className="self-start bg-transparent border-none text-gypi-dim cursor-pointer text-[13px] mb-6 p-0">
         ← Volver al login
       </button>
 
       {empresa?.logo_url ? (
-        <Image src={empresa.logo_url} alt={empresa?.nombre_corto || "Logo"} width={56} height={56} style={{ borderRadius: 14, objectFit: "contain", marginBottom: 20 }} />
+        <Image src={empresa.logo_url} alt={empresa?.nombre_corto || "Logo"} width={56} height={56} className="rounded-[14px] object-contain mb-5" />
       ) : (
-        <div style={{ width: 56, height: 56, borderRadius: 14, background: `linear-gradient(135deg,${C.amber},${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-          <span style={{ fontFamily: fH, fontSize: 18, fontWeight: 800, color: "#000" }}>{empresa?.nombre_corto?.slice(0, 2) || "Gy"}</span>
+        <div className="w-14 h-14 rounded-[14px] bg-gradient-to-br from-gypi-amber to-[#7C3AED] flex items-center justify-center mb-5">
+          <span className="font-heading text-lg font-extrabold text-black">{empresa?.nombre_corto?.slice(0, 2) || "Gy"}</span>
         </div>
       )}
 
-      <h1 style={{ margin: "0 0 6px", fontFamily: fH, fontSize: 26, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Nueva contraseña</h1>
-      <div style={{ fontSize: 14, color: C.dim, marginBottom: 28 }}>Mínimo 8 caracteres, una mayúscula y un número.</div>
+      <h1 className="m-0 mb-1.5 font-heading text-[26px] font-bold text-gypi-text tracking-tight">Nueva contraseña</h1>
+      <div className="text-sm text-gypi-dim mb-7">Mínimo 8 caracteres, una mayúscula y un número.</div>
 
       {ok ? (
         <div>
-          <div role="status" style={{ padding: "14px 16px", background: C.greenS || "#E8F5E9", borderRadius: 12, color: C.green || "#2E7D32", fontSize: 14, marginBottom: 20 }}>
+          <div role="status" className="py-3.5 px-4 bg-gypi-green/10 rounded-xl text-gypi-green text-sm mb-5">
             ✓ Contraseña actualizada. Ya podés iniciar sesión.
           </div>
           <button onClick={onVolver}
-            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
+            className="w-full py-3.5 rounded-xl border-none bg-gypi-amber text-white text-base font-bold font-heading cursor-pointer">
             Ir al login
           </button>
         </div>
       ) : (
         <>
           {error && (
-            <div role="alert" style={{ color: C.red, fontSize: 13, marginBottom: 12, padding: "10px 14px", background: C.redS, borderRadius: 10 }}>
-              {error}
-            </div>
+            <div role="alert" className="text-gypi-red text-[13px] mb-3 py-2.5 px-3.5 bg-gypi-red/10 rounded-[10px]">{error}</div>
           )}
-          <div style={{ position: "relative", marginBottom: 12 }}>
+          <div className="relative mb-3">
             <label htmlFor="reset-nueva" className="sr-only">Nueva contraseña</label>
             <input
               id="reset-nueva"
@@ -78,12 +72,12 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
               placeholder="Nueva contraseña"
               type={showPwd ? "text" : "password"}
               autoComplete="new-password"
-              style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${C.borderHi}`, background: C.surface, color: C.text, fontSize: 16, fontFamily: fB, outline: "none" }}
+              className="g-input w-full text-base py-3.5 px-4 rounded-xl"
               onKeyDown={e => e.key === "Enter" && resetear()}
             />
             <button onClick={() => setShowPwd(!showPwd)}
               aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 13 }}>
+              className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-gypi-dim cursor-pointer text-[13px]">
               {showPwd ? "Ocultar" : "Ver"}
             </button>
           </div>
@@ -95,13 +89,13 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
             placeholder="Repetí la contraseña"
             type={showPwd ? "text" : "password"}
             autoComplete="new-password"
-            style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: `1px solid ${C.borderHi}`, background: C.surface, color: C.text, fontSize: 16, fontFamily: fB, marginBottom: 20, outline: "none" }}
+            className="g-input w-full text-base py-3.5 px-4 rounded-xl mb-5"
             onKeyDown={e => e.key === "Enter" && resetear()}
           />
           <button
             onClick={resetear}
             disabled={loading || !nueva || !confirmar}
-            style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: C.amber, color: C.amberText, fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer", opacity: (loading || !nueva || !confirmar) ? 0.6 : 1 }}>
+            className={`w-full py-3.5 rounded-xl border-none bg-gypi-amber text-white text-base font-bold font-heading cursor-pointer ${(loading || !nueva || !confirmar) ? "opacity-60" : "opacity-100"}`}>
             {loading ? "Guardando..." : "Guardar nueva contraseña"}
           </button>
         </>
