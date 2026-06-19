@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
-import { C, fM, fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
+import { fM, fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
+
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)", amberS: "rgba(249,115,22,0.10)",
+  green: "#16A34A", red: "#DC2626", cyan: "#0891B2", violet: "#7C3AED",
+  mute: "var(--color-text-muted)",
+};
 import { sb } from "./lib/supabase";
 import { hoyArg, lunesDeLaSemana } from "./lib/dates";
 import TrialBanner from "./components/TrialBanner";
@@ -29,10 +35,10 @@ const fmtMin = (min) => {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
-const pctColor = (pct) => pct >= 80 ? C.green : pct >= 60 ? C.amber : C.red;
+const pctColor = (pct) => pct >= 80 ? V.green : pct >= 60 ? V.amber : V.red;
 
 /* ─── Mini SVG Bar Chart ─── */
-function MiniBarChart({ data, maxVal, color = C.amber, height = 80, barWidth = 16, labels = [] }) {
+function MiniBarChart({ data, maxVal, color = V.amber, height = 80, barWidth = 16, labels = [] }) {
   const max = maxVal || Math.max(...data, 1);
   const gap = 4;
   const w = data.length * (barWidth + gap) - gap;
@@ -66,7 +72,7 @@ function MiniBarChart({ data, maxVal, color = C.amber, height = 80, barWidth = 1
 }
 
 /* ─── Donut Chart ─── */
-function DonutChart({ value, total, color = C.green, size = 72, strokeWidth = 7, label }) {
+function DonutChart({ value, total, color = V.green, size = 72, strokeWidth = 7, label }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
@@ -89,7 +95,7 @@ function DonutChart({ value, total, color = C.green, size = 72, strokeWidth = 7,
 }
 
 /* ─── Pulse dot ─── */
-const PulseDot = ({ color = C.green, size = 8 }) => (
+const PulseDot = ({ color = V.green, size = 8 }) => (
   <span className="inline-block rounded-full animate-[pulse_2s_ease-in-out_infinite]" style={{
     width: size, height: size,
     background: color, boxShadow: `0 0 ${size}px ${color}88`,
@@ -111,10 +117,10 @@ function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas, onClick }) {
       <div className="flex-1 h-3.5 bg-gypi-surf-hi rounded overflow-hidden relative">
         <div className="absolute top-px bottom-px rounded-[3px] min-w-1" style={{
           left: `${left}%`, width: `${width}%`,
-          background: egreso ? `${C.green}88` : `linear-gradient(90deg, ${C.green}88, ${C.amber}66)`,
+          background: egreso ? `${V.green}88` : `linear-gradient(90deg, ${V.green}88, ${V.amber}66)`,
         }} />
       </div>
-      <div className="w-[46px] text-right font-mono text-[11px] font-bold" style={{ color: egreso ? C.green : C.amber }}>
+      <div className="w-[46px] text-right font-mono text-[11px] font-bold" style={{ color: egreso ? V.green : V.amber }}>
         {ingreso?.slice(0, 5)}
       </div>
     </div>
@@ -132,7 +138,7 @@ function ReportesObraPanel({ reportesObra }) {
       <section aria-label="Reportes de obra" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3">
           <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Reportes de Obra (Hoy)</div>
-          {reportesObra.length > 0 && <Tag color={C.cyan}>{reportesObra.length} reportes</Tag>}
+          {reportesObra.length > 0 && <Tag color={V.cyan}>{reportesObra.length} reportes</Tag>}
         </div>
 
         {reportesObra.length === 0 ? (
@@ -144,15 +150,15 @@ function ReportesObraPanel({ reportesObra }) {
               const tieneFotos = r.fotos_urls && r.fotos_urls.length > 0;
 
               return (
-                <div key={r.id} className="rounded-xl overflow-hidden transition-all duration-200" style={{ background: "var(--color-surf-hi)", border: `1px solid ${isExpanded ? `${C.cyan}30` : "var(--color-border-hi)"}` }}>
+                <div key={r.id} className="rounded-xl overflow-hidden transition-all duration-200" style={{ background: "var(--color-surf-hi)", border: `1px solid ${isExpanded ? `${V.cyan}30` : "var(--color-border-hi)"}` }}>
                   {/* Header clickeable */}
                   <div onClick={() => setExpandedReport(isExpanded ? null : r.id)} className="flex items-center gap-2.5 p-3 cursor-pointer">
-                    <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base shrink-0" style={{ background: `${C.cyan}18`, color: C.cyan }}>&#x1F3D7;&#xFE0F;</div>
+                    <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base shrink-0" style={{ background: `${V.cyan}18`, color: V.cyan }}>&#x1F3D7;&#xFE0F;</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[13px] font-bold text-gypi-text">{r.nombre}</span>
-                        {tieneFotos && <Tag color={C.cyan}>&#x1F4F7; {r.fotos_urls.length}</Tag>}
-                        {r.faltantes?.length > 0 && <Tag color={C.red}>&#x26A0; {r.faltantes.length}</Tag>}
+                        {tieneFotos && <Tag color={V.cyan}>&#x1F4F7; {r.fotos_urls.length}</Tag>}
+                        {r.faltantes?.length > 0 && <Tag color={V.red}>&#x26A0; {r.faltantes.length}</Tag>}
                       </div>
                       <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">
                         {r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}
@@ -177,11 +183,11 @@ function ReportesObraPanel({ reportesObra }) {
 
                       {/* Faltantes */}
                       {r.faltantes?.length > 0 && (
-                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${C.red}10`, border: `1px solid ${C.red}18` }}>
+                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${V.red}10`, border: `1px solid ${V.red}18` }}>
                           <div className="g-overline text-gypi-red mb-1.5">&#x1F6AB; Faltantes</div>
                           <div className="flex flex-wrap gap-1">
                             {r.faltantes.map((f, i) => (
-                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `${C.red}20`, color: C.red }}>{f}</span>
+                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `${V.red}20`, color: V.red }}>{f}</span>
                             ))}
                           </div>
                         </div>
@@ -189,11 +195,11 @@ function ReportesObraPanel({ reportesObra }) {
 
                       {/* Desvios */}
                       {r.desvios?.length > 0 && (
-                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${C.amber}10`, border: `1px solid ${C.amber}18` }}>
+                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${V.amber}10`, border: `1px solid ${V.amber}18` }}>
                           <div className="g-overline text-gypi-amber mb-1.5">&#x26A0;&#xFE0F; Desvios</div>
                           <div className="flex flex-wrap gap-1">
                             {r.desvios.map((d, i) => (
-                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `${C.amber}20`, color: C.amber }}>{d}</span>
+                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `${V.amber}20`, color: V.amber }}>{d}</span>
                             ))}
                           </div>
                         </div>
@@ -218,7 +224,7 @@ function ReportesObraPanel({ reportesObra }) {
 
                       {/* Sin fotos pero dice que adjunto */}
                       {!tieneFotos && r.fotos > 0 && (
-                        <div className="p-2 px-2.5 rounded-lg text-[11px] text-gypi-dim" style={{ background: `${C.mute}08` }}>
+                        <div className="p-2 px-2.5 rounded-lg text-[11px] text-gypi-dim" style={{ background: `${V.mute}08` }}>
                           &#x1F4F7; El instalador indico {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
                         </div>
                       )}
@@ -445,10 +451,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const permisosIngreso = pendientes.filter(s => s.motivo?.includes("\u{1F513}") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo"));
   const alertas = useMemo(() => {
     const items = [];
-    if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} de ingreso pendiente${permisosIngreso.length > 1 ? "s" : ""}`, color: C.red, urgencia: "alta", target: "solicitudes" });
-    if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: C.red, urgencia: "alta" });
-    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: C.amber, urgencia: "media", target: "ger-actividad" });
-    if (pendientes.length > permisosIngreso.length) items.push({ icon: "\u{1F4CB}", text: `${pendientes.length - permisosIngreso.length} solicitud${(pendientes.length - permisosIngreso.length) > 1 ? "es" : ""} pendiente${(pendientes.length - permisosIngreso.length) > 1 ? "s" : ""}`, color: C.violet, urgencia: "normal", target: "solicitudes" });
+    if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} de ingreso pendiente${permisosIngreso.length > 1 ? "s" : ""}`, color: V.red, urgencia: "alta", target: "solicitudes" });
+    if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: V.red, urgencia: "alta" });
+    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: V.amber, urgencia: "media", target: "ger-actividad" });
+    if (pendientes.length > permisosIngreso.length) items.push({ icon: "\u{1F4CB}", text: `${pendientes.length - permisosIngreso.length} solicitud${(pendientes.length - permisosIngreso.length) > 1 ? "es" : ""} pendiente${(pendientes.length - permisosIngreso.length) > 1 ? "s" : ""}`, color: V.violet, urgencia: "normal", target: "solicitudes" });
     const urgentes = notificaciones.filter(n => {
       if (n.urgencia !== "alta") return false;
       // Si la notificacion tiene solicitud_id, verificar que siga pendiente
@@ -463,7 +469,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       return true;
     });
     urgentes.slice(0, 2).forEach(n => {
-      items.push({ icon: "\u{1F534}", text: n.asunto, color: C.red, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
+      items.push({ icon: "\u{1F534}", text: n.asunto, color: V.red, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
     });
     return items;
   }, [ausentes, enEspera, pendientes, notificaciones, permisosIngreso, solicitudes]);
@@ -515,8 +521,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: `${C.green}10`, border: `1px solid ${C.green}20` }}>
-              <PulseDot color={C.green} />
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: `${V.green}10`, border: `1px solid ${V.green}20` }}>
+              <PulseDot color={V.green} />
               <span className="text-[11px] text-gypi-green font-bold">En vivo</span>
             </div>
             <button
@@ -525,7 +531,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               className="w-10 h-10 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm transition-transform duration-300"
               style={{ transform: refreshing ? "rotate(360deg)" : "none" }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={refreshing ? C.amber : "currentColor"} strokeWidth="2.5" style={{ animation: refreshing ? "spin 0.8s linear infinite" : "none" }}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={refreshing ? V.amber : "currentColor"} strokeWidth="2.5" style={{ animation: refreshing ? "spin 0.8s linear infinite" : "none" }}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
             </button>
             <button onClick={logout} aria-label="Cerrar sesion" className="show-mobile-only w-10 h-10 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
@@ -567,10 +573,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Solicitudes pendientes ─── */}
       {pendientes.length > 0 && (
-        <section aria-label="Solicitudes pendientes" className="g-card mb-4" style={{ borderColor: `${C.amber}30` }}>
+        <section aria-label="Solicitudes pendientes" className="g-card mb-4" style={{ borderColor: `${V.amber}30` }}>
           <div className="flex justify-between items-center mb-3">
             <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Solicitudes pendientes</div>
-            <Tag color={C.amber}>{pendientes.length} pendientes</Tag>
+            <Tag color={V.amber}>{pendientes.length} pendientes</Tag>
           </div>
 
           {/* Ultimas pendientes */}
@@ -581,13 +587,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 <div className="text-xs font-semibold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{s.nombre_empleado}</div>
                 <div className="text-[11px] text-gypi-dim overflow-hidden text-ellipsis whitespace-nowrap">{s.motivo}</div>
               </div>
-              <Tag color={C.amber}>{s.tipo}</Tag>
+              <Tag color={V.amber}>{s.tipo}</Tag>
             </div>
           ))}
 
           <button onClick={() => goto?.("solicitudes")}
             className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
-            style={{ background: `${C.violet}12`, border: `1px solid ${C.violet}25`, color: C.violet }}
+            style={{ background: `${V.violet}12`, border: `1px solid ${V.violet}25`, color: V.violet }}
           >
             &#x1F4CB; Gestionar solicitudes &rarr;
           </button>
@@ -599,60 +605,60 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")}
           className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
           style={{
-            background: panelExpanded === "taller" ? `${C.amber}18` : "var(--color-surface)",
-            border: `1px solid ${panelExpanded === "taller" ? C.amber + "50" : "var(--color-border)"}`,
+            background: panelExpanded === "taller" ? `${V.amber}18` : "var(--color-surface)",
+            border: `1px solid ${panelExpanded === "taller" ? V.amber + "50" : "var(--color-border)"}`,
           }}
         >
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `${C.amber}22` }}>&#x1F525;</div>
-          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? C.amber : "var(--color-text)" }}>Estado Taller</span>
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `${V.amber}22` }}>&#x1F525;</div>
+          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? V.amber : "var(--color-text)" }}>Estado Taller</span>
         </button>
         <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
           className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
           style={{
-            background: panelExpanded === "instalaciones" ? `${C.cyan}18` : "var(--color-surface)",
-            border: `1px solid ${panelExpanded === "instalaciones" ? C.cyan + "50" : "var(--color-border)"}`,
+            background: panelExpanded === "instalaciones" ? `${V.cyan}18` : "var(--color-surface)",
+            border: `1px solid ${panelExpanded === "instalaciones" ? V.cyan + "50" : "var(--color-border)"}`,
           }}
         >
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `${C.cyan}22` }}>&#x1F3D7;&#xFE0F;</div>
-          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "instalaciones" ? C.cyan : "var(--color-text)" }}>Estado Instalaciones</span>
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `${V.cyan}22` }}>&#x1F3D7;&#xFE0F;</div>
+          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "instalaciones" ? V.cyan : "var(--color-text)" }}>Estado Instalaciones</span>
         </button>
       </div>
 
       {/* ─── Panel expandido: Estado Taller ─── */}
       {panelExpanded === "taller" && (
-        <section aria-label="Estado taller" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${C.amber}30` }}>
+        <section aria-label="Estado taller" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${V.amber}30` }}>
           <div className="flex justify-between items-center mb-3">
             <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Produccion en vivo</div>
             <div className="flex items-center gap-1.5">
-              <PulseDot color={enActividad > 0 ? C.green : C.mute} size={6} />
+              <PulseDot color={enActividad > 0 ? V.green : V.mute} size={6} />
               <span className="text-[11px] text-gypi-dim">{enActividad} activos</span>
             </div>
           </div>
 
           {/* Metricas de produccion */}
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className="g-kpi" style={{ background: `${C.green}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: C.green }}>{enActividad}</div>
+            <div className="g-kpi" style={{ background: `${V.green}12` }}>
+              <div className="font-mono text-base font-bold" style={{ color: V.green }}>{enActividad}</div>
               <div className="g-kpi-label">Trabajando</div>
             </div>
-            <div className="g-kpi" style={{ background: `${C.amber}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: C.amber }}>{enEspera}</div>
+            <div className="g-kpi" style={{ background: `${V.amber}12` }}>
+              <div className="font-mono text-base font-bold" style={{ color: V.amber }}>{enEspera}</div>
               <div className="g-kpi-label">En espera</div>
             </div>
-            <div className="g-kpi" style={{ background: `${C.red}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: C.red }}>{sinTarea}</div>
+            <div className="g-kpi" style={{ background: `${V.red}12` }}>
+              <div className="font-mono text-base font-bold" style={{ color: V.red }}>{sinTarea}</div>
               <div className="g-kpi-label">Sin tarea</div>
             </div>
           </div>
 
           <div className="flex gap-2 mb-3">
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${C.green}08` }}>
+            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${V.green}08` }}>
               <div className="g-overline">T. productivo</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: C.green }}>{fmtMin(totalMinProd)}</div>
+              <div className="font-mono text-base font-bold mt-0.5" style={{ color: V.green }}>{fmtMin(totalMinProd)}</div>
             </div>
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${C.red}08` }}>
+            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${V.red}08` }}>
               <div className="g-overline">T. espera</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: C.red }}>{fmtMin(totalMinEspera)}</div>
+              <div className="font-mono text-base font-bold mt-0.5" style={{ color: V.red }}>{fmtMin(totalMinEspera)}</div>
             </div>
             <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${pctColor(pctProd)}08` }}>
               <div className="g-overline">% Productivo</div>
@@ -668,7 +674,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 const pct = parseFloat(op.pct_productivo) || 0;
                 return (
                   <div key={op.empleado_id} className="flex items-center gap-2.5 py-1.5" style={{ borderBottom: i < topProductivos.length - 1 ? "1px solid var(--color-border)" : "none" }}>
-                    <div className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold font-mono" style={{ background: i === 0 ? C.amberS : "var(--color-surf-hi)", color: i === 0 ? C.amber : "var(--color-text-muted)" }}>{i + 1}</div>
+                    <div className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold font-mono" style={{ background: i === 0 ? V.amberS : "var(--color-surf-hi)", color: i === 0 ? V.amber : "var(--color-text-muted)" }}>{i + 1}</div>
                     <div className="flex-1 text-xs font-semibold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{op.empleado_nombre}</div>
                     <div className="w-[60px]">
                       <div className="h-1 rounded-sm bg-gypi-surf-hi overflow-hidden">
@@ -684,7 +690,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
           <button onClick={() => goto?.("ger-actividad")}
             className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
-            style={{ background: `${C.amber}12`, border: `1px solid ${C.amber}25`, color: C.amber }}
+            style={{ background: `${V.amber}12`, border: `1px solid ${V.amber}25`, color: V.amber }}
           >
             &#x1F525; Ver detalle por operario &rarr;
           </button>
@@ -693,41 +699,41 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Panel expandido: Estado Instalaciones ─── */}
       {panelExpanded === "instalaciones" && (
-        <section aria-label="Estado instalaciones" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${C.cyan}30` }}>
+        <section aria-label="Estado instalaciones" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${V.cyan}30` }}>
           <div className="flex justify-between items-center mb-3">
             <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Instalaciones hoy</div>
-            <Tag color={C.cyan}>{obrasHoy} reportes</Tag>
+            <Tag color={V.cyan}>{obrasHoy} reportes</Tag>
           </div>
 
           {/* KPIs de instalaciones */}
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="g-kpi" style={{ background: `${C.cyan}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: C.cyan }}>{obrasHoy}</div>
+            <div className="g-kpi" style={{ background: `${V.cyan}12` }}>
+              <div className="font-mono text-base font-bold" style={{ color: V.cyan }}>{obrasHoy}</div>
               <div className="g-kpi-label">Obras reportadas</div>
             </div>
-            <div className="g-kpi" style={{ background: `${C.green}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: C.green }}>{obrasConFotos}</div>
+            <div className="g-kpi" style={{ background: `${V.green}12` }}>
+              <div className="font-mono text-base font-bold" style={{ color: V.green }}>{obrasConFotos}</div>
               <div className="g-kpi-label">Con fotos</div>
             </div>
-            <div className="g-kpi" style={{ background: `${C.red}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: obrasConFaltantes > 0 ? C.red : C.green }}>{obrasConFaltantes}</div>
+            <div className="g-kpi" style={{ background: `${V.red}12` }}>
+              <div className="font-mono text-base font-bold" style={{ color: obrasConFaltantes > 0 ? V.red : V.green }}>{obrasConFaltantes}</div>
               <div className="g-kpi-label">Con faltantes</div>
             </div>
-            <div className="g-kpi" style={{ background: `${C.amber}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: obrasConDesvios > 0 ? C.amber : C.green }}>{obrasConDesvios}</div>
+            <div className="g-kpi" style={{ background: `${V.amber}12` }}>
+              <div className="font-mono text-base font-bold" style={{ color: obrasConDesvios > 0 ? V.amber : V.green }}>{obrasConDesvios}</div>
               <div className="g-kpi-label">Con desvios</div>
             </div>
           </div>
 
           {/* Instaladores presentes */}
           <div className="flex gap-2 mb-3">
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${C.green}08` }}>
+            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${V.green}08` }}>
               <div className="g-overline">Instaladores activos</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: C.green }}>{instaladoresPresentes.length}</div>
+              <div className="font-mono text-base font-bold mt-0.5" style={{ color: V.green }}>{instaladoresPresentes.length}</div>
             </div>
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${C.cyan}08` }}>
+            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${V.cyan}08` }}>
               <div className="g-overline">Total instaladores</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: C.cyan }}>{instaladoresActivos.length}</div>
+              <div className="font-mono text-base font-bold mt-0.5" style={{ color: V.cyan }}>{instaladoresActivos.length}</div>
             </div>
           </div>
 
@@ -740,25 +746,25 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       <section aria-label="Asistencia" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
           <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Asistencia</div>
-          <Tag color={C.green}>{presentes}/{programados} hoy</Tag>
+          <Tag color={V.green}>{presentes}/{programados} hoy</Tag>
         </div>
 
         {/* Asistencia diaria */}
         <div className="grid grid-cols-4 gap-2 mb-3.5">
-          <div className="g-kpi" style={{ background: `${C.green}10` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: C.green }}>{presentes}</div>
+          <div className="g-kpi" style={{ background: `${V.green}10` }}>
+            <div className="font-heading text-[22px] font-bold" style={{ color: V.green }}>{presentes}</div>
             <div className="g-kpi-label">Presentes</div>
           </div>
-          <div className="g-kpi" style={{ background: `${C.red}10` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: ausentes > 0 ? C.red : C.green }}>{ausentes}</div>
+          <div className="g-kpi" style={{ background: `${V.red}10` }}>
+            <div className="font-heading text-[22px] font-bold" style={{ color: ausentes > 0 ? V.red : V.green }}>{ausentes}</div>
             <div className="g-kpi-label">Ausentes</div>
           </div>
           <div className="g-kpi" style={{ background: `${pctColor(pctAsist)}10` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(pctAsist) }}>{pctAsist}%</div>
             <div className="g-kpi-label">Cumplim.</div>
           </div>
-          <div className="g-kpi" style={{ background: tardesEstaSemana > 0 ? `${C.amber}10` : `${C.green}05` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: tardesEstaSemana > 0 ? C.amber : C.green }}>{tardesEstaSemana}</div>
+          <div className="g-kpi" style={{ background: tardesEstaSemana > 0 ? `${V.amber}10` : `${V.green}05` }}>
+            <div className="font-heading text-[22px] font-bold" style={{ color: tardesEstaSemana > 0 ? V.amber : V.green }}>{tardesEstaSemana}</div>
             <div className="g-kpi-label">Tardes sem.</div>
           </div>
         </div>
@@ -769,7 +775,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           <MiniBarChart
             data={fichadasPorDia.map(d => d.count)}
             maxVal={programados || 20}
-            color={C.green}
+            color={V.green}
             height={70}
             barWidth={28}
             labels={fichadasPorDia.map(d => d.label)}
@@ -778,9 +784,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
         {/* Promedio horas / dia semana */}
         {promedioHorasDia > 0 && (
-          <div className="mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between" style={{ background: `${C.cyan}10` }}>
+          <div className="mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between" style={{ background: `${V.cyan}10` }}>
             <span className="text-[11px] text-gypi-dim font-semibold">Prom. horas/dia semana</span>
-            <span className="font-heading text-sm font-bold" style={{ color: C.cyan }}>{promedioHorasDia.toFixed(1)}h</span>
+            <span className="font-heading text-sm font-bold" style={{ color: V.cyan }}>{promedioHorasDia.toFixed(1)}h</span>
           </div>
         )}
       </section>
@@ -790,13 +796,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         const top3 = ranking.slice(0, 3);
         const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
         return (
-          <button onClick={() => setShowFullRanking(true)} className="card-hover g-card mb-4 w-full cursor-pointer text-left block" style={{ borderColor: `${C.amber}30` }}>
+          <button onClick={() => setShowFullRanking(true)} className="card-hover g-card mb-4 w-full cursor-pointer text-left block" style={{ borderColor: `${V.amber}30` }}>
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-1.5">
                 <span className="text-base">&#x1F3C6;</span>
                 <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Ranking de empleados</div>
               </div>
-              <Tag color={C.amber}>Este mes</Tag>
+              <Tag color={V.amber}>Este mes</Tag>
             </div>
             <div className="flex flex-col gap-2">
               {top3.map((e, i) => (
@@ -833,15 +839,15 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
         {/* General */}
         <div className="flex gap-2 mb-3.5">
-          <div className="flex-1 g-kpi" style={{ background: `${C.amber}10` }}>
+          <div className="flex-1 g-kpi" style={{ background: `${V.amber}10` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(pctProd) }}>{pctProd}%</div>
             <div className="g-kpi-label">General</div>
           </div>
-          <div className="flex-1 g-kpi" style={{ background: `${C.green}10` }}>
+          <div className="flex-1 g-kpi" style={{ background: `${V.green}10` }}>
             <div className="font-heading text-[22px] font-bold text-gypi-green">{enActividad}</div>
             <div className="g-kpi-label">Trabajando</div>
           </div>
-          <div className="flex-1 g-kpi" style={{ background: `${C.red}10` }}>
+          <div className="flex-1 g-kpi" style={{ background: `${V.red}10` }}>
             <div className="font-heading text-[22px] font-bold text-gypi-amber">{enEspera + sinTarea}</div>
             <div className="g-kpi-label">Inactivos</div>
           </div>
@@ -860,7 +866,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       <section aria-label="Equipo" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
           <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Equipo</div>
-          <Tag color={C.cyan}>{totalEmp} activos</Tag>
+          <Tag color={V.cyan}>{totalEmp} activos</Tag>
         </div>
 
         <div className="flex gap-2 mb-3">
@@ -912,12 +918,12 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       {showFullRanking && ranking.length > 0 && (() => {
         const len = ranking.length;
         const rowColor = (i) => {
-          if (i === 0) return { bg: `${C.green}18`, border: `${C.green}35` };
-          if (i === 1) return { bg: `${C.green}12`, border: `${C.green}25` };
-          if (i === 2) return { bg: `${C.green}08`, border: `${C.green}18` };
-          if (i === len - 1) return { bg: `${C.red}18`, border: `${C.red}35` };
-          if (i === len - 2) return { bg: `${C.red}12`, border: `${C.red}25` };
-          if (i === len - 3) return { bg: `${C.red}08`, border: `${C.red}18` };
+          if (i === 0) return { bg: `${V.green}18`, border: `${V.green}35` };
+          if (i === 1) return { bg: `${V.green}12`, border: `${V.green}25` };
+          if (i === 2) return { bg: `${V.green}08`, border: `${V.green}18` };
+          if (i === len - 1) return { bg: `${V.red}18`, border: `${V.red}35` };
+          if (i === len - 2) return { bg: `${V.red}12`, border: `${V.red}25` };
+          if (i === len - 3) return { bg: `${V.red}08`, border: `${V.red}18` };
           return { bg: "transparent", border: "var(--color-border)" };
         };
         const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
@@ -940,10 +946,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 </div>
                 <div className="mt-3 flex gap-1 flex-wrap">
                   {[
-                    { label: "Asistencia", w: "40%", color: C.green },
-                    { label: "Puntualidad", w: "25%", color: C.cyan },
-                    { label: "Disponibilidad", w: "20%", color: C.violet },
-                    { label: "Esfuerzo Extra", w: "15%", color: C.amber },
+                    { label: "Asistencia", w: "40%", color: V.green },
+                    { label: "Puntualidad", w: "25%", color: V.cyan },
+                    { label: "Disponibilidad", w: "20%", color: V.violet },
+                    { label: "Esfuerzo Extra", w: "15%", color: V.amber },
                   ].map(c => (
                     <span key={c.label} className="text-[9px] font-bold px-[7px] py-[3px] rounded-md" style={{ background: `${c.color}12`, color: c.color }}>{c.label} {c.w}</span>
                   ))}
@@ -970,7 +976,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="font-heading text-[15px] font-extrabold" style={{ color: i < 3 ? C.green : i >= len - 3 ? C.red : "var(--color-text)" }}>{e.score}</div>
+                        <div className="font-heading text-[15px] font-extrabold" style={{ color: i < 3 ? V.green : i >= len - 3 ? V.red : "var(--color-text)" }}>{e.score}</div>
                         <div className="text-[9px] text-gypi-dim font-semibold">pts</div>
                       </div>
                     </button>
@@ -986,10 +992,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       {scoreDetail && (() => {
         const d = scoreDetail;
         const rows = [
-          { label: "Asistencia", pct: d.pAsistencia, weight: "40%", detail: `${d.diasTrabajados} / ${d.diasProgramados} dias`, color: C.green },
-          { label: "Puntualidad", pct: d.pPuntualidad, weight: "25%", detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}`, color: C.cyan },
-          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: "20%", detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}`, color: C.violet },
-          { label: "Esfuerzo Extra", pct: d.pEsfuerzo, weight: "15%", detail: `${d.horasExtra}h extra de ${d.horasTrabajadas}h`, color: C.amber },
+          { label: "Asistencia", pct: d.pAsistencia, weight: "40%", detail: `${d.diasTrabajados} / ${d.diasProgramados} dias`, color: V.green },
+          { label: "Puntualidad", pct: d.pPuntualidad, weight: "25%", detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}`, color: V.cyan },
+          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: "20%", detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}`, color: V.violet },
+          { label: "Esfuerzo Extra", pct: d.pEsfuerzo, weight: "15%", detail: `${d.horasExtra}h extra de ${d.horasTrabajadas}h`, color: V.amber },
         ];
         return (
           <div onClick={() => setScoreDetail(null)}
@@ -1004,8 +1010,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                   <div className="text-lg font-extrabold text-gypi-text font-heading mt-0.5">{d.nombre}</div>
                   <div className="text-[11px] text-gypi-dim mt-0.5">{d.division || "Sin division"} &middot; L-{d.legajo}</div>
                 </div>
-                <div className="w-12 h-12 rounded-[14px] flex flex-col items-center justify-center" style={{ background: `${C.amber}12` }}>
-                  <div className="text-lg font-extrabold font-heading leading-none" style={{ color: C.amber }}>{d.score}</div>
+                <div className="w-12 h-12 rounded-[14px] flex flex-col items-center justify-center" style={{ background: `${V.amber}12` }}>
+                  <div className="text-lg font-extrabold font-heading leading-none" style={{ color: V.amber }}>{d.score}</div>
                   <div className="text-[8px] text-gypi-dim font-bold">pts</div>
                 </div>
               </div>
@@ -1025,9 +1031,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 ))}
               </div>
 
-              <div className="mt-3.5 px-3 py-2.5 rounded-[10px] flex justify-between items-center" style={{ background: `${C.amber}08`, border: `1.5px solid ${C.amber}25` }}>
+              <div className="mt-3.5 px-3 py-2.5 rounded-[10px] flex justify-between items-center" style={{ background: `${V.amber}08`, border: `1.5px solid ${V.amber}25` }}>
                 <span className="text-xs font-bold text-gypi-text">Score total (0&ndash;100)</span>
-                <span className="text-lg font-extrabold font-heading" style={{ color: C.amber }}>{d.score} pts</span>
+                <span className="text-lg font-extrabold font-heading" style={{ color: V.amber }}>{d.score} pts</span>
               </div>
 
               <div className="text-[10px] text-gypi-mute mt-3 leading-snug text-center">
