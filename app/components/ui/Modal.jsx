@@ -1,27 +1,5 @@
 'use client';
-import { useEffect, useRef, useCallback } from 'react';
-import { C, fH, fB } from '../../lib/theme';
-
-// ═══════════════════════════════════════════════════════
-// Modal — Dialog responsive con backdrop y focus trap
-// Ubicación: app/components/ui/Modal.jsx
-// ═══════════════════════════════════════════════════════
-//
-// Mobile: bottom sheet (sube desde abajo, bordes redondeados arriba)
-// Tablet+: dialog centrado clásico
-//
-// Uso:
-//   <Modal open={showModal} onClose={() => setShowModal(false)} title="Editar empleado">
-//     <form>...</form>
-//   </Modal>
-//
-// Props:
-//   open: boolean
-//   onClose: () => void
-//   title: string (opcional)
-//   children: contenido
-//   maxWidth: number (default 480)
-//   closable: boolean (default true, muestra X y cierra con Esc/backdrop)
+import { useEffect, useRef } from 'react';
 
 export default function Modal({
   open,
@@ -34,7 +12,6 @@ export default function Modal({
   const dialogRef = useRef(null);
   const contentRef = useRef(null);
 
-  // Cerrar con Escape
   useEffect(() => {
     if (!open || !closable) return;
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
@@ -42,7 +19,6 @@ export default function Modal({
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose, closable]);
 
-  // Bloquear scroll del body
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -50,7 +26,6 @@ export default function Modal({
     }
   }, [open]);
 
-  // Focus trap básico
   useEffect(() => {
     if (!open || !contentRef.current) return;
     const focusable = contentRef.current.querySelectorAll(
@@ -67,69 +42,29 @@ export default function Modal({
       role="dialog"
       aria-modal="true"
       aria-label={title || 'Dialog'}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      }}
+      className="fixed inset-0 z-[1000] flex items-end justify-center"
     >
-      {/* Backdrop */}
       <div
         onClick={closable ? onClose : undefined}
-        style={{
-          position: 'absolute', inset: 0,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
-          animation: 'fadeInFast 0.15s ease',
-        }}
+        className="absolute inset-0 bg-black/60 backdrop-blur-[4px] animate-[fadeInFast_0.15s_ease]"
       />
 
-      {/* Content — bottom sheet en mobile, centrado en desktop */}
       <div
         ref={contentRef}
-        style={{
-          position: 'relative',
-          width: '100%', maxWidth,
-          maxHeight: '90dvh',
-          background: C.bg,
-          borderRadius: '20px 20px 0 0',
-          border: `1px solid ${C.border}`,
-          borderBottom: 'none',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-          animation: 'slideInUp 0.2s ease',
-        }}
-        className="modal-content-responsive"
+        style={{ maxWidth }}
+        className="modal-content-responsive relative w-full max-h-[90dvh] bg-gypi-bg rounded-t-[20px] border border-gypi-border border-b-0 flex flex-col overflow-hidden animate-[slideInUp_0.2s_ease]"
       >
-        {/* Header */}
         {(title || closable) && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '16px 20px 12px',
-            borderBottom: `1px solid ${C.border}`,
-            flexShrink: 0,
-          }}>
-            {/* Drag handle — mobile indicator */}
-            <div style={{
-              position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
-              width: 36, height: 4, borderRadius: 2,
-              background: C.mute,
-            }} className="show-mobile-only" />
+          <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gypi-border shrink-0 relative">
+            <div className="show-mobile-only absolute top-2 left-1/2 -translate-x-1/2 w-9 h-1 rounded-sm bg-gypi-mute" />
 
-            <h2 style={{
-              margin: 0, fontSize: 17, fontWeight: 700,
-              color: C.text, fontFamily: fH,
-            }}>{title || ''}</h2>
+            <h2 className="m-0 text-[17px] font-bold text-gypi-text font-heading">{title || ''}</h2>
 
             {closable && (
               <button
                 onClick={onClose}
                 aria-label="Cerrar"
-                style={{
-                  width: 32, height: 32, borderRadius: 8,
-                  background: C.surface, border: 'none',
-                  color: C.dim, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
+                className="w-8 h-8 rounded-lg bg-gypi-surface border-none text-gypi-dim cursor-pointer flex items-center justify-center"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -139,26 +74,10 @@ export default function Modal({
           </div>
         )}
 
-        {/* Body — scrollable */}
-        <div style={{
-          flex: 1, overflowY: 'auto', padding: '16px 20px 24px',
-          WebkitOverflowScrolling: 'touch',
-        }}>
+        <div className="flex-1 overflow-y-auto px-5 pt-4 pb-6">
           {children}
         </div>
       </div>
-
-      {/* CSS para hacer centrado en desktop */}
-      <style>{`
-        @media (min-width: 768px) {
-          .modal-content-responsive {
-            border-radius: 16px !important;
-            border-bottom: 1px solid ${C.border} !important;
-            margin: auto !important;
-            max-height: 80dvh !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }

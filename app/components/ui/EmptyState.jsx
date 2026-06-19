@@ -1,20 +1,4 @@
 'use client';
-import { C, fH, fB } from '../../lib/theme';
-
-// ═══════════════════════════════════════════════════════
-// EmptyState — Estados vacíos con icono + mensaje + CTA
-// Ubicación: app/components/ui/EmptyState.jsx
-// ═══════════════════════════════════════════════════════
-//
-// Reemplaza los divs inline "Sin fichadas", "No tenés solicitudes", etc.
-//
-// Uso:
-//   <EmptyState
-//     icon="inbox"          // preset o JSX custom
-//     title="Sin solicitudes"
-//     description="Cuando envíes permisos o avisos, aparecerán acá."
-//     action={{ label: "Ir al chat", onClick: () => goto('chat') }}
-//   />
 
 const presetIcons = {
   inbox: <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>,
@@ -32,48 +16,30 @@ export default function EmptyState({
   title = 'Sin datos',
   description,
   action,
-  color = C.dim,
+  color = 'var(--color-text-dim)',
   style = {},
 }) {
   const iconEl = typeof icon === 'string' ? presetIcons[icon] : icon;
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', textAlign: 'center',
-      padding: '40px 24px', ...style,
-    }}>
-      {/* Icon circle */}
-      <div style={{
-        width: 72, height: 72, borderRadius: 20,
-        background: `${color}12`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color, marginBottom: 16,
-      }}>
+    <div className="flex flex-col items-center justify-center text-center py-10 px-6" style={style}>
+      <div
+        className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mb-4"
+        style={{ background: `${color}12`, color }}
+      >
         {iconEl}
       </div>
 
-      <h3 style={{
-        margin: 0, fontSize: 16, fontWeight: 700,
-        color: C.text, fontFamily: fH,
-      }}>{title}</h3>
+      <h3 className="m-0 text-base font-bold text-gypi-text font-heading">{title}</h3>
 
       {description && (
-        <p style={{
-          margin: '8px 0 0', fontSize: 13, color: C.dim,
-          lineHeight: 1.5, maxWidth: 280,
-        }}>{description}</p>
+        <p className="mt-2 mb-0 text-[13px] text-gypi-dim leading-relaxed max-w-[280px]">{description}</p>
       )}
 
       {action && (
         <button
           onClick={action.onClick}
-          style={{
-            marginTop: 18, padding: '10px 20px', borderRadius: 10,
-            background: C.amber, color: C.amberText, border: 'none',
-            fontSize: 13, fontWeight: 700, fontFamily: fB,
-            cursor: 'pointer',
-          }}
+          className="mt-[18px] py-2.5 px-5 rounded-[10px] bg-gypi-amber text-white border-none text-[13px] font-bold font-body cursor-pointer"
         >{action.label}</button>
       )}
     </div>

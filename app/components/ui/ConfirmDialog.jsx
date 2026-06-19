@@ -1,7 +1,6 @@
 'use client';
 import { useState, useCallback, useRef } from 'react';
 import Modal from './Modal';
-import { C, fB } from '../../lib/theme';
 
 export function useConfirm() {
   const [state, setState] = useState(null);
@@ -26,25 +25,19 @@ export function useConfirm() {
 
   const ConfirmDialog = state ? (
     <Modal open onClose={handleCancel} title={state.title} maxWidth={400}>
-      <p style={{ fontSize: 14, color: C.text, lineHeight: 1.5, margin: "0 0 20px" }}>{state.message}</p>
-      <div style={{ display: "flex", gap: 10 }}>
+      <p className="text-sm text-gypi-text leading-relaxed m-0 mb-5">{state.message}</p>
+      <div className="flex gap-2.5">
         <button
           onClick={handleCancel}
-          style={{
-            flex: 1, padding: "12px 16px", borderRadius: 12, border: `1px solid ${C.border}`,
-            background: C.surface, color: C.text, fontSize: 14, fontWeight: 600,
-            fontFamily: fB, cursor: "pointer", minHeight: 44,
-          }}
+          className="flex-1 py-3 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-sm font-semibold font-body cursor-pointer min-h-[44px]"
         >
           Cancelar
         </button>
         <button
           onClick={handleConfirm}
-          style={{
-            flex: 1, padding: "12px 16px", borderRadius: 12, border: "none",
-            background: state.destructive ? C.red : C.amber, color: state.destructive ? "#fff" : C.amberText,
-            fontSize: 14, fontWeight: 700, fontFamily: fB, cursor: "pointer", minHeight: 44,
-          }}
+          className={`flex-1 py-3 px-4 rounded-xl border-none text-sm font-bold font-body cursor-pointer min-h-[44px] ${
+            state.destructive ? "bg-gypi-red text-white" : "bg-gypi-amber text-white"
+          }`}
         >
           {state.confirmLabel}
         </button>
