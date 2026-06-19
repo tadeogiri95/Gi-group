@@ -5,21 +5,6 @@ import { THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
 import { getToken, apiFetch } from "./lib/supabase";
 import { useToast } from "./components/ui/Toast";
 
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  amberText: "#000",
-  green: "#16A34A",
-  red: "#DC2626",
-  cyan: "#06B6D4",
-  dim: "var(--color-text-dim)",
-  mute: "var(--color-text-muted)",
-  text: "var(--color-text)",
-  surface: "var(--color-surface)",
-  surfLo: "var(--color-surface-lo)",
-  surfHi: "var(--color-surface-hi)",
-  border: "var(--color-border)",
-};
-
 /* ─── Icon list for selectors ─── */
 const ICON_OPTIONS = [
   "📁", "📂", "🏢", "🏗️", "🏭", "🔧", "⚙️", "🛠️", "📊", "📈",
@@ -41,21 +26,21 @@ const isHex = (v) => v && /^#[0-9A-Fa-f]{6}$/.test(v);
 /* ─── Color picker row ─── */
 function ColorRow({ label, value, onChange }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div className="mb-3.5">
+      <div className="g-label mb-1.5">{label}</div>
+      <div className="flex items-center gap-2.5">
         <input
           type="color"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${V.border}`, cursor: "pointer", background: "transparent", padding: 0 }}
+          className="w-10 h-10 rounded-[10px] border border-gypi-border cursor-pointer bg-transparent p-0"
         />
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${V.border}`, background: V.surface, color: V.text, fontSize: 14, fontFamily: "'Geist Mono', monospace", outline: "none" }}
+          className="g-input flex-1 font-mono"
         />
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: value, border: `1px solid ${V.border}`, flexShrink: 0 }} />
+        <div className="w-10 h-10 rounded-[10px] border border-gypi-border shrink-0" style={{ background: value }} />
       </div>
     </div>
   );
@@ -66,12 +51,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
-  // General
   const [nombre, setNombre] = useState(empresa?.nombre || "");
   const [nombreCorto, setNombreCorto] = useState(empresa?.nombre_corto || "");
   const [rubro, setRubro] = useState(empresa?.rubro || "");
 
-  // Apariencia
   const [themePreset, setThemePreset] = useState(empresa?.theme_preset || "default");
   const [colorPrimario, setColorPrimario] = useState(empresa?.color_primario || "#F97316");
   const [colorSecundario, setColorSecundario] = useState(empresa?.color_secundario || "#7C3AED");
@@ -80,18 +63,15 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const [typography, setTypography] = useState(empresa?.typography || "system");
   const [customMode, setCustomMode] = useState(false);
 
-  // Logo
   const [logoUrl, setLogoUrl] = useState(empresa?.logo_url || "");
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(empresa?.logo_url || "");
   const fileInputRef = useRef(null);
 
-  // Divisiones
   const [divisiones, setDivisiones] = useState(divisionesProp);
   const [divForm, setDivForm] = useState({ icon: "📁", label: "", color: "#4f8cff", clave: "" });
   const [editDivId, setEditDivId] = useState(null);
 
-  // Etapas
   const [etapas, setEtapas] = useState(etapasProp);
   const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" });
   const [editEtapaId, setEditEtapaId] = useState(null);
@@ -101,7 +81,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     else toast.success(msg);
   }, [toast]);
 
-  // Sync empresa fields from prop
   useEffect(() => {
     if (!empresa) return;
     setNombre(empresa.nombre || "");
@@ -117,11 +96,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     setLogoPreview(empresa.logo_url || "");
   }, [empresa]);
 
-  // Sync divisiones/etapas from context props
   useEffect(() => { setDivisiones(divisionesProp); }, [divisionesProp]);
   useEffect(() => { setEtapas(etapasProp); }, [etapasProp]);
 
-  // Aplicar preset al seleccionar
   const applyPreset = (key) => {
     const p = THEME_PRESETS[key];
     if (!p) return;
@@ -131,11 +108,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     setColorFondo(p.bg);
     setColorTexto(p.text);
     setCustomMode(false);
-    // Preview en vivo
     setColoresEmpresa({ theme_preset: key, color_primario: p.primary, color_secundario: p.secondary, color_fondo: p.bg, color_texto: p.text, typography });
   };
 
-  // Preview en vivo al cambiar color individual
   const previewColors = (overrides = {}) => {
     setColoresEmpresa({
       color_primario: overrides.color_primario ?? colorPrimario,
@@ -146,7 +121,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     });
   };
 
-  // Logo
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -156,7 +130,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     reader.readAsDataURL(file);
   };
 
-  // Save
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -177,7 +150,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         });
       }
 
-      // Logo upload: ruta correcta + campo "file"
       if (tab === "logo" && logoFile) {
         const formData = new FormData();
         formData.append("file", logoFile);
@@ -203,10 +175,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
       if (Object.keys(body).length > 0) {
         const r = await fetch("/api/empresa", {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify(body),
         });
         if (!r.ok) {
@@ -225,7 +194,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     }
   };
 
-  // Division CRUD
   const handleAddDivision = async () => {
     if (!divForm.label.trim()) return showToast("El nombre es requerido", "error");
     if (!divForm.clave.trim()) return showToast("La clave es requerida", "error");
@@ -284,7 +252,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     }
   };
 
-  // Etapa CRUD
   const handleAddEtapa = async () => {
     if (!etapaForm.nombre.trim()) return showToast("El nombre es requerido", "error");
     if (!etapaForm.codigo || etapaForm.codigo < 1) return showToast("El código debe ser un número positivo", "error");
@@ -343,93 +310,75 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     }
   };
 
-  // ═══ Styles ═══
-  const card = { background: V.surface, borderRadius: 16, padding: 18, border: `1px solid ${V.border}`, marginBottom: 14 };
-  const lbl = { fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
-  const inp = { width: "100%", padding: "11px 14px", borderRadius: 10, border: `1px solid ${V.border}`, background: V.surface, color: V.text, fontSize: 14, outline: "none", boxSizing: "border-box" };
-  const btnPrimary = { width: "100%", padding: "14px 0", borderRadius: 12, border: "none", background: V.amber, color: V.amberText, fontSize: 14, fontWeight: 700, cursor: "pointer" };
-
-  // ═══ Tab content ═══
   const renderTab = () => {
     switch (tab) {
 
-      // ── GENERAL ──
       case "general":
         return <>
-          <div style={card}>
-            <div style={lbl}>Nombre de la empresa</div>
-            <input style={inp} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Mi Empresa S.A." />
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Nombre de la empresa</div>
+            <input className="g-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Mi Empresa S.A." />
           </div>
-          <div style={card}>
-            <div style={lbl}>Nombre corto</div>
-            <input style={inp} value={nombreCorto} onChange={(e) => setNombreCorto(e.target.value)} placeholder="Ej: MIEMPRESA" />
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Nombre corto</div>
+            <input className="g-input" value={nombreCorto} onChange={(e) => setNombreCorto(e.target.value)} placeholder="Ej: MIEMPRESA" />
           </div>
-          <div style={card}>
-            <div style={lbl}>Rubro</div>
-            <input style={inp} value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="Ej: Tecnología, Construcción..." />
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Rubro</div>
+            <input className="g-input" value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="Ej: Tecnología, Construcción..." />
           </div>
-          <button style={{ ...btnPrimary, opacity: saving ? 0.5 : 1 }} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar cambios"}</button>
+          <button className={`g-btn g-btn-primary w-full ${saving ? 'opacity-50' : ''}`} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar cambios"}</button>
         </>;
 
-      // ── APARIENCIA ──
       case "apariencia":
         return <>
-          {/* Temas preestablecidos */}
-          <div style={card}>
-            <div style={lbl}>Temas preestablecidos</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Temas preestablecidos</div>
+            <div className="grid grid-cols-2 gap-2">
               {Object.entries(THEME_PRESETS).map(([key, p]) => {
                 const sel = !customMode && themePreset === key;
                 return (
                   <button
                     key={key}
                     onClick={() => applyPreset(key)}
+                    className="flex items-center gap-2.5 p-3 rounded-xl cursor-pointer transition-all"
                     style={{
-                      display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12,
                       border: sel ? `2px solid ${p.primary}` : `1px solid rgba(128,128,128,0.2)`,
-                      background: p.bg, cursor: "pointer", transition: "all 0.15s",
+                      background: p.bg,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <div style={{ width: 14, height: 14, borderRadius: 4, background: p.primary }} />
-                      <div style={{ width: 14, height: 14, borderRadius: 4, background: p.secondary }} />
+                    <div className="flex gap-1">
+                      <div className="w-3.5 h-3.5 rounded" style={{ background: p.primary }} />
+                      <div className="w-3.5 h-3.5 rounded" style={{ background: p.secondary }} />
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: p.text }}>{p.label}</span>
-                    {sel && <span style={{ marginLeft: "auto", fontSize: 14, color: p.primary, fontWeight: 700 }}>✓</span>}
+                    <span className="text-xs font-semibold" style={{ color: p.text }}>{p.label}</span>
+                    {sel && <span className="ml-auto text-sm font-bold" style={{ color: p.primary }}>✓</span>}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Modo personalizado toggle */}
-          <div style={card}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div className="g-card mb-3.5">
+            <div className="flex items-center justify-between">
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: V.text }}>Personalización individual</div>
-                <div style={{ fontSize: 12, color: V.dim, marginTop: 2 }}>Ajustar cada color por separado</div>
+                <div className="text-sm font-bold text-gypi-text">Personalización individual</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Ajustar cada color por separado</div>
               </div>
               <button
                 onClick={() => setCustomMode(!customMode)}
                 aria-pressed={customMode}
                 aria-label="Personalización individual de colores"
-                style={{
-                  width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer", position: "relative",
-                  background: customMode ? V.green : V.surfHi, transition: "background 0.2s",
-                }}
+                className="w-12 h-7 rounded-full border-none cursor-pointer relative transition-colors"
+                style={{ background: customMode ? '#16A34A' : 'var(--color-surf-hi)' }}
               >
-                <div style={{
-                  width: 22, height: 22, borderRadius: 11, background: "#fff",
-                  position: "absolute", top: 3, left: customMode ? 23 : 3, transition: "left 0.2s",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                }} />
+                <div className="w-[22px] h-[22px] rounded-full bg-white absolute top-[3px] shadow-sm transition-[left]" style={{ left: customMode ? 23 : 3 }} />
               </button>
             </div>
           </div>
 
-          {/* Colores individuales */}
           {customMode && (
-            <div style={card}>
+            <div className="g-card mb-3.5">
               <ColorRow label="Color primario (botones, acentos)" value={colorPrimario} onChange={(v) => { setColorPrimario(v); if (isHex(v)) previewColors({ color_primario: v }); }} />
               <ColorRow label="Color secundario (etiquetas, complementos)" value={colorSecundario} onChange={(v) => { setColorSecundario(v); if (isHex(v)) previewColors({ color_secundario: v }); }} />
               <ColorRow label="Color de fondo" value={colorFondo} onChange={(v) => { setColorFondo(v); if (isHex(v)) previewColors({ color_fondo: v }); }} />
@@ -437,180 +386,155 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             </div>
           )}
 
-          {/* Preview miniatura */}
-          <div style={card}>
-            <div style={lbl}>Vista previa</div>
-            <div style={{
-              background: colorFondo, borderRadius: 12, padding: 16, border: `1px solid rgba(128,128,128,0.15)`,
-            }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: colorTexto, marginBottom: 8, fontFamily: FONT_OPTIONS[typography]?.heading || "system-ui" }}>
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Vista previa</div>
+            <div className="rounded-xl p-4 border border-black/[0.15]" style={{ background: colorFondo }}>
+              <div className="text-base font-bold mb-2" style={{ color: colorTexto, fontFamily: FONT_OPTIONS[typography]?.heading || "system-ui" }}>
                 {nombreCorto || "Mi Empresa"}
               </div>
-              <div style={{ fontSize: 12, color: colorTexto, opacity: 0.6, marginBottom: 12, fontFamily: FONT_OPTIONS[typography]?.body || "system-ui" }}>
+              <div className="text-xs opacity-60 mb-3" style={{ color: colorTexto, fontFamily: FONT_OPTIONS[typography]?.body || "system-ui" }}>
                 Texto de ejemplo para ver la tipografía
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorPrimario, color: V.amberText, fontSize: 12, fontWeight: 700 }}>
-                  Primario
-                </div>
-                <div style={{ padding: "8px 16px", borderRadius: 8, background: colorSecundario, color: "#fff", fontSize: 12, fontWeight: 700 }}>
-                  Secundario
-                </div>
+              <div className="flex gap-2">
+                <div className="py-2 px-4 rounded-lg text-xs font-bold text-black" style={{ background: colorPrimario }}>Primario</div>
+                <div className="py-2 px-4 rounded-lg text-xs font-bold text-white" style={{ background: colorSecundario }}>Secundario</div>
               </div>
             </div>
           </div>
 
-          {/* Tipografía */}
-          <div style={card}>
-            <div style={lbl}>Tipografía</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Tipografía</div>
+            <div className="flex flex-col gap-1.5">
               {Object.entries(FONT_OPTIONS).map(([key, f]) => {
                 const sel = typography === key;
                 return (
                   <button
                     key={key}
                     onClick={() => { setTypography(key); previewColors({ typography: key }); }}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "12px 14px", borderRadius: 10,
-                      border: sel ? `2px solid ${V.amber}` : `1px solid ${V.border}`,
-                      background: sel ? `${V.amber}15` : V.surface, cursor: "pointer",
-                    }}
+                    className={`flex items-center justify-between py-3 px-3.5 rounded-[10px] cursor-pointer ${
+                      sel ? 'border-2 border-gypi-amber bg-gypi-amber/[0.08]' : 'border border-gypi-border bg-gypi-surface'
+                    }`}
                   >
-                    <span style={{ fontSize: 14, fontFamily: f.heading, color: V.text, fontWeight: sel ? 700 : 500 }}>
-                      {f.label}
-                    </span>
-                    <span style={{ fontSize: 11, fontFamily: f.body, color: V.dim }}>
-                      Aa Bb Cc 123
-                    </span>
+                    <span className={`text-sm text-gypi-text ${sel ? 'font-bold' : 'font-medium'}`} style={{ fontFamily: f.heading }}>{f.label}</span>
+                    <span className="text-[11px] text-gypi-dim" style={{ fontFamily: f.body }}>Aa Bb Cc 123</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <button style={{ ...btnPrimary, opacity: saving ? 0.5 : 1 }} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar apariencia"}</button>
+          <button className={`g-btn g-btn-primary w-full ${saving ? 'opacity-50' : ''}`} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar apariencia"}</button>
         </>;
 
-      // ── LOGO ──
       case "logo":
         return <>
-          <div style={card}>
-            <div style={lbl}>Logo de la empresa</div>
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14,
-              borderRadius: 12, background: V.surfLo, border: `1px solid ${V.border}`, overflow: "hidden", height: 160,
-            }}>
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Logo de la empresa</div>
+            <div className="flex items-center justify-center mb-3.5 rounded-xl bg-gypi-surf-lo border border-gypi-border overflow-hidden h-40">
               {logoPreview
-                ? <img src={logoPreview} alt="Logo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                : <span style={{ color: V.mute, fontSize: 13 }}>Sin logo</span>}
+                ? <img src={logoPreview} alt="Logo" className="max-w-full max-h-full object-contain" />
+                : <span className="text-gypi-mute text-[13px]">Sin logo</span>}
             </div>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} style={{ display: "none" }} />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
             <button
               onClick={() => fileInputRef.current?.click()}
-              style={{ ...btnPrimary, background: V.surfHi, color: V.text, border: `1px solid ${V.border}` }}
+              className="g-btn g-btn-secondary w-full"
             >
               {logoPreview ? "Cambiar logo" : "Subir logo"}
             </button>
             {logoPreview && (
               <button
                 onClick={() => { setLogoFile(null); setLogoPreview(""); setLogoUrl(""); }}
-                style={{ width: "100%", marginTop: 8, padding: "10px 0", borderRadius: 10, border: "none", background: "transparent", color: V.red, fontSize: 13, cursor: "pointer" }}
+                className="w-full mt-2 py-2.5 rounded-[10px] border-none bg-transparent text-gypi-red text-[13px] cursor-pointer"
               >
                 Eliminar logo
               </button>
             )}
           </div>
-          <button style={{ ...btnPrimary, opacity: saving ? 0.5 : 1 }} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar logo"}</button>
+          <button className={`g-btn g-btn-primary w-full ${saving ? 'opacity-50' : ''}`} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar logo"}</button>
         </>;
 
-      // ── DIVISIONES ──
       case "divisiones":
         return <>
-          <div style={card}>
-            <div style={lbl}>{editDivId !== null ? "Editar división" : "Nueva división"}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">{editDivId !== null ? "Editar división" : "Nueva división"}</div>
+            <div className="flex flex-wrap gap-1.5 mb-3">
               {ICON_OPTIONS.map((ic) => (
                 <button key={ic} onClick={() => setDivForm((f) => ({ ...f, icon: ic }))}
-                  style={{
-                    width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 18, cursor: "pointer", border: `1px solid ${divForm.icon === ic ? V.amber : V.border}`,
-                    background: divForm.icon === ic ? `${V.amber}22` : V.surface,
-                  }}>{ic}</button>
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg cursor-pointer ${
+                    divForm.icon === ic ? 'border border-gypi-amber bg-gypi-amber/[0.13]' : 'border border-gypi-border bg-gypi-surface'
+                  }`}>{ic}</button>
               ))}
             </div>
-            <div style={lbl}>Nombre</div>
-            <input style={{ ...inp, marginBottom: 10 }} value={divForm.label} onChange={(e) => setDivForm((f) => ({ ...f, label: e.target.value }))} placeholder="Ej: Producción" />
-            <div style={lbl}>Clave</div>
-            <input style={{ ...inp, marginBottom: 10 }} value={divForm.clave} onChange={(e) => setDivForm((f) => ({ ...f, clave: e.target.value.toUpperCase() }))} placeholder="Ej: PROD" maxLength={6} />
-            <div style={lbl}>Color</div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <input type="color" value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${V.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
-              <input style={inp} value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} />
+            <div className="g-label mb-1.5">Nombre</div>
+            <input className="g-input mb-2.5" value={divForm.label} onChange={(e) => setDivForm((f) => ({ ...f, label: e.target.value }))} placeholder="Ej: Producción" />
+            <div className="g-label mb-1.5">Clave</div>
+            <input className="g-input mb-2.5" value={divForm.clave} onChange={(e) => setDivForm((f) => ({ ...f, clave: e.target.value.toUpperCase() }))} placeholder="Ej: PROD" maxLength={6} />
+            <div className="g-label mb-1.5">Color</div>
+            <div className="flex gap-2.5 mb-3.5">
+              <input type="color" value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} className="w-10 h-10 rounded-[10px] border border-gypi-border cursor-pointer bg-transparent p-0" />
+              <input className="g-input" value={divForm.color} onChange={(e) => setDivForm((f) => ({ ...f, color: e.target.value }))} />
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={handleAddDivision} style={{ ...btnPrimary, flex: 1 }}>{editDivId !== null ? "Actualizar" : "Agregar"}</button>
-              {editDivId !== null && <button onClick={() => { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${V.border}`, background: V.surface, color: V.text, cursor: "pointer" }}>Cancelar</button>}
+            <div className="flex gap-2.5">
+              <button onClick={handleAddDivision} className="g-btn g-btn-primary flex-1">{editDivId !== null ? "Actualizar" : "Agregar"}</button>
+              {editDivId !== null && <button onClick={() => { setEditDivId(null); setDivForm({ icon: "📁", label: "", color: "#4f8cff", clave: "" }); }} className="g-btn g-btn-secondary">Cancelar</button>}
             </div>
           </div>
-          {divisiones.length > 0 && <div style={card}>
-            <div style={lbl}>Divisiones ({divisiones.length})</div>
+          {divisiones.length > 0 && <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Divisiones ({divisiones.length})</div>
             {divisiones.map((div) => (
-              <div key={div.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${V.border}`, background: V.surfLo, marginBottom: 6 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: div.color + "22" }}>{div.icon}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: V.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{div.label}</div>
-                  <div style={{ fontSize: 11, color: V.dim, fontFamily: "'Geist Mono', monospace" }}>{div.clave}</div>
+              <div key={div.id} className="flex items-center gap-2.5 p-3 rounded-xl border border-gypi-border bg-gypi-surf-lo mb-1.5">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: div.color + "22" }}>{div.icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-gypi-text truncate">{div.label}</div>
+                  <div className="text-[11px] text-gypi-dim font-mono">{div.clave}</div>
                 </div>
-                <div style={{ width: 16, height: 16, borderRadius: 8, background: div.color }} />
-                <button onClick={() => handleEditDivision(div)} style={{ fontSize: 11, color: V.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
-                <button onClick={() => handleDeleteDivision(div.id)} style={{ fontSize: 11, color: V.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
+                <div className="w-4 h-4 rounded-full" style={{ background: div.color }} />
+                <button onClick={() => handleEditDivision(div)} className="text-[11px] text-gypi-cyan bg-transparent border-none cursor-pointer">Editar</button>
+                <button onClick={() => handleDeleteDivision(div.id)} className="text-[11px] text-gypi-red bg-transparent border-none cursor-pointer">Eliminar</button>
               </div>
             ))}
           </div>}
         </>;
 
-      // ── ETAPAS ──
       case "etapas":
         return <>
-          <div style={card}>
-            <div style={lbl}>{editEtapaId !== null ? "Editar etapa" : "Nueva etapa"}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">{editEtapaId !== null ? "Editar etapa" : "Nueva etapa"}</div>
+            <div className="flex flex-wrap gap-1.5 mb-3">
               {ICON_OPTIONS.map((ic) => (
                 <button key={ic} onClick={() => setEtapaForm((f) => ({ ...f, icon: ic }))}
-                  style={{
-                    width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 18, cursor: "pointer", border: `1px solid ${etapaForm.icon === ic ? V.amber : V.border}`,
-                    background: etapaForm.icon === ic ? `${V.amber}22` : V.surface,
-                  }}>{ic}</button>
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg cursor-pointer ${
+                    etapaForm.icon === ic ? 'border border-gypi-amber bg-gypi-amber/[0.13]' : 'border border-gypi-border bg-gypi-surface'
+                  }`}>{ic}</button>
               ))}
             </div>
-            <div style={lbl}>Código</div>
-            <input type="number" min="1" max="999" style={{ ...inp, marginBottom: 10 }} value={etapaForm.codigo} onChange={(e) => setEtapaForm((f) => ({ ...f, codigo: parseInt(e.target.value) || 1 }))} placeholder="Ej: 1" />
-            <div style={lbl}>Nombre</div>
-            <input style={{ ...inp, marginBottom: 10 }} value={etapaForm.nombre} onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Ej: Planificación" />
-            <div style={lbl}>Color</div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} style={{ width: 40, height: 40, borderRadius: 10, border: `1px solid ${V.border}`, cursor: "pointer", background: "transparent", padding: 0 }} />
-              <input style={inp} value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} />
+            <div className="g-label mb-1.5">Código</div>
+            <input type="number" min="1" max="999" className="g-input mb-2.5" value={etapaForm.codigo} onChange={(e) => setEtapaForm((f) => ({ ...f, codigo: parseInt(e.target.value) || 1 }))} placeholder="Ej: 1" />
+            <div className="g-label mb-1.5">Nombre</div>
+            <input className="g-input mb-2.5" value={etapaForm.nombre} onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Ej: Planificación" />
+            <div className="g-label mb-1.5">Color</div>
+            <div className="flex gap-2.5 mb-3.5">
+              <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} className="w-10 h-10 rounded-[10px] border border-gypi-border cursor-pointer bg-transparent p-0" />
+              <input className="g-input" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} />
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={handleAddEtapa} style={{ ...btnPrimary, flex: 1 }}>{editEtapaId !== null ? "Actualizar" : "Agregar"}</button>
-              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" }); }} style={{ padding: "12px 20px", borderRadius: 12, border: `1px solid ${V.border}`, background: V.surface, color: V.text, cursor: "pointer" }}>Cancelar</button>}
+            <div className="flex gap-2.5">
+              <button onClick={handleAddEtapa} className="g-btn g-btn-primary flex-1">{editEtapaId !== null ? "Actualizar" : "Agregar"}</button>
+              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff" }); }} className="g-btn g-btn-secondary">Cancelar</button>}
             </div>
           </div>
-          {etapas.length > 0 && <div style={card}>
-            <div style={lbl}>Etapas ({etapas.length})</div>
+          {etapas.length > 0 && <div className="g-card mb-3.5">
+            <div className="g-label mb-1.5">Etapas ({etapas.length})</div>
             {etapas.map((etapa) => (
-              <div key={etapa.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, border: `1px solid ${V.border}`, background: V.surfLo, marginBottom: 6 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: etapa.color + "22" }}>{etapa.icon}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: V.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{etapa.nombre}</div>
-                  <div style={{ fontSize: 11, color: V.dim, fontFamily: "'Geist Mono', monospace" }}>{etapa.codigo}</div>
+              <div key={etapa.id} className="flex items-center gap-2.5 p-3 rounded-xl border border-gypi-border bg-gypi-surf-lo mb-1.5">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: etapa.color + "22" }}>{etapa.icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-gypi-text truncate">{etapa.nombre}</div>
+                  <div className="text-[11px] text-gypi-dim font-mono">{etapa.codigo}</div>
                 </div>
-                <div style={{ width: 16, height: 16, borderRadius: 8, background: etapa.color }} />
-                <button onClick={() => handleEditEtapa(etapa)} style={{ fontSize: 11, color: V.cyan, background: "none", border: "none", cursor: "pointer" }}>Editar</button>
-                <button onClick={() => handleDeleteEtapa(etapa.id)} style={{ fontSize: 11, color: V.red, background: "none", border: "none", cursor: "pointer" }}>Eliminar</button>
+                <div className="w-4 h-4 rounded-full" style={{ background: etapa.color }} />
+                <button onClick={() => handleEditEtapa(etapa)} className="text-[11px] text-gypi-cyan bg-transparent border-none cursor-pointer">Editar</button>
+                <button onClick={() => handleDeleteEtapa(etapa.id)} className="text-[11px] text-gypi-red bg-transparent border-none cursor-pointer">Eliminar</button>
               </div>
             ))}
           </div>}
@@ -621,30 +545,26 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", color: V.text }}>
+    <div className="flex flex-col h-full text-gypi-text">
       {/* Tab bar */}
-      <div role="tablist" aria-label="Configuración de empresa" style={{ display: "flex", overflowX: "auto", padding: "0 14px 10px", gap: 4, flexShrink: 0 }}>
+      <div role="tablist" aria-label="Configuración de empresa" className="flex overflow-x-auto px-3.5 pb-2.5 gap-1 shrink-0">
         {TABS.map((t) => (
           <button
             key={t.key}
             role="tab"
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            style={{
-              padding: "8px 16px", borderRadius: 20, border: "none", cursor: "pointer",
-              background: tab === t.key ? V.amber : "transparent",
-              color: tab === t.key ? V.amberText : V.dim,
-              fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0,
-            }}
+            className={`py-2 px-4 rounded-full border-none cursor-pointer text-xs font-bold whitespace-nowrap shrink-0 ${
+              tab === t.key ? 'bg-gypi-amber text-black' : 'bg-transparent text-gypi-dim'
+            }`}
           >{t.label}</button>
         ))}
       </div>
 
       {/* Content */}
-      <div role="tabpanel" aria-label={`Contenido de ${TABS.find(t => t.key === tab)?.label || tab}`} style={{ flex: 1, overflowY: "auto", padding: "0 18px 110px" }}>
+      <div role="tabpanel" aria-label={`Contenido de ${TABS.find(t => t.key === tab)?.label || tab}`} className="flex-1 overflow-y-auto px-[18px] pb-[110px]">
         {renderTab()}
       </div>
-
     </div>
   );
 }
