@@ -340,7 +340,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         empleados: empleados.length,
         tienelogo: !!logoUrl,
       });
-      onComplete && onComplete({ ...empresa, ...updEmp, logo_url: logoUrl });
+      onComplete && onComplete({ ...empresa, ...empresaUpdates, logo_url: logoUrl });
     } catch (err) {
       setError(err.message || "Error finalizando onboarding");
       setSaving(false);

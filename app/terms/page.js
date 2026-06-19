@@ -1,5 +1,3 @@
-"use client";
-
 export default function TermsOfService() {
   const S = {
     wrap: { maxWidth: 720, margin: "0 auto", padding: "40px 20px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100vh", lineHeight: 1.7 },

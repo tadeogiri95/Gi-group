@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { C, fmtTime, DIAS_KEY } from "./lib/theme";
+import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
+import FotoViewer from "./components/FotoViewer";
+import { hoyArg, ahoraArg } from "./lib/dates";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
@@ -15,6 +17,7 @@ const DIAS_SEMANA_JS = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 import { getDivisionesConTodas } from "./lib/constants";
+import { useAuth } from "./context/AuthContext";
 
 /* ─── Helpers ─── */
 const parseHora = (str) => { if (!str) return null; const [h, m] = str.split(":").map(Number); return h * 60 + m; };
@@ -111,27 +114,8 @@ function exportPDF(title, headers, rows, meta = "") {
   }, "image/png");
 }
 
-/* ─── FotoViewer ─── */
-function FotoViewer({ fotos, index, onClose, onNav }) {
-  return (
-    <div className="fixed inset-0 z-[300] bg-black/[0.92] flex flex-col items-center justify-center" onClick={onClose}>
-      <button onClick={onClose} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 border-none text-white text-xl font-bold cursor-pointer z-[301]">✕</button>
-      <div className="relative max-w-[92vw] max-h-[80vh]" onClick={e => e.stopPropagation()}>
-        <img src={fotos[index]} alt={`Foto ${index + 1}`} className="max-w-[92vw] max-h-[80vh] object-contain rounded-xl" />
-      </div>
-      {fotos.length > 1 && (
-        <div className="flex gap-3 mt-4" onClick={e => e.stopPropagation()}>
-          <button onClick={() => onNav(Math.max(0, index - 1))} disabled={index === 0} className="py-2.5 px-5 rounded-[10px] border-none text-base font-bold" style={{ background: index === 0 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.15)", color: index === 0 ? "#555" : "#fff", cursor: index === 0 ? "default" : "pointer" }}>‹ Anterior</button>
-          <span className="text-white/60 text-sm flex items-center">{index + 1} / {fotos.length}</span>
-          <button onClick={() => onNav(Math.min(fotos.length - 1, index + 1))} disabled={index === fotos.length - 1} className="py-2.5 px-5 rounded-[10px] border-none text-base font-bold" style={{ background: index === fotos.length - 1 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.15)", color: index === fotos.length - 1 ? "#555" : "#fff", cursor: index === fotos.length - 1 ? "default" : "pointer" }}>Siguiente ›</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ─── Tab de Reporte de Producción ─── */
-function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo }) {
+function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId }) {
   const [datos, setDatos] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -143,8 +127,8 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo }) {
       setLoading(true);
       try {
         const [regs, proys] = await Promise.all([
-          sb.get(`registro_actividades?fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,codigo_proyecto,etapa,division,duracion_min,observaciones&order=fecha.desc`),
-          sb.get("proyectos?estado=eq.activo&select=id,codigo,nombre"),
+          sb.get(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,codigo_proyecto,etapa,division,duracion_min,observaciones&order=fecha.desc`),
+          sb.get(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,codigo,nombre`),
         ]);
         setDatos(regs || []);
         setProyectos(proys || []);
@@ -272,17 +256,17 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo }) {
 }
 
 /* ─── Tab de Reportes de Obra ─── */
-function ReportesObraTab() {
+function ReportesObraTab({ empresaId }) {
   const [reportesObra, setReportesObra] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedReport, setExpandedReport] = useState(null);
   const [fotoViewer, setFotoViewer] = useState(null);
-  const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().slice(0, 10));
+  const [fechaFiltro, setFechaFiltro] = useState(() => hoyArg());
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      try { const data = await sb.get(`reportes_obra?fecha=eq.${fechaFiltro}&order=created_at.desc`); setReportesObra(data || []); }
+      try { const data = await sb.get(`reportes_obra?empresa_id=eq.${empresaId}&fecha=eq.${fechaFiltro}&order=created_at.desc`); setReportesObra(data || []); }
       catch (e) { console.error(e); }
       setLoading(false);
     })();
@@ -385,12 +369,14 @@ function ReportesObraTab() {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ReportesScreen() {
-  const DIVISIONES = getDivisionesConTodas();
+  const { divisiones: divisionesCtx, usuario } = useAuth();
+  const empresaId = usuario?.empresa_id;
+  const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [tab, setTab] = useState("cumplimiento");
   const [periodo, setPeriodo] = useState("semana");
   const [weekOffset, setWeekOffset] = useState(0);
-  const [mesYear, setMesYear] = useState(new Date().getFullYear());
-  const [mesMes, setMesMes] = useState(new Date().getMonth());
+  const [mesYear, setMesYear] = useState(() => Number(hoyArg().slice(0, 4)));
+  const [mesMes, setMesMes] = useState(() => Number(hoyArg().slice(5, 7)) - 1);
   const [division, setDivision] = useState("todas");
   const [expandedEmp, setExpandedEmp] = useState(null);
   const [empleados, setEmpleados] = useState([]);
@@ -421,14 +407,14 @@ export default function ReportesScreen() {
     setLoading(true);
     try {
       const [emps, fichs] = await Promise.all([
-        sb.get("empleados?activo=eq.true&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc"),
-        sb.get(`fichadas?fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=legajo,fecha,ingreso,egreso,horas_trabajadas&order=fecha.asc`),
+        sb.get(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc`),
+        sb.get(`fichadas?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=legajo,fecha,ingreso,egreso,horas_trabajadas&order=fecha.asc`),
       ]);
       setEmpleados((emps || []).filter(e => e.rol === "operativo"));
       setFichadas(fichs || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [fechaDesde, fechaHasta]);
+  }, [fechaDesde, fechaHasta, empresaId]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
@@ -449,11 +435,11 @@ export default function ReportesScreen() {
       const totalMinEsperados = laborales.reduce((a, d) => a + (d.minEsperados || 0), 0);
       const diasConEgreso = presentes.filter(d => d.minReales != null);
       const totalMinReales = diasConEgreso.reduce((a, d) => a + d.minReales, 0);
-      const hoy = new Date().toISOString().slice(0, 10);
+      const hoy = hoyArg();
       const diasSinEgreso = presentes.filter(d => d.minReales == null);
       const minEstimadosHoy = diasSinEgreso.reduce((a, d) => {
         const f = fichadas.find(f2 => f2.legajo === emp.legajo && f2.fecha === hoy);
-        if (f && f.ingreso) { const ahora = new Date(); const ingMin = parseHora(f.ingreso.slice(0, 5)); const ahoraMin = ahora.getHours() * 60 + ahora.getMinutes(); return a + Math.max(0, ahoraMin - (ingMin || 0)); }
+        if (f && f.ingreso) { const { hora } = ahoraArg(); const [hh, mm] = hora.split(":").map(Number); const ingMin = parseHora(f.ingreso.slice(0, 5)); const ahoraMin = hh * 60 + mm; return a + Math.max(0, ahoraMin - (ingMin || 0)); }
         return a;
       }, 0);
       const totalMinRealesAjustado = totalMinReales + minEstimadosHoy;
@@ -557,9 +543,9 @@ export default function ReportesScreen() {
       {loading ? (
         <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
       ) : tab === "produccion" ? (
-        <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} />
+        <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
       ) : tab === "obra" ? (
-        <ReportesObraTab />
+        <ReportesObraTab empresaId={empresaId} />
       ) : tab === "cumplimiento" ? (
         <>
           {/* KPIs */}

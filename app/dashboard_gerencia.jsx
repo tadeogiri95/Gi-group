@@ -5,6 +5,7 @@ import { sb } from "./lib/supabase";
 import { hoyArg, lunesDeLaSemana } from "./lib/dates";
 import TrialBanner from "./components/TrialBanner";
 import BillingScreen from "./components/BillingScreen";
+import FotoViewer from "./components/FotoViewer";
 /* ═══════════════════════════════════════════════════════
    DASHBOARD GERENCIAL — Vista en tiempo real
    ═══════════════════════════════════════════════════════ */
@@ -120,33 +121,6 @@ function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas, onClick }) {
   );
 }
 
-
-/* ─── Visor de fotos fullscreen ─── */
-function FotoViewer({ fotos, index, onClose, onNav }) {
-  return (
-    <div className="fixed inset-0 z-[300] bg-black/[0.92] flex flex-col items-center justify-center" onClick={onClose} role="dialog" aria-label="Visor de fotos">
-      <button onClick={onClose} aria-label="Cerrar visor" className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 border-none text-white text-xl font-bold cursor-pointer z-[301]">✕</button>
-      <div className="relative max-w-[92vw] max-h-[80vh]" onClick={e => e.stopPropagation()}>
-        <img src={fotos[index]} alt={`Foto ${index + 1}`} className="max-w-[92vw] max-h-[80vh] object-contain rounded-xl" />
-      </div>
-      {fotos.length > 1 && (
-        <div className="flex gap-3 mt-4" onClick={e => e.stopPropagation()}>
-          <button onClick={() => onNav(Math.max(0, index - 1))} disabled={index === 0}
-            className="px-5 py-2.5 rounded-[10px] border-none text-base font-bold"
-            style={{ background: index === 0 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.15)", color: index === 0 ? "#555" : "#fff", cursor: index === 0 ? "default" : "pointer" }}>
-            &#8249; Anterior
-          </button>
-          <span className="text-[#999] text-sm flex items-center">{index + 1} / {fotos.length}</span>
-          <button onClick={() => onNav(Math.min(fotos.length - 1, index + 1))} disabled={index === fotos.length - 1}
-            className="px-5 py-2.5 rounded-[10px] border-none text-base font-bold"
-            style={{ background: index === fotos.length - 1 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.15)", color: index === fotos.length - 1 ? "#555" : "#fff", cursor: index === fotos.length - 1 ? "default" : "pointer" }}>
-            Siguiente &#8250;
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ─── Panel de Reportes de Obra con fotos y detalle expandible ─── */
 function ReportesObraPanel({ reportesObra }) {

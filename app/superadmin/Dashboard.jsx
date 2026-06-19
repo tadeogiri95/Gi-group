@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useConfirm } from "../components/ui/ConfirmDialog";
+import { useToast } from "../components/ui/Toast";
 
 const PLAN_LABEL = { free: "Free", trial: "Trial", starter: "Starter", pro: "Pro", enterprise: "Enterprise" };
 const PLAN_COLOR = { free: "#6B7280", trial: "#0F6E56", starter: "#3B82F6", pro: "#F97316", enterprise: "#A78BFA" };
@@ -88,6 +89,7 @@ export default function Dashboard({ initialData }) {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("empresas");
   const [confirmFn, ConfirmDialog] = useConfirm();
+  const toast = useToast();
   const searchTimer = useRef(null);
 
   // ── Métricas SaaS ──
@@ -168,7 +170,7 @@ export default function Dashboard({ initialData }) {
     if (d.url) {
       window.open(d.url, "_blank");
     } else {
-      alert(d.error || "Error generando acceso");
+      toast.error(d.error || "Error generando acceso");
     }
   };
 
@@ -188,7 +190,7 @@ export default function Dashboard({ initialData }) {
       setEmpresas((prev) => prev.map((e) => e.id === empresaId ? { ...e, plan_activo: nuevoPlan } : e));
       fetchEmpresas(page, search);
     } else {
-      alert(d.error || "Error cambiando plan");
+      toast.error(d.error || "Error cambiando plan");
     }
   };
 

@@ -5,6 +5,7 @@ import { Tag, Chip } from "./components/ui";
 import { passwordInicial } from "./lib/passwords";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
+import { useToast } from "./components/ui/Toast";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
@@ -242,6 +243,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
   const [saving, setSaving] = useState(false);
   const [progresoCSV, setProgresoCSV] = useState("");
   const fileRef = useRef(null);
+  const toast = useToast();
 
   /* ── Cargar empleados ── */
   const cargar = useCallback(async () => {
@@ -306,7 +308,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       cargar();
     } catch (err) {
       console.error("Error en alta:", err);
-      alert("Error al dar de alta: " + err.message);
+      toast.error("Error al dar de alta: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -331,7 +333,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       cargar();
     } catch (err) {
       console.error("Error editando:", err);
-      alert("Error al editar: " + err.message);
+      toast.error("Error al editar: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -347,7 +349,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       cargar();
     } catch (err) {
       console.error("Error en baja:", err);
-      alert("Error al dar de baja: " + err.message);
+      toast.error("Error al dar de baja: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -362,7 +364,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       const text = ev.target.result;
       const filas = parseEmpleadosCSV(text);
       if (filas.length === 0) {
-        alert("No se encontraron registros válidos en el CSV. Verificá que tenga al menos una columna 'nombre'.");
+        toast.error("No se encontraron registros válidos en el CSV. Verificá que tenga al menos una columna 'nombre'.");
         return;
       }
       setModalCSV(filas);
@@ -403,7 +405,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       setModalCSV(null);
       setProgresoCSV("");
       cargar();
-      if (ok < nuevos.length) alert(`Se importaron ${ok} de ${nuevos.length}. Algunos fallaron (puede haber legajos duplicados).`);
+      if (ok < nuevos.length) toast.warning(`Se importaron ${ok} de ${nuevos.length}. Algunos fallaron (puede haber legajos duplicados).`);
     } catch (err) {
       console.error("Error en importación CSV:", err);
     } finally {
