@@ -11,7 +11,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { C, fH } from "../lib/theme";
 import { sb } from "../lib/supabase";
 import { hoyArg, lunesDeLaSemana } from "../lib/dates";
 import { useAuth } from "../context/AuthContext";
@@ -210,26 +209,23 @@ export default function HomeContent() {
 
   // ─── Early returns ───
   if (slugInvalido && !isDemo) return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", alignItems: "center", justifyContent: "center", padding: 40, textAlign: "center" }}>
-      <h1 style={{ fontFamily: fH, fontSize: 24, color: C.text }}>Empresa no encontrada</h1>
-      <p style={{ color: C.dim, fontSize: 14 }}>El link no es válido o la empresa fue desactivada.</p>
+    <div className="flex flex-col h-dvh items-center justify-center p-10 text-center">
+      <h1 className="font-heading text-2xl text-gypi-text">Empresa no encontrada</h1>
+      <p className="text-gypi-dim text-sm">El link no es válido o la empresa fue desactivada.</p>
     </div>
   );
   if ((!init && !isDemo) || (isDemo && !demoMod)) return (
-    <div style={{ display: "flex", height: "100dvh", alignItems: "center", justifyContent: "center", background: C.bg }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+    <div className="flex h-dvh items-center justify-center bg-gypi-bg">
+      <div className="flex flex-col items-center gap-3.5">
         {empresa?.logo_url
-          ? <Image src={empresa.logo_url} alt="" width={56} height={56} style={{ borderRadius: 14, objectFit: "contain" }} />
-          : <div style={{ width: 56, height: 56, borderRadius: 14, background: `${C.amber}22`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+          ? <Image src={empresa.logo_url} alt="" width={56} height={56} className="rounded-[14px] object-contain" />
+          : <div className="w-14 h-14 rounded-[14px] bg-gypi-amber/[0.13] flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-gypi-amber)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
             </div>}
-        <div style={{ display: "flex", gap: 5 }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} style={{ width: 6, height: 6, borderRadius: 3, background: C.amber, opacity: 0.9, animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-          ))}
+        <div className="gypi-dots">
+          <span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" />
         </div>
       </div>
-      <style>{`@keyframes pulse { 0%,100%{opacity:.2;transform:scale(.7)} 50%{opacity:1;transform:scale(1)} }`}</style>
     </div>
   );
 
@@ -237,7 +233,7 @@ export default function HomeContent() {
   const resetToken = searchParams.get("token");
   if (!usuario && screenFromUrl === "reset_password" && resetToken) return (
     <div className="app-shell">
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      <div className="flex-1 overflow-hidden">
         <ResetPasswordScreen token={resetToken} empresa={empresa} onVolver={() => router.push(pathname)} />
       </div>
     </div>
@@ -245,21 +241,21 @@ export default function HomeContent() {
 
   if (!usuario && !isDemo) return (
     <div className="app-shell">
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      <div className="flex-1 overflow-hidden">
         <LoginScreen onLogin={login} empresa={empresa} />
       </div>
     </div>
   );
   if (usuario?.debe_cambiar_password) return (
     <div className="app-shell">
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      <div className="flex-1 overflow-hidden">
         <CambiarPasswordScreen usuario={usuario} onDone={(u) => login(u)} />
       </div>
     </div>
   );
   if (!isDemo && uIsGer && empresa?.onboarding_completado === false) return (
     <div className="app-shell">
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div className="flex-1 overflow-hidden flex flex-col">
         <OnboardingWizard empresa={empresa} empresaId={empresa.id} onComplete={() => { cargarEmpresa(); loadData(); }} />
       </div>
     </div>
@@ -267,15 +263,15 @@ export default function HomeContent() {
 
   // ─── App shell ───
   return (
-    <div className="app-shell" style={{ background: C.bg }}>
+    <div className="app-shell bg-gypi-bg">
       {!isDemo && <PushManager legajo={u.legajo} empresaId={u.empresa_id || empresa?.id} />}
 
       {!isChat && screen !== "home" && (
-        <div className="safe-top" style={{ padding: "16px 18px 10px", flexShrink: 0 }}>
-          <div style={{ fontSize: 11, color: C.dim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 2 }}>
+        <div className="safe-top px-[18px] pt-4 pb-2.5 shrink-0">
+          <div className="g-overline text-gypi-dim mb-0.5">
             {getScreenSubtitle()}
           </div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.text, fontFamily: fH, letterSpacing: "-0.02em" }}>
+          <h1 className="m-0 text-[22px] font-bold text-gypi-text font-heading tracking-tight">
             {getScreenTitle()}
           </h1>
         </div>
@@ -284,33 +280,21 @@ export default function HomeContent() {
       {loadError && (
         <button
           onClick={loadData}
-          style={{
-            margin: "0 18px 8px",
-            padding: "10px 14px",
-            background: "#FEF2F2",
-            border: "1px solid #FECACA",
-            borderRadius: 10,
-            color: "#B91C1C",
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: "pointer",
-            textAlign: "left",
-            flexShrink: 0,
-          }}
+          className="mx-[18px] mb-2 py-2.5 px-3.5 bg-red-50 border border-red-200 rounded-[10px] text-red-700 text-[13px] font-medium cursor-pointer text-left shrink-0"
         >
           ⚠ {loadError}
         </button>
       )}
 
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div className="flex-1 overflow-hidden flex flex-col">
         <ErrorBoundary name={screen}>
           {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} actividadesHoy={isDemo ? demoActividad.actividadesHoy : actividad.historial} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} />}
           {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} onBack={() => setScreen("home")} />}
           {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} fichadaHoy={ctx.fichadaHoy} />}
           {!uIsGer && screen === "chat" && <ChatScreen usuario={u} ctx={ctx} reload={loadData} empresa={empresa} />}
           {!uIsGer && screen === "mis-sols" && (
-            <div style={{ padding: "0 18px 20px", overflowY: "auto", flex: 1 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="px-[18px] pb-5 overflow-y-auto flex-1">
+              <div className="flex flex-col gap-2.5">
                 {(ctx.misSolicitudes || []).map(s => <SolCard key={s.id} s={s} />)}
               </div>
             </div>

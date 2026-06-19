@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { C } from "./lib/theme";
 import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { passwordInicial } from "./lib/passwords";
@@ -9,6 +8,14 @@ import { useToast } from "./components/ui/Toast";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)",
+  green: "#16A34A", red: "#DC2626", cyan: "#0891B2",
+  dim: "var(--color-text-dim)", mute: "var(--color-text-muted)",
+  surface: "var(--color-surface)", surfLo: "var(--color-surf-lo)",
+  border: "var(--color-border)",
+  greenS: "rgba(22,163,74,0.10)", redS: "rgba(220,38,38,0.10)",
+};
 
 /* ═══ PARSER CSV GENÉRICO ═══ */
 function parseEmpleadosCSV(text) {
@@ -63,7 +70,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
   const valid = form.nombre?.trim();
   const titulo = mode === "alta" ? "Alta de empleado" : "Editar empleado";
   const btnLabel = mode === "editar" ? "Guardar cambios" : "Dar de alta";
-  const btnColor = mode === "editar" ? C.amber : C.green;
+  const btnColor = mode === "editar" ? V.amber : V.green;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={titulo}>
@@ -98,15 +105,15 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
           <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Rol</label>
           <div className="flex gap-1.5">
             {ROLES.map(r => (
-              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `${C.amber}22` : C.surface, color: form.rol === r ? C.amber : C.dim }}>{r}</button>
+              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `${V.amber}22` : V.surface, color: form.rol === r ? V.amber : V.dim }}>{r}</button>
             ))}
           </div>
         </div>
 
         {mode === "alta" && (
-          <div className="mb-4 p-3 rounded-[10px]" style={{ background: `${C.cyan}10`, border: `1px solid ${C.cyan}30` }}>
+          <div className="mb-4 p-3 rounded-[10px]" style={{ background: `${V.cyan}10`, border: `1px solid ${V.cyan}30` }}>
             <label className="flex items-start gap-2.5 cursor-pointer">
-              <input type="checkbox" checked={!!form.pre_cargado} onChange={e => set("pre_cargado", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" style={{ accentColor: C.cyan }} />
+              <input type="checkbox" checked={!!form.pre_cargado} onChange={e => set("pre_cargado", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" style={{ accentColor: V.cyan }} />
               <div>
                 <div className="text-[13px] font-bold text-gypi-text">Pre-cargar (pendiente de activación)</div>
                 <div className="text-[11px] text-gypi-dim mt-0.5">El empleado activa su cuenta con el link de invitación.</div>
@@ -115,7 +122,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
           </div>
         )}
 
-        <button onClick={() => onSave(form)} disabled={!valid || saving} className="w-full py-3.5 rounded-xl border-none text-[15px] font-bold font-heading" style={{ background: valid && !saving ? btnColor : C.surface, color: valid && !saving ? "#000" : C.mute, cursor: valid && !saving ? "pointer" : "default" }}>
+        <button onClick={() => onSave(form)} disabled={!valid || saving} className="w-full py-3.5 rounded-xl border-none text-[15px] font-bold font-heading" style={{ background: valid && !saving ? btnColor : V.surface, color: valid && !saving ? "#000" : V.mute, cursor: valid && !saving ? "pointer" : "default" }}>
           {saving ? "Guardando..." : btnLabel}
         </button>
       </div>
@@ -142,19 +149,19 @@ function ModalCSVPreview({ filas, empleadosExistentes, divisiones, onClose, onCo
         <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">Vista previa CSV</h3>
         <p className="text-xs text-gypi-dim mb-3.5">
-          <Tag color={C.green}>{nuevos.length} nuevos</Tag> <Tag color={C.mute}>{duplicados.length} duplicados (se omiten)</Tag>
+          <Tag color={V.green}>{nuevos.length} nuevos</Tag> <Tag color={V.mute}>{duplicados.length} duplicados (se omiten)</Tag>
         </p>
 
         <div className="max-h-[320px] overflow-y-auto mb-3.5 border border-gypi-border rounded-[10px]">
           {filasConEstado.slice(0, 100).map((r, i) => {
             const divInfo = divisiones.find(d => d.id === r.division);
             return (
-              <div key={i} className="p-2.5 text-xs" style={{ borderBottom: i < Math.min(filasConEstado.length, 100) - 1 ? `1px solid ${C.border}` : "none", opacity: r.duplicado ? 0.5 : 1 }}>
+              <div key={i} className="p-2.5 text-xs" style={{ borderBottom: i < Math.min(filasConEstado.length, 100) - 1 ? `1px solid ${V.border}` : "none", opacity: r.duplicado ? 0.5 : 1 }}>
                 <div className="flex gap-2 items-center">
-                  <span className="font-mono font-bold min-w-[60px] text-[11px]" style={{ color: r.duplicado ? C.mute : C.green }}>{r.legajo || "auto"}</span>
+                  <span className="font-mono font-bold min-w-[60px] text-[11px]" style={{ color: r.duplicado ? V.mute : V.green }}>{r.legajo || "auto"}</span>
                   <span className="flex-1 text-gypi-text truncate">{capitalizarNombre(r.nombre)}</span>
-                  {divInfo && r.division && <Tag color={divInfo.color || C.cyan}>{divInfo.label}</Tag>}
-                  {r.duplicado && <Tag color={C.amber}>dup</Tag>}
+                  {divInfo && r.division && <Tag color={divInfo.color || V.cyan}>{divInfo.label}</Tag>}
+                  {r.duplicado && <Tag color={V.amber}>dup</Tag>}
                 </div>
               </div>
             );
@@ -162,11 +169,11 @@ function ModalCSVPreview({ filas, empleadosExistentes, divisiones, onClose, onCo
           {filasConEstado.length > 100 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filasConEstado.length - 100} más</div>}
         </div>
 
-        {saving && progreso && <div className="p-2.5 rounded-[10px] text-xs mb-2.5 text-center" style={{ background: `${C.amber}15`, color: C.amber }}>{progreso}</div>}
+        {saving && progreso && <div className="p-2.5 rounded-[10px] text-xs mb-2.5 text-center" style={{ background: `${V.amber}15`, color: V.amber }}>{progreso}</div>}
 
         <div className="flex gap-2">
           <button onClick={onClose} disabled={saving} className="flex-1 py-3 rounded-xl border border-gypi-border bg-transparent text-gypi-dim text-sm font-semibold" style={{ cursor: saving ? "default" : "pointer" }}>Cancelar</button>
-          <button onClick={() => onConfirm(nuevos)} disabled={saving || nuevos.length === 0} className="flex-[2] py-3 rounded-xl border-none text-sm font-bold" style={{ background: saving || nuevos.length === 0 ? C.surface : C.green, color: saving || nuevos.length === 0 ? C.dim : "#000", cursor: saving || nuevos.length === 0 ? "default" : "pointer" }}>
+          <button onClick={() => onConfirm(nuevos)} disabled={saving || nuevos.length === 0} className="flex-[2] py-3 rounded-xl border-none text-sm font-bold" style={{ background: saving || nuevos.length === 0 ? V.surface : V.green, color: saving || nuevos.length === 0 ? V.dim : "#000", cursor: saving || nuevos.length === 0 ? "default" : "pointer" }}>
             {saving ? "Importando..." : `Importar ${nuevos.length} empleados`}
           </button>
         </div>
@@ -188,7 +195,7 @@ function ModalConfirmarBaja({ empleado, onClose, onConfirm, saving }) {
         </p>
         <div className="flex gap-2">
           <button onClick={onClose} disabled={saving} className="flex-1 py-3 rounded-xl border border-gypi-border bg-transparent text-gypi-dim text-sm font-semibold" style={{ cursor: saving ? "default" : "pointer" }}>Cancelar</button>
-          <button onClick={onConfirm} disabled={saving} className="flex-[2] py-3 rounded-xl border-none text-sm font-bold" style={{ background: saving ? C.surface : C.red, color: saving ? C.dim : "#fff", cursor: saving ? "default" : "pointer" }}>
+          <button onClick={onConfirm} disabled={saving} className="flex-[2] py-3 rounded-xl border-none text-sm font-bold" style={{ background: saving ? V.surface : V.red, color: saving ? V.dim : "#fff", cursor: saving ? "default" : "pointer" }}>
             {saving ? "Procesando..." : "Dar de baja"}
           </button>
         </div>
@@ -215,7 +222,7 @@ function ModalInvitacion({ link, onClose }) {
         <p className="text-xs text-gypi-dim mb-3">Compartí este link con los empleados pre-cargados para que activen su cuenta.</p>
         <div className="bg-gypi-surface border border-gypi-border rounded-[10px] p-3 mb-3 flex items-center gap-2">
           <span className="flex-1 text-xs font-mono text-gypi-text truncate">{link}</span>
-          <button onClick={handleCopy} className="px-3 py-1.5 rounded-lg border-none text-xs font-bold cursor-pointer" style={{ background: copied ? C.greenS : `${C.cyan}22`, color: copied ? C.green : C.cyan }}>
+          <button onClick={handleCopy} className="px-3 py-1.5 rounded-lg border-none text-xs font-bold cursor-pointer" style={{ background: copied ? V.greenS : `${V.cyan}22`, color: copied ? V.green : V.cyan }}>
             {copied ? "Copiado ✓" : "Copiar"}
           </button>
         </div>
@@ -443,9 +450,9 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
 
       {/* Filtro división */}
       <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
-        <Chip active={filtroDiv === "todas"} onClick={() => setFiltroDiv("todas")} color={C.amber}>Todas</Chip>
+        <Chip active={filtroDiv === "todas"} onClick={() => setFiltroDiv("todas")} color={V.amber}>Todas</Chip>
         {DIVISIONES.map(d => (
-          <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || C.cyan}>
+          <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || V.cyan}>
             {d.icon ? `${d.icon} ` : ""}{d.label}
           </Chip>
         ))}
@@ -453,14 +460,14 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
 
       {/* Filtro rol */}
       <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
-        {[["todos", "Todos", C.dim], ...ROLES.map(r => [r, r, C.amber])].map(([key, label, color]) => (
+        {[["todos", "Todos", V.dim], ...ROLES.map(r => [r, r, V.amber])].map(([key, label, color]) => (
           <Chip key={`rol-${key}`} active={filtroRol === key} onClick={() => setFiltroRol(key)} color={color}>{label}</Chip>
         ))}
       </div>
 
       {/* Filtro estado */}
       <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
-        {[["activos", "Activos", C.green], ["inactivos", "Inactivos", C.mute], ["todos", "Todos", C.dim]].map(([key, label, color]) => (
+        {[["activos", "Activos", V.green], ["inactivos", "Inactivos", V.mute], ["todos", "Todos", V.dim]].map(([key, label, color]) => (
           <Chip key={key} active={filtroEstado === key} onClick={() => setFiltroEstado(key)} color={color}>{label}</Chip>
         ))}
       </div>
@@ -482,7 +489,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
         <button
           onClick={() => setModalAlta({ nombre: "", legajo: "", apodo: "", email: "", division: "", rol: "operativo", area: "produccion", pre_cargado: false })}
           className="flex-1 py-2.5 rounded-xl border-none text-xs font-bold font-heading cursor-pointer"
-          style={{ background: C.green, color: "#000" }}
+          style={{ background: V.green, color: "#000" }}
         >
           + Alta
         </button>
@@ -495,7 +502,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
         <button
           onClick={generarLinkInvitacion}
           className="flex-1 py-2.5 rounded-xl border-none text-xs font-bold font-heading cursor-pointer"
-          style={{ background: `${C.cyan}22`, color: C.cyan }}
+          style={{ background: `${V.cyan}22`, color: V.cyan }}
         >
           🔗 Invitar
         </button>
@@ -528,8 +535,8 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
                 <div className="flex items-center gap-2.5">
                   {/* Avatar iniciales */}
                   <div className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center font-heading text-xs font-bold" style={{
-                    background: isInactivo ? C.surfLo : (divInfo?.color ? `${divInfo.color}22` : C.surfLo),
-                    color: isInactivo ? C.mute : (divInfo?.color || C.dim),
+                    background: isInactivo ? V.surfLo : (divInfo?.color ? `${divInfo.color}22` : V.surfLo),
+                    color: isInactivo ? V.mute : (divInfo?.color || V.dim),
                   }}>
                     {iniciales(emp.nombre)}
                   </div>
@@ -544,9 +551,9 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
 
                   {/* Tags */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {divInfo && emp.division && <Tag color={divInfo.color || C.cyan}>{divInfo.label}</Tag>}
-                    {emp.pre_cargado && <Tag color={C.cyan}>pre</Tag>}
-                    {isInactivo && <Tag color={C.red}>baja</Tag>}
+                    {divInfo && emp.division && <Tag color={divInfo.color || V.cyan}>{divInfo.label}</Tag>}
+                    {emp.pre_cargado && <Tag color={V.cyan}>pre</Tag>}
+                    {isInactivo && <Tag color={V.red}>baja</Tag>}
                   </div>
                 </div>
 
@@ -562,7 +569,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
                     <button
                       onClick={() => setModalBaja(emp)}
                       className="flex-1 py-2 rounded-lg border-none text-[11px] font-bold cursor-pointer"
-                      style={{ background: C.redS, color: C.red }}
+                      style={{ background: V.redS, color: V.red }}
                     >
                       Dar de baja
                     </button>
