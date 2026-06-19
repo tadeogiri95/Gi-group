@@ -13,8 +13,21 @@ export default function Modal({
   const contentRef = useRef(null);
 
   useEffect(() => {
-    if (!open || !closable) return;
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    if (!open) return;
+    const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const handler = (e) => {
+      if (e.key === 'Escape' && closable) { onClose(); return; }
+      if (e.key !== 'Tab' || !contentRef.current) return;
+      const focusable = [...contentRef.current.querySelectorAll(FOCUSABLE)];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose, closable]);

@@ -44,7 +44,7 @@
   /* ── Text ── */
   --color-text: #1A1A1A;
   --color-text-muted: rgba(26,26,26,0.50);
-  --color-text-secondary: rgba(26,26,26,0.30);
+  --color-text-secondary: rgba(26,26,26,0.45);
 
   /* ── Brand (overwritten by empresa) ── */
   --color-empresa-primary: #F97316;

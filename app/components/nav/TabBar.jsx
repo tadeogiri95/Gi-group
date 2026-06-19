@@ -1,5 +1,11 @@
 'use client';
-import { C, fB } from '../../lib/theme';
+import { fB } from '../../lib/theme';
+
+const V = {
+  amber: "var(--color-empresa-primary, #F97316)",
+  dim: "var(--color-text-dim)",
+  surface: "var(--color-surface)",
+};
 
 // ═══════════════════════════════════════════════════════
 // TabBar — Tabs con iconos SVG para ConfigScreen
@@ -28,24 +34,35 @@ export const GESTION_TABS = [
 
 export default function TabBar({ tabs = GESTION_TABS, active, onChange }) {
   return (
-    <div style={{
-      padding: '0 18px 10px', display: 'flex', gap: 6,
-      overflowX: 'auto', flexShrink: 0,
-      scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
-      msOverflowStyle: 'none', scrollbarWidth: 'none',
-    }}>
+    <div
+      role="tablist"
+      aria-label="Secciones de gestión"
+      style={{
+        padding: '0 18px 10px', display: 'flex', gap: 6,
+        overflowX: 'auto', flexShrink: 0,
+        scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
+        msOverflowStyle: 'none', scrollbarWidth: 'none',
+      }}
+    >
       {tabs.map(tab => {
         const isActive = active === tab.id;
         return (
-          <button key={tab.id} onClick={() => onChange(tab.id)} style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
-            background: isActive ? `${C.amber}22` : C.surface,
-            color: isActive ? C.amber : C.dim,
-            fontSize: 12, fontWeight: 700, fontFamily: fB, whiteSpace: 'nowrap',
-            scrollSnapAlign: 'start', transition: 'all 0.15s',
-          }}>
-            <span style={{ display: 'flex', opacity: isActive ? 1 : 0.7 }}>{tab.icon}</span>
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={`tabpanel-${tab.id}`}
+            onClick={() => onChange(tab.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+              background: isActive ? `${V.amber}22` : V.surface,
+              color: isActive ? V.amber : V.dim,
+              fontSize: 12, fontWeight: 700, fontFamily: fB, whiteSpace: 'nowrap',
+              scrollSnapAlign: 'start', transition: 'all 0.15s',
+            }}
+          >
+            <span style={{ display: 'flex', opacity: isActive ? 1 : 0.7 }} aria-hidden="true">{tab.icon}</span>
             {tab.label}
           </button>
         );

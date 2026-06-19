@@ -42,20 +42,24 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
       <div className="text-[13px] text-gypi-dim mt-1.5 mb-7">Elegí una contraseña segura (mín. 8 chars, mayúscula, minúscula, número)</div>
 
       {error && (
-        <div className="text-gypi-red text-[13px] mb-3 py-2.5 px-3.5 bg-gypi-red/10 rounded-[10px]">{error}</div>
+        <div role="alert" className="text-gypi-red text-[13px] mb-3 py-2.5 px-3.5 bg-gypi-red/10 rounded-[10px]">{error}</div>
       )}
 
       {/* Password input */}
       <div className="relative mb-3">
+        <label htmlFor="cambiar-nueva" className="sr-only">Nueva contraseña</label>
         <input
+          id="cambiar-nueva"
           value={nueva}
           onChange={e => setNueva(e.target.value)}
           placeholder="Nueva contraseña"
           type={showPwd ? "text" : "password"}
+          autoComplete="new-password"
           className="g-input w-full text-base py-3.5 px-4 rounded-xl"
         />
         <button
           onClick={() => setShowPwd(!showPwd)}
+          aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
           className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-gypi-dim cursor-pointer text-[13px]"
         >
           {showPwd ? "Ocultar" : "Ver"}
@@ -64,26 +68,31 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
 
       {/* Strength bar */}
       {nueva.length > 0 && (
-        <div className="mb-3">
-          <div className="h-1 rounded-sm bg-gypi-surface-hi overflow-hidden">
+        <div className="mb-3" role="status" aria-live="polite">
+          <div className="h-1 rounded-sm bg-gypi-surface-hi overflow-hidden" aria-hidden="true">
             <div
               className="h-full rounded-sm transition-all duration-300"
               style={{ width: `${(strength / 3) * 100}%`, background: strengthColor }}
             />
           </div>
-          <div className="text-[11px] mt-1 font-semibold" style={{ color: strengthColor }}>{STRENGTH_LABELS[strength]}</div>
+          <div className="text-[11px] mt-1 font-semibold" style={{ color: strengthColor }}>
+            {STRENGTH_LABELS[strength]}
+          </div>
         </div>
       )}
 
       {/* Confirm input */}
+      <label htmlFor="cambiar-confirmar" className="sr-only">Repetir contraseña</label>
       <input
+        id="cambiar-confirmar"
         value={confirmar}
         onChange={e => setConfirmar(e.target.value)}
         placeholder="Repetí la contraseña"
         type={showPwd ? "text" : "password"}
+        autoComplete="new-password"
         className={`g-input w-full text-base py-3.5 px-4 rounded-xl mb-1 ${mismatch ? "border-gypi-red" : ""}`}
       />
-      {mismatch && <div className="text-[11px] text-gypi-red mb-2">No coinciden</div>}
+      {mismatch && <div className="text-[11px] text-gypi-red mb-2" role="alert">No coinciden</div>}
 
       {/* Submit */}
       <button

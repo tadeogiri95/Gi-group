@@ -6,7 +6,7 @@
 const _base = {
   bg:"#F7F7F5", surface:"#FFFFFF", surfHi:"#EDEDED", surfLo:"#F0F0EE",
   border:"rgba(0,0,0,0.08)", borderHi:"rgba(0,0,0,0.14)",
-  text:"#1A1A1A", dim:"#595959", mute:"#A0A0A0",
+  text:"#1A1A1A", dim:"#595959", mute:"#8C8C8C",
   amber:"#F97316", amberText:"#FFFFFF", amberS:"rgba(249,115,22,0.10)",
   green:"#16A34A", greenS:"rgba(22,163,74,0.10)",
   red:"#DC2626", redS:"rgba(220,38,38,0.10)",
@@ -94,7 +94,7 @@ function deriveDimMute(textHex, bgHex) {
   }
   return {
     dim: `rgba(${r},${g},${b},0.50)`,
-    mute: `rgba(${r},${g},${b},0.30)`,
+    mute: `rgba(${r},${g},${b},0.45)`,
   };
 }
 

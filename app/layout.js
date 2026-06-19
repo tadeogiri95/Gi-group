@@ -83,8 +83,6 @@ export const viewport = {
   themeColor: '#F97316',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: 'cover',
 };
 
@@ -129,7 +127,12 @@ export default function RootLayout({ children }) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-gypi-amber focus:text-black focus:text-sm focus:font-bold">
+          Saltar al contenido
+        </a>
+        <main id="main-content">{children}</main>
+      </body>
     </html>
   );
 }
