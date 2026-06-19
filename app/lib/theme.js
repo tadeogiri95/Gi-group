@@ -191,6 +191,7 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
     s.setProperty('--color-border-hi', C.borderHi);
     // Text
     s.setProperty('--color-text', C.text);
+    s.setProperty('--color-text-dim', C.dim);
     s.setProperty('--color-text-muted', C.dim);
     s.setProperty('--color-text-secondary', C.mute);
     // Brand

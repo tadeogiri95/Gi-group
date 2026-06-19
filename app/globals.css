@@ -10,7 +10,7 @@
   --color-gypi-surf-lo: var(--color-surf-lo);
   --color-gypi-border: var(--color-border);
   --color-gypi-text: var(--color-text);
-  --color-gypi-dim: var(--color-text-muted);
+  --color-gypi-dim: var(--color-text-dim);
   --color-gypi-mute: var(--color-text-secondary);
   --color-gypi-amber: var(--color-empresa-primary);
   --color-gypi-green: var(--color-green);
@@ -43,6 +43,7 @@
 
   /* ── Text ── */
   --color-text: #1A1A1A;
+  --color-text-dim: rgba(26,26,26,0.50);
   --color-text-muted: rgba(26,26,26,0.50);
   --color-text-secondary: rgba(26,26,26,0.45);
 
@@ -156,8 +157,6 @@ input, textarea {
   100% { background-position: -200% 0; }
 }
 
-.se { animation: fadeIn 0.25s ease; }
-
 @supports (padding: max(0px)) {
   .safe-bottom { padding-bottom: max(22px, env(safe-area-inset-bottom)); }
   .safe-top { padding-top: max(12px, env(safe-area-inset-top)); }
@@ -203,11 +202,6 @@ input, textarea {
   border: 1px solid var(--color-border);
   transition: box-shadow var(--duration-normal) var(--ease-default),
               transform var(--duration-normal) var(--ease-default);
-}
-
-.g-card-hover:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
 }
 
 .card-hover {

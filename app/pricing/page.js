@@ -11,7 +11,7 @@ const DIM = "var(--color-text-dim)";
 const TEXT = "var(--color-text)";
 const BG = "var(--color-bg)";
 const SURFACE = "var(--color-surface)";
-const SURF_HI = "var(--color-surface-hi)";
+const SURF_HI = "var(--color-surf-hi)";
 const BORDER = "var(--color-border)";
 
 const SITE_URL = "https://gypi.app";
