@@ -1,16 +1,4 @@
 'use client';
-import { fB } from '../../lib/theme';
-
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  dim: "var(--color-text-dim)",
-  surface: "var(--color-surface)",
-};
-
-// ═══════════════════════════════════════════════════════
-// TabBar — Tabs con iconos SVG para ConfigScreen
-// Ubicación: app/components/nav/TabBar.jsx
-// ═══════════════════════════════════════════════════════
 
 const TabIcons = {
   reportes: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
@@ -37,12 +25,8 @@ export default function TabBar({ tabs = GESTION_TABS, active, onChange }) {
     <div
       role="tablist"
       aria-label="Secciones de gestión"
-      style={{
-        padding: '0 18px 10px', display: 'flex', gap: 6,
-        overflowX: 'auto', flexShrink: 0,
-        scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
-        msOverflowStyle: 'none', scrollbarWidth: 'none',
-      }}
+      className="px-[18px] pb-2.5 flex gap-1.5 overflow-x-auto shrink-0 snap-x snap-mandatory scrollbar-none"
+      style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {tabs.map(tab => {
         const isActive = active === tab.id;
@@ -53,16 +37,9 @@ export default function TabBar({ tabs = GESTION_TABS, active, onChange }) {
             aria-selected={isActive}
             aria-controls={`tabpanel-${tab.id}`}
             onClick={() => onChange(tab.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
-              background: isActive ? `${V.amber}22` : V.surface,
-              color: isActive ? V.amber : V.dim,
-              fontSize: 12, fontWeight: 700, fontFamily: fB, whiteSpace: 'nowrap',
-              scrollSnapAlign: 'start', transition: 'all 0.15s',
-            }}
+            className={`flex items-center gap-1.5 py-2 px-3.5 rounded-[20px] border-none cursor-pointer text-xs font-bold font-body whitespace-nowrap snap-start transition-all duration-150 ${isActive ? "bg-gypi-amber/15 text-gypi-amber" : "bg-gypi-surface text-gypi-dim"}`}
           >
-            <span style={{ display: 'flex', opacity: isActive ? 1 : 0.7 }} aria-hidden="true">{tab.icon}</span>
+            <span className={`flex ${isActive ? "opacity-100" : "opacity-70"}`} aria-hidden="true">{tab.icon}</span>
             {tab.label}
           </button>
         );

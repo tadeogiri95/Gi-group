@@ -1,18 +1,18 @@
-// Extraído de [slug]/page.js línea 193
-import { C } from "../../lib/theme";
 import { Ic } from "../Icons";
 import { Tag } from "../ui";
 
+const AMBER = "var(--color-empresa-primary, #F97316)";
+
 export default function SolSentCard({ motivo, fecha }) {
   return (
-    <div style={{ marginTop: 8, padding: 14, background: C.amberS, borderRadius: 14, border: `1px solid ${C.amber}30`, minWidth: 220 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div className="mt-2 p-3.5 bg-gypi-amber/10 rounded-[14px] min-w-[220px]" style={{ border: `1px solid ${AMBER}30` }}>
+      <div className="flex justify-between items-start">
         <div>
-          <div style={{ fontSize: 11, color: C.amber, fontWeight: 700, letterSpacing: "0.06em" }}>ENVIADA A GERENCIA</div>
-          <div style={{ fontSize: 13, color: C.text, fontWeight: 600, marginTop: 4 }}>{motivo}</div>
-          <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>📅 {fecha} · ⏳ Esperando</div>
+          <div className="text-[11px] text-gypi-amber font-bold tracking-wide">ENVIADA A GERENCIA</div>
+          <div className="text-[13px] text-gypi-text font-semibold mt-1">{motivo}</div>
+          <div className="text-[11px] text-gypi-dim mt-1">📅 {fecha} · ⏳ Esperando</div>
         </div>
-        <Tag color={C.amber}><Ic.clock size={10} /> PENDIENTE</Tag>
+        <Tag color={AMBER}><Ic.clock size={10} /> PENDIENTE</Tag>
       </div>
     </div>
   );

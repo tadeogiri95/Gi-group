@@ -1,24 +1,25 @@
-// Extraído de [slug]/page.js líneas 153-192
-import { C, fH } from "../../lib/theme";
 import { Ic } from "../Icons";
+
+const GREEN = "#16A34A";
+const RED = "#DC2626";
 
 export default function FichadaCard({ tipo, hora, geoMsg, tardanza }) {
   const isIn = tipo === "ingreso";
-  const color = tardanza?.estado === "bloqueado" ? C.red : tardanza?.estado === "tarde" ? "#F59E0B" : C.green;
+  const color = tardanza?.estado === "bloqueado" ? RED : tardanza?.estado === "tarde" ? "#F59E0B" : GREEN;
   const label = isIn ? "FICHASTE INGRESO" : "FICHASTE EGRESO";
   const extraMsg = tardanza?.estado === "tarde" ? `⚠️ ${tardanza.minutos} min tarde (${tardanza.llegadasTarde}° del mes)` : tardanza?.estado === "bloqueado" ? `⛔ Bloqueado: ${tardanza.minutos} min tarde` : null;
 
   return (
-    <div style={{ padding: 14, background: `${color}12`, borderRadius: 14, border: `1px solid ${color}30`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, animation: "fadeIn 0.3s ease" }}>
+    <div className="flex justify-between items-center gap-2.5 p-3.5 rounded-[14px] animate-[fadeIn_0.3s_ease]" style={{ background: `${color}12`, border: `1px solid ${color}30` }}>
       <div>
-        <div style={{ fontSize: 11, color, fontWeight: 700, letterSpacing: "0.06em" }}>{label}</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: C.text, fontFamily: fH, marginTop: 4 }}>{hora}</div>
-        {extraMsg && <div style={{ fontSize: 12, color, fontWeight: 600, marginTop: 4 }}>{extraMsg}</div>}
-        {geoMsg && <div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{geoMsg}</div>}
+        <div className="text-[11px] font-bold tracking-wide" style={{ color }}>{label}</div>
+        <div className="text-[22px] font-bold text-gypi-text font-heading mt-1">{hora}</div>
+        {extraMsg && <div className="text-xs font-semibold mt-1" style={{ color }}>{extraMsg}</div>}
+        {geoMsg && <div className="text-[10px] text-gypi-dim mt-1">{geoMsg}</div>}
       </div>
-      {(!tardanza || tardanza.estado === "puntual") && <span style={{ color: C.green }}><Ic.check size={20} /></span>}
-      {tardanza?.estado === "bloqueado" && <span style={{ color: C.red, fontSize: 24 }}>⛔</span>}
-      {tardanza?.estado === "tarde" && <span style={{ color: "#F59E0B", fontSize: 24 }}>⚠️</span>}
+      {(!tardanza || tardanza.estado === "puntual") && <span className="text-gypi-green"><Ic.check size={20} /></span>}
+      {tardanza?.estado === "bloqueado" && <span className="text-[24px]" style={{ color: RED }}>⛔</span>}
+      {tardanza?.estado === "tarde" && <span className="text-[24px]" style={{ color: "#F59E0B" }}>⚠️</span>}
     </div>
   );
 }

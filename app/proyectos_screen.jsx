@@ -1,26 +1,16 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from "react";
 import { sb } from "./lib/supabase";
-import { fH, fB, fM } from "./lib/theme";
-
-const V = {
-  amber: "var(--color-empresa-primary, #F97316)",
-  green: "#16A34A",
-  red: "#DC2626",
-  cyan: "#0891B2",
-  dim: "var(--color-text-dim)",
-  mute: "var(--color-text-muted)",
-  text: "var(--color-text)",
-  surface: "var(--color-surface)",
-  surfHi: "var(--color-surf-hi)",
-  border: "var(--color-border)",
-  bg: "var(--color-bg)",
-};
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
+
+const GREEN = "#16A34A";
+const RED = "#DC2626";
+const CYAN = "#0891B2";
+const AMBER = "var(--color-empresa-primary, #F97316)";
 
 /* ═══ PARSER CSV ═══ */
 function parseProyectosCSV(text) {
@@ -36,7 +26,7 @@ function parseProyectosCSV(text) {
     out.push(cur.trim());
     return out;
   };
-  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/^\uFEFF/, ""));
+  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/^﻿/, ""));
   const idx = (n) => headers.findIndex(h => h.includes(n));
   const iOt = idx("ot"), iCli = idx("cliente"), iObra = idx("obra"), iProy = idx("proyecto"), iDiv = idx("division") >= 0 ? idx("division") : idx("división");
   if (iOt < 0) return [];
@@ -59,40 +49,41 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
   const valid = f.ot?.trim();
   const editando = !!initial?.id;
 
-  const input = { width: "100%", padding: "11px 14px", borderRadius: 10, background: V.surface, border: `1px solid ${V.border}`, color: V.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" };
-  const lbl = { display: "block", fontSize: 11, fontWeight: 700, color: V.dim, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
-
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)" }} />
-      <div style={{ position: "relative", width: "100%", maxWidth: 460, background: V.bg, borderRadius: "20px 20px 0 0", padding: "20px 18px 30px", maxHeight: "85vh", overflowY: "auto", border: `1px solid ${V.border}` }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: V.mute, margin: "0 auto 16px" }} />
-        <h3 style={{ margin: "0 0 16px", fontFamily: fH, fontSize: 18, fontWeight: 700, color: V.text }}>{editando ? "Editar proyecto" : "Nuevo proyecto"}</h3>
+    <div className="fixed inset-0 z-200 flex items-end justify-center">
+      <div onClick={onClose} className="absolute inset-0 bg-black/60" />
+      <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] p-[20px_18px_30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <h3 className="m-0 mb-4 font-heading text-lg font-bold text-gypi-text">{editando ? "Editar proyecto" : "Nuevo proyecto"}</h3>
 
-        <div style={{ marginBottom: 12 }}>
-          <label style={lbl}>OT / Código *</label>
-          <input value={f.ot} onChange={e => set("ot", e.target.value)} style={input} placeholder="Ej: 7450" />
+        <div className="mb-3">
+          <label className="g-label">OT / Código *</label>
+          <input value={f.ot} onChange={e => set("ot", e.target.value)} className="g-input" placeholder="Ej: 7450" />
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={lbl}>Cliente</label>
-          <input value={f.cliente} onChange={e => set("cliente", e.target.value)} style={input} />
+        <div className="mb-3">
+          <label className="g-label">Cliente</label>
+          <input value={f.cliente} onChange={e => set("cliente", e.target.value)} className="g-input" />
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={lbl}>Obra</label>
-          <input value={f.obra} onChange={e => set("obra", e.target.value)} style={input} />
+        <div className="mb-3">
+          <label className="g-label">Obra</label>
+          <input value={f.obra} onChange={e => set("obra", e.target.value)} className="g-input" />
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={lbl}>Proyecto / Descripción</label>
-          <input value={f.proyecto} onChange={e => set("proyecto", e.target.value)} style={input} />
+        <div className="mb-3">
+          <label className="g-label">Proyecto / Descripción</label>
+          <input value={f.proyecto} onChange={e => set("proyecto", e.target.value)} className="g-input" />
         </div>
-        <div style={{ marginBottom: 20 }}>
-          <label style={lbl}>División</label>
-          <select value={f.division || ""} onChange={e => set("division", e.target.value)} style={{ ...input, cursor: "pointer" }}>
+        <div className="mb-5">
+          <label className="g-label">División</label>
+          <select value={f.division || ""} onChange={e => set("division", e.target.value)} className="g-input cursor-pointer">
             {divisiones.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
           </select>
         </div>
 
-        <button onClick={() => onSave(f)} disabled={!valid || saving} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: valid && !saving ? V.green : V.surface, color: valid && !saving ? "#000" : V.mute, fontSize: 15, fontWeight: 700, fontFamily: fH, cursor: valid && !saving ? "pointer" : "default" }}>
+        <button
+          onClick={() => onSave(f)}
+          disabled={!valid || saving}
+          className={`w-full py-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer ${valid && !saving ? "bg-gypi-green text-black" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
+        >
           {saving ? "Guardando..." : editando ? "Guardar cambios" : "Crear proyecto"}
         </button>
       </div>
@@ -103,32 +94,36 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
 /* ═══ MODAL CSV PREVIEW ═══ */
 function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)" }} />
-      <div style={{ position: "relative", width: "100%", maxWidth: 460, background: V.bg, borderRadius: "20px 20px 0 0", padding: "20px 18px 30px", maxHeight: "85vh", overflowY: "auto", border: `1px solid ${V.border}` }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: V.mute, margin: "0 auto 16px" }} />
-        <h3 style={{ margin: "0 0 6px", fontFamily: fH, fontSize: 18, fontWeight: 700, color: V.text }}>Vista previa CSV</h3>
-        <p style={{ fontSize: 12, color: V.dim, marginBottom: 14 }}>{filas.length} proyectos detectados. Revisá y confirmá.</p>
+    <div className="fixed inset-0 z-200 flex items-end justify-center">
+      <div onClick={onClose} className="absolute inset-0 bg-black/60" />
+      <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] p-[20px_18px_30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
+        <h3 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Vista previa CSV</h3>
+        <p className="text-xs text-gypi-dim mb-3.5">{filas.length} proyectos detectados. Revisá y confirmá.</p>
 
-        <div style={{ maxHeight: 320, overflowY: "auto", marginBottom: 14, border: `1px solid ${V.border}`, borderRadius: 10 }}>
+        <div className="max-h-80 overflow-y-auto mb-3.5 border border-gypi-border rounded-[10px]">
           {filas.slice(0, 50).map((r, i) => (
-            <div key={i} style={{ padding: 10, borderBottom: i < Math.min(filas.length, 50) - 1 ? `1px solid ${V.border}` : "none", fontSize: 12 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{ fontFamily: fM, fontWeight: 700, color: V.amber, minWidth: 60 }}>{r.ot}</span>
-                <span style={{ flex: 1, color: V.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.cliente || r.proyecto || "—"}</span>
-                {r.division && <Tag color={V.cyan}>{r.division}</Tag>}
+            <div key={i} className={`p-2.5 text-xs ${i < Math.min(filas.length, 50) - 1 ? "border-b border-gypi-border" : ""}`}>
+              <div className="flex gap-2 items-center">
+                <span className="font-mono font-bold text-gypi-amber min-w-[60px]">{r.ot}</span>
+                <span className="flex-1 text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{r.cliente || r.proyecto || "—"}</span>
+                {r.division && <Tag color={CYAN}>{r.division}</Tag>}
               </div>
-              {r.obra && <div style={{ fontSize: 11, color: V.dim, marginTop: 2 }}>{r.obra}</div>}
+              {r.obra && <div className="text-[11px] text-gypi-dim mt-0.5">{r.obra}</div>}
             </div>
           ))}
-          {filas.length > 50 && <div style={{ padding: 10, textAlign: "center", fontSize: 11, color: V.mute }}>+ {filas.length - 50} más</div>}
+          {filas.length > 50 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filas.length - 50} más</div>}
         </div>
 
-        {saving && progreso && <div style={{ padding: 10, background: `${V.amber}15`, color: V.amber, borderRadius: 10, fontSize: 12, marginBottom: 10, textAlign: "center" }}>{progreso}</div>}
+        {saving && progreso && <div className="p-2.5 bg-gypi-amber/10 text-gypi-amber rounded-[10px] text-xs mb-2.5 text-center">{progreso}</div>}
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onClose} disabled={saving} style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${V.border}`, background: "transparent", color: V.dim, fontSize: 14, fontWeight: 600, cursor: saving ? "default" : "pointer" }}>Cancelar</button>
-          <button onClick={onConfirm} disabled={saving} style={{ flex: 2, padding: 12, borderRadius: 12, border: "none", background: saving ? V.surface : V.green, color: saving ? V.dim : "#000", fontSize: 14, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
+        <div className="flex gap-2">
+          <button onClick={onClose} disabled={saving} className="g-btn g-btn-secondary flex-1">Cancelar</button>
+          <button
+            onClick={onConfirm}
+            disabled={saving}
+            className={`flex-2 py-3 rounded-xl border-none text-sm font-bold cursor-pointer ${saving ? "bg-gypi-surface text-gypi-dim cursor-default" : "bg-gypi-green text-black"}`}
+          >
             {saving ? "Importando..." : `Importar ${filas.length} proyectos`}
           </button>
         </div>
@@ -191,7 +186,7 @@ export default function ProyectosScreen({ empresaId }) {
           proyecto: form.proyecto || null,
           division: form.division || null,
         });
-        showToast("✅ Proyecto actualizado", V.green);
+        showToast("✅ Proyecto actualizado", GREEN);
       } else {
         await sb.post("proyectos", {
           ot: form.ot.trim(),
@@ -201,12 +196,12 @@ export default function ProyectosScreen({ empresaId }) {
           division: form.division || null,
           estado: "activo",
         });
-        showToast("✅ Proyecto creado", V.green);
+        showToast("✅ Proyecto creado", GREEN);
       }
       setModal(null);
       await cargar();
     } catch (e) {
-      showToast(`Error: ${e.message?.includes("uq_proyectos") ? "OT ya existe" : e.message}`, V.red);
+      showToast(`Error: ${e.message?.includes("uq_proyectos") ? "OT ya existe" : e.message}`, RED);
     }
     setSaving(false);
   };
@@ -216,16 +211,16 @@ export default function ProyectosScreen({ empresaId }) {
     try {
       await sb.patch(`proyectos?id=eq.${id}`, { estado: "cerrado" });
       await cargar();
-      showToast("Proyecto cerrado", V.amber);
-    } catch (e) { showToast(`Error: ${e.message}`, V.red); }
+      showToast("Proyecto cerrado", AMBER);
+    } catch (e) { showToast(`Error: ${e.message}`, RED); }
   };
 
   const reabrir = async (id) => {
     try {
       await sb.patch(`proyectos?id=eq.${id}`, { estado: "activo" });
       await cargar();
-      showToast("Proyecto reactivado", V.green);
-    } catch (e) { showToast(`Error: ${e.message}`, V.red); }
+      showToast("Proyecto reactivado", GREEN);
+    } catch (e) { showToast(`Error: ${e.message}`, RED); }
   };
 
   const onCsv = (e) => {
@@ -233,7 +228,7 @@ export default function ProyectosScreen({ empresaId }) {
     const reader = new FileReader();
     reader.onload = () => {
       const filas = parseProyectosCSV(reader.result);
-      if (filas.length === 0) { showToast("CSV sin datos válidos. Verificá columnas: ot, cliente, obra, proyecto, division", V.red); return; }
+      if (filas.length === 0) { showToast("CSV sin datos válidos. Verificá columnas: ot, cliente, obra, proyecto, division", RED); return; }
       setCsvFilas(filas);
     };
     reader.readAsText(f);
@@ -250,21 +245,21 @@ export default function ProyectosScreen({ empresaId }) {
       } else {
         await sb.post("config_sistema", { clave: "proyectos_csv_url", valor: { url: syncCfg.url.trim() } });
       }
-      showToast("✅ URL guardada", V.green);
-    } catch (e) { showToast(`Error: ${e.message}`, V.red); }
+      showToast("✅ URL guardada", GREEN);
+    } catch (e) { showToast(`Error: ${e.message}`, RED); }
     setSyncLoading(false);
   };
 
   const sincronizar = async () => {
-    if (!syncCfg.url.trim()) { showToast("Guardá la URL primero", V.amber); return; }
+    if (!syncCfg.url.trim()) { showToast("Guardá la URL primero", AMBER); return; }
     setSyncLoading(true);
     try {
       const res = await fetch("/api/proyectos/sync-csv", { method: "POST", credentials: "include" });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error sync");
-      showToast(`✅ ${data.procesados} proyectos sincronizados`, V.green);
+      showToast(`✅ ${data.procesados} proyectos sincronizados`, GREEN);
       await cargar(); await cargarSyncCfg();
-    } catch (e) { showToast(`Error: ${e.message}`, V.red); }
+    } catch (e) { showToast(`Error: ${e.message}`, RED); }
     setSyncLoading(false);
   };
 
@@ -290,7 +285,7 @@ export default function ProyectosScreen({ empresaId }) {
     setCsvFilas(null);
     setSaving(false);
     await cargar();
-    showToast(`✅ ${ok} importados · ${dup} duplicados · ${err} con error`, ok > 0 ? V.green : V.amber);
+    showToast(`✅ ${ok} importados · ${dup} duplicados · ${err} con error`, ok > 0 ? GREEN : AMBER);
   };
 
   const filtrados = proyectos.filter(p => {
@@ -307,65 +302,64 @@ export default function ProyectosScreen({ empresaId }) {
   const cerrados = proyectos.filter(p => p.estado === "cerrado").length;
 
   return (
-    <div style={{ fontFamily: fB, flex: 1, overflowY: "auto", padding: "0 18px 110px", position: "relative" }}>
-
+    <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
 
       {modal && <ModalProyecto initial={modal} divisiones={divisiones} onClose={() => setModal(null)} onSave={guardar} saving={saving} />}
       {csvFilas && <ModalCSVPreview filas={csvFilas} onClose={() => setCsvFilas(null)} onConfirm={importarCSV} saving={saving} progreso={csvProgreso} />}
 
       {/* Métricas */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-        <div style={{ background: V.surface, borderRadius: 12, padding: 12, border: `1px solid ${V.border}`, textAlign: "center" }}>
-          <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: V.green }}>{activos}</div>
-          <div style={{ fontSize: 9, color: V.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Activos</div>
+      <div className="grid grid-cols-3 gap-2 mb-3.5">
+        <div className="g-card text-center !p-3">
+          <div className="font-heading text-[22px] font-bold text-gypi-green">{activos}</div>
+          <div className="g-overline mt-0.5">Activos</div>
         </div>
-        <div style={{ background: V.surface, borderRadius: 12, padding: 12, border: `1px solid ${V.border}`, textAlign: "center" }}>
-          <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: V.mute }}>{cerrados}</div>
-          <div style={{ fontSize: 9, color: V.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Cerrados</div>
+        <div className="g-card text-center !p-3">
+          <div className="font-heading text-[22px] font-bold text-gypi-mute">{cerrados}</div>
+          <div className="g-overline mt-0.5">Cerrados</div>
         </div>
-        <div style={{ background: V.surface, borderRadius: 12, padding: 12, border: `1px solid ${V.border}`, textAlign: "center" }}>
-          <div style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, color: V.amber }}>{proyectos.length}</div>
-          <div style={{ fontSize: 9, color: V.dim, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>Total</div>
+        <div className="g-card text-center !p-3">
+          <div className="font-heading text-[22px] font-bold text-gypi-amber">{proyectos.length}</div>
+          <div className="g-overline mt-0.5">Total</div>
         </div>
       </div>
 
       {/* Filtros */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 10, overflowX: "auto", paddingBottom: 4 }}>
-        <Chip active={filtro === "activo"} onClick={() => setFiltro("activo")} color={V.green}>Activos</Chip>
-        <Chip active={filtro === "cerrado"} onClick={() => setFiltro("cerrado")} color={V.mute}>Cerrados</Chip>
+      <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1">
+        <Chip active={filtro === "activo"} onClick={() => setFiltro("activo")} color={GREEN}>Activos</Chip>
+        <Chip active={filtro === "cerrado"} onClick={() => setFiltro("cerrado")} color="var(--color-text-muted)">Cerrados</Chip>
         <Chip active={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos</Chip>
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10, overflowX: "auto", paddingBottom: 4 }}>
-        {divisiones.map(d => <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || V.amber}>{d.label}</Chip>)}
+      <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1">
+        {divisiones.map(d => <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || AMBER}>{d.label}</Chip>)}
       </div>
 
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar por OT, cliente, obra..." style={{ width: "100%", padding: "11px 14px", borderRadius: 12, background: V.surface, border: `1px solid ${V.border}`, color: V.text, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box", marginBottom: 12 }} />
+      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar por OT, cliente, obra..." className="g-input mb-3" />
 
       {/* Acciones */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <button onClick={() => setModal({})} style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "none", background: `${V.green}22`, color: V.green, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Nuevo</button>
+      <div className="flex gap-2 mb-2">
+        <button onClick={() => setModal({})} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[13px] font-bold cursor-pointer">+ Nuevo</button>
         <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsv} />
-        <button onClick={() => fileRef.current?.click()} style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "none", background: `${V.cyan}22`, color: V.cyan, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📤 CSV</button>
-        <button onClick={cargar} style={{ width: 40, height: 40, borderRadius: 12, border: "none", background: V.surface, color: V.dim, cursor: "pointer", fontSize: 15, flexShrink: 0 }}>🔄</button>
+        <button onClick={() => fileRef.current?.click()} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-cyan/15 text-gypi-cyan text-[13px] font-bold cursor-pointer">📤 CSV</button>
+        <button onClick={cargar} className="w-10 h-10 rounded-xl border-none bg-gypi-surface text-gypi-dim cursor-pointer text-[15px] shrink-0">🔄</button>
       </div>
 
       {/* Panel de URL de sincronización */}
-      <div style={{ marginBottom: 14 }}>
+      <div className="mb-3.5">
         <button
           onClick={() => setShowSyncPanel(p => !p)}
-          style={{ width: "100%", padding: "8px 12px", borderRadius: 10, border: `1px solid ${V.border}`, background: "transparent", color: V.dim, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+          className="w-full py-2 px-3 rounded-[10px] border border-gypi-border bg-transparent text-gypi-dim text-xs font-semibold cursor-pointer flex justify-between items-center"
         >
           <span>🔗 Sincronización automática {syncCfg.url ? "· configurada" : ""}</span>
-          <span style={{ fontSize: 10 }}>{showSyncPanel ? "▲" : "▼"}</span>
+          <span className="text-[10px]">{showSyncPanel ? "▲" : "▼"}</span>
         </button>
         {showSyncPanel && (
-          <div style={{ marginTop: 6, padding: 12, background: V.surface, borderRadius: 10, border: `1px solid ${V.border}` }}>
-            <div style={{ fontSize: 11, color: V.dim, marginBottom: 8, lineHeight: 1.5 }}>
+          <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
+            <div className="text-[11px] text-gypi-dim mb-2 leading-relaxed">
               URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: proyectos nuevos se crean, los existentes se actualizan.
             </div>
             {syncCfg.ultima_sync && (
-              <div style={{ fontSize: 10, color: V.green, marginBottom: 8 }}>
+              <div className="text-[10px] text-gypi-green mb-2">
                 Última sync: {new Date(syncCfg.ultima_sync).toLocaleString("es-AR")}
               </div>
             )}
@@ -373,20 +367,20 @@ export default function ProyectosScreen({ empresaId }) {
               value={syncCfg.url}
               onChange={e => setSyncCfg(p => ({ ...p, url: e.target.value }))}
               placeholder="https://docs.google.com/spreadsheets/d/…/export?format=csv"
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${V.border}`, background: V.bg, color: V.text, fontSize: 12, fontFamily: fB, outline: "none", boxSizing: "border-box", marginBottom: 8 }}
+              className="g-input text-xs mb-2"
             />
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="flex gap-2">
               <button
                 onClick={guardarSyncUrl}
                 disabled={syncLoading || !syncCfg.url.trim()}
-                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: syncCfg.url.trim() ? `${V.amber}22` : V.surface, color: syncCfg.url.trim() ? V.amber : V.mute, fontSize: 12, fontWeight: 700, cursor: syncCfg.url.trim() ? "pointer" : "default" }}
+                className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
               >
                 Guardar URL
               </button>
               <button
                 onClick={sincronizar}
                 disabled={syncLoading || !syncCfg.url.trim()}
-                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: syncCfg.url.trim() && !syncLoading ? `${V.green}22` : V.surface, color: syncCfg.url.trim() && !syncLoading ? V.green : V.mute, fontSize: 12, fontWeight: 700, cursor: syncCfg.url.trim() ? "pointer" : "default" }}
+                className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() && !syncLoading ? "bg-gypi-green/15 text-gypi-green cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
               >
                 {syncLoading ? "Sincronizando…" : "🔄 Sincronizar ahora"}
               </button>
@@ -396,37 +390,38 @@ export default function ProyectosScreen({ empresaId }) {
       </div>
 
       {loading ? (
-        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
+        <div className="gypi-dots"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       ) : filtrados.length === 0 ? (
-        <div style={{ background: V.surface, borderRadius: 16, padding: "32px 24px", textAlign: "center", border: `1px solid ${V.border}` }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: V.text, marginBottom: 4 }}>
+        <div className="g-card py-8 px-6 text-center">
+          <div className="text-[28px] mb-2">📋</div>
+          <div className="text-sm font-bold text-gypi-text mb-1">
             {search || filtroDiv ? "Sin resultados" : "Sin proyectos"}
           </div>
-          <div style={{ fontSize: 12, color: V.dim }}>
+          <div className="text-xs text-gypi-dim">
             {search || filtroDiv ? "Probá con otro filtro o búsqueda." : "Creá el primero con el botón o importá un CSV."}
           </div>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="flex flex-col gap-2">
           {filtrados.map(p => {
             const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
+            const divColor = divInfo.color || AMBER;
             return (
-              <div key={p.id} style={{ background: V.surface, borderRadius: 14, padding: 14, border: `1px solid ${V.border}`, opacity: p.estado === "cerrado" ? 0.6 : 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ minWidth: 60, height: 40, borderRadius: 10, background: `${divInfo.color || V.amber}22`, color: divInfo.color || V.amber, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: fM, fontSize: 13, fontWeight: 700, padding: "0 8px" }}>{p.ot}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: V.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.cliente || p.proyecto || "—"}</div>
-                    <div style={{ fontSize: 11, color: V.dim, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.obra || p.proyecto || ""}{p.division ? ` · ${divInfo.label}` : ""}</div>
+              <div key={p.id} className={`g-card !p-3.5 ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
+                <div className="flex items-center gap-2.5">
+                  <div className="min-w-[60px] h-10 rounded-[10px] flex items-center justify-center font-mono text-[13px] font-bold px-2" style={{ background: `${divColor}22`, color: divColor }}>{p.ot}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
+                    <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{p.obra || p.proyecto || ""}{p.division ? ` · ${divInfo.label}` : ""}</div>
                   </div>
-                  {p.estado === "cerrado" && <Tag color={V.mute}>cerrado</Tag>}
+                  {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
                 </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${V.border}` }}>
-                  <button onClick={() => setModal(p)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: `${V.cyan}18`, color: V.cyan, fontSize: 11, fontWeight: 700, cursor: "pointer", minHeight: 44 }}>✏️ Editar</button>
+                <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
+                  <button onClick={() => setModal(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
                   {p.estado === "activo" ? (
-                    <button onClick={() => cerrarProyecto(p.id)} style={{ padding: "10px 14px", borderRadius: 8, border: "none", background: `${V.amber}18`, color: V.amber, fontSize: 11, fontWeight: 700, cursor: "pointer", minHeight: 44 }}>Cerrar</button>
+                    <button onClick={() => cerrarProyecto(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber text-[11px] font-bold cursor-pointer min-h-[44px]">Cerrar</button>
                   ) : (
-                    <button onClick={() => reabrir(p.id)} style={{ padding: "10px 14px", borderRadius: 8, border: "none", background: `${V.green}18`, color: V.green, fontSize: 11, fontWeight: 700, cursor: "pointer", minHeight: 44 }}>Reactivar</button>
+                    <button onClick={() => reabrir(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-green/10 text-gypi-green text-[11px] font-bold cursor-pointer min-h-[44px]">Reactivar</button>
                   )}
                 </div>
               </div>

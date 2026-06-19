@@ -1,10 +1,4 @@
 'use client';
-import { C, fB } from '../../lib/theme';
-
-// ═══════════════════════════════════════════════════════
-// Breadcrumb — Navegación contextual para tablet/desktop
-// Ubicación: app/components/nav/Breadcrumb.jsx
-// ═══════════════════════════════════════════════════════
 
 const ChevRight = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -15,27 +9,18 @@ const ChevRight = (
 export default function Breadcrumb({ items = [] }) {
   if (items.length <= 1) return null;
   return (
-    <nav className="hide-mobile" aria-label="Breadcrumb" style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      padding: '8px 24px 4px', fontSize: 12, fontFamily: fB, flexShrink: 0,
-    }}>
+    <nav className="hide-mobile flex items-center gap-1.5 px-6 pt-2 pb-1 text-xs font-body shrink-0" aria-label="Breadcrumb">
       {items.map((item, i) => {
         const isLast = i === items.length - 1;
         return (
-          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {i > 0 && <span style={{ color: C.mute, display: 'flex' }}>{ChevRight}</span>}
+          <span key={i} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-gypi-mute flex">{ChevRight}</span>}
             {isLast ? (
-              <span aria-current="page" style={{ color: C.text, fontWeight: 600 }}>{item.label}</span>
+              <span aria-current="page" className="text-gypi-text font-semibold">{item.label}</span>
             ) : (
               <button
                 onClick={item.onClick}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: C.dim, fontFamily: fB, fontSize: 12,
-                  padding: '2px 4px', borderRadius: 4, transition: 'color 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.color = C.amber}
-                onMouseLeave={e => e.currentTarget.style.color = C.dim}
+                className="bg-transparent border-none cursor-pointer text-gypi-dim font-body text-xs py-0.5 px-1 rounded transition-colors duration-150 hover:text-gypi-amber"
               >{item.label}</button>
             )}
           </span>

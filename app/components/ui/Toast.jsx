@@ -1,33 +1,15 @@
 'use client';
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { C, fB } from '../../lib/theme';
 
-// ═══════════════════════════════════════════════════════
-// Toast — Notificaciones con auto-dismiss
-// Ubicación: app/components/ui/Toast.jsx
-// ═══════════════════════════════════════════════════════
-//
-// Reemplaza los showToast inline que cada pantalla reimplementa.
-// Provee un Context para usar desde cualquier componente.
-//
-// Setup (en layout o provider):
-//   <ToastProvider>
-//     <App />
-//   </ToastProvider>
-//
-// Uso en componentes:
-//   const toast = useToast();
-//   toast.success("Guardado correctamente");
-//   toast.error("No se pudo guardar");
-//   toast.info("Procesando...");
-//   toast.show("Mensaje custom", C.amber);
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const GREEN = "#16A34A";
+const RED = "#DC2626";
 
 const ToastContext = createContext(null);
 
 export function useToast() {
   const ctx = useContext(ToastContext);
   if (!ctx) {
-    // Fallback para uso sin provider (backward compat)
     return {
       show: () => {},
       success: () => {},
@@ -38,7 +20,6 @@ export function useToast() {
   return ctx;
 }
 
-// ─── Toast item ───
 function ToastItem({ toast, onDismiss }) {
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -61,47 +42,31 @@ function ToastItem({ toast, onDismiss }) {
   return (
     <div
       onClick={() => { setExiting(true); setTimeout(() => onDismiss(toast.id), 200); }}
+      className="flex items-center gap-2.5 py-3 px-4 rounded-xl bg-gypi-surface cursor-pointer max-w-[400px] transition-all duration-200"
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '12px 16px', borderRadius: 12,
-        background: C.surface,
         border: `1px solid ${toast.color}40`,
-        boxShadow: `0 4px 20px ${C.bg}80`,
-        cursor: 'pointer',
+        boxShadow: `0 4px 20px var(--color-bg, #F7F7F5)80`,
         transform: visible && !exiting ? 'translateY(0)' : 'translateY(-12px)',
         opacity: visible && !exiting ? 1 : 0,
-        transition: 'all 0.2s ease',
-        maxWidth: 400,
       }}
     >
       {toast.variant && iconMap[toast.variant] && (
-        <span style={{ display: 'flex', color: toast.color, flexShrink: 0 }}>
+        <span className="flex shrink-0" style={{ color: toast.color }}>
           {iconMap[toast.variant]}
         </span>
       )}
-      <span style={{
-        fontSize: 13, fontWeight: 600, color: C.text,
-        fontFamily: fB, flex: 1,
-      }}>{toast.message}</span>
+      <span className="text-[13px] font-semibold text-gypi-text font-body flex-1">{toast.message}</span>
     </div>
   );
 }
 
-// ─── Toast container ───
 function ToastContainer({ toasts, onDismiss }) {
   if (toasts.length === 0) return null;
 
   return (
-    <div style={{
-      position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 9999,
-      display: 'flex', flexDirection: 'column', gap: 8,
-      alignItems: 'center',
-      pointerEvents: 'none',
-      width: '90%', maxWidth: 420,
-    }}>
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 items-center pointer-events-none w-[90%] max-w-[420px]">
       {toasts.map(t => (
-        <div key={t.id} style={{ pointerEvents: 'auto', width: '100%' }}>
+        <div key={t.id} className="pointer-events-auto w-full">
           <ToastItem toast={t} onDismiss={onDismiss} />
         </div>
       ))}
@@ -109,7 +74,6 @@ function ToastContainer({ toasts, onDismiss }) {
   );
 }
 
-// ─── Provider ───
 let toastId = 0;
 
 export function ToastProvider({ children }) {
@@ -119,16 +83,16 @@ export function ToastProvider({ children }) {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const show = useCallback((message, color = C.amber, opts = {}) => {
+  const show = useCallback((message, color = AMBER, opts = {}) => {
     const id = ++toastId;
     setToasts(prev => [...prev.slice(-3), { id, message, color, ...opts }]);
   }, []);
 
   const api = {
     show,
-    success: (msg, opts) => show(msg, C.green, { variant: 'success', ...opts }),
-    error: (msg, opts) => show(msg, C.red, { variant: 'error', ...opts }),
-    info: (msg, opts) => show(msg, C.amber, { variant: 'info', ...opts }),
+    success: (msg, opts) => show(msg, GREEN, { variant: 'success', ...opts }),
+    error: (msg, opts) => show(msg, RED, { variant: 'error', ...opts }),
+    info: (msg, opts) => show(msg, AMBER, { variant: 'info', ...opts }),
   };
 
   return (
@@ -139,25 +103,18 @@ export function ToastProvider({ children }) {
   );
 }
 
-// ─── Standalone (backward compat con el patrón actual) ───
-// Para pantallas que ya tienen su propio state de toast:
-//   <ToastInline toast={toast} />
 export function ToastInline({ toast }) {
   if (!toast) return null;
   return (
-    <div style={{
-      position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 9999, width: '90%', maxWidth: 400,
-      pointerEvents: 'auto',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '12px 16px', borderRadius: 12,
-        background: C.surface, border: `1px solid ${toast.color}40`,
-        boxShadow: `0 4px 20px ${C.bg}80`,
-        animation: 'fadeIn 0.2s ease',
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.text, fontFamily: fB }}>
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-[90%] max-w-[400px] pointer-events-auto">
+      <div
+        className="flex items-center gap-2.5 py-3 px-4 rounded-xl bg-gypi-surface animate-[fadeIn_0.2s_ease]"
+        style={{
+          border: `1px solid ${toast.color}40`,
+          boxShadow: `0 4px 20px var(--color-bg, #F7F7F5)80`,
+        }}
+      >
+        <span className="text-[13px] font-semibold text-gypi-text font-body">
           {toast.msg}
         </span>
       </div>
