@@ -1,15 +1,16 @@
 'use client';
 
 /**
- * GYPI Icon System
- * Reemplaza todos los emojis del proyecto con íconos SVG consistentes.
+ * GYPI Icon System — fuente única de verdad para todos los íconos SVG.
  *
- * Uso: <Icon name="clock" size={20} className="text-brand-500" />
+ * Uso:
+ *   <Icon name="clock" size={20} className="text-brand-500" />
  *
- * Ubicación destino: app/components/Icon.jsx
+ * Cada entrada en `icons` es un string (path d) o un objeto { children, fill }
+ * para íconos que necesitan elementos SVG complejos (rect, circle, etc.).
  */
 
-const paths = {
+const icons = {
   // Navegación
   home: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
   menu: 'M4 6h16M4 12h16M4 18h16',
@@ -37,6 +38,10 @@ const paths = {
   refresh: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
   logout: 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1',
   settings: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  enter: 'M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3',
+  exit: 'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
+  'sort-asc': 'M12 19V5M5 12l7-7 7 7',
+  'sort-desc': 'M12 5v14M19 12l-7 7-7-7',
 
   // Estado / Info
   'alert-circle': 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
@@ -63,6 +68,7 @@ const paths = {
   clipboard: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
   document: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   folder: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z',
+  inbox: 'M22 12l-6 0-2 3h-4l-2-3-6 0M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z',
 
   // Ubicación
   'map-pin': 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z',
@@ -74,7 +80,16 @@ const paths = {
   mail: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
 
   // Industria (específicos de Gypi)
-  hammer: 'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z',
+  bot: {
+    children: (
+      <>
+        <rect x="3" y="11" width="18" height="10" rx="2" />
+        <circle cx="12" cy="5" r="2" />
+        <path d="M12 7v4" />
+      </>
+    ),
+  },
+  hammer: 'M15 12l-8.5 8.5c-.83.83-2.17.83-3 0a2.12 2.12 0 010-3L12 9M17.64 15L22 10.64M20.91 11.7l-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 00-3.94-1.64H9l.92.82A6.18 6.18 0 0112 8.4v1.56l2 2h2.47l2.26 1.91',
   wrench: 'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z',
   truck: 'M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0',
   play: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
@@ -92,13 +107,37 @@ const paths = {
   'credit-card': 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
   moon: 'M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z',
   sun: 'M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z',
+
+  // Filled icons (rendered with fill instead of stroke)
+  sparkle: { fill: true, children: <path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z" /> },
 };
 
-export default function Icon({ name, size = 24, className = '', strokeWidth = 1.5, ...props }) {
-  const d = paths[name];
-  if (!d) {
-    console.warn(`[Icon] Ícono "${name}" no encontrado`);
+export default function Icon({ name, size = 24, className = '', strokeWidth = 1.5, fill: fillOverride, ...props }) {
+  const entry = icons[name];
+  if (!entry) {
+    if (process.env.NODE_ENV !== 'production') console.warn(`[Icon] "${name}" no encontrado`);
     return null;
+  }
+
+  if (typeof entry === 'object') {
+    const isFilled = fillOverride ?? entry.fill;
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill={isFilled ? 'currentColor' : 'none'}
+        stroke={isFilled ? 'none' : 'currentColor'}
+        strokeWidth={isFilled ? undefined : strokeWidth}
+        strokeLinecap={isFilled ? undefined : 'round'}
+        strokeLinejoin={isFilled ? undefined : 'round'}
+        className={className}
+        aria-hidden="true"
+        {...props}
+      >
+        {entry.children}
+      </svg>
+    );
   }
 
   return (
@@ -115,12 +154,11 @@ export default function Icon({ name, size = 24, className = '', strokeWidth = 1.
       aria-hidden="true"
       {...props}
     >
-      {d.split(' M').map((segment, i) => (
+      {entry.split(' M').map((segment, i) => (
         <path key={i} d={i === 0 ? segment : `M${segment}`} />
       ))}
     </svg>
   );
 }
 
-// Exportar lista de nombres para referencia
-export const iconNames = Object.keys(paths);
+export const iconNames = Object.keys(icons);
