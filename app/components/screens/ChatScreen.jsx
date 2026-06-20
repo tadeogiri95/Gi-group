@@ -4,7 +4,22 @@
 // Depende de fichar.js helpers (ficharServer, obtenerGeo)
 
 import { useState, useEffect, useRef } from "react";
-import { C, fB, fM, fmtTime, fmtDate, DIAS_KEY } from "../../lib/theme";
+import { fmtTime, fmtDate, DIAS_KEY } from "../../lib/theme";
+
+const AMBER = "var(--color-empresa-primary, #F97316)";
+const AMBER_TEXT = "var(--color-empresa-primary-text, #000)";
+const VIOLET = "var(--color-empresa-secondary, #7C3AED)";
+const RED = "#DC2626";
+const SURF_HI = "var(--color-surf-hi)";
+const BORDER = "var(--color-border)";
+const BORDER_HI = "var(--color-border-hi)";
+const TEXT = "var(--color-text)";
+const DIM = "var(--color-text-dim)";
+const MUTE = "var(--color-text-muted)";
+const BG = "var(--color-bg)";
+const SURFACE = "var(--color-surface)";
+const FB = "var(--font-body)";
+const FM = "var(--font-mono)";
 import { sb } from "../../lib/supabase";
 import { callClaude, parseAction } from "../../lib/claude";
 import { sendPushToLegajo } from "../../lib/push";
@@ -94,7 +109,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
     const um = { from: "user", text: t, time: new Date() };
     const nm = [...msgs, um];
     setMsgs(nm); setInput(""); setLoading(true);
-    sb.post("mensajes_chat", { legajo: usuario.legajo, rol: "user", mensaje: t, empresa_id: usuario.empresa_id }).catch(() => {});
+    sb.post("mensajes_chat", { empleado_id: usuario.id, role: "user", content: t, empresa_id: usuario.empresa_id }).catch(() => {});
 
     // Quick-action shortcuts
     if (t === "✅ Sí, solicitar permiso") {
@@ -213,7 +228,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
       if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: card.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); setLoading(false); return; }
       if (card?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); setLoading(false); return; }
       setMsgs(m => [...m, { from: "bot", text: clean, card, time: new Date() }]);
-      sb.post("mensajes_chat", { legajo: usuario.legajo, rol: "bot", mensaje: clean, empresa_id: usuario.empresa_id }).catch(() => {});
+      sb.post("mensajes_chat", { empleado_id: usuario.id, role: "assistant", content: clean, empresa_id: usuario.empresa_id }).catch(() => {});
     } catch { setMsgs(m => [...m, { from: "bot", text: "Error de conexión. Probá de nuevo.", time: new Date() }]); }
     setLoading(false);
   };
@@ -221,32 +236,32 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {geoError && (
-        <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: `${C.red}12`, borderBottom: `1px solid ${C.red}30` }}>
+        <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: `${RED}12`, borderBottom: `1px solid ${RED}30` }}>
           <span style={{ fontSize: 14 }} aria-hidden="true">📍</span>
-          <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.red, fontFamily: fB }}>{geoError}</span>
-          <button onClick={() => setGeoError(null)} aria-label="Cerrar alerta de ubicación" style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16, padding: 4, minHeight: 44, minWidth: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+          <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: RED, fontFamily: FB }}>{geoError}</span>
+          <button onClick={() => setGeoError(null)} aria-label="Cerrar alerta de ubicación" style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 16, padding: 4, minHeight: 44, minWidth: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
         </div>
       )}
       <div ref={ref} role="log" aria-label="Historial de mensajes" aria-live="polite" style={{ flex: 1, overflowY: "auto", padding: "8px 18px 12px", WebkitOverflowScrolling: "touch" }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: "flex", justifyContent: m.from === "bot" ? "flex-start" : "flex-end", marginBottom: 12 }}>
-            {m.from === "bot" && <div style={{ width: 30, height: 30, borderRadius: 10, marginRight: 8, background: `linear-gradient(135deg,${C.amber},${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", flexShrink: 0 }}><Ic.bot size={16} /></div>}
+            {m.from === "bot" && <div style={{ width: 30, height: 30, borderRadius: 10, marginRight: 8, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", flexShrink: 0 }}><Ic.bot size={16} /></div>}
             <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: m.from === "bot" ? "flex-start" : "flex-end" }}>
-              <div style={{ padding: "10px 14px", background: m.from === "bot" ? C.surfHi : C.amber, color: m.from === "bot" ? C.text : C.amberText, borderRadius: m.from === "bot" ? "16px 16px 16px 4px" : "16px 16px 4px 16px", fontSize: 14, fontFamily: fB, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", border: m.from === "bot" ? `1px solid ${C.border}` : "none", fontWeight: m.from === "bot" ? 400 : 500 }}>{m.text}</div>
+              <div style={{ padding: "10px 14px", background: m.from === "bot" ? SURF_HI : AMBER, color: m.from === "bot" ? TEXT : AMBER_TEXT, borderRadius: m.from === "bot" ? "16px 16px 16px 4px" : "16px 16px 4px 16px", fontSize: 14, fontFamily: FB, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", border: m.from === "bot" ? `1px solid ${BORDER}` : "none", fontWeight: m.from === "bot" ? 400 : 500 }}>{m.text}</div>
               {m.card?.type === "fichada" && <FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg} tardanza={m.card.tardanza} />}
               {m.card?.type === "solicitud" && <SolSentCard motivo={m.card.motivo} fecha={m.card.fecha} />}
-              {m.quickReplies && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{m.quickReplies.map((c, j) => <button key={j} onClick={() => handleSend(c)} style={{ padding: "10px 16px", borderRadius: 999, background: C.surfHi, border: `1px solid ${C.borderHi}`, color: C.text, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: fB, minHeight: 44 }}>{c}</button>)}</div>}
-              <span style={{ fontSize: 10, color: C.mute, marginTop: 4, fontFamily: fM }}>{fmtTime(m.time)}</span>
+              {m.quickReplies && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{m.quickReplies.map((c, j) => <button key={j} onClick={() => handleSend(c)} style={{ padding: "10px 16px", borderRadius: 999, background: SURF_HI, border: `1px solid ${BORDER_HI}`, color: TEXT, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FB, minHeight: 44 }}>{c}</button>)}</div>}
+              <span style={{ fontSize: 10, color: MUTE, marginTop: 4, fontFamily: FM }}>{fmtTime(m.time)}</span>
             </div>
           </div>
         ))}
-        {loading && <div style={{ display: "flex", marginBottom: 10, alignItems: "flex-end" }}><div style={{ width: 30, height: 30, borderRadius: 10, marginRight: 8, background: `linear-gradient(135deg,${C.amber},${C.violet})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000" }}><Ic.bot size={16} /></div><div style={{ padding: "12px 16px", background: C.surfHi, borderRadius: "16px 16px 16px 4px", border: `1px solid ${C.border}`, display: "flex", gap: 5, alignItems: "center" }}><span style={{ color: C.amber, display: "flex" }}><Ic.sparkle size={14} /></span><span style={{ fontSize: 12, color: C.dim }}>Pensando...</span><span style={{ display: "flex", gap: 3 }}>{[0, 1, 2].map(i => <span key={i} style={{ width: 4, height: 4, borderRadius: 2, background: C.dim, animation: `typing 1.4s ${i * .2}s infinite` }} />)}</span></div></div>}
+        {loading && <div style={{ display: "flex", marginBottom: 10, alignItems: "flex-end" }}><div style={{ width: 30, height: 30, borderRadius: 10, marginRight: 8, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000" }}><Ic.bot size={16} /></div><div style={{ padding: "12px 16px", background: SURF_HI, borderRadius: "16px 16px 16px 4px", border: `1px solid ${BORDER}`, display: "flex", gap: 5, alignItems: "center" }}><span style={{ color: AMBER, display: "flex" }}><Ic.sparkle size={14} /></span><span style={{ fontSize: 12, color: DIM }}>Pensando...</span><span style={{ display: "flex", gap: 3 }}>{[0, 1, 2].map(i => <span key={i} style={{ width: 4, height: 4, borderRadius: 2, background: DIM, animation: `typing 1.4s ${i * .2}s infinite` }} />)}</span></div></div>}
       </div>
-      <div className="safe-bottom" style={{ padding: "10px 14px 12px", borderTop: `1px solid ${C.border}`, background: C.bg, display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", background: C.surface, borderRadius: 22, padding: "4px 8px 4px 16px", border: `1px solid ${C.border}` }}>
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Hablale al bot..." aria-label="Mensaje para el asistente" disabled={loading} style={{ flex: 1, border: "none", background: "transparent", color: C.text, fontSize: 14, fontFamily: fB, outline: "none", padding: "10px 0", opacity: loading ? .5 : 1 }} />
+      <div className="safe-bottom" style={{ padding: "10px 14px 12px", borderTop: `1px solid ${BORDER}`, background: BG, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", background: SURFACE, borderRadius: 22, padding: "4px 8px 4px 16px", border: `1px solid ${BORDER}` }}>
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Hablale al bot..." aria-label="Mensaje para el asistente" disabled={loading} style={{ flex: 1, border: "none", background: "transparent", color: TEXT, fontSize: 14, fontFamily: FB, outline: "none", padding: "10px 0", opacity: loading ? .5 : 1 }} />
         </div>
-        <button onClick={() => handleSend()} disabled={!input.trim() || loading} aria-label="Enviar mensaje" style={{ width: 44, height: 44, borderRadius: 22, border: "none", background: input.trim() && !loading ? C.amber : C.surface, color: input.trim() && !loading ? C.amberText : C.mute, cursor: input.trim() && !loading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.send size={18} /></button>
+        <button onClick={() => handleSend()} disabled={!input.trim() || loading} aria-label="Enviar mensaje" style={{ width: 44, height: 44, borderRadius: 22, border: "none", background: input.trim() && !loading ? AMBER : SURFACE, color: input.trim() && !loading ? AMBER_TEXT : MUTE, cursor: input.trim() && !loading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.send size={18} /></button>
       </div>
     </div>
   );

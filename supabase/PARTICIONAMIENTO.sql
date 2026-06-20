@@ -1,0 +1,118 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PARTICIONAMIENTO.sql — Plan de particionamiento futuro
+--
+-- ⚠️ NO EJECUTAR. Documento de planificación, no una migración.
+-- No hay partitioning implementado todavía — esto es el "cuándo y cómo"
+-- para cuando haga falta, no algo a aplicar ahora.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ─── Estado real medido el 2026-06-20 (conteos exactos vía PostgREST) ───
+-- empresa:                2 filas
+-- empleados:              68 filas
+-- fichadas:               261 filas
+-- registro_actividades:   31 filas
+-- solicitudes:            15 filas
+-- notificaciones:         101 filas
+-- mensajes_chat:          255 filas
+-- sesiones:               63 filas
+-- audit_log:              151 filas
+--
+-- Conclusión: HOY no hace falta particionar nada. Esto es deuda técnica
+-- preventiva, no un problema actual. Postgres maneja sin esfuerzo tablas
+-- de varios millones de filas con los índices que ya existen (005/039/045).
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Candidatas a particionar (por qué estas dos y no otras)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- 1. fichadas — UNA fila por (empleado, día). Crecimiento lineal y
+--    predecible: empleados_activos × dias_laborales × empresas. Con 68
+--    empleados activos hoy generando ~22 fichadas/mes c/u, son ~1.500
+--    filas/mes para 2 empresas. El acceso real (ver app/api/chat/query/
+--    route.js, app/api/fichar/route.js, HistorialFichajesScreen.jsx) es
+--    SIEMPRE acotado por rango de fecha (mes, semana, día) — el patrón
+--    de acceso calza perfecto con partition by RANGE(fecha).
+--
+-- 2. registro_actividades — misma lógica: una fila por cambio de etapa,
+--    nunca se actualiza después de cerrada (hora_fin), se consulta casi
+--    siempre por fecha o por "actividad activa" (hora_fin IS NULL, que
+--    ya tiene su propio índice parcial y no se beneficia de partitioning).
+--
+-- NO son candidatas: empleados/empresa/proyectos/etapas/divisiones (tablas
+-- de catálogo, crecimiento muy lento, consultadas completas igual)
+-- ni notificaciones/mensajes_chat/audit_log (crecen con el tiempo pero el
+-- acceso no es uniformemente por fecha — notificaciones se consulta por
+-- "no leídas" sin importar antigüedad, partitioning por fecha no ayuda
+-- ahí; para esos casos la estrategia correcta es retención/archivado, no
+-- partitioning — ver sección final).
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Disparador concreto — cuándo SÍ implementar esto
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Particionar cuando CUALQUIERA de estas se cumpla para fichadas o
+-- registro_actividades:
+--   a) > 5.000.000 de filas en la tabla, O
+--   b) el p95 de latencia de los queries por rango de fecha en
+--      app/api/chat/query/route.js o HistorialFichajesScreen.jsx supera
+--      ~300ms sostenido (medible en logs de Vercel / Sentry), O
+--   c) el autovacuum de la tabla empieza a tardar visiblemente (señal de
+--      que el índice por fecha ya no compensa el tamaño total del heap).
+--
+-- Con el ritmo de crecimiento actual (~1.500 fichadas/mes para 2 empresas),
+-- llegar a 5M de filas tomaría décadas a esta escala — el disparador real
+-- va a ser una base de clientes mucho más grande (cientos de empresas
+-- medianas/grandes), no el paso del tiempo con los clientes actuales.
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Cómo implementarlo cuando llegue el momento (PARTITION BY RANGE mensual)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Postgres no permite convertir una tabla existente en partitioned table
+-- con un ALTER TABLE simple — requiere crear la tabla particionada nueva,
+-- copiar los datos, y renombrar. Es una migración con ventana de
+-- mantenimiento, no algo "ADD COLUMN IF NOT EXISTS". Boceto:
+--
+--   BEGIN;
+--   ALTER TABLE fichadas RENAME TO fichadas_old;
+--
+--   CREATE TABLE fichadas (
+--     LIKE fichadas_old INCLUDING DEFAULTS INCLUDING CONSTRAINTS
+--   ) PARTITION BY RANGE (fecha);
+--
+--   -- Una partición por mes, generada con un loop o pg_partman.
+--   CREATE TABLE fichadas_2026_06 PARTITION OF fichadas
+--     FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+--   -- ... repetir por cada mes con datos históricos ...
+--
+--   INSERT INTO fichadas SELECT * FROM fichadas_old;
+--
+--   -- Recrear FKs que apuntan a fichadas (geo_registros.fichada_id) —
+--   -- partitioned tables no soportan ser el lado referenciado de una FK
+--   -- antes de Postgres 12+; confirmar versión de Supabase antes de migrar.
+--
+--   DROP TABLE fichadas_old;
+--   COMMIT;
+--
+-- Recomendado: usar la extensión `pg_partman` (si Supabase la tiene
+-- habilitada) para automatizar la creación/rotación de particiones
+-- mensuales en vez de mantener el loop a mano.
+--
+-- Particiones viejas (>24 meses, ajustable) se pueden DETACH + archivar
+-- a almacenamiento frío en vez de DROP, si hay requisito de retención legal.
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Para notificaciones / mensajes_chat / audit_log: NO particionar, archivar
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Estas tablas crecen con el tiempo pero se consultan por estado
+-- ("no leídas") o id, no por rango de fecha — particionar por fecha no
+-- acelera su query principal. La estrategia correcta cuando crezcan
+-- demasiado es retención: un cron que borre/archive filas resueltas con
+-- más de N meses (ej. notificaciones leídas > 12 meses, mensajes_chat >
+-- 6 meses), siguiendo el mismo patrón que /api/cron/limpiar-tokens ya
+-- usa para login_attempts/rate_limits/sesiones.

@@ -91,6 +91,20 @@ export async function GET(request) {
     resultados.sesiones_error = e.message;
   }
 
+  try {
+    // 5. push_tokens huérfanos — push_tokens no tiene FK real a empleados
+    // (se relaciona por empresa_id+legajo), así que un empleado borrado o
+    // desactivado deja sus tokens sin dueño. Ver migración 053.
+    const resOrf = await fetch(`${SUPABASE_URL}/rest/v1/rpc/limpiar_push_tokens_huerfanos`, {
+      method: "POST",
+      headers: headersNoReturn,
+    });
+    resultados.push_tokens_huerfanos_eliminados = resOrf.ok ? await resOrf.json() : null;
+  } catch (e) {
+    logger.error("[limpiar-tokens] Error eliminando push_tokens huérfanos", e);
+    resultados.push_tokens_huerfanos_error = e.message;
+  }
+
   logger.debug("[limpiar-tokens] Completado", resultados);
   return NextResponse.json({ ok: true, ...resultados });
 }

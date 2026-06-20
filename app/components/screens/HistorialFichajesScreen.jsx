@@ -18,7 +18,9 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
   const [showChat, setShowChat] = useState(false);
   const legajo = legajoVer || usuario.legajo;
   const isGer = usuario.rol === "gerencial" || usuario.rol === "administrativo";
-  const empNombre = isGer && legajoVer ? (ctx.empleados || []).find(e => e.legajo === legajo)?.apodo || `L-${legajo}` : usuario.apodo;
+  const empleadoVer = (ctx.empleados || []).find(e => e.legajo === legajo);
+  const empNombre = isGer && legajoVer ? empleadoVer?.apodo || `L-${legajo}` : usuario.apodo;
+  const empleadoId = legajoVer ? empleadoVer?.id : usuario.id;
 
   useEffect(() => {
     (async () => {
@@ -30,12 +32,16 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
         const hastaStr = `${y}-${String(m).padStart(2, "0")}-${String(hasta.getDate()).padStart(2, "0")}`;
         const f = await sb.get(`fichadas?legajo=eq.${legajo}&fecha=gte.${desde}&fecha=lte.${hastaStr}&order=fecha.desc&select=*`);
         setFichadas(f || []);
-        const ch = await sb.get(`mensajes_chat?legajo=eq.${legajo}&order=created_at.desc&limit=100`);
-        setChatHistory(ch || []);
+        if (empleadoId) {
+          const ch = await sb.get(`mensajes_chat?empleado_id=eq.${empleadoId}&order=created_at.desc&limit=100`);
+          setChatHistory(ch || []);
+        } else {
+          setChatHistory([]);
+        }
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
-  }, [legajo, mes]);
+  }, [legajo, mes, empleadoId]);
 
   const totalTardes = fichadas.filter(f => f.llegada_tarde).length;
   const tardanzasMap = useMemo(() => {
@@ -132,10 +138,10 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
           {chatHistory.length === 0 ? (
             <div className="text-center text-gypi-dim text-[13px] py-4">Sin conversaciones</div>
           ) : chatHistory.map((m, i) => (
-            <div key={i} className={`flex mb-2 ${m.rol === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[80%] py-2 px-3 text-xs text-gypi-text leading-relaxed ${m.rol === "user" ? "rounded-[12px_12px_4px_12px] bg-gypi-amber/20" : "rounded-[12px_12px_12px_4px] bg-gypi-surf-hi"}`}>
-                <div className="whitespace-pre-wrap">{m.mensaje}</div>
-                <div className={`text-[9px] text-gypi-mute mt-1 ${m.rol === "user" ? "text-right" : "text-left"}`}>{new Date(m.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+            <div key={i} className={`flex mb-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[80%] py-2 px-3 text-xs text-gypi-text leading-relaxed ${m.role === "user" ? "rounded-[12px_12px_4px_12px] bg-gypi-amber/20" : "rounded-[12px_12px_12px_4px] bg-gypi-surf-hi"}`}>
+                <div className="whitespace-pre-wrap">{m.content}</div>
+                <div className={`text-[9px] text-gypi-mute mt-1 ${m.role === "user" ? "text-right" : "text-left"}`}>{new Date(m.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
               </div>
             </div>
           ))}

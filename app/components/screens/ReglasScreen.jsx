@@ -5,7 +5,7 @@ import { Ic } from "../Icons";
 
 export default function ReglasScreen({ ctx, reload, usuario }) {
   const [nr, setNr] = useState("");
-  const add = async () => { if (!nr.trim()) return; await sb.post("reglas_bot", { regla: nr.trim(), creada_por: usuario.apodo }); setNr(""); reload(); };
+  const add = async () => { if (!nr.trim()) return; await sb.post("reglas_bot", { regla: nr.trim() }); setNr(""); reload(); };
   const del = async (id) => { await sb.del(`reglas_bot?id=eq.${id}`); reload(); };
   const hasText = nr.trim().length > 0;
 
