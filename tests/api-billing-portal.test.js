@@ -46,6 +46,22 @@ function mpCancelar(status = 200) {
   };
 }
 
+// P5: tras cancelar en MP, la ruta actualiza estado local (suscripción +
+// empresa, con grace period si corresponde) en vez de esperar al webhook.
+function patchSuscripcionCancelada() {
+  return {
+    match: (url, opts) => /\/rest\/v1\/suscripciones\?id=eq\./.test(url) && opts.method === "PATCH",
+    respond: () => ({ status: 204 }),
+  };
+}
+
+function patchEmpresaPlan() {
+  return {
+    match: (url, opts) => /\/rest\/v1\/empresa\?id=eq\./.test(url) && opts.method === "PATCH",
+    respond: () => ({ status: 204 }),
+  };
+}
+
 // ── GET tests ──
 
 test("billing/portal GET — devuelve portal_url y descripcion", async () => {
@@ -104,6 +120,8 @@ test("billing/portal POST — cancelacion exitosa devuelve 200 con ok:true", asy
     ...authPassHandlers(),
     sbSuscripciones({ id: "sub-1", estado: "activa", gateway: "mercadopago", gateway_subscription_id: "mp-sub-1" }),
     mpCancelar(),
+    patchSuscripcionCancelada(),
+    patchEmpresaPlan(),
   ]);
   const res = await POST(postReq(token));
   assert.equal(res.status, 200);

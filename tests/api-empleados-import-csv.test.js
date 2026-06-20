@@ -47,10 +47,15 @@ function handlersImport({ existingLegajos = [], plan = "pro", insertOk = true } 
       respond: () => ({ status: 200, body: [{ plan_activo: plan }] }),
     },
     {
+      // La ruta hace bulk insert (un POST con array de filas por lote de 50),
+      // no un POST por fila — la respuesta debe tener tantos elementos como
+      // filas vinieron en el body para que `created.length` sea correcto.
       match: (url, opts) => url.includes("/rest/v1/empleados") && opts?.method === "POST",
-      respond: () => insertOk
-        ? { status: 201, body: [{ id: "new-id", legajo: 999 }] }
-        : { status: 409, body: { code: "23505", message: "duplicate key" } },
+      respond: (url, opts) => {
+        if (!insertOk) return { status: 409, body: { code: "23505", message: "duplicate key" } };
+        const rows = JSON.parse(opts.body);
+        return { status: 201, body: rows.map((r, i) => ({ id: `new-id-${i}`, legajo: r.legajo })) };
+      },
     },
   ];
 }

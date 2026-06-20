@@ -13,42 +13,38 @@ before(() => {
 const { signAdminToken } = await import("../app/lib/jwt.ts");
 const { GET } = await import("../app/api/superadmin/empresas/route.ts");
 
-function getReq() {
-  return new Request("http://localhost/api/superadmin/empresas");
+// La ruta lee req.nextUrl — un Request plano no lo expone. Evitamos importar
+// NextRequest de next/server (dispara internals de app-render que necesitan
+// el polyfill de AsyncLocalStorage de withNextCookies.js, y el orden de
+// imports ESM lo cargaría antes de que ese polyfill exista). Un URL plano
+// adjunto alcanza porque la ruta solo usa nextUrl.searchParams.
+function getReq(qs = "") {
+  const req = new Request(`http://localhost/api/superadmin/empresas${qs}`);
+  req.nextUrl = new URL(req.url);
+  return req;
 }
 
+// La ruta ahora delega paginación + enriquecimiento (suscripción, empleados_activos)
+// a las RPC rpc_superadmin_empresas/rpc_superadmin_stats (migración 046) — ya no
+// hace 3 queries paralelas a empresa/suscripciones/empleados.
 function handlersEmpresas() {
   return [
     {
-      match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=id,nombre"),
+      match: (url) => url.includes("/rest/v1/rpc/rpc_superadmin_empresas"),
       respond: () => ({
         status: 200,
-        body: [
-          { id: "e1", nombre: "Empresa 1", nombre_corto: "E1", slug: "e1", plan_activo: "pro", activa: true, created_at: "2025-01-01", onboarding_completado: true, trial_usado: false },
-          { id: "e2", nombre: "Empresa 2", nombre_corto: "E2", slug: "e2", plan_activo: "free", activa: true, created_at: "2025-02-01", onboarding_completado: false, trial_usado: true },
-        ],
+        body: {
+          empresas: [
+            { id: "e1", nombre: "Empresa 1", nombre_corto: "E1", slug: "e1", plan_activo: "pro", activa: true, created_at: "2025-01-01", onboarding_completado: true, trial_usado: false, empleados_activos: 3, suscripcion: { empresa_id: "e1", estado: "activa", plan: "pro", monto: 5000, created_at: "2025-01-01", trial_fin: null } },
+            { id: "e2", nombre: "Empresa 2", nombre_corto: "E2", slug: "e2", plan_activo: "free", activa: true, created_at: "2025-02-01", onboarding_completado: false, trial_usado: true, empleados_activos: 1, suscripcion: null },
+          ],
+          total: 2,
+        },
       }),
     },
     {
-      match: (url) => url.includes("/rest/v1/suscripciones"),
-      respond: () => ({
-        status: 200,
-        body: [
-          { empresa_id: "e1", estado: "activa", plan: "pro", monto: 5000, created_at: "2025-01-01", trial_fin: null },
-        ],
-      }),
-    },
-    {
-      match: (url) => url.includes("/rest/v1/empleados") && url.includes("activo=eq.true"),
-      respond: () => ({
-        status: 200,
-        body: [
-          { empresa_id: "e1" },
-          { empresa_id: "e1" },
-          { empresa_id: "e1" },
-          { empresa_id: "e2" },
-        ],
-      }),
+      match: (url) => url.includes("/rest/v1/rpc/rpc_superadmin_stats"),
+      respond: () => ({ status: 200, body: { total_empresas: 2, total_empleados: 4 } }),
     },
   ];
 }
@@ -78,6 +74,7 @@ test("superadmin empresas — token válido devuelve 200 con empresas enriquecid
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(json.empresas), "debe devolver array de empresas");
   assert.equal(json.empresas.length, 2);
+  assert.equal(json.total, 2);
 
   const e1 = json.empresas.find((e) => e.id === "e1");
   assert.equal(e1.empleados_activos, 3, "Empresa 1 tiene 3 empleados activos");

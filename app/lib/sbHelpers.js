@@ -32,43 +32,60 @@ function headers(extra = {}) {
 }
 
 // ─── GET ───
+// `silent` debe cubrir tanto !r.ok como fetch() lanzando (red caída, mock sin
+// handler en tests) — antes solo cubría !r.ok, dejando pasar el throw de fetch().
 export async function sbGet(path, opts = {}) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: headers(),
-  });
-  if (!r.ok) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+      headers: headers(),
+    });
+    if (!r.ok) {
+      if (opts.silent) return opts.fallback ?? null;
+      throw new Error(`GET ${path}: ${await r.text()}`);
+    }
+    return r.json();
+  } catch (e) {
     if (opts.silent) return opts.fallback ?? null;
-    throw new Error(`GET ${path}: ${await r.text()}`);
+    throw e;
   }
-  return r.json();
 }
 
 // ─── POST (con return=representation) ───
 export async function sbPost(path, body, opts = {}) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "POST",
-    headers: headers({ Prefer: "return=representation" }),
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+      method: "POST",
+      headers: headers({ Prefer: "return=representation" }),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      if (opts.silent) return opts.fallback ?? null;
+      throw new Error(`POST ${path}: ${await r.text()}`);
+    }
+    return r.json();
+  } catch (e) {
     if (opts.silent) return opts.fallback ?? null;
-    throw new Error(`POST ${path}: ${await r.text()}`);
+    throw e;
   }
-  return r.json();
 }
 
 // ─── PATCH (con return=representation) ───
 export async function sbPatch(path, body, opts = {}) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: headers({ Prefer: "return=representation" }),
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
+      method: "PATCH",
+      headers: headers({ Prefer: "return=representation" }),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      if (opts.silent) return opts.fallback ?? null;
+      throw new Error(`PATCH ${path}: ${await r.text()}`);
+    }
+    return r.json();
+  } catch (e) {
     if (opts.silent) return opts.fallback ?? null;
-    throw new Error(`PATCH ${path}: ${await r.text()}`);
+    throw e;
   }
-  return r.json();
 }
 
 // ─── PATCH sin representation (webhook style: retorna boolean) ───
@@ -100,14 +117,19 @@ export async function sbDelete(path, opts = {}) {
 
 // ─── RPC (funciones SQL) ───
 export async function sbRpc(fnName, params = {}, opts = {}) {
-  const r = await fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify(params),
-  });
-  if (!r.ok) {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(params),
+    });
+    if (!r.ok) {
+      if (opts.silent) return opts.fallback ?? null;
+      throw new Error(`RPC ${fnName}: ${await r.text()}`);
+    }
+    return r.json();
+  } catch (e) {
     if (opts.silent) return opts.fallback ?? null;
-    throw new Error(`RPC ${fnName}: ${await r.text()}`);
+    throw e;
   }
-  return r.json();
 }
