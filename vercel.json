@@ -30,7 +30,7 @@
     },
     {
       "path": "/api/cron/refresh-scores",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 7 * * *"
     }
   ]
 }

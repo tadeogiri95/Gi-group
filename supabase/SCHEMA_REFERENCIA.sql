@@ -406,7 +406,8 @@ CREATE TABLE IF NOT EXISTS metricas_eventos (
 -- v_resumen_diario (003) — VIEW normal, dashboard de gerencia (actividad del día).
 -- v_scores_empleados (026 → MATERIALIZED VIEW desde 040) — rankings mensuales.
 --   Refresh: refresh_scores_empleados(), llamado por /api/cron/refresh-scores
---   cada 4h desde (vercel.json). Antes de esa migración 040 + cron, la vista
+--   una vez por día desde vercel.json (límite del plan Hobby de Vercel: 1
+--   corrida/día por cron). Antes de esa migración 040 + cron, la vista
 --   quedaba congelada con los datos del momento en que se materializó.
 
 
