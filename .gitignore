@@ -8,3 +8,13 @@ out
 
 # Temporales de export
 *.tmp
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Coverage (node --experimental-test-coverage --test-reporter=lcov)
+lcov.info
+coverage/
