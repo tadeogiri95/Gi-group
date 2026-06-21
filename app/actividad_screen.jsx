@@ -351,7 +351,7 @@ export default function ActividadScreen({
                     proyectosFiltrados.slice(0, 20).map(p => {
                       const sel = proyectoSeleccionado?.ot === p.ot;
                       return (
-                        <button key={p.ot + p.codigo} onClick={() => setProyectoSeleccionado(p)} className={`py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all border-2 ${sel ? 'bg-gypi-amber/[0.09] border-gypi-amber' : 'bg-gypi-surface border-transparent'}`}>
+                        <button key={p.ot} onClick={() => setProyectoSeleccionado(p)} className={`py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all border-2 ${sel ? 'bg-gypi-amber/[0.09] border-gypi-amber' : 'bg-gypi-surface border-transparent'}`}>
                           <div className={`min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5 ${sel ? 'bg-gypi-amber/10 text-gypi-amber' : 'bg-gypi-surf-hi text-gypi-text'}`}>{p.ot}</div>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text truncate">{p.cliente}</div>

@@ -73,6 +73,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           nombre: e.nombre_corto || e.nombre,
           empresa: e.nombre_corto || e.nombre,
           slug: e.slug,
+          empresaId: e.empresa_id,
         });
         enviados++;
       }
@@ -134,6 +135,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           nombre: emp.nombre_corto || emp.nombre,
           empresa: emp.nombre_corto || emp.nombre,
           slug: emp.slug,
+          empresaId: empresa_id,
         });
       }
 

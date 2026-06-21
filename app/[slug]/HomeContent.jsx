@@ -32,6 +32,7 @@ const ChatScreen = dynamic(() => import("../components/screens/ChatScreen"), { s
 const HomeEmp = dynamic(() => import("../components/screens/HomeEmp"), { ssr: false });
 const InboxScreen = dynamic(() => import("../components/screens/InboxScreen"), { ssr: false });
 const HistorialFichajesScreen = dynamic(() => import("../components/screens/HistorialFichajesScreen"), { ssr: false });
+const DocumentosScreen = dynamic(() => import("../components/screens/DocumentosScreen"), { ssr: false });
 const ConfigScreen = dynamic(() => import("../components/screens/ConfigScreen"), { ssr: false });
 const Paywall = dynamic(() => import("../components/Paywall"), { ssr: false });
 const BillingScreen = dynamic(() => import("../components/BillingScreen"), { ssr: false });
@@ -49,6 +50,7 @@ const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: fa
 const VALID_SCREENS = new Set([
   "home", "chat", "solicitudes", "mis-sols", "actividad",
   "historial-fichajes", "equipo", "config", "ger-actividad", "reglas",
+  "documentos",
 ]);
 
 export default function HomeContent() {
@@ -198,12 +200,12 @@ export default function HomeContent() {
       const subtitles = { "ger-actividad": "Producción en vivo", config: "Configuración", equipo: "Gestión de personal", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
-    const subtitles = { actividad: "Registro de actividades", "historial-fichajes": "Mi asistencia" };
+    const subtitles = { actividad: "Registro de actividades", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
     return subtitles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
   const getScreenTitle = () => {
-    const titles = { solicitudes: "Inbox", equipo: "Personal", "mis-sols": "Solicitudes", actividad: "Mi Jornada", "ger-actividad": "Taller", config: "Gestión", "historial-fichajes": "Fichajes" };
+    const titles = { solicitudes: "Inbox", equipo: "Personal", "mis-sols": "Solicitudes", actividad: "Mi Jornada", "ger-actividad": "Taller", config: "Gestión", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -299,6 +301,7 @@ export default function HomeContent() {
               </div>
             </div>
           )}
+          {!uIsGer && screen === "documentos" && <DocumentosScreen />}
           {uIsGer && screen === "home" && <DashboardGerencia goto={(s, leg) => { if (leg) setHistorialLegajo(leg); setScreen(s); }} ctx={ctx} reload={loadData} logout={logout} empresa={empresa} isDemo={isDemo} />}
           {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}

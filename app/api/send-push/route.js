@@ -9,9 +9,9 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import admin from "firebase-admin";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+import { sbGet, sbDelete } from "../../lib/sbHelpers";
+import { sendPushBody } from "../../lib/schemas";
+import { validateBody, safeErrorMessage } from "../../lib/validate";
 
 function getAdminApp() {
   if (admin.apps.length > 0) return admin.app();
@@ -35,27 +35,8 @@ function getAdminApp() {
   });
 }
 
-async function sbGet(path) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
-  });
-  if (!res.ok) return [];
-  return res.json();
-}
-
-async function sbDelete(path) {
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      method: "DELETE",
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
-    });
-  } catch (e) {
-    console.error("[send-push] Error borrando token:", e.message);
-  }
-}
-
 async function eliminarTokenInvalido(token) {
-  await sbDelete(`push_tokens?token=eq.${encodeURIComponent(token)}`);
+  await sbDelete(`push_tokens?token=eq.${encodeURIComponent(token)}`, { silent: true });
   console.log("[send-push] Token inválido eliminado:", token.slice(0, 20) + "...");
 }
 
@@ -68,11 +49,10 @@ export async function POST(request) {
     // ═══ CAMBIO 1C: empresa_id SIEMPRE de la sesión, nunca del body ═══
     const empresaId = sesion.empresa_id;
 
-    const { legajo, rol, title, body, data = {} } = await request.json();
-
-    if (!title || !body) {
-      return NextResponse.json({ error: "title y body requeridos" }, { status: 400 });
-    }
+    const rawBody = await request.json();
+    const parsed = validateBody(sendPushBody, rawBody);
+    if (parsed.response) return parsed.response;
+    const { legajo, rol, title, body, data = {} } = parsed.data;
 
     // Buscar nombre de empresa
     let empresaNombre = null;
@@ -145,14 +125,15 @@ export async function POST(request) {
       })
     );
 
-    for (const tk of tokensInvalidos) {
-      await eliminarTokenInvalido(tk);
-      removed++;
+    if (tokensInvalidos.length > 0) {
+      const encoded = tokensInvalidos.map((t) => encodeURIComponent(t)).join(",");
+      await sbDelete(`push_tokens?token=in.(${encoded})`, { silent: true });
+      removed = tokensInvalidos.length;
     }
 
     return NextResponse.json({ ok: true, sent, total: tokens.length, removed });
   } catch (err) {
     console.error("[send-push] Error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

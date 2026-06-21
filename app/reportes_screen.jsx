@@ -132,7 +132,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
       try {
         const [regs, proys] = await Promise.all([
           sb.get(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,codigo_proyecto,etapa,division,duracion_min,observaciones&order=fecha.desc`),
-          sb.get(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,codigo,nombre`),
+          sb.get(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,ot,cliente,proyecto`),
         ]);
         setDatos(regs || []);
         setProyectos(proys || []);
@@ -157,7 +157,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
     return Object.values(map)
       .map(p => ({
         ...p,
-        nombre: proyectos.find(pr => pr.codigo === p.ot)?.nombre || "",
+        nombre: (() => { const pr = proyectos.find(pr => pr.ot === p.ot); return pr ? (pr.cliente || pr.proyecto || "") : ""; })(),
         empleadosList: Object.values(p.empleados).sort((a, b) => b.min - a.min),
       }))
       .sort((a, b) => b.totalMin - a.totalMin);

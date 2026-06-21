@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
+import { logger } from "../../../lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,14 +52,14 @@ export async function GET(request) {
       body: JSON.stringify({}),
     });
 
-    console.log("[CRON] Auto-fichaje resultado:", JSON.stringify(data));
+    logger.info("[cron/auto-fichaje] resultado:", JSON.stringify(data));
     return NextResponse.json({
       ok: true,
       timestamp: new Date().toISOString(),
       resultado: data,
     });
   } catch (err) {
-    console.error("[CRON] Error:", err);
+    logger.error("[cron/auto-fichaje] Error fatal", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

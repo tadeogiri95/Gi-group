@@ -14,6 +14,7 @@ export const EVT: {
   ONBOARDING_COMPLETE: string;
   ONBOARDING_SKIP: string;
   LOGIN: string;
+  PRIMER_INVITE: string;
   PRIMER_FICHAJE: string;
   FICHAJE: string;
   UPGRADE_INIT: string;
@@ -22,4 +23,6 @@ export const EVT: {
   TRIAL_EXPIRED: string;
   PAGO_APROBADO: string;
   PAGO_RECHAZADO: string;
+  REENGAGEMENT_ONBOARDING: string;
+  CONSULTA_ENTERPRISE: string;
 };

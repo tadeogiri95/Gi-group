@@ -9,6 +9,9 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validarLimite, invalidarCachePlan } from "../../lib/planEnforcement";
 import { broadcastRefresh } from "../../lib/broadcast";
+import { logger } from "../../lib/logger";
+import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "../../lib/validate";
+import { checkRateLimit } from "../../lib/rateLimitMemory";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -35,15 +38,20 @@ async function sbFetch(path, opts = {}) {
 
 const TABLAS_PERMITIDAS = [
   "empleados", "fichadas", "solicitudes", "notificaciones",
-  "reglas_bot", "catalogo_etapas", "registro_actividades",
-  "reportes_obra", "proyectos", "push_subscriptions", "push_tokens",
-  "v_resumen_diario", "geo_zonas", "geo_registros",
-  "config_sistema", "notas_calendario", "mensajes_chat",
+  "reglas_bot", "registro_actividades",
+  "reportes_obra", "proyectos", "push_tokens",
+  "v_resumen_diario", "v_scores_empleados", "geo_zonas", "geo_registros",
+  "config_sistema", "notas_calendario", "mensajes_chat", "turnos_planificados",
   "etapas", "divisiones", "empresa", "invitaciones_empresa",
   "suscripciones", "pagos",
+  "tipos_documento_requerido", "documentos_exigidos_empleado", "documentos_empleado",
 ];
 
-const TABLAS_SOLO_LECTURA = ["v_resumen_diario"];
+// documentos_empleado: solo lectura vía /api/data — los inserts pasan SIEMPRE
+// por /api/documentos/upload (valida tipo/tamaño de archivo server-side antes
+// de escribir la fila). Sin esto, un POST directo podría crear filas con
+// storage_path arbitrario sin que exista el archivo.
+const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado"];
 
 const CAMPOS_EXCLUIDOS = {
   empleados: ["password", "password_reset_jti"],
@@ -71,12 +79,13 @@ function filtrarCamposSensibles(data, tabla) {
 
 const TABLAS_CON_EMPRESA = [
   "empleados", "fichadas", "solicitudes", "notificaciones",
-  "registro_actividades", "reportes_obra", "push_subscriptions", "push_tokens",
-  "config_sistema", "notas_calendario", "mensajes_chat",
+  "registro_actividades", "reportes_obra", "push_tokens",
+  "config_sistema", "notas_calendario", "mensajes_chat", "turnos_planificados",
   "etapas", "divisiones", "geo_zonas", "geo_registros",
-  "v_resumen_diario", "reglas_bot",
+  "v_resumen_diario", "v_scores_empleados", "reglas_bot",
   "proyectos", "invitaciones_empresa",
   "suscripciones", "pagos",
+  "tipos_documento_requerido", "documentos_exigidos_empleado", "documentos_empleado",
 ];
 
 function validarPath(path) {
@@ -145,14 +154,18 @@ function validarBody(tabla, body, method) {
           return { valido: false, error: "Empleado requiere legajo y nombre" };
         }
       }
-      if (body.rol && method === "PATCH") {
-        return { valido: false, error: "No se puede cambiar el rol desde la app" };
-      }
       break;
     case "registro_actividades":
       if (method === "POST") {
         if (!body.empleado_id || body.etapa === undefined) {
           return { valido: false, error: "Actividad requiere empleado_id y etapa" };
+        }
+      }
+      break;
+    case "turnos_planificados":
+      if (method === "POST") {
+        if (!body.empleado_id || !body.fecha || !body.hora_inicio || !body.hora_fin) {
+          return { valido: false, error: "Turno requiere empleado_id, fecha, hora_inicio y hora_fin" };
         }
       }
       break;
@@ -171,6 +184,48 @@ function inyectarEmpresaEnGet(path, tabla, empresaId) {
   return path + `?${filtro}`;
 }
 
+// Garantiza que toda query GET tenga un límite explícito (máx 1000).
+// Evita que un solo request traiga decenas de miles de filas.
+const LIMIT_DEFAULT = 500;
+const LIMIT_MAX = 1000;
+
+function inyectarLimit(path, limit, offset) {
+  const cap = Math.min(Math.max(1, limit || LIMIT_DEFAULT), LIMIT_MAX);
+  // Si el path ya lleva limit= lo respetamos (el cliente sabe lo que pide),
+  // pero lo capeamos al máximo de todas formas.
+  if (/\blimit=\d+/.test(path)) {
+    path = path.replace(/\blimit=(\d+)/, (_, n) => `limit=${Math.min(Number(n), LIMIT_MAX)}`);
+  } else {
+    path += (path.includes("?") ? "&" : "?") + `limit=${cap}`;
+  }
+  if (offset && offset > 0) {
+    if (!/\boffset=\d+/.test(path)) {
+      path += `&offset=${offset}`;
+    }
+  }
+  return path;
+}
+
+// Paginación keyset (cursor) — alternativa a offset para tablas de alto
+// volumen. Requiere que el GET tenga un `order=columna.dir` explícito:
+// el cursor es el valor de esa columna en la última fila de la página
+// anterior. Evita el costo de OFFSET (que obliga a Postgres a escanear y
+// descartar todas las filas saltadas) a cambio de no poder "saltar" a una
+// página arbitraria — solo "siguiente página" desde el último cursor visto.
+function extraerOrden(path) {
+  const m = path.match(/(?:\?|&)order=([a-zA-Z_][a-zA-Z0-9_]*)\.(asc|desc)/);
+  return m ? { columna: m[1], direccion: m[2] } : null;
+}
+
+function inyectarCursor(path, cursor) {
+  if (!cursor) return path;
+  const orden = extraerOrden(path);
+  if (!orden) return path; // sin order= explícito no hay forma segura de aplicar cursor
+  const op = orden.direccion === "desc" ? "lt" : "gt";
+  const filtro = `${orden.columna}=${op}.${encodeURIComponent(cursor)}`;
+  return path + (path.includes("?") ? "&" : "?") + filtro;
+}
+
 function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
   if (!TABLAS_CON_EMPRESA.includes(tabla)) return body;
   if (!body) return body;
@@ -184,11 +239,11 @@ function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
 export async function POST(request) {
   try {
     if (!SUPABASE_URL || !SUPABASE_KEY) {
-      console.error("[data] Falta configuración: SUPABASE_URL o SUPABASE_SERVICE_KEY");
+      logger.error("[data] Falta configuración: SUPABASE_URL o SUPABASE_SERVICE_KEY");
       return NextResponse.json({ error: "Servidor mal configurado" }, { status: 500 });
     }
 
-    const { method, path, body } = await request.json();
+    const { method, path, body, limit, offset, cursor } = await request.json();
     if (!path) {
       return NextResponse.json({ error: "Path requerido" }, { status: 400 });
     }
@@ -199,6 +254,17 @@ export async function POST(request) {
       return respuestaNoAutorizado();
     }
     const empresaId = sesion.empresa_id;
+
+    // ─── RATE LIMIT (60 writes/min por empresa, reads ilimitados) ───
+    if (method && method !== "GET") {
+      const rl = checkRateLimit(`data:${empresaId}`, 60, 60_000);
+      if (rl.limited) {
+        return NextResponse.json(
+          { error: "Demasiadas operaciones. Esperá unos segundos." },
+          { status: 429, headers: { "Retry-After": String(Math.ceil(rl.resetMs / 1000)) } }
+        );
+      }
+    }
 
     // ─── VALIDACIONES ───
     const pathCheck = validarPath(path);
@@ -244,8 +310,18 @@ export async function POST(request) {
     if (!method || method === "GET" || method === "PATCH" || method === "DELETE") {
       finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
     }
+    // Aplicar paginación a todo GET para evitar retornos sin límite.
+    // Si viene `cursor`, se usa keyset (ignora offset); si no, offset clásico.
+    if (!method || method === "GET") {
+      if (cursor) {
+        const safeCursor = sanitizePostgrestParam(String(cursor));
+        finalPath = inyectarCursor(finalPath, safeCursor);
+      }
+      finalPath = inyectarLimit(finalPath, limit, cursor ? 0 : offset);
+    }
     if (method === "POST" || method === "PATCH") {
-      finalBody = inyectarEmpresaEnBody(body, pathCheck.tabla, empresaId, method);
+      finalBody = stripUnallowedFields(body, pathCheck.tabla, method);
+      finalBody = inyectarEmpresaEnBody(finalBody, pathCheck.tabla, empresaId, method);
     }
 
     // ─── EJECUTAR ───
@@ -262,9 +338,19 @@ export async function POST(request) {
       broadcastRefresh(empresaId, pathCheck.tabla);
     }
 
-    return NextResponse.json({ ok: true, data: filtrarCamposSensibles(data, pathCheck.tabla) });
+    // nextCursor: valor de la columna de orden en la última fila — el cliente
+    // lo reenvía como `cursor` para pedir la página siguiente sin OFFSET.
+    let nextCursor = null;
+    if ((!method || method === "GET") && Array.isArray(data) && data.length > 0) {
+      const orden = extraerOrden(finalPath);
+      if (orden && data[data.length - 1]?.[orden.columna] !== undefined) {
+        nextCursor = data[data.length - 1][orden.columna];
+      }
+    }
+
+    return NextResponse.json({ ok: true, data: filtrarCamposSensibles(data, pathCheck.tabla), nextCursor });
   } catch (err) {
-    console.error("[data] Error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[data] Error interno", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

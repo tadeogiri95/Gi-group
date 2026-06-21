@@ -5,15 +5,18 @@
 // Usado por ChatScreen y HomeEmp.
 // ═══════════════════════════════════════════════════════════
 
-import { getToken, clearToken } from "./supabase";
+import { getToken, clearToken, getCsrfToken } from "./supabase";
 import { haversine } from "./calc";
 
 export async function ficharServer(accion, opciones = {}) {
   const token = getToken();
   if (!token) throw new Error("Sin sesión");
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const csrf = getCsrfToken();
+  if (csrf) headers["x-csrf-token"] = csrf;
   const res = await fetch("/api/fichar", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers,
     body: JSON.stringify({ accion, ...opciones }),
   });
   if (res.status === 401) { clearToken(); throw new Error("Sesión expirada"); }
@@ -46,8 +49,11 @@ export async function obtenerGeo(empleado) {
           resolve({ lat, lng, distancia: null, msg: "📍 Ubicación registrada" });
         }
       },
-      () => resolve({ lat: null, lng: null, distancia: null, msg: null }),
-      { enableHighAccuracy: true, timeout: 10000 }
+      (err) => {
+        const motivos = { 1: "Permiso de ubicación denegado", 2: "No se pudo obtener ubicación", 3: "Tiempo agotado obteniendo ubicación" };
+        resolve({ lat: null, lng: null, distancia: null, msg: `⚠️ ${motivos[err.code] || "Error GPS"}`, error: true });
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   });
 }

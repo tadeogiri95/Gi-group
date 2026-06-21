@@ -6,41 +6,41 @@ import { verifyAdminToken } from "../lib/jwt";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
+function sbRpc(fnName, params) {
+  return fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
+    method: "POST",
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+    cache: "no-store",
+  }).then((r) => r.json());
+}
+
 async function fetchData() {
-  const [empresasRes, suscripcionesRes, empleadosRes] = await Promise.all([
-    fetch(`${SB_URL}/rest/v1/empresa?select=id,nombre,nombre_corto,slug,plan_activo,activa,created_at,onboarding_completado&order=created_at.desc`, {
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-      cache: "no-store",
-    }),
-    fetch(`${SB_URL}/rest/v1/suscripciones?select=empresa_id,estado,plan,monto&order=created_at.desc`, {
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-      cache: "no-store",
-    }),
-    fetch(`${SB_URL}/rest/v1/empleados?select=empresa_id&activo=eq.true`, {
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-      cache: "no-store",
-    }),
-  ]);
-
-  const empresas = await empresasRes.json();
-  const suscripciones = await suscripcionesRes.json();
-  const empleados = await empleadosRes.json();
-
-  const empCount = {};
-  for (const e of (empleados || [])) empCount[e.empresa_id] = (empCount[e.empresa_id] || 0) + 1;
-
-  const subMap = {};
-  for (const s of (suscripciones || [])) {
-    if (!subMap[s.empresa_id] || s.estado === "activa") subMap[s.empresa_id] = s;
+  if (!SB_URL || !SB_KEY) {
+    console.error("Superadmin fetchData: NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_KEY no configuradas");
+    return { empresas: [], total: 0, page: 1, pageSize: 50, stats: null };
   }
+  try {
+    const [result, stats] = await Promise.all([
+      sbRpc("rpc_superadmin_empresas", { p_limit: 50, p_offset: 0, p_search: null }),
+      sbRpc("rpc_superadmin_stats", {}),
+    ]);
 
-  return {
-    empresas: (empresas || []).map((e) => ({
-      ...e,
-      empleados_activos: empCount[e.id] || 0,
-      suscripcion: subMap[e.id] || null,
-    })),
-  };
+    return {
+      empresas: result.empresas ?? [],
+      total: result.total ?? 0,
+      page: 1,
+      pageSize: 50,
+      stats: stats ?? null,
+    };
+  } catch (err) {
+    console.error("Superadmin fetchData error:", err);
+    return { empresas: [], total: 0, page: 1, pageSize: 50, stats: null };
+  }
 }
 
 export default async function SuperadminPage() {

@@ -10,12 +10,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  const [mrr_trending, cohortes, churn, revenue_plan, funnel] = await Promise.all([
+  const [mrr_trending, cohortes, churn, revenue_plan, funnel, health_scores, email_engagement] = await Promise.all([
     sbRpc("rpc_mrr_trending", {}, { silent: true, fallback: [] }),
     sbRpc("rpc_conversion_cohortes", {}, { silent: true, fallback: [] }),
     sbRpc("rpc_churn_mensual", {}, { silent: true, fallback: [] }),
     sbRpc("rpc_revenue_por_plan", {}, { silent: true, fallback: [] }),
     sbRpc("rpc_funnel_activacion", {}, { silent: true, fallback: [] }),
+    sbRpc("rpc_health_score_empresas", {}, { silent: true, fallback: [] }),
+    sbRpc("rpc_email_engagement", {}, { silent: true, fallback: [] }),
   ]);
 
   return NextResponse.json({
@@ -24,6 +26,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     churn,
     revenue_plan,
     funnel,
+    health_scores,
+    email_engagement,
   }, {
     headers: { "Cache-Control": "private, max-age=60" },
   });

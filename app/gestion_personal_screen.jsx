@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { sb } from "./lib/supabase";
+import { sb, apiFetch } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { passwordInicial } from "./lib/passwords";
 import { getDivisionesConSinAsignar } from "./lib/constants";
@@ -128,50 +128,39 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
 }
 
 /* ═══ MODAL CSV PREVIEW ═══ */
-function ModalCSVPreview({ filas, empleadosExistentes, divisiones, onClose, onConfirm, saving, progreso }) {
-  const legajosExistentes = new Set(empleadosExistentes.map(e => String(e.legajo)));
-  const nombresExistentes = new Set(empleadosExistentes.map(e => (e.nombre || "").toUpperCase().trim()));
-  const filasConEstado = filas.map(r => {
-    const legExiste = r.legajo && legajosExistentes.has(String(r.legajo).trim());
-    const nomExiste = nombresExistentes.has(r.nombre.toUpperCase().trim());
-    return { ...r, duplicado: legExiste || nomExiste };
-  });
-  const nuevos = filasConEstado.filter(r => !r.duplicado);
-  const duplicados = filasConEstado.filter(r => r.duplicado);
-
+function ModalCSVPreview({ filas, divisiones, onClose, onConfirm, saving, progreso }) {
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Vista previa CSV">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
         <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">Vista previa CSV</h3>
-        <p className="text-xs text-gypi-dim mb-3.5">
-          <Tag color={GREEN}>{nuevos.length} nuevos</Tag> <Tag color="var(--color-text-muted)">{duplicados.length} duplicados (se omiten)</Tag>
-        </p>
+        <p className="text-xs text-gypi-dim mb-3.5">{filas.length} empleados detectados. Revisá y confirmá.</p>
 
         <div className="max-h-[320px] overflow-y-auto mb-3.5 border border-gypi-border rounded-[10px]">
-          {filasConEstado.slice(0, 100).map((r, i) => {
+          {filas.slice(0, 100).map((r, i) => {
             const divInfo = divisiones.find(d => d.id === r.division);
+            const sinLegajo = !/^\d+$/.test(String(r.legajo || "").trim());
             return (
-              <div key={i} className="p-2.5 text-xs" style={{ borderBottom: i < Math.min(filasConEstado.length, 100) - 1 ? "1px solid var(--color-border)" : "none", opacity: r.duplicado ? 0.5 : 1 }}>
+              <div key={i} className="p-2.5 text-xs" style={{ borderBottom: i < Math.min(filas.length, 100) - 1 ? "1px solid var(--color-border)" : "none" }}>
                 <div className="flex gap-2 items-center">
-                  <span className="font-mono font-bold min-w-[60px] text-[11px]" style={{ color: r.duplicado ? "var(--color-text-muted)" : GREEN }}>{r.legajo || "auto"}</span>
+                  <span className="font-mono font-bold min-w-[60px] text-[11px]" style={{ color: sinLegajo ? RED : GREEN }}>{r.legajo || "sin legajo"}</span>
                   <span className="flex-1 text-gypi-text truncate">{capitalizarNombre(r.nombre)}</span>
                   {divInfo && r.division && <Tag color={divInfo.color || CYAN}>{divInfo.label}</Tag>}
-                  {r.duplicado && <Tag color={AMBER}>dup</Tag>}
+                  {sinLegajo && <Tag color={RED}>sin legajo</Tag>}
                 </div>
               </div>
             );
           })}
-          {filasConEstado.length > 100 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filasConEstado.length - 100} mas</div>}
+          {filas.length > 100 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filas.length - 100} mas</div>}
         </div>
 
         {saving && progreso && <div className="p-2.5 rounded-[10px] text-xs mb-2.5 text-center" style={{ background: `${AMBER}15`, color: AMBER }}>{progreso}</div>}
 
         <div className="flex gap-2">
           <button onClick={onClose} disabled={saving} className="g-btn g-btn-secondary flex-1" style={{ cursor: saving ? "default" : "pointer" }}>Cancelar</button>
-          <button onClick={() => onConfirm(nuevos)} disabled={saving || nuevos.length === 0} className="flex-[2] py-3 rounded-xl border-none text-sm font-bold" style={{ background: saving || nuevos.length === 0 ? "var(--color-surface)" : GREEN, color: saving || nuevos.length === 0 ? "var(--color-text-dim)" : "#000", cursor: saving || nuevos.length === 0 ? "default" : "pointer" }}>
-            {saving ? "Importando..." : `Importar ${nuevos.length} empleados`}
+          <button onClick={onConfirm} disabled={saving} className="flex-[2] py-3 rounded-xl border-none text-sm font-bold" style={{ background: saving ? "var(--color-surface)" : GREEN, color: saving ? "var(--color-text-dim)" : "#000", cursor: saving ? "default" : "pointer" }}>
+            {saving ? "Importando..." : `Importar ${filas.length} empleados`}
           </button>
         </div>
       </div>
@@ -246,6 +235,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
   const [modalInvitacion, setModalInvitacion] = useState(null);
   const [saving, setSaving] = useState(false);
   const [progresoCSV, setProgresoCSV] = useState("");
+  const [csvRawText, setCsvRawText] = useState(null);
   const fileRef = useRef(null);
   const toast = useToast();
 
@@ -372,49 +362,41 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
         return;
       }
       setModalCSV(filas);
+      setCsvRawText(text);
     };
     reader.readAsText(file);
     e.target.value = "";
   };
 
-  const handleCSVConfirm = async (nuevos) => {
+  const handleCSVConfirm = async () => {
+    if (!csvRawText) return;
     setSaving(true);
-    let ok = 0;
+    setProgresoCSV(`Importando ${modalCSV.length} empleados...`);
     try {
-      for (let i = 0; i < nuevos.length; i++) {
-        const r = nuevos[i];
-        setProgresoCSV(`Importando ${i + 1} de ${nuevos.length}...`);
-        const nombre = capitalizarNombre(r.nombre.trim());
-        const legajo = r.legajo?.trim() || String(legajoProvisorio());
-        const payload = {
-          empresa_id: empresaId,
-          nombre,
-          apodo: generarApodo(nombre),
-          legajo,
-          division: r.division || null,
-          rol: r.rol || "operativo",
-          area: r.area || "produccion",
-          email: r.email?.trim() || null,
-          activo: true,
-          pre_cargado: true,
-          password: passwordInicial(legajo),
-        };
-        try {
-          await sb.post("empleados", payload);
-          ok++;
-        } catch (err) {
-          console.warn(`Error importando ${nombre}:`, err);
-        }
+      const res = await apiFetch("/api/empleados/import-csv", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: csvRawText,
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Error al importar");
+
+      const erroresTxt = data.errors?.length ? ` · ${data.errors.length} con error` : "";
+      if (data.errors?.length) console.warn("Errores import CSV empleados:", data.errors);
+      if (data.created > 0) {
+        toast.success(`${data.created} importados · ${data.skipped} duplicados${erroresTxt}`);
+      } else {
+        toast.info(`0 importados · ${data.skipped} duplicados${erroresTxt}`);
       }
-      setModalCSV(null);
-      setProgresoCSV("");
-      cargar();
-      if (ok < nuevos.length) toast.warning(`Se importaron ${ok} de ${nuevos.length}. Algunos fallaron (puede haber legajos duplicados).`);
     } catch (err) {
       console.error("Error en importación CSV:", err);
-    } finally {
-      setSaving(false);
+      toast.error("Error al importar: " + err.message);
     }
+    setProgresoCSV("");
+    setModalCSV(null);
+    setCsvRawText(null);
+    setSaving(false);
+    await cargar();
   };
 
   /* ── Link invitación ── */
@@ -508,7 +490,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
 
       {/* Tip CSV */}
       <div className="text-[10px] text-gypi-mute mb-3 text-center">
-        CSV: columnas <span className="font-mono text-gypi-dim">nombre</span> (obligatorio), <span className="font-mono text-gypi-dim">legajo, division, rol, area, email</span> (opcionales)
+        CSV: columnas <span className="font-mono text-gypi-dim">legajo, nombre</span> (obligatorias), <span className="font-mono text-gypi-dim">division, rol, area, email</span> (opcionales)
       </div>
 
       {/* Lista empleados */}
@@ -609,9 +591,8 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       {modalCSV && (
         <ModalCSVPreview
           filas={modalCSV}
-          empleadosExistentes={empleados}
           divisiones={DIVISIONES}
-          onClose={() => setModalCSV(null)}
+          onClose={() => { setModalCSV(null); setCsvRawText(null); }}
           onConfirm={handleCSVConfirm}
           saving={saving}
           progreso={progresoCSV}

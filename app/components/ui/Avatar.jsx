@@ -1,5 +1,5 @@
 'use client';
-import { C, fH } from '../../lib/theme';
+import { fH } from '../../lib/theme';
 
 // ═══════════════════════════════════════════════════════
 // Avatar — Avatar con fallback de iniciales

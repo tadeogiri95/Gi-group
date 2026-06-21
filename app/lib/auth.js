@@ -10,6 +10,41 @@ export { validarPassword } from "./validators";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
+// ─── Session validation cache (fail-closed with circuit breaker) ───
+// Caches validated session JTIs for 5 minutes to avoid hitting Supabase
+// on every request. On Supabase outage, the circuit breaker opens after
+// 3 consecutive failures — while open, only cached sessions are accepted
+// (fail-closed for unknown tokens, pass-through for recently validated ones).
+const SESSION_CACHE = new Map();
+const SESSION_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+const CB_THRESHOLD = 3;
+const CB_RESET_MS = 60_000; // 1 min
+let cbFailures = 0;
+let cbOpenUntil = 0;
+
+function cbRecord(success) {
+  if (success) {
+    cbFailures = 0;
+    cbOpenUntil = 0;
+  } else {
+    cbFailures++;
+    if (cbFailures >= CB_THRESHOLD) {
+      cbOpenUntil = Date.now() + CB_RESET_MS;
+      logger.warn("validarToken: circuit breaker OPEN — solo sesiones cacheadas por 60s");
+    }
+  }
+}
+
+function cbIsOpen() {
+  if (cbOpenUntil && Date.now() < cbOpenUntil) return true;
+  if (cbOpenUntil && Date.now() >= cbOpenUntil) {
+    cbOpenUntil = 0;
+    cbFailures = 0;
+  }
+  return false;
+}
+
 // ─── Validar sesión: verifica firma JWT + revocación en DB ───
 export async function validarToken(request) {
   const cookieToken = request.cookies?.get?.("gypi_token")?.value;
@@ -29,38 +64,54 @@ export async function validarToken(request) {
 
   if (!payload || !payload.sub || !payload.eid) return null;
   if (payload.type === "refresh") return null;
-  if (payload.code) return null; // impersonate codes son de un solo intercambio, no sesiones
+  if (payload.code) return null;
 
   // Tokens de impersonación (1h) se validan solo por firma — no tienen sesión en DB.
-  // Consultamos por la columna `token` (existe desde el schema base) que almacena el jti.
-  // La columna `jti` (migración 010) es un alias indexado que puede no estar aplicada aún.
   if (!payload.imp && payload.jti && SB_URL && SB_KEY) {
-    try {
-      const crypto = await import("crypto");
-      const tokenHash = crypto.createHash("sha256").update(payload.jti).digest("hex");
-      const r = await fetch(
-        `${SB_URL}/rest/v1/sesiones?token_hash=eq.${tokenHash}&revocada=eq.false&select=id&limit=1`,
-        { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
-      );
-      if (r.ok) {
-        // Solo bloqueamos si Supabase confirmó explícitamente que la sesión no existe.
-        const rows = await r.json();
-        if (!Array.isArray(rows) || rows.length === 0) return null;
-      } else {
-        // Error de DB/RLS — registramos para diagnóstico pero NO bloqueamos
-        // (fail-open: una caída de Supabase no debe expulsar a todos los usuarios).
-        const errText = await r.text().catch(() => "");
-        logger.error(`validarToken: chequeo de sesión falló [${r.status}]`, new Error(errText));
+    const crypto = await import("crypto");
+    const tokenHash = crypto.createHash("sha256").update(payload.jti).digest("hex");
+
+    // Check cache first
+    const cached = SESSION_CACHE.get(tokenHash);
+    if (cached && Date.now() - cached.ts < SESSION_CACHE_TTL) {
+      if (!cached.valid) return null;
+      // Cache hit — skip DB check
+    } else if (cbIsOpen()) {
+      // Circuit breaker open: only allow cached sessions
+      if (!cached || !cached.valid) {
+        logger.warn("validarToken: circuit breaker open, sesión no cacheada rechazada", { jti: payload.jti.slice(0, 8) });
+        return null;
       }
-    } catch (e) {
-      logger.error("validarToken: error de red en chequeo de sesión", e);
-      // fail-open
+    } else {
+      // DB check
+      try {
+        const r = await fetch(
+          `${SB_URL}/rest/v1/sesiones?token_hash=eq.${tokenHash}&revocada=eq.false&select=id&limit=1`,
+          { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
+        );
+        if (r.ok) {
+          const rows = await r.json();
+          const valid = Array.isArray(rows) && rows.length > 0;
+          SESSION_CACHE.set(tokenHash, { valid, ts: Date.now() });
+          cbRecord(true);
+          if (!valid) return null;
+        } else {
+          const errText = await r.text().catch(() => "");
+          logger.error(`validarToken: chequeo de sesión falló [${r.status}]`, new Error(errText));
+          cbRecord(false);
+          // Fail-closed: if we can't verify, reject unknown sessions
+          if (!cached || !cached.valid) return null;
+        }
+      } catch (e) {
+        logger.error("validarToken: error de red en chequeo de sesión", e);
+        cbRecord(false);
+        // Fail-closed: reject if not in cache
+        if (!cached || !cached.valid) return null;
+      }
     }
   }
 
   // email_verificado se expone como flag informativo pero NO bloquea el acceso.
-  // Bloquear aquí causaba logout inmediato post-login para empresas sin verificar,
-  // sin dar al usuario contexto de por qué falla. Se maneja en la UI con un banner.
   let emailVerificado = true;
   if (!payload.imp && SB_URL && SB_KEY) {
     try {
@@ -75,7 +126,7 @@ export async function validarToken(request) {
         }
       }
     } catch {
-      // fail-open
+      // fail-open for non-security flag
     }
   }
 
@@ -98,4 +149,3 @@ export function respuestaNoAutorizado(mensaje) {
     { status: 401 }
   );
 }
-

@@ -19,11 +19,24 @@ export async function getPlanEmpresa(empresaId) {
 
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/empresa?id=eq.${empresaId}&select=plan_activo`,
+      `${SUPABASE_URL}/rest/v1/empresa?id=eq.${empresaId}&select=plan_activo,plan_vence`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
     );
     const data = await res.json();
-    const plan = data?.[0]?.plan_activo || "free";
+    let plan = data?.[0]?.plan_activo || "free";
+
+    // P2: Si plan_vence expiró, el grace period terminó → degradar a free
+    const planVence = data?.[0]?.plan_vence;
+    if (planVence && new Date(planVence) < new Date()) {
+      plan = "free";
+      // Limpiar en background (fire-and-forget)
+      fetch(`${SUPABASE_URL}/rest/v1/empresa?id=eq.${empresaId}`, {
+        method: "PATCH",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ plan_activo: "free", plan_vence: null }),
+      }).catch(() => {});
+    }
+
     cache.set(empresaId, { plan, t: Date.now() });
     return plan;
   } catch {
@@ -107,6 +120,41 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
         ok: false,
         error: `El calendario con notas requiere plan Pro o Enterprise.`,
         upgrade_a: "pro",
+      };
+    }
+  }
+
+  // ─── turnos_planificados: mismo gate que notas_calendario (feature "calendario") ───
+  if (tabla === "turnos_planificados") {
+    if (!planPermite(plan, "calendario")) {
+      return {
+        ok: false,
+        error: `La planificación de turnos requiere plan Pro o Enterprise.`,
+        upgrade_a: "pro",
+      };
+    }
+  }
+
+  // ─── reportes_obra: requiere módulo "reportes" (no incluido en Free) ───
+  if (tabla === "reportes_obra") {
+    if (!planTieneModulo(plan, "reportes")) {
+      return {
+        ok: false,
+        error: `Los reportes de obra requieren plan Starter o superior.`,
+        upgrade_a: "starter",
+      };
+    }
+  }
+
+  // ─── proyectos: chequear max_proyectos ───
+  if (tabla === "proyectos") {
+    const max = planLimite(plan, "max_proyectos");
+    const actuales = await contarFilas("proyectos", empresaId);
+    if (actuales >= max) {
+      return {
+        ok: false,
+        error: `Tu plan ${planInfo.nombre} permite hasta ${max} proyectos. Actualizá tu plan para crear más.`,
+        upgrade_a: plan === "free" ? "starter" : "pro",
       };
     }
   }

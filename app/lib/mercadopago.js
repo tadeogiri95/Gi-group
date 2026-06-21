@@ -32,18 +32,19 @@ async function mpFetch(path, opts = {}) {
  * Crea un preapproval (suscripción recurrente) en Mercado Pago.
  * El usuario va a la back_url devuelta y aprueba con su cuenta de MP.
  */
-export async function crearPreapproval({ payerEmail, monto, plan, empresaId, externalReference, backUrl }) {
+export async function crearPreapproval({ payerEmail, monto, plan, empresaId, externalReference, backUrl, periodo = "mensual" }) {
+  const esAnual = periodo === "anual";
   return mpFetch("/preapproval", {
     method: "POST",
     body: JSON.stringify({
-      reason: `Gypi — Plan ${plan}`,
+      reason: `Gypi — Plan ${plan}${esAnual ? " (anual)" : ""}`,
       external_reference: externalReference,
       payer_email: payerEmail,
       back_url: backUrl,
       auto_recurring: {
-        frequency: 1,
+        frequency: esAnual ? 12 : 1,
         frequency_type: "months",
-        transaction_amount: Number(monto),
+        transaction_amount: esAnual ? Number(monto) * 12 : Number(monto),
         currency_id: "ARS",
       },
       status: "pending",

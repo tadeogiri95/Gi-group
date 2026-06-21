@@ -8,10 +8,12 @@ const GREEN = "#16A34A";
 const RED = "#DC2626";
 const CYAN = "#0891B2";
 const VIOLET = "#7C3AED";
+const INDIGO = "#4F46E5";
 const MUTE = "var(--color-text-muted)";
 
 import { sb } from "./lib/supabase";
 import { hoyArg, lunesDeLaSemana } from "./lib/dates";
+import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
 import BillingScreen from "./components/BillingScreen";
 import FotoViewer from "./components/FotoViewer";
@@ -267,6 +269,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const [fichadasMes, setFichadasMes] = useState([]);
   const [solsAprobadas, setSolsAprobadas] = useState([]);
   const [reportesObra, setReportesObra] = useState([]);
+  const [docsExigidos, setDocsExigidos] = useState([]);
+  const [docsCargados, setDocsCargados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [showBilling, setShowBilling] = useState(false);
@@ -304,18 +308,22 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       const monStr = lunesDeLaSemana(0);
       const mesInicio = hoyArg().slice(0, 7) + "-01";
 
-      const [prodData, fichadasSem, fichadasMesData, solsApData, repObra] = await Promise.all([
+      const [prodData, fichadasSem, fichadasMesData, solsApData, repObra, docsExig, docsCarg] = await Promise.all([
         sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`),
         sb.get(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc`),
         sb.get(`fichadas?select=empleado_id,legajo,fecha,horas_trabajadas,llegada_tarde,minutos_tarde&fecha=gte.${mesInicio}&order=fecha.asc`),
         sb.get(`solicitudes?select=empleado_id,legajo,tipo,estado,created_at&estado=eq.aprobado&created_at=gte.${mesInicio}&limit=500`),
         sb.get(`reportes_obra?fecha=eq.${hoy}&order=created_at.desc`),
+        sb.get(`documentos_exigidos_empleado?select=empleado_id,tipo_documento_id`),
+        sb.get(`documentos_empleado?estado=eq.cargado&select=empleado_id,tipo_documento_id`),
       ]);
       setResumenProd(prodData || []);
       setFichadasSemana(fichadasSem || []);
       setFichadasMes(fichadasMesData || []);
       setSolsAprobadas(solsApData || []);
       setReportesObra(repObra || []);
+      setDocsExigidos(docsExig || []);
+      setDocsCargados(docsCarg || []);
     } catch (e) {
       console.error("Dashboard error:", e);
     } finally {
@@ -406,28 +414,32 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       const diasPermiso = solsEmp.length;
       const horasPermiso = diasPermiso * horasDiarias;
 
-      const pAsistencia = diasProgramados > 0 ? Math.min(1, diasTrabajados / diasProgramados) : 0;
-      const pPuntualidad = diasTrabajados > 0 ? Math.max(0, 1 - (tardanzas / diasTrabajados)) : 0;
-      const pDisponibilidad = horasEsperadas > 0 ? Math.max(0, 1 - (horasPermiso / horasEsperadas)) : 1;
-      const pEsfuerzo = horasTrabajadas > 0 ? Math.min(1, horasExtra / horasTrabajadas) : 0;
+      const tiposExigidos = new Set(docsExigidos.filter(d => d.empleado_id === emp.id).map(d => d.tipo_documento_id));
+      const tiposCargados = new Set(docsCargados.filter(d => d.empleado_id === emp.id).map(d => d.tipo_documento_id));
+      const documentosExigidos = tiposExigidos.size;
+      const documentosCompletos = [...tiposExigidos].filter(t => tiposCargados.has(t)).length;
 
-      const score = Math.round(
-        (pAsistencia * 40 + pPuntualidad * 25 + pDisponibilidad * 20 + pEsfuerzo * 15)
-      );
+      const calculo = calcularScoreEmpleado({
+        diasProgramados, diasTrabajados, tardanzas,
+        horasTrabajadas, horasExtra, horasPermiso, horasEsperadas,
+        documentosExigidos, documentosCompletos,
+      });
 
       return {
         id: emp.id, nombre: emp.nombre, apodo: emp.apodo, legajo: emp.legajo, division: emp.division,
-        score: Math.min(100, Math.max(0, score)),
+        score: calculo.score,
         diasProgramados, diasTrabajados, tardanzas, horasTrabajadas: +horasTrabajadas.toFixed(1),
         horasExtra: +horasExtra.toFixed(1), diasPermiso, horasPermiso: +horasPermiso.toFixed(1),
         horasEsperadas: +horasEsperadas.toFixed(1),
-        pAsistencia: Math.round(pAsistencia * 100),
-        pPuntualidad: Math.round(pPuntualidad * 100),
-        pDisponibilidad: Math.round(pDisponibilidad * 100),
-        pEsfuerzo: Math.round(pEsfuerzo * 100),
+        pAsistencia: calculo.pAsistencia,
+        pPuntualidad: calculo.pPuntualidad,
+        pDisponibilidad: calculo.pDisponibilidad,
+        pEsfuerzo: calculo.pEsfuerzo,
+        pDocumentacion: calculo.pDocumentacion,
+        documentosExigidos, documentosCompletos,
       };
     }).sort((a, b) => b.score - a.score);
-  }, [empleados, fichadasMes, solsAprobadas]);
+  }, [empleados, fichadasMes, solsAprobadas, docsExigidos, docsCargados]);
 
   // Fichadas semana — por dia para grafico
   const fichadasPorDia = useMemo(() => {
@@ -949,10 +961,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 </div>
                 <div className="mt-3 flex gap-1 flex-wrap">
                   {[
-                    { label: "Asistencia", w: "40%", color: GREEN },
-                    { label: "Puntualidad", w: "25%", color: CYAN },
-                    { label: "Disponibilidad", w: "20%", color: VIOLET },
-                    { label: "Esfuerzo Extra", w: "15%", color: AMBER },
+                    { label: "Asistencia", w: `${PESOS_SCORE.asistencia}%`, color: GREEN },
+                    { label: "Puntualidad", w: `${PESOS_SCORE.puntualidad}%`, color: CYAN },
+                    { label: "Disponibilidad", w: `${PESOS_SCORE.disponibilidad}%`, color: VIOLET },
+                    { label: "Esfuerzo Extra", w: `${PESOS_SCORE.esfuerzo}%`, color: AMBER },
+                    { label: "Documentación", w: `${PESOS_SCORE.documentacion}%`, color: INDIGO },
                   ].map(c => (
                     <span key={c.label} className="text-[9px] font-bold px-[7px] py-[3px] rounded-md" style={{ background: `${c.color}12`, color: c.color }}>{c.label} {c.w}</span>
                   ))}
@@ -995,10 +1008,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       {scoreDetail && (() => {
         const d = scoreDetail;
         const rows = [
-          { label: "Asistencia", pct: d.pAsistencia, weight: "40%", detail: `${d.diasTrabajados} / ${d.diasProgramados} dias`, color: GREEN },
-          { label: "Puntualidad", pct: d.pPuntualidad, weight: "25%", detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}`, color: CYAN },
-          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: "20%", detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}`, color: VIOLET },
-          { label: "Esfuerzo Extra", pct: d.pEsfuerzo, weight: "15%", detail: `${d.horasExtra}h extra de ${d.horasTrabajadas}h`, color: AMBER },
+          { label: "Asistencia", pct: d.pAsistencia, weight: `${PESOS_SCORE.asistencia}%`, detail: `${d.diasTrabajados} / ${d.diasProgramados} dias`, color: GREEN },
+          { label: "Puntualidad", pct: d.pPuntualidad, weight: `${PESOS_SCORE.puntualidad}%`, detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}`, color: CYAN },
+          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: `${PESOS_SCORE.disponibilidad}%`, detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}`, color: VIOLET },
+          { label: "Esfuerzo Extra", pct: d.pEsfuerzo, weight: `${PESOS_SCORE.esfuerzo}%`, detail: `${d.horasExtra}h extra de ${d.horasTrabajadas}h`, color: AMBER },
+          { label: "Documentación", pct: d.pDocumentacion, weight: `${PESOS_SCORE.documentacion}%`, detail: d.documentosExigidos === 0 ? "Sin documentos exigidos" : `${d.documentosCompletos} de ${d.documentosExigidos} documentos cargados`, color: INDIGO },
         ];
         return (
           <div onClick={() => setScoreDetail(null)}
@@ -1040,7 +1054,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               </div>
 
               <div className="text-[10px] text-gypi-mute mt-3 leading-snug text-center">
-                Asist. 40% + Punt. 25% + Disp. 20% + Esfuerzo 15%
+                Asist. {PESOS_SCORE.asistencia}% + Punt. {PESOS_SCORE.puntualidad}% + Disp. {PESOS_SCORE.disponibilidad}% + Esfuerzo {PESOS_SCORE.esfuerzo}% + Docs. {PESOS_SCORE.documentacion}%
               </div>
 
               <button onClick={() => setScoreDetail(null)}

@@ -2,6 +2,8 @@
 
 PWA de gestión de RRHH para PyMEs argentinas. Fichaje con geolocalización, gestión de empleados, proyectos, reportes y facturación SaaS con MercadoPago.
 
+> Antes de contribuir, leé `CONTRIBUTING.md` (convenciones, checklist de PR, reglas de seguridad no negociables).
+
 ## Stack
 
 - **Next.js 16** (App Router, React 19)
@@ -60,24 +62,7 @@ CRON_SECRET=<token-aleatorio>               # valida peticiones de los cron jobs
 
 ## Migraciones de base de datos
 
-Ejecutar en orden desde el SQL Editor de Supabase o con la CLI:
-
-```bash
-# Con Supabase CLI
-supabase db push
-
-# O manualmente: ejecutar cada archivo en orden
-supabase/migrations/001_schema.sql
-supabase/migrations/002_funciones.sql
-supabase/migrations/003_storage.sql
-supabase/migrations/004_rls.sql
-supabase/migrations/005_planes.sql
-supabase/migrations/006_billing.sql
-supabase/migrations/007_fix_theme_preset_constraint.sql
-supabase/migrations/008_audit_log.sql
-supabase/migrations/009_timezone_auto_fichaje.sql
-supabase/migrations/010_sesiones_jti_columns.sql
-```
+Las migraciones en `supabase/migrations/` **no se ejecutan automáticamente** — son documentación del schema esperado que se corre a mano (SQL Editor de Supabase) en orden numérico, de menor a mayor. Antes de correr una migración que toque datos existentes (no solo `CREATE TABLE`/`ALTER TABLE`), leé el comentario de cabecera del archivo — varias incluyen notas de riesgo o alcance reducido a propósito (ver `034_solicitudes_fecha_date.sql` como ejemplo).
 
 ---
 
@@ -95,10 +80,12 @@ Acceder a `http://localhost:3000/<slug-empresa>` donde `slug` es el campo `slug`
 ## Tests
 
 ```bash
-npm test           # 84 tests — calc, auth, jwt, plans
+npm test           # unitarios + HTTP de rutas críticas + componentes RTL
+npm run test:e2e   # smoke test E2E con Playwright (login → fichar → historial)
+npm run lint       # ESLint (eslint-config-next + unused-imports + no-restricted-imports)
 ```
 
-Usa el runner nativo de Node.js (`node:test`). Sin jest, sin vitest.
+Los unitarios y de integración HTTP usan el runner nativo de Node.js (`node:test`), sin jest ni vitest. Los componentes usan `@testing-library/react` sobre `jsdom`. El E2E usa Playwright contra el dev server local con las rutas de API mockeadas (no requiere Supabase real). Ver `CONTRIBUTING.md` para el detalle de qué correr antes de un PR.
 
 ---
 
@@ -110,13 +97,16 @@ Usa el runner nativo de Node.js (`node:test`). Sin jest, sin vitest.
 
 ### Cron jobs
 
-Definidos en `vercel.json`. Requieren **Vercel Pro** para el schedule de cada 30 minutos:
+Definidos en `vercel.json`:
 
-| Ruta | Schedule | Propósito |
+| Ruta | Schedule (UTC) | Propósito |
 |------|----------|-----------|
-| `/api/cron/auto-fichaje` | `*/30 * * * *` | Cierra fichadas abiertas 15+ min después del egreso programado |
-| `/api/cron/limpiar-tokens` | `0 5 * * 0` | Purga sesiones JWT expiradas (domingo 5am UTC) |
-| `/api/cron/trial-reminder` | `0 12 * * *` | Email recordatorio antes de fin de trial (12pm UTC) |
+| `/api/cron/auto-fichaje` | `0 3 * * *` | Cierra fichadas abiertas y limpia sesiones expiradas |
+| `/api/cron/limpiar-tokens` | `0 5 * * 0` | Purga push tokens, login_attempts, rate_limits y sesiones expiradas (domingo) |
+| `/api/cron/trial-reminder` | `0 12 * * *` | Email recordatorio antes de fin de trial |
+| `/api/cron/vencer-trials` | `0 4 * * *` | Pasa a Free los trials vencidos (RPC batch, ver `036_vencer_trials_batch.sql`) |
+| `/api/cron/push-ausencias` | `0 15 * * 1-5` | Push a gerencia por empleados sin fichar entrada (días hábiles) |
+| `/api/cron/inactividad-produccion` | `0 17 * * 1-5` | Push a operarios sin registro de actividad en 30min |
 
 Todos los cron jobs validan el header `Authorization: Bearer $CRON_SECRET`.
 
@@ -151,7 +141,10 @@ Las restricciones se aplican con `planPermite()`, `planTieneModulo()` y `planLim
 
 ## Seguridad
 
-- JWT HS256 con access token (7d) + refresh token (30d) en cookies httpOnly
+- JWT HS256 con access token (30min) + refresh token (30d) en cookies httpOnly — nunca en el body de la respuesta
 - Webhook MercadoPago con validación HMAC-SHA256 obligatoria
-- Headers HTTP en todas las rutas: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- Headers HTTP en todas las rutas (definidos en `proxy.ts`, única fuente de verdad): HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - Audit log en tabla `audit_log` para cambios sensibles
+- Rate limiting (`app/lib/rateLimit.js`) en login, registro y superadmin auth
+
+Ver `CONTRIBUTING.md` para los atajos de seguridad que están explícitamente prohibidos en este repo.

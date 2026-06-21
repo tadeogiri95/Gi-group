@@ -314,6 +314,32 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         <span className="text-gypi-dim"><Ic.chevR /></span>
       </button>
 
+      {/* Mi documentación */}
+      <button
+        onClick={() => goto("documentos")}
+        aria-label="Ver mi documentación"
+        className="w-full p-4 rounded-2xl text-gypi-text text-[13px] font-semibold font-body cursor-pointer flex items-center justify-between mb-[22px]"
+        style={{
+          background: `linear-gradient(135deg,var(--color-empresa-secondary)06,var(--color-surface))`,
+          border: `1.5px solid var(--color-empresa-secondary)20`,
+          boxShadow: `0 2px 10px var(--color-empresa-secondary)06`,
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center"
+            style={{ background: `var(--color-empresa-secondary)22`, color: "var(--color-empresa-secondary)" }}
+          >
+            📄
+          </div>
+          <div className="text-left">
+            <div className="text-[13px] font-bold text-gypi-text">Mi documentación</div>
+            <div className="text-[11px] text-gypi-dim mt-0.5">DNI, licencia y otros documentos exigidos</div>
+          </div>
+        </div>
+        <span className="text-gypi-dim"><Ic.chevR /></span>
+      </button>
+
       {/* Grilla semanal */}
       {usuario.diagrama && (() => {
         const DIAS_G = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];

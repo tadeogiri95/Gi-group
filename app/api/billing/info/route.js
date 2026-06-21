@@ -1,52 +1,102 @@
 // ═══════════════════════════════════════════════════════════
-// GET /api/billing/info — Info de suscripción y trial
+// GET /api/billing/info — Info de plan, trial y suscripción
 //
-// ENTREGA 1A: validarToken ahora viene de app/lib/auth.js
+// Campos devueltos:
+//   plan           (string)       id del plan activo
+//   estado         (string)       "trial"|"activa"|"vencida"|"suspendida"|"cancelada"
+//   dias_restantes (number|null)  días restantes del trial, null si no aplica
+//   periodo_fin    (string|null)  ISO date del fin del período pago
+//   precio         (number)       precio mensual del plan
+//   moneda         (string)       "ARS"
+//   gateway        (string|null)  "mercadopago" | null
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
-
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+import { sbGet } from "../../../lib/sbHelpers";
+import { PLANES } from "../../../lib/plans";
+import { logger } from "../../../lib/logger";
 
 export async function GET(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
 
-    const r = await fetch(
-      `${SB_URL}/rest/v1/suscripciones?empresa_id=eq.${sesion.empresa_id}&estado=in.(trial,activa)&order=created_at.desc&limit=1`,
-      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
+    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
+      return NextResponse.json(
+        { error: "Solo el administrador puede ver la información de facturación" },
+        { status: 403 }
+      );
+    }
+
+    // ── Leer datos de la empresa (plan_activo + trial_fin) ──
+    const empRows = await sbGet(
+      `empresa?id=eq.${sesion.empresa_id}&select=plan_activo,trial_fin&limit=1`,
+      { silent: true }
     );
-    const subs = await r.json();
-    const sub = subs?.[0] || null;
+    const empresa = empRows?.[0] ?? null;
 
-    if (!sub) {
-      return NextResponse.json({ plan: "free", estado: "activa", trial: null });
-    }
+    // ── Leer la suscripción más reciente ──
+    const suscRows = await sbGet(
+      `suscripciones?empresa_id=eq.${sesion.empresa_id}&order=created_at.desc&limit=1`,
+      { silent: true, fallback: [] }
+    );
+    const sub = Array.isArray(suscRows) ? suscRows[0] ?? null : null;
 
-    let dias_restantes = null;
-    if (sub.estado === "trial" && sub.trial_fin) {
+    // ── Determinar plan y estado ──
+    const planId = sub?.plan || empresa?.plan_activo || "free";
+    const planInfo = PLANES[planId] || PLANES.free;
+
+    let estado = sub?.estado ?? "activa";
+
+    // Si hay trial_fin en la empresa y no hay suscripción activa, calcular estado del trial
+    if (!sub && empresa?.trial_fin) {
       const ahora = new Date();
-      const fin = new Date(sub.trial_fin);
-      dias_restantes = Math.max(0, Math.ceil((fin - ahora) / (1000 * 60 * 60 * 24)));
+      const fin = new Date(empresa.trial_fin);
+      estado = fin > ahora ? "trial" : "vencida";
     }
+
+    // Si la suscripción dice "trial", verificar que no haya vencido
+    if (estado === "trial") {
+      const trialFinStr = sub?.trial_fin || empresa?.trial_fin;
+      if (trialFinStr) {
+        const fin = new Date(trialFinStr);
+        if (fin <= new Date()) {
+          estado = "vencida";
+        }
+      }
+    }
+
+    // ── Calcular días restantes del trial ──
+    let dias_restantes = null;
+    if (estado === "trial") {
+      const trialFinStr = sub?.trial_fin || empresa?.trial_fin;
+      if (trialFinStr) {
+        const ahora = new Date();
+        const fin = new Date(trialFinStr);
+        dias_restantes = Math.max(0, Math.ceil((fin - ahora) / (1000 * 60 * 60 * 24)));
+      }
+    }
+
+    // ── Precio: usar el de la suscripción si existe, si no el del plan ──
+    const precio = sub?.precio ?? planInfo.precio ?? 0;
+    const moneda = sub?.moneda ?? planInfo.moneda ?? "ARS";
+    const gateway = sub?.gateway ?? null;
+    const periodo_fin = sub?.periodo_fin ?? null;
 
     return NextResponse.json({
-      plan: sub.plan,
-      estado: sub.estado,
-      precio: sub.precio,
-      moneda: sub.moneda,
-      gateway: sub.gateway,
-      trial_inicio: sub.trial_inicio,
-      trial_fin: sub.trial_fin,
-      periodo_inicio: sub.periodo_inicio,
-      periodo_fin: sub.periodo_fin,
+      plan: planId,
+      estado,
       dias_restantes,
-      suscripcion_id: sub.id,
+      periodo_fin,
+      precio,
+      moneda,
+      gateway,
+    }, {
+      headers: { "Cache-Control": "private, no-store" },
     });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("GET /api/billing/info", err);
+    return NextResponse.json({ error: "Error interno al obtener info de facturación" }, { status: 500 });
   }
 }

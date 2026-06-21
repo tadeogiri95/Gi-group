@@ -19,11 +19,9 @@ const OPTIONAL_VARS = [
   "CRON_SECRET",
 ];
 
-export async function GET() {
+export async function GET(request) {
   const missing = REQUIRED_VARS.filter((v) => !process.env[v]);
-  const warnings = OPTIONAL_VARS.filter((v) => !process.env[v]);
 
-  // Ping básico a Supabase para verificar conectividad
   let db = "ok";
   const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -43,16 +41,20 @@ export async function GET() {
 
   const status = missing.length > 0 || db !== "ok" ? "degraded" : "ok";
 
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization");
+  const isAuthed = cronSecret && authHeader === `Bearer ${cronSecret}`;
+
+  if (isAuthed) {
+    const warnings = OPTIONAL_VARS.filter((v) => !process.env[v]);
+    return NextResponse.json(
+      { status, db, env: { missing, warnings: warnings.length > 0 ? warnings : undefined }, ts: new Date().toISOString() },
+      { status: status === "ok" ? 200 : 503 }
+    );
+  }
+
   return NextResponse.json(
-    {
-      status,
-      db,
-      env: {
-        missing,
-        warnings: warnings.length > 0 ? warnings : undefined,
-      },
-      ts: new Date().toISOString(),
-    },
+    { status, ts: new Date().toISOString() },
     { status: status === "ok" ? 200 : 503 }
   );
 }

@@ -47,8 +47,8 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["texto_formateado", "progreso"],
   },
   proyectos: {
-    POST: ["codigo", "nombre", "estado", "ot", "cliente", "obra", "proyecto", "division"],
-    PATCH: ["nombre", "estado", "ot", "cliente", "obra", "proyecto", "division"],
+    POST: ["estado", "ot", "cliente", "obra", "proyecto", "division"],
+    PATCH: ["estado", "ot", "cliente", "obra", "proyecto", "division"],
   },
   push_tokens: {
     POST: ["legajo", "token", "plataforma"],
@@ -97,6 +97,16 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     POST: ["email", "rol"],
     PATCH: ["usada"],
   },
+  tipos_documento_requerido: {
+    POST: ["nombre", "formatos_aceptados", "admite_multiples", "tipo_carga", "orden"],
+    PATCH: ["nombre", "formatos_aceptados", "admite_multiples", "tipo_carga", "activo", "orden"],
+  },
+  documentos_exigidos_empleado: {
+    POST: ["empleado_id", "tipo_documento_id"],
+    PATCH: [],
+  },
+  // documentos_empleado no tiene entrada: es TABLAS_SOLO_LECTURA en /api/data,
+  // los inserts pasan siempre por /api/documentos/upload.
 };
 
 // ── Schemas Zod por endpoint ────────────────────────────────────────────────
@@ -250,6 +260,15 @@ export const registroEmpresaBody = z.object({
   email: z.string().email().max(254),
   password: z.string().min(8).max(200),
   rubro: z.string().max(50).optional(),
+}).strict();
+
+// ── /api/contacto-enterprise ────────────────────────────────────────────────
+export const contactoEnterpriseBody = z.object({
+  nombre: shortString,
+  email: z.string().email().max(254),
+  empresa: shortString,
+  telefono: z.string().max(30).optional(),
+  mensaje: z.string().max(1000).optional(),
 }).strict();
 
 // ── /api/empresa PATCH ──────────────────────────────────────────────────────

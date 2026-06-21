@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { fH, fB } from "../lib/theme";
 import { PLANES } from "../lib/plans";
+import EnterpriseContactButton from "../components/EnterpriseContactButton";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "#000";
@@ -132,14 +133,24 @@ export default function PricingPage() {
                     {formatPrecio(p.precio)}
                   </span>
                 </div>
-                <Link href="/" style={{
-                  display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 12,
-                  textDecoration: "none", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                  background: isPopular ? AMBER : SURF_HI,
-                  color: isPopular ? "#000" : TEXT,
-                }}>
-                  {id === "free" ? "Empezar gratis" : id === "enterprise" ? "Contactanos" : "Elegir plan"}
-                </Link>
+                {id === "enterprise" ? (
+                  <EnterpriseContactButton style={{
+                    display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 12,
+                    border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
+                    background: SURF_HI, color: TEXT,
+                  }}>
+                    Contactanos
+                  </EnterpriseContactButton>
+                ) : (
+                  <Link href="/" style={{
+                    display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 12,
+                    textDecoration: "none", fontSize: 14, fontWeight: 700, fontFamily: fH,
+                    background: isPopular ? AMBER : SURF_HI,
+                    color: isPopular ? "#000" : TEXT,
+                  }}>
+                    {id === "free" ? "Empezar gratis" : "Elegir plan"}
+                  </Link>
+                )}
               </div>
             );
           })}

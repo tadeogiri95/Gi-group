@@ -219,8 +219,8 @@ export async function POST(req) {
     // Fire-and-forget — no bloquea la respuesta
     const appBase = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
     const verifyUrl = `${appBase}/api/verificar-email?token=${verifyToken}&e=${emp.id}`;
-    sendVerificacionEmail({ to: email, nombre: nombre_admin, empresa: emp.nombre, verifyUrl });
-    sendBienvenida({ to: email, nombre: nombre_admin, empresa: emp.nombre, slug: emp.slug });
+    sendVerificacionEmail({ to: email, nombre: nombre_admin, empresa: emp.nombre, verifyUrl, empresaId: emp.id });
+    sendBienvenida({ to: email, nombre: nombre_admin, empresa: emp.nombre, slug: emp.slug, empresaId: emp.id });
 
     logEvent(EVT.REGISTRO, {
       empresa_id: emp.id,

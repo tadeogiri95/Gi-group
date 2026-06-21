@@ -132,3 +132,69 @@ export function contarLlegadasTarde(fichadas) {
   const total = fichadas.reduce((n, f) => n + (f && f.llegada_tarde ? 1 : 0), 0);
   return { total, pierdePresentismo: total >= 3 };
 }
+
+/**
+ * Pesos del score mensual de empleado (dashboard gerencial). Suman 100.
+ * Documentación se redujo proporcionalmente de las 4 variables originales
+ * (Asistencia 40, Puntualidad 25, Disponibilidad 20, Esfuerzo 15) para
+ * dejarle 15 puntos.
+ */
+export const PESOS_SCORE = {
+  asistencia: 34,
+  puntualidad: 21,
+  disponibilidad: 17,
+  esfuerzo: 13,
+  documentacion: 15,
+};
+
+/**
+ * Calcula el score mensual (0-100) de un empleado operativo y su desglose
+ * por variable. Única fuente de verdad — usado por dashboard_gerencia.jsx
+ * (ranking) y por el Score Detail Modal.
+ *
+ * Documentación puntúa el 100% de su peso SOLO si están cargados TODOS los
+ * documentos exigidos vigentes; cumplimiento parcial puntúa 0 (no
+ * proporcional, a diferencia de las otras 4 variables).
+ *
+ * @param {object} datos
+ * @param {number} datos.diasProgramados
+ * @param {number} datos.diasTrabajados
+ * @param {number} datos.tardanzas
+ * @param {number} datos.horasTrabajadas
+ * @param {number} datos.horasExtra
+ * @param {number} datos.horasPermiso
+ * @param {number} datos.horasEsperadas
+ * @param {number} [datos.documentosExigidos] - cantidad de tipos exigidos asignados
+ * @param {number} [datos.documentosCompletos] - cuántos de esos tipos tienen carga vigente
+ * @returns {object} score (0-100) + porcentaje (0-100) por variable
+ */
+export function calcularScoreEmpleado({
+  diasProgramados, diasTrabajados, tardanzas,
+  horasTrabajadas, horasExtra, horasPermiso, horasEsperadas,
+  documentosExigidos = 0, documentosCompletos = 0,
+}) {
+  const pAsistencia = diasProgramados > 0 ? Math.min(1, diasTrabajados / diasProgramados) : 0;
+  const pPuntualidad = diasTrabajados > 0 ? Math.max(0, 1 - (tardanzas / diasTrabajados)) : 0;
+  const pDisponibilidad = horasEsperadas > 0 ? Math.max(0, 1 - (horasPermiso / horasEsperadas)) : 1;
+  const pEsfuerzo = horasTrabajadas > 0 ? Math.min(1, horasExtra / horasTrabajadas) : 0;
+  const pDocumentacion = documentosExigidos === 0 ? 1 : (documentosCompletos >= documentosExigidos ? 1 : 0);
+
+  const score = Math.round(
+    pAsistencia * PESOS_SCORE.asistencia +
+    pPuntualidad * PESOS_SCORE.puntualidad +
+    pDisponibilidad * PESOS_SCORE.disponibilidad +
+    pEsfuerzo * PESOS_SCORE.esfuerzo +
+    pDocumentacion * PESOS_SCORE.documentacion
+  );
+
+  return {
+    score: Math.min(100, Math.max(0, score)),
+    pAsistencia: Math.round(pAsistencia * 100),
+    pPuntualidad: Math.round(pPuntualidad * 100),
+    pDisponibilidad: Math.round(pDisponibilidad * 100),
+    pEsfuerzo: Math.round(pEsfuerzo * 100),
+    pDocumentacion: Math.round(pDocumentacion * 100),
+    documentosExigidos,
+    documentosCompletos,
+  };
+}

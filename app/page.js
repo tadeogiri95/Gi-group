@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { fH, fB } from "./lib/theme";
 import { PLANES, precioAnual } from "./lib/plans";
+import EnterpriseContactButton from "./components/EnterpriseContactButton";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "#000";
@@ -238,6 +239,24 @@ export default function Landing() {
     { value: 0, suffix: "$", label: "Setup — sin costo" },
   ];
 
+  const RUBROS = [
+    { icon: "🏭", label: "Industria" },
+    { icon: "🏗️", label: "Construcción" },
+    { icon: "🛠️", label: "Servicios" },
+    { icon: "🛒", label: "Comercio" },
+    { icon: "💻", label: "Tecnología" },
+    { icon: "🏥", label: "Salud" },
+    { icon: "🚚", label: "Logística" },
+    { icon: "🍴", label: "Gastronomía" },
+  ];
+
+  const CONFIANZA = [
+    { icon: "🇦🇷", label: "Datos hospedados con cumplimiento de la Ley 25.326" },
+    { icon: "🔒", label: "Conexión cifrada de punta a punta" },
+    { icon: "💬", label: "Soporte en español" },
+    { icon: "🚫", label: "Sin tarjeta de crédito para empezar" },
+  ];
+
   const sectionPad = { padding: "80px 24px", maxWidth: 1100, margin: "0 auto" };
   const sectionTitle = { fontFamily: fH, fontSize: 28, fontWeight: 700, color: TEXT, textAlign: "center", margin: "0 0 8px" };
   const sectionSub = { fontFamily: fB, fontSize: 15, color: DIM, textAlign: "center", margin: "0 0 48px", maxWidth: 520, marginLeft: "auto", marginRight: "auto" };
@@ -302,6 +321,28 @@ export default function Landing() {
                 <AnimatedNumber target={k.value} suffix={k.suffix} />
               </div>
               <div style={{ fontSize: 13, color: DIM, marginTop: 6 }}>{k.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ═══ RUBROS + CONFIANZA (social proof honesto) ═══ */}
+      <section style={{ padding: "0 24px 80px", maxWidth: 1000, margin: "0 auto" }}>
+        <p style={{ textAlign: "center", fontSize: 12, color: DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 20 }}>
+          Pensado para equipos operativos de todos los rubros
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 10, marginBottom: 40 }}>
+          {RUBROS.map((r) => (
+            <span key={r.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 20, background: SURFACE, border: `1px solid ${BORDER}`, fontSize: 13, color: TEXT }}>
+              <span aria-hidden="true">{r.icon}</span> {r.label}
+            </span>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+          {CONFIANZA.map((c) => (
+            <div key={c.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", background: SURFACE, borderRadius: 12, border: `1px solid ${BORDER}` }}>
+              <span aria-hidden="true" style={{ fontSize: 18 }}>{c.icon}</span>
+              <span style={{ fontSize: 13, color: DIM, lineHeight: 1.4 }}>{c.label}</span>
             </div>
           ))}
         </div>
@@ -433,14 +474,25 @@ export default function Landing() {
                   })}
                 </div>
 
-                <button onClick={() => pid === "enterprise" ? scrollTo("login") : setShowRegistro(true)}
-                  style={{
-                    width: "100%", padding: 12, borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                    background: isPopular ? AMBER : SURF_HI,
-                    color: isPopular ? "#000" : TEXT,
-                  }}>
-                  {pid === "free" ? "Empezar gratis" : pid === "enterprise" ? "Contactanos" : "Elegir plan"}
-                </button>
+                {pid === "enterprise" ? (
+                  <EnterpriseContactButton
+                    style={{
+                      width: "100%", padding: 12, borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
+                      background: SURF_HI, color: TEXT,
+                    }}
+                  >
+                    Contactanos
+                  </EnterpriseContactButton>
+                ) : (
+                  <button onClick={() => setShowRegistro(true)}
+                    style={{
+                      width: "100%", padding: 12, borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
+                      background: isPopular ? AMBER : SURF_HI,
+                      color: isPopular ? "#000" : TEXT,
+                    }}>
+                    {pid === "free" ? "Empezar gratis" : "Elegir plan"}
+                  </button>
+                )}
               </div>
             );
           })}

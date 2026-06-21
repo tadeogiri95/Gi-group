@@ -9,38 +9,12 @@ import { passwordInicial } from "../../lib/passwords";
 import { PLANES } from "../../lib/plans";
 import { sendInvitacionEmpleado } from "../../lib/email";
 import { logAudit } from "../../lib/audit";
-
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
+import { isUUID } from "../../lib/validate";
+import { logEvent, EVT } from "../../lib/analytics";
 
 const CAMPOS_PUBLICOS =
   "id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at";
-
-async function sbGet(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-async function sbPost(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "POST",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-async function sbPatch(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
 
 // ═══ GET ═══
 export async function GET(request) {
@@ -54,7 +28,9 @@ export async function GET(request) {
   const rows = await sbGet(
     `empleados?empresa_id=eq.${sesion.empresa_id}${filtroActivo}&select=${CAMPOS_PUBLICOS}&order=legajo.asc`
   );
-  return NextResponse.json(rows || []);
+  return NextResponse.json(rows || [], {
+    headers: { "Cache-Control": "private, no-store" },
+  });
 }
 
 // ═══ POST ═══
@@ -101,7 +77,8 @@ export async function POST(request) {
     }, { status: 403 });
   }
 
-  const rolesValidos = ["operativo", "gerencial", "administrativo"];
+  let rolesValidos = ["operativo", "gerencial", "administrativo"];
+  if (sesion.rol === "administrativo") rolesValidos = ["operativo", "administrativo"];
   const rolFinal = rolesValidos.includes(rol) ? rol : "operativo";
   const passwordHash = await bcrypt.hash(passwordInicial(), 10);
 
@@ -140,7 +117,19 @@ export async function POST(request) {
       empresa: empresaData.nombre_corto || empresaData.nombre,
       slug: empresaData.slug,
       legajo: legajoNum,
+      empresaId: sesion.empresa_id,
     });
+
+    // Analytics: detectar la primera vez que la empresa invita a un compañero
+    // (excluye al admin con legajo 1, que ya tiene email desde el registro)
+    sbGet(`empleados?empresa_id=eq.${sesion.empresa_id}&email=not.is.null&legajo=neq.1&select=id&limit=2`)
+      .then((rows) => {
+        const esPrimero = Array.isArray(rows) && rows.length <= 1;
+        if (esPrimero) {
+          logEvent(EVT.PRIMER_INVITE, { empresa_id: sesion.empresa_id, empleado_id: sesion.empleado_id, plan });
+        }
+      })
+      .catch(() => {});
   }
 
   // Devolver sin password
@@ -159,6 +148,7 @@ export async function PATCH(request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
+  if (!isUUID(id)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
   // Verificar que el empleado pertenece a la empresa
   const check = await sbGet(
@@ -201,6 +191,7 @@ export async function DELETE(request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
+  if (!isUUID(id)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
   if (id === sesion.empleado_id) {
     return NextResponse.json({ error: "No podés desactivar tu propio perfil" }, { status: 400 });

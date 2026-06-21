@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import { validarToken } from "../../lib/auth";
 import { logAudit } from "../../lib/audit";
+import { empresaPatchBody } from "../../lib/schemas";
+import { validateBody, safeErrorMessage } from "../../lib/validate";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -48,7 +50,9 @@ export async function GET(request) {
       if (data[0].activa === false) {
         return NextResponse.json({ error: "Empresa inactiva" }, { status: 403 });
       }
-      return NextResponse.json(data[0]);
+      return NextResponse.json(data[0], {
+        headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+      });
     }
 
     // ─── CASO 2: viene con token (post-login, datos completos) ───
@@ -61,9 +65,11 @@ export async function GET(request) {
     );
     const data = await res.json();
     if (!data || data.length === 0) return NextResponse.json(DEFAULTS);
-    return NextResponse.json(data[0]);
+    return NextResponse.json(data[0], {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -78,9 +84,11 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
 
-    const body = await request.json();
+    const rawBody = await request.json();
+    const parsed = validateBody(empresaPatchBody, rawBody);
+    if (parsed.response) return parsed.response;
+    const body = parsed.data;
 
-    // Filtrar solo campos editables
     const updates = {};
     for (const key of CAMPOS_EDITABLES) {
       if (body[key] !== undefined) updates[key] = body[key];
@@ -124,6 +132,6 @@ export async function PATCH(request) {
     });
     return NextResponse.json(updated);
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

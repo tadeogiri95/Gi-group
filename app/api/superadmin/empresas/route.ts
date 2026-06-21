@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifyAdminToken } from "../../../lib/jwt";
-import type { Empresa } from "../../../types";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
-function sbFetch(path: string) {
-  return fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+function sbRpc(fnName: string, params: Record<string, unknown>) {
+  return fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
+    method: "POST",
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
     cache: "no-store",
   }).then((r) => r.json());
 }
 
-interface Suscripcion { empresa_id: string; estado: string; plan: string; monto: number }
-interface EmpleadoCount { empresa_id: string }
+const PAGE_SIZE = 50;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const cookieStore = await cookies();
@@ -24,26 +28,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
-  const [empresas, suscripciones, empleados]: [Empresa[], Suscripcion[], EmpleadoCount[]] =
-    await Promise.all([
-      sbFetch("empresa?select=id,nombre,nombre_corto,slug,plan_activo,activa,created_at,onboarding_completado&order=created_at.desc"),
-      sbFetch("suscripciones?select=empresa_id,estado,plan,monto,created_at&order=created_at.desc"),
-      sbFetch("empleados?select=empresa_id&activo=eq.true"),
-    ]);
+  const url = req.nextUrl;
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+  const search = url.searchParams.get("search") || "";
+  const limit = Math.min(100, parseInt(url.searchParams.get("limit") || String(PAGE_SIZE), 10));
+  const offset = (page - 1) * limit;
 
-  const empCount: Record<string, number> = {};
-  for (const e of (empleados ?? [])) empCount[e.empresa_id] = (empCount[e.empresa_id] ?? 0) + 1;
+  const [result, stats] = await Promise.all([
+    sbRpc("rpc_superadmin_empresas", { p_limit: limit, p_offset: offset, p_search: search || null }),
+    sbRpc("rpc_superadmin_stats", {}),
+  ]);
 
-  const subMap: Record<string, Suscripcion> = {};
-  for (const s of (suscripciones ?? [])) {
-    if (!subMap[s.empresa_id] || s.estado === "activa") subMap[s.empresa_id] = s;
-  }
-
-  const data = (empresas ?? []).map((e) => ({
-    ...e,
-    empleados_activos: empCount[e.id] ?? 0,
-    suscripcion: subMap[e.id] ?? null,
-  }));
-
-  return NextResponse.json({ empresas: data });
+  return NextResponse.json({
+    empresas: result.empresas ?? [],
+    total: result.total ?? 0,
+    page,
+    pageSize: limit,
+    stats: stats ?? null,
+  });
 }

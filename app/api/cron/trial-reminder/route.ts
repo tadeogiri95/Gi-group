@@ -32,17 +32,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return { desde: desde.toISOString(), hasta: hasta.toISOString() };
     }
 
-    const [r7, r1] = [rangoFecha(7), rangoFecha(1)];
+    // Días restantes a notificar: 11 (día 3 del trial), 4 (día 10), 7 (día 7), 1 (día 13/último)
+    const INTERVALOS = [11, 7, 4, 1];
+    const rangos = INTERVALOS.map((d) => ({ dias: d, rango: rangoFecha(d) }));
 
-    const [trials7, trials1]: [{ empresa_id: string }[], { empresa_id: string }[]] = await Promise.all([
-      sbGet(`suscripciones?estado=eq.trial&trial_fin=gte.${r7.desde}&trial_fin=lte.${r7.hasta}&select=empresa_id`),
-      sbGet(`suscripciones?estado=eq.trial&trial_fin=gte.${r1.desde}&trial_fin=lte.${r1.hasta}&select=empresa_id`),
-    ]);
+    const resultados = await Promise.all(
+      rangos.map(({ rango }) =>
+        sbGet(`suscripciones?estado=eq.trial&trial_fin=gte.${rango.desde}&trial_fin=lte.${rango.hasta}&select=empresa_id`)
+      )
+    );
 
-    const todos: { empresa_id: string; dias: number }[] = [
-      ...(trials7 ?? []).map((s) => ({ empresa_id: s.empresa_id, dias: 7 })),
-      ...(trials1 ?? []).map((s) => ({ empresa_id: s.empresa_id, dias: 1 })),
-    ];
+    const todos: { empresa_id: string; dias: number }[] = resultados.flatMap(
+      (rows, i) => (rows ?? []).map((s: { empresa_id: string }) => ({ empresa_id: s.empresa_id, dias: rangos[i].dias }))
+    );
 
     if (todos.length === 0) return NextResponse.json({ ok: true, enviados: 0 });
 
@@ -52,19 +54,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const empMap = Object.fromEntries((empresas ?? []).map((e) => [e.id, e]));
 
-    let enviados = 0;
-    for (const { empresa_id, dias } of todos) {
-      const e = empMap[empresa_id];
-      if (!e?.admin_email) continue;
-      await sendTrialVencimiento({
-        to: e.admin_email,
-        nombre: e.nombre_corto || e.nombre,
-        empresa: e.nombre_corto || e.nombre,
-        slug: e.slug,
-        diasRestantes: dias,
-      });
-      enviados++;
-    }
+    const enviosOk = await Promise.allSettled(
+      todos.map(({ empresa_id, dias }) => {
+        const e = empMap[empresa_id];
+        if (!e?.admin_email) return Promise.resolve(false);
+        return sendTrialVencimiento({
+          to: e.admin_email,
+          nombre: e.nombre_corto || e.nombre,
+          empresa: e.nombre_corto || e.nombre,
+          slug: e.slug,
+          diasRestantes: dias,
+          empresaId: empresa_id,
+        }).then(() => true);
+      })
+    );
+    const enviados = enviosOk.filter((r) => r.status === "fulfilled" && r.value === true).length;
 
     logger.debug(`[trial-reminder] Emails enviados: ${enviados}`);
     return NextResponse.json({ ok: true, enviados });

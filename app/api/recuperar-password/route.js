@@ -75,6 +75,7 @@ export async function POST(req) {
       nombre: empleado.nombre,
       empresa: empresaNombre,
       resetUrl,
+      empresaId: empresa_id,
     });
 
     return returnOk();

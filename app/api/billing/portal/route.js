@@ -8,16 +8,9 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { cancelarPreapproval } from "../../../lib/mercadopago";
-
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
-
-async function sbGet(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  return r.json();
-}
+import { sbGet, sbPatchOk } from "../../../lib/sbHelpers";
+import { invalidarCachePlan } from "../../../lib/planEnforcement";
+import { logger } from "../../../lib/logger";
 
 export async function GET(request) {
   return NextResponse.json({
@@ -30,9 +23,12 @@ export async function POST(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
+      return NextResponse.json({ error: "Sin permisos para cancelar suscripción" }, { status: 403 });
+    }
 
     const subs = await sbGet(
-      `suscripciones?empresa_id=eq.${sesion.empresa_id}&estado=eq.activa&gateway=eq.mercadopago&order=created_at.desc&limit=1`
+      `suscripciones?empresa_id=eq.${sesion.empresa_id}&estado=eq.activa&gateway=eq.mercadopago&order=created_at.desc&limit=1&select=id,gateway_subscription_id,periodo_fin`
     );
     const sub = subs?.[0];
     if (!sub) return NextResponse.json({ error: "No tenés una suscripción activa en Mercado Pago" }, { status: 404 });
@@ -40,9 +36,33 @@ export async function POST(request) {
 
     await cancelarPreapproval(sub.gateway_subscription_id);
 
-    return NextResponse.json({ ok: true, mensaje: "Suscripción cancelada. Seguirás en el plan actual hasta el fin del período pago." });
+    // ═══ P5: Actualizar estado local inmediatamente (no esperar webhook) ═══
+    await sbPatchOk(`suscripciones?id=eq.${sub.id}`, { estado: "cancelada" });
+
+    // Grace period: mantener plan hasta periodo_fin si existe y es futuro
+    const periodoFin = sub.periodo_fin;
+    if (periodoFin && new Date(periodoFin) > new Date()) {
+      await sbPatchOk(`empresa?id=eq.${sesion.empresa_id}`, {
+        plan_vence: periodoFin,
+        suscripcion_activa_id: null,
+      });
+    } else {
+      await sbPatchOk(`empresa?id=eq.${sesion.empresa_id}`, {
+        plan_activo: "free",
+        suscripcion_activa_id: null,
+        plan_vence: null,
+      });
+    }
+
+    invalidarCachePlan(sesion.empresa_id);
+
+    const graceMsg = periodoFin && new Date(periodoFin) > new Date()
+      ? `Seguirás en tu plan actual hasta ${new Date(periodoFin).toLocaleDateString("es-AR")}. Después pasarás al plan Free.`
+      : "Tu plan fue cambiado a Free.";
+
+    return NextResponse.json({ ok: true, mensaje: `Suscripción cancelada. ${graceMsg}` });
   } catch (err) {
-    console.error("[billing/portal] Error:", err.message);
+    logger.error("[billing/portal] Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

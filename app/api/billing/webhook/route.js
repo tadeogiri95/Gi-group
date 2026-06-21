@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { getPreapproval, getPago } from "../../../lib/mercadopago";
+import { getPreapproval, getPago, cancelarPreapproval } from "../../../lib/mercadopago";
 import { sendFalloPago, sendPlanSuspendido, sendPagoConfirmado } from "../../../lib/email";
 import { logger } from "../../../lib/logger";
 import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
@@ -131,6 +131,13 @@ export async function POST(request) {
       else if (preapproval.status === "cancelled") nuevoEstado = "cancelada";
       else if (preapproval.status === "pending") nuevoEstado = "suspendida";
 
+      // ═══ P4: Idempotencia — si el estado local ya coincide, skip ═══
+      const [suscActual] = await sbGet(`suscripciones?id=eq.${suscId}&select=estado,plan&limit=1`, { silent: true, fallback: [] });
+      if (suscActual?.estado === nuevoEstado) {
+        logger.debug("[webhook] Preapproval ya procesado, mismo estado", { suscId, estado: nuevoEstado });
+        return NextResponse.json({ ok: true, accion: `susc_${nuevoEstado}_ya_procesado` });
+      }
+
       await sbPatchOk(`suscripciones?id=eq.${suscId}`, {
         estado: nuevoEstado,
         gateway_customer_id: preapproval.payer_id?.toString() || null,
@@ -139,29 +146,64 @@ export async function POST(request) {
       });
 
       if (nuevoEstado === "activa") {
-        const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan`);
-        const plan = susc?.[0]?.plan || "free";
+        const plan = suscActual?.plan || "free";
 
-        // Cancelar otras suscripciones activas/trial de la misma empresa
+        // ═══ P1: Cancelar suscripciones concurrentes en MP (no solo local) ═══
+        const otras = await sbGet(
+          `suscripciones?empresa_id=eq.${empresaId}&estado=in.(trial,activa)&id=neq.${suscId}&select=id,gateway_subscription_id`,
+          { silent: true, fallback: [] }
+        );
+        for (const otra of otras) {
+          if (otra.gateway_subscription_id) {
+            try {
+              await cancelarPreapproval(otra.gateway_subscription_id);
+              logger.debug("[webhook] Preapproval concurrente cancelado en MP", { id: otra.gateway_subscription_id });
+            } catch (e) {
+              logger.error("[webhook] Error cancelando preapproval concurrente", e, { id: otra.gateway_subscription_id });
+            }
+          }
+        }
         await sbPatchOk(
           `suscripciones?empresa_id=eq.${empresaId}&estado=in.(trial,activa)&id=neq.${suscId}`,
           { estado: "cancelada" }
         );
 
-        await sbPatchOk(`empresa?id=eq.${empresaId}`, {
-          plan_activo: plan,
-          suscripcion_activa_id: suscId,
-        });
+        // ═══ P3: Respetar override manual del superadmin ═══
+        const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_override_manual&limit=1`, { silent: true, fallback: [] });
+        if (emp?.plan_override_manual) {
+          logger.warn("[webhook] plan_override_manual activo, no se cambia plan_activo", { empresaId, plan });
+        } else {
+          await sbPatchOk(`empresa?id=eq.${empresaId}`, {
+            plan_activo: plan,
+            suscripcion_activa_id: suscId,
+            plan_vence: null,
+          });
+        }
       } else if (nuevoEstado === "suspendida" || nuevoEstado === "cancelada") {
-        // Downgrade a free cuando MP suspende o cancela la suscripción
-        await sbPatchOk(`empresa?id=eq.${empresaId}`, {
-          plan_activo: "free",
-          suscripcion_activa_id: null,
-        });
+        // ═══ P2: Grace period — mantener plan hasta periodo_fin ═══
+        // ═══ P3: Respetar override manual ═══
+        const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_override_manual,admin_email,nombre_corto,nombre,slug&limit=1`, { silent: true, fallback: [] });
+
+        if (!emp?.plan_override_manual) {
+          const periodoFin = preapproval.next_payment_date;
+          if (periodoFin && new Date(periodoFin) > new Date()) {
+            // Grace period: mantener plan activo hasta fin del período pago
+            await sbPatchOk(`empresa?id=eq.${empresaId}`, {
+              plan_vence: periodoFin,
+              suscripcion_activa_id: null,
+            });
+            logger.debug("[webhook] Grace period activado", { empresaId, plan_vence: periodoFin });
+          } else {
+            await sbPatchOk(`empresa?id=eq.${empresaId}`, {
+              plan_activo: "free",
+              suscripcion_activa_id: null,
+              plan_vence: null,
+            });
+          }
+        }
 
         // Notificar al admin (fire-and-forget)
         try {
-          const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=admin_email,nombre_corto,nombre,slug`);
           if (emp?.admin_email) {
             sendPlanSuspendido({
               to: emp.admin_email,
@@ -169,6 +211,7 @@ export async function POST(request) {
               empresa: emp.nombre_corto || emp.nombre,
               slug: emp.slug,
               motivo: nuevoEstado === "suspendida" ? "impago" : "cancelación",
+              empresaId,
             });
           }
         } catch (e) {
@@ -177,7 +220,7 @@ export async function POST(request) {
       }
 
       if (nuevoEstado === "activa") {
-        logEvent(EVT.UPGRADE_COMPLETE, { empresa_id: empresaId, plan: (await sbGet(`suscripciones?id=eq.${suscId}&select=plan`).catch(() => []))?.[0]?.plan, meta: { gateway: "mercadopago" } });
+        logEvent(EVT.UPGRADE_COMPLETE, { empresa_id: empresaId, plan: suscActual?.plan, meta: { gateway: "mercadopago" } });
       } else if (nuevoEstado === "cancelada" || nuevoEstado === "suspendida") {
         logEvent(EVT.CHURN, { empresa_id: empresaId, meta: { motivo: nuevoEstado, gateway: "mercadopago" } });
       }
@@ -202,8 +245,8 @@ export async function POST(request) {
           if (pago.status === "approved" && suscId && empresaId) {
             try {
               const [susc] = await sbGet(`suscripciones?id=eq.${suscId}&select=plan&limit=1`);
-              const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo&limit=1`);
-              if (susc?.plan && emp?.plan_activo !== susc.plan) {
+              const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo,plan_override_manual&limit=1`);
+              if (susc?.plan && emp?.plan_activo !== susc.plan && !emp?.plan_override_manual) {
                 logger.warn("[webhook] Reparando plan_activo tras retry", { empresaId, suscId, plan: susc.plan });
                 await sbPatchOk(`empresa?id=eq.${empresaId}`, {
                   plan_activo: susc.plan,
@@ -239,10 +282,13 @@ export async function POST(request) {
         await sbPatchOk(`suscripciones?id=eq.${suscId}`, { estado: "activa" });
         if (empresaId) {
           const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan`);
-          if (susc?.[0]?.plan) {
+          // P3: Respetar override manual
+          const [empCheck] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_override_manual&limit=1`, { silent: true, fallback: [] });
+          if (susc?.[0]?.plan && !empCheck?.plan_override_manual) {
             await sbPatchOk(`empresa?id=eq.${empresaId}`, {
               plan_activo: susc[0].plan,
               suscripcion_activa_id: suscId,
+              plan_vence: null,
             });
           }
           try {
@@ -255,6 +301,7 @@ export async function POST(request) {
                 slug: emp.slug,
                 monto: pago.transaction_amount,
                 plan: susc?.[0]?.plan || "Pro",
+                empresaId,
               });
             }
           } catch (e) { logger.error("Error enviando email pago confirmado", e); }
@@ -271,6 +318,7 @@ export async function POST(request) {
               empresa: emp.nombre_corto || emp.nombre,
               slug: emp.slug,
               monto: pago.transaction_amount,
+              empresaId,
             });
           }
         } catch (e) {

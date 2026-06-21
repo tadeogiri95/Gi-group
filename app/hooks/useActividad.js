@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { sb } from "../lib/supabase";
+import { hoyArg } from "../lib/dates";
 
 /*
  * useActividad — hook para el módulo de registro de actividades
@@ -19,7 +20,7 @@ export function useActividad(empleado) {
   const [loading, setLoading] = useState(true);
   const timerRef = useRef(null);
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyArg();
 
   // ── Cargar catálogo de etapas de la empresa ──
   useEffect(() => {
@@ -34,7 +35,7 @@ export function useActividad(empleado) {
     if (!empleado?.empresa_id) return;
     setProyectosLoading(true);
     try {
-      const data = await sb.get(`proyectos?estado=eq.activo&order=created_at.desc&limit=1000`);
+      const data = await sb.get(`proyectos?empresa_id=eq.${empleado.empresa_id}&estado=eq.activo&order=created_at.desc&limit=1000`);
       setProyectos(data || []);
     } catch (err) {
       console.error("Error cargando proyectos:", err);

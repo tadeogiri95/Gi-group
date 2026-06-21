@@ -6,41 +6,14 @@
 // ═══════════════════════════════════════════════════════════
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
-
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
+import { configPostBody, configPatchBody } from "../../lib/schemas";
+import { validateBody, isUUID, safeErrorMessage } from "../../lib/validate";
 
 // ─── Helper: extraer empresa_id del request via auth compartido ───
 async function getEmpresaIdFromRequest(request) {
   const sesion = await validarToken(request);
   return sesion?.empresa_id || null;
-}
-
-// ─── REST helpers ───
-async function sbGet(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-async function sbPost(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "POST",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-async function sbPatch(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
 }
 
 async function perteneceAEmpresa(tabla, id, empresaId) {
@@ -58,7 +31,9 @@ export async function GET(request) {
       sbGet(`divisiones?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       sbGet(`etapas?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
     ]);
-    return NextResponse.json({ divisiones: divisiones || [], etapas: etapas || [] });
+    return NextResponse.json({ divisiones: divisiones || [], etapas: etapas || [] }, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -74,12 +49,14 @@ export async function POST(request) {
     }
     const empresaId = sesion.empresa_id;
 
-    const body = await request.json();
+    const rawBody = await request.json();
+    const parsed = validateBody(configPostBody, rawBody);
+    if (parsed.response) return parsed.response;
+    const body = parsed.data;
     const { action } = body;
 
     if (action === "add_division") {
       const { clave, label, icon, color, orden } = body;
-      if (!clave || !label) return NextResponse.json({ error: "clave y label requeridos" }, { status: 400 });
       const result = await sbPost("divisiones", {
         empresa_id: empresaId, clave, label,
         icon: icon || "📦", color: color || "#F97316", orden: orden || 99,
@@ -119,9 +96,11 @@ export async function PATCH(request) {
     }
     const empresaId = sesion.empresa_id;
 
-    const body = await request.json();
+    const rawBody = await request.json();
+    const parsedPatch = validateBody(configPatchBody, rawBody);
+    if (parsedPatch.response) return parsedPatch.response;
+    const body = parsedPatch.data;
     const { action, id } = body;
-    if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
 
     if (action === "update_division") {
       if (!(await perteneceAEmpresa("divisiones", id, empresaId)))
@@ -172,6 +151,7 @@ export async function DELETE(request) {
     const type = searchParams.get("type");
     const id = searchParams.get("id");
     if (!id || !type) return NextResponse.json({ error: "type e id requeridos" }, { status: 400 });
+    if (!isUUID(id)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
     const tabla = type === "division" ? "divisiones" : type === "etapa" ? "etapas" : null;
     if (!tabla) return NextResponse.json({ error: "type inválido" }, { status: 400 });

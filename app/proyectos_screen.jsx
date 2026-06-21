@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from "react";
-import { sb } from "./lib/supabase";
+import { sb, apiFetch } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
@@ -144,6 +144,7 @@ export default function ProyectosScreen({ empresaId }) {
   const [filtroDiv, setFiltroDiv] = useState("");
   const [modal, setModal] = useState(null);
   const [csvFilas, setCsvFilas] = useState(null);
+  const [csvRawText, setCsvRawText] = useState(null);
   const [csvProgreso, setCsvProgreso] = useState("");
   const toast = useToast();
   const [confirmFn, ConfirmDialog] = useConfirm();
@@ -230,6 +231,7 @@ export default function ProyectosScreen({ empresaId }) {
       const filas = parseProyectosCSV(reader.result);
       if (filas.length === 0) { showToast("CSV sin datos válidos. Verificá columnas: ot, cliente, obra, proyecto, division", RED); return; }
       setCsvFilas(filas);
+      setCsvRawText(reader.result);
     };
     reader.readAsText(f);
     e.target.value = "";
@@ -254,7 +256,7 @@ export default function ProyectosScreen({ empresaId }) {
     if (!syncCfg.url.trim()) { showToast("Guardá la URL primero", AMBER); return; }
     setSyncLoading(true);
     try {
-      const res = await fetch("/api/proyectos/sync-csv", { method: "POST", credentials: "include" });
+      const res = await apiFetch("/api/proyectos/sync-csv", { method: "POST" });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error sync");
       showToast(`✅ ${data.procesados} proyectos sincronizados`, GREEN);
@@ -264,28 +266,29 @@ export default function ProyectosScreen({ empresaId }) {
   };
 
   const importarCSV = async () => {
-    if (!csvFilas) return;
+    if (!csvRawText) return;
     setSaving(true);
-    let ok = 0, dup = 0, err = 0;
-    for (let i = 0; i < csvFilas.length; i++) {
-      setCsvProgreso(`Importando ${i + 1} de ${csvFilas.length}...`);
-      const r = csvFilas[i];
-      try {
-        await sb.post("proyectos", {
-          ot: r.ot, cliente: r.cliente || null, obra: r.obra || null,
-          proyecto: r.proyecto || null, division: r.division || null, estado: "activo",
-        });
-        ok++;
-      } catch (e) {
-        if (e.message?.includes("uq_proyectos") || e.message?.includes("duplicate")) dup++;
-        else err++;
-      }
+    setCsvProgreso(`Importando ${csvFilas.length} proyectos...`);
+    try {
+      const res = await apiFetch("/api/proyectos/import-csv", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: csvRawText,
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Error al importar");
+
+      const erroresTxt = data.errors?.length ? ` · ${data.errors.length} con error` : "";
+      showToast(`✅ ${data.created} importados · ${data.skipped} duplicados${erroresTxt}`, data.created > 0 ? GREEN : AMBER);
+      if (data.errors?.length) console.warn("Errores import CSV proyectos:", data.errors);
+    } catch (e) {
+      showToast(`Error: ${e.message}`, RED);
     }
     setCsvProgreso("");
     setCsvFilas(null);
+    setCsvRawText(null);
     setSaving(false);
     await cargar();
-    showToast(`✅ ${ok} importados · ${dup} duplicados · ${err} con error`, ok > 0 ? GREEN : AMBER);
   };
 
   const filtrados = proyectos.filter(p => {
@@ -305,7 +308,7 @@ export default function ProyectosScreen({ empresaId }) {
     <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
 
       {modal && <ModalProyecto initial={modal} divisiones={divisiones} onClose={() => setModal(null)} onSave={guardar} saving={saving} />}
-      {csvFilas && <ModalCSVPreview filas={csvFilas} onClose={() => setCsvFilas(null)} onConfirm={importarCSV} saving={saving} progreso={csvProgreso} />}
+      {csvFilas && <ModalCSVPreview filas={csvFilas} onClose={() => { setCsvFilas(null); setCsvRawText(null); }} onConfirm={importarCSV} saving={saving} progreso={csvProgreso} />}
 
       {/* Métricas */}
       <div className="grid grid-cols-3 gap-2 mb-3.5">

@@ -28,7 +28,7 @@ export async function signAccessToken(input: AccessTokenInput): Promise<TokenRes
   const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, leg: input.legajo, rol: input.rol, jti })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime("30m")
     .setIssuer("gypi")
     .sign(getSecret());
   return { token, jti };

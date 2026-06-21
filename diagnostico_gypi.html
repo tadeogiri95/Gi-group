@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagnóstico Integral — Gypi</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
+
+  :root {
+    --bg: #0C0A09;
+    --surface: #1C1917;
+    --surfHi: #292524;
+    --border: #3F3B38;
+    --text: #FAFAF9;
+    --dim: #A8A29E;
+    --mute: #57534E;
+    --amber: #F59E0B;
+    --amberS: rgba(245,158,11,0.12);
+    --red: #EF4444;
+    --redS: rgba(239,68,68,0.12);
+    --green: #22C55E;
+    --greenS: rgba(34,197,94,0.12);
+    --yellow: #EAB308;
+    --yellowS: rgba(234,179,8,0.12);
+    --violet: #A78BFA;
+    --cyan: #22D3EE;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Geist', system-ui, sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .header {
+    padding: 40px 24px 20px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: clamp(24px, 4vw, 36px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+  .header h1 span { color: var(--amber); }
+  .header .subtitle {
+    color: var(--dim);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+
+  .score-global {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px 24px;
+  }
+  .score-circle {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    border: 3px solid;
+  }
+  .score-circle .num {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .score-circle .label { font-size: 10px; color: var(--dim); margin-top: 2px; }
+  .score-meta { text-align: left; }
+  .score-meta .verdict {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .score-meta .desc { font-size: 13px; color: var(--dim); max-width: 320px; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+  @media (max-width: 768px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .card h3 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .chart-wrap {
+    position: relative;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .summary-table th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--dim);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .summary-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .summary-table tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 36px;
+    text-align: center;
+  }
+  .badge-red { background: var(--redS); color: var(--red); }
+  .badge-yellow { background: var(--yellowS); color: var(--yellow); }
+  .badge-green { background: var(--greenS); color: var(--green); }
+
+  .area-section {
+    margin-bottom: 32px;
+  }
+  .area-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .area-header:hover .area-title { color: var(--amber); }
+  .area-num {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 800;
+    font-size: 15px;
+  }
+  .area-title {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    flex: 1;
+    transition: color 0.2s;
+  }
+  .area-toggle {
+    font-size: 18px;
+    color: var(--dim);
+    transition: transform 0.3s;
+  }
+  .area-body { display: none; }
+  .area-body.open { display: block; }
+  .area-toggle.open { transform: rotate(180deg); }
+
+  .finding {
+    padding: 12px 16px;
+    background: var(--surfHi);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    border-left: 3px solid var(--amber);
+  }
+  .finding.critical { border-left-color: var(--red); }
+  .finding.ok { border-left-color: var(--green); }
+  .risk-label {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 6px;
+  }
+
+  .action-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 12px;
+  }
+  .action-table th {
+    text-align: left;
+    padding: 8px 10px;
+    background: var(--surfHi);
+    color: var(--dim);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .action-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .action-table tr:last-child td { border-bottom: none; }
+  .impact-high { color: var(--red); font-weight: 700; }
+  .impact-med { color: var(--yellow); font-weight: 700; }
+  .impact-low { color: var(--green); font-weight: 700; }
+
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: var(--mute);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 16px 0;
+    overflow-x: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+  .nav-tab {
+    padding: 8px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--dim);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-family: 'Geist', system-ui, sans-serif;
+  }
+  .nav-tab:hover {
+    background: var(--amberS);
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .priority-banner {
+    background: linear-gradient(135deg, var(--redS), rgba(245,158,11,0.08));
+    border: 1px solid var(--red);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+  .priority-banner h3 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--red);
+    margin-bottom: 12px;
+  }
+  .priority-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 13px;
+  }
+  .priority-item .num {
+    min-width: 24px; height: 24px;
+    border-radius: 6px;
+    background: var(--redS);
+    color: var(--red);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Diagnóstico Integral — <span>Gypi</span></h1>
+  <div class="subtitle">Análisis multidisciplinario del proyecto SaaS de gestión industrial &middot; 16 junio 2026</div>
+</div>
+
+<div class="score-global" id="scoreGlobal"></div>
+
+<div class="container">
+  <div class="grid-2">
+    <div class="card">
+      <h3>Radar de Madurez</h3>
+      <div class="chart-wrap">
+        <canvas id="radarChart"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Resumen por Área</h3>
+      <table class="summary-table" id="summaryTable"></table>
+    </div>
+  </div>
+
+  <div class="priority-banner" id="priorityBanner"></div>
+
+  <div class="nav-tabs" id="navTabs"></div>
+
+  <div id="areaDetails"></div>
+</div>
+
+<div class="footer">
+  Generado por Claude Code &middot; Gypi Diagnóstico v1.0 &middot; 16/06/2026
+</div>
+
+<script>
+const DATA = [
+  {
+    id: 1,
+    name: "Arquitectura y código",
+    score: 6.5,
+    emoji: "\u{1F3D7}\u{FE0F}",
+    findings: [
+      { text: "Estructura de API routes consistente: todas usan validarToken + sbHelpers centralizados. Refactor de contextos completado limpiamente sin imports huérfanos.", type: "ok" },
+      { text: "HomeContent.jsx sigue siendo monolítico (auth + routing + estado + polling). Duplicación de formateo de fechas en 12+ archivos en lugar de usar hoyArg()/ahoraArg() de dates.js.", type: "critical" },
+      { text: "Mezcla arbitraria de .js y .ts en app/lib/. Mutable singleton global (_divisiones) en constants.js — riesgo en SSR/concurrent rendering. usePlan.js ubicado en lib/ en lugar de hooks/.", type: "warning" }
+    ],
+    risk: "Costo creciente de mantenimiento. Bugs por duplicación de lógica de fechas. El singleton mutable puede causar data leaks entre requests en SSR.",
+    actions: [
+      { task: "Reemplazar formateo inline de fechas por hoyArg()/ahoraArg() en los 12 archivos afectados", impact: "Alto", effort: "2h", owner: "Frontend" },
+      { task: "Mover divisiones al flujo de contexto React (eliminar singleton mutable)", impact: "Alto", effort: "3h", owner: "Frontend" },
+      { task: "Extraer lógica de polling y data de HomeContent a hooks dedicados", impact: "Medio", effort: "6h", owner: "Frontend" },
+      { task: "Unificar extensiones .js a .ts en app/lib/ progresivamente", impact: "Bajo", effort: "4h", owner: "Dev" },
+      { task: "Mover usePlan.js a app/hooks/", impact: "Bajo", effort: "15min", owner: "Dev" }
+    ]
+  },
+  {
+    id: 2,
+    name: "Seguridad",
+    score: 6.0,
+    emoji: "\u{1F512}",
+    findings: [
+      { text: "JWT con jose (HS256), HMAC webhooks con timingSafeEqual, rate limiting en login y registro, CSP/HSTS/X-Frame-Options correctos, impersonación con anti-replay. Base sólida.", type: "ok" },
+      { text: "Webhook sin validación de timestamp — replay indefinido. Refresh token con fallback a sesiones legacy (refresh_jti IS NULL) — tokens pre-migración válidos para siempre.", type: "critical" },
+      { text: "Fail-open en DB failure: si Supabase cae, rate limiting y revocación se bypasean. RLS anon policy expone admin_password (bcrypt hash) si alguna ruta usa anon key.", type: "critical" }
+    ],
+    risk: "Replay de webhooks puede duplicar pagos o alterar planes. Tokens legacy permiten refresh perpetuo. Caída de DB = brute-force sin límite.",
+    actions: [
+      { task: "Validar freshness del timestamp en webhook (ventana de 5 min máximo)", impact: "Alto", effort: "1h", owner: "Backend" },
+      { task: "Eliminar fallback refresh_jti IS NULL — forzar re-login de sesiones legacy", impact: "Alto", effort: "2h", owner: "Backend" },
+      { task: "Cambiar fail-open a fail-closed en rate limiting (bloquear si DB no responde)", impact: "Alto", effort: "1h", owner: "Backend" },
+      { task: "Agregar column restriction a RLS anon policy (solo id, slug, nombre, logo)", impact: "Alto", effort: "30min", owner: "DBA" },
+      { task: "Validar empresa_id como UUID en rutas superadmin antes de interpolar en URL", impact: "Medio", effort: "30min", owner: "Backend" }
+    ]
+  },
+  {
+    id: 3,
+    name: "UI/UX",
+    score: 6.0,
+    emoji: "\u{1F3A8}",
+    findings: [
+      { text: "Design system completo con CSS custom properties, escala de spacing/tipo, colores por empresa. Modal accesible con role=dialog, aria-modal, Escape, focus trap. Bottom sheet responsive.", type: "ok" },
+      { text: "user-select:none global bloquea copiar texto. Clases hide-mobile/show-mobile-only usadas en Breadcrumb y Modal pero NUNCA definidas en globals.css — layout roto.", type: "critical" },
+      { text: "Skeleton components son dead code (nunca importados). Loading inconsistente con gypi-dots. Input/Select sin htmlFor — rotos para screen readers. EmptyState falta en mayoría de pantallas.", type: "warning" }
+    ],
+    risk: "Experiencia degradada en mobile por clases CSS faltantes. Accesibilidad comprometida (WCAG fail). UX sin loading/empty states genera confusión.",
+    actions: [
+      { task: "Definir clases hide-mobile / show-mobile-only en globals.css", impact: "Alto", effort: "15min", owner: "Frontend" },
+      { task: "Eliminar user-select:none global (mantener solo en drag handles)", impact: "Alto", effort: "15min", owner: "Frontend" },
+      { task: "Agregar htmlFor en Input y Select de ui.jsx", impact: "Alto", effort: "30min", owner: "Frontend" },
+      { task: "Reemplazar gypi-dots por Skeleton components en pantallas con listas", impact: "Medio", effort: "4h", owner: "Frontend" },
+      { task: "Agregar EmptyState a pantallas: proyectos, gestion_personal, reportes", impact: "Medio", effort: "2h", owner: "Frontend" },
+      { task: "Agregar role='alert' a mensajes de error en LoginScreen", impact: "Bajo", effort: "15min", owner: "Frontend" }
+    ]
+  },
+  {
+    id: 4,
+    name: "Performance",
+    score: 5.5,
+    emoji: "\u{26A1}",
+    findings: [
+      { text: "Lazy loading con dynamic() + ssr:false para todas las pantallas. supabase.js con de-duplicación de refresh. Sentry con hideSourceMaps.", type: "ok" },
+      { text: "fichar/route.js hace 6 round-trips seriales a DB por cada fichaje (2 a la misma tabla empresa). Chat bot queries hacen double-fetch en 5 query types.", type: "critical" },
+      { text: "Vistas v_scores_empleados y v_resumen_diario no materializadas — full aggregation en cada carga. Sin Cache-Control en ninguna ruta. Plan cache in-memory se pierde en cold start.", type: "critical" }
+    ],
+    risk: "Latencia alta en fichajes (ruta crítica del negocio). Dashboard lento con +200 empleados. Carga innecesaria a Supabase sin caching.",
+    actions: [
+      { task: "Mergear las 2 queries a tabla empresa en fichar/route.js en una sola SELECT", impact: "Alto", effort: "30min", owner: "Backend" },
+      { task: "Agregar Cache-Control a rutas GET de solo lectura (divisiones, etapas, config)", impact: "Alto", effort: "1h", owner: "Backend" },
+      { task: "Materializar v_scores_empleados con REFRESH MATERIALIZED VIEW periódico", impact: "Alto", effort: "3h", owner: "DBA" },
+      { task: "Batchar queries del chat bot con JOINs en lugar de double-fetch", impact: "Medio", effort: "4h", owner: "Backend" },
+      { task: "Evaluar Vercel KV o Upstash Redis para cache de planes cross-instance", impact: "Medio", effort: "4h", owner: "Infra" }
+    ]
+  },
+  {
+    id: 5,
+    name: "Base de datos",
+    score: 7.0,
+    emoji: "\u{1F5C4}\u{FE0F}",
+    findings: [
+      { text: "37 migraciones bien organizadas. Índices comprehensivos para queries frecuentes. FK con CASCADE. Multi-tenancy con empresa_id NOT NULL en todas las tablas.", type: "ok" },
+      { text: "Faltan índices en registro_actividades(empresa_id, codigo_proyecto) y notificaciones(empresa_id, leida) para queries frecuentes del chat y inbox.", type: "warning" },
+      { text: "v_resumen_diario tiene subquery correlacionada O(n²). diagrama JSONB en empleados sin índice GIN. solicitudes.fecha fue TEXT (migración 034 corrige — confirmar en prod).", type: "warning" }
+    ],
+    risk: "Queries del chat bot degradan con volumen. Dashboard gerencia con latencia creciente. Subquery correlacionada es cuello de botella con +100 empleados.",
+    actions: [
+      { task: "Crear índice (empresa_id, codigo_proyecto) en registro_actividades", impact: "Alto", effort: "5min", owner: "DBA" },
+      { task: "Crear índice (empresa_id, leida) en notificaciones", impact: "Medio", effort: "5min", owner: "DBA" },
+      { task: "Reescribir v_resumen_diario con DISTINCT ON o window function", impact: "Medio", effort: "2h", owner: "DBA" },
+      { task: "Confirmar que migración 034 (solicitudes.fecha DATE) se ejecutó en prod", impact: "Medio", effort: "15min", owner: "DBA" },
+      { task: "Agregar índice GIN en empleados.diagrama si se consulta frecuentemente", impact: "Bajo", effort: "5min", owner: "DBA" }
+    ]
+  },
+  {
+    id: 6,
+    name: "Modelo de negocio y billing",
+    score: 5.5,
+    emoji: "\u{1F4B3}",
+    findings: [
+      { text: "4 planes con enforcement backend robusto en planEnforcement.js. Trial Pro 14 días con lifecycle completo (4 reminder emails + auto-downgrade a free).", type: "ok" },
+      { text: "BillingScreen.jsx llama a /api/billing/info que NO EXISTE (404). Toggle anual en landing es UI-only, sin billing path anual. Portal MP es link genérico hardcodeado.", type: "critical" },
+      { text: "KPIs de landing hardcodeados (500+ empresas). enterprise.api_access es false en plans.js (debería ser true). Sin métricas de conversión trial a paid.", type: "warning" }
+    ],
+    risk: "Billing screen rota = usuarios no pueden gestionar suscripción. Sin pricing anual real se pierde revenue. Sin métricas no se puede optimizar el funnel.",
+    actions: [
+      { task: "Crear /api/billing/info endpoint o corregir referencia en BillingScreen", impact: "Alto", effort: "2h", owner: "Backend" },
+      { task: "Implementar billing anual en backend o remover toggle de la landing", impact: "Alto", effort: "6h", owner: "Backend" },
+      { task: "Fijar enterprise.api_access = true en plans.js", impact: "Medio", effort: "1min", owner: "Dev" },
+      { task: "Implementar portal de suscripción real (no link genérico de MP)", impact: "Medio", effort: "4h", owner: "Backend" },
+      { task: "Agregar tracking de conversión trial a paid en Sentry/analytics", impact: "Medio", effort: "3h", owner: "Data" }
+    ]
+  },
+  {
+    id: 7,
+    name: "Marketing y posicionamiento",
+    score: 7.5,
+    emoji: "\u{1F4E3}",
+    findings: [
+      { text: "Landing completa con hero animado, pricing, 3-step onboarding, CTA, login inline. Copy orientado a conversión. SEO correcto (OG, Twitter, JSON-LD, canonical).", type: "ok" },
+      { text: "KPIs hardcodeados podrían generar desconfianza. Falta robots.txt estático. Sin testimonios reales ni logos de clientes.", type: "warning" },
+      { text: "Sin integración con analytics (GA, Mixpanel). Sin blog ni contenido SEO para long-tail keywords. Páginas legales existen pero verificar contenido.", type: "warning" }
+    ],
+    risk: "Sin social proof la conversión se resiente. Sin analytics no hay data para optimizar. Sin contenido SEO el tráfico orgánico será limitado.",
+    actions: [
+      { task: "Reemplazar KPIs hardcodeados por queries reales a DB o removerlos", impact: "Alto", effort: "2h", owner: "Full-stack" },
+      { task: "Agregar robots.txt estático en public/", impact: "Medio", effort: "10min", owner: "Dev" },
+      { task: "Integrar Google Analytics o Mixpanel para tracking", impact: "Alto", effort: "2h", owner: "Marketing" },
+      { task: "Agregar testimonios/logos de clientes en la landing", impact: "Medio", effort: "3h", owner: "Marketing" },
+      { task: "Crear blog con 5 artículos SEO sobre gestión industrial", impact: "Medio", effort: "20h", owner: "Marketing" }
+    ]
+  },
+  {
+    id: 8,
+    name: "Escalabilidad",
+    score: 6.5,
+    emoji: "\u{1F4C8}",
+    findings: [
+      { text: "Multi-tenancy sólido: empresa_id server-side, RLS secundaria, CASCADE cleanup. Límite 500/1000 filas por query. 6 cron jobs tolerantes a fallos.", type: "ok" },
+      { text: "Cache de planes no sobrevive cold starts ni multi-instance. Vistas no materializadas escalan O(n). useActividad pide limit=1000 truncando silenciosamente.", type: "warning" },
+      { text: "Sin queue system para crons pesados — riesgo de timeout en Vercel (60s). Documentación de límites técnicos inexistente.", type: "warning" }
+    ],
+    risk: "Performance degrada a +200 empleados/empresa. Crons pueden fallar por timeout. Truncamiento silencioso de datos.",
+    actions: [
+      { task: "Implementar paginación real en useActividad (offset/cursor)", impact: "Alto", effort: "3h", owner: "Frontend" },
+      { task: "Evaluar Vercel KV / Upstash Redis para cache cross-instance", impact: "Medio", effort: "4h", owner: "Infra" },
+      { task: "Materializar vistas pesadas con refresh periódico", impact: "Alto", effort: "4h", owner: "DBA" },
+      { task: "Agregar logging de duración en crons para detectar timeouts", impact: "Medio", effort: "1h", owner: "Backend" },
+      { task: "Documentar límites conocidos por plan", impact: "Bajo", effort: "2h", owner: "Dev" }
+    ]
+  },
+  {
+    id: 9,
+    name: "Testing y observabilidad",
+    score: 5.0,
+    emoji: "\u{1F9EA}",
+    findings: [
+      { text: "Sentry integrado (server + client + edge). Logger estructurado con routing a Sentry. Health check completo. CI/CD con GitHub Actions (lint + test + build).", type: "ok" },
+      { text: "14 unit tests + 1 E2E es insuficiente para SaaS en producción. Sin tests de integración para rutas críticas (fichar, billing, data proxy). Sin tests de RLS.", type: "critical" },
+      { text: "console.log en 3 archivos de producción en lugar de logger. Health check no está en crons de Vercel — sin monitoreo automático.", type: "warning" }
+    ],
+    risk: "Regressions no detectadas en fichaje/billing. Cambio de migración puede exponer datos sin test de RLS. Logs inconsistentes dificultan debugging.",
+    actions: [
+      { task: "Agregar tests de integración para fichar, billing/webhook y data proxy", impact: "Alto", effort: "8h", owner: "Backend" },
+      { task: "Agregar health check a crons de Vercel + alerta Sentry", impact: "Alto", effort: "1h", owner: "Infra" },
+      { task: "Reemplazar console.log por logger en push.js, useRealtimeSync, send-push", impact: "Medio", effort: "30min", owner: "Dev" },
+      { task: "Crear test suite de RLS policies (anon vs service_role)", impact: "Alto", effort: "6h", owner: "DBA" },
+      { task: "Llegar a 80% coverage en rutas API", impact: "Medio", effort: "20h", owner: "Dev" }
+    ]
+  },
+  {
+    id: 10,
+    name: "Deuda técnica",
+    score: 6.0,
+    emoji: "\u{1F527}",
+    findings: [
+      { text: "Refactor de contextos completado limpiamente. Tablas muertas dropeadas. Cero TODOs/FIXMEs en código. db.js eliminado sin residuos.", type: "ok" },
+      { text: "Skeleton components son dead code. sbGet/sbPost duplicados en billing routes. lib/push.js fuera de app/ (riesgo service worker). console.log en producción.", type: "warning" },
+      { text: "Pendientes de auditoría sin resolver: badges no leídos, export PDF, pricing page pública, límites de plan visibles en frontend.", type: "warning" }
+    ],
+    risk: "Dead code y duplicaciones aumentan superficie de bugs. Pendientes acumulados retrasan time-to-market de features solicitadas.",
+    actions: [
+      { task: "Integrar Skeleton.jsx reemplazando gypi-dots o eliminar dead code", impact: "Medio", effort: "2h", owner: "Frontend" },
+      { task: "Eliminar sbGet/sbPost locales de billing routes (usar sbHelpers)", impact: "Medio", effort: "1h", owner: "Backend" },
+      { task: "Mover push.js dentro de app/", impact: "Medio", effort: "30min", owner: "Dev" },
+      { task: "Implementar badges de mensajes no leídos en Chat", impact: "Medio", effort: "3h", owner: "Frontend" },
+      { task: "Crear pricing page standalone (no solo sección de landing)", impact: "Medio", effort: "4h", owner: "Frontend" }
+    ]
+  }
+];
+
+const avg = DATA.reduce((s, d) => s + d.score, 0) / DATA.length;
+const avgRounded = Math.round(avg * 10) / 10;
+
+function getColor(score) {
+  if (score < 6) return { bg: 'var(--redS)', fg: 'var(--red)', cls: 'badge-red' };
+  if (score < 8) return { bg: 'var(--yellowS)', fg: 'var(--yellow)', cls: 'badge-yellow' };
+  return { bg: 'var(--greenS)', fg: 'var(--green)', cls: 'badge-green' };
+}
+
+// Global Score
+const gc = getColor(avgRounded);
+document.getElementById('scoreGlobal').innerHTML = `
+  <div class="score-circle" style="border-color:${gc.fg}; background:${gc.bg}">
+    <div class="num" style="color:${gc.fg}">${avgRounded}</div>
+    <div class="label">/ 10</div>
+  </div>
+  <div class="score-meta">
+    <div class="verdict" style="color:${gc.fg}">
+      ${avgRounded >= 8 ? 'Saludable' : avgRounded >= 6 ? 'Necesita atención' : 'Crítico'}
+    </div>
+    <div class="desc">
+      ${avgRounded >= 8
+        ? 'El proyecto está en buen estado general con mejoras puntuales.'
+        : avgRounded >= 6
+        ? 'Core funcional pero con deuda técnica y gaps de seguridad que requieren atención antes de escalar comercialmente.'
+        : 'Riesgos críticos que deben resolverse antes de producción.'}
+    </div>
+  </div>
+`;
+
+// Summary Table
+document.getElementById('summaryTable').innerHTML = `
+  <thead><tr><th>#</th><th>Área</th><th>Score</th><th>Estado</th></tr></thead>
+  <tbody>
+    ${DATA.map(d => {
+      const c = getColor(d.score);
+      return `<tr>
+        <td>${d.emoji}</td>
+        <td style="font-weight:600">${d.name}</td>
+        <td><span class="badge ${c.cls}">${d.score}</span></td>
+        <td style="color:${c.fg};font-size:11px;font-weight:600">${d.score < 6 ? 'CRÍTICO' : d.score < 8 ? 'ATENCIÓN' : 'OK'}</td>
+      </tr>`;
+    }).join('')}
+    <tr style="border-top:2px solid var(--amber)">
+      <td></td>
+      <td style="font-weight:800;font-family:'Bricolage Grotesque',sans-serif">PROMEDIO GENERAL</td>
+      <td><span class="badge ${gc.cls}" style="font-size:14px;padding:4px 14px">${avgRounded}</span></td>
+      <td></td>
+    </tr>
+  </tbody>
+`;
+
+// Priority Banner
+const criticalActions = [];
+DATA.forEach(d => {
+  d.actions.filter(a => a.impact === 'Alto').forEach(a => {
+    criticalActions.push({ area: d.name, ...a });
+  });
+});
+const topPriority = criticalActions.slice(0, 8);
+document.getElementById('priorityBanner').innerHTML = `
+  <h3>Top 8 Acciones Prioritarias (Alto Impacto)</h3>
+  ${topPriority.map((a, i) => `
+    <div class="priority-item">
+      <div class="num">${i + 1}</div>
+      <div>
+        <div>${a.task}</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:2px">${a.area} &middot; ${a.effort} &middot; ${a.owner}</div>
+      </div>
+    </div>
+  `).join('')}
+`;
+
+// Nav Tabs
+document.getElementById('navTabs').innerHTML = DATA.map(d =>
+  `<button class="nav-tab" onclick="scrollToArea(${d.id})">${d.emoji} ${d.name}</button>`
+).join('');
+
+function scrollToArea(id) {
+  document.getElementById('area-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Area Details
+document.getElementById('areaDetails').innerHTML = DATA.map(d => {
+  const c = getColor(d.score);
+  return `
+    <div class="area-section" id="area-${d.id}">
+      <div class="area-header" onclick="toggleArea(${d.id})">
+        <div class="area-num" style="background:${c.bg};color:${c.fg}">${d.score}</div>
+        <div class="area-title">${d.emoji} ${d.name}</div>
+        <div class="area-toggle" id="toggle-${d.id}">&#9660;</div>
+      </div>
+      <div class="area-body" id="body-${d.id}">
+        ${d.findings.map(f => `
+          <div class="finding ${f.type}">${f.text}</div>
+        `).join('')}
+        <div style="margin-top:16px;padding:12px 16px;background:var(--redS);border-radius:10px;font-size:12px;">
+          <div class="risk-label" style="color:var(--red)">Riesgo si no se resuelve</div>
+          <div style="margin-top:4px;color:var(--dim)">${d.risk}</div>
+        </div>
+        <h4 style="font-family:'Bricolage Grotesque',sans-serif;font-size:14px;margin:20px 0 8px;color:var(--amber)">Plan de acción</h4>
+        <table class="action-table">
+          <thead><tr><th>Tarea</th><th>Impacto</th><th>Esfuerzo</th><th>Responsable</th></tr></thead>
+          <tbody>
+            ${d.actions.map(a => `
+              <tr>
+                <td>${a.task}</td>
+                <td class="${a.impact === 'Alto' ? 'impact-high' : a.impact === 'Medio' ? 'impact-med' : 'impact-low'}">${a.impact}</td>
+                <td style="white-space:nowrap">${a.effort}</td>
+                <td style="color:var(--dim);white-space:nowrap">${a.owner}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}).join('');
+
+function toggleArea(id) {
+  document.getElementById('body-' + id).classList.toggle('open');
+  document.getElementById('toggle-' + id).classList.toggle('open');
+}
+
+// Open all by default
+DATA.forEach(d => {
+  document.getElementById('body-' + d.id).classList.add('open');
+  document.getElementById('toggle-' + d.id).classList.add('open');
+});
+
+// Radar Chart
+const ctx = document.getElementById('radarChart').getContext('2d');
+new Chart(ctx, {
+  type: 'radar',
+  data: {
+    labels: DATA.map(d => d.name),
+    datasets: [{
+      label: 'Score',
+      data: DATA.map(d => d.score),
+      fill: true,
+      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+      borderColor: '#F59E0B',
+      borderWidth: 2,
+      pointBackgroundColor: DATA.map(d => getColor(d.score).fg === 'var(--red)' ? '#EF4444' : getColor(d.score).fg === 'var(--yellow)' ? '#EAB308' : '#22C55E'),
+      pointBorderColor: '#1C1917',
+      pointBorderWidth: 2,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1C1917',
+        titleColor: '#FAFAF9',
+        bodyColor: '#A8A29E',
+        borderColor: '#3F3B38',
+        borderWidth: 1,
+        cornerRadius: 8,
+        padding: 12,
+        callbacks: {
+          label: function(ctx) { return ctx.parsed.r + ' / 10'; }
+        }
+      }
+    },
+    scales: {
+      r: {
+        min: 0,
+        max: 10,
+        ticks: {
+          stepSize: 2,
+          color: '#57534E',
+          backdropColor: 'transparent',
+          font: { size: 10 }
+        },
+        grid: { color: 'rgba(63,59,56,0.3)' },
+        angleLines: { color: 'rgba(63,59,56,0.3)' },
+        pointLabels: {
+          color: '#A8A29E',
+          font: { size: 11, family: 'Geist, system-ui, sans-serif' },
+          padding: 14
+        }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>

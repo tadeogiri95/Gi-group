@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { PLANES, precioAnual } from "../lib/plans";
 import { sb, getToken } from "../lib/supabase";
+import EnterpriseContactButton from "./EnterpriseContactButton";
 
 const ORDEN_PLANES = ["free", "starter", "pro", "enterprise"];
 
@@ -262,16 +263,15 @@ export default function BillingScreen({ onClose }) {
                         Plan actual
                       </div>
                     ) : esEnterprise ? (
-                      <a
-                        href="mailto:contacto@gypi.app?subject=Consulta plan Enterprise"
-                        className="block text-center py-[11px] rounded-[10px] bg-transparent font-body text-[13px] font-bold no-underline"
+                      <EnterpriseContactButton
+                        className="block w-full text-center py-[11px] rounded-[10px] bg-transparent font-body text-[13px] font-bold cursor-pointer"
                         style={{
                           border: "1px solid var(--color-empresa-primary)",
                           color: "var(--color-empresa-primary)",
                         }}
                       >
                         Contactanos
-                      </a>
+                      </EnterpriseContactButton>
                     ) : pid === "free" ? null : (
                       <button
                         onClick={() => upgrade(pid)}

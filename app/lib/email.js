@@ -58,12 +58,20 @@ function buildHtml(titulo, subtitulo, cuerpo) {
     .replace("{{CUERPO}}", cuerpo);
 }
 
+// Tags de Resend — permiten asociar eventos del webhook (open/click/bounce)
+// de vuelta al tipo de email y a la empresa que lo recibió.
+function buildTags(tipoEmail, empresaId) {
+  const tags = [{ name: "tipo", value: tipoEmail }];
+  if (empresaId) tags.push({ name: "empresa_id", value: String(empresaId) });
+  return tags;
+}
+
 function btn(url, label) {
   return `<a href="${url}" style="display:inline-block;margin-top:20px;padding:12px 24px;background:#F97316;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px">${label}</a>`;
 }
 
 // ─── Email de bienvenida post-registro ───
-export async function sendBienvenida({ to, nombre, empresa, slug }) {
+export async function sendBienvenida({ to, nombre, empresa, slug, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
@@ -86,43 +94,56 @@ export async function sendBienvenida({ to, nombre, empresa, slug }) {
     subject: `¡Bienvenido a Gypi, ${empresa}! 🚀`,
     html: buildHtml("¡Ya estás en Gypi!", "Tu trial Pro de 14 días comenzó", cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("bienvenida", empresaId),
   }).catch((e) => logger.error("email sendBienvenida", e));
 }
 
 // ─── Alerta de trial próximo a vencer ───
-export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRestantes }) {
+// diasRestantes: 11 (día 3 del trial), 7 (día 7), 4 (día 10), 1 (día 13 / último)
+export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRestantes, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const urgente = diasRestantes === 1;
+  const temprano = diasRestantes >= 10; // 11 o más días restantes → tono informativo
+
+  const mensajePrincipal = urgente
+    ? `El trial Pro de <strong>${escapeHtml(empresa)}</strong> vence <strong>mañana</strong>. Después pasará al plan gratuito.`
+    : temprano
+      ? `Comenzaste tu trial Pro de <strong>${escapeHtml(empresa)}</strong>. Tenés <strong>${diasRestantes} días</strong> para explorar todas las funciones.`
+      : `El trial Pro de <strong>${escapeHtml(empresa)}</strong> vence en <strong>${diasRestantes} días</strong>. Aprovechá para suscribirte y mantener el acceso.`;
+
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
-    <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      El trial Pro de <strong>${escapeHtml(empresa)}</strong> ${urgente ? "vence <strong>mañana</strong>" : `vence en <strong>${diasRestantes} días</strong>`}.
-      ${urgente ? "Después de mañana, la cuenta pasará al plan gratuito." : "Aprovechá para suscribirte y mantener el acceso completo."}
-    </p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">${mensajePrincipal}</p>
     <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#9A3412">
-      ${urgente ? "⚠️ <strong>Último día:</strong>" : "📅 <strong>En tu trial tenés:"}
+      ${urgente ? "⚠️ <strong>Último día:</strong>" : "📅 <strong>En tu trial tenés:</strong>"}
       acceso a reportes, grilla de horarios, proyectos, geolocalización y más.
     </div>
-    ${btn(`${url}?screen=config`, "Suscribirme ahora →")}
+    ${btn(`${url}?screen=config`, urgente ? "Suscribirme ahora →" : "Ver mi empresa →")}
   `;
+
+  const subject = urgente
+    ? `⚠️ Último día de tu trial en Gypi — ${empresa}`
+    : temprano
+      ? `Tu trial Pro de Gypi comenzó — ${empresa}`
+      : `Tu trial de Gypi vence en ${diasRestantes} días — ${empresa}`;
+
   return resend.emails.send({
     from: FROM,
     to,
-    subject: urgente
-      ? `⚠️ Último día de tu trial en Gypi — ${empresa}`
-      : `Tu trial de Gypi vence en ${diasRestantes} días — ${empresa}`,
+    subject,
     html: buildHtml(
-      urgente ? "Tu trial vence mañana" : `Quedan ${diasRestantes} días de trial`,
+      urgente ? "Tu trial vence mañana" : temprano ? "¡Bienvenido a tu trial Pro!" : `Quedan ${diasRestantes} días de trial`,
       empresa,
       cuerpo
     ),
     text: stripHtml(cuerpo),
+    tags: buildTags("trial_vencimiento", empresaId),
   }).catch((e) => logger.error("email sendTrialVencimiento", e));
 }
 
 // ─── Recuperación de contraseña ───
-export async function sendRecuperarPassword({ to, nombre, empresa, resetUrl }) {
+export async function sendRecuperarPassword({ to, nombre, empresa, resetUrl, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
@@ -142,11 +163,12 @@ export async function sendRecuperarPassword({ to, nombre, empresa, resetUrl }) {
     subject: `Restablecer contraseña — Gypi`,
     html: buildHtml("Restablecer contraseña", empresa, cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("recuperar_password", empresaId),
   }).catch((e) => logger.error("email sendRecuperarPassword", e));
 }
 
 // ─── Verificación de email post-registro ───
-export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) {
+export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
@@ -165,11 +187,43 @@ export async function sendVerificacionEmail({ to, nombre, empresa, verifyUrl }) 
     subject: `Confirmá tu email — Gypi`,
     html: buildHtml("Confirmá tu email", empresa, cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("verificacion_email", empresaId),
   }).catch((e) => logger.error("email sendVerificacionEmail", e));
 }
 
+// ─── Recordatorio de onboarding incompleto (día 3 / 7 / 14 post-registro) ───
+export async function sendOnboardingRecordatorio({ to, nombre, empresa, slug, dias, empresaId }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const url = `${APP_BASE}/${slug}`;
+  const urgente = dias >= 14;
+
+  const mensajePrincipal = urgente
+    ? `Notamos que <strong>${escapeHtml(empresa)}</strong> todavía no terminó de configurarse en Gypi. Sin la configuración inicial no podés invitar empleados ni empezar a fichar.`
+    : `Hace ${dias} días creaste <strong>${escapeHtml(empresa)}</strong> en Gypi, pero todavía no completaste la configuración inicial. Te toma menos de 5 minutos.`;
+
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">${mensajePrincipal}</p>
+    <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#9A3412">
+      📋 Faltan: rubro, divisiones, etapas de trabajo y tu primer empleado.
+    </div>
+    ${btn(url, "Terminar configuración →")}
+  `;
+
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: urgente
+      ? `Último recordatorio: terminá de configurar Gypi — ${empresa}`
+      : `¿Necesitás ayuda para terminar de configurar Gypi?`,
+    html: buildHtml("Terminá tu configuración", empresa, cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("onboarding_recordatorio", empresaId),
+  }).catch((e) => logger.error("email sendOnboardingRecordatorio", e));
+}
+
 // ─── Trial expirado (downgrade automático a free) ───
-export async function sendTrialExpirado({ to, nombre, empresa, slug }) {
+export async function sendTrialExpirado({ to, nombre, empresa, slug, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
@@ -190,11 +244,12 @@ export async function sendTrialExpirado({ to, nombre, empresa, slug }) {
     subject: `Tu trial de Gypi finalizó — ${empresa}`,
     html: buildHtml("Tu trial finalizó", empresa, cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("trial_expirado", empresaId),
   }).catch((e) => logger.error("email sendTrialExpirado", e));
 }
 
 // ─── Plan suspendido por impago / cancelación ───
-export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "cancelación" }) {
+export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "cancelación", empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
@@ -215,11 +270,12 @@ export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "
     subject: `Suscripción ${motivo === "impago" ? "suspendida" : "cancelada"} — ${empresa}`,
     html: buildHtml(motivo === "impago" ? "Suscripción suspendida" : "Suscripción cancelada", empresa, cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("plan_suspendido", empresaId),
   }).catch((e) => logger.error("email sendPlanSuspendido", e));
 }
 
 // ─── Confirmación de pago exitoso ───
-export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, plan }) {
+export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, plan, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
@@ -240,11 +296,12 @@ export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, pla
     subject: `Pago confirmado — ${empresa}`,
     html: buildHtml("Pago confirmado", empresa, cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("pago_confirmado", empresaId),
   }).catch((e) => logger.error("email sendPagoConfirmado", e));
 }
 
 // ─── Invitación a empleado ───
-export async function sendInvitacionEmpleado({ to, nombre, empresa, slug, legajo }) {
+export async function sendInvitacionEmpleado({ to, nombre, empresa, slug, legajo, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
@@ -265,11 +322,12 @@ export async function sendInvitacionEmpleado({ to, nombre, empresa, slug, legajo
     subject: `${empresa} te invitó a Gypi`,
     html: buildHtml("Activá tu cuenta en Gypi", empresa, cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("invitacion_empleado", empresaId),
   }).catch((e) => logger.error("email sendInvitacionEmpleado", e));
 }
 
 // ─── Fallo de pago ───
-export async function sendFalloPago({ to, nombre, empresa, slug, monto }) {
+export async function sendFalloPago({ to, nombre, empresa, slug, monto, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
@@ -290,5 +348,32 @@ export async function sendFalloPago({ to, nombre, empresa, slug, monto }) {
     subject: `Problema con tu pago en Gypi — ${empresa}`,
     html: buildHtml("Problema con tu pago", empresa, cuerpo),
     text: stripHtml(cuerpo),
+    tags: buildTags("fallo_pago", empresaId),
   }).catch((e) => logger.error("email sendFalloPago", e));
+}
+
+// ─── Consulta de plan Enterprise (notificación interna al equipo de Gypi) ───
+export async function sendConsultaEnterprise({ nombre, email, empresa, telefono, mensaje }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const destino = process.env.ENTERPRISE_CONTACT_EMAIL || "contacto@gypi.app";
+  const cuerpo = `
+    <p style="margin:0 0 12px">Nueva consulta de plan <strong>Enterprise</strong> desde la web.</p>
+    <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#0C4A6E">
+      <p style="margin:0 0 6px"><strong>Nombre:</strong> ${escapeHtml(nombre)}</p>
+      <p style="margin:0 0 6px"><strong>Email:</strong> ${escapeHtml(email)}</p>
+      <p style="margin:0 0 6px"><strong>Empresa:</strong> ${escapeHtml(empresa)}</p>
+      ${telefono ? `<p style="margin:0 0 6px"><strong>Teléfono:</strong> ${escapeHtml(telefono)}</p>` : ""}
+      ${mensaje ? `<p style="margin:0"><strong>Mensaje:</strong> ${escapeHtml(mensaje)}</p>` : ""}
+    </div>
+    <p style="margin:0;font-size:12px;color:#9B9B9B">Respondé directamente a este email — el reply-to apunta al contacto.</p>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to: destino,
+    replyTo: email,
+    subject: `Nueva consulta Enterprise — ${empresa}`,
+    html: buildHtml("Consulta Enterprise", empresa, cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("consulta_enterprise"),
+  }).catch((e) => logger.error("email sendConsultaEnterprise", e));
 }

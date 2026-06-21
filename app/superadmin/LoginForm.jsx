@@ -1,28 +1,32 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LoginForm() {
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await fetch("/api/superadmin/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ key }),
-    });
-    if (res.ok) {
-      router.refresh();
-    } else {
-      const d = await res.json();
-      setError(d.error || "Clave incorrecta");
+    try {
+      const res = await fetch("/api/superadmin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ key }),
+      });
+      if (res.ok) {
+        // Hard navigation para que el Server Component lea la nueva cookie con certeza
+        window.location.href = "/superadmin";
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error || "Clave incorrecta");
+        setLoading(false);
+      }
+    } catch {
+      setError("Error de red — verificá tu conexión");
       setLoading(false);
     }
   };

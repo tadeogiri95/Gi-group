@@ -460,6 +460,46 @@ export default function Dashboard({ initialData }) {
                   )}
                 </div>
 
+                {/* Empresas en riesgo (health score) */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                  <div style={{ background: "#1A1714", border: "1px solid rgba(255,240,220,0.08)", borderRadius: 14, padding: 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#F5F0E8", marginBottom: 14 }}>Empresas en riesgo (health score)</div>
+                    {(metricas.health_scores || []).length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#6B6560" }}>Sin datos aún.</div>
+                    ) : (() => {
+                      const RIESGO_COLOR = { alto: "#EF4444", medio: "#F97316", bajo: "#22C55E" };
+                      return (metricas.health_scores || []).slice(0, 8).map((h) => (
+                        <div key={h.empresa_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid rgba(255,240,220,0.04)" }}>
+                          <div>
+                            <span style={{ fontSize: 12, color: "#F5F0E8", fontWeight: 600 }}>{h.nombre}</span>
+                            <span style={{ marginLeft: 8, fontSize: 10, color: "#6B6560" }}>
+                              {h.dias_desde_ultimo_fichaje === null ? "sin fichajes" : `último fichaje hace ${h.dias_desde_ultimo_fichaje}d`}
+                            </span>
+                          </div>
+                          <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: `${RIESGO_COLOR[h.riesgo] || "#6B7280"}22`, color: RIESGO_COLOR[h.riesgo] || "#9B8F85" }}>
+                            {h.health_score} · {h.riesgo}
+                          </span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+
+                  {/* Engagement de emails */}
+                  <div style={{ background: "#1A1714", border: "1px solid rgba(255,240,220,0.08)", borderRadius: 14, padding: 20 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#F5F0E8", marginBottom: 14 }}>Engagement de emails (90d)</div>
+                    {(metricas.email_engagement || []).length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#6B6560" }}>Sin eventos aún — requiere webhook de Resend configurado.</div>
+                    ) : (metricas.email_engagement || []).map((em) => (
+                      <div key={em.tipo_email} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid rgba(255,240,220,0.04)" }}>
+                        <span style={{ fontSize: 12, color: "#C4B8AE" }}>{em.tipo_email}</span>
+                        <span style={{ fontSize: 11, color: "#9B8F85" }}>
+                          {em.enviados} env · {em.tasa_apertura}% abierto · {em.tasa_click}% click
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Distribución por plan (original) */}
                 <div style={{ background: "#1A1714", border: "1px solid rgba(255,240,220,0.08)", borderRadius: 14, padding: 20 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#F5F0E8", marginBottom: 14 }}>Distribución por plan</div>

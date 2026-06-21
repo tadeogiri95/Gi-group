@@ -26,6 +26,7 @@ export const EVT = {
   ONBOARDING_COMPLETE: "onboarding_complete",
   ONBOARDING_SKIP:     "onboarding_skip",
   LOGIN:               "login",
+  PRIMER_INVITE:       "primer_invite",
   PRIMER_FICHAJE:      "primer_fichaje",
   FICHAJE:             "fichaje",
   UPGRADE_INIT:        "upgrade_init",
@@ -34,4 +35,6 @@ export const EVT = {
   TRIAL_EXPIRED:       "trial_expired",
   PAGO_APROBADO:       "pago_aprobado",
   PAGO_RECHAZADO:      "pago_rechazado",
+  REENGAGEMENT_ONBOARDING: "reengagement_onboarding",
+  CONSULTA_ENTERPRISE: "consulta_enterprise",
 };

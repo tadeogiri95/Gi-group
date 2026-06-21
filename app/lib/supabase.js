@@ -76,10 +76,19 @@ async function intentarRefresh() {
   return _refreshing;
 }
 
-async function req(method, path, body) {
+export function getCsrfToken() {
+  try {
+    const match = document.cookie.match(/(?:^|;\s*)gypi_csrf=([^;]+)/);
+    return match ? match[1] : null;
+  } catch { return null; }
+}
+
+async function req(method, path, body, { cursor, raw } = {}) {
   const token = getToken();
   const headers = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const csrf = getCsrfToken();
+  if (csrf) headers["x-csrf-token"] = csrf;
 
   let res;
   try {
@@ -87,7 +96,7 @@ async function req(method, path, body) {
       method: "POST",
       headers,
       credentials: "include",
-      body: JSON.stringify({ method, path, body }),
+      body: JSON.stringify({ method, path, body, cursor }),
     });
   } catch {
     throw new Error("Error de red. Verificá tu conexión.");
@@ -105,16 +114,18 @@ async function req(method, path, body) {
       const newToken = getToken();
       const retryHeaders = { "Content-Type": "application/json" };
       if (newToken) retryHeaders["Authorization"] = `Bearer ${newToken}`;
+      const retryCsrf = getCsrfToken();
+      if (retryCsrf) retryHeaders["x-csrf-token"] = retryCsrf;
 
       try {
         const retryRes = await fetch("/api/data", {
           method: "POST",
           headers: retryHeaders,
           credentials: "include",
-          body: JSON.stringify({ method, path, body }),
+          body: JSON.stringify({ method, path, body, cursor }),
         });
         const retryJson = await retryRes.json();
-        if (retryRes.ok && !retryJson.error) return retryJson.data;
+        if (retryRes.ok && !retryJson.error) return raw ? retryJson : retryJson.data;
         // Si el retry también falla, caer al logout
       } catch {
         // Fallo en retry, caer al logout
@@ -140,11 +151,27 @@ async function req(method, path, body) {
   }
 
   if (!res.ok || json.error) throw new Error(json.error || `Error ${res.status}`);
-  return json.data;
+  return raw ? json : json.data;
+}
+
+/**
+ * Wrapper for direct API calls (outside of /api/data proxy).
+ * Adds auth token + CSRF header automatically.
+ */
+export async function apiFetch(url, opts = {}) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json", ...opts.headers };
+  if (token && !headers["Authorization"]) headers["Authorization"] = `Bearer ${token}`;
+  const csrf = getCsrfToken();
+  if (csrf) headers["x-csrf-token"] = csrf;
+  return fetch(url, { ...opts, headers, credentials: "include" });
 }
 
 export const sb = {
   get: (path) => req("GET", path),
+  // getPage: paginación keyset — requiere que `path` incluya order=columna.dir.
+  // Devuelve { data, nextCursor }; pasar nextCursor como cursor para la página siguiente.
+  getPage: (path, cursor) => req("GET", path, undefined, { cursor, raw: true }),
   post: (path, data) => req("POST", path, data),
   patch: (path, data) => req("PATCH", path, data),
   del: (path) => req("DELETE", path),

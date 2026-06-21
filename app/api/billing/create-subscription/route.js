@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
-import { crearPreapproval } from "../../../lib/mercadopago";
+import { crearPreapproval, getPreapproval } from "../../../lib/mercadopago";
 import { PLANES, precioAnual } from "../../../lib/plans";
 import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
@@ -34,6 +34,30 @@ export async function POST(request) {
     if (!planInfo?.precio) return NextResponse.json({ error: "Plan sin precio configurado" }, { status: 400 });
 
     const precioMensual = periodo === "anual" ? precioAnual(plan) : planInfo.precio;
+
+    // ═══ P6: Dedup — reusar suscripción pendiente reciente (< 5 min) ═══
+    const recientes = await sbGet(
+      `suscripciones?empresa_id=eq.${sesion.empresa_id}&plan=eq.${plan}&periodo=eq.${periodo}&estado=eq.suspendida&gateway_subscription_id=not.is.null&order=created_at.desc&limit=1&select=id,gateway_subscription_id,created_at`,
+      { silent: true, fallback: [] }
+    );
+    if (recientes?.[0]) {
+      const creada = new Date(recientes[0].created_at);
+      const ahoraMs = Date.now();
+      if (ahoraMs - creada.getTime() < 5 * 60 * 1000) {
+        try {
+          const mp = await getPreapproval(recientes[0].gateway_subscription_id);
+          if (mp.init_point && mp.status === "pending") {
+            return NextResponse.json({
+              ok: true,
+              init_point: mp.init_point,
+              suscripcion_id: recientes[0].id,
+              mp_preapproval_id: recientes[0].gateway_subscription_id,
+              dedup: true,
+            });
+          }
+        } catch {}
+      }
+    }
 
     const emp = await sbGet(`empresa?id=eq.${sesion.empresa_id}&select=admin_email,nombre,slug`);
     if (!emp?.[0]) return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });
@@ -72,6 +96,11 @@ export async function POST(request) {
     }
 
     await sbPatchOk(`suscripciones?id=eq.${suscId}`, { gateway_subscription_id: mp.id });
+
+    // Limpiar override manual: el usuario está eligiendo plan vía MP
+    await sbPatchOk(`empresa?id=eq.${sesion.empresa_id}`, {
+      plan_override_manual: false,
+    });
 
     logEvent(EVT.UPGRADE_INIT, {
       empresa_id: sesion.empresa_id,

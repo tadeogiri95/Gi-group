@@ -19,9 +19,8 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { sb, setToken, getToken, clearToken, onUnauthorized, setEmpresaId, setRefreshToken } from "../lib/supabase";
+import { setToken, getToken, clearToken, onUnauthorized, setEmpresaId, setRefreshToken } from "../lib/supabase";
 import { setColoresEmpresa } from "../lib/theme";
-import { setDivisionesEmpresa } from "../lib/constants";
 
 const AuthContext = createContext(null);
 
@@ -52,7 +51,6 @@ export function AuthProvider({ children }) {
       const data = await res.json();
       if (data.divisiones) {
         setDivisionesState(data.divisiones);
-        setDivisionesEmpresa(data.divisiones);
       }
       if (data.etapas) setEtapas(data.etapas);
     } catch (e) {

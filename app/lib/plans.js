@@ -11,6 +11,7 @@ export const PLANES = {
     moneda: "ARS",
     max_empleados: 50,
     max_ubicaciones: 999,
+    max_proyectos: 9999,
     modulos: ["fichaje", "chat", "actividad", "proyectos", "reportes", "obra", "calendario"],
     exportar_csv: true,
     exportar_pdf: true,
@@ -29,6 +30,7 @@ export const PLANES = {
     moneda: "ARS",
     max_empleados: 5,
     max_ubicaciones: 0,
+    max_proyectos: 2,
     modulos: ["fichaje", "chat", "actividad"],
     exportar_csv: false,
     exportar_pdf: false,
@@ -47,6 +49,7 @@ export const PLANES = {
     moneda: "ARS",
     max_empleados: 15,
     max_ubicaciones: 1,
+    max_proyectos: 10,
     modulos: ["fichaje", "chat", "actividad", "proyectos", "reportes", "obra"],
     exportar_csv: true,
     exportar_pdf: false,
@@ -65,6 +68,7 @@ export const PLANES = {
     moneda: "ARS",
     max_empleados: 50,
     max_ubicaciones: 999,
+    max_proyectos: 9999,
     modulos: ["fichaje", "chat", "actividad", "proyectos", "reportes", "obra", "calendario"],
     exportar_csv: true,
     exportar_pdf: true,
@@ -83,6 +87,7 @@ export const PLANES = {
     moneda: "ARS",
     max_empleados: 99999,
     max_ubicaciones: 9999,
+    max_proyectos: 99999,
     modulos: ["fichaje", "chat", "actividad", "proyectos", "reportes", "obra", "calendario"],
     exportar_csv: true,
     exportar_pdf: true,
@@ -95,6 +100,14 @@ export const PLANES = {
     api_access: true,
   },
 };
+
+export const DESCUENTO_ANUAL = 0.20;
+
+export function precioAnual(planId) {
+  const p = PLANES[planId] || PLANES.free;
+  if (!p.precio) return null;
+  return Math.round(p.precio * (1 - DESCUENTO_ANUAL));
+}
 
 // Helper backend/frontend: ¿el plan permite esta feature?
 export function planPermite(plan, feature) {

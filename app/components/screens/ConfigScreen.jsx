@@ -8,6 +8,7 @@ import CalendarioScreen from "../../calendario_screen";
 import ReglasScreen from "./ReglasScreen";
 import AdminEmpresaScreen from "../../admin_empresa_screen";
 import GestionPersonalScreen from "../../gestion_personal_screen";
+import DocumentosEmpleadoScreen from "../../documentos_empleado_screen";
 
 const SECTIONS = [
   { id: "parametros", label: "Parámetros" },
@@ -36,6 +37,10 @@ const SUBTABS = {
     {
       id: "personal", label: "Personal",
       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+    },
+    {
+      id: "documentacion", label: "Documentación",
+      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>,
     },
   ],
   reportes: [
@@ -119,6 +124,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
         {subtab === "ubicaciones" && <GeolocalizacionScreen empresaId={empresaId} />}
         {subtab === "calendario"  && <CalendarioScreen empresaId={empresaId} />}
         {subtab === "personal"   && <GestionPersonalScreen empresaId={empresaId} />}
+        {subtab === "documentacion" && <DocumentosEmpleadoScreen empresaId={empresaId} />}
         {subtab === "reglas"      && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
         {subtab === "admin"       && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
       </div>

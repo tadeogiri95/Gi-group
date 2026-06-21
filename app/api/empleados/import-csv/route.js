@@ -10,34 +10,11 @@ import { validarToken } from "../../../lib/auth";
 import { parseCsv } from "../../../lib/csv";
 import { passwordInicial } from "../../../lib/passwords";
 import { PLANES } from "../../../lib/plans";
-
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+import { sbGet, sbPost } from "../../../lib/sbHelpers";
+import { validarFormatoEmail } from "../../../lib/rateLimit";
 
 const ROLES_VALIDOS = ["operativo", "gerencial", "administrativo"];
 const ROLES_PERMITIDOS = new Set(["gerencial", "administrativo"]);
-
-async function sbGet(path) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
-  return r.json();
-}
-
-async function sbPost(path, body) {
-  const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    method: "POST",
-    headers: {
-      apikey: SB_KEY,
-      Authorization: `Bearer ${SB_KEY}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(body),
-  });
-  const txt = await r.text();
-  return txt ? JSON.parse(txt) : null;
-}
 
 export async function POST(req) {
   // Autenticación
@@ -90,9 +67,12 @@ export async function POST(req) {
   const results = { created: 0, skipped: 0, errors: [...parseErrors] };
   let added = 0;
 
+  // Validar todas las filas primero, acumular batch para insert masivo
+  const batch = [];
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const rowNum = i + 2; // +1 para header, +1 para 1-index
+    const rowNum = i + 2;
 
     const legajo = parseInt(row.legajo, 10);
     if (isNaN(legajo) || legajo <= 0) {
@@ -111,7 +91,6 @@ export async function POST(req) {
       continue;
     }
 
-    // Límite de plan
     if (actuales + added >= maxEmpleados) {
       results.errors.push(`Fila ${rowNum}: límite de empleados alcanzado (${maxEmpleados})`);
       continue;
@@ -119,16 +98,30 @@ export async function POST(req) {
 
     const rol = ROLES_VALIDOS.includes(row.rol) ? row.rol : "operativo";
 
-    // Contraseña inicial aleatoria segura — el empleado debe cambiarla en primer login
-    const passwordHash = await bcrypt.hash(passwordInicial(), 10);
-
     const emailRaw = row.email?.trim() || null;
-    if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+    if (emailRaw && !validarFormatoEmail(emailRaw)) {
       results.errors.push(`Fila ${rowNum}: email inválido ("${emailRaw}")`);
       continue;
     }
 
-    const nuevo = {
+    batch.push({ rowNum, legajo, nombre, emailRaw, rol, row });
+    added++;
+    legajosExistentes.add(legajo);
+  }
+
+  // Hash passwords en paralelo y hacer bulk insert en lotes de 50
+  const BATCH_SIZE = 50;
+  for (let b = 0; b < batch.length; b += BATCH_SIZE) {
+    const chunk = batch.slice(b, b + BATCH_SIZE);
+
+    const withHashes = await Promise.all(
+      chunk.map(async (item) => ({
+        ...item,
+        passwordHash: await bcrypt.hash(passwordInicial(), 10),
+      }))
+    );
+
+    const payloads = withHashes.map(({ legajo, nombre, emailRaw, rol, row, passwordHash }) => ({
       empresa_id: empresaId,
       legajo,
       nombre,
@@ -140,19 +133,18 @@ export async function POST(req) {
       activo: true,
       password: passwordHash,
       debe_cambiar_password: true,
-    };
+    }));
 
     try {
-      const created = await sbPost(`empleados`, nuevo);
-      if (created && !created.code) {
-        results.created++;
-        added++;
-        legajosExistentes.add(legajo);
+      const created = await sbPost("empleados", payloads);
+      if (Array.isArray(created)) {
+        results.created += created.length;
       } else {
-        results.errors.push(`Fila ${rowNum}: ${created?.message || "Error al crear empleado"}`);
+        results.errors.push(`Lote ${Math.floor(b / BATCH_SIZE) + 1}: respuesta inesperada del servidor`);
       }
     } catch (e) {
-      results.errors.push(`Fila ${rowNum}: ${e.message}`);
+      const rowNums = chunk.map((c) => c.rowNum).join(",");
+      results.errors.push(`Filas ${rowNums}: ${e.message}`);
     }
   }
 
