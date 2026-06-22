@@ -3,13 +3,14 @@
 --
 -- ⚠️ NO EJECUTAR. Documentación de referencia, no una migración.
 --
--- Resultado de aplicar, en orden, supabase/migrations/001 a 053. Para el
+-- Resultado de aplicar, en orden, supabase/migrations/001 a 059. Para el
 -- detalle de POR QUÉ cada columna/función/índice existe (qué bug arregló,
 -- qué endpoint la usa), ver el archivo de migración correspondiente — este
 -- archivo solo consolida el ESTADO FINAL en un solo lugar, para no tener
 -- que reconstruirlo mentalmente leyendo 53 diffs en orden.
 --
--- Generado en la auditoría DB del 2026-06-20. Si agregás una migración
+-- Generado en la auditoría DB del 2026-06-20, actualizado a 059 en la
+-- auditoría de arquitectura del 2026-06-21. Si agregás una migración
 -- nueva, actualizá este archivo en el mismo PR (no hay sync automático).
 --
 -- NOTA: `empresa.suscripcion_activa_id` referencia a `suscripciones`, que
@@ -205,6 +206,11 @@ CREATE TABLE IF NOT EXISTS proyectos (
   division                text,                                    -- (021)
   UNIQUE (empresa_id, ot)                                          -- (021) uq_proyectos
 );
+-- (056) reintentó agregar ot/cliente/obra/proyecto/division con ADD COLUMN
+-- IF NOT EXISTS — ya existían desde (021), sin efecto neto sobre el schema.
+-- (057) revierte un intento fallido de sincronizar una columna `codigo` que
+-- nunca existió en producción (DROP de trigger+función huérfanos). Tampoco
+-- cambia el schema final.
 
 CREATE TABLE IF NOT EXISTS etapas (
   id                      bigserial PRIMARY KEY,
@@ -398,6 +404,65 @@ CREATE TABLE IF NOT EXISTS metricas_eventos (
   created_at              timestamptz NOT NULL DEFAULT now()
 );                                                                  -- (047)
 
+CREATE TABLE IF NOT EXISTS email_eventos (
+  id                      bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  resend_email_id         text,
+  tipo_email              text,
+  evento                  text NOT NULL,
+  empresa_id              uuid REFERENCES empresa(id) ON DELETE SET NULL,
+  destinatario            text,
+  link                    text,
+  meta                    jsonb DEFAULT '{}',
+  created_at              timestamptz NOT NULL DEFAULT now()
+);                                                                  -- (054) webhook de Resend (sent/delivered/opened/clicked/bounced/complained)
+
+CREATE TABLE IF NOT EXISTS tipos_documento_requerido (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id              uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+  nombre                  text NOT NULL,
+  formatos_aceptados      text[] NOT NULL DEFAULT ARRAY['pdf','image'],
+  admite_multiples        boolean NOT NULL DEFAULT false,
+  tipo_carga              text NOT NULL DEFAULT 'puntual' CHECK (tipo_carga IN ('puntual','recurrente')),
+  activo                  boolean NOT NULL DEFAULT true,
+  orden                   integer NOT NULL DEFAULT 0,
+  created_at              timestamptz NOT NULL DEFAULT now()
+);                                                                  -- (058) catálogo de documentos exigidos, por empresa
+
+CREATE TABLE IF NOT EXISTS documentos_exigidos_empleado (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id              uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+  empleado_id             uuid NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
+  tipo_documento_id       uuid NOT NULL REFERENCES tipos_documento_requerido(id) ON DELETE CASCADE,
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (empleado_id, tipo_documento_id)
+);                                                                  -- (058) asignación tipo↔empleado
+
+CREATE TABLE IF NOT EXISTS documentos_empleado (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id              uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+  empleado_id             uuid NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
+  tipo_documento_id       uuid NOT NULL REFERENCES tipos_documento_requerido(id) ON DELETE CASCADE,
+  storage_path            text NOT NULL,
+  nombre_archivo          text,
+  mime_type               text,
+  tamano_bytes            integer,
+  estado                  text NOT NULL DEFAULT 'cargado' CHECK (estado IN ('cargado','rechazado','vencido')),
+  fecha_carga             timestamptz NOT NULL DEFAULT now(),
+  created_at              timestamptz NOT NULL DEFAULT now()
+);                                                                  -- (058) archivos subidos — solo lectura vía /api/data,
+                                                                     -- inserts siempre por /api/documentos/upload
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- STORAGE BUCKETS
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- logos (público) y reportes-obra (público) — preexistentes.
+-- documentos-empleado (PRIVADO, 059) — PII sensible (DNI, antecedentes, etc.).
+--   Único acceso de lectura: URLs firmadas de 60s vía
+--   app/api/documentos/sign-url/route.js, que valida ownership antes de firmar.
+--   5 MB máx, MIME permitidos: pdf, png, jpeg, webp, doc, docx.
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- VISTAS
@@ -435,6 +500,8 @@ CREATE TABLE IF NOT EXISTS metricas_eventos (
 -- rpc_revenue_por_plan()                                (048)
 -- rpc_funnel_activacion()                               (048)
 -- limpiar_push_tokens_huerfanos()                       (053) — llamada desde /api/cron/limpiar-tokens
+-- rpc_health_score_empresas()                           (055) — score de engagement/riesgo de churn por empresa
+-- rpc_email_engagement()                                (055) — tasas de apertura/click por tipo de email (90d)
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
