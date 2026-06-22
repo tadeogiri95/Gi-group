@@ -127,6 +127,44 @@ export interface TurnoPlanificado {
   created_at?: string;
 }
 
+export interface EmailEvento {
+  id: number;
+  resend_email_id?: string | null;
+  tipo_email?: string | null;
+  evento: string;
+  empresa_id?: string | null;
+  destinatario?: string | null;
+  link?: string | null;
+  meta?: Record<string, unknown>;
+  created_at: string;
+}
+
+// Shapes de retorno de RPCs de growth/superadmin (055) — no son tablas,
+// las devuelve sbRpc() tal cual declara el RETURNS TABLE de cada función.
+export interface HealthScoreEmpresa {
+  empresa_id: string;
+  nombre: string;
+  plan_activo: string;
+  onboarding_completado: boolean;
+  empleados_activos: number;
+  empleados_fichando_7d: number;
+  dias_desde_ultimo_fichaje: number | null;
+  eventos_30d: number;
+  health_score: number;
+  riesgo: "alto" | "medio" | "bajo";
+}
+
+export interface EmailEngagement {
+  tipo_email: string;
+  enviados: number;
+  entregados: number;
+  abiertos: number;
+  clickeados: number;
+  rebotados: number;
+  tasa_apertura: number;
+  tasa_click: number;
+}
+
 // Payload decodificado del JWT de sesión
 export interface SesionJWT {
   empleado_id: string;
