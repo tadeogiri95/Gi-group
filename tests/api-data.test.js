@@ -43,6 +43,27 @@ test("POST /api/data — tabla no permitida devuelve 403", async () => {
   assert.equal(res.status, 403);
 });
 
+test("POST /api/data — escritura en tabla solo-lectura (documentos_empleado) devuelve 403", async () => {
+  const token = await tokenValido();
+
+  const resPost = await POST(req({
+    method: "POST",
+    path: "documentos_empleado",
+    body: { empleado_id: EMPLEADO_ID, tipo_documento_id: "x", storage_path: "hack" },
+  }, token));
+  assert.equal(resPost.status, 403, "POST directo a documentos_empleado debe rechazarse — los inserts pasan por /api/documentos/upload");
+
+  const resPatch = await POST(req({
+    method: "PATCH",
+    path: "documentos_empleado?id=eq.x",
+    body: { storage_path: "hack" },
+  }, token));
+  assert.equal(resPatch.status, 403, "PATCH directo a documentos_empleado debe rechazarse");
+
+  const resDelete = await POST(req({ method: "DELETE", path: "documentos_empleado?id=eq.x" }, token));
+  assert.equal(resDelete.status, 403, "DELETE directo a documentos_empleado debe rechazarse");
+});
+
 test("POST /api/data — GET válido inyecta empresa_id y devuelve data", async () => {
   const token = await tokenValido();
   let pathRecibido = null;
