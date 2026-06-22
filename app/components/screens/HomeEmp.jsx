@@ -1,5 +1,5 @@
 "use client";
-import { fmtDate, DIAS_KEY } from "../../lib/theme";
+import { fmtDate } from "../../lib/theme";
 import { hoyArg, ahoraArg } from "../../lib/dates";
 import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
@@ -13,7 +13,7 @@ function fmtMin(m) {
 
 export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [] }) {
   const misSols = ctx.misSolicitudes || [];
-  const dH = DIAS_KEY[new Date().getDay()];
+  const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
 
   const etapaLabel = (id) => {
@@ -344,7 +344,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       {usuario.diagrama && (() => {
         const DIAS_G = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
         const DIAS_LABEL = { lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves", vie: "Viernes", sab: "Sábado", dom: "Domingo" };
-        const diaHoy = DIAS_KEY[new Date().getDay()];
+        const diaHoy = ahoraArg().diaKey;
         const diag = usuario.diagrama;
         let totalH = 0;
         DIAS_G.forEach(d => { if (diag[d]) { const [hI, mI] = diag[d].in.split(":").map(Number); const [hO, mO] = diag[d].out.split(":").map(Number); totalH += (hO * 60 + mO - hI * 60 - mI) / 60; } });

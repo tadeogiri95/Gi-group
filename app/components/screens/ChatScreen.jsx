@@ -4,7 +4,7 @@
 // Depende de fichar.js helpers (ficharServer, obtenerGeo)
 
 import { useState, useEffect, useRef } from "react";
-import { fmtTime, fmtDate, DIAS_KEY } from "../../lib/theme";
+import { fmtTime, fmtDate } from "../../lib/theme";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "var(--color-empresa-primary-text, #000)";
@@ -27,14 +27,14 @@ import { ficharServer, obtenerGeo } from "../../lib/fichar";
 import { Ic } from "../Icons";
 import FichadaCard from "../cards/FichadaCard";
 import SolSentCard from "../cards/SolSentCard";
-import { hoyArg } from "../../lib/dates";
+import { hoyArg, ahoraArg } from "../../lib/dates";
 
 // solicitudes.fecha es DATE en la DB — nunca debe recibir literales como "hoy"
 // o un string vacío. Si la IA no extrajo una fecha válida, usamos hoy.
 const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f || "") ? f : hoyArg();
 
 export default function ChatScreen({ usuario, ctx, reload, empresa }) {
-  const dH = DIAS_KEY[new Date().getDay()];
+  const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
   const [msgs, setMsgs] = useState([{
     from: "bot",

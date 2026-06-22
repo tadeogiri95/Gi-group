@@ -1,8 +1,8 @@
-import { fmtTime, fmtDateLong, DIAS_KEY } from './theme';
+import { fmtDateLong } from './theme';
+import { ahoraArg, fechaSegura } from './dates';
 
 export function buildSystemPrompt(ctx, usuario, empresa) {
-  const now = new Date();
-  const diaHoy = DIAS_KEY[now.getDay()];
+  const { fecha: fechaHoy, hora: horaHoy, diaKey: diaHoy } = ahoraArg();
   const diag = usuario.diagrama || {};
   const diagHoy = diag[diaHoy];
   const isGerencial = ["gerencial", "administrativo"].includes(usuario.rol);
@@ -21,8 +21,8 @@ export function buildSystemPrompt(ctx, usuario, empresa) {
   let prompt = `Sos el asistente de RR.HH. de ${nombreEmpresa}, rubro: ${rubroEmpresa}.
 
 FECHA Y HORA REAL:
-- ${fmtDateLong(now)}
-- Hora: ${fmtTime(now)}
+- ${fmtDateLong(fechaSegura(fechaHoy))}
+- Hora: ${horaHoy}
 - Día: ${diaHoy.toUpperCase()}
 
 EMPLEADO:

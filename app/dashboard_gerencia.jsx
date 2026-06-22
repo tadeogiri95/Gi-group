@@ -12,7 +12,7 @@ const INDIGO = "#4F46E5";
 const MUTE = "var(--color-text-muted)";
 
 import { sb } from "./lib/supabase";
-import { hoyArg, lunesDeLaSemana } from "./lib/dates";
+import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
 import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
 import BillingScreen from "./components/BillingScreen";
@@ -358,7 +358,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
   // Asistencia: presentes vs programados
   const presentes = fichadasHoy.length;
-  const diaKey = DIAS_KEY[now.getDay()];
+  const diaKey = ahoraArg().diaKey;
   const programados = empActivos.filter(e => e.diagrama && e.diagrama[diaKey]).length;
   const ausentes = Math.max(0, programados - presentes);
   const pctAsist = programados > 0 ? Math.round((presentes / programados) * 100) : 0;
