@@ -70,3 +70,14 @@ JOIN empleados e ON e.id = a.empleado_id;
 -- (estado del fichaje, horas trabajadas, etc.) o usar window functions
 -- en lugar del subquery. Confirmar contra Supabase Studio antes de
 -- replicar este DDL en otra instancia.
+--
+-- ¿Por qué se mantiene el subquery correlacionado de etapa_actual?
+-- (auditoría 2026-06-22): con el volumen real medido en PARTICIONAMIENTO.sql
+-- (registro_actividades: 31 filas al 2026-06-20), el costo de este subquery
+-- por grupo es insignificante — no hay evidencia de que haga falta
+-- optimizarlo hoy. Reescribirlo (ej. con
+-- LAG()/first_value() OVER (PARTITION BY empleado_id, fecha ORDER BY
+-- hora_inicio DESC)) recién se justifica con los mismos disparadores que el
+-- particionamiento de registro_actividades: >5.000.000 de filas, o p95 de
+-- queries sobre esta vista por encima de ~300ms sostenido. Hasta entonces,
+-- tocarlo es riesgo sin beneficio medible.

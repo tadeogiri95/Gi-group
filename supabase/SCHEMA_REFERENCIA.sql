@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS empleados (
   rol                     text DEFAULT 'operativo',                -- operativo | gerencial | administrativo
   cc                      text,
   activo                  boolean DEFAULT true,
-  diagrama                jsonb,
+  diagrama                jsonb,                                    -- sin índice GIN a propósito, ver sección ÍNDICES
   _deprecated_ubicacion_fichaje jsonb,                              -- DEPRECATED (044) — usar geo_config + geo_zonas
   horas_semanales         numeric DEFAULT 41,
   debe_cambiar_password   boolean DEFAULT true,
@@ -506,16 +506,27 @@ CREATE TABLE IF NOT EXISTS documentos_empleado (
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ÍNDICES — ver migraciones 005, 010, 011, 013, 014, 015(dropeado en 042),
--- 017, 020, 039, 040, 042, 045, 052 para el detalle de cada uno y qué query
--- cubre. No se repiten acá para no duplicar mantenimiento — son ~35 índices.
+-- 017, 020, 039, 040, 042, 045, 052, 054, 058 para el detalle de cada uno y
+-- qué query cubre. No se repiten acá para no duplicar mantenimiento.
+--
+-- Evaluado y descartado (auditoría 2026-06-22): índice GIN en
+-- empleados.diagrama (jsonb). Ningún query real en app/** filtra por una
+-- clave interna del JSONB (patrón `diagrama->>'lunes'=eq...`) — todos los
+-- usos seleccionan la columna completa y resuelven en JS (chat/query,
+-- push-ausencias, claude.js, reportes_screen.jsx, ChatScreen.jsx, HomeEmp.jsx)
+-- o filtran solo `diagrama=not.is.null` (push-ausencias), que un GIN no
+-- acelera. Agregarlo hoy sería overhead de escritura sin beneficio de
+-- lectura. Revisar si en el futuro aparece un query con predicado dentro
+-- del JSONB.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- RLS — capa defensiva, no la usa la app (service_role bypassea RLS siempre).
--- Tres familias de policies, ver 004/035/038/050 para el detalle:
+-- Tres familias de policies, ver 004/035/038/050/058 para el detalle:
 --   1. service_role_all_<tabla>   — bypass explícito (redundante pero documentado)
---   2. tenant_isolation_auth_<tabla> (050) — futuro-proofing si algún día se
---      usa el rol `authenticated` con JWT claims de Supabase Auth (hoy no se usa)
+--   2. tenant_isolation_auth_<tabla> (050, extendida a las 3 tablas de
+--      documentos en 058) — futuro-proofing si algún día se usa el rol
+--      `authenticated` con JWT claims de Supabase Auth (hoy no se usa)
 --   3. empresa_publica() (038) — única vía pública real, filtra columnas a mano
 -- ═══════════════════════════════════════════════════════════════════════════
