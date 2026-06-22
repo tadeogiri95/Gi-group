@@ -21,8 +21,10 @@ async function tokenConRol(rol) {
   return token;
 }
 
-function getReq() {
-  return new Request("http://localhost/api/billing/portal");
+function getReq(token) {
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return new Request("http://localhost/api/billing/portal", { headers });
 }
 
 function postReq(token) {
@@ -71,8 +73,38 @@ function patchEmpresaPlan() {
 
 // ── GET tests ──
 
-test("billing/portal GET — devuelve portal_url y descripcion", async () => {
+test("billing/portal GET — sin token devuelve 401", async () => {
+  global.fetch = createFetchMock([]);
   const res = await GET(getReq());
+  assert.equal(res.status, 401);
+});
+
+test("billing/portal GET — rol operativo devuelve 403", async () => {
+  const token = await tokenConRol("operativo");
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await GET(getReq(token));
+  assert.equal(res.status, 403);
+});
+
+test("billing/portal GET — sin suscripcion gestionada por MP devuelve 404", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    sbSuscripciones(null),
+  ]);
+  const res = await GET(getReq(token));
+  assert.equal(res.status, 404);
+  const json = await res.json();
+  assert.ok(json.error);
+});
+
+test("billing/portal GET — con suscripcion MP devuelve portal_url y descripcion", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    sbSuscripciones({ id: "sub-1", gateway_subscription_id: "mp-sub-1" }),
+  ]);
+  const res = await GET(getReq(token));
   assert.equal(res.status, 200);
   const json = await res.json();
   assert.ok(json.portal_url, "debe tener portal_url");

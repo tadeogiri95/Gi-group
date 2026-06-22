@@ -92,6 +92,7 @@ export default function BillingScreen({ onClose }) {
       const r = await fetch("/api/billing/portal", { headers: { Authorization: `Bearer ${token}` } });
       const d = await r.json();
       if (d.portal_url) window.open(d.portal_url, "_blank");
+      else if (d.error) setError(d.error);
     } catch (e) { setError(e.message); }
   };
 

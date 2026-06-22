@@ -14,10 +14,37 @@ import { logger } from "../../../lib/logger";
 import { safeErrorMessage } from "../../../lib/validate";
 
 export async function GET(request) {
-  return NextResponse.json({
-    portal_url: "https://www.mercadopago.com.ar/subscriptions",
-    descripcion: "Gestioná tu suscripción y métodos de pago en Mercado Pago",
-  });
+  try {
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
+      return NextResponse.json({ error: "Sin permisos para ver la facturación" }, { status: 403 });
+    }
+
+    // Mercado Pago no ofrece un portal por suscripción/customer (a diferencia
+    // de Stripe Billing): la única gestión posible es vía API del merchant
+    // (ya cubierta por el POST de este mismo endpoint) o la cuenta MP general
+    // del pagador. Por eso solo lo devolvemos si la empresa de hecho pasó por
+    // MP alguna vez — si no, el link no tendría nada útil para mostrar.
+    const subs = await sbGet(
+      `suscripciones?empresa_id=eq.${sesion.empresa_id}&gateway=eq.mercadopago&gateway_subscription_id=not.is.null&order=created_at.desc&limit=1&select=id`,
+      { silent: true, fallback: [] }
+    );
+    if (!subs?.[0]) {
+      return NextResponse.json(
+        { error: "Todavía no tenés una suscripción gestionada por Mercado Pago." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      portal_url: "https://www.mercadopago.com.ar/subscriptions",
+      descripcion: "Te lleva a tu cuenta de Mercado Pago, donde vas a ver todas tus suscripciones (no solo la de Gypi). Usalo para actualizar tu tarjeta o ver comprobantes de pago — para cancelar o cambiar de plan, hacelo directamente desde Gypi.",
+    });
+  } catch (err) {
+    logger.error("[billing/portal] Error GET", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request) {
