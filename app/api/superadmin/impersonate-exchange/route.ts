@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, signImpersonateToken } from "../../../lib/jwt";
+import { isUUID } from "../../../lib/validate";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
@@ -25,6 +26,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     !payload.sub || !payload.eid || payload.leg === undefined ||
     !payload.rol || !payload.jti
   ) {
+    return NextResponse.json({ error: "Código inválido o expirado" }, { status: 401 });
+  }
+
+  // Defensa en profundidad: el JWT ya está verificado por firma, pero validamos
+  // el shape de los claims antes de interpolarlos en URLs de fetch a PostgREST.
+  if (!isUUID(payload.sub as string) || !isUUID(payload.eid as string)) {
     return NextResponse.json({ error: "Código inválido o expirado" }, { status: 401 });
   }
 

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifyAdminToken } from "../../../lib/jwt";
+import { isUUID } from "../../../lib/validate";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
@@ -29,6 +30,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const empresa_id = req.nextUrl.searchParams.get("empresa_id");
   if (!empresa_id) {
     return NextResponse.json({ error: "empresa_id requerido" }, { status: 400 });
+  }
+  if (!isUUID(empresa_id)) {
+    return NextResponse.json({ error: "empresa_id debe ser un UUID válido" }, { status: 400 });
   }
 
   const [auditLogs, suscripciones, pagos] = await Promise.all([
