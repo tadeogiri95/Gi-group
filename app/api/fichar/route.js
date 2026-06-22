@@ -10,7 +10,7 @@ import { logAudit } from "../../lib/audit";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
-import { haversine as distanciaMetros } from "../../lib/calc";
+import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos } from "../../lib/calc";
 import { logEvent, EVT } from "../../lib/analytics";
 
 // ─── Hora local según timezone de empresa ───
@@ -124,30 +124,34 @@ export async function POST(request) {
         const emps = await sbGet(`empleados?id=eq.${empleadoId}&select=diagrama`);
         if (emps.length > 0 && emps[0].diagrama) {
           const diagHoy = emps[0].diagrama[diaKey];
-          if (diagHoy && diagHoy.in) {
-            const [hE, mE] = diagHoy.in.split(":").map(Number);
-            const [hR, mR] = hora.split(":").map(Number);
-            const diff = (hR * 60 + mR) - (hE * 60 + mE);
+          const minEsperado = diagHoy?.in ? parseHoraAMinutos(diagHoy.in) : null;
+          const minReal = parseHoraAMinutos(hora);
 
+          if (minEsperado != null && minReal != null) {
+            const diff = minReal - minEsperado;
+
+            // Solo consultamos tardanzas previas del mes cuando hace falta
+            // (diff>5) — evita una query de DB en el camino feliz (puntual).
+            let llegadasPrevias = 0;
             if (diff > 5) {
               const mesInicio = fecha.slice(0, 7) + "-01";
               const tardes = await sbGet(
                 `fichadas?legajo=eq.${legajo}&empresa_id=eq.${empresaId}&fecha=gte.${mesInicio}&fecha=lte.${fecha}&llegada_tarde=eq.true&select=id`
               );
-              const llegadas = tardes.length + 1;
+              llegadasPrevias = tardes.length;
+            }
 
-              if (diff > 30 || llegadas >= 3) {
-                tardanza = { estado: "bloqueado", minutos: diff, llegadasTarde: llegadas };
-                return NextResponse.json({
-                  ok: false,
-                  error: diff > 30
-                    ? `Tardanza de ${diff} min (supera tolerancia de 30 min). Necesitás permiso de gerencia.`
-                    : `3ra llegada tarde del mes. Necesitás permiso de gerencia.`,
-                  tipo: diff > 30 ? "bloqueado_tardanza" : "bloqueado_3ra_tarde",
-                  tardanza,
-                });
-              }
-              tardanza = { estado: "tarde", minutos: diff, llegadasTarde: llegadas };
+            tardanza = calcularTardanza(diagHoy.in, hora, llegadasPrevias);
+
+            if (tardanza.estado === "bloqueado") {
+              return NextResponse.json({
+                ok: false,
+                error: tardanza.minutos > 30
+                  ? `Tardanza de ${tardanza.minutos} min (supera tolerancia de 30 min). Necesitás permiso de gerencia.`
+                  : `3ra llegada tarde del mes. Necesitás permiso de gerencia.`,
+                tipo: tardanza.minutos > 30 ? "bloqueado_tardanza" : "bloqueado_3ra_tarde",
+                tardanza: { estado: tardanza.estado, minutos: tardanza.minutos, llegadasTarde: tardanza.llegadasTarde },
+              });
             }
           }
         }

@@ -2,6 +2,7 @@
 import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
+import { _resetBuckets } from "../app/lib/rateLimitMemory.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -44,6 +45,10 @@ function handlersIngresoBasico({ yaFichado = false } = {}) {
 
 beforeEach(() => {
   global.fetch = createFetchMock(handlersIngresoBasico());
+  // El rate limiter de /api/fichar (10/min por empleado) es un Map en memoria
+  // que persiste entre tests del mismo proceso — sin resetear, los tests de
+  // este archivo se pisan entre sí al acumularse por encima del límite.
+  _resetBuckets();
 });
 
 test("fichar — sin token devuelve 401", async () => {
@@ -217,4 +222,110 @@ test("fichar — egreso sin forzar_cierre_tarea retorna tarea_activa cuando hay 
   assert.equal(json.ok, false);
   assert.equal(json.tipo, "tarea_activa");
   assert.equal(json.tarea_id, "tarea-activa-1");
+});
+
+// ─── Tardanza — regresión para la consolidación con app/lib/calc.js ──────────
+// 2026-06-15 es lunes ("lun") en Argentina — fijado con mock.timers para
+// controlar la hora real de ingreso sin depender de cuándo corre el test.
+// Cada test habilita su propio reloj y lo restaura en el finally: estos
+// mocks no deben filtrarse a los otros ~390 tests del proceso.
+
+function handlersConDiagrama(diagramaHoy, { tardesPrevias = null } = {}) {
+  const handlers = [
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("select=diagrama"), respond: () => ({ status: 200, body: [{ diagrama: { lun: diagramaHoy } }] }) },
+    ...handlersIngresoBasico(),
+  ];
+  if (tardesPrevias !== null) {
+    handlers.unshift({
+      match: (url) => url.includes("llegada_tarde=eq.true"),
+      respond: () => ({ status: 200, body: Array.from({ length: tardesPrevias }, (_, i) => ({ id: `t${i}` })) }),
+    });
+  }
+  return handlers;
+}
+
+test("fichar — ingreso 3 min tarde (dentro de tolerancia de 5) queda puntual, sin consultar tardanzas previas", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T11:03:00.000Z") }); // 08:03 ARG
+    const token = await tokenValido();
+    // Sin handler de "llegada_tarde=eq.true": si el código lo consultara
+    // igual (perdiendo la optimización de no pedir tardanzas previas cuando
+    // diff<=5), createFetchMock tira "Sin handler" y el test falla.
+    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }));
+
+    const res = await POST(req({ accion: "ingreso" }, token));
+    const json = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(json.ok, true);
+    assert.equal(json.tardanza.estado, "puntual");
+    assert.equal(json.tardanza.llegadasTarde, 0);
+    // app/lib/calc.js calcularTardanza() informa el minuto real (3) en vez de
+    // ocultarlo en 0 — el inline viejo lo hardcodeaba en 0 para CUALQUIER
+    // llegada dentro de tolerancia. Cambio intencional: no es observable en
+    // ningún consumidor (FichadaCard solo lee tardanza.minutos cuando estado
+    // es "tarde"/"bloqueado"; minutos_tarde persistido nunca se lee salvo
+    // donde llegada_tarde=true, que sigue siendo false acá).
+    assert.equal(json.tardanza.minutos, 3);
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
+test("fichar — ingreso 20 min tarde (1ra del mes) queda 'tarde', no bloquea", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T11:20:00.000Z") }); // 08:20 ARG
+    const token = await tokenValido();
+    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 0 }));
+
+    const res = await POST(req({ accion: "ingreso" }, token));
+    const json = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(json.ok, true);
+    assert.equal(json.tardanza.estado, "tarde");
+    assert.equal(json.tardanza.minutos, 20);
+    assert.equal(json.tardanza.llegadasTarde, 1);
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
+test("fichar — ingreso 45 min tarde se bloquea por superar tolerancia de 30 min", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T11:45:00.000Z") }); // 08:45 ARG
+    const token = await tokenValido();
+    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 0 }));
+
+    const res = await POST(req({ accion: "ingreso" }, token));
+    const json = await res.json();
+
+    assert.equal(json.ok, false);
+    assert.equal(json.tipo, "bloqueado_tardanza");
+    assert.match(json.error, /45 min/);
+    assert.equal(json.tardanza.estado, "bloqueado");
+    assert.equal(json.tardanza.minutos, 45);
+    assert.equal(json.tardanza.llegadasTarde, 1);
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
+test("fichar — ingreso 10 min tarde se bloquea si es la 3ra llegada tarde del mes", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T11:10:00.000Z") }); // 08:10 ARG
+    const token = await tokenValido();
+    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 2 }));
+
+    const res = await POST(req({ accion: "ingreso" }, token));
+    const json = await res.json();
+
+    assert.equal(json.ok, false);
+    assert.equal(json.tipo, "bloqueado_3ra_tarde");
+    assert.match(json.error, /3ra llegada tarde/);
+    assert.equal(json.tardanza.estado, "bloqueado");
+    assert.equal(json.tardanza.llegadasTarde, 3);
+  } finally {
+    t.mock.timers.reset();
+  }
 });
