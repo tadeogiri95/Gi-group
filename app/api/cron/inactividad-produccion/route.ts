@@ -84,7 +84,11 @@ export async function GET(request: Request) {
 
     // Filtrar solo los que ficharon hace más de 30 min
     const enPlanta = fichadasAbiertas.filter(f => {
-      const ingresoTime = new Date(`${hoy}T${f.ingreso}`).getTime();
+      // Offset explícito: f.ingreso es hora civil Argentina (sin TZ en el string),
+      // y Node interpretaría "T${hora}" como hora LOCAL DEL PROCESO (UTC en
+      // Vercel), no Argentina — corrimiento de 3hs que marcaba cualquier
+      // fichada como "hace >30min" casi apenas fichaba. Ver tests/api-cron-inactividad-produccion.test.js.
+      const ingresoTime = new Date(`${hoy}T${f.ingreso}-03:00`).getTime();
       return ingresoTime < ahora.getTime() - UMBRAL_MIN * 60 * 1000;
     });
 
