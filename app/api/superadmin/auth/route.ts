@@ -6,8 +6,11 @@ const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const MAX_ATTEMPTS = 5;
 
+// Fail-closed: si la DB no responde, se bloquea el intento (mismo criterio
+// que checkLoginRateLimit en login-empresa/route.js — seguridad > disponibilidad
+// en este edge case, más aún en el endpoint que controla acceso a TODAS las empresas).
 async function checkRateLimit(ip: string): Promise<boolean> {
-  if (!SB_URL || !SB_KEY) return false;
+  if (!SB_URL || !SB_KEY) return true;
   try {
     const ventana = `superadmin_${ventana15min()}`;
     const res = await fetch(`${SB_URL}/rest/v1/rpc/rpc_login_attempt`, {
@@ -15,11 +18,11 @@ async function checkRateLimit(ip: string): Promise<boolean> {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ p_ip: ip, p_ventana: ventana }),
     });
-    if (!res.ok) return false;
+    if (!res.ok) return true;
     const count = await res.json();
-    return typeof count === "number" && count > MAX_ATTEMPTS;
+    return typeof count === "number" ? count > MAX_ATTEMPTS : true;
   } catch {
-    return false;
+    return true;
   }
 }
 

@@ -84,7 +84,7 @@ test("superadmin auth — rate limit en el límite exacto (5) no bloquea", async
   assert.equal(res.status, 200, "count=5 es el máximo permitido (>MAX_ATTEMPTS bloquea, no >=)");
 });
 
-test("superadmin auth — fallo de rate limit RPC no bloquea (fail-open)", async () => {
+test("superadmin auth — fallo de rate limit RPC bloquea (fail-closed)", async () => {
   global.fetch = createFetchMock([
     {
       match: (url) => url.includes("/rpc/rpc_login_attempt"),
@@ -92,5 +92,11 @@ test("superadmin auth — fallo de rate limit RPC no bloquea (fail-open)", async
     },
   ]);
   const res = await POST(req({ key: "mi-secreto-de-superadmin" }));
-  assert.equal(res.status, 200, "si el rate limit falla, debe dejar pasar (fail-open)");
+  assert.equal(res.status, 429, "si el rate limit falla, debe bloquear por seguridad (fail-closed), igual que login-empresa");
+});
+
+test("superadmin auth — excepción de red en rate limit bloquea (fail-closed)", async () => {
+  global.fetch = async () => { throw new Error("network down"); };
+  const res = await POST(req({ key: "mi-secreto-de-superadmin" }));
+  assert.equal(res.status, 429, "una excepción de red también debe bloquear por seguridad (fail-closed)");
 });
