@@ -352,6 +352,48 @@ export async function sendFalloPago({ to, nombre, empresa, slug, monto, empresaI
   }).catch((e) => logger.error("email sendFalloPago", e));
 }
 
+// ─── Alerta interna: discrepancias entre suscripciones locales y Mercado Pago ───
+// Disparada por el cron de reconciliación (dry-run: solo avisa, no corrige).
+export async function sendReconciliacionAlerta({ discrepancias }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const destino = process.env.ENTERPRISE_CONTACT_EMAIL || "contacto@gypi.app";
+  const filas = discrepancias.map((d) => `
+    <tr>
+      <td style="padding:6px 10px;font-size:13px;border-bottom:1px solid #E5E5E3">${escapeHtml(String(d.suscripcion_id))}</td>
+      <td style="padding:6px 10px;font-size:13px;border-bottom:1px solid #E5E5E3">${escapeHtml(d.empresa_id)}</td>
+      <td style="padding:6px 10px;font-size:13px;border-bottom:1px solid #E5E5E3">${escapeHtml(d.plan)}</td>
+      <td style="padding:6px 10px;font-size:13px;border-bottom:1px solid #E5E5E3">${escapeHtml(d.estado_local)}</td>
+      <td style="padding:6px 10px;font-size:13px;border-bottom:1px solid #E5E5E3">${escapeHtml(d.estado_mp)} <span style="color:#9B9B9B">(${escapeHtml(d.mp_status_raw)})</span></td>
+    </tr>
+  `).join("");
+  const cuerpo = `
+    <p style="margin:0 0 12px">El cron de reconciliación encontró <strong>${discrepancias.length}</strong> suscripción(es) cuyo estado local no coincide con Mercado Pago.</p>
+    <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px;margin:0 0 20px;font-size:13px;color:#991B1B">
+      Modo dry-run: no se corrigió nada automáticamente. Revisar manualmente.
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:6px 10px;font-size:12px;color:#9B9B9B">Susc. ID</th>
+          <th style="text-align:left;padding:6px 10px;font-size:12px;color:#9B9B9B">Empresa</th>
+          <th style="text-align:left;padding:6px 10px;font-size:12px;color:#9B9B9B">Plan</th>
+          <th style="text-align:left;padding:6px 10px;font-size:12px;color:#9B9B9B">Local</th>
+          <th style="text-align:left;padding:6px 10px;font-size:12px;color:#9B9B9B">Mercado Pago</th>
+        </tr>
+      </thead>
+      <tbody>${filas}</tbody>
+    </table>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to: destino,
+    subject: `⚠️ ${discrepancias.length} discrepancia(s) de suscripción vs Mercado Pago`,
+    html: buildHtml("Reconciliación de suscripciones", "Mercado Pago vs base local", cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("reconciliacion_alerta"),
+  }).catch((e) => logger.error("email sendReconciliacionAlerta", e));
+}
+
 // ─── Consulta de plan Enterprise (notificación interna al equipo de Gypi) ───
 export async function sendConsultaEnterprise({ nombre, email, empresa, telefono, mensaje }) {
   if (!process.env.RESEND_API_KEY) return;
