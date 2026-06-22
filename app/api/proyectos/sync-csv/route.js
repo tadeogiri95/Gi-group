@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { validarToken } from "../../../lib/auth";
 import { logger } from "../../../lib/logger";
+import { safeErrorMessage } from "../../../lib/validate";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -118,7 +119,8 @@ async function syncEmpresa(empresaId) {
       });
       procesados += batch.length;
     } catch (e) {
-      errores.push(`Lote ${Math.floor(i / BATCH) + 1}: ${e.message}`);
+      logger.error(`[proyectos/sync-csv] Error en lote ${Math.floor(i / BATCH) + 1}`, e);
+      errores.push(`Lote ${Math.floor(i / BATCH) + 1}: ${safeErrorMessage(e)}`);
     }
   }
 
@@ -176,6 +178,6 @@ export async function POST(req) {
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     logger.error("[sync-csv] Error", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

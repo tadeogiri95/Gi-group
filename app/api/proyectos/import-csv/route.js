@@ -9,6 +9,8 @@ import { validarToken } from "../../../lib/auth";
 import { parseCsv } from "../../../lib/csv";
 import { PLANES } from "../../../lib/plans";
 import { sbGet, sbPost } from "../../../lib/sbHelpers";
+import { safeErrorMessage } from "../../../lib/validate";
+import { logger } from "../../../lib/logger";
 
 const ROLES_PERMITIDOS = new Set(["gerencial", "administrativo"]);
 const BATCH_SIZE = 50;
@@ -120,7 +122,8 @@ export async function POST(req) {
       }
     } catch (e) {
       const rowNums = chunk.map((c) => c.rowNum).join(",");
-      results.errors.push(`Filas ${rowNums}: ${e.message}`);
+      logger.error(`[proyectos/import-csv] Error en lote (filas ${rowNums})`, e);
+      results.errors.push(`Filas ${rowNums}: ${safeErrorMessage(e)}`);
     }
   }
 

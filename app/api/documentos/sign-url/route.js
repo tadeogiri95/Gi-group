@@ -6,8 +6,9 @@
 // empleado dueño del documento.
 import { NextResponse } from "next/server";
 import { validarToken } from "../../../lib/auth";
-import { isUUID } from "../../../lib/validate";
+import { isUUID, safeErrorMessage } from "../../../lib/validate";
 import { sbGet } from "../../../lib/sbHelpers";
+import { logger } from "../../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -46,6 +47,7 @@ export async function POST(req) {
 
     return NextResponse.json({ ok: true, url: `${SB_URL}/storage/v1${signedURL}` });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[documentos/sign-url] Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

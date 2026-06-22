@@ -6,8 +6,9 @@
 // gerencial/administrativo: puede subir para cualquier empleado de su empresa.
 import { NextResponse } from "next/server";
 import { validarToken } from "../../../lib/auth";
-import { isUUID } from "../../../lib/validate";
+import { isUUID, safeErrorMessage } from "../../../lib/validate";
 import { sbGet, sbPost, sbDelete } from "../../../lib/sbHelpers";
+import { logger } from "../../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -91,7 +92,8 @@ export async function POST(req) {
     });
     if (!uploadRes.ok) {
       const errText = await uploadRes.text();
-      return NextResponse.json({ error: `Error subiendo archivo: ${errText}` }, { status: 500 });
+      logger.error("[documentos/upload] Storage error", new Error(errText));
+      return NextResponse.json({ error: "Error subiendo el archivo" }, { status: 500 });
     }
 
     // ─── Registrar fila ───
@@ -109,6 +111,7 @@ export async function POST(req) {
 
     return NextResponse.json({ ok: true, documento: created?.[0] || null });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[documentos/upload] Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

@@ -82,7 +82,7 @@ export async function POST(request) {
       app = getAdminApp();
     } catch (err) {
       console.error("[send-push] Error init admin:", err.message);
-      return NextResponse.json({ error: err.message }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
     }
     const messaging = admin.messaging(app);
 

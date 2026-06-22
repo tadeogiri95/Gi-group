@@ -11,6 +11,8 @@ import { crearPreapproval, getPreapproval } from "../../../lib/mercadopago";
 import { PLANES, precioAnual } from "../../../lib/plans";
 import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
+import { logger } from "../../../lib/logger";
+import { safeErrorMessage } from "../../../lib/validate";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
@@ -91,8 +93,8 @@ export async function POST(request) {
         periodo,
       });
     } catch (err) {
-      console.error("[create-subscription] Error MP:", err.message, err.body);
-      return NextResponse.json({ error: `Error de Mercado Pago: ${err.message}` }, { status: 500 });
+      logger.error("[create-subscription] Error MP", err, { body: err.body });
+      return NextResponse.json({ error: "Error de Mercado Pago. Intentá de nuevo en unos minutos." }, { status: 500 });
     }
 
     await sbPatchOk(`suscripciones?id=eq.${suscId}`, { gateway_subscription_id: mp.id });
@@ -115,7 +117,7 @@ export async function POST(request) {
       mp_preapproval_id: mp.id,
     });
   } catch (err) {
-    console.error("[create-subscription] Error:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[create-subscription] Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

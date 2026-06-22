@@ -9,6 +9,7 @@ import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { configPostBody, configPatchBody } from "../../lib/schemas";
 import { validateBody, isUUID, safeErrorMessage } from "../../lib/validate";
+import { logger } from "../../lib/logger";
 
 // ─── Helper: extraer empresa_id del request via auth compartido ───
 async function getEmpresaIdFromRequest(request) {
@@ -35,7 +36,8 @@ export async function GET(request) {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[config-empresa] GET Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -82,7 +84,8 @@ export async function POST(request) {
 
     return NextResponse.json({ error: "action inválido" }, { status: 400 });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[config-empresa] POST Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -133,7 +136,8 @@ export async function PATCH(request) {
 
     return NextResponse.json({ error: "action inválido" }, { status: 400 });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[config-empresa] PATCH Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -162,6 +166,7 @@ export async function DELETE(request) {
     await sbPatch(`${tabla}?id=eq.${id}&empresa_id=eq.${empresaId}`, { activa: false });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[config-empresa] DELETE Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

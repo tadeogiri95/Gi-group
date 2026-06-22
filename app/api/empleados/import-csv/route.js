@@ -12,6 +12,8 @@ import { passwordInicial } from "../../../lib/passwords";
 import { PLANES } from "../../../lib/plans";
 import { sbGet, sbPost } from "../../../lib/sbHelpers";
 import { validarFormatoEmail } from "../../../lib/rateLimit";
+import { safeErrorMessage } from "../../../lib/validate";
+import { logger } from "../../../lib/logger";
 
 const ROLES_VALIDOS = ["operativo", "gerencial", "administrativo"];
 const ROLES_PERMITIDOS = new Set(["gerencial", "administrativo"]);
@@ -144,7 +146,8 @@ export async function POST(req) {
       }
     } catch (e) {
       const rowNums = chunk.map((c) => c.rowNum).join(",");
-      results.errors.push(`Filas ${rowNums}: ${e.message}`);
+      logger.error(`[empleados/import-csv] Error en lote (filas ${rowNums})`, e);
+      results.errors.push(`Filas ${rowNums}: ${safeErrorMessage(e)}`);
     }
   }
 

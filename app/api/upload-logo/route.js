@@ -2,6 +2,8 @@
 // empresa_id se saca del token, no del formData
 import { NextResponse } from "next/server";
 import { validarToken } from "../../lib/auth";
+import { safeErrorMessage } from "../../lib/validate";
+import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -30,7 +32,11 @@ export async function POST(request) {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type, "x-upsert": "true" },
       body: Buffer.from(bytes),
     });
-    if (!uploadRes.ok) throw new Error(await uploadRes.text());
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      logger.error("[upload-logo] Storage error", new Error(errText));
+      return NextResponse.json({ error: "Error subiendo el logo" }, { status: 500 });
+    }
 
     const logo_url = `${SB_URL}/storage/v1/object/public/logos/${fileName}`;
 
@@ -43,6 +49,7 @@ export async function POST(request) {
 
     return NextResponse.json({ logo_url });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[upload-logo] Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

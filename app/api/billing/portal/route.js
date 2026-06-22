@@ -11,6 +11,7 @@ import { cancelarPreapproval } from "../../../lib/mercadopago";
 import { sbGet, sbPatchOk } from "../../../lib/sbHelpers";
 import { invalidarCachePlan } from "../../../lib/planEnforcement";
 import { logger } from "../../../lib/logger";
+import { safeErrorMessage } from "../../../lib/validate";
 
 export async function GET(request) {
   return NextResponse.json({
@@ -62,7 +63,7 @@ export async function POST(request) {
 
     return NextResponse.json({ ok: true, mensaje: `Suscripción cancelada. ${graceMsg}` });
   } catch (err) {
-    logger.error("[billing/portal] Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[billing/portal] Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

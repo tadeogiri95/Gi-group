@@ -2,6 +2,8 @@
 // Valida token; el archivo se sube prefijado con empresa_id
 import { NextResponse } from "next/server";
 import { validarToken } from "../../lib/auth";
+import { safeErrorMessage } from "../../lib/validate";
+import { logger } from "../../lib/logger";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -47,10 +49,10 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, url: publicUrl });
     }
     const errText = await res.text();
-    console.error("[upload] Storage error:", errText);
-    return NextResponse.json({ ok: false, error: errText }, { status: 500 });
+    logger.error("[upload] Storage error", new Error(errText));
+    return NextResponse.json({ ok: false, error: "Error subiendo el archivo" }, { status: 500 });
   } catch (err) {
-    console.error("[upload] Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    logger.error("[upload] Error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

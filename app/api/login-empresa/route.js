@@ -230,7 +230,7 @@ export async function POST(req) {
     } catch (e) {
       logger.error("Login abortado: no se pudo guardar sesión en DB", e);
       return NextResponse.json(
-        { error: `Error guardando sesión: ${e.message}` },
+        { error: safeErrorMessage(e) },
         { status: 500 }
       );
     }
