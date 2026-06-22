@@ -9,16 +9,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { logger } from "../../../lib/logger";
+import { ahoraArg } from "../../../lib/dates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
-
-// Nombre de cada día según la clave del diagrama de empleados
-const DIAS_CLAVE = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"] as const;
-type DiaClave = (typeof DIAS_CLAVE)[number];
 
 async function sbGet<T = unknown>(path: string): Promise<T[]> {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
@@ -120,11 +117,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Config faltante" }, { status: 500 });
   }
 
-  // Fecha argentina: UTC-3 (sin DST)
-  const ahora = new Date();
-  const ahoraAr = new Date(ahora.getTime() - 3 * 60 * 60 * 1000);
-  const fecha = ahoraAr.toISOString().split("T")[0]; // YYYY-MM-DD
-  const diaKey: DiaClave = DIAS_CLAVE[ahoraAr.getDay()];
+  const { fecha, diaKey } = ahoraArg();
 
   // Solo procesar días hábiles (el cron de vercel también tiene 1-5, pero doble check)
   if (diaKey === "dom" || diaKey === "sab") {

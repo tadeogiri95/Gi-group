@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { logger } from "../../../lib/logger";
+import { hoyArg } from "../../../lib/dates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
 
   try {
     const ahora = new Date();
-    const hoy = ahora.toISOString().slice(0, 10);
+    const hoy = hoyArg(ahora);
     const hace30 = new Date(ahora.getTime() - UMBRAL_MIN * 60 * 1000).toISOString();
 
     // Empleados operativos de producción que ficharon HOY y siguen en planta (sin egreso)
