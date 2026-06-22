@@ -30,7 +30,7 @@ import { useAuth } from "./context/AuthContext";
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 
-import { Tag } from "./components/ui";
+import { Tag, EmptyState } from "./components/ui";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -147,7 +147,13 @@ function ReportesObraPanel({ reportesObra }) {
         </div>
 
         {reportesObra.length === 0 ? (
-          <div className="py-5 text-center text-gypi-dim text-xs">Sin reportes de obra hoy</div>
+          <EmptyState
+            icon="mapPin"
+            title="Sin reportes de obra hoy"
+            description="Los reportes que suban los instaladores desde el celular van a aparecer acá."
+            color={CYAN}
+            style={{ padding: "24px 16px" }}
+          />
         ) : (
           <div className="flex flex-col gap-2">
             {reportesObra.map(r => {
@@ -905,7 +911,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           <span className="text-[10px] text-gypi-mute font-mono">7:00 ——— 19:00</span>
         </div>
         {fichadasHoy.length === 0 ? (
-          <div className="py-5 text-center text-gypi-dim text-xs">Sin fichadas hoy</div>
+          <EmptyState
+            icon="clock"
+            title="Sin fichadas hoy"
+            description="Los ingresos y egresos del equipo van a aparecer acá a medida que fichen."
+            color={CYAN}
+            style={{ padding: "24px 16px" }}
+          />
         ) : (
           <div className="max-h-[200px] overflow-y-auto">
             {fichadasHoy.map((f, i) => (
