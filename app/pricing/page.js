@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { fH, fB } from "../lib/theme";
 import { PLANES } from "../lib/plans";
-import EnterpriseContactButton from "../components/EnterpriseContactButton";
+import PricingCards from "./PricingCards";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "#000";
@@ -41,12 +41,6 @@ export const metadata = {
 };
 
 const PLAN_IDS = ["free", "starter", "pro", "enterprise"];
-
-function formatPrecio(n) {
-  if (n == null) return "A medida";
-  if (n === 0) return "Gratis";
-  return "$" + n.toLocaleString("es-AR") + "/mes";
-}
 
 const FILAS = [
   { label: "Empleados", get: (p) => (p.max_empleados >= 99999 ? "Ilimitados" : `Hasta ${p.max_empleados}`) },
@@ -108,53 +102,7 @@ export default function PricingPage() {
       </section>
 
       <section style={{ padding: "16px 24px 48px", maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
-          {PLAN_IDS.map((id) => {
-            const p = PLANES[id];
-            const isPopular = id === "pro";
-            return (
-              <div key={id} style={{
-                padding: 28, borderRadius: 20,
-                background: isPopular ? `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})` : SURFACE,
-                border: isPopular ? `2px solid ${AMBER}` : `1px solid ${BORDER}`,
-                position: "relative",
-              }}>
-                {isPopular && (
-                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: AMBER, color: AMBER_TEXT, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
-                    POPULAR
-                  </div>
-                )}
-                <h2 style={{ fontFamily: fH, fontSize: 20, fontWeight: 700, margin: isPopular ? "8px 0 4px" : "0 0 4px" }}>{p.nombre}</h2>
-                <div style={{ fontSize: 13, color: DIM, marginBottom: 16 }}>
-                  Hasta {p.max_empleados >= 99999 ? "ilimitados" : p.max_empleados} empleados
-                </div>
-                <div style={{ marginBottom: 20 }}>
-                  <span style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, color: isPopular ? AMBER : TEXT }}>
-                    {formatPrecio(p.precio)}
-                  </span>
-                </div>
-                {id === "enterprise" ? (
-                  <EnterpriseContactButton style={{
-                    display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 12,
-                    border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                    background: SURF_HI, color: TEXT,
-                  }}>
-                    Contactanos
-                  </EnterpriseContactButton>
-                ) : (
-                  <Link href="/" style={{
-                    display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 12,
-                    textDecoration: "none", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                    background: isPopular ? AMBER : SURF_HI,
-                    color: isPopular ? "#000" : TEXT,
-                  }}>
-                    {id === "free" ? "Empezar gratis" : "Elegir plan"}
-                  </Link>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <PricingCards />
       </section>
 
       {/* ─── Comparador completo ─── */}
