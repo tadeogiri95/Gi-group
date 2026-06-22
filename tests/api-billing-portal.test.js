@@ -46,6 +46,13 @@ function mpCancelar(status = 200) {
   };
 }
 
+function mpCancelarFalla() {
+  return {
+    match: (url) => url.includes("api.mercadopago.com") && url.includes("/preapproval/"),
+    respond: () => ({ status: 400, body: { message: "invalid access token for application internal-app-id-9f3e" } }),
+  };
+}
+
 // P5: tras cancelar en MP, la ruta actualiza estado local (suscripción +
 // empresa, con grace period si corresponde) en vez de esperar al webhook.
 function patchSuscripcionCancelada() {
@@ -127,4 +134,17 @@ test("billing/portal POST — cancelacion exitosa devuelve 200 con ok:true", asy
   assert.equal(res.status, 200);
   const json = await res.json();
   assert.equal(json.ok, true);
+});
+
+test("billing/portal POST — fallo cancelando en Mercado Pago devuelve 500 sin exponer el detalle de MP", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    sbSuscripciones({ id: "sub-1", estado: "activa", gateway: "mercadopago", gateway_subscription_id: "mp-sub-1" }),
+    mpCancelarFalla(),
+  ]);
+  const res = await POST(postReq(token));
+  assert.equal(res.status, 500);
+  const json = await res.json();
+  assert.ok(!json.error.includes("internal-app-id"), "no debe exponer el mensaje crudo de la API de Mercado Pago");
 });

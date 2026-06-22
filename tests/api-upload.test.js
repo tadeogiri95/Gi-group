@@ -126,11 +126,12 @@ test("upload — éxito devuelve 200 con url pública prefijada por empresa_id",
 
 // ─── Error de storage ───
 
-test("upload — error del bucket de storage devuelve 500", async () => {
-  global.fetch = createFetchMock([...authPassHandlers(), storageFalla()]);
+test("upload — error del bucket de storage devuelve 500 sin exponer el texto crudo del backend", async () => {
+  global.fetch = createFetchMock([...authPassHandlers(), storageFalla(500, "bucket error: signature mismatch on internal key xyz")]);
   const token = await tokenConRol("gerencial");
   const res = await POST(postReq(token, { fileName: "logo.png", fileBase64: PNG_BASE64, fileType: "image/png" }));
   assert.equal(res.status, 500);
   const json = await res.json();
   assert.equal(json.ok, false);
+  assert.ok(!json.error.includes("signature mismatch"), "no debe exponer el texto crudo de Storage");
 });

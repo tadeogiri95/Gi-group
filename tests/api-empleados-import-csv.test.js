@@ -151,3 +151,25 @@ test("import-csv — legajo inválido y nombre vacío generan errores por fila",
   assert.ok(json.errors.some((e) => e.includes("legajo inválido")), "debe reportar legajo inválido");
   assert.ok(json.errors.some((e) => e.includes("nombre vacío")), "debe reportar nombre vacío");
 });
+
+// ─── Error de DB en el insert por lote ───
+
+test("import-csv — fallo de Postgres en el insert no expone el detalle interno en el error por fila", async () => {
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("select=legajo"), respond: () => ({ status: 200, body: [] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "pro" }] }) },
+    {
+      match: (url, opts) => url.includes("/rest/v1/empleados") && opts?.method === "POST",
+      respond: () => ({ status: 500, body: { message: "insert or update on table \"empleados\" violates foreign key constraint \"empleados_empresa_id_fkey\"" } }),
+    },
+  ]);
+  const token = await tokenConRol("gerencial");
+  const res = await POST(csvReq("legajo,nombre\n100,Juan", token));
+  const json = await res.json();
+
+  assert.equal(json.ok, true);
+  assert.equal(json.created, 0);
+  assert.ok(json.errors.length > 0, "debe reportar el lote como error");
+  assert.ok(!json.errors[0].includes("foreign key constraint"), "no debe exponer el detalle interno de Postgres en el mensaje por fila");
+});

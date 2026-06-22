@@ -60,6 +60,13 @@ function mpCrearPreapproval(id = "mp-123", init_point = "https://mp.com/pay") {
   };
 }
 
+function mpCrearPreapprovalFalla() {
+  return {
+    match: (url, opts) => url.includes("api.mercadopago.com") && url.includes("/preapproval") && opts.method === "POST",
+    respond: () => ({ status: 400, body: { message: "collector_id 123456789 is invalid for marketplace app" } }),
+  };
+}
+
 // ── Tests ──
 
 test("create-subscription — sin token devuelve 401", async () => {
@@ -123,4 +130,18 @@ test("create-subscription — flujo exitoso devuelve 200 con init_point y suscri
   assert.equal(json.init_point, "https://mp.com/pay");
   assert.equal(json.suscripcion_id, "susc-1");
   assert.equal(json.mp_preapproval_id, "mp-123");
+});
+
+test("create-subscription — fallo de Mercado Pago al crear el preapproval devuelve 500 sin exponer el detalle de MP", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    sbEmpresa({ admin_email: "a@test.com", nombre: "Test", slug: "test" }),
+    sbPostSuscripciones("susc-1"),
+    mpCrearPreapprovalFalla(),
+  ]);
+  const res = await POST(postReq(token, { plan: "pro", periodo: "mensual" }));
+  assert.equal(res.status, 500);
+  const json = await res.json();
+  assert.ok(!json.error.includes("collector_id"), "no debe exponer el mensaje crudo de la API de Mercado Pago");
 });

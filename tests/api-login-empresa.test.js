@@ -103,3 +103,20 @@ test("login — error interno no expone err.message crudo", async () => {
   assert.equal(res.status, 500);
   assert.equal(json.error, "Error interno del servidor");
 });
+
+test("login — fallo guardando sesión en DB no expone el detalle interno", async () => {
+  global.fetch = createFetchMock([
+    // Falla específicamente el INSERT de sesión — el resto del flujo (rate limit,
+    // lookup de empleado, lectura de sesiones/empresa) sigue funcionando normal.
+    {
+      match: (url, opts) => url.includes("/rest/v1/sesiones") && opts?.method === "POST",
+      respond: () => ({ status: 500, body: { message: "column \"refresh_jti\" of relation \"sesiones\" does not exist" } }),
+    },
+    ...handlersBase(),
+  ]);
+  const res = await POST(req({ legajo: "7", password: PASSWORD_OK, empresa_id: EMPRESA_ID }));
+  const json = await res.json();
+  assert.equal(res.status, 500);
+  assert.ok(!json.error.includes("refresh_jti"), "no debe exponer el detalle de columna/constraint de Postgres");
+  assert.ok(!json.error.includes("Error guardando sesión"), "no debe exponer el prefijo con el mensaje crudo concatenado");
+});

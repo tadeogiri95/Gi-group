@@ -64,6 +64,23 @@ test("GET config-empresa — devuelve divisiones y etapas", async () => {
   assert.equal(json.divisiones[0].clave, "electrica");
 });
 
+test("GET config-empresa — error de Supabase devuelve 500 sin exponer el detalle interno", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url) => url.includes("/rest/v1/divisiones"),
+      respond: () => ({ status: 500, body: { message: "relation \"divisiones\" violates row-level security policy" } }),
+    },
+  ]);
+
+  const res = await GET(jsonReq("GET", null, token));
+  const json = await res.json();
+
+  assert.equal(res.status, 500);
+  assert.ok(!json.error.includes("row-level security"), "no debe exponer el detalle interno de Postgres/RLS");
+});
+
 // ─── POST ───
 
 test("POST config-empresa — operativo recibe 403", async () => {
