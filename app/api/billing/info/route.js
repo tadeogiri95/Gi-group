@@ -29,9 +29,12 @@ export async function GET(request) {
       );
     }
 
-    // ── Leer datos de la empresa (plan_activo + trial_fin) ──
+    // ── Leer datos de la empresa (plan_activo) ──
+    // NOTA: trial_fin vive en `suscripciones`, no en `empresa` — pedirlo acá
+    // hacía que PostgREST rechazara la query completa (columna inexistente),
+    // dejando `empresa` siempre en null y el fallback de abajo siempre muerto.
     const empRows = await sbGet(
-      `empresa?id=eq.${sesion.empresa_id}&select=plan_activo,trial_fin&limit=1`,
+      `empresa?id=eq.${sesion.empresa_id}&select=plan_activo&limit=1`,
       { silent: true }
     );
     const empresa = empRows?.[0] ?? null;
