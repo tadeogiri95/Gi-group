@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { verifyAdminToken } from "../../../lib/jwt";
-import { isUUID } from "../../../lib/validate";
+import { isUUID, safeErrorMessage } from "../../../lib/validate";
+import { logger } from "../../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -34,7 +35,8 @@ export async function GET(req: NextRequest) {
 
   if (!r.ok) {
     const err = await r.text();
-    return NextResponse.json({ error: err }, { status: 500 });
+    logger.error("[superadmin/audit-log] Supabase error", new Error(err));
+    return NextResponse.json({ error: safeErrorMessage(new Error(err)) }, { status: 500 });
   }
 
   const rows = await r.json();
