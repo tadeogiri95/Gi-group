@@ -102,11 +102,14 @@ export function calcularTardanza(horaEsperada, horaReal, llegadasTardePreviasDel
 }
 
 /**
- * Calcula horas trabajadas (decimales) entre ingreso y egreso del mismo día.
+ * Calcula horas trabajadas (decimales) entre ingreso y egreso del mismo día,
+ * recibiendo solo horas "HH:MM" (sin fecha). Si egreso < ingreso devuelve 0
+ * en vez de negativo.
  *
- * Replica la lógica de /api/fichar: si egreso < ingreso devuelve 0 en vez
- * de negativo. No contempla turnos partidos ni cruce de medianoche
- * (la app no lo soporta).
+ * No soporta cruce de medianoche — para eso hace falta la fecha de cada
+ * extremo, que esta función no recibe. /api/fichar SÍ soporta turno nocturno,
+ * pero con aritmética de timestamps completos (fecha+hora), no con esta
+ * función — ver app/api/fichar/route.js.
  *
  * @param {string} horaIngreso - "HH:MM"
  * @param {string} horaEgreso  - "HH:MM"
