@@ -5,6 +5,7 @@ import { sb } from "./lib/supabase";
 import { hoyArg } from "./lib/dates";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
+const AMBER_TEXT = "var(--color-empresa-primary-text, #000)";
 const GREEN = "#16A34A";
 const RED = "#DC2626";
 const CYAN = "#0891B2";
@@ -201,7 +202,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
           <button
             className="w-full py-4 rounded-[14px] border-none cursor-pointer font-heading text-[17px] font-bold tracking-[0.01em]"
-            style={{ background: AMBER, color: AMBERText, opacity: texto.trim() ? 1 : 0.4 }}
+            style={{ background: AMBER, color: AMBER_TEXT, opacity: texto.trim() ? 1 : 0.4 }}
             disabled={!texto.trim()}
             onClick={generarReporte}
           >
