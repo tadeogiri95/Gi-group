@@ -548,7 +548,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={refreshing ? AMBER : "currentColor"} strokeWidth="2.5" style={{ animation: refreshing ? "spin 0.8s linear infinite" : "none" }}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
             </button>
-            <button onClick={logout} aria-label="Cerrar sesion" className="show-mobile-only w-10 h-10 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm">
+            <button onClick={logout} aria-label="Cerrar sesion" className="w-10 h-10 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
             </button>
           </div>
