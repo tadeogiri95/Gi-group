@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { sb } from "./lib/supabase";
+import { sb, getToken } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
 import FotoViewer from "./components/FotoViewer";
+import Paywall from "./components/Paywall";
+import BillingScreen from "./components/BillingScreen";
 import { hoyArg, ahoraArg } from "./lib/dates";
 
 /* ═══════════════════════════════════════════════════════
@@ -371,9 +373,130 @@ function ReportesObraTab({ empresaId }) {
   );
 }
 
+/* ─── Tab de Liquidación de sueldos ─── */
+function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId, empresa }) {
+  const [datos, setDatos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [paywallInfo, setPaywallInfo] = useState(null);
+  const [showBilling, setShowBilling] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    if (!fechaDesde || !fechaHasta) return;
+    (async () => {
+      setLoading(true);
+      setPaywallInfo(null);
+      try {
+        const token = getToken();
+        const res = await fetch(`/api/reportes/liquidacion?desde=${fechaDesde}&hasta=${fechaHasta}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.status === 402) { setPaywallInfo({ upgrade_a: json.upgrade_a, mensaje: json.error }); setDatos([]); return; }
+        if (!res.ok) { console.error(json.error || `Error ${res.status}`); setDatos([]); return; }
+        setDatos(json.empleados || []);
+      } catch (e) { console.error(e); setDatos([]); }
+      finally { setLoading(false); }
+    })();
+  }, [fechaDesde, fechaHasta, empresaId]);
+
+  const exportarCSV = () => {
+    const headers = ["Legajo", "Nombre", "Horas trabajadas", "Tardanzas", "Minutos tarde", "Horas extra", "Días ausencia"];
+    const rows = datos.map(d => [d.legajo, d.nombre, d.horas_trabajadas, d.tardanzas, d.minutos_tarde, d.horas_extra, d.dias_ausencia]);
+    exportCSV([headers, ...rows], `Liquidacion_${fechaDesde}_a_${fechaHasta}.csv`);
+    toast.show("✅ CSV de liquidación descargado", GREEN);
+  };
+
+  if (loading) return <div className="gypi-dots"><span style={{ background: RED }} /><span style={{ background: RED }} /><span style={{ background: RED }} /></div>;
+
+  if (paywallInfo) {
+    return (
+      <>
+        <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
+          <div className="text-[32px] mb-2">🔒</div>
+          <div className="text-sm font-bold text-gypi-text">Liquidación no disponible en tu plan</div>
+          <div className="text-xs text-gypi-dim mt-1.5">{paywallInfo.mensaje}</div>
+        </div>
+        <Paywall
+          planActual={empresa?.plan_activo || "free"}
+          planRequerido={paywallInfo.upgrade_a || "starter"}
+          mensaje={paywallInfo.mensaje}
+          onClose={() => setPaywallInfo(null)}
+          onUpgrade={() => { setPaywallInfo(null); setShowBilling(true); }}
+        />
+        {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
+      </>
+    );
+  }
+
+  if (datos.length === 0) return (
+    <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
+      <div className="text-[32px] mb-2">🧾</div>
+      <div className="text-sm font-bold text-gypi-text">Sin empleados activos</div>
+      <div className="text-xs text-gypi-dim mt-1.5">No hay datos para liquidar en este período.</div>
+    </div>
+  );
+
+  const totales = datos.reduce((a, d) => ({
+    minutos: a.minutos + Math.round((Number(d.horas_trabajadas) || 0) * 60),
+    minutosExtra: a.minutosExtra + Math.round((Number(d.horas_extra) || 0) * 60),
+    tardanzas: a.tardanzas + (d.tardanzas || 0),
+    ausencias: a.ausencias + (d.dias_ausencia || 0),
+  }), { minutos: 0, minutosExtra: 0, tardanzas: 0, ausencias: 0 });
+
+  return (
+    <>
+      <div className="rounded-2xl p-[18px] border border-gypi-border mb-4" style={{ background: `linear-gradient(135deg, ${RED}12, ${"var(--color-surface)"})` }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: RED }}>LIQUIDACIÓN DE SUELDOS</div>
+        <div className="text-[13px] text-gypi-text mt-1.5 leading-normal">Novedades del periodo <strong style={{ color: AMBER }}>{labelPeriodo}</strong> para pasarle al contador: horas, tardanzas, horas extra y ausencias por empleado.</div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mb-3.5">
+        <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
+          <div className="font-heading text-base font-bold text-gypi-text">{fmtHora(totales.minutos)}</div>
+          <div className="text-[9px] text-gypi-dim font-bold">Horas</div>
+        </div>
+        <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
+          <div className="font-heading text-base font-bold text-gypi-amber">{fmtHora(totales.minutosExtra)}</div>
+          <div className="text-[9px] text-gypi-dim font-bold">Hs. extra</div>
+        </div>
+        <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
+          <div className="font-heading text-base font-bold text-gypi-red">{totales.tardanzas}</div>
+          <div className="text-[9px] text-gypi-dim font-bold">Tardanzas</div>
+        </div>
+        <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
+          <div className="font-heading text-base font-bold text-gypi-cyan">{totales.ausencias}</div>
+          <div className="text-[9px] text-gypi-dim font-bold">Ausencias</div>
+        </div>
+      </div>
+
+      <button onClick={exportarCSV} className="w-full py-2.5 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-xs font-bold text-gypi-text cursor-pointer mb-3.5 font-body">
+        📥 Exportar CSV liquidación
+      </button>
+
+      <div className="flex flex-col gap-2">
+        {datos.map(d => (
+          <div key={d.legajo} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-[11px] font-bold shrink-0" style={{ background: `${RED}15`, color: RED }}>L-{d.legajo}</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-bold text-gypi-text truncate">{d.nombre}</div>
+              <div className="text-[10px] text-gypi-dim mt-0.5">
+                {fmtHora(Math.round((Number(d.horas_trabajadas) || 0) * 60))} trabajadas
+                {d.tardanzas > 0 && <span style={{ color: AMBER }}> · {d.tardanzas} tard. ({d.minutos_tarde}m)</span>}
+                {d.horas_extra > 0 && <span style={{ color: GREEN }}> · {fmtHora(Math.round(Number(d.horas_extra) * 60))} extra</span>}
+                {d.dias_ausencia > 0 && <span style={{ color: RED }}> · {d.dias_ausencia} ausencia{d.dias_ausencia > 1 ? "s" : ""}</span>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ReportesScreen() {
-  const { divisiones: divisionesCtx, usuario } = useAuth();
+  const { divisiones: divisionesCtx, usuario, empresa } = useAuth();
   const empresaId = usuario?.empresa_id;
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [tab, setTab] = useState("cumplimiento");
@@ -522,6 +645,7 @@ export default function ReportesScreen() {
         <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={GREEN}>⚙️ Producción</Chip>
         <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={CYAN}>🏗️ Obra</Chip>
         <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={VIOLET}>📥 Exportar</Chip>
+        <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={RED}>💰 Liquidación</Chip>
       </div>
 
       {/* Periodo */}
@@ -550,6 +674,8 @@ export default function ReportesScreen() {
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
       ) : tab === "obra" ? (
         <ReportesObraTab empresaId={empresaId} />
+      ) : tab === "liquidacion" ? (
+        <ReporteLiquidacionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} empresa={empresa} />
       ) : tab === "cumplimiento" ? (
         <>
           {/* KPIs */}
