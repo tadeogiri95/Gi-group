@@ -38,7 +38,7 @@
     },
     {
       "path": "/api/cron/reconciliacion-mp",
-      "schedule": "0 9 * * *"
+      "schedule": "0 4 * * *"
     }
   ]
 }
