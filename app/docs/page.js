@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { PLANES } from "../lib/plans";
 
 const S = {
   wrap: { maxWidth: 760, margin: "0 auto", padding: "40px 20px 80px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100vh", lineHeight: 1.7 },
@@ -33,9 +34,52 @@ const S = {
     const map = { free: "#8A7F75", starter: "#3B82F6", pro: "#F97316", enterprise: "#8B5CF6" };
     return { display: "inline-block", padding: "2px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: `${map[p]}22`, color: map[p], marginLeft: 6 };
   },
+  table: { width: "100%", borderCollapse: "collapse", marginTop: 4 },
+  th: { fontSize: 13, fontWeight: 700, color: "#F5F0E8", textAlign: "left", padding: "10px 14px", borderBottom: "1px solid #2A2520" },
+  td: { fontSize: 14, color: "#8A7F75", padding: "10px 14px", borderBottom: "1px solid #2A2520", lineHeight: 1.7 },
 };
 
 const SECTIONS = ["Inicio rápido", "Fichaje", "Actividades", "Gestión", "FAQs", "Planes"];
+
+const PLAN_IDS = ["free", "starter", "pro", "enterprise"];
+
+const PLAN_META = {
+  free: { color: "#8A7F75", desc: "Para equipos pequeños que están empezando." },
+  starter: { color: "#3B82F6", desc: "Para empresas en crecimiento." },
+  pro: { color: "#F97316", desc: "Para operaciones industriales completas." },
+  enterprise: { color: "#8B5CF6", desc: "Para grupos con múltiples empresas." },
+};
+
+const MODULO_LABELS = {
+  fichaje: "Fichaje de asistencia",
+  chat: "Chat interno",
+  actividad: "Registro de actividades",
+  proyectos: "Proyectos y etapas",
+  reportes: "Reportes",
+  obra: "Reportes de obra",
+  calendario: "Calendario de turnos",
+};
+
+function formatPrecioPlan(p) {
+  if (p.precio == null) return "A consultar";
+  if (p.precio === 0) return "Sin costo";
+  return "$" + p.precio.toLocaleString("es-AR") + " / mes";
+}
+
+function featuresDePlan(p) {
+  const f = [p.max_empleados >= 99999 ? "Empleados ilimitados" : `Hasta ${p.max_empleados} empleados`];
+  p.modulos.forEach((m) => { if (MODULO_LABELS[m]) f.push(MODULO_LABELS[m]); });
+  if (p.geolocalizacion) f.push("Geolocalización y geofence");
+  if (p.exportar_csv) f.push("Exportación CSV");
+  if (p.exportar_pdf) f.push("Exportación PDF");
+  if (p.reportes_avanzados) f.push("Reportes avanzados");
+  if (p.reglas_bot) f.push("Reglas personalizadas del bot");
+  if (p.api_access) f.push("Acceso a API");
+  if (p.soporte === "sla") f.push("Soporte con SLA");
+  else if (p.soporte === "prioritario") f.push("Soporte prioritario");
+  else if (p.soporte === "email") f.push("Soporte por email");
+  return f;
+}
 
 const FAQS = [
   {
@@ -224,8 +268,8 @@ export default function DocsPage() {
           </div>
 
           <div style={S.card}>
-            <div style={S.h3}>IA en reportes <span style={S.planTag("pro")}>Pro</span></div>
-            <p style={S.p}>Desde el Chat de gerencia, podés hacer preguntas en lenguaje natural sobre tu equipo: "¿Quiénes llegaron tarde esta semana?", "¿Cuántas horas trabajó Juan en el proyecto Norte?". La IA consulta tus datos en tiempo real.</p>
+            <div style={S.h3}>Chat IA y reportes gerenciales</div>
+            <p style={S.p}>El chat con asistente IA está disponible para los empleados operativos: les permite fichar, registrar actividades y pedir permisos u horas extra escribiendo en lenguaje natural. Gerencia no tiene ese chat — ve la información de su equipo en reportes estructurados (resumen del día, asistencia, producción y solicitudes) desde el Dashboard.</p>
           </div>
 
           <div style={S.card}>
@@ -250,47 +294,26 @@ export default function DocsPage() {
           <h2 style={S.h2}>💳 Planes disponibles</h2>
           <p style={S.p}>Todos los planes incluyen acceso para empleados y administradores. El precio varía según la cantidad de empleados y funciones habilitadas.</p>
 
-          {[
-            {
-              name: "Free", color: "#8A7F75",
-              price: "Sin costo",
-              desc: "Para equipos pequeños que están empezando.",
-              features: ["Hasta 10 empleados", "Fichaje básico", "Chat interno", "Solicitudes y permisos", "Sin SLA garantizado"],
-            },
-            {
-              name: "Starter", color: "#3B82F6",
-              price: "$ / mes",
-              desc: "Para empresas en crecimiento.",
-              features: ["Hasta 25 empleados", "Todo el plan Free", "Registro de actividades", "Historial completo", "SLA 99,5 % uptime"],
-            },
-            {
-              name: "Pro", color: "#F97316",
-              price: "$$$ / mes",
-              desc: "Para operaciones industriales completas.",
-              features: ["Empleados ilimitados", "Todo el plan Starter", "Geolocalización y geofence", "IA en reportes (chat gerencial)", "Producción en vivo", "Dashboard avanzado"],
-            },
-            {
-              name: "Enterprise", color: "#8B5CF6",
-              price: "A consultar",
-              desc: "Para grupos con múltiples empresas.",
-              features: ["Multi-empresa", "Todo el plan Pro", "Onboarding dedicado", "Soporte prioritario", "Integraciones a medida"],
-            },
-          ].map(({ name, color, price, desc, features }) => (
-            <div key={name} style={{ ...S.card, borderColor: `${color}44`, marginBottom: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color, fontFamily: "'Bricolage Grotesque', system-ui" }}>{name}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#F5F0E8" }}>{price}</div>
+          {PLAN_IDS.map((id) => {
+            const p = PLANES[id];
+            const meta = PLAN_META[id];
+            return (
+              <div key={id} style={{ ...S.card, borderColor: `${meta.color}44`, marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: meta.color, fontFamily: "'Bricolage Grotesque', system-ui" }}>{p.nombre}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#F5F0E8" }}>{formatPrecioPlan(p)}</div>
+                </div>
+                <div style={{ ...S.p, marginBottom: 12 }}>{meta.desc}</div>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {featuresDePlan(p).map((f, i) => (
+                    <li key={i} style={{ fontSize: 13, color: "#8A7F75", marginBottom: 6, display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ color: meta.color }}>✓</span> {f}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div style={{ ...S.p, marginBottom: 12 }}>{desc}</div>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {features.map((f, i) => (
-                  <li key={i} style={{ fontSize: 13, color: "#8A7F75", marginBottom: 6, display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ color }}>✓</span> {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+            );
+          })}
 
           <p style={{ ...S.p, marginTop: 24 }}>Para contratar o consultar precios actualizados: <a href="mailto:contacto@gypi.app" style={{ color: "#F97316" }}>contacto@gypi.app</a> o desde la pantalla de Configuración dentro de la app.</p>
         </div>
