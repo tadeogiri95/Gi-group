@@ -22,7 +22,10 @@ import { useParams, useRouter } from "next/navigation";
 import { setToken, getToken, clearToken, onUnauthorized, setEmpresaId, setRefreshToken } from "../lib/supabase";
 import { setColoresEmpresa } from "../lib/theme";
 
-const AuthContext = createContext(null);
+// Exportado (además de useAuth) para poder envolver componentes en tests
+// con un valor de contexto mínimo, sin pasar por el AuthProvider real
+// (que depende de next/navigation y hace fetch al montar).
+export const AuthContext = createContext(null);
 
 const SIETE_DIAS = 7 * 24 * 60 * 60 * 1000;
 
