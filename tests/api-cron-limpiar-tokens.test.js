@@ -1,5 +1,5 @@
 // tests/api-cron-limpiar-tokens.test.js — Tests de GET /api/cron/limpiar-tokens
-import { test, before, beforeEach } from "node:test";
+import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { createFetchMock } from "./helpers/mockFetch.js";
 
@@ -93,6 +93,48 @@ test("limpiar-tokens — fallo parcial en push_tokens no impide las demás limpi
   assert.equal(res.status, 200);
   assert.equal(json.ok, true);
   assert.ok(json.push_tokens_error, "debe reportar el error de push_tokens");
+  assert.equal(json.login_attempts_limpiados, true);
+  assert.equal(json.rate_limits_limpiados, true);
+  assert.equal(json.sesiones_expiradas_limpiadas, true);
+});
+
+// ─── audit_log / geo_registros (retención) ───
+
+test("limpiar-tokens — limpia audit_log y geo_registros con éxito", async () => {
+  global.fetch = createFetchMock([
+    { match: (url, opts) => url.includes("/rest/v1/push_tokens") && opts?.method === "DELETE", respond: () => ({ status: 200, body: [] }) },
+    { match: (url, opts) => url.includes("/rest/v1/login_attempts") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/rate_limits") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/sesiones") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/audit_log") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/geo_registros") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+  ]);
+
+  const res = await GET(cronReq("test-cron-secret"));
+  const json = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(json.audit_log_limpiado, true);
+  assert.equal(json.geo_registros_limpiados, true);
+});
+
+test("limpiar-tokens — fallo en audit_log no impide la limpieza de geo_registros ni de las demás", async () => {
+  global.fetch = createFetchMock([
+    { match: (url, opts) => url.includes("/rest/v1/push_tokens") && opts?.method === "DELETE", respond: () => ({ status: 200, body: [] }) },
+    { match: (url, opts) => url.includes("/rest/v1/login_attempts") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/rate_limits") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/sesiones") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/audit_log") && opts?.method === "DELETE", respond: () => { throw new Error("audit_log table locked"); } },
+    { match: (url, opts) => url.includes("/rest/v1/geo_registros") && opts?.method === "DELETE", respond: () => ({ status: 204 }) },
+  ]);
+
+  const res = await GET(cronReq("test-cron-secret"));
+  const json = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(json.ok, true);
+  assert.ok(json.audit_log_error, "debe reportar el error de audit_log");
+  assert.equal(json.geo_registros_limpiados, true);
   assert.equal(json.login_attempts_limpiados, true);
   assert.equal(json.rate_limits_limpiados, true);
   assert.equal(json.sesiones_expiradas_limpiadas, true);
