@@ -183,6 +183,11 @@ function parseEmpleadosCSV(text) {
 
 function legajoProv() { return Math.floor(Date.now() / 1000) % 900000 + 100000; }
 
+function csvField(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function OnboardingWizard({ empresa, usuario, onComplete }) {
   const [step, setStepRaw] = useState(1);
@@ -200,7 +205,6 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
   const [logoBase64, setLogoBase64] = useState(null);
   const [logoPreview, setLogoPreview] = useState(empresa?.logo_url || null);
   const [empleados, setEmpleados] = useState([]);
-  const [csvText, setCsvText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const fileLogoRef = useRef(null);
@@ -245,9 +249,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
     const f = e.target.files?.[0]; if (!f) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const text = reader.result;
-      setCsvText(text);
-      const parsed = parseEmpleadosCSV(text);
+      const parsed = parseEmpleadosCSV(reader.result);
       setEmpleados(parsed);
     };
     reader.readAsText(f);
@@ -258,22 +260,18 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
     const eid = empresa?.id || usuario?.empresa_id;
     const token = getToken();
     try {
-      for (let i = 0; i < divisiones.length; i++) {
-        const d = divisiones[i];
-        await fetch("/api/config-empresa", {
+      await Promise.all([
+        ...divisiones.map((d, i) => fetch("/api/config-empresa", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ action: "add_division", clave: d.clave, label: d.label, icon: d.icon, color: d.color, orden: i + 1 }),
-        });
-      }
-      for (let i = 0; i < etapas.length; i++) {
-        const e = etapas[i];
-        await fetch("/api/config-empresa", {
+        })),
+        ...etapas.map((e, i) => fetch("/api/config-empresa", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ action: "add_etapa", codigo: e.codigo, nombre: e.nombre, icon: e.icon, color: e.color, orden: i + 1 }),
-        });
-      }
+        })),
+      ]);
       let logoUrl = empresa?.logo_url || null;
       if (logoBase64) {
         const fileName = `logos/${eid}_${Date.now()}.${logoBase64.ext}`;
@@ -297,27 +295,24 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
       if (logoUrl) empresaUpdates.logo_url = logoUrl;
       await sb.patch(`empresa?id=eq.${eid}`, empresaUpdates);
 
-      for (const e of empleados) {
-        if (!e.nombre?.trim()) continue;
-        const legajo = (e.legajo && /^\d+$/.test(e.legajo.trim())) ? parseInt(e.legajo.trim()) : legajoProv();
+      const empleadosValidos = empleados.filter(e => e.nombre?.trim());
+      if (empleadosValidos.length > 0) {
+        let provSeq = legajoProv();
+        const filas = empleadosValidos.map(e => {
+          const legajo = (e.legajo && /^\d+$/.test(e.legajo.trim())) ? parseInt(e.legajo.trim(), 10) : provSeq++;
+          return [legajo, e.nombre.trim(), e.division || "", e.rol || "operativo"];
+        });
+        const csvBody = ["legajo,nombre,division,rol", ...filas.map(f => f.map(csvField).join(","))].join("\n");
         try {
-          const r = await fetch("/api/empleados", {
+          const r = await fetch("/api/empleados/import-csv", {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-            body: JSON.stringify({
-              legajo,
-              nombre: e.nombre.trim(),
-              email: null,
-              area: "produccion",
-              division: e.division || null,
-              rol: e.rol || "operativo",
-            }),
+            headers: { "Content-Type": "text/plain", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: csvBody,
           });
-          if (!r.ok) {
-            const d = await r.json().catch(() => ({}));
-            console.error("Alta empleado falló:", d.error || r.status);
-          }
-        } catch (err) { console.error("Alta empleado falló:", err); }
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.error) console.error("Alta de empleados falló:", d.error || r.status);
+          else if (d.errors?.length) console.error("Alta de empleados — filas con error:", d.errors);
+        } catch (err) { console.error("Alta de empleados falló:", err); }
       }
 
       setColoresEmpresa(colorPrim, colorSec);
