@@ -27,6 +27,8 @@ function getReq(token) {
 }
 
 // ── Helpers de mock Supabase ──
+// NOTA: `empresa` solo trae plan_activo + created_at (select real de la
+// ruta) — trial_fin NUNCA es una columna de `empresa`, vive en `suscripciones`.
 function sbEmpresa(data) {
   return {
     match: (url) => /\/rest\/v1\/empresa\?id=eq\./.test(url) && !url.includes("email_verificado"),
@@ -40,6 +42,8 @@ function sbSuscripciones(data) {
     respond: () => ({ status: 200, body: data ? [data] : [] }),
   };
 }
+
+const haceNDias = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
 
 // ── Tests ──
 
@@ -62,7 +66,7 @@ test("billing/info — free plan sin suscripcion devuelve plan free, estado acti
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([
     ...authPassHandlers(),
-    sbEmpresa({ plan_activo: "free", trial_fin: null }),
+    sbEmpresa({ plan_activo: "free", created_at: haceNDias(30) }),
     sbSuscripciones(null),
   ]);
   const res = await GET(getReq(token));
@@ -73,12 +77,11 @@ test("billing/info — free plan sin suscripcion devuelve plan free, estado acti
   assert.equal(json.dias_restantes, null);
 });
 
-test("billing/info — trial activo (trial_fin en futuro) devuelve estado trial con dias_restantes > 0", async () => {
+test("billing/info — trial sin fila en suscripciones (doble falla en registro) usa created_at+14d sintético, sigue trial", async () => {
   const token = await tokenConRol("administrativo");
-  const futuro = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   global.fetch = createFetchMock([
     ...authPassHandlers(),
-    sbEmpresa({ plan_activo: "trial", trial_fin: futuro }),
+    sbEmpresa({ plan_activo: "trial", created_at: haceNDias(3) }), // vence en ~11 días
     sbSuscripciones(null),
   ]);
   const res = await GET(getReq(token));
@@ -88,12 +91,11 @@ test("billing/info — trial activo (trial_fin en futuro) devuelve estado trial 
   assert.ok(json.dias_restantes > 0, `dias_restantes deberia ser > 0, fue ${json.dias_restantes}`);
 });
 
-test("billing/info — trial vencido (trial_fin en pasado) devuelve estado vencida", async () => {
+test("billing/info — trial sin fila en suscripciones y created_at de hace más de 14 días devuelve vencida, no activa", async () => {
   const token = await tokenConRol("gerencial");
-  const pasado = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
   global.fetch = createFetchMock([
     ...authPassHandlers(),
-    sbEmpresa({ plan_activo: "trial", trial_fin: pasado }),
+    sbEmpresa({ plan_activo: "trial", created_at: haceNDias(20) }), // venció hace 6 días
     sbSuscripciones(null),
   ]);
   const res = await GET(getReq(token));
@@ -103,11 +105,25 @@ test("billing/info — trial vencido (trial_fin en pasado) devuelve estado venci
   assert.equal(json.dias_restantes, null);
 });
 
+test("billing/info — trial sin fila en suscripciones y sin created_at disponible devuelve vencida (nunca 'activa' silenciosa)", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    sbEmpresa({ plan_activo: "trial" }), // sin created_at
+    sbSuscripciones(null),
+  ]);
+  const res = await GET(getReq(token));
+  assert.equal(res.status, 200);
+  const json = await res.json();
+  assert.equal(json.estado, "vencida");
+  assert.notEqual(json.estado, "activa");
+});
+
 test("billing/info — suscripcion activa devuelve plan, precio y gateway de la suscripcion", async () => {
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([
     ...authPassHandlers(),
-    sbEmpresa({ plan_activo: "starter", trial_fin: null }),
+    sbEmpresa({ plan_activo: "starter", created_at: haceNDias(200) }),
     sbSuscripciones({
       plan: "pro",
       estado: "activa",
@@ -131,7 +147,7 @@ test("billing/info — respuesta incluye header Cache-Control: private, no-store
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([
     ...authPassHandlers(),
-    sbEmpresa({ plan_activo: "free", trial_fin: null }),
+    sbEmpresa({ plan_activo: "free", created_at: haceNDias(1) }),
     sbSuscripciones(null),
   ]);
   const res = await GET(getReq(token));

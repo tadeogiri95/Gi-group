@@ -32,6 +32,74 @@ async function sbPatch(path: string, body: Record<string, unknown>) {
   if (!r.ok) throw new Error(`sbPatch ${path}: ${await r.text()}`);
 }
 
+type EmpresaAfectada = { empresa_id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string };
+
+const CATORCE_DIAS_MS = 14 * 24 * 60 * 60 * 1000;
+
+// ─── Huérfanas: empresas con plan no-free y CERO filas en `suscripciones`
+// — caso de doble falla en registro-empresa (RPC iniciar_trial_pro + INSERT
+// de fallback fallaron los dos), invisible para el resto de este cron
+// porque arranca siempre desde `suscripciones`. Se exige más de 14 días de
+// antigüedad (mismo plazo que un trial normal) y se excluyen las empresas
+// con plan_override_manual=true: son planes pactados a mano por el
+// superadmin (p.ej. enterprise) que a propósito no tienen fila en
+// suscripciones — bajarlas a free sería un downgrade indebido.
+// ───
+async function corregirEmpresasHuerfanas(): Promise<EmpresaAfectada[]> {
+  const cutoff = new Date(Date.now() - CATORCE_DIAS_MS).toISOString();
+
+  const candidatas: { id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string }[] =
+    await sbGet(
+      `empresa?plan_activo=neq.free&plan_override_manual=eq.false&created_at=lt.${cutoff}&select=id,nombre,nombre_corto,slug,admin_email`
+    );
+
+  if (!candidatas || candidatas.length === 0) return [];
+
+  const ids = candidatas.map((c) => c.id);
+  const conSuscripcion: { empresa_id: string }[] = await sbGet(
+    `suscripciones?empresa_id=in.(${ids.join(",")})&select=empresa_id`
+  );
+  const idsConSuscripcion = new Set((conSuscripcion || []).map((s) => s.empresa_id));
+
+  const huerfanas = candidatas.filter((c) => !idsConSuscripcion.has(c.id));
+
+  for (const h of huerfanas) {
+    await sbPatch(`empresa?id=eq.${h.id}`, { plan_activo: "free", suscripcion_activa_id: null });
+    logger.error(
+      "[TRIAL_DOBLE_FALLA] empresa sin ninguna fila en suscripciones, corregida a free por el cron de huérfanas",
+      undefined,
+      { empresa_id: h.id }
+    );
+  }
+
+  return huerfanas.map((h) => ({
+    empresa_id: h.id,
+    nombre: h.nombre,
+    nombre_corto: h.nombre_corto,
+    slug: h.slug,
+    admin_email: h.admin_email,
+  }));
+}
+
+// ─── Notifica por email + analytics, igual que a un trial vencido normal ───
+async function notificarVencimiento(afectadas: EmpresaAfectada[]): Promise<number> {
+  let enviados = 0;
+  for (const e of afectadas) {
+    logEvent(EVT.TRIAL_EXPIRED, { empresa_id: e.empresa_id });
+    if (e.admin_email) {
+      sendTrialExpirado({
+        to: e.admin_email,
+        nombre: e.nombre_corto || e.nombre,
+        empresa: e.nombre_corto || e.nombre,
+        slug: e.slug,
+        empresaId: e.empresa_id,
+      });
+      enviados++;
+    }
+  }
+  return enviados;
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -41,9 +109,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
   const now = new Date().toISOString();
 
+  // Huérfanas no dependen de `suscripciones`, así que se corrigen aparte y
+  // se suman al conteo de "vencidos" del flujo que corresponda más abajo.
+  const huerfanas = await corregirEmpresasHuerfanas();
+
   // ─── Intento 1: RPC batch (migración 036) — una sola transacción para
   // TODOS los trials vencidos, sin loop por fila. ───
-  type EmpresaAfectada = { empresa_id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string };
   let afectadas: EmpresaAfectada[] | null = null;
 
   const batchRes = await fetch(`${SB_URL}/rest/v1/rpc/vencer_trials_batch`, {
@@ -64,22 +135,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   if (afectadas) {
-    let enviados = 0;
-    for (const e of afectadas) {
-      logEvent(EVT.TRIAL_EXPIRED, { empresa_id: e.empresa_id });
-      if (e.admin_email) {
-        sendTrialExpirado({
-          to: e.admin_email,
-          nombre: e.nombre_corto || e.nombre,
-          empresa: e.nombre_corto || e.nombre,
-          slug: e.slug,
-          empresaId: e.empresa_id,
-        });
-        enviados++;
-      }
-    }
-    logger.debug(`[vencer-trials] Procesados (batch): ${afectadas.length}, emails: ${enviados}`);
-    return NextResponse.json({ ok: true, vencidos: afectadas.length });
+    const todas = [...afectadas, ...huerfanas];
+    const enviados = await notificarVencimiento(todas);
+    logger.debug(`[vencer-trials] Procesados (batch): ${todas.length}, emails: ${enviados}`);
+    return NextResponse.json({ ok: true, vencidos: todas.length });
   }
 
   // ─── Fallback: comportamiento anterior fila por fila (migración 036 no aplicada) ───
@@ -88,7 +147,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   );
 
   if (!trialsVencidos || trialsVencidos.length === 0) {
-    return NextResponse.json({ ok: true, vencidos: 0 });
+    if (huerfanas.length === 0) {
+      return NextResponse.json({ ok: true, vencidos: 0 });
+    }
+    await notificarVencimiento(huerfanas);
+    logger.debug(`[vencer-trials] Procesados (solo huerfanas): ${huerfanas.length}`);
+    return NextResponse.json({ ok: true, vencidos: huerfanas.length });
   }
 
   const empresaIds = [...new Set(trialsVencidos.map((s) => s.empresa_id))];
@@ -146,8 +210,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  logger.debug(`[vencer-trials] Procesados: ${procesados}, Errores: ${errores}`);
-  return NextResponse.json({ ok: true, vencidos: procesados, errores });
+  await notificarVencimiento(huerfanas);
+
+  logger.debug(`[vencer-trials] Procesados: ${procesados}, Errores: ${errores}, Huerfanas: ${huerfanas.length}`);
+  return NextResponse.json({ ok: true, vencidos: procesados + huerfanas.length, errores });
 
   } catch (e) {
     logger.error("[vencer-trials] Error fatal — cron abortado", e as Error);

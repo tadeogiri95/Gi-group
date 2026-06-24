@@ -216,6 +216,14 @@ export async function POST(req) {
       }
     }
 
+    if (!trialIniciado) {
+      logger.error(
+        "[TRIAL_DOBLE_FALLA] RPC iniciar_trial_pro y el INSERT de fallback a suscripciones fallaron los dos — la empresa queda con plan_activo=trial sin ninguna fila en suscripciones (billing/info la trata como vencida vía created_at, pero requiere intervención manual o esperar al cron de huérfanas)",
+        new Error(`empresa_id=${emp.id}`),
+        { empresa_id: emp.id }
+      );
+    }
+
     // Fire-and-forget — no bloquea la respuesta
     const appBase = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
     const verifyUrl = `${appBase}/api/verificar-email?token=${verifyToken}&e=${emp.id}`;

@@ -86,3 +86,30 @@ test("registro — rate limit excedido devuelve 429", async () => {
   const res = await POST(req(FORM_OK));
   assert.equal(res.status, 429);
 });
+
+test("registro — doble falla de trial (RPC + insert fallback) no rompe el registro y loguea TRIAL_DOBLE_FALLA", async () => {
+  const { logger } = await import("../app/lib/logger.ts");
+  const llamadas = [];
+  const original = logger.error;
+  logger.error = (...args) => llamadas.push(args);
+
+  try {
+    global.fetch = createFetchMock([
+      { match: (url) => url.includes("/rpc/iniciar_trial_pro"), respond: () => ({ status: 500, body: '{"message":"rpc caida"}' }) },
+      { match: (url, opts) => url.includes("/rest/v1/suscripciones") && opts?.method === "POST", respond: () => ({ status: 500, body: '{"code":"XXXXX","message":"insert tambien falla"}' }) },
+      ...handlersBase(),
+    ]);
+
+    const res = await POST(req(FORM_OK));
+    const json = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(json.ok, true);
+    assert.ok(
+      llamadas.some(([msg]) => typeof msg === "string" && msg.includes("TRIAL_DOBLE_FALLA")),
+      "debe loguear un error con tag TRIAL_DOBLE_FALLA cuando ambos intentos de iniciar el trial fallan"
+    );
+  } finally {
+    logger.error = original;
+  }
+});
