@@ -163,11 +163,22 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
     } catch (err) { showToast(`Error: ${err.message}`, RED); }
   };
 
-  /* ── Asignación masiva/selectiva ── */
+  /* ── Asignación masiva/selectiva ──
+     Elegir un tipo precarga quién lo tiene asignado hoy; el checklist queda
+     editable en ambas direcciones y "Guardar" aplica el diff (alta + baja)
+     contra ese estado original, no solo agrega. */
   const [tipoAsignar, setTipoAsignar] = useState("");
   const [seleccionados, setSeleccionados] = useState(new Set());
+  const [asignadosOriginal, setAsignadosOriginal] = useState(new Set());
   const [filtroDivision, setFiltroDivision] = useState("todas");
   const [asignando, setAsignando] = useState(false);
+
+  useEffect(() => {
+    if (!tipoAsignar) { setSeleccionados(new Set()); setAsignadosOriginal(new Set()); return; }
+    const actuales = new Set(exigidos.filter((ex) => ex.tipo_documento_id === tipoAsignar).map((ex) => ex.empleado_id));
+    setSeleccionados(actuales);
+    setAsignadosOriginal(actuales);
+  }, [tipoAsignar, exigidos]);
 
   const empsFiltrados = filtroDivision === "todas" ? empleados : empleados.filter((e) => e.division === filtroDivision);
   const toggleEmpleado = (id) => setSeleccionados((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -177,18 +188,31 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
     setSeleccionados((p) => { const n = new Set(p); ids.forEach((id) => (allSel ? n.delete(id) : n.add(id))); return n; });
   };
 
+  const aAsignar = useMemo(() => [...seleccionados].filter((id) => !asignadosOriginal.has(id)), [seleccionados, asignadosOriginal]);
+  const aQuitar = useMemo(() => [...asignadosOriginal].filter((id) => !seleccionados.has(id)), [seleccionados, asignadosOriginal]);
+  const hayCambios = aAsignar.length > 0 || aQuitar.length > 0;
+
   const aplicarAsignacion = async () => {
-    if (!tipoAsignar || seleccionados.size === 0) { showToast("Elegí un tipo y al menos un empleado", AMBER); return; }
+    if (!tipoAsignar || !hayCambios) { showToast("Elegí un tipo y modificá la selección", AMBER); return; }
     setAsignando(true);
     try {
-      const res = await apiFetch("/api/documentos/asignar", {
-        method: "POST",
-        body: JSON.stringify({ tipo_documento_id: tipoAsignar, empleado_ids: [...seleccionados] }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Error al asignar");
-      showToast(`✅ Asignado a ${data.asignados} empleado${data.asignados !== 1 ? "s" : ""}${data.ya_asignados ? ` · ${data.ya_asignados} ya lo tenían` : ""}`, GREEN);
-      setSeleccionados(new Set());
+      if (aAsignar.length > 0) {
+        const res = await apiFetch("/api/documentos/asignar", {
+          method: "POST",
+          body: JSON.stringify({ tipo_documento_id: tipoAsignar, empleado_ids: aAsignar }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || "Error al asignar");
+      }
+      if (aQuitar.length > 0) {
+        const res = await apiFetch("/api/documentos/asignar", {
+          method: "DELETE",
+          body: JSON.stringify({ tipo_documento_id: tipoAsignar, empleado_ids: aQuitar }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || "Error al desasignar");
+      }
+      showToast(`✅ Guardado${aAsignar.length ? ` · +${aAsignar.length}` : ""}${aQuitar.length ? ` · -${aQuitar.length}` : ""}`, GREEN);
       await cargar();
     } catch (err) { showToast(`Error: ${err.message}`, RED); }
     setAsignando(false);
@@ -295,9 +319,21 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
 
           <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3.5">
             <div className="flex justify-between items-center mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: CYAN }}>② Seleccioná empleados</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: CYAN }}>② Marcá quiénes lo tienen que subir</div>
               <Tag color={seleccionados.size > 0 ? AMBER : "var(--color-text-dim)"}>{seleccionados.size} seleccionados</Tag>
             </div>
+            {tipoAsignar && (
+              <div className="text-[11px] text-gypi-dim mb-2.5">
+                Tildados = ya lo tienen asignado o se va a asignar ahora. Destildá para sacarlo.
+                {hayCambios && (
+                  <span className="ml-1 font-bold">
+                    {aAsignar.length > 0 && <span style={{ color: GREEN }}>+{aAsignar.length}</span>}
+                    {aAsignar.length > 0 && aQuitar.length > 0 && " · "}
+                    {aQuitar.length > 0 && <span style={{ color: RED }}>-{aQuitar.length}</span>}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="flex gap-1 mb-2.5 overflow-x-auto pb-0.5">
               <Chip active={filtroDivision === "todas"} onClick={() => setFiltroDivision("todas")} color={AMBER}>Todas</Chip>
               {divisiones.filter((d) => d.id !== "todas").map((d) => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || CYAN}>{d.label}</Chip>)}
@@ -321,10 +357,10 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
             </div>
           </div>
 
-          <button onClick={aplicarAsignacion} disabled={asignando || !tipoAsignar || seleccionados.size === 0} className="w-full py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading mb-2.5" style={{
-            background: tipoAsignar && seleccionados.size > 0 ? `linear-gradient(135deg, ${CYAN}, ${GREEN})` : "var(--color-surface)",
-            color: tipoAsignar && seleccionados.size > 0 ? "#000" : "var(--color-text-muted)", cursor: tipoAsignar && seleccionados.size > 0 ? "pointer" : "default",
-          }}>{asignando ? "Asignando..." : `⚡ Exigir a ${seleccionados.size || "..."} empleado${seleccionados.size !== 1 ? "s" : ""}`}</button>
+          <button onClick={aplicarAsignacion} disabled={asignando || !tipoAsignar || !hayCambios} className="w-full py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading mb-2.5" style={{
+            background: tipoAsignar && hayCambios ? `linear-gradient(135deg, ${CYAN}, ${GREEN})` : "var(--color-surface)",
+            color: tipoAsignar && hayCambios ? "#000" : "var(--color-text-muted)", cursor: tipoAsignar && hayCambios ? "pointer" : "default",
+          }}>{asignando ? "Guardando..." : !tipoAsignar ? "⚡ Elegí un documento" : hayCambios ? `💾 Guardar cambios (+${aAsignar.length} / -${aQuitar.length})` : "Sin cambios"}</button>
         </>
       )}
 
