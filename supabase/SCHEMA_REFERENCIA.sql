@@ -483,7 +483,7 @@ CREATE TABLE IF NOT EXISTS documentos_empleado (
 -- validar_sesion(p_token)                              (002)
 -- crear_sesion(p_empleado_id, p_empresa_id, ip, ua)     (002)
 -- limpiar_sesiones_expiradas()                          (002)
--- auto_fichar_egresos()                                 (002 → 009 → 024, vigente: 024 — usa timezone por empresa)
+-- auto_fichar_egresos()                                 (002 → 009 → 024 → 060, vigente: 060 — fix filtro de fecha/dia-semana/aritmetica nocturna)
 -- iniciar_trial_pro(p_empresa_id)                       (002)
 -- rpc_check_rate_limit(empresa_id, ventana, limite)     (011)
 -- rpc_login_attempt(ip, ventana)                        (013)

@@ -224,6 +224,78 @@ test("fichar — egreso sin forzar_cierre_tarea retorna tarea_activa cuando hay 
   assert.equal(json.tarea_id, "tarea-activa-1");
 });
 
+// ─── Egreso: tope de horas y atomicidad (auditoría 2026-06-24) ───────────────
+
+test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero no bloquea el egreso", async () => {
+  const { logger } = await import("../app/lib/logger.ts");
+  const llamadas = [];
+  const original = logger.error;
+  logger.error = (...args) => llamadas.push(args);
+
+  try {
+    const token = await tokenValido();
+    global.fetch = createFetchMock([
+      ...authPassHandlers(),
+      { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
+      { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+      { match: (url) => url.includes("/rest/v1/registro_actividades") && url.includes("hora_fin=is.null") && url.includes("select=id"), respond: () => ({ status: 200, body: [] }) },
+      // Sin fichada de hoy -> obliga a buscar la última fichada abierta
+      { match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=*") && url.includes("limit=1"), respond: () => ({ status: 200, body: [] }) },
+      // Última fichada abierta: ingreso de hace varios días (turno olvidado)
+      {
+        match: (url) => url.includes("/rest/v1/fichadas") && url.includes("egreso=is.null") && url.includes("order=fecha.desc"),
+        respond: () => ({ status: 200, body: [{ id: "f-vieja", fecha: "2026-06-01", ingreso: "08:00", egreso: null }] }),
+      },
+      { match: (url) => url.includes("/rest/v1/empleados") && url.includes("select=diagrama"), respond: () => ({ status: 200, body: [{ diagrama: null }] }) },
+      {
+        match: (url, opts) => url.includes("/rest/v1/fichadas") && opts.method === "PATCH",
+        respond: (url, opts) => ({ status: 200, body: [{ id: "f-vieja", ...JSON.parse(opts.body) }] }),
+      },
+    ]);
+
+    const res = await POST(req({ accion: "egreso" }, token));
+    const json = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(json.ok, true, "el egreso debe completarse igual — no se bloquea ni se clampea, solo se loguea");
+    assert.ok(
+      llamadas.some(([msg]) => typeof msg === "string" && msg.includes("FICHAJE_OLVIDADO")),
+      "debe loguear un error con tag FICHAJE_OLVIDADO cuando la jornada supera MAX_HORAS_JORNADA"
+    );
+  } finally {
+    logger.error = original;
+  }
+});
+
+test("fichar — egreso ya cerrado por otra request devuelve ya_fichado en vez de pisarlo (PATCH atómico)", async () => {
+  const token = await tokenValido();
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/registro_actividades") && url.includes("hora_fin=is.null") && url.includes("select=id"), respond: () => ({ status: 200, body: [] }) },
+    // El GET todavía ve la fichada sin egreso (leída antes de que la otra
+    // request ganara la carrera)
+    {
+      match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=*") && url.includes("limit=1"),
+      respond: () => ({ status: 200, body: [{ id: "f-hoy", fecha: "2026-06-15", ingreso: "08:00", egreso: null }] }),
+    },
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("select=diagrama"), respond: () => ({ status: 200, body: [{ diagrama: null }] }) },
+    // Para cuando llega el PATCH con egreso=is.null, la otra request ya
+    // cerró la fichada -> 0 filas afectadas.
+    {
+      match: (url, opts) => url.includes("/rest/v1/fichadas") && opts.method === "PATCH" && url.includes("egreso=is.null"),
+      respond: () => ({ status: 200, body: [] }),
+    },
+  ]);
+
+  const res = await POST(req({ accion: "egreso" }, token));
+  const json = await res.json();
+
+  assert.equal(json.ok, false);
+  assert.equal(json.tipo, "ya_fichado");
+});
+
 // ─── Tardanza — regresión para la consolidación con app/lib/calc.js ──────────
 // 2026-06-15 es lunes ("lun") en Argentina — fijado con mock.timers para
 // controlar la hora real de ingreso sin depender de cuándo corre el test.

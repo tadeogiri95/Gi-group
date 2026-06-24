@@ -17,6 +17,13 @@ import { logEvent, EVT } from "../../lib/analytics";
 const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
 
+// Tope de jornada para detectar fichadas olvidadas (egreso varios días
+// después del ingreso). No se clampea el valor guardado — un número
+// absurdo en horas_trabajadas es una anomalía visible para quien revise
+// el reporte de liquidación; un valor recortado a este tope se vería
+// plausible y pasaría desapercibido, que es peor.
+const MAX_HORAS_JORNADA = 20;
+
 function getLocalTime(tz = TZ_DEFAULT) {
   const now = new Date();
   const local = new Date(now.toLocaleString("en-US", { timeZone: tz }));
@@ -277,6 +284,14 @@ export async function POST(request) {
     const outDate = new Date(`${fecha}T${hora}:00`);
     const horasTrab = Math.max(0, (outDate.getTime() - inDate.getTime()) / 3600000);
 
+    if (horasTrab > MAX_HORAS_JORNADA) {
+      logger.error(
+        `[FICHAJE_OLVIDADO] Jornada de ${horasTrab.toFixed(2)}h supera el tope de ${MAX_HORAS_JORNADA}h — probable fichaje de ingreso olvidado, revisar manualmente`,
+        new Error(`empleado_id=${empleadoId} fichada_id=${fichada.id}`),
+        { empleado_id: empleadoId, fichada_id: fichada.id, horas_trabajadas: horasTrab }
+      );
+    }
+
     // 4. Calcular horas extra comparando con diagrama
     let horasExtra = 0;
     let solicitarHoraExtra = false;
@@ -322,11 +337,23 @@ export async function POST(request) {
       logger.error("Error calculando horas extra", e);
     }
 
-    await sbPatch(`fichadas?id=eq.${fichada.id}`, {
+    // egreso=is.null en el filtro hace el PATCH atómico ante doble-tap o
+    // reintento de red: si otra request ya cerró esta fichada entre el
+    // GET de arriba y este PATCH, acá no actualiza nada (0 filas) en vez
+    // de pisar el egreso real con una segunda escritura casi idéntica.
+    const patched = await sbPatch(`fichadas?id=eq.${fichada.id}&egreso=is.null`, {
       egreso: hora,
       horas_trabajadas: horasTrab.toFixed(2),
       horas_extra: horasExtra,
     });
+
+    if (!patched || patched.length === 0) {
+      return NextResponse.json({
+        ok: false,
+        error: "Ya fichaste egreso hoy.",
+        tipo: "ya_fichado",
+      });
+    }
 
     if (geo_lat && geo_lng) {
       sbPost("geo_registros", {
