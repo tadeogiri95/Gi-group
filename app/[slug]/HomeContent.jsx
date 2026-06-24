@@ -72,11 +72,14 @@ export default function HomeContent() {
 
   const setScreen = (pantalla) => {
     if (!VALID_SCREENS.has(pantalla)) pantalla = "home";
+    const params = new URLSearchParams(searchParams);
     if (pantalla === "home") {
-      router.push(pathname, { scroll: false });
+      params.delete("screen");
     } else {
-      router.push(`${pathname}?screen=${pantalla}`, { scroll: false });
+      params.set("screen", pantalla);
     }
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   // ─── Impersonation exchange (superadmin → ?imp=code) ───
