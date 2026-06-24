@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getPreapproval, getPago, cancelarPreapproval } from "../../../lib/mercadopago";
 import { sendFalloPago, sendPlanSuspendido, sendPagoConfirmado } from "../../../lib/email";
+import { emitirFacturaC } from "../../../lib/afip";
 import { logger } from "../../../lib/logger";
 import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
@@ -267,7 +268,7 @@ export async function POST(request) {
       else if (pago.status === "rejected") estadoPago = "rechazado";
       else if (pago.status === "refunded") estadoPago = "reembolsado";
 
-      await sbPost("pagos", {
+      const [pagoInsertado] = await sbPost("pagos", {
         empresa_id: empresaId || null,
         suscripcion_id: suscId || null,
         monto: pago.transaction_amount,
@@ -281,7 +282,7 @@ export async function POST(request) {
       if (estadoPago === "aprobado" && suscId) {
         await sbPatchOk(`suscripciones?id=eq.${suscId}`, { estado: "activa" });
         if (empresaId) {
-          const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan`);
+          const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan,periodo_inicio,periodo_fin`);
           // P3: Respetar override manual
           const [empCheck] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_override_manual&limit=1`, { silent: true, fallback: [] });
           if (susc?.[0]?.plan && !empCheck?.plan_override_manual) {
@@ -305,6 +306,33 @@ export async function POST(request) {
               });
             }
           } catch (e) { logger.error("Error enviando email pago confirmado", e); }
+
+          // Facturación electrónica ARCA — fire-and-forget, nunca bloquea
+          // la activación del plan (ver app/lib/afip.js, kill-switch sin
+          // AFIP_ACCESS_TOKEN).
+          if (pagoInsertado?.id) {
+            try {
+              const factura = await emitirFacturaC({
+                monto: pago.transaction_amount,
+                fechaPago: pago.date_approved || pago.date_created,
+                periodoInicio: susc?.[0]?.periodo_inicio,
+                periodoFin: susc?.[0]?.periodo_fin,
+              });
+              if (factura.ok) {
+                await sbPatchOk(`pagos?id=eq.${pagoInsertado.id}`, {
+                  cae: factura.cae,
+                  cae_vencimiento: factura.caeVencimiento,
+                  numero_comprobante: factura.numeroComprobante,
+                  punto_venta: factura.puntoVenta,
+                  tipo_comprobante: factura.tipoComprobante,
+                });
+              } else if (factura.motivo !== "no_configurado") {
+                await sbPatchOk(`pagos?id=eq.${pagoInsertado.id}`, { factura_error: factura.error || "error desconocido" });
+              }
+            } catch (e) {
+              logger.error("[webhook] Error inesperado emitiendo factura", e, { pagoId: pagoInsertado.id });
+            }
+          }
         }
       }
 

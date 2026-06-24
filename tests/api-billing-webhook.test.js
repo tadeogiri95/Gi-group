@@ -207,6 +207,30 @@ test("webhook — firma HMAC inválida devuelve 401 (integración reforzada)", a
   // Ninguna llamada a MP ni a Supabase debe haberse hecho
 });
 
+test("webhook — un fallo de facturación ARCA no rompe la aprobación del pago", async (t) => {
+  const externalRef = `gypi-${EMPRESA_ID}-${SUSC_ID}`;
+  t.mock.module("../app/lib/afip.js", {
+    exports: { emitirFacturaC: async () => { throw new Error("ARCA caído (simulado)"); } },
+  });
+
+  global.fetch = createFetchMock([
+    { match: (u) => u.includes("api.mercadopago.com/v1/payments/"), respond: () => ({ status: 200, body: { id: 555, status: "approved", transaction_amount: 35000, currency_id: "ARS", external_reference: externalRef, date_approved: "2026-06-16T00:00:00Z" } }) },
+    { match: (u) => u.includes("/rest/v1/pagos") && u.includes("gateway_payment_id"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u, o) => u.includes("/rest/v1/pagos") && o.method === "POST", respond: () => ({ status: 201, body: [{ id: 99 }] }) },
+    { match: (u, o) => u.includes("/rest/v1/suscripciones") && o.method === "PATCH", respond: () => ({ status: 204 }) },
+    { match: (u) => u.includes("/rest/v1/suscripciones") && u.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
+    { match: (u, o) => u.includes("/rest/v1/empresa") && o.method === "PATCH", respond: () => ({ status: 204 }) },
+    { match: (u) => u.includes("/rest/v1/empresa") && u.includes("admin_email"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
+  ]);
+
+  const mod = await import(`../app/api/billing/webhook/route.js?t=${Date.now()}`);
+  const res = await mod.POST(req({ body: { type: "payment", data: { id: "555" } }, dataId: "555" }));
+  const json = await res.json();
+
+  assert.equal(res.status, 200, "el pago debe aprobarse igual aunque emitirFacturaC tire excepción");
+  assert.equal(json.accion, "pago_aprobado");
+});
+
 test("webhook — mismo payment_id enviado dos veces: segundo call es no-op (idempotencia)", async () => {
   const externalRef = `gypi-${EMPRESA_ID}-${SUSC_ID}`;
   const dataId = "777";
