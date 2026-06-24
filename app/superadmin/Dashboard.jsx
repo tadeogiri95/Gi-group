@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 
@@ -138,8 +138,11 @@ export default function Dashboard({ initialData }) {
     setMetricasLoading(false);
   }, []);
 
-  useEffect(() => { if (tab === "metricas") fetchMetricas(); }, [tab, fetchMetricas]);
-  useEffect(() => { if (tab === "auditoria") fetchAudit(); }, [tab, fetchAudit]);
+  const handleTabChange = (key) => {
+    setTab(key);
+    if (key === "metricas") fetchMetricas();
+    else if (key === "auditoria") fetchAudit();
+  };
 
   const handlePageChange = (newPage) => {
     setPage(newPage);
@@ -223,7 +226,7 @@ export default function Dashboard({ initialData }) {
           </div>
           <div style={{ display: "flex", gap: 4, marginLeft: 24 }}>
             {[["empresas", "Empresas"], ["metricas", "Métricas"], ["auditoria", "Auditoría"]].map(([key, label]) => (
-              <button key={key} onClick={() => setTab(key)}
+              <button key={key} onClick={() => handleTabChange(key)}
                 style={{ padding: "6px 14px", borderRadius: 7, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer",
                   background: tab === key ? "rgba(249,115,22,0.2)" : "transparent",
                   color: tab === key ? "#F97316" : "#6B6560" }}>

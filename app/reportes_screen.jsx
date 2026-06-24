@@ -31,6 +31,14 @@ const fmtHora = (min) => { if (min == null) return "—"; const h = Math.floor(m
 const diffMin = (a, b) => (a != null && b != null) ? b - a : null;
 const pctColor = (pct) => pct >= 95 ? GREEN : pct >= 80 ? AMBER : RED;
 
+/* ── KPI Card ── */
+const KPI = ({ value, label, color }) => (
+  <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border text-center">
+    <div className="font-heading text-2xl font-bold" style={{ color }}>{value}</div>
+    <div className="text-[9px] text-gypi-dim font-bold uppercase mt-0.5">{label}</div>
+  </div>
+);
+
 const getWeekDates = (offset = 0) => {
   const now = new Date();
   const mon = new Date(now);
@@ -626,14 +634,6 @@ export default function ReportesScreen() {
     if (periodo === "semana") setWeekOffset(w => w + 1);
     else { let m = mesMes + 1, y = mesYear; if (m > 11) { m = 0; y++; } setMesMes(m); setMesYear(y); }
   };
-
-  /* ── KPI Card ── */
-  const KPI = ({ value, label, color }) => (
-    <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border text-center">
-      <div className="font-heading text-2xl font-bold" style={{ color }}>{value}</div>
-      <div className="text-[9px] text-gypi-dim font-bold uppercase mt-0.5">{label}</div>
-    </div>
-  );
 
   return (
     <div className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px]">
