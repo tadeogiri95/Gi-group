@@ -8,17 +8,36 @@
 import { getToken, clearToken, getCsrfToken } from "./supabase";
 import { haversine } from "./calc";
 
+// Reintentos solo ante fallo de RED (fetch() no llega a completarse — sin
+// señal, típico en planta industrial). Un rechazo lógico del servidor (4xx/5xx
+// con response real) nunca reintenta acá, se resuelve abajo como siempre.
+// opciones (incluye geo_lat/geo_lng ya capturados) se manda igual en cada
+// intento — no hace falta volver a pedir GPS.
+const REINTENTOS_RED = [800, 1600];
+
 export async function ficharServer(accion, opciones = {}) {
   const token = getToken();
   if (!token) throw new Error("Sin sesión");
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
   const csrf = getCsrfToken();
   if (csrf) headers["x-csrf-token"] = csrf;
-  const res = await fetch("/api/fichar", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ accion, ...opciones }),
-  });
+  const body = JSON.stringify({ accion, ...opciones });
+
+  let res;
+  for (let intento = 0; ; intento++) {
+    try {
+      res = await fetch("/api/fichar", { method: "POST", headers, body });
+      break;
+    } catch {
+      if (intento >= REINTENTOS_RED.length) {
+        const err = new Error("Sin conexión a internet. Probá de nuevo cuando tengas señal.");
+        err.tipo = "sin_conexion";
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, REINTENTOS_RED[intento]));
+    }
+  }
+
   if (res.status === 401) { clearToken(); throw new Error("Sesión expirada"); }
   const data = await res.json();
   if (!data.ok) {

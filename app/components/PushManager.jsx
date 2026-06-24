@@ -5,6 +5,7 @@ import {
   onForegroundMessage,
   isPushSupported,
   getPushPermissionStatus,
+  registerSW,
 } from "../lib/push";
 
 export default function PushManager({ legajo, empresaId, onNotification }) {
@@ -16,6 +17,10 @@ export default function PushManager({ legajo, empresaId, onNotification }) {
   useEffect(() => {
     if (!isPushSupported()) { setStatus("unsupported"); return; }
     setStatus(getPushPermissionStatus());
+    // Independiente del permiso de notificaciones: el SW sirve /offline.html
+    // (ver public/firebase-messaging-sw.js) y eso debe funcionar aunque el
+    // usuario rechace o nunca responda el prompt de push.
+    registerSW();
   }, []);
 
   useEffect(() => {
