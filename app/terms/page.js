@@ -40,10 +40,10 @@ export default function TermsOfService() {
       <h2 style={S.h2}>4. Planes y facturación</h2>
       <p style={S.p}>Gypi ofrece planes gratuitos y de pago. Los planes de pago se facturan mensualmente a través de MercadoPago. Las tarifas vigentes se publican en gypi.app. Gypi se reserva el derecho de ajustar los precios con 30 días de preaviso.</p>
 
-      <h2 style={S.h2}>5. Disponibilidad del servicio (SLA)</h2>
-      <p style={S.p}>Gypi garantiza una disponibilidad mensual del <strong style={{ color: "#F5F0E8" }}>99,5 % de uptime</strong> para los planes de pago (Starter, Pro y Enterprise), medida sobre el mes calendario, excluyendo ventanas de mantenimiento programado notificadas con al menos 24 horas de anticipación.</p>
-      <p style={S.p}>En caso de que el uptime mensual sea inferior al garantizado, Gypi otorgará un crédito proporcional al tiempo de inactividad adicional, aplicado al próximo período de facturación. El crédito es el único remedio disponible por incumplimiento del SLA; no corresponde reembolso en efectivo.</p>
-      <p style={S.p}>Para el plan gratuito (Free) no aplica garantía de uptime.</p>
+      <h2 style={S.h2}>5. Disponibilidad del servicio</h2>
+      <p style={S.p}>Gypi hace sus mejores esfuerzos para mantener el servicio disponible de forma continua para los planes de pago (Starter, Pro y Enterprise), incluyendo monitoreo activo y mantenimiento preventivo. Las ventanas de mantenimiento programado se notifican con al menos 24 horas de anticipación cuando es posible.</p>
+      <p style={S.p}>Actualmente no se garantiza un porcentaje de disponibilidad (SLA) numérico ni créditos compensatorios automáticos por interrupciones. Si tu empresa necesita un SLA contractual con métricas formales, contactanos para evaluarlo como acuerdo Enterprise.</p>
+      <p style={S.p}>Para el plan gratuito (Free) no aplica ningún compromiso de disponibilidad.</p>
 
       <h2 style={S.h2}>6. Propiedad intelectual</h2>
       <p style={S.p}>Todos los derechos de propiedad intelectual sobre la App pertenecen a Gypi Software. Se te otorga una licencia limitada, no exclusiva y revocable para usar la App según estos términos. Los datos que tu empresa carga pertenecen a tu empresa.</p>
