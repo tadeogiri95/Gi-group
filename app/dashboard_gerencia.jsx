@@ -226,7 +226,7 @@ function ReportesObraPanel({ reportesObra }) {
                           <div className="grid gap-2" style={{ gridTemplateColumns: r.fotos_urls.length === 1 ? "1fr" : "repeat(2, 1fr)" }}>
                             {r.fotos_urls.map((url, i) => (
                               <div key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} className="cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative" style={{ aspectRatio: r.fotos_urls.length === 1 ? "16/9" : "1" }}>
-                                <img src={url} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
+                                <Image src={url} alt={`Foto ${i + 1}`} fill sizes="(max-width: 768px) 50vw, 300px" className="object-cover" />
                                 <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-md bg-black/60 text-white text-[10px] font-semibold">&#x1F50D; Ampliar</div>
                               </div>
                             ))}

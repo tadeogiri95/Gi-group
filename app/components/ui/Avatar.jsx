@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { fH } from '../../lib/theme';
 
 // ═══════════════════════════════════════════════════════
@@ -54,9 +55,11 @@ export default function Avatar({
 
   if (url) {
     return (
-      <img
+      <Image
         src={url}
         alt={name}
+        width={s.box}
+        height={s.box}
         style={{
           width: s.box, height: s.box, borderRadius: s.radius,
           objectFit: 'cover', flexShrink: 0,

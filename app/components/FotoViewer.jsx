@@ -15,6 +15,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useEffect, useCallback } from "react";
+import Image from "next/image";
 
 export default function FotoViewer({ fotos, index = 0, onClose, onNav }) {
   // Keyboard navigation
@@ -50,10 +51,15 @@ export default function FotoViewer({ fotos, index = 0, onClose, onNav }) {
 
       {/* Image */}
       <div className="relative" onClick={e => e.stopPropagation()}>
-        <img
+        {/* width/height son solo el límite intrínseco para el srcset — el
+            tamaño visual real lo decide w-auto/h-auto + max-w/max-h (las
+            fotos vienen de cámaras de celular, aspect ratio desconocido) */}
+        <Image
           src={fotos[index]}
           alt={`Foto ${index + 1} de ${fotos.length}`}
-          className="max-w-[92vw] max-h-[80vh] object-contain rounded-xl"
+          width={1600}
+          height={1600}
+          className="w-auto h-auto max-w-[92vw] max-h-[80vh] object-contain rounded-xl"
         />
       </div>
 
