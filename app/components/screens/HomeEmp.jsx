@@ -224,6 +224,15 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
           )}
 
           {/* Lista de actividades */}
+          {actividadesHoy.length === 0 && tareaActiva && (
+            <EmptyState
+              icon="clock"
+              title="Primera actividad del día"
+              description="A medida que avances con tus tareas, el detalle va a aparecer acá."
+              color="var(--color-cyan)"
+              style={{ padding: "24px 16px" }}
+            />
+          )}
           {actividadesHoy.length > 0 && (
             <div className="bg-gypi-surface rounded-2xl border border-gypi-border overflow-hidden shadow-sm">
               {actividadesHoy.slice(0, 6).map((r, i, arr) => (
