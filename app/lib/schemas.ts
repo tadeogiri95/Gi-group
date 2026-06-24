@@ -31,7 +31,7 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["estado", "aprobador", "resuelto_at"],
   },
   notificaciones: {
-    POST: ["destinatario_rol", "tipo", "asunto", "detalle", "legajo_destino", "empleado_id"],
+    POST: ["destinatario_rol", "tipo", "asunto", "detalle", "empleado_id"],
     PATCH: ["leida"],
   },
   empleados: {
@@ -136,7 +136,6 @@ export const notificacionPost = z.object({
   tipo: z.string().max(50),
   asunto: safeString,
   detalle: z.string().max(2000).optional(),
-  legajo_destino: z.union([z.number(), z.string()]).optional(),
   empleado_id: uuid.optional(),
 }).strict();
 

@@ -12,6 +12,7 @@ import admin from "firebase-admin";
 import { sbGet, sbDelete } from "../../lib/sbHelpers";
 import { sendPushBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
+import { logger } from "../../lib/logger";
 
 function getAdminApp() {
   if (admin.apps.length > 0) return admin.app();
@@ -37,7 +38,7 @@ function getAdminApp() {
 
 async function eliminarTokenInvalido(token) {
   await sbDelete(`push_tokens?token=eq.${encodeURIComponent(token)}`, { silent: true });
-  console.log("[send-push] Token inválido eliminado:", token.slice(0, 20) + "...");
+  logger.debug("[send-push] Token inválido eliminado:", token.slice(0, 20) + "...");
 }
 
 export async function POST(request) {
