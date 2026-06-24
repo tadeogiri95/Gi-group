@@ -1,0 +1,57 @@
+"use client";
+import { useEffect, useRef } from "react";
+import Script from "next/script";
+import { planPermite } from "../lib/plans";
+
+// AdSlot — banner de Google AdSense para el plan Free.
+// Mismo molde que TrialBanner.jsx: se autocontiene, decide internamente
+// si renderiza algo, no necesita wrapper condicional en el caller.
+//
+// Kill-switch: sin NEXT_PUBLIC_ADSENSE_CLIENT_ID/SLOT configurados, no
+// renderiza nada — mismo patrón que Sentry/Firebase en este repo (sin
+// config, la integración queda desactivada en silencio).
+export default function AdSlot({ plan }) {
+  const clientId = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
+  const slotId = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
+  const habilitado = planPermite(plan, "mostrar_publicidad") && !!clientId && !!slotId;
+
+  // React StrictMode (dev) invoca los efectos dos veces sobre el mismo
+  // <ins> real del DOM — sin este guard, el segundo push() tira
+  // "All 'ins' elements... already have ads in them" (confirmado en
+  // preview). El ref persiste entre las dos invocaciones de StrictMode
+  // pero arranca en false en cada montaje real nuevo.
+  const pusheado = useRef(false);
+
+  useEffect(() => {
+    if (!habilitado || pusheado.current) return;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+      pusheado.current = true;
+    } catch {
+      // adsbygoogle.js todavía no cargó o la cuenta no está aprobada —
+      // no hay nada útil que hacer del lado del cliente.
+    }
+  }, [habilitado]);
+
+  if (!habilitado) return null;
+
+  return (
+    <div className="rounded-xl mb-3.5 overflow-hidden bg-gypi-surface border border-gypi-border" style={{ minHeight: 100 }}>
+      <div className="text-[10px] text-gypi-dim font-bold uppercase tracking-[0.06em] px-3 pt-2">Publicidad</div>
+      <Script
+        async
+        strategy="afterInteractive"
+        src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${clientId}`}
+        crossOrigin="anonymous"
+      />
+      <ins
+        className="adsbygoogle"
+        style={{ display: "block", minHeight: 80 }}
+        data-ad-client={clientId}
+        data-ad-slot={slotId}
+        data-ad-format="auto"
+        data-full-width-responsive="true"
+      />
+    </div>
+  );
+}

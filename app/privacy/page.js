@@ -10,7 +10,7 @@ export default function PrivacyPolicy() {
   return (
     <div style={S.wrap}>
       <h1 style={S.h1}>Política de Privacidad</h1>
-      <p style={S.date}>Última actualización: 25 de mayo de 2026</p>
+      <p style={S.date}>Última actualización: 24 de junio de 2026</p>
 
       <p style={S.p}>Gypi (Gestión y productividad industrial) ("la App") es operada por Gypi Software ("nosotros"). Esta política describe cómo recopilamos, usamos y protegemos tu información personal.</p>
 
@@ -27,19 +27,22 @@ export default function PrivacyPolicy() {
       <h2 style={S.h2}>4. Compartir información</h2>
       <p style={S.p}>No vendemos, alquilamos ni compartimos tu información personal con terceros, excepto:{"\n"}• Con tu empleador, para fines de gestión laboral.{"\n"}• Cuando sea requerido por ley o autoridad competente.{"\n"}• Con proveedores de servicios técnicos (Supabase, Vercel, Firebase) que procesan datos en nuestro nombre bajo estrictas obligaciones de confidencialidad.</p>
 
-      <h2 style={S.h2}>5. Geolocalización</h2>
+      <h2 style={S.h2}>5. Publicidad</h2>
+      <p style={S.p}>Las cuentas en plan Free muestran publicidad de Google AdSense, visible únicamente para usuarios con rol gerencial o administrativo (nunca durante el fichaje del operario). Google puede usar cookies y datos de uso para personalizar los anuncios — esto no incluye tus datos laborales (fichadas, ubicación, reportes), que nunca se comparten con Google ni con ninguna red publicitaria. Podés gestionar tus preferencias de anuncios de Google en <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer" style={{ color: "#A39A8E" }}>adssettings.google.com</a>. Los planes pagos no muestran publicidad.</p>
+
+      <h2 style={S.h2}>6. Geolocalización</h2>
       <p style={S.p}>La App puede solicitar acceso a tu ubicación para verificar el fichaje en el lugar de trabajo. Este permiso es opcional y podés revocarlo en cualquier momento desde la configuración de tu dispositivo. La ubicación solo se registra en el momento del fichaje y no se rastrea de forma continua.</p>
 
-      <h2 style={S.h2}>6. Tus derechos</h2>
+      <h2 style={S.h2}>7. Tus derechos</h2>
       <p style={S.p}>Tenés derecho a:{"\n"}• Acceder a tus datos personales.{"\n"}• Solicitar la corrección de datos inexactos.{"\n"}• Solicitar la eliminación de tus datos (sujeto a obligaciones legales de retención).{"\n"}• Revocar el consentimiento para la geolocalización.{"\n"}{"\n"}Para ejercer estos derechos, contactá a tu empleador o escribinos a contacto@gypi.app.</p>
 
-      <h2 style={S.h2}>7. Retención de datos</h2>
+      <h2 style={S.h2}>8. Retención de datos</h2>
       <p style={S.p}>Conservamos tus datos mientras dure tu relación laboral con la empresa que utiliza la App, y por el período adicional que exija la legislación laboral argentina vigente.</p>
 
-      <h2 style={S.h2}>8. Cambios a esta política</h2>
+      <h2 style={S.h2}>9. Cambios a esta política</h2>
       <p style={S.p}>Podemos actualizar esta política ocasionalmente. Te notificaremos de cambios significativos a través de la App. El uso continuado de la App después de los cambios constituye aceptación de la política actualizada.</p>
 
-      <h2 style={S.h2}>9. Contacto</h2>
+      <h2 style={S.h2}>10. Contacto</h2>
       <p style={S.p}>Si tenés preguntas sobre esta política, contactanos en:{"\n"}Email: contacto@gypi.app{"\n"}Dirección: Córdoba, Argentina</p>
     </div>
   );

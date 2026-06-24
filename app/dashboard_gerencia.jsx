@@ -15,6 +15,7 @@ import { sb } from "./lib/supabase";
 import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
 import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
+import AdSlot from "./components/AdSlot";
 import BillingScreen from "./components/BillingScreen";
 import FotoViewer from "./components/FotoViewer";
 /* ═══════════════════════════════════════════════════════
@@ -563,6 +564,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Banner de trial / vencimiento ─── */}
       <TrialBanner onUpgrade={() => setShowBilling(true)} />
+      <AdSlot plan={empresa?.plan_activo || "free"} />
 
       {/* Modal de billing */}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}

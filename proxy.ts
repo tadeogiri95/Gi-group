@@ -24,7 +24,9 @@ export function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    // pagead2/googletagservices/google/gstatic: Google AdSense (plan Free,
+    // ver app/components/AdSlot.jsx). Acotado a estos dominios, no wildcard.
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://www.gstatic.com https://*.adtrafficquality.google",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     // data: para favicons/logos en base64, blob: para exports PDF/CSV
     "img-src 'self' data: blob: https:",
@@ -39,10 +41,15 @@ export function proxy(request: NextRequest) {
       "https://www.googleapis.com",
       "https://api.mercadopago.com",
       "https://*.tile.openstreetmap.org", // mapa de geolocalización (Leaflet)
+      "https://pagead2.googlesyndication.com", // Google AdSense
+      "https://googleads.g.doubleclick.net",
+      "https://*.adtrafficquality.google", // verificación anti-fraude de AdSense (sodar) — confirmado con tráfico real en preview
     ].filter(Boolean).join(" "),
     "media-src 'self' blob:",
     "worker-src 'self' blob:", // Service Worker de la PWA
-    "frame-src 'none'",
+    // Google AdSense sirve los anuncios dentro de un iframe — sin estos
+    // dominios ningún anuncio renderiza. Acotado, no "frame-src https:".
+    "frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://*.adtrafficquality.google",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
