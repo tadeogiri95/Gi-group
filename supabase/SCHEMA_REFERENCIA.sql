@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS empleados (
   geo_config              jsonb DEFAULT '{"activo": false, "ubicacion_id": null, "radio": 150}',  -- (028)
   pre_cargado             boolean DEFAULT false,                                                   -- (029)
   password_reset_jti      text DEFAULT NULL,                                                       -- (018) token de un solo uso
+  google_id               text,                                                                     -- (062) sub del id_token de Google — único por (empresa_id, google_id) si no-null
   UNIQUE (empresa_id, legajo)
 );
 
@@ -506,8 +507,8 @@ CREATE TABLE IF NOT EXISTS documentos_empleado (
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ÍNDICES — ver migraciones 005, 010, 011, 013, 014, 015(dropeado en 042),
--- 017, 020, 039, 040, 042, 045, 052, 054, 058 para el detalle de cada uno y
--- qué query cubre. No se repiten acá para no duplicar mantenimiento.
+-- 017, 020, 039, 040, 042, 045, 052, 054, 058, 062 para el detalle de cada uno
+-- y qué query cubre. No se repiten acá para no duplicar mantenimiento.
 --
 -- Evaluado y descartado (auditoría 2026-06-22): índice GIN en
 -- empleados.diagrama (jsonb). Ningún query real en app/** filtra por una

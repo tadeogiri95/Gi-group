@@ -1,9 +1,11 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { fH, fB } from "./lib/theme";
 import { PLANES, precioAnual } from "./lib/plans";
 import EnterpriseContactButton from "./components/EnterpriseContactButton";
+import GoogleIcon from "./components/GoogleIcon";
+import { getOauthErrorMessage } from "./lib/oauthErrorMessages";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "#000";
@@ -122,6 +124,26 @@ function AnimatedNumber({ target, suffix = "" }) {
 /* ═══════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════ */
+// useSearchParams() obliga a Next a bailar a CSR en esta parte del árbol —
+// aislado en su propio componente (que no renderiza nada visible) para que
+// el resto de la landing siga pre-renderizándose estática por completo.
+// Sin este aislamiento, /page.js entero pierde el prerender (pantalla en
+// blanco hasta hidratar + contenido invisible para crawlers).
+function OauthErrorBridge({ onError }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const oauthError = searchParams.get("oauth_error");
+
+  useEffect(() => {
+    if (!oauthError) return;
+    onError(getOauthErrorMessage(oauthError));
+    router.replace("/", { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oauthError]);
+
+  return null;
+}
+
 export default function Landing() {
   const router = useRouter();
   const [slug, setSlug] = useState("");
@@ -132,6 +154,13 @@ export default function Landing() {
   const [anual, setAnual] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
+  // Si vino de /api/auth/google/callback con un error, abre el wizard para
+  // mostrarlo en contexto.
+  const handleOauthError = (mensaje) => {
+    setShowRegistro(true);
+    setError(mensaje);
+  };
+
   useEffect(() => {
     try {
       const s = localStorage.getItem("gi-session");
@@ -141,6 +170,10 @@ export default function Landing() {
       }
     } catch {}
   }, [router]);
+
+  const continuarConGoogle = () => {
+    window.location.href = "/api/auth/google/start?intent=registro";
+  };
 
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 20);
@@ -181,9 +214,24 @@ export default function Landing() {
   if (showRegistro) {
     return (
       <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", padding: "40px 28px", color: TEXT, fontFamily: fB, overflowY: "auto" }}>
+        <Suspense fallback={null}><OauthErrorBridge onError={handleOauthError} /></Suspense>
         <button onClick={() => setShowRegistro(false)} style={{ background: "none", border: "none", color: AMBER, cursor: "pointer", fontSize: 13, padding: "8px 0", marginBottom: 8 }}>← Volver</button>
         <h1 style={{ margin: 0, fontFamily: fH, fontSize: 26, fontWeight: 700 }}>Registrar empresa</h1>
         <div style={{ fontSize: 13, color: DIM, marginTop: 6, marginBottom: 24 }}>Creá tu cuenta para empezar a usar Gypi</div>
+
+        {error && <div style={{ padding: 12, background: RED_S, color: RED, borderRadius: 10, fontSize: 12, marginBottom: 16 }}>{error}</div>}
+
+        <button onClick={continuarConGoogle}
+          style={{ width: "100%", padding: 13, borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+          <GoogleIcon size={18} /> Continuar con Google
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
+          <div style={{ flex: 1, height: 1, background: BORDER }} />
+          <span style={{ fontSize: 11, color: DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>o completá los datos</span>
+          <div style={{ flex: 1, height: 1, background: BORDER }} />
+        </div>
+
         {[
           { k: "nombre_empresa", l: "Nombre de tu empresa", p: "Ej: Metalúrgica García" },
           { k: "nombre_admin", l: "Tu nombre completo", p: "Ej: Juan García" },
@@ -209,7 +257,6 @@ export default function Landing() {
           style={{ width: "100%", padding: 14, borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
           {loading ? "Creando empresa..." : "Crear empresa gratis"}
         </button>
-        {error && <div style={{ padding: 12, background: RED_S, color: RED, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
       </div>
     );
   }
@@ -263,6 +310,7 @@ export default function Landing() {
 
   return (
     <div style={{ background: BG, color: TEXT, fontFamily: fB, height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <Suspense fallback={null}><OauthErrorBridge onError={handleOauthError} /></Suspense>
 
       {/* ═══ NAV STICKY ═══ */}
       <nav style={{

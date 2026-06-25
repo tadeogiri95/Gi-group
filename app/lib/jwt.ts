@@ -86,6 +86,65 @@ export async function verifyPasswordResetToken(
   return { empleadoId: payload.sub as string, empresaId: payload.eid as string, jti: payload.jti as string };
 }
 
+// ─── OAuth "state" (CSRF) — google/start firma esto, google/callback lo verifica
+// junto con el nonce de la cookie gypi_oauth_state. Vida corta: solo necesita
+// sobrevivir el roundtrip a Google y de vuelta.
+interface OAuthStateInput {
+  intent: "registro" | "login";
+  slug: string | null;
+  nonce: string;
+}
+
+export async function signOAuthState(input: OAuthStateInput): Promise<string> {
+  return new SignJWT({ intent: input.intent, slug: input.slug ?? null, nonce: input.nonce })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("10m")
+    .setIssuer("gypi")
+    .sign(getSecret());
+}
+
+export async function verifyOAuthState(token: string | undefined | null): Promise<OAuthStateInput | null> {
+  const payload = await verifyToken(token);
+  if (!payload || !payload.nonce || (payload.intent !== "registro" && payload.intent !== "login")) return null;
+  return {
+    intent: payload.intent,
+    slug: (payload.slug as string | null) ?? null,
+    nonce: payload.nonce as string,
+  };
+}
+
+// ─── OAuth exchange code — emitido por google/callback, canjeado una sola vez
+// por google/exchange (anti-replay vía audit_log, accion='oauth_exchange').
+// Mismo shape que el código de impersonación pero SIN los flags imp/code: es
+// una sesión real del propio usuario, no una impersonación, y no queremos
+// mezclar esos namespaces semánticos en claims/auditoría.
+export async function signOAuthExchangeCode(input: AccessTokenInput): Promise<TokenResult> {
+  const jti = generateJti();
+  const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, leg: input.legajo, rol: input.rol, jti, typ: "oauth_exchange" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("60s")
+    .setIssuer("gypi")
+    .sign(getSecret());
+  return { token, jti };
+}
+
+export async function verifyOAuthExchangeCode(
+  token: string | undefined | null
+): Promise<(AccessTokenInput & { jti: string }) | null> {
+  const payload = await verifyToken(token);
+  if (!payload || payload.typ !== "oauth_exchange") return null;
+  if (!payload.sub || !payload.eid || payload.leg === undefined || !payload.rol || !payload.jti) return null;
+  return {
+    empleadoId: payload.sub as string,
+    empresaId: payload.eid as string,
+    legajo: payload.leg as number,
+    rol: payload.rol as string,
+    jti: payload.jti as string,
+  };
+}
+
 export async function signImpersonateCode(input: AccessTokenInput): Promise<TokenResult> {
   const jti = generateJti();
   const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, leg: input.legajo, rol: input.rol, jti, imp: true, code: true })

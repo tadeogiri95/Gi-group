@@ -10,31 +10,10 @@ import { ventana15min } from "../../lib/rateLimit";
 import { registroEmpresaBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
+import { sbFetch, crearEmpresaConAdmin, generarSlugUnico, iniciarTrialEmpresa, EmpresaSignupError } from "../../lib/empresaSignup";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
-
-async function sbFetch(path, method = "GET", body = null) {
-  const opts = {
-    method,
-    headers: {
-      apikey: SB_KEY,
-      Authorization: `Bearer ${SB_KEY}`,
-      "Content-Type": "application/json",
-      Prefer: method === "POST" ? "return=representation" : undefined,
-    },
-  };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${SB_URL}/rest/v1/${path}`, opts);
-  const text = await res.text();
-  if (!text || text.trim() === "") return method === "DELETE" ? null : [];
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    logger.error(`sbFetch JSON parse error on ${method} ${path}`, new Error(text.slice(0, 200)));
-    throw new Error(`Error de base de datos: respuesta inválida`);
-  }
-}
 
 // Rate limit: máximo 3 registros por IP por ventana de 15 minutos.
 // Reutiliza rpc_login_attempt con prefijo "reg:" para distinguir del rate limit de login.
@@ -60,15 +39,6 @@ async function checkRegistroRateLimit(ip) {
     logger.warn("checkRegistroRateLimit: DB no disponible (excepción) — bloqueando petición por seguridad", { ip, error: e?.message });
     return true;
   }
-}
-
-function generarSlug(nombre) {
-  return nombre
-    .toLowerCase()
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 30);
 }
 
 export async function POST(req) {
@@ -99,11 +69,7 @@ export async function POST(req) {
     }
 
     // Generar slug único
-    let slug = generarSlug(nombre_empresa);
-    const slugCheck = await sbFetch(`empresa?slug=eq.${slug}&select=id`);
-    if (slugCheck && slugCheck.length > 0) {
-      slug = slug + "-" + Date.now().toString(36).slice(-4);
-    }
+    const slug = await generarSlugUnico(nombre_empresa);
 
     // Hash de contraseña
     const hashed = await bcrypt.hash(password, 10);
@@ -113,116 +79,29 @@ export async function POST(req) {
     crypto.getRandomValues(verifyTokenBytes);
     const verifyToken = Array.from(verifyTokenBytes, (b) => b.toString(16).padStart(2, "0")).join("");
 
-    // Crear empresa + admin atómicamente via RPC
+    // Crear empresa + admin atómicamente via RPC (con fallback secuencial)
     const nombreCorto = nombre_empresa.length > 12 ? nombre_empresa.slice(0, 12) : nombre_empresa;
     let emp, adminEmp;
     try {
-      const rpcRes = await fetch(`${SB_URL}/rest/v1/rpc/rpc_crear_empresa_con_admin`, {
-        method: "POST",
-        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          p_nombre_empresa: nombre_empresa,
-          p_nombre_corto: nombreCorto,
-          p_admin_email: email,
-          p_admin_password: hashed,
-          p_rubro: rubro || "general",
-          p_slug: slug,
-          p_admin_nombre: nombre_admin,
-          p_email_verify_token: verifyToken,
-        }),
-      });
-      const rpcText = await rpcRes.text();
-      if (!rpcRes.ok) {
-        const errData = rpcText ? JSON.parse(rpcText) : {};
-        const msg = errData.message || rpcText || "";
-        if (rpcRes.status === 409 || msg.includes("23505")) {
-          if (msg.includes("slug")) return NextResponse.json({ error: "Ese nombre de empresa ya está en uso. Intentá con otro nombre." }, { status: 409 });
-          if (msg.includes("email") || msg.includes("admin_email")) return NextResponse.json({ error: "Ya existe una empresa registrada con ese email." }, { status: 409 });
-        }
-        throw new Error("RPC falló: " + msg);
-      }
-      const rpcData = JSON.parse(rpcText);
-      emp = { id: rpcData.empresa_id, nombre: nombre_empresa, nombre_corto: nombreCorto, slug };
-      adminEmp = { id: rpcData.empleado_id, nombre: nombre_admin, apodo: nombre_admin.split(" ")[0], legajo: 1, email, rol: "gerencial" };
+      ({ emp, adminEmp } = await crearEmpresaConAdmin({
+        nombreEmpresa: nombre_empresa,
+        nombreCorto,
+        adminEmail: email,
+        adminPassword: hashed,
+        rubro,
+        slug,
+        adminNombre: nombre_admin,
+        emailVerifyToken: verifyToken,
+      }));
     } catch (e) {
-      if (e.message.startsWith("RPC falló:")) throw e;
-      // Fallback: sequential inserts if RPC not deployed yet
-      logger.error("RPC rpc_crear_empresa_con_admin no disponible, usando fallback secuencial", e);
-      const empresa = await sbFetch("empresa", "POST", {
-        nombre: nombre_empresa, nombre_corto: nombreCorto, admin_email: email,
-        admin_password: hashed, rubro: rubro || "general", slug,
-        plan_activo: "trial", trial_usado: true, max_empleados: 10,
-        activa: true, email_verificado: false, email_verify_token: verifyToken,
-      });
-      if (!empresa || empresa.length === 0 || empresa.code) {
-        if (empresa?.code === "23505") {
-          const msg = empresa.message || "";
-          if (msg.includes("slug")) return NextResponse.json({ error: "Ese nombre de empresa ya está en uso. Intentá con otro nombre." }, { status: 409 });
-          if (msg.includes("email") || msg.includes("admin_email")) return NextResponse.json({ error: "Ya existe una empresa registrada con ese email." }, { status: 409 });
-        }
-        return NextResponse.json({ error: "Error al crear la empresa: " + (empresa?.message || JSON.stringify(empresa)) }, { status: 500 });
+      if (e instanceof EmpresaSignupError) {
+        return NextResponse.json({ error: e.message }, { status: 409 });
       }
-      emp = empresa[0];
-      const adminData = await sbFetch("empleados", "POST", {
-        nombre: nombre_admin, apodo: nombre_admin.split(" ")[0], legajo: 1, email,
-        password: hashed, rol: "gerencial", area: "administración", division: "general",
-        activo: true, empresa_id: emp.id, debe_cambiar_password: false,
-      });
-      if (!adminData || adminData.length === 0 || adminData.code) {
-        await sbFetch(`empresa?id=eq.${emp.id}`, "DELETE");
-        return NextResponse.json({ error: "Error al crear el usuario admin: " + (adminData.message || JSON.stringify(adminData)) }, { status: 500 });
-      }
-      adminEmp = adminData[0];
+      throw e;
     }
 
-    // ─── Crear entrada de trial en suscripciones ───
-    // Intenta el RPC primero (crea suscripcion + actualiza empresa atómicamente en DB).
-    // Si falla, cae a INSERT directo. La empresa ya fue creada con plan_activo:"trial"
-    // así que el peor caso es trial sin suscripcion_activa_id (acceso garantizado, vencimiento no).
-    const trialFin = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-    let trialIniciado = false;
-    try {
-      const rpcRes = await fetch(`${SB_URL}/rest/v1/rpc/iniciar_trial_pro`, {
-        method: "POST",
-        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ p_empresa_id: emp.id }),
-        signal: AbortSignal.timeout(5000),
-      });
-      if (rpcRes.ok) trialIniciado = true;
-      else logger.error(`RPC iniciar_trial_pro status ${rpcRes.status} — usando fallback`);
-    } catch (e) {
-      logger.error("RPC iniciar_trial_pro excepción — usando fallback", e);
-    }
-
-    if (!trialIniciado) {
-      try {
-        const susc = await sbFetch("suscripciones", "POST", {
-          empresa_id: emp.id,
-          plan: "pro",
-          estado: "trial",
-          trial_fin: trialFin,
-          precio: 0,
-          moneda: "ARS",
-          gateway: "gypi_trial",
-        });
-        if (Array.isArray(susc) && susc[0]?.id) {
-          await sbFetch(`empresa?id=eq.${emp.id}`, "PATCH", { suscripcion_activa_id: susc[0].id });
-          trialIniciado = true;
-        } else {
-          logger.error("Fallback trial: INSERT suscripciones sin id para empresa " + emp.id, new Error(JSON.stringify(susc)));
-        }
-      } catch (e) {
-        logger.error("Fallback trial también falló para empresa " + emp.id, e);
-      }
-    }
-
-    if (!trialIniciado) {
-      logger.error(
-        "[TRIAL_DOBLE_FALLA] RPC iniciar_trial_pro y el INSERT de fallback a suscripciones fallaron los dos — la empresa queda con plan_activo=trial sin ninguna fila en suscripciones (billing/info la trata como vencida vía created_at, pero requiere intervención manual o esperar al cron de huérfanas)",
-        new Error(`empresa_id=${emp.id}`),
-        { empresa_id: emp.id }
-      );
-    }
+    // Mismo trial de 14 días para todas las empresas nuevas (RPC + fallback)
+    await iniciarTrialEmpresa(emp.id);
 
     // Fire-and-forget — no bloquea la respuesta
     const appBase = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";

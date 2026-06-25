@@ -104,6 +104,28 @@ export default function HomeContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // ─── Google OAuth exchange (google/callback → ?oauth=code) ───
+  useEffect(() => {
+    const oauthCode = searchParams.get("oauth");
+    if (!oauthCode || usuario) return;
+    fetch("/api/auth/google/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ exchangeCode: oauthCode }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.usuario && d.token) {
+          login(d.usuario, { token: d.token });
+        }
+        // Limpiar el código de la URL en cualquier caso (de un solo uso)
+        router.replace(pathname, { scroll: false });
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   // ─── Demo mode — el módulo de datos demo se carga dinámicamente, nunca
   // forma parte del bundle inicial de usuarios reales ───
   const isDemo = searchParams.get("demo") === "true";

@@ -1,14 +1,37 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import { Input, Button } from "../ui";
+import GoogleIcon from "../GoogleIcon";
+import { getOauthErrorMessage } from "../../lib/oauthErrorMessages";
 
 export default function LoginScreen({ onLogin, empresa }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const oauthError = searchParams.get("oauth_error");
+
   const [legajo, setLegajo]   = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  // Inicializado desde ?oauth_error= si vino de /api/auth/google/callback —
+  // se deriva en el render inicial (no en un efecto) para mostrarlo sin un
+  // segundo render, y para no disparar setState dentro de un efecto.
+  const [error, setError]     = useState(() => oauthError ? getOauthErrorMessage(oauthError) : "");
+
+  // Solo limpia el query param de la URL — el mensaje ya se mostró arriba.
+  useEffect(() => {
+    if (!oauthError) return;
+    router.replace(pathname, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oauthError]);
+
+  const continuarConGoogle = () => {
+    if (!empresa?.slug) return;
+    window.location.href = `/api/auth/google/start?intent=login&slug=${encodeURIComponent(empresa.slug)}`;
+  };
 
   // -- Recuperar contrasena --
   const [modoRecuperar, setModoRecuperar] = useState(false);
@@ -194,6 +217,23 @@ export default function LoginScreen({ onLogin, empresa }) {
           }}
         >
           {loading ? "Ingresando..." : "Ingresar"}
+        </Button>
+
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px bg-gypi-border" />
+          <span className="text-[11px] text-gypi-dim font-semibold uppercase tracking-wide">o</span>
+          <div className="flex-1 h-px bg-gypi-border" />
+        </div>
+
+        <Button
+          variant="secondary"
+          size="lg"
+          icon={null}
+          onClick={continuarConGoogle}
+          disabled={!empresa?.slug}
+          style={{ width: "100%", gap: 10 }}
+        >
+          <GoogleIcon size={18} /> Continuar con Google
         </Button>
 
         <Button

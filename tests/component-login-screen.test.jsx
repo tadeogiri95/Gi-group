@@ -6,13 +6,28 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFetchMock } from "./helpers/mockFetch.js";
 
-const { default: LoginScreen } = await import("../app/components/screens/LoginScreen.jsx");
-
 afterEach(() => cleanup());
 
 const EMPRESA = { id: "emp-1", nombre_corto: "TestCo" }; // sin logo_url: evita el camino de next/image
 
-test("LoginScreen — credenciales correctas llama onLogin con el usuario", async () => {
+// LoginScreen usa useRouter/usePathname/useSearchParams (next/navigation) para
+// leer y limpiar ?oauth_error= de la vuelta de Google. RTL no monta el
+// AppRouterContext real, así que se mockea por test (con import con cache-
+// busting para que el componente recargado tome el mock).
+async function importLoginScreen(t) {
+  t.mock.module("next/navigation", {
+    exports: {
+      useRouter: () => ({ replace: () => {}, push: () => {} }),
+      usePathname: () => "/acme",
+      useSearchParams: () => new URLSearchParams(),
+    },
+  });
+  const { default: LoginScreen } = await import(`../app/components/screens/LoginScreen.jsx?t=${Date.now()}`);
+  return LoginScreen;
+}
+
+test("LoginScreen — credenciales correctas llama onLogin con el usuario", async (t) => {
+  const LoginScreen = await importLoginScreen(t);
   global.fetch = createFetchMock([
     {
       match: (url) => url.includes("/api/login-empresa"),
@@ -31,7 +46,8 @@ test("LoginScreen — credenciales correctas llama onLogin con el usuario", asyn
   assert.equal(usuarioRecibido.legajo, 7);
 });
 
-test("LoginScreen — credenciales incorrectas muestra el error y no llama onLogin", async () => {
+test("LoginScreen — credenciales incorrectas muestra el error y no llama onLogin", async (t) => {
+  const LoginScreen = await importLoginScreen(t);
   global.fetch = createFetchMock([
     { match: (url) => url.includes("/api/login-empresa"), respond: () => ({ status: 401, body: { error: "Legajo o contraseña incorrectos" } }) },
   ]);
@@ -47,13 +63,15 @@ test("LoginScreen — credenciales incorrectas muestra el error y no llama onLog
   assert.equal(llamado, false);
 });
 
-test("LoginScreen — botón Ingresar deshabilitado sin legajo/password", () => {
+test("LoginScreen — botón Ingresar deshabilitado sin legajo/password", async (t) => {
+  const LoginScreen = await importLoginScreen(t);
   render(<LoginScreen empresa={EMPRESA} onLogin={() => {}} />);
   const boton = screen.getByText("Ingresar").closest("button");
   assert.equal(boton.disabled, true);
 });
 
-test("LoginScreen — toggle mostrar/ocultar contraseña cambia el type del input", () => {
+test("LoginScreen — toggle mostrar/ocultar contraseña cambia el type del input", async (t) => {
+  const LoginScreen = await importLoginScreen(t);
   render(<LoginScreen empresa={EMPRESA} onLogin={() => {}} />);
   const pwd = screen.getByPlaceholderText("Contraseña");
   assert.equal(pwd.type, "password");
