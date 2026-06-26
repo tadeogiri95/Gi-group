@@ -96,8 +96,9 @@ export async function crearEmpresaConAdmin({
     adminEmp = { id: rpcData.empleado_id, nombre: adminNombre, apodo: adminNombre.split(" ")[0], legajo: 1, email: adminEmail, rol: "gerencial" };
   } catch (e) {
     if (e instanceof EmpresaSignupError) throw e;
-    if (e.message?.startsWith("RPC falló:")) throw e;
     // Fallback: inserts secuenciales si la RPC no está desplegada todavía
+    // (incluye el caso "RPC falló: ..." — la RPC respondió pero con error,
+    // p.ej. la función no existe en el schema cache de PostgREST).
     logger.error("RPC rpc_crear_empresa_con_admin no disponible, usando fallback secuencial", e);
     const empresa = await sbFetch("empresa", "POST", {
       nombre: nombreEmpresa, nombre_corto: nombreCorto, admin_email: adminEmail,
