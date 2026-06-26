@@ -44,6 +44,41 @@ export default function AdSlot({ plan }) {
     }
   }, [habilitado, clientId]);
 
+  // Red de seguridad además del enable_page_level_ads:false de arriba — ese
+  // push es un pedido, no una garantía (comportamiento de Google, no
+  // documentado al 100% para SPA con navegación por pushState). Si de
+  // todas formas se inyecta un overlay fuera del árbol de React (anchor o
+  // vignette ad: siempre hijos directos de <body>, position fixed/absolute,
+  // pensados para cubrir la pantalla completa), lo detectamos por geometría
+  // —no por nombre de clase, que Google puede cambiar— y lo sacamos. Vive
+  // para toda la sesión de la página (no solo mientras este componente está
+  // montado): el overlay puede aparecer recien al navegar a otra pestaña,
+  // mucho despues de que este efecto corrio una sola vez.
+  useEffect(() => {
+    if (!habilitado || window.__gypiAdWatchdog || typeof window.MutationObserver !== "function") return;
+    window.__gypiAdWatchdog = true;
+
+    const esOverlayFullScreen = (node) => {
+      if (!(node instanceof window.HTMLElement) || node.parentElement !== document.body) return false;
+      const pos = window.getComputedStyle(node).position;
+      if (pos !== "fixed" && pos !== "absolute") return false;
+      const r = node.getBoundingClientRect();
+      return r.width >= window.innerWidth * 0.85 && r.height >= window.innerHeight * 0.85;
+    };
+
+    const observer = new window.MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach((node) => {
+          if (esOverlayFullScreen(node)) {
+            console.warn("[AdSlot] overlay full-viewport inyectado fuera de React — removido para no trabar el scroll del shell", node);
+            node.remove();
+          }
+        });
+      }
+    });
+    observer.observe(document.body, { childList: true });
+  }, [habilitado]);
+
   if (!habilitado) return null;
 
   return (

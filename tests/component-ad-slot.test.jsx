@@ -56,3 +56,63 @@ test("AdSlot — trial no muestra publicidad", () => {
     assert.equal(container.querySelector("ins.adsbygoogle"), null);
   });
 });
+
+test("AdSlot — el watchdog remueve un overlay full-viewport inyectado fuera de React", async () => {
+  const prevClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
+  const prevSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
+  process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = "ca-pub-test";
+  process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = "123";
+  delete window.__gypiAdWatchdog;
+  delete window.__gypiPageLevelAdsDisabled;
+  const overlay = document.createElement("div");
+  try {
+    render(<AdSlot plan="free" />);
+
+    // Simula un anchor/vignette ad: hijo directo de <body>, fixed, cubre
+    // toda la pantalla. jsdom no hace layout real, por eso se fuerza
+    // getBoundingClientRect en vez de depender de CSS real.
+    overlay.style.position = "fixed";
+    overlay.getBoundingClientRect = () => ({
+      width: window.innerWidth, height: window.innerHeight,
+      top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight, x: 0, y: 0, toJSON() {},
+    });
+    document.body.appendChild(overlay);
+
+    await new Promise((resolve) => setTimeout(resolve, 0)); // deja correr el microtask del MutationObserver
+
+    assert.equal(document.body.contains(overlay), false, "el overlay full-viewport debería haber sido removido por el watchdog");
+  } finally {
+    overlay.remove();
+    if (prevClient === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID; else process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = prevClient;
+    if (prevSlot === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD; else process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = prevSlot;
+    delete window.__gypiAdWatchdog;
+    delete window.__gypiPageLevelAdsDisabled;
+  }
+});
+
+test("AdSlot — el watchdog no toca un elemento fixed chico (falso positivo)", async () => {
+  const prevClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
+  const prevSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
+  process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = "ca-pub-test";
+  process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = "123";
+  delete window.__gypiAdWatchdog;
+  delete window.__gypiPageLevelAdsDisabled;
+  const chip = document.createElement("div");
+  try {
+    render(<AdSlot plan="free" />);
+
+    chip.style.position = "fixed";
+    chip.getBoundingClientRect = () => ({ width: 40, height: 40, top: 0, left: 0, right: 40, bottom: 40, x: 0, y: 0, toJSON() {} });
+    document.body.appendChild(chip);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(document.body.contains(chip), true, "un elemento fixed chico no debería ser tratado como overlay");
+  } finally {
+    chip.remove();
+    if (prevClient === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID; else process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = prevClient;
+    if (prevSlot === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD; else process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = prevSlot;
+    delete window.__gypiAdWatchdog;
+    delete window.__gypiPageLevelAdsDisabled;
+  }
+});
