@@ -15,8 +15,13 @@ afterEach(() => cleanup());
 
 const EMPRESA = { id: "emp-1" };
 
+function completarNombre() {
+  fireEvent.change(screen.getByPlaceholderText("Nombre de la empresa"), { target: { value: "Empresa Test" } });
+}
+
 function irAPasoEmpleados() {
-  fireEvent.click(screen.getByText("Saltar este paso")); // paso 1 → 2 (sin divisiones/etapas)
+  completarNombre();
+  fireEvent.click(screen.getByText("Saltar plantilla")); // paso 1 → 2 (sin divisiones/etapas)
   fireEvent.click(screen.getByText("Siguiente →")); // paso 2 → 3
 }
 
@@ -107,6 +112,7 @@ test("OnboardingWizard — finalizar crea divisiones y etapas en paralelo (Promi
   render(<OnboardingWizard empresa={EMPRESA} usuario={{ empresa_id: "emp-1" }} onComplete={(e) => { empresaRecibida = e; }} />);
 
   // Plantilla "industria" autogenera 5 divisiones + 6 etapas (PLANTILLAS.industria)
+  completarNombre();
   fireEvent.click(screen.getByText("Industria / Manufactura"));
   fireEvent.click(screen.getByText("Siguiente →")); // paso 1 → 2
   fireEvent.click(screen.getByText("Siguiente →")); // paso 2 → 3

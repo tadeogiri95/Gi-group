@@ -74,19 +74,29 @@ export default function AdSlot({ plan }) {
     if (!habilitado || window.__gypiAdWatchdog || typeof window.MutationObserver !== "function") return;
     window.__gypiAdWatchdog = true;
 
-    const esOverlayFullScreen = (node) => {
+    // Dos formas de overlay inyectado, no solo el vignette full-page:
+    // 1) Vignette/interstitial: cubre casi toda la pantalla (ancho y alto).
+    // 2) Anchor ad: una barra angosta pero de ancho casi completo, pegada
+    //    arriba o abajo del viewport (top/bottom ~0). Mucho más chica que
+    //    el 85% de alto, así que el check viejo (que exigía ambas
+    //    dimensiones >=85%) la dejaba pasar — y un anchor también trae su
+    //    propio listener de gestos que traba el scroll del shell aunque el
+    //    elemento en sí no tape toda la pantalla.
+    const esOverlayInyectado = (node) => {
       if (!(node instanceof window.HTMLElement) || node.parentElement !== document.body) return false;
       const pos = window.getComputedStyle(node).position;
       if (pos !== "fixed" && pos !== "absolute") return false;
       const r = node.getBoundingClientRect();
-      return r.width >= window.innerWidth * 0.85 && r.height >= window.innerHeight * 0.85;
+      const esFullScreen = r.width >= window.innerWidth * 0.85 && r.height >= window.innerHeight * 0.85;
+      const esAnchorDeBorde = r.width >= window.innerWidth * 0.9 && (r.top <= 4 || r.bottom >= window.innerHeight - 4);
+      return esFullScreen || esAnchorDeBorde;
     };
 
     const observer = new window.MutationObserver((mutations) => {
       for (const m of mutations) {
         m.addedNodes.forEach((node) => {
-          if (esOverlayFullScreen(node)) {
-            console.warn("[AdSlot] overlay full-viewport inyectado fuera de React — removido para no trabar el scroll del shell", node);
+          if (esOverlayInyectado(node)) {
+            console.warn("[AdSlot] overlay full-viewport o anchor inyectado fuera de React — removido para no trabar el scroll del shell", node);
             node.remove();
           }
         });

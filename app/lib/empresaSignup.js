@@ -103,7 +103,7 @@ export async function crearEmpresaConAdmin({
     const empresa = await sbFetch("empresa", "POST", {
       nombre: nombreEmpresa, nombre_corto: nombreCorto, admin_email: adminEmail,
       admin_password: adminPassword, rubro: rubro || "general", slug,
-      plan_activo: "trial", trial_usado: true, max_empleados: 10,
+      plan_activo: "free", trial_usado: false, max_empleados: 10,
       activa: true, email_verificado: false, email_verify_token: emailVerifyToken,
     });
     if (!empresa || empresa.length === 0 || empresa.code) {
@@ -130,13 +130,12 @@ export async function crearEmpresaConAdmin({
   return { emp, adminEmp };
 }
 
-// Inicia el trial de 14 días para una empresa recién creada. Intenta la RPC
-// atómica primero (crea la suscripción y actualiza empresa.suscripcion_activa_id
-// en un solo paso); si falla, cae a un INSERT directo + PATCH de vuelta.
-// La empresa ya fue creada con plan_activo:"trial", así que el peor caso de
-// una doble falla es trial sin suscripcion_activa_id (acceso garantizado,
-// vencimiento no — billing/info la trata como vencida vía created_at hasta
-// que se resuelva a mano o vía el cron de huérfanas).
+// Inicia el trial de 14 días — llamado desde el botón "Iniciar prueba Pro"
+// (POST /api/billing/iniciar-trial), ya no automáticamente al registrar.
+// Intenta la RPC atómica primero (crea la suscripción y marca trial_usado);
+// si falla, cae a un INSERT directo + PATCH de vuelta. En ambos casos la
+// empresa arranca en plan_activo:"free", así que hay que pasarla a "trial"
+// explícitamente acá — iniciar_trial_pro() no toca esa columna.
 export async function iniciarTrialEmpresa(empresaId) {
   let trialIniciado = false;
   try {
@@ -164,7 +163,7 @@ export async function iniciarTrialEmpresa(empresaId) {
         gateway: "gypi_trial",
       });
       if (Array.isArray(susc) && susc[0]?.id) {
-        await sbFetch(`empresa?id=eq.${empresaId}`, "PATCH", { suscripcion_activa_id: susc[0].id });
+        await sbFetch(`empresa?id=eq.${empresaId}`, "PATCH", { suscripcion_activa_id: susc[0].id, plan_activo: "trial", trial_usado: true });
         trialIniciado = true;
       } else {
         logger.error("Fallback trial: INSERT suscripciones sin id para empresa " + empresaId, new Error(JSON.stringify(susc)));
@@ -172,11 +171,21 @@ export async function iniciarTrialEmpresa(empresaId) {
     } catch (e) {
       logger.error("Fallback trial también falló para empresa " + empresaId, e);
     }
+  } else {
+    // La RPC creó la suscripción y marcó trial_usado, pero no toca plan_activo
+    // (ver migración 002) — sin este PATCH, infoPlan() seguiría leyendo "free"
+    // y el trial no destrabaría ninguna feature de Pro.
+    try {
+      await sbFetch(`empresa?id=eq.${empresaId}`, "PATCH", { plan_activo: "trial" });
+    } catch (e) {
+      logger.error("[TRIAL_PLAN_ACTIVO_SIN_PATCH] iniciar_trial_pro RPC ok pero el PATCH de plan_activo='trial' falló — la suscripción trial existe pero la empresa sigue gateada como free", e, { empresa_id: empresaId });
+      trialIniciado = false;
+    }
   }
 
   if (!trialIniciado) {
     logger.error(
-      "[TRIAL_DOBLE_FALLA] RPC iniciar_trial_pro y el INSERT de fallback a suscripciones fallaron los dos — la empresa queda con plan_activo=trial sin ninguna fila en suscripciones (billing/info la trata como vencida vía created_at, pero requiere intervención manual o esperar al cron de huérfanas)",
+      "[TRIAL_DOBLE_FALLA] No se pudo iniciar el trial para la empresa — ver error anterior para la causa puntual (RPC, fallback de suscripciones, o PATCH de plan_activo)",
       new Error(`empresa_id=${empresaId}`),
       { empresa_id: empresaId }
     );

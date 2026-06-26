@@ -1,12 +1,14 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getToken } from "../lib/supabase";
 
-export default function TrialBanner({ onUpgrade }) {
+export default function TrialBanner({ onUpgrade, reload }) {
   const [info, setInfo] = useState(null);
   const [dismissed, setDismissed] = useState(false);
+  const [iniciando, setIniciando] = useState(false);
+  const [errorTrial, setErrorTrial] = useState("");
 
-  useEffect(() => {
+  const cargarInfo = useCallback(() => {
     const token = getToken();
     if (!token) return;
     fetch("/api/billing/info", { headers: { Authorization: `Bearer ${token}` } })
@@ -15,7 +17,44 @@ export default function TrialBanner({ onUpgrade }) {
       .catch(() => {});
   }, []);
 
+  useEffect(() => { cargarInfo(); }, [cargarInfo]);
+
+  const iniciarTrial = async () => {
+    setIniciando(true); setErrorTrial("");
+    try {
+      const token = getToken();
+      const res = await fetch("/api/billing/iniciar-trial", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await res.json();
+      if (!res.ok || d.error) throw new Error(d.error || "No se pudo iniciar la prueba");
+      cargarInfo();
+      await reload?.();
+    } catch (err) {
+      setErrorTrial(err.message);
+    } finally {
+      setIniciando(false);
+    }
+  };
+
   if (!info || dismissed) return null;
+
+  if (info.trial_disponible) {
+    return (
+      <div role="status" className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 mb-3.5" style={{ background: "var(--color-empresa-primary-subtle, rgba(249,115,22,0.1))", border: "1px solid color-mix(in srgb, var(--color-empresa-primary) 25%, transparent)" }}>
+        <span aria-hidden="true" className="text-[22px] shrink-0">🎁</span>
+        <div className="flex-1 font-body">
+          <div className="text-[13px] font-bold text-gypi-text">¿Querés probar el plan Pro gratis?</div>
+          <div className="text-[11px] text-gypi-dim mt-px">14 días sin cargo, sin tarjeta. {errorTrial && <span className="text-gypi-red">{errorTrial}</span>}</div>
+        </div>
+        <button onClick={iniciarTrial} disabled={iniciando} className="shrink-0 border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body text-black disabled:opacity-60" style={{ background: "var(--color-empresa-primary, #F97316)" }}>
+          {iniciando ? "Iniciando..." : "Iniciar prueba"}
+        </button>
+        <button onClick={() => setDismissed(true)} aria-label="Cerrar aviso" className="shrink-0 bg-transparent border-none text-gypi-dim cursor-pointer text-sm p-1">✕</button>
+      </div>
+    );
+  }
 
   if (info.estado === "trial" && info.dias_restantes !== null) {
     const urgente = info.dias_restantes <= 3;

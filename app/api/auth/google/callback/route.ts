@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { verifyOAuthState, signOAuthExchangeCode } from "../../../../lib/jwt";
-import { crearEmpresaConAdmin, generarSlugUnico, iniciarTrialEmpresa, EmpresaSignupError } from "../../../../lib/empresaSignup";
+import { crearEmpresaConAdmin, generarSlugUnico, EmpresaSignupError } from "../../../../lib/empresaSignup";
 import { slug as slugSchema } from "../../../../lib/schemas";
 import { ventana15min } from "../../../../lib/rateLimit";
 import { sendBienvenida } from "../../../../lib/email";
@@ -201,11 +201,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         logger.error("No se pudo setear google_id en el admin recién creado", googleIdPatch.reason);
       }
 
-      // Mismo trial de 14 días que el registro normal (RPC + fallback + logging idéntico).
-      await iniciarTrialEmpresa(emp.id);
-
+      // La empresa arranca en plan Free — el admin inicia la prueba Pro de 14
+      // días cuando quiera desde el botón en el dashboard.
       sendBienvenida({ to: googleEmail, nombre: adminEmp.nombre, empresa: emp.nombre, slug: emp.slug, empresaId: emp.id });
-      logEvent(EVT.REGISTRO, { empresa_id: emp.id, plan: "trial", meta: { rubro: "general", slug: emp.slug, via: "google" } });
+      logEvent(EVT.REGISTRO, { empresa_id: emp.id, plan: "free", meta: { rubro: "general", slug: emp.slug, via: "google" } });
 
       const { token: exchangeCode } = await signOAuthExchangeCode({
         empleadoId: adminEmp.id, empresaId: emp.id, legajo: 1, rol: "gerencial",

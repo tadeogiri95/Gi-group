@@ -37,7 +37,7 @@ export async function GET(request) {
     // dejando `empresa` siempre en null y el fallback de abajo siempre muerto.
     // created_at se usa como fallback síntetico (ver más abajo).
     const empRows = await sbGet(
-      `empresa?id=eq.${sesion.empresa_id}&select=plan_activo,created_at&limit=1`,
+      `empresa?id=eq.${sesion.empresa_id}&select=plan_activo,created_at,trial_usado&limit=1`,
       { silent: true }
     );
     const empresa = empRows?.[0] ?? null;
@@ -94,6 +94,10 @@ export async function GET(request) {
     const gateway = sub?.gateway ?? null;
     const periodo_fin = sub?.periodo_fin ?? null;
 
+    // Solo se ofrece el botón de prueba si nunca se usó y no hay ninguna
+    // suscripción de por medio (evita reabrir el trial tras cancelar un plan pago).
+    const trial_disponible = !sub && empresa?.plan_activo === "free" && empresa?.trial_usado === false;
+
     return NextResponse.json({
       plan: planId,
       estado,
@@ -102,6 +106,7 @@ export async function GET(request) {
       precio,
       moneda,
       gateway,
+      trial_disponible,
     }, {
       headers: { "Cache-Control": "private, no-store" },
     });

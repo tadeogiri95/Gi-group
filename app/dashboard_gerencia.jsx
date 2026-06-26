@@ -563,7 +563,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       </header>
 
       {/* ─── Banner de trial / vencimiento ─── */}
-      <TrialBanner onUpgrade={() => setShowBilling(true)} />
+      <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />
       {/* empresa arranca en un placeholder sin plan_activo (ver AuthContext)
           hasta que cargarEmpresa() resuelve — sin el gate por empresa?.id,
           toda empresa (sea cual sea su plan real) pasa por "free" durante

@@ -197,6 +197,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
     stepRef.current = s;
     setStepRaw(s);
   };
+  const [nombreEmpresa, setNombreEmpresa] = useState(empresa?.nombre || "");
   const [rubro, setRubro] = useState(empresa?.rubro || "");
   const [divisiones, setDivisiones] = useState([]);
   const [etapas, setEtapas] = useState([]);
@@ -287,6 +288,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         } catch { logoUrl = `data:${logoBase64.type};base64,${logoBase64.base64}`; }
       }
       const empresaUpdates = {
+        nombre: nombreEmpresa.trim(),
         rubro: rubro || "otro",
         color_primario: colorPrim,
         color_secundario: colorSec,
@@ -343,8 +345,18 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </div>
       </div>
 
-      {/* PASO 1: RUBRO + PLANTILLA */}
+      {/* PASO 1: NOMBRE + RUBRO + PLANTILLA */}
       {step === 1 && <>
+        <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">¿Cómo se llama tu empresa?</h2>
+        <p className="text-xs text-gypi-dim mb-2">Te pusimos un nombre provisorio — cambialo por el real.</p>
+        <input
+          value={nombreEmpresa}
+          onChange={e => setNombreEmpresa(e.target.value)}
+          className="g-input w-full mb-4"
+          placeholder="Nombre de la empresa"
+          maxLength={120}
+        />
+
         <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">¿De qué rubro es tu empresa?</h2>
         <p className="text-xs text-gypi-dim mb-3.5">Elegí uno y te proponemos divisiones y etapas. Podés editarlas debajo.</p>
         <div className="grid grid-cols-2 gap-1.5 mb-4">
@@ -400,8 +412,8 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </>}
 
         <div className="flex justify-between gap-2 mt-4">
-          <Button variant="secondary" onClick={() => { saltarPlantilla(); trackOnboarding('onboarding_skip', { step: 1 }); setStep(2); }}>Saltar este paso</Button>
-          <Button variant="primary" onClick={() => setStep(2)}>Siguiente →</Button>
+          <Button variant="secondary" onClick={() => { saltarPlantilla(); trackOnboarding('onboarding_skip', { step: 1 }); setStep(2); }} disabled={!nombreEmpresa.trim()}>Saltar plantilla</Button>
+          <Button variant="primary" onClick={() => setStep(2)} disabled={!nombreEmpresa.trim()}>Siguiente →</Button>
         </div>
       </>}
 
@@ -485,7 +497,8 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         <p className="text-xs text-gypi-dim mb-4">Revisá la configuración y confirmá.</p>
 
         <div className="g-card mb-3">
-          <div className="flex justify-between py-1.5"><span className="text-gypi-dim text-[13px]">Rubro</span><span className="text-gypi-text font-semibold text-[13px]">{rubro ? PLANTILLAS[rubro]?.label : "Sin definir"}</span></div>
+          <div className="flex justify-between py-1.5"><span className="text-gypi-dim text-[13px]">Nombre</span><span className="text-gypi-text font-semibold text-[13px]">{nombreEmpresa.trim()}</span></div>
+          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Rubro</span><span className="text-gypi-text font-semibold text-[13px]">{rubro ? PLANTILLAS[rubro]?.label : "Sin definir"}</span></div>
           <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Divisiones</span><span className="text-gypi-text font-semibold text-[13px]">{divisiones.length}</span></div>
           <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Etapas</span><span className="text-gypi-text font-semibold text-[13px]">{etapas.length}</span></div>
           <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Logo</span><span className="text-gypi-text font-semibold text-[13px]">{logoPreview ? "✅ Cargado" : "—"}</span></div>

@@ -105,6 +105,29 @@ test("AdSlot — el watchdog remueve un overlay full-viewport inyectado fuera de
   overlay.remove();
 });
 
+test("AdSlot — el watchdog remueve un anchor ad angosto pegado al borde inferior, no solo el vignette full-screen", async () => {
+  const anchor = document.createElement("div");
+  await withEnv({ NEXT_PUBLIC_ADSENSE_CLIENT_ID: "ca-pub-test", NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD: "123" }, async () => {
+    render(<AdSlot plan="free" />);
+
+    // Anchor ad real: ancho casi completo, pegado al borde inferior, pero
+    // bajo en altura — el check viejo (exigía 85% de alto Y ancho) lo
+    // dejaba pasar, y un anchor trae su propio listener de gestos que
+    // traba el scroll del shell aunque no tape la pantalla.
+    anchor.style.position = "fixed";
+    anchor.getBoundingClientRect = () => ({
+      width: window.innerWidth, height: 90,
+      top: window.innerHeight - 90, left: 0, right: window.innerWidth, bottom: window.innerHeight, x: 0, y: window.innerHeight - 90, toJSON() {},
+    });
+    document.body.appendChild(anchor);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(document.body.contains(anchor), false, "el anchor ad angosto debería haber sido removido por el watchdog");
+  });
+  anchor.remove();
+});
+
 test("AdSlot — el watchdog no toca un elemento fixed chico (falso positivo)", async () => {
   const chip = document.createElement("div");
   await withEnv({ NEXT_PUBLIC_ADSENSE_CLIENT_ID: "ca-pub-test", NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD: "123" }, async () => {
