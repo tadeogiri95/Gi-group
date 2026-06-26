@@ -179,6 +179,15 @@ input, textarea {
   width: 100%;
   margin: 0 auto;
   max-width: 480px;
+  /* Sin esto, un touchmove listener de un script de terceros (ej. el de
+     AdSense, que monitorea gestos para distinguir tap de scroll y proteger
+     contra clicks accidentales) puede frenar el scroll táctil con
+     preventDefault() en cualquier parte del shell, aunque los taps sigan
+     funcionando bien — exactamente lo reportado en la vista gerencial
+     (única que carga ese script), solo en celular (touch), nunca en
+     mouse/desktop. touch-action declara el gesto nativo de antemano, así
+     el navegador lo resuelve sin consultar listeners de terceros. */
+  touch-action: manipulation;
 }
 
 @media (min-width: 640px) {
