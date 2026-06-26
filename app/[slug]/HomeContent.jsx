@@ -314,6 +314,22 @@ export default function HomeContent() {
       )}
 
       <div className="flex-1 overflow-hidden flex flex-col">
+        {/* DashboardGerencia queda montado permanentemente (nunca se
+            desmonta al cambiar de pestaña) — solo se oculta con CSS. El
+            AdSlot que vive ahí adentro le pide un anuncio a Google una
+            sola vez; pedirle un segundo anuncio para el mismo slot sin
+            recargar la página de verdad (lo que pasaba antes, al
+            desmontar y remontar este componente en cada ida y vuelta a
+            Inicio) deja al script de Google en un estado roto que traba
+            el scroll táctil. Con esto el anuncio se ve siempre que se
+            está en Inicio, sin volver a pedirse nunca. */}
+        {uIsGer && (
+          <div className={screen === "home" ? "contents" : "hidden"}>
+            <ErrorBoundary name="home">
+              <DashboardGerencia goto={(s, leg) => { if (leg) setHistorialLegajo(leg); setScreen(s); }} ctx={ctx} reload={loadData} logout={logout} empresa={empresa} isDemo={isDemo} />
+            </ErrorBoundary>
+          </div>
+        )}
         <ErrorBoundary name={screen}>
           {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} actividadesHoy={isDemo ? demoActividad.actividadesHoy : actividad.historial} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} />}
           {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} onBack={() => setScreen("home")} />}
@@ -327,7 +343,6 @@ export default function HomeContent() {
             </div>
           )}
           {!uIsGer && screen === "documentos" && <DocumentosScreen />}
-          {uIsGer && screen === "home" && <DashboardGerencia goto={(s, leg) => { if (leg) setHistorialLegajo(leg); setScreen(s); }} ctx={ctx} reload={loadData} logout={logout} empresa={empresa} isDemo={isDemo} />}
           {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={u?.empresa_id || empresa?.id} />}
