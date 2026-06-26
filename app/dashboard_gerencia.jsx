@@ -564,7 +564,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Banner de trial / vencimiento ─── */}
       <TrialBanner onUpgrade={() => setShowBilling(true)} />
-      <AdSlot plan={empresa?.plan_activo || "free"} />
+      {/* empresa arranca en un placeholder sin plan_activo (ver AuthContext)
+          hasta que cargarEmpresa() resuelve — sin el gate por empresa?.id,
+          toda empresa (sea cual sea su plan real) pasa por "free" durante
+          esa ventana y carga adsbygoogle.js de mas, para desmontarse apenas
+          llega el plan real. Si la cuenta tiene Auto ads, el script ya
+          inyecto un overlay fuera de React que no se borra al desmontar. */}
+      {empresa?.id && <AdSlot plan={empresa.plan_activo || "free"} />}
 
       {/* Modal de billing */}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}

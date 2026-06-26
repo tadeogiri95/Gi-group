@@ -25,13 +25,24 @@ export default function AdSlot({ plan }) {
   useEffect(() => {
     if (!habilitado || pusheado.current) return;
     try {
+      // Auto ads (anchor/vignette) se activan por cuenta, no por código — si
+      // la cuenta de AdSense los tiene prendidos, este push de configuración
+      // los desactiva para esta page view sin afectar el <ins> manual de
+      // abajo. Sin esto, un anchor/vignette ad inyecta un overlay full-page
+      // que traba el scroll de todo el shell SPA (persiste entre tabs hasta
+      // un reload completo) — reportado como "no puedo scrollear en ninguna
+      // pestaña" en la vista gerencial, la única que monta este componente.
+      if (!window.__gypiPageLevelAdsDisabled) {
+        (window.adsbygoogle = window.adsbygoogle || []).push({ google_ad_client: clientId, enable_page_level_ads: false });
+        window.__gypiPageLevelAdsDisabled = true;
+      }
       (window.adsbygoogle = window.adsbygoogle || []).push({});
       pusheado.current = true;
     } catch {
       // adsbygoogle.js todavía no cargó o la cuenta no está aprobada —
       // no hay nada útil que hacer del lado del cliente.
     }
-  }, [habilitado]);
+  }, [habilitado, clientId]);
 
   if (!habilitado) return null;
 
