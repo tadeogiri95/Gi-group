@@ -7,7 +7,13 @@
 import { Resend } from "resend";
 import { logger } from "./logger";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// El constructor de Resend tira si la key es falsy — instanciar solo cuando
+// existe. Cada función de abajo ya hace `if (!RESEND_API_KEY) return;` antes
+// de tocar `resend`, así que nunca se usa en null. Sin este guard, cualquier
+// build/import de este módulo sin la key configurada (CI, builds locales sin
+// .env) crashea en "Failed to collect page data" para toda ruta que importe
+// email.js, aunque esa ruta nunca llegue a mandar un email.
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || "Gypi <noreply@gypi.app>";
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
@@ -77,7 +83,7 @@ export async function sendBienvenida({ to, nombre, empresa, slug, empresaId }) {
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      <strong>${escapeHtml(empresa)}</strong> ya está lista en Gypi. Tenés <strong>14 días de trial Pro</strong> para explorar todas las funciones sin límites.
+      <strong>${escapeHtml(empresa)}</strong> ya está lista en Gypi, en el plan <strong>Free</strong>. Cuando quieras, podés iniciar una prueba de <strong>14 días de Pro</strong> sin cargo desde el dashboard.
     </p>
     <p style="margin:0 0 8px;color:#444;font-size:14px">¿Por dónde empezar?</p>
     <ul style="margin:0 0 20px;padding-left:20px;color:#555;font-size:14px;line-height:1.8">
@@ -92,7 +98,7 @@ export async function sendBienvenida({ to, nombre, empresa, slug, empresaId }) {
     from: FROM,
     to,
     subject: `¡Bienvenido a Gypi, ${empresa}! 🚀`,
-    html: buildHtml("¡Ya estás en Gypi!", "Tu trial Pro de 14 días comenzó", cuerpo),
+    html: buildHtml("¡Ya estás en Gypi!", "Empezaste en el plan Free", cuerpo),
     text: stripHtml(cuerpo),
     tags: buildTags("bienvenida", empresaId),
   }).catch((e) => logger.error("email sendBienvenida", e));
