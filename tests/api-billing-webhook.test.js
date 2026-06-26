@@ -210,7 +210,7 @@ test("webhook — firma HMAC inválida devuelve 401 (integración reforzada)", a
 test("webhook — un fallo de facturación ARCA no rompe la aprobación del pago", async (t) => {
   const externalRef = `gypi-${EMPRESA_ID}-${SUSC_ID}`;
   t.mock.module("../app/lib/afip.js", {
-    exports: { emitirFacturaC: async () => { throw new Error("ARCA caído (simulado)"); } },
+    namedExports: { emitirFacturaC: async () => { throw new Error("ARCA caído (simulado)"); } },
   });
 
   global.fetch = createFetchMock([

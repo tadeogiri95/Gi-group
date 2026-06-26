@@ -16,7 +16,7 @@ const EMPRESA = { id: "emp-1", nombre_corto: "TestCo" }; // sin logo_url: evita 
 // busting para que el componente recargado tome el mock).
 async function importLoginScreen(t) {
   t.mock.module("next/navigation", {
-    exports: {
+    namedExports: {
       useRouter: () => ({ replace: () => {}, push: () => {} }),
       usePathname: () => "/acme",
       useSearchParams: () => new URLSearchParams(),

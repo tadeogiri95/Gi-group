@@ -119,6 +119,12 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   await page.getByRole("button", { name: `Aprobar solicitud de legajo ${GERENTE.legajo}` }).click();
 
   // ─── Desaparece de "Pendientes" ───
-  await expect(page.getByText("Permiso médico")).not.toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("Todo al día")).toBeVisible();
+  // Acotado a la Bandeja de solicitudes (Inbox): DashboardGerencia queda
+  // montado en segundo plano (oculto con CSS, no desmontado — ver commit
+  // 9f21451) y su propia sección "Solicitudes pendientes" en Inicio
+  // también puede mostrar el mismo texto, lo que rompe un getByText
+  // global en modo estricto (resuelve a 2 elementos).
+  const bandeja = page.getByRole("region", { name: "Bandeja de solicitudes" });
+  await expect(bandeja.getByText("Permiso médico")).not.toBeVisible({ timeout: 10_000 });
+  await expect(bandeja.getByText("Todo al día")).toBeVisible();
 });
