@@ -15,6 +15,22 @@ export default function AdSlot({ plan }) {
   const slotId = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
   const habilitado = planPermite(plan, "mostrar_publicidad") && !!clientId && !!slotId;
 
+  // DashboardGerencia (único lugar que monta este componente) se
+  // desmonta/remonta cada vez que se sale y se vuelve a la pestaña Inicio.
+  // Pedir un anuncio nuevo para el mismo slot dentro de la MISMA sesión de
+  // página (sin reload real) es lo que rompe el scroll táctil — confirmado
+  // con video real: la primera vez todo anda bien (scroll y botones OK);
+  // al salir y volver a entrar, el banner de "Publicidad" se ve apenas un
+  // instante (el segundo pedido del mismo slot) y ahí el scroll táctil
+  // queda trabado el resto de la sesión (los botones siguen respondiendo
+  // — no es un overlay, es el script de Google entrando en un estado
+  // roto). Tope: como máximo un anuncio por sesión real de página. Este
+  // mismo flag gatea tanto el push() de abajo como el render del <ins> —
+  // si solo gateara el render, el efecto pediría el anuncio igual aunque
+  // no hubiera <ins> en el DOM para mostrarlo.
+  const yaSolicitadoEnEstaSesion = typeof window !== "undefined" && window.__gypiAdYaSolicitado;
+  const puedeMostrar = habilitado && !yaSolicitadoEnEstaSesion;
+
   // React StrictMode (dev) invoca los efectos dos veces sobre el mismo
   // <ins> real del DOM — sin este guard, el segundo push() tira
   // "All 'ins' elements... already have ads in them" (confirmado en
@@ -23,26 +39,26 @@ export default function AdSlot({ plan }) {
   const pusheado = useRef(false);
 
   useEffect(() => {
-    if (!habilitado || pusheado.current) return;
+    if (!puedeMostrar || pusheado.current) return;
     try {
       // Auto ads (anchor/vignette) se activan por cuenta, no por código — si
       // la cuenta de AdSense los tiene prendidos, este push de configuración
       // los desactiva para esta page view sin afectar el <ins> manual de
       // abajo. Sin esto, un anchor/vignette ad inyecta un overlay full-page
       // que traba el scroll de todo el shell SPA (persiste entre tabs hasta
-      // un reload completo) — reportado como "no puedo scrollear en ninguna
-      // pestaña" en la vista gerencial, la única que monta este componente.
+      // un reload completo).
       if (!window.__gypiPageLevelAdsDisabled) {
         (window.adsbygoogle = window.adsbygoogle || []).push({ google_ad_client: clientId, enable_page_level_ads: false });
         window.__gypiPageLevelAdsDisabled = true;
       }
       (window.adsbygoogle = window.adsbygoogle || []).push({});
       pusheado.current = true;
+      window.__gypiAdYaSolicitado = true;
     } catch {
       // adsbygoogle.js todavía no cargó o la cuenta no está aprobada —
       // no hay nada útil que hacer del lado del cliente.
     }
-  }, [habilitado, clientId]);
+  }, [puedeMostrar, clientId]);
 
   // Red de seguridad además del enable_page_level_ads:false de arriba — ese
   // push es un pedido, no una garantía (comportamiento de Google, no
@@ -79,7 +95,7 @@ export default function AdSlot({ plan }) {
     observer.observe(document.body, { childList: true });
   }, [habilitado]);
 
-  if (!habilitado) return null;
+  if (!puedeMostrar) return null;
 
   return (
     <div className="rounded-xl mb-3.5 overflow-hidden bg-gypi-surface border border-gypi-border" style={{ minHeight: 100 }}>

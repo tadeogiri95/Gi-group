@@ -1,12 +1,22 @@
 // tests/component-ad-slot.test.jsx — Test de componente (RTL) para AdSlot:
 // gating por plan y por configuración de env vars (kill-switch).
 import "./helpers/domSetup.js";
-import { test, afterEach } from "node:test";
+import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, cleanup } from "@testing-library/react";
 
 const { default: AdSlot } = await import("../app/components/AdSlot.jsx");
 
+// Los 3 flags viven en window (no en el componente) a propósito: deben
+// sobrevivir a que AdSlot se desmonte/remonte dentro de la misma sesión
+// de página. Por eso mismo hay que resetearlos entre tests — si no, el
+// primer test que efectivamente pide un anuncio deja "usada" la sesión
+// para todos los que corren después.
+beforeEach(() => {
+  delete window.__gypiAdYaSolicitado;
+  delete window.__gypiPageLevelAdsDisabled;
+  delete window.__gypiAdWatchdog;
+});
 afterEach(() => cleanup());
 
 function withEnv(vars, fn) {
@@ -57,15 +67,25 @@ test("AdSlot — trial no muestra publicidad", () => {
   });
 });
 
+test("AdSlot — un segundo montaje en la misma sesión no vuelve a pedir anuncio ni renderiza el <ins>", () => {
+  withEnv({ NEXT_PUBLIC_ADSENSE_CLIENT_ID: "ca-pub-test", NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD: "123" }, () => {
+    // Primer montaje: DashboardGerencia al entrar a Inicio la primera vez.
+    const primero = render(<AdSlot plan="free" />);
+    assert.ok(primero.container.querySelector("ins.adsbygoogle"), "el primer montaje debe pedir y mostrar el anuncio");
+    primero.unmount(); // salir de la pestaña Inicio (DashboardGerencia se desmonta)
+
+    // Segundo montaje en la MISMA sesión de página (sin reload real):
+    // volver a entrar a Inicio. Pedirle a Google un anuncio nuevo para el
+    // mismo slot en este punto es lo que rompía el scroll táctil en
+    // producción (confirmado con video real por el usuario).
+    const segundo = render(<AdSlot plan="free" />);
+    assert.equal(segundo.container.querySelector("ins.adsbygoogle"), null, "el segundo montaje no debe volver a pedir el anuncio");
+  });
+});
+
 test("AdSlot — el watchdog remueve un overlay full-viewport inyectado fuera de React", async () => {
-  const prevClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
-  const prevSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
-  process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = "ca-pub-test";
-  process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = "123";
-  delete window.__gypiAdWatchdog;
-  delete window.__gypiPageLevelAdsDisabled;
   const overlay = document.createElement("div");
-  try {
+  await withEnv({ NEXT_PUBLIC_ADSENSE_CLIENT_ID: "ca-pub-test", NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD: "123" }, async () => {
     render(<AdSlot plan="free" />);
 
     // Simula un anchor/vignette ad: hijo directo de <body>, fixed, cubre
@@ -81,24 +101,13 @@ test("AdSlot — el watchdog remueve un overlay full-viewport inyectado fuera de
     await new Promise((resolve) => setTimeout(resolve, 0)); // deja correr el microtask del MutationObserver
 
     assert.equal(document.body.contains(overlay), false, "el overlay full-viewport debería haber sido removido por el watchdog");
-  } finally {
-    overlay.remove();
-    if (prevClient === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID; else process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = prevClient;
-    if (prevSlot === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD; else process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = prevSlot;
-    delete window.__gypiAdWatchdog;
-    delete window.__gypiPageLevelAdsDisabled;
-  }
+  });
+  overlay.remove();
 });
 
 test("AdSlot — el watchdog no toca un elemento fixed chico (falso positivo)", async () => {
-  const prevClient = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
-  const prevSlot = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
-  process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = "ca-pub-test";
-  process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = "123";
-  delete window.__gypiAdWatchdog;
-  delete window.__gypiPageLevelAdsDisabled;
   const chip = document.createElement("div");
-  try {
+  await withEnv({ NEXT_PUBLIC_ADSENSE_CLIENT_ID: "ca-pub-test", NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD: "123" }, async () => {
     render(<AdSlot plan="free" />);
 
     chip.style.position = "fixed";
@@ -108,11 +117,6 @@ test("AdSlot — el watchdog no toca un elemento fixed chico (falso positivo)", 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     assert.equal(document.body.contains(chip), true, "un elemento fixed chico no debería ser tratado como overlay");
-  } finally {
-    chip.remove();
-    if (prevClient === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID; else process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID = prevClient;
-    if (prevSlot === undefined) delete process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD; else process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD = prevSlot;
-    delete window.__gypiAdWatchdog;
-    delete window.__gypiPageLevelAdsDisabled;
-  }
+  });
+  chip.remove();
 });
