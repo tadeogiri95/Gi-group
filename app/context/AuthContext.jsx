@@ -19,6 +19,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import { setToken, getToken, clearToken, onUnauthorized, setEmpresaId, setRefreshToken } from "../lib/supabase";
 import { setColoresEmpresa } from "../lib/theme";
 
@@ -64,35 +65,59 @@ export function AuthProvider({ children }) {
   // ─── Cargar empresa (pre-login: por slug, post-login: via cookie) ───
   // No usa getToken() — la sesión autenticada se detecta por gi-session en sessionStorage.
   // Las cookies httpOnly autentican las llamadas al servidor automáticamente.
-  const cargarEmpresa = useCallback(async () => {
-    let hasSession = false;
-    try { hasSession = !!sessionStorage.getItem("gi-session"); } catch {}
+  const cargarEmpresa = useCallback(() => {
+    async function intentar(intento = 0) {
+      let hasSession = false;
+      try { hasSession = !!sessionStorage.getItem("gi-session"); } catch {}
 
-    try {
-      if (!hasSession && slug) {
-        // Pre-login: resolver por slug (público)
-        const r = await fetch(`/api/empresa?slug=${encodeURIComponent(slug)}`);
-        const d = await r.json();
-        if (r.status === 404 || d?.error) { setSlugInvalido(true); return; }
-        setEmpresa(d);
-        setColoresEmpresa(d);
-        return;
-      }
-      if (hasSession) {
-        // Post-login: traer empresa completa (autenticado via cookie httpOnly).
-        // Solo actualizamos si la respuesta contiene un id real — el servidor
-        // puede devolver DEFAULTS (sin id) si la sesión aún no fue validada.
-        const r = await fetch("/api/empresa", { credentials: "include" });
-        const d = await r.json();
-        if (d && !d.error && d.id) {
+      try {
+        if (!hasSession && slug) {
+          // Pre-login: resolver por slug (público)
+          const r = await fetch(`/api/empresa?slug=${encodeURIComponent(slug)}`);
+          const d = await r.json();
+          if (r.status === 404 || d?.error) { setSlugInvalido(true); return; }
           setEmpresa(d);
           setColoresEmpresa(d);
-          loadConfigEmpresa(d.id);
+          return;
         }
+        if (hasSession) {
+          // Post-login: traer empresa completa (autenticado via cookie httpOnly).
+          // Solo actualizamos si la respuesta contiene un id real — el servidor
+          // puede devolver DEFAULTS (sin id) si la sesión aún no fue validada.
+          const r = await fetch("/api/empresa", { credentials: "include" });
+          const d = await r.json();
+          if (d && !d.error && d.id) {
+            setEmpresa(d);
+            setColoresEmpresa(d);
+            loadConfigEmpresa(d.id);
+            return;
+          }
+          // Carrera conocida: justo después de un login recién hecho (típico
+          // en una PWA recién abierta), la cookie httpOnly puede no estar
+          // todavía validada server-side y el servidor devuelve los DEFAULTS
+          // (sin id). Antes esto se quedaba así para siempre el resto de la
+          // sesión — empresa nunca se actualizaba (colores/plan quedaban en
+          // el placeholder) hasta el próximo login. Reintentar unas pocas
+          // veces con backoff en vez de abandonar en el primer intento.
+          if (intento < 3) {
+            setTimeout(() => { intentar(intento + 1); }, 400 * (intento + 1));
+          } else {
+            try {
+              Sentry.captureMessage("cargarEmpresa: empresa sin id tras reintentos", {
+                level: "warning",
+                extra: { slug, intentos: intento },
+              });
+            } catch {}
+          }
+        }
+      } catch (e) {
+        try {
+          Sentry.captureException(e, { extra: { context: "cargarEmpresa", slug, hasSession, intento } });
+        } catch {}
+        if (process.env.NODE_ENV !== "production") console.error("cargarEmpresa error:", e);
       }
-    } catch (e) {
-      if (process.env.NODE_ENV !== "production") console.error("cargarEmpresa error:", e);
     }
+    return intentar(0);
   }, [slug, loadConfigEmpresa]);
 
   // ─── Resolver branding al montar ───
