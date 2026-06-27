@@ -10,6 +10,26 @@ import { validateCsrf, generateCsrfToken } from "./app/lib/csrf";
 // efecto real. Se consolidó todo aquí para evitar que vuelvan a divergir.
 
 export function proxy(request: NextRequest) {
+  // ── ad-frame.html: documento aislado para el script de Google AdSense
+  // (ver AdSlot.jsx) — necesita poder ser embebido por nuestras propias
+  // páginas (frame-ancestors/X-Frame-Options de abajo lo prohibirían) y un
+  // CSP propio que permita cargar adsbygoogle.js, no el de la app. No
+  // necesita CSRF ni el resto de los headers de seguridad de la app: es un
+  // archivo estático sin acceso a cookies de sesión ni a nuestra API.
+  if (request.nextUrl.pathname === "/ad-frame.html") {
+    const res = NextResponse.next();
+    res.headers.set("Content-Security-Policy", [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com https://www.googletagservices.com https://www.google.com https://www.gstatic.com https://*.adtrafficquality.google",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: https:",
+      "frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://*.adtrafficquality.google",
+      "connect-src 'self' https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.adtrafficquality.google",
+      "frame-ancestors 'self'",
+    ].join("; "));
+    return res;
+  }
+
   // ── CSRF validation on mutating API requests ────────────────────────────
   if (request.nextUrl.pathname.startsWith("/api/")) {
     const csrfError = validateCsrf(request);
@@ -48,8 +68,10 @@ export function proxy(request: NextRequest) {
     "media-src 'self' blob:",
     "worker-src 'self' blob:", // Service Worker de la PWA
     // Google AdSense sirve los anuncios dentro de un iframe — sin estos
-    // dominios ningún anuncio renderiza. Acotado, no "frame-src https:".
-    "frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://*.adtrafficquality.google",
+    // dominios ningún anuncio renderiza. 'self' es para nuestro propio
+    // /ad-frame.html (ver AdSlot.jsx), que aísla el script de Google en su
+    // propio document/window para que no pueda trabar el scroll del shell.
+    "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://*.adtrafficquality.google",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publicidad</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+</style>
+</head>
+<body>
+<ins class="adsbygoogle" id="gypi-ad" style="display:block"></ins>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var client = params.get("client");
+  var slot = params.get("slot");
+  if (!client || !slot) return;
+
+  var ins = document.getElementById("gypi-ad");
+  ins.setAttribute("data-ad-client", client);
+  ins.setAttribute("data-ad-slot", slot);
+  ins.setAttribute("data-ad-format", "auto");
+  ins.setAttribute("data-full-width-responsive", "true");
+
+  var script = document.createElement("script");
+  script.async = true;
+  script.crossOrigin = "anonymous";
+  script.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=" + encodeURIComponent(client);
+  document.head.appendChild(script);
+
+  try {
+    (window.adsbygoogle = window.adsbygoogle || []).push({ google_ad_client: client, enable_page_level_ads: false });
+    (window.adsbygoogle = window.adsbygoogle || []).push({});
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
