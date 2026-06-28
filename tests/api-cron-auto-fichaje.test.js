@@ -88,5 +88,5 @@ test("auto-fichaje — fallo en RPC auto_fichar_egresos devuelve 500", async () 
   const res = await GET(cronReq("test-cron-secret"));
   assert.equal(res.status, 500);
   const json = await res.json();
-  assert.ok(json.error.includes("DB connection failed"));
+  assert.equal(json.error, "Error interno del servidor", "no debe exponer el detalle interno del error");
 });

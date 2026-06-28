@@ -425,3 +425,28 @@ export async function sendConsultaEnterprise({ nombre, email, empresa, telefono,
     tags: buildTags("consulta_enterprise"),
   }).catch((e) => logger.error("email sendConsultaEnterprise", e));
 }
+
+// ─── Consulta general desde /contacto (notificación interna al equipo de Gypi) ───
+export async function sendConsultaContacto({ nombre, email, telefono, mensaje }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const destino = process.env.ENTERPRISE_CONTACT_EMAIL || "contacto@gypi.app";
+  const cuerpo = `
+    <p style="margin:0 0 12px">Nuevo mensaje desde el formulario de contacto de la web.</p>
+    <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#0C4A6E">
+      <p style="margin:0 0 6px"><strong>Nombre:</strong> ${escapeHtml(nombre)}</p>
+      <p style="margin:0 0 6px"><strong>Email:</strong> ${escapeHtml(email)}</p>
+      ${telefono ? `<p style="margin:0 0 6px"><strong>Teléfono:</strong> ${escapeHtml(telefono)}</p>` : ""}
+      <p style="margin:0"><strong>Mensaje:</strong> ${escapeHtml(mensaje)}</p>
+    </div>
+    <p style="margin:0;font-size:12px;color:#9B9B9B">Respondé directamente a este email — el reply-to apunta al contacto.</p>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to: destino,
+    replyTo: email,
+    subject: `Nuevo mensaje de contacto — ${nombre}`,
+    html: buildHtml("Contacto", nombre, cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("consulta_contacto"),
+  }).catch((e) => logger.error("email sendConsultaContacto", e));
+}

@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { sbPost } from "../../../lib/sbHelpers";
 import { logger } from "../../../lib/logger";
+import { safeErrorMessage } from "../../../lib/validate";
 
 const WH_SECRET = process.env.RESEND_WEBHOOK_SECRET;
 
@@ -99,7 +100,7 @@ export async function POST(request) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     logger.error("email webhook error", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 

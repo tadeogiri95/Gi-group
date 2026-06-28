@@ -9,6 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { logger } from "../../../lib/logger";
+import { safeErrorMessage } from "../../../lib/validate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,6 +61,6 @@ export async function GET(request) {
     });
   } catch (err) {
     logger.error("[cron/auto-fichaje] Error fatal", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

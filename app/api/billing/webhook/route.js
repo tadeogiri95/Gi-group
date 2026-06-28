@@ -14,6 +14,7 @@ import { emitirFacturaC } from "../../../lib/afip";
 import { logger } from "../../../lib/logger";
 import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
+import { safeErrorMessage } from "../../../lib/validate";
 
 const WH_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
@@ -370,7 +371,7 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, ignorado: "not_found" });
     }
     logger.error("webhook error", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 

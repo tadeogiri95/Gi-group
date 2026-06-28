@@ -270,6 +270,16 @@ export const contactoEnterpriseBody = z.object({
   mensaje: z.string().max(1000).optional(),
 }).strict();
 
+// ── /api/contacto ────────────────────────────────────────────────────────────
+export const contactoBody = z.object({
+  nombre: shortString,
+  email: z.string().email().max(254),
+  telefono: z.string().max(30).optional(),
+  mensaje: z.string().min(1).max(1000),
+  // Honeypot anti-bot: campo oculto en el form que un usuario real nunca completa.
+  web: z.string().max(0).optional(),
+}).strict();
+
 // ── /api/empresa PATCH ──────────────────────────────────────────────────────
 export const empresaPatchBody = z.object({
   nombre: shortString.optional(),

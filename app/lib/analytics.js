@@ -37,4 +37,5 @@ export const EVT = {
   PAGO_RECHAZADO:      "pago_rechazado",
   REENGAGEMENT_ONBOARDING: "reengagement_onboarding",
   CONSULTA_ENTERPRISE: "consulta_enterprise",
+  CONSULTA_CONTACTO:   "consulta_contacto",
 };
