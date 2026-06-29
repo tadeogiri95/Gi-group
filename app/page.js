@@ -175,6 +175,10 @@ export default function Landing() {
     window.location.href = "/api/auth/google/start?intent=registro";
   };
 
+  const iniciarSesionConGoogle = () => {
+    window.location.href = "/api/auth/google/start?intent=login";
+  };
+
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", h, { passive: true });
@@ -564,6 +568,18 @@ export default function Landing() {
       {/* ═══ LOGIN / INGRESAR ═══ */}
       <section id="login" style={{ padding: "60px 24px 40px", maxWidth: 420, margin: "0 auto" }}>
         <h2 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, textAlign: "center", margin: "0 0 20px" }}>¿Ya tenés cuenta?</h2>
+
+        <button onClick={iniciarSesionConGoogle}
+          style={{ width: "100%", padding: 13, borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
+          <GoogleIcon size={18} /> Iniciar sesión con Google
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
+          <div style={{ flex: 1, height: 1, background: BORDER }} />
+          <span style={{ fontSize: 11, color: DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>o ingresá tu empresa</span>
+          <div style={{ flex: 1, height: 1, background: BORDER }} />
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "0 14px", marginBottom: 8 }}>
           <span style={{ color: MUTE, fontSize: 14 }}>gypi.app/</span>
           <input value={slug} onChange={e => setSlug(e.target.value)} onKeyDown={e => e.key === "Enter" && entrar()} placeholder="mi-empresa"
@@ -591,10 +607,11 @@ export default function Landing() {
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}`, flexWrap: "wrap" }}>
+          <a href="/nosotros" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Nosotros</a>
           <a href="/docs" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Documentación</a>
           <a href="/terms" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Términos</a>
           <a href="/privacy" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Privacidad</a>
-          <a href="mailto:contacto@gypi.app" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Contacto</a>
+          <a href="/contacto" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Contacto</a>
         </div>
         <div style={{ textAlign: "center", fontSize: 12, color: MUTE, marginTop: 12 }}>
           © {new Date().getFullYear()} Gypi · Gestión y productividad industrial · Todos los derechos reservados
