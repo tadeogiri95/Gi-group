@@ -17,6 +17,15 @@ async function getEmpresaIdFromRequest(request) {
   return sesion?.empresa_id || null;
 }
 
+// sbPost/sbPatch lanzan Error(`POST ${path}: ${textoCrudoDePostgres}`) — un
+// duplicate key (23505, ej. código de etapa o clave de división repetida
+// dentro de la misma empresa) es un conflicto esperable del usuario, no un
+// error interno: se detecta acá para devolver un 409 específico en vez de
+// caer en el catch genérico de 500.
+function esViolacionUnica(err) {
+  return typeof err?.message === "string" && err.message.includes('"code":"23505"');
+}
+
 async function perteneceAEmpresa(tabla, id, empresaId) {
   const rows = await sbGet(`${tabla}?id=eq.${id}&select=empresa_id`);
   return rows.length > 0 && rows[0].empresa_id === empresaId;
@@ -59,21 +68,35 @@ export async function POST(request) {
 
     if (action === "add_division") {
       const { clave, label, icon, color, orden } = body;
-      const result = await sbPost("divisiones", {
-        empresa_id: empresaId, clave, label,
-        icon: icon || "📦", color: color || "#F97316", orden: orden || 99,
-      });
-      return NextResponse.json({ division: result[0] });
+      try {
+        const result = await sbPost("divisiones", {
+          empresa_id: empresaId, clave, label,
+          icon: icon || "📦", color: color || "#F97316", orden: orden || 99,
+        });
+        return NextResponse.json({ division: result[0] });
+      } catch (err) {
+        if (esViolacionUnica(err)) {
+          return NextResponse.json({ error: "Ya existe una división con esa clave en tu empresa." }, { status: 409 });
+        }
+        throw err;
+      }
     }
 
     if (action === "add_etapa") {
       const { codigo, nombre, icon, color, orden } = body;
       if (codigo === undefined || !nombre) return NextResponse.json({ error: "codigo y nombre requeridos" }, { status: 400 });
-      const result = await sbPost("etapas", {
-        empresa_id: empresaId, codigo, nombre,
-        icon: icon || "🔨", color: color || "#F97316", orden: orden || 99,
-      });
-      return NextResponse.json({ etapa: result[0] });
+      try {
+        const result = await sbPost("etapas", {
+          empresa_id: empresaId, codigo, nombre,
+          icon: icon || "🔨", color: color || "#F97316", orden: orden || 99,
+        });
+        return NextResponse.json({ etapa: result[0] });
+      } catch (err) {
+        if (esViolacionUnica(err)) {
+          return NextResponse.json({ error: "Ya existe una etapa con ese código en tu empresa." }, { status: 409 });
+        }
+        throw err;
+      }
     }
 
     if (action === "save_logo") {
@@ -130,8 +153,15 @@ export async function PATCH(request) {
       if (codigo !== undefined) updates.codigo = codigo;
       if (orden !== undefined) updates.orden = orden;
       if (activa !== undefined) updates.activa = activa;
-      const result = await sbPatch(`etapas?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
-      return NextResponse.json({ etapa: result[0] });
+      try {
+        const result = await sbPatch(`etapas?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
+        return NextResponse.json({ etapa: result[0] });
+      } catch (err) {
+        if (esViolacionUnica(err)) {
+          return NextResponse.json({ error: "Ya existe una etapa con ese código en tu empresa." }, { status: 409 });
+        }
+        throw err;
+      }
     }
 
     return NextResponse.json({ error: "action inválido" }, { status: 400 });

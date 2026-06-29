@@ -143,6 +143,48 @@ test("POST config-empresa — add_etapa crea etapa", async () => {
   assert.equal(insertedData.nombre, "Pintura");
 });
 
+test("POST config-empresa — add_division con clave duplicada devuelve 409 sin detalle de Postgres", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url, opts) => url.includes("/rest/v1/divisiones") && opts?.method === "POST",
+      respond: () => ({
+        status: 409,
+        body: { code: "23505", details: "Key (empresa_id, clave)=(11111111-1111-1111-1111-111111111111, electrica) already exists.", hint: null, message: 'duplicate key value violates unique constraint "divisiones_empresa_id_clave_key"' },
+      }),
+    },
+  ]);
+
+  const res = await POST(jsonReq("POST", { action: "add_division", clave: "electrica", label: "Eléctrica" }, token));
+  const json = await res.json();
+
+  assert.equal(res.status, 409);
+  assert.ok(!json.error.includes("constraint"), "no debe exponer el detalle interno de Postgres");
+  assert.match(json.error, /ya existe/i);
+});
+
+test("POST config-empresa — add_etapa con código duplicado devuelve 409 sin detalle de Postgres", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url, opts) => url.includes("/rest/v1/etapas") && opts?.method === "POST",
+      respond: () => ({
+        status: 409,
+        body: { code: "23505", details: "Key (empresa_id, codigo)=(11111111-1111-1111-1111-111111111111, 6) already exists.", hint: null, message: 'duplicate key value violates unique constraint "etapas_empresa_id_codigo_key"' },
+      }),
+    },
+  ]);
+
+  const res = await POST(jsonReq("POST", { action: "add_etapa", codigo: 6, nombre: "Pintura" }, token));
+  const json = await res.json();
+
+  assert.equal(res.status, 409);
+  assert.ok(!json.error.includes("constraint"), "no debe exponer el detalle interno de Postgres");
+  assert.match(json.error, /ya existe/i);
+});
+
 test("POST config-empresa — add_etapa sin nombre devuelve 400", async () => {
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([...authPassHandlers()]);
@@ -201,6 +243,31 @@ test("PATCH config-empresa — update_division propia actualiza correctamente", 
   assert.equal(res.status, 200);
   assert.equal(patchedData.label, "Eléctrica V2");
   assert.equal(patchedData.color, "#00FF00");
+});
+
+test("PATCH config-empresa — update_etapa con código duplicado devuelve 409 sin detalle de Postgres", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url) => url.includes("/rest/v1/etapas") && url.includes("select=empresa_id"),
+      respond: () => ({ status: 200, body: [{ empresa_id: EMPRESA_ID }] }),
+    },
+    {
+      match: (url, opts) => url.includes("/rest/v1/etapas") && opts?.method === "PATCH",
+      respond: () => ({
+        status: 409,
+        body: { code: "23505", details: "Key (empresa_id, codigo)=(11111111-1111-1111-1111-111111111111, 6) already exists.", hint: null, message: 'duplicate key value violates unique constraint "etapas_empresa_id_codigo_key"' },
+      }),
+    },
+  ]);
+
+  const res = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, codigo: 6 }, token));
+  const json = await res.json();
+
+  assert.equal(res.status, 409);
+  assert.ok(!json.error.includes("constraint"), "no debe exponer el detalle interno de Postgres");
+  assert.match(json.error, /ya existe/i);
 });
 
 // ─── DELETE ───
