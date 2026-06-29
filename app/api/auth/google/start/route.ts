@@ -31,12 +31,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   let slug: string | null = null;
+  // slug es opcional para intent=login: si no viene (ej. "Iniciar sesión con
+  // Google" desde la landing, sin saber a qué empresa pertenece), el callback
+  // resuelve el tenant buscando el empleado en todas las empresas.
   if (intent === "login") {
-    const parsedSlug = slugSchema.safeParse(searchParams.get("slug") || "");
-    if (!parsedSlug.success) {
-      return NextResponse.json({ error: "Parámetro slug inválido" }, { status: 400 });
+    const rawSlug = searchParams.get("slug");
+    if (rawSlug) {
+      const parsedSlug = slugSchema.safeParse(rawSlug);
+      if (!parsedSlug.success) {
+        return NextResponse.json({ error: "Parámetro slug inválido" }, { status: 400 });
+      }
+      slug = parsedSlug.data;
     }
-    slug = parsedSlug.data;
   }
 
   const nonce = generarNonce();

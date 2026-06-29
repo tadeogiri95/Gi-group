@@ -75,6 +75,11 @@ interface EmpleadoMatch {
   rol: string;
 }
 
+interface EmpleadoGlobalMatch extends EmpleadoMatch {
+  empresa_id: string;
+  empresa: { slug: string; activa: boolean } | null;
+}
+
 async function exchangeCodeForIdToken(code: string, redirectUri: string): Promise<string> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -212,9 +217,42 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return redirectSuccess(emp.slug, exchangeCode);
     }
 
-    // ═══ INTENT: login — resolver empleado dentro de un tenant existente ═══
-    if (!stateSlug) return redirectError(null, "solicitud_invalida");
+    // ═══ INTENT: login sin slug — "Iniciar sesión con Google" desde la
+    // landing, sin saber a qué empresa pertenece. Busca el empleado en TODAS
+    // las empresas por google_id, y si no, por email. google_id no es único
+    // globalmente (062_google_oauth.sql), así que una misma cuenta de Google
+    // puede matchear empleados en más de una empresa — en ese caso no
+    // adivinamos, pedimos que entre por el link de su empresa específica.
+    if (!stateSlug) {
+      const porGoogleIdRes = await sb(
+        `empleados?google_id=eq.${encodeURIComponent(googlePayload.sub)}&activo=eq.true&select=id,legajo,rol,empresa_id,empresa(slug,activa)`
+      );
+      let candidatos = ((await porGoogleIdRes.json()) as EmpleadoGlobalMatch[]).filter((e) => e.empresa?.activa !== false);
+      let linkear = false;
 
+      if (candidatos.length === 0) {
+        const porEmailRes = await sb(
+          `empleados?email=eq.${encodeURIComponent(googleEmail)}&google_id=is.null&activo=eq.true&select=id,legajo,rol,empresa_id,empresa(slug,activa)`
+        );
+        candidatos = ((await porEmailRes.json()) as EmpleadoGlobalMatch[]).filter((e) => e.empresa?.activa !== false);
+        linkear = true;
+      }
+
+      if (candidatos.length === 0) return redirectError(null, "no_account");
+      if (candidatos.length > 1) return redirectError(null, "multiples_cuentas");
+
+      const unico = candidatos[0];
+      if (linkear) {
+        await sb(`empleados?id=eq.${unico.id}`, { method: "PATCH", body: JSON.stringify({ google_id: googlePayload.sub }) });
+      }
+
+      const { token: exchangeCode } = await signOAuthExchangeCode({
+        empleadoId: unico.id, empresaId: unico.empresa_id, legajo: unico.legajo, rol: unico.rol,
+      });
+      return redirectSuccess(unico.empresa!.slug, exchangeCode);
+    }
+
+    // ═══ INTENT: login con slug — resolver empleado dentro de un tenant conocido ═══
     const empresaRes = await sb(`empresa?slug=eq.${encodeURIComponent(stateSlug)}&select=id,slug,activa&limit=1`);
     const empresaRows = (await empresaRes.json()) as { id: string; slug: string; activa: boolean }[];
     const empresa = empresaRows[0];
