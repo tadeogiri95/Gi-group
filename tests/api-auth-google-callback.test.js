@@ -223,3 +223,88 @@ test("google/callback — intent=login auto-linkea por email cuando no hay googl
   assert.equal(payload.empleadoId, EMPLEADO_ID);
   assert.equal(payload.rol, "administrativo");
 });
+
+test("google/callback — login sin slug, sin candidatos por google_id ni email, redirige con oauth_error=no_account", async () => {
+  const idToken = await signFakeIdToken({ sub: "google-sub-global-sin-cuenta" });
+  global.fetch = createFetchMock([
+    ...baseHandlers({ idToken }),
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("google_id=eq."), respond: () => ({ status: 200, body: [] }) },
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("google_id=is.null"), respond: () => ({ status: 200, body: [] }) },
+  ]);
+  const { state, nonce } = await buildState({ intent: "login", slug: null });
+  const res = await GET(callbackReq({ state, oauthStateCookie: nonce }));
+  assert.equal(res.status, 302);
+  const location = new URL(res.headers.get("location"));
+  assert.equal(location.searchParams.get("oauth_error"), "no_account");
+});
+
+test("google/callback — login sin slug, 1 candidato por google_id, entra directo", async () => {
+  const idToken = await signFakeIdToken({ sub: "google-sub-global-directo" });
+  global.fetch = createFetchMock([
+    ...baseHandlers({ idToken }),
+    {
+      match: (url) => url.includes("/rest/v1/empleados") && url.includes("google_id=eq."),
+      respond: () => ({ status: 200, body: [{ id: EMPLEADO_ID, legajo: 7, rol: "operativo", empresa_id: EMPRESA_ID, empresa: { slug: "acme", activa: true } }] }),
+    },
+  ]);
+  const { state, nonce } = await buildState({ intent: "login", slug: null });
+  const res = await GET(callbackReq({ state, oauthStateCookie: nonce }));
+
+  assert.equal(res.status, 302);
+  const location = new URL(res.headers.get("location"));
+  assert.equal(location.pathname, "/acme");
+  const payload = await verifyOAuthExchangeCode(location.searchParams.get("oauth"));
+  assert.equal(payload.empleadoId, EMPLEADO_ID);
+  assert.equal(payload.empresaId, EMPRESA_ID);
+  assert.equal(payload.legajo, 7);
+  assert.equal(payload.rol, "operativo");
+});
+
+test("google/callback — login sin slug, 1 candidato por email (sin google_id previo), linkea y entra", async () => {
+  const idToken = await signFakeIdToken({ sub: "google-sub-global-link" });
+  let linkPatchBody = null;
+  global.fetch = createFetchMock([
+    ...baseHandlers({ idToken }),
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("google_id=eq."), respond: () => ({ status: 200, body: [] }) },
+    {
+      match: (url) => url.includes("/rest/v1/empleados") && url.includes("google_id=is.null"),
+      respond: () => ({ status: 200, body: [{ id: EMPLEADO_ID, legajo: 9, rol: "administrativo", empresa_id: EMPRESA_ID, empresa: { slug: "acme", activa: true } }] }),
+    },
+    {
+      match: (url, opts) => url.includes(`/rest/v1/empleados?id=eq.${EMPLEADO_ID}`) && opts?.method === "PATCH",
+      respond: (url, opts) => { linkPatchBody = JSON.parse(opts.body); return { status: 200, body: [] }; },
+    },
+  ]);
+  const { state, nonce } = await buildState({ intent: "login", slug: null });
+  const res = await GET(callbackReq({ state, oauthStateCookie: nonce }));
+
+  assert.equal(res.status, 302);
+  assert.deepEqual(linkPatchBody, { google_id: "google-sub-global-link" });
+  const location = new URL(res.headers.get("location"));
+  assert.equal(location.pathname, "/acme");
+  const payload = await verifyOAuthExchangeCode(location.searchParams.get("oauth"));
+  assert.equal(payload.empleadoId, EMPLEADO_ID);
+  assert.equal(payload.rol, "administrativo");
+});
+
+test("google/callback — login sin slug, 2+ candidatos, redirige con oauth_error=multiples_cuentas", async () => {
+  const idToken = await signFakeIdToken({ sub: "google-sub-global-multiples" });
+  global.fetch = createFetchMock([
+    ...baseHandlers({ idToken }),
+    {
+      match: (url) => url.includes("/rest/v1/empleados") && url.includes("google_id=eq."),
+      respond: () => ({
+        status: 200,
+        body: [
+          { id: EMPLEADO_ID, legajo: 1, rol: "operativo", empresa_id: EMPRESA_ID, empresa: { slug: "acme", activa: true } },
+          { id: "55555555-5555-5555-5555-555555555555", legajo: 2, rol: "operativo", empresa_id: "66666666-6666-6666-6666-666666666666", empresa: { slug: "otra-empresa", activa: true } },
+        ],
+      }),
+    },
+  ]);
+  const { state, nonce } = await buildState({ intent: "login", slug: null });
+  const res = await GET(callbackReq({ state, oauthStateCookie: nonce }));
+  assert.equal(res.status, 302);
+  const location = new URL(res.headers.get("location"));
+  assert.equal(location.searchParams.get("oauth_error"), "multiples_cuentas");
+});

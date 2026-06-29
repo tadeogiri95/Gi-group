@@ -26,9 +26,13 @@ test("google/start — intent inválido devuelve 400", async () => {
   assert.equal(res.status, 400);
 });
 
-test("google/start — intent=login sin slug devuelve 400", async () => {
+test("google/start — intent=login sin slug redirige a Google con slug:null en el state", async () => {
   const res = await GET(req("?intent=login"));
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 302);
+  const url = new URL(res.headers.get("location"));
+  const state = await verifyOAuthState(url.searchParams.get("state"));
+  assert.equal(state.intent, "login");
+  assert.equal(state.slug, null);
 });
 
 test("google/start — intent=login con slug inválido devuelve 400", async () => {
