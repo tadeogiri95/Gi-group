@@ -1,5 +1,5 @@
 export default function sitemap() {
-  const baseUrl = 'https://gypi.app';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://gypi.app';
   const now = new Date();
 
   return [

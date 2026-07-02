@@ -1,6 +1,11 @@
+export const metadata = {
+  title: "Términos y Condiciones — Gypi",
+  description: "Términos y condiciones de uso de la plataforma Gypi de gestión y productividad industrial.",
+};
+
 export default function TermsOfService() {
   const S = {
-    wrap: { maxWidth: 720, margin: "0 auto", padding: "40px 20px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100vh", lineHeight: 1.7 },
+    wrap: { maxWidth: 720, margin: "0 auto", padding: "40px 20px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100dvh", lineHeight: 1.7 },
     h1: { fontSize: 28, fontWeight: 800, marginBottom: 8, fontFamily: "'Bricolage Grotesque', system-ui" },
     h2: { fontSize: 20, fontWeight: 700, marginTop: 32, marginBottom: 12, fontFamily: "'Bricolage Grotesque', system-ui" },
     p: { fontSize: 14, color: "#A39A8E", marginBottom: 16 },
@@ -71,6 +76,18 @@ export default function TermsOfService() {
 
       <h2 style={S.h2}>11. Contacto</h2>
       <p style={S.p}>Para consultas sobre estos términos:<br />Email: contacto@gypi.app<br />Dirección: Córdoba, Argentina</p>
+
+      <footer style={{ marginTop: 48, paddingTop: 24, borderTop: "1px solid #2A2520", textAlign: "center", fontSize: 12, color: "#615A52" }}>
+        <a href="/" style={{ color: "#615A52", textDecoration: "none" }}>Gypi</a>
+        {" · "}
+        <a href="/pricing" style={{ color: "#615A52", textDecoration: "none" }}>Precios</a>
+        {" · "}
+        <a href="/docs" style={{ color: "#615A52", textDecoration: "none" }}>Docs</a>
+        {" · "}
+        <a href="/terms" style={{ color: "#615A52", textDecoration: "none" }}>Términos</a>
+        {" · "}
+        <a href="/privacy" style={{ color: "#615A52", textDecoration: "none" }}>Privacidad</a>
+      </footer>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 import { planPermite } from "../lib/plans";
 
 // AdSlot — banner de Google AdSense para el plan Free.
@@ -9,31 +10,42 @@ import { planPermite } from "../lib/plans";
 // renderiza nada — mismo patrón que Sentry/Firebase en este repo (sin
 // config, la integración queda desactivada en silencio).
 //
-// El script de adsbygoogle.js corre dentro de public/ad-frame.html, en su
-// propio iframe — no en este documento. Se probaron 6 capas de defensa
-// distintas (gate por empresa?.id, enable_page_level_ads:false, watchdog de
-// overlays vía MutationObserver, touch-action:manipulation, tope de un
-// anuncio por sesión, mantener el dashboard montado para nunca remontar) y
-// el scroll táctil se seguía trabando en producción — el script de Google,
-// corriendo en EL MISMO document que el resto de la app, puede dejar
-// listeners o estado roto que ninguna de esas defensas alcanza a prevenir.
-// Un iframe le da a ese script su propio document/window: lo que rompa
-// ahí adentro no puede tocar el scroll del shell.
+// El script de adsbygoogle.js corre en un iframe con srcdoc — no en este
+// documento. srcdoc le da al script su propio document/window (el scroll
+// táctil del shell no se puede trabar desde ahí) sin crear ninguna URL
+// rastreable. Alternativa anterior (src=/ad-frame.html) fue descartada
+// porque Google AdSense detectaba esa página como "anuncio sin contenido
+// del editor" e informaba infracción de política.
 export default function AdSlot({ plan }) {
   const clientId = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
   const slotId = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
   const habilitado = planPermite(plan, "mostrar_publicidad") && !!clientId && !!slotId;
 
-  if (!habilitado) return null;
+  const [consented, setConsented] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("gypi_cookie_consent") === "1") setConsented(true);
+    } catch {}
+  }, []);
 
-  const src = `/ad-frame.html?client=${encodeURIComponent(clientId)}&slot=${encodeURIComponent(slotId)}`;
+  if (!habilitado || !consented) return null;
+
+  const adScriptSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(clientId)}`;
+  const sc = "</" + "script>";
+  const srcDoc =
+    `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">` +
+    `<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}</style></head><body>` +
+    `<ins class="adsbygoogle" style="display:block" data-ad-client="${clientId}" data-ad-slot="${slotId}" data-ad-format="auto" data-full-width-responsive="true"></ins>` +
+    `<script async crossorigin="anonymous" src="${adScriptSrc}">${sc}` +
+    `<script>(adsbygoogle=window.adsbygoogle||[]).push({})</` + `script>` +
+    `</body></html>`;
 
   return (
     <div className="rounded-xl mb-3.5 overflow-hidden bg-gypi-surface border border-gypi-border" style={{ minHeight: 100 }}>
       <div className="text-[10px] text-gypi-dim font-bold uppercase tracking-[0.06em] px-3 pt-2">Publicidad</div>
       <iframe
         title="Publicidad"
-        src={src}
+        srcDoc={srcDoc}
         style={{ width: "100%", height: 100, border: "none", display: "block" }}
         loading="lazy"
       />

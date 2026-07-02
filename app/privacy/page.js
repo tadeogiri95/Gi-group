@@ -1,6 +1,11 @@
+export const metadata = {
+  title: "Política de Privacidad — Gypi",
+  description: "Cómo Gypi recopila, usa y protege los datos de fichaje y gestión laboral de tu empresa.",
+};
+
 export default function PrivacyPolicy() {
   const S = {
-    wrap: { maxWidth: 720, margin: "0 auto", padding: "40px 20px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100vh", lineHeight: 1.7 },
+    wrap: { maxWidth: 720, margin: "0 auto", padding: "40px 20px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100dvh", lineHeight: 1.7 },
     h1: { fontSize: 28, fontWeight: 800, marginBottom: 8, fontFamily: "'Bricolage Grotesque', system-ui" },
     h2: { fontSize: 20, fontWeight: 700, marginTop: 32, marginBottom: 12, fontFamily: "'Bricolage Grotesque', system-ui" },
     p: { fontSize: 14, color: "#A39A8E", marginBottom: 16 },
@@ -9,8 +14,9 @@ export default function PrivacyPolicy() {
 
   return (
     <div style={S.wrap}>
+      <a href="/" style={{ fontSize: 13, color: "#F97316", textDecoration: "none", display: "inline-block", marginBottom: 24 }}>← Volver a Gypi</a>
       <h1 style={S.h1}>Política de Privacidad</h1>
-      <p style={S.date}>Última actualización: 24 de junio de 2026</p>
+      <p style={S.date}>Última actualización: 2 de julio de 2026</p>
 
       <p style={S.p}>Gypi (Gestión y productividad industrial) ("la App") es operada por Gypi Software ("nosotros"). Esta política describe cómo recopilamos, usamos y protegemos tu información personal.</p>
 
@@ -27,8 +33,12 @@ export default function PrivacyPolicy() {
       <h2 style={S.h2}>4. Compartir información</h2>
       <p style={S.p}>No vendemos, alquilamos ni compartimos tu información personal con terceros, excepto:{"\n"}• Con tu empleador, para fines de gestión laboral.{"\n"}• Cuando sea requerido por ley o autoridad competente.{"\n"}• Con proveedores de servicios técnicos (Supabase, Vercel, Firebase) que procesan datos en nuestro nombre bajo estrictas obligaciones de confidencialidad.</p>
 
-      <h2 style={S.h2}>5. Publicidad</h2>
-      <p style={S.p}>Las cuentas en plan Free muestran publicidad de Google AdSense, visible únicamente para usuarios con rol gerencial o administrativo (nunca durante el fichaje del operario). Google puede usar cookies y datos de uso para personalizar los anuncios — esto no incluye tus datos laborales (fichadas, ubicación, reportes), que nunca se comparten con Google ni con ninguna red publicitaria. Podés gestionar tus preferencias de anuncios de Google en <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer" style={{ color: "#A39A8E" }}>adssettings.google.com</a>. Los planes pagos no muestran publicidad.</p>
+      <h2 id="publicidad" style={S.h2}>5. Publicidad y cookies</h2>
+      <p style={S.p}>Las cuentas en plan Free muestran publicidad de Google AdSense, visible únicamente para usuarios con rol gerencial o administrativo (nunca durante el fichaje del operario). Los planes pagos no muestran publicidad.</p>
+      <p style={S.p}>Proveedores externos, incluido Google, utilizan cookies para mostrar anuncios basados en las visitas previas del usuario a este sitio web u otros sitios web. El uso de cookies de publicidad por parte de Google permite que Google y sus socios muestren anuncios basados en las visitas de los usuarios a este sitio y/o a otros sitios de Internet.</p>
+      <p style={S.p}>Google y otros proveedores de publicidad externos pueden utilizar además web beacons y tecnologías similares para recopilar información sobre la interacción con los anuncios y el uso del sitio.</p>
+      <p style={S.p}>Tus datos laborales (fichadas, ubicación, reportes) nunca se comparten con Google ni con ninguna red publicitaria.</p>
+      <p style={S.p}>Podés gestionar o desactivar la publicidad personalizada de Google en <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer" style={{ color: "#F97316" }}>Configuración de anuncios de Google</a>. También podés desactivar la publicidad personalizada de otros proveedores visitando <a href="https://www.aboutads.info" target="_blank" rel="noopener noreferrer" style={{ color: "#F97316" }}>www.aboutads.info</a>.</p>
 
       <h2 style={S.h2}>6. Geolocalización</h2>
       <p style={S.p}>La App puede solicitar acceso a tu ubicación para verificar el fichaje en el lugar de trabajo. Este permiso es opcional y podés revocarlo en cualquier momento desde la configuración de tu dispositivo. La ubicación solo se registra en el momento del fichaje y no se rastrea de forma continua.</p>
@@ -44,6 +54,18 @@ export default function PrivacyPolicy() {
 
       <h2 style={S.h2}>10. Contacto</h2>
       <p style={S.p}>Si tenés preguntas sobre esta política, contactanos en:{"\n"}Email: contacto@gypi.app{"\n"}Dirección: Córdoba, Argentina</p>
+
+      <footer style={{ marginTop: 48, paddingTop: 24, borderTop: "1px solid #2A2520", textAlign: "center", fontSize: 12, color: "#615A52" }}>
+        <a href="/" style={{ color: "#615A52", textDecoration: "none" }}>Gypi</a>
+        {" · "}
+        <a href="/pricing" style={{ color: "#615A52", textDecoration: "none" }}>Precios</a>
+        {" · "}
+        <a href="/docs" style={{ color: "#615A52", textDecoration: "none" }}>Docs</a>
+        {" · "}
+        <a href="/terms" style={{ color: "#615A52", textDecoration: "none" }}>Términos</a>
+        {" · "}
+        <a href="/privacy" style={{ color: "#615A52", textDecoration: "none" }}>Privacidad</a>
+      </footer>
     </div>
   );
 }

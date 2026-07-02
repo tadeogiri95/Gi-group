@@ -3,7 +3,7 @@ import { useState } from "react";
 import { PLANES } from "../lib/plans";
 
 const S = {
-  wrap: { maxWidth: 760, margin: "0 auto", padding: "40px 20px 80px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100vh", lineHeight: 1.7 },
+  wrap: { maxWidth: 760, margin: "0 auto", padding: "40px 20px 80px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100dvh", lineHeight: 1.7 },
   header: { marginBottom: 48 },
   logo: { fontSize: 22, fontWeight: 800, color: "#F97316", fontFamily: "'Bricolage Grotesque', system-ui", marginBottom: 8 },
   headline: { fontSize: 32, fontWeight: 800, fontFamily: "'Bricolage Grotesque', system-ui", lineHeight: 1.2, marginBottom: 12 },

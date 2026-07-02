@@ -1,10 +1,11 @@
 import './globals.css';
+import CookieConsent from './components/CookieConsent';
 
 /* ═══════════════════════════════════════════════════════
    ROOT LAYOUT — SEO + Open Graph + Structured Data
    ═══════════════════════════════════════════════════════ */
 
-const SITE_URL = 'https://gypi.app';
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://gypi.app';
 const SITE_NAME = 'Gypi';
 const TITLE = 'Gypi — Gestión y productividad industrial';
 const DESCRIPTION = 'Fichaje digital, seguimiento de obra y reportes en tiempo real. Todo desde el celular, sin instalar nada. Probá gratis.';
@@ -135,6 +136,7 @@ export default function RootLayout({ children }) {
           Saltar al contenido
         </a>
         <main id="main-content">{children}</main>
+        <CookieConsent />
       </body>
     </html>
   );

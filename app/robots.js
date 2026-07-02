@@ -7,6 +7,6 @@ export default function robots() {
         disallow: ['/api/', '/_next/'],
       },
     ],
-    sitemap: 'https://gypi.app/sitemap.xml',
+    sitemap: `${process.env.NEXT_PUBLIC_APP_URL || 'https://gypi.app'}/sitemap.xml`,
   };
 }

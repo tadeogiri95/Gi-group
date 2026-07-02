@@ -15,7 +15,7 @@ const SURFACE = "var(--color-surface)";
 const SURF_HI = "var(--color-surf-hi)";
 const BORDER = "var(--color-border)";
 
-const SITE_URL = "https://gypi.app";
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 const TITLE = "Precios — Gypi";
 const DESCRIPTION = "Planes simples para fichaje digital, seguimiento de obra y reportes en tiempo real. Empezá gratis con hasta 5 empleados, sin tarjeta de crédito.";
 
@@ -147,7 +147,7 @@ export default function PricingPage() {
       </section>
 
       <footer style={{ padding: "24px", borderTop: `1px solid ${BORDER}`, textAlign: "center", fontSize: 12, color: DIM }}>
-        <Link href="/" style={{ color: DIM, textDecoration: "none" }}>Gypi</Link> · <Link href="/privacy" style={{ color: DIM, textDecoration: "none" }}>Privacidad</Link> · <Link href="/terms" style={{ color: DIM, textDecoration: "none" }}>Términos</Link>
+        <Link href="/" style={{ color: DIM, textDecoration: "none" }}>Gypi</Link> · <Link href="/nosotros" style={{ color: DIM, textDecoration: "none" }}>Nosotros</Link> · <Link href="/contacto" style={{ color: DIM, textDecoration: "none" }}>Contacto</Link> · <Link href="/privacy" style={{ color: DIM, textDecoration: "none" }}>Privacidad</Link> · <Link href="/terms" style={{ color: DIM, textDecoration: "none" }}>Términos</Link>
       </footer>
     </div>
   );

@@ -30,6 +30,7 @@ global.Node = dom.window.Node;
 global.getComputedStyle = dom.window.getComputedStyle;
 global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
 global.cancelAnimationFrame = (id) => clearTimeout(id);
+global.localStorage = dom.window.localStorage;
 
 // IS_REACT_ACT_ENVIRONMENT silencia el warning de React 18+/19 sobre
 // actualizaciones fuera de act() en entornos de test.

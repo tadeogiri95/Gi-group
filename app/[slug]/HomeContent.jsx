@@ -24,6 +24,7 @@ import LoginScreen from "../components/screens/LoginScreen";
 import Nav from "../components/nav/BottomNav";
 import SolCard from "../components/cards/SolCard";
 import ErrorBoundary from "../components/ErrorBoundary";
+import AdSlot from "../components/AdSlot";
 
 // Screens — lazy-loaded: solo se descarga el código de la pantalla activa
 const CambiarPasswordScreen = dynamic(() => import("../components/screens/CambiarPasswordScreen"), { ssr: false });
@@ -313,16 +314,13 @@ export default function HomeContent() {
         </button>
       )}
 
+      {!isChat && empresa?.id && (usuario?.rol === "gerencial" || usuario?.rol === "admin") && (
+        <div className="px-[18px] shrink-0">
+          <AdSlot plan={empresa.plan_activo || "free"} />
+        </div>
+      )}
+
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* DashboardGerencia queda montado permanentemente (nunca se
-            desmonta al cambiar de pestaña) — solo se oculta con CSS. El
-            AdSlot que vive ahí adentro le pide un anuncio a Google una
-            sola vez; pedirle un segundo anuncio para el mismo slot sin
-            recargar la página de verdad (lo que pasaba antes, al
-            desmontar y remontar este componente en cada ida y vuelta a
-            Inicio) deja al script de Google en un estado roto que traba
-            el scroll táctil. Con esto el anuncio se ve siempre que se
-            está en Inicio, sin volver a pedirse nunca. */}
         {uIsGer && (
           <div className={screen === "home" ? "contents" : "hidden"}>
             <ErrorBoundary name="home">

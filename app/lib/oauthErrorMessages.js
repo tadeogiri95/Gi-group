@@ -5,7 +5,7 @@
 const MENSAJES = {
   cancelado: "Cancelaste el inicio de sesión con Google.",
   no_account: "No encontramos una cuenta con ese email. Si te invitaron a una empresa, pedile a un administrador que revise tu acceso. Si no tenés empresa todavía, podés registrar una nueva.",
-  multiples_cuentas: "Tu cuenta de Google está vinculada a más de una empresa en Gypi. Ingresá desde el link específico de tu empresa (gypi.app/tu-empresa).",
+  multiples_cuentas: `Tu cuenta de Google está vinculada a más de una empresa en Gypi. Ingresá desde el link específico de tu empresa (${process.env.NEXT_PUBLIC_APP_URL || 'https://gypi.app'}/tu-empresa).`,
   empresa_no_encontrada: "No se encontró la empresa.",
   email_no_verificado: "Tu cuenta de Google no tiene el email verificado.",
   email_en_uso: "Ya existe una empresa registrada con ese email.",

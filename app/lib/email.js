@@ -44,7 +44,7 @@ function stripHtml(html) {
 const BASE = `
   <div style="font-family:'Segoe UI',system-ui,sans-serif;max-width:520px;margin:0 auto;background:#FAFAF8;border-radius:16px;overflow:hidden;border:1px solid #E5E5E3">
     <div style="background:linear-gradient(135deg,#F97316,#E85D04);padding:32px 36px">
-      <img src="https://gypi.app/icons/icon-192.png" alt="Gypi" style="width:48px;height:48px;border-radius:12px;margin-bottom:12px;display:block" />
+      <img src="${APP_BASE}/icons/icon-192.png" alt="Gypi" style="width:48px;height:48px;border-radius:12px;margin-bottom:12px;display:block" />
       <div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-0.02em">{{TITULO}}</div>
       <div style="color:rgba(255,255,255,0.75);font-size:14px;margin-top:4px">{{SUBTITULO}}</div>
     </div>
@@ -52,7 +52,7 @@ const BASE = `
       {{CUERPO}}
     </div>
     <div style="padding:20px 36px;border-top:1px solid #E5E5E3;color:#9B9B9B;font-size:12px">
-      Gypi · HR tech para equipos reales · <a href="https://gypi.app" style="color:#F97316;text-decoration:none">gypi.app</a>
+      Gypi · HR tech para equipos reales · <a href="${APP_BASE}" style="color:#F97316;text-decoration:none">gypi.app</a>
     </div>
   </div>
 `;

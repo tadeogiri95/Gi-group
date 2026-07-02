@@ -274,7 +274,7 @@ export default function Landing() {
     { icon: icons.chart,  title: "Reportes en tiempo real", desc: "Dashboards con métricas de productividad, ausentismo y horas trabajadas." },
     { icon: icons.map,    title: "Gestión de obras",      desc: "Seguimiento de ubicaciones, tareas por obra y estado de instalaciones." },
     { icon: icons.shield, title: "Reglas automáticas",    desc: "Bot configurable que aplica políticas de fichaje, alertas y recordatorios." },
-    { icon: icons.globe,  title: "PWA multiplataforma",   desc: "Funciona en cualquier dispositivo sin instalar nada. Offline-ready." },
+    { icon: icons.globe,  title: "PWA multiplataforma",   desc: "Funciona en cualquier dispositivo sin instalar nada. Sin conexión con push activado." },
   ];
 
   const PASOS = [
@@ -285,8 +285,8 @@ export default function Landing() {
 
   const KPIS = [
     { value: 14, suffix: " días", label: "Trial Pro gratis" },
-    { value: 50, suffix: "+", label: "Empleados por plan" },
-    { value: 99, suffix: "%", label: "Uptime garantizado" },
+    { value: 30, suffix: " seg", label: "Registro de empresa" },
+    { value: 99, suffix: "%", label: "Disponibilidad promedio" },
     { value: 0, suffix: "$", label: "Setup — sin costo" },
   ];
 
@@ -444,11 +444,11 @@ export default function Landing() {
           </div>
           <h2 style={{ fontFamily: fH, fontSize: 24, fontWeight: 700, margin: "0 0 12px" }}>App progresiva (PWA)</h2>
           <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, maxWidth: 500, margin: "0 auto 24px" }}>
-            Gypi se instala como una app nativa desde el navegador. Sin App Store, sin actualizaciones manuales. Funciona offline y envía notificaciones push.
+            Gypi se instala como una app nativa desde el navegador. Sin App Store, sin actualizaciones manuales. Con push activado, funciona sin conexión y envía notificaciones.
           </p>
           <div style={{ display: "flex", gap: 24, justifyContent: "center", flexWrap: "wrap", fontSize: 13, color: TEXT }}>
             <span>✓ Sin descarga</span>
-            <span>✓ Funciona offline</span>
+            <span>✓ Modo sin conexión (con push activado)</span>
             <span>✓ Push notifications</span>
             <span>✓ Android + iOS + Desktop</span>
           </div>

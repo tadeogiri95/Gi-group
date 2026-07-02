@@ -15,7 +15,6 @@ import { sb } from "./lib/supabase";
 import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
 import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
-import AdSlot from "./components/AdSlot";
 import BillingScreen from "./components/BillingScreen";
 import FotoViewer from "./components/FotoViewer";
 /* ═══════════════════════════════════════════════════════
@@ -564,14 +563,6 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Banner de trial / vencimiento ─── */}
       <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />
-      {/* empresa arranca en un placeholder sin plan_activo (ver AuthContext)
-          hasta que cargarEmpresa() resuelve — sin el gate por empresa?.id,
-          toda empresa (sea cual sea su plan real) pasa por "free" durante
-          esa ventana y carga adsbygoogle.js de mas, para desmontarse apenas
-          llega el plan real. Si la cuenta tiene Auto ads, el script ya
-          inyecto un overlay fuera de React que no se borra al desmontar. */}
-      {empresa?.id && <AdSlot plan={empresa.plan_activo || "free"} />}
-
       {/* Modal de billing */}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
 
