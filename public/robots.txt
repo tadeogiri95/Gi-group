@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Bloquear el panel superadmin
+Disallow: /superadmin
+
+Sitemap: https://gypi.app/sitemap.xml

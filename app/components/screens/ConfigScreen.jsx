@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ReportesScreen from "../../reportes_screen";
 import GrillaHorarioScreen from "../../grilla_horario_screen";
 import ProyectosScreen from "../../proyectos_screen.jsx";
@@ -58,8 +58,69 @@ const SUBTABS = {
       id: "admin", label: "Empresa",
       icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>,
     },
+    {
+      id: "privacidad", label: "Privacidad",
+      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+    },
   ],
 };
+
+const CONSENT_KEY = "gypi_cookie_consent";
+const CONSENT_LABELS = { "1": "Aceptado (anuncios personalizados)", "0": "Rechazado (anuncios no personalizados)", null: "Sin decidir" };
+
+function PrivacidadPanel() {
+  const [pref, setPref] = useState(undefined);
+  useEffect(() => {
+    try { setPref(localStorage.getItem(CONSENT_KEY)); } catch { setPref(null); }
+  }, []);
+
+  function resetear() {
+    try { localStorage.removeItem(CONSENT_KEY); } catch {}
+    window.location.reload();
+  }
+
+  if (pref === undefined) return null;
+
+  return (
+    <div className="px-4 py-6 flex flex-col gap-5 overflow-y-auto flex-1">
+      <div>
+        <p className="g-overline text-gypi-dim mb-1">Cookies de publicidad</p>
+        <div className="bg-gypi-surface border border-gypi-border rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[13px] font-semibold text-gypi-text mb-0.5">Preferencia actual</p>
+              <p className="text-[12px] text-gypi-dim">{CONSENT_LABELS[pref]}</p>
+            </div>
+            <button
+              onClick={resetear}
+              className="shrink-0 px-3 py-1.5 text-[12px] font-bold rounded-lg bg-gypi-surf-hi text-gypi-text border border-gypi-border cursor-pointer"
+            >
+              Cambiar
+            </button>
+          </div>
+          <p className="text-[12px] text-gypi-dim border-t border-gypi-border pt-3">
+            Al cambiar tu preferencia, la app se recarga y muestra el banner de cookies nuevamente.
+            Los usuarios del plan Free siempre ven publicidad; tu elección controla si es personalizada o no.
+          </p>
+        </div>
+      </div>
+      <div>
+        <p className="g-overline text-gypi-dim mb-1">Más opciones</p>
+        <div className="bg-gypi-surface border border-gypi-border rounded-xl divide-y divide-gypi-border">
+          <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-between px-4 py-3 text-[13px] text-gypi-text no-underline">
+            <span>Configuración de anuncios de Google</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+          <a href="/privacy#publicidad" className="flex items-center justify-between px-4 py-3 text-[13px] text-gypi-text no-underline">
+            <span>Política de privacidad y cookies</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [] }) {
   const [section, setSection] = useState("parametros");
@@ -127,6 +188,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
         {subtab === "documentacion" && <DocumentosEmpleadoScreen empresaId={empresaId} />}
         {subtab === "reglas"      && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
         {subtab === "admin"       && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
+        {subtab === "privacidad"  && <PrivacidadPanel />}
       </div>
     </div>
   );

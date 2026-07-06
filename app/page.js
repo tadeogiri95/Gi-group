@@ -99,26 +99,7 @@ function formatPrecio(n) {
    KPI counter animation
    ═══════════════════════════════════════════════════ */
 function AnimatedNumber({ target, suffix = "" }) {
-  const [val, setVal] = useState(0);
-  const ref = useRef(null);
-  const started = useRef(false);
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && !started.current) {
-        started.current = true;
-        let start = 0;
-        const step = Math.ceil(target / 40);
-        const t = setInterval(() => {
-          start += step;
-          if (start >= target) { setVal(target); clearInterval(t); }
-          else setVal(start);
-        }, 30);
-      }
-    }, { threshold: 0.3 });
-    if (ref.current) obs.observe(ref.current);
-    return () => obs.disconnect();
-  }, [target]);
-  return <span ref={ref}>{val.toLocaleString("es-AR")}{suffix}</span>;
+  return <span>{target === 0 ? "0" : target.toLocaleString("es-AR")}{suffix}</span>;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -601,9 +582,9 @@ export default function Landing() {
             <span style={{ fontFamily: fH, fontSize: 15, fontWeight: 700 }}>Gypi</span>
           </div>
           <div style={{ display: "flex", gap: 24, fontSize: 13, color: DIM }}>
-            <button onClick={() => scrollTo("features")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13 }}>Features</button>
-            <button onClick={() => scrollTo("pricing")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13 }}>Precios</button>
-            <button onClick={() => scrollTo("login")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13 }}>Ingresar</button>
+            <a href="#features" style={{ color: DIM, textDecoration: "none", fontSize: 13 }}>Features</a>
+            <a href="/pricing" style={{ color: DIM, textDecoration: "none", fontSize: 13 }}>Precios</a>
+            <a href="#login" style={{ color: DIM, textDecoration: "none", fontSize: 13 }}>Ingresar</a>
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}`, flexWrap: "wrap" }}>

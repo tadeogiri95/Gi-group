@@ -68,8 +68,8 @@ export default function CookieConsent() {
         </div>
       </div>
       <p style={{ margin: 0, fontSize: 11, color: "#6B645D", textAlign: "center" }}>
-        Podés cambiar tu elección en cualquier momento desde la{" "}
-        <a href="/privacy" style={{ color: "#6B645D", textDecoration: "underline" }}>Configuración de la app</a>.
+        Podés cambiar esta preferencia en cualquier momento. Ver{" "}
+        <a href="/privacy#publicidad" style={{ color: "#6B645D", textDecoration: "underline" }}>nuestra política de privacidad</a>.
       </p>
     </div>
   );

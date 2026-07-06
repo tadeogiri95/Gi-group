@@ -21,21 +21,21 @@ export default function AdSlot({ plan }) {
   const slotId = process.env.NEXT_PUBLIC_ADSENSE_SLOT_DASHBOARD;
   const habilitado = planPermite(plan, "mostrar_publicidad") && !!clientId && !!slotId;
 
-  const [consented, setConsented] = useState(false);
+  const [consent, setConsent] = useState(null);
   useEffect(() => {
-    try {
-      if (localStorage.getItem("gypi_cookie_consent") === "1") setConsented(true);
-    } catch {}
+    try { setConsent(localStorage.getItem("gypi_cookie_consent")); } catch {}
   }, []);
 
-  if (!habilitado || !consented) return null;
+  if (!habilitado) return null;
 
+  const personalized = consent === "1";
+  const npaAttr = personalized ? "" : ' data-ad-request-nonpersonalized-ads="1"';
   const adScriptSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(clientId)}`;
   const sc = "</" + "script>";
   const srcDoc =
     `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">` +
     `<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}</style></head><body>` +
-    `<ins class="adsbygoogle" style="display:block" data-ad-client="${clientId}" data-ad-slot="${slotId}" data-ad-format="auto" data-full-width-responsive="true"></ins>` +
+    `<ins class="adsbygoogle" style="display:block" data-ad-client="${clientId}" data-ad-slot="${slotId}" data-ad-format="auto" data-full-width-responsive="true"${npaAttr}></ins>` +
     `<script async crossorigin="anonymous" src="${adScriptSrc}">${sc}` +
     `<script>(adsbygoogle=window.adsbygoogle||[]).push({})</` + `script>` +
     `</body></html>`;

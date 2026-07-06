@@ -149,8 +149,7 @@ export default function DocsPage() {
       </nav>
 
       {/* ─── INICIO RÁPIDO ─── */}
-      {tab === "Inicio rápido" && (
-        <div style={S.section}>
+      <div style={{...S.section, display: tab === "Inicio rápido" ? "block" : "none"}}>
           <h2 style={S.h2}>🚀 Inicio rápido</h2>
           <p style={S.p}>Desde que te registrás hasta que tu equipo empieza a fichar: menos de 10 minutos.</p>
 
@@ -170,11 +169,9 @@ export default function DocsPage() {
             </div>
           ))}
         </div>
-      )}
 
       {/* ─── FICHAJE ─── */}
-      {tab === "Fichaje" && (
-        <div style={S.section}>
+      <div style={{...S.section, display: tab === "Fichaje" ? "block" : "none"}}>
           <h2 style={S.h2}>🕐 Fichaje de asistencia</h2>
 
           <div style={S.card}>
@@ -197,11 +194,9 @@ export default function DocsPage() {
             <p style={S.p}>El gerente ve en tiempo real quién está fichado, llegadas tarde, horas de la semana y puede revisar el historial completo por empleado filtrando por fecha.</p>
           </div>
         </div>
-      )}
 
       {/* ─── ACTIVIDADES ─── */}
-      {tab === "Actividades" && (
-        <div style={S.section}>
+      <div style={{...S.section, display: tab === "Actividades" ? "block" : "none"}}>
           <h2 style={S.h2}>⚡ Registro de actividades</h2>
           <p style={S.p}>El módulo de actividades permite que cada operario registre en qué tarea estuvo trabajando y cuánto tiempo le dedicó.</p>
 
@@ -231,11 +226,9 @@ export default function DocsPage() {
             <p style={S.p}>El gerente ve en <strong>Producción en vivo</strong> qué está haciendo cada operario en este momento, con el tiempo transcurrido y el proyecto. Ideal para supervisión sin interrumpir el trabajo.</p>
           </div>
         </div>
-      )}
 
       {/* ─── GESTIÓN ─── */}
-      {tab === "Gestión" && (
-        <div style={S.section}>
+      <div style={{...S.section, display: tab === "Gestión" ? "block" : "none"}}>
           <h2 style={S.h2}>👥 Gestión de personal</h2>
 
           <div style={S.card}>
@@ -277,20 +270,16 @@ export default function DocsPage() {
             <p style={S.p}>Instalá la app como PWA (Agregar a pantalla de inicio) para recibir notificaciones push cuando lleguen solicitudes, mensajes del chat operativo o alertas de asistencia.</p>
           </div>
         </div>
-      )}
 
       {/* ─── FAQs ─── */}
-      {tab === "FAQs" && (
-        <div style={S.section}>
+      <div style={{...S.section, display: tab === "FAQs" ? "block" : "none"}}>
           <h2 style={S.h2}>❓ Preguntas frecuentes</h2>
           {FAQS.map((f, i) => <FAQ key={i} {...f} />)}
           <p style={{ ...S.p, marginTop: 24 }}>¿No encontrás tu respuesta? Escribinos a <a href="mailto:contacto@gypi.app" style={{ color: "#F97316" }}>contacto@gypi.app</a></p>
-        </div>
-      )}
+      </div>
 
       {/* ─── PLANES ─── */}
-      {tab === "Planes" && (
-        <div style={S.section}>
+      <div style={{...S.section, display: tab === "Planes" ? "block" : "none"}}>
           <h2 style={S.h2}>💳 Planes disponibles</h2>
           <p style={S.p}>Todos los planes incluyen acceso para empleados y administradores. El precio varía según la cantidad de empleados y funciones habilitadas.</p>
 
@@ -317,7 +306,6 @@ export default function DocsPage() {
 
           <p style={{ ...S.p, marginTop: 24 }}>Para contratar o consultar precios actualizados: <a href="mailto:contacto@gypi.app" style={{ color: "#F97316" }}>contacto@gypi.app</a> o desde la pantalla de Configuración dentro de la app.</p>
         </div>
-      )}
     </div>
   );
 }
