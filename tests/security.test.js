@@ -115,7 +115,7 @@ describe("stripUnallowedFields — previene inyección de campos", () => {
     const clean = stripUnallowedFields(body, "empleados", "POST");
     assert.equal(clean.legajo, 1);
     assert.equal(clean.nombre, "Test");
-    assert.equal(clean.rol, "gerencial");
+    assert.equal(clean.rol, undefined, "rol no debe pasar por /api/data — las altas van por POST /api/empleados, que valida qué roles puede asignar cada sesión");
     assert.equal(clean.empresa_id, undefined, "empresa_id no debe pasar — se inyecta del token");
     assert.equal(clean.campo_raro, undefined, "campos no whitelisteados se descartan");
   });

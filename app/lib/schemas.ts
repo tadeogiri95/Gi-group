@@ -35,7 +35,11 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["leida"],
   },
   empleados: {
-    POST: ["legajo", "nombre", "apodo", "email", "area", "division", "rol", "diagrama", "activo", "password", "debe_cambiar_password", "estado_activacion"],
+    // Sin "password" ni "rol": las altas pasan por POST /api/empleados (hashea
+    // bcrypt server-side y limita qué roles puede asignar cada sesión). Dejarlos
+    // acá permitía crear empleados con contraseña en texto plano y que un
+    // administrativo creara gerenciales salteando esa regla.
+    POST: ["legajo", "nombre", "apodo", "email", "area", "division", "diagrama", "activo", "debe_cambiar_password", "estado_activacion"],
     PATCH: ["nombre", "apodo", "email", "area", "division", "diagrama", "activo", "debe_cambiar_password"],
   },
   registro_actividades: {

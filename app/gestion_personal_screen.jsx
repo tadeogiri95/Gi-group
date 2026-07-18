@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { sb, apiFetch } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
-import { passwordInicial } from "./lib/passwords";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
@@ -61,7 +60,7 @@ function legajoProvisorio() {
 }
 
 /* ═══ MODAL EMPLEADO ═══ */
-function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving }) {
+function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES }) {
   const [form, setForm] = useState(initialData);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const valid = form.nombre?.trim();
@@ -76,12 +75,16 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
         <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-4 font-heading text-lg font-bold text-gypi-text">{titulo}</h3>
 
-        {[["Nombre completo", "nombre"], ["Legajo / DNI", "legajo"], ["Apodo", "apodo"], ["Email", "email"]].map(([label, key]) => (
-          <div key={key} className="mb-3">
-            <label className="g-label block mb-1.5">{label}</label>
-            <input value={form[key] || ""} onChange={e => set(key, e.target.value)} placeholder={key === "legajo" ? "Opcional — se asigna uno provisorio" : ""} className="g-input" />
-          </div>
-        ))}
+        {[["Nombre completo", "nombre"], ["Legajo / DNI", "legajo"], ["Apodo", "apodo"], ["Email", "email"]].map(([label, key]) => {
+          // El legajo identifica las fichadas históricas — no se edita una vez creado.
+          const bloqueado = key === "legajo" && mode === "editar";
+          return (
+            <div key={key} className="mb-3">
+              <label className="g-label block mb-1.5">{label}{bloqueado ? " (no editable)" : ""}</label>
+              <input value={form[key] || ""} onChange={e => set(key, e.target.value)} disabled={bloqueado} placeholder={key === "legajo" ? "Opcional — se asigna uno provisorio" : ""} className="g-input" style={bloqueado ? { opacity: 0.5, cursor: "not-allowed" } : undefined} />
+            </div>
+          );
+        })}
 
         <div className="grid grid-cols-2 gap-2.5 mb-3">
           <div>
@@ -101,7 +104,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving 
         <div className="mb-5">
           <label className="g-label block mb-1.5">Rol</label>
           <div className="flex gap-1.5">
-            {ROLES.map(r => (
+            {rolesPermitidos.map(r => (
               <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `${AMBER}22` : "var(--color-surface)", color: form.rol === r ? AMBER : "var(--color-text-dim)" }}>{r}</button>
             ))}
           </div>
@@ -220,7 +223,9 @@ function ModalInvitacion({ link, onClose }) {
 
 /* ═══ MAIN COMPONENT ═══ */
 export default function GestionPersonalScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, empresa } = useAuth();
+  const { divisiones: divisionesCtx, empresa, usuario: sesion } = useAuth();
+  // Un administrativo no puede crear/asignar rol gerencial (misma regla que /api/empleados)
+  const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : ROLES.filter(r => r !== "gerencial");
   const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -281,26 +286,28 @@ export default function GestionPersonalScreen({ empresaId }) {
   });
 
   /* ── Alta ── */
+  // Va por POST /api/empleados (no /api/data): hashea la contraseña inicial
+  // server-side, valida legajo único (409), respeta el límite del plan,
+  // registra auditoría y manda el email de invitación si corresponde.
   const handleAlta = async (form) => {
     setSaving(true);
     try {
       const nombre = capitalizarNombre(form.nombre.trim());
-      const apodo = form.apodo?.trim() || generarApodo(nombre);
-      const legajo = form.legajo?.trim() || String(legajoProvisorio());
-      const payload = {
-        empresa_id: empresaId,
-        nombre,
-        apodo,
-        legajo,
-        division: form.division || null,
-        rol: form.rol || "operativo",
-        area: form.area || "produccion",
-        email: form.email?.trim() || null,
-        activo: true,
-        pre_cargado: !!form.pre_cargado,
-        password: passwordInicial(legajo),
-      };
-      await sb.post("empleados", payload);
+      const res = await apiFetch("/api/empleados", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre,
+          apodo: form.apodo?.trim() || generarApodo(nombre),
+          legajo: form.legajo?.trim() || String(legajoProvisorio()),
+          division: form.division || null,
+          rol: form.rol || "operativo",
+          area: form.area || "produccion",
+          email: form.email?.trim() || null,
+          pre_cargado: !!form.pre_cargado,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setModalAlta(null);
       cargar();
     } catch (err) {
@@ -312,20 +319,26 @@ export default function GestionPersonalScreen({ empresaId }) {
   };
 
   /* ── Editar ── */
+  // PATCH /api/empleados valida pertenencia a la empresa y solo permite
+  // cambiar rol a usuarios gerenciales. El legajo no se edita (identifica
+  // las fichadas históricas).
   const handleEditar = async (form) => {
     setSaving(true);
     try {
       const nombre = capitalizarNombre(form.nombre.trim());
-      const payload = {
-        nombre,
-        apodo: form.apodo?.trim() || generarApodo(nombre),
-        legajo: String(form.legajo ?? "").trim() || form.legajo,
-        division: form.division || null,
-        rol: form.rol || "operativo",
-        area: form.area || "produccion",
-        email: form.email?.trim() || null,
-      };
-      await sb.patch(`empleados?id=eq.${form.id}`, payload);
+      const res = await apiFetch(`/api/empleados?id=${encodeURIComponent(form.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          nombre,
+          apodo: form.apodo?.trim() || generarApodo(nombre),
+          division: form.division || null,
+          rol: form.rol || "operativo",
+          area: form.area || "produccion",
+          email: form.email?.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setModalEditar(null);
       cargar();
     } catch (err) {
@@ -337,11 +350,15 @@ export default function GestionPersonalScreen({ empresaId }) {
   };
 
   /* ── Baja ── */
+  // DELETE /api/empleados hace el soft-delete con auditoría y bloquea
+  // desactivarse a uno mismo.
   const handleBaja = async () => {
     if (!modalBaja) return;
     setSaving(true);
     try {
-      await sb.patch(`empleados?id=eq.${modalBaja.id}`, { activo: false });
+      const res = await apiFetch(`/api/empleados?id=${encodeURIComponent(modalBaja.id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setModalBaja(null);
       cargar();
     } catch (err) {
@@ -576,6 +593,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           mode="alta"
           initialData={modalAlta}
           divisiones={DIVISIONES}
+          rolesPermitidos={rolesPermitidos}
           onClose={() => setModalAlta(null)}
           onSave={handleAlta}
           saving={saving}
@@ -586,6 +604,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           mode="editar"
           initialData={modalEditar}
           divisiones={DIVISIONES}
+          rolesPermitidos={rolesPermitidos}
           onClose={() => setModalEditar(null)}
           onSave={handleEditar}
           saving={saving}

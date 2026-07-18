@@ -42,7 +42,7 @@ export async function POST(request) {
   }
 
   const body = await request.json();
-  const { legajo, nombre, email, area, division, rol } = body;
+  const { legajo, nombre, email, area, division, rol, apodo, pre_cargado } = body;
 
   if (!legajo || !nombre) {
     return NextResponse.json({ error: "legajo y nombre son requeridos" }, { status: 400 });
@@ -82,11 +82,14 @@ export async function POST(request) {
   const rolFinal = rolesValidos.includes(rol) ? rol : "operativo";
   const passwordHash = await bcrypt.hash(passwordInicial(), 10);
 
+  // pre_cargado: el empleado activa su cuenta (y define su contraseña) desde
+  // el link /[slug]/unirse — requiere estado_activacion "pendiente_activacion".
+  const esPendiente = !!pre_cargado || !!email;
   const [nuevo] = await sbPost("empleados", {
     empresa_id: sesion.empresa_id,
     legajo: legajoNum,
     nombre: nombre.trim(),
-    apodo: nombre.trim().split(" ")[0],
+    apodo: (typeof apodo === "string" && apodo.trim()) || nombre.trim().split(" ")[0],
     email: email?.trim() || null,
     area: area?.trim() || "produccion",
     division: division?.trim() || null,
@@ -94,7 +97,8 @@ export async function POST(request) {
     activo: true,
     password: passwordHash,
     debe_cambiar_password: true,
-    estado_activacion: email ? "pendiente_activacion" : "activo",
+    pre_cargado: !!pre_cargado,
+    estado_activacion: esPendiente ? "pendiente_activacion" : "activo",
   });
 
   logAudit({
