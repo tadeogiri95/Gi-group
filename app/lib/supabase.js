@@ -167,6 +167,23 @@ export async function apiFetch(url, opts = {}) {
   return fetch(url, { ...opts, headers, credentials: "include" });
 }
 
+// Trae todas las páginas de un GET — el proxy /api/data capea cada request
+// en 1000 filas, así que un rango de un mes con muchos empleados se truncaba
+// en silencio. Devuelve { data, truncado }: truncado=true si se alcanzó
+// maxFilas y puede haber más (el caller debe avisarlo en la UI).
+export async function sbGetAll(path, { pageSize = 1000, maxFilas = 5000 } = {}) {
+  const sep = path.includes("?") ? "&" : "?";
+  const data = [];
+  let offset = 0;
+  while (offset < maxFilas) {
+    const page = await req("GET", `${path}${sep}limit=${pageSize}&offset=${offset}`);
+    data.push(...(page || []));
+    if (!page || page.length < pageSize) return { data, truncado: false };
+    offset += pageSize;
+  }
+  return { data, truncado: true };
+}
+
 export const sb = {
   get: (path) => req("GET", path),
   // getPage: paginación keyset — requiere que `path` incluya order=columna.dir.

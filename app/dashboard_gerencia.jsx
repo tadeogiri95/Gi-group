@@ -362,12 +362,18 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const aprobadas = solicitudes.filter(s => s.estado === "aprobado");
   const rechazadas = solicitudes.filter(s => s.estado === "rechazado");
 
-  // Asistencia: presentes vs programados
+  // Asistencia: presentes vs programados. El cumplimiento solo cuenta a los
+  // programados que ficharon — alguien trabajando fuera de diagrama (un
+  // sábado, un franco) suma como presente pero no puede llevar el
+  // cumplimiento arriba del 100% (antes un sábado daba "1100%").
   const presentes = fichadasHoy.length;
   const diaKey = ahoraArg().diaKey;
-  const programados = empActivos.filter(e => e.diagrama && e.diagrama[diaKey]).length;
-  const ausentes = Math.max(0, programados - presentes);
-  const pctAsist = programados > 0 ? Math.round((presentes / programados) * 100) : 0;
+  const empProgramados = empActivos.filter(e => e.diagrama && e.diagrama[diaKey]);
+  const programados = empProgramados.length;
+  const legajosProgramados = new Set(empProgramados.map(e => e.legajo));
+  const presentesProgramados = fichadasHoy.filter(f => legajosProgramados.has(f.legajo)).length;
+  const ausentes = Math.max(0, programados - presentesProgramados);
+  const pctAsist = programados > 0 ? Math.round((presentesProgramados / programados) * 100) : 0;
 
   // Tardanzas semana
   const tardesEstaSemana = fichadasSemana.filter(f => f.llegada_tarde).length;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
-import { sb, getToken } from "./lib/supabase";
+import { sb, sbGetAll, getToken } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
 import FotoViewer from "./components/FotoViewer";
@@ -135,6 +135,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
   const [datos, setDatos] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [truncado, setTruncado] = useState(false);
   const [expandedOT, setExpandedOT] = useState(null);
 
   useEffect(() => {
@@ -142,11 +143,12 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
     (async () => {
       setLoading(true);
       try {
-        const [regs, proys] = await Promise.all([
-          sb.get(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,codigo_proyecto,etapa,division,duracion_min,observaciones&order=fecha.desc`),
+        const [regsRes, proys] = await Promise.all([
+          sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,codigo_proyecto,etapa,division,duracion_min,observaciones&order=fecha.desc`),
           sb.get(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,ot,cliente,proyecto`),
         ]);
-        setDatos(regs || []);
+        setDatos(regsRes.data || []);
+        setTruncado(regsRes.truncado);
         setProyectos(proys || []);
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
@@ -223,6 +225,13 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
           <div className="text-[9px] text-gypi-dim font-bold">Tiempo total</div>
         </div>
       </div>
+
+      {/* Aviso de datos incompletos */}
+      {truncado && (
+        <div role="alert" className="p-3 rounded-[10px] text-xs mb-3.5 font-body" style={{ background: `color-mix(in srgb, ${AMBER} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 19%, transparent)`, color: AMBER }}>
+          ⚠ El período tiene más registros de los que se pueden mostrar (5000). Los totales están incompletos — acotá el rango de fechas.
+        </div>
+      )}
 
       {/* Botón exportar */}
       <button onClick={exportarCSV} className="w-full py-2.5 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-xs font-bold text-gypi-text cursor-pointer mb-3.5 font-body">
@@ -543,12 +552,14 @@ export default function ReportesScreen() {
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
-      const [emps, fichs] = await Promise.all([
+      const [emps, fichsRes] = await Promise.all([
         sb.get(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,apodo,legajo,division,area,rol,diagrama&order=nombre.asc`),
-        sb.get(`fichadas?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=legajo,fecha,ingreso,egreso,horas_trabajadas&order=fecha.asc`),
+        // Paginado: un mes con muchos empleados supera el cap de 1000 filas
+        // por request de /api/data y el reporte quedaba truncado en silencio.
+        sbGetAll(`fichadas?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=legajo,fecha,ingreso,egreso,horas_trabajadas&order=fecha.asc`),
       ]);
       setEmpleados((emps || []).filter(e => e.rol === "operativo"));
-      setFichadas(fichs || []);
+      setFichadas(fichsRes.data || []);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [fechaDesde, fechaHasta, empresaId]);

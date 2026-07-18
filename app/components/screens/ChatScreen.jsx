@@ -22,7 +22,7 @@ const FB = "var(--font-body)";
 const FM = "var(--font-mono)";
 import { sb } from "../../lib/supabase";
 import { callClaude, parseAction } from "../../lib/claude";
-import { sendPushToLegajo } from "../../lib/push";
+import { sendPushToRole } from "../../lib/push";
 import { ficharServer, obtenerGeo } from "../../lib/fichar";
 import { Ic } from "../Icons";
 import FichadaCard from "../cards/FichadaCard";
@@ -75,18 +75,18 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
         case "SOLICITAR_PERMISO":
           await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "permiso", motivo: action.motivo || "", fecha: fechaValida(action.fecha), desde: action.desde || "—", hasta: action.hasta || "—", estado: "pendiente", empresa_id: usuario.empresa_id });
           await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `${usuario.apodo} pidió permiso`, detalle: action.motivo, urgencia: "normal", empresa_id: usuario.empresa_id });
-          sendPushToLegajo("1", "📋 Nuevo permiso", `${usuario.apodo} solicitó permiso: ${action.motivo || "sin detalle"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
+          sendPushToRole("gerencial", "📋 Nuevo permiso", `${usuario.apodo} solicitó permiso: ${action.motivo || "sin detalle"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
           card = { type: "solicitud", motivo: action.motivo, fecha: action.fecha };
           break;
         case "AVISAR_TARDANZA":
           await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "tardanza", motivo: `Tardanza: ${action.motivo || ""}`, fecha: fechaValida(), estado: "registrado", empresa_id: usuario.empresa_id });
           await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "alerta", asunto: `Tardanza de ${usuario.apodo}`, detalle: action.motivo, urgencia: "normal", empresa_id: usuario.empresa_id });
-          sendPushToLegajo("1", "⏰ Tardanza", `${usuario.apodo}: ${action.motivo || "sin detalle"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
+          sendPushToRole("gerencial", "⏰ Tardanza", `${usuario.apodo}: ${action.motivo || "sin detalle"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
           break;
         case "AVISAR_AUSENCIA":
           await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "ausencia", motivo: action.motivo || "Ausencia", fecha: fechaValida(action.fecha), estado: "pendiente", empresa_id: usuario.empresa_id });
           await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "alerta", asunto: `Ausencia de ${usuario.apodo}`, detalle: action.motivo, urgencia: "alta", empresa_id: usuario.empresa_id });
-          sendPushToLegajo("1", "🚨 Ausencia", `${usuario.apodo}: ${action.motivo || "Ausencia"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
+          sendPushToRole("gerencial", "🚨 Ausencia", `${usuario.apodo}: ${action.motivo || "Ausencia"}`, { empresa_id: usuario.empresa_id }).catch(() => {});
           break;
         case "NOTIFICAR_GERENCIA":
           await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "info", asunto: action.asunto, detalle: action.detalle, urgencia: action.urgencia || "normal", empresa_id: usuario.empresa_id });
@@ -118,7 +118,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
         const hora2 = fmtTime(new Date());
         await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "permiso", motivo: `🔓 Permiso de INGRESO por bloqueo (${hora2})`, fecha: hoy, desde: hora2, hasta: "—", estado: "pendiente", empresa_id: usuario.empresa_id });
         await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `🔓 ${usuario.apodo} solicita permiso de INGRESO`, detalle: `Ingreso bloqueado a las ${hora2}. Requiere autorización para fichar.`, urgencia: "alta", empresa_id: usuario.empresa_id });
-        sendPushToLegajo("1", "🔓 Permiso de ingreso", `${usuario.apodo} solicita autorización para ingresar (${hora2})`, { empresa_id: usuario.empresa_id }).catch(() => {});
+        sendPushToRole("gerencial", "🔓 Permiso de ingreso", `${usuario.apodo} solicita autorización para ingresar (${hora2})`, { empresa_id: usuario.empresa_id }).catch(() => {});
         setMsgs(m => [...m, { from: "bot", text: "✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: "🔓 Permiso de INGRESO por bloqueo", fecha: hoy } }]);
         if (reload) reload();
       } catch (e) { console.error(e); setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud. Probá de nuevo.", time: new Date() }]); }
@@ -147,7 +147,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
         const hoy = hoyArg();
         await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "hora_extra", motivo: "Solicitud de hora extra — llegó tarde pero trabajó más de la jornada habitual", fecha: hoy, estado: "pendiente", empresa_id: usuario.empresa_id });
         await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `${usuario.apodo} solicita hora extra`, detalle: "Llegó tarde pero trabajó más tiempo que su jornada habitual.", urgencia: "normal", empresa_id: usuario.empresa_id });
-        sendPushToLegajo("1", "🕐 Hora extra", `${usuario.apodo} solicita aprobación de hora extra`, { empresa_id: usuario.empresa_id }).catch(() => {});
+        sendPushToRole("gerencial", "🕐 Hora extra", `${usuario.apodo} solicita aprobación de hora extra`, { empresa_id: usuario.empresa_id }).catch(() => {});
         setMsgs(m => [...m, { from: "bot", text: "✅ Solicitud de hora extra enviada a gerencia. Te aviso cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: "Hora extra", fecha: hoy } }]);
         if (reload) reload();
       } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud.", time: new Date() }]); }
