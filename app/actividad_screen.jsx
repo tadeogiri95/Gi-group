@@ -414,7 +414,7 @@ export default function ActividadScreen({
               <div className="text-xs text-gypi-dim mb-4">¿Es trabajo normal o hay algo especial?</div>
               <div className="flex flex-col gap-2 mb-6">
                 {TIPOS.map(t => (
-                  <button key={t.cod} onClick={() => setTipoSeleccionado(t.cod)} className="py-3.5 px-4 rounded-[14px] cursor-pointer flex items-center gap-3 font-body transition-all bg-gypi-surface" style={{ background: tipoSeleccionado === t.cod ? `${t.color}18` : undefined, border: `2px solid ${tipoSeleccionado === t.cod ? t.color : "transparent"}` }}>
+                  <button key={t.cod} onClick={() => setTipoSeleccionado(t.cod)} className="py-3.5 px-4 rounded-[14px] cursor-pointer flex items-center gap-3 font-body transition-all bg-gypi-surface" style={{ background: tipoSeleccionado === t.cod ? `color-mix(in srgb, ${t.color} 9%, transparent)` : undefined, border: `2px solid ${tipoSeleccionado === t.cod ? t.color : "transparent"}` }}>
                     <div className="w-6 h-6 rounded-full flex items-center justify-center transition-all" style={{ border: `2px solid ${tipoSeleccionado === t.cod ? t.color : 'var(--color-text-secondary)'}`, background: tipoSeleccionado === t.cod ? t.color : "transparent" }}>
                       {tipoSeleccionado === t.cod && <span className="text-xs font-black text-black">✓</span>}
                     </div>
@@ -502,11 +502,11 @@ export default function ActividadScreen({
     <div className="font-body flex flex-col flex-1 overflow-y-auto">
       <div className="p-5 flex-1 flex flex-col gap-4">
         <ErrorBanner />
-        <div className="rounded-3xl p-6 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${accentColor}12, var(--color-surface) 60%)`, border: `1px solid ${accentColor}30` }}>
-          <div className="absolute -top-[80px] -right-[80px] w-[240px] h-[240px] rounded-full blur-[80px]" style={{ background: `${accentColor}12` }} />
+        <div className="rounded-3xl p-6 relative overflow-hidden" style={{ background: `linear-gradient(135deg, color-mix(in srgb, ${accentColor} 7%, transparent), var(--color-surface) 60%)`, border: `1px solid color-mix(in srgb, ${accentColor} 19%, transparent)` }}>
+          <div className="absolute -top-[80px] -right-[80px] w-[240px] h-[240px] rounded-full blur-[80px]" style={{ background: `color-mix(in srgb, ${accentColor} 7%, transparent)` }} />
           <div className="relative">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl" style={{ background: `${accentColor}22`, color: accentColor }}>{etapaActiva?.icon}</div>
+              <div className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl" style={{ background: `color-mix(in srgb, ${accentColor} 13%, transparent)`, color: accentColor }}>{etapaActiva?.icon}</div>
               <div className="flex-1">
                 <div className="text-lg font-bold font-heading">{etapaActiva?.nombre}</div>
                 {!isEspera && (

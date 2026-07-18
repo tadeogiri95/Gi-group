@@ -15,7 +15,7 @@ export default function SolCard({ s, showActions, onResolve }) {
       className="g-card !p-3.5 relative overflow-hidden"
       style={{
         background: esPermisoIngreso && s.estado === "pendiente" ? `${RED}08` : undefined,
-        borderColor: esPermisoIngreso && s.estado === "pendiente" ? RED + "40" : s.estado === "pendiente" ? AMBER + "30" : undefined,
+        borderColor: esPermisoIngreso && s.estado === "pendiente" ? RED + "40" : s.estado === "pendiente" ? `color-mix(in srgb, ${AMBER} 19%, transparent)` : undefined,
       }}
     >
       <div className="flex justify-between items-start gap-2">

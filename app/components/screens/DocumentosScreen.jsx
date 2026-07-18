@@ -134,7 +134,7 @@ export default function DocumentosScreen() {
                   onClick={() => fileRefs.current[tipo.id]?.click()}
                   disabled={subiendo}
                   className="w-full py-2.5 rounded-lg border-none text-[11px] font-bold cursor-pointer min-h-[40px]"
-                  style={{ background: subiendo ? "var(--color-surf-hi)" : `${AMBER}18`, color: subiendo ? "var(--color-text-dim)" : AMBER }}
+                  style={{ background: subiendo ? "var(--color-surf-hi)" : `color-mix(in srgb, ${AMBER} 9%, transparent)`, color: subiendo ? "var(--color-text-dim)" : AMBER }}
                 >
                   {labelBoton}
                 </button>

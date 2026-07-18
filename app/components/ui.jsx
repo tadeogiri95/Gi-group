@@ -122,7 +122,9 @@ export function Tag({ children, color, className = '', style, ...props }) {
 function hexToSubtle(color, alpha = 0.12) {
   if (!color) return `rgba(0,0,0,${alpha})`;
   if (color.startsWith('rgba')) return color;
-  if (color.startsWith('var(')) return color;
+  // var() no admite alpha por concatenación — devolverla entera dejaba el
+  // fondo del Tag/Chip a plena intensidad (texto ilegible del mismo color).
+  if (color.startsWith('var(')) return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
   const hex = color.replace('#', '');
   if (hex.length !== 6) return `rgba(0,0,0,${alpha})`;
   const r = parseInt(hex.substring(0, 2), 16);

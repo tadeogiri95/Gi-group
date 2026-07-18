@@ -355,7 +355,7 @@ export default function CalendarioScreen({ empresaId }) {
               return (
                 <button key={dia} onClick={() => setVistaDetalle(vistaDetalle === dia ? null : dia)} aria-label={`${dia} de ${MESES[month]}${isHoy ? ' (hoy)' : ''}`} aria-pressed={vistaDetalle === dia} className="py-1.5 px-0.5 rounded-[10px] cursor-pointer flex flex-col items-center gap-0.5 min-h-[52px] transition-all duration-150" style={{
                   border: isHoy ? `2px solid ${AMBER}` : `1px solid ${"var(--color-border)"}`,
-                  background: isHoy ? `${AMBER}12` : tieneNotas ? `${CYAN}08` : "var(--color-surface)",
+                  background: isHoy ? `color-mix(in srgb, ${AMBER} 7%, transparent)` : tieneNotas ? `${CYAN}08` : "var(--color-surface)",
                 }}>
                   <div className="font-heading" style={{ fontSize: 14, fontWeight: isHoy ? 800 : 600, color: isHoy ? AMBER : esFinDeSemana ? "var(--color-text-muted)" : "var(--color-text)" }}>{dia}</div>
                   {info.disponibles > 0 && <div className="text-[8px] font-bold" style={{ color: GREEN }}>{info.disponibles}👷</div>}
@@ -385,7 +385,7 @@ export default function CalendarioScreen({ empresaId }) {
                   </div>
                   <div className="flex gap-1.5">
                     <button onClick={() => setTurnoDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `${CYAN}22`, color: CYAN }}>+ Turno</button>
-                    <button onClick={() => setSelectedDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `${AMBER}22`, color: AMBER }}>+ Nota</button>
+                    <button onClick={() => setSelectedDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>+ Nota</button>
                   </div>
                 </div>
 

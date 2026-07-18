@@ -236,7 +236,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
           return (
             <div key={p.ot} className="bg-gypi-surface rounded-xl overflow-hidden border border-gypi-border">
               <button onClick={() => setExpandedOT(isExpanded ? null : p.ot)} className="w-full flex items-center gap-3 p-3 text-left cursor-pointer bg-transparent border-none">
-                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: `${AMBER}15` }}>
+                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: `color-mix(in srgb, ${AMBER} 8%, transparent)` }}>
                   <span className="text-base">📋</span>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -346,10 +346,10 @@ function ReportesObraTab({ empresaId }) {
                       </div>
                     )}
                     {r.desvios?.length > 0 && (
-                      <div className="py-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${AMBER}10`, border: `1px solid ${AMBER}18` }}>
+                      <div className="py-2 px-2.5 rounded-[10px] mb-2" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 9%, transparent)` }}>
                         <div className="text-[10px] font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: AMBER }}>⚠️ Desvíos</div>
                         <div className="flex flex-wrap gap-1">
-                          {r.desvios.map((d, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold" style={{ background: `${AMBER}20`, color: AMBER }}>{d}</span>)}
+                          {r.desvios.map((d, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>)}
                         </div>
                       </div>
                     )}
@@ -705,7 +705,7 @@ export default function ReportesScreen() {
               {cumplimiento.map(c => {
                 const isExpanded = expandedEmp === c.emp.id;
                 return (
-                  <div key={c.emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${c.ausencias > 0 ? `${RED}30` : c.tardanzas > 0 ? `${AMBER}30` : "var(--color-border)"}` }}>
+                  <div key={c.emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${c.ausencias > 0 ? `${RED}30` : c.tardanzas > 0 ? `color-mix(in srgb, ${AMBER} 19%, transparent)` : "var(--color-border)"}` }}>
                     <div onClick={() => setExpandedEmp(isExpanded ? null : c.emp.id)} className="p-3.5 cursor-pointer flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-[13px] font-bold" style={{ background: `${pctColor(c.pctCumplimiento)}15`, color: pctColor(c.pctCumplimiento) }}>{c.pctCumplimiento}%</div>
                       <div className="flex-1 min-w-0">
@@ -738,7 +738,7 @@ export default function ReportesScreen() {
                             <div className="text-[9px] text-gypi-dim">Horas</div>
                           </div>
                           {c.totalTardanzaMin > 0 && (
-                            <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `${AMBER}12` }}>
+                            <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
                               <div className="font-mono text-sm font-bold text-gypi-amber">{c.totalTardanzaMin}m</div>
                               <div className="text-[9px] text-gypi-dim">Tard. total</div>
                             </div>
@@ -810,7 +810,7 @@ export default function ReportesScreen() {
                 <div className="font-heading text-[22px] font-bold text-gypi-red">{metricas.totalAusencias}</div>
                 <div className="text-[10px] text-gypi-dim mt-0.5">Ausencias totales</div>
               </div>
-              <div className="py-2.5 text-center rounded-[10px]" style={{ background: `${AMBER}10` }}>
+              <div className="py-2.5 text-center rounded-[10px]" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)` }}>
                 <div className="font-heading text-[22px] font-bold text-gypi-amber">{metricas.totalTardanzas}</div>
                 <div className="text-[10px] text-gypi-dim mt-0.5">Tardanzas totales</div>
               </div>

@@ -234,7 +234,7 @@ export default function Landing() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {["general", "industria", "construcción", "servicios", "comercio", "tecnología"].map(r => (
               <button key={r} onClick={() => setForm({ ...form, rubro: r })}
-                style={{ padding: "6px 12px", borderRadius: 20, border: `1px solid ${form.rubro === r ? AMBER : BORDER}`, background: form.rubro === r ? `${AMBER}22` : "transparent", color: form.rubro === r ? AMBER : DIM, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{r}</button>
+                style={{ padding: "6px 12px", borderRadius: 20, border: `1px solid ${form.rubro === r ? AMBER : BORDER}`, background: form.rubro === r ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "transparent", color: form.rubro === r ? AMBER : DIM, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{r}</button>
             ))}
           </div>
         </div>

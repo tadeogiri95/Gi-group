@@ -131,7 +131,7 @@ export default function LoginScreen({ onLogin, empresa }) {
       {/* Ambient glow */}
       <div
         className="absolute top-[15%] left-1/2 -translate-x-1/2 w-[260px] h-[260px] rounded-full pointer-events-none blur-[40px]"
-        style={{ background: `radial-gradient(circle, var(--color-empresa-primary)12 0%, transparent 70%)` }}
+        style={{ background: `radial-gradient(circle, color-mix(in srgb, var(--color-empresa-primary) 7%, transparent) 0%, transparent 70%)` }}
       />
 
       <div className="relative">

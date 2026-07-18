@@ -308,7 +308,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                       </div>
                                     )}
                                     {parseFloat(fichadaDetalle.horas_extra) > 0 && (
-                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: `${AMBER}20` }}>
+                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)` }}>
                                         <span className="font-bold" style={{ color: AMBER }}>+{parseFloat(fichadaDetalle.horas_extra).toFixed(1)}h extra</span>
                                       </div>
                                     )}
@@ -359,7 +359,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                               {tipoAct.label}
                                             </span>
                                             {enCurso && (
-                                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${AMBER}20`, color: AMBER }}>
+                                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>
                                                 EN CURSO
                                               </span>
                                             )}

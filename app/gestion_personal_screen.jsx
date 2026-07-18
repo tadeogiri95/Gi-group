@@ -105,7 +105,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
           <label className="g-label block mb-1.5">Rol</label>
           <div className="flex gap-1.5">
             {rolesPermitidos.map(r => (
-              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `${AMBER}22` : "var(--color-surface)", color: form.rol === r ? AMBER : "var(--color-text-dim)" }}>{r}</button>
+              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "var(--color-surface)", color: form.rol === r ? AMBER : "var(--color-text-dim)" }}>{r}</button>
             ))}
           </div>
         </div>
@@ -158,7 +158,7 @@ function ModalCSVPreview({ filas, divisiones, onClose, onConfirm, saving, progre
           {filas.length > 100 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filas.length - 100} mas</div>}
         </div>
 
-        {saving && progreso && <div className="p-2.5 rounded-[10px] text-xs mb-2.5 text-center" style={{ background: `${AMBER}15`, color: AMBER }}>{progreso}</div>}
+        {saving && progreso && <div className="p-2.5 rounded-[10px] text-xs mb-2.5 text-center" style={{ background: `color-mix(in srgb, ${AMBER} 8%, transparent)`, color: AMBER }}>{progreso}</div>}
 
         <div className="flex gap-2">
           <button onClick={onClose} disabled={saving} className="g-btn g-btn-secondary flex-1" style={{ cursor: saving ? "default" : "pointer" }}>Cancelar</button>

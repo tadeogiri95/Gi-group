@@ -220,7 +220,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
               const horas = calcHoras(row);
               const diasActivos = DIAS.filter(d => row[d]).length;
               return (
-                <div key={emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${changed ? `${AMBER}40` : "var(--color-border)"}` }}>
+                <div key={emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${changed ? `color-mix(in srgb, ${AMBER} 25%, transparent)` : "var(--color-border)"}` }}>
                   <button onClick={() => setExpandedId(isExp ? null : emp.id)} aria-expanded={isExp} className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left">
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
@@ -274,7 +274,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
         <div className="fixed bottom-[100px] left-1/2 -translate-x-1/2 z-50 max-w-[440px] w-[calc(100%-36px)]">
           <button onClick={guardarYNotificar} disabled={saving} className="w-full py-4 rounded-2xl border-none text-[15px] font-bold font-heading flex items-center justify-center gap-2" style={{
             background: saving ? "var(--color-surface)" : `linear-gradient(135deg, ${AMBER}, ${VIOLET})`,
-            color: saving ? "var(--color-text-dim)" : "#000", cursor: saving ? "default" : "pointer", boxShadow: `0 8px 32px ${AMBER}30`,
+            color: saving ? "var(--color-text-dim)" : "#000", cursor: saving ? "default" : "pointer", boxShadow: `0 8px 32px color-mix(in srgb, ${AMBER} 19%, transparent)`,
           }}>{saving ? "⏳ Guardando..." : `📤 Guardar y notificar ${totalCambios} empleado${totalCambios > 1 ? "s" : ""}`}</button>
         </div>
       )}

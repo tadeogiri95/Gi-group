@@ -241,11 +241,11 @@ export default function InstaladorScreen({ usuario, empresa }) {
           )}
 
           {reporte.desvios?.length > 0 && (
-            <div className="bg-gypi-amber-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${AMBER}33` }}>
+            <div className="bg-gypi-amber-s rounded-2xl p-4 mb-3" style={{ border: `1px solid color-mix(in srgb, ${AMBER} 20%, transparent)` }}>
               <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-amber mb-2 font-body">⚠️ Desvíos / Imprevistos</div>
               <div className="flex flex-wrap">
                 {reporte.desvios.map((d, i) => (
-                  <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `${AMBER}22`, color: AMBER }}>{d}</span>
+                  <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>
                 ))}
               </div>
             </div>

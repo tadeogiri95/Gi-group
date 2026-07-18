@@ -57,7 +57,7 @@ function MiniBarChart({ data, maxVal, color = AMBER, height = 80, barWidth = 16,
           const y = height - bh;
           return (
             <g key={i}>
-              <rect x={x} y={y} width={barWidth} height={bh} rx={4} fill={`${color}${v > 0 ? "CC" : "33"}`} />
+              <rect x={x} y={y} width={barWidth} height={bh} rx={4} fill={color} fillOpacity={v > 0 ? 0.8 : 0.2} />
               {v > 0 && (
                 <text x={x + barWidth / 2} y={y - 4} textAnchor="middle" fill="var(--color-text-muted)" fontSize="9" fontFamily="var(--font-mono)" fontWeight="600">{Math.round(v)}</text>
               )}
@@ -103,7 +103,7 @@ function DonutChart({ value, total, color = GREEN, size = 72, strokeWidth = 7, l
 const PulseDot = ({ color = GREEN, size = 8 }) => (
   <span className="inline-block rounded-full animate-[pulse_2s_ease-in-out_infinite]" style={{
     width: size, height: size,
-    background: color, boxShadow: `0 0 ${size}px ${color}88`,
+    background: color, boxShadow: `0 0 ${size}px color-mix(in srgb, ${color} 53%, transparent)`,
   }} />
 );
 
@@ -122,7 +122,7 @@ function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas, onClick }) {
       <div className="flex-1 h-3.5 bg-gypi-surf-hi rounded overflow-hidden relative">
         <div className="absolute top-px bottom-px rounded-[3px] min-w-1" style={{
           left: `${left}%`, width: `${width}%`,
-          background: egreso ? `${GREEN}88` : `linear-gradient(90deg, ${GREEN}88, ${AMBER}66)`,
+          background: egreso ? `${GREEN}88` : `linear-gradient(90deg, ${GREEN}88, color-mix(in srgb, ${AMBER} 40%, transparent))`,
         }} />
       </div>
       <div className="w-[46px] text-right font-mono text-[11px] font-bold" style={{ color: egreso ? GREEN : AMBER }}>
@@ -206,11 +206,11 @@ function ReportesObraPanel({ reportesObra }) {
 
                       {/* Desvios */}
                       {r.desvios?.length > 0 && (
-                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${AMBER}10`, border: `1px solid ${AMBER}18` }}>
+                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 9%, transparent)` }}>
                           <div className="g-overline text-gypi-amber mb-1.5">&#x26A0;&#xFE0F; Desvios</div>
                           <div className="flex flex-wrap gap-1">
                             {r.desvios.map((d, i) => (
-                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `${AMBER}20`, color: AMBER }}>{d}</span>
+                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>
                             ))}
                           </div>
                         </div>
@@ -235,7 +235,7 @@ function ReportesObraPanel({ reportesObra }) {
 
                       {/* Sin fotos pero dice que adjunto */}
                       {!tieneFotos && r.fotos > 0 && (
-                        <div className="p-2 px-2.5 rounded-lg text-[11px] text-gypi-dim" style={{ background: `${MUTE}08` }}>
+                        <div className="p-2 px-2.5 rounded-lg text-[11px] text-gypi-dim" style={{ background: `color-mix(in srgb, ${MUTE} 3%, transparent)` }}>
                           &#x1F4F7; El instalador indico {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
                         </div>
                       )}
@@ -573,8 +573,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <div key={i}
               className="flex items-center gap-3 px-3.5 py-3 rounded-[14px] mb-2 cursor-pointer transition-[transform,box-shadow] duration-150 ease-out"
               style={{
-                background: `${a.color}08`, border: `1.5px solid ${a.color}20`,
-                boxShadow: `0 2px 8px ${a.color}10`,
+                background: `color-mix(in srgb, ${a.color} 3%, transparent)`, border: `1.5px solid color-mix(in srgb, ${a.color} 13%, transparent)`,
+                boxShadow: `0 2px 8px color-mix(in srgb, ${a.color} 6%, transparent)`,
               }}
               onClick={() => {
                 if (a.target) goto?.(a.target);
@@ -593,7 +593,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Solicitudes pendientes ─── */}
       {pendientes.length > 0 && (
-        <section aria-label="Solicitudes pendientes" className="g-card mb-4" style={{ borderColor: `${AMBER}30` }}>
+        <section aria-label="Solicitudes pendientes" className="g-card mb-4" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
           <div className="flex justify-between items-center mb-3">
             <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Solicitudes pendientes</div>
             <Tag color={AMBER}>{pendientes.length} pendientes</Tag>
@@ -625,11 +625,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")}
           className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
           style={{
-            background: panelExpanded === "taller" ? `${AMBER}18` : "var(--color-surface)",
-            border: `1px solid ${panelExpanded === "taller" ? AMBER + "50" : "var(--color-border)"}`,
+            background: panelExpanded === "taller" ? `color-mix(in srgb, ${AMBER} 9%, transparent)` : "var(--color-surface)",
+            border: `1px solid ${panelExpanded === "taller" ? `color-mix(in srgb, ${AMBER} 31%, transparent)` : "var(--color-border)"}`,
           }}
         >
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `${AMBER}22` }}>&#x1F525;</div>
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)` }}>&#x1F525;</div>
           <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? AMBER : "var(--color-text)" }}>Estado Taller</span>
         </button>
         <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
@@ -646,7 +646,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Panel expandido: Estado Taller ─── */}
       {panelExpanded === "taller" && (
-        <section aria-label="Estado taller" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${AMBER}30` }}>
+        <section aria-label="Estado taller" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
           <div className="flex justify-between items-center mb-3">
             <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Produccion en vivo</div>
             <div className="flex items-center gap-1.5">
@@ -661,7 +661,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               <div className="font-mono text-base font-bold" style={{ color: GREEN }}>{enActividad}</div>
               <div className="g-kpi-label">Trabajando</div>
             </div>
-            <div className="g-kpi" style={{ background: `${AMBER}12` }}>
+            <div className="g-kpi" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
               <div className="font-mono text-base font-bold" style={{ color: AMBER }}>{enEspera}</div>
               <div className="g-kpi-label">En espera</div>
             </div>
@@ -710,7 +710,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
           <button onClick={() => goto?.("ger-actividad")}
             className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
-            style={{ background: `${AMBER}12`, border: `1px solid ${AMBER}25`, color: AMBER }}
+            style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 15%, transparent)`, color: AMBER }}
           >
             &#x1F525; Ver detalle por operario &rarr;
           </button>
@@ -739,7 +739,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               <div className="font-mono text-base font-bold" style={{ color: obrasConFaltantes > 0 ? RED : GREEN }}>{obrasConFaltantes}</div>
               <div className="g-kpi-label">Con faltantes</div>
             </div>
-            <div className="g-kpi" style={{ background: `${AMBER}12` }}>
+            <div className="g-kpi" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
               <div className="font-mono text-base font-bold" style={{ color: obrasConDesvios > 0 ? AMBER : GREEN }}>{obrasConDesvios}</div>
               <div className="g-kpi-label">Con desvios</div>
             </div>
@@ -783,7 +783,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(pctAsist) }}>{pctAsist}%</div>
             <div className="g-kpi-label">Cumplim.</div>
           </div>
-          <div className="g-kpi" style={{ background: tardesEstaSemana > 0 ? `${AMBER}10` : `${GREEN}05` }}>
+          <div className="g-kpi" style={{ background: tardesEstaSemana > 0 ? `color-mix(in srgb, ${AMBER} 6%, transparent)` : `${GREEN}05` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: tardesEstaSemana > 0 ? AMBER : GREEN }}>{tardesEstaSemana}</div>
             <div className="g-kpi-label">Tardes sem.</div>
           </div>
@@ -816,7 +816,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         const top3 = ranking.slice(0, 3);
         const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
         return (
-          <button onClick={() => setShowFullRanking(true)} className="card-hover g-card mb-4 w-full cursor-pointer text-left block" style={{ borderColor: `${AMBER}30` }}>
+          <button onClick={() => setShowFullRanking(true)} className="card-hover g-card mb-4 w-full cursor-pointer text-left block" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-1.5">
                 <span className="text-base">&#x1F3C6;</span>
@@ -859,7 +859,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
         {/* General */}
         <div className="flex gap-2 mb-3.5">
-          <div className="flex-1 g-kpi" style={{ background: `${AMBER}10` }}>
+          <div className="flex-1 g-kpi" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(pctProd) }}>{pctProd}%</div>
             <div className="g-kpi-label">General</div>
           </div>
@@ -1038,7 +1038,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                   <div className="text-lg font-extrabold text-gypi-text font-heading mt-0.5">{d.nombre}</div>
                   <div className="text-[11px] text-gypi-dim mt-0.5">{d.division || "Sin division"} &middot; L-{d.legajo}</div>
                 </div>
-                <div className="w-12 h-12 rounded-[14px] flex flex-col items-center justify-center" style={{ background: `${AMBER}12` }}>
+                <div className="w-12 h-12 rounded-[14px] flex flex-col items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
                   <div className="text-lg font-extrabold font-heading leading-none" style={{ color: AMBER }}>{d.score}</div>
                   <div className="text-[8px] text-gypi-dim font-bold">pts</div>
                 </div>
@@ -1059,7 +1059,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 ))}
               </div>
 
-              <div className="mt-3.5 px-3 py-2.5 rounded-[10px] flex justify-between items-center" style={{ background: `${AMBER}08`, border: `1.5px solid ${AMBER}25` }}>
+              <div className="mt-3.5 px-3 py-2.5 rounded-[10px] flex justify-between items-center" style={{ background: `color-mix(in srgb, ${AMBER} 3%, transparent)`, border: `1.5px solid color-mix(in srgb, ${AMBER} 15%, transparent)` }}>
                 <span className="text-xs font-bold text-gypi-text">Score total (0&ndash;100)</span>
                 <span className="text-lg font-extrabold font-heading" style={{ color: AMBER }}>{d.score} pts</span>
               </div>

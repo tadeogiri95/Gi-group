@@ -469,7 +469,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting }) {
                 onClick={() => onEdit(u)}
                 aria-label={`Editar ${u.nombre}`}
                 className="w-8 h-8 rounded-lg border-none cursor-pointer flex items-center justify-center text-[14px]"
-                style={{ background: `${AMBER}18`, color: AMBER }}
+                style={{ background: `color-mix(in srgb, ${AMBER} 9%, transparent)`, color: AMBER }}
               >
                 ✏️
               </button>
@@ -869,7 +869,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                 <div
                   key={emp.id}
                   className="bg-gypi-surface rounded-[14px] overflow-hidden"
-                  style={{ border: `1px solid ${changed ? `${AMBER}40` : "var(--color-border)"}` }}
+                  style={{ border: `1px solid ${changed ? `color-mix(in srgb, ${AMBER} 25%, transparent)` : "var(--color-border)"}` }}
                 >
                   {/* Header */}
                   <button
@@ -916,7 +916,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   {isExp && (
                     <div className="px-3.5 pb-3.5">
                       {/* Toggle activo */}
-                      <div className="flex items-center justify-between py-2.5 mb-3 px-2 rounded-lg" style={{ background: gc.activo ? `${GREEN}08` : "var(--color-text-muted)08" }}>
+                      <div className="flex items-center justify-between py-2.5 mb-3 px-2 rounded-lg" style={{ background: gc.activo ? `${GREEN}08` : "color-mix(in srgb, var(--color-text-muted) 3%, transparent)" }}>
                         <div>
                           <div className="text-[13px] font-semibold text-gypi-text">Control de ubicación</div>
                           <div className="text-[11px] text-gypi-dim mt-0.5">
@@ -991,7 +991,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
               background: saving ? "var(--color-surface)" : `linear-gradient(135deg, ${AMBER}, ${VIOLET})`,
               color: saving ? "var(--color-text-dim)" : "#000",
               cursor: saving ? "default" : "pointer",
-              boxShadow: `0 8px 32px ${AMBER}30`,
+              boxShadow: `0 8px 32px color-mix(in srgb, ${AMBER} 19%, transparent)`,
             }}
           >
             {saving ? "⏳ Guardando..." : `📤 Guardar ${totalCambios} cambio${totalCambios > 1 ? "s" : ""}`}

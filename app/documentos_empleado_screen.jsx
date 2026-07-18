@@ -66,7 +66,7 @@ function ModalTipo({ initial, onClose, onSave, saving }) {
           <label className="g-label block mb-1.5">Carga</label>
           <div className="flex gap-1.5">
             {[["puntual", "Puntual"], ["recurrente", "Recurrente"]].map(([id, label]) => (
-              <button key={id} onClick={() => set("tipo_carga", id)} className="flex-1 py-2 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body" style={{ background: form.tipo_carga === id ? `${AMBER}22` : "var(--color-surface)", color: form.tipo_carga === id ? AMBER : "var(--color-text-dim)" }}>
+              <button key={id} onClick={() => set("tipo_carga", id)} className="flex-1 py-2 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body" style={{ background: form.tipo_carga === id ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "var(--color-surface)", color: form.tipo_carga === id ? AMBER : "var(--color-text-dim)" }}>
                 {label}
               </button>
             ))}

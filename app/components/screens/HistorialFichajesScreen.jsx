@@ -81,7 +81,7 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
           <div className="font-heading text-[22px] font-bold" style={{ color: totalTardes > 0 ? "#F59E0B" : GREEN }}>{totalTardes}</div>
           <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Tardes total</div>
         </div>
-        <div className="rounded-[14px] p-3.5 text-center" style={{ background: `${AMBER}08`, border: "1px solid #F59E0B30" }}>
+        <div className="rounded-[14px] p-3.5 text-center" style={{ background: `color-mix(in srgb, ${AMBER} 3%, transparent)`, border: "1px solid #F59E0B30" }}>
           <div className="font-heading text-[22px] font-bold" style={{ color: "#F59E0B" }}>{tardesComunes.length}</div>
           <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Comunes</div>
         </div>
@@ -116,7 +116,7 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
                     {f.horas_trabajadas && <div className="text-[11px] text-gypi-dim mt-0.5">{Number(f.horas_trabajadas).toFixed(1)}h trabajadas</div>}
                   </div>
                   <div className="text-right">
-                    <span className="inline-flex items-center gap-1 py-[3px] px-2 rounded-md text-[10px] font-bold" style={{ background: `${statusColor}22`, color: statusColor }}>{statusIcon} {statusLabel}</span>
+                    <span className="inline-flex items-center gap-1 py-[3px] px-2 rounded-md text-[10px] font-bold" style={{ background: `color-mix(in srgb, ${statusColor} 13%, transparent)`, color: statusColor }}>{statusIcon} {statusLabel}</span>
                     {f.llegada_tarde && tardeCuenta > 0 && <div className="text-[10px] font-semibold mt-1" style={{ color: statusColor }}>Tarde #{tardeCuenta} del mes</div>}
                   </div>
                 </div>

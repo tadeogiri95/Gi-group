@@ -44,16 +44,16 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       <div
         className="relative overflow-hidden rounded-[22px] p-[22px_20px] mb-[18px]"
         style={{
-          background: `linear-gradient(145deg,${statusColor}06,var(--color-surface) 50%)`,
-          border: `1.5px solid ${fichado ? "var(--color-green)" : "var(--color-border)"}${fichado ? "25" : ""}`,
-          boxShadow: `0 4px 20px ${statusColor}08, 0 1px 3px rgba(0,0,0,0.04)`,
+          background: `linear-gradient(145deg,color-mix(in srgb, ${statusColor} 2%, transparent),var(--color-surface) 50%)`,
+          border: `1.5px solid ${fichado ? "color-mix(in srgb, var(--color-green) 15%, transparent)" : "var(--color-border)"}`,
+          boxShadow: `0 4px 20px color-mix(in srgb, ${statusColor} 3%, transparent), 0 1px 3px rgba(0,0,0,0.04)`,
         }}
       >
         <div
           className="absolute rounded-full"
           style={{
             top: -60, right: -60, width: 200, height: 200,
-            background: `${statusColor}10`, filter: "blur(50px)",
+            background: `color-mix(in srgb, ${statusColor} 6%, transparent)`, filter: "blur(50px)",
           }}
         />
         <div className="relative">
@@ -82,11 +82,11 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
           </div>
           <div
             className="flex items-center gap-2 py-2 px-3 rounded-[12px]"
-            style={{ background: `${statusColor}08` }}
+            style={{ background: `color-mix(in srgb, ${statusColor} 3%, transparent)` }}
           >
             <span
               className="w-2 h-2 rounded-full shrink-0"
-              style={{ background: statusColor, boxShadow: `0 0 8px ${statusColor}60` }}
+              style={{ background: statusColor, boxShadow: `0 0 8px color-mix(in srgb, ${statusColor} 38%, transparent)` }}
             />
             <span className="text-[13px] font-bold" style={{ color: statusColor }}>
               {fichado
@@ -108,9 +108,9 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                 key={n.id}
                 className="rounded-[14px] p-[14px_16px] mb-2"
                 style={{
-                  background: `${ac}08`,
-                  border: `1.5px solid ${ac}20`,
-                  boxShadow: `0 2px 8px ${ac}08`,
+                  background: `color-mix(in srgb, ${ac} 3%, transparent)`,
+                  border: `1.5px solid color-mix(in srgb, ${ac} 13%, transparent)`,
+                  boxShadow: `0 2px 8px color-mix(in srgb, ${ac} 3%, transparent)`,
                 }}
               >
                 <div className="text-sm font-bold text-gypi-text">{n.asunto}</div>
@@ -127,16 +127,16 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         aria-label="Abrir chat para fichar o hacer solicitudes"
         className="w-full p-[18px_20px] rounded-[18px] cursor-pointer flex items-center gap-3.5 font-body mb-[22px] transition-[transform,box-shadow] duration-150 ease-in-out"
         style={{
-          background: `linear-gradient(135deg,var(--color-empresa-primary)12,var(--color-empresa-secondary)10)`,
-          border: `1.5px solid var(--color-empresa-primary)25`,
-          boxShadow: `0 4px 16px var(--color-empresa-primary)08`,
+          background: `linear-gradient(135deg,color-mix(in srgb, var(--color-empresa-primary) 7%, transparent),color-mix(in srgb, var(--color-empresa-secondary) 6%, transparent))`,
+          border: `1.5px solid color-mix(in srgb, var(--color-empresa-primary) 15%, transparent)`,
+          boxShadow: `0 4px 16px color-mix(in srgb, var(--color-empresa-primary) 3%, transparent)`,
         }}
       >
         <div
           className="w-12 h-12 rounded-2xl flex items-center justify-center text-black shrink-0"
           style={{
             background: `linear-gradient(135deg,var(--color-empresa-primary),var(--color-empresa-secondary))`,
-            boxShadow: `0 4px 12px var(--color-empresa-primary)30`,
+            boxShadow: `0 4px 12px color-mix(in srgb, var(--color-empresa-primary) 19%, transparent)`,
           }}
         >
           <Ic.bot />
@@ -162,7 +162,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
             <button
               onClick={() => goto("actividad")}
               className="text-xs text-gypi-amber font-bold font-body border-none cursor-pointer py-1.5 px-3 rounded-[10px]"
-              style={{ background: `var(--color-empresa-primary)08` }}
+              style={{ background: `color-mix(in srgb, var(--color-empresa-primary) 3%, transparent)` }}
             >
               Ver jornada →
             </button>
@@ -173,16 +173,16 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
             <div
               className="rounded-[14px] p-[12px_16px] mb-2.5 flex items-center gap-3"
               style={{
-                background: `var(--color-green)08`,
-                border: `1.5px solid var(--color-green)20`,
-                boxShadow: `0 2px 8px var(--color-green)08`,
+                background: `color-mix(in srgb, var(--color-green) 3%, transparent)`,
+                border: `1.5px solid color-mix(in srgb, var(--color-green) 13%, transparent)`,
+                boxShadow: `0 2px 8px color-mix(in srgb, var(--color-green) 3%, transparent)`,
               }}
             >
               <span
                 className="w-2.5 h-2.5 rounded-full shrink-0"
                 style={{
                   background: "var(--color-green)",
-                  boxShadow: `0 0 0 3px var(--color-green)25, 0 0 12px var(--color-green)30`,
+                  boxShadow: `0 0 0 3px color-mix(in srgb, var(--color-green) 15%, transparent), 0 0 12px color-mix(in srgb, var(--color-green) 19%, transparent)`,
                 }}
               />
               <div className="flex-1 min-w-0">
@@ -203,7 +203,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
               {minProductivo > 0 && (
                 <span
                   className="text-[11px] font-bold text-gypi-green font-body py-1 px-2.5 rounded-lg"
-                  style={{ background: `var(--color-green)12` }}
+                  style={{ background: `color-mix(in srgb, var(--color-green) 7%, transparent)` }}
                 >
                   ✓ {fmtMin(minProductivo)} productivo
                 </span>
@@ -211,7 +211,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
               {minMuerto > 0 && (
                 <span
                   className="text-[11px] font-bold text-gypi-amber font-body py-1 px-2.5 rounded-lg"
-                  style={{ background: `var(--color-empresa-primary)12` }}
+                  style={{ background: `color-mix(in srgb, var(--color-empresa-primary) 7%, transparent)` }}
                 >
                   ⏸ {fmtMin(minMuerto)} espera
                 </span>
@@ -279,13 +279,13 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
               onClick={() => goto("actividad")}
               className="w-full p-[14px_20px] rounded-[14px] cursor-pointer flex items-center gap-3 font-body"
               style={{
-                background: `var(--color-green)10`,
-                border: `1px solid var(--color-green)30`,
+                background: `color-mix(in srgb, var(--color-green) 6%, transparent)`,
+                border: `1px solid color-mix(in srgb, var(--color-green) 19%, transparent)`,
               }}
             >
               <div
                 className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg shrink-0"
-                style={{ background: `var(--color-green)22` }}
+                style={{ background: `color-mix(in srgb, var(--color-green) 13%, transparent)` }}
               >
                 ▶
               </div>
@@ -304,15 +304,15 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         aria-label="Ver historial de fichajes"
         className="w-full p-4 rounded-2xl text-gypi-text text-[13px] font-semibold font-body cursor-pointer flex items-center justify-between mb-[22px]"
         style={{
-          background: `linear-gradient(135deg,var(--color-cyan)06,var(--color-surface))`,
-          border: `1.5px solid var(--color-cyan)20`,
-          boxShadow: `0 2px 10px var(--color-cyan)06`,
+          background: `linear-gradient(135deg,color-mix(in srgb, var(--color-cyan) 2%, transparent),var(--color-surface))`,
+          border: `1.5px solid color-mix(in srgb, var(--color-cyan) 13%, transparent)`,
+          boxShadow: `0 2px 10px color-mix(in srgb, var(--color-cyan) 2%, transparent)`,
         }}
       >
         <div className="flex items-center gap-2.5">
           <div
             className="w-[34px] h-[34px] rounded-[10px] text-gypi-cyan flex items-center justify-center"
-            style={{ background: `var(--color-cyan)22` }}
+            style={{ background: `color-mix(in srgb, var(--color-cyan) 13%, transparent)` }}
           >
             📊
           </div>
@@ -330,15 +330,15 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         aria-label="Ver mi documentación"
         className="w-full p-4 rounded-2xl text-gypi-text text-[13px] font-semibold font-body cursor-pointer flex items-center justify-between mb-[22px]"
         style={{
-          background: `linear-gradient(135deg,var(--color-empresa-secondary)06,var(--color-surface))`,
-          border: `1.5px solid var(--color-empresa-secondary)20`,
-          boxShadow: `0 2px 10px var(--color-empresa-secondary)06`,
+          background: `linear-gradient(135deg,color-mix(in srgb, var(--color-empresa-secondary) 2%, transparent),var(--color-surface))`,
+          border: `1.5px solid color-mix(in srgb, var(--color-empresa-secondary) 13%, transparent)`,
+          boxShadow: `0 2px 10px color-mix(in srgb, var(--color-empresa-secondary) 2%, transparent)`,
         }}
       >
         <div className="flex items-center gap-2.5">
           <div
             className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center"
-            style={{ background: `var(--color-empresa-secondary)22`, color: "var(--color-empresa-secondary)" }}
+            style={{ background: `color-mix(in srgb, var(--color-empresa-secondary) 13%, transparent)`, color: "var(--color-empresa-secondary)" }}
           >
             📄
           </div>
@@ -372,8 +372,8 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                     key={d}
                     className="flex items-center py-2.5 px-2 rounded-[10px]"
                     style={{
-                      background: esHoy ? `var(--color-empresa-primary)12` : "transparent",
-                      border: esHoy ? `1px solid var(--color-empresa-primary)30` : "1px solid transparent",
+                      background: esHoy ? `color-mix(in srgb, var(--color-empresa-primary) 7%, transparent)` : "transparent",
+                      border: esHoy ? `1px solid color-mix(in srgb, var(--color-empresa-primary) 19%, transparent)` : "1px solid transparent",
                       marginBottom: i < 6 ? 4 : 0,
                     }}
                   >
@@ -398,7 +398,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                     {esHoy && (
                       <span
                         className="text-[10px] text-gypi-amber font-bold py-0.5 px-2 rounded-[6px] ml-1.5"
-                        style={{ background: `var(--color-empresa-primary)22` }}
+                        style={{ background: `color-mix(in srgb, var(--color-empresa-primary) 13%, transparent)` }}
                       >
                         HOY
                       </span>
