@@ -219,8 +219,8 @@ function ModalInvitacion({ link, onClose }) {
 }
 
 /* ═══ MAIN COMPONENT ═══ */
-export default function GestionPersonalScreen({ empresaId, slug }) {
-  const { divisiones: divisionesCtx } = useAuth();
+export default function GestionPersonalScreen({ empresaId }) {
+  const { divisiones: divisionesCtx, empresa } = useAuth();
   const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -234,6 +234,7 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
   const [modalCSV, setModalCSV] = useState(null);
   const [modalInvitacion, setModalInvitacion] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [progresoCSV, setProgresoCSV] = useState("");
   const [csvRawText, setCsvRawText] = useState(null);
   const fileRef = useRef(null);
@@ -242,11 +243,13 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
   /* ── Cargar empleados ── */
   const cargar = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await sb.get(`empleados?empresa_id=eq.${empresaId}&order=nombre.asc`);
       setEmpleados(data || []);
     } catch (err) {
       console.error("Error cargando empleados:", err);
+      setLoadError("No se pudo cargar el personal. Tocá para reintentar.");
     } finally {
       setLoading(false);
     }
@@ -402,6 +405,10 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
   /* ── Link invitación ── */
   const generarLinkInvitacion = () => {
     const base = typeof window !== "undefined" ? window.location.origin : "";
+    // El slug viene de la empresa en contexto; como respaldo, el primer segmento
+    // del path actual (la app vive siempre en /[slug]).
+    const slug = empresa?.slug || (typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "");
+    if (!slug) { toast.error("No se pudo determinar la URL de la empresa. Recargá la página."); return; }
     setModalInvitacion(`${base}/${slug}/unirse`);
   };
 
@@ -494,7 +501,11 @@ export default function GestionPersonalScreen({ empresaId, slug }) {
       </div>
 
       {/* Lista empleados */}
-      {loading && empleados.length === 0 ? (
+      {loadError ? (
+        <button onClick={cargar} className="w-full g-card text-center p-8 cursor-pointer border border-gypi-red/30">
+          <div className="text-sm font-bold text-gypi-red">⚠ {loadError}</div>
+        </button>
+      ) : loading && empleados.length === 0 ? (
         <div className="gypi-dots"><span style={{ background: AMBER }} /><span style={{ background: AMBER }} /><span style={{ background: AMBER }} /></div>
       ) : filtrados.length === 0 ? (
         <div className="g-card text-center p-10">

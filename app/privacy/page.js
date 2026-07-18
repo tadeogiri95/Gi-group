@@ -5,7 +5,9 @@ export const metadata = {
 
 export default function PrivacyPolicy() {
   const S = {
-    wrap: { maxWidth: 720, margin: "0 auto", padding: "40px 20px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", minHeight: "100dvh", lineHeight: 1.7 },
+    // height + overflowY (no minHeight): html/body llevan overflow:hidden en mobile,
+    // así que cada página pública necesita su propio contenedor de scroll (igual que /contacto).
+    wrap: { maxWidth: 720, margin: "0 auto", padding: "40px 20px", fontFamily: "'Geist', system-ui", color: "#F5F0E8", background: "#0C0A09", height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch", lineHeight: 1.7 },
     h1: { fontSize: 28, fontWeight: 800, marginBottom: 8, fontFamily: "'Bricolage Grotesque', system-ui" },
     h2: { fontSize: 20, fontWeight: 700, marginTop: 32, marginBottom: 12, fontFamily: "'Bricolage Grotesque', system-ui" },
     p: { fontSize: 14, color: "#A39A8E", marginBottom: 16 },
