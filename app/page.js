@@ -338,6 +338,12 @@ export default function Landing() {
             style={{ padding: "14px 32px", borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
             Empezar gratis
           </button>
+          <a
+            href="/demo?demo=true"
+            style={{ padding: "14px 32px", borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 16, fontWeight: 600, fontFamily: fB, cursor: "pointer", textDecoration: "none", display: "inline-block" }}
+          >
+            Ver demo
+          </a>
           <button onClick={() => scrollTo("features")}
             style={{ padding: "14px 32px", borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 16, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>
             Ver features

@@ -40,7 +40,7 @@ export default function CookieConsent() {
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
         <span>
-          Este sitio usa cookies de Google para personalizar anuncios según tus visitas previas.{" "}
+          En el plan Free, este sitio usa cookies de Google para mostrar anuncios personalizados según tus visitas previas.{" "}
           <a href="/privacy#publicidad" style={{ color: "#F97316", textDecoration: "underline" }}>Más información</a>
         </span>
         <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>

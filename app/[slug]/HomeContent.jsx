@@ -314,9 +314,9 @@ export default function HomeContent() {
         </button>
       )}
 
-      {!isChat && empresa?.id && (usuario?.rol === "gerencial" || usuario?.rol === "admin") && (
+      {!isChat && (empresa?.id || isDemo) && (u?.rol === "gerencial" || u?.rol === "admin") && (
         <div className="px-[18px] shrink-0">
-          <AdSlot plan={empresa.plan_activo || "free"} />
+          <AdSlot plan={isDemo ? "free" : (empresa.plan_activo || "free")} />
         </div>
       )}
 

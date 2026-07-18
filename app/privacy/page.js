@@ -39,7 +39,7 @@ export default function PrivacyPolicy() {
       <p style={S.p}>Proveedores externos, incluido Google, pueden utilizar web beacons y tecnologías similares para medir la interacción con los anuncios y el rendimiento del sitio.</p>
       <p style={S.p}>Tus datos laborales (fichadas, ubicación, reportes) nunca se comparten con Google ni con ninguna red publicitaria.</p>
       <p style={S.p}>Podés gestionar o desactivar la publicidad personalizada de Google en <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer" style={{ color: "#F97316" }}>Configuración de anuncios de Google</a>. También podés desactivar la publicidad personalizada de otros proveedores visitando <a href="https://www.aboutads.info" target="_blank" rel="noopener noreferrer" style={{ color: "#F97316" }}>www.aboutads.info</a>.</p>
-      <p style={S.p}>Para cambiar tu preferencia de cookies dentro de la app, accedé a <strong style={{ color: "#F5F0E8" }}>Configuración → Privacidad</strong>.</p>
+      <p style={S.p}>Para revocar tu aceptación, eliminá el almacenamiento local de este sitio desde la configuración de privacidad de tu navegador, o escribinos a <a href="mailto:contacto@gypi.app" style={{ color: "#F97316" }}>contacto@gypi.app</a>.</p>
 
       <h2 style={S.h2}>6. Geolocalización</h2>
       <p style={S.p}>La App puede solicitar acceso a tu ubicación para verificar el fichaje en el lugar de trabajo. Este permiso es opcional y podés revocarlo en cualquier momento desde la configuración de tu dispositivo. La ubicación solo se registra en el momento del fichaje y no se rastrea de forma continua.</p>
