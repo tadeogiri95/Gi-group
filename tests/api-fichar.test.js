@@ -174,10 +174,21 @@ test("fichar — egreso con forzar_cierre_tarea=true cierra tarea activa y regis
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
     // Timezone solo
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
-    // forzar_cierre_tarea=true → PATCH para cerrar tareas activas
+    // forzar_cierre_tarea=true → la ruta primero LEE las tareas abiertas
+    // (para calcular duracion_min de cada una) y después las cierra con PATCH
+    {
+      match: (url, opts) => url.includes("/rest/v1/registro_actividades") && (!opts?.method || opts.method === "GET"),
+      respond: () => ({ status: 200, body: [{ id: 901, hora_inicio: "2026-06-16T11:00:00.000Z" }] }),
+    },
     {
       match: (url, opts) => url.includes("/rest/v1/registro_actividades") && opts.method === "PATCH",
-      respond: () => { tareasActualizadas = true; return { status: 200, body: [] }; },
+      respond: (url, opts) => {
+        tareasActualizadas = true;
+        const body = JSON.parse(opts.body);
+        assert.ok(body.hora_fin, "el cierre debe incluir hora_fin");
+        assert.ok(typeof body.duracion_min === "number" && body.duracion_min >= 0, "el cierre debe incluir duracion_min calculada");
+        return { status: 200, body: [] };
+      },
     },
     // Fichada de hoy sin egreso (turno abierto)
     {

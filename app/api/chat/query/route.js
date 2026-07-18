@@ -11,6 +11,7 @@ import { hoyArg } from "../../../lib/dates";
 import { sanitizePostgrestParam } from "../../../lib/validate";
 import { chatQueryBody } from "../../../lib/schemas";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
+import { duracionMinutos } from "../../../lib/calc";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -31,7 +32,7 @@ const QUERIES = {
   proyectos_hoy: async (empresaId, params) => {
     const fecha = params?.fecha || HOY();
     const regs = await sbQuery(
-      `registro_actividades?empresa_id=eq.${empresaId}&fecha=eq.${fecha}&etapa=gt.0&select=codigo_proyecto,empleado_id,legajo,duracion_min,etapa,observaciones&order=hora_inicio.desc&limit=50`
+      `registro_actividades?empresa_id=eq.${empresaId}&fecha=eq.${fecha}&etapa=gt.0&select=codigo_proyecto,empleado_id,legajo,duracion_min,hora_inicio,hora_fin,etapa,observaciones&order=hora_inicio.desc&limit=50`
     );
     if (!regs.length) return "No hay registros de producción para esa fecha.";
     const byProj = {};
@@ -39,7 +40,7 @@ const QUERIES = {
       const k = r.codigo_proyecto || "SIN_OT";
       if (!byProj[k]) byProj[k] = { empleados: new Set(), minutos: 0, registros: 0 };
       byProj[k].empleados.add(r.legajo);
-      byProj[k].minutos += parseFloat(r.duracion_min) || 0;
+      byProj[k].minutos += duracionMinutos(r);
       byProj[k].registros++;
     });
     return Object.entries(byProj).map(([ot, d]) => (
@@ -51,7 +52,7 @@ const QUERIES = {
     const ot = params?.ot || params?.codigo_proyecto;
     if (!ot) return "Necesito el código OT del proyecto.";
     const regs = await sbQuery(
-      `registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=legajo,fecha,duracion_min,etapa,observaciones&order=fecha.desc&limit=30`
+      `registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=legajo,fecha,duracion_min,hora_inicio,hora_fin,etapa,observaciones&order=fecha.desc&limit=30`
     );
     if (!regs.length) return `No encontré registros para OT ${ot}.`;
     const emps = await sbQuery(
@@ -61,7 +62,7 @@ const QUERIES = {
     const byEmp = {};
     regs.forEach(r => {
       if (!byEmp[r.legajo]) byEmp[r.legajo] = { nombre: empMap[r.legajo]?.nombre || `L-${r.legajo}`, division: empMap[r.legajo]?.division || "", min: 0, ultFecha: r.fecha };
-      byEmp[r.legajo].min += parseFloat(r.duracion_min) || 0;
+      byEmp[r.legajo].min += duracionMinutos(r);
     });
     return Object.values(byEmp).map(e => (
       `${e.nombre} (${e.division || "sin div."}): ${Math.round(e.min)}min — última vez: ${e.ultFecha}`
@@ -301,7 +302,7 @@ const QUERIES = {
     const desdeStr = desde.toISOString().slice(0, 10);
 
     const regs = await sbQuery(
-      `registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${desdeStr}&etapa=gt.0&select=codigo_proyecto,legajo,duracion_min,fecha&order=fecha.desc&limit=200`
+      `registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${desdeStr}&etapa=gt.0&select=codigo_proyecto,legajo,duracion_min,hora_inicio,hora_fin,fecha&order=fecha.desc&limit=200`
     );
     if (!regs.length) return `No hay actividad productiva en los últimos ${dias} días.`;
 
@@ -316,7 +317,7 @@ const QUERIES = {
       const k = r.codigo_proyecto || "SIN_OT";
       if (!byOt[k]) byOt[k] = { empleados: new Set(), min: 0, ultFecha: r.fecha };
       byOt[k].empleados.add(r.legajo);
-      byOt[k].min += parseFloat(r.duracion_min) || 0;
+      byOt[k].min += duracionMinutos(r);
       if (r.fecha > byOt[k].ultFecha) byOt[k].ultFecha = r.fecha;
     });
 

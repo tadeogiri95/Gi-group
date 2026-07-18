@@ -7,6 +7,7 @@ import FotoViewer from "./components/FotoViewer";
 import Paywall from "./components/Paywall";
 import BillingScreen from "./components/BillingScreen";
 import { hoyArg, ahoraArg } from "./lib/dates";
+import { duracionMinutos } from "./lib/calc";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
@@ -158,7 +159,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
       const key = r.codigo_proyecto || "SIN_OT";
       if (!map[key]) map[key] = { ot: key, empleados: {}, totalMin: 0, registros: 0 };
       map[key].registros++;
-      const min = parseFloat(r.duracion_min) || 0;
+      const min = duracionMinutos(r);
       map[key].totalMin += min;
       const empKey = r.empleado_id || r.legajo;
       if (!map[key].empleados[empKey]) map[key].empleados[empKey] = { legajo: r.legajo, min: 0, registros: 0 };

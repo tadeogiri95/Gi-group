@@ -238,10 +238,20 @@ export async function POST(request) {
       }
     } else {
       try {
-        await sbPatch(
-          `registro_actividades?empleado_id=eq.${empleadoId}&empresa_id=eq.${empresaId}&hora_fin=is.null`,
-          { hora_fin: new Date().toISOString() }
+        // Cerrar una por una para poder calcular duracion_min de cada tarea
+        // (los consumidores — chips del empleado, chat IA, reporte mensual —
+        // suman esa columna).
+        const abiertas = await sbGet(
+          `registro_actividades?empleado_id=eq.${empleadoId}&empresa_id=eq.${empresaId}&hora_fin=is.null&select=id,hora_inicio`
         );
+        const cierre = new Date().toISOString();
+        for (const t of abiertas || []) {
+          const duracion = Math.max(0, Math.round(((new Date(cierre) - new Date(t.hora_inicio)) / 60000) * 10) / 10);
+          await sbPatch(`registro_actividades?id=eq.${t.id}&empresa_id=eq.${empresaId}`, {
+            hora_fin: cierre,
+            duracion_min: duracion,
+          });
+        }
       } catch (e) {
         logger.error("Error cerrando tareas activas", e);
       }

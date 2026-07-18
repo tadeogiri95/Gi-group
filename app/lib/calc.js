@@ -12,6 +12,25 @@
 // ═══════════════════════════════════════════════════════════
 
 /**
+ * Duración en minutos de un registro de actividad.
+ * Prefiere la columna duracion_min (se escribe al cerrar la tarea desde
+ * useActividad y /api/fichar); para filas cerradas antes de que ese cálculo
+ * existiera, la deriva de los timestamps. Tarea aún abierta ⇒ 0.
+ *
+ * @param {{duracion_min?: number|string, hora_inicio?: string, hora_fin?: string}} r
+ * @returns {number} minutos (puede tener decimales)
+ */
+export function duracionMinutos(r) {
+  const guardada = parseFloat(r?.duracion_min);
+  if (Number.isFinite(guardada) && guardada > 0) return guardada;
+  if (r?.hora_inicio && r?.hora_fin) {
+    const min = (new Date(r.hora_fin) - new Date(r.hora_inicio)) / 60000;
+    return Number.isFinite(min) && min > 0 ? min : 0;
+  }
+  return 0;
+}
+
+/**
  * Distancia geográfica entre dos puntos GPS en metros.
  * Implementación de la fórmula de Haversine.
  *

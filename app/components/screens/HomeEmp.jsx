@@ -1,6 +1,7 @@
 "use client";
 import { fmtDate } from "../../lib/theme";
 import { hoyArg, ahoraArg } from "../../lib/dates";
+import { duracionMinutos } from "../../lib/calc";
 import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
 import EmptyState from "../ui/EmptyState";
@@ -22,8 +23,8 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
     return e?.nombre || `Etapa ${id}`;
   };
 
-  const minProductivo = actividadesHoy.filter(r => r.etapa > 0).reduce((s, r) => s + (r.duracion_min || 0), 0);
-  const minMuerto = actividadesHoy.filter(r => r.etapa === 0).reduce((s, r) => s + (r.duracion_min || 0), 0);
+  const minProductivo = actividadesHoy.filter(r => r.etapa > 0).reduce((s, r) => s + duracionMinutos(r), 0);
+  const minMuerto = actividadesHoy.filter(r => r.etapa === 0).reduce((s, r) => s + duracionMinutos(r), 0);
   const tareasCount = actividadesHoy.filter(r => r.etapa > 0).length;
   const hayActividad = actividadesHoy.length > 0 || !!tareaActiva;
   const fichado = !!ctx.fichadaHoy?.ingreso;
@@ -252,9 +253,9 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                   </div>
                   <div className="text-[11px] text-gypi-dim font-mono shrink-0 text-right">
                     <div>{new Date(r.hora_inicio).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</div>
-                    {r.duracion_min > 0 && (
+                    {duracionMinutos(r) > 0 && (
                       <div style={{ color: r.etapa > 0 ? "var(--color-green)" : "var(--color-empresa-primary)" }}>
-                        {fmtMin(r.duracion_min)}
+                        {fmtMin(duracionMinutos(r))}
                       </div>
                     )}
                   </div>

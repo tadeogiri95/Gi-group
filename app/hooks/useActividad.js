@@ -2,6 +2,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { sb } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
+import { duracionMinutos } from "../lib/calc";
+
+// Minutos (1 decimal) entre un timestamp de inicio y un ISO de cierre.
+const minutosHasta = (horaInicio, isoFin) =>
+  Math.max(0, Math.round(((new Date(isoFin) - new Date(horaInicio)) / 60000) * 10) / 10);
 
 /*
  * useActividad — hook para el módulo de registro de actividades
@@ -93,6 +98,18 @@ export function useActividad(empleado) {
     if (!empleado?.id) throw new Error("Sin empleado");
     const ahora = new Date().toISOString();
     try {
+      // Nunca debe haber dos tareas abiertas: cerrar cualquiera que haya
+      // quedado abierta (p. ej. pasar a "espera" desde una tarea activa
+      // iniciaba la nueva sin cerrar la anterior).
+      const abiertas = await sb.get(
+        `registro_actividades?empleado_id=eq.${empleado.id}&hora_fin=is.null&select=id,hora_inicio&limit=10`
+      );
+      for (const t of abiertas || []) {
+        await sb.patch(`registro_actividades?id=eq.${t.id}`, {
+          hora_fin: ahora,
+          duracion_min: minutosHasta(t.hora_inicio, ahora),
+        });
+      }
       const res = await sb.post("registro_actividades", {
         empleado_id: empleado.id,
         legajo: Number(empleado.legajo),
@@ -120,6 +137,7 @@ export function useActividad(empleado) {
     try {
       await sb.patch(`registro_actividades?id=eq.${tareaActiva.id}`, {
         hora_fin: ahora,
+        duracion_min: minutosHasta(tareaActiva.hora_inicio, ahora),
         ...(observaciones ? { observaciones } : {}),
       });
       await cargarDatos();
@@ -131,7 +149,7 @@ export function useActividad(empleado) {
 
   const cambiarTarea = useCallback(async (nuevaTarea) => iniciarTarea(nuevaTarea), [iniciarTarea]);
 
-  const horasHoy = historial.reduce((acc, r) => acc + (r.duracion_min || 0) * 60, 0) + elapsed;
+  const horasHoy = historial.reduce((acc, r) => acc + duracionMinutos(r) * 60, 0) + elapsed;
 
   return {
     tareaActiva, elapsed, historial, etapas, proyectos, proyectosLoading,
