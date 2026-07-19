@@ -31,6 +31,7 @@ const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 
 import { Tag, EmptyState } from "./components/ui";
+import Icon from "./components/Icon";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -164,7 +165,7 @@ function ReportesObraPanel({ reportesObra }) {
                 <div key={r.id} className="rounded-xl overflow-hidden transition-all duration-200" style={{ background: "var(--color-surf-hi)", border: `1px solid ${isExpanded ? `${CYAN}30` : "var(--color-border-hi)"}` }}>
                   {/* Header clickeable */}
                   <div onClick={() => setExpandedReport(isExpanded ? null : r.id)} className="flex items-center gap-2.5 p-3 cursor-pointer">
-                    <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base shrink-0" style={{ background: `${CYAN}18`, color: CYAN }}>&#x1F3D7;&#xFE0F;</div>
+                    <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: `${CYAN}18`, color: CYAN }}><Icon name="building" size={18} /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[13px] font-bold text-gypi-text">{r.nombre}</span>
@@ -622,7 +623,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
             style={{ background: `${VIOLET}12`, border: `1px solid ${VIOLET}25`, color: VIOLET }}
           >
-            &#x1F4CB; Gestionar solicitudes &rarr;
+            <Icon name="clipboard" size={14} /> Gestionar solicitudes &rarr;
           </button>
         </section>
       )}
@@ -636,7 +637,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             border: `1px solid ${panelExpanded === "taller" ? `color-mix(in srgb, ${AMBER} 31%, transparent)` : "var(--color-border)"}`,
           }}
         >
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)` }}>&#x1F525;</div>
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}><Icon name="hammer" size={18} /></div>
           <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? AMBER : "var(--color-text)" }}>Estado Taller</span>
         </button>
         <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
@@ -646,7 +647,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             border: `1px solid ${panelExpanded === "instalaciones" ? CYAN + "50" : "var(--color-border)"}`,
           }}
         >
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg" style={{ background: `${CYAN}22` }}>&#x1F3D7;&#xFE0F;</div>
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${CYAN}22`, color: CYAN }}><Icon name="building" size={18} /></div>
           <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "instalaciones" ? CYAN : "var(--color-text)" }}>Estado Instalaciones</span>
         </button>
       </div>
@@ -719,7 +720,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
             style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 15%, transparent)`, color: AMBER }}
           >
-            &#x1F525; Ver detalle por operario &rarr;
+            <Icon name="hammer" size={14} /> Ver detalle por operario &rarr;
           </button>
         </section>
       )}

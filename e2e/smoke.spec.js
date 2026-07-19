@@ -70,6 +70,12 @@ async function mockApis(page) {
 test("smoke: login → fichar ingreso → ver historial", async ({ page }) => {
   await mockApis(page);
 
+  // Consent de cookies ya decidido — el banner es fixed bottom z-9999 y
+  // taparía los botones de la barra de navegación inferior.
+  await page.addInitScript(() => {
+    try { localStorage.setItem("gypi_cookie_consent", "0"); } catch {}
+  });
+
   await page.goto(`/${EMPRESA.slug}`);
 
   // ─── Login ───

@@ -101,6 +101,12 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   const state = { solicitudes: [crearSolicitudPendiente()] };
   await mockApis(page, state);
 
+  // Consent de cookies ya decidido — el banner es fixed bottom z-9999 y
+  // taparía los botones de la barra de navegación inferior.
+  await page.addInitScript(() => {
+    try { localStorage.setItem("gypi_cookie_consent", "0"); } catch {}
+  });
+
   await page.goto(`/${EMPRESA.slug}`);
 
   // ─── Login como gerencial ───

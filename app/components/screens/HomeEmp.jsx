@@ -3,6 +3,7 @@ import { fmtDate } from "../../lib/theme";
 import { hoyArg, ahoraArg } from "../../lib/dates";
 import { duracionMinutos } from "../../lib/calc";
 import { Ic } from "../Icons";
+import Icon from "../Icon";
 import SolCard from "../cards/SolCard";
 import EmptyState from "../ui/EmptyState";
 
@@ -284,10 +285,10 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
               }}
             >
               <div
-                className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg shrink-0"
+                className="w-9 h-9 rounded-[10px] flex items-center justify-center text-gypi-green shrink-0"
                 style={{ background: `color-mix(in srgb, var(--color-green) 13%, transparent)` }}
               >
-                ▶
+                <Icon name="play" size={16} />
               </div>
               <div className="text-left">
                 <div className="text-sm font-bold text-gypi-text">Registrar actividad</div>
@@ -314,7 +315,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
             className="w-[34px] h-[34px] rounded-[10px] text-gypi-cyan flex items-center justify-center"
             style={{ background: `color-mix(in srgb, var(--color-cyan) 13%, transparent)` }}
           >
-            📊
+            <Icon name="chart" size={17} />
           </div>
           <div className="text-left">
             <div className="text-[13px] font-bold text-gypi-text">Historial de fichajes</div>
@@ -340,7 +341,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
             className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center"
             style={{ background: `color-mix(in srgb, var(--color-empresa-secondary) 13%, transparent)`, color: "var(--color-empresa-secondary)" }}
           >
-            📄
+            <Icon name="document" size={17} />
           </div>
           <div className="text-left">
             <div className="text-[13px] font-bold text-gypi-text">Mi documentación</div>

@@ -10,6 +10,5 @@ export default function sitemap() {
     { url: `${baseUrl}/contacto`, lastModified: now, changeFrequency: 'monthly', priority: 0.5 },
     { url: `${baseUrl}/privacy`, lastModified: now, changeFrequency: 'yearly', priority: 0.3 },
     { url: `${baseUrl}/terms`, lastModified: now, changeFrequency: 'yearly', priority: 0.3 },
-    { url: `${baseUrl}/demo?demo=true`, lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
   ];
 }

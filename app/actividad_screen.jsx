@@ -25,6 +25,7 @@ const fmtElapsed = (seconds) => {
 };
 
 import { Tag } from "./components/ui";
+import Icon from "./components/Icon";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -185,25 +186,25 @@ export default function ActividadScreen({
           <ErrorBanner />
           <div className="rounded-3xl p-8 text-center relative overflow-hidden bg-gypi-surface border border-gypi-border">
             <div className="relative">
-              <div className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mx-auto mb-4 text-[32px] bg-gypi-amber/10">🔨</div>
+              <div className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mx-auto mb-4 text-gypi-amber bg-gypi-amber/10"><Icon name="hammer" size={32} /></div>
               <div className="text-lg font-bold font-heading mb-2">Sin tarea activa</div>
               <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Iniciá una tarea para registrar tu actividad en el proyecto</div>
               <button
                 onClick={() => { if (!fichadaHoy?.ingreso) { setErrorMsg("Debés fichar tu ingreso para comenzar a trabajar"); return; } setState("selecting"); setStep(1); }}
                 className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-amber text-black"
               >
-                <span className="text-xl">▶</span> Iniciar tarea
+                <Icon name="play" size={18} /> Iniciar tarea
               </button>
             </div>
           </div>
 
           <button onClick={() => setShowReporte(true)} className="w-full mt-3 py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-cyan text-black">
-            <span className="text-xl">📋</span> Reporte de Instalación
+            <Icon name="clipboard" size={18} /> Reporte de Instalación
           </button>
 
           {historial.length > 0 && (
             <button onClick={() => setShowHistorial(true)} className="w-full mt-4 p-4 rounded-2xl bg-gypi-surface border border-gypi-border text-gypi-text text-sm font-semibold font-body cursor-pointer flex items-center justify-between">
-              <span>📋 Historial de hoy</span>
+              <span className="flex items-center gap-2"><Icon name="clipboard" size={15} /> Historial de hoy</span>
               <Tag color="var(--color-text-muted)">{historial.length} tramos</Tag>
             </button>
           )}
@@ -533,13 +534,13 @@ export default function ActividadScreen({
         </div>
 
         <div className="flex gap-2.5">
-          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className={`flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-amber text-black ${saving ? 'opacity-50' : ''}`}>🔄 Cambiar tarea</button>
+          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className={`flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-amber text-black ${saving ? 'opacity-50' : ''}`}><Icon name="refresh" size={15} /> Cambiar tarea</button>
           {!isEspera && (
-            <button onClick={() => setState("pausing")} disabled={saving} className={`flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red ${saving ? 'opacity-50' : ''}`}>⏸</button>
+            <button onClick={() => setState("pausing")} disabled={saving} aria-label="Registrar espera / tiempo muerto" className={`flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red flex items-center justify-center ${saving ? 'opacity-50' : ''}`}><Icon name="pause" size={18} /></button>
           )}
         </div>
 
-        <button onClick={() => finalizarTarea("idle")} disabled={saving} className={`w-full p-4 rounded-2xl bg-transparent border border-gypi-border text-gypi-dim text-sm font-semibold font-body cursor-pointer ${saving ? 'opacity-50' : ''}`}>⏹ Finalizar jornada</button>
+        <button onClick={() => finalizarTarea("idle")} disabled={saving} className={`w-full p-4 rounded-2xl bg-transparent border border-gypi-border text-gypi-dim text-sm font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5 ${saving ? 'opacity-50' : ''}`}><Icon name="stop" size={15} /> Finalizar jornada</button>
 
         {historial.length > 0 && (
           <button onClick={() => setShowHistorial(true)} className="w-full p-3 rounded-xl bg-gypi-surface border border-gypi-border text-gypi-text text-xs font-semibold font-body cursor-pointer flex items-center justify-between">
