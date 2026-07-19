@@ -373,7 +373,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const legajosProgramados = new Set(empProgramados.map(e => e.legajo));
   const presentesProgramados = fichadasHoy.filter(f => legajosProgramados.has(f.legajo)).length;
   const ausentes = Math.max(0, programados - presentesProgramados);
-  const pctAsist = programados > 0 ? Math.round((presentesProgramados / programados) * 100) : 0;
+  // null = no hay nadie programado hoy (domingo/feriado) — la UI muestra "—"
+  const pctAsist = programados > 0 ? Math.round((presentesProgramados / programados) * 100) : null;
 
   // Tardanzas semana
   const tardesEstaSemana = fichadasSemana.filter(f => f.llegada_tarde).length;
@@ -785,8 +786,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <div className="font-heading text-[22px] font-bold" style={{ color: ausentes > 0 ? RED : GREEN }}>{ausentes}</div>
             <div className="g-kpi-label">Ausentes</div>
           </div>
-          <div className="g-kpi" style={{ background: `${pctColor(pctAsist)}10` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(pctAsist) }}>{pctAsist}%</div>
+          <div className="g-kpi" style={{ background: pctAsist == null ? "var(--color-surf-lo)" : `${pctColor(pctAsist)}10` }}>
+            <div className="font-heading text-[22px] font-bold" style={{ color: pctAsist == null ? "var(--color-text-muted)" : pctColor(pctAsist) }}>{pctAsist == null ? "—" : `${pctAsist}%`}</div>
             <div className="g-kpi-label">Cumplim.</div>
           </div>
           <div className="g-kpi" style={{ background: tardesEstaSemana > 0 ? `color-mix(in srgb, ${AMBER} 6%, transparent)` : `${GREEN}05` }}>

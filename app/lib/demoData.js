@@ -41,34 +41,34 @@ const DIAGRAMA_TURNO_B = {
 };
 
 const EMPLEADOS = [
-  { id: 1, legajo: 100001, nombre: "Carlos Méndez", apodo: "Méndez", email: "cmendez@demo.com", rol: "gerencial", area: "produccion", division: "metalurgica", diagrama: DIAGRAMA_ADMIN, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-01-15T10:00:00Z" },
-  { id: 2, legajo: 100002, nombre: "Roberto Gutiérrez", apodo: "Roberto", email: "rgutierrez@demo.com", rol: "operativo", area: "produccion", division: "metalurgica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-02-01T10:00:00Z" },
-  { id: 3, legajo: 100003, nombre: "Juan Pérez", apodo: "Juancho", email: "jperez@demo.com", rol: "operativo", area: "produccion", division: "metalurgica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-02-01T10:00:00Z" },
-  { id: 4, legajo: 100004, nombre: "Martín López", apodo: "Martín", email: "mlopez@demo.com", rol: "operativo", area: "produccion", division: "instalaciones", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-03-01T10:00:00Z" },
-  { id: 5, legajo: 100005, nombre: "Diego Fernández", apodo: "Diego", email: "dfernandez@demo.com", rol: "operativo", area: "produccion", division: "instalaciones", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-03-10T10:00:00Z" },
-  { id: 6, legajo: 100006, nombre: "Lucas Ramírez", apodo: "Lucas", email: "lramirez@demo.com", rol: "operativo", area: "produccion", division: "metalurgica", diagrama: DIAGRAMA_TURNO_B, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-04-01T10:00:00Z" },
-  { id: 7, legajo: 100007, nombre: "Facundo Torres", apodo: "Facu", email: "ftorres@demo.com", rol: "operativo", area: "produccion", division: "instalaciones", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-04-15T10:00:00Z" },
-  { id: 8, legajo: 100008, nombre: "Nicolás Morales", apodo: "Nico", email: "nmorales@demo.com", rol: "operativo", area: "produccion", division: "metalurgica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-05-01T10:00:00Z" },
-  { id: 9, legajo: 100009, nombre: "Alejandro Ruiz", apodo: "Ale", email: "aruiz@demo.com", rol: "operativo", area: "logistica", division: "logistica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-05-10T10:00:00Z" },
-  { id: 10, legajo: 100010, nombre: "Sebastián Herrera", apodo: "Seba", email: "sherrera@demo.com", rol: "administrativo", area: "administracion", division: "admin", diagrama: DIAGRAMA_ADMIN, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-01-20T10:00:00Z" },
-  { id: 11, legajo: 100011, nombre: "Pablo Acosta", apodo: "Pablo", email: "pacosta@demo.com", rol: "operativo", area: "produccion", division: "metalurgica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-06-01T10:00:00Z" },
-  { id: 12, legajo: 100012, nombre: "Emiliano Vega", apodo: "Emi", email: "evega@demo.com", rol: "operativo", area: "produccion", division: "instalaciones", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-06-01T10:00:00Z" },
+  { id: 1, legajo: 100001, nombre: "Carlos Méndez", apodo: "Méndez", email: "cmendez@demo.com", rol: "gerencial", area: "produccion", division: "produccion", diagrama: DIAGRAMA_ADMIN, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-01-15T10:00:00Z" },
+  { id: 2, legajo: 100002, nombre: "Roberto Gutiérrez", apodo: "Roberto", email: "rgutierrez@demo.com", rol: "operativo", area: "produccion", division: "produccion", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-02-01T10:00:00Z" },
+  { id: 3, legajo: 100003, nombre: "Juan Pérez", apodo: "Juancho", email: "jperez@demo.com", rol: "operativo", area: "produccion", division: "produccion", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-02-01T10:00:00Z" },
+  { id: 4, legajo: 100004, nombre: "Martín López", apodo: "Martín", email: "mlopez@demo.com", rol: "operativo", area: "produccion", division: "logistica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-03-01T10:00:00Z" },
+  { id: 5, legajo: 100005, nombre: "Diego Fernández", apodo: "Diego", email: "dfernandez@demo.com", rol: "operativo", area: "produccion", division: "logistica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-03-10T10:00:00Z" },
+  { id: 6, legajo: 100006, nombre: "Lucas Ramírez", apodo: "Lucas", email: "lramirez@demo.com", rol: "operativo", area: "produccion", division: "produccion", diagrama: DIAGRAMA_TURNO_B, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-04-01T10:00:00Z" },
+  { id: 7, legajo: 100007, nombre: "Facundo Torres", apodo: "Facu", email: "ftorres@demo.com", rol: "operativo", area: "produccion", division: "logistica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-04-15T10:00:00Z" },
+  { id: 8, legajo: 100008, nombre: "Nicolás Morales", apodo: "Nico", email: "nmorales@demo.com", rol: "operativo", area: "produccion", division: "produccion", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-05-01T10:00:00Z" },
+  { id: 9, legajo: 100009, nombre: "Alejandro Ruiz", apodo: "Ale", email: "aruiz@demo.com", rol: "operativo", area: "logistica", division: "general", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-05-10T10:00:00Z" },
+  { id: 10, legajo: 100010, nombre: "Sebastián Herrera", apodo: "Seba", email: "sherrera@demo.com", rol: "administrativo", area: "administracion", division: "administracion", diagrama: DIAGRAMA_ADMIN, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-01-20T10:00:00Z" },
+  { id: 11, legajo: 100011, nombre: "Pablo Acosta", apodo: "Pablo", email: "pacosta@demo.com", rol: "operativo", area: "produccion", division: "produccion", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-06-01T10:00:00Z" },
+  { id: 12, legajo: 100012, nombre: "Emiliano Vega", apodo: "Emi", email: "evega@demo.com", rol: "operativo", area: "produccion", division: "logistica", diagrama: DIAGRAMA_FULL, activo: true, debe_cambiar_password: false, estado_activacion: "activo", created_at: "2025-06-01T10:00:00Z" },
 ];
 
 function generarFichadasHoy() {
   const t = hoy();
   return [
-    { legajo: 100002, ingreso: "06:58", egreso: "15:55", horas_trabajadas: "8.9", llegada_tarde: false, minutos_tarde: 0, nombre: "Roberto Gutiérrez", division: "metalurgica" },
-    { legajo: 100003, ingreso: "07:12", egreso: null, horas_trabajadas: null, llegada_tarde: true, minutos_tarde: 12, nombre: "Juan Pérez", division: "metalurgica" },
-    { legajo: 100004, ingreso: "06:55", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Martín López", division: "instalaciones" },
-    { legajo: 100005, ingreso: "07:03", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Diego Fernández", division: "instalaciones" },
-    { legajo: 100008, ingreso: "07:01", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Nicolás Morales", division: "metalurgica" },
-    { legajo: 100009, ingreso: "07:08", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Alejandro Ruiz", division: "logistica" },
-    { legajo: 100010, ingreso: "08:02", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Sebastián Herrera", division: "admin" },
-    { legajo: 100011, ingreso: "07:00", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Pablo Acosta", division: "metalurgica" },
-    { legajo: 100007, ingreso: "07:22", egreso: null, horas_trabajadas: null, llegada_tarde: true, minutos_tarde: 22, nombre: "Facundo Torres", division: "instalaciones" },
-    { legajo: 100012, ingreso: "06:50", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Emiliano Vega", division: "instalaciones" },
-    { legajo: 100001, ingreso: "07:55", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Carlos Méndez", division: "metalurgica" },
+    { legajo: 100002, ingreso: "06:58", egreso: "15:55", horas_trabajadas: "8.9", llegada_tarde: false, minutos_tarde: 0, nombre: "Roberto Gutiérrez", division: "produccion" },
+    { legajo: 100003, ingreso: "07:12", egreso: null, horas_trabajadas: null, llegada_tarde: true, minutos_tarde: 12, nombre: "Juan Pérez", division: "produccion" },
+    { legajo: 100004, ingreso: "06:55", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Martín López", division: "logistica" },
+    { legajo: 100005, ingreso: "07:03", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Diego Fernández", division: "logistica" },
+    { legajo: 100008, ingreso: "07:01", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Nicolás Morales", division: "produccion" },
+    { legajo: 100009, ingreso: "07:08", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Alejandro Ruiz", division: "general" },
+    { legajo: 100010, ingreso: "08:02", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Sebastián Herrera", division: "administracion" },
+    { legajo: 100011, ingreso: "07:00", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Pablo Acosta", division: "produccion" },
+    { legajo: 100007, ingreso: "07:22", egreso: null, horas_trabajadas: null, llegada_tarde: true, minutos_tarde: 22, nombre: "Facundo Torres", division: "logistica" },
+    { legajo: 100012, ingreso: "06:50", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Emiliano Vega", division: "logistica" },
+    { legajo: 100001, ingreso: "07:55", egreso: null, horas_trabajadas: null, llegada_tarde: false, minutos_tarde: 0, nombre: "Carlos Méndez", division: "produccion" },
   ];
 }
 
@@ -253,7 +253,7 @@ function generarSolsAprobadas() {
 }
 
 function generarReportesObra() {
-  const instaladores = EMPLEADOS.filter(e => e.division === "instalaciones");
+  const instaladores = EMPLEADOS.filter(e => e.division === "logistica");
   return instaladores.slice(0, 3).map((emp, i) => ({
     id: 2000 + i,
     legajo: emp.legajo,
