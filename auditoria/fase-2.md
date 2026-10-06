@@ -232,3 +232,7 @@ order by 1,2,3;
 ```
 
 Q11 (índices) también vino cortado, pero alcanza para la Fase 3. Si querés, exportalo con “Download CSV” desde el resultado completo.
+
+### 8.5 Estado de la contención (2026-10-06)
+
+✅ **F2-00 contenido.** El dueño ejecutó el script de §8.1 y lo verificó: 0 permisos de `anon`/`authenticated` sobre tablas y 0 funciones ejecutables por `anon`. La app siguió funcionando (login, fichaje, dashboard). Quedan pendientes, sin urgencia: limpiar las policies permisivas, revisar los logs de la API y forzar el cambio de contraseñas (ver Fase 7).
