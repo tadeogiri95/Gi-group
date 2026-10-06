@@ -343,6 +343,39 @@ test("fichar — la precisión declarada tiene tope de 100 m (no se puede fichar
   assert.match(json.error, /precisión del GPS ±5000 m/);
 });
 
+// Caso real 2: zona "Gi Planta" con radio 500 m, empleado asignado con radio 150 m
+// (default de la pantalla), teléfono con ubicación aproximada (±2000 m) a 345 m.
+const GI_PLANTA = { id: 7, lat: -31.332285, lng: -64.151852, radio: 500, nombre: "Gi Planta" };
+function handlersGiPlanta() {
+  return [
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "enterprise" }] }) },
+    { match: (url) => url.includes("/rest/v1/geo_zonas"), respond: () => ({ status: 200, body: [GI_PLANTA, { id: 8, lat: -31.422065, lng: -64.137307, radio: 60, nombre: "LyP 3613" }] }) },
+    { match: (url) => url.includes("select=geo_config"), respond: () => ({ status: 200, body: [{ geo_config: { activo: true, ubicacion_id: 7, radio: 150 } }] }) },
+    ...handlersIngresoBasico(),
+  ];
+}
+
+test("fichar — el radio del empleado (150 m por defecto) ya no achica el de la zona (500 m)", async () => {
+  const token = await tokenValido();
+  global.fetch = mockFichar(handlersGiPlanta());
+  // ~345 m al sur del centro de la zona
+  const res = await POST(req({ accion: "ingreso", geo_lat: -31.335385, geo_lng: -64.151852 }, token));
+  const json = await res.json();
+  assert.equal(json.ok, true, JSON.stringify(json));
+});
+
+test("fichar — con ubicación aproximada del teléfono, el mensaje pide activar la ubicación precisa", async () => {
+  const token = await tokenValido();
+  global.fetch = mockFichar(handlersGiPlanta());
+  // ~1 km de la zona, ±2000 m
+  const res = await POST(req({ accion: "ingreso", geo_lat: -31.341285, geo_lng: -64.151852, geo_precision: 2000 }, token));
+  const json = await res.json();
+  assert.equal(json.tipo, "fuera_de_zona");
+  assert.match(json.error, /radio 500 m/);
+  assert.match(json.error, /ubicación aproximada \(±2000 m\)/);
+});
+
 // ─── Egreso: tope de horas y atomicidad (auditoría 2026-06-24) ───────────────
 
 test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero no bloquea el egreso", async () => {

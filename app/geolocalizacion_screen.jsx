@@ -1034,7 +1034,8 @@ export function validarGeoFichaje({ empleado, ubicaciones }) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const dist = haversine(pos.coords.latitude, pos.coords.longitude, ubi.lat, ubi.lng);
-        const radio = gc.radio || ubi.radio || 150;
+        // Mismo criterio que /api/fichar: el mayor entre el radio de la zona y el del empleado
+        const radio = Math.max(Number(ubi.radio) || 0, Number(gc.radio) || 0) || 150;
         if (dist <= radio) {
           resolve({ ok: true, distancia: Math.round(dist), ubicacion: ubi.nombre });
         } else {
