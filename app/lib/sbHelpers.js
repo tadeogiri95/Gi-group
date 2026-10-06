@@ -50,6 +50,23 @@ export async function sbGet(path, opts = {}) {
   }
 }
 
+// ─── GET de todas las páginas ───
+// PostgREST (Supabase) corta cada respuesta en "max rows" (1000) SIN avisar.
+// Para rangos que pueden pasarse (fichadas de un mes, etc.) se pagina con
+// limit/offset. `path` debe tener un order= con desempate único (p. ej.
+// order=fecha.asc,id.asc) para que las páginas no se pisen.
+// Devuelve { data, truncado }: truncado=true si se llegó a maxFilas.
+export async function sbGetAll(path, { pageSize = 1000, maxFilas = 20000 } = {}) {
+  const sep = path.includes("?") ? "&" : "?";
+  const data = [];
+  for (let offset = 0; offset < maxFilas; offset += pageSize) {
+    const page = await sbGet(`${path}${sep}limit=${pageSize}&offset=${offset}`);
+    data.push(...(page || []));
+    if (!page || page.length < pageSize) return { data, truncado: false };
+  }
+  return { data, truncado: true };
+}
+
 // ─── POST (con return=representation) ───
 export async function sbPost(path, body, opts = {}) {
   try {

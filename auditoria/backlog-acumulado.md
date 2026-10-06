@@ -69,19 +69,19 @@
 |---|---|---|---|---|
 | F3-01 | UNIQUE `fichadas (legajo, fecha)` sin empresa (bloquea al 2do cliente) | Crítico | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
 | F3-02 | UNIQUE `empleados (email)` global | Alto | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
-| F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | En PR #10: `calcularJornada` con parseo `HH:MM:SS` + migración 067 opcional para recalcular |
-| F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | En PR #10 (whitelist + validación de catálogo) |
+| F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | **Hecho** (#10 fusionado): `calcularJornada` con parseo `HH:MM:SS` + migración 067 opcional para recalcular |
+| F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | **Hecho** (#10 fusionado) (whitelist + validación de catálogo) |
 | F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
-| F1-04 | Liquidación truncada a 1.000 filas | Alto | S | Pendiente (Max rows confirmado) |
-| F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | Pendiente |
+| F1-04 | Liquidación truncada a 1.000 filas | Alto | S | En PR #15 (paginación server-side + aviso `truncado`); agregados en SQL quedan para H2 |
+| F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | En PR #15 (todas las páginas + aviso en pantalla) |
 | F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | **Hecho** (#6: botón “Código de acceso”) |
 | F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | **Hecho** (#6) |
 | F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | Pendiente |
 | F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | Pendiente |
 | F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | Pendiente |
 | F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | Pendiente |
-| F1-10 | Fecha de actividad en UTC (después de las 21 h) | Medio | S | En PR #10 |
-| F1-11 | Horas extra en turno noche | Medio | S | En PR #10 |
+| F1-10 | Fecha de actividad en UTC (después de las 21 h) | Medio | S | **Hecho** (#10 fusionado) |
+| F1-11 | Horas extra en turno noche | Medio | S | **Hecho** (#10 fusionado) |
 | F1-12 | Escrituras de varios pasos sin transacción | Medio | M | Pendiente |
 | F1-13 | Rotación del refresh sin gracia (varias pestañas) | Medio | S | Pendiente |
 | F1-21 | Vacaciones de un solo día (modelo sin rango) | Bajo | S | Pendiente |

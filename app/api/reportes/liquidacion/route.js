@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { getPlanEmpresa } from "../../../lib/planEnforcement";
 import { planTieneModulo } from "../../../lib/plans";
-import { sbGet } from "../../../lib/sbHelpers";
+import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
 
@@ -69,11 +69,17 @@ export async function GET(request) {
       );
     }
 
-    const [empleados, fichadas, solicitudes] = await Promise.all([
-      sbGet(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=legajo,nombre&order=legajo.asc`),
-      sbGet(`fichadas?empresa_id=eq.${empresaId}&fecha=gte.${desde}&fecha=lte.${hasta}&select=legajo,horas_trabajadas,llegada_tarde,minutos_tarde,horas_extra`),
-      sbGet(`solicitudes?empresa_id=eq.${empresaId}&estado=eq.aprobado&fecha=gte.${desde}&fecha=lte.${hasta}&tipo=in.(${TIPOS_AUSENCIA.join(",")})&select=legajo`),
+    // Todas las páginas: Supabase corta cada respuesta en 1000 filas sin avisar
+    // y 50 empleados × 22 días ya son 1100 fichadas (auditoría F1-04).
+    const [emps, fichs, sols] = await Promise.all([
+      sbGetAll(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=legajo,nombre&order=legajo.asc`),
+      sbGetAll(`fichadas?empresa_id=eq.${empresaId}&fecha=gte.${desde}&fecha=lte.${hasta}&select=legajo,horas_trabajadas,llegada_tarde,minutos_tarde,horas_extra&order=fecha.asc,id.asc`),
+      sbGetAll(`solicitudes?empresa_id=eq.${empresaId}&estado=eq.aprobado&fecha=gte.${desde}&fecha=lte.${hasta}&tipo=in.(${TIPOS_AUSENCIA.join(",")})&select=legajo&order=id.asc`),
     ]);
+    const empleados = emps.data;
+    const fichadas = fichs.data;
+    const solicitudes = sols.data;
+    const truncado = emps.truncado || fichs.truncado || sols.truncado;
 
     const porLegajo = new Map();
     for (const emp of empleados || []) {
@@ -112,7 +118,8 @@ export async function GET(request) {
     }));
 
     return NextResponse.json(
-      { desde, hasta, empleados: resultado },
+      // truncado: se llegó al tope de filas; la UI debe avisar que el reporte puede estar incompleto
+      { desde, hasta, empleados: resultado, ...(truncado ? { truncado: true } : {}) },
       { headers: { "Cache-Control": "private, no-store" } }
     );
   } catch (err) {
