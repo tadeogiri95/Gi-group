@@ -1,0 +1,170 @@
+# Backlog acumulado de la auditoría
+
+> Documento vivo: se actualiza al cerrar cada fase. Es la **entrada de la Fase 7** (priorización, roadmap y plan de implementación).
+> Última actualización: Fase 7 (2026-10-06). La priorización final está en `fase-7.md`.
+> Severidad: Crítico / Alto / Medio / Bajo · Esfuerzo: S (≤1 día) / M (días) / L (semanas).
+> Estado: **Pendiente** · **Contenido** (mitigado sin cambiar código) · **Descartado**.
+
+## 1. Decisiones del dueño (insumo de diseño)
+
+| # | Decisión | Fase |
+|---|---|---|
+| D1 | Sumar **stock, compras, órdenes de producción, calidad y mantenimiento** como módulos activables por paquete y personalizables por cliente | 0 |
+| D2 | Roles: **operario** (`operativo`), **supervisor y admin** (`administrativo`), **dueño** (`gerencial`); el supervisor ve **solo su división**; gerencia y administración ven todo | 0, 4 |
+| D3 | Sin usuarios activos ni cobros en el piloto: se aceptan cambios que rompan compatibilidad | 0 |
+| D4 | Datos de fichadas y actividades actuales = **de prueba** (se pueden descartar o recalcular) | 1 |
+| D5 | Tolerancia, bloqueo a la 3ra tardanza y presentismo = **reglas de la fábrica**, no defaults del producto | 1 |
+| D6 | **Botón grande de fichar** en lugar del chat | 1 |
+| D7 | Acceso de operarios con **QR + PIN** | 4 |
+| D8 | **Escaneo de OT** (código de barras/QR) opcional por empresa | 4 |
+| D9 | **Reporte de obra/instalación** = módulo opcional | 4 |
+| D10 | **Resumen semanal automático** para el dueño | 4 |
+| D11 | 100% de los operarios con **Android**, wifi en planta; la **tablet de kiosco la pone el cliente** | 5 |
+| D12 | Cuenta de **Google Play personal** (por ahora); la app se ve como canal | 5 |
+| D13 | Infra hoy: **Vercel Hobby + Supabase Free**, sin backups ni staging | 2, 3 |
+| D14 | Formato recomendado (pendiente de confirmar en la Fase 7): **web + PWA/TWA en Google Play + modo kiosco**; nativo a demanda | 5 |
+| D15 | Gypi es **monotributista**, sin punto de venta electrónico → Factura C al CUIT del cliente | 6 |
+| D16 | Cobro por **tramos de operarios + módulos** | 6 |
+| D17 | **100% self-service** (sin implementación paga) | 6 |
+| D18 | Precios en **USD cobrados en ARS** | 6 |
+| D19 | **Plan Free mínimo sin publicidad** | 6 |
+
+## 2. Hallazgos por área
+
+### 2.1 Seguridad y multi-tenancy
+
+| ID | Título | Sev. | Esf. | Estado |
+|---|---|---|---|---|
+| F2-00 | Base de producción abierta al rol anónimo (grants + policies permisivas + RPC) | Crítico | S | **Contenido** (REVOKE ejecutado y verificado). Pendiente: limpiar policies, revisar logs, forzar cambio de contraseñas |
+| F2-01 | `/api/data` sin control de rol (borrar empresa, autoaprobarse, escribir pagos) | Crítico | M | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
+| F2-02 | Embedding/`select` sin control + FK cruzadas entre tenants | Crítico | S–M | **En PR #5** (tadeogiri95/Gi-group#5); FK compuestas en la base quedan para H3 |
+| F2-03 | Activación de cuenta solo con slug + legajo (toma de cuenta) | Alto | S | Pendiente (se resuelve con D7) |
+| F2-05 | `/api/chat`: proxy abierto, sin presupuesto por tenant | Alto | S | Pendiente |
+| F2-06 | Acciones de la IA con permisos amplios; prompts de empresa editables por cualquiera | Alto | S | Pendiente |
+| F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
+| F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | Pendiente |
+| F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | Pendiente |
+| F2-10 | Canal Realtime público | Medio | S | Pendiente |
+| F2-11 | Webhook de MP: validar suscripción, empresa y monto; tabla de eventos | Medio | S | Pendiente |
+| F2-12 | Recupero de contraseña sin rate limit; las sesiones no se revocan al cambiar la contraseña | Medio | S | Pendiente |
+| F2-13 | Superadmin con clave única sin 2FA; auditoría que falla en silencio; cookie con path incorrecto | Medio | S | Pendiente |
+| F2-14 | Un único `JWT_SECRET` para 8 tipos de token, sin `aud` | Medio | M | Pendiente |
+| F2-15 | Rate limits en memoria | Medio | S | Pendiente |
+| F2-16 | `/api/geocode` público | Medio | S | Pendiente |
+| F2-17 | Privacidad: proveedores omitidos, GPS “opcional”, Ley 25.326/DPA | Medio | M | Pendiente (legal) |
+| F2-18 | Exenciones de CSRF amplias | Bajo | S | Pendiente |
+| F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
+| F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | Pendiente |
+| F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **Hecho** (tadeogiri95/Gi-group#1, fusionado): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
+| F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
+| H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | Pendiente |
+
+### 2.2 Bugs funcionales y de datos
+
+| ID | Título | Sev. | Esf. | Estado |
+|---|---|---|---|---|
+| F3-01 | UNIQUE `fichadas (legajo, fecha)` sin empresa (bloquea al 2do cliente) | Crítico | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
+| F3-02 | UNIQUE `empleados (email)` global | Alto | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
+| F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | Pendiente (no observado en datos viejos) |
+| F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | Pendiente |
+| F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
+| F1-04 | Liquidación truncada a 1.000 filas | Alto | S | Pendiente (Max rows confirmado) |
+| F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | Pendiente |
+| F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | Pendiente |
+| F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | Pendiente |
+| F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | Pendiente |
+| F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | Pendiente |
+| F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | Pendiente |
+| F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | Pendiente |
+| F1-10 | Fecha de actividad en UTC (después de las 21 h) | Medio | S | Pendiente |
+| F1-11 | Horas extra en turno noche | Medio | S | Pendiente |
+| F1-12 | Escrituras de varios pasos sin transacción | Medio | M | Pendiente |
+| F1-13 | Rotación del refresh sin gracia (varias pestañas) | Medio | S | Pendiente |
+| F1-21 | Vacaciones de un solo día (modelo sin rango) | Bajo | S | Pendiente |
+| F2-21 | config-empresa exige UUID | — | — | **Descartado** para divisiones (en prod son `uuid`); confirmar etapas |
+
+### 2.3 Producto, UX y operación en planta
+
+| ID | Título | Sev. | Esf. | Estado |
+|---|---|---|---|---|
+| F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | Pendiente |
+| F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Pendiente |
+| F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
+| F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Pendiente |
+| F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Pendiente |
+| F4-08 | Reorganizar “Gestión” (operación vs. configuración) | Medio | M | Pendiente |
+| F4-09 | Accesibilidad: objetivos táctiles ≥48 px, texto ≥12 px | Medio | M | Pendiente |
+| F4-10 | Unificar el sistema de diseño | Medio | M | Pendiente |
+| F4-11 | Buscador + escáner de OT (D8) | Medio | S–M | Pendiente |
+| F4-12 | Formulario de solicitudes con rango de fechas | Medio | S | Pendiente |
+| F4-13 / H1–H5, H9 | Reglas y textos de la fábrica → configuración por tenant (D5) | Medio | M | Pendiente |
+| F4-14 | Onboarding extendido + checklist de activación | Medio | M | Pendiente |
+| F4-15 | Formato de hora unificado | Bajo | S | Pendiente |
+| F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | Pendiente |
+| F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Pendiente |
+| F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
+| — | **Resumen semanal automático** (D10) | Nuevo | S–M | Pendiente |
+| — | **Modo kiosco** con QR + PIN (D7, D11) | Nuevo | M | Pendiente |
+| — | **TWA en Google Play** (D12, D14) | Nuevo | S | Pendiente |
+| F5-camera | `Permissions-Policy: camera=()` bloquea el escáner | Medio | S | Pendiente |
+
+### 2.4 Arquitectura, performance y escalabilidad
+
+| ID | Título | Sev. | Esf. | Estado |
+|---|---|---|---|---|
+| F3-04 | Polling de 8 consultas cada 2 min + recargas por Realtime | Alto | M | Pendiente |
+| F3-05 | `validarToken` consulta la empresa en cada request | Medio | S | Pendiente |
+| F3-06 | Lógica de negocio en el navegador → servicios por dominio | Medio | M–L | Pendiente |
+| F3-07 | `push-ausencias` con `limit=2000` global | Medio | S | Pendiente |
+| F3-08 | Crons diarios por el plan Hobby (inactividad de 30 min = diaria) | Medio | S | Pendiente |
+| F3-13 | Transacciones en Postgres (imprescindible para stock/OP) | Medio | M | Pendiente |
+| F3-14 | Rate limit y cachés en memoria | Bajo | S | Pendiente |
+| F3-15 | Prompt caching y alias de modelo de IA | Bajo | S | Pendiente |
+| F3-16 | Fotos sin comprimir, base64 | Bajo | S | Pendiente |
+| F3-17 | Pantallas gigantes → carpetas por feature | Bajo | M | Pendiente |
+| D1 | **Arquitectura modular** (núcleo + planta + roles/permisos + módulos + personalización) | Nuevo | L | Pendiente |
+
+### 2.5 Operación, datos e infraestructura
+
+| ID | Título | Sev. | Esf. | Estado |
+|---|---|---|---|---|
+| F3-10 | Sin backups (Supabase Free) | Alto | S | Pendiente |
+| F3-11 | Un solo ambiente (previews posiblemente contra prod) | Alto | M | Pendiente (confirmar en Vercel) |
+| F0-12 | Vercel Hobby prohíbe el uso comercial | Alto | S | Pendiente (pasar a Pro antes de cobrar) |
+| F3-09 / F0-05 | Drift de esquema, índices duplicados, migraciones manuales | Medio | M | Pendiente |
+| F3-12 | Observabilidad (Sentry, uptime, logs estructurados) | Medio | S | Pendiente (confirmar el DSN) |
+| H15 | Tenant del piloto con slug `gypi` | Bajo | S | Pendiente |
+
+### 2.6 Calidad de código y tests
+
+| ID | Título | Sev. | Esf. | Estado |
+|---|---|---|---|---|
+| F1-15 | `tsc` no chequea JS (27 de 163 archivos) | Medio | M–L | Pendiente |
+| F1-16 | Cobertura engañosa; flujos críticos sin test | Medio | M | Pendiente |
+| F1-18 | Patrones inconsistentes (fetch crudo, zod en 9 de 60 rutas) | Bajo | M | Pendiente |
+| F1-19 | Errores tragados; `Promise.all` frágil | Bajo | S | Pendiente |
+| F1-20 / F0-13 | Código muerto (`DataTable`, `usePlan`, prompt gerencial, cambio de horario) | Bajo | S | Pendiente |
+| F1-22 | Deprecaciones (Sentry, SDK compat de Firebase) | Bajo | S | Pendiente |
+
+### 2.7 SaaS-readiness y monetización
+
+| ID | Título | Sev. | Esf. | Estado |
+|---|---|---|---|---|
+| F6-01 | Exportación y baja de datos prometidas y no implementadas | Alto | M | Pendiente |
+| F6-02 | Perfil fiscal del cliente + factura al CUIT | Alto | M | Pendiente (validar con el contador) |
+| F6-03 | Prueba de cobro de punta a punta (sandbox MP) | Alto | M | Pendiente |
+| F6-04 | Planes y módulos en la base + entitlements en el servidor | Alto | M | Pendiente |
+| F6-05 | Indexación de precios | Medio | S | Pendiente |
+| F6-06 | Medición de uso (operarios activos, IA, storage) | Medio | M | Pendiente |
+| F6-07 | Términos, privacidad, DPA y SLA (abogado) | Medio | S | Pendiente (legal) |
+| F6-09 | Superadmin: módulos, add-ons, pagos manuales, consumo | Medio | M | Pendiente |
+| F6-10 | Canal de soporte y página de estado | Bajo | S | Pendiente |
+| F6-11 | Comprobantes descargables | Bajo | S | Pendiente |
+
+## 3. Preguntas abiertas que condicionan el plan
+
+| Fase | Pregunta |
+|---|---|
+| 3 | ¿`SENTRY_DSN` configurado? ¿Las variables de Supabase aplican también a *Preview* en Vercel? ¿Multi-planta? ¿Primer módulo nuevo (sugerido: OP)? ¿Uso real de la gerencia (PC todo el día o esporádico)? |
+| 6 | ~~Respondidas~~ → D15–D19 |
+| 2 | ¿El gerente puede leer el chat del empleado? ¿Quién ve las ubicaciones GPS? |
