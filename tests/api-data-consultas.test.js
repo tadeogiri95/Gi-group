@@ -63,6 +63,25 @@ test("no se puede filtrar ni ordenar por columnas sensibles (evita deducir hashe
   }
 });
 
+test("no se puede buscar por hash de código de activación ni recibirlo en la respuesta", async () => {
+  const t = await token();
+  mockOk();
+  const res = await POST(req({ method: "GET", path: "empleados?activacion_codigo_hash=eq.abc" }, t));
+  assert.equal(res.status, 403);
+
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empleados"), respond: () => ({ status: 200, body: [{ id: 1, nombre: "Ana", activacion_codigo_hash: "abc", password: "x" }] }) },
+  ]);
+  const ok = await POST(req({ method: "GET", path: "empleados?select=*" }, t));
+  const json = await ok.json();
+  assert.equal(ok.status, 200);
+  const fila = (json.data ?? json)[0];
+  assert.equal(fila.nombre, "Ana");
+  assert.equal(fila.activacion_codigo_hash, undefined);
+  assert.equal(fila.password, undefined);
+});
+
 test("la codificación URL no saltea el control", async () => {
   mockOk();
   const res = await POST(req({ method: "GET", path: "fichadas?select=%2A%2Cempleados%28password%29" }, await token()));

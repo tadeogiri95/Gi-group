@@ -1,9 +1,10 @@
-// tests/api-unirse.test.js — Tests HTTP de POST /api/unirse
+// tests/api-unirse.test.js — Tests HTTP de POST /api/unirse (activación con código)
 import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
 import { createFetchMock } from "./helpers/mockFetch.js";
 import { _resetBuckets } from "../app/lib/rateLimitMemory.js";
+import { hashCodigo, generarCodigo, normalizarCodigo, nuevaActivacion, linkActivacion } from "../app/lib/activacion.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -16,6 +17,10 @@ const { POST } = await import("../app/api/unirse/route.js");
 const EMPRESA_ID = "11111111-1111-1111-1111-111111111111";
 const EMPLEADO_ID = "22222222-2222-2222-2222-222222222222";
 const PASSWORD_OK = "Segura123";
+const CODIGO = "K7P2-M9QX";
+const HASH = hashCodigo(CODIGO);
+const FUTURO = new Date(Date.now() + 86_400_000).toISOString();
+const PASADO = new Date(Date.now() - 1000).toISOString();
 
 function req(body) {
   return new Request("http://localhost/api/unirse", {
@@ -25,36 +30,44 @@ function req(body) {
   });
 }
 
-function handlersBase({ empresaActiva = true, empleadoEstado = "pendiente_activacion", empleadoFound = true, empresaFound = true } = {}) {
-  let patchCalled = null;
+function handlersBase({ empresaActiva = true, empresaFound = true, empleadoFound = true, expira = FUTURO, patchFilas = 1 } = {}) {
+  const llamadas = { patchEmpleado: null, patchUrl: null, empleadoUrl: null, sesiones: null };
   const handlers = [
     {
       match: (url) => url.includes("/rest/v1/empresa?slug=eq."),
       respond: () => ({
         status: 200,
-        body: empresaFound
-          ? [{ id: EMPRESA_ID, nombre: "Empresa Test", nombre_corto: "EmpTest", activa: empresaActiva }]
-          : [],
+        body: empresaFound ? [{ id: EMPRESA_ID, nombre: "Empresa Test", nombre_corto: "EmpTest", activa: empresaActiva }] : [],
       }),
     },
     {
-      match: (url) => url.includes("/rest/v1/empleados?empresa_id=eq.") && url.includes("legajo=eq."),
-      respond: () => ({
-        status: 200,
-        body: empleadoFound
-          ? [{ id: EMPLEADO_ID, nombre: "Juan Perez", apodo: "Juancho", estado_activacion: empleadoEstado }]
-          : [],
-      }),
+      match: (url, opts) => url.includes("/rest/v1/empleados?empresa_id=eq.") && (!opts?.method || opts.method === "GET"),
+      respond: (url) => {
+        llamadas.empleadoUrl = url;
+        const ok = empleadoFound && url.includes(`activacion_codigo_hash=eq.${HASH}`);
+        return {
+          status: 200,
+          body: ok ? [{ id: EMPLEADO_ID, nombre: "Juan Perez", apodo: "Juancho", legajo: 7, rol: "operativo", activacion_expira: expira }] : [],
+        };
+      },
     },
     {
       match: (url, opts) => url.includes("/rest/v1/empleados?id=eq.") && opts?.method === "PATCH",
-      respond: (_url, opts) => {
-        patchCalled = JSON.parse(opts.body);
-        return { status: 200, body: [{ id: EMPLEADO_ID }] };
+      respond: (url, opts) => {
+        llamadas.patchUrl = url;
+        llamadas.patchEmpleado = JSON.parse(opts.body);
+        return { status: 200, body: Array.from({ length: patchFilas }, () => ({ id: EMPLEADO_ID })) };
+      },
+    },
+    {
+      match: (url, opts) => url.includes("/rest/v1/sesiones?empleado_id=eq.") && opts?.method === "PATCH",
+      respond: (url, opts) => {
+        llamadas.sesiones = { url, body: JSON.parse(opts.body) };
+        return { status: 200, body: [] };
       },
     },
   ];
-  handlers.getPatchCalled = () => patchCalled;
+  handlers.llamadas = llamadas;
   return handlers;
 }
 
@@ -63,104 +76,131 @@ beforeEach(() => {
   global.fetch = createFetchMock(handlersBase());
 });
 
-// ── 1. Missing fields → 400 ──
+// ── lib/activacion ──
+test("activacion — códigos con formato XXXX-XXXX y sin caracteres ambiguos", () => {
+  for (let i = 0; i < 200; i++) {
+    const c = generarCodigo();
+    assert.match(c, /^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/);
+  }
+});
+
+test("activacion — el hash ignora mayúsculas, espacios y guiones", () => {
+  assert.equal(normalizarCodigo(" k7p2 m9qx "), "K7P2M9QX");
+  assert.equal(hashCodigo("k7p2-m9qx"), HASH);
+  assert.equal(hashCodigo("K7P2M9QX"), HASH);
+});
+
+test("activacion — nuevaActivacion guarda solo el hash y vence en 14 días", () => {
+  const a = nuevaActivacion();
+  assert.equal(a.columnas.activacion_codigo_hash, hashCodigo(a.codigo));
+  assert.notEqual(a.columnas.activacion_codigo_hash, a.codigo);
+  const dias = (new Date(a.columnas.activacion_expira) - Date.now()) / 86_400_000;
+  assert.ok(dias > 13.9 && dias <= 14);
+});
+
+test("activacion — el link lleva slug y código", () => {
+  assert.equal(linkActivacion("https://gypi.app", "acme", "AB12-CD34"), "https://gypi.app/acme/unirse?code=AB12-CD34");
+});
+
+// ── validación ──
 test("unirse — faltan campos devuelve 400", async () => {
   const res = await POST(req({ slug: "empresa-test" }));
   assert.equal(res.status, 400);
 });
 
-// ── 2. Invalid action → 400 ──
-test("unirse — action inválida devuelve 400", async () => {
-  const res = await POST(req({ action: "destruir", slug: "empresa-test", legajo: 7 }));
+test("unirse — ya no acepta legajo (body estricto) → 400", async () => {
+  const res = await POST(req({ action: "verificar", slug: "empresa-test", legajo: 7 }));
   assert.equal(res.status, 400);
 });
 
-// ── 3. Empresa not found → 404 ──
+test("unirse — código con largo incorrecto → 404 sin consultar la base", async () => {
+  let consultas = 0;
+  global.fetch = async () => { consultas++; throw new Error("no debería llamarse"); };
+  const res = await POST(req({ action: "verificar", slug: "empresa-test", codigo: "ABCD" }));
+  assert.equal(res.status, 404);
+  assert.equal(consultas, 0);
+});
+
 test("unirse — empresa no encontrada devuelve 404", async () => {
   global.fetch = createFetchMock(handlersBase({ empresaFound: false }));
-  const res = await POST(req({ action: "verificar", slug: "no-existe", legajo: 7 }));
-  const json = await res.json();
+  const res = await POST(req({ action: "verificar", slug: "no-existe", codigo: CODIGO }));
   assert.equal(res.status, 404);
-  assert.ok(json.error.includes("no encontrada"));
 });
 
-// ── 4. Empresa inactive → 403 ──
 test("unirse — empresa inactiva devuelve 403", async () => {
   global.fetch = createFetchMock(handlersBase({ empresaActiva: false }));
-  const res = await POST(req({ action: "verificar", slug: "empresa-test", legajo: 7 }));
-  const json = await res.json();
+  const res = await POST(req({ action: "verificar", slug: "empresa-test", codigo: CODIGO }));
   assert.equal(res.status, 403);
-  assert.ok(json.error.includes("inactiva"));
 });
 
-// ── 5. Legajo not found → 404 ──
-test("unirse — legajo no encontrado devuelve 404", async () => {
-  global.fetch = createFetchMock(handlersBase({ empleadoFound: false }));
-  const res = await POST(req({ action: "verificar", slug: "empresa-test", legajo: 999 }));
+// ── verificar ──
+test("unirse — busca por hash del código dentro de la empresa (nunca en texto plano)", async () => {
+  const h = handlersBase();
+  global.fetch = createFetchMock(h);
+  await POST(req({ action: "verificar", slug: "empresa-test", codigo: "k7p2 m9qx" }));
+  assert.ok(h.llamadas.empleadoUrl.includes(`empresa_id=eq.${EMPRESA_ID}`));
+  assert.ok(h.llamadas.empleadoUrl.includes(`activacion_codigo_hash=eq.${HASH}`));
+  assert.ok(!h.llamadas.empleadoUrl.includes("K7P2"));
+});
+
+test("unirse — código incorrecto → 404 con mensaje genérico", async () => {
+  const res = await POST(req({ action: "verificar", slug: "empresa-test", codigo: "ZZZZ-ZZZZ" }));
   const json = await res.json();
   assert.equal(res.status, 404);
-  assert.ok(json.error.includes("Legajo no encontrado"));
+  assert.ok(json.error.includes("no es válido o ya venció"));
 });
 
-// ── 6. Already activated → 409 ──
-test("unirse — cuenta ya activada devuelve 409", async () => {
-  global.fetch = createFetchMock(handlersBase({ empleadoEstado: "activo" }));
-  const res = await POST(req({ action: "verificar", slug: "empresa-test", legajo: 7 }));
-  const json = await res.json();
-  assert.equal(res.status, 409);
-  assert.ok(json.error.includes("ya está activada"));
+test("unirse — código vencido → 404", async () => {
+  global.fetch = createFetchMock(handlersBase({ expira: PASADO }));
+  const res = await POST(req({ action: "verificar", slug: "empresa-test", codigo: CODIGO }));
+  assert.equal(res.status, 404);
 });
 
-// ── 7. verificar success → 200 ──
-test("unirse — verificar devuelve nombre, apodo, empresaNombre", async () => {
-  const res = await POST(req({ action: "verificar", slug: "empresa-test", legajo: 7 }));
+test("unirse — verificar devuelve nombre, apodo y empresa", async () => {
+  const res = await POST(req({ action: "verificar", slug: "empresa-test", codigo: CODIGO }));
   const json = await res.json();
   assert.equal(res.status, 200);
-  assert.equal(json.ok, true);
   assert.equal(json.nombre, "Juan Perez");
   assert.equal(json.apodo, "Juancho");
   assert.equal(json.empresaNombre, "EmpTest");
 });
 
-// ── 8. activar with weak password → 400 ──
-test("unirse — activar con password débil devuelve 400", async () => {
-  const res = await POST(req({ action: "activar", slug: "empresa-test", legajo: 7, password: "123" }));
-  const json = await res.json();
+// ── activar ──
+test("unirse — activar sin password válida → 400 sin escribir", async () => {
+  const h = handlersBase();
+  global.fetch = createFetchMock(h);
+  const res = await POST(req({ action: "activar", slug: "empresa-test", codigo: CODIGO, password: "corta" }));
   assert.equal(res.status, 400);
-  assert.ok(json.error);
+  assert.equal(h.llamadas.patchEmpleado, null);
 });
 
-// ── 9. activar success → 200, verifica sbPatch con hash ──
-test("unirse — activar con password válida devuelve 200 y actualiza con hash", async () => {
-  const handlers = handlersBase();
-  global.fetch = createFetchMock(handlers);
-  const res = await POST(req({ action: "activar", slug: "empresa-test", legajo: 7, password: PASSWORD_OK }));
-  const json = await res.json();
+test("unirse — activar define contraseña, borra el código y cierra sesiones", async () => {
+  const h = handlersBase();
+  global.fetch = createFetchMock(h);
+  const res = await POST(req({ action: "activar", slug: "empresa-test", codigo: CODIGO, password: PASSWORD_OK }));
   assert.equal(res.status, 200);
-  assert.equal(json.ok, true);
-  assert.equal(json.nombre, "Juan Perez");
-  assert.equal(json.empresaNombre, "EmpTest");
-
-  const patch = handlers.getPatchCalled();
-  assert.ok(patch, "sbPatch debe haber sido llamado");
-  assert.equal(patch.estado_activacion, "activo");
-  assert.equal(patch.debe_cambiar_password, false);
-  // Verify the password was hashed (bcrypt hashes start with $2)
-  assert.ok(patch.password.startsWith("$2"), "password debe estar hasheada con bcrypt");
-  const match = await bcrypt.compare(PASSWORD_OK, patch.password);
-  assert.ok(match, "el hash debe corresponder al password original");
+  const p = h.llamadas.patchEmpleado;
+  assert.ok(await bcrypt.compare(PASSWORD_OK, p.password));
+  assert.equal(p.estado_activacion, "activo");
+  assert.equal(p.debe_cambiar_password, false);
+  assert.equal(p.activacion_codigo_hash, null);
+  assert.equal(p.activacion_expira, null);
+  // El PATCH filtra también por el hash → uso único atómico
+  assert.ok(h.llamadas.patchUrl.includes(`activacion_codigo_hash=eq.${HASH}`));
+  assert.ok(h.llamadas.patchUrl.includes(`empresa_id=eq.${EMPRESA_ID}`));
+  assert.deepEqual(h.llamadas.sesiones.body, { revocada: true });
 });
 
-// ── 10. Rate limit → 429 ──
-test("unirse — rate limit devuelve 429", async () => {
-  // Send 20 requests to exhaust the limit
-  for (let i = 0; i < 20; i++) {
-    await POST(req({ action: "verificar", slug: "empresa-test", legajo: 7 }));
+test("unirse — si otro pedido usó el código primero (0 filas) → 404", async () => {
+  global.fetch = createFetchMock(handlersBase({ patchFilas: 0 }));
+  const res = await POST(req({ action: "activar", slug: "empresa-test", codigo: CODIGO, password: PASSWORD_OK }));
+  assert.equal(res.status, 404);
+});
+
+test("unirse — rate limit: 21 intentos → 429", async () => {
+  let ultimo;
+  for (let i = 0; i < 21; i++) {
+    ultimo = await POST(req({ action: "verificar", slug: "empresa-test", codigo: "ZZZZ-ZZZZ" }));
   }
-  // The 21st should be rate limited
-  const res = await POST(req({ action: "verificar", slug: "empresa-test", legajo: 7 }));
-  assert.equal(res.status, 429);
-  const json = await res.json();
-  assert.ok(json.error.includes("Demasiados intentos"));
-  assert.ok(res.headers.get("Retry-After"));
+  assert.equal(ultimo.status, 429);
 });

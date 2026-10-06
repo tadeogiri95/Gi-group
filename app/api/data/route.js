@@ -56,7 +56,7 @@ const TABLAS_PERMITIDAS = [
 const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado"];
 
 const CAMPOS_EXCLUIDOS = {
-  empleados: ["password", "password_reset_jti"],
+  empleados: ["password", "password_reset_jti", "activacion_codigo_hash"],
   empresa:   ["admin_password", "email_verify_token", "email_verify_expires"],
 };
 

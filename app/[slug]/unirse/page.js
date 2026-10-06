@@ -22,8 +22,8 @@ export default function UnirseScreen() {
   const slug = params?.slug;
   const [empresa, setEmpresa] = useState(null);
   const [empresaNotFound, setEmpresaNotFound] = useState(false);
-  const [step, setStep] = useState(1); // 1: legajo, 2: contraseña, 3: ok
-  const [legajo, setLegajo] = useState("");
+  const [step, setStep] = useState(1); // 1: código, 2: contraseña, 3: ok
+  const [codigo, setCodigo] = useState("");
   const [empleado, setEmpleado] = useState(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -43,14 +43,20 @@ export default function UnirseScreen() {
       .catch(() => setEmpresaNotFound(true));
   }, [slug]);
 
-  const verificarLegajo = async () => {
-    if (!legajo.trim()) return;
+  // El link/QR que entrega la empresa trae el código: /{slug}/unirse?code=XXXX-XXXX
+  useEffect(() => {
+    const c = new URLSearchParams(window.location.search).get("code");
+    if (c) setCodigo(c.toUpperCase());
+  }, []);
+
+  const verificarCodigo = async () => {
+    if (!codigo.trim()) return;
     setLoading(true); setError("");
     try {
       const res = await fetch("/api/unirse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "verificar", slug, legajo: legajo.trim() }),
+        body: JSON.stringify({ action: "verificar", slug, codigo: codigo.trim() }),
       });
       const data = await res.json();
       if (!res.ok || data.error) { setError(data.error || "Error"); setLoading(false); return; }
@@ -69,7 +75,7 @@ export default function UnirseScreen() {
       const res = await fetch("/api/unirse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "activar", slug, legajo: legajo.trim(), password }),
+        body: JSON.stringify({ action: "activar", slug, codigo: codigo.trim(), password }),
       });
       const data = await res.json();
       if (!res.ok || data.error) { setError(data.error || "Error"); setLoading(false); return; }
@@ -107,25 +113,28 @@ export default function UnirseScreen() {
         </div>
       )}
 
-      {/* STEP 1: Legajo */}
+      {/* STEP 1: Código de activación */}
       {step === 1 && (
         <>
           <h1 style={{ margin: 0, fontFamily: fH, fontSize: 28, fontWeight: 700, color: TEXT, letterSpacing: "-0.025em" }}>Unite a {empresa.nombre_corto || empresa.nombre}</h1>
           <p style={{ fontSize: 13, color: DIM, marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
-            Ingresá tu legajo o DNI para activar tu cuenta. Si no lo sabés, pedíselo a tu administrador.
+            Ingresá el código de activación que te dio tu empresa. Si no lo tenés o venció, pedile uno nuevo a tu supervisor.
           </p>
 
-          <label style={lblStyle}>Legajo / DNI</label>
+          <label style={lblStyle}>Código de activación</label>
           <input
-            value={legajo}
-            onChange={e => setLegajo(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && verificarLegajo()}
-            inputMode="numeric"
-            placeholder="Tu número de legajo"
-            style={{ ...inputStyle, marginBottom: 16 }}
+            value={codigo}
+            onChange={e => setCodigo(e.target.value.toUpperCase())}
+            onKeyDown={e => e.key === "Enter" && verificarCodigo()}
+            autoCapitalize="characters"
+            autoComplete="one-time-code"
+            spellCheck={false}
+            placeholder="XXXX-XXXX"
+            maxLength={20}
+            style={{ ...inputStyle, marginBottom: 16, letterSpacing: "0.15em", fontFamily: "monospace", fontSize: 18, textAlign: "center" }}
           />
 
-          <button onClick={verificarLegajo} disabled={loading || !legajo.trim()} style={{ width: "100%", padding: 14, borderRadius: 12, background: legajo.trim() && !loading ? AMBER : SURFACE, color: legajo.trim() && !loading ? AMBER_TEXT : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: legajo.trim() && !loading ? "pointer" : "default" }}>
+          <button onClick={verificarCodigo} disabled={loading || !codigo.trim()} style={{ width: "100%", padding: 14, borderRadius: 12, background: codigo.trim() && !loading ? AMBER : SURFACE, color: codigo.trim() && !loading ? AMBER_TEXT : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: codigo.trim() && !loading ? "pointer" : "default" }}>
             {loading ? "Verificando..." : "Continuar"}
           </button>
 

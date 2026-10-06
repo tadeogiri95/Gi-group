@@ -193,28 +193,57 @@ function ModalConfirmarBaja({ empleado, onClose, onConfirm, saving }) {
   );
 }
 
-/* ═══ MODAL LINK INVITACIÓN ═══ */
-function ModalInvitacion({ link, onClose }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(link).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+/* ═══ MODAL CÓDIGOS DE ACCESO ═══ */
+// Muestra los códigos de activación recién generados. Se ven UNA sola vez:
+// el servidor guarda solo el hash. El empleado los usa en /{slug}/unirse.
+function textoCodigo(c, vigencia) {
+  return `Hola ${c.nombre}! Para entrar a Gypi abrí este link y creá tu contraseña: ${c.link || ""}\nTu código: ${c.codigo} (vence en ${vigencia} días)`;
+}
+
+function ModalCodigos({ codigos, vigencia, onClose }) {
+  const [copiado, setCopiado] = useState(null);
+  const copiar = (clave, texto) => {
+    navigator.clipboard?.writeText(texto).then(() => {
+      setCopiado(clave);
+      setTimeout(() => setCopiado(null), 2000);
+    }).catch(() => {});
   };
+  const todos = codigos.map(c => `${c.legajo} · ${c.nombre} · ${c.codigo}${c.link ? ` · ${c.link}` : ""}`).join("\n");
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Link de invitacion">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Códigos de acceso">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
-      <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] border border-gypi-border">
+      <div className="relative w-full max-w-[460px] max-h-[85dvh] overflow-y-auto bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] border border-gypi-border">
         <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
-        <h3 className="m-0 mb-2 font-heading text-lg font-bold text-gypi-text">Link de invitacion</h3>
-        <p className="text-xs text-gypi-dim mb-3">Comparti este link con los empleados pre-cargados para que activen su cuenta.</p>
-        <div className="bg-gypi-surface border border-gypi-border rounded-[10px] p-3 mb-3 flex items-center gap-2">
-          <span className="flex-1 text-xs font-mono text-gypi-text truncate">{link}</span>
-          <button onClick={handleCopy} className="px-3 py-1.5 rounded-lg border-none text-xs font-bold cursor-pointer" style={{ background: copied ? "rgba(22,163,74,0.10)" : `${CYAN}22`, color: copied ? GREEN : CYAN }}>
-            {copied ? "Copiado" : "Copiar"}
-          </button>
+        <h3 className="m-0 mb-2 font-heading text-lg font-bold text-gypi-text">
+          {codigos.length === 1 ? "Código de acceso" : `Códigos de acceso (${codigos.length})`}
+        </h3>
+        <p className="text-xs text-gypi-dim mb-3">
+          Entregá cada código a su empleado (en mano o por WhatsApp). Con el link y el código crea su contraseña.
+          Sirve una sola vez y vence en {vigencia} días. <b>Anotalos ahora: no se pueden volver a ver</b>; si se pierde, generá uno nuevo.
+        </p>
+        <div className="flex flex-col gap-2 mb-3">
+          {codigos.map((c, i) => (
+            <div key={`${c.legajo}-${i}`} className="bg-gypi-surface border border-gypi-border rounded-[10px] p-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-gypi-dim truncate">{c.legajo} · {c.nombre}</div>
+                  <div className="font-mono text-lg font-bold tracking-[0.15em] text-gypi-text">{c.codigo}</div>
+                </div>
+                <button onClick={() => copiar(i, textoCodigo(c, vigencia))} className="px-3 py-1.5 rounded-lg border-none text-xs font-bold cursor-pointer" style={{ background: copiado === i ? "rgba(22,163,74,0.10)" : `${CYAN}22`, color: copiado === i ? GREEN : CYAN }}>
+                  {copiado === i ? "Copiado" : "Copiar"}
+                </button>
+                <a href={`https://wa.me/?text=${encodeURIComponent(textoCodigo(c, vigencia))}`} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-bold no-underline" style={{ background: "rgba(22,163,74,0.10)", color: GREEN }}>
+                  WhatsApp
+                </a>
+              </div>
+            </div>
+          ))}
         </div>
+        {codigos.length > 1 && (
+          <button onClick={() => copiar("todos", todos)} className="g-btn g-btn-secondary w-full mb-2">
+            {copiado === "todos" ? "Copiados" : "Copiar todos"}
+          </button>
+        )}
         <button onClick={onClose} className="g-btn g-btn-secondary w-full">Cerrar</button>
       </div>
     </div>
@@ -223,7 +252,7 @@ function ModalInvitacion({ link, onClose }) {
 
 /* ═══ MAIN COMPONENT ═══ */
 export default function GestionPersonalScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, empresa, usuario: sesion } = useAuth();
+  const { divisiones: divisionesCtx, usuario: sesion } = useAuth();
   // Un administrativo no puede crear/asignar rol gerencial (misma regla que /api/empleados)
   const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : ROLES.filter(r => r !== "gerencial");
   const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
@@ -237,7 +266,7 @@ export default function GestionPersonalScreen({ empresaId }) {
   const [modalEditar, setModalEditar] = useState(null);
   const [modalBaja, setModalBaja] = useState(null);
   const [modalCSV, setModalCSV] = useState(null);
-  const [modalInvitacion, setModalInvitacion] = useState(null);
+  const [modalCodigos, setModalCodigos] = useState(null); // { codigos: [...], vigencia }
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [progresoCSV, setProgresoCSV] = useState("");
@@ -309,6 +338,12 @@ export default function GestionPersonalScreen({ empresaId }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setModalAlta(null);
+      if (data.activacion?.codigo) {
+        setModalCodigos({
+          codigos: [{ nombre: data.nombre, legajo: data.legajo, codigo: data.activacion.codigo, link: data.activacion.link }],
+          vigencia: data.activacion.vigencia_dias,
+        });
+      }
       cargar();
     } catch (err) {
       console.error("Error en alta:", err);
@@ -408,6 +443,9 @@ export default function GestionPersonalScreen({ empresaId }) {
       } else {
         toast.info(`0 importados · ${data.skipped} duplicados${erroresTxt}`);
       }
+      if (data.activaciones?.length) {
+        setModalCodigos({ codigos: data.activaciones, vigencia: data.vigencia_dias });
+      }
     } catch (err) {
       console.error("Error en importación CSV:", err);
       toast.error("Error al importar: " + err.message);
@@ -419,14 +457,31 @@ export default function GestionPersonalScreen({ empresaId }) {
     await cargar();
   };
 
-  /* ── Link invitación ── */
-  const generarLinkInvitacion = () => {
-    const base = typeof window !== "undefined" ? window.location.origin : "";
-    // El slug viene de la empresa en contexto; como respaldo, el primer segmento
-    // del path actual (la app vive siempre en /[slug]).
-    const slug = empresa?.slug || (typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "");
-    if (!slug) { toast.error("No se pudo determinar la URL de la empresa. Recargá la página."); return; }
-    setModalInvitacion(`${base}/${slug}/unirse`);
+  /* ── Código de acceso ── */
+  // Genera un código nuevo (invalida el anterior). Sirve para reenviar la
+  // activación o para recuperar el acceso de quien no tiene email.
+  // Un administrativo solo puede hacerlo para operativos (lo valida el server).
+  const puedeGenerarCodigo = (emp) =>
+    emp.id !== sesion?.id && (sesion?.rol === "gerencial" || (emp.rol || "operativo") === "operativo");
+
+  const generarCodigo = async (emp) => {
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/empleados/activacion", {
+        method: "POST",
+        body: JSON.stringify({ empleado_id: emp.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+      setModalCodigos({
+        codigos: [{ nombre: data.nombre, legajo: data.legajo, codigo: data.activacion.codigo, link: data.activacion.link }],
+        vigencia: data.activacion.vigencia_dias,
+      });
+    } catch (err) {
+      toast.error("No se pudo generar el código: " + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   /* ── Iniciales avatar ── */
@@ -502,13 +557,6 @@ export default function GestionPersonalScreen({ empresaId }) {
         >
           CSV
         </button>
-        <button
-          onClick={generarLinkInvitacion}
-          className="flex-1 py-2.5 rounded-xl border-none text-xs font-bold font-heading cursor-pointer"
-          style={{ background: `${CYAN}22`, color: CYAN }}
-        >
-          Invitar
-        </button>
         <input ref={fileRef} type="file" accept=".csv" onChange={handleCSVFile} className="hidden" />
       </div>
 
@@ -560,6 +608,7 @@ export default function GestionPersonalScreen({ empresaId }) {
                   <div className="flex items-center gap-1.5 shrink-0">
                     {divInfo && emp.division && <Tag color={divInfo.color || CYAN}>{divInfo.label}</Tag>}
                     {emp.pre_cargado && <Tag color={CYAN}>pre</Tag>}
+                    {emp.estado_activacion === "pendiente_activacion" && !isInactivo && <Tag color={AMBER}>sin activar</Tag>}
                     {isInactivo && <Tag color={RED}>baja</Tag>}
                   </div>
                 </div>
@@ -573,6 +622,16 @@ export default function GestionPersonalScreen({ empresaId }) {
                     >
                       Editar
                     </button>
+                    {puedeGenerarCodigo(emp) && (
+                      <button
+                        onClick={() => generarCodigo(emp)}
+                        disabled={saving}
+                        className="g-btn g-btn-secondary flex-1 text-[11px]"
+                        title="Genera un código nuevo para activar la cuenta o recuperar el acceso"
+                      >
+                        Código de acceso
+                      </button>
+                    )}
                     <button
                       onClick={() => setModalBaja(emp)}
                       className="g-btn g-btn-danger flex-1 text-[11px]"
@@ -628,10 +687,11 @@ export default function GestionPersonalScreen({ empresaId }) {
           progreso={progresoCSV}
         />
       )}
-      {modalInvitacion && (
-        <ModalInvitacion
-          link={modalInvitacion}
-          onClose={() => setModalInvitacion(null)}
+      {modalCodigos && (
+        <ModalCodigos
+          codigos={modalCodigos.codigos}
+          vigencia={modalCodigos.vigencia}
+          onClose={() => setModalCodigos(null)}
         />
       )}
     </section>

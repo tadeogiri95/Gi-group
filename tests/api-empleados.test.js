@@ -243,6 +243,14 @@ test("POST empleados — crea empleado correctamente con empresa_id del token", 
   assert.equal(insertedData.debe_cambiar_password, true);
   assert.equal(insertedData.email, "maria@test.com", "email se guarda en minúsculas");
   assert.equal(json.password, undefined, "no debe devolver password en la respuesta");
+  // Código de activación de un solo uso (F2-03)
+  assert.equal(insertedData.estado_activacion, "pendiente_activacion");
+  assert.match(json.activacion.codigo, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.equal(json.activacion.link, `https://gypi.app/test-co/unirse?code=${json.activacion.codigo}`);
+  assert.equal(json.activacion.vigencia_dias, 14);
+  const { hashCodigo } = await import("../app/lib/activacion.js");
+  assert.equal(insertedData.activacion_codigo_hash, hashCodigo(json.activacion.codigo));
+  assert.equal(json.activacion_codigo_hash, undefined, "no debe devolver el hash");
 });
 
 test("POST empleados — administrativo no puede crear rol gerencial", async () => {

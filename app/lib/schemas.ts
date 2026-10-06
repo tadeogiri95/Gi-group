@@ -190,7 +190,7 @@ export const ficharBody = z.object({
 export const unirseBody = z.object({
   action: z.enum(["verificar", "activar"]),
   slug: z.string().min(1).max(50),
-  legajo: z.union([z.number(), z.string().max(20)]),
+  codigo: z.string().min(4).max(20),
   password: z.string().max(200).optional(),
 }).strict();
 

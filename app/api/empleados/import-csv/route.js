@@ -14,6 +14,9 @@ import { sbGet, sbPost } from "../../../lib/sbHelpers";
 import { validarFormatoEmail } from "../../../lib/rateLimit";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
+import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../../lib/activacion";
+
+const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
 const ROLES_VALIDOS = ["operativo", "gerencial", "administrativo"];
 const ROLES_PERMITIDOS = new Set(["gerencial", "administrativo"]);
@@ -61,12 +64,13 @@ export async function POST(req) {
   const legajosExistentes = new Set((existentes || []).map((e) => Number(e.legajo)));
 
   // Verificar límite de plan — fuente de verdad: PLANES[], no empresa.max_empleados
-  const empresaData = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo`);
+  const empresaData = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo,slug`);
+  const slug = empresaData?.[0]?.slug || null;
   const planActivo = empresaData?.[0]?.plan_activo || "free";
   const maxEmpleados = (PLANES[planActivo] ?? PLANES.free).max_empleados;
   const actuales = legajosExistentes.size;
 
-  const results = { created: 0, skipped: 0, errors: [...parseErrors] };
+  const results = { created: 0, skipped: 0, errors: [...parseErrors], activaciones: [] };
   let added = 0;
 
   // Validar todas las filas primero, acumular batch para insert masivo
@@ -99,6 +103,12 @@ export async function POST(req) {
     }
 
     const rol = ROLES_VALIDOS.includes(row.rol) ? row.rol : "operativo";
+    // Misma regla que POST /api/empleados: solo el dueño crea cuentas de dueño.
+    // Con el código de activación en la respuesta, permitirlo sería escalar privilegios.
+    if (rol === "gerencial" && sesion.rol !== "gerencial") {
+      results.errors.push(`Fila ${rowNum}: solo el dueño puede dar de alta usuarios gerenciales`);
+      continue;
+    }
 
     const emailRaw = row.email?.trim() || null;
     if (emailRaw && !validarFormatoEmail(emailRaw)) {
@@ -120,10 +130,11 @@ export async function POST(req) {
       chunk.map(async (item) => ({
         ...item,
         passwordHash: await bcrypt.hash(passwordInicial(), 10),
+        activacion: nuevaActivacion(),
       }))
     );
 
-    const payloads = withHashes.map(({ legajo, nombre, emailRaw, rol, row, passwordHash }) => ({
+    const payloads = withHashes.map(({ legajo, nombre, emailRaw, rol, row, passwordHash, activacion }) => ({
       empresa_id: empresaId,
       legajo,
       nombre,
@@ -135,12 +146,23 @@ export async function POST(req) {
       activo: true,
       password: passwordHash,
       debe_cambiar_password: true,
+      estado_activacion: "pendiente_activacion",
+      ...activacion.columnas,
     }));
 
     try {
       const created = await sbPost("empleados", payloads);
       if (Array.isArray(created)) {
         results.created += created.length;
+        // Códigos en texto plano: se muestran una sola vez al admin.
+        for (const { legajo, nombre, activacion } of withHashes) {
+          results.activaciones.push({
+            legajo,
+            nombre,
+            codigo: activacion.codigo,
+            link: slug ? linkActivacion(APP_BASE, slug, activacion.codigo) : null,
+          });
+        }
       } else {
         results.errors.push(`Lote ${Math.floor(b / BATCH_SIZE) + 1}: respuesta inesperada del servidor`);
       }
@@ -154,6 +176,7 @@ export async function POST(req) {
   return NextResponse.json({
     ok: true,
     ...results,
+    vigencia_dias: DIAS_VIGENCIA,
     total_procesadas: rows.length,
   });
 }

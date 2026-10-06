@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS empleados (
   pre_cargado             boolean DEFAULT false,                                                   -- (029)
   password_reset_jti      text DEFAULT NULL,                                                       -- (018) token de un solo uso
   google_id               text,                                                                     -- (062) sub del id_token de Google — único por (empresa_id, google_id) si no-null
+  activacion_codigo_hash  text,                                                                     -- (065) SHA-256 del código de activación de un solo uso (nunca en texto plano)
+  activacion_expira       timestamptz,                                                              -- (065) vencimiento del código (14 días)
   UNIQUE (empresa_id, legajo)
 );
 

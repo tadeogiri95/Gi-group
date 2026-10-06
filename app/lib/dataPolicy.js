@@ -150,7 +150,7 @@ export function validarPatch(tabla, body, sesion) {
 const COLUMNAS_SENSIBLES = [
   "password", "password_reset_jti", "admin_password",
   "email_verify_token", "email_verify_expires",
-  "token_hash", "jti", "refresh_jti",
+  "token_hash", "jti", "refresh_jti", "activacion_codigo_hash",
 ];
 const RE_SENSIBLE = new RegExp(`(^|[^a-z0-9_])(${COLUMNAS_SENSIBLES.join("|")})([^a-z0-9_]|$)`, "i");
 
