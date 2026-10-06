@@ -146,3 +146,13 @@
 3. **Puesta en marcha:** ¿estás dispuesto a ofrecer implementación paga (carga inicial, capacitación) o preferís un producto 100% self-service?
 4. **Moneda:** ¿preferís precios en **ARS con actualización** o **USD de referencia cobrados en ARS**?
 5. **Plan Free:** ¿lo mantenemos mínimo y sin publicidad, o lo reemplazamos por un **trial de 30 días**?
+
+---
+
+## Respuestas del dueño del producto (2026-10-06)
+
+1. **Monotributista**, **sin punto de venta electrónico** habilitado → se factura **Factura C** al CUIT del cliente; hay que habilitar un punto de venta para web service en ARCA y generar el certificado (validar con el contador; controlar el tope de la categoría a medida que crezca la facturación).
+2. Cobro por **tramos de operarios + módulos** (Estructura 1).
+3. **100% self-service**, sin implementación paga → el onboarding (Fase 4 §4) pasa a ser crítico.
+4. **Precios en USD cobrados en pesos** → conversión con un tipo de cambio de referencia y actualización del monto del preapproval (validar con el contador y MP).
+5. **Plan Free mínimo, sin publicidad** → quitar AdSense.

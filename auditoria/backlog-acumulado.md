@@ -1,7 +1,7 @@
 # Backlog acumulado de la auditoría
 
 > Documento vivo: se actualiza al cerrar cada fase. Es la **entrada de la Fase 7** (priorización, roadmap y plan de implementación).
-> Última actualización: Fase 6 (2026-10-06).
+> Última actualización: Fase 7 (2026-10-06). La priorización final está en `fase-7.md`.
 > Severidad: Crítico / Alto / Medio / Bajo · Esfuerzo: S (≤1 día) / M (días) / L (semanas).
 > Estado: **Pendiente** · **Contenido** (mitigado sin cambiar código) · **Descartado**.
 
@@ -23,6 +23,11 @@
 | D12 | Cuenta de **Google Play personal** (por ahora); la app se ve como canal | 5 |
 | D13 | Infra hoy: **Vercel Hobby + Supabase Free**, sin backups ni staging | 2, 3 |
 | D14 | Formato recomendado (pendiente de confirmar en la Fase 7): **web + PWA/TWA en Google Play + modo kiosco**; nativo a demanda | 5 |
+| D15 | Gypi es **monotributista**, sin punto de venta electrónico → Factura C al CUIT del cliente | 6 |
+| D16 | Cobro por **tramos de operarios + módulos** | 6 |
+| D17 | **100% self-service** (sin implementación paga) | 6 |
+| D18 | Precios en **USD cobrados en ARS** | 6 |
+| D19 | **Plan Free mínimo sin publicidad** | 6 |
 
 ## 2. Hallazgos por área
 
@@ -161,5 +166,5 @@
 | Fase | Pregunta |
 |---|---|
 | 3 | ¿`SENTRY_DSN` configurado? ¿Las variables de Supabase aplican también a *Preview* en Vercel? ¿Multi-planta? ¿Primer módulo nuevo (sugerido: OP)? ¿Uso real de la gerencia (PC todo el día o esporádico)? |
-| 6 | ¿Monotributo o RI? ¿Punto de venta electrónico? ¿Estructura de planes 1 o 2? ¿Ofrecer implementación paga? ¿ARS indexado o USD de referencia? ¿Free mínimo o trial de 30 días? |
+| 6 | ~~Respondidas~~ → D15–D19 |
 | 2 | ¿El gerente puede leer el chat del empleado? ¿Quién ve las ubicaciones GPS? |
