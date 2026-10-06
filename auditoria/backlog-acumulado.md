@@ -36,12 +36,12 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F2-00 | Base de producción abierta al rol anónimo (grants + policies permisivas + RPC) | Crítico | S | **Contenido** (REVOKE ejecutado y verificado). Pendiente: limpiar policies, revisar logs, forzar cambio de contraseñas |
-| F2-01 | `/api/data` sin control de rol (borrar empresa, autoaprobarse, escribir pagos) | Crítico | M | **En PR #3** (tadeogiri95/Gi-group#3) |
-| F2-02 | Embedding/`select` sin control + FK cruzadas entre tenants | Crítico | S–M | Pendiente |
+| F2-01 | `/api/data` sin control de rol (borrar empresa, autoaprobarse, escribir pagos) | Crítico | M | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
+| F2-02 | Embedding/`select` sin control + FK cruzadas entre tenants | Crítico | S–M | **En PR #5** (tadeogiri95/Gi-group#5); FK compuestas en la base quedan para H3 |
 | F2-03 | Activación de cuenta solo con slug + legajo (toma de cuenta) | Alto | S | Pendiente (se resuelve con D7) |
 | F2-05 | `/api/chat`: proxy abierto, sin presupuesto por tenant | Alto | S | Pendiente |
 | F2-06 | Acciones de la IA con permisos amplios; prompts de empresa editables por cualquiera | Alto | S | Pendiente |
-| F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | **En PR #3** (tadeogiri95/Gi-group#3) |
+| F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
 | F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | Pendiente |
 | F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | Pendiente |
 | F2-10 | Canal Realtime público | Medio | S | Pendiente |
