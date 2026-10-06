@@ -170,3 +170,13 @@ Puntaje de 1 (peor) a 5 (mejor) para el contexto de Gypi (pymes industriales arg
 2. **Tablet de kiosco:** ¿la pondría el cliente o la ofrecerías vos (venta o comodato, parte del plan)?
 3. **Cuenta de Google Play:** ¿la querés a nombre de una empresa (requiere datos fiscales y, para cuentas nuevas de organización, verificación D-U-N-S [HIPÓTESIS]) o personal al principio?
 4. **iOS:** ¿algún cliente potencial te pidió explícitamente una app de App Store?
+
+---
+
+## Respuestas del dueño del producto (2026-10-06)
+
+1. **Dispositivos:** 100% de los operarios con **Android**; hay **wifi en planta** → refuerza la opción E (TWA + kiosco); el offline queda como respaldo ante cortes.
+2. **Tablet de kiosco:** la pone **el cliente**.
+3. **Google Play:** cuenta **personal** por ahora (ver requisitos de cuentas personales nuevas en `fase-6.md` §5.13).
+4. **App Store / Play:** nadie la pidió; el dueño la ve como una forma de monetizar → aclarado en `fase-6.md` §6: Play sirve como **distribución y confianza**; el cobro conviene hacerlo por fuera.
+5. Pidió **acumular todos los cambios** para un plan de implementación al final → `auditoria/backlog-acumulado.md`.
