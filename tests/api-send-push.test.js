@@ -22,8 +22,8 @@ const { POST } = await import("../app/api/send-push/route.js");
 const EMPRESA_ID = "11111111-1111-1111-1111-111111111111";
 const EMPLEADO_ID = "22222222-2222-2222-2222-222222222222";
 
-async function token() {
-  const { token } = await signAccessToken({ empleadoId: EMPLEADO_ID, empresaId: EMPRESA_ID, legajo: 7, rol: "gerencial" });
+async function token(rol = "gerencial") {
+  const { token } = await signAccessToken({ empleadoId: EMPLEADO_ID, empresaId: EMPRESA_ID, legajo: 7, rol });
   return token;
 }
 
@@ -86,4 +86,49 @@ test("send-push — resuelve destinatarios por rol cuando no se pasa legajo", as
   const json = await res.json();
   assert.equal(res.status, 200);
   assert.equal(json.sent, 0);
+});
+
+// ─── F2-08: push libre solo para gestión ───
+
+test("send-push — un operario no puede mandar push a un legajo (403)", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await POST(postReq(await token("operativo"), { legajo: 8, title: "Urgente", body: "Entrá a este link" }));
+  assert.equal(res.status, 403);
+});
+
+test("send-push — un operario no puede mandar push a otros operarios por rol (403)", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await POST(postReq(await token("operativo"), { rol: "operativo", title: "Urgente", body: "x" }));
+  assert.equal(res.status, 403);
+});
+
+test("send-push — un operario puede avisar a gerencia, pero sin url ni datos extra", async () => {
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    empresaHandler(),
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("rol=eq.gerencial"), respond: () => ({ status: 200, body: [] }) },
+  ]);
+  const res = await POST(postReq(await token("operativo"), { rol: "gerencial", title: "Permiso", body: "Pido permiso", data: { url: "https://phishing.example", tag: "permiso" } }));
+  assert.equal(res.status, 200);
+});
+
+test("send-push — legajo con caracteres de filtro se rechaza (400)", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await POST(postReq(await token(), { legajo: "7&empresa_id=neq.x", title: "Hola", body: "x" }));
+  assert.equal(res.status, 400);
+});
+
+test("send-push — rol inexistente se rechaza (400)", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await POST(postReq(await token(), { rol: "superadmin", title: "Hola", body: "x" }));
+  assert.equal(res.status, 400);
+});
+
+test("sanitizarDataPush — gestión: solo urls internas; operario: solo tag", async () => {
+  const { sanitizarDataPush } = await import("../app/lib/pushData.js");
+  assert.deepEqual(sanitizarDataPush({ url: "/acme?screen=inbox", tag: "t", extra: "1" }, true), { url: "/acme?screen=inbox", tag: "t", extra: "1" });
+  for (const mala of ["https://evil.example", "//evil.example", "/\\evil.example", "javascript:alert(1)"]) {
+    assert.equal(sanitizarDataPush({ url: mala }, true).url, undefined, mala);
+  }
+  assert.deepEqual(sanitizarDataPush({ url: "/acme", tag: "t", extra: "1" }, false), { tag: "t" });
 });

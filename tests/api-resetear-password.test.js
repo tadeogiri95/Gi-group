@@ -99,3 +99,21 @@ test("resetear-password — body no-JSON no rompe el handler (500 controlado)", 
   const res = await POST(postReq("esto no es json"));
   assert.equal(res.status, 500);
 });
+
+// ─── F2-12: resetear la contraseña cierra todas las sesiones ───
+
+test("resetear-password — éxito revoca todas las sesiones abiertas del empleado", async () => {
+  const { token, jti } = await signPasswordResetToken({ empleadoId: EMPLEADO_ID, empresaId: EMPRESA_ID });
+  let revocacion = null;
+  global.fetch = createFetchMock([
+    empleadoHandler([{ id: EMPLEADO_ID, password_reset_jti: jti }]),
+    { match: (url, opts) => url.includes("/rest/v1/empleados") && opts?.method === "PATCH", respond: () => ({ status: 204 }) },
+    { match: (url, opts) => url.includes("/rest/v1/sesiones?") && opts?.method === "PATCH", respond: (url, opts) => { revocacion = { url, body: JSON.parse(opts.body) }; return { status: 200, body: [] }; } },
+  ]);
+  const res = await POST(postReq({ token, nueva_password: PASSWORD_FUERTE }));
+  assert.equal(res.status, 200);
+  assert.ok(revocacion, "debe revocar sesiones");
+  assert.ok(revocacion.url.includes(`empleado_id=eq.${EMPLEADO_ID}`), revocacion.url);
+  assert.ok(!revocacion.url.includes("token_hash=neq."), "en un reseteo no se conserva ninguna sesión");
+  assert.deepEqual(revocacion.body, { revocada: true });
+});

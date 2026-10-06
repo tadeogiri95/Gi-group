@@ -42,9 +42,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
   const [empresa] = await er.json() as { slug: string }[];
 
-  logAudit({
+  // actor_id es uuid: el superadmin no tiene uno, va null y se identifica por
+  // actor_rol (antes "superadmin" hacía fallar el insert en silencio, F2-13).
+  // Impersonar es la acción más sensible del panel: sin registro, no se hace.
+  const auditado = await logAudit({
     empresa_id: empresa_id,
-    actor_id: "superadmin",
+    actor_id: null,
     actor_rol: "superadmin",
     accion: "impersonate",
     entidad: "empresa",
@@ -52,6 +55,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     datos_despues: { empleado: u.nombre, legajo: u.legajo },
     ip: req.headers.get("x-forwarded-for") || "unknown",
   });
+  if (!auditado) {
+    return NextResponse.json({ error: "No se pudo registrar la auditoría; no se impersonó" }, { status: 500 });
+  }
 
   return NextResponse.json({
     url: `/${empresa.slug}?imp=${code}`,

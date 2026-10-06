@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { verifyPasswordResetToken } from "../../lib/jwt";
 import { validarPassword } from "../../lib/validators";
+import { revocarSesiones } from "../../lib/auth";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -84,6 +85,10 @@ export async function POST(req) {
     if (!patch.ok) {
       return NextResponse.json({ error: "No se pudo actualizar la contraseña" }, { status: 500 });
     }
+
+    // Cerrar todas las sesiones abiertas (F2-12): si alguien entró con la
+    // contraseña vieja, pierde el acceso. El empleado vuelve a entrar con la nueva.
+    await revocarSesiones(resetData.empleadoId);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -92,11 +92,42 @@ test("upload-logo — error de storage devuelve 500 sin exponer el texto crudo d
   assert.ok(!json.error.includes("proj_internal"), "no debe exponer el texto crudo de Storage");
 });
 
-test("upload-logo — éxito devuelve logo_url prefijado por empresa_id del token", async () => {
-  global.fetch = createFetchMock([...authPassHandlers(), storageOk(), patchEmpresaOk()]);
+test("upload-logo — éxito devuelve logo_url prefijado por empresa_id del token, nombre nuevo y sin upsert", async () => {
+  let headersSubida = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url, opts) => url.includes("/storage/v1/object/logos/") && opts?.method === "POST", respond: (url, opts) => { headersSubida = opts.headers; return { status: 200, body: { Key: "ok" } }; } },
+    patchEmpresaOk(),
+  ]);
   const token = await tokenConRol("gerencial");
   const res = await POST(postReq(token));
   assert.equal(res.status, 200);
   const json = await res.json();
-  assert.ok(json.logo_url.includes(`${EMPRESA_ID}/logo.png`), `logo_url debe incluir el empresa_id: ${json.logo_url}`);
+  assert.match(json.logo_url, new RegExp(`/logos/${EMPRESA_ID}/logo-\\d+\\.png$`));
+  assert.equal(headersSubida["x-upsert"], "false");
+});
+
+// ─── F2-09 ───
+
+test("upload-logo — un operario no puede cambiar el logo (403)", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const token = await tokenConRol("operativo");
+  const res = await POST(postReq(token));
+  assert.equal(res.status, 403);
+});
+
+test("upload-logo — SVG se rechaza", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const token = await tokenConRol("gerencial");
+  const file = new File(['<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'], "logo.svg", { type: "image/svg+xml" });
+  const res = await POST(postReq(token, { file }));
+  assert.equal(res.status, 400);
+});
+
+test("upload-logo — archivo que dice ser PNG pero no lo es se rechaza", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const token = await tokenConRol("administrativo");
+  const file = new File(["<html><script>alert(1)</script></html>"], "logo.png", { type: "image/png" });
+  const res = await POST(postReq(token, { file }));
+  assert.equal(res.status, 400);
 });

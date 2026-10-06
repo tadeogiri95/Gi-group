@@ -5,9 +5,17 @@
 import { NextResponse } from "next/server";
 import { signPasswordResetToken } from "../../lib/jwt";
 import { sendRecuperarPassword } from "../../lib/email";
+import { limiteExcedido } from "../../lib/rateLimit";
+import { isUUID } from "../../lib/validate";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+// Rate limit (F2-12): por IP y por email, en ventanas de 15 minutos. Sin esto
+// cualquiera podía inundar de mails de recupero a un empleado (o usar el
+// endpoint para mandar spam con el remitente de Gypi).
+const MAX_POR_IP = 5;
+const MAX_POR_EMAIL = 3;
 
 export async function POST(req) {
   try {
@@ -29,7 +37,18 @@ export async function POST(req) {
       return ok;
     };
 
-    if (!email || !empresa_id || !SB_URL || !SB_KEY) return returnOk();
+    if (typeof email !== "string" || !email.trim() || typeof empresa_id !== "string" || !isUUID(empresa_id) || !SB_URL || !SB_KEY) {
+      return returnOk();
+    }
+
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const emailNorm = email.trim().toLowerCase();
+    if (await limiteExcedido(`recupero-ip:${ip}`, MAX_POR_IP) || await limiteExcedido(`recupero-email:${emailNorm}`, MAX_POR_EMAIL)) {
+      return NextResponse.json(
+        { error: "Demasiados pedidos de recupero. Intentá de nuevo en 15 minutos." },
+        { status: 429 }
+      );
+    }
 
     // Buscar empleado activo por email en esta empresa
     const r = await fetch(

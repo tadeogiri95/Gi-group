@@ -92,7 +92,7 @@ export async function POST(req) {
       if (parsedPw.response) return parsedPw.response;
       const { userId, nuevaPassword } = parsedPw.data;
 
-      const { validarToken } = await import("../../lib/auth");
+      const { validarToken, revocarSesiones } = await import("../../lib/auth");
       const sesion = await validarToken(req);
       if (!sesion || sesion.empleado_id !== userId) {
         return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -111,6 +111,8 @@ export async function POST(req) {
       if (!updated || updated.length === 0) {
         return NextResponse.json({ error: "No se pudo actualizar" }, { status: 500 });
       }
+      // Cerrar las demás sesiones del empleado (F2-12); la actual sigue abierta.
+      await revocarSesiones(userId, { exceptoJti: sesion.jti });
       const u = updated[0];
       delete u.password;
       return NextResponse.json({ usuario: u });

@@ -576,7 +576,7 @@ export default function Dashboard({ initialData }) {
                           </span>
                         </td>
                         <td style={{ padding: "10px 14px", color: "#C4B8AE" }}>
-                          {row.actor_legajo || row.actor_id?.slice(0, 8) || "—"}
+                          {row.actor_legajo || row.actor_id?.slice(0, 8) || row.actor_rol || "—"}
                         </td>
                         <td style={{ padding: "10px 14px", color: "#9B8F85" }}>{row.actor_rol || "—"}</td>
                         <td style={{ padding: "10px 14px", color: "#9B8F85" }}>

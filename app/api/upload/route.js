@@ -1,9 +1,12 @@
 // /api/upload/route.js — VERSIÓN SEGURA
-// Valida token; el archivo se sube prefijado con empresa_id
+// Valida token; el archivo se sube con nombre generado en el servidor,
+// prefijado con empresa_id, sin SVG y verificando el contenido real (F2-09)
 import { NextResponse } from "next/server";
 import { validarToken } from "../../lib/auth";
 import { safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
+import { contenidoCoincide, EXT_POR_MIME } from "../../lib/fileSignature";
+import { randomUUID } from "crypto";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -14,32 +17,37 @@ export async function POST(request) {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
 
-    const { fileName, fileBase64, fileType } = await request.json();
-    if (!fileName || !fileBase64) return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
+    // fileName se sigue aceptando por compatibilidad, pero ya no se usa: el
+    // nombre lo genera el servidor (F2-09), así nadie puede pisar un archivo ajeno.
+    const { fileBase64, fileType } = await request.json();
+    if (!fileBase64 || typeof fileBase64 !== "string") return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
 
-    const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"];
+    // Sin SVG: puede llevar scripts y el bucket es público (F2-09)
+    const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
     if (!fileType || !ALLOWED_TYPES.includes(fileType)) {
       return NextResponse.json({ error: "Tipo de archivo no permitido" }, { status: 400 });
     }
-
-    // ─── Sanitizar fileName y prefijar con empresa_id ───
-    // Evita path traversal y aísla archivos por empresa
-    const safeName = fileName.replace(/\.\.+/g, "").replace(/^\/+/, "");
-    const finalPath = `${sesion.empresa_id}/${safeName}`;
 
     const buffer = Buffer.from(fileBase64, "base64");
     const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
     if (buffer.length > MAX_SIZE_BYTES) {
       return NextResponse.json({ error: "Archivo demasiado grande. Máximo 5 MB." }, { status: 413 });
     }
+    // El contenido real tiene que ser el tipo declarado (no confiar en el navegador)
+    if (!contenidoCoincide(buffer, fileType)) {
+      return NextResponse.json({ error: "El archivo no es una imagen válida" }, { status: 400 });
+    }
+
+    // Nombre generado en el servidor y prefijado con la empresa
+    const finalPath = `${sesion.empresa_id}/${randomUUID()}.${EXT_POR_MIME[fileType]}`;
 
     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/reportes-obra/${finalPath}`, {
       method: "POST",
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": fileType || "image/jpeg",
-        "x-upsert": "true",
+        "Content-Type": fileType,
+        "x-upsert": "false",
       },
       body: buffer,
     });

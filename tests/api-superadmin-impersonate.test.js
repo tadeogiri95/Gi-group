@@ -76,3 +76,29 @@ test("impersonate — éxito devuelve 200 con url y datos del empleado", async (
   assert.equal(json.empleado.legajo, 7);
   assert.equal(json.empleado.rol, "gerencial");
 });
+
+// ─── F2-13: la auditoría de la impersonación no falla en silencio ───
+
+test("impersonate — registra la auditoría con actor_id null (columna uuid) y actor_rol superadmin", async () => {
+  let audit = null;
+  global.fetch = createFetchMock([
+    ...handlers(),
+    { match: (url, opts) => url.includes("/rest/v1/audit_log") && opts?.method === "POST", respond: (url, opts) => { audit = JSON.parse(opts.body); return { status: 201 }; } },
+  ]);
+  const res = await withAdmin(() => POST(postReq({ empresa_id: VALID_UUID })));
+  assert.equal(res.status, 200);
+  assert.equal(audit.accion, "impersonate");
+  assert.equal(audit.actor_id, null);
+  assert.equal(audit.actor_rol, "superadmin");
+});
+
+test("impersonate — si la auditoría no se puede guardar, no entrega el código (500)", async () => {
+  global.fetch = createFetchMock([
+    ...handlers(),
+    { match: (url) => url.includes("/rest/v1/audit_log"), respond: () => ({ status: 400, body: { code: "22P02", message: "invalid input syntax for type uuid" } }) },
+  ]);
+  const res = await withAdmin(() => POST(postReq({ empresa_id: VALID_UUID })));
+  assert.equal(res.status, 500);
+  const json = await res.json();
+  assert.equal(json.url, undefined);
+});

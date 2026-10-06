@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signAdminToken } from "../../../lib/jwt";
 import { ventana15min } from "../../../lib/rateLimit";
+import { createHash, timingSafeEqual } from "crypto";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -26,6 +27,15 @@ async function checkRateLimit(ip: string): Promise<boolean> {
   }
 }
 
+// Comparación en tiempo constante (F2-13): con `!==` el tiempo de respuesta
+// filtra cuántos caracteres iniciales coinciden. Se comparan los hashes para
+// que ambos lados tengan siempre el mismo largo.
+function claveCorrecta(key: string, secret: string): boolean {
+  const a = createHash("sha256").update(key).digest();
+  const b = createHash("sha256").update(secret).digest();
+  return timingSafeEqual(a, b);
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -37,7 +47,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const secret = process.env.SUPERADMIN_SECRET;
 
     if (!secret) return NextResponse.json({ error: "SUPERADMIN_SECRET no configurado" }, { status: 500 });
-    if (!key || key !== secret) return NextResponse.json({ error: "Clave incorrecta" }, { status: 401 });
+    if (typeof key !== "string" || !key || !claveCorrecta(key, secret)) return NextResponse.json({ error: "Clave incorrecta" }, { status: 401 });
 
     const adminToken = await signAdminToken();
 
@@ -47,10 +57,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       value: adminToken,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/superadmin",
+      // Strict: no viaja en pedidos iniciados desde otros sitios.
+      sameSite: "strict",
+      // "/" y no "/superadmin" (F2-13): el panel llama a /api/superadmin/* y
+      // con el path anterior el navegador no mandaba la cookie a esas APIs.
+      path: "/",
       maxAge: 8 * 60 * 60,
     });
+    // Borrar la cookie vieja (path=/superadmin) para que no tape a la nueva.
+    res.headers.append("Set-Cookie", "gypi_superadmin=; Path=/superadmin; Max-Age=0; HttpOnly; SameSite=Strict");
     return res;
   } catch (err) {
     console.error("[superadmin/auth]", err);

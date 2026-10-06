@@ -9,6 +9,7 @@ import { validarToken } from "../../../lib/auth";
 import { isUUID, safeErrorMessage } from "../../../lib/validate";
 import { sbGet, sbPost, sbDelete } from "../../../lib/sbHelpers";
 import { logger } from "../../../lib/logger";
+import { contenidoCoincide } from "../../../lib/fileSignature";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -64,6 +65,12 @@ export async function POST(req) {
       return NextResponse.json({ error: "Archivo demasiado grande. Máximo 5 MB." }, { status: 413 });
     }
 
+    // El contenido real tiene que coincidir con el tipo declarado (F2-09)
+    const buffer = Buffer.from(await file.arrayBuffer());
+    if (!contenidoCoincide(buffer, file.type)) {
+      return NextResponse.json({ error: "El contenido del archivo no coincide con su formato" }, { status: 400 });
+    }
+
     // ─── Si no admite múltiples, reemplazar: borrar archivo(s) + fila(s) previas ───
     if (!tipo.admite_multiples) {
       const previos = await sbGet(`documentos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=eq.${empleadoId}&tipo_documento_id=eq.${tipoDocumentoId}&select=id,storage_path`);
@@ -83,11 +90,10 @@ export async function POST(req) {
     // ─── Subir archivo ───
     const ext = EXT_POR_MIME[file.type] || "bin";
     const storagePath = `${sesion.empresa_id}/${empleadoId}/${tipoDocumentoId}-${Date.now()}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
 
     const uploadRes = await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${storagePath}`, {
       method: "POST",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type, "x-upsert": "true" },
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type, "x-upsert": "false" },
       body: buffer,
     });
     if (!uploadRes.ok) {

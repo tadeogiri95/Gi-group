@@ -47,9 +47,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Error actualizando plan en DB" }, { status: 500 });
   }
 
-  logAudit({
+  // actor_id es uuid: el superadmin no tiene uno, va null y se identifica por
+  // actor_rol (antes "superadmin" hacía fallar el insert en silencio, F2-13).
+  await logAudit({
     empresa_id,
-    actor_id: "superadmin",
+    actor_id: null,
     actor_rol: "superadmin",
     accion: "cambiar_plan",
     entidad: "empresa",

@@ -435,7 +435,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 ? <img src={logoPreview} alt="Logo" className="max-w-full max-h-full object-contain" />
                 : <span className="text-gypi-mute text-[13px]">Sin logo</span>}
             </div>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
+            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoChange} className="hidden" />
             <button
               onClick={() => fileInputRef.current?.click()}
               className="g-btn g-btn-secondary w-full"

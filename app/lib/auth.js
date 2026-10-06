@@ -149,3 +149,41 @@ export function respuestaNoAutorizado(mensaje) {
     { status: 401 }
   );
 }
+
+// ─── Revocar sesiones de un empleado (F2-12) ───
+// Se usa al cambiar o resetear la contraseña: quien tenía la contraseña vieja
+// (o una sesión robada) deja de tener acceso. `exceptoJti` conserva la sesión
+// desde la que se hizo el cambio. Devuelve true si la base confirmó el cambio.
+export async function revocarSesiones(empleadoId, { exceptoJti } = {}) {
+  if (!SB_URL || !SB_KEY || !empleadoId) return false;
+  const crypto = await import("crypto");
+  let filtro = `empleado_id=eq.${encodeURIComponent(empleadoId)}&revocada=eq.false`;
+  if (exceptoJti) {
+    const hashActual = crypto.createHash("sha256").update(exceptoJti).digest("hex");
+    filtro += `&token_hash=neq.${hashActual}`;
+  }
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/sesiones?${filtro}`, {
+      method: "PATCH",
+      headers: {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({ revocada: true }),
+    });
+    if (!r.ok) {
+      logger.error(`revocarSesiones: la base respondió ${r.status}`, new Error(await r.text().catch(() => "")));
+      return false;
+    }
+    // Sacar del caché local las sesiones revocadas (en esta instancia dejan de
+    // valer al instante; en las demás, al vencer el caché de 5 minutos).
+    const filas = await r.json().catch(() => []);
+    if (Array.isArray(filas)) for (const f of filas) if (f?.token_hash) SESSION_CACHE.delete(f.token_hash);
+    return true;
+  } catch (e) {
+    logger.error("revocarSesiones: error de red", e);
+    return false;
+  }
+}
