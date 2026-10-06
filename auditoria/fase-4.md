@@ -146,3 +146,13 @@ Mismo shell que el administrativo, más facturación (`BillingScreen`), configur
 3. **Supervisor:** ¿cada supervisor debería ver solo su división/sector? (Retoma la pregunta 1 de la Fase 2.)
 4. **Reporte de obra/instalación:** ¿lo dejamos como módulo opcional “trabajo en campo” o es central para tus futuros clientes?
 5. **Resumen para el dueño:** ¿te serviría un email/WhatsApp semanal automático (horas por OT, tiempo muerto por causa, ausencias)?
+
+---
+
+## Respuestas del dueño del producto (2026-10-06)
+
+1. **Acceso de operarios:** **QR + PIN** (activación por QR o código y PIN para el uso diario).
+2. **OT:** pueden tener **código de barras o QR** impreso según cada empresa → el escaneo debe ser opcional y configurable por tenant (además de buscar a mano).
+3. **Visibilidad:** el **supervisor ve solo su división**; gerencia y administración ven todo.
+4. **Reporte de obra/instalación:** **módulo opcional**.
+5. **Resumen semanal automático:** sí, sirve.
