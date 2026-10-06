@@ -21,7 +21,7 @@ const SURFACE = "var(--color-surface)";
 const FB = "var(--font-body)";
 const FM = "var(--font-mono)";
 import { sb } from "../../lib/supabase";
-import { callClaude, parseAction } from "../../lib/claude";
+import { callClaude, parseAction, ACCIONES_CON_EFECTO, descripcionAccion } from "../../lib/claude";
 import { sendPushToRole } from "../../lib/push";
 import { ficharServer, obtenerGeo } from "../../lib/fichar";
 import { Ic } from "../Icons";
@@ -33,7 +33,7 @@ import { hoyArg, ahoraArg } from "../../lib/dates";
 // o un string vacío. Si la IA no extrajo una fecha válida, usamos hoy.
 const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f || "") ? f : hoyArg();
 
-export default function ChatScreen({ usuario, ctx, reload, empresa }) {
+export default function ChatScreen({ usuario, ctx, reload }) {
   const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
   const [msgs, setMsgs] = useState([{
@@ -46,6 +46,8 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
   const [loading, setLoading] = useState(false);
   const [geoError, setGeoError] = useState(null);
   const ref = useRef(null);
+  // Acción propuesta por la IA esperando que el usuario la confirme (F2-06)
+  const accionPendiente = useRef(null);
 
   useEffect(() => { ref.current && (ref.current.scrollTop = ref.current.scrollHeight); }, [msgs, loading]);
 
@@ -124,7 +126,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
       } catch (e) { console.error(e); setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud. Probá de nuevo.", time: new Date() }]); }
       setLoading(false); return;
     }
-    if (t === "❌ No, cancelar") { setMsgs(m => [...m, { from: "bot", text: "Entendido. Si necesitás algo más, avisame.", time: new Date() }]); setLoading(false); return; }
+    if (t === "❌ No, cancelar") { accionPendiente.current = null; setMsgs(m => [...m, { from: "bot", text: "Entendido. Si necesitás algo más, avisame.", time: new Date() }]); setLoading(false); return; }
     if (t === "✅ Sí, fichar salida") {
       try {
         const cr = await execAction({ type: "FICHAR_EGRESO_FORZAR" });
@@ -151,6 +153,18 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
         setMsgs(m => [...m, { from: "bot", text: "✅ Solicitud de hora extra enviada a gerencia. Te aviso cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: "Hora extra", fecha: hoy } }]);
         if (reload) reload();
       } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud.", time: new Date() }]); }
+      setLoading(false); return;
+    }
+
+    // Confirmación de una acción propuesta por la IA
+    if (t === "✅ Confirmar") {
+      const action = accionPendiente.current;
+      accionPendiente.current = null;
+      if (!action) { setMsgs(m => [...m, { from: "bot", text: "No hay nada pendiente para confirmar.", time: new Date() }]); setLoading(false); return; }
+      const card = await execAction(action);
+      if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: card.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); setLoading(false); return; }
+      if (card?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); setLoading(false); return; }
+      setMsgs(m => [...m, { from: "bot", text: "✅ Listo.", card, time: new Date() }]);
       setLoading(false); return;
     }
 
@@ -196,7 +210,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
     // AI chat
     try {
       const hist = nm.slice(-20).map(m => ({ from: m.from, text: m.text }));
-      let raw = await callClaude(hist, ctx, usuario, empresa);
+      let raw = await callClaude(hist);
       let { clean, action } = parseAction(raw);
 
       // Si Claude pide consultar datos, ejecutar query y re-llamar con contexto
@@ -214,7 +228,7 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
             { from: "bot", text: clean || "(consultando datos...)" },
             { from: "user", text: `[DATOS DEL SISTEMA — resultado de ${action.query_type}]:\n${resultado}\n\nResumí esta info de forma clara y concisa para el empleado.` },
           ];
-          const raw2 = await callClaude(histConDatos, ctx, usuario, empresa);
+          const raw2 = await callClaude(histConDatos);
           const parsed2 = parseAction(raw2);
           clean = parsed2.clean;
           action = parsed2.action;
@@ -224,10 +238,15 @@ export default function ChatScreen({ usuario, ctx, reload, empresa }) {
         }
       }
 
-      let card = action && action.type !== "CONSULTAR_DATOS" ? await execAction(action) : null;
-      if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: card.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); setLoading(false); return; }
-      if (card?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); setLoading(false); return; }
-      setMsgs(m => [...m, { from: "bot", text: clean, card, time: new Date() }]);
+      // Las acciones que registran algo no se ejecutan solas: se confirman con un botón.
+      if (action && ACCIONES_CON_EFECTO.has(action.type)) {
+        accionPendiente.current = action;
+        const texto = `${clean ? clean + "\n\n" : ""}¿Confirmás que querés ${descripcionAccion(action)}?`;
+        setMsgs(m => [...m, { from: "bot", text: texto, time: new Date(), quickReplies: ["✅ Confirmar", "❌ No, cancelar"] }]);
+        sb.post("mensajes_chat", { empleado_id: usuario.id, role: "assistant", content: clean, empresa_id: usuario.empresa_id }).catch(() => {});
+        setLoading(false); return;
+      }
+      setMsgs(m => [...m, { from: "bot", text: clean, time: new Date() }]);
       sb.post("mensajes_chat", { empleado_id: usuario.id, role: "assistant", content: clean, empresa_id: usuario.empresa_id }).catch(() => {});
     } catch { setMsgs(m => [...m, { from: "bot", text: "Error de conexión. Probá de nuevo.", time: new Date() }]); }
     setLoading(false);

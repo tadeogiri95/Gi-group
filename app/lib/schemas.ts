@@ -194,6 +194,17 @@ export const unirseBody = z.object({
   password: z.string().max(200).optional(),
 }).strict();
 
+// ── /api/chat ───────────────────────────────────────────────────────────────
+// El cliente ya no manda el prompt de sistema: solo el tipo de uso y los
+// mensajes. El prompt lo arma el servidor (app/lib/iaPrompts.js).
+export const chatBody = z.object({
+  tipo: z.enum(["chat", "reporte_obra"]),
+  messages: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(8000),
+  }).strict()).min(1).max(30),
+}).strict();
+
 // ── /api/chat/query ─────────────────────────────────────────────────────────
 const safeParam = z.string().max(200).regex(/^[a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\s_.\-/]+$/);
 export const chatQueryBody = z.object({
