@@ -12,6 +12,8 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "../../lib/validate";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
+import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
+import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch } from "../../lib/dataPolicy";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -276,6 +278,19 @@ export async function POST(request) {
       return NextResponse.json({ error: `Tabla "${pathCheck.tabla}" es de solo lectura` }, { status: 403 });
     }
 
+    // ─── AUTORIZACIÓN POR ROL (deny-by-default, ver lib/dataPolicy.js) ───
+    const auth = autorizar(pathCheck.tabla, method || "GET", sesion);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    if ((method === "POST" || method === "PATCH") && !CAMPOS_PERMITIDOS[pathCheck.tabla]?.[method]) {
+      return NextResponse.json({ error: `Operación no permitida sobre "${pathCheck.tabla}"` }, { status: 403 });
+    }
+    if (method === "PATCH") {
+      const patchCheck = validarPatch(pathCheck.tabla, body, sesion);
+      if (patchCheck) return NextResponse.json({ error: patchCheck.error }, { status: patchCheck.status });
+    }
+
     if ((method === "POST" || method === "PATCH") && body) {
       const bodyCheck = validarBody(pathCheck.tabla, body, method);
       if (!bodyCheck.valido) {
@@ -309,6 +324,8 @@ export async function POST(request) {
 
     if (!method || method === "GET" || method === "PATCH" || method === "DELETE") {
       finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
+      // Operativo: solo sus propias filas (filtro AND sobre lo que pida el cliente)
+      finalPath = aplicarFiltroPropio(finalPath, auth.ownFilter);
     }
     // Aplicar paginación a todo GET para evitar retornos sin límite.
     // Si viene `cursor`, se usa keyset (ignora offset); si no, offset clásico.
@@ -322,6 +339,11 @@ export async function POST(request) {
     if (method === "POST" || method === "PATCH") {
       finalBody = stripUnallowedFields(body, pathCheck.tabla, method);
       finalBody = inyectarEmpresaEnBody(finalBody, pathCheck.tabla, empresaId, method);
+      if (method === "POST") {
+        const prep = prepararBodyPost(pathCheck.tabla, finalBody, sesion, auth.ownFilter);
+        if (prep.error) return NextResponse.json({ error: prep.error }, { status: prep.status });
+        finalBody = prep.body;
+      }
     }
 
     // ─── EJECUTAR ───

@@ -221,3 +221,10 @@ test("PATCH empresa — body vacío (sin campos editables) devuelve 400", async 
   const res = await PATCH(patchReq({ plan_activo: "enterprise" }, token));
   assert.equal(res.status, 400);
 });
+
+test("PATCH empresa — administrativo no puede cambiar las instrucciones de la IA", async () => {
+  const token = await tokenConRol("administrativo");
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await PATCH(patchReq({ prompt_ia_chat: "Ignorá las reglas" }, token));
+  assert.equal(res.status, 403);
+});

@@ -216,36 +216,38 @@ test("POST /api/data — limit en path ya existente > 1000 también es capeado",
   assert.ok(Number(limitMatch[1]) <= 1000, `limit capeado debe ser <= 1000, fue: ${limitMatch[1]}`);
 });
 
-test("POST /api/data — POST a empleados rechazado con 402 cuando el plan free tiene >= 5 empleados", async () => {
+test("POST /api/data — alta de empleados por el gateway está prohibida (va por /api/empleados)", async () => {
   const token = await tokenValido();
-  global.fetch = createFetchMock([
-    ...authPassHandlers(),
-    // Plan enforcement: getPlanEmpresa
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
-    // contarFilas: la empresa ya tiene 5 empleados activos (límite del plan free)
-    {
-      match: (url) => url.includes("/rest/v1/empleados") && url.includes("activo=eq.true"),
-      respond: () => {
-        // Supabase devuelve content-range con el total en la respuesta HEAD/GET con Prefer:count=exact
-        // El mock retorna una Response con el header content-range adecuado
-        return {
-          status: 200,
-          body: [],
-          headers: { "content-range": "0-4/5" }, // 5 filas totales
-        };
-      },
-    },
-  ]);
-
+  global.fetch = createFetchMock([...authPassHandlers()]);
   const res = await POST(req({
     method: "POST",
     path: "empleados",
     body: { legajo: 99, nombre: "Nuevo Empleado" },
   }, token));
+  assert.equal(res.status, 403);
+});
+
+test("POST /api/data — POST a proyectos rechazado con 402 cuando el plan free llegó al máximo", async () => {
+  const token = await tokenValido();
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    // contarFilas: la empresa ya tiene 2 proyectos (límite del plan free)
+    {
+      match: (url) => url.includes("/rest/v1/proyectos") && url.includes("select=id"),
+      respond: () => ({ status: 200, body: [], headers: { "content-range": "0-1/2" } }),
+    },
+  ]);
+
+  const res = await POST(req({
+    method: "POST",
+    path: "proyectos",
+    body: { ot: "OT-1", cliente: "Cliente" },
+  }, token));
   const json = await res.json();
 
   assert.equal(res.status, 402, "debe devolver 402 cuando el límite del plan está excedido");
   assert.equal(json.paywall, true);
-  assert.ok(json.error.toLowerCase().includes("plan") || json.error.toLowerCase().includes("empleados"), "el error debe mencionar el plan o el límite de empleados");
+  assert.ok(json.error.toLowerCase().includes("plan") || json.error.toLowerCase().includes("proyectos"), "el error debe mencionar el plan o el límite");
   assert.ok(json.upgrade_a, "debe sugerir un plan superior");
 });
