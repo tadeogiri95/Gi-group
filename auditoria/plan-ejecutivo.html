@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plan de acción Gypi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: documento ejecutivo de una columna (máx. 960px), secciones con encabezado en hoja de planta;
+   el roadmap se dibuja como un diagrama de Gantt sobre una escala de semanas. */
+:root {
+  --bg: #F5F6F7;
+  --paper: #FFFFFF;
+  --ink: #1B2026;
+  --muted: #5B6570;
+  --line: #DCE0E4;
+  --steel: #2F3B47;
+  --accent: #E8650F;        /* naranja de marca Gypi, levemente más profundo para contraste */
+  --accent-soft: #FDEBDD;
+  --crit: #B42318;  --crit-soft: #FDE7E5;
+  --high: #B54708;  --high-soft: #FEF0DC;
+  --med:  #1F5FA8;  --med-soft:  #E3EEFA;
+  --ok:   #1E7A46;  --ok-soft:   #E1F3E8;
+  --h1: #B42318; --h2: #E8650F; --h3: #2F6FB3;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --paper: #181C21; --ink: #E7EAEE; --muted: #9AA4AF; --line: #2B323A; --steel: #C9D2DB;
+    --accent: #F58A3C; --accent-soft: #3A2414;
+    --crit: #F2877E; --crit-soft: #3B1A18; --high: #F0A35E; --high-soft: #3A2814;
+    --med: #7FB1EA; --med-soft: #172A40; --ok: #6DCB96; --ok-soft: #13301F;
+    --h1: #E5665C; --h2: #F58A3C; --h3: #5E97D6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --paper: #181C21; --ink: #E7EAEE; --muted: #9AA4AF; --line: #2B323A; --steel: #C9D2DB;
+  --accent: #F58A3C; --accent-soft: #3A2414;
+  --crit: #F2877E; --crit-soft: #3B1A18; --high: #F0A35E; --high-soft: #3A2814;
+  --med: #7FB1EA; --med-soft: #172A40; --ok: #6DCB96; --ok-soft: #13301F;
+  --h1: #E5665C; --h2: #F58A3C; --h3: #5E97D6;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 1rem/1.6 var(--f-body);
+  padding-inline: 16px; padding-block: 0 48px;
+}
+.wrap { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; color: var(--ink); }
+p { margin: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+/* Cabecera */
+header.top {
+  border-bottom: 3px solid var(--accent);
+  padding-block: 32px 22px;
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px;
+}
+.brand { font: 800 0.8rem/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+header.top h1 { font-size: clamp(1.9rem, 4.5vw, 2.6rem); font-weight: 800; letter-spacing: -0.01em; margin-top: 8px; }
+.meta { font: 400 .8rem/1.5 var(--f-mono); color: var(--muted); text-align: right; }
+.status { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); font: 500 .75rem/1.5 var(--f-mono); }
+
+/* Secciones */
+section { display: flex; flex-direction: column; gap: 14px; }
+.eyebrow { font: 500 .72rem/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+section > h2 { font-size: 1.4rem; font-weight: 700; }
+.lead { font-size: 1.08rem; max-width: 68ch; color: var(--ink); }
+.muted { color: var(--muted); }
+
+/* Panel destacado de resumen */
+.summary {
+  background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+  padding: 22px 24px; display: grid; gap: 16px;
+}
+.verdict { display: flex; gap: 14px; align-items: flex-start; }
+.verdict .tag { flex: none; padding: 4px 10px; border-radius: 6px; background: var(--crit-soft); color: var(--crit); font: 600 .78rem/1.4 var(--f-mono); text-transform: uppercase; letter-spacing: .06em; }
+.verdict p { min-width: 0; }
+
+/* Hallazgos */
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.finding { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.finding h3 { font-size: 1rem; font-weight: 700; }
+.chip { align-self: flex-start; padding: 2px 9px; border-radius: 999px; font: 500 .72rem/1.6 var(--f-mono); }
+.chip.crit { background: var(--crit-soft); color: var(--crit); }
+.chip.high { background: var(--high-soft); color: var(--high); }
+.chip.med  { background: var(--med-soft);  color: var(--med); }
+.chip.ok   { background: var(--ok-soft);   color: var(--ok); }
+.finding p { font-size: .94rem; color: var(--muted); }
+
+/* Decisiones */
+.decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.decision { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.decision h3 { font-size: 1.02rem; }
+.decision ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: .95rem; }
+.decision li::marker { color: var(--accent); }
+
+/* Roadmap (Gantt) */
+.gantt { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px 16px; overflow-x: auto; }
+.gantt-inner { min-width: 560px; display: grid; gap: 10px; }
+.scale { position: relative; height: 20px; border-bottom: 1px solid var(--line); font: 400 .72rem/1 var(--f-mono); color: var(--muted); }
+.scale span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.scale span:first-child { transform: none; }
+.row { display: grid; grid-template-columns: 170px 1fr; gap: 12px; align-items: center; }
+.row .label { font: 600 .9rem/1.3 var(--f-display); }
+.row .label small { display: block; font: 400 .74rem/1.4 var(--f-mono); color: var(--muted); }
+.track { position: relative; height: 30px; background: repeating-linear-gradient(90deg, transparent 0 calc(100%/12 - 1px), var(--line) calc(100%/12 - 1px) calc(100%/12)); border-radius: 4px; }
+.bar { position: absolute; top: 4px; bottom: 4px; border-radius: 4px; color: #fff; font: 500 .74rem/22px var(--f-mono); padding-inline: 8px; white-space: nowrap; overflow: hidden; }
+.bar.h1 { background: var(--h1); left: 0%; width: 8.33%; }
+.bar.h2 { background: var(--h2); left: 8.33%; width: 25%; }
+.bar.h3 { background: var(--h3); left: 33.33%; width: 66.67%; }
+.legend-note { font-size: .82rem; color: var(--muted); }
+
+/* Etapas */
+.stages { display: grid; gap: 14px; }
+.stage { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.stage-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+.stage-head h3 { font-size: 1.15rem; display: flex; align-items: center; gap: 10px; }
+.dot { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.dot.h1 { background: var(--h1); } .dot.h2 { background: var(--h2); } .dot.h3 { background: var(--h3); }
+.stage-head .dur { font: 500 .82rem/1.4 var(--f-mono); color: var(--muted); }
+.stage-body { padding: 16px 20px 18px; display: grid; gap: 14px; }
+.goal { font-size: .98rem; }
+.goal strong { font-weight: 600; }
+.items { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 20px; margin: 0; padding: 0; list-style: none; }
+.items li { position: relative; padding-left: 16px; font-size: .92rem; min-width: 0; }
+.items li::before { content: ""; position: absolute; left: 0; top: .62em; width: 7px; height: 7px; border-radius: 2px; background: var(--muted); }
+.stage.s1 .items li::before { background: var(--h1); }
+.stage.s2 .items li::before { background: var(--h2); }
+.stage.s3 .items li::before { background: var(--h3); }
+.modules { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font: 500 .82rem/1 var(--f-mono); }
+.modules span.m { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.modules span.arrow { color: var(--muted); }
+
+/* Tablas */
+.table-wrap { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: .92rem; min-width: 560px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 .72rem/1.4 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+
+/* Dos columnas */
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel h3 { font-size: 1.05rem; }
+.panel ul, .panel ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; font-size: .94rem; }
+.panel.dont li::marker { color: var(--crit); }
+.panel.need li::marker { color: var(--accent); font-family: var(--f-mono); }
+
+/* Proceso */
+.flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; counter-reset: paso; }
+.step { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; counter-increment: paso; }
+.step::before { content: "Paso " counter(paso); font: 500 .72rem/1 var(--f-mono); color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+.step h3 { font-size: .98rem; }
+.step p { font-size: .88rem; color: var(--muted); }
+
+footer { border-top: 1px solid var(--line); padding-top: 16px; font: 400 .8rem/1.6 var(--f-mono); color: var(--muted); }
+
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 520px) {
+  .row { grid-template-columns: 1fr; gap: 4px; }
+  .meta { text-align: left; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="brand">Gypi · Auditoría</div>
+      <h1>Plan de acción</h1>
+    </div>
+    <div class="meta">
+      Octubre 2026 · Fases 0 a 7<br>
+      <span class="status">Plan aprobado por el dueño</span>
+    </div>
+  </header>
+
+  <section aria-labelledby="s-resumen">
+    <div class="eyebrow">Resumen</div>
+    <h2 id="s-resumen">Dónde estamos</h2>
+    <div class="summary">
+      <p class="lead">Gypi ya resuelve lo esencial para una planta: los operarios fichan desde el celular, registran en qué orden de trabajo y etapa están, y el dueño ve en vivo qué pasa. Esa medición de productividad por OT es lo que lo diferencia de un reloj de fichaje.</p>
+      <div class="verdict">
+        <span class="tag">Hoy</span>
+        <p><strong>Todavía no se puede vender a un segundo cliente.</strong> Hay que cerrar fallas de seguridad, corregir dos reglas de la base que mezclan empresas y asegurar que los números sean confiables. Con este plan, en unas 9 a 12 semanas una empresa nueva puede registrarse, configurar, usarla en planta y pagar sin tu intervención.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-hallazgos">
+    <div class="eyebrow">Lo que encontró la auditoría</div>
+    <h2 id="s-hallazgos">Seis hallazgos clave</h2>
+    <div class="findings">
+      <article class="finding">
+        <span class="chip ok">Contenido el 6/10</span>
+        <h3>Base de datos expuesta</h3>
+        <p>Cualquiera podía leer o borrar datos desde internet. Ya se cerró y verificamos que la app sigue funcionando.</p>
+      </article>
+      <article class="finding">
+        <span class="chip crit">Crítico</span>
+        <h3>Permisos dentro de la app</h3>
+        <p>Un operario podría ver o cambiar información que no le corresponde, e incluso borrar los datos de su empresa.</p>
+      </article>
+      <article class="finding">
+        <span class="chip crit">Crítico</span>
+        <h3>Empresas que se mezclan</h3>
+        <p>Dos reglas de la base no distinguen empresas: con un segundo cliente, un empleado podría impedir que fiche uno de otra.</p>
+      </article>
+      <article class="finding">
+        <span class="chip high">Alto</span>
+        <h3>Números poco confiables</h3>
+        <p>Las causas del tiempo perdido no se guardan y los reportes del mes se cortan cuando hay muchos registros.</p>
+      </article>
+      <article class="finding">
+        <span class="chip high">Alto</span>
+        <h3>Fricción del operario</h3>
+        <p>Pierde la sesión al cerrar la app, ficha desde un chat sin salida y no puede trabajar sin señal.</p>
+      </article>
+      <article class="finding">
+        <span class="chip med">Medio</span>
+        <h3>Operación sin red</h3>
+        <p>Planes gratuitos sin copias de seguridad ni uso comercial, un solo ambiente y cambios manuales en producción.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-decisiones">
+    <div class="eyebrow">Decisiones tomadas</div>
+    <h2 id="s-decisiones">Cómo va a ser el producto</h2>
+    <div class="decisions">
+      <div class="decision">
+        <h3>Formato</h3>
+        <ul>
+          <li>Panel web para dueño, administración y supervisores</li>
+          <li>App en Google Play para operarios (100% Android)</li>
+          <li>Modo tablet en planta con QR + PIN (la pone el cliente)</li>
+          <li>Botón grande de fichar y escáner de OT opcional</li>
+          <li>App de iPhone solo si un cliente la pide</li>
+        </ul>
+      </div>
+      <div class="decision">
+        <h3>Cobro</h3>
+        <ul>
+          <li>Plan Free mínimo, sin publicidad</li>
+          <li>Planes <strong>Asistencia</strong> y <strong>Planta</strong> por tramos de operarios</li>
+          <li>Módulos adicionales: OP, stock, compras, calidad, mantenimiento, trabajo en campo, IA</li>
+          <li>Precios en dólares cobrados en pesos por Mercado Pago</li>
+          <li>Factura C al CUIT del cliente · 100% autoservicio</li>
+        </ul>
+      </div>
+      <div class="decision">
+        <h3>Cada empresa, a su medida</h3>
+        <ul>
+          <li>Reglas de asistencia configurables (tolerancias, tardanzas, presentismo)</li>
+          <li>Supervisor ve solo su división; gerencia y administración ven todo</li>
+          <li>Reporte de obra como módulo opcional</li>
+          <li>Resumen semanal automático para el dueño</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-roadmap">
+    <div class="eyebrow">Roadmap</div>
+    <h2 id="s-roadmap">Tres etapas en orden</h2>
+    <div class="gantt" role="img" aria-label="Diagrama de etapas: etapa 1 semanas 1 a 3, etapa 2 semanas 4 a 12, etapa 3 semanas 13 a 36">
+      <div class="gantt-inner">
+        <div class="row">
+          <div></div>
+          <div class="scale mono" aria-hidden="true">
+            <span style="left:0%">Sem 1</span>
+                        <span style="left:33.33%">Sem 13</span>
+            <span style="left:66.67%">Sem 25</span>
+            <span style="right:0;left:auto;transform:none">Sem 36</span>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">1 · Arreglar ya<small>14 ítems · 14–19 días</small></div>
+          <div class="track"><div class="bar h1">2–3 sem</div></div>
+        </div>
+        <div class="row">
+          <div class="label">2 · Segundo cliente<small>21 ítems · 45–55 días</small></div>
+          <div class="track"><div class="bar h2">6–9 semanas</div></div>
+        </div>
+        <div class="row">
+          <div class="label">3 · Escalar<small>14 ítems · por módulo</small></div>
+          <div class="track"><div class="bar h3">3–6 meses, un módulo a la vez</div></div>
+        </div>
+      </div>
+    </div>
+    <p class="legend-note">Días-persona estimados para un desarrollador con asistencia de IA. Se ajustan después de la primera entrega.</p>
+
+    <div class="stages">
+      <article class="stage s1">
+        <div class="stage-head">
+          <h3><span class="dot h1" aria-hidden="true"></span>Etapa 1 · Arreglar ya</h3>
+          <span class="dur">2–3 semanas</span>
+        </div>
+        <div class="stage-body">
+          <p class="goal"><strong>Resultado:</strong> la plataforma es segura para alojar a varias empresas y los datos de horas y actividad son confiables.</p>
+          <ul class="items">
+            <li>Ambiente de pruebas y cambios de base versionados</li>
+            <li>Actualizar Next.js (vulnerabilidad crítica)</li>
+            <li>Reglas de la base separadas por empresa</li>
+            <li>Permisos por rol en todo el acceso a datos</li>
+            <li>Activación de cuentas con código de un solo uso</li>
+            <li>IA con límites de uso por empresa</li>
+            <li>Limpieza de la base después del incidente</li>
+            <li>Guardar causas de tiempo muerto y horas correctas</li>
+            <li>Reportes sin cortes (cálculo en la base)</li>
+            <li>Endurecimientos: notificaciones, archivos, contraseñas</li>
+            <li>Copia de seguridad diaria</li>
+            <li>Monitoreo de errores y de disponibilidad</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="stage s2">
+        <div class="stage-head">
+          <h3><span class="dot h2" aria-hidden="true"></span>Etapa 2 · Listo para el segundo cliente</h3>
+          <span class="dur">6–9 semanas</span>
+        </div>
+        <div class="stage-body">
+          <p class="goal"><strong>Resultado:</strong> una empresa nueva se registra, configura, da acceso a sus operarios con QR + PIN, la usa en planta incluso con cortes de señal y paga con Mercado Pago con su factura, sin tu intervención.</p>
+          <ul class="items">
+            <li>Planes pagos de Vercel y Supabase</li>
+            <li>Sesión que no se pierde + PIN</li>
+            <li>Botón grande de fichar</li>
+            <li>QR de activación y QR personal</li>
+            <li>Modo tablet en planta</li>
+            <li>Escáner de OT con la cámara</li>
+            <li>Funciona sin señal y sincroniza después</li>
+            <li>Supervisor limitado a su división</li>
+            <li>Reglas de asistencia por empresa</li>
+            <li>Alta guiada de punta a punta</li>
+            <li>Cobro en dólares a pesos + Factura C al CUIT</li>
+            <li>Sin publicidad · plan Free mínimo</li>
+            <li>Exportar datos y dar de baja la cuenta</li>
+            <li>Términos y privacidad revisados por un abogado</li>
+            <li>Resumen semanal automático</li>
+            <li>App publicada en Google Play</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="stage s3">
+        <div class="stage-head">
+          <h3><span class="dot h3" aria-hidden="true"></span>Etapa 3 · Listo para vender a escala</h3>
+          <span class="dur">3–6 meses</span>
+        </div>
+        <div class="stage-body">
+          <p class="goal"><strong>Resultado:</strong> catálogo de módulos que se activan según el paquete pagado, configurables por cliente, con aislamiento entre empresas a nivel de base de datos.</p>
+          <ul class="items">
+            <li>Base modular: planes, módulos, permisos y plantas</li>
+            <li>Aislamiento real por empresa en la base</li>
+            <li>Operaciones complejas siempre completas o nada</li>
+            <li>Panel de administración ampliado y doble factor</li>
+            <li>Medición de uso por cliente</li>
+            <li>Soporte por WhatsApp y página de estado</li>
+          </ul>
+          <div class="modules" aria-label="Orden de los módulos nuevos">
+            <span class="m">Órdenes de producción</span><span class="arrow" aria-hidden="true">→</span>
+            <span class="m">Stock</span><span class="arrow" aria-hidden="true">→</span>
+            <span class="m">Compras</span><span class="arrow" aria-hidden="true">→</span>
+            <span class="m">Calidad</span><span class="arrow" aria-hidden="true">→</span>
+            <span class="m">Mantenimiento</span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-costos">
+    <div class="eyebrow">Costos de infraestructura (estimados)</div>
+    <h2 id="s-costos">Cuánto cuesta operar</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Escenario</th><th>Total por mes</th><th>Por cliente</th><th>Nota</th></tr></thead>
+        <tbody>
+          <tr><td>1 cliente, mínimo profesional</td><td class="num">USD 50–65</td><td class="num">USD 50–65</td><td>Vercel Pro + Supabase Pro + IA. Necesario antes del primer cobro</td></tr>
+          <tr><td>10 clientes</td><td class="num">USD 120–330</td><td class="num">USD 12–33</td><td>La IA y la carga de la app son el costo variable</td></tr>
+          <tr><td>100 clientes, con mejoras de rendimiento</td><td class="num">USD 550–2.200</td><td class="num">USD 5–22</td><td>Con cupo de IA por plan</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="legend-note">Precios de proveedores a validar en sus páginas. Clientes tipo de 30 personas.</p>
+  </section>
+
+  <section aria-labelledby="s-riesgos">
+    <div class="eyebrow">Riesgos</div>
+    <h2 id="s-riesgos">Qué puede salir mal y cómo lo evitamos</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Riesgo</th><th>Impacto</th><th>Cómo lo mitigamos</th></tr></thead>
+        <tbody>
+          <tr><td>Que alguien haya aprovechado la base abierta antes del cierre</td><td><span class="chip high">Alto</span></td><td>Revisar los registros de acceso y pedir cambio de contraseñas</td></tr>
+          <tr><td>Tocar la base sin copia ni ambiente de pruebas</td><td><span class="chip high">Alto</span></td><td>Es lo primero de la etapa 1</td></tr>
+          <tr><td>Abrir los cinco módulos antes de estabilizar la base</td><td><span class="chip high">Alto</span></td><td>Un módulo a la vez, recién en la etapa 3</td></tr>
+          <tr><td>Un solo desarrollador</td><td><span class="chip med">Medio</span></td><td>Cambios chicos, con pruebas automáticas y documentados</td></tr>
+          <tr><td>Superar el tope del monotributo</td><td><span class="chip med">Medio</span></td><td>Seguimiento mensual con tu contador</td></tr>
+          <tr><td>Precios en dólares poco aceptados</td><td><span class="chip med">Medio</span></td><td>Validar con 5 a 10 pymes antes de fijarlos</td></tr>
+          <tr><td>Requisitos de Google Play para cuentas personales</td><td><span class="chip ok">Bajo</span></td><td>Empezar las pruebas cerradas temprano con la fábrica piloto</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-final">
+    <div class="eyebrow">Para avanzar</div>
+    <h2 id="s-final">Lo que necesito de vos y lo que no vamos a hacer</h2>
+    <div class="two">
+      <div class="panel need">
+        <h3>Lo que necesito de vos</h3>
+        <ol>
+          <li>Crear un ambiente de pruebas en Supabase (gratis), cuando lo pidamos</li>
+          <li>Hablar con tu contador: punto de venta electrónico, Factura C, tope del monotributo, ingresos brutos y precios en dólares</li>
+          <li>Que un abogado revise términos, privacidad y el contrato de datos para clientes</li>
+          <li>Validar los precios con 5 a 10 pymes</li>
+          <li>Aprobar cada cambio antes de que llegue a producción</li>
+        </ol>
+      </div>
+      <div class="panel dont">
+        <h3>Lo que no conviene hacer todavía</h3>
+        <ul>
+          <li>Construir los cinco módulos a la vez</li>
+          <li>Hacer la app de iPhone</li>
+          <li>Cobrar dentro de Google Play (comisión de ~15%)</li>
+          <li>Reescribir la aplicación desde cero</li>
+          <li>Sumar más inteligencia artificial antes de tener límites y datos confiables</li>
+          <li>Vender con los planes gratuitos de los proveedores</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s-proceso">
+    <div class="eyebrow">Cómo trabajamos cada cambio</div>
+    <h2 id="s-proceso">Un ítem a la vez, siempre con tu aprobación</h2>
+    <div class="flow">
+      <div class="step"><h3>Preparo el cambio</h3><p>En una copia aparte del código, sin tocar lo que está funcionando.</p></div>
+      <div class="step"><h3>Lo pruebo</h3><p>Pruebas automáticas, revisión de estilo y compilación en verde.</p></div>
+      <div class="step"><h3>Te lo muestro</h3><p>Abro una propuesta de cambio en GitHub con el resumen y las diferencias.</p></div>
+      <div class="step"><h3>Lo aprobás</h3><p>Un botón en GitHub: "Merge pull request". Vercel lo publica solo.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    Detalle técnico: auditoria/fase-0.md a fase-7.md · backlog-acumulado.md · resumen-ejecutivo.md
+  </footer>
+
+</div>
+</body>
+</html>
