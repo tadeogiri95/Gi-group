@@ -10,7 +10,7 @@ import { logAudit } from "../../lib/audit";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
-import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos } from "../../lib/calc";
+import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calcularJornada } from "../../lib/calc";
 import { logEvent, EVT } from "../../lib/analytics";
 
 // ─── Hora local según timezone de empresa ───
@@ -289,10 +289,27 @@ export async function POST(request) {
       fichada = ultima;
     }
 
-    // 3. Calcular horas con aritmética de timestamps — soporta turno nocturno
-    const inDate = new Date(`${fichada.fecha}T${fichada.ingreso}:00`);
-    const outDate = new Date(`${fecha}T${hora}:00`);
-    const horasTrab = Math.max(0, (outDate.getTime() - inDate.getTime()) / 3600000);
+    // 3-4. Horas trabajadas y extra (lib/calc.js calcularJornada): instantes
+    //      completos (turno noche) y grilla del día del ingreso. Antes la hora
+    //      "08:00:00" de PostgREST producía NaN (F1-01) y el turno noche perdía
+    //      la hora extra (F1-11).
+    let diagrama = null;
+    try {
+      const emps = await sbGet(`empleados?id=eq.${empleadoId}&select=diagrama`);
+      diagrama = emps?.[0]?.diagrama || null;
+    } catch (e) {
+      logger.error("Error leyendo el diagrama para horas extra", e);
+    }
+    const jornada = calcularJornada({
+      fechaIngreso: fichada.fecha, horaIngreso: fichada.ingreso,
+      fechaEgreso: fecha, horaEgreso: hora, diagrama,
+    });
+    if (!jornada) {
+      logger.error("Fichada con hora de ingreso inválida", new Error(`fichada_id=${fichada.id}`), { ingreso: fichada.ingreso });
+      return NextResponse.json({ ok: false, error: "La fichada de ingreso tiene una hora inválida. Avisale a tu supervisor.", tipo: "ingreso_invalido" }, { status: 422 });
+    }
+    const horasTrab = jornada.horasTrabajadas;
+    const { horasExtra, solicitarHoraExtra, datosJornada } = jornada;
 
     if (horasTrab > MAX_HORAS_JORNADA) {
       logger.error(
@@ -300,51 +317,6 @@ export async function POST(request) {
         new Error(`empleado_id=${empleadoId} fichada_id=${fichada.id}`),
         { empleado_id: empleadoId, fichada_id: fichada.id, horas_trabajadas: horasTrab }
       );
-    }
-
-    // 4. Calcular horas extra comparando con diagrama
-    let horasExtra = 0;
-    let solicitarHoraExtra = false;
-    let datosJornada = null;
-    try {
-      const emps = await sbGet(`empleados?id=eq.${empleadoId}&select=diagrama`);
-      if (emps.length > 0 && emps[0].diagrama) {
-        const diagHoy = emps[0].diagrama[diaKey];
-        if (diagHoy && diagHoy.in && diagHoy.out) {
-          const [hIn, mIn] = diagHoy.in.split(":").map(Number);
-          const [hOut, mOut] = diagHoy.out.split(":").map(Number);
-          const [hIngReal, mIngReal] = fichada.ingreso.split(":").map(Number);
-          const [hEgReal, mEgReal] = hora.split(":").map(Number);
-
-          const minGrillaIn = hIn * 60 + mIn;
-          const minGrillaOut = hOut * 60 + mOut;
-          const minIngresoReal = hIngReal * 60 + mIngReal;
-          const minEgresoReal = hEgReal * 60 + mEgReal;
-
-          const jornadaGrilla = minGrillaOut - minGrillaIn;
-          const jornadaReal = minEgresoReal - minIngresoReal;
-          const minutosMasTarde = minEgresoReal - minGrillaOut;
-
-          const fuePuntual = minIngresoReal <= minGrillaIn + 5;
-
-          if (fuePuntual && minutosMasTarde > 0) {
-            horasExtra = +(minutosMasTarde / 60).toFixed(2);
-          } else if (!fuePuntual && jornadaReal > jornadaGrilla) {
-            solicitarHoraExtra = true;
-            datosJornada = {
-              ingreso_grilla: diagHoy.in,
-              egreso_grilla: diagHoy.out,
-              ingreso_real: fichada.ingreso,
-              egreso_real: hora,
-              jornada_grilla_min: jornadaGrilla,
-              jornada_real_min: jornadaReal,
-              excedente_min: jornadaReal - jornadaGrilla,
-            };
-          }
-        }
-      }
-    } catch (e) {
-      logger.error("Error calculando horas extra", e);
     }
 
     // egreso=is.null en el filtro hace el PATCH atómico ante doble-tap o

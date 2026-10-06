@@ -35,7 +35,7 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F2-00 | Base de producción abierta al rol anónimo (grants + policies permisivas + RPC) | Crítico | S | **Contenido** (REVOKE ejecutado y verificado). Limpieza en PR #8 (migración 066: policies, RLS, `search_path`, sesiones y contraseñas). Logs: el plan Free guarda 1 día, no se puede revisar el período expuesto |
+| F2-00 | Base de producción abierta al rol anónimo (grants + policies permisivas + RPC) | Crítico | S | **Contenido** (REVOKE ejecutado y verificado). **Cerrado**: limpieza aplicada y verificada (#8, migración 066: policies, RLS, `search_path`, sesiones y contraseñas); #9 arregló la pantalla de cambio de contraseña. Logs: el plan Free guarda 1 día, no se puede revisar el período expuesto |
 | F2-01 | `/api/data` sin control de rol (borrar empresa, autoaprobarse, escribir pagos) | Crítico | M | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
 | F2-02 | Embedding/`select` sin control + FK cruzadas entre tenants | Crítico | S–M | **Hecho** (tadeogiri95/Gi-group#5, fusionado); FK compuestas en la base quedan para H3 |
 | F2-03 | Activación de cuenta solo con slug + legajo (toma de cuenta) | Alto | S | **Hecho** (tadeogiri95/Gi-group#6 fusionado + migración 065): código de un solo uso, hash, 14 días |
@@ -57,8 +57,8 @@
 | F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | Pendiente |
 | F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **Hecho** (tadeogiri95/Gi-group#1, fusionado): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
 | F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
-| H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | En PR #8 (migración 066) |
-| H14 | Columna `_deprecated_ubicacion_fichaje` con datos del piloto (Córdoba) | Bajo | S | En PR #8 (migración 066) |
+| H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | **Hecho** (#8, migración 066 aplicada) |
+| H14 | Columna `_deprecated_ubicacion_fichaje` con datos del piloto (Córdoba) | Bajo | S | **Hecho** (#8, migración 066 aplicada) |
 
 ### 2.2 Bugs funcionales y de datos
 
@@ -66,8 +66,8 @@
 |---|---|---|---|---|
 | F3-01 | UNIQUE `fichadas (legajo, fecha)` sin empresa (bloquea al 2do cliente) | Crítico | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
 | F3-02 | UNIQUE `empleados (email)` global | Alto | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
-| F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | Pendiente (no observado en datos viejos) |
-| F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | Pendiente |
+| F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | En PR #10: `calcularJornada` con parseo `HH:MM:SS` + migración 067 opcional para recalcular |
+| F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | En PR #10 (whitelist + validación de catálogo) |
 | F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
 | F1-04 | Liquidación truncada a 1.000 filas | Alto | S | Pendiente (Max rows confirmado) |
 | F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | Pendiente |
@@ -77,8 +77,8 @@
 | F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | Pendiente |
 | F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | Pendiente |
 | F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | Pendiente |
-| F1-10 | Fecha de actividad en UTC (después de las 21 h) | Medio | S | Pendiente |
-| F1-11 | Horas extra en turno noche | Medio | S | Pendiente |
+| F1-10 | Fecha de actividad en UTC (después de las 21 h) | Medio | S | En PR #10 |
+| F1-11 | Horas extra en turno noche | Medio | S | En PR #10 |
 | F1-12 | Escrituras de varios pasos sin transacción | Medio | M | Pendiente |
 | F1-13 | Rotación del refresh sin gracia (varias pestañas) | Medio | S | Pendiente |
 | F1-21 | Vacaciones de un solo día (modelo sin rango) | Bajo | S | Pendiente |

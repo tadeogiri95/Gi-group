@@ -167,6 +167,38 @@ test("operativo: registra actividad a su nombre y solo edita la propia", async (
   assert.ok(llamadas[1].url.includes(`empleado_id=eq.${EMPLEADO_ID}`), llamadas[1].url);
 });
 
+test("actividad: tipo, causa y división se guardan (antes se descartaban, F1-02)", async () => {
+  const t = await token("operativo");
+  const { handlers, llamadas } = capturar("registro_actividades");
+  global.fetch = createFetchMock(handlers);
+  let res = await POST(req({ method: "POST", path: "registro_actividades", body: { empleado_id: EMPLEADO_ID, etapa: 0, fecha: "2026-10-06", tipo: "N", causa: "M", division: "produccion" } }, t));
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  assert.equal(llamadas[0].body.causa, "M");
+  assert.equal(llamadas[0].body.division, "produccion");
+  res = await POST(req({ method: "POST", path: "registro_actividades", body: { empleado_id: EMPLEADO_ID, etapa: 3, fecha: "2026-10-06", tipo: "R" } }, t));
+  assert.equal(res.status, 200);
+  assert.equal(llamadas[1].body.tipo, "R");
+  assert.equal(llamadas[1].body.causa, null);
+  res = await POST(req({ method: "POST", path: "registro_actividades", body: { empleado_id: EMPLEADO_ID, etapa: 3, fecha: "2026-10-06" } }, t));
+  assert.equal(llamadas[2].body.tipo, "N", "sin tipo queda Normal");
+});
+
+test("actividad: valores fuera de catálogo → 400 sin escribir", async () => {
+  const t = await token("operativo");
+  const { handlers, llamadas } = capturar("registro_actividades");
+  global.fetch = createFetchMock(handlers);
+  for (const body of [
+    { etapa: 1, tipo: "X" },
+    { etapa: 0, causa: "Z" },
+    { etapa: 2, causa: "M" }, // causa solo en improductivo
+    { etapa: 1, division: "x".repeat(51) },
+  ]) {
+    const res = await POST(req({ method: "POST", path: "registro_actividades", body: { empleado_id: EMPLEADO_ID, fecha: "2026-10-06", ...body } }, t));
+    assert.equal(res.status, 400, JSON.stringify(body));
+  }
+  assert.equal(llamadas.length, 0);
+});
+
 test("operativo: puede leer catálogos (proyectos, etapas, reglas)", async () => {
   const t = await token("operativo");
   global.fetch = createFetchMock([...capturar("proyectos").handlers, ...capturar("etapas").handlers, ...capturar("reglas_bot").handlers]);
