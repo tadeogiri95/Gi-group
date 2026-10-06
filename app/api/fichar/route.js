@@ -10,7 +10,7 @@ import { logAudit } from "../../lib/audit";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
-import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calcularJornada } from "../../lib/calc";
+import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calcularJornada, normalizarReglasAsistencia } from "../../lib/calc";
 import { logEvent, EVT } from "../../lib/analytics";
 
 // ─── Hora local según timezone de empresa ───
@@ -77,30 +77,36 @@ export async function POST(request) {
     const legajo = sesion.legajo;
     const empresaId = sesion.empresa_id;
 
-    // ─── Enforcement de geolocalización (plan Starter+) ───
+    // ─── Geolocalización ───
+    // Si la empresa tiene zonas cargadas, se ficha solo dentro de una. Si el
+    // empleado tiene una ubicación asignada (geo_config), vale solo esa.
+    // Antes dependía del plan y el plan Free no controlaba nada.
     try {
-      const planesConGeo = ["starter", "pro", "enterprise", "trial"];
-      if (planesConGeo.includes(plan)) {
-        const zonas = await sbGet(`geo_zonas?empresa_id=eq.${empresaId}&select=lat,lng,radio,nombre`);
-        if (zonas && zonas.length > 0) {
-          if (!geo_lat || !geo_lng) {
-            return NextResponse.json({
-              ok: false,
-              error: "Esta empresa requiere geolocalización para fichar. Habilitá el GPS e intentá de nuevo.",
-              tipo: "geo_requerida",
-            });
-          }
-          const dentroDeAlgunaZona = zonas.some((z) => {
-            const dist = distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng));
-            return dist <= z.radio;
+      const zonas = await sbGet(`geo_zonas?empresa_id=eq.${empresaId}&select=id,lat,lng,radio,nombre`);
+      if (zonas && zonas.length > 0) {
+        const [emp] = await sbGet(`empleados?id=eq.${empleadoId}&select=geo_config&limit=1`, { silent: true, fallback: [] }) || [];
+        const gc = emp?.geo_config;
+        const asignada = gc?.activo && gc.ubicacion_id != null
+          ? zonas.filter((z) => String(z.id) === String(gc.ubicacion_id))
+          : [];
+        const validas = asignada.length > 0 ? asignada : zonas;
+        if (geo_lat == null || geo_lng == null) {
+          return NextResponse.json({
+            ok: false,
+            error: "Esta empresa requiere geolocalización para fichar. Habilitá el GPS e intentá de nuevo.",
+            tipo: "geo_requerida",
           });
-          if (!dentroDeAlgunaZona) {
-            return NextResponse.json({
-              ok: false,
-              error: "Estás fuera de la zona de fichaje permitida. Acercate al lugar de trabajo.",
-              tipo: "fuera_de_zona",
-            });
-          }
+        }
+        const dentroDeAlgunaZona = validas.some((z) => {
+          const radio = asignada.length > 0 && gc?.radio ? Number(gc.radio) : Number(z.radio);
+          return distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng)) <= radio;
+        });
+        if (!dentroDeAlgunaZona) {
+          return NextResponse.json({
+            ok: false,
+            error: "Estás fuera de la zona de fichaje permitida. Acercate al lugar de trabajo.",
+            tipo: "fuera_de_zona",
+          });
         }
       }
     } catch (e) {
@@ -115,6 +121,11 @@ export async function POST(request) {
     // INGRESO
     // ═══════════════════════════════════
     if (accion === "ingreso") {
+      // Reglas de asistencia de la empresa (tolerancia y bloqueos, decisión D5).
+      // Si la columna todavía no existe o falla la lectura: solo tolerancia, sin bloqueos.
+      const [reglasRow] = await sbGet(`empresa?id=eq.${empresaId}&select=reglas_asistencia&limit=1`, { silent: true, fallback: [] }) || [];
+      const reglasAsistencia = normalizarReglasAsistencia(reglasRow?.reglas_asistencia);
+
       const existentes = await sbGet(
         `fichadas?empleado_id=eq.${empleadoId}&fecha=eq.${fecha}&empresa_id=eq.${empresaId}&select=id,ingreso`
       );
@@ -140,7 +151,7 @@ export async function POST(request) {
             // Solo consultamos tardanzas previas del mes cuando hace falta
             // (diff>5) — evita una query de DB en el camino feliz (puntual).
             let llegadasPrevias = 0;
-            if (diff > 5) {
+            if (diff > reglasAsistencia.tolerancia_min) {
               const mesInicio = fecha.slice(0, 7) + "-01";
               const tardes = await sbGet(
                 `fichadas?legajo=eq.${legajo}&empresa_id=eq.${empresaId}&fecha=gte.${mesInicio}&fecha=lte.${fecha}&llegada_tarde=eq.true&select=id`
@@ -148,15 +159,13 @@ export async function POST(request) {
               llegadasPrevias = tardes.length;
             }
 
-            tardanza = calcularTardanza(diagHoy.in, hora, llegadasPrevias);
+            tardanza = calcularTardanza(diagHoy.in, hora, llegadasPrevias, reglasAsistencia);
 
             if (tardanza.estado === "bloqueado") {
               return NextResponse.json({
                 ok: false,
-                error: tardanza.minutos > 30
-                  ? `Tardanza de ${tardanza.minutos} min (supera tolerancia de 30 min). Necesitás permiso de gerencia.`
-                  : `3ra llegada tarde del mes. Necesitás permiso de gerencia.`,
-                tipo: tardanza.minutos > 30 ? "bloqueado_tardanza" : "bloqueado_3ra_tarde",
+                error: `${tardanza.motivo}. Necesitás permiso de gerencia.`,
+                tipo: tardanza.tipoBloqueo === "minutos" ? "bloqueado_tardanza" : "bloqueado_3ra_tarde",
                 tardanza: { estado: tardanza.estado, minutos: tardanza.minutos, llegadasTarde: tardanza.llegadasTarde },
               });
             }

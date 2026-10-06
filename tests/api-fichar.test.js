@@ -4,6 +4,16 @@ import assert from "node:assert/strict";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { _resetBuckets } from "../app/lib/rateLimitMemory.js";
 
+// Defaults de toda request de fichaje: empresa sin zonas de geolocalización y
+// sin reglas de asistencia propias (solo tolerancia). Los handlers del test van primero.
+function mockFichar(handlers, { reglas = null } = {}) {
+  return createFetchMock([
+    ...handlers,
+    { match: (url) => url.includes("/rest/v1/geo_zonas"), respond: () => ({ status: 200, body: [] }) },
+    { match: (url) => url.includes("select=reglas_asistencia"), respond: () => ({ status: 200, body: [{ reglas_asistencia: reglas }] }) },
+  ]);
+}
+
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
@@ -44,7 +54,7 @@ function handlersIngresoBasico({ yaFichado = false } = {}) {
 }
 
 beforeEach(() => {
-  global.fetch = createFetchMock(handlersIngresoBasico());
+  global.fetch = mockFichar(handlersIngresoBasico());
   // El rate limiter de /api/fichar (10/min por empleado) es un Map en memoria
   // que persiste entre tests del mismo proceso — sin resetear, los tests de
   // este archivo se pisan entre sí al acumularse por encima del límite.
@@ -65,7 +75,7 @@ test("fichar — acción inválida devuelve 400", async () => {
 test("fichar — ingreso sin geofencing ni diagrama: registra fichada puntual", async () => {
   const token = await tokenValido();
   let fichadaInsertada = null;
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     { match: (url, opts) => url.includes("/rest/v1/fichadas") && opts.method === "POST", respond: (url, opts) => { fichadaInsertada = JSON.parse(opts.body); return { status: 201, body: [fichadaInsertada] }; } },
     ...handlersIngresoBasico(),
   ]);
@@ -82,7 +92,7 @@ test("fichar — ingreso sin geofencing ni diagrama: registra fichada puntual", 
 
 test("fichar — ingreso ya registrado hoy devuelve ok:false tipo ya_fichado", async () => {
   const token = await tokenValido();
-  global.fetch = createFetchMock(handlersIngresoBasico({ yaFichado: true }));
+  global.fetch = mockFichar(handlersIngresoBasico({ yaFichado: true }));
 
   const res = await POST(req({ accion: "ingreso" }, token));
   const json = await res.json();
@@ -93,7 +103,7 @@ test("fichar — ingreso ya registrado hoy devuelve ok:false tipo ya_fichado", a
 
 test("fichar — geofencing activo (plan starter) sin coordenadas pide GPS", async () => {
   const token = await tokenValido();
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     ...authPassHandlers(),
     // La ruta hace una sola query combinada: select=timezone,plan_activo
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone") && url.includes("plan_activo"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "starter" }] }) },
@@ -109,7 +119,7 @@ test("fichar — geofencing activo (plan starter) sin coordenadas pide GPS", asy
 
 test("fichar — geofencing activo y coordenadas fuera de zona rechaza", async () => {
   const token = await tokenValido();
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     ...authPassHandlers(),
     // La ruta hace una sola query combinada: select=timezone,plan_activo
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone") && url.includes("plan_activo"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "starter" }] }) },
@@ -129,7 +139,7 @@ test("fichar — geofencing activo y coordenadas fuera de zona rechaza", async (
 test("fichar — ingreso exitoso: empresa_id viene del token, no del body del cliente", async () => {
   const token = await tokenValido();
   let fichadaInsertada = null;
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     // El handler de inserción captura lo que se manda a Supabase
     { match: (url, opts) => url.includes("/rest/v1/fichadas") && opts.method === "POST", respond: (url, opts) => { fichadaInsertada = JSON.parse(opts.body); return { status: 201, body: [fichadaInsertada] }; } },
     ...handlersIngresoBasico(),
@@ -149,7 +159,7 @@ test("fichar — ingreso exitoso: empresa_id viene del token, no del body del cl
 
 test("fichar — ingreso ya registrado hoy devuelve ok:false tipo ya_fichado (integración)", async () => {
   const token = await tokenValido();
-  global.fetch = createFetchMock(handlersIngresoBasico({ yaFichado: true }));
+  global.fetch = mockFichar(handlersIngresoBasico({ yaFichado: true }));
 
   const res = await POST(req({ accion: "ingreso" }, token));
   const json = await res.json();
@@ -166,7 +176,7 @@ test("fichar — egreso con forzar_cierre_tarea=true cierra tarea activa y regis
   let tareasActualizadas = false;
   let patchFichadaLlamado = false;
 
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     ...authPassHandlers(),
     // Plan y timezone
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone,plan_activo"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "free" }] }) },
@@ -216,7 +226,7 @@ test("fichar — egreso con forzar_cierre_tarea=true cierra tarea activa y regis
 test("fichar — egreso sin forzar_cierre_tarea retorna tarea_activa cuando hay tarea abierta", async () => {
   const token = await tokenValido();
 
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
@@ -238,7 +248,7 @@ test("fichar — egreso sin forzar_cierre_tarea retorna tarea_activa cuando hay 
 test("fichar — egreso con ingreso '08:00:00' (formato real de PostgREST) guarda horas numéricas (F1-01)", async () => {
   const token = await tokenValido();
   let patch = null;
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
@@ -260,6 +270,39 @@ test("fichar — egreso con ingreso '08:00:00' (formato real de PostgREST) guard
   assert.ok(Number(patch.horas_trabajadas) > 0);
 });
 
+test("fichar — con zonas cargadas, fuera de la zona no ficha aunque el plan sea Free", async () => {
+  const token = await tokenValido();
+  global.fetch = mockFichar([
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/geo_zonas"), respond: () => ({ status: 200, body: [{ id: 1, lat: -31.42, lng: -64.18, radio: 150, nombre: "Planta" }] }) },
+  ]);
+  const res = await POST(req({ accion: "ingreso", geo_lat: -34.6, geo_lng: -58.4 }, token));
+  const json = await res.json();
+  assert.equal(json.ok, false);
+  assert.equal(json.tipo, "fuera_de_zona");
+});
+
+test("fichar — si el empleado tiene ubicación asignada, solo vale esa zona", async () => {
+  const token = await tokenValido();
+  global.fetch = mockFichar([
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro" }] }) },
+    {
+      match: (url) => url.includes("/rest/v1/geo_zonas"),
+      respond: () => ({ status: 200, body: [
+        { id: 1, lat: -34.6037, lng: -58.3816, radio: 150, nombre: "Planta BA" },
+        { id: 2, lat: -31.42, lng: -64.18, radio: 150, nombre: "Planta Córdoba" },
+      ] }),
+    },
+    { match: (url) => url.includes("select=geo_config"), respond: () => ({ status: 200, body: [{ geo_config: { activo: true, ubicacion_id: 2, radio: 150 } }] }) },
+  ]);
+  // Está en Buenos Aires (zona 1), pero tiene asignada Córdoba (zona 2)
+  const res = await POST(req({ accion: "ingreso", geo_lat: -34.6037, geo_lng: -58.3816 }, token));
+  const json = await res.json();
+  assert.equal(json.tipo, "fuera_de_zona");
+});
+
 // ─── Egreso: tope de horas y atomicidad (auditoría 2026-06-24) ───────────────
 
 test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero no bloquea el egreso", async () => {
@@ -270,7 +313,7 @@ test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero 
 
   try {
     const token = await tokenValido();
-    global.fetch = createFetchMock([
+    global.fetch = mockFichar([
       ...authPassHandlers(),
       { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
       { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
@@ -305,7 +348,7 @@ test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero 
 
 test("fichar — egreso ya cerrado por otra request devuelve ya_fichado en vez de pisarlo (PATCH atómico)", async () => {
   const token = await tokenValido();
-  global.fetch = createFetchMock([
+  global.fetch = mockFichar([
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
@@ -359,7 +402,7 @@ test("fichar — ingreso 3 min tarde (dentro de tolerancia de 5) queda puntual, 
     // Sin handler de "llegada_tarde=eq.true": si el código lo consultara
     // igual (perdiendo la optimización de no pedir tardanzas previas cuando
     // diff<=5), createFetchMock tira "Sin handler" y el test falla.
-    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }));
+    global.fetch = mockFichar(handlersConDiagrama({ in: "08:00", out: "17:00" }));
 
     const res = await POST(req({ accion: "ingreso" }, token));
     const json = await res.json();
@@ -384,7 +427,7 @@ test("fichar — ingreso 20 min tarde (1ra del mes) queda 'tarde', no bloquea", 
   try {
     t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T11:20:00.000Z") }); // 08:20 ARG
     const token = await tokenValido();
-    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 0 }));
+    global.fetch = mockFichar(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 0 }));
 
     const res = await POST(req({ accion: "ingreso" }, token));
     const json = await res.json();
@@ -399,11 +442,11 @@ test("fichar — ingreso 20 min tarde (1ra del mes) queda 'tarde', no bloquea", 
   }
 });
 
-test("fichar — ingreso 45 min tarde se bloquea por superar tolerancia de 30 min", async (t) => {
+test("fichar — ingreso 45 min tarde se bloquea si la empresa fijó un máximo de 30 min", async (t) => {
   try {
     t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T11:45:00.000Z") }); // 08:45 ARG
     const token = await tokenValido();
-    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 0 }));
+    global.fetch = mockFichar(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 0 }), { reglas: { bloqueo_min: 30 } });
 
     const res = await POST(req({ accion: "ingreso" }, token));
     const json = await res.json();
@@ -423,14 +466,14 @@ test("fichar — ingreso 10 min tarde se bloquea si es la 3ra llegada tarde del 
   try {
     t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T11:10:00.000Z") }); // 08:10 ARG
     const token = await tokenValido();
-    global.fetch = createFetchMock(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 2 }));
+    global.fetch = mockFichar(handlersConDiagrama({ in: "08:00", out: "17:00" }, { tardesPrevias: 2 }), { reglas: { bloqueo_tardanzas_mes: 3 } });
 
     const res = await POST(req({ accion: "ingreso" }, token));
     const json = await res.json();
 
     assert.equal(json.ok, false);
     assert.equal(json.tipo, "bloqueado_3ra_tarde");
-    assert.match(json.error, /3ra llegada tarde/);
+    assert.match(json.error, /n.º 3 del mes/);
     assert.equal(json.tardanza.estado, "bloqueado");
     assert.equal(json.tardanza.llegadasTarde, 3);
   } finally {
