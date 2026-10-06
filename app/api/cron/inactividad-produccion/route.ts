@@ -10,6 +10,7 @@ import admin from "firebase-admin";
 import { logger } from "../../../lib/logger";
 import { hoyArg } from "../../../lib/dates";
 
+import { conMonitoreoCron } from "../../../lib/cronMonitor";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -62,9 +63,10 @@ function getFirebaseApp() {
   return admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
 }
 
-export async function GET(request: Request) {
+async function ejecutar(request: Request) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && !process.env.VERCEL_URL?.includes("localhost")) {
+  // Sin CRON_SECRET configurado, "Bearer undefined" pasaba el chequeo: ahora se rechaza siempre.
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
@@ -201,3 +203,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
 }
+
+// Registra cada corrida en cron_ejecuciones y avisa a Sentry si falla (F3-12)
+export const GET = conMonitoreoCron("inactividad-produccion", ejecutar);

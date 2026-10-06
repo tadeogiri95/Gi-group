@@ -14,10 +14,11 @@
 import { NextResponse } from "next/server";
 import { logger } from "../../../lib/logger";
 
+import { conMonitoreoCron } from "../../../lib/cronMonitor";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(request) {
+async function ejecutar(request) {
   const authHeader = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -144,3 +145,6 @@ export async function GET(request) {
   logger.debug("[limpiar-tokens] Completado", resultados);
   return NextResponse.json({ ok: true, ...resultados });
 }
+
+// Registra cada corrida en cron_ejecuciones y avisa a Sentry si falla (F3-12)
+export const GET = conMonitoreoCron("limpiar-tokens", ejecutar);

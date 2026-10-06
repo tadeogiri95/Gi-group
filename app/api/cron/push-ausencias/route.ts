@@ -11,6 +11,7 @@ import admin from "firebase-admin";
 import { logger } from "../../../lib/logger";
 import { ahoraArg } from "../../../lib/dates";
 
+import { conMonitoreoCron } from "../../../lib/cronMonitor";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -108,7 +109,7 @@ async function enviarPushGerencia(
   return enviados;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function ejecutar(request: NextRequest): Promise<NextResponse> {
   const auth = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -189,3 +190,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Error interno del cron" }, { status: 500 });
   }
 }
+
+// Registra cada corrida en cron_ejecuciones y avisa a Sentry si falla (F3-12)
+export const GET = conMonitoreoCron("push-ausencias", ejecutar);
