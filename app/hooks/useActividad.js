@@ -113,7 +113,8 @@ export function useActividad(empleado) {
       const res = await sb.post("registro_actividades", {
         empleado_id: empleado.id,
         legajo: Number(empleado.legajo),
-        fecha: ahora.slice(0, 10),
+        // Fecha argentina, no UTC: después de las 21 h la UTC ya es "mañana" (F1-10)
+        fecha: hoyArg(),
         hora_inicio: ahora,
         codigo_proyecto: etapa === 0 ? null : (codigo_proyecto ? Number(codigo_proyecto) || codigo_proyecto : null),
         etapa,

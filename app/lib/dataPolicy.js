@@ -128,10 +128,33 @@ export function prepararBodyPost(tabla, body, sesion, ownFilter) {
       out.estado = "pendiente"; // nadie se autoaprueba al crear
     }
   }
+  if (tabla === "registro_actividades") {
+    const err = validarActividad(out);
+    if (err) return { status: 400, error: err };
+  }
   if (tabla === "notificaciones" && !ROLES_GESTION.has(sesion?.rol) && out.destinatario_rol !== "gerencial") {
     return { status: 403, error: "Solo podés enviar avisos a gerencia" };
   }
   return { body: out };
+}
+
+// Valores que entiende la pantalla de gerencia (gerencia_actividad_screen.jsx)
+export const TIPOS_ACTIVIDAD = new Set(["N", "R", "E", "C"]); // normal, retrabajo, error, cambio
+export const CAUSAS_IMPRODUCTIVO = new Set(["M", "H", "I", "O"]); // material, herramienta, indicación, otro
+
+/** Normaliza y valida tipo/causa/division de un registro de actividad (F1-02). Muta `body`. */
+function validarActividad(body) {
+  if (body.tipo === undefined || body.tipo === null) body.tipo = "N";
+  if (!TIPOS_ACTIVIDAD.has(body.tipo)) return "Tipo de actividad inválido";
+  if (body.causa === undefined || body.causa === "") body.causa = null;
+  if (body.causa !== null) {
+    if (!CAUSAS_IMPRODUCTIVO.has(body.causa)) return "Causa inválida";
+    if (Number(body.etapa) !== 0) return "La causa solo aplica al tiempo improductivo";
+  }
+  if (body.division !== undefined && body.division !== null && (typeof body.division !== "string" || body.division.length > 50)) {
+    return "División inválida";
+  }
+  return null;
 }
 
 /** Restricciones de campos por rol en PATCH. Devuelve null si está OK, o { status, error }. */

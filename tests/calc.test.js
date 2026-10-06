@@ -219,3 +219,48 @@ test("passwordInicial — no incluye caracteres confundibles (0, O, I, l, 1)", (
     assert.ok(!prohibidos.test(p), `Password "${p}" contiene caracteres confundibles`);
   }
 });
+
+// ─── calcularJornada (auditoría F1-01, F1-11) ───
+import { calcularJornada, horaHHMM } from "../app/lib/calc.js";
+
+const LUN_A_VIE = { lun: { in: "08:00", out: "17:00" }, mar: { in: "08:00", out: "17:00" } };
+
+test("horaHHMM — acepta el formato de PostgREST con segundos", () => {
+  assert.equal(horaHHMM("08:00:00"), "08:00");
+  assert.equal(horaHHMM("8:00"), "08:00");
+  assert.equal(horaHHMM("25:00"), null);
+  assert.equal(horaHHMM(null), null);
+});
+
+test("calcularJornada — ingreso '08:00:00' (formato real de la base) ya no da NaN", () => {
+  const j = calcularJornada({ fechaIngreso: "2026-10-05", horaIngreso: "08:00:00", fechaEgreso: "2026-10-05", horaEgreso: "17:30", diagrama: LUN_A_VIE });
+  assert.equal(j.horasTrabajadas, 9.5);
+  assert.equal(j.horasExtra, 0.5);
+});
+
+test("calcularJornada — turno noche: horas y extra cruzando la medianoche con la grilla del día del ingreso", () => {
+  // Lunes 22:00 → martes 06:30, grilla del LUNES 22:00–06:00
+  const diag = { lun: { in: "22:00", out: "06:00" }, mar: null };
+  const j = calcularJornada({ fechaIngreso: "2026-10-05", horaIngreso: "22:00:00", fechaEgreso: "2026-10-06", horaEgreso: "06:30", diagrama: diag });
+  assert.equal(j.horasTrabajadas, 8.5);
+  assert.equal(j.horasExtra, 0.5);
+});
+
+test("calcularJornada — llegó tarde pero se quedó más que la jornada: propone pedir hora extra", () => {
+  const j = calcularJornada({ fechaIngreso: "2026-10-05", horaIngreso: "08:30:00", fechaEgreso: "2026-10-05", horaEgreso: "18:00", diagrama: LUN_A_VIE });
+  assert.equal(j.horasExtra, 0);
+  assert.equal(j.solicitarHoraExtra, true);
+  assert.equal(j.datosJornada.excedente_min, 30);
+  assert.equal(j.datosJornada.ingreso_real, "08:30");
+});
+
+test("calcularJornada — sin grilla para el día: solo horas, sin extra", () => {
+  const j = calcularJornada({ fechaIngreso: "2026-10-04", horaIngreso: "08:00", fechaEgreso: "2026-10-04", horaEgreso: "12:00", diagrama: LUN_A_VIE });
+  assert.equal(j.horasTrabajadas, 4);
+  assert.equal(j.horasExtra, 0);
+  assert.equal(j.solicitarHoraExtra, false);
+});
+
+test("calcularJornada — hora inválida devuelve null (nunca NaN)", () => {
+  assert.equal(calcularJornada({ fechaIngreso: "2026-10-05", horaIngreso: "basura", fechaEgreso: "2026-10-05", horaEgreso: "17:00" }), null);
+});

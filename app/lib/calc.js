@@ -220,3 +220,73 @@ export function calcularScoreEmpleado({
     documentosCompletos,
   };
 }
+
+// ─── Jornada al fichar egreso (auditoría F1-01, F1-11) ───────────────────────
+const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
+const MIN_MS = 60_000;
+
+/** "08:00:00" o "08:00" → "08:00". PostgREST devuelve las columnas time con segundos. */
+export function horaHHMM(hora) {
+  const m = String(hora ?? "").match(/^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/);
+  if (!m) return null;
+  const h = `${m[1].padStart(2, "0")}:${m[2]}`;
+  return parseHoraAMinutos(h) === null ? null : h;
+}
+
+/** Timestamp (ms) de una fecha YYYY-MM-DD + hora HH:MM, en un reloj fijo (UTC) para poder restar. */
+function instante(fecha, hhmm) {
+  return Date.parse(`${fecha}T${hhmm}:00Z`);
+}
+
+/**
+ * Horas trabajadas y horas extra de una fichada al cerrarla.
+ * Todo se calcula con instantes completos, así el turno noche (ingreso un día,
+ * egreso al siguiente) no da negativo, y la grilla que vale es la del día del
+ * INGRESO, no la del egreso.
+ *
+ * @returns {null | {
+ *   horasTrabajadas: number, horasExtra: number,
+ *   solicitarHoraExtra: boolean, datosJornada: object|null
+ * }} null si alguna hora es inválida
+ */
+export function calcularJornada({ fechaIngreso, horaIngreso, fechaEgreso, horaEgreso, diagrama }) {
+  const hIn = horaHHMM(horaIngreso);
+  const hOut = horaHHMM(horaEgreso);
+  if (!hIn || !hOut) return null;
+  const tIn = instante(fechaIngreso, hIn);
+  const tOut = instante(fechaEgreso, hOut);
+  if (!Number.isFinite(tIn) || !Number.isFinite(tOut)) return null;
+
+  const minutosReales = Math.max(0, (tOut - tIn) / MIN_MS);
+  const res = { horasTrabajadas: minutosReales / 60, horasExtra: 0, solicitarHoraExtra: false, datosJornada: null };
+
+  const diaKey = DIAS_SEMANA[new Date(`${fechaIngreso}T12:00:00Z`).getUTCDay()];
+  const grilla = diagrama?.[diaKey];
+  const gIn = horaHHMM(grilla?.in);
+  const gOutH = horaHHMM(grilla?.out);
+  if (!gIn || !gOutH) return res;
+
+  const tGrillaIn = instante(fechaIngreso, gIn);
+  let tGrillaOut = instante(fechaIngreso, gOutH);
+  if (tGrillaOut <= tGrillaIn) tGrillaOut += 24 * 60 * MIN_MS; // grilla que cruza la medianoche
+
+  const jornadaGrilla = (tGrillaOut - tGrillaIn) / MIN_MS;
+  const minutosMasTarde = (tOut - tGrillaOut) / MIN_MS;
+  const fuePuntual = tIn <= tGrillaIn + 5 * MIN_MS;
+
+  if (fuePuntual && minutosMasTarde > 0) {
+    res.horasExtra = +(minutosMasTarde / 60).toFixed(2);
+  } else if (!fuePuntual && minutosReales > jornadaGrilla) {
+    res.solicitarHoraExtra = true;
+    res.datosJornada = {
+      ingreso_grilla: gIn,
+      egreso_grilla: gOutH,
+      ingreso_real: hIn,
+      egreso_real: hOut,
+      jornada_grilla_min: jornadaGrilla,
+      jornada_real_min: minutosReales,
+      excedente_min: minutosReales - jornadaGrilla,
+    };
+  }
+  return res;
+}

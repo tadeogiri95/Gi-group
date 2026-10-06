@@ -235,6 +235,31 @@ test("fichar — egreso sin forzar_cierre_tarea retorna tarea_activa cuando hay 
   assert.equal(json.tarea_id, "tarea-activa-1");
 });
 
+test("fichar — egreso con ingreso '08:00:00' (formato real de PostgREST) guarda horas numéricas (F1-01)", async () => {
+  const token = await tokenValido();
+  let patch = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/registro_actividades"), respond: () => ({ status: 200, body: [] }) },
+    {
+      match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=*") && url.includes("limit=1"),
+      respond: () => ({ status: 200, body: [{ id: "f-hoy", fecha: "2020-01-01", ingreso: "08:00:00", egreso: null }] }),
+    },
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("select=diagrama"), respond: () => ({ status: 200, body: [{ diagrama: null }] }) },
+    {
+      match: (url, opts) => url.includes("/rest/v1/fichadas") && opts.method === "PATCH",
+      respond: (url, opts) => { patch = JSON.parse(opts.body); return { status: 200, body: [{ id: "f-hoy" }] }; },
+    },
+  ]);
+  const res = await POST(req({ accion: "egreso" }, token));
+  assert.equal(res.status, 200);
+  assert.ok(patch, "debe registrar el egreso");
+  assert.ok(Number.isFinite(Number(patch.horas_trabajadas)), `horas_trabajadas = ${patch.horas_trabajadas}`);
+  assert.ok(Number(patch.horas_trabajadas) > 0);
+});
+
 // ─── Egreso: tope de horas y atomicidad (auditoría 2026-06-24) ───────────────
 
 test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero no bloquea el egreso", async () => {

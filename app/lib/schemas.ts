@@ -43,7 +43,8 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["nombre", "apodo", "email", "area", "division", "diagrama", "horas_semanales", "geo_config", "activo", "debe_cambiar_password"],
   },
   registro_actividades: {
-    POST: ["empleado_id", "legajo", "etapa", "codigo_proyecto", "hora_inicio", "hora_fin", "duracion_min", "observaciones", "fecha"],
+    // tipo/causa/division: antes se descartaban en silencio (auditoría F1-02); se validan en dataPolicy
+    POST: ["empleado_id", "legajo", "etapa", "codigo_proyecto", "hora_inicio", "hora_fin", "duracion_min", "observaciones", "fecha", "tipo", "causa", "division"],
     PATCH: ["hora_fin", "duracion_min", "observaciones", "etapa"],
   },
   reportes_obra: {
