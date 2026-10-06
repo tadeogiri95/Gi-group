@@ -198,3 +198,15 @@ Verifiqué que ningún archivo `"use client"` referencia variables secretas. [HE
 5. **Infra actual.** ¿En qué planes están Vercel (Hobby/Pro) y Supabase (Free/Pro)? ¿Hay un solo proyecto o separás dev/staging/prod?
 6. **Piloto.** ¿Cuál es el slug de la empresa piloto y cuántos usuarios activos tiene? ¿El piloto paga, o la facturación con Mercado Pago está sin uso real?
 7. **Fases 1–6.** Las fases son de solo lectura, pero en la Fase 1 necesito correr `npm ci`, lint, typecheck, test y build localmente (no toca el repo). ¿OK? También: ¿commiteo y pusheo cada `auditoria/fase-N.md` a esta rama al cerrar cada fase?
+
+---
+
+## Respuestas del dueño del producto (2026-10-06)
+
+1. **Alcance:** se quiere sumar stock, compras, órdenes de producción, calidad y mantenimiento como módulos que se habilitan según el paquete contratado, personalizables por cliente. → Hay que diseñar la estructura (módulos por plan + configuración por tenant). Se trata en las Fases 3, 6 y 7.
+2. **Roles:** Operativo = operario · Administrativo = supervisor y admin · Gerencial = dueño. → Hoy supervisor y admin comparten rol; se evalúa en las Fases 2 y 4 si conviene separarlos.
+3. **Capacitor / stores:** no existe proyecto nativo y la app no está en Play Store. El `assetlinks.json` (`com.gypi.app`) es preparación de una TWA que nunca se publicó.
+4. **Producción:** el dueño corre las consultas SQL que se le pasen (ver anexo de `fase-1.md`).
+5. **Infra:** Vercel y Supabase en plan **gratuito**. No se sabe si hay ambientes separados. → **Se asume un único ambiente (prod = dev)** hasta verificarlo. F0-12 queda confirmado: el plan Hobby de Vercel no permite uso comercial.
+6. **Piloto:** sin usuarios activos hoy y sin cobros. Se usa una versión completa gratis. → Hay margen para cambios que rompan compatibilidad (migraciones, auth) sin afectar operación real.
+7. Se autoriza correr herramientas locales y commitear y pushear los entregables.
