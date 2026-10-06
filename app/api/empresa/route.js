@@ -4,6 +4,7 @@ import { validarToken } from "../../lib/auth";
 import { logAudit } from "../../lib/audit";
 import { empresaPatchBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
+import { CAMPOS_EMPRESA_SOLO_DUENO } from "../../lib/dataPolicy";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -88,6 +89,11 @@ export async function PATCH(request) {
     const parsed = validateBody(empresaPatchBody, rawBody);
     if (parsed.response) return parsed.response;
     const body = parsed.data;
+
+    // Las instrucciones de la IA las define solo el dueño (auditoría F2-06)
+    if (sesion.rol !== "gerencial" && CAMPOS_EMPRESA_SOLO_DUENO.some((c) => body[c] !== undefined)) {
+      return NextResponse.json({ error: "Solo el dueño de la cuenta puede cambiar las instrucciones de la IA" }, { status: 403 });
+    }
 
     const updates = {};
     for (const key of CAMPOS_EDITABLES) {

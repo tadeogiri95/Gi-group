@@ -40,7 +40,7 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     // acá permitía crear empleados con contraseña en texto plano y que un
     // administrativo creara gerenciales salteando esa regla.
     POST: ["legajo", "nombre", "apodo", "email", "area", "division", "diagrama", "activo", "debe_cambiar_password", "estado_activacion"],
-    PATCH: ["nombre", "apodo", "email", "area", "division", "diagrama", "activo", "debe_cambiar_password"],
+    PATCH: ["nombre", "apodo", "email", "area", "division", "diagrama", "horas_semanales", "geo_config", "activo", "debe_cambiar_password"],
   },
   registro_actividades: {
     POST: ["empleado_id", "legajo", "etapa", "codigo_proyecto", "hora_inicio", "hora_fin", "duracion_min", "observaciones", "fecha"],
@@ -56,7 +56,7 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   },
   push_tokens: {
     POST: ["legajo", "token", "plataforma"],
-    PATCH: [],
+    PATCH: ["updated_at"],
   },
   geo_zonas: {
     POST: ["nombre", "lat", "lng", "radio"],

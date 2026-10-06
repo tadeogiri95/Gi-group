@@ -19,11 +19,12 @@ export function validateBody<T>(schema: ZodSchema<T>, body: unknown): { data: T;
 
 /**
  * Strip fields not in the whitelist for a given table+method in /api/data.
- * Always removes empresa_id (injected from session).
+ * Deny-by-default: si la tabla/método no tiene whitelist, no pasa ningún campo.
+ * empresa_id nunca está en la whitelist (se inyecta desde la sesión).
  */
 export function stripUnallowedFields(body: Record<string, unknown>, tabla: string, method: string): Record<string, unknown> {
   const allowed = CAMPOS_PERMITIDOS[tabla]?.[method];
-  if (!allowed) return body;
+  if (!allowed) return {};
 
   const clean: Record<string, unknown> = {};
   for (const key of allowed) {

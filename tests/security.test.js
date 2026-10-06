@@ -146,10 +146,10 @@ describe("stripUnallowedFields — previene inyección de campos", () => {
     assert.equal(clean.suscripcion_activa_id, undefined);
   });
 
-  test("tabla sin whitelist devuelve body original", () => {
-    const body = { foo: "bar" };
+  test("tabla sin whitelist no deja pasar ningún campo (deny-by-default)", () => {
+    const body = { foo: "bar", plan: "enterprise" };
     const clean = stripUnallowedFields(body, "tabla_inexistente", "POST");
-    assert.deepEqual(clean, body);
+    assert.deepEqual(clean, {});
   });
 });
 
