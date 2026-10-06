@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS empresa (
   color_texto             text,
   tema_fondo              text,                                    -- sin uso conocido en el código actual
   logo_url                text,
-  admin_email             text,
+  admin_email             text,                                    -- (064) único global: lower(admin_email) (una empresa por email de registro)
   admin_password          text,                                    -- bcrypt — excluido de /api/data (CAMPOS_EXCLUIDOS)
   plan_activo             text DEFAULT 'free',
   trial_usado             boolean DEFAULT false,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS empleados (
   legajo                  integer NOT NULL,
   nombre                  text NOT NULL,
   apodo                   text,
-  email                   text,
+  email                   text,                                    -- (064) único por empresa: (empresa_id, lower(email)); se guarda en minúsculas
   password                text,                                    -- bcrypt — excluido de /api/data
   area                    text DEFAULT 'produccion',
   division                text,
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS fichadas (
   minutos_tarde           integer DEFAULT 0,
   created_at              timestamptz DEFAULT now(),
   horas_extra             numeric DEFAULT 0,                       -- (031)
-  UNIQUE (empresa_id, empleado_id, fecha)
+  UNIQUE (empresa_id, empleado_id, fecha)                          -- (064) en prod reemplaza a fichadas_legajo_fecha_unique (legajo, fecha)
 );
 
 CREATE TABLE IF NOT EXISTS solicitudes (
