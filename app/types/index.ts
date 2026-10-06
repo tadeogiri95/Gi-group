@@ -178,7 +178,7 @@ export interface SesionJWT {
 
 export interface AuditEntry {
   empresa_id?: string;
-  actor_id?: string;
+  actor_id?: string | null;
   actor_legajo?: number;
   actor_rol?: string;
   accion: string;

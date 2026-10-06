@@ -132,3 +132,19 @@ test("documentos/upload — éxito devuelve 200 con el documento creado", async 
   assert.equal(json.ok, true);
   assert.equal(json.documento.empleado_id, EMPLEADO_ID, "debe quedar asociado al empleado de la sesión");
 });
+
+// ─── F2-09: el contenido real tiene que coincidir con el tipo declarado ───
+
+test("documentos/upload — un HTML disfrazado de PDF se rechaza sin subir nada", async () => {
+  let subio = false;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    tipoDocHandler({ id: TIPO_DOC_ID, formatos_aceptados: ["pdf"], admite_multiples: true }),
+    { match: (url) => url.includes("/storage/v1/object/"), respond: () => { subio = true; return { status: 200, body: {} }; } },
+  ]);
+  const token = await tokenConRol("operativo");
+  const file = new File(["<html><script>alert(1)</script></html>"], "doc.pdf", { type: "application/pdf" });
+  const res = await POST(postReq(token, { file }));
+  assert.equal(res.status, 400);
+  assert.equal(subio, false);
+});

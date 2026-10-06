@@ -56,11 +56,11 @@ test("upload — sin token devuelve 401", async () => {
 
 // ─── Validación ───
 
-test("upload — sin fileName devuelve 400", async () => {
-  global.fetch = createFetchMock([...authPassHandlers()]);
+test("upload — sin fileName igual funciona: el nombre lo genera el servidor", async () => {
+  global.fetch = createFetchMock([...authPassHandlers(), storageOk()]);
   const token = await tokenConRol("gerencial");
   const res = await POST(postReq(token, { fileBase64: PNG_BASE64, fileType: "image/png" }));
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 200);
 });
 
 test("upload — sin fileBase64 devuelve 400", async () => {
@@ -94,22 +94,40 @@ test("upload — archivo mayor a 5MB devuelve 413", async () => {
   assert.equal(res.status, 413);
 });
 
-// ─── Path traversal ───
+// ─── Nombre generado en el servidor (F2-09) ───
 
-test("upload — fileName con path traversal se sanitiza antes de subir", async () => {
+test("upload — ignora el fileName del cliente: nombre aleatorio bajo la empresa, sin upsert", async () => {
   let urlSubida = null;
+  let headersSubida = null;
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     {
       match: (url, opts) => url.includes("/storage/v1/object/reportes-obra/") && opts?.method === "POST",
-      respond: (url) => { urlSubida = url; return { status: 200, body: { Key: "ok" } }; },
+      respond: (url, opts) => { urlSubida = url; headersSubida = opts.headers; return { status: 200, body: { Key: "ok" } }; },
     },
   ]);
   const token = await tokenConRol("gerencial");
-  const res = await POST(postReq(token, { fileName: "../../etc/evil.png", fileBase64: PNG_BASE64, fileType: "image/png" }));
+  const res = await POST(postReq(token, { fileName: "../../otra-empresa/logo.png", fileBase64: PNG_BASE64, fileType: "image/png" }));
   assert.equal(res.status, 200);
   assert.ok(!urlSubida.includes(".."), `la URL de subida no debe contener "..": ${urlSubida}`);
-  assert.ok(urlSubida.includes(`${EMPRESA_ID}/`), "el archivo debe quedar prefijado con el empresa_id de la sesión, no del cliente");
+  assert.match(urlSubida, new RegExp(`/reportes-obra/${EMPRESA_ID}/[0-9a-f-]{36}\\.png$`));
+  assert.equal(headersSubida["x-upsert"], "false", "no debe poder pisar archivos existentes");
+});
+
+test("upload — SVG se rechaza (puede llevar scripts)", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const token = await tokenConRol("gerencial");
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString("base64");
+  const res = await POST(postReq(token, { fileName: "x.svg", fileBase64: svg, fileType: "image/svg+xml" }));
+  assert.equal(res.status, 400);
+});
+
+test("upload — contenido que no coincide con el tipo declarado se rechaza", async () => {
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const token = await tokenConRol("gerencial");
+  const html = Buffer.from("<html><script>alert(1)</script></html>").toString("base64");
+  const res = await POST(postReq(token, { fileName: "foto.png", fileBase64: html, fileType: "image/png" }));
+  assert.equal(res.status, 400);
 });
 
 // ─── Éxito ───
@@ -121,7 +139,7 @@ test("upload — éxito devuelve 200 con url pública prefijada por empresa_id",
   assert.equal(res.status, 200);
   const json = await res.json();
   assert.equal(json.ok, true);
-  assert.ok(json.url.includes(`${EMPRESA_ID}/logo.png`), `la url debe incluir el empresa_id: ${json.url}`);
+  assert.ok(json.url.includes(`/public/reportes-obra/${EMPRESA_ID}/`), `la url debe incluir el empresa_id: ${json.url}`);
 });
 
 // ─── Error de storage ───

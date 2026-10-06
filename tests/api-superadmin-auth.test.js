@@ -47,7 +47,10 @@ test("superadmin auth — clave correcta devuelve 200 y cookie httpOnly", async 
   const setCookie = res.headers.get("set-cookie") || "";
   assert.ok(setCookie.includes("gypi_superadmin="), "debe setear cookie superadmin");
   assert.ok(setCookie.includes("HttpOnly") || setCookie.includes("httponly"), "cookie debe ser httpOnly");
-  assert.ok(setCookie.includes("Path=/superadmin"), "cookie debe estar scoped a /superadmin");
+  // F2-13: path "/" para que el navegador la mande también a /api/superadmin/*
+  assert.match(setCookie, /gypi_superadmin=ey[^;]*;[^,]*Path=\/(;|$)/i, "la cookie nueva debe tener Path=/");
+  assert.match(setCookie, /SameSite=Strict/i, "cookie debe ser SameSite=Strict");
+  assert.match(setCookie, /gypi_superadmin=;[^,]*Path=\/superadmin;[^,]*Max-Age=0/i, "debe borrar la cookie vieja de /superadmin");
 });
 
 test("superadmin auth — clave incorrecta devuelve 401", async () => {
@@ -99,4 +102,23 @@ test("superadmin auth — excepción de red en rate limit bloquea (fail-closed)"
   global.fetch = async () => { throw new Error("network down"); };
   const res = await POST(req({ key: "mi-secreto-de-superadmin" }));
   assert.equal(res.status, 429, "una excepción de red también debe bloquear por seguridad (fail-closed)");
+});
+
+test("superadmin auth — clave con el mismo prefijo pero distinta longitud devuelve 401", async () => {
+  const res = await POST(req({ key: "mi-secreto-de-superadmin-extra" }));
+  assert.equal(res.status, 401);
+  const res2 = await POST(req({ key: "mi-secreto" }));
+  assert.equal(res2.status, 401);
+});
+
+test("superadmin auth — clave que no es string devuelve 401 (no rompe)", async () => {
+  const res = await POST(req({ key: { $ne: "" } }));
+  assert.equal(res.status, 401);
+});
+
+test("superadmin auth — compara la clave en tiempo constante (timingSafeEqual)", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../app/api/superadmin/auth/route.ts", import.meta.url), "utf8");
+  assert.ok(src.includes("timingSafeEqual"));
+  assert.ok(!/key\s*!==\s*secret/.test(src), "no debe comparar con !==");
 });

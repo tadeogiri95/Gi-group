@@ -71,16 +71,27 @@ messaging.onBackgroundMessage((payload) => {
   return self.registration.showNotification(notifTitle, options);
 });
 
+// F2-08: solo se abren URLs del mismo origen. Cualquier otra cosa (otro
+// dominio, "//sitio", "javascript:") se reemplaza por la home de la app.
+function urlSegura(raw) {
+  try {
+    const u = new URL(raw || '/', self.location.origin);
+    return u.origin === self.location.origin ? u.href : self.location.origin + '/';
+  } catch {
+    return self.location.origin + '/';
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const urlToOpen = event.notification.data?.url || '/';
+  const urlToOpen = urlSegura(event.notification.data?.url);
   const origin = self.location.origin;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
         if (client.url.startsWith(origin) && 'focus' in client) {
-          if (urlToOpen !== '/' && 'navigate' in client) {
+          if (urlToOpen !== origin + '/' && 'navigate' in client) {
             return client.navigate(urlToOpen).then(() => client.focus());
           }
           return client.focus();

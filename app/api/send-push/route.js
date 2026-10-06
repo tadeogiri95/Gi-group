@@ -13,6 +13,8 @@ import { sbGet, sbDelete } from "../../lib/sbHelpers";
 import { sendPushBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
+import { ROLES_GESTION } from "../../lib/dataPolicy";
+import { sanitizarDataPush } from "../../lib/pushData";
 
 function getAdminApp() {
   if (admin.apps.length > 0) return admin.app();
@@ -53,7 +55,17 @@ export async function POST(request) {
     const rawBody = await request.json();
     const parsed = validateBody(sendPushBody, rawBody);
     if (parsed.response) return parsed.response;
-    const { legajo, rol, title, body, data = {} } = parsed.data;
+    const { legajo, rol, title, body } = parsed.data;
+
+    // ═══ F2-08: push libre solo para gestión ═══
+    // Un operario solo puede avisar a gestión (gerencial/administrativo), sin
+    // links ni datos extra: así no puede mandar a sus compañeros una
+    // notificación falsa con un link de phishing.
+    const esGestion = ROLES_GESTION.has(sesion.rol);
+    if (!esGestion && (legajo != null || !ROLES_GESTION.has(rol))) {
+      return NextResponse.json({ error: "Solo podés enviar avisos a gerencia o administración" }, { status: 403 });
+    }
+    const data = sanitizarDataPush(parsed.data.data, esGestion);
 
     // Buscar nombre de empresa
     let empresaNombre = null;

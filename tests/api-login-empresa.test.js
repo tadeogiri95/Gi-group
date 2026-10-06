@@ -154,3 +154,29 @@ test("cambiar_password — la pantalla ya no manda el token en el body", async (
   const body = src.match(/body: JSON\.stringify\(\{[^}]*\}\)/)[0];
   assert.ok(!body.includes("token"), body);
 });
+
+// ─── F2-12: cambiar la contraseña cierra las otras sesiones ───
+
+test("cambiar_password — revoca las demás sesiones del empleado y conserva la actual", async () => {
+  const crypto = await import("node:crypto");
+  const { signAccessToken } = await import("../app/lib/jwt.ts");
+  const { authPassHandlers } = await import("./helpers/mockFetch.js");
+  const EMP_ID = "22222222-2222-2222-2222-222222222222";
+  const { token, jti } = await signAccessToken({ empleadoId: EMP_ID, empresaId: EMPRESA_ID, legajo: 7, rol: "operativo" });
+  let urlRevocacion = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url, opts) => url.includes("/rest/v1/empleados?id=eq.") && opts?.method === "PATCH", respond: () => ({ status: 200, body: [{ id: EMP_ID }] }) },
+    { match: (url, opts) => url.includes("/rest/v1/sesiones?") && opts?.method === "PATCH", respond: (url) => { urlRevocacion = url; return { status: 200, body: [] }; } },
+  ]);
+  const res = await POST(new Request("http://localhost/api/login-empresa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: "cambiar_password", userId: EMP_ID, nuevaPassword: "NuevaSegura1" }),
+  }));
+  assert.equal(res.status, 200);
+  assert.ok(urlRevocacion, "debe revocar sesiones");
+  assert.ok(urlRevocacion.includes(`empleado_id=eq.${EMP_ID}`));
+  const hashActual = crypto.createHash("sha256").update(jti).digest("hex");
+  assert.ok(urlRevocacion.includes(`token_hash=neq.${hashActual}`), "la sesión desde la que se cambió sigue abierta");
+});

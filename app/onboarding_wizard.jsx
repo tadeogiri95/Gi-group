@@ -429,7 +429,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
               <img src={logoPreview} alt="logo" className="max-w-[120px] max-h-[120px] rounded-xl bg-gypi-bg p-1.5" />
             </div>
           )}
-          <input ref={fileLogoRef} type="file" accept="image/*" hidden onChange={onLogoFile} />
+          <input ref={fileLogoRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onLogoFile} />
           <button onClick={() => fileLogoRef.current?.click()} className="w-full py-2.5 rounded-[10px] border border-gypi-border bg-gypi-surf-hi text-gypi-text text-xs font-semibold cursor-pointer">
             {logoPreview ? "🔄 Cambiar logo" : "📤 Subir logo"}
           </button>

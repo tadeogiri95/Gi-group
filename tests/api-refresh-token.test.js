@@ -179,3 +179,17 @@ test("refresh-token — fallo en PATCH de sesión devuelve 503 (no emite tokens 
   const res = await POST(req({ refresh_token: token }));
   assert.equal(res.status, 503, "debe devolver 503 si no puede garantizar la rotación atómica");
 });
+
+test("refresh-token — solo busca sesiones no revocadas (F2-12: revocar por cambio de contraseña corta la renovación)", async () => {
+  const { token } = await refreshTokenValido();
+  let urlSesion = null;
+  global.fetch = createFetchMock([
+    {
+      match: (url) => url.includes("/rest/v1/sesiones?refresh_jti=eq."),
+      respond: (url) => { urlSesion = url; return { status: 200, body: [] }; },
+    },
+  ]);
+  const res = await POST(req({ refresh_token: token }));
+  assert.equal(res.status, 401);
+  assert.ok(urlSesion.includes("revocada=eq.false"), urlSesion);
+});

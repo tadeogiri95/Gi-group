@@ -45,15 +45,15 @@
 | F2-05 | `/api/chat`: proxy abierto, sin presupuesto por tenant | Alto | S | **Hecho** (tadeogiri95/Gi-group#7, fusionado): prompt en el servidor, módulo por plan, cupo mensual |
 | F2-06 | Acciones de la IA con permisos amplios; prompts de empresa editables por cualquiera | Alto | S | **Hecho** (#3 prompts solo dueño; #7 lista blanca + confirmación) |
 | F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
-| F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | Pendiente |
-| F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | Pendiente |
+| F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | En PR #16: push libre solo gestión; el operario solo avisa a gestión, sin links; el SW abre solo el mismo origen. Queda: armar en el servidor los avisos automáticos del operario |
+| F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | En PR #16 + migración 070: sin SVG, nombres del servidor sin upsert, *magic bytes*, logo solo gestión, límites por bucket. Queda: `reportes-obra` a bucket privado con URL firmada |
 | F2-10 | Canal Realtime público | Medio | S | Pendiente |
 | F2-11 | Webhook de MP: validar suscripción, empresa y monto; tabla de eventos | Medio | S | Pendiente |
-| F2-12 | Recupero de contraseña sin rate limit; las sesiones no se revocan al cambiar la contraseña | Medio | S | Pendiente |
-| F2-13 | Superadmin con clave única sin 2FA; auditoría que falla en silencio; cookie con path incorrecto | Medio | S | Pendiente |
+| F2-12 | Recupero de contraseña sin rate limit; las sesiones no se revocan al cambiar la contraseña | Medio | S | En PR #16: rate limit por IP y email, `isUUID`, revocación de sesiones al cambiar/resetear (y el refresh no renueva revocadas). Queda: pedir la contraseña actual al cambiarla |
+| F2-13 | Superadmin con clave única sin 2FA; auditoría que falla en silencio; cookie con path incorrecto | Medio | S | En PR #16: cookie `path:/` + `SameSite=Strict`, comparación en tiempo constante, auditoría que loguea fallas (la impersonación no procede sin registro). Queda: usuario propio + 2FA (ítem 45) |
 | F2-14 | Un único `JWT_SECRET` para 8 tipos de token, sin `aud` | Medio | M | Pendiente |
 | F2-15 | Rate limits en memoria | Medio | S | Pendiente |
-| F2-16 | `/api/geocode` público | Medio | S | Pendiente |
+| F2-16 | `/api/geocode` público | Medio | S | En PR #16: exige sesión, caché de 24 h y límite por empresa |
 | F2-17 | Privacidad: proveedores omitidos, GPS “opcional”, Ley 25.326/DPA | Medio | M | Pendiente (legal) |
 | F2-18 | Exenciones de CSRF amplias | Bajo | S | Pendiente |
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
@@ -72,8 +72,8 @@
 | F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | **Hecho** (#10 fusionado): `calcularJornada` con parseo `HH:MM:SS` + migración 067 opcional para recalcular |
 | F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | **Hecho** (#10 fusionado) (whitelist + validación de catálogo) |
 | F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
-| F1-04 | Liquidación truncada a 1.000 filas | Alto | S | En PR #15 (paginación server-side + aviso `truncado`); agregados en SQL quedan para H2 |
-| F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | En PR #15 (todas las páginas + aviso en pantalla) |
+| F1-04 | Liquidación truncada a 1.000 filas | Alto | S | **Hecho** (tadeogiri95/Gi-group#15, fusionado): paginación server-side + aviso `truncado`; agregados en SQL quedan para H2 |
+| F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | **Hecho** (tadeogiri95/Gi-group#15, fusionado): todas las páginas + aviso en pantalla |
 | F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | **Hecho** (#6: botón “Código de acceso”) |
 | F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | **Hecho** (#6) |
 | F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | Pendiente |

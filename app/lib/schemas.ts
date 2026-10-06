@@ -262,8 +262,9 @@ export const configPatchBody = z.discriminatedUnion("action", [
 
 // ── /api/send-push ──────────────────────────────────────────────────────────
 export const sendPushBody = z.object({
-  legajo: z.union([z.number(), z.string().max(20)]).optional(),
-  rol: z.string().max(30).optional(),
+  // Solo dígitos: el valor se interpola en el filtro de PostgREST.
+  legajo: z.union([z.number().int().positive(), z.string().regex(/^\d{1,20}$/)]).optional(),
+  rol: rol.optional(),
   title: z.string().min(1).max(200),
   body: z.string().min(1).max(2000),
   data: z.record(z.string(), z.string().max(500)).optional(),
