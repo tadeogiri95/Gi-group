@@ -145,7 +145,9 @@ Confirmado con vos: **las reglas de asistencia son de la fábrica y no deben ser
 
 #### Contención recomendada (la corre el dueño; yo no tengo acceso a la base)
 
-Antes de ejecutar: hacer un backup (Database → Backups, o `pg_dump`). Correr en el SQL Editor **de una vez**:
+**Plan Free de Supabase:** no hay backups descargables desde el panel. **No hace falta backup para este paso:** el script solo quita permisos (`REVOKE`) y no modifica datos ni estructura. Es reversible al instante con el script inverso de abajo. Copia opcional de datos: *Table Editor → Export → CSV* por tabla, o `npx supabase db dump --db-url "<connection string>"` (esquema) y lo mismo con `--data-only`.
+
+Correr en el SQL Editor **de una vez**:
 
 ```sql
 begin;
@@ -163,6 +165,19 @@ alter default privileges in schema public revoke all     on tables    from anon,
 alter default privileges in schema public revoke all     on sequences from anon, authenticated;
 alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
 
+commit;
+```
+
+**Reversión (solo si la app deja de funcionar; vuelve a dejar la base abierta):**
+
+```sql
+begin;
+grant all on all tables    in schema public to anon, authenticated;
+grant all on all sequences in schema public to anon, authenticated;
+grant execute on all functions in schema public to public, anon, authenticated;
+alter default privileges in schema public grant all     on tables    to anon, authenticated;
+alter default privileges in schema public grant all     on sequences to anon, authenticated;
+alter default privileges in schema public grant execute on functions to public, anon, authenticated;
 commit;
 ```
 
