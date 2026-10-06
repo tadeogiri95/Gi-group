@@ -160,3 +160,11 @@ order by 1, 2;
 ```
 
 Fuera de SQL: en **Supabase → Project Settings → API → “Max rows”**, ¿qué valor tiene? (F1-04)
+
+---
+
+## Respuestas del dueño del producto (2026-10-06)
+
+1. Los datos actuales de `fichadas` y `registro_actividades` son **de prueba**: se pueden descartar o recalcular después de corregir F1-01, F1-02 y F1-10.
+2. Tolerancia, bloqueo a la 3ra tardanza y presentismo son **reglas de la fábrica, no defaults del producto** → se parametrizan por tenant (ver `fase-2.md` §7, H1–H3).
+3. Se prefiere un **botón grande de fichar** como acción principal en lugar del chat (se diseña en la Fase 4).
