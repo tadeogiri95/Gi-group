@@ -77,14 +77,13 @@ CREATE TABLE IF NOT EXISTS empleados (
   nombre                  text NOT NULL,
   apodo                   text,
   email                   text,                                    -- (064) único por empresa: (empresa_id, lower(email)); se guarda en minúsculas
-  password                text,                                    -- bcrypt — excluido de /api/data
+  password                text,                                    -- bcrypt — excluido de /api/data. Sin DEFAULT (066 quitó 'gigroup2025')
   area                    text DEFAULT 'produccion',
   division                text,
   rol                     text DEFAULT 'operativo',                -- operativo | gerencial | administrativo
   cc                      text,
   activo                  boolean DEFAULT true,
   diagrama                jsonb,                                    -- sin índice GIN a propósito, ver sección ÍNDICES
-  _deprecated_ubicacion_fichaje jsonb,                              -- DEPRECATED (044) — usar geo_config + geo_zonas
   horas_semanales         numeric DEFAULT 41,
   debe_cambiar_password   boolean DEFAULT true,
   estado_activacion       text DEFAULT 'activo',

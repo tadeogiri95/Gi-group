@@ -35,12 +35,12 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F2-00 | Base de producción abierta al rol anónimo (grants + policies permisivas + RPC) | Crítico | S | **Contenido** (REVOKE ejecutado y verificado). Pendiente: limpiar policies, revisar logs, forzar cambio de contraseñas |
+| F2-00 | Base de producción abierta al rol anónimo (grants + policies permisivas + RPC) | Crítico | S | **Contenido** (REVOKE ejecutado y verificado). Limpieza en PR #8 (migración 066: policies, RLS, `search_path`, sesiones y contraseñas). Logs: el plan Free guarda 1 día, no se puede revisar el período expuesto |
 | F2-01 | `/api/data` sin control de rol (borrar empresa, autoaprobarse, escribir pagos) | Crítico | M | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
-| F2-02 | Embedding/`select` sin control + FK cruzadas entre tenants | Crítico | S–M | **En PR #5** (tadeogiri95/Gi-group#5); FK compuestas en la base quedan para H3 |
-| F2-03 | Activación de cuenta solo con slug + legajo (toma de cuenta) | Alto | S | Pendiente (se resuelve con D7) |
-| F2-05 | `/api/chat`: proxy abierto, sin presupuesto por tenant | Alto | S | Pendiente |
-| F2-06 | Acciones de la IA con permisos amplios; prompts de empresa editables por cualquiera | Alto | S | Pendiente |
+| F2-02 | Embedding/`select` sin control + FK cruzadas entre tenants | Crítico | S–M | **Hecho** (tadeogiri95/Gi-group#5, fusionado); FK compuestas en la base quedan para H3 |
+| F2-03 | Activación de cuenta solo con slug + legajo (toma de cuenta) | Alto | S | **Hecho** (tadeogiri95/Gi-group#6 fusionado + migración 065): código de un solo uso, hash, 14 días |
+| F2-05 | `/api/chat`: proxy abierto, sin presupuesto por tenant | Alto | S | **Hecho** (tadeogiri95/Gi-group#7, fusionado): prompt en el servidor, módulo por plan, cupo mensual |
+| F2-06 | Acciones de la IA con permisos amplios; prompts de empresa editables por cualquiera | Alto | S | **Hecho** (#3 prompts solo dueño; #7 lista blanca + confirmación) |
 | F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
 | F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | Pendiente |
 | F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | Pendiente |
@@ -57,7 +57,8 @@
 | F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | Pendiente |
 | F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **Hecho** (tadeogiri95/Gi-group#1, fusionado): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
 | F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
-| H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | Pendiente |
+| H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | En PR #8 (migración 066) |
+| H14 | Columna `_deprecated_ubicacion_fichaje` con datos del piloto (Córdoba) | Bajo | S | En PR #8 (migración 066) |
 
 ### 2.2 Bugs funcionales y de datos
 
@@ -70,8 +71,8 @@
 | F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
 | F1-04 | Liquidación truncada a 1.000 filas | Alto | S | Pendiente (Max rows confirmado) |
 | F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | Pendiente |
-| F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | Pendiente |
-| F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | Pendiente |
+| F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | **Hecho** (#6: botón “Código de acceso”) |
+| F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | **Hecho** (#6) |
 | F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | Pendiente |
 | F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | Pendiente |
 | F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | Pendiente |
@@ -119,7 +120,7 @@
 | F3-08 | Crons diarios por el plan Hobby (inactividad de 30 min = diaria) | Medio | S | Pendiente |
 | F3-13 | Transacciones en Postgres (imprescindible para stock/OP) | Medio | M | Pendiente |
 | F3-14 | Rate limit y cachés en memoria | Bajo | S | Pendiente |
-| F3-15 | Prompt caching y alias de modelo de IA | Bajo | S | Pendiente |
+| F3-15 | Prompt caching y alias de modelo de IA | Bajo | S | **Hecho** (#7: alias `claude-haiku-4-5`, parte fija primero) |
 | F3-16 | Fotos sin comprimir, base64 | Bajo | S | Pendiente |
 | F3-17 | Pantallas gigantes → carpetas por feature | Bajo | M | Pendiente |
 | D1 | **Arquitectura modular** (núcleo + planta + roles/permisos + módulos + personalización) | Nuevo | L | Pendiente |
