@@ -11,7 +11,7 @@ const VIOLET = "#7C3AED";
 const INDIGO = "#4F46E5";
 const MUTE = "var(--color-text-muted)";
 
-import { sb } from "./lib/supabase";
+import { sb, sbGetAll } from "./lib/supabase";
 import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
 import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
@@ -278,6 +278,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const [reportesObra, setReportesObra] = useState([]);
   const [docsExigidos, setDocsExigidos] = useState([]);
   const [docsCargados, setDocsCargados] = useState([]);
+  // Si alguna consulta llegó al tope de filas, los totales pueden estar incompletos
+  const [datosIncompletos, setDatosIncompletos] = useState(false);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [showBilling, setShowBilling] = useState(false);
@@ -315,22 +317,26 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       const monStr = lunesDeLaSemana(0);
       const mesInicio = hoyArg().slice(0, 7) + "-01";
 
+      // Rangos de semana/mes: todas las páginas. Antes el gateway cortaba en 500
+      // filas sin avisar y el ranking, el score y las horas del mes salían
+      // incompletos (auditoría F3-03). El orden con id desempata las páginas.
       const [prodData, fichadasSem, fichadasMesData, solsApData, repObra, docsExig, docsCarg] = await Promise.all([
         sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`),
-        sb.get(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc`),
-        sb.get(`fichadas?select=empleado_id,legajo,fecha,horas_trabajadas,llegada_tarde,minutos_tarde&fecha=gte.${mesInicio}&order=fecha.asc`),
-        sb.get(`solicitudes?select=empleado_id,legajo,tipo,estado,created_at&estado=eq.aprobado&created_at=gte.${mesInicio}&limit=500`),
+        sbGetAll(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc,id.asc`, { maxFilas: 20000 }),
+        sbGetAll(`fichadas?select=empleado_id,legajo,fecha,horas_trabajadas,llegada_tarde,minutos_tarde&fecha=gte.${mesInicio}&order=fecha.asc,id.asc`, { maxFilas: 20000 }),
+        sbGetAll(`solicitudes?select=empleado_id,legajo,tipo,estado,created_at&estado=eq.aprobado&created_at=gte.${mesInicio}&order=id.asc`),
         sb.get(`reportes_obra?fecha=eq.${hoy}&order=created_at.desc`),
-        sb.get(`documentos_exigidos_empleado?select=empleado_id,tipo_documento_id`),
-        sb.get(`documentos_empleado?estado=eq.cargado&select=empleado_id,tipo_documento_id`),
+        sbGetAll(`documentos_exigidos_empleado?select=empleado_id,tipo_documento_id&order=id.asc`),
+        sbGetAll(`documentos_empleado?estado=eq.cargado&select=empleado_id,tipo_documento_id&order=id.asc`),
       ]);
       setResumenProd(prodData || []);
-      setFichadasSemana(fichadasSem || []);
-      setFichadasMes(fichadasMesData || []);
-      setSolsAprobadas(solsApData || []);
+      setFichadasSemana(fichadasSem.data);
+      setFichadasMes(fichadasMesData.data);
+      setSolsAprobadas(solsApData.data);
       setReportesObra(repObra || []);
-      setDocsExigidos(docsExig || []);
-      setDocsCargados(docsCarg || []);
+      setDocsExigidos(docsExig.data);
+      setDocsCargados(docsCarg.data);
+      setDatosIncompletos([fichadasSem, fichadasMesData, solsApData, docsExig, docsCarg].some((r) => r.truncado));
     } catch (e) {
       console.error("Dashboard error:", e);
     } finally {
@@ -571,6 +577,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Banner de trial / vencimiento ─── */}
       <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />
+      {datosIncompletos && (
+        <div role="alert" className="mx-[18px] mb-3 p-3 rounded-xl text-xs text-gypi-red bg-gypi-red/10">
+          Hay más datos de los que se pueden mostrar juntos: algunos totales del mes pueden estar incompletos.
+        </div>
+      )}
       {/* Modal de billing */}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
 

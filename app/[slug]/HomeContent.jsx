@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
 import dynamic from "next/dynamic";
-import { sb } from "../lib/supabase";
+import { sb, sbGetAll } from "../lib/supabase";
 import { hoyArg, lunesDeLaSemana } from "../lib/dates";
 import { useAuth } from "../context/AuthContext";
 import { useActividad } from "../hooks/useActividad";
@@ -160,8 +160,9 @@ export default function HomeContent() {
       const isG = usuario.rol === "gerencial" || usuario.rol === "administrativo";
 
       const [empleados, fichadasHoy, miFichada, fichadasSemana, solicitudes, misSolicitudes, reglas, notificaciones] = await Promise.all([
-        sb.get("empleados?select=id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at&activo=eq.true&order=legajo.asc"),
-        sb.get(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}&limit=200`),
+        // Todas las páginas: con más de 500 empleados (o 200 fichadas en el día) se cortaba sin avisar (F3-03)
+        sbGetAll("empleados?select=id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at&activo=eq.true&order=legajo.asc,id.asc").then((r) => r.data),
+        sbGetAll(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}&order=legajo.asc,id.asc`).then((r) => r.data),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`),
         sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${monStr}&order=fecha.asc`),
         sb.get("solicitudes?select=*&order=created_at.desc&limit=50"),

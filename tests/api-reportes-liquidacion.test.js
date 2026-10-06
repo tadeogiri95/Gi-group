@@ -163,3 +163,31 @@ test("reportes/liquidacion — empleado activo sin fichadas ni solicitudes apare
     { legajo: 5, nombre: "Sin Actividad", horas_trabajadas: 0, tardanzas: 0, minutos_tarde: 0, horas_extra: 0, dias_ausencia: 0 },
   ]);
 });
+
+test("reportes/liquidacion — más de 1000 fichadas: suma todas las páginas (F1-04)", async () => {
+  const EMP = "55555555-5555-5555-5555-555555555555"; // empresa propia (cache de plan)
+  // 50 empleados × 22 días = 1100 fichadas de 8 h. Supabase devuelve como mucho 1000 por pedido.
+  const todas = [];
+  for (let d = 0; d < 22; d++) for (let l = 1; l <= 50; l++) todas.push({ legajo: l, horas_trabajadas: 8, llegada_tarde: false, minutos_tarde: 0, horas_extra: 0 });
+  const empleados = Array.from({ length: 50 }, (_, i) => ({ legajo: i + 1, nombre: `E${i + 1}` }));
+  const paginar = (filas) => (url) => {
+    const limit = Number(url.match(/limit=(\d+)/)?.[1] ?? 1000);
+    const offset = Number(url.match(/offset=(\d+)/)?.[1] ?? 0);
+    return { status: 200, body: filas.slice(offset, offset + Math.min(limit, 1000)) };
+  };
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    planHandler("pro"),
+    { match: (url) => url.includes("/rest/v1/empleados"), respond: paginar(empleados) },
+    { match: (url) => url.includes("/rest/v1/fichadas"), respond: paginar(todas) },
+    { match: (url) => url.includes("/rest/v1/solicitudes"), respond: paginar([]) },
+  ]);
+  const token = await tokenConRol("gerencial", EMP);
+  const res = await GET(liqReq("?desde=2026-06-01&hasta=2026-06-30", token));
+  const json = await res.json();
+  assert.equal(res.status, 200);
+  const total = json.empleados.reduce((s, e) => s + e.horas_trabajadas, 0);
+  assert.equal(total, 1100 * 8, "antes salían 1000 × 8 = 8000 h");
+  assert.equal(json.empleados[49].horas_trabajadas, 22 * 8);
+  assert.equal(json.truncado, undefined);
+});
