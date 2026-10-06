@@ -49,9 +49,13 @@ function handlersListado() {
   ];
 }
 
-function handlersCreacion({ legajoExiste = false, empleadosActuales = 2 } = {}) {
+function handlersCreacion({ legajoExiste = false, empleadosActuales = 2, emailExiste = false, insertDuplicado = false } = {}) {
   return [
     ...authPassHandlers(),
+    {
+      match: (url) => url.includes("/rest/v1/empleados") && url.includes("email=eq."),
+      respond: () => ({ status: 200, body: emailExiste ? [{ id: "con-email" }] : [] }),
+    },
     {
       match: (url) => url.includes("/rest/v1/empleados") && url.includes("legajo=eq."),
       respond: () => ({
@@ -76,6 +80,9 @@ function handlersCreacion({ legajoExiste = false, empleadosActuales = 2 } = {}) 
     {
       match: (url, opts) => url.includes("/rest/v1/empleados") && opts?.method === "POST",
       respond: (url, opts) => {
+        if (insertDuplicado) {
+          return { status: 409, body: { code: "23505", message: "duplicate key value violates unique constraint \"empleados_empresa_email_uq\"" } };
+        }
         const body = JSON.parse(opts.body);
         return {
           status: 201,
@@ -162,6 +169,28 @@ test("POST empleados — legajo duplicado devuelve 409", async () => {
   assert.equal(res.status, 409);
 });
 
+test("POST empleados — email repetido en la misma empresa devuelve 409", async () => {
+  const token = await tokenConRol("gerencial");
+  let chequeo = null;
+  const handlers = handlersCreacion({ emailExiste: true });
+  handlers.splice(handlers.findIndex((h) => String(h.match).includes("email=eq.")), 1, {
+    match: (url) => url.includes("/rest/v1/empleados") && url.includes("email=eq."),
+    respond: (url) => { chequeo = url; return { status: 200, body: [{ id: "con-email" }] }; },
+  });
+  global.fetch = createFetchMock(handlers);
+  const res = await POST(jsonReq("POST", { legajo: 12, nombre: "Otro", email: "Juan@Mail.com" }, token));
+  assert.equal(res.status, 409);
+  assert.ok(chequeo.includes(`empresa_id=eq.${EMPRESA_ID}`), "el chequeo es dentro de la empresa, no global");
+  assert.ok(chequeo.includes("email=eq.juan%40mail.com"), "compara en minúsculas");
+});
+
+test("POST empleados — choque con el índice único (23505) devuelve 409, no 500", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock(handlersCreacion({ insertDuplicado: true }));
+  const res = await POST(jsonReq("POST", { legajo: 13, nombre: "Carrera", email: "x@test.com" }, token));
+  assert.equal(res.status, 409);
+});
+
 test("POST empleados — excede límite de plan devuelve 403 con upgrade", async () => {
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock(handlersCreacion({ empleadosActuales: 25 }));
@@ -183,6 +212,10 @@ test("POST empleados — crea empleado correctamente con empresa_id del token", 
       respond: () => ({ status: 200, body: [] }),
     },
     {
+      match: (url) => url.includes("/rest/v1/empleados") && url.includes("email=eq."),
+      respond: () => ({ status: 200, body: [] }),
+    },
+    {
       match: (url) => url.includes("/rest/v1/empresa?id=eq.") && url.includes("select=plan_activo"),
       respond: () => ({ status: 200, body: [{ plan_activo: "starter", slug: "test-co", nombre: "Test", nombre_corto: "Test" }] }),
     },
@@ -199,7 +232,7 @@ test("POST empleados — crea empleado correctamente con empresa_id del token", 
     },
   ]);
 
-  const res = await POST(jsonReq("POST", { legajo: 99, nombre: " María López ", email: "maria@test.com" }, token));
+  const res = await POST(jsonReq("POST", { legajo: 99, nombre: " María López ", email: " Maria@Test.com " }, token));
   const json = await res.json();
 
   assert.equal(res.status, 201);
@@ -208,6 +241,7 @@ test("POST empleados — crea empleado correctamente con empresa_id del token", 
   assert.equal(insertedData.nombre, "María López", "nombre debe estar trimmed");
   assert.ok(insertedData.password, "debe generar password hash");
   assert.equal(insertedData.debe_cambiar_password, true);
+  assert.equal(insertedData.email, "maria@test.com", "email se guarda en minúsculas");
   assert.equal(json.password, undefined, "no debe devolver password en la respuesta");
 });
 

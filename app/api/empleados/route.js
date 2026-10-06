@@ -51,7 +51,8 @@ export async function POST(request) {
   if (isNaN(legajoNum) || legajoNum <= 0) {
     return NextResponse.json({ error: "legajo debe ser un número positivo" }, { status: 400 });
   }
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const emailNorm = typeof email === "string" && email.trim() ? email.trim().toLowerCase() : null;
+  if (emailNorm && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
     return NextResponse.json({ error: "Formato de email inválido" }, { status: 400 });
   }
 
@@ -61,6 +62,17 @@ export async function POST(request) {
   );
   if (existente?.length > 0) {
     return NextResponse.json({ error: `El legajo ${legajoNum} ya existe en esta empresa` }, { status: 409 });
+  }
+
+  // Email único dentro de la empresa (no global: la misma persona puede
+  // trabajar en dos empresas). Se guarda en minúsculas, igual que lo busca el login.
+  if (emailNorm) {
+    const conEmail = await sbGet(
+      `empleados?empresa_id=eq.${sesion.empresa_id}&email=eq.${encodeURIComponent(emailNorm)}&select=id&limit=1`
+    );
+    if (conEmail?.length > 0) {
+      return NextResponse.json({ error: "Ya hay un empleado con ese email en esta empresa" }, { status: 409 });
+    }
   }
 
   // Verificar límite de plan
@@ -85,21 +97,30 @@ export async function POST(request) {
   // pre_cargado: el empleado activa su cuenta (y define su contraseña) desde
   // el link /[slug]/unirse — requiere estado_activacion "pendiente_activacion".
   const esPendiente = !!pre_cargado || !!email;
-  const [nuevo] = await sbPost("empleados", {
-    empresa_id: sesion.empresa_id,
-    legajo: legajoNum,
-    nombre: nombre.trim(),
-    apodo: (typeof apodo === "string" && apodo.trim()) || nombre.trim().split(" ")[0],
-    email: email?.trim() || null,
-    area: area?.trim() || "produccion",
-    division: division?.trim() || null,
-    rol: rolFinal,
-    activo: true,
-    password: passwordHash,
-    debe_cambiar_password: true,
-    pre_cargado: !!pre_cargado,
-    estado_activacion: esPendiente ? "pendiente_activacion" : "activo",
-  });
+  let nuevo;
+  try {
+    [nuevo] = await sbPost("empleados", {
+      empresa_id: sesion.empresa_id,
+      legajo: legajoNum,
+      nombre: nombre.trim(),
+      apodo: (typeof apodo === "string" && apodo.trim()) || nombre.trim().split(" ")[0],
+      email: emailNorm,
+      area: area?.trim() || "produccion",
+      division: division?.trim() || null,
+      rol: rolFinal,
+      activo: true,
+      password: passwordHash,
+      debe_cambiar_password: true,
+      pre_cargado: !!pre_cargado,
+      estado_activacion: esPendiente ? "pendiente_activacion" : "activo",
+    });
+  } catch (e) {
+    // Carrera entre el chequeo y el insert: el índice único lo frena.
+    if (String(e?.message).includes("23505")) {
+      return NextResponse.json({ error: "Ya existe un empleado con ese legajo o email en esta empresa" }, { status: 409 });
+    }
+    throw e;
+  }
 
   logAudit({
     empresa_id: sesion.empresa_id,
@@ -114,9 +135,9 @@ export async function POST(request) {
   });
 
   // Email de invitación (fire-and-forget, solo si tiene email)
-  if (email && empresaData?.slug) {
+  if (emailNorm && empresaData?.slug) {
     sendInvitacionEmpleado({
-      to: email,
+      to: emailNorm,
       nombre: nombre.trim().split(" ")[0],
       empresa: empresaData.nombre_corto || empresaData.nombre,
       slug: empresaData.slug,
@@ -175,10 +196,22 @@ export async function PATCH(request) {
     return NextResponse.json({ error: "Sin campos válidos para actualizar" }, { status: 400 });
   }
 
-  const [actualizado] = await sbPatch(
-    `empleados?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}`,
-    updates
-  );
+  if (typeof updates.email === "string") {
+    updates.email = updates.email.trim().toLowerCase() || null;
+  }
+
+  let actualizado;
+  try {
+    [actualizado] = await sbPatch(
+      `empleados?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}`,
+      updates
+    );
+  } catch (e) {
+    if (String(e?.message).includes("23505")) {
+      return NextResponse.json({ error: "Ya hay un empleado con ese email en esta empresa" }, { status: 409 });
+    }
+    throw e;
+  }
 
   const { password: _, ...empleadoPublico } = actualizado;
   return NextResponse.json(empleadoPublico);
