@@ -10,16 +10,6 @@ const GREEN = "#16A34A";
 const RED = "#DC2626";
 const CYAN = "#0891B2";
 
-/* ═══ SYSTEM PROMPT PARA REPORTE DE OBRA ═══ */
-const SYSTEM_OBRA_DEFAULT = `Sos un asistente de obra. Tu trabajo es interpretar el reporte oral/escrito de un instalador y devolver SOLO un JSON válido (sin markdown, sin texto extra) con esta estructura exacta:
-{
-  "progreso": "Resumen claro del avance efectivo del día",
-  "faltantes": ["lista de materiales o cosas que faltaron"],
-  "desvios": ["lista de imprevistos, esperas o desvíos"],
-  "mensaje_doble_check": "Frase amigable resumiendo lo que entendiste para que el instalador confirme. Ej: Entendí que montaron X pero faltó Y. ¿Es correcto?"
-}
-Si algo no se menciona, dejá el array vacío o string vacío. Siempre respondé SOLO el JSON.`;
-
 /* ═══ Helper: subir foto via API route segura ═══ */
 async function subirFoto(file, reporteId) {
   const ext = file.name.split(".").pop() || "jpg";
@@ -100,9 +90,11 @@ export default function InstaladorScreen({ usuario, empresa }) {
     if (!texto.trim()) return;
     setFase("procesando"); setError(null);
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ system: empresa?.prompt_ia_obra || SYSTEM_OBRA_DEFAULT, messages: [{ role: "user", content: texto }] }) });
+      // El prompt lo arma el servidor (tipo "reporte_obra"); acá solo va el texto del instalador.
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: "reporte_obra", messages: [{ role: "user", content: texto.slice(0, 8000) }] }) });
       const data = await res.json();
-      const raw = data.content?.map(b => (b.type === "text" ? b.text : "")).join("") || "";
+      if (!res.ok) { setError(data.error || "No se pudo procesar el reporte. Intentá de nuevo."); setFase("ingreso"); return; }
+      const raw = data.texto || "";
       const clean = raw.replace(/```json\s*|```/g, "").trim();
       setReporte(JSON.parse(clean)); setFase("check");
     } catch { setError("No se pudo procesar el reporte. Intentá de nuevo."); setFase("ingreso"); }

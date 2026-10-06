@@ -1,150 +1,66 @@
-import { fmtDateLong } from './theme';
-import { ahoraArg, fechaSegura } from './dates';
+// ═══════════════════════════════════════════════════════════
+// app/lib/claude.js — Cliente de la IA (lado navegador)
+//
+// El prompt de sistema ya NO se arma acá: lo arma el servidor en
+// /api/chat a partir del tipo de uso (ver app/lib/iaPrompts.js).
+// Las acciones que propone el modelo pasan por una lista blanca y las que
+// registran algo se confirman con un botón antes de ejecutarse (F2-06).
+// ═══════════════════════════════════════════════════════════
 
-export function buildSystemPrompt(ctx, usuario, empresa) {
-  const { fecha: fechaHoy, hora: horaHoy, diaKey: diaHoy } = ahoraArg();
-  const diag = usuario.diagrama || {};
-  const diagHoy = diag[diaHoy];
-  const isGerencial = ["gerencial", "administrativo"].includes(usuario.rol);
+/** Acciones que la IA puede proponer. Cualquier otra se ignora. */
+export const ACCIONES_IA = new Set([
+  "FICHAR_INGRESO", "FICHAR_EGRESO",
+  "SOLICITAR_PERMISO", "AVISAR_TARDANZA", "AVISAR_AUSENCIA",
+  "NOTIFICAR_GERENCIA", "CONSULTAR_DATOS",
+]);
 
-  const gc = usuario.geo_config;
-  let geoInfo = "Sin control de ubicación (puede fichar desde cualquier lugar)";
-  if (gc && gc.activo) {
-    const nombre = ctx.geoZonaNombre || "Ubicación asignada";
-    geoInfo = `Debe fichar desde: ${nombre} (radio: ${gc.radio || 150}m). Si no está en rango, el sistema rechazará el fichaje automáticamente.`;
-  }
+/** Acciones que escriben algo: requieren que el usuario confirme. */
+export const ACCIONES_CON_EFECTO = new Set([
+  "FICHAR_INGRESO", "FICHAR_EGRESO",
+  "SOLICITAR_PERMISO", "AVISAR_TARDANZA", "AVISAR_AUSENCIA",
+  "NOTIFICAR_GERENCIA",
+]);
 
-  // Nombre y rubro dinámicos de la empresa
-  const nombreEmpresa = empresa?.nombre || empresa?.nombre_corto || "la empresa";
-  const rubroEmpresa = empresa?.rubro || "general";
+const DESCRIPCION_ACCION = {
+  FICHAR_INGRESO: "registrar tu ingreso",
+  FICHAR_EGRESO: "registrar tu salida",
+  SOLICITAR_PERMISO: "enviar la solicitud de permiso",
+  AVISAR_TARDANZA: "avisar la llegada tarde",
+  AVISAR_AUSENCIA: "avisar la ausencia",
+  NOTIFICAR_GERENCIA: "enviar el aviso a gerencia",
+};
 
-  let prompt = `Sos el asistente de RR.HH. de ${nombreEmpresa}, rubro: ${rubroEmpresa}.
-
-FECHA Y HORA REAL:
-- ${fmtDateLong(fechaSegura(fechaHoy))}
-- Hora: ${horaHoy}
-- Día: ${diaHoy.toUpperCase()}
-
-EMPLEADO:
-- ${usuario.nombre} (apodo: ${usuario.apodo})
-- Legajo: ${usuario.legajo} | Área: ${usuario.area} | CC: ${usuario.cc || "—"}
-- Rol: ${usuario.rol}
-- División: ${usuario.division || "sin asignar"}
-
-DIAGRAMA SEMANAL:
-${Object.entries(diag).map(([d,h])=>`- ${d.toUpperCase()}: ${h ? h.in+" a "+h.out : "FRANCO"}`).join("\n") || "Sin diagrama"}
-- Horas habituales: ${usuario.horas_semanales || 41}h/semana
-- HOY: ${diagHoy ? `${diagHoy.in} a ${diagHoy.out}` : "DÍA FRANCO"}
-
-GEOLOCALIZACIÓN:
-- ${geoInfo}
-- Al fichar, el sistema valida la ubicación GPS automáticamente. No necesitás pedir coordenadas al empleado.
-- Si alguien tiene problemas para fichar por ubicación, sugerile que contacte a gerencia para que revisen su ubicación asignada.
-
-ESTADO HOY:
-- Ingreso: ${ctx.fichadaHoy?.ingreso || "NO FICHÓ"}
-- Egreso: ${ctx.fichadaHoy?.egreso || "NO FICHÓ"}
-
-EN PLANTA:
-${ctx.fichadasHoy?.map(f=>`- ${f.nombre} (L-${f.legajo}): ${f.ingreso}${f.egreso ? " → "+f.egreso : " (trabajando)"}`).join("\n") || "Nadie"}
-
-SOLICITUDES DE ${usuario.apodo.toUpperCase()}:
-${ctx.misSolicitudes?.map(s=>`- #${s.id} [${s.estado}] ${s.tipo}: "${s.motivo}" · ${s.fecha}${s.aprobador?" — resolvió: "+s.aprobador:""}`).join("\n") || "Ninguna."}
-
-═══ REGLAS DE GERENCIA (OBLIGATORIAS) ═══
-${ctx.reglas?.map((r,i)=>`${i+1}. ${r}`).join("\n") || "Sin reglas."}
-═══════════════════════════════════════
-
-ACCIONES (incluí JSON al final SOLO si ejecutás):
-\`\`\`action
-{"type": "TIPO", ...}
-\`\`\`
-Tipos disponibles:
-- FICHAR_INGRESO, FICHAR_EGRESO
-- SOLICITAR_PERMISO (motivo,fecha,desde,hasta)
-- AVISAR_TARDANZA (motivo,demora), AVISAR_AUSENCIA (motivo,fecha)
-- NOTIFICAR_GERENCIA (asunto,detalle,urgencia)
-- CONSULTAR_DATOS (query_type, params) — para buscar info en la base de datos`;
-
-  if (isGerencial) {
-    prompt += `
-
-═══ ACCESO GERENCIAL — CONSULTAS DE DATOS ═══
-Tenés acceso completo a todos los datos de la empresa. Podés responder cualquier
-pregunta sobre empleados, fichajes, horas, ausencias, productividad, proyectos, etc.
-
-CONSULTAS disponibles (query_type):
-- "proyectos_hoy": proyectos trabajados en una fecha. params: {fecha?}
-- "quien_trabajo_proyecto": empleados que trabajaron en un proyecto. params: {ot}
-- "ultimo_responsable_tarea": último que hizo una tarea/etapa. params: {ot?, etapa?}
-- "reporte_instalacion": reportes de obra/instalación. params: {ot?, fecha?}
-- "fichadas_hoy": quién fichó en una fecha. params: {fecha?}
-- "solicitudes_pendientes": solicitudes sin resolver. params: (ninguno)
-- "empleados_division": listar empleados por división. params: {division?}
-- "proyectos_activos": OTs activos. params: (ninguno)
-- "horas_empleado": horas trabajadas de un empleado en un período. params: {nombre_o_legajo, desde?, hasta?}
-- "ausencias_semana": empleados que faltaron en un período. params: {desde?, hasta?}
-- "productividad_promedio": productividad por día con promedio. params: {desde?, hasta?}
-- "ranking_tardanzas": ranking de empleados con más tardanzas. params: {mes?, anio?}
-- "horas_extra_mes": horas extras acumuladas por empleado. params: {mes?, anio?}
-- "ots_activas": proyectos con actividad reciente. params: {dias?} (default 7)
-
-Cuando te pregunten sobre datos de la empresa, usá CONSULTAR_DATOS con el query_type
-y params apropiados. El sistema ejecuta la consulta y te devuelve los resultados.
-Podés informar horas trabajadas, productividad, ausencias y cualquier dato.
-═══════════════════════════════════════════════
-
-REGLAS:
-- Español argentino informal. Conciso (2-3 oraciones).
-- NUNCA digas "aprobado" a un permiso — siempre PENDIENTE.
-- Usá la hora/fecha REAL de arriba.
-- Si faltan datos, preguntá.
-- Máximo 1-2 emojis.
-- Cuando fichás, el sistema valida ubicación automáticamente.`;
-  } else {
-    prompt += `
-
-CONSULTAS DE DATOS disponibles (query_type):
-- "proyectos_hoy": proyectos trabajados en una fecha. params: {fecha?} (default hoy)
-- "quien_trabajo_proyecto": empleados que trabajaron en un proyecto. params: {ot}
-- "ultimo_responsable_tarea": último que hizo una tarea/etapa. params: {ot?, etapa?}
-- "reporte_instalacion": reportes de obra/instalación. params: {ot?, fecha?}
-- "proyectos_activos": OTs activos. params: (ninguno)
-
-Cuando el empleado pregunte sobre datos de la app (proyectos, tareas, reportes),
-usá CONSULTAR_DATOS con el query_type y params apropiados.
-
-REGLAS:
-- Español argentino informal. Conciso (2-3 oraciones).
-- NUNCA digas "aprobado" a un permiso — siempre PENDIENTE.
-- Usá la hora/fecha REAL de arriba.
-- Si faltan datos, preguntá.
-- Máximo 1-2 emojis.
-- NUNCA informes horas trabajadas, horas acumuladas, ni des la opción de consultarlas. Si el empleado pregunta cuántas horas lleva, respondé: "Esa información la podés consultar con tu supervisor." No calcules ni estimes horas.
-- Cuando fichás, el sistema valida ubicación automáticamente.
-- Si alguien tiene problemas para fichar por ubicación, sugerile que contacte a gerencia para que revisen su ubicación asignada.`;
-  }
-
-  return prompt;
+export function descripcionAccion(action) {
+  return DESCRIPCION_ACCION[action?.type] || "ejecutar la acción";
 }
 
-export async function callClaude(messages, ctx, usuario, empresa) {
+/**
+ * @param {Array<{from: string, text: string}>} messages
+ * @param {"chat"|"reporte_obra"} [tipo]
+ * @returns {Promise<string>} texto de la IA o un mensaje de error para mostrar
+ */
+export async function callClaude(messages, tipo = "chat") {
   try {
     const { getCsrfToken } = await import("./supabase");
     const hdrs = { "Content-Type": "application/json" };
     const csrf = getCsrfToken();
     if (csrf) hdrs["x-csrf-token"] = csrf;
+    // La API exige que el historial empiece con un mensaje del usuario.
+    let hist = messages.map(m => ({ role: m.from === "user" ? "user" : "assistant", content: String(m.text || "").slice(0, 8000) }))
+      .filter(m => m.content);
+    while (hist.length && hist[0].role !== "user") hist = hist.slice(1);
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: hdrs,
-      body: JSON.stringify({
-        system: buildSystemPrompt(ctx, usuario, empresa),
-        messages: messages.map(m => ({ role: m.from === "user" ? "user" : "assistant", content: m.text })),
-      }),
+      body: JSON.stringify({ tipo, messages: hist.slice(-30) }),
     });
-    if (!res.ok) return "Disculpá, tuve un problema con la IA. Intentá de nuevo.";
-    const data = await res.json();
-    return data.content?.map(b => b.type === "text" ? b.text : "").join("") || "Disculpá, tuve un problema.";
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // Cupo agotado o plan sin la función: el servidor manda un mensaje para el usuario.
+      if (data.cupo_agotado || data.upgrade) return data.error;
+      return "Disculpá, tuve un problema con la IA. Intentá de nuevo.";
+    }
+    return data.texto || "Disculpá, tuve un problema.";
   } catch {
     return "Perdón, problemas de conexión.";
   }
@@ -153,7 +69,10 @@ export async function callClaude(messages, ctx, usuario, empresa) {
 export function parseAction(text) {
   const m = text.match(/```action\s*\n?([\s\S]*?)\n?```/);
   if (!m) return { clean: text.trim(), action: null };
+  const clean = text.replace(/```action[\s\S]*?```/, "").trim();
   try {
-    return { clean: text.replace(/```action[\s\S]*?```/, "").trim(), action: JSON.parse(m[1].trim()) };
+    const action = JSON.parse(m[1].trim());
+    if (!action || typeof action !== "object" || !ACCIONES_IA.has(action.type)) return { clean, action: null };
+    return { clean, action };
   } catch { return { clean: text.trim(), action: null }; }
 }
