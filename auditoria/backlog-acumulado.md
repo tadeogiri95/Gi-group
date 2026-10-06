@@ -55,7 +55,7 @@
 | F2-18 | Exenciones de CSRF amplias | Bajo | S | Pendiente |
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
 | F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | Pendiente |
-| F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **En PR #1** (tadeogiri95/Gi-group#1): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
+| F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **Hecho** (tadeogiri95/Gi-group#1, fusionado): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
 | F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
 | H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | Pendiente |
 
@@ -63,8 +63,8 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F3-01 | UNIQUE `fichadas (legajo, fecha)` sin empresa (bloquea al 2do cliente) | Crítico | S | Pendiente |
-| F3-02 | UNIQUE `empleados (email)` global | Alto | S | Pendiente |
+| F3-01 | UNIQUE `fichadas (legajo, fecha)` sin empresa (bloquea al 2do cliente) | Crítico | S | **En PR #2** (tadeogiri95/Gi-group#2) + SQL a correr |
+| F3-02 | UNIQUE `empleados (email)` global | Alto | S | **En PR #2** (tadeogiri95/Gi-group#2) + SQL a correr |
 | F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | Pendiente (no observado en datos viejos) |
 | F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | Pendiente |
 | F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
