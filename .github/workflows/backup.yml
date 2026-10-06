@@ -1,0 +1,82 @@
+name: Backup diario de la base
+
+# F3-10: Supabase Free no tiene backups descargables. Esto hace una copia
+# diaria del esquema public, la encripta con BACKUP_PASSPHRASE, comprueba que
+# se puede restaurar y la guarda 30 días como artifact del workflow.
+# El repo es público: el archivo SOLO se guarda encriptado.
+#
+# Secretos (Settings → Secrets and variables → Actions), los carga el dueño:
+#   SUPABASE_DB_URL     Supabase → Connect → Session pooler (URI con la contraseña)
+#   BACKUP_PASSPHRASE   frase larga inventada; sin ella el backup no se puede abrir
+# Cómo restaurar: auditoria/como-restaurar-backup.md
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # 03:17 de Argentina
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Los forks no tienen los secretos ni deben guardar copias
+    if: github.repository == 'tadeogiri95/Gi-group'
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verificacion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar que los secretos están cargados
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Faltan los secretos SUPABASE_DB_URL y/o BACKUP_PASSPHRASE (ver auditoria/como-restaurar-backup.md)"
+            exit 1
+          fi
+
+      - name: Instalar cliente de Postgres 17
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Copia encriptada
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+        run: scripts/backup/backup.sh salida
+
+      - name: Verificar que se puede restaurar
+        env:
+          VERIFY_DB_URL: postgresql://postgres:verificacion@localhost:5432/postgres
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          PG_RESTORE: /usr/lib/postgresql/17/bin/pg_restore
+          PSQL: /usr/lib/postgresql/17/bin/psql
+        run: scripts/backup/verificar.sh salida/*.dump.gpg
+
+      - name: Guardar el backup (30 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_id }}
+          path: salida/*.dump.gpg
+          retention-days: 30
+          if-no-files-found: error
