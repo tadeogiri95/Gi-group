@@ -126,7 +126,7 @@ export const fichadaPost = z.object({
 
 export const solicitudPost = z.object({
   legajo: z.union([z.number(), z.string()]),
-  tipo: z.enum(["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "cambio_horario", "otro"]),
+  tipo: z.enum(["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "cambio_horario", "hora_extra", "salida_anticipada", "otro"]),
   motivo: safeString.optional(),
   fecha: fecha.optional(),
   fecha_inicio: fecha.optional(),

@@ -33,7 +33,7 @@ import { hoyArg, ahoraArg } from "../../lib/dates";
 // o un string vacío. Si la IA no extrajo una fecha válida, usamos hoy.
 const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f || "") ? f : hoyArg();
 
-export default function ChatScreen({ usuario, ctx, reload }) {
+export default function ChatScreen({ usuario, ctx, reload, onBack }) {
   const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
   const [msgs, setMsgs] = useState([{
@@ -277,6 +277,15 @@ export default function ChatScreen({ usuario, ctx, reload }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* F4-03: el chat oculta la barra de navegación; sin esto, en la app instalada en iOS no había forma de salir */}
+      {onBack && (
+        <div className="safe-top" style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderBottom: `1px solid ${BORDER}`, background: BG, flexShrink: 0 }}>
+          <button onClick={onBack} aria-label="Volver al inicio" style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: TEXT, cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: FB, padding: "4px 8px", minHeight: 44 }}>
+            <Ic.chevL /> Volver
+          </button>
+          <span style={{ flex: 1, textAlign: "center", fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: FB, marginRight: 60 }}>Asistente</span>
+        </div>
+      )}
       {geoError && (
         <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: `${RED}12`, borderBottom: `1px solid ${RED}30` }}>
           <span style={{ fontSize: 14 }} aria-hidden="true">📍</span>

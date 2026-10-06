@@ -271,3 +271,87 @@ test("webhook — mismo payment_id enviado dos veces: segundo call es no-op (ide
   assert.equal(json2.accion, "pago_ya_procesado", "segunda llamada debe ser no-op");
   assert.equal(insertCount, 1, "no debe haber insertado el pago por segunda vez");
 });
+
+// ─── F1-09: unidad del ts de la firma ─────────────────────────────────────────
+
+function reqConTs(ts, dataId = "1") {
+  const { signature, requestId } = firmar({ dataId, ts: String(ts) });
+  return new Request(`http://localhost/api/billing/webhook?data.id=${dataId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-signature": signature, "x-request-id": requestId },
+    body: JSON.stringify({ type: "otro_evento", data: { id: dataId } }),
+  });
+}
+
+test("webhook — ts en SEGUNDOS (formato de Mercado Pago) se acepta", async () => {
+  const res = await POST(reqConTs(Math.floor(Date.now() / 1000)));
+  assert.equal(res.status, 200);
+});
+
+test("webhook — ts en milisegundos se sigue aceptando", async () => {
+  const res = await POST(reqConTs(Date.now()));
+  assert.equal(res.status, 200);
+});
+
+test("webhook — ts en segundos de hace 10 minutos se rechaza como replay", async () => {
+  const res = await POST(reqConTs(Math.floor(Date.now() / 1000) - 600));
+  assert.equal(res.status, 403);
+});
+
+test("webhook — ts no numérico se rechaza", async () => {
+  const res = await POST(reqConTs("abc"));
+  assert.equal(res.status, 403);
+});
+
+// ─── F1-08: transición de estado de un pago ya registrado ────────────────────
+
+function handlersTransicion({ previo, statusMP, patchRows = [{ id: 1, estado: "aprobado" }], registro }) {
+  const externalRef = `gypi-${EMPRESA_ID}-${SUSC_ID}`;
+  return [
+    { match: (url) => url.includes("api.mercadopago.com/v1/payments/"), respond: () => ({
+      status: 200,
+      body: { id: 777, status: statusMP, transaction_amount: 35000, currency_id: "ARS", external_reference: externalRef, date_approved: "2026-01-02T00:00:00Z" },
+    }) },
+    { match: (url, opts) => url.includes("/rest/v1/pagos") && url.includes("gateway_payment_id") && (opts.method || "GET") === "GET", respond: () => ({ status: 200, body: previo ? [previo] : [] }) },
+    { match: (url, opts) => url.includes("/rest/v1/pagos?id=eq.") && opts.method === "PATCH", respond: (url, opts) => { registro.patchPago.push({ url, body: JSON.parse(opts.body) }); return { status: 200, body: patchRows }; } },
+    { match: (url, opts) => url.includes("/rest/v1/pagos") && opts.method === "POST", respond: () => { registro.insertado = true; return { status: 201, body: [{ id: 99 }] }; } },
+    { match: (url, opts) => url.includes("/rest/v1/suscripciones") && opts.method === "PATCH", respond: (url, opts) => { registro.suscPatch = JSON.parse(opts.body); return { status: 204 }; } },
+    { match: (url) => url.includes("/rest/v1/suscripciones") && url.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
+    { match: (url, opts) => url.includes("/rest/v1/empresa") && opts.method === "PATCH", respond: (url, opts) => { registro.empresaPatch = JSON.parse(opts.body); return { status: 204 }; } },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("plan_override_manual"), respond: () => ({ status: 200, body: [{ plan_override_manual: false, plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("admin_email"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
+  ];
+}
+
+test("webhook — pago que estaba pendiente y llega aprobado: actualiza el pago y activa el plan", async () => {
+  const registro = { patchPago: [] };
+  global.fetch = createFetchMock(handlersTransicion({ previo: { id: 1, estado: "pendiente" }, statusMP: "approved", registro }));
+  const res = await POST(req({ body: { type: "payment", data: { id: "777" } }, dataId: "777" }));
+  const json = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(json.accion, "pago_aprobado");
+  assert.equal(registro.patchPago.length, 1);
+  assert.ok(registro.patchPago[0].url.includes("estado=eq.pendiente"), "el PATCH se condiciona al estado anterior");
+  assert.equal(registro.patchPago[0].body.estado, "aprobado");
+  assert.equal(registro.insertado, undefined, "no inserta un pago duplicado");
+  assert.equal(registro.suscPatch.estado, "activa");
+  assert.equal(registro.empresaPatch.plan_activo, "pro");
+});
+
+test("webhook — dos avisos simultáneos de la misma transición: solo uno la procesa", async () => {
+  const registro = { patchPago: [] };
+  global.fetch = createFetchMock(handlersTransicion({ previo: { id: 1, estado: "pendiente" }, statusMP: "approved", patchRows: [], registro }));
+  const res = await POST(req({ body: { type: "payment", data: { id: "777" } }, dataId: "777" }));
+  const json = await res.json();
+  assert.equal(json.accion, "pago_ya_procesado");
+  assert.equal(registro.suscPatch, undefined, "no reactiva ni factura de nuevo");
+});
+
+test("webhook — aviso viejo 'pendiente' que llega después del aprobado se ignora", async () => {
+  const registro = { patchPago: [] };
+  global.fetch = createFetchMock(handlersTransicion({ previo: { id: 1, estado: "aprobado" }, statusMP: "pending", registro }));
+  const res = await POST(req({ body: { type: "payment", data: { id: "777" } }, dataId: "777" }));
+  const json = await res.json();
+  assert.equal(json.accion, "pago_ya_procesado");
+  assert.equal(registro.patchPago.length, 0, "no vuelve el pago a pendiente");
+});
