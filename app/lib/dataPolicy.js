@@ -142,3 +142,84 @@ export function validarPatch(tabla, body, sesion) {
   }
   return null;
 }
+
+// ═══ Consultas: columnas sensibles, embebidos y referencias (auditoría F2-02) ═══
+
+// Columnas que nunca se pueden pedir, filtrar ni ordenar por el gateway
+// (aunque se quiten de la respuesta, filtrar por ellas permitiría deducirlas).
+const COLUMNAS_SENSIBLES = [
+  "password", "password_reset_jti", "admin_password",
+  "email_verify_token", "email_verify_expires",
+  "token_hash", "jti", "refresh_jti",
+];
+const RE_SENSIBLE = new RegExp(`(^|[^a-z0-9_])(${COLUMNAS_SENSIBLES.join("|")})([^a-z0-9_]|$)`, "i");
+
+// Datos relacionados (embebidos de PostgREST) permitidos, por tabla:
+// relación → columnas que se pueden traer de ella.
+export const EMBEDS_PERMITIDOS = {
+  fichadas: { empleados: new Set(["nombre", "division", "apodo"]) },
+};
+
+const RE_COLUMNA = /^(?:[a-z_][a-z0-9_]*:)?(?:\*|[a-z_][a-z0-9_]*)(?:::[a-z]+)?$/i;
+
+function partirTopLevel(s) {
+  const partes = [];
+  let nivel = 0, actual = "";
+  for (const ch of s) {
+    if (ch === "(") nivel++;
+    if (ch === ")") nivel--;
+    if (ch === "," && nivel === 0) { partes.push(actual); actual = ""; continue; }
+    actual += ch;
+  }
+  partes.push(actual);
+  return partes.map((p) => p.trim()).filter(Boolean);
+}
+
+function validarSelect(tabla, select) {
+  for (const parte of partirTopLevel(select)) {
+    if (RE_COLUMNA.test(parte)) continue;
+    const m = parte.match(/^([a-z_][a-z0-9_]*)\(([^()]*)\)$/i);
+    const permitidas = m && EMBEDS_PERMITIDOS[tabla]?.[m[1]];
+    if (!permitidas) return `No se pueden consultar datos relacionados ("${parte}")`;
+    const cols = m[2].split(",").map((c) => c.trim()).filter(Boolean);
+    if (cols.length === 0 || cols.some((c) => !permitidas.has(c))) {
+      return `Columnas no permitidas en "${m[1]}"`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Valida el path de una consulta del gateway. Devuelve un mensaje de error o null.
+ * - Ninguna columna sensible en select, filtros ni orden.
+ * - Embebidos solo desde la lista permitida y con columnas permitidas.
+ * - Sin filtros sobre tablas relacionadas (claves con punto).
+ */
+export function validarConsulta(tabla, path) {
+  const q = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
+  if (!q) return null;
+  let decoded;
+  try { decoded = decodeURIComponent(q); } catch { return "Consulta mal formada"; }
+  if (RE_SENSIBLE.test(decoded)) return "La consulta incluye columnas no permitidas";
+  for (const par of q.split("&")) {
+    if (!par) continue;
+    const i = par.indexOf("=");
+    let clave, valor;
+    try {
+      clave = decodeURIComponent(i === -1 ? par : par.slice(0, i));
+      valor = i === -1 ? "" : decodeURIComponent(par.slice(i + 1));
+    } catch { return "Consulta mal formada"; }
+    if (clave.includes(".")) return "No se puede filtrar por datos relacionados";
+    if (clave === "select") {
+      const err = validarSelect(tabla, valor);
+      if (err) return err;
+    }
+  }
+  return null;
+}
+
+// Referencias (FK) que llegan en el body y deben pertenecer a la misma empresa.
+export const REFERENCIAS = {
+  empleado_id: "empleados",
+  tipo_documento_id: "tipos_documento_requerido",
+};
