@@ -97,6 +97,7 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       reload && reload();
     } catch (e) {
       if (e.tipo === "bloqueado_tardanza" || e.tipo === "bloqueado_3ra_tarde") return { type: "fichada_bloqueada", permiso: true, msg: "⛔ " + e.message };
+      if (e.tipo === "salida_anticipada") return { type: "fichada_bloqueada", permisoSalida: !e.pendiente, finGrilla: e.fin_grilla, msg: "🚪 " + e.message };
       if (e.tipo === "tarea_activa") return { type: "tarea_activa", msg: "⚠️ " + e.message, tareaId: e.tarea_id };
       if (e.tipo === "geo_error") { setGeoError(e.message); return { type: "fichada_bloqueada", msg: e.message }; }
       if (e.tipo) return { type: "fichada_bloqueada", msg: "⚠️ " + e.message };
@@ -105,6 +106,13 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       return { type: "error", msg: "⚠️ No se pudo completar: " + (e.message || "error desconocido") + ". Probá de nuevo." };
     }
     return card;
+  };
+
+  // Mensaje del bot para un fichaje bloqueado, con el pedido de permiso que corresponda
+  const msgBloqueo = (cr) => {
+    if (cr.permiso) return { from: "bot", text: cr.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] };
+    if (cr.permisoSalida) return { from: "bot", text: cr.msg + "\n\n¿Querés pedirle permiso a gerencia para salir antes?", time: new Date(), quickReplies: ["✅ Sí, pedir permiso de salida", "❌ No, cancelar"] };
+    return { from: "bot", text: cr.msg, time: new Date() };
   };
 
   const handleSend = async (txt = input) => {
@@ -128,12 +136,24 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       } catch (e) { console.error(e); setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud. Probá de nuevo.", time: new Date() }]); }
       setLoading(false); return;
     }
+    if (t === "✅ Sí, pedir permiso de salida") {
+      try {
+        const hoy = hoyArg();
+        const hora2 = fmtTime(new Date());
+        await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "salida_anticipada", motivo: `🚪 Permiso de SALIDA anticipada (pidió a las ${hora2})`, fecha: hoy, desde: hora2, hasta: "—", estado: "pendiente", empresa_id: usuario.empresa_id });
+        await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `🚪 ${usuario.apodo} pide salir antes`, detalle: `Quiere retirarse a las ${hora2}, antes del fin de su jornada.`, urgencia: "alta", empresa_id: usuario.empresa_id });
+        sendPushToRole("gerencial", "🚪 Permiso de salida", `${usuario.apodo} pide retirarse antes (${hora2})`, { empresa_id: usuario.empresa_id }).catch(() => {});
+        setMsgs(m => [...m, { from: "bot", text: "✅ Le pedí el permiso a gerencia. Cuando lo aprueben te aviso y ahí fichás tu salida con \"Me voy\".", time: new Date(), card: { type: "solicitud", motivo: "🚪 Permiso de salida anticipada", fecha: hoy } }]);
+        if (reload) reload();
+      } catch (e) { console.error(e); setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud. Probá de nuevo.", time: new Date() }]); }
+      setLoading(false); return;
+    }
     if (t === "❌ No, cancelar") { accionPendiente.current = null; setMsgs(m => [...m, { from: "bot", text: "Entendido. Si necesitás algo más, avisame.", time: new Date() }]); setLoading(false); return; }
     if (t === "✅ Sí, fichar salida") {
       try {
         const cr = await execAction({ type: "FICHAR_EGRESO_FORZAR" });
         if (cr?.type === "fichada_bloqueada" || cr?.type === "error") {
-          setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]);
+          setMsgs(m => [...m, msgBloqueo(cr)]);
         } else if (cr?.solicitar_hora_extra) {
           const dj = cr.datos_jornada;
           setMsgs(m => [...m, { from: "bot", text: `✅ Salida registrada.\n\nLlegaste tarde (${dj.ingreso_real} vs ${dj.ingreso_grilla}) pero trabajaste ${Math.round(dj.excedente_min)}min más de tu jornada habitual.\n\n¿Querés solicitar hora extra a gerencia?`, card: cr, time: new Date(), quickReplies: ["✅ Sí, solicitar hora extra", "❌ No, cancelar"] }]);
@@ -164,8 +184,7 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       accionPendiente.current = null;
       if (!action) { setMsgs(m => [...m, { from: "bot", text: "No hay nada pendiente para confirmar.", time: new Date() }]); setLoading(false); return; }
       const card = await execAction(action);
-      if (card?.type === "fichada_bloqueada" && card.permiso) { setMsgs(m => [...m, { from: "bot", text: card.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); setLoading(false); return; }
-      if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date() }]); setLoading(false); return; }
+      if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, msgBloqueo(card)]); setLoading(false); return; }
       if (card?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); setLoading(false); return; }
       if (card?.type === "error") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date() }]); setLoading(false); return; }
       setMsgs(m => [...m, { from: "bot", text: "✅ Listo.", card, time: new Date() }]);
@@ -197,7 +216,7 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       try {
         const cr = await execAction({ type: "FICHAR_EGRESO" });
         if (cr?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); }
-        else if (cr?.type === "fichada_bloqueada" || cr?.type === "error") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
+        else if (cr?.type === "fichada_bloqueada" || cr?.type === "error") { setMsgs(m => [...m, msgBloqueo(cr)]); }
         else if (cr?.solicitar_hora_extra) {
           const dj = cr.datos_jornada;
           setMsgs(m => [...m, { from: "bot", text: `✅ Salida registrada. ¡Hasta mañana, ${usuario.apodo}! 👋\n\nLlegaste tarde (${dj.ingreso_real} vs ${dj.ingreso_grilla}) pero trabajaste ${Math.round(dj.excedente_min)}min más de tu jornada.\n\n¿Querés solicitar hora extra a gerencia?`, card: cr, time: new Date(), quickReplies: ["✅ Sí, solicitar hora extra", "❌ No, cancelar"] }]);

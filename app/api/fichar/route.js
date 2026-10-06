@@ -10,7 +10,7 @@ import { logAudit } from "../../lib/audit";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
-import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calcularJornada, normalizarReglasAsistencia } from "../../lib/calc";
+import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calcularJornada, normalizarReglasAsistencia, salidaAnticipada } from "../../lib/calc";
 import { logEvent, EVT } from "../../lib/analytics";
 
 // ─── Hora local según timezone de empresa ───
@@ -148,12 +148,12 @@ export async function POST(request) {
     // ═══════════════════════════════════
     // INGRESO
     // ═══════════════════════════════════
-    if (accion === "ingreso") {
-      // Reglas de asistencia de la empresa (tolerancia y bloqueos, decisión D5).
-      // Si la columna todavía no existe o falla la lectura: solo tolerancia, sin bloqueos.
-      const [reglasRow] = await sbGet(`empresa?id=eq.${empresaId}&select=reglas_asistencia&limit=1`, { silent: true, fallback: [] }) || [];
-      const reglasAsistencia = normalizarReglasAsistencia(reglasRow?.reglas_asistencia);
+    // Reglas de asistencia de la empresa (tolerancia y bloqueos, decisiones D5/D21).
+    // Si la columna todavía no existe o falla la lectura: solo tolerancia, sin bloqueos.
+    const [reglasRow] = await sbGet(`empresa?id=eq.${empresaId}&select=reglas_asistencia&limit=1`, { silent: true, fallback: [] }) || [];
+    const reglasAsistencia = normalizarReglasAsistencia(reglasRow?.reglas_asistencia);
 
+    if (accion === "ingreso") {
       const existentes = await sbGet(
         `fichadas?empleado_id=eq.${empleadoId}&fecha=eq.${fecha}&empresa_id=eq.${empresaId}&select=id,ingreso`
       );
@@ -257,6 +257,37 @@ export async function POST(request) {
     // ═══════════════════════════════════
     // EGRESO
     // ═══════════════════════════════════
+    // Salida antes de hora: si la empresa lo exige, hace falta un permiso
+    // aprobado del día. Va antes de cerrar tareas para no tocar nada si se bloquea.
+    if (reglasAsistencia.permiso_salida_anticipada) {
+      const [abierta] = await sbGet(
+        `fichadas?empleado_id=eq.${empleadoId}&empresa_id=eq.${empresaId}&egreso=is.null&select=fecha,ingreso&order=fecha.desc&limit=1`,
+        { silent: true, fallback: [] }
+      ) || [];
+      if (abierta?.ingreso) {
+        const [emp] = await sbGet(`empleados?id=eq.${empleadoId}&select=diagrama&limit=1`, { silent: true, fallback: [] }) || [];
+        const antes = salidaAnticipada({ fechaIngreso: abierta.fecha, fechaAhora: fecha, horaAhora: hora, diagrama: emp?.diagrama });
+        if (antes && antes.minutos > reglasAsistencia.tolerancia_min) {
+          const permisos = await sbGet(
+            `solicitudes?empresa_id=eq.${empresaId}&empleado_id=eq.${empleadoId}&tipo=eq.salida_anticipada&fecha=eq.${fecha}&select=estado&order=created_at.desc&limit=5`,
+            { silent: true, fallback: [] }
+          ) || [];
+          if (!permisos.some((p) => p.estado === "aprobado")) {
+            const pendiente = permisos.some((p) => p.estado === "pendiente");
+            return NextResponse.json({
+              ok: false,
+              error: pendiente
+                ? `Tu jornada termina a las ${antes.finGrilla}. Ya pediste permiso para salir antes: esperá a que gerencia lo apruebe y volvé a fichar.`
+                : `Tu jornada termina a las ${antes.finGrilla} (faltan ${antes.minutos} min). Para retirarte antes necesitás permiso de gerencia.`,
+              tipo: "salida_anticipada",
+              pendiente,
+              fin_grilla: antes.finGrilla,
+            });
+          }
+        }
+      }
+    }
+
     if (!forzar_cierre_tarea) {
       try {
         const activas = await sbGet(
