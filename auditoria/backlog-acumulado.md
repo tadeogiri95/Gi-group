@@ -55,7 +55,7 @@
 | F2-18 | Exenciones de CSRF amplias | Bajo | S | Pendiente |
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
 | F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | Pendiente |
-| F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | Pendiente |
+| F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **En PR #1** (tadeogiri95/Gi-group#1): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
 | F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
 | H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | Pendiente |
 
