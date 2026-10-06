@@ -13,7 +13,7 @@ import { logger } from "../../lib/logger";
 import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "../../lib/validate";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
-import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch } from "../../lib/dataPolicy";
+import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS } from "../../lib/dataPolicy";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -278,6 +278,12 @@ export async function POST(request) {
       return NextResponse.json({ error: `Tabla "${pathCheck.tabla}" es de solo lectura` }, { status: 403 });
     }
 
+    // ─── CONSULTA: sin columnas sensibles ni datos relacionados no permitidos ───
+    const consultaError = validarConsulta(pathCheck.tabla, path);
+    if (consultaError) {
+      return NextResponse.json({ error: consultaError }, { status: 403 });
+    }
+
     // ─── AUTORIZACIÓN POR ROL (deny-by-default, ver lib/dataPolicy.js) ───
     const auth = autorizar(pathCheck.tabla, method || "GET", sesion);
     if (!auth.ok) {
@@ -343,6 +349,19 @@ export async function POST(request) {
         const prep = prepararBodyPost(pathCheck.tabla, finalBody, sesion, auth.ownFilter);
         if (prep.error) return NextResponse.json({ error: prep.error }, { status: prep.status });
         finalBody = prep.body;
+      }
+    }
+
+    // ─── REFERENCIAS: todo id que llegue en el body debe ser de esta empresa ───
+    if ((method === "POST" || method === "PATCH") && finalBody) {
+      for (const [campo, tablaRef] of Object.entries(REFERENCIAS)) {
+        const valor = finalBody[campo];
+        if (valor === undefined || valor === null || valor === sesion.empleado_id) continue;
+        // Un id mal formado hace fallar a PostgREST: se trata igual que uno ajeno.
+        const ok = await sbFetch(`${tablaRef}?id=eq.${encodeURIComponent(String(valor))}&empresa_id=eq.${empresaId}&select=id&limit=1`).catch(() => null);
+        if (!Array.isArray(ok) || ok.length === 0) {
+          return NextResponse.json({ error: `Referencia inválida (${campo})` }, { status: 400 });
+        }
       }
     }
 
