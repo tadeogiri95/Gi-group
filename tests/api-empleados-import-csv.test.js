@@ -32,7 +32,7 @@ function csvReq(csvText, token, contentType = "text/plain") {
 }
 
 /** Handlers base para la ruta de import CSV (auth + legajos existentes + plan + insert) */
-function handlersImport({ existingLegajos = [], plan = "pro", insertOk = true } = {}) {
+function handlersImport({ existingLegajos = [], plan = "pro", insertOk = true, slug } = {}) {
   return [
     ...authPassHandlers(),
     {
@@ -44,7 +44,7 @@ function handlersImport({ existingLegajos = [], plan = "pro", insertOk = true } 
     },
     {
       match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"),
-      respond: () => ({ status: 200, body: [{ plan_activo: plan }] }),
+      respond: () => ({ status: 200, body: [{ plan_activo: plan, slug }] }),
     },
     {
       // La ruta hace bulk insert (un POST con array de filas por lote de 50),
@@ -97,7 +97,7 @@ test("import-csv — CSV sin columna legajo devuelve 400", async () => {
 
 test("import-csv — CSV válido con 2 filas crea 2 empleados", async () => {
   global.fetch = createFetchMock(handlersImport());
-  const token = await tokenConRol("administrativo");
+  const token = await tokenConRol("gerencial");
   const csv = "legajo,nombre,email,rol\n100,Juan Pérez,juan@test.com,operativo\n200,María López,maria@test.com,gerencial";
   const res = await POST(csvReq(csv, token));
   const json = await res.json();
@@ -172,4 +172,51 @@ test("import-csv — fallo de Postgres en el insert no expone el detalle interno
   assert.equal(json.created, 0);
   assert.ok(json.errors.length > 0, "debe reportar el lote como error");
   assert.ok(!json.errors[0].includes("foreign key constraint"), "no debe exponer el detalle interno de Postgres en el mensaje por fila");
+});
+
+// ─── Códigos de activación (F2-03) ───
+
+function handlersConCaptura(opts, captura) {
+  const handlers = handlersImport(opts);
+  handlers.splice(handlers.length - 1, 1, {
+    match: (url, o) => url.includes("/rest/v1/empleados") && o?.method === "POST",
+    respond: (url, o) => {
+      captura.filas = JSON.parse(o.body);
+      return { status: 201, body: captura.filas.map((r, i) => ({ id: `n-${i}`, legajo: r.legajo })) };
+    },
+  });
+  return handlers;
+}
+
+test("import-csv — cada empleado nace pendiente con hash de código y la respuesta trae los códigos", async () => {
+  const { hashCodigo } = await import("../app/lib/activacion.js");
+  const captura = {};
+  global.fetch = createFetchMock(handlersConCaptura({ slug: "acme" }, captura));
+  const token = await tokenConRol("gerencial");
+  const res = await POST(csvReq("legajo,nombre\n100,Juan Pérez\n200,Ana Gómez", token));
+  const json = await res.json();
+
+  assert.equal(res.status, 200);
+  assert.equal(json.activaciones.length, 2);
+  assert.equal(json.vigencia_dias, 14);
+  for (const [i, a] of json.activaciones.entries()) {
+    assert.match(a.codigo, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    assert.equal(a.link, `https://gypi.app/acme/unirse?code=${a.codigo}`);
+    assert.equal(captura.filas[i].estado_activacion, "pendiente_activacion");
+    assert.equal(captura.filas[i].activacion_codigo_hash, hashCodigo(a.codigo));
+    assert.ok(!JSON.stringify(captura.filas[i]).includes(a.codigo), "el código no se guarda en texto plano");
+  }
+});
+
+test("import-csv — administrativo no puede importar usuarios gerenciales", async () => {
+  const captura = {};
+  global.fetch = createFetchMock(handlersConCaptura({}, captura));
+  const token = await tokenConRol("administrativo");
+  const res = await POST(csvReq("legajo,nombre,rol\n100,Juan,operativo\n200,Jefa,gerencial", token));
+  const json = await res.json();
+
+  assert.equal(json.created, 1);
+  assert.deepEqual(captura.filas.map((r) => r.rol), ["operativo"]);
+  assert.ok(json.errors.some((e) => e.includes("Fila 3") && e.includes("dueño")));
+  assert.equal(json.activaciones.length, 1);
 });

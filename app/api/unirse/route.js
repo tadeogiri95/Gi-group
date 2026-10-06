@@ -1,12 +1,15 @@
 // ═══════════════════════════════════════════════════════════
-// /api/unirse — Activación de empleado pre-cargado (público)
+// /api/unirse — Activación de cuenta con código de un solo uso (público)
 //
-// ENTREGA 1C: Este endpoint es público por diseño (el empleado
-// aún no tiene sesión). El mecanismo de "auth" es:
-//   slug + legajo + estado_activacion === "pendiente_activacion"
-// Solo puede activar cuentas que el admin pre-cargó.
+// El empleado llega desde el link o QR que le entregó su empresa
+// (/{slug}/unirse?code=XXXX-XXXX) y define su contraseña. La identidad la
+// prueba el código, no el legajo: antes bastaba con slug + legajo y
+// cualquiera podía adelantarse y quedarse con la cuenta (auditoría F2-03).
 //
-// CAMBIO: password policy reforzada (min 8 chars, complejidad).
+// - "verificar": confirma que el código existe y no venció; devuelve el nombre.
+// - "activar":  define la contraseña, borra el código (un solo uso) y cierra
+//               las sesiones abiertas de esa cuenta.
+// Ver app/lib/activacion.js.
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
@@ -16,6 +19,10 @@ import { sbGet, sbPatch } from "../../lib/sbHelpers";
 import { unirseBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
+import { hashCodigo, normalizarCodigo } from "../../lib/activacion";
+import { logAudit } from "../../lib/audit";
+
+const CODIGO_INVALIDO = "El código no es válido o ya venció. Pedile uno nuevo a tu empresa.";
 
 export async function POST(request) {
   try {
@@ -31,54 +38,72 @@ export async function POST(request) {
     const rawBody = await request.json();
     const parsed = validateBody(unirseBody, rawBody);
     if (parsed.response) return parsed.response;
-    const { action, slug, legajo, password } = parsed.data;
+    const { action, slug, codigo, password } = parsed.data;
+
+    if (normalizarCodigo(codigo).length !== 8) {
+      return NextResponse.json({ error: CODIGO_INVALIDO }, { status: 404 });
+    }
 
     const slugClean = slug.toLowerCase().replace(/[^a-z0-9-]/g, "");
     const emp = await sbGet(`empresa?slug=eq.${encodeURIComponent(slugClean)}&select=id,nombre,nombre_corto,activa&limit=1`, { silent: true });
     if (!emp || emp.length === 0) return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });
     if (emp[0].activa === false) return NextResponse.json({ error: "Empresa inactiva" }, { status: 403 });
     const empresaId = emp[0].id;
+    const empresaNombre = emp[0].nombre_corto || emp[0].nombre;
 
-    const legajoNum = String(legajo).trim();
-    const empleados = await sbGet(`empleados?empresa_id=eq.${empresaId}&legajo=eq.${encodeURIComponent(legajoNum)}&activo=eq.true&select=id,nombre,apodo,estado_activacion&limit=1`, { silent: true });
-    if (!empleados || empleados.length === 0) {
-      return NextResponse.json({ error: "Legajo no encontrado en esta empresa. Pedile a tu administrador que te dé de alta." }, { status: 404 });
-    }
-    const empleado = empleados[0];
-    if (empleado.estado_activacion !== "pendiente_activacion") {
-      return NextResponse.json({ error: "Esta cuenta ya está activada. Iniciá sesión normalmente." }, { status: 409 });
+    const hash = hashCodigo(codigo);
+    const empleados = await sbGet(
+      `empleados?empresa_id=eq.${empresaId}&activacion_codigo_hash=eq.${hash}&activo=eq.true&select=id,nombre,apodo,legajo,rol,activacion_expira&limit=1`,
+      { silent: true }
+    );
+    const empleado = empleados?.[0];
+    if (!empleado || !empleado.activacion_expira || new Date(empleado.activacion_expira) < new Date()) {
+      return NextResponse.json({ error: CODIGO_INVALIDO }, { status: 404 });
     }
 
     if (action === "verificar") {
-      return NextResponse.json({
-        ok: true,
-        nombre: empleado.nombre,
-        apodo: empleado.apodo,
-        empresaNombre: emp[0].nombre_corto || emp[0].nombre,
-      });
+      return NextResponse.json({ ok: true, nombre: empleado.nombre, apodo: empleado.apodo, legajo: empleado.legajo, empresaNombre });
     }
 
-    if (action === "activar") {
-      // ═══ CAMBIO 1C/1B: Password policy reforzada ═══
-      const pwCheck = validarPassword(password);
-      if (!pwCheck.valido) {
-        return NextResponse.json({ error: pwCheck.error }, { status: 400 });
-      }
+    // ─── activar ───
+    const pwCheck = validarPassword(password);
+    if (!pwCheck.valido) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
+    }
+    const hashed = await bcrypt.hash(password, 10);
 
-      const hashed = await bcrypt.hash(password, 10);
-      await sbPatch(`empleados?id=eq.${empleado.id}`, {
+    // Filtrar también por el hash hace el uso único atómico: si dos pedidos
+    // llegan a la vez con el mismo código, solo uno actualiza la fila.
+    const actualizado = await sbPatch(
+      `empleados?id=eq.${empleado.id}&empresa_id=eq.${empresaId}&activacion_codigo_hash=eq.${hash}`,
+      {
         password: hashed,
         estado_activacion: "activo",
         debe_cambiar_password: false,
-      });
-      return NextResponse.json({
-        ok: true,
-        nombre: empleado.nombre,
-        empresaNombre: emp[0].nombre_corto || emp[0].nombre,
-      });
+        password_reset_jti: null,
+        activacion_codigo_hash: null,
+        activacion_expira: null,
+      }
+    );
+    if (!Array.isArray(actualizado) || actualizado.length === 0) {
+      return NextResponse.json({ error: CODIGO_INVALIDO }, { status: 404 });
     }
 
-    return NextResponse.json({ error: "Acción inválida" }, { status: 400 });
+    // Una cuenta que se (re)activa no conserva sesiones abiertas de antes.
+    await sbPatch(`sesiones?empleado_id=eq.${empleado.id}&revocada=eq.false`, { revocada: true }, { silent: true });
+
+    logAudit({
+      empresa_id: empresaId,
+      actor_id: empleado.id,
+      actor_legajo: empleado.legajo,
+      actor_rol: empleado.rol,
+      accion: "activar_cuenta",
+      entidad: "empleado",
+      entidad_id: String(empleado.id),
+      ip,
+    });
+
+    return NextResponse.json({ ok: true, nombre: empleado.nombre, empresaNombre });
   } catch (err) {
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }

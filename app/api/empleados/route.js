@@ -12,6 +12,9 @@ import { logAudit } from "../../lib/audit";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { isUUID } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
+import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../lib/activacion";
+
+const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
 const CAMPOS_PUBLICOS =
   "id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at";
@@ -94,9 +97,9 @@ export async function POST(request) {
   const rolFinal = rolesValidos.includes(rol) ? rol : "operativo";
   const passwordHash = await bcrypt.hash(passwordInicial(), 10);
 
-  // pre_cargado: el empleado activa su cuenta (y define su contraseña) desde
-  // el link /[slug]/unirse — requiere estado_activacion "pendiente_activacion".
-  const esPendiente = !!pre_cargado || !!email;
+  // Todo empleado nuevo nace pendiente: activa su cuenta y define su
+  // contraseña con un código de un solo uso (ver lib/activacion.js).
+  const activacion = nuevaActivacion();
   let nuevo;
   try {
     [nuevo] = await sbPost("empleados", {
@@ -112,7 +115,8 @@ export async function POST(request) {
       password: passwordHash,
       debe_cambiar_password: true,
       pre_cargado: !!pre_cargado,
-      estado_activacion: esPendiente ? "pendiente_activacion" : "activo",
+      estado_activacion: "pendiente_activacion",
+      ...activacion.columnas,
     });
   } catch (e) {
     // Carrera entre el chequeo y el insert: el índice único lo frena.
@@ -135,13 +139,14 @@ export async function POST(request) {
   });
 
   // Email de invitación (fire-and-forget, solo si tiene email)
-  if (emailNorm && empresaData?.slug) {
+  const link = empresaData?.slug ? linkActivacion(APP_BASE, empresaData.slug, activacion.codigo) : null;
+  if (emailNorm && link) {
     sendInvitacionEmpleado({
       to: emailNorm,
       nombre: nombre.trim().split(" ")[0],
       empresa: empresaData.nombre_corto || empresaData.nombre,
-      slug: empresaData.slug,
-      legajo: legajoNum,
+      codigo: activacion.codigo,
+      link,
       empresaId: sesion.empresa_id,
     });
 
@@ -157,9 +162,12 @@ export async function POST(request) {
       .catch(() => {});
   }
 
-  // Devolver sin password
-  const { password: _, ...empleadoPublico } = nuevo;
-  return NextResponse.json(empleadoPublico, { status: 201 });
+  // Devolver sin password ni hash; el código en texto plano se muestra una sola vez
+  const { password: _, activacion_codigo_hash: _h, ...empleadoPublico } = nuevo;
+  return NextResponse.json(
+    { ...empleadoPublico, activacion: { codigo: activacion.codigo, link, vigencia_dias: DIAS_VIGENCIA } },
+    { status: 201 }
+  );
 }
 
 // ═══ PATCH ═══
@@ -213,7 +221,7 @@ export async function PATCH(request) {
     throw e;
   }
 
-  const { password: _, ...empleadoPublico } = actualizado;
+  const { password: _, activacion_codigo_hash: _h, ...empleadoPublico } = actualizado;
   return NextResponse.json(empleadoPublico);
 }
 

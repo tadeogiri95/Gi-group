@@ -307,19 +307,19 @@ export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, pla
 }
 
 // ─── Invitación a empleado ───
-export async function sendInvitacionEmpleado({ to, nombre, empresa, slug, legajo, empresaId }) {
+export async function sendInvitacionEmpleado({ to, nombre, empresa, codigo, link, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
-  const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
       <strong>${escapeHtml(empresa)}</strong> te sumó a Gypi. Para activar tu cuenta
-      ingresá con tu legajo y creá tu contraseña.
+      tocá el botón y creá tu contraseña.
     </p>
     <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:14px 18px;margin:0 0 20px;font-size:14px;color:#0C4A6E">
-      Tu legajo: <strong>${escapeHtml(String(legajo))}</strong>
+      Tu código de activación: <strong style="font-family:monospace;letter-spacing:1px">${escapeHtml(String(codigo))}</strong><br>
+      <span style="font-size:12px">Vale por 14 días y se usa una sola vez.</span>
     </div>
-    ${btn(`${url}?screen=unirse`, "Activar mi cuenta →")}
+    ${btn(link, "Activar mi cuenta →")}
     <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">Si no esperabas este mensaje, podés ignorarlo.</p>
   `;
   return resend.emails.send({
