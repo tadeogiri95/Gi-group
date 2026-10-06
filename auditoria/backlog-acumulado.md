@@ -76,7 +76,7 @@
 | F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | **Hecho** (tadeogiri95/Gi-group#15, fusionado): todas las páginas + aviso en pantalla |
 | F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | **Hecho** (#6: botón “Código de acceso”) |
 | F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | **Hecho** (#6) |
-| F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | En PR #17: tipos `hora_extra` y `salida_anticipada` permitidos; al aprobar, la hora extra se carga en la fichada |
+| F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | En PR #17 + migración 071 (la regla `solicitudes_tipo_check` de prod solo aceptaba 5 tipos): tipos `hora_extra` y `salida_anticipada` permitidos; al aprobar, la hora extra se carga en la fichada |
 | F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | En PR #17: se quitó el código muerto; aprobar avisa al empleado y la grilla se ajusta en Gestión de personal. Queda: flujo con propuesta de grilla, si hace falta |
 | F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | En PR #17: idempotencia por (pago, estado) con PATCH condicionado |
 | F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | En PR #17: acepta segundos y milisegundos. Queda: prueba punta a punta en el sandbox de MP (F6-03) |
