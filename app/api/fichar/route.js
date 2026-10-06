@@ -25,6 +25,8 @@ const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
 const MAX_HORAS_JORNADA = 20;
 // Cuánto de la imprecisión del GPS del teléfono se perdona al validar la zona
 const MARGEN_GPS_MAX_M = 100;
+// Por encima de esta precisión el teléfono no está usando GPS (ubicación por red)
+const PRECISION_APROXIMADA_M = 500;
 
 function getLocalTime(tz = TZ_DEFAULT) {
   const now = new Date();
@@ -104,7 +106,9 @@ export async function POST(request) {
         // desde lejos declarando una precisión enorme).
         const margen = Math.min(Number(geo_precision) || 0, MARGEN_GPS_MAX_M);
         const medidas = validas.map((z) => {
-          const radio = asignada.length > 0 && gc?.radio ? Number(gc.radio) : Number(z.radio);
+          // Vale el mayor entre el radio de la zona y el del empleado: el del
+          // empleado nace en 150 m por defecto y antes pisaba al de la zona.
+          const radio = Math.max(Number(z.radio) || 0, asignada.length > 0 ? Number(gc?.radio) || 0 : 0) || 150;
           const dist = distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng));
           return { nombre: z.nombre, radio, dist };
         });
@@ -112,6 +116,9 @@ export async function POST(request) {
         if (!dentroDeAlgunaZona) {
           const cerca = medidas.reduce((a, b) => (b.dist < a.dist ? b : a));
           const precisionTxt = geo_precision ? `, precisión del GPS ±${Math.round(geo_precision)} m` : "";
+          const aproximada = Number(geo_precision) > PRECISION_APROXIMADA_M
+            ? ` Tu teléfono está dando una ubicación aproximada (±${Math.round(geo_precision)} m): activá la ubicación precisa del navegador en los ajustes del teléfono y volvé a intentar.`
+            : "";
           logAudit({
             empresa_id: empresaId,
             actor_id: empleadoId,
@@ -123,7 +130,7 @@ export async function POST(request) {
           });
           return NextResponse.json({
             ok: false,
-            error: `Estás fuera de la zona de fichaje: a ${Math.round(cerca.dist)} m de ${cerca.nombre || "la zona"} (radio ${cerca.radio} m${precisionTxt}). Si estás en el lugar, pedile a tu supervisor que revise la ubicación de la zona.`,
+            error: `Estás fuera de la zona de fichaje: a ${Math.round(cerca.dist)} m de ${cerca.nombre || "la zona"} (radio ${cerca.radio} m${precisionTxt}).${aproximada || " Si estás en el lugar, pedile a tu supervisor que revise la ubicación de la zona."}`,
             tipo: "fuera_de_zona",
             distancia_m: Math.round(cerca.dist),
             radio_m: cerca.radio,
