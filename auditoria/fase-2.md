@@ -121,3 +121,99 @@ Confirmado con vos: **las reglas de asistencia son de la fábrica y no deben ser
 3. **Privacidad:** ¿el gerente debe poder leer el chat del empleado con el bot? ¿Las ubicaciones GPS las ve solo el dueño o también el supervisor?
 4. **Publicidad:** ¿mantener AdSense en el plan Free? Para un B2B con datos laborales lo desaconsejo (riesgo legal y de percepción). Lo retomo en la Fase 6.
 5. **Consultas SQL:** las Q1–Q11 de `fase-1.md` confirman F2-02, F2-04 y F2-21. Cuando las tengas, actualizo esta fase.
+
+---
+
+## 8. Resultados de producción (consultas Q1–Q11, 2026-10-06)
+
+> Fuente: CSV exportados por el dueño desde el SQL Editor de Supabase. Q3, Q8 y Q11 llegaron **cortados en 100 filas** (límite de la UI del editor); lo que no aparece se marca como pendiente.
+
+### 8.1 🚨 Hallazgo nuevo — F2-00 · **Crítico · confirmado en producción · Esf. S**
+
+**La base de producción está abierta al rol anónimo.** La anon key es pública por diseño (va dentro del JS del navegador, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), así que todo lo que `anon` pueda hacer lo puede hacer cualquier persona en internet, **sin pasar por la app**.
+
+| Evidencia | Qué muestra |
+|---|---|
+| **Q4** | `anon` y `authenticated` tienen `SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER` sobre **todas** las tablas y vistas de `public` (32 objetos), incluidas `empleados`, `empresa`, `sesiones`, `pagos` y `documentos_empleado`. `TRUNCATE` **no está sujeto a RLS** |
+| **Q3** | La RLS está activa (Q2), pero coexisten policies permisivas para el rol `public` con `true` que **anulan** a las de aislamiento (las policies se combinan con OR): `empleados_select`/`empleados_update`/`service_key_full_empleados` (ALL), `empresa_read`/`empresa_update`, `fichadas_*` y `service_key_full_fichadas` (ALL), `mensajes_chat` (lectura y escritura), `notificaciones` (ALL), `notas_calendario` (`notas_anon_all`), `push_tokens` (incluye DELETE), `registro_actividades` (ALL), `etapas` (“Permitir todo”), `config_sistema` (“Escribir”), `invitaciones_empresa`, `proyectos` (ALL) |
+| **Q2** | `v_resumen_diario` y `v_scores_empleados` no tienen RLS y `anon` puede leerlas; una vista materializada no respeta la RLS de las tablas base |
+| **Q1** | Las 27 funciones de `public` son ejecutables por `anon`, entre ellas las `SECURITY DEFINER` del superadmin (`rpc_superadmin_empresas`, `rpc_superadmin_stats`, `rpc_mrr_trending`…), `rpc_crear_empresa_con_admin`, `iniciar_trial_pro`, `vencer_trials_batch` y `auto_fichar_egresos`. Hay además 9 funciones que **no están en las migraciones** (`fichar_ingreso`, `fichar_egreso`, `fichadas_hoy`, `fichadas_semana`, `fn_calcular_duracion`, `fn_cerrar_tarea_previa`, `set_updated_at`, `trg_susc_updated`, `vencer_trials_expirados`), lo que confirma el drift (F0-05) |
+
+**Impacto:** lectura de datos de **todas las empresas** (nombres, emails, hashes de contraseña, ubicaciones, chats, solicitudes, pagos), modificación o borrado de cualquier fila y vaciado completo de tablas. Esto reemplaza y supera a F0-02/F0-03/F0-09/F2-04: ya no es “a verificar”.
+
+**Por qué es seguro cerrarlo ya:** la app nunca usa `anon` ni `authenticated` contra tablas o RPC. Todo el acceso a datos va por API routes con `service_role` (verificado: el único uso de la anon key en el cliente es Realtime broadcast, `app/lib/realtime.js`, que no necesita permisos sobre tablas).
+
+#### Contención recomendada (la corre el dueño; yo no tengo acceso a la base)
+
+Antes de ejecutar: hacer un backup (Database → Backups, o `pg_dump`). Correr en el SQL Editor **de una vez**:
+
+```sql
+begin;
+
+-- 1) Sacar todo permiso de tablas, vistas y secuencias a los roles públicos
+revoke all on all tables    in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+
+-- 2) Funciones: nadie salvo service_role
+revoke execute on all functions in schema public from public, anon, authenticated;
+grant  execute on all functions in schema public to service_role;
+
+-- 3) Que los objetos nuevos no vuelvan a nacer abiertos
+alter default privileges in schema public revoke all     on tables    from anon, authenticated;
+alter default privileges in schema public revoke all     on sequences from anon, authenticated;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+
+commit;
+```
+
+**Verificación posterior:** volver a correr **Q1** (todo `anon_exec`/`auth_exec` = false) y **Q4** (sin filas). Después, probar la app: login, fichar, ver el dashboard y el panel de superadmin. Si algo falla, hay que mirar ese caso puntual. No espero fallas, porque todo usa `service_role`.
+
+**Después de contener (no urgente, lo detallo en la Fase 7):**
+- Borrar las policies permisivas `{public} … true` y dejar solo las de aislamiento, por limpieza y para la futura migración a RLS real.
+- Revisar en **Supabase → Logs → API** si hubo requests con la anon key a `/rest/v1/` o `/rest/v1/rpc/` de origen desconocido.
+- Como los hashes de contraseña estuvieron expuestos, evaluar forzar el cambio de contraseña de los usuarios reales (bcrypt resiste, pero las contraseñas iniciales previsibles no).
+- Correr el **Security Advisor** de Supabase (Database → Advisors), que detecta exactamente esta clase de problemas.
+
+### 8.2 Re-clasificación de hallazgos con datos reales
+
+| ID | Antes | Ahora | Evidencia |
+|---|---|---|---|
+| F0-02, F0-03, F2-04 | Crítico (a verificar) | **Confirmado y ampliado → F2-00** | Q1, Q3, Q4 |
+| F0-09 (`rate_limits`/`login_attempts` sin RLS) | Medio | **Corregido parcialmente:** en prod sí tienen RLS (Q2), pero `anon` tiene permisos completos (Q4) → cubierto por F2-00 | Q2, Q4 |
+| F0-05 (drift de esquema) | Alto | **Confirmado.** 9 funciones fuera de migraciones; `divisiones.id` es `uuid` en prod (el esquema documentado dice `bigserial`); `empleados` tiene `auth_user_id` y `dni`, que no figuran; los defaults de `empleados` difieren (ver H13 y H14) | Q1, Q8 |
+| F2-21 (config-empresa exige UUID) | Alto | **Descartado en prod** para `divisiones` (es `uuid`). Falta confirmar `etapas.id` (Q8 vino cortado) | Q8 |
+| F1-01 (horas `NaN`) | Crítico (a verificar) | **No observado en los datos:** 0 filas `NaN` sobre 240 egresos (rango 2026-05-21 → 06-15), pero los datos son anteriores al código actual. Pendiente: tipo real de `fichadas.ingreso` (primera parte de Q5) y una prueba de egreso con el código actual | Q5 |
+| F1-02 (tipo/causa descartados) | Alto | **Se mantiene:** hay registros con `tipo` E/R y `causa` O, pero son de mayo y junio; la whitelist que los descarta entró después (commit ≤ 2026-06-23). Validar con un registro nuevo | Q6 |
+| F1-04 (liquidación truncada) | Alto | **Confirmado:** *Max rows* = 1000 | Dueño |
+| F2-09 (Storage) | Medio | **Agravado:** `reportes-obra` y `logos` son públicos **sin límite de tamaño ni de tipo MIME** a nivel bucket | Q7 |
+| Q9 contraseñas en texto plano | — | **OK:** 0 en `empleados` y en `empresa` | Q9 |
+
+### 8.3 Nuevos “hardcodeos del piloto” en la base
+
+| # | Qué | Evidencia | Riesgo |
+|---|---|---|---|
+| H13 | `empleados.password` tiene **DEFAULT `'gigroup2025'`** (contraseña en texto plano y conocida) | Q8 | Cualquier alta que no setee la contraseña queda con ella. Hoy el login rechaza el texto plano (post 2026-09-01), pero es un default inseguro y del piloto. Quitar el default (`DROP DEFAULT`) |
+| H14 | `empleados._deprecated_ubicacion_fichaje` DEFAULT con coordenadas y nombre **“Planta GI — Córdoba”** | Q8 | Dato del piloto en el esquema; dropear la columna |
+| H15 | Slug `gypi` = empresa piloto en plan **enterprise** con 31 empleados activos; `demo-metalurgica` concentra 245 de las 261 fichadas | Q10 | El tenant del piloto usa el nombre del producto: renombrarlo (ej. `gi-group`) antes de vender, para que `gypi.app/gypi` no sea “la fábrica” |
+
+### 8.4 Consultas pendientes (re-correr, porque el editor corta en 100 filas)
+
+```sql
+-- Q5a: tipo real de las columnas de fichadas
+select column_name, data_type from information_schema.columns
+where table_schema='public' and table_name='fichadas' order by ordinal_position;
+
+-- Q8b: tipos de id y columnas de las tablas que faltaron
+select table_name, column_name, data_type, column_default
+from information_schema.columns
+where table_schema='public' and table_name in ('etapas','solicitudes','registro_actividades','sesiones','suscripciones','pagos','reportes_obra','turnos_planificados')
+order by table_name, ordinal_position;
+
+-- Q3b: resto de policies (desde reglas_bot en adelante, incluido storage)
+select schemaname, tablename, policyname, roles, cmd, qual
+from pg_policies
+where (schemaname='public' and tablename >= 'reglas_bot') or schemaname='storage'
+order by 1,2,3;
+```
+
+Q11 (índices) también vino cortado, pero alcanza para la Fase 3. Si querés, exportalo con “Download CSV” desde el resultado completo.
