@@ -6,6 +6,7 @@ import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
 import { Chip } from "../ui";
 import { hoyArg } from "../../lib/dates";
+import { cargarHoraExtraAprobada } from "../../lib/solicitudes";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const GREEN = "#16A34A";
@@ -70,16 +71,18 @@ export default function InboxScreen({ ctx, reload, usuario }) {
           const ok = estado === "aprobado";
           await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: ok ? "✅ Salida APROBADA — ya podés fichar tu salida" : "❌ Salida anticipada RECHAZADA", detalle: ok ? `${usuario.apodo} aprobó que te retires antes. Fichá tu salida con "Me voy" cuando te vayas.` : `${usuario.apodo} rechazó el permiso para retirarte antes.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), ok ? "✅ Salida aprobada" : "❌ Salida rechazada", ok ? "Ya podés fichar tu salida" : `${usuario.apodo} rechazó tu permiso de salida`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        } else if (esCambioHorario && estado === "aprobado" && sol.datos_horario) {
-          try {
-            const nuevoHorario = typeof sol.datos_horario === "string" ? JSON.parse(sol.datos_horario) : sol.datos_horario;
-            if (nuevoHorario && sol.empleado_id) {
-              const horas = Object.values(nuevoHorario).reduce((acc, v) => { if (!v) return acc; const [hI, mI] = v.in.split(":").map(Number); const [hO, mO] = v.out.split(":").map(Number); return acc + (hO * 60 + mO - hI * 60 - mI) / 60; }, 0);
-              await sb.patch(`empleados?id=eq.${sol.empleado_id}`, { diagrama: nuevoHorario, horas_semanales: Math.round(horas) });
-            }
-          } catch (e) { console.error("Error actualizando grilla:", e); }
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Cambio de horario APROBADO", detalle: `${usuario.apodo} aprobó tu solicitud de cambio de horario.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
-          sendPushToLegajo(String(sol.legajo), "✅ Horario actualizado", `Tu cambio de horario fue aprobado por ${usuario.apodo}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
+        } else if (sol.tipo === "hora_extra" && estado === "aprobado") {
+          // F1-06: la hora extra aprobada se carga en la fichada (cuenta en la liquidación)
+          const horas = await cargarHoraExtraAprobada(sb, sol);
+          const detalle = horas > 0 ? `${usuario.apodo} aprobó ${horas}h extra; ya figuran en tu fichada.` : `${usuario.apodo} aprobó tu hora extra.`;
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Hora extra APROBADA", detalle, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          sendPushToLegajo(String(sol.legajo), "✅ Hora extra aprobada", detalle, { empresa_id: usuario.empresa_id }).catch(() => {});
+        } else if (esCambioHorario && estado === "aprobado") {
+          // F1-07: antes intentaba aplicar una propuesta que nunca se guardaba
+          // (datos_horario no existe) y no cambiaba nada. La grilla la ajusta
+          // gestión desde Gestión de personal; acá solo se avisa.
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Cambio de horario APROBADO", detalle: `${usuario.apodo} aprobó tu cambio de horario. Vas a ver la grilla nueva cuando la actualicen en Gestión de personal.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          sendPushToLegajo(String(sol.legajo), "✅ Cambio de horario aprobado", `Tu cambio de horario fue aprobado por ${usuario.apodo}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else {
           await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: `Solicitud ${estado === "aprobado" ? "APROBADA ✅" : "RECHAZADA ❌"}`, detalle: `${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), estado === "aprobado" ? "✅ Permiso aprobado" : "❌ Permiso rechazado", estado === "aprobado" ? `Tu ${sol.tipo} fue aprobado por ${usuario.apodo}` : `Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`, { empresa_id: usuario.empresa_id }).catch(() => {});

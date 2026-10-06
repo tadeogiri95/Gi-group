@@ -13,7 +13,7 @@ import { logger } from "../../lib/logger";
 import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "../../lib/validate";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
-import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS } from "../../lib/dataPolicy";
+import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -137,8 +137,7 @@ function validarBody(tabla, body, method) {
         if (!body.legajo || !body.tipo) {
           return { valido: false, error: "Solicitud requiere legajo y tipo" };
         }
-        const tiposValidos = ["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "cambio_horario", "otro"];
-        if (!tiposValidos.includes(body.tipo)) {
+        if (!TIPOS_SOLICITUD.includes(body.tipo)) {
           return { valido: false, error: `Tipo de solicitud inválido` };
         }
       }

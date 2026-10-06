@@ -274,3 +274,34 @@ test("push_tokens: cada usuario (también gestión) solo ve y borra los suyos", 
   await POST(req({ method: "DELETE", path: "push_tokens?token=eq.abc" }, t));
   assert.ok(llamadas.every((l) => l.url.includes(`legajo=eq.${LEGAJO}`)));
 });
+
+// ─── F1-06: tipos de solicitud que crea el chat ───
+
+for (const tipo of ["hora_extra", "salida_anticipada"]) {
+  test(`operativo: puede pedir una solicitud de tipo ${tipo} (antes daba 400)`, async () => {
+    const t = await token("operativo");
+    const { handlers, llamadas } = capturar("solicitudes");
+    global.fetch = createFetchMock(handlers);
+    const res = await POST(req({ method: "POST", path: "solicitudes", body: { legajo: LEGAJO, tipo, motivo: "x", fecha: "2026-10-06", estado: "pendiente" } }, t));
+    assert.equal(res.status, 200);
+    assert.equal(llamadas[0].body.tipo, tipo);
+  });
+}
+
+test("solicitud con un tipo inventado sigue rechazándose (400)", async () => {
+  const t = await token("operativo");
+  const { handlers, llamadas } = capturar("solicitudes");
+  global.fetch = createFetchMock(handlers);
+  const res = await POST(req({ method: "POST", path: "solicitudes", body: { legajo: LEGAJO, tipo: "aumento_de_sueldo" } }, t));
+  assert.equal(res.status, 400);
+  assert.equal(llamadas.length, 0);
+});
+
+test("todos los tipos de solicitud que crea el chat están permitidos", async () => {
+  const fs = await import("node:fs");
+  const { TIPOS_SOLICITUD } = await import("../app/lib/dataPolicy.js");
+  const src = fs.readFileSync(new URL("../app/components/screens/ChatScreen.jsx", import.meta.url), "utf8");
+  const usados = [...src.matchAll(/sb\.post\("solicitudes", \{[^}]*tipo: "([a-z_]+)"/g)].map((m) => m[1]);
+  assert.ok(usados.length >= 5, `se esperaban varios tipos, se encontraron: ${usados}`);
+  for (const t of usados) assert.ok(TIPOS_SOLICITUD.includes(t), `el chat crea "${t}" pero /api/data no lo acepta`);
+});

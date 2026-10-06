@@ -45,15 +45,15 @@
 | F2-05 | `/api/chat`: proxy abierto, sin presupuesto por tenant | Alto | S | **Hecho** (tadeogiri95/Gi-group#7, fusionado): prompt en el servidor, módulo por plan, cupo mensual |
 | F2-06 | Acciones de la IA con permisos amplios; prompts de empresa editables por cualquiera | Alto | S | **Hecho** (#3 prompts solo dueño; #7 lista blanca + confirmación) |
 | F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | **Hecho** (tadeogiri95/Gi-group#3, fusionado) |
-| F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | En PR #16: push libre solo gestión; el operario solo avisa a gestión, sin links; el SW abre solo el mismo origen. Queda: armar en el servidor los avisos automáticos del operario |
-| F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | En PR #16 + migración 070: sin SVG, nombres del servidor sin upsert, *magic bytes*, logo solo gestión, límites por bucket. Queda: `reportes-obra` a bucket privado con URL firmada |
+| F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado): push libre solo gestión; el operario solo avisa a gestión, sin links; el SW abre solo el mismo origen. Queda: armar en el servidor los avisos automáticos del operario |
+| F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado) + migración 070: sin SVG, nombres del servidor sin upsert, *magic bytes*, logo solo gestión, límites por bucket. Queda: `reportes-obra` a bucket privado con URL firmada |
 | F2-10 | Canal Realtime público | Medio | S | Pendiente |
 | F2-11 | Webhook de MP: validar suscripción, empresa y monto; tabla de eventos | Medio | S | Pendiente |
-| F2-12 | Recupero de contraseña sin rate limit; las sesiones no se revocan al cambiar la contraseña | Medio | S | En PR #16: rate limit por IP y email, `isUUID`, revocación de sesiones al cambiar/resetear (y el refresh no renueva revocadas). Queda: pedir la contraseña actual al cambiarla |
-| F2-13 | Superadmin con clave única sin 2FA; auditoría que falla en silencio; cookie con path incorrecto | Medio | S | En PR #16: cookie `path:/` + `SameSite=Strict`, comparación en tiempo constante, auditoría que loguea fallas (la impersonación no procede sin registro). Queda: usuario propio + 2FA (ítem 45) |
+| F2-12 | Recupero de contraseña sin rate limit; las sesiones no se revocan al cambiar la contraseña | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado): rate limit por IP y email, `isUUID`, revocación de sesiones al cambiar/resetear (y el refresh no renueva revocadas). Queda: pedir la contraseña actual al cambiarla |
+| F2-13 | Superadmin con clave única sin 2FA; auditoría que falla en silencio; cookie con path incorrecto | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado): cookie `path:/` + `SameSite=Strict`, comparación en tiempo constante, auditoría que loguea fallas (la impersonación no procede sin registro). Queda: usuario propio + 2FA (ítem 45) |
 | F2-14 | Un único `JWT_SECRET` para 8 tipos de token, sin `aud` | Medio | M | Pendiente |
 | F2-15 | Rate limits en memoria | Medio | S | Pendiente |
-| F2-16 | `/api/geocode` público | Medio | S | En PR #16: exige sesión, caché de 24 h y límite por empresa |
+| F2-16 | `/api/geocode` público | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado): exige sesión, caché de 24 h y límite por empresa |
 | F2-17 | Privacidad: proveedores omitidos, GPS “opcional”, Ley 25.326/DPA | Medio | M | Pendiente (legal) |
 | F2-18 | Exenciones de CSRF amplias | Bajo | S | Pendiente |
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
@@ -76,10 +76,10 @@
 | F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | **Hecho** (tadeogiri95/Gi-group#15, fusionado): todas las páginas + aviso en pantalla |
 | F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | **Hecho** (#6: botón “Código de acceso”) |
 | F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | **Hecho** (#6) |
-| F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | Pendiente |
-| F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | Pendiente |
-| F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | Pendiente |
-| F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | Pendiente |
+| F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | En PR #17 + migración 071 (la regla `solicitudes_tipo_check` de prod solo aceptaba 5 tipos): tipos `hora_extra` y `salida_anticipada` permitidos; al aprobar, la hora extra se carga en la fichada |
+| F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | En PR #17: se quitó el código muerto; aprobar avisa al empleado y la grilla se ajusta en Gestión de personal. Queda: flujo con propuesta de grilla, si hace falta |
+| F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | En PR #17: idempotencia por (pago, estado) con PATCH condicionado |
+| F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | En PR #17: acepta segundos y milisegundos. Queda: prueba punta a punta en el sandbox de MP (F6-03) |
 | F1-10 | Fecha de actividad en UTC (después de las 21 h) | Medio | S | **Hecho** (#10 fusionado) |
 | F1-11 | Horas extra en turno noche | Medio | S | **Hecho** (#10 fusionado) |
 | F1-12 | Escrituras de varios pasos sin transacción | Medio | M | Pendiente |
@@ -91,7 +91,7 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | Pendiente |
+| F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | En PR #17: encabezado con “← Volver” |
 | F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Pendiente |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
 | F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Pendiente |

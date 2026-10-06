@@ -12,7 +12,7 @@ import { getPreapproval, getPago, cancelarPreapproval } from "../../../lib/merca
 import { sendFalloPago, sendPlanSuspendido, sendPagoConfirmado } from "../../../lib/email";
 import { emitirFacturaC } from "../../../lib/afip";
 import { logger } from "../../../lib/logger";
-import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
+import { sbGet, sbPost, sbPatch, sbPatchOk } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
 import { safeErrorMessage } from "../../../lib/validate";
 
@@ -24,6 +24,16 @@ const WH_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 // Ahora: si no hay secret, el POST entero retorna 500 antes
 //        de llegar a validarFirma. La función SIEMPRE valida.
 // ═══════════════════════════════════════════════════════════
+// F1-08: cambios de estado de un pago ya registrado que sí se procesan.
+// Cualquier otro (mismo estado = reintento, o un estado viejo que llega tarde) se ignora.
+const TRANSICIONES_PAGO = {
+  pendiente: new Set(["aprobado", "rechazado"]),
+  aprobado: new Set(["reembolsado"]),
+};
+function transicionPagoValida(de, a) {
+  return TRANSICIONES_PAGO[de]?.has(a) || false;
+}
+
 function validarFirma(request) {
   const signature = request.headers.get("x-signature");
   const requestId = request.headers.get("x-request-id");
@@ -77,12 +87,18 @@ export async function POST(request) {
     }
 
     // ═══ Freshness check: previene replay attacks ═══
-    // ts viene en el header x-signature como "ts=<unix_ms>,v1=<hash>"
+    // ts viene en el header x-signature como "ts=<unix>,v1=<hash>"
     const sigHeader = request.headers.get("x-signature") || "";
     const sigParts = Object.fromEntries(sigHeader.split(",").map(p => p.trim().split("=")));
     const tsRaw = sigParts.ts;
     if (tsRaw) {
-      const tsMs = Number(tsRaw);
+      // F1-09: los ejemplos de Mercado Pago muestran el ts en segundos (10
+      // dígitos); se aceptan segundos y milisegundos. Un ts no numérico se rechaza.
+      const tsNum = Number(tsRaw);
+      if (!Number.isFinite(tsNum)) {
+        return NextResponse.json({ ok: false, error: "Webhook rechazado: timestamp inválido" }, { status: 403 });
+      }
+      const tsMs = tsNum < 1e12 ? tsNum * 1000 : tsNum;
       const nowMs = Date.now();
       const diffMs = nowMs - tsMs;
       // Más de 5 minutos en el pasado → posible replay
@@ -238,12 +254,23 @@ export async function POST(request) {
       const empresaId = match?.[1];
       const suscId = match?.[2];
 
-      // Idempotencia: MP reintenta webhooks — no insertar si ya existe este pago.
-      // Si el pago existe pero empresa.plan_activo no fue actualizado (ej: el PATCH
-      // falló en el intento anterior), repararlo antes de retornar.
+      let estadoPago = "pendiente";
+      if (pago.status === "approved") estadoPago = "aprobado";
+      else if (pago.status === "rejected") estadoPago = "rechazado";
+      else if (pago.status === "refunded") estadoPago = "reembolsado";
+
+      // Idempotencia por (pago, estado) — F1-08. MP reintenta webhooks y además
+      // avisa cada cambio de estado del mismo pago (p. ej. pending → approved).
+      // Antes se cortaba si el pago ya existía, y un pago que llegaba primero
+      // "pendiente" quedaba así para siempre: sin factura ni email de confirmación.
+      let pagoRegistrado = null;
       if (pago.id) {
-        const existing = await sbGet(`pagos?gateway_payment_id=eq.${pago.id}&select=id&limit=1`);
-        if (Array.isArray(existing) && existing.length > 0) {
+        const existing = await sbGet(`pagos?gateway_payment_id=eq.${pago.id}&select=id,estado&limit=1`);
+        const previo = Array.isArray(existing) ? existing[0] : null;
+        if (previo && !transicionPagoValida(previo.estado, estadoPago)) {
+          // Reintento del mismo estado: no se reprocesa. Si el pago existe pero
+          // empresa.plan_activo no fue actualizado (ej: el PATCH falló en el
+          // intento anterior), repararlo antes de retornar.
           if (pago.status === "approved" && suscId && empresaId) {
             try {
               const [susc] = await sbGet(`suscripciones?id=eq.${suscId}&select=plan&limit=1`);
@@ -262,14 +289,23 @@ export async function POST(request) {
           logger.debug("[webhook] Pago ya procesado, ignorando reintento:", pago.id);
           return NextResponse.json({ ok: true, accion: "pago_ya_procesado" });
         }
+        if (previo) {
+          // Transición de estado: PATCH condicionado al estado anterior, así dos
+          // webhooks simultáneos no disparan dos veces la factura ni el email.
+          const actualizado = await sbPatch(
+            `pagos?id=eq.${previo.id}&estado=eq.${previo.estado}`,
+            { estado: estadoPago, fecha_pago: pago.date_approved || pago.date_created },
+            { silent: true, fallback: [] }
+          );
+          if (!Array.isArray(actualizado) || actualizado.length === 0) {
+            return NextResponse.json({ ok: true, accion: "pago_ya_procesado" });
+          }
+          logger.info("[webhook] Pago cambió de estado", { pagoId: pago.id, de: previo.estado, a: estadoPago });
+          pagoRegistrado = actualizado[0];
+        }
       }
 
-      let estadoPago = "pendiente";
-      if (pago.status === "approved") estadoPago = "aprobado";
-      else if (pago.status === "rejected") estadoPago = "rechazado";
-      else if (pago.status === "refunded") estadoPago = "reembolsado";
-
-      const [pagoInsertado] = await sbPost("pagos", {
+      const [pagoInsertado] = pagoRegistrado ? [pagoRegistrado] : await sbPost("pagos", {
         empresa_id: empresaId || null,
         suscripcion_id: suscId || null,
         monto: pago.transaction_amount,

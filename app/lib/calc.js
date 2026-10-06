@@ -341,3 +341,26 @@ export function salidaAnticipada({ fechaIngreso, fechaAhora, horaAhora, diagrama
   if (!Number.isFinite(tAhora) || !Number.isFinite(tFin)) return null;
   return { minutos: Math.round((tFin - tAhora) / MIN_MS), finGrilla: gOut };
 }
+
+/**
+ * Horas extra a cargar cuando gerencia APRUEBA una solicitud de hora extra
+ * (F1-06). Es el caso en que el empleado llegó tarde pero trabajó más que su
+ * jornada: calcularJornada no las suma solas y pide aprobación. Si el egreso
+ * es menor que el ingreso, la jornada cruzó la medianoche (turno noche).
+ * @returns {number} horas con 2 decimales (0 si no hay excedente o faltan datos)
+ */
+export function horasExtraAprobables({ fecha, ingreso, egreso, diagrama }) {
+  const hIn = horaHHMM(ingreso);
+  const hOut = horaHHMM(egreso);
+  if (!fecha || !hIn || !hOut) return 0;
+  let fechaEgreso = fecha;
+  if (hOut < hIn) {
+    const d = new Date(`${fecha}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    fechaEgreso = d.toISOString().slice(0, 10);
+  }
+  const j = calcularJornada({ fechaIngreso: fecha, horaIngreso: hIn, fechaEgreso, horaEgreso: hOut, diagrama });
+  if (!j) return 0;
+  const extra = j.datosJornada ? j.datosJornada.excedente_min / 60 : j.horasExtra;
+  return Math.max(0, +extra.toFixed(2));
+}

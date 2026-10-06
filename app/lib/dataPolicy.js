@@ -20,6 +20,10 @@
 
 export const ROLES_GESTION = new Set(["gerencial", "administrativo"]);
 
+// Tipos de solicitud que acepta /api/data. hora_extra (F1-06) y
+// salida_anticipada (D22) los crea el chat y antes se rechazaban con 400.
+export const TIPOS_SOLICITUD = ["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "cambio_horario", "hora_extra", "salida_anticipada", "otro"];
+
 // own: columna que identifica al dueño de la fila y de qué dato de la sesión sale.
 const OWN_EMPLEADO = { col: "empleado_id", from: "empleado_id" };
 const OWN_LEGAJO = { col: "legajo", from: "legajo" };
