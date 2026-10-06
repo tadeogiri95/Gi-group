@@ -13,6 +13,7 @@ export default function ReglasAsistencia() {
   const [tolerancia, setTolerancia] = useState(inicial.tolerancia_min);
   const [bloqueoMin, setBloqueoMin] = useState(inicial.bloqueo_min);
   const [bloqueoTardanzas, setBloqueoTardanzas] = useState(inicial.bloqueo_tardanzas_mes);
+  const [permisoSalida, setPermisoSalida] = useState(inicial.permiso_salida_anticipada);
   const [estado, setEstado] = useState(null); // null | "guardando" | "ok" | mensaje de error
   const esDueno = usuario?.rol === "gerencial";
 
@@ -23,7 +24,7 @@ export default function ReglasAsistencia() {
 
   const guardar = async () => {
     setEstado("guardando");
-    const reglas = { tolerancia_min: tolerancia, bloqueo_min: bloqueoMin, bloqueo_tardanzas_mes: bloqueoTardanzas };
+    const reglas = { tolerancia_min: tolerancia, bloqueo_min: bloqueoMin, bloqueo_tardanzas_mes: bloqueoTardanzas, permiso_salida_anticipada: permisoSalida };
     try {
       const res = await apiFetch("/api/empresa", { method: "PATCH", body: JSON.stringify({ reglas_asistencia: reglas }) });
       const data = await res.json().catch(() => ({}));
@@ -79,8 +80,16 @@ export default function ReglasAsistencia() {
         </span>
       </div>
 
+      <div className={fila}>
+        <label className="text-[13px] text-gypi-text flex items-center gap-2">
+          <input type="checkbox" disabled={!esDueno} checked={permisoSalida}
+            onChange={e => setPermisoSalida(e.target.checked)} />
+          Pedir permiso para retirarse antes del fin de la jornada
+        </label>
+      </div>
+
       <div className="text-[11px] text-gypi-dim mt-2 leading-relaxed">
-        Cuando se bloquea, el empleado puede pedir permiso de ingreso desde el chat y gerencia lo aprueba.
+        Cuando se bloquea, el empleado pide permiso desde el chat y gerencia lo aprueba. La tolerancia también vale para la salida.
       </div>
 
       {esDueno && (

@@ -376,6 +376,78 @@ test("fichar — con ubicación aproximada del teléfono, el mensaje pide activa
   assert.match(json.error, /ubicación aproximada \(±2000 m\)/);
 });
 
+// ─── Salida anticipada con permiso (D22) ───
+function handlersSalida({ permisos = [] } = {}) {
+  return [
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro" }] }) },
+    { match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=fecha,ingreso"), respond: () => ({ status: 200, body: [{ fecha: "2026-06-15", ingreso: "08:30:00" }] }) },
+    { match: (url) => url.includes("/rest/v1/empleados") && url.includes("select=diagrama"), respond: () => ({ status: 200, body: [{ diagrama: { lun: { in: "08:30", out: "17:30" } } }] }) },
+    { match: (url) => url.includes("/rest/v1/solicitudes") && url.includes("tipo=eq.salida_anticipada"), respond: () => ({ status: 200, body: permisos }) },
+  ];
+}
+const REGLAS_SALIDA = { tolerancia_min: 5, bloqueo_min: null, bloqueo_tardanzas_mes: null, permiso_salida_anticipada: true };
+
+test("fichar — salida antes de hora sin permiso: bloquea y no toca nada", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T19:00:00.000Z") }); // lunes 16:00 ARG
+    const token = await tokenValido();
+    global.fetch = mockFichar(handlersSalida(), { reglas: REGLAS_SALIDA });
+    const res = await POST(req({ accion: "egreso", forzar_cierre_tarea: true }, token));
+    const json = await res.json();
+    assert.equal(json.ok, false);
+    assert.equal(json.tipo, "salida_anticipada");
+    assert.equal(json.pendiente, false);
+    assert.match(json.error, /termina a las 17:30 \(faltan 90 min\)/);
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
+test("fichar — salida antes de hora con permiso pendiente: avisa que espere", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T19:00:00.000Z") });
+    const token = await tokenValido();
+    global.fetch = mockFichar(handlersSalida({ permisos: [{ estado: "pendiente" }] }), { reglas: REGLAS_SALIDA });
+    const json = await (await POST(req({ accion: "egreso" }, token))).json();
+    assert.equal(json.tipo, "salida_anticipada");
+    assert.equal(json.pendiente, true);
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
+test("fichar — salida antes de hora con permiso aprobado: sigue al egreso normal", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T19:00:00.000Z") });
+    const token = await tokenValido();
+    global.fetch = mockFichar([
+      ...handlersSalida({ permisos: [{ estado: "aprobado" }] }),
+      // Tarea activa: si pasó el control de salida, llega hasta acá
+      { match: (url) => url.includes("/rest/v1/registro_actividades") && url.includes("hora_fin=is.null"), respond: () => ({ status: 200, body: [{ id: "t1" }] }) },
+    ], { reglas: REGLAS_SALIDA });
+    const json = await (await POST(req({ accion: "egreso" }, token))).json();
+    assert.equal(json.tipo, "tarea_activa");
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
+test("fichar — dentro de la tolerancia (3 min antes) no pide permiso", async (t) => {
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-15T20:27:00.000Z") }); // 17:27 ARG
+    const token = await tokenValido();
+    global.fetch = mockFichar([
+      ...handlersSalida(),
+      { match: (url) => url.includes("/rest/v1/registro_actividades") && url.includes("hora_fin=is.null"), respond: () => ({ status: 200, body: [{ id: "t1" }] }) },
+    ], { reglas: REGLAS_SALIDA });
+    const json = await (await POST(req({ accion: "egreso" }, token))).json();
+    assert.equal(json.tipo, "tarea_activa");
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
 // ─── Egreso: tope de horas y atomicidad (auditoría 2026-06-24) ───────────────
 
 test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero no bloquea el egreso", async () => {

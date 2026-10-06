@@ -53,6 +53,8 @@ export async function ficharServer(accion, opciones = {}) {
     err.tipo = data.tipo || "error_servidor";
     err.tardanza = data.tardanza;
     err.tarea_id = data.tarea_id;
+    err.pendiente = data.pendiente;
+    err.fin_grilla = data.fin_grilla;
     throw err;
   }
   return data;

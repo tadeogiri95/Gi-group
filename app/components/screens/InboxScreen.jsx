@@ -65,6 +65,11 @@ export default function InboxScreen({ ctx, reload, usuario }) {
           }
           await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Ingreso APROBADO — Ya quedaste fichado", detalle: `${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), "✅ Ingreso aprobado", `Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
+        } else if (sol.tipo === "salida_anticipada") {
+          // El empleado ficha su salida él mismo cuando se va: así las horas son las reales
+          const ok = estado === "aprobado";
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: ok ? "✅ Salida APROBADA — ya podés fichar tu salida" : "❌ Salida anticipada RECHAZADA", detalle: ok ? `${usuario.apodo} aprobó que te retires antes. Fichá tu salida con "Me voy" cuando te vayas.` : `${usuario.apodo} rechazó el permiso para retirarte antes.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          sendPushToLegajo(String(sol.legajo), ok ? "✅ Salida aprobada" : "❌ Salida rechazada", ok ? "Ya podés fichar tu salida" : `${usuario.apodo} rechazó tu permiso de salida`, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else if (esCambioHorario && estado === "aprobado" && sol.datos_horario) {
           try {
             const nuevoHorario = typeof sol.datos_horario === "string" ? JSON.parse(sol.datos_horario) : sol.datos_horario;

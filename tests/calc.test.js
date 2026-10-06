@@ -288,7 +288,25 @@ test("calcularTardanza — la tolerancia es configurable", () => {
 
 test("normalizarReglasAsistencia — descarta valores inválidos y respeta null", () => {
   assert.deepEqual(normalizarReglasAsistencia({ tolerancia_min: -1, bloqueo_min: "15", bloqueo_tardanzas_mes: 0 }),
-    { tolerancia_min: 5, bloqueo_min: null, bloqueo_tardanzas_mes: null });
+    { tolerancia_min: 5, bloqueo_min: null, bloqueo_tardanzas_mes: null, permiso_salida_anticipada: false });
   assert.deepEqual(normalizarReglasAsistencia({ tolerancia_min: 0, bloqueo_min: 15, bloqueo_tardanzas_mes: 3 }),
-    { tolerancia_min: 0, bloqueo_min: 15, bloqueo_tardanzas_mes: 3 });
+    { tolerancia_min: 0, bloqueo_min: 15, bloqueo_tardanzas_mes: 3, permiso_salida_anticipada: false });
+});
+
+// ─── Salida anticipada (D22) ───
+import { salidaAnticipada } from "../app/lib/calc.js";
+
+test("salidaAnticipada — minutos que faltan para el fin de la grilla del día del ingreso", () => {
+  const diag = { mar: { in: "08:30", out: "17:30" } };
+  assert.deepEqual(salidaAnticipada({ fechaIngreso: "2026-10-06", fechaAhora: "2026-10-06", horaAhora: "16:00", diagrama: diag }), { minutos: 90, finGrilla: "17:30" });
+  assert.equal(salidaAnticipada({ fechaIngreso: "2026-10-06", fechaAhora: "2026-10-06", horaAhora: "17:45", diagrama: diag }).minutos, -15);
+});
+
+test("salidaAnticipada — turno noche: lunes 22:00–06:00, se quiere ir martes 05:00", () => {
+  const diag = { lun: { in: "22:00", out: "06:00" } };
+  assert.equal(salidaAnticipada({ fechaIngreso: "2026-10-05", fechaAhora: "2026-10-06", horaAhora: "05:00", diagrama: diag }).minutos, 60);
+});
+
+test("salidaAnticipada — sin grilla ese día devuelve null", () => {
+  assert.equal(salidaAnticipada({ fechaIngreso: "2026-10-04", fechaAhora: "2026-10-04", horaAhora: "12:00", diagrama: { mar: { in: "08:00", out: "17:00" } } }), null);
 });

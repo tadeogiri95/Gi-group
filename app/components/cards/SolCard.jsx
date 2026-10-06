@@ -7,7 +7,8 @@ const CYAN = "#0891B2";
 
 export default function SolCard({ s, showActions, onResolve }) {
   const ec = { pendiente: AMBER, aprobado: GREEN, rechazado: RED, registrado: CYAN };
-  const esPermisoIngreso = s.motivo?.includes("🔓") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo");
+  // Permisos de ingreso y de salida anticipada: urgentes, el empleado está esperando
+  const esPermisoIngreso = s.motivo?.includes("🔓") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo") || s.tipo === "salida_anticipada";
 
   return (
     <article

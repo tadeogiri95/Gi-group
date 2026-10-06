@@ -76,11 +76,14 @@ export function parseHoraAMinutos(hhmm) {
  *   tolerancia_min          minutos de gracia antes de contar como tarde
  *   bloqueo_min             si llega más tarde que esto, no puede fichar sin permiso (null = nunca)
  *   bloqueo_tardanzas_mes   a la N-ésima tardanza del mes se bloquea (null = nunca)
+ *   permiso_salida_anticipada  para fichar salida antes del fin de la grilla
+ *                              (menos la tolerancia) hace falta permiso aprobado
  */
 export const REGLAS_ASISTENCIA_DEFAULT = Object.freeze({
   tolerancia_min: 5,
   bloqueo_min: null,
   bloqueo_tardanzas_mes: null,
+  permiso_salida_anticipada: false,
 });
 
 /** Mezcla las reglas guardadas con los defaults, descartando valores inválidos. */
@@ -94,6 +97,7 @@ export function normalizarReglasAsistencia(reglas) {
   else if (entero(reglas.bloqueo_min, 1, 600) !== undefined) r.bloqueo_min = reglas.bloqueo_min;
   if (reglas.bloqueo_tardanzas_mes === null) r.bloqueo_tardanzas_mes = null;
   else if (entero(reglas.bloqueo_tardanzas_mes, 1, 31) !== undefined) r.bloqueo_tardanzas_mes = reglas.bloqueo_tardanzas_mes;
+  if (typeof reglas.permiso_salida_anticipada === "boolean") r.permiso_salida_anticipada = reglas.permiso_salida_anticipada;
   return r;
 }
 
@@ -316,4 +320,24 @@ export function calcularJornada({ fechaIngreso, horaIngreso, fechaEgreso, horaEg
     };
   }
   return res;
+}
+
+/**
+ * ¿Cuántos minutos antes del fin de su grilla se está yendo? Usa la grilla del
+ * día del INGRESO y cruza la medianoche (turno noche). null si no hay grilla.
+ * @returns {null | { minutos: number, finGrilla: string }}
+ */
+export function salidaAnticipada({ fechaIngreso, fechaAhora, horaAhora, diagrama }) {
+  const ahora = horaHHMM(horaAhora);
+  const diaKey = DIAS_SEMANA[new Date(`${fechaIngreso}T12:00:00Z`).getUTCDay()];
+  const grilla = diagrama?.[diaKey];
+  const gIn = horaHHMM(grilla?.in);
+  const gOut = horaHHMM(grilla?.out);
+  if (!ahora || !gIn || !gOut) return null;
+  const tIn = instante(fechaIngreso, gIn);
+  let tFin = instante(fechaIngreso, gOut);
+  if (tFin <= tIn) tFin += 24 * 60 * MIN_MS;
+  const tAhora = instante(fechaAhora, ahora);
+  if (!Number.isFinite(tAhora) || !Number.isFinite(tFin)) return null;
+  return { minutos: Math.round((tFin - tAhora) / MIN_MS), finGrilla: gOut };
 }

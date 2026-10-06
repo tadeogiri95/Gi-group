@@ -316,6 +316,7 @@ export const empresaPatchBody = z.object({
     tolerancia_min: z.number().int().min(0).max(120),
     bloqueo_min: z.number().int().min(1).max(600).nullable(),
     bloqueo_tardanzas_mes: z.number().int().min(1).max(31).nullable(),
+    permiso_salida_anticipada: z.boolean().optional(),
   }).strict().optional(),
 }).strict();
 
