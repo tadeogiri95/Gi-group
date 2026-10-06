@@ -105,14 +105,14 @@ test("calcularTardanza — 20 min tarde con 1 previa es tarde (2da)", () => {
 });
 
 test("calcularTardanza — 3ra tarde del mes se bloquea aunque sea poca demora", () => {
-  const r = calcularTardanza("08:00", "08:10", 2);
+  const r = calcularTardanza("08:00", "08:10", 2, { bloqueo_tardanzas_mes: 3 });
   assert.equal(r.estado, "bloqueado");
   assert.equal(r.llegadasTarde, 3);
-  assert.match(r.motivo, /3ra/);
+  assert.match(r.motivo, /n.º 3 del mes/);
 });
 
 test("calcularTardanza — más de 30 min se bloquea aunque sea la 1ra", () => {
-  const r = calcularTardanza("08:00", "08:45", 0);
+  const r = calcularTardanza("08:00", "08:45", 0, { bloqueo_min: 30 });
   assert.equal(r.estado, "bloqueado");
   assert.equal(r.minutos, 45);
   assert.match(r.motivo, /30 min/);
@@ -263,4 +263,32 @@ test("calcularJornada — sin grilla para el día: solo horas, sin extra", () =>
 
 test("calcularJornada — hora inválida devuelve null (nunca NaN)", () => {
   assert.equal(calcularJornada({ fechaIngreso: "2026-10-05", horaIngreso: "basura", fechaEgreso: "2026-10-05", horaEgreso: "17:00" }), null);
+});
+
+// ─── Reglas de asistencia por empresa (D5) ───
+import { normalizarReglasAsistencia } from "../app/lib/calc.js";
+
+test("calcularTardanza — sin reglas de la empresa nunca bloquea (no son reglas del producto)", () => {
+  assert.equal(calcularTardanza("08:00", "10:00", 0).estado, "tarde");
+  assert.equal(calcularTardanza("08:00", "08:10", 9).estado, "tarde");
+});
+
+test("calcularTardanza — empresa con bloqueo a los 15 min", () => {
+  const reglas = { tolerancia_min: 5, bloqueo_min: 15 };
+  assert.equal(calcularTardanza("08:30", "08:45", 0, reglas).estado, "tarde");
+  const r = calcularTardanza("08:30", "08:46", 0, reglas);
+  assert.equal(r.estado, "bloqueado");
+  assert.equal(r.tipoBloqueo, "minutos");
+});
+
+test("calcularTardanza — la tolerancia es configurable", () => {
+  assert.equal(calcularTardanza("08:00", "08:10", 0, { tolerancia_min: 10 }).estado, "puntual");
+  assert.equal(calcularTardanza("08:00", "08:01", 0, { tolerancia_min: 0 }).estado, "tarde");
+});
+
+test("normalizarReglasAsistencia — descarta valores inválidos y respeta null", () => {
+  assert.deepEqual(normalizarReglasAsistencia({ tolerancia_min: -1, bloqueo_min: "15", bloqueo_tardanzas_mes: 0 }),
+    { tolerancia_min: 5, bloqueo_min: null, bloqueo_tardanzas_mes: null });
+  assert.deepEqual(normalizarReglasAsistencia({ tolerancia_min: 0, bloqueo_min: 15, bloqueo_tardanzas_mes: 3 }),
+    { tolerancia_min: 0, bloqueo_min: 15, bloqueo_tardanzas_mes: 3 });
 });

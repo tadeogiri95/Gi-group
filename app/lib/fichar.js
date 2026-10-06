@@ -16,9 +16,12 @@ import { haversine } from "./calc";
 const REINTENTOS_RED = [800, 1600];
 
 export async function ficharServer(accion, opciones = {}) {
+  // La sesión viaja en la cookie httpOnly; el token en memoria es solo un
+  // respaldo y se pierde al recargar la página. Antes, sin él, se cortaba acá
+  // con "Sin sesión" y el chat lo mostraba como fichaje exitoso.
   const token = getToken();
-  if (!token) throw new Error("Sin sesión");
-  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const csrf = getCsrfToken();
   if (csrf) headers["x-csrf-token"] = csrf;
   const body = JSON.stringify({ accion, ...opciones });
@@ -38,11 +41,16 @@ export async function ficharServer(accion, opciones = {}) {
     }
   }
 
-  if (res.status === 401) { clearToken(); throw new Error("Sesión expirada"); }
-  const data = await res.json();
+  if (res.status === 401) {
+    clearToken();
+    const err = new Error("Tu sesión venció. Volvé a iniciar sesión.");
+    err.tipo = "sesion_expirada";
+    throw err;
+  }
+  const data = await res.json().catch(() => ({}));
   if (!data.ok) {
-    const err = new Error(data.error || "Error al fichar");
-    err.tipo = data.tipo;
+    const err = new Error(data.error || "No se pudo fichar. Intentá de nuevo.");
+    err.tipo = data.tipo || "error_servidor";
     err.tardanza = data.tardanza;
     err.tarea_id = data.tarea_id;
     throw err;

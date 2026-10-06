@@ -61,7 +61,7 @@ export const POLICY = {
 };
 
 // Campos de empresa que definen el comportamiento de la IA: solo el dueño.
-export const CAMPOS_EMPRESA_SOLO_DUENO = ["prompt_ia_obra", "prompt_ia_chat"];
+export const CAMPOS_EMPRESA_SOLO_DUENO = ["prompt_ia_obra", "prompt_ia_chat", "reglas_asistencia"];
 
 function valorSesion(sesion, from) {
   const v = sesion?.[from];

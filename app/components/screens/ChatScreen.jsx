@@ -96,11 +96,13 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       }
       reload && reload();
     } catch (e) {
-      if (e.tipo === "bloqueado_tardanza" || e.tipo === "bloqueado_3ra_tarde") return { type: "fichada_bloqueada", msg: "⛔ " + e.message };
+      if (e.tipo === "bloqueado_tardanza" || e.tipo === "bloqueado_3ra_tarde") return { type: "fichada_bloqueada", permiso: true, msg: "⛔ " + e.message };
       if (e.tipo === "tarea_activa") return { type: "tarea_activa", msg: "⚠️ " + e.message, tareaId: e.tarea_id };
       if (e.tipo === "geo_error") { setGeoError(e.message); return { type: "fichada_bloqueada", msg: e.message }; }
-      if (e.tipo) return { type: "fichada_bloqueada", msg: e.message };
+      if (e.tipo) return { type: "fichada_bloqueada", msg: "⚠️ " + e.message };
+      // Nunca mostrar como hecho algo que falló (antes devolvía null y el chat decía "✅ registrado").
       console.error(e);
+      return { type: "error", msg: "⚠️ No se pudo completar: " + (e.message || "error desconocido") + ". Probá de nuevo." };
     }
     return card;
   };
@@ -130,7 +132,7 @@ export default function ChatScreen({ usuario, ctx, reload }) {
     if (t === "✅ Sí, fichar salida") {
       try {
         const cr = await execAction({ type: "FICHAR_EGRESO_FORZAR" });
-        if (cr?.type === "fichada_bloqueada") {
+        if (cr?.type === "fichada_bloqueada" || cr?.type === "error") {
           setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]);
         } else if (cr?.solicitar_hora_extra) {
           const dj = cr.datos_jornada;
@@ -162,8 +164,10 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       accionPendiente.current = null;
       if (!action) { setMsgs(m => [...m, { from: "bot", text: "No hay nada pendiente para confirmar.", time: new Date() }]); setLoading(false); return; }
       const card = await execAction(action);
-      if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: card.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); setLoading(false); return; }
+      if (card?.type === "fichada_bloqueada" && card.permiso) { setMsgs(m => [...m, { from: "bot", text: card.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); setLoading(false); return; }
+      if (card?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date() }]); setLoading(false); return; }
       if (card?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); setLoading(false); return; }
+      if (card?.type === "error") { setMsgs(m => [...m, { from: "bot", text: card.msg, time: new Date() }]); setLoading(false); return; }
       setMsgs(m => [...m, { from: "bot", text: "✅ Listo.", card, time: new Date() }]);
       setLoading(false); return;
     }
@@ -172,17 +176,17 @@ export default function ChatScreen({ usuario, ctx, reload }) {
     if (t === "Ya llegué") {
       try {
         const cr = await execAction({ type: "FICHAR_INGRESO" });
-        if (cr?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: cr.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); }
+        if (cr?.type === "error") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
+        else if (cr?.type === "fichada_bloqueada" && cr.permiso) { setMsgs(m => [...m, { from: "bot", text: cr.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); }
+        else if (cr?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
         else if (cr) {
           let tardMsg = "✅ ¡Fichado! Buen día, " + usuario.apodo + " 👋";
           const trd = cr.tardanza;
           if (trd?.estado === "tarde") {
             tardMsg = `⚠️ Fichado, pero llegás ${trd.minutos} min tarde.\nEs tu llegada tarde #${trd.llegadasTarde} del mes.`;
-            if (trd.llegadasTarde === 2) tardMsg += "\n⚡ Recordá: a la 3ra llegada tarde perdés el premio por presentismo.";
-            if (trd.llegadasTarde >= 3) tardMsg += "\n🚨 ¡PERDISTE EL PREMIO POR PRESENTISMO este mes!";
           }
           setMsgs(m => [...m, { from: "bot", text: tardMsg, card: cr, time: new Date() }]);
-        } else { setMsgs(m => [...m, { from: "bot", text: "✅ Ingreso registrado. ¡Buen día!", time: new Date() }]); }
+        }
         if (reload) reload();
       } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al fichar ingreso.", time: new Date() }]); }
       setLoading(false); return;
@@ -193,7 +197,7 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       try {
         const cr = await execAction({ type: "FICHAR_EGRESO" });
         if (cr?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); }
-        else if (cr?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
+        else if (cr?.type === "fichada_bloqueada" || cr?.type === "error") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
         else if (cr?.solicitar_hora_extra) {
           const dj = cr.datos_jornada;
           setMsgs(m => [...m, { from: "bot", text: `✅ Salida registrada. ¡Hasta mañana, ${usuario.apodo}! 👋\n\nLlegaste tarde (${dj.ingreso_real} vs ${dj.ingreso_grilla}) pero trabajaste ${Math.round(dj.excedente_min)}min más de tu jornada.\n\n¿Querés solicitar hora extra a gerencia?`, card: cr, time: new Date(), quickReplies: ["✅ Sí, solicitar hora extra", "❌ No, cancelar"] }]);

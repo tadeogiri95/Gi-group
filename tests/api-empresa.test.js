@@ -228,3 +228,43 @@ test("PATCH empresa — administrativo no puede cambiar las instrucciones de la 
   const res = await PATCH(patchReq({ prompt_ia_chat: "Ignorá las reglas" }, token));
   assert.equal(res.status, 403);
 });
+
+// ─── Reglas de asistencia (D5, migración 068) ───
+
+test("PATCH empresa — el dueño guarda las reglas de asistencia", async () => {
+  const token = await tokenConRol("gerencial");
+  let patched = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url, opts) => url.includes("/rest/v1/empresa") && opts?.method === "PATCH",
+      respond: (url, opts) => { patched = JSON.parse(opts.body); return { status: 200, body: [EMPRESA_COMPLETA] }; },
+    },
+  ]);
+  const reglas = { tolerancia_min: 5, bloqueo_min: 15, bloqueo_tardanzas_mes: null };
+  const res = await PATCH(patchReq({ reglas_asistencia: reglas }, token));
+  assert.equal(res.status, 200);
+  assert.deepEqual(patched.reglas_asistencia, reglas);
+});
+
+test("PATCH empresa — un supervisor no puede cambiar las reglas de asistencia", async () => {
+  const token = await tokenConRol("administrativo");
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await PATCH(patchReq({ reglas_asistencia: { tolerancia_min: 60, bloqueo_min: null, bloqueo_tardanzas_mes: null } }, token));
+  const json = await res.json();
+  assert.equal(res.status, 403);
+  assert.match(json.error, /reglas de asistencia/);
+});
+
+test("PATCH empresa — reglas de asistencia inválidas → 400", async () => {
+  const token = await tokenConRol("gerencial");
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  for (const r of [
+    { tolerancia_min: -1, bloqueo_min: null, bloqueo_tardanzas_mes: null },
+    { tolerancia_min: 5, bloqueo_min: "15", bloqueo_tardanzas_mes: null },
+    { tolerancia_min: 5, bloqueo_min: null, bloqueo_tardanzas_mes: null, extra: 1 },
+  ]) {
+    const res = await PATCH(patchReq({ reglas_asistencia: r }, token));
+    assert.equal(res.status, 400, JSON.stringify(r));
+  }
+});

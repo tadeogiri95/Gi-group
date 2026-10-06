@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { sb } from "../../lib/supabase";
 import { Ic } from "../Icons";
+import ReglasAsistencia from "../ReglasAsistencia";
 
 export default function ReglasScreen({ ctx, reload, usuario }) {
   const [nr, setNr] = useState("");
@@ -11,6 +12,8 @@ export default function ReglasScreen({ ctx, reload, usuario }) {
 
   return (
     <div className="px-[18px] pb-[110px] overflow-y-auto flex-1">
+      <ReglasAsistencia />
+
       {/* Header card */}
       <div className="rounded-card p-4 border border-gypi-border mb-3.5 bg-gradient-to-br from-gypi-violet/[0.07] to-gypi-surface">
         <div className="g-overline text-gypi-violet">REGLAS DEL BOT</div>

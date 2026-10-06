@@ -27,7 +27,9 @@
 | D16 | Cobro por **tramos de operarios + módulos** | 6 |
 | D17 | **100% self-service** (sin implementación paga) | 6 |
 | D18 | Precios en **USD cobrados en ARS** | 6 |
-| D19 | **Plan Free mínimo sin publicidad** | 6 |
+| D19 | ~~Plan Free mínimo sin publicidad~~ → **reemplazada por D20** | 6 |
+| D20 | **Solo versión paga, con trial de 30 días.** Los planes suben de precio a medida que incluyen más módulos. No hay plan Free (reemplaza D19; afecta el ítem 25 "Cobro real" de la Fase 7 y la publicidad/AdSense, que deja de tener sentido) | Post-H1 (2026-10-06) |
+| D21 | **Reglas de asistencia por empresa**: tolerancia, bloqueo por minutos de tardanza (la fábrica piloto usa 15 min) y bloqueo por N-ésima tardanza del mes; por defecto no se bloquea a nadie (concreta D5) | Post-H1 (2026-10-06) |
 
 ## 2. Hallazgos por área
 

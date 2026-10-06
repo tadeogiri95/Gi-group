@@ -70,20 +70,45 @@ export function parseHoraAMinutos(hhmm) {
 }
 
 /**
- * Calcula el estado de tardanza de un fichaje de ingreso.
- *
- * Reglas (replicadas de /api/fichar/route.js):
- *   - Tolerancia: ≤ 5 minutos → puntual
- *   - 5 a 30 min Y menos de 3 tardes en el mes → tarde (aceptado)
- *   - > 30 min → bloqueado (requiere permiso)
- *   - ≥ 3 tardes en el mes (contando esta) → bloqueado
+ * Reglas de asistencia por empresa (empresa.reglas_asistencia, migración 068).
+ * Son reglas de cada fábrica, no del producto (decisión D5): por defecto solo
+ * hay tolerancia y NO se bloquea a nadie. Cada empresa las ajusta en "Reglas".
+ *   tolerancia_min          minutos de gracia antes de contar como tarde
+ *   bloqueo_min             si llega más tarde que esto, no puede fichar sin permiso (null = nunca)
+ *   bloqueo_tardanzas_mes   a la N-ésima tardanza del mes se bloquea (null = nunca)
+ */
+export const REGLAS_ASISTENCIA_DEFAULT = Object.freeze({
+  tolerancia_min: 5,
+  bloqueo_min: null,
+  bloqueo_tardanzas_mes: null,
+});
+
+/** Mezcla las reglas guardadas con los defaults, descartando valores inválidos. */
+export function normalizarReglasAsistencia(reglas) {
+  const r = { ...REGLAS_ASISTENCIA_DEFAULT };
+  if (!reglas || typeof reglas !== "object") return r;
+  const entero = (v, min, max) => (Number.isInteger(v) && v >= min && v <= max ? v : undefined);
+  const t = entero(reglas.tolerancia_min, 0, 120);
+  if (t !== undefined) r.tolerancia_min = t;
+  if (reglas.bloqueo_min === null) r.bloqueo_min = null;
+  else if (entero(reglas.bloqueo_min, 1, 600) !== undefined) r.bloqueo_min = reglas.bloqueo_min;
+  if (reglas.bloqueo_tardanzas_mes === null) r.bloqueo_tardanzas_mes = null;
+  else if (entero(reglas.bloqueo_tardanzas_mes, 1, 31) !== undefined) r.bloqueo_tardanzas_mes = reglas.bloqueo_tardanzas_mes;
+  return r;
+}
+
+/**
+ * Calcula el estado de tardanza de un fichaje de ingreso según las reglas
+ * de la empresa (ver REGLAS_ASISTENCIA_DEFAULT).
  *
  * @param {string} horaEsperada - Hora "HH:MM" del diagrama (ej "08:00")
  * @param {string} horaReal     - Hora "HH:MM" del fichaje real
  * @param {number} llegadasTardePreviasDelMes - cantidad ya acumulada antes de hoy
- * @returns {{ estado: "puntual"|"tarde"|"bloqueado", minutos: number, llegadasTarde: number, motivo?: string }}
+ * @param {object} [reglas]     - reglas de asistencia de la empresa
+ * @returns {{ estado: "puntual"|"tarde"|"bloqueado", minutos: number, llegadasTarde: number, motivo?: string, tipoBloqueo?: "minutos"|"tardanzas" }}
  */
-export function calcularTardanza(horaEsperada, horaReal, llegadasTardePreviasDelMes = 0) {
+export function calcularTardanza(horaEsperada, horaReal, llegadasTardePreviasDelMes = 0, reglas) {
+  const { tolerancia_min, bloqueo_min, bloqueo_tardanzas_mes } = normalizarReglasAsistencia(reglas);
   const esperado = parseHoraAMinutos(horaEsperada);
   const real = parseHoraAMinutos(horaReal);
 
@@ -93,27 +118,29 @@ export function calcularTardanza(horaEsperada, horaReal, llegadasTardePreviasDel
 
   const diff = real - esperado;
 
-  if (diff <= 5) {
+  if (diff <= tolerancia_min) {
     return { estado: "puntual", minutos: Math.max(0, diff), llegadasTarde: llegadasTardePreviasDelMes };
   }
 
   const llegadas = llegadasTardePreviasDelMes + 1;
 
-  if (diff > 30) {
+  if (bloqueo_min != null && diff > bloqueo_min) {
     return {
       estado: "bloqueado",
+      tipoBloqueo: "minutos",
       minutos: diff,
       llegadasTarde: llegadas,
-      motivo: `Tardanza de ${diff} min (supera tolerancia de 30 min)`,
+      motivo: `Tardanza de ${diff} min (supera el máximo de ${bloqueo_min} min)`,
     };
   }
 
-  if (llegadas >= 3) {
+  if (bloqueo_tardanzas_mes != null && llegadas >= bloqueo_tardanzas_mes) {
     return {
       estado: "bloqueado",
+      tipoBloqueo: "tardanzas",
       minutos: diff,
       llegadasTarde: llegadas,
-      motivo: "3ra llegada tarde del mes",
+      motivo: `Llegada tarde n.º ${llegadas} del mes (el máximo es ${bloqueo_tardanzas_mes - 1})`,
     };
   }
 

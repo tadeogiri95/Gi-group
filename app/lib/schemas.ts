@@ -310,6 +310,12 @@ export const empresaPatchBody = z.object({
   logo_url: z.string().max(2048).optional().nullable(),
   prompt_ia_obra: z.string().max(5000).optional(),
   prompt_ia_chat: z.string().max(5000).optional(),
+  // Reglas de asistencia de la fábrica (D5). null = sin bloqueo.
+  reglas_asistencia: z.object({
+    tolerancia_min: z.number().int().min(0).max(120),
+    bloqueo_min: z.number().int().min(1).max(600).nullable(),
+    bloqueo_tardanzas_mes: z.number().int().min(1).max(31).nullable(),
+  }).strict().optional(),
 }).strict();
 
 // ── /api/login-empresa ──────────────────────────────────────────────────────

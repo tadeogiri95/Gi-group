@@ -28,6 +28,7 @@ const CAMPOS_EDITABLES = [
   "color_primario", "color_secundario", "color_fondo", "color_texto",
   "typography", "theme_preset", "logo_url",
   "prompt_ia_obra", "prompt_ia_chat",
+  "reglas_asistencia", // migración 068 — solo el dueño (CAMPOS_EMPRESA_SOLO_DUENO)
 ];
 
 export async function GET(request) {
@@ -61,7 +62,7 @@ export async function GET(request) {
     if (!sesion?.empresa_id) return NextResponse.json(DEFAULTS);
 
     const res = await fetch(
-      `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=id,nombre,nombre_corto,slug,admin_email,rubro,plan_activo,activa,onboarding_completado,trial_usado,max_empleados,timezone,color_primario,color_secundario,color_fondo,color_texto,typography,theme_preset,logo_url,prompt_ia_obra,prompt_ia_chat,created_at&limit=1`,
+      `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=id,nombre,nombre_corto,slug,admin_email,rubro,plan_activo,activa,onboarding_completado,trial_usado,max_empleados,timezone,color_primario,color_secundario,color_fondo,color_texto,typography,theme_preset,logo_url,prompt_ia_obra,prompt_ia_chat,reglas_asistencia,created_at&limit=1`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
     );
     const data = await res.json();
@@ -90,9 +91,11 @@ export async function PATCH(request) {
     if (parsed.response) return parsed.response;
     const body = parsed.data;
 
-    // Las instrucciones de la IA las define solo el dueño (auditoría F2-06)
-    if (sesion.rol !== "gerencial" && CAMPOS_EMPRESA_SOLO_DUENO.some((c) => body[c] !== undefined)) {
-      return NextResponse.json({ error: "Solo el dueño de la cuenta puede cambiar las instrucciones de la IA" }, { status: 403 });
+    // Las instrucciones de la IA y las reglas de asistencia las define solo el dueño (F2-06, D5)
+    const soloDueno = CAMPOS_EMPRESA_SOLO_DUENO.find((c) => body[c] !== undefined);
+    if (sesion.rol !== "gerencial" && soloDueno) {
+      const que = soloDueno === "reglas_asistencia" ? "las reglas de asistencia" : "las instrucciones de la IA";
+      return NextResponse.json({ error: `Solo el dueño de la cuenta puede cambiar ${que}` }, { status: 403 });
     }
 
     const updates = {};
