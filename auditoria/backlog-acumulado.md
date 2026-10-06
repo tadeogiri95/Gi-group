@@ -36,12 +36,12 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F2-00 | Base de producción abierta al rol anónimo (grants + policies permisivas + RPC) | Crítico | S | **Contenido** (REVOKE ejecutado y verificado). Pendiente: limpiar policies, revisar logs, forzar cambio de contraseñas |
-| F2-01 | `/api/data` sin control de rol (borrar empresa, autoaprobarse, escribir pagos) | Crítico | M | Pendiente |
+| F2-01 | `/api/data` sin control de rol (borrar empresa, autoaprobarse, escribir pagos) | Crítico | M | **En PR #3** (tadeogiri95/Gi-group#3) |
 | F2-02 | Embedding/`select` sin control + FK cruzadas entre tenants | Crítico | S–M | Pendiente |
 | F2-03 | Activación de cuenta solo con slug + legajo (toma de cuenta) | Alto | S | Pendiente (se resuelve con D7) |
 | F2-05 | `/api/chat`: proxy abierto, sin presupuesto por tenant | Alto | S | Pendiente |
 | F2-06 | Acciones de la IA con permisos amplios; prompts de empresa editables por cualquiera | Alto | S | Pendiente |
-| F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | Pendiente |
+| F2-07 | Datos personales de compañeros legibles por cualquier rol (GPS, chats, solicitudes) | Alto | S | **En PR #3** (tadeogiri95/Gi-group#3) |
 | F2-08 | Push libre con links arbitrarios (phishing interno) | Medio | S | Pendiente |
 | F2-09 | Storage: SVG en buckets públicos, upsert, sin límites por bucket | Medio | S | Pendiente |
 | F2-10 | Canal Realtime público | Medio | S | Pendiente |
@@ -63,8 +63,8 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F3-01 | UNIQUE `fichadas (legajo, fecha)` sin empresa (bloquea al 2do cliente) | Crítico | S | **En PR #2** (tadeogiri95/Gi-group#2) + SQL a correr |
-| F3-02 | UNIQUE `empleados (email)` global | Alto | S | **En PR #2** (tadeogiri95/Gi-group#2) + SQL a correr |
+| F3-01 | UNIQUE `fichadas (legajo, fecha)` sin empresa (bloquea al 2do cliente) | Crítico | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
+| F3-02 | UNIQUE `empleados (email)` global | Alto | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
 | F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | Pendiente (no observado en datos viejos) |
 | F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | Pendiente |
 | F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
