@@ -120,3 +120,37 @@ test("login — fallo guardando sesión en DB no expone el detalle interno", asy
   assert.ok(!json.error.includes("refresh_jti"), "no debe exponer el detalle de columna/constraint de Postgres");
   assert.ok(!json.error.includes("Error guardando sesión"), "no debe exponer el prefijo con el mensaje crudo concatenado");
 });
+
+// ─── Cambiar contraseña (pantalla de primer ingreso / cambio obligatorio) ───
+
+test("cambiar_password — acepta el body que manda la pantalla y guarda la nueva contraseña", async () => {
+  const { signAccessToken } = await import("../app/lib/jwt.ts");
+  const { authPassHandlers } = await import("./helpers/mockFetch.js");
+  const EMP_ID = "22222222-2222-2222-2222-222222222222";
+  const { token } = await signAccessToken({ empleadoId: EMP_ID, empresaId: EMPRESA_ID, legajo: 7, rol: "gerencial" });
+  let patch = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url, opts) => url.includes("/rest/v1/empleados?id=eq.") && opts?.method === "PATCH",
+      respond: (url, opts) => { patch = JSON.parse(opts.body); return { status: 200, body: [{ id: EMP_ID, ...patch }] }; },
+    },
+  ]);
+  const res = await POST(new Request("http://localhost/api/login-empresa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: "cambiar_password", userId: EMP_ID, nuevaPassword: "NuevaSegura1" }),
+  }));
+  const json = await res.json();
+  assert.equal(res.status, 200, JSON.stringify(json));
+  assert.equal(patch.debe_cambiar_password, false);
+  assert.ok(await bcrypt.compare("NuevaSegura1", patch.password));
+  assert.equal(json.usuario.password, undefined);
+});
+
+test("cambiar_password — la pantalla ya no manda el token en el body", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../app/components/screens/CambiarPasswordScreen.jsx", import.meta.url), "utf8");
+  const body = src.match(/body: JSON\.stringify\(\{[^}]*\}\)/)[0];
+  assert.ok(!body.includes("token"), body);
+});

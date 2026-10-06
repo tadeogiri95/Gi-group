@@ -22,8 +22,10 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
     try {
       const res = await fetch("/api/login-empresa", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cambiar_password", userId: usuario.id, nuevaPassword: nueva, token: getToken() }),
+        // La sesión viaja en la cookie; el header es respaldo. El token NO va en el
+        // body: el servidor valida el body en modo estricto y lo rechazaría.
+        headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+        body: JSON.stringify({ action: "cambiar_password", userId: usuario.id, nuevaPassword: nueva }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error");
