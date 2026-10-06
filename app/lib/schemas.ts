@@ -184,6 +184,7 @@ export const ficharBody = z.object({
   accion: z.enum(["ingreso", "egreso"]),
   geo_lat: latitude.optional().nullable(),
   geo_lng: longitude.optional().nullable(),
+  geo_precision: z.number().min(0).max(100000).optional().nullable(), // metros, coords.accuracy del teléfono
   forzar_cierre_tarea: z.boolean().optional(),
 }).strip();
 

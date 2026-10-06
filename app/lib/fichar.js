@@ -65,15 +65,17 @@ export async function obtenerGeo(empleado) {
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+        // Precisión en metros que informa el teléfono (bajo techo suele ser 50–500 m)
+        const precision = Number.isFinite(pos.coords.accuracy) ? Math.round(pos.coords.accuracy) : null;
         if (empleado?.geo_lat && empleado?.geo_lng) {
           const dist = haversine(lat, lng, empleado.geo_lat, empleado.geo_lng);
           const dentro = dist <= (empleado.geo_radio || 200);
           resolve({
-            lat, lng, distancia: Math.round(dist),
+            lat, lng, precision, distancia: Math.round(dist),
             msg: dentro ? `📍 A ${Math.round(dist)}m de la base` : `⚠️ A ${Math.round(dist)}m (fuera del radio)`,
           });
         } else {
-          resolve({ lat, lng, distancia: null, msg: "📍 Ubicación registrada" });
+          resolve({ lat, lng, precision, distancia: null, msg: "📍 Ubicación registrada" });
         }
       },
       (err) => {
