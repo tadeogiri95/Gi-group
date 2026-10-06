@@ -23,6 +23,8 @@ const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
 // el reporte de liquidación; un valor recortado a este tope se vería
 // plausible y pasaría desapercibido, que es peor.
 const MAX_HORAS_JORNADA = 20;
+// Cuánto de la imprecisión del GPS del teléfono se perdona al validar la zona
+const MARGEN_GPS_MAX_M = 100;
 
 function getLocalTime(tz = TZ_DEFAULT) {
   const now = new Date();
@@ -61,7 +63,7 @@ export async function POST(request) {
     const { validateBody } = await import("../../lib/validate");
     const parsed = validateBody(ficharBody, rawBody);
     if (parsed.response) return parsed.response;
-    const { accion, geo_lat, geo_lng, forzar_cierre_tarea } = parsed.data;
+    const { accion, geo_lat, geo_lng, geo_precision, forzar_cierre_tarea } = parsed.data;
 
     // Timezone y plan de la empresa en una sola consulta
     let empresaTz = TZ_DEFAULT;
@@ -97,15 +99,34 @@ export async function POST(request) {
             tipo: "geo_requerida",
           });
         }
-        const dentroDeAlgunaZona = validas.some((z) => {
+        // El GPS bajo techo puede errar varios cientos de metros: se descuenta la
+        // precisión que informa el teléfono, con tope (si no, cualquiera ficha
+        // desde lejos declarando una precisión enorme).
+        const margen = Math.min(Number(geo_precision) || 0, MARGEN_GPS_MAX_M);
+        const medidas = validas.map((z) => {
           const radio = asignada.length > 0 && gc?.radio ? Number(gc.radio) : Number(z.radio);
-          return distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng)) <= radio;
+          const dist = distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng));
+          return { nombre: z.nombre, radio, dist };
         });
+        const dentroDeAlgunaZona = medidas.some((m) => m.dist - margen <= m.radio);
         if (!dentroDeAlgunaZona) {
+          const cerca = medidas.reduce((a, b) => (b.dist < a.dist ? b : a));
+          const precisionTxt = geo_precision ? `, precisión del GPS ±${Math.round(geo_precision)} m` : "";
+          logAudit({
+            empresa_id: empresaId,
+            actor_id: empleadoId,
+            actor_legajo: legajo,
+            actor_rol: sesion.rol,
+            accion: "fichaje_fuera_de_zona",
+            entidad: "fichada",
+            datos_despues: { accion, zona: cerca.nombre, distancia_m: Math.round(cerca.dist), radio_m: cerca.radio, precision_m: geo_precision ?? null },
+          });
           return NextResponse.json({
             ok: false,
-            error: "Estás fuera de la zona de fichaje permitida. Acercate al lugar de trabajo.",
+            error: `Estás fuera de la zona de fichaje: a ${Math.round(cerca.dist)} m de ${cerca.nombre || "la zona"} (radio ${cerca.radio} m${precisionTxt}). Si estás en el lugar, pedile a tu supervisor que revise la ubicación de la zona.`,
             tipo: "fuera_de_zona",
+            distancia_m: Math.round(cerca.dist),
+            radio_m: cerca.radio,
           });
         }
       }

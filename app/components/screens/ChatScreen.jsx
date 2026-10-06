@@ -58,19 +58,19 @@ export default function ChatScreen({ usuario, ctx, reload }) {
       switch (action.type) {
         case "FICHAR_INGRESO": {
           const geo = await obtenerGeo(usuario);
-          const res = await ficharServer("ingreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia });
+          const res = await ficharServer("ingreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision });
           card = { type: "fichada", sub: "ingreso", hora: res.hora || hora, geoMsg: geo.msg, tardanza: res.tardanza };
           break;
         }
         case "FICHAR_EGRESO": {
           const geo = await obtenerGeo(usuario);
-          const res = await ficharServer("egreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia });
+          const res = await ficharServer("egreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision });
           card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg, horas_extra: res.horas_extra, solicitar_hora_extra: res.solicitar_hora_extra, datos_jornada: res.datos_jornada };
           break;
         }
         case "FICHAR_EGRESO_FORZAR": {
           const geo = await obtenerGeo(usuario);
-          const res = await ficharServer("egreso", { forzar_cierre_tarea: true, geo_lat: geo.lat, geo_lng: geo.lng, geo_distancia: geo.distancia });
+          const res = await ficharServer("egreso", { forzar_cierre_tarea: true, geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision });
           card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg, horas_extra: res.horas_extra, solicitar_hora_extra: res.solicitar_hora_extra, datos_jornada: res.datos_jornada };
           break;
         }

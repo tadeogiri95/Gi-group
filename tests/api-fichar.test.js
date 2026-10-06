@@ -303,6 +303,46 @@ test("fichar — si el empleado tiene ubicación asignada, solo vale esa zona", 
   assert.equal(json.tipo, "fuera_de_zona");
 });
 
+// Caso real reportado: zona cargada 205 m al norte de la planta, radio 150 m
+const ZONA_CORRIDA = { id: 1, lat: -31.331556, lng: -64.152111, radio: 150, nombre: "Planta" };
+const EN_LA_PLANTA = { geo_lat: -31.333333, geo_lng: -64.152667 };
+function handlersZona() {
+  return [
+    ...authPassHandlers(),
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "enterprise" }] }) },
+    { match: (url) => url.includes("/rest/v1/geo_zonas"), respond: () => ({ status: 200, body: [ZONA_CORRIDA] }) },
+    ...handlersIngresoBasico(),
+  ];
+}
+
+test("fichar — fuera de zona: el mensaje dice a cuántos metros y con qué radio", async () => {
+  const token = await tokenValido();
+  global.fetch = mockFichar(handlersZona());
+  const res = await POST(req({ accion: "ingreso", ...EN_LA_PLANTA }, token));
+  const json = await res.json();
+  assert.equal(json.tipo, "fuera_de_zona");
+  assert.equal(json.distancia_m, 205);
+  assert.match(json.error, /a 205 m de Planta \(radio 150 m\)/);
+});
+
+test("fichar — se descuenta la precisión del GPS informada por el teléfono", async () => {
+  const token = await tokenValido();
+  global.fetch = mockFichar(handlersZona());
+  const res = await POST(req({ accion: "ingreso", ...EN_LA_PLANTA, geo_precision: 80 }, token));
+  const json = await res.json();
+  assert.equal(json.ok, true, JSON.stringify(json)); // 205 − 80 = 125 ≤ 150
+});
+
+test("fichar — la precisión declarada tiene tope de 100 m (no se puede fichar desde lejos)", async () => {
+  const token = await tokenValido();
+  global.fetch = mockFichar(handlersZona());
+  // a ~1,1 km de la zona, declarando ±5 km de precisión
+  const res = await POST(req({ accion: "ingreso", geo_lat: -31.3415, geo_lng: -64.1521, geo_precision: 5000 }, token));
+  const json = await res.json();
+  assert.equal(json.tipo, "fuera_de_zona");
+  assert.match(json.error, /precisión del GPS ±5000 m/);
+});
+
 // ─── Egreso: tope de horas y atomicidad (auditoría 2026-06-24) ───────────────
 
 test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero no bloquea el egreso", async () => {
