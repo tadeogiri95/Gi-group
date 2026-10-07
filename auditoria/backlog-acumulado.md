@@ -105,7 +105,7 @@
 | F4-14 | Onboarding extendido + checklist de activación | Medio | M | Pendiente |
 | F4-15 | Formato de hora unificado | Bajo | S | Pendiente |
 | F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | **Hecho** (tadeogiri95/Gi-group#21, fusionado): sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |
-| F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Pendiente |
+| F4-17 | “Empresa no encontrada” sin salida | Bajo | S | En PR #27: volver a la última empresa del dispositivo, buscar por código y link a la landing |
 | F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
 | — | **Resumen semanal automático** (D10) | Nuevo | S–M | Pendiente |
 | — | **Modo kiosco** con QR + PIN (D7, D11) | Nuevo | M | Pendiente |

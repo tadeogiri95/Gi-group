@@ -24,6 +24,7 @@ import LoginScreen from "../components/screens/LoginScreen";
 import Nav from "../components/nav/BottomNav";
 import SolCard from "../components/cards/SolCard";
 import ErrorBoundary from "../components/ErrorBoundary";
+import EmpresaNoEncontrada from "../components/EmpresaNoEncontrada";
 
 // Screens — lazy-loaded: solo se descarga el código de la pantalla activa
 const CambiarPasswordScreen = dynamic(() => import("../components/screens/CambiarPasswordScreen"), { ssr: false });
@@ -239,12 +240,7 @@ export default function HomeContent() {
   };
 
   // ─── Early returns ───
-  if (slugInvalido && !isDemo) return (
-    <div className="flex flex-col h-dvh items-center justify-center p-10 text-center">
-      <h1 className="font-heading text-2xl text-gypi-text">Empresa no encontrada</h1>
-      <p className="text-gypi-dim text-sm">El link no es válido o la empresa fue desactivada.</p>
-    </div>
-  );
+  if (slugInvalido && !isDemo) return <EmpresaNoEncontrada slugActual={pathname?.split("/")[1]} />;
   if ((!init && !isDemo) || (isDemo && !demoMod)) return (
     <div className="flex h-dvh items-center justify-center bg-gypi-bg">
       <div className="flex flex-col items-center gap-3.5">
