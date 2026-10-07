@@ -210,6 +210,14 @@ export async function POST(req) {
       }
     }
 
+    // Datos de empresa. Una empresa dada de baja (activa=false) no entra.
+    const empresaData = await sbGet(
+      `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan_activo,max_empleados,activa`
+    );
+    if (empresaData?.[0]?.activa === false) {
+      return NextResponse.json({ error: "La cuenta de esta empresa está dada de baja." }, { status: 403 });
+    }
+
     // ─── Generar JWT tokens ───
     const ip = ipCliente(req);
     const userAgent = req.headers.get("user-agent") || "unknown";
@@ -264,10 +272,6 @@ export async function POST(req) {
       );
     }
 
-    // Datos de empresa
-    const empresaData = await sbGet(
-      `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan_activo,max_empleados`
-    );
 
     const safe = usuarioSeguro(usuario);
     safe.empresa = empresaData?.[0] || null;

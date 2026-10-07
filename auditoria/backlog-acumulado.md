@@ -157,7 +157,7 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F6-01 | Exportación y baja de datos prometidas y no implementadas | Alto | M | Pendiente |
+| F6-01 | Exportación y baja de datos prometidas y no implementadas | Alto | M | Hecho (ítem 28): el dueño descarga un .zip con un CSV por tabla y da de baja la cuenta desde Gestión → Privacidad; la baja cancela Mercado Pago, cierra sesiones y manda un link para recuperarla; a los 30 días el cron purgar-empresas borra archivos y filas (migración 078). Las suscripciones vencidas sin baja explícita no se borran solas (decisión pendiente, ítem 29) |
 | F6-02 | Perfil fiscal del cliente + factura al CUIT | Alto | M | Pendiente (validar con el contador) |
 | F6-03 | Prueba de cobro de punta a punta (sandbox MP) | Alto | M | Pendiente |
 | F6-04 | Planes y módulos en la base + entitlements en el servidor | Alto | M | Pendiente |

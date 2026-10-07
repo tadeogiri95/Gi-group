@@ -450,6 +450,29 @@ export async function sendConsultaContacto({ nombre, email, telefono, mensaje })
   }).catch((e) => logger.error("email sendConsultaContacto", e));
 }
 
+// ─── Baja de cuenta (F6-01, ítem 28) ───
+export async function sendBajaProgramada({ to, empresa, borradoEl, linkReactivar, empresaId }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const fecha = new Date(borradoEl).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Argentina/Buenos_Aires" });
+  const cuerpo = `
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">Dimos de baja la cuenta de <strong>${escapeHtml(empresa)}</strong> en Gypi. Nadie puede entrar y no se te va a cobrar más.</p>
+    <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#9A3412">
+      El <strong>${escapeHtml(fecha)}</strong> borramos de forma definitiva todos los datos: empleados, fichadas, tareas, documentos y fotos.
+    </div>
+    <p style="margin:0 0 8px;color:#444;font-size:14px">¿Fue un error o cambiaste de idea? Hasta esa fecha podés recuperar la cuenta tal como estaba:</p>
+    ${btn(linkReactivar, "Recuperar mi cuenta")}
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">Si necesitás una copia de los datos y no la descargaste, escribinos a contacto@gypi.app antes de esa fecha.</p>
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Diste de baja ${empresa} en Gypi`,
+    html: buildHtml("Cuenta dada de baja", empresa, cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("baja_programada", empresaId),
+  });
+}
+
 // ─── Resumen semanal para el dueño (D10, ítem 31) ───
 function fmtFecha(f) {
   const [, m, d] = String(f).split("-");
