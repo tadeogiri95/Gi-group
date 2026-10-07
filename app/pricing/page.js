@@ -138,7 +138,7 @@ export default function PricingPage() {
         <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})`, borderRadius: 28, border: `1px solid ${BORDER}` }}>
           <h2 style={{ fontFamily: fH, fontSize: 24, fontWeight: 800, margin: "0 0 12px" }}>¿Listo para transformar tu gestión?</h2>
           <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, margin: "0 0 28px" }}>
-            Unite a las empresas que ya gestionan su equipo con Gypi. Plan Free sin límite de tiempo.
+            Unite a las empresas que ya gestionan su equipo con Gypi. 30 días de prueba gratis, sin tarjeta.
           </p>
           <Link href="/" style={{ display: "inline-block", padding: "16px 40px", borderRadius: 14, background: AMBER, color: AMBER_TEXT, textDecoration: "none", fontSize: 17, fontWeight: 700, fontFamily: fH }}>
             Crear mi empresa gratis

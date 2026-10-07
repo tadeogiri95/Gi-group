@@ -83,7 +83,7 @@ export async function sendBienvenida({ to, nombre, empresa, slug, empresaId }) {
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      <strong>${escapeHtml(empresa)}</strong> ya está lista en Gypi, en el plan <strong>Free</strong>. Cuando quieras, podés iniciar una prueba de <strong>14 días de Pro</strong> sin cargo desde el dashboard.
+      <strong>${escapeHtml(empresa)}</strong> ya está lista en Gypi. Tenés <strong>30 días de prueba gratuita</strong> con todas las funciones, sin tarjeta.
     </p>
     <p style="margin:0 0 8px;color:#444;font-size:14px">¿Por dónde empezar?</p>
     <ul style="margin:0 0 20px;padding-left:20px;color:#555;font-size:14px;line-height:1.8">
@@ -98,48 +98,48 @@ export async function sendBienvenida({ to, nombre, empresa, slug, empresaId }) {
     from: FROM,
     to,
     subject: `¡Bienvenido a Gypi, ${empresa}! 🚀`,
-    html: buildHtml("¡Ya estás en Gypi!", "Empezaste en el plan Free", cuerpo),
+    html: buildHtml("¡Ya estás en Gypi!", "30 días de prueba gratuita", cuerpo),
     text: stripHtml(cuerpo),
     tags: buildTags("bienvenida", empresaId),
   }).catch((e) => logger.error("email sendBienvenida", e));
 }
 
 // ─── Alerta de trial próximo a vencer ───
-// diasRestantes: 11 (día 3 del trial), 7 (día 7), 4 (día 10), 1 (día 13 / último)
+// diasRestantes: 27 (día 3 de la prueba), 7, 3 y 1 (último día)
 export async function sendTrialVencimiento({ to, nombre, empresa, slug, diasRestantes, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const urgente = diasRestantes === 1;
-  const temprano = diasRestantes >= 10; // 11 o más días restantes → tono informativo
+  const temprano = diasRestantes >= 10; // al principio de la prueba → tono informativo
 
   const mensajePrincipal = urgente
-    ? `El trial Pro de <strong>${escapeHtml(empresa)}</strong> vence <strong>mañana</strong>. Después pasará al plan gratuito.`
+    ? `La prueba gratuita de <strong>${escapeHtml(empresa)}</strong> termina <strong>mañana</strong>. Después la cuenta queda en pausa hasta que elijas un plan.`
     : temprano
-      ? `Comenzaste tu trial Pro de <strong>${escapeHtml(empresa)}</strong>. Tenés <strong>${diasRestantes} días</strong> para explorar todas las funciones.`
-      : `El trial Pro de <strong>${escapeHtml(empresa)}</strong> vence en <strong>${diasRestantes} días</strong>. Aprovechá para suscribirte y mantener el acceso.`;
+      ? `Comenzaste la prueba gratuita de <strong>${escapeHtml(empresa)}</strong>. Tenés <strong>${diasRestantes} días</strong> para usar todas las funciones con tu equipo.`
+      : `La prueba gratuita de <strong>${escapeHtml(empresa)}</strong> termina en <strong>${diasRestantes} días</strong>. Elegí un plan para que tu equipo siga fichando sin cortes.`;
 
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">${mensajePrincipal}</p>
     <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#9A3412">
-      ${urgente ? "⚠️ <strong>Último día:</strong>" : "📅 <strong>En tu trial tenés:</strong>"}
-      acceso a reportes, grilla de horarios, proyectos, geolocalización y más.
+      ${urgente ? "⚠️ <strong>Último día:</strong>" : "📅 <strong>En la prueba tenés:</strong>"}
+      fichaje con GPS y QR, horarios, OT y tareas, reportes y más.
     </div>
     ${btn(`${url}?screen=config`, urgente ? "Suscribirme ahora →" : "Ver mi empresa →")}
   `;
 
   const subject = urgente
-    ? `⚠️ Último día de tu trial en Gypi — ${empresa}`
+    ? `⚠️ Último día de tu prueba en Gypi — ${empresa}`
     : temprano
-      ? `Tu trial Pro de Gypi comenzó — ${empresa}`
-      : `Tu trial de Gypi vence en ${diasRestantes} días — ${empresa}`;
+      ? `Tu prueba de Gypi comenzó — ${empresa}`
+      : `Tu prueba de Gypi termina en ${diasRestantes} días — ${empresa}`;
 
   return resend.emails.send({
     from: FROM,
     to,
     subject,
     html: buildHtml(
-      urgente ? "Tu trial vence mañana" : temprano ? "¡Bienvenido a tu trial Pro!" : `Quedan ${diasRestantes} días de trial`,
+      urgente ? "Tu prueba termina mañana" : temprano ? "¡Bienvenido a Gypi!" : `Quedan ${diasRestantes} días de prueba`,
       empresa,
       cuerpo
     ),
@@ -228,18 +228,17 @@ export async function sendOnboardingRecordatorio({ to, nombre, empresa, slug, di
   }).catch((e) => logger.error("email sendOnboardingRecordatorio", e));
 }
 
-// ─── Trial expirado (downgrade automático a free) ───
+// ─── Prueba terminada: la cuenta queda en pausa (D20) ───
 export async function sendTrialExpirado({ to, nombre, empresa, slug, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const url = `${APP_BASE}/${slug}`;
   const cuerpo = `
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
-      El trial Pro de <strong>${escapeHtml(empresa)}</strong> ha finalizado. Tu cuenta pasó automáticamente al plan gratuito.
+      Terminó la prueba gratuita de <strong>${escapeHtml(empresa)}</strong>. La cuenta quedó en pausa: tu equipo no puede fichar ni cargar tareas hasta que elijas un plan.
     </p>
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#991B1B">
-      🔒 Las funciones Pro (reportes, proyectos, geolocalización, grilla de horarios) ya no están disponibles.
-      Suscribite para recuperar el acceso completo.
+      ⏸️ Elegí un plan y todo vuelve a funcionar al instante, con la misma configuración.
     </div>
     ${btn(`${url}?screen=config`, "Ver planes y suscribirme →")}
     <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">Tus datos están seguros — podés suscribirte en cualquier momento y retomar donde dejaste.</p>
@@ -247,8 +246,8 @@ export async function sendTrialExpirado({ to, nombre, empresa, slug, empresaId }
   return resend.emails.send({
     from: FROM,
     to,
-    subject: `Tu trial de Gypi finalizó — ${empresa}`,
-    html: buildHtml("Tu trial finalizó", empresa, cuerpo),
+    subject: `Terminó tu prueba de Gypi — ${empresa}`,
+    html: buildHtml("Terminó tu prueba", empresa, cuerpo),
     text: stripHtml(cuerpo),
     tags: buildTags("trial_expirado", empresaId),
   }).catch((e) => logger.error("email sendTrialExpirado", e));
@@ -262,10 +261,10 @@ export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "
     <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
     <p style="margin:0 0 16px;color:#444;line-height:1.6">
       La suscripción de <strong>${escapeHtml(empresa)}</strong> fue ${motivo === "impago" ? "suspendida por falta de pago" : "cancelada"}.
-      Tu cuenta pasó automáticamente al plan gratuito.
+      La cuenta quedó en pausa: tu equipo no puede fichar ni cargar tareas. Tus datos siguen guardados.
     </p>
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#991B1B">
-      🔒 Las funciones de tu plan anterior ya no están disponibles.
+      ⏸️
       ${motivo === "impago" ? "Actualizá tu método de pago para reactivar." : "Podés suscribirte nuevamente en cualquier momento."}
     </div>
     ${btn(`${url}?screen=config`, "Reactivar suscripción →")}
