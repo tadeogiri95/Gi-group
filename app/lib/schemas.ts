@@ -28,7 +28,7 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   },
   solicitudes: {
     POST: ["legajo", "tipo", "motivo", "fecha", "desde", "hasta", "nombre_empleado", "empleado_id", "estado", "destinatario_rol", "fecha_hasta", "etiqueta"],
-    PATCH: ["estado", "aprobador", "resuelto_at"],
+    PATCH: ["estado", "aprobador", "resuelto_at", "notas_gerencia"], // notas_gerencia: comentario al aprobar o rechazar (F4-07)
   },
   notificaciones: {
     POST: ["destinatario_rol", "tipo", "asunto", "detalle", "empleado_id"],
