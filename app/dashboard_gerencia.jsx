@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
+import { useRefrescoVisible } from "./hooks/useRefrescoVisible";
 import { fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
@@ -345,7 +346,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   }, [hoy, isDemo]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
-  useEffect(() => { const t = setInterval(cargarDatos, 60000); return () => clearInterval(t); }, [cargarDatos]);
+  // Cada minuto, solo con la pestaña a la vista (F3-04)
+  useRefrescoVisible(cargarDatos, { intervaloMs: 60000 });
 
   /* ─── Datos derivados ─── */
   const empActivos = empleados.filter(e => e.activo !== false);

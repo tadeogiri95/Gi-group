@@ -92,7 +92,7 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): encabezado con “← Volver” |
-| F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | En PR #26: botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Queda: formulario de solicitudes con rango (F4-12) |
+| F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Hecho (PR #26): botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Queda: formulario de solicitudes con rango (F4-12) |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
 | F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Pendiente |
 | F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Pendiente |
@@ -105,7 +105,7 @@
 | F4-14 | Onboarding extendido + checklist de activación | Medio | M | Pendiente |
 | F4-15 | Formato de hora unificado | Bajo | S | Pendiente |
 | F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | **Hecho** (tadeogiri95/Gi-group#21, fusionado): sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |
-| F4-17 | “Empresa no encontrada” sin salida | Bajo | S | En PR #27: volver a la última empresa del dispositivo, buscar por código y link a la landing |
+| F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Hecho (PR #27): volver a la última empresa del dispositivo, buscar por código y link a la landing |
 | F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
 | — | **Resumen semanal automático** (D10) | Nuevo | S–M | Pendiente |
 | — | **Modo kiosco** con QR + PIN (D7, D11) | Nuevo | M | Pendiente |
@@ -116,7 +116,7 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F3-04 | Polling de 8 consultas cada 2 min + recargas por Realtime | Alto | M | Pendiente |
+| F3-04 | Polling de 8 consultas cada 2 min + recargas por Realtime | Alto | M | En PR #28: polling solo con la pestaña a la vista (inicio, tablero y actividad), recarga al volver si los datos quedaron viejos, avisos de Realtime agrupados y sin recargas en paralelo. Queda: datos por pantalla en vez de las 8 consultas globales |
 | F3-05 | `validarToken` consulta la empresa en cada request | Medio | S | En PR #24: caché de 5 min por empresa (el plan sigue con su caché por instancia) |
 | F3-06 | Lógica de negocio en el navegador → servicios por dominio | Medio | M–L | Pendiente |
 | F3-07 | `push-ausencias` con `limit=2000` global | Medio | S | En PR #24: paginado completo (empleados y fichadas). Queda: RPC por empresa si crece mucho |
