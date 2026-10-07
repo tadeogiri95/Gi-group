@@ -14,10 +14,10 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { sbGet } from "../../../lib/sbHelpers";
-import { PLANES } from "../../../lib/plans";
+import { PLANES, DIAS_TRIAL } from "../../../lib/plans";
 import { logger } from "../../../lib/logger";
 
-const CATORCE_DIAS_MS = 14 * 24 * 60 * 60 * 1000;
+const DURACION_TRIAL_MS = DIAS_TRIAL * 24 * 60 * 60 * 1000;
 
 export async function GET(request) {
   try {
@@ -59,12 +59,12 @@ export async function GET(request) {
     // Empresa marcada como trial sin ninguna fila en `suscripciones`: el RPC
     // iniciar_trial_pro y su fallback de INSERT fallaron los dos durante el
     // registro. En vez de dejarla "activa" para siempre (revenue leak),
-    // reconstruimos un trial_fin sintético desde created_at + 14 días. Sin
+    // reconstruimos un trial_fin sintético desde created_at + DIAS_TRIAL. Sin
     // created_at, o ya vencido, se trata como "vencida" — nunca como acceso
     // gratuito indefinido.
     if (!sub && empresa?.plan_activo === "trial") {
       if (empresa.created_at) {
-        const sintetico = new Date(new Date(empresa.created_at).getTime() + CATORCE_DIAS_MS);
+        const sintetico = new Date(new Date(empresa.created_at).getTime() + DURACION_TRIAL_MS);
         trialFinStr = sintetico.toISOString();
         estado = sintetico > new Date() ? "trial" : "vencida";
       } else {

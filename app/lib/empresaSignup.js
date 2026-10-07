@@ -7,6 +7,7 @@
 // admin_password puede ser null (signup vía Google, sin password propia).
 
 import { logger } from "./logger";
+import { DIAS_TRIAL } from "./plans";
 import { slugReservado } from "./slugs";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -135,8 +136,8 @@ export async function crearEmpresaConAdmin({
   return { emp, adminEmp };
 }
 
-// Inicia el trial de 14 días — llamado desde el botón "Iniciar prueba Pro"
-// (POST /api/billing/iniciar-trial), ya no automáticamente al registrar.
+// Inicia la prueba de 30 días (D20, migración 080): se llama al registrar la
+// empresa y, si eso falló, desde el botón del inicio (POST /api/billing/iniciar-trial).
 // Intenta la RPC atómica primero (crea la suscripción y marca trial_usado);
 // si falla, cae a un INSERT directo + PATCH de vuelta. En ambos casos la
 // empresa arranca en plan_activo:"free", así que hay que pasarla a "trial"
@@ -150,8 +151,12 @@ export async function iniciarTrialEmpresa(empresaId) {
       body: JSON.stringify({ p_empresa_id: empresaId }),
       signal: AbortSignal.timeout(5000),
     });
-    if (rpcRes.ok) trialIniciado = true;
-    else logger.error(`RPC iniciar_trial_pro status ${rpcRes.status} — usando fallback`);
+    if (rpcRes.ok) {
+      // La RPC devuelve null si la empresa ya usó su prueba: no se reabre
+      const id = await rpcRes.json().catch(() => null);
+      if (!id) return false;
+      trialIniciado = true;
+    } else logger.error(`RPC iniciar_trial_pro status ${rpcRes.status} — usando fallback`);
   } catch (e) {
     logger.error("RPC iniciar_trial_pro excepción — usando fallback", e);
   }
@@ -162,10 +167,10 @@ export async function iniciarTrialEmpresa(empresaId) {
         empresa_id: empresaId,
         plan: "pro",
         estado: "trial",
-        trial_fin: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        trial_fin: new Date(Date.now() + DIAS_TRIAL * 24 * 60 * 60 * 1000).toISOString(),
         precio: 0,
         moneda: "ARS",
-        gateway: "gypi_trial",
+        gateway: "manual", // la base solo acepta mercadopago/stripe/manual (antes "gypi_trial" fallaba siempre)
       });
       if (Array.isArray(susc) && susc[0]?.id) {
         await sbFetch(`empresa?id=eq.${empresaId}`, "PATCH", { suscripcion_activa_id: susc[0].id, plan_activo: "trial", trial_usado: true });

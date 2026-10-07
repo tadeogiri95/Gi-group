@@ -550,7 +550,7 @@ export default function Landing() {
         <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})`, borderRadius: 28, border: `1px solid ${BORDER}` }}>
           <h2 style={{ fontFamily: fH, fontSize: 28, fontWeight: 800, margin: "0 0 12px" }}>¿Listo para transformar tu gestión?</h2>
           <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, margin: "0 0 28px" }}>
-            Empezá con 14 días de trial Pro gratis. Plan Free disponible sin límite de tiempo.
+            Empezá con 30 días de prueba gratis, con todas las funciones y sin tarjeta.
           </p>
           <button onClick={() => setShowRegistro(true)}
             style={{ padding: "16px 40px", borderRadius: 14, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 17, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
