@@ -2,6 +2,7 @@
 // Valida token; el archivo se sube con nombre generado en el servidor,
 // prefijado con empresa_id, sin SVG y verificando el contenido real (F2-09)
 import { NextResponse } from "next/server";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { validarToken } from "../../lib/auth";
 import { safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
@@ -16,6 +17,8 @@ export async function POST(request) {
     // ─── Auth ───
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
+    const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
+    if (sinPlan) return sinPlan;
 
     // fileName se sigue aceptando por compatibilidad, pero ya no se usa: el
     // nombre lo genera el servidor (F2-09), así nadie puede pisar un archivo ajeno.

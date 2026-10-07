@@ -6,6 +6,7 @@
 // Columnas obligatorias: legajo, nombre
 // Solo accesible para roles: gerencial, administrativo
 import { NextResponse } from "next/server";
+import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import bcrypt from "bcryptjs";
 import { validarToken } from "../../../lib/auth";
 import { parseCsv } from "../../../lib/csv";
@@ -35,6 +36,8 @@ export async function POST(req) {
   }
   const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
   if (bloqueoSupervisor) return bloqueoSupervisor;
+  const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
+  if (sinPlan) return sinPlan;
 
   const empresaId = sesion.empresa_id;
 

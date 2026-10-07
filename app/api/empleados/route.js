@@ -3,6 +3,7 @@
 // PATCH /api/empleados?id=X  — actualizar empleado (rol solo para gerencial)
 // DELETE /api/empleados?id=X — soft delete (activo=false)
 import { NextResponse } from "next/server";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import bcrypt from "bcryptjs";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { passwordInicial } from "../../lib/passwords";
@@ -50,6 +51,8 @@ export async function POST(request) {
   if (!["gerencial", "administrativo"].includes(sesion.rol)) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
   }
+  const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
+  if (sinPlan) return sinPlan;
 
   const body = await request.json();
   const { legajo, nombre, email, area, division, rol, apodo, pre_cargado } = body;

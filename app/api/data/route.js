@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
-import { validarLimite, invalidarCachePlan } from "../../lib/planEnforcement";
+import { validarLimite, invalidarCachePlan, rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "../../lib/validate";
@@ -334,6 +334,12 @@ export async function POST(request) {
       if (!bodyCheck.valido) {
         return NextResponse.json({ error: bodyCheck.error }, { status: 400 });
       }
+    }
+
+    // ─── Sin plan vigente (D20) no se cargan ni cambian datos; se pueden ver ───
+    if (method === "POST" || method === "PATCH" || method === "DELETE") {
+      const sinPlan = await rechazarSiSinPlan(empresaId);
+      if (sinPlan) return sinPlan;
     }
 
     // ─── Enforcement de límites por plan ───

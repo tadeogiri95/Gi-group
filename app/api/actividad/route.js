@@ -15,6 +15,7 @@ import { unaSolaVez } from "../../lib/operacionesOffline";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 
 const minutosEntre = (inicio, fin) => Math.max(0, Math.round(((Date.parse(fin) - Date.parse(inicio)) / 60000) * 10) / 10);
 
@@ -83,6 +84,9 @@ export async function POST(request) {
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(actividadBody, raw);
     if (parsed.response) return parsed.response;
+    // Cuenta en pausa (D20): no se cargan tareas nuevas
+    const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
+    if (sinPlan) return sinPlan;
     return await unaSolaVez(sesion, parsed.data.op_id, "actividad", () => procesar(sesion, parsed.data));
   } catch (err) {
     logger.error("[actividad] error", err);

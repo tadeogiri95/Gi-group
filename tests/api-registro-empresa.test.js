@@ -87,15 +87,25 @@ test("registro — rate limit excedido devuelve 429", async () => {
   assert.equal(res.status, 429);
 });
 
-test("registro — no inicia trial automáticamente, la empresa queda en plan free", async () => {
-  // La empresa nueva arranca en plan Free (migración 063) — el trial se
-  // inicia manualmente desde /api/billing/iniciar-trial, no en el registro.
-  // Sin handler para iniciar_trial_pro: si el código todavía lo llamara, el
-  // mock tira "Sin handler" y el test falla.
-  global.fetch = createFetchMock(handlersBase().filter((h) => !String(h.match).includes("iniciar_trial_pro")));
-
+test("registro — arranca sola la prueba de 30 días (D20)", async () => {
+  let trialPedido = null;
+  global.fetch = createFetchMock([
+    { match: (url) => url.includes("/rpc/iniciar_trial_pro"), respond: (url, opts) => { trialPedido = JSON.parse(opts.body); return { status: 200, body: '"susc-1"' }; } },
+    ...handlersBase().filter((h) => !String(h.match).includes("iniciar_trial_pro")),
+  ]);
   const res = await POST(req(FORM_OK));
   const json = await res.json();
   assert.equal(res.status, 200);
   assert.equal(json.ok, true);
+  assert.equal(trialPedido?.p_empresa_id, json.empresa.id);
+});
+
+test("registro — si la prueba no se pudo iniciar, el registro igual sale bien", async () => {
+  global.fetch = createFetchMock([
+    { match: (url) => url.includes("/rpc/iniciar_trial_pro"), respond: () => ({ status: 500, body: { message: "caído" } }) },
+    { match: (url, opts) => url.includes("/rest/v1/suscripciones") && opts?.method === "POST", respond: () => ({ status: 500, body: { message: "caído" } }) },
+    ...handlersBase().filter((h) => !String(h.match).includes("iniciar_trial_pro")),
+  ]);
+  const res = await POST(req(FORM_OK));
+  assert.equal(res.status, 200);
 });

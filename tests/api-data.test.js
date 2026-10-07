@@ -227,15 +227,15 @@ test("POST /api/data — alta de empleados por el gateway está prohibida (va po
   assert.equal(res.status, 403);
 });
 
-test("POST /api/data — POST a proyectos rechazado con 402 cuando el plan free llegó al máximo", async () => {
+test("POST /api/data — POST a proyectos rechazado con 402 cuando el plan llegó al máximo", async () => {
   const token = await tokenValido();
   global.fetch = createFetchMock([
     ...authPassHandlers(),
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
-    // contarFilas: la empresa ya tiene 2 proyectos (límite del plan free)
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "starter" }] }) },
+    // contarFilas: la empresa ya tiene 10 proyectos (límite del plan Starter)
     {
       match: (url) => url.includes("/rest/v1/proyectos") && url.includes("select=id"),
-      respond: () => ({ status: 200, body: [], headers: { "content-range": "0-1/2" } }),
+      respond: () => ({ status: 200, body: [], headers: { "content-range": "0-9/10" } }),
     },
   ]);
 
