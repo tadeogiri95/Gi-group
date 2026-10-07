@@ -3,7 +3,8 @@
 // entrada de la planta. Cada operario escanea su tarjeta QR (o escribe su
 // legajo), pone su PIN y ficha. El servidor decide si es entrada o salida.
 // Después de cada fichaje vuelve solo al inicio: no queda ninguna sesión abierta.
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
+import EscanerCodigo from "../EscanerCodigo";
 import { legajoDesdeQR, ubicacionKiosco, ficharEnKiosco, desactivarKiosco } from "../../lib/kioscoCliente";
 
 export const VOLVER_AL_INICIO_MS = 6000;
@@ -26,52 +27,6 @@ function Teclado({ onTecla, okHabilitado, okTexto = "Seguir" }) {
           {t === "borrar" ? "⌫" : t === "ok" ? okTexto : t}
         </button>
       ))}
-    </div>
-  );
-}
-
-// Escaneo con la cámara (BarcodeDetector: Chrome en Android). Si el navegador
-// no lo soporta, el operario escribe su legajo.
-function Escaner({ slug, onLegajo }) {
-  const videoRef = useRef(null);
-  const [disponible] = useState(() => typeof window !== "undefined" && "BarcodeDetector" in window);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!disponible) return;
-    let stream = null;
-    let timer = null;
-    let cancelado = false;
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-        if (cancelado) return;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-        const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        timer = setInterval(async () => {
-          try {
-            const codigos = await detector.detect(videoRef.current);
-            const legajo = codigos.map((c) => legajoDesdeQR(c.rawValue, slug)).find(Boolean);
-            if (legajo) onLegajo(legajo);
-          } catch { /* cuadro sin QR */ }
-        }, 350);
-      } catch {
-        setError("No se pudo usar la cámara. Escribí tu legajo.");
-      }
-    })();
-    return () => {
-      cancelado = true;
-      clearInterval(timer);
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-  }, [disponible, slug, onLegajo]);
-
-  if (!disponible || error) return error ? <div className="text-sm text-gypi-dim text-center mb-3">{error}</div> : null;
-  return (
-    <div className="w-full max-w-[340px] mx-auto mb-4">
-      <video ref={videoRef} muted playsInline className="w-full aspect-[4/3] object-cover rounded-2xl bg-black" aria-label="Cámara para escanear tu tarjeta" />
-      <div className="text-sm text-gypi-dim text-center mt-2">Mostrá el QR de tu tarjeta a la cámara</div>
     </div>
   );
 }
@@ -148,7 +103,11 @@ export default function KioscoScreen({ empresa, slug }) {
       {paso === "legajo" && (
         <>
           <h1 className="text-2xl font-bold text-gypi-text mb-4 text-center">Fichá tu entrada o salida</h1>
-          <Escaner slug={slug} onLegajo={conLegajo} />
+          <EscanerCodigo
+            camara="user"
+            ayuda="Mostrá el QR de tu tarjeta a la cámara"
+            onCodigo={(texto) => { const l = legajoDesdeQR(texto, slug); if (l) conLegajo(l); }}
+          />
           <div className="text-sm text-gypi-dim mb-2">o escribí tu legajo</div>
           <div aria-label="Legajo" className="text-4xl font-bold tracking-widest text-gypi-text h-12 mb-3">{legajo || "—"}</div>
           <Teclado onTecla={teclaLegajo} okHabilitado={!!legajo} />

@@ -23,6 +23,9 @@ const DEFAULTS = {
 // Campos seguros para exponer pre-login (sin token)
 const CAMPOS_PUBLICOS = "id,nombre,nombre_corto,slug,color_primario,color_secundario,color_fondo,color_texto,typography,theme_preset,logo_url,rubro,activa";
 
+// Campos que ve la propia empresa (post-login)
+const CAMPOS_PRIVADOS = "id,nombre,nombre_corto,slug,admin_email,rubro,plan_activo,activa,onboarding_completado,trial_usado,max_empleados,timezone,color_primario,color_secundario,color_fondo,color_texto,typography,theme_preset,logo_url,prompt_ia_obra,prompt_ia_chat,reglas_asistencia,created_at";
+
 // Campos que se pueden actualizar vía PATCH
 const CAMPOS_EDITABLES = [
   "nombre", "nombre_corto", "rubro",
@@ -30,6 +33,7 @@ const CAMPOS_EDITABLES = [
   "typography", "theme_preset", "logo_url",
   "prompt_ia_obra", "prompt_ia_chat",
   "reglas_asistencia", // migración 068 — solo el dueño (CAMPOS_EMPRESA_SOLO_DUENO)
+  "escaner_ot", // migración 074 — escaneo de OT con la cámara (D8)
 ];
 
 export async function GET(request) {
@@ -62,12 +66,16 @@ export async function GET(request) {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return NextResponse.json(DEFAULTS);
 
-    const res = await fetch(
-      `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=id,nombre,nombre_corto,slug,admin_email,rubro,plan_activo,activa,onboarding_completado,trial_usado,max_empleados,timezone,color_primario,color_secundario,color_fondo,color_texto,typography,theme_preset,logo_url,prompt_ia_obra,prompt_ia_chat,reglas_asistencia,created_at&limit=1`,
+    const pedir = (extra) => fetch(
+      `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=${CAMPOS_PRIVADOS}${extra}&limit=1`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
     );
+    let res = await pedir(",escaner_ot");
+    // Si la migración 074 todavía no se corrió, la columna no existe: se sigue
+    // sin ella (escáner apagado) en vez de dejar a la empresa sin datos.
+    if (!res.ok) res = await pedir("");
     const data = await res.json();
-    if (!data || data.length === 0) return NextResponse.json(DEFAULTS);
+    if (!Array.isArray(data) || data.length === 0) return NextResponse.json(DEFAULTS);
     return NextResponse.json(data[0], {
       headers: { "Cache-Control": "private, no-store" },
     });
