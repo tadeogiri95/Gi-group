@@ -328,6 +328,7 @@ export const empresaPatchBody = z.object({
   prompt_ia_chat: z.string().max(5000).optional(),
   // Escaneo de OT con la cámara al iniciar una tarea (D8, migración 074)
   escaner_ot: z.boolean().optional(),
+  resumen_semanal: z.boolean().optional(),
   // Tipos de solicitud que ofrece la empresa (H9, migración 076). null = los de siempre
   tipos_solicitud: z.array(z.object({
     clave: z.string().max(40).optional(),
