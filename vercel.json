@@ -41,6 +41,10 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/cron/purgar-empresas",
+      "schedule": "30 5 * * *"
+    },
+    {
       "path": "/api/cron/resumen-semanal",
       "schedule": "0 11 * * 1"
     }
