@@ -100,6 +100,28 @@ export async function verifyPasswordResetToken(
   return { empleadoId: payload.sub as string, empresaId: payload.eid as string, jti: payload.jti as string };
 }
 
+// ─── Deshacer la baja de una empresa (F6-01, ítem 28): link del email,
+// vale mientras dure la retención de 30 días. `baja` ata el link a esa baja
+// puntual: si la empresa se reactiva y se vuelve a dar de baja, el link viejo
+// ya no sirve.
+export async function signReactivarToken(input: { empresaId: string; baja: string }): Promise<string> {
+  return new SignJWT({ eid: input.empresaId, baja: input.baja, type: "reactivar_empresa", jti: generateJti() })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30d")
+    .setIssuer("gypi")
+    .sign(getSecret());
+}
+
+export async function verifyReactivarToken(
+  token: string | undefined | null
+): Promise<{ empresaId: string; baja: string } | null> {
+  const payload = await verifyToken(token);
+  if (!payload || payload.type !== "reactivar_empresa") return null;
+  if (!payload.eid || !payload.baja) return null;
+  return { empresaId: payload.eid as string, baja: payload.baja as string };
+}
+
 // ─── OAuth "state" (CSRF) — google/start firma esto, google/callback lo verifica
 // junto con el nonce de la cookie gypi_oauth_state. Vida corta: solo necesita
 // sobrevivir el roundtrip a Google y de vuelta.
