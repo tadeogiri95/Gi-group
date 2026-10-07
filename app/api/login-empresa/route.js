@@ -16,7 +16,8 @@ import { logger } from "../../lib/logger";
 import { usuarioSeguro } from "../../lib/usuarioSeguro";
 import { sbGet, sbPatch, sbPost } from "../../lib/sbHelpers";
 import { ventana15min } from "../../lib/rateLimit";
-import { loginBody, cambiarPasswordBody } from "../../lib/schemas";
+import { loginBody, loginPinBody, cambiarPasswordBody } from "../../lib/schemas";
+import { minutosBloqueo, registrarFalloPin } from "../../lib/pin";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
 
@@ -80,6 +81,48 @@ async function guardarSesionJWT({ empleadoId, empresaId, legajo, jti, refreshJti
   });
 }
 
+// ─── Ingreso con legajo + PIN (F4-06) ───
+// Solo operarios (gestión entra con contraseña). Cada MAX_INTENTOS_PIN fallos
+// seguidos el PIN se bloquea unos minutos y tras MAX_FALLOS_TOTALES_PIN se
+// borra (ver lib/pin.js); la contraseña sigue funcionando.
+// Devuelve { usuario } o { response } con el error.
+async function autenticarConPin(body, clientIp) {
+  const parsed = validateBody(loginPinBody, body);
+  if (parsed.response) return { response: parsed.response };
+  const { legajo, pin, empresa_id } = parsed.data;
+
+  if (await checkLoginRateLimit(clientIp)) {
+    return { response: NextResponse.json({ error: "Demasiados intentos. Intentá de nuevo en 15 minutos." }, { status: 429 }) };
+  }
+
+  const incorrecto = (extra = "") => ({ response: NextResponse.json({ error: "Legajo o PIN incorrectos." + extra }, { status: 401 }) });
+  const empleados = await sbGet(`empleados?legajo=eq.${encodeURIComponent(String(legajo))}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`);
+  const candidatos = (empleados || []).filter((e) => e.rol === "operativo" && e.pin_hash);
+  if (candidatos.length !== 1) return incorrecto();
+  const emp = candidatos[0];
+
+  const minutos = minutosBloqueo(emp);
+  if (minutos > 0) {
+    return { response: NextResponse.json({ error: `El PIN está bloqueado por demasiados intentos. Probá en ${minutos} min o entrá con tu contraseña.` }, { status: 429 }) };
+  }
+
+  if (!(await bcrypt.compare(pin, emp.pin_hash))) {
+    const fallo = registrarFalloPin(emp);
+    await sbPatch(`empleados?id=eq.${emp.id}`, fallo.cambios).catch((e) => logger.error("PIN: no se pudo registrar el intento", e));
+    if (fallo.borrado) {
+      return { response: NextResponse.json({ error: "Por seguridad borramos tu PIN después de muchos intentos fallidos. Entrá con tu contraseña y creá uno nuevo." }, { status: 429 }) };
+    }
+    if (fallo.bloqueado) {
+      return { response: NextResponse.json({ error: "PIN bloqueado por demasiados intentos. Entrá con tu contraseña o esperá 15 min." }, { status: 429 }) };
+    }
+    return incorrecto(fallo.restantes <= 2 ? ` Te quedan ${fallo.restantes} intento${fallo.restantes === 1 ? "" : "s"}.` : "");
+  }
+  if (emp.pin_intentos || emp.pin_bloqueado_hasta) {
+    await sbPatch(`empleados?id=eq.${emp.id}`, { pin_intentos: 0, pin_bloqueado_hasta: null }).catch(() => {});
+  }
+  return { usuario: emp };
+}
+
 export async function POST(req) {
   try {
     if (!SB_URL || !SB_KEY) {
@@ -118,69 +161,77 @@ export async function POST(req) {
       return NextResponse.json({ usuario: usuarioSeguro(updated[0]) });
     }
 
-    // ─── Login normal ───
-    const parsedLogin = validateBody(loginBody, body);
-    if (parsedLogin.response) return parsedLogin.response;
-    const { legajo, password, empresa_id } = parsedLogin.data;
-    const identifier = legajo.toString().trim();
-    if (!identifier) {
-      return NextResponse.json({ error: "Ingresá legajo o email y contraseña" }, { status: 400 });
-    }
-
-    // Rate limiting por IP — bloquea brute force (migración 013 requerida)
-    const clientIp = ipCliente(req);
-    if (await checkLoginRateLimit(clientIp)) {
-      return NextResponse.json(
-        { error: "Demasiados intentos. Intentá de nuevo en 15 minutos." },
-        { status: 429 }
-      );
-    }
-
-    // empresa_id siempre incluido — previene búsquedas cross-tenant
-    // Si el identifier contiene @ se trata como email, si no como legajo numérico
-    const isEmail = identifier.includes("@");
-    const query = isEmail
-      ? `empleados?email=eq.${encodeURIComponent(identifier.toLowerCase())}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`
-      : `empleados?legajo=eq.${encodeURIComponent(identifier)}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`;
-    const empleados = await sbGet(query);
-
-    if (!empleados || empleados.length === 0) {
-      return NextResponse.json({ error: "Legajo o contraseña incorrectos" }, { status: 401 });
-    }
-
     let usuario = null;
+    if (body.pin !== undefined) {
+      // ─── Login con PIN ───
+      const r = await autenticarConPin(body, ipCliente(req));
+      if (r.response) return r.response;
+      usuario = r.usuario;
+    } else {
+      // ─── Login normal ───
+      const parsedLogin = validateBody(loginBody, body);
+      if (parsedLogin.response) return parsedLogin.response;
+      const { legajo, password, empresa_id } = parsedLogin.data;
+      const identifier = legajo.toString().trim();
+      if (!identifier) {
+        return NextResponse.json({ error: "Ingresá legajo o email y contraseña" }, { status: 400 });
+      }
 
-    for (const emp of empleados) {
-      if (!emp.password) continue;
+      // Rate limiting por IP — bloquea brute force (migración 013 requerida)
+      const clientIp = ipCliente(req);
+      if (await checkLoginRateLimit(clientIp)) {
+        return NextResponse.json(
+          { error: "Demasiados intentos. Intentá de nuevo en 15 minutos." },
+          { status: 429 }
+        );
+      }
 
-      if (emp.password.startsWith("$2")) {
-        const match = await bcrypt.compare(password, emp.password);
-        if (match) { usuario = emp; break; }
-      } else {
-        // Contraseña en texto plano (legacy) — comparar y migrar a bcrypt.
-        // DEPRECATION: soporte para plaintext se elimina el 2026-09-01.
-        const PLAINTEXT_DEADLINE = new Date("2026-09-01T00:00:00Z");
-        if (new Date() >= PLAINTEXT_DEADLINE) {
-          logger.warn("Plaintext password rechazada post-deadline", { empleado_id: emp.id, empresa_id: emp.empresa_id });
-          continue;
-        }
-        if (password === emp.password) {
-          usuario = emp;
-          logger.warn("Login con plaintext password (legacy) — migrando a bcrypt", { empleado_id: emp.id, empresa_id: emp.empresa_id });
-          try {
-            const hashed = await bcrypt.hash(password, 10);
-            await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
-            logger.info("Password migrada a bcrypt exitosamente", { empleado_id: emp.id });
-          } catch (e) {
-            logger.error("Error migrando contraseña a bcrypt", e);
+      // empresa_id siempre incluido — previene búsquedas cross-tenant
+      // Si el identifier contiene @ se trata como email, si no como legajo numérico
+      const isEmail = identifier.includes("@");
+      const query = isEmail
+        ? `empleados?email=eq.${encodeURIComponent(identifier.toLowerCase())}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`
+        : `empleados?legajo=eq.${encodeURIComponent(identifier)}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`;
+      const empleados = await sbGet(query);
+
+      if (!empleados || empleados.length === 0) {
+        return NextResponse.json({ error: "Legajo o contraseña incorrectos" }, { status: 401 });
+      }
+
+      usuario = null;
+
+      for (const emp of empleados) {
+        if (!emp.password) continue;
+
+        if (emp.password.startsWith("$2")) {
+          const match = await bcrypt.compare(password, emp.password);
+          if (match) { usuario = emp; break; }
+        } else {
+          // Contraseña en texto plano (legacy) — comparar y migrar a bcrypt.
+          // DEPRECATION: soporte para plaintext se elimina el 2026-09-01.
+          const PLAINTEXT_DEADLINE = new Date("2026-09-01T00:00:00Z");
+          if (new Date() >= PLAINTEXT_DEADLINE) {
+            logger.warn("Plaintext password rechazada post-deadline", { empleado_id: emp.id, empresa_id: emp.empresa_id });
+            continue;
           }
-          break;
+          if (password === emp.password) {
+            usuario = emp;
+            logger.warn("Login con plaintext password (legacy) — migrando a bcrypt", { empleado_id: emp.id, empresa_id: emp.empresa_id });
+            try {
+              const hashed = await bcrypt.hash(password, 10);
+              await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
+              logger.info("Password migrada a bcrypt exitosamente", { empleado_id: emp.id });
+            } catch (e) {
+              logger.error("Error migrando contraseña a bcrypt", e);
+            }
+            break;
+          }
         }
       }
-    }
 
-    if (!usuario) {
-      return NextResponse.json({ error: "Legajo o contraseña incorrectos" }, { status: 401 });
+      if (!usuario) {
+        return NextResponse.json({ error: "Legajo o contraseña incorrectos" }, { status: 401 });
+      }
     }
 
     // ─── Generar JWT tokens ───

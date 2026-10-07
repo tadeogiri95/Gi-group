@@ -3,5 +3,8 @@
 const CAMPOS_PRIVADOS = new Set(["password", "password_reset_jti", "activacion_codigo_hash", "activacion_expira", "pin_hash", "pin_intentos", "pin_bloqueado_hasta"]);
 
 export function usuarioSeguro(emp) {
-  return Object.fromEntries(Object.entries(emp || {}).filter(([c]) => !CAMPOS_PRIVADOS.has(c)));
+  const u = Object.fromEntries(Object.entries(emp || {}).filter(([c]) => !CAMPOS_PRIVADOS.has(c)));
+  // Si ya creó su PIN (F4-06), sin exponer el hash
+  if (emp && "pin_hash" in emp) u.tiene_pin = !!emp.pin_hash;
+  return u;
 }

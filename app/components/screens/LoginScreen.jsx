@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Input, Button } from "../ui";
 import GoogleIcon from "../GoogleIcon";
 import { getOauthErrorMessage } from "../../lib/oauthErrorMessages";
+import { recordarLegajoPin, legajoPinRecordado } from "../../lib/pin";
 
 export default function LoginScreen({ onLogin, empresa }) {
   const searchParams = useSearchParams();
@@ -12,8 +13,12 @@ export default function LoginScreen({ onLogin, empresa }) {
   const pathname = usePathname();
   const oauthError = searchParams.get("oauth_error");
 
-  const [legajo, setLegajo]   = useState("");
+  // Ingreso con PIN (F4-06): si en este celular ya se entró con PIN, arranca así
+  const [legajoPin] = useState(() => legajoPinRecordado(empresa?.slug));
+  const [modoPin, setModoPin] = useState(!!legajoPin);
+  const [legajo, setLegajo]   = useState(legajoPin);
   const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   // Inicializado desde ?oauth_error= si vino de /api/auth/google/callback —
@@ -39,8 +44,17 @@ export default function LoginScreen({ onLogin, empresa }) {
   const [resetLoading, setResetLoading]   = useState(false);
   const [resetMsg, setResetMsg]           = useState("");
 
+  const puedeIngresar = modoPin ? !!legajo.trim() && pin.length === 4 : !!legajo && !!password;
+
+  const cambiarModo = () => {
+    setModoPin(!modoPin);
+    setError("");
+    setPin("");
+    setPassword("");
+  };
+
   const login = async () => {
-    if (!legajo || !password) return;
+    if (!puedeIngresar) return;
     setLoading(true); setError("");
     try {
       if (!empresa?.id) {
@@ -51,12 +65,15 @@ export default function LoginScreen({ onLogin, empresa }) {
       const res = await fetch("/api/login-empresa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ legajo: legajo.trim(), password, empresa_id: empresa.id }),
+        body: JSON.stringify(modoPin
+          ? { legajo: legajo.trim(), pin, empresa_id: empresa.id }
+          : { legajo: legajo.trim(), password, empresa_id: empresa.id }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error de login");
+      if (modoPin) recordarLegajoPin(empresa.slug, legajo.trim());
       onLogin(data.usuario);
-    } catch (err) { setError(err.message); setLoading(false); }
+    } catch (err) { setError(err.message); setLoading(false); if (modoPin) setPin(""); }
   };
 
   const solicitarReset = async () => {
@@ -175,48 +192,83 @@ export default function LoginScreen({ onLogin, empresa }) {
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
-          <Input
-            value={legajo}
-            onChange={e => setLegajo(e.target.value)}
-            placeholder="Legajo o email"
-            type="text"
-            inputMode="text"
-            autoComplete="username"
-            onKeyDown={e => e.key === "Enter" && login()}
-          />
-
-          <div className="relative">
+        {modoPin ? (
+          <div className="flex flex-col gap-3">
             <Input
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Contraseña"
-              type={showPwd ? "text" : "password"}
-              style={{ marginBottom: 0 }}
+              value={legajo}
+              onChange={e => setLegajo(e.target.value.replace(/\D/g, ""))}
+              placeholder="Legajo"
+              aria-label="Legajo"
+              type="text"
+              inputMode="numeric"
+              autoComplete="username"
               onKeyDown={e => e.key === "Enter" && login()}
             />
-            <button
-              onClick={() => setShowPwd(!showPwd)}
-              aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 bg-gypi-surf-hi border-none text-gypi-dim cursor-pointer text-xs font-bold py-1 px-2.5 rounded-lg"
-            >
-              {showPwd ? "Ocultar" : "Ver"}
-            </button>
+            <Input
+              value={pin}
+              onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="PIN (4 números)"
+              aria-label="PIN"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              style={{ marginBottom: 0, letterSpacing: "0.4em" }}
+              onKeyDown={e => e.key === "Enter" && login()}
+            />
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <Input
+              value={legajo}
+              onChange={e => setLegajo(e.target.value)}
+              placeholder="Legajo o email"
+              type="text"
+              inputMode="text"
+              autoComplete="username"
+              onKeyDown={e => e.key === "Enter" && login()}
+            />
+
+            <div className="relative">
+              <Input
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Contraseña"
+                type={showPwd ? "text" : "password"}
+                style={{ marginBottom: 0 }}
+                onKeyDown={e => e.key === "Enter" && login()}
+              />
+              <button
+                onClick={() => setShowPwd(!showPwd)}
+                aria-label={showPwd ? "Ocultar contraseña" : "Mostrar contraseña"}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 bg-gypi-surf-hi border-none text-gypi-dim cursor-pointer text-xs font-bold py-1 px-2.5 rounded-lg"
+              >
+                {showPwd ? "Ocultar" : "Ver"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <Button
           variant="primary"
           size="lg"
           onClick={login}
-          disabled={loading || !legajo || !password}
+          disabled={loading || !puedeIngresar}
           loading={loading}
           style={{
             marginTop: 24, width: "100%",
-            boxShadow: (loading || !legajo || !password) ? "none" : "0 4px 14px rgba(249,115,22,0.35)",
+            boxShadow: (loading || !puedeIngresar) ? "none" : "0 4px 14px rgba(249,115,22,0.35)",
           }}
         >
           {loading ? "Ingresando..." : "Ingresar"}
+        </Button>
+
+        <Button
+          variant="ghost"
+          onClick={cambiarModo}
+          className="mt-3 w-full text-gypi-text"
+        >
+          {modoPin ? "Entrar con contraseña" : "Entrar con PIN"}
         </Button>
 
         <div className="flex items-center gap-3 my-4">

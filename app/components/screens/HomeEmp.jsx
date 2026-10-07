@@ -7,6 +7,7 @@ import Icon from "../Icon";
 import SolCard from "../cards/SolCard";
 import EmptyState from "../ui/EmptyState";
 import BotonFichar from "../BotonFichar";
+import PinCard from "../PinCard";
 
 function fmtMin(m) {
   const h = Math.floor(m / 60);
@@ -14,7 +15,7 @@ function fmtMin(m) {
   return h > 0 ? `${h}h ${min}m` : `${min}m`;
 }
 
-export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false }) {
+export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado }) {
   const misSols = ctx.misSolicitudes || [];
   const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
@@ -152,6 +153,11 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         </div>
         <span className="text-gypi-amber shrink-0 opacity-60"><Ic.chevR /></span>
       </button>
+
+      {/* PIN para entrar rápido (F4-06) */}
+      {usuario.rol === "operativo" && (
+        <PinCard tienePin={!!usuario.tiene_pin} onCambio={onPinCambiado} demo={demo} />
+      )}
 
       {/* Jornada de hoy */}
       {(hayActividad || (fichado && !ctx.fichadaHoy?.egreso)) && (

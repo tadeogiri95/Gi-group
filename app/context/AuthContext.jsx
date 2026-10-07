@@ -205,6 +205,16 @@ export function AuthProvider({ children }) {
     router.push(slug ? `/${slug}` : "/");
   }, [router, slug]);
 
+  // ─── Actualizar datos del usuario de la sesión (p. ej. tiene_pin) ───
+  const actualizarUsuario = useCallback((cambios) => {
+    setUsuario(prev => {
+      if (!prev) return prev;
+      const nuevo = { ...prev, ...cambios };
+      try { sessionStorage.setItem("gi-session", JSON.stringify(nuevo)); } catch {}
+      return nuevo;
+    });
+  }, []);
+
   // ─── Actualizar empresa (desde admin_empresa_screen) ───
   const updateEmpresa = useCallback((updates) => {
     setEmpresa(prev => {
@@ -229,6 +239,7 @@ export function AuthProvider({ children }) {
       login,
       logout,
       updateEmpresa,
+      actualizarUsuario,
       loadConfigEmpresa,
       cargarEmpresa,
     }}>
