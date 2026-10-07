@@ -225,6 +225,14 @@ test("administrativo: aprueba solicitudes", async () => {
   assert.equal(res.status, 200);
 });
 
+test("gestión: el comentario al aprobar o rechazar se guarda (F4-07)", async () => {
+  const t = await token("gerencial");
+  const { handlers, llamadas } = capturar("solicitudes");
+  global.fetch = createFetchMock(handlers);
+  await POST(req({ method: "PATCH", path: "solicitudes?id=eq.5", body: { estado: "rechazado", aprobador: "Laura", notas_gerencia: "Falta el certificado" } }, t));
+  assert.equal(llamadas[0].body.notas_gerencia, "Falta el certificado");
+});
+
 test("solo el dueño cambia las instrucciones de la IA", async () => {
   const adm = await token("administrativo");
   global.fetch = createFetchMock(capturar("empresa").handlers);
