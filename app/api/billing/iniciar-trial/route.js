@@ -18,8 +18,8 @@ export async function POST(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
-      return NextResponse.json({ error: "Solo el administrador puede iniciar la prueba gratuita" }, { status: 403 });
+    if (sesion.rol !== "gerencial") {
+      return NextResponse.json({ error: "Solo el dueño de la cuenta puede iniciar la prueba gratuita" }, { status: 403 });
     }
 
     const rows = await sbGet(`empresa?id=eq.${sesion.empresa_id}&select=plan_activo,trial_usado&limit=1`);

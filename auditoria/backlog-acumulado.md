@@ -99,7 +99,7 @@
 | F4-08 | Reorganizar “Gestión” (operación vs. configuración) | Medio | M | Pendiente |
 | F4-09 | Accesibilidad: objetivos táctiles ≥48 px, texto ≥12 px | Medio | M | Pendiente |
 | F4-10 | Unificar el sistema de diseño | Medio | M | Pendiente |
-| F4-11 | Buscador + escáner de OT (D8) | Medio | S–M | En PR #34 (migración 074): escáner de QR/código de barras al iniciar una tarea, activable por empresa en Configuración → Proyectos, OTs recientes por empleado y etiquetas QR imprimibles |
+| F4-11 | Buscador + escáner de OT (D8) | Medio | S–M | Hecho (PR #34) (migración 074): escáner de QR/código de barras al iniciar una tarea, activable por empresa en Configuración → Proyectos, OTs recientes por empleado y etiquetas QR imprimibles |
 | F4-12 | Formulario de solicitudes con rango de fechas | Medio | S | Pendiente |
 | F4-13 / H1–H5, H9 | Reglas y textos de la fábrica → configuración por tenant (D5) | Medio | M | Pendiente |
 | F4-14 | Onboarding extendido + checklist de activación | Medio | M | Pendiente |
@@ -107,6 +107,7 @@
 | F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | **Hecho** (tadeogiri95/Gi-group#21, fusionado): sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |
 | F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Hecho (PR #27): volver a la última empresa del dispositivo, buscar por código y link a la landing |
 | F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
+| — | **Roles por división** (D2, ítem 22): supervisor limitado a su división; facturación solo del dueño | Nuevo | M | En PR #35 (migración 075): `empleados.solo_su_division` (lo marca el dueño); `/api/data`, `/api/empleados`, documentos, activación y push filtrados por división; liquidación, consultas de IA, importar/borrar empleados y configuración bloqueadas para el supervisor; cambiar plan o cancelar solo el dueño. Queda: filtrar por división la liquidación y las consultas de IA en vez de bloquearlas |
 | — | **Resumen semanal automático** (D10) | Nuevo | S–M | Pendiente |
 | — | **QR de activación y QR personal** imprimibles (D7, ítem 18) | Nuevo | S | Hecho (PR #32): tarjetas para imprimir desde Gestión de personal (QR personal → ingreso con PIN y legajo cargado) y desde los códigos de acceso (QR → link de activación) |
 | — | **Modo kiosco** con QR + PIN (D7, D11) | Nuevo | M | Hecho (PR #33): `/{slug}/kiosco` activado por gestión en el dispositivo (cookie propia guardada como sesión revocable); el operario escanea su QR o escribe el legajo + PIN y el servidor decide entrada o salida (turno noche incluido) con la misma lógica que el celular; vuelve solo al inicio. Queda: iniciar tareas desde el kiosco |

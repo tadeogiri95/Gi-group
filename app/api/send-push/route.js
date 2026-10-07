@@ -14,6 +14,7 @@ import { sendPushBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
+import { alcanceDe, dentroDelAlcance } from "../../lib/alcance";
 import { sanitizarDataPush } from "../../lib/pushData";
 
 function getAdminApp() {
@@ -64,6 +65,11 @@ export async function POST(request) {
     const esGestion = ROLES_GESTION.has(sesion.rol);
     if (!esGestion && (legajo != null || !ROLES_GESTION.has(rol))) {
       return NextResponse.json({ error: "Solo podés enviar avisos a gerencia o administración" }, { status: 403 });
+    }
+    // Supervisor de división (D2): a su gente o a gestión, no a toda la planta
+    const alcance = esGestion ? await alcanceDe(sesion) : null;
+    if (alcance && (legajo != null ? !dentroDelAlcance(alcance, { legajo }) : !ROLES_GESTION.has(rol))) {
+      return NextResponse.json({ error: "Solo podés enviar avisos a empleados de tu división" }, { status: 403 });
     }
     const data = sanitizarDataPush(parsed.data.data, esGestion);
 

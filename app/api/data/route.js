@@ -13,6 +13,7 @@ import { logger } from "../../lib/logger";
 import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "../../lib/validate";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
+import { alcanceDe, filtroAlcance, dentroDelAlcance, COLUMNA_PERSONA } from "../../lib/alcance";
 import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -291,6 +292,21 @@ export async function POST(request) {
     if ((method === "POST" || method === "PATCH") && !CAMPOS_PERMITIDOS[pathCheck.tabla]?.[method]) {
       return NextResponse.json({ error: `Operación no permitida sobre "${pathCheck.tabla}"` }, { status: 403 });
     }
+    // ─── ALCANCE: un supervisor de división solo ve y toca a su gente (D2) ───
+    const alcance = await alcanceDe(sesion);
+    if (alcance && method && method !== "GET") {
+      if (method === "PATCH" && pathCheck.tabla === "empleados" && body && body.division !== undefined) {
+        return NextResponse.json({ error: "Un supervisor no puede cambiar la división de un empleado" }, { status: 403 });
+      }
+      const regla = COLUMNA_PERSONA[pathCheck.tabla];
+      if (method === "POST" && regla) {
+        const filas = Array.isArray(body) ? body : [body];
+        const campo = regla.lista === "ids" ? "id" : "legajo";
+        if (filas.some((f) => !dentroDelAlcance(alcance, { [campo]: f?.[regla.col] }))) {
+          return NextResponse.json({ error: "Ese empleado no es de tu división" }, { status: 403 });
+        }
+      }
+    }
     if (method === "PATCH") {
       const patchCheck = validarPatch(pathCheck.tabla, body, sesion);
       if (patchCheck) return NextResponse.json({ error: patchCheck.error }, { status: patchCheck.status });
@@ -331,6 +347,9 @@ export async function POST(request) {
       finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
       // Operativo: solo sus propias filas (filtro AND sobre lo que pida el cliente)
       finalPath = aplicarFiltroPropio(finalPath, auth.ownFilter);
+      // Supervisor: además, solo filas de empleados de su división
+      const filtroDiv = filtroAlcance(pathCheck.tabla, alcance);
+      if (filtroDiv) finalPath += (finalPath.includes("?") ? "&" : "?") + filtroDiv;
     }
     // Aplicar paginación a todo GET para evitar retornos sin límite.
     // Si viene `cursor`, se usa keyset (ignora offset); si no, offset clásico.

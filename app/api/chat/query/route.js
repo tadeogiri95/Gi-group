@@ -12,6 +12,7 @@ import { sanitizePostgrestParam } from "../../../lib/validate";
 import { chatQueryBody } from "../../../lib/schemas";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { duracionMinutos } from "../../../lib/calc";
+import { rechazarSiSupervisor } from "../../../lib/alcance";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -364,6 +365,11 @@ export async function POST(request) {
 
     if (GERENCIAL_ONLY.has(query_type) && !["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Esta consulta requiere rol gerencial." }, { status: 403 });
+    }
+    // Las consultas de gestión cubren a toda la empresa: un supervisor de división no las usa (D2)
+    if (GERENCIAL_ONLY.has(query_type)) {
+      const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+      if (bloqueoSupervisor) return bloqueoSupervisor;
     }
 
     const params = {};

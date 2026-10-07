@@ -62,7 +62,7 @@ function legajoProvisorio() {
 }
 
 /* ═══ MODAL EMPLEADO ═══ */
-function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES }) {
+function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES, puedeMarcarSupervisor = false, divisionBloqueada = false }) {
   const [form, setForm] = useState(initialData);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const valid = form.nombre?.trim();
@@ -96,8 +96,8 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
             </select>
           </div>
           <div>
-            <label className="g-label block mb-1.5">Division</label>
-            <select value={form.division || ""} onChange={e => set("division", e.target.value)} className="g-input cursor-pointer text-[13px]">
+            <label className="g-label block mb-1.5">Division{divisionBloqueada ? " (la tuya)" : ""}</label>
+            <select value={form.division || ""} onChange={e => set("division", e.target.value)} disabled={divisionBloqueada} className="g-input cursor-pointer text-[13px] disabled:opacity-60">
               {divisiones.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </div>
@@ -111,6 +111,20 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
             ))}
           </div>
         </div>
+
+        {/* Supervisor de división (D2): solo el dueño lo marca. Si la migración 075
+            no se corrió, el dato no viene y la casilla no aparece. */}
+        {mode === "editar" && puedeMarcarSupervisor && form.rol === "administrativo" && initialData.solo_su_division !== undefined && (
+          <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={!!form.solo_su_division} onChange={e => set("solo_su_division", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
+              <div>
+                <div className="text-[13px] font-bold text-gypi-text">Ve solo su división (supervisor)</div>
+                <div className="text-[11px] text-gypi-dim mt-0.5">Solo va a ver y gestionar a los empleados de su división. Sin marcar, ve toda la empresa.</div>
+              </div>
+            </label>
+          </div>
+        )}
 
         {mode === "alta" && (
           <div className="mb-4 p-3 rounded-[10px]" style={{ background: `${CYAN}10`, border: `1px solid ${CYAN}30` }}>
@@ -278,7 +292,9 @@ function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
 export default function GestionPersonalScreen({ empresaId }) {
   const { divisiones: divisionesCtx, usuario: sesion, empresa } = useAuth();
   // Un administrativo no puede crear/asignar rol gerencial (misma regla que /api/empleados)
-  const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : ROLES.filter(r => r !== "gerencial");
+  // Supervisor de división (D2): da de alta solo operarios de su división y no cambia divisiones
+  const soySupervisor = sesion?.rol === "administrativo" && !!sesion?.solo_su_division;
+  const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : soySupervisor ? ["operativo"] : ROLES.filter(r => r !== "gerencial");
   const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -427,6 +443,9 @@ export default function GestionPersonalScreen({ empresaId }) {
           rol: form.rol || "operativo",
           area: form.area || "produccion",
           email: form.email?.trim() || null,
+          ...(sesion?.rol === "gerencial" && form.solo_su_division !== undefined
+            ? { solo_su_division: form.rol === "administrativo" && !!form.solo_su_division }
+            : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -725,8 +744,9 @@ export default function GestionPersonalScreen({ empresaId }) {
       {modalAlta && (
         <ModalEmpleado
           mode="alta"
-          initialData={modalAlta}
+          initialData={soySupervisor ? { ...modalAlta, division: sesion.division || "" } : modalAlta}
           divisiones={DIVISIONES}
+          divisionBloqueada={soySupervisor}
           rolesPermitidos={rolesPermitidos}
           onClose={() => setModalAlta(null)}
           onSave={handleAlta}
@@ -738,6 +758,8 @@ export default function GestionPersonalScreen({ empresaId }) {
           mode="editar"
           initialData={modalEditar}
           divisiones={DIVISIONES}
+          puedeMarcarSupervisor={sesion?.rol === "gerencial"}
+          divisionBloqueada={soySupervisor}
           rolesPermitidos={rolesPermitidos}
           onClose={() => setModalEditar(null)}
           onSave={handleEditar}

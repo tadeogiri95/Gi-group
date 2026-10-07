@@ -5,6 +5,7 @@ import { validarToken } from "../../../lib/auth";
 import { isUUID, safeErrorMessage } from "../../../lib/validate";
 import { sbGet, sbPost, sbDelete } from "../../../lib/sbHelpers";
 import { logger } from "../../../lib/logger";
+import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance } from "../../../lib/alcance";
 
 const ROLES_OK = new Set(["gerencial", "administrativo"]);
 
@@ -26,6 +27,8 @@ export async function POST(req) {
     if (empleadoIds.length > 500) {
       return NextResponse.json({ error: "Máximo 500 empleados por asignación" }, { status: 400 });
     }
+    const alcance = await alcanceDe(sesion);
+    if (empleadoIds.some((id) => !dentroDelAlcance(alcance, { id }))) return respuestaFueraDeAlcance();
 
     const tipo = await sbGet(`tipos_documento_requerido?id=eq.${tipoDocumentoId}&empresa_id=eq.${sesion.empresa_id}&select=id`);
     if (!tipo?.length) return NextResponse.json({ error: "Tipo de documento no encontrado" }, { status: 404 });
@@ -73,6 +76,8 @@ export async function DELETE(req) {
     if (empleadoIds.length > 500) {
       return NextResponse.json({ error: "Máximo 500 empleados por desasignación" }, { status: 400 });
     }
+    const alcance = await alcanceDe(sesion);
+    if (empleadoIds.some((id) => !dentroDelAlcance(alcance, { id }))) return respuestaFueraDeAlcance();
 
     await sbDelete(`documentos_exigidos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=in.(${empleadoIds.join(",")})&tipo_documento_id=eq.${tipoDocumentoId}`);
     return NextResponse.json({ ok: true, desasignados: empleadoIds.length });

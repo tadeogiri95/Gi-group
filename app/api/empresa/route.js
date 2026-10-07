@@ -7,6 +7,7 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { CAMPOS_EMPRESA_SOLO_DUENO } from "../../lib/dataPolicy";
 
 import { ipCliente } from "../../lib/ip";
+import { rechazarSiSupervisor } from "../../lib/alcance";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -94,6 +95,8 @@ export async function PATCH(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
+    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+    if (bloqueoSupervisor) return bloqueoSupervisor;
 
     const rawBody = await request.json();
     const parsed = validateBody(empresaPatchBody, rawBody);

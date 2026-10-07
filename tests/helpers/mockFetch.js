@@ -45,5 +45,10 @@ export function authPassHandlers() {
       match: (url) => /\/rest\/v1\/empresa\?id=eq\..*select=email_verificado/.test(url),
       respond: () => ({ status: 200, body: [{ email_verificado: true }] }),
     },
+    // Alcance de un administrativo (lib/alcance.js, D2): por defecto no es supervisor de división
+    {
+      match: (url) => url.includes("select=id,legajo,division,solo_su_division"),
+      respond: () => ({ status: 200, body: [{ solo_su_division: false }] }),
+    },
   ];
 }

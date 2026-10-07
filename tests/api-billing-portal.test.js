@@ -153,8 +153,15 @@ test("billing/portal POST — suscripcion sin gateway_subscription_id devuelve 4
   assert.ok(json.error);
 });
 
-test("billing/portal POST — cancelacion exitosa devuelve 200 con ok:true", async () => {
+test("billing/portal POST — un administrativo no puede cancelar: solo el dueño (D2)", async () => {
   const token = await tokenConRol("administrativo");
+  global.fetch = createFetchMock([...authPassHandlers()]);
+  const res = await POST(postReq(token));
+  assert.equal(res.status, 403);
+});
+
+test("billing/portal POST — cancelacion exitosa devuelve 200 con ok:true", async () => {
+  const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     sbSuscripciones({ id: "sub-1", estado: "activa", gateway: "mercadopago", gateway_subscription_id: "mp-sub-1" }),

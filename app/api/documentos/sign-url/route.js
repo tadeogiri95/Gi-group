@@ -9,6 +9,7 @@ import { validarToken } from "../../../lib/auth";
 import { isUUID, safeErrorMessage } from "../../../lib/validate";
 import { sbGet } from "../../../lib/sbHelpers";
 import { logger } from "../../../lib/logger";
+import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance } from "../../../lib/alcance";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -34,6 +35,7 @@ export async function POST(req) {
     if (!esDueño && !ROLES_GERENCIA.has(sesion.rol)) {
       return NextResponse.json({ error: "No autorizado a ver este documento" }, { status: 403 });
     }
+    if (!esDueño && !dentroDelAlcance(await alcanceDe(sesion), { id: doc.empleado_id })) return respuestaFueraDeAlcance();
 
     const signRes = await fetch(`${SB_URL}/storage/v1/object/sign/${BUCKET}/${doc.storage_path}`, {
       method: "POST",
