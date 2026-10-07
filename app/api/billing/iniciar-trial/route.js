@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════
-// POST /api/billing/iniciar-trial — Botón "Probar Pro gratis 14 días"
+// POST /api/billing/iniciar-trial — "Activá tu prueba gratuita" (30 días)
 //
-// Las empresas nuevas arrancan en plan Free (ver migración 063). Este
-// endpoint es el único disparador de la prueba de Pro: el admin decide
-// cuándo, no se activa sola al registrarse.
+// Desde la migración 080 la prueba arranca sola al registrarse (D20). Este
+// botón queda para la empresa a la que eso le falló: sigue en 'free' sin
+// haber usado la prueba.
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
@@ -11,6 +11,7 @@ import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { sbGet } from "../../../lib/sbHelpers";
 import { iniciarTrialEmpresa } from "../../../lib/empresaSignup";
 import { invalidarCachePlan } from "../../../lib/planEnforcement";
+import { DIAS_TRIAL } from "../../../lib/plans";
 import { logger } from "../../../lib/logger";
 import { safeErrorMessage } from "../../../lib/validate";
 
@@ -27,10 +28,10 @@ export async function POST(request) {
     if (!empresa) return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });
 
     if (empresa.trial_usado) {
-      return NextResponse.json({ error: "Ya usaste tu prueba gratuita de Pro" }, { status: 409 });
+      return NextResponse.json({ error: "Ya usaste tu prueba gratuita" }, { status: 409 });
     }
     if (empresa.plan_activo !== "free") {
-      return NextResponse.json({ error: "Ya tenés un plan activo distinto de Free" }, { status: 409 });
+      return NextResponse.json({ error: "Ya tenés un plan activo" }, { status: 409 });
     }
 
     const ok = await iniciarTrialEmpresa(sesion.empresa_id);
@@ -40,7 +41,7 @@ export async function POST(request) {
 
     invalidarCachePlan(sesion.empresa_id);
 
-    return NextResponse.json({ ok: true, plan: "trial", dias: 14 });
+    return NextResponse.json({ ok: true, plan: "trial", dias: DIAS_TRIAL });
   } catch (err) {
     logger.error("[billing/iniciar-trial] Error", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });

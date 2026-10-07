@@ -43,7 +43,7 @@ function handlersIngresoBasico({ yaFichado = false } = {}) {
   return [
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "pro" }] }) },
     {
       match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=id,ingreso"),
       respond: () => ({ status: 200, body: yaFichado ? [{ id: "f1", ingreso: "08:00:00" }] : [] }),
@@ -179,9 +179,9 @@ test("fichar — egreso con forzar_cierre_tarea=true cierra tarea activa y regis
   global.fetch = mockFichar([
     ...authPassHandlers(),
     // Plan y timezone
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone,plan_activo"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone,plan_activo"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro" }] }) },
     // Plan solo (fallback si la ruta hace dos GETs separados)
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "pro" }] }) },
     // Timezone solo
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
     // forzar_cierre_tarea=true → la ruta primero LEE las tareas abiertas
@@ -229,7 +229,7 @@ test("fichar — egreso sin forzar_cierre_tarea retorna tarea_activa cuando hay 
   global.fetch = mockFichar([
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "pro" }] }) },
     // Hay una tarea activa sin hora_fin
     {
       match: (url) => url.includes("/rest/v1/registro_actividades") && url.includes("hora_fin=is.null") && url.includes("select=id"),
@@ -251,7 +251,7 @@ test("fichar — egreso con ingreso '08:00:00' (formato real de PostgREST) guard
   global.fetch = mockFichar([
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "pro" }] }) },
     { match: (url) => url.includes("/rest/v1/registro_actividades"), respond: () => ({ status: 200, body: [] }) },
     {
       match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=*") && url.includes("limit=1"),
@@ -270,11 +270,11 @@ test("fichar — egreso con ingreso '08:00:00' (formato real de PostgREST) guard
   assert.ok(Number(patch.horas_trabajadas) > 0);
 });
 
-test("fichar — con zonas cargadas, fuera de la zona no ficha aunque el plan sea Free", async () => {
+test("fichar — con zonas cargadas, fuera de la zona no ficha con cualquier plan", async () => {
   const token = await tokenValido();
   global.fetch = mockFichar([
     ...authPassHandlers(),
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro" }] }) },
     { match: (url) => url.includes("/rest/v1/geo_zonas"), respond: () => ({ status: 200, body: [{ id: 1, lat: -31.42, lng: -64.18, radio: 150, nombre: "Planta" }] }) },
   ]);
   const res = await POST(req({ accion: "ingreso", geo_lat: -34.6, geo_lng: -58.4 }, token));
@@ -461,7 +461,7 @@ test("fichar — egreso con jornada de más de 20h loguea FICHAJE_OLVIDADO pero 
     global.fetch = mockFichar([
       ...authPassHandlers(),
       { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
-      { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+      { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "pro" }] }) },
       { match: (url) => url.includes("/rest/v1/registro_actividades") && url.includes("hora_fin=is.null") && url.includes("select=id"), respond: () => ({ status: 200, body: [] }) },
       // Sin fichada de hoy -> obliga a buscar la última fichada abierta
       { match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=*") && url.includes("limit=1"), respond: () => ({ status: 200, body: [] }) },
@@ -496,7 +496,7 @@ test("fichar — egreso ya cerrado por otra request devuelve ya_fichado en vez d
   global.fetch = mockFichar([
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=plan_activo"), respond: () => ({ status: 200, body: [{ plan_activo: "pro" }] }) },
     { match: (url) => url.includes("/rest/v1/registro_actividades") && url.includes("hora_fin=is.null") && url.includes("select=id"), respond: () => ({ status: 200, body: [] }) },
     // El GET todavía ve la fichada sin egreso (leída antes de que la otra
     // request ganara la carrera)

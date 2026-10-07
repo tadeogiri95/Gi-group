@@ -30,7 +30,7 @@ export default function Nosotros() {
         {[
           "Simplicidad: que una empresa pueda empezar a usar Gypi en minutos, sin capacitación extensa.",
           "Datos reales y seguros: la información de fichaje y reportes de cada empresa es privada y nunca se comparte con terceros.",
-          "Precio justo: un plan gratuito real para empresas chicas, y planes pagos que escalan con el tamaño del equipo.",
+          "Precio justo: 30 días de prueba con todo incluido, y planes que escalan con el tamaño del equipo.",
           "Mejora continua: sumamos funciones a partir de lo que nos piden las empresas que ya usan la plataforma.",
         ].map((t, i) => (
           <li key={i} style={S.li}>{t}</li>

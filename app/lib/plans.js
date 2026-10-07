@@ -108,6 +108,15 @@ export const PLANES = {
 
 export const DESCUENTO_ANUAL = 0.20;
 
+// Solo versión paga con prueba de 30 días (D20). "free" ya no es un plan que
+// se ofrezca: quedó como el estado interno de una cuenta sin plan vigente
+// (prueba vencida o suscripción cancelada), que no puede cargar datos nuevos.
+export const DIAS_TRIAL = 30;
+
+export function planVigente(plan) {
+  return !!plan && plan !== "free";
+}
+
 export function precioAnual(planId) {
   const p = PLANES[planId] || PLANES.free;
   if (!p.precio) return null;

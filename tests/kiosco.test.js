@@ -123,7 +123,7 @@ function servidorFichaje({ fichadas = [], empleado = { ...OPERARIO, pin_hash: PI
     { match: (url, opts) => url.includes("/rest/v1/empleados?id=eq.") && opts?.method === "PATCH", respond: (url, opts) => { registro.patch = JSON.parse(opts.body); return { status: 200, body: [{}] }; } },
     { match: (url) => url.includes("/rest/v1/fichadas?empleado_id=eq.") && url.includes("select=fecha,ingreso,egreso"), respond: () => ({ status: 200, body: fichadas }) },
     // Camino de ingreso de lib/ficharServidor (como en api-fichar.test.js)
-    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "free" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro" }] }) },
     { match: (url) => url.includes("/rest/v1/fichadas") && url.includes("select=id,ingreso"), respond: () => ({ status: 200, body: [] }) },
     { match: (url) => url.includes("/rest/v1/empleados") && url.includes("select=diagrama"), respond: () => ({ status: 200, body: [{ diagrama: null }] }) },
     { match: (url, opts) => url.includes("/rest/v1/fichadas") && opts?.method === "POST", respond: (url, opts) => { registro.insertada = JSON.parse(opts.body); return { status: 201, body: [registro.insertada] }; } },

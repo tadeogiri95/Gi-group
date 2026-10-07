@@ -100,7 +100,7 @@ export default function RootLayout({ children }) {
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'ARS',
-      description: 'Plan Free — hasta 5 empleados',
+      description: 'Prueba gratuita de 30 días',
     },
     featureList: [
       'Fichaje digital desde el celular',

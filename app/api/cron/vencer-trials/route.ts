@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sendTrialExpirado } from "../../../lib/email";
 import { logger } from "../../../lib/logger";
 import { logEvent, EVT } from "../../../lib/analytics";
+import { DIAS_TRIAL } from "../../../lib/plans";
 
 import { conMonitoreoCron } from "../../../lib/cronMonitor";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -35,19 +36,19 @@ async function sbPatch(path: string, body: Record<string, unknown>) {
 
 type EmpresaAfectada = { empresa_id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string };
 
-const CATORCE_DIAS_MS = 14 * 24 * 60 * 60 * 1000;
+const DURACION_TRIAL_MS = DIAS_TRIAL * 24 * 60 * 60 * 1000;
 
 // ─── Huérfanas: empresas con plan no-free y CERO filas en `suscripciones`
 // — caso de doble falla en registro-empresa (RPC iniciar_trial_pro + INSERT
 // de fallback fallaron los dos), invisible para el resto de este cron
-// porque arranca siempre desde `suscripciones`. Se exige más de 14 días de
+// porque arranca siempre desde `suscripciones`. Se exige más de DIAS_TRIAL días de
 // antigüedad (mismo plazo que un trial normal) y se excluyen las empresas
 // con plan_override_manual=true: son planes pactados a mano por el
 // superadmin (p.ej. enterprise) que a propósito no tienen fila en
 // suscripciones — bajarlas a free sería un downgrade indebido.
 // ───
 async function corregirEmpresasHuerfanas(): Promise<EmpresaAfectada[]> {
-  const cutoff = new Date(Date.now() - CATORCE_DIAS_MS).toISOString();
+  const cutoff = new Date(Date.now() - DURACION_TRIAL_MS).toISOString();
 
   const candidatas: { id: string; nombre: string; nombre_corto: string; slug: string; admin_email: string }[] =
     await sbGet(

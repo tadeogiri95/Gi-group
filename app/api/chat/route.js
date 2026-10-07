@@ -13,6 +13,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { logAudit } from "../../lib/audit";
 import { logger } from "../../lib/logger";
@@ -107,6 +108,8 @@ export async function POST(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion) return respuestaNoAutorizado();
+    const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
+    if (sinPlan) return sinPlan;
 
     const rawBody = await request.text();
     if (rawBody.length > 100_000) {
