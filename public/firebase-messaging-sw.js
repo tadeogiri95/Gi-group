@@ -94,14 +94,9 @@ self.addEventListener("fetch", (e) => {
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-firebase.initializeApp({
-  apiKey: "AIzaSyCeMnmMN5O1wnVHQOB5TPFpQk1rx82CYMA",
-  authDomain: "gi-group-app-676a0.firebaseapp.com",
-  projectId: "gi-group-app-676a0",
-  storageBucket: "gi-group-app-676a0.firebasestorage.app",
-  messagingSenderId: "1060867248487",
-  appId: "1:1060867248487:web:b7e260f3e2cadbce9fdfc2",
-});
+// Proyecto Firebase: lo define el servidor (variables de entorno, ítem 33)
+importScripts('/firebase-config.js');
+firebase.initializeApp(self.GYPI_FIREBASE_CONFIG);
 
 const messaging = firebase.messaging();
 
