@@ -159,7 +159,8 @@ export default function HomeContent() {
       const monStr = lunesDeLaSemana(0);
       const isG = usuario.rol === "gerencial" || usuario.rol === "administrativo";
 
-      const [empleados, fichadasHoy, miFichada, fichadasSemana, solicitudes, misSolicitudes, reglas, notificaciones] = await Promise.all([
+      const ayer = hoyArg(new Date(Date.now() - 24 * 60 * 60 * 1000));
+      const [empleados, fichadasHoy, miFichada, fichadasSemana, solicitudes, misSolicitudes, reglas, notificaciones, miAbierta] = await Promise.all([
         // Todas las páginas: con más de 500 empleados (o 200 fichadas en el día) se cortaba sin avisar (F3-03)
         sbGetAll("empleados?select=id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at&activo=eq.true&order=legajo.asc,id.asc").then((r) => r.data),
         sbGetAll(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}&order=legajo.asc,id.asc`).then((r) => r.data),
@@ -172,6 +173,8 @@ export default function HomeContent() {
           ? "notificaciones?destinatario_rol=eq.gerencial&order=created_at.desc&limit=10"
           : `notificaciones?destinatario_rol=eq.${usuario.legajo}&order=created_at.desc&limit=10`
         ),
+        // Turno noche: si ingresó ayer y todavía no fichó la salida, el botón grande ofrece "Fichar salida"
+        sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${ayer}&fecha=lt.${today}&ingreso=not.is.null&egreso=is.null&order=fecha.desc&limit=1`),
       ]);
 
       const fHoy = fichadasHoy.map(f => ({ ...f, nombre: f.empleados?.nombre || "", division: f.empleados?.division || "" }));
@@ -186,7 +189,7 @@ export default function HomeContent() {
       }
 
       setCtx({
-        empleados, fichadasHoy: fHoy, fichadaHoy: miFichada[0] || null,
+        empleados, fichadasHoy: fHoy, fichadaHoy: miFichada[0] || null, fichadaAbierta: miAbierta?.[0] || null,
         fichadasSemana, solicitudes, misSolicitudes,
         reglas: reglas.map(r => r.regla), reglasRaw: reglas, notificaciones,
         geoZonaNombre,
@@ -320,7 +323,7 @@ export default function HomeContent() {
           </div>
         )}
         <ErrorBoundary name={screen}>
-          {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} actividadesHoy={isDemo ? demoActividad.actividadesHoy : actividad.historial} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} />}
+          {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} actividadesHoy={isDemo ? demoActividad.actividadesHoy : actividad.historial} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} reload={loadData} demo={isDemo} />}
           {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} onBack={() => setScreen("home")} />}
           {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} fichadaHoy={ctx.fichadaHoy} />}
           {!uIsGer && screen === "chat" && <ChatScreen usuario={u} ctx={ctx} reload={loadData} empresa={empresa} onBack={() => setScreen("home")} />}
