@@ -45,3 +45,40 @@ test("verificar.sh — controla que las tablas principales tengan datos", () => 
   assert.match(verificar, /exit 1/);
   assert.ok(!/echo[^\n]*\$(BACKUP_PASSPHRASE|VERIFY_DB_URL)/.test(verificar), "no imprime secretos");
 });
+
+// ─── Exportación del esquema (F3-09 / F0-05) ───
+
+const wfEsquema = readFileSync(new URL("../.github/workflows/exportar-esquema.yml", import.meta.url), "utf8");
+const sinCred = readFileSync(new URL("../scripts/backup/sin-credenciales.sh", import.meta.url), "utf8");
+const exportar = readFileSync(new URL("../scripts/backup/exportar-esquema.sh", import.meta.url), "utf8");
+
+test("exportar-esquema — solo a mano, sin datos, y revisa credenciales ANTES de subir", () => {
+  assert.match(wfEsquema, /on:\s*\n\s*workflow_dispatch:/);
+  assert.ok(!/schedule:/.test(wfEsquema), "no corre solo");
+  assert.match(exportar, /--schema-only --schema=public/);
+  const iRevisar = wfEsquema.indexOf("scripts/backup/sin-credenciales.sh");
+  const iPush = wfEsquema.indexOf("git push");
+  assert.ok(iRevisar > 0 && iPush > iRevisar);
+  for (const linea of wfEsquema.split("\n")) {
+    if (linea.includes("secrets.")) assert.match(linea, /^\s+[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}\s*$/, linea);
+  }
+});
+
+test("sin-credenciales.sh — detecta JWT, cadenas de conexión con contraseña y claves privadas", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "cred-"));
+  const script = new URL("../scripts/backup/sin-credenciales.sh", import.meta.url).pathname;
+  const corre = (contenido) => {
+    const f = join(dir, `f${Math.random()}.sql`);
+    writeFileSync(f, contenido);
+    try { execFileSync("bash", [script, f], { stdio: "pipe" }); return 0; } catch (e) { return e.status; }
+  };
+  assert.equal(corre("CREATE TABLE empleados (password text);\n"), 0, "una columna llamada password no es una credencial");
+  assert.equal(corre("-- eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.firma\n"), 1);
+  assert.equal(corre("-- postgresql://postgres.abc:Clave123@aws-0.pooler.supabase.com:5432/postgres\n"), 1);
+  assert.equal(corre("-----BEGIN PRIVATE KEY-----\n"), 1);
+  assert.match(sinCred, /set -euo pipefail/);
+});

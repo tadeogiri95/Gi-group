@@ -1,0 +1,68 @@
+name: Exportar esquema de producción
+
+# F3-09 / F0-05 (drift): exporta la ESTRUCTURA del esquema public de producción
+# (tablas, índices, funciones, políticas, permisos; SIN datos) y la sube a la
+# rama chore/esquema-prod para revisarla y armar la línea base de migraciones.
+# Usa el mismo secreto que el backup (SUPABASE_DB_URL). Solo se corre a mano.
+#
+# El repo es público: antes de subir nada se busca en el archivo cualquier cosa
+# con forma de credencial (tokens, claves de API, cadenas de conexión). Si
+# aparece algo, el workflow falla y NO publica el archivo.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: exportar-esquema
+  cancel-in-progress: false
+
+jobs:
+  exportar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.repository == 'tadeogiri95/Gi-group'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar el secreto
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Falta el secreto SUPABASE_DB_URL (el mismo del backup)"
+            exit 1
+          fi
+
+      - name: Instalar cliente de Postgres 17
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Exportar la estructura (sin datos)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          PSQL: /usr/lib/postgresql/17/bin/psql
+        run: scripts/backup/exportar-esquema.sh supabase/baseline
+
+      - name: Revisar que no haya credenciales en el archivo
+        run: scripts/backup/sin-credenciales.sh supabase/baseline/*.sql
+
+      - name: Subir a la rama chore/esquema-prod
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B chore/esquema-prod
+          git add supabase/baseline
+          if git diff --cached --quiet; then
+            echo "Sin cambios respecto de la exportación anterior"
+            exit 0
+          fi
+          git commit -m "Esquema de producción exportado ($(date -u +%F))"
+          git push --force origin chore/esquema-prod
+          echo "Listo: rama chore/esquema-prod"
