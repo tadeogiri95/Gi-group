@@ -10,7 +10,7 @@
 // (logAudit → audit_log, broadcastRefresh → realtime broadcast) se ignoran
 // silenciosamente si no hay handler — ambas tienen .catch(() => {}) en el
 // código real, así que no hace falta mockearlas explícitamente.
-const RUTAS_FIRE_AND_FORGET = [/\/rest\/v1\/audit_log/, /\/realtime\/v1\/api\/broadcast/, /api\.resend\.com/];
+const RUTAS_FIRE_AND_FORGET = [/\/rest\/v1\/audit_log/, /\/rest\/v1\/cron_ejecuciones/, /\/realtime\/v1\/api\/broadcast/, /api\.resend\.com/];
 
 export function createFetchMock(handlers) {
   return async function mockedFetch(url, opts = {}) {

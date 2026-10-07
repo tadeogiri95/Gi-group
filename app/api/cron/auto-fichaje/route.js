@@ -11,10 +11,11 @@ import { NextResponse } from "next/server";
 import { logger } from "../../../lib/logger";
 import { safeErrorMessage } from "../../../lib/validate";
 
+import { conMonitoreoCron } from "../../../lib/cronMonitor";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(request) {
+async function ejecutar(request) {
   // Verificar que viene del CRON de Vercel (no de un usuario random)
   const authHeader = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -64,3 +65,6 @@ export async function GET(request) {
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
+
+// Registra cada corrida en cron_ejecuciones y avisa a Sentry si falla (F3-12)
+export const GET = conMonitoreoCron("auto-fichaje", ejecutar);

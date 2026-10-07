@@ -77,3 +77,39 @@ test("health — CRON_SECRET incorrecto no desbloquea el detalle", async () => {
     delete process.env.CRON_SECRET;
   }
 });
+
+// ─── F3-12: crons atrasados ───
+
+function cronsHandler(filas, status = 200) {
+  return { match: (url) => url.includes("/rest/v1/cron_ejecuciones"), respond: () => ({ status, body: filas }) };
+}
+
+test("health — un cron atrasado pone el estado en degraded (503) para que el monitor avise", async () => {
+  const { CRONS_ESPERADOS } = await import("../app/lib/cronMonitor.js");
+  const reciente = new Date().toISOString();
+  const filas = Object.keys(CRONS_ESPERADOS).map((nombre) => ({ nombre, ultima_ok: nombre === "auto-fichaje" ? "2020-01-01T00:00:00Z" : reciente }));
+  global.fetch = createFetchMock([dbOk(), cronsHandler(filas)]);
+  const res = await GET(getReq(null));
+  const json = await res.json();
+  assert.equal(res.status, 503);
+  assert.equal(json.crons, "atrasados");
+  assert.equal(json.crons_atrasados, undefined, "sin CRON_SECRET no expone los nombres");
+});
+
+test("health — todos los crons al día: ok", async () => {
+  const { CRONS_ESPERADOS } = await import("../app/lib/cronMonitor.js");
+  const filas = Object.keys(CRONS_ESPERADOS).map((nombre) => ({ nombre, ultima_ok: new Date().toISOString() }));
+  global.fetch = createFetchMock([dbOk(), cronsHandler(filas)]);
+  const res = await GET(getReq(null));
+  const json = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(json.crons, "ok");
+});
+
+test("health — si la tabla de crons no existe todavía (migración pendiente) no degrada", async () => {
+  global.fetch = createFetchMock([dbOk(), cronsHandler({ message: "relation does not exist" }, 404)]);
+  const res = await GET(getReq(null));
+  const json = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(json.crons, "sin_datos");
+});

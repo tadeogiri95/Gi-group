@@ -107,3 +107,15 @@ test(
     }
   })
 );
+
+test("cron/inactividad-produccion — sin CRON_SECRET configurado rechaza 'Bearer undefined' (401)", async () => {
+  const prev = process.env.CRON_SECRET;
+  delete process.env.CRON_SECRET;
+  try {
+    const mod = await import(`../app/api/cron/inactividad-produccion/route.ts?t=${Date.now()}`);
+    const res = await mod.GET(new Request("http://localhost/api/cron/inactividad-produccion", { headers: { Authorization: "Bearer undefined" } }));
+    assert.equal(res.status, 401);
+  } finally {
+    process.env.CRON_SECRET = prev;
+  }
+});
