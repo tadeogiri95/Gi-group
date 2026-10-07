@@ -94,7 +94,7 @@
 | F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): encabezado con “← Volver” |
 | F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Hecho (PR #26): botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Queda: formulario de solicitudes con rango (F4-12) |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
-| F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Sesión persistente en PR #30. Queda: PIN (con migración) |
+| F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Sesión persistente en PR #30; PIN en PR #31 (migración 073): solo operarios, hash bcrypt, bloqueo de 15 min cada 5 fallos y PIN borrado a los 15, legajo recordado en el dispositivo. Queda: QR (ítem 18) y kiosco (ítem 19) |
 | F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Hecho (PR #29): nombre e inicial del empleado, confirmación con comentario o motivo opcional (se guarda y se le avisa al empleado) y 5 s para deshacer antes de enviar |
 | F4-08 | Reorganizar “Gestión” (operación vs. configuración) | Medio | M | Pendiente |
 | F4-09 | Accesibilidad: objetivos táctiles ≥48 px, texto ≥12 px | Medio | M | Pendiente |

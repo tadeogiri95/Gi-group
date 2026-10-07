@@ -328,6 +328,17 @@ export const loginBody = z.object({
   empresa_id: uuid,
 }).strict();
 
+// Ingreso con PIN (F4-06): solo legajo numérico, nunca email
+export const loginPinBody = z.object({
+  legajo: z.union([z.number().int().positive(), z.string().regex(/^\d{1,9}$/)]),
+  pin: z.string().regex(/^\d{4}$/),
+  empresa_id: uuid,
+}).strict();
+
+export const crearPinBody = z.object({
+  pin: z.string().regex(/^\d{4}$/),
+}).strict();
+
 export const cambiarPasswordBody = z.object({
   action: z.literal("cambiar_password"),
   userId: uuid,
