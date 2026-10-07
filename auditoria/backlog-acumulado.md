@@ -133,9 +133,9 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F3-10 | Sin backups (Supabase Free) | Alto | S | **Hecho** (tadeogiri95/Gi-group#19, fusionado; primera copia OK el 2026-10-07): backup diario encriptado y verificado (GitHub Actions, 30 días; falta cargar los 2 secretos: `como-restaurar-backup.md`). Queda: archivos de Storage y Supabase Pro antes de cobrar |
-| F3-11 | Un solo ambiente (previews posiblemente contra prod) | Alto | M | Pendiente (confirmar en Vercel) |
+| F3-11 | Un solo ambiente (previews posiblemente contra prod) | Alto | M | En PR #23: workflow "Preparar base de staging" + guía `como-armar-staging.md` (falta crear el proyecto y cargar variables de Preview en Vercel) |
 | F0-12 | Vercel Hobby prohíbe el uso comercial | Alto | S | Pendiente (pasar a Pro antes de cobrar) |
-| F3-09 / F0-05 | Drift de esquema, índices duplicados, migraciones manuales | Medio | M | Pendiente |
+| F3-09 / F0-05 | Drift de esquema, índices duplicados, migraciones manuales | Medio | M | En PR #20 (fusionado) + #23: exportación del esquema real y línea base `supabase/baseline/esquema-base.sql` (hasta la 072). Queda: índices duplicados de `proyectos` y completar la 070 en `logos`/`reportes-obra` |
 | F3-12 | Observabilidad (Sentry, uptime, logs estructurados) | Medio | S | **Hecho** (tadeogiri95/Gi-group#18, fusionado) + migración 072: monitoreo de crons en `/api/health`, Sentry ajustado al plan gratis (falta cargar el DSN y crear el monitor de UptimeRobot: `como-configurar-monitoreo.md`). Queda: logs con *request id* |
 | H15 | Tenant del piloto con slug `gypi` | Bajo | S | Pendiente |
 

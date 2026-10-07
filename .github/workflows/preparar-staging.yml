@@ -1,0 +1,48 @@
+name: Preparar base de staging
+
+# F3-11: crea en un proyecto de Supabase NUEVO y VACÍO (staging) la misma
+# estructura que producción: línea base (supabase/baseline/esquema-base.sql),
+# migraciones posteriores a la 072 y carpetas de Storage. Sin datos reales.
+# Se niega a correr si STAGING_DB_URL apunta a producción o si la base ya
+# tiene tablas. Guía: auditoria/como-armar-staging.md
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preparar-staging
+  cancel-in-progress: false
+
+jobs:
+  preparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.repository == 'tadeogiri95/Gi-group'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar el secreto
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          if [ -z "$STAGING_DB_URL" ]; then
+            echo "::error::Falta el secreto STAGING_DB_URL (ver auditoria/como-armar-staging.md)"
+            exit 1
+          fi
+
+      - name: Instalar cliente de Postgres 17
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Preparar staging
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+          PROD_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PSQL: /usr/lib/postgresql/17/bin/psql
+        run: scripts/staging/preparar.sh

@@ -1,0 +1,14 @@
+-- Inventario de producción (generado; no se ejecuta)
+-- Extensiones: nombre | esquema | versión
+-- pg_cron | pg_catalog | 1.6.4
+-- pg_stat_statements | extensions | 1.11
+-- pgcrypto | extensions | 1.3
+-- plpgsql | pg_catalog | 1.0
+-- supabase_vault | vault | 0.3.1
+-- uuid-ossp | extensions | 1.1
+-- Buckets de Storage: id | público | límite de tamaño | tipos permitidos
+-- documentos-empleado | false | 5242880 | application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document
+-- logos | true | - | -
+-- reportes-obra | true | - | -
+-- Versión del servidor
+-- PostgreSQL 17.6 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit

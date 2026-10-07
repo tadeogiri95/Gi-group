@@ -82,3 +82,40 @@ test("sin-credenciales.sh — detecta JWT, cadenas de conexión con contraseña 
   assert.equal(corre("-----BEGIN PRIVATE KEY-----\n"), 1);
   assert.match(sinCred, /set -euo pipefail/);
 });
+
+// ─── Línea base y staging (F3-11) ───
+
+const wfStaging = readFileSync(new URL("../.github/workflows/preparar-staging.yml", import.meta.url), "utf8");
+const preparar = readFileSync(new URL("../scripts/staging/preparar.sh", import.meta.url), "utf8");
+const base = readFileSync(new URL("../supabase/baseline/esquema-base.sql", import.meta.url), "utf8");
+
+test("preparar-staging — solo a mano, secretos por env y con chequeo contra producción", () => {
+  assert.match(wfStaging, /on:\s*\n\s*workflow_dispatch:/);
+  assert.ok(!/schedule:/.test(wfStaging));
+  for (const linea of wfStaging.split("\n")) {
+    if (linea.includes("secrets.")) assert.match(linea, /^\s+[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}\s*$/, linea);
+  }
+  assert.match(wfStaging, /PROD_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/);
+  assert.match(preparar, /apunta a producción/);
+  assert.match(preparar, /ya tiene tablas de Gypi/);
+});
+
+test("línea base — sin datos, sin credenciales, sin supabase_admin y con anon cerrado como en producción", () => {
+  assert.ok(!/^COPY /m.test(base) && !/^INSERT INTO /m.test(base), "no debe traer datos");
+  assert.ok(!base.includes("FOR ROLE supabase_admin"));
+  assert.ok(!base.includes("transaction_timeout"));
+  assert.match(base, /REVOKE ALL ON TABLES FROM anon, authenticated;/);
+  assert.match(base, /REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;/);
+  assert.ok(!/eyJ[A-Za-z0-9_-]{20,}\./.test(base));
+  // Las tablas que usa la app tienen que estar
+  for (const t of ["empresa", "empleados", "fichadas", "solicitudes", "sesiones", "cron_ejecuciones"]) {
+    assert.match(base, new RegExp(`CREATE TABLE public\\.${t} \\(`), t);
+  }
+});
+
+test("línea base — la última migración que incluye es la que dice preparar.sh", async () => {
+  const { readdirSync } = await import("node:fs");
+  const ultima = Number(preparar.match(/ULTIMA_EN_BASE=(\d+)/)[1]);
+  const nums = readdirSync(new URL("../supabase/migrations/", import.meta.url)).map((f) => Number(f.slice(0, 3))).filter(Number.isFinite);
+  assert.ok(nums.includes(ultima), `existe la migración ${ultima}`);
+});
