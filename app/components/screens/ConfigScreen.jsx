@@ -9,6 +9,8 @@ import ReglasScreen from "./ReglasScreen";
 import AdminEmpresaScreen from "../../admin_empresa_screen";
 import GestionPersonalScreen from "../../gestion_personal_screen";
 import DocumentosEmpleadoScreen from "../../documentos_empleado_screen";
+import CuentaDatos from "../CuentaDatos";
+import { useAuth } from "../../context/AuthContext";
 
 const SECTIONS = [
   { id: "parametros", label: "Parámetros" },
@@ -66,9 +68,11 @@ const SUBTABS = {
 };
 
 // Gypi no muestra publicidad (D20): solo usa lo necesario para la sesión.
-function PrivacidadPanel() {
+function PrivacidadPanel({ usuario, empresa }) {
+  const { logout } = useAuth();
   return (
     <div className="px-4 py-6 flex flex-col gap-5 overflow-y-auto flex-1">
+      <CuentaDatos usuario={usuario} empresa={empresa} onLogout={logout} />
       <div>
         <p className="g-overline text-gypi-dim mb-1">Cookies</p>
         <div className="bg-gypi-surface border border-gypi-border rounded-xl p-4">
@@ -156,7 +160,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
         {subtab === "documentacion" && <DocumentosEmpleadoScreen empresaId={empresaId} />}
         {subtab === "reglas"      && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
         {subtab === "admin"       && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
-        {subtab === "privacidad"  && <PrivacidadPanel />}
+        {subtab === "privacidad"  && <PrivacidadPanel usuario={usuario} empresa={empresa} />}
       </div>
     </div>
   );

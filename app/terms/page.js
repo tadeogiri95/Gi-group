@@ -67,7 +67,8 @@ export default function TermsOfService() {
 
       <h2 style={S.h2}>8. Terminación y retención de datos</h2>
       <p style={S.p}>Tu acceso puede ser terminado por tu empleador en cualquier momento, o por Gypi en caso de violación de estos términos o falta de pago.</p>
-      <p style={S.p}><strong style={{ color: "#F5F0E8" }}>Retención de datos tras la cancelación:</strong> cuando una Empresa cancela su suscripción o esta vence sin renovación, los datos de esa empresa se conservarán durante <strong style={{ color: "#F5F0E8" }}>30 días calendario</strong> adicionales. Durante ese período la Empresa puede solicitar la exportación completa de sus datos a contacto@gypi.app. Transcurridos los 30 días sin solicitud de exportación, los datos serán eliminados de forma permanente.</p>
+      <p style={S.p}><strong style={{ color: "#F5F0E8" }}>Retención de datos tras la cancelación:</strong> cuando una Empresa cancela su suscripción o esta vence sin renovación, los datos de esa empresa se conservarán durante <strong style={{ color: "#F5F0E8" }}>30 días calendario</strong> adicionales. Durante ese período la Empresa puede solicitar la exportación completa de sus datos a contacto@gypi.app. Transcurridos los 30 días, los datos serán eliminados de forma permanente.</p>
+      <p style={S.p}><strong style={{ color: "#F5F0E8" }}>Exportación y baja desde la App:</strong> el titular de la cuenta puede descargar en cualquier momento todos los datos de la Empresa (Gestión → Configuración → Privacidad) y dar de baja la cuenta desde la misma pantalla. Con la baja, la cuenta queda inactiva, se cancela la suscripción y los datos y archivos se eliminan de forma definitiva a los 30 días; hasta entonces puede recuperarse con el enlace que enviamos por email.</p>
       <p style={S.p}>El plan gratuito (Free) no tiene garantía de retención de datos; los datos pueden eliminarse tras 90 días de inactividad total.</p>
 
       <h2 style={S.h2}>9. Modificaciones</h2>
