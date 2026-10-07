@@ -10,6 +10,9 @@ import EmptyState from "../ui/EmptyState";
 import BotonFichar from "../BotonFichar";
 import PinCard from "../PinCard";
 import NuevaSolicitud from "../NuevaSolicitud";
+import EstadoConexion from "../EstadoConexion";
+import { useColaOffline } from "../../hooks/useColaOffline";
+import { fichadaConPendientes } from "../../lib/colaOffline";
 
 function fmtMin(m) {
   const h = Math.floor(m / 60);
@@ -20,6 +23,12 @@ function fmtMin(m) {
 export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado }) {
   const misSols = ctx.misSolicitudes || [];
   const [formSolicitud, setFormSolicitud] = useState(false);
+  // Lo fichado sin señal todavía no está en ctx: se suma para que el botón no ofrezca fichar de nuevo (ítem 21)
+  const cola = useColaOffline(demo ? null : usuario.id, { alTerminar: reload });
+  const fichadasSinEnviar = cola.pendientes.filter((op) => op.tipo === "fichar");
+  const fichadaHoy = fichadaConPendientes(ctx.fichadaHoy, fichadasSinEnviar, hoyArg());
+  const salidaSinEnviar = fichadasSinEnviar.some((op) => op.body?.accion === "egreso");
+  const fichadaAbierta = salidaSinEnviar && !fichadaHoy?.ingreso ? null : ctx.fichadaAbierta;
   const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
 
@@ -33,7 +42,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
   const minMuerto = actividadesHoy.filter(r => r.etapa === 0).reduce((s, r) => s + duracionMinutos(r), 0);
   const tareasCount = actividadesHoy.filter(r => r.etapa > 0).length;
   const hayActividad = actividadesHoy.length > 0 || !!tareaActiva;
-  const fichado = !!ctx.fichadaHoy?.ingreso;
+  const fichado = !!fichadaHoy?.ingreso;
 
   const notisResolucion = (() => {
     const { fecha: hoy, hora } = ahoraArg();
@@ -96,7 +105,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
             />
             <span className="text-[13px] font-bold" style={{ color: statusColor }}>
               {fichado
-                ? `Ingreso ${ctx.fichadaHoy.ingreso.slice(0, 5)}${ctx.fichadaHoy?.egreso ? " · Egreso " + ctx.fichadaHoy.egreso.slice(0, 5) : ""}`
+                ? `Ingreso ${fichadaHoy.ingreso.slice(0, 5)}${fichadaHoy?.egreso ? " · Egreso " + fichadaHoy.egreso.slice(0, 5) : ""}`
                 : "Sin fichar"}
             </span>
           </div>
@@ -127,11 +136,13 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         </div>
       )}
 
+      <EstadoConexion cola={cola} />
+
       {/* Botón grande de fichar (D6): fichar ya no depende del chat */}
       <BotonFichar
         usuario={usuario}
-        fichadaHoy={ctx.fichadaHoy}
-        fichadaAbierta={ctx.fichadaAbierta}
+        fichadaHoy={fichadaHoy}
+        fichadaAbierta={fichadaAbierta}
         onFichado={reload}
         irAlChat={() => goto("chat")}
         demo={demo}
@@ -163,7 +174,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       )}
 
       {/* Jornada de hoy */}
-      {(hayActividad || (fichado && !ctx.fichadaHoy?.egreso)) && (
+      {(hayActividad || (fichado && !fichadaHoy?.egreso)) && (
         <section className="mb-[22px]" aria-label="Jornada de hoy">
           <div className="flex justify-between items-center mb-3.5">
             <h3 className="m-0 font-heading text-lg font-extrabold text-gypi-text tracking-tight">
@@ -284,7 +295,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
           )}
 
           {/* CTA iniciar si fichado pero sin actividades */}
-          {!hayActividad && fichado && !ctx.fichadaHoy?.egreso && (
+          {!hayActividad && fichado && !fichadaHoy?.egreso && (
             <button
               onClick={() => goto("actividad")}
               className="w-full p-[14px_20px] rounded-[14px] cursor-pointer flex items-center gap-3 font-body"

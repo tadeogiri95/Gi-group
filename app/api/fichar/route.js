@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { logger } from "../../lib/logger";
 import { procesarFichaje } from "../../lib/ficharServidor";
+import { unaSolaVez } from "../../lib/operacionesOffline";
 
 // ═══ POST ═══
 export async function POST(request) {
@@ -27,7 +28,9 @@ export async function POST(request) {
     }
 
     const rawBody = await request.json();
-    return await procesarFichaje(sesion, rawBody, request);
+    // Lo que el celular guardó sin conexión llega con op_id: se registra una sola vez
+    const opId = typeof rawBody?.op_id === "string" ? rawBody.op_id : undefined;
+    return await unaSolaVez(sesion, opId, "fichar", () => procesarFichaje(sesion, rawBody, request));
   } catch (err) {
     logger.error("fichar error", err);
     const { safeErrorMessage } = await import("../../lib/validate");

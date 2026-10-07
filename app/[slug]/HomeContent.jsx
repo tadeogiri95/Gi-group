@@ -18,6 +18,8 @@ import { useActividad } from "../hooks/useActividad";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import { useRefrescoVisible } from "../hooks/useRefrescoVisible";
 import PushManager from "../components/PushManager";
+import { guardarInstantanea, leerInstantanea } from "../lib/instantanea";
+import { registrarServiceWorker } from "../lib/registrarSW";
 
 // LoginScreen es la primera pantalla para usuarios no logueados — se mantiene
 // estática para no agregar un salto de carga al camino crítico de entrada.
@@ -131,6 +133,8 @@ export default function HomeContent() {
   // ─── Demo mode — el módulo de datos demo se carga dinámicamente, nunca
   // forma parte del bundle inicial de usuarios reales ───
   const isDemo = searchParams.get("demo") === "true";
+  // Service worker: la app abre sin conexión (ítem 21)
+  useEffect(() => { if (!isDemo) registrarServiceWorker(); }, [isDemo]);
   const [demoMod, setDemoMod] = useState(null);
   useEffect(() => {
     if (isDemo && !demoMod) import("../lib/demoData").then(setDemoMod);
@@ -189,6 +193,8 @@ export default function HomeContent() {
         } catch {}
       }
 
+      // Para abrir la app sin conexión: el estado de fichada de hoy (ítem 21)
+      guardarInstantanea(`fichada_${usuario.id}`, { fecha: today, fichadaHoy: miFichada[0] || null, fichadaAbierta: miAbierta?.[0] || null });
       setCtx({
         empleados, fichadasHoy: fHoy, fichadaHoy: miFichada[0] || null, fichadaAbierta: miAbierta?.[0] || null,
         fichadasSemana, solicitudes, misSolicitudes,
@@ -201,7 +207,12 @@ export default function HomeContent() {
         setPaywallInfo({ upgrade_a: e.upgrade_a, mensaje: e.message });
       } else {
         console.error(e);
-        setLoadError("No se pudieron cargar los datos. Tocá para reintentar.");
+        const snap = leerInstantanea(`fichada_${usuario.id}`, { fecha: hoyArg() });
+        if (snap) setCtx((c) => ({ ...c, fichadaHoy: snap.fichadaHoy, fichadaAbierta: snap.fichadaAbierta }));
+        const sinRed = typeof navigator !== "undefined" && navigator.onLine === false;
+        setLoadError(sinRed
+          ? "Sin conexión: podés fichar y cargar tareas, se envían solas cuando vuelva la señal."
+          : "No se pudieron cargar los datos. Tocá para reintentar.");
       }
       setReady(true);
     }
