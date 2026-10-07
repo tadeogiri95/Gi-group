@@ -105,6 +105,9 @@ test("CRONS_ESPERADOS — coincide con los crons de vercel.json y cada uno está
     const src = fs.readFileSync(new URL(archivo, dir), "utf8");
     assert.ok(src.includes(`conMonitoreoCron("${nombre}"`), `${nombre} no está envuelto con conMonitoreoCron`);
   }
-  const sql = fs.readFileSync(new URL("../supabase/migrations/072_cron_ejecuciones.sql", import.meta.url), "utf8");
-  for (const nombre of nombres) assert.ok(sql.includes(`'${nombre}'`), `la migración 072 no siembra ${nombre}`);
+  // La 072 siembra los crons de entonces; cada cron nuevo se siembra en su migración
+  const dirMig = new URL("../supabase/migrations/", import.meta.url);
+  const sql = fs.readdirSync(dirMig).filter((f) => f >= "072_" && f.endsWith(".sql"))
+    .map((f) => fs.readFileSync(new URL(f, dirMig), "utf8")).join("\n");
+  for (const nombre of nombres) assert.ok(sql.includes(`'${nombre}'`), `ninguna migración desde la 072 siembra ${nombre}`);
 });

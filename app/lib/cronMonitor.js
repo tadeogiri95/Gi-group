@@ -22,6 +22,7 @@ export const CRONS_ESPERADOS = {
   "refresh-scores": 26 * HORA,
   "reengagement-onboarding": 26 * HORA,
   "reconciliacion-mp": 26 * HORA,
+  "resumen-semanal": 8 * 24 * HORA, // semanal (lunes)
 };
 
 async function registrar(nombre, datos) {
