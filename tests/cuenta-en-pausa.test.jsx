@@ -16,6 +16,7 @@ const { iniciarTrialEmpresa } = await import("../app/lib/empresaSignup.js");
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const { POST: data } = await import("../app/api/data/route.js");
 const { POST: fichar } = await import("../app/api/fichar/route.js");
+const { POST: actividad } = await import("../app/api/actividad/route.js");
 const { default: CuentaEnPausa } = await import("../app/components/CuentaEnPausa.jsx");
 
 afterEach(() => cleanup());
@@ -81,6 +82,20 @@ test("/api/fichar — en pausa no se ficha (con el plan leído de la base)", asy
   const res = await fichar(new Request("http://localhost/api/fichar", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await tk()}` }, body: JSON.stringify({ accion: "ingreso" }) }));
   assert.equal(res.status, 402);
   assert.equal(fichada, false);
+});
+
+test("/api/actividad — en pausa no se cargan tareas (tampoco las guardadas sin conexión)", async () => {
+  invalidarCachePlan(E);
+  let tocada = false;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    planEs("free"),
+    { match: (url) => url.includes("/rest/v1/registro_actividades") || url.includes("/rest/v1/operaciones_offline"), respond: () => { tocada = true; return { status: 201, body: [{}] }; } },
+  ]);
+  const res = await actividad(new Request("http://localhost/api/actividad", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await tk()}` }, body: JSON.stringify({ accion: "iniciar", etapa: 1, codigo_proyecto: "OT-1" }) }));
+  assert.equal(res.status, 402);
+  assert.equal((await res.json()).tipo, "sin_plan");
+  assert.equal(tocada, false);
 });
 
 test("iniciarTrialEmpresa — con la función de la base pasa a 'trial'; si ya usó la prueba no la reabre", async () => {
