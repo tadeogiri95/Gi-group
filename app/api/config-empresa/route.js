@@ -10,6 +10,7 @@ import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { configPostBody, configPatchBody } from "../../lib/schemas";
 import { validateBody, isUUID, safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
+import { rechazarSiSupervisor } from "../../lib/alcance";
 
 // ─── Helper: extraer empresa_id del request via auth compartido ───
 async function getEmpresaIdFromRequest(request) {
@@ -58,6 +59,8 @@ export async function POST(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
+    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+    if (bloqueoSupervisor) return bloqueoSupervisor;
     const empresaId = sesion.empresa_id;
 
     const rawBody = await request.json();
@@ -120,6 +123,8 @@ export async function PATCH(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
+    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+    if (bloqueoSupervisor) return bloqueoSupervisor;
     const empresaId = sesion.empresa_id;
 
     const rawBody = await request.json();

@@ -14,6 +14,7 @@ import { sbGet, sbPatch } from "../../../lib/sbHelpers";
 import { isUUID } from "../../../lib/validate";
 import { logAudit } from "../../../lib/audit";
 import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../../lib/activacion";
+import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance } from "../../../lib/alcance";
 
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
@@ -35,6 +36,7 @@ export async function POST(request) {
     `empleados?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&activo=eq.true&select=id,legajo,nombre,rol&limit=1`
   ) || [];
   if (!empleado) return NextResponse.json({ error: "Empleado no encontrado" }, { status: 404 });
+  if (!dentroDelAlcance(await alcanceDe(sesion), { id: empleado.id })) return respuestaFueraDeAlcance();
 
   if (sesion.rol === "administrativo" && empleado.rol !== "operativo") {
     return NextResponse.json({ error: "Solo el dueño puede generar códigos para supervisores o administradores" }, { status: 403 });

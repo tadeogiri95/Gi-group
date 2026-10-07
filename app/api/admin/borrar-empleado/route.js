@@ -8,6 +8,7 @@ import { validarToken } from "../../../lib/auth";
 import { logAudit } from "../../../lib/audit";
 
 import { ipCliente } from "../../../lib/ip";
+import { rechazarSiSupervisor } from "../../../lib/alcance";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -17,6 +18,8 @@ export async function POST(req) {
   if (sesion.rol !== "gerencial" && sesion.rol !== "administrativo") {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
   }
+  const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+  if (bloqueoSupervisor) return bloqueoSupervisor;
 
   let body;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Body inválido" }, { status: 400 }); }

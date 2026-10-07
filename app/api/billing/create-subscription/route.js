@@ -20,8 +20,8 @@ export async function POST(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
-      return NextResponse.json({ error: "Solo el administrador puede cambiar el plan" }, { status: 403 });
+    if (sesion.rol !== "gerencial") {
+      return NextResponse.json({ error: "Solo el dueño de la cuenta puede cambiar el plan" }, { status: 403 });
     }
 
     const { plan, periodo = "mensual" } = await request.json();

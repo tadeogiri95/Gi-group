@@ -10,6 +10,7 @@ import { isUUID, safeErrorMessage } from "../../../lib/validate";
 import { sbGet, sbPost, sbDelete } from "../../../lib/sbHelpers";
 import { logger } from "../../../lib/logger";
 import { contenidoCoincide } from "../../../lib/fileSignature";
+import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance } from "../../../lib/alcance";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -49,6 +50,7 @@ export async function POST(req) {
     if (ROLES_GERENCIA.has(sesion.rol) && empleadoIdSolicitado && isUUID(empleadoIdSolicitado)) {
       const empleado = await sbGet(`empleados?id=eq.${empleadoIdSolicitado}&empresa_id=eq.${sesion.empresa_id}&select=id`);
       if (!empleado?.length) return NextResponse.json({ error: "Empleado no encontrado" }, { status: 404 });
+      if (!dentroDelAlcance(await alcanceDe(sesion), { id: empleadoIdSolicitado })) return respuestaFueraDeAlcance();
       empleadoId = empleadoIdSolicitado;
     }
 

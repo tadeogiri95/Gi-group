@@ -14,6 +14,7 @@ import { planTieneModulo } from "../../../lib/plans";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
+import { rechazarSiSupervisor } from "../../../lib/alcance";
 
 const ROLES_PERMITIDOS = new Set(["gerencial", "administrativo"]);
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,6 +39,8 @@ export async function GET(request) {
         { status: 403 }
       );
     }
+    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+    if (bloqueoSupervisor) return bloqueoSupervisor;
 
     const empresaId = sesion.empresa_id;
 

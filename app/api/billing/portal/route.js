@@ -17,8 +17,8 @@ export async function GET(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
-      return NextResponse.json({ error: "Sin permisos para ver la facturación" }, { status: 403 });
+    if (sesion.rol !== "gerencial") {
+      return NextResponse.json({ error: "Solo el dueño de la cuenta puede gestionar la facturación" }, { status: 403 });
     }
 
     // Mercado Pago no ofrece un portal por suscripción/customer (a diferencia
@@ -51,8 +51,8 @@ export async function POST(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    if (!["gerencial", "administrativo"].includes(sesion.rol)) {
-      return NextResponse.json({ error: "Sin permisos para cancelar suscripción" }, { status: 403 });
+    if (sesion.rol !== "gerencial") {
+      return NextResponse.json({ error: "Solo el dueño de la cuenta puede cancelar la suscripción" }, { status: 403 });
     }
 
     const subs = await sbGet(

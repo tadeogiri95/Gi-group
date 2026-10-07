@@ -58,8 +58,9 @@ export const POLICY = {
   geo_registros:                { GET: "gestion" },
   v_resumen_diario:             { GET: "gestion" },
   v_scores_empleados:           { GET: "gestion" },
-  suscripciones:                { GET: "gestion" },
-  pagos:                        { GET: "gestion" },
+  // Facturación: solo el dueño (D2)
+  suscripciones:                { GET: "dueno" },
+  pagos:                        { GET: "dueno" },
 
   // invitaciones_empresa: sin uso en la app → todo prohibido (no figura).
 };

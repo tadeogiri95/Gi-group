@@ -15,6 +15,7 @@ import { validarFormatoEmail } from "../../../lib/rateLimit";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
 import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../../lib/activacion";
+import { rechazarSiSupervisor } from "../../../lib/alcance";
 
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
@@ -30,6 +31,8 @@ export async function POST(req) {
   if (!ROLES_PERMITIDOS.has(sesion.rol)) {
     return NextResponse.json({ error: "Solo gerencial o administrativo puede importar empleados" }, { status: 403 });
   }
+  const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+  if (bloqueoSupervisor) return bloqueoSupervisor;
 
   const empresaId = sesion.empresa_id;
 
