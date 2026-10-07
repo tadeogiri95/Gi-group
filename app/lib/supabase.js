@@ -76,6 +76,9 @@ async function intentarRefresh() {
   return _refreshing;
 }
 
+// Para restaurar la sesión al abrir la app (F1-03)
+export const refrescarSesion = intentarRefresh;
+
 export function getCsrfToken() {
   try {
     const match = document.cookie.match(/(?:^|;\s*)gypi_csrf=([^;]+)/);
