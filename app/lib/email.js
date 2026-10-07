@@ -450,3 +450,60 @@ export async function sendConsultaContacto({ nombre, email, telefono, mensaje })
     tags: buildTags("consulta_contacto"),
   }).catch((e) => logger.error("email sendConsultaContacto", e));
 }
+
+// ─── Resumen semanal para el dueño (D10, ítem 31) ───
+function fmtFecha(f) {
+  const [, m, d] = String(f).split("-");
+  return `${Number(d)}/${Number(m)}`;
+}
+
+export function htmlResumenSemanal({ empresa, slug, resumen: r }) {
+  const fila = (izq, der, color = "#1A1A1A") =>
+    `<tr><td style="padding:6px 0;color:#555;font-size:14px">${izq}</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:${color}">${der}</td></tr>`;
+  const titulo = (t) => `<p style="margin:24px 0 6px;font-size:13px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.04em">${t}</p>`;
+  const tabla = (filas) => `<table style="width:100%;border-collapse:collapse">${filas}</table>`;
+
+  const ots = r.ots.length
+    ? tabla(r.ots.map((o) => fila(`OT ${escapeHtml(o.ot)}${o.detalle ? ` <span style="color:#9B9B9B">· ${escapeHtml(o.detalle)}</span>` : ""}`, `${o.horas} h`)).join(""))
+      + (r.otrasOTs ? `<p style="margin:4px 0 0;font-size:12px;color:#9B9B9B">Y ${r.otrasOTs} OT más.</p>` : "")
+    : `<p style="margin:0;color:#9B9B9B;font-size:14px">No se cargaron tareas sobre OT.</p>`;
+
+  const muerto = r.tiempoMuerto.horas > 0
+    ? `<p style="margin:0 0 6px;font-size:14px;color:#444"><strong>${r.tiempoMuerto.horas} h</strong> (${r.tiempoMuerto.porcentaje}% del tiempo cargado)</p>`
+      + tabla(r.tiempoMuerto.causas.map((c) => fila(escapeHtml(c.causa), `${c.horas} h`, "#DC2626")).join(""))
+    : `<p style="margin:0;color:#9B9B9B;font-size:14px">Sin tiempo muerto registrado.</p>`;
+
+  const faltas = r.faltasSinAviso.length
+    ? tabla(r.faltasSinAviso.slice(0, 10).map((f) => fila(escapeHtml(f.nombre || `Legajo ${f.legajo}`), `${f.dias} día${f.dias > 1 ? "s" : ""}`, "#DC2626")).join(""))
+      + (r.faltasSinAviso.length > 10 ? `<p style="margin:4px 0 0;font-size:12px;color:#9B9B9B">Y ${r.faltasSinAviso.length - 10} persona(s) más.</p>` : "")
+    : `<p style="margin:0;color:#9B9B9B;font-size:14px">Nadie faltó sin aviso.</p>`;
+
+  const cuerpo = `
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">Esto pasó en <strong>${escapeHtml(empresa)}</strong> del ${fmtFecha(r.desde)} al ${fmtFecha(r.hasta)}.</p>
+    ${tabla(
+      fila("Horas fichadas", `${r.horasFichadas} h`)
+      + fila("Horas cargadas en OT", `${r.horasEnOTs} h`)
+      + fila("Llegadas tarde", String(r.tardanzas), r.tardanzas ? "#DC2626" : "#1A1A1A")
+      + fila("Días con ausencia justificada", String(r.diasJustificados))
+    )}
+    ${titulo("Horas por OT")}${ots}
+    ${titulo("Tiempo muerto")}${muerto}
+    ${titulo("Faltas sin aviso")}${faltas}
+    ${btn(`${APP_BASE}/${slug}`, "Ver el detalle en Gypi →")}
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">¿No querés recibirlo? Desactivalo en Gestión → Configuración → Empresa.</p>
+  `;
+  return cuerpo;
+}
+
+export async function sendResumenSemanal({ to, empresa, slug, resumen, empresaId }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const cuerpo = htmlResumenSemanal({ empresa, slug, resumen });
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Tu semana en ${empresa}: ${resumen.horasFichadas} h fichadas`,
+    html: buildHtml("Resumen semanal", `${fmtFecha(resumen.desde)} al ${fmtFecha(resumen.hasta)}`, cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("resumen_semanal", empresaId),
+  });
+}
