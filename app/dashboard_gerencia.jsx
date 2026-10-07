@@ -16,6 +16,7 @@ import { sb, sbGetAll } from "./lib/supabase";
 import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
 import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
+import ChecklistActivacion from "./components/ChecklistActivacion";
 import BillingScreen from "./components/BillingScreen";
 import FotoViewer from "./components/FotoViewer";
 /* ═══════════════════════════════════════════════════════
@@ -579,6 +580,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Banner de trial / vencimiento ─── */}
       <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />
+      {!isDemo && <ChecklistActivacion empresa={empresa} goto={goto} />}
       {datosIncompletos && (
         <div role="alert" className="mx-[18px] mb-3 p-3 rounded-xl text-xs text-gypi-red bg-gypi-red/10">
           Hay más datos de los que se pueden mostrar juntos: algunos totales del mes pueden estar incompletos.
