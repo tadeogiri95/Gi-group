@@ -12,6 +12,9 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
+    // page.route() no intercepta lo que pide el service worker (ítem 21): sin
+    // bloquearlo, /api/me y /api/empresa irían al servidor real.
+    serviceWorkers: "block",
   },
   webServer: {
     command: "npm run dev",

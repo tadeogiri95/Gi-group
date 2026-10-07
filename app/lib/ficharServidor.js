@@ -12,8 +12,8 @@ import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calc
 import { logEvent, EVT } from "./analytics";
 
 import { ipCliente } from "./ip";
+import { validarMomento, horaLocal } from "./offline";
 // ─── Hora local según timezone de empresa ───
-const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
 
 // Tope de jornada para detectar fichadas olvidadas (egreso varios días
@@ -27,21 +27,6 @@ const MARGEN_GPS_MAX_M = 100;
 // Por encima de esta precisión el teléfono no está usando GPS (ubicación por red)
 const PRECISION_APROXIMADA_M = 500;
 
-function getLocalTime(tz = TZ_DEFAULT) {
-  const now = new Date();
-  const local = new Date(now.toLocaleString("en-US", { timeZone: tz }));
-  const y = local.getFullYear();
-  const m = String(local.getMonth() + 1).padStart(2, "0");
-  const d = String(local.getDate()).padStart(2, "0");
-  const hh = String(local.getHours()).padStart(2, "0");
-  const mm = String(local.getMinutes()).padStart(2, "0");
-  return {
-    fecha: `${y}-${m}-${d}`,
-    hora: `${hh}:${mm}`,
-    diaKey: DIAS_KEY[local.getDay()],
-  };
-}
-
 /**
  * Registra el ingreso o egreso de `sesion` (empleado_id, empresa_id, legajo, rol).
  * La autenticación y el límite de intentos los hace quien llama.
@@ -53,7 +38,7 @@ export async function procesarFichaje(sesion, rawBody, request) {
     const { validateBody } = await import("./validate");
     const parsed = validateBody(ficharBody, rawBody);
     if (parsed.response) return parsed.response;
-    const { accion, geo_lat, geo_lng, geo_precision, forzar_cierre_tarea } = parsed.data;
+    const { accion, geo_lat, geo_lng, geo_precision, forzar_cierre_tarea, momento } = parsed.data;
 
     // Timezone y plan de la empresa en una sola consulta
     let empresaTz = TZ_DEFAULT;
@@ -64,7 +49,16 @@ export async function procesarFichaje(sesion, rawBody, request) {
       if (empData?.[0]?.plan_activo) plan = empData[0].plan_activo;
     } catch { /* usa defaults */ }
 
-    const { fecha, hora, diaKey } = getLocalTime(empresaTz);
+    // Sin conexión (ítem 21): vale la hora en que se fichó, no la del envío
+    let instante = new Date();
+    let notaOffline = null;
+    if (momento) {
+      const v = validarMomento(momento);
+      if (!v.ok) return NextResponse.json({ ok: false, error: v.error, tipo: v.tipo });
+      instante = v.fecha;
+      notaOffline = `Fichada sin conexión, enviada a las ${horaLocal(empresaTz).hora}`;
+    }
+    const { fecha, hora, diaKey } = horaLocal(empresaTz, instante);
     const empleadoId = sesion.empleado_id;
     const legajo = sesion.legajo;
     const empresaId = sesion.empresa_id;
@@ -200,6 +194,7 @@ export async function procesarFichaje(sesion, rawBody, request) {
           llegada_tarde: tardanza.estado === "tarde",
           minutos_tarde: tardanza.minutos || 0,
           empresa_id: empresaId,
+          ...(notaOffline ? { notas: notaOffline } : {}),
         });
       } catch (e) {
         if (e.message.includes("23505")) {
@@ -226,7 +221,7 @@ export async function procesarFichaje(sesion, rawBody, request) {
         accion: "fichar_ingreso",
         entidad: "fichada",
         ip: ipCliente(request),
-        datos_despues: { fecha, hora, tardanza: tardanza.estado },
+        datos_despues: { fecha, hora, tardanza: tardanza.estado, ...(notaOffline ? { sin_conexion: true } : {}) },
       });
       broadcastRefresh(empresaId, "fichadas");
 
@@ -300,8 +295,9 @@ export async function procesarFichaje(sesion, rawBody, request) {
         const abiertas = await sbGet(
           `registro_actividades?empleado_id=eq.${empleadoId}&empresa_id=eq.${empresaId}&hora_fin=is.null&select=id,hora_inicio`
         );
-        const cierre = new Date().toISOString();
         for (const t of abiertas || []) {
+          // Con una salida sin conexión, la tarea cierra a esa hora (nunca antes de empezar)
+          const cierre = new Date(Math.max(instante.getTime(), Date.parse(t.hora_inicio) || 0)).toISOString();
           const duracion = Math.max(0, Math.round(((new Date(cierre) - new Date(t.hora_inicio)) / 60000) * 10) / 10);
           await sbPatch(`registro_actividades?id=eq.${t.id}&empresa_id=eq.${empresaId}`, {
             hora_fin: cierre,
@@ -383,6 +379,7 @@ export async function procesarFichaje(sesion, rawBody, request) {
       egreso: hora,
       horas_trabajadas: horasTrab.toFixed(2),
       horas_extra: horasExtra,
+      ...(notaOffline ? { notas: [fichada.notas, notaOffline].filter(Boolean).join(" · ") } : {}),
     });
 
     if (!patched || patched.length === 0) {
@@ -411,7 +408,7 @@ export async function procesarFichaje(sesion, rawBody, request) {
       accion: "fichar_egreso",
       entidad: "fichada",
       ip: ipCliente(request),
-      datos_despues: { fecha, hora, horas_extra: horasExtra },
+      datos_despues: { fecha, hora, horas_extra: horasExtra, ...(notaOffline ? { sin_conexion: true } : {}) },
     });
     broadcastRefresh(empresaId, "fichadas");
 

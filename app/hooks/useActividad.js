@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { sb } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { duracionMinutos } from "../lib/calc";
+import { enviarOEncolar } from "../lib/colaOffline";
+import { guardarInstantanea, leerInstantanea } from "../lib/instantanea";
 
 // Minutos (1 decimal) entre un timestamp de inicio y un ISO de cierre.
 const minutosHasta = (horaInicio, isoFin) =>
@@ -30,9 +32,15 @@ export function useActividad(empleado) {
   // ── Cargar catálogo de etapas de la empresa ──
   useEffect(() => {
     if (!empleado?.empresa_id) return;
+    const clave = `etapas_${empleado.empresa_id}`;
     sb.get(`etapas?empresa_id=eq.${empleado.empresa_id}&activa=eq.true&order=orden.asc`)
-      .then(setEtapas)
-      .catch(e => console.error("Error cargando etapas:", e));
+      .then((d) => { setEtapas(d); guardarInstantanea(clave, d); })
+      .catch(e => {
+        // Sin conexión: las del último uso (ítem 21)
+        const previas = leerInstantanea(clave);
+        if (previas) setEtapas(previas);
+        else console.error("Error cargando etapas:", e);
+      });
   }, [empleado?.empresa_id]);
 
   // ── Cargar proyectos activos desde Supabase ──
@@ -42,9 +50,11 @@ export function useActividad(empleado) {
     try {
       const data = await sb.get(`proyectos?empresa_id=eq.${empleado.empresa_id}&estado=eq.activo&order=created_at.desc&limit=1000`);
       setProyectos(data || []);
+      guardarInstantanea(`proyectos_${empleado.empresa_id}`, (data || []).map(({ id, ot, cliente, obra, proyecto, division }) => ({ id, ot, cliente, obra, proyecto, division })));
     } catch (err) {
-      console.error("Error cargando proyectos:", err);
-      setProyectos([]);
+      const previos = leerInstantanea(`proyectos_${empleado.empresa_id}`);
+      if (!previos) console.error("Error cargando proyectos:", err);
+      setProyectos(previos || []);
     } finally {
       setProyectosLoading(false);
     }
@@ -73,13 +83,53 @@ export function useActividad(empleado) {
 
       setHistorial(registros || []);
     } catch (err) {
-      console.error("Error cargando actividades:", err);
+      // Sin conexión: lo último que se vio hoy en este celular (ítem 21)
+      const snap = leerInstantanea(`actividad_${empleado.id}`, { fecha: hoyArg() });
+      if (snap) {
+        setTareaActiva(snap.tareaActiva);
+        setHistorial(snap.historial || []);
+        if (snap.tareaActiva) setElapsed(Math.floor((Date.now() - new Date(snap.tareaActiva.hora_inicio).getTime()) / 1000));
+      } else {
+        console.error("Error cargando actividades:", err);
+      }
     } finally {
       setLoading(false);
     }
   }, [empleado?.id, hoy]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  // Último estado del día, para abrir la app sin conexión
+  useEffect(() => {
+    if (!empleado?.id || loading) return;
+    guardarInstantanea(`actividad_${empleado.id}`, { fecha: hoyArg(), tareaActiva, historial });
+  }, [empleado?.id, loading, tareaActiva, historial]);
+
+  // Lo guardado sin señal se muestra igual, con la hora en que se hizo
+  const tareaRef = useRef(null);
+  tareaRef.current = tareaActiva;
+  const aplicarLocal = useCallback((momento, nueva) => {
+    const actual = tareaRef.current;
+    if (actual) {
+      const cerrada = { ...actual, hora_fin: momento, duracion_min: minutosHasta(actual.hora_inicio, momento), sinEnviar: true };
+      setHistorial((h) => [cerrada, ...h]);
+    }
+    setTareaActiva(nueva);
+    setElapsed(nueva ? Math.floor((Date.now() - new Date(nueva.hora_inicio).getTime()) / 1000) : 0);
+  }, []);
+
+  // Iniciar y finalizar pasan por /api/actividad: el servidor cierra lo abierto
+  // y registra lo nuevo; sin señal queda en la cola del celular (ítem 21).
+  const enviarActividad = useCallback(async (body) => {
+    const r = await enviarOEncolar({ empleadoId: empleado.id, tipo: "actividad", url: "/api/actividad", body });
+    if (r.encolado) return r;
+    if (!r.data?.ok) {
+      const err = new Error(r.data?.error || "No se pudo registrar la tarea. Probá de nuevo.");
+      err.tipo = r.data?.tipo;
+      throw err;
+    }
+    return r;
+  }, [empleado?.id]);
 
   // ── Timer en vivo ──
   useEffect(() => {
@@ -96,57 +146,41 @@ export function useActividad(empleado) {
   // ── Iniciar tarea ──
   const iniciarTarea = useCallback(async ({ etapa, codigo_proyecto, tipo, causa }) => {
     if (!empleado?.id) throw new Error("Sin empleado");
-    const ahora = new Date().toISOString();
     try {
-      // Nunca debe haber dos tareas abiertas: cerrar cualquiera que haya
-      // quedado abierta (p. ej. pasar a "espera" desde una tarea activa
-      // iniciaba la nueva sin cerrar la anterior).
-      const abiertas = await sb.get(
-        `registro_actividades?empleado_id=eq.${empleado.id}&hora_fin=is.null&select=id,hora_inicio&limit=10`
-      );
-      for (const t of abiertas || []) {
-        await sb.patch(`registro_actividades?id=eq.${t.id}`, {
-          hora_fin: ahora,
-          duracion_min: minutosHasta(t.hora_inicio, ahora),
-        });
-      }
-      const res = await sb.post("registro_actividades", {
-        empleado_id: empleado.id,
-        legajo: Number(empleado.legajo),
-        // Fecha argentina, no UTC: después de las 21 h la UTC ya es "mañana" (F1-10)
-        fecha: hoyArg(),
-        hora_inicio: ahora,
-        codigo_proyecto: etapa === 0 ? null : (codigo_proyecto ? Number(codigo_proyecto) || codigo_proyecto : null),
+      const r = await enviarActividad({
+        accion: "iniciar",
         etapa,
+        codigo_proyecto: etapa === 0 ? null : (codigo_proyecto != null ? String(codigo_proyecto) : null),
         tipo: tipo || "N",
         causa: etapa === 0 ? causa : null,
-        division: empleado.division,
-        empresa_id: empleado.empresa_id,
       });
+      if (r.encolado) {
+        aplicarLocal(r.op.creado_en, {
+          id: null, hora_inicio: r.op.creado_en, etapa, codigo_proyecto: etapa === 0 ? null : codigo_proyecto,
+          tipo: tipo || "N", causa: etapa === 0 ? causa : null, sinEnviar: true,
+        });
+        return { encolado: true };
+      }
       await cargarDatos();
-      return res;
+      return r.data?.tarea;
     } catch (err) {
       console.error("Error iniciando tarea:", err);
       throw err;
     }
-  }, [empleado, cargarDatos]);
+  }, [empleado, cargarDatos, enviarActividad, aplicarLocal]);
 
   // ── Finalizar tarea activa ──
   const finalizarTarea = useCallback(async (observaciones = null) => {
-    if (!tareaActiva?.id) return;
-    const ahora = new Date().toISOString();
+    if (!tareaActiva) return;
     try {
-      await sb.patch(`registro_actividades?id=eq.${tareaActiva.id}`, {
-        hora_fin: ahora,
-        duracion_min: minutosHasta(tareaActiva.hora_inicio, ahora),
-        ...(observaciones ? { observaciones } : {}),
-      });
+      const r = await enviarActividad({ accion: "finalizar", ...(observaciones ? { observaciones } : {}) });
+      if (r.encolado) { aplicarLocal(r.op.creado_en, null); return { encolado: true }; }
       await cargarDatos();
     } catch (err) {
       console.error("Error finalizando tarea:", err);
       throw err;
     }
-  }, [tareaActiva, cargarDatos]);
+  }, [tareaActiva, cargarDatos, enviarActividad, aplicarLocal]);
 
   const cambiarTarea = useCallback(async (nuevaTarea) => iniciarTarea(nuevaTarea), [iniciarTarea]);
 
