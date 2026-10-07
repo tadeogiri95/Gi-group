@@ -4,6 +4,11 @@ import { sb, getToken } from './lib/supabase';
 import { setColoresEmpresa } from './lib/theme';
 
 import { Button } from './components/ui';
+import { PasoPlanta, PasoHorario, PasoOT } from './components/onboarding/PasosAlta';
+import { horarioTipoDefault, diagramaDesde, textoHorario } from './lib/onboarding';
+import { imprimirTarjetas } from './lib/tarjetasQR';
+
+const TOTAL_PASOS = 7;
 
 function trackOnboarding(evento, meta = {}) {
   const token = getToken();
@@ -208,6 +213,13 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
   const [empleados, setEmpleados] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [planta, setPlanta] = useState({ nombre: "Planta", lat: null, lng: null, radio: 150, direccion: "" });
+  const [horario, setHorario] = useState(horarioTipoDefault);
+  const [usarHorario, setUsarHorario] = useState(true);
+  const [ot, setOt] = useState({ ot: "", cliente: "", proyecto: "" });
+  const [avisos, setAvisos] = useState([]);
+  const [codigos, setCodigos] = useState(null); // códigos de activación del equipo recién cargado
+  const [empresaFinal, setEmpresaFinal] = useState(null);
   const fileLogoRef = useRef(null);
   const fileCsvRef = useRef(null);
 
@@ -273,6 +285,17 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
           body: JSON.stringify({ action: "add_etapa", codigo: e.codigo, nombre: e.nombre, icon: e.icon, color: e.color, orden: i + 1 }),
         })),
       ]);
+      const pendientes = [];
+      if (planta.lat != null && planta.lng != null) {
+        try {
+          await sb.post("geo_zonas", { nombre: planta.nombre.trim() || "Planta", lat: planta.lat, lng: planta.lng, radio: planta.radio });
+        } catch { pendientes.push("la ubicación de la planta"); }
+      }
+      if (ot.ot.trim()) {
+        try {
+          await sb.post("proyectos", { ot: ot.ot.trim(), cliente: ot.cliente.trim() || null, proyecto: ot.proyecto.trim() || null, estado: "activo" });
+        } catch { pendientes.push("la primera OT"); }
+      }
       let logoUrl = empresa?.logo_url || null;
       if (logoBase64) {
         const fileName = `logos/${eid}_${Date.now()}.${logoBase64.ext}`;
@@ -298,6 +321,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
       await sb.patch(`empresa?id=eq.${eid}`, empresaUpdates);
 
       const empleadosValidos = empleados.filter(e => e.nombre?.trim());
+      let activaciones = [];
       if (empleadosValidos.length > 0) {
         let provSeq = legajoProv();
         const filas = empleadosValidos.map(e => {
@@ -305,16 +329,20 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
           return [legajo, e.nombre.trim(), e.division || "", e.rol || "operativo"];
         });
         const csvBody = ["legajo,nombre,division,rol", ...filas.map(f => f.map(csvField).join(","))].join("\n");
+        const diagrama = usarHorario ? diagramaDesde(horario) : null;
         try {
           const r = await fetch("/api/empleados/import-csv", {
             method: "POST",
-            headers: { "Content-Type": "text/plain", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-            body: csvBody,
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify({ csv: csvBody, ...(diagrama ? { diagrama } : {}) }),
           });
           const d = await r.json().catch(() => ({}));
-          if (!r.ok || d.error) console.error("Alta de empleados falló:", d.error || r.status);
-          else if (d.errors?.length) console.error("Alta de empleados — filas con error:", d.errors);
-        } catch (err) { console.error("Alta de empleados falló:", err); }
+          if (!r.ok || d.error) { console.error("Alta de empleados falló:", d.error || r.status); pendientes.push("el equipo"); }
+          else {
+            if (d.errors?.length) { console.error("Alta de empleados — filas con error:", d.errors); pendientes.push(`${d.errors.length} empleado(s) con datos inválidos`); }
+            activaciones = d.activaciones || [];
+          }
+        } catch (err) { console.error("Alta de empleados falló:", err); pendientes.push("el equipo"); }
       }
 
       setColoresEmpresa(colorPrim, colorSec);
@@ -324,8 +352,22 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         etapas: etapas.length,
         empleados: empleados.length,
         tienelogo: !!logoUrl,
+        ubicacion: planta.lat != null,
+        horario: usarHorario,
+        ot: !!ot.ot.trim(),
       });
-      onComplete && onComplete({ ...empresa, ...empresaUpdates, logo_url: logoUrl });
+      const final = { ...empresa, ...empresaUpdates, logo_url: logoUrl };
+      // Con equipo nuevo o algo que no se pudo guardar, se muestra un cierre
+      // antes de entrar (para imprimir los QR de activación).
+      if (activaciones.length > 0 || pendientes.length > 0) {
+        setAvisos(pendientes);
+        setCodigos(activaciones);
+        setEmpresaFinal(final);
+        setSaving(false);
+        setStep(8);
+        return;
+      }
+      onComplete && onComplete(final);
     } catch (err) {
       setError(err.message || "Error finalizando onboarding");
       setSaving(false);
@@ -337,9 +379,9 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
       {/* Header con progreso */}
       <div className="pt-5 pb-4 border-b border-gypi-border mb-4">
         <div className="g-overline text-gypi-amber">Configuración inicial</div>
-        <h1 className="mt-1 mb-3 font-heading text-[22px] font-bold text-gypi-text">Paso {step} de 4</h1>
+        <h1 className="mt-1 mb-3 font-heading text-[22px] font-bold text-gypi-text">{step > TOTAL_PASOS ? "¡Listo!" : `Paso ${step} de ${TOTAL_PASOS}`}</h1>
         <div className="flex gap-1.5">
-          {[1, 2, 3, 4].map(s => (
+          {Array.from({ length: TOTAL_PASOS }, (_, i) => i + 1).map(s => (
             <div key={s} className={`flex-1 h-1 rounded-sm ${s <= step ? 'bg-gypi-amber' : 'bg-gypi-surf-hi'}`} />
           ))}
         </div>
@@ -417,8 +459,26 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </div>
       </>}
 
-      {/* PASO 2: PERSONALIZACIÓN */}
+      {/* PASO 2: PLANTA */}
       {step === 2 && <>
+        <PasoPlanta planta={planta} setPlanta={setPlanta} />
+        <div className="flex justify-between gap-2">
+          <Button variant="secondary" onClick={() => setStep(1)}>← Atrás</Button>
+          <Button variant="primary" onClick={() => setStep(3)}>{planta.lat != null ? "Siguiente →" : "Saltar →"}</Button>
+        </div>
+      </>}
+
+      {/* PASO 3: HORARIO TIPO */}
+      {step === 3 && <>
+        <PasoHorario horario={horario} setHorario={setHorario} usarHorario={usarHorario} setUsarHorario={setUsarHorario} />
+        <div className="flex justify-between gap-2">
+          <Button variant="secondary" onClick={() => setStep(2)}>← Atrás</Button>
+          <Button variant="primary" onClick={() => setStep(4)} disabled={usarHorario && !diagramaDesde(horario)}>Siguiente →</Button>
+        </div>
+      </>}
+
+      {/* PASO 6: PERSONALIZACIÓN */}
+      {step === 6 && <>
         <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Personalización</h2>
         <p className="text-xs text-gypi-dim mb-3.5">Logo y colores. Podés saltarlo y editarlo después.</p>
 
@@ -449,13 +509,13 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </div>
 
         <div className="flex justify-between gap-2">
-          <Button variant="secondary" onClick={() => setStep(1)}>← Atrás</Button>
-          <Button variant="primary" onClick={() => setStep(3)}>Siguiente →</Button>
+          <Button variant="secondary" onClick={() => setStep(5)}>← Atrás</Button>
+          <Button variant="primary" onClick={() => setStep(7)}>Siguiente →</Button>
         </div>
       </>}
 
-      {/* PASO 3: EMPLEADOS */}
-      {step === 3 && <>
+      {/* PASO 4: EQUIPO */}
+      {step === 4 && <>
         <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Cargá empleados</h2>
         <p className="text-xs text-gypi-dim mb-3.5">Manual, CSV, o saltá y hacelo después.</p>
 
@@ -485,14 +545,25 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
           {empleados.length === 0 && <div className="py-3.5 text-center text-gypi-dim text-xs">Sin empleados todavía</div>}
         </div>
 
+        {empleados.length > 0 && <p className="text-[11px] text-gypi-dim mb-3">Al terminar te damos un QR por persona para que entren a la app y creen su contraseña.</p>}
+
         <div className="flex justify-between gap-2">
-          <Button variant="secondary" onClick={() => setStep(2)}>← Atrás</Button>
-          <Button variant="primary" onClick={() => setStep(4)}>Siguiente →</Button>
+          <Button variant="secondary" onClick={() => setStep(3)}>← Atrás</Button>
+          <Button variant="primary" onClick={() => setStep(5)}>Siguiente →</Button>
         </div>
       </>}
 
-      {/* PASO 4: RESUMEN */}
-      {step === 4 && <>
+      {/* PASO 5: PRIMERA OT */}
+      {step === 5 && <>
+        <PasoOT ot={ot} setOt={setOt} />
+        <div className="flex justify-between gap-2">
+          <Button variant="secondary" onClick={() => setStep(4)}>← Atrás</Button>
+          <Button variant="primary" onClick={() => setStep(6)}>{ot.ot.trim() ? "Siguiente →" : "Saltar →"}</Button>
+        </div>
+      </>}
+
+      {/* PASO 7: RESUMEN */}
+      {step === 7 && <>
         <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Listo para empezar</h2>
         <p className="text-xs text-gypi-dim mb-4">Revisá la configuración y confirmá.</p>
 
@@ -509,17 +580,53 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
               <span className="w-[18px] h-[18px] rounded" style={{ background: colorSec }} />
             </span>
           </div>
+          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Ubicación</span><span className="text-gypi-text font-semibold text-[13px] text-right">{planta.lat != null ? planta.nombre || "Planta" : "—"}</span></div>
+          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Horario</span><span className="text-gypi-text font-semibold text-[13px] text-right">{usarHorario ? textoHorario(horario) : "—"}</span></div>
           <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Empleados</span><span className="text-gypi-text font-semibold text-[13px]">{empleados.length}</span></div>
+          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Primera OT</span><span className="text-gypi-text font-semibold text-[13px]">{ot.ot.trim() || "—"}</span></div>
         </div>
 
         {error && <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red rounded-[10px] text-xs mb-2.5">{error}</div>}
 
         <div className="flex justify-between gap-2">
-          <Button variant="secondary" onClick={() => setStep(3)} disabled={saving}>← Atrás</Button>
+          <Button variant="secondary" onClick={() => setStep(6)} disabled={saving}>← Atrás</Button>
           <Button variant="primary" onClick={finalizar} disabled={saving} loading={saving}>
             {saving ? "Guardando..." : "🚀 Empezar a usar Gypi"}
           </Button>
         </div>
+      </>}
+
+      {/* CIERRE: QR de activación del equipo */}
+      {step === 8 && <>
+        {codigos?.length > 0 && <>
+          <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Tu equipo ya está cargado</h2>
+          <p className="text-xs text-gypi-dim mb-3.5">Imprimí una tarjeta por persona: escanean el QR con el celular y crean su contraseña. Los códigos se muestran solo ahora; si los perdés, generás nuevos desde Personal.</p>
+          <div className="g-card mb-3 max-h-[240px] overflow-y-auto">
+            {codigos.map(c => (
+              <div key={c.legajo} className="flex justify-between py-1.5 border-b border-gypi-border last:border-0 text-[13px]">
+                <span className="text-gypi-text">{c.nombre}</span>
+                <span className="font-mono text-gypi-dim">{c.codigo}</span>
+              </div>
+            ))}
+          </div>
+          <Button variant="secondary" className="w-full mb-3" onClick={() => imprimirTarjetas({
+            titulo: "Códigos de acceso",
+            empresa: nombreEmpresa.trim(),
+            tarjetas: codigos.filter(c => c.link).map(c => ({
+              nombre: c.nombre,
+              detalle: `Legajo ${c.legajo} · Código ${c.codigo}`,
+              link: c.link,
+              pie: "Escaneá con la cámara del celular y creá tu contraseña. Sirve una vez.",
+            })),
+          }).catch(() => setError("No se pudo abrir la impresión. Permití las ventanas emergentes."))}>🖨️ Imprimir tarjetas con QR</Button>
+        </>}
+        {avisos.length > 0 && (
+          <div role="alert" className="p-3 bg-gypi-amber/10 text-gypi-text rounded-[10px] text-xs mb-3">
+            No pudimos guardar {avisos.join(", ")}. Lo podés cargar desde Gestión; te lo recordamos en la lista de primeros pasos.
+          </div>
+        )}
+        {error && <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red rounded-[10px] text-xs mb-2.5">{error}</div>}
+        <Button variant="primary" className="w-full" onClick={() => onComplete && onComplete(empresaFinal)}>Entrar a Gypi →</Button>
       </>}
     </div>
   );
