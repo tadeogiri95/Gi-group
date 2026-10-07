@@ -134,7 +134,9 @@ export async function POST(request) {
           if (
             code === "messaging/registration-token-not-registered" ||
             code === "messaging/invalid-registration-token" ||
-            code === "messaging/invalid-argument"
+            code === "messaging/invalid-argument" ||
+            // Token de otro proyecto Firebase (p. ej. el del piloto, después del cambio del ítem 33)
+            code === "messaging/mismatched-credential"
           ) {
             tokensInvalidos.push(t.token);
           } else {

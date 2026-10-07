@@ -3,12 +3,22 @@
 // link no era válido y el operario quedaba trabado.
 import { useEffect, useState } from "react";
 import { ultimaEmpresa, normalizarCodigo } from "../lib/ultimaEmpresa";
+import { rutaRenombrada } from "../lib/slugs";
 
-export default function EmpresaNoEncontrada({ slugActual }) {
+export default function EmpresaNoEncontrada({ slugActual, ubicacion, irA }) {
   const [ultima, setUltima] = useState(null);
   const [codigo, setCodigo] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [error, setError] = useState("");
+
+  // La empresa cambió de dirección (p. ej. el piloto: /gypi → /gi-group)
+  const [redirigiendo] = useState(() => {
+    const loc = ubicacion || (typeof window !== "undefined" ? window.location : null);
+    if (!loc) return false;
+    const nueva = rutaRenombrada(loc.pathname, loc.search);
+    if (nueva) (irA || ((u) => window.location.replace(u)))(nueva);
+    return !!nueva;
+  });
 
   useEffect(() => {
     const u = ultimaEmpresa();
@@ -29,6 +39,8 @@ export default function EmpresaNoEncontrada({ slugActual }) {
     }
     setBuscando(false);
   };
+
+  if (redirigiendo) return <div role="status" className="flex min-h-dvh items-center justify-center text-gypi-dim text-sm bg-gypi-bg">Abriendo la nueva dirección de tu empresa…</div>;
 
   return (
     <div className="flex flex-col min-h-dvh items-center justify-center p-8 text-center bg-gypi-bg">
