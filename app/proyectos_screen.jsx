@@ -6,6 +6,7 @@ import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
+import { imprimirTarjetas } from "./lib/tarjetasQR";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -134,7 +135,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ProyectosScreen({ empresaId }) {
-  const { divisiones: divisionesCtx } = useAuth();
+  const { divisiones: divisionesCtx, empresa, updateEmpresa } = useAuth();
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -301,6 +302,38 @@ export default function ProyectosScreen({ empresaId }) {
     return true;
   });
 
+  /* ── Escáner de OT (D8, ítem 20) ── */
+  const [guardandoEscaner, setGuardandoEscaner] = useState(false);
+  const cambiarEscaner = async () => {
+    const nuevo = !empresa?.escaner_ot;
+    setGuardandoEscaner(true);
+    try {
+      const res = await apiFetch("/api/empresa", { method: "PATCH", body: JSON.stringify({ escaner_ot: nuevo }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "No se pudo guardar");
+      updateEmpresa?.({ escaner_ot: nuevo });
+      showToast(nuevo ? "Escáner de OT activado" : "Escáner de OT desactivado", GREEN);
+    } catch (e) {
+      showToast(e.message, RED);
+    }
+    setGuardandoEscaner(false);
+  };
+
+  // Etiquetas con el QR de cada OT de la lista filtrada, para pegar en la orden o la pieza
+  const imprimirEtiquetas = () => {
+    const lista = filtrados.filter(p => p.ot);
+    if (lista.length === 0) return;
+    imprimirTarjetas({
+      titulo: "Etiquetas de OT",
+      empresa: empresa?.nombre_corto || empresa?.nombre || "",
+      tarjetas: lista.map(p => ({
+        nombre: `OT ${p.ot}`,
+        detalle: [p.cliente, p.proyecto].filter(Boolean).join(" · "),
+        link: String(p.ot),
+        pie: "Escaneala en “Iniciar tarea” para elegir esta OT.",
+      })),
+    }).catch(e => showToast(e.message, RED));
+  };
+
   const activos = proyectos.filter(p => p.estado === "activo").length;
   const cerrados = proyectos.filter(p => p.estado === "cerrado").length;
 
@@ -345,6 +378,28 @@ export default function ProyectosScreen({ empresaId }) {
         <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsv} />
         <button onClick={() => fileRef.current?.click()} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-cyan/15 text-gypi-cyan text-[13px] font-bold cursor-pointer">📤 CSV</button>
         <button onClick={cargar} className="w-10 h-10 rounded-xl border-none bg-gypi-surface text-gypi-dim cursor-pointer text-[15px] shrink-0">🔄</button>
+      </div>
+
+      {/* Escáner de OT con la cámara */}
+      <div className="g-card !p-3 mb-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs text-gypi-dim">
+            <b className="text-gypi-text">Escanear OT con la cámara:</b> el operario escanea el código de la orden al iniciar una tarea.
+          </div>
+          <button
+            role="switch"
+            aria-checked={!!empresa?.escaner_ot}
+            aria-label="Escanear OT con la cámara"
+            onClick={cambiarEscaner}
+            disabled={guardandoEscaner}
+            className={`shrink-0 min-h-[40px] px-3 rounded-lg border-none text-xs font-bold cursor-pointer ${empresa?.escaner_ot ? "bg-gypi-green/15 text-gypi-green" : "bg-gypi-surface text-gypi-dim"}`}
+          >
+            {empresa?.escaner_ot ? "Activado" : "Desactivado"}
+          </button>
+        </div>
+        <button onClick={imprimirEtiquetas} disabled={!filtrados.some(p => p.ot)} className="g-btn g-btn-secondary text-xs font-bold disabled:opacity-50">
+          Imprimir etiquetas QR de las OT de la lista
+        </button>
       </div>
 
       {/* Panel de URL de sincronización */}

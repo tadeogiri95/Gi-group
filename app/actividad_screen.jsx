@@ -26,6 +26,8 @@ const fmtElapsed = (seconds) => {
 
 import { Tag } from "./components/ui";
 import Icon from "./components/Icon";
+import EscanerCodigo, { escanerDisponible } from "./components/EscanerCodigo";
+import { otDesdeCodigo, recordarOT, otsRecientes } from "./lib/ot";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -63,6 +65,23 @@ export default function ActividadScreen({
   const [errorMsg, setErrorMsg] = useState(null);
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
+  // Escáner de OT (D8): solo si la empresa lo activó y el navegador puede leer códigos
+  const puedeEscanear = !!empresa?.escaner_ot && escanerDisponible();
+  const [escaneando, setEscaneando] = useState(false);
+  const [avisoEscaneo, setAvisoEscaneo] = useState("");
+  const recientes = otsRecientes(usuario?.id, proyectos);
+
+  const alEscanear = (texto) => {
+    const p = otDesdeCodigo(texto, proyectos);
+    if (!p) {
+      setAvisoEscaneo(`El código «${String(texto).slice(0, 40)}» no coincide con ninguna OT de la lista.`);
+      return;
+    }
+    setProyectoSeleccionado(p);
+    setEscaneando(false);
+    setAvisoEscaneo("");
+    setStep(3);
+  };
 
   useEffect(() => {
     if (tareaActiva && !tareaActiva.hora_fin) {
@@ -102,6 +121,7 @@ export default function ActividadScreen({
         tipo: tipoSeleccionado,
         causa: null,
       });
+      if (etapaSeleccionada !== 0) recordarOT(usuario?.id, otFinal);
       setProyectoSeleccionado(null);
       setBusqueda("");
       setManualOT("");
@@ -314,6 +334,36 @@ export default function ActividadScreen({
 
               {/* Modo búsqueda */}
               {!modoManual && (<>
+                {puedeEscanear && (
+                  escaneando ? (
+                    <div className="mb-3">
+                      <EscanerCodigo
+                        formatos={["qr_code", "code_128", "code_39", "ean_13", "ean_8", "itf", "data_matrix"]}
+                        camara="environment"
+                        ayuda="Apuntá la cámara al código de la orden de trabajo"
+                        onCodigo={alEscanear}
+                      />
+                      {avisoEscaneo && <div role="alert" className="text-xs text-gypi-red text-center mb-2">{avisoEscaneo}</div>}
+                      <button onClick={() => { setEscaneando(false); setAvisoEscaneo(""); }} className="w-full py-2.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-xs font-bold font-body cursor-pointer text-gypi-dim">Cancelar escaneo</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setEscaneando(true)} className="w-full min-h-[48px] mb-3 rounded-[14px] bg-gypi-amber/[0.13] border-none text-gypi-amber text-sm font-bold font-body cursor-pointer">📷 Escanear código de la OT</button>
+                  )
+                )}
+
+                {!busqueda && recientes.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs text-gypi-dim mb-1.5">Recientes</div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {recientes.map(p => (
+                        <button key={p.ot} onClick={() => setProyectoSeleccionado(p)} className={`min-h-[40px] px-3 rounded-[10px] border-2 text-xs font-bold font-mono cursor-pointer ${proyectoSeleccionado?.ot === p.ot ? "border-gypi-amber bg-gypi-amber/[0.09] text-gypi-amber" : "border-transparent bg-gypi-surface text-gypi-text"}`}>
+                          OT {p.ot}{p.cliente ? <span className="font-body font-semibold text-gypi-dim"> · {p.cliente}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="text-xs text-gypi-dim mb-2">Buscá por OT, cliente u obra</div>
                 <input
                   ref={inputRef}
