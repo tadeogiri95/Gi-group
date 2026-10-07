@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { sb } from "./lib/supabase";
+import { useRefrescoVisible } from "./hooks/useRefrescoVisible";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
@@ -83,10 +84,8 @@ export default function GerenciaActividadScreen({ empresaId }) {
 
   useEffect(() => { cargarResumen(); }, [cargarResumen]);
 
-  useEffect(() => {
-    const interval = setInterval(cargarResumen, 60000);
-    return () => clearInterval(interval);
-  }, [cargarResumen]);
+  // Cada minuto, solo con la pestaña a la vista (F3-04)
+  useRefrescoVisible(cargarResumen, { intervaloMs: 60000 });
 
   const toggleDetalle = async (empleadoId) => {
     if (expandido === empleadoId) {

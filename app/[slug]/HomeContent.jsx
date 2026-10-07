@@ -16,6 +16,7 @@ import { hoyArg, lunesDeLaSemana } from "../lib/dates";
 import { useAuth } from "../context/AuthContext";
 import { useActividad } from "../hooks/useActividad";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
+import { useRefrescoVisible } from "../hooks/useRefrescoVisible";
 import PushManager from "../components/PushManager";
 
 // LoginScreen es la primera pantalla para usuarios no logueados — se mantiene
@@ -208,8 +209,9 @@ export default function HomeContent() {
 
   // Carga inicial y cuando cambia el usuario (o cuando termina de cargar el módulo demo)
   useEffect(() => { if (usuario || (isDemo && demoMod)) { setReady(false); loadData(); } }, [usuario, isDemo, demoMod, loadData]);
-  // Polling de fallback cada 2 min (Realtime cubre los cambios en tiempo real)
-  useEffect(() => { if (!usuario && !isDemo) return; const t = setInterval(loadData, 120000); return () => clearInterval(t); }, [usuario, isDemo, loadData]);
+  // Polling de fallback cada 2 min, solo con la pestaña a la vista; los avisos
+  // de Realtime se agrupan en una sola recarga (F3-04)
+  const pedirRecarga = useRefrescoVisible(loadData, { intervaloMs: 120000, activo: !!usuario || isDemo });
 
   const u = isDemo ? (usuario || demoMod?.DEMO_USUARIO_GER) : usuario;
   const uIsGer = isDemo ? (u?.rol === "gerencial" || u?.rol === "administrativo") : isGer;
@@ -218,7 +220,7 @@ export default function HomeContent() {
   const actividad = useActividad(
     u && !isDemo ? { id: u.id, legajo: u.legajo, division: u.division, empresa_id: u?.empresa_id || empresa?.id } : null
   );
-  useRealtimeSync(!isDemo && u ? (u.empresa_id || empresa?.id) : null, loadData);
+  useRealtimeSync(!isDemo && u ? (u.empresa_id || empresa?.id) : null, pedirRecarga);
 
   const pend = (ctx.solicitudes || []).filter(s => s.estado === "pendiente").length;
   const isChat = screen === "chat";
