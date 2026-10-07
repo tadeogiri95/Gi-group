@@ -157,7 +157,7 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F6-01 | Exportación y baja de datos prometidas y no implementadas | Alto | M | Pendiente |
-| F6-02 | Perfil fiscal del cliente + factura al CUIT | Alto | M | Pendiente (validar con el contador) |
+| F6-02 | Perfil fiscal del cliente + factura al CUIT | Alto | M | Código listo (ítem 26): datos de facturación obligatorios para contratar (CUIT validado), Factura C con DocTipo 80 y la condición frente al IVA del cliente (migración 081). Falta de tu lado habilitar ARCA y cargar las variables: `auditoria/como-activar-factura-c.md` |
 | F6-03 | Prueba de cobro de punta a punta (sandbox MP) | Alto | M | Pendiente |
 | F6-04 | Planes y módulos en la base + entitlements en el servidor | Alto | M | Pendiente |
 | F6-05 | Indexación de precios | Medio | S | Pendiente |
@@ -165,7 +165,7 @@
 | F6-07 | Términos, privacidad, DPA y SLA (abogado) | Medio | S | Pendiente (legal) |
 | F6-09 | Superadmin: módulos, add-ons, pagos manuales, consumo | Medio | M | Pendiente |
 | F6-10 | Canal de soporte y página de estado | Bajo | S | Pendiente |
-| F6-11 | Comprobantes descargables | Bajo | S | Pendiente |
+| F6-11 | Comprobantes descargables | Bajo | S | Hecho (ítem 26): "Ver factura" en el historial de pagos, con el QR de ARCA, para imprimir o guardar en PDF |
 
 ## 3. Preguntas abiertas que condicionan el plan
 

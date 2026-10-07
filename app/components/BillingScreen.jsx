@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { PLANES, precioAnual } from "../lib/plans";
 import { sb, getToken } from "../lib/supabase";
 import EnterpriseContactButton from "./EnterpriseContactButton";
+import PerfilFiscal from "./PerfilFiscal";
 
 const ORDEN_PLANES = ["free", "starter", "pro", "enterprise"];
 
@@ -14,6 +15,7 @@ export default function BillingScreen({ onClose }) {
   const [error, setError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [anual, setAnual] = useState(false);
+  const [pedirFiscal, setPedirFiscal] = useState(false); // ítem 26: faltan los datos de facturación
 
   const cargar = async () => {
     setLoading(true);
@@ -54,6 +56,7 @@ export default function BillingScreen({ onClose }) {
       const txt = await r.text();
       let d = {};
       try { d = txt ? JSON.parse(txt) : {}; } catch {}
+      if (d.falta_perfil_fiscal) setPedirFiscal(true);
       if (!r.ok || !d.init_point) {
         throw new Error(d.error || `Error ${r.status}: ${txt?.slice(0, 200) || "respuesta vacía"}`);
       }
@@ -186,6 +189,9 @@ export default function BillingScreen({ onClose }) {
               )}
             </div>
 
+            {/* --- Datos de facturación (Factura C al CUIT del cliente, ítem 26) --- */}
+            <PerfilFiscal abiertoAlInicio={pedirFiscal} onCompleto={() => { setPedirFiscal(false); setError(""); }} />
+
             {/* --- Planes disponibles --- */}
             <div className="flex items-center justify-between mb-3.5">
               <div className="text-xs text-gypi-dim font-semibold tracking-wide">
@@ -310,6 +316,11 @@ export default function BillingScreen({ onClose }) {
                           {p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString("es-AR") : "—"}
                           {p.gateway && ` · ${p.gateway}`}
                         </div>
+                        {p.cae && (
+                          <a href={`/api/billing/comprobante?id=${encodeURIComponent(p.id)}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-gypi-amber">
+                            Ver factura
+                          </a>
+                        )}
                       </div>
                       <span
                         className={`text-[11px] font-bold ${estadoCol} py-[3px] px-2 rounded-md`}

@@ -21,11 +21,25 @@
 
 import Afip from "@afipsdk/afip.js";
 import { logger } from "./logger";
+import { CONDICIONES_IVA, cuitValido, limpiarCuit } from "./perfilFiscal";
 
 const CUIT_TESTING_PUBLICO = 20409378472;
 const CBTE_TIPO_FACTURA_C = 11;
 const CONCEPTO_SERVICIOS = 2;
 const DOC_TIPO_CONSUMIDOR_FINAL = 99;
+const DOC_TIPO_CUIT = 80;
+
+/**
+ * Identificación del comprador para ARCA (D15): con CUIT válido, DocTipo 80
+ * y su condición frente al IVA; si no, Consumidor Final (DocTipo 99).
+ */
+export function receptorArca(receptor) {
+  const cuit = limpiarCuit(receptor?.cuit);
+  if (cuitValido(cuit)) {
+    return { DocTipo: DOC_TIPO_CUIT, DocNro: Number(cuit), CondicionIVAReceptorId: CONDICIONES_IVA[receptor?.condicion_iva]?.arca ?? 5 };
+  }
+  return { DocTipo: DOC_TIPO_CONSUMIDOR_FINAL, DocNro: 0, CondicionIVAReceptorId: 5 };
+}
 
 function yyyymmdd(fecha) {
   const d = fecha ? new Date(fecha) : new Date();
@@ -57,13 +71,11 @@ function getClienteAfip() {
  * (el webhook de MercadoPago) la use fire-and-forget sin arriesgar la
  * activación del plan si ARCA está caído o mal configurado.
  *
- * Nota: a montos altos, ARCA puede exigir identificar al comprador
- * (DNI/CUIT) en vez de "Consumidor Final" — el umbral se actualiza
- * periódicamente por resolución y no está hardcodeado acá. Si ARCA
- * rechaza por esto, el error de createVoucher lo va a indicar explícito
- * y queda guardado en pagos.factura_error.
+ * La factura sale al CUIT del cliente (perfil fiscal, migración 081); sin
+ * CUIT válido, a Consumidor Final. Si ARCA la rechaza, el error queda en
+ * pagos.factura_error.
  */
-export async function emitirFacturaC({ monto, fechaPago, periodoInicio, periodoFin }) {
+export async function emitirFacturaC({ monto, fechaPago, periodoInicio, periodoFin, receptor }) {
   const afip = getClienteAfip();
   if (!afip) return { ok: false, motivo: "no_configurado" };
 
@@ -82,8 +94,7 @@ export async function emitirFacturaC({ monto, fechaPago, periodoInicio, periodoF
       PtoVta: ptoVta,
       CbteTipo: CBTE_TIPO_FACTURA_C,
       Concepto: CONCEPTO_SERVICIOS,
-      DocTipo: DOC_TIPO_CONSUMIDOR_FINAL,
-      DocNro: 0,
+      ...receptorArca(receptor),
       CbteDesde: numeroComprobante,
       CbteHasta: numeroComprobante,
       CbteFch: cbteFch,

@@ -32,10 +32,13 @@ function postReq(token, body = {}) {
 }
 
 // ── Helpers de mock ──
+// La empresa trae sus datos de facturación completos (ítem 26: sin ellos no se contrata)
+const PERFIL_FISCAL = { razon_social: "Acme SA", cuit: "20409378472", condicion_iva: "responsable_inscripto", domicilio_fiscal: "Calle 123" };
+
 function sbEmpresa(data) {
   return {
     match: (url) => /\/rest\/v1\/empresa\?id=eq\./.test(url) && !url.includes("email_verificado"),
-    respond: () => ({ status: 200, body: data ? [data] : [] }),
+    respond: () => ({ status: 200, body: data ? [{ ...PERFIL_FISCAL, ...data }] : [] }),
   };
 }
 
