@@ -8,6 +8,7 @@ import { sendRecuperarPassword } from "../../lib/email";
 import { limiteExcedido } from "../../lib/rateLimit";
 import { isUUID } from "../../lib/validate";
 
+import { ipCliente } from "../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -41,7 +42,7 @@ export async function POST(req) {
       return returnOk();
     }
 
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const ip = ipCliente(req);
     const emailNorm = email.trim().toLowerCase();
     if (await limiteExcedido(`recupero-ip:${ip}`, MAX_POR_IP) || await limiteExcedido(`recupero-email:${emailNorm}`, MAX_POR_EMAIL)) {
       return NextResponse.json(

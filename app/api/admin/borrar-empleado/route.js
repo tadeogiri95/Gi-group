@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { validarToken } from "../../../lib/auth";
 import { logAudit } from "../../../lib/audit";
 
+import { ipCliente } from "../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -70,7 +71,7 @@ export async function POST(req) {
     return NextResponse.json({ error: "No se pudo anonimizar el registro", detail: err }, { status: 500 });
   }
 
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const ip = ipCliente(req);
   logAudit({
     empresa_id: sesion.empresa_id,
     actor_id: sesion.empleado_id,

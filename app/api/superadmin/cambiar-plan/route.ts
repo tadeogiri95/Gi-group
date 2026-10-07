@@ -4,6 +4,7 @@ import { verifyAdminToken } from "../../../lib/jwt";
 import { logAudit } from "../../../lib/audit";
 import { logger } from "../../../lib/logger";
 
+import { ipCliente } from "../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     entidad: "empresa",
     entidad_id: empresa_id,
     datos_despues: { plan_activo: plan },
-    ip: req.headers.get("x-forwarded-for") || "unknown",
+    ip: ipCliente(req),
   });
 
   return NextResponse.json({ ok: true, plan });

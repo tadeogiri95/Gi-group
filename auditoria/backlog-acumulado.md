@@ -55,9 +55,9 @@
 | F2-15 | Rate limits en memoria | Medio | S | Pendiente |
 | F2-16 | `/api/geocode` público | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado): exige sesión, caché de 24 h y límite por empresa |
 | F2-17 | Privacidad: proveedores omitidos, GPS “opcional”, Ley 25.326/DPA | Medio | M | Pendiente (legal) |
-| F2-18 | Exenciones de CSRF amplias | Bajo | S | Pendiente |
+| F2-18 | Exenciones de CSRF amplias | Bajo | S | En PR #22: solo quedan exentos los webhooks firmados, crons y health (se agregó el de Resend, que se bloqueaba) |
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
-| F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | Pendiente |
+| F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | En PR #22: `ipCliente()` (x-real-ip de Vercel, validada) en todas las rutas |
 | F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **Hecho** (tadeogiri95/Gi-group#1, fusionado): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
 | F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
 | H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | **Hecho** (#8, migración 066 aplicada) |

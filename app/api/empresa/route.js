@@ -6,6 +6,7 @@ import { empresaPatchBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { CAMPOS_EMPRESA_SOLO_DUENO } from "../../lib/dataPolicy";
 
+import { ipCliente } from "../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -137,7 +138,7 @@ export async function PATCH(request) {
       entidad: "empresa",
       entidad_id: sesion.empresa_id,
       datos_despues: updates,
-      ip: request.headers.get("x-forwarded-for") || "unknown",
+      ip: ipCliente(request),
     });
     return NextResponse.json(updated);
   } catch (err) {

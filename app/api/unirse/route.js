@@ -22,11 +22,12 @@ import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { hashCodigo, normalizarCodigo } from "../../lib/activacion";
 import { logAudit } from "../../lib/audit";
 
+import { ipCliente } from "../../lib/ip";
 const CODIGO_INVALIDO = "El código no es válido o ya venció. Pedile uno nuevo a tu empresa.";
 
 export async function POST(request) {
   try {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const ip = ipCliente(request);
     const rl = checkRateLimit(`unirse:${ip}`, 20, 60_000);
     if (rl.limited) {
       return NextResponse.json(

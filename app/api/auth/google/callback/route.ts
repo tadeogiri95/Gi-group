@@ -17,6 +17,7 @@ import { sendBienvenida } from "../../../../lib/email";
 import { logger } from "../../../../lib/logger";
 import { logEvent, EVT } from "../../../../lib/analytics";
 
+import { ipCliente } from "../../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -130,7 +131,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const { searchParams } = new URL(req.url);
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const ip = ipCliente(req);
 
   if (await checkOAuthRateLimit(ip)) {
     return redirectError(null, "demasiados_intentos");

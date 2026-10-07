@@ -3,6 +3,7 @@ import { signAdminToken } from "../../../lib/jwt";
 import { ventana15min } from "../../../lib/rateLimit";
 import { createHash, timingSafeEqual } from "crypto";
 
+import { ipCliente } from "../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const MAX_ATTEMPTS = 5;
@@ -38,7 +39,7 @@ function claveCorrecta(key: string, secret: string): boolean {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const ip = ipCliente(req);
     if (await checkRateLimit(ip)) {
       return NextResponse.json({ error: "Demasiados intentos. Intentá de nuevo en 15 minutos." }, { status: 429 });
     }
