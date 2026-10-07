@@ -3,7 +3,7 @@
 //
 // Kill-switch: sin AFIP_ACCESS_TOKEN configurada, emitirFacturaC() no
 // hace ninguna llamada de red y retorna { ok:false, motivo:"no_configurado" }.
-// Mismo patrón que app/components/AdSlot.jsx — agregar la env var es lo
+// Mismo patrón que Sentry y Firebase en este repo: agregar la env var es lo
 // único que activa la feature, nunca rompe nada por omisión.
 //
 // Modo testing (AFIP_CERT/AFIP_KEY/AFIP_CUIT ausentes): usa el CUIT

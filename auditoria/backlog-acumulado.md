@@ -104,7 +104,7 @@
 | F4-13 / H1–H5, H9 | Reglas y textos de la fábrica → configuración por tenant (D5) | Medio | M | Pendiente |
 | F4-14 | Onboarding extendido + checklist de activación | Medio | M | Pendiente |
 | F4-15 | Formato de hora unificado | Bajo | S | Pendiente |
-| F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | Pendiente |
+| F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | En PR #21: sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |
 | F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Pendiente |
 | F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
 | — | **Resumen semanal automático** (D10) | Nuevo | S–M | Pendiente |
@@ -132,7 +132,7 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F3-10 | Sin backups (Supabase Free) | Alto | S | En PR #19: backup diario encriptado y verificado (GitHub Actions, 30 días; falta cargar los 2 secretos: `como-restaurar-backup.md`). Queda: archivos de Storage y Supabase Pro antes de cobrar |
+| F3-10 | Sin backups (Supabase Free) | Alto | S | **Hecho** (tadeogiri95/Gi-group#19, fusionado; primera copia OK el 2026-10-07): backup diario encriptado y verificado (GitHub Actions, 30 días; falta cargar los 2 secretos: `como-restaurar-backup.md`). Queda: archivos de Storage y Supabase Pro antes de cobrar |
 | F3-11 | Un solo ambiente (previews posiblemente contra prod) | Alto | M | Pendiente (confirmar en Vercel) |
 | F0-12 | Vercel Hobby prohíbe el uso comercial | Alto | S | Pendiente (pasar a Pro antes de cobrar) |
 | F3-09 / F0-05 | Drift de esquema, índices duplicados, migraciones manuales | Medio | M | Pendiente |

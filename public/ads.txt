@@ -1,4 +1,0 @@
-# ads.txt — declara quién puede vender espacio publicitario en este dominio.
-# Publisher ID real de la cuenta de Google AdSense (mismo valor que
-# NEXT_PUBLIC_ADSENSE_CLIENT_ID sin el prefijo "ca-"). Ver app/components/AdSlot.jsx.
-google.com, pub-3909647509890548, DIRECT, f08c47fec0942fa0
