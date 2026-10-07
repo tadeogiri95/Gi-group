@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { sb, apiFetch } from "./lib/supabase";
+import { activarKiosco } from "./lib/kioscoCliente";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
@@ -314,6 +315,22 @@ export default function GestionPersonalScreen({ empresaId }) {
     porDiv[d] = (porDiv[d] || 0) + 1;
   });
 
+  /* ── Modo kiosco (ítem 19) ── */
+  // Este dispositivo pasa a ser un punto de fichaje: se cierra la sesión del
+  // gerente acá (si no, cualquiera podría usarla) y se abre el kiosco.
+  const activarKioscoAqui = async () => {
+    if (!empresa?.slug) return;
+    if (!window.confirm("Este dispositivo va a quedar como kiosco de fichaje y se va a cerrar tu sesión en él. ¿Seguir?")) return;
+    try {
+      await activarKiosco();
+      await apiFetch("/api/logout", { method: "POST" }).catch(() => {});
+      try { sessionStorage.removeItem("gi-session"); } catch {}
+      window.location.href = `/${empresa.slug}/kiosco`;
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
   /* ── Alta ── */
   // Va por POST /api/empleados (no /api/data): hashea la contraseña inicial
   // server-side, valida legajo único (409), respeta el límite del plan,
@@ -558,6 +575,16 @@ export default function GestionPersonalScreen({ empresaId }) {
           CSV
         </button>
         <input ref={fileRef} type="file" accept=".csv" onChange={handleCSVFile} className="hidden" />
+      </div>
+
+      {/* Modo kiosco */}
+      <div className="g-card !p-3 mb-3 flex items-center justify-between gap-2">
+        <div className="text-xs text-gypi-dim">
+          <b className="text-gypi-text">Modo kiosco:</b> usá este dispositivo como punto de fichaje en la entrada (tarjeta QR o legajo + PIN).
+        </div>
+        <button onClick={activarKioscoAqui} disabled={!empresa?.slug} className="g-btn g-btn-secondary text-xs font-bold font-heading shrink-0 disabled:opacity-50">
+          Activar acá
+        </button>
       </div>
 
       {/* Tip CSV */}
