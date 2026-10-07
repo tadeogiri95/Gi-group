@@ -5,6 +5,7 @@ import { sb } from "./supabase";
 import { sendPushToRole } from "./push";
 import { fmtTime } from "./theme";
 import { hoyArg } from "./dates";
+import { TIPOS_BASE } from "./tiposSolicitud";
 
 // Cada pedido = una solicitud + un aviso en la bandeja de gerencia + un push.
 async function pedir(usuario, { solicitud, aviso, push }) {
@@ -49,4 +50,24 @@ export async function pedirHoraExtra(usuario, ahora = new Date()) {
     push: { titulo: "🕐 Hora extra", texto: `${usuario.apodo} solicita aprobación de hora extra` },
   });
   return { fecha, motivo: "Hora extra" };
+}
+
+/**
+ * Solicitud desde el formulario (F4-12): tipo de la empresa, uno o varios días
+ * y motivo. `tipo` es un elemento de tiposDeEmpresa().
+ */
+export async function pedirSolicitud(usuario, { tipo, desde, hasta, motivo }) {
+  const varios = tipo.multiDia && hasta && hasta !== desde;
+  const rango = varios ? `del ${desde} al ${hasta}` : `el ${desde}`;
+  await pedir(usuario, {
+    solicitud: {
+      tipo: tipo.base,
+      etiqueta: tipo.nombre !== TIPOS_BASE[tipo.base]?.nombre ? tipo.nombre : null,
+      fecha: desde,
+      fecha_hasta: varios ? hasta : null,
+      motivo: (motivo || "").trim().slice(0, 500) || tipo.nombre,
+    },
+    aviso: { asunto: `📝 ${usuario.apodo} pide: ${tipo.nombre}`, detalle: `${tipo.nombre} ${rango}${motivo?.trim() ? ` — ${motivo.trim().slice(0, 200)}` : ""}`, urgencia: "normal" },
+    push: { titulo: `📝 ${tipo.nombre}`, texto: `${usuario.apodo} pide ${tipo.nombre.toLowerCase()} ${rango}` },
+  });
 }

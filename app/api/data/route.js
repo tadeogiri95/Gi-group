@@ -14,6 +14,7 @@ import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
 import { alcanceDe, filtroAlcance, dentroDelAlcance, COLUMNA_PERSONA } from "../../lib/alcance";
+import { diasEntre, MAX_DIAS_SOLICITUD } from "../../lib/tiposSolicitud";
 import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -140,6 +141,22 @@ function validarBody(tabla, body, method) {
         }
         if (!TIPOS_SOLICITUD.includes(body.tipo)) {
           return { valido: false, error: `Tipo de solicitud inválido` };
+        }
+        // Rango de fechas (F1-21): fecha = primer día, fecha_hasta = último (inclusive)
+        const fechaRe = /^\d{4}-\d{2}-\d{2}$/;
+        if (body.fecha !== undefined && body.fecha !== null && !fechaRe.test(body.fecha)) {
+          return { valido: false, error: "Formato de fecha inválido" };
+        }
+        if (body.fecha_hasta !== undefined && body.fecha_hasta !== null) {
+          if (!fechaRe.test(body.fecha_hasta) || !body.fecha) {
+            return { valido: false, error: "Formato de fecha inválido" };
+          }
+          const dias = diasEntre(body.fecha, body.fecha_hasta);
+          if (dias < 1) return { valido: false, error: "La fecha de fin no puede ser anterior a la de inicio" };
+          if (dias > MAX_DIAS_SOLICITUD) return { valido: false, error: `Una solicitud puede abarcar hasta ${MAX_DIAS_SOLICITUD} días` };
+        }
+        if (body.etiqueta !== undefined && body.etiqueta !== null && (typeof body.etiqueta !== "string" || body.etiqueta.length > 60)) {
+          return { valido: false, error: "Tipo de solicitud inválido" };
         }
       }
       break;

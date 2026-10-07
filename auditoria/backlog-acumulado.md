@@ -84,7 +84,7 @@
 | F1-11 | Horas extra en turno noche | Medio | S | **Hecho** (#10 fusionado) |
 | F1-12 | Escrituras de varios pasos sin transacción | Medio | M | Pendiente |
 | F1-13 | Rotación del refresh sin gracia (varias pestañas) | Medio | S | Pendiente |
-| F1-21 | Vacaciones de un solo día (modelo sin rango) | Bajo | S | Pendiente |
+| F1-21 | Vacaciones de un solo día (modelo sin rango) | Bajo | S | En PR #38 (migración 076): formulario "Nueva solicitud" con rango de fechas; la liquidación cuenta todos los días del rango dentro del período |
 | F2-21 | config-empresa exige UUID | — | — | **Descartado** para divisiones (en prod son `uuid`); confirmar etapas |
 
 ### 2.3 Producto, UX y operación en planta
@@ -92,7 +92,7 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): encabezado con “← Volver” |
-| F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Hecho (PR #26): botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Queda: formulario de solicitudes con rango (F4-12) |
+| F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Hecho (PR #26): botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Formulario de solicitudes con rango en PR #38 |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
 | F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Hecho: sesión persistente (PR #30) y PIN (PR #31, migración 073: solo operarios, hash bcrypt, bloqueo de 15 min cada 5 fallos y PIN borrado a los 15). QR imprimibles (PR #32) y kiosco (PR #33) |
 | F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Hecho (PR #29): nombre e inicial del empleado, confirmación con comentario o motivo opcional (se guarda y se le avisa al empleado) y 5 s para deshacer antes de enviar |
@@ -100,8 +100,8 @@
 | F4-09 | Accesibilidad: objetivos táctiles ≥48 px, texto ≥12 px | Medio | M | Pendiente |
 | F4-10 | Unificar el sistema de diseño | Medio | M | Pendiente |
 | F4-11 | Buscador + escáner de OT (D8) | Medio | S–M | Hecho (PR #34) (migración 074): escáner de QR/código de barras al iniciar una tarea, activable por empresa en Configuración → Proyectos, OTs recientes por empleado y etiquetas QR imprimibles |
-| F4-12 | Formulario de solicitudes con rango de fechas | Medio | S | Pendiente |
-| F4-13 / H1–H5, H9 | Reglas y textos de la fábrica → configuración por tenant (D5) | Medio | M | Reglas por empresa: hechas (068/069). En PR #36: el historial marca tardanzas según las reglas de cada empresa (antes "más de 30 min o la 3ra" fijo) y sin "presentismo", "Taller" ni "instaladores" en la UI. Queda: tipos de solicitud por empresa (H9), pesos del score (H3) y horas semanales por defecto (H4) |
+| F4-12 | Formulario de solicitudes con rango de fechas | Medio | S | En PR #38 (migración 076): formulario "Nueva solicitud" con rango de fechas; la liquidación cuenta todos los días del rango dentro del período |
+| F4-13 / H1–H5, H9 | Reglas y textos de la fábrica → configuración por tenant (D5) | Medio | M | Reglas por empresa: hechas (068/069). Hecho (PR #36): el historial marca tardanzas según las reglas de cada empresa (antes "más de 30 min o la 3ra" fijo) y sin "presentismo", "Taller" ni "instaladores" en la UI. Tipos de solicitud por empresa (H9) en PR #38. Queda: pesos del score (H3) y horas semanales por defecto (H4) |
 | F4-14 | Onboarding extendido + checklist de activación | Medio | M | Pendiente |
 | F4-15 | Formato de hora unificado | Bajo | S | Pendiente |
 | F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | **Hecho** (tadeogiri95/Gi-group#21, fusionado): sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |

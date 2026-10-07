@@ -7,6 +7,7 @@ import SolCard from "../cards/SolCard";
 import { Chip } from "../ui";
 import { hoyArg } from "../../lib/dates";
 import { cargarHoraExtraAprobada } from "../../lib/solicitudes";
+import { nombreSolicitud } from "../../lib/tiposSolicitud";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const GREEN = "#16A34A";
@@ -88,8 +89,8 @@ export default function InboxScreen({ ctx, reload, usuario }) {
           await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Cambio de horario APROBADO", detalle: conNota(`${usuario.apodo} aprobó tu cambio de horario. Vas a ver la grilla nueva cuando la actualicen en Gestión de personal.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), "✅ Cambio de horario aprobado", `Tu cambio de horario fue aprobado por ${usuario.apodo}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else {
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: `Solicitud ${estado === "aprobado" ? "APROBADA ✅" : "RECHAZADA ❌"}`, detalle: conNota(`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
-          sendPushToLegajo(String(sol.legajo), estado === "aprobado" ? "✅ Permiso aprobado" : "❌ Permiso rechazado", estado === "aprobado" ? `Tu ${sol.tipo} fue aprobado por ${usuario.apodo}` : `Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`, { empresa_id: usuario.empresa_id }).catch(() => {});
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: `Solicitud ${estado === "aprobado" ? "APROBADA ✅" : "RECHAZADA ❌"}`, detalle: conNota(`${nombreSolicitud(sol)}: "${sol.motivo}" por ${usuario.apodo}`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          sendPushToLegajo(String(sol.legajo), estado === "aprobado" ? "✅ Permiso aprobado" : "❌ Permiso rechazado", estado === "aprobado" ? `Tu ${nombreSolicitud(sol)} fue aprobado por ${usuario.apodo}` : `Tu ${nombreSolicitud(sol)} fue rechazado por ${usuario.apodo}`, { empresa_id: usuario.empresa_id }).catch(() => {});
         }
       }
       await cargarSolicitudes(); reload();

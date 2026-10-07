@@ -35,6 +35,7 @@ const CAMPOS_EDITABLES = [
   "prompt_ia_obra", "prompt_ia_chat",
   "reglas_asistencia", // migración 068 — solo el dueño (CAMPOS_EMPRESA_SOLO_DUENO)
   "escaner_ot", // migración 074 — escaneo de OT con la cámara (D8)
+  "tipos_solicitud", // migración 076 — tipos de solicitud de la empresa (H9)
 ];
 
 export async function GET(request) {
@@ -71,9 +72,10 @@ export async function GET(request) {
       `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=${CAMPOS_PRIVADOS}${extra}&limit=1`,
       { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
     );
-    let res = await pedir(",escaner_ot");
-    // Si la migración 074 todavía no se corrió, la columna no existe: se sigue
-    // sin ella (escáner apagado) en vez de dejar a la empresa sin datos.
+    let res = await pedir(",escaner_ot,tipos_solicitud");
+    // Si una migración nueva (074, 076) todavía no se corrió, la columna no
+    // existe: se sigue sin ella en vez de dejar a la empresa sin datos.
+    if (!res.ok) res = await pedir(",escaner_ot");
     if (!res.ok) res = await pedir("");
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return NextResponse.json(DEFAULTS);
