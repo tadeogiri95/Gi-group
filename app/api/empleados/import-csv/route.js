@@ -1,7 +1,8 @@
 // app/api/empleados/import-csv — Importación masiva de empleados desde CSV.
 //
 // POST con body text/plain (CSV) o JSON { csv: "..." }
-// Headers esperados (case-insensitive): legajo, nombre, email, area, division, rol, diagrama
+// Headers esperados (case-insensitive): legajo, nombre, email, area, division, rol
+// Con JSON { csv, diagrama } el horario (formato de empleados.diagrama) se aplica a todos.
 // Columnas obligatorias: legajo, nombre
 // Solo accesible para roles: gerencial, administrativo
 import { NextResponse } from "next/server";
@@ -16,6 +17,7 @@ import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
 import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../../lib/activacion";
 import { rechazarSiSupervisor } from "../../../lib/alcance";
+import { validarDiagrama, horasSemanales } from "../../../lib/onboarding";
 
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
@@ -38,10 +40,16 @@ export async function POST(req) {
 
   // Leer CSV del body
   let csvText;
+  // Horario tipo del asistente de alta: se aplica a todos los importados.
+  let diagrama = null;
   const contentType = req.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     const body = await req.json();
     csvText = body.csv;
+    if (body.diagrama != null) {
+      diagrama = validarDiagrama(body.diagrama);
+      if (!diagrama) return NextResponse.json({ error: "Horario inválido" }, { status: 400 });
+    }
   } else {
     csvText = await req.text();
   }
@@ -151,6 +159,7 @@ export async function POST(req) {
       debe_cambiar_password: true,
       estado_activacion: "pendiente_activacion",
       ...activacion.columnas,
+      ...(diagrama ? { diagrama, horas_semanales: horasSemanales(diagrama) } : {}),
     }));
 
     try {
