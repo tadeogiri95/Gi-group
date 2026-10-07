@@ -96,7 +96,7 @@ test("preparar-staging — solo a mano, secretos por env y con chequeo contra pr
     if (linea.includes("secrets.")) assert.match(linea, /^\s+[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}\s*$/, linea);
   }
   assert.match(wfStaging, /PROD_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/);
-  assert.match(preparar, /apunta a producción/);
+  assert.match(preparar, /es el mismo proyecto que producción/);
   assert.match(preparar, /ya tiene tablas de Gypi/);
 });
 
@@ -118,4 +118,28 @@ test("línea base — la última migración que incluye es la que dice preparar.
   const ultima = Number(preparar.match(/ULTIMA_EN_BASE=(\d+)/)[1]);
   const nums = readdirSync(new URL("../supabase/migrations/", import.meta.url)).map((f) => Number(f.slice(0, 3))).filter(Number.isFinite);
   assert.ok(nums.includes(ultima), `existe la migración ${ultima}`);
+});
+
+test("preparar.sh — limpia errores de copiado, muestra el proyecto sin la contraseña y frena si es producción", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const script = new URL("../scripts/staging/preparar.sh", import.meta.url).pathname;
+  const PROD = "postgresql://postgres.prodref:ClaveProd1@aws-0.pooler.supabase.com:5432/postgres";
+  const corre = (stg) => spawnSync("bash", [script], { env: { ...process.env, STAGING_DB_URL: stg, PROD_DB_URL: PROD, PSQL: "false" }, encoding: "utf8" });
+
+  // Pegada con "DATABASE_URL=" adelante y comillas, pero es producción → frena
+  const mismo = corre('DATABASE_URL="postgresql://postgres.prodref:otra@aws-0.pooler.supabase.com:5432/postgres"');
+  assert.equal(mismo.status, 1);
+  assert.match(mismo.stdout, /mismo proyecto que producción \(prodref\)/);
+  assert.ok(!mismo.stdout.includes("ClaveProd1") && !mismo.stdout.includes("otra@"), "nunca muestra contraseñas");
+
+  // Formato que no es una dirección de base → frena con mensaje claro
+  const raro = corre("https://stgref.supabase.co");
+  assert.equal(raro.status, 1);
+  assert.match(raro.stdout, /No reconozco la dirección/);
+
+  // Proyecto distinto (con espacios y salto de línea) → pasa el chequeo y llega a conectarse
+  const ok = corre("  postgresql://postgres.stgref:ClaveStg1@aws-0.pooler.supabase.com:5432/postgres\n");
+  assert.match(ok.stdout, /proyecto: stgref/);
+  assert.ok(!/mismo proyecto|No reconozco/.test(ok.stdout));
+  assert.ok(!ok.stdout.includes("ClaveStg1"));
 });
