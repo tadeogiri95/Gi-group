@@ -21,8 +21,16 @@ function completarNombre() {
 
 function irAPasoEmpleados() {
   completarNombre();
-  fireEvent.click(screen.getByText("Saltar plantilla")); // paso 1 → 2 (sin divisiones/etapas)
-  fireEvent.click(screen.getByText("Siguiente →")); // paso 2 → 3
+  fireEvent.click(screen.getByText("Saltar plantilla")); // 1 empresa → 2 planta (sin divisiones/etapas)
+  fireEvent.click(screen.getByText("Saltar →")); // 2 planta → 3 horario
+  fireEvent.click(screen.getByText("Siguiente →")); // 3 horario → 4 equipo
+}
+
+// Del paso 4 (equipo) al resumen, salteando la OT y la marca
+function irAlResumen() {
+  fireEvent.click(screen.getByText("Siguiente →")); // 4 equipo → 5 OT
+  fireEvent.click(screen.getByText("Saltar →")); // 5 OT → 6 marca
+  fireEvent.click(screen.getByText("Siguiente →")); // 6 marca → 7 resumen
 }
 
 function handlerEmpresaPatch() {
@@ -43,7 +51,7 @@ test("OnboardingWizard — finalizar importa empleados vía /api/empleados/impor
     {
       match: (url) => url.includes("/api/empleados/import-csv"),
       respond: (url, opts) => {
-        importCsvBody = opts.body;
+        importCsvBody = JSON.parse(opts.body);
         importCsvContentType = opts.headers["Content-Type"];
         return { status: 200, body: { ok: true, created: 2, skipped: 0, errors: [] } };
       },
@@ -65,16 +73,18 @@ test("OnboardingWizard — finalizar importa empleados vía /api/empleados/impor
   const nombres = screen.getAllByPlaceholderText("Nombre completo");
   fireEvent.change(nombres[1], { target: { value: "Luis Díaz" } });
 
-  fireEvent.click(screen.getByText("Siguiente →")); // paso 3 → 4
+  irAlResumen();
   fireEvent.click(screen.getByText("🚀 Empezar a usar Gypi"));
 
   await waitFor(() => assert.notEqual(importCsvBody, null));
   await waitFor(() => assert.notEqual(empresaRecibida, null));
 
   assert.equal(legacySingularCalled, false);
-  assert.equal(importCsvContentType, "text/plain");
+  assert.equal(importCsvContentType, "application/json");
+  assert.deepEqual(importCsvBody.diagrama.lun, { in: "08:00", out: "17:00" }, "horario tipo por defecto");
+  assert.equal(importCsvBody.diagrama.sab, null);
 
-  const lineas = importCsvBody.trim().split("\n");
+  const lineas = importCsvBody.csv.trim().split("\n");
   assert.equal(lineas[0], "legajo,nombre,division,rol");
   assert.equal(lineas.length, 3);
 
@@ -114,9 +124,10 @@ test("OnboardingWizard — finalizar crea divisiones y etapas en paralelo (Promi
   // Plantilla "industria" autogenera 5 divisiones + 6 etapas (PLANTILLAS.industria)
   completarNombre();
   fireEvent.click(screen.getByText("Industria / Manufactura"));
-  fireEvent.click(screen.getByText("Siguiente →")); // paso 1 → 2
-  fireEvent.click(screen.getByText("Siguiente →")); // paso 2 → 3
-  fireEvent.click(screen.getByText("Siguiente →")); // paso 3 → 4, sin empleados
+  fireEvent.click(screen.getByText("Siguiente →")); // 1 → 2
+  fireEvent.click(screen.getByText("Saltar →")); // 2 → 3
+  fireEvent.click(screen.getByText("Siguiente →")); // 3 → 4
+  irAlResumen(); // sin empleados
   fireEvent.click(screen.getByText("🚀 Empezar a usar Gypi"));
 
   await waitFor(() => assert.notEqual(empresaRecibida, null));
@@ -138,7 +149,7 @@ test("OnboardingWizard — sin empleados cargados no llama a import-csv", async 
   render(<OnboardingWizard empresa={EMPRESA} usuario={{ empresa_id: "emp-1" }} onComplete={() => { completado = true; }} />);
 
   irAPasoEmpleados();
-  fireEvent.click(screen.getByText("Siguiente →")); // paso 3 → 4, sin agregar empleados
+  irAlResumen(); // sin agregar empleados
   fireEvent.click(screen.getByText("🚀 Empezar a usar Gypi"));
 
   await waitFor(() => assert.equal(completado, true));
