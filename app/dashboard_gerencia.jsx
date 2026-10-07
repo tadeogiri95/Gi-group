@@ -152,7 +152,7 @@ function ReportesObraPanel({ reportesObra }) {
           <EmptyState
             icon="mapPin"
             title="Sin reportes de obra hoy"
-            description="Los reportes que suban los instaladores desde el celular van a aparecer acá."
+            description="Los reportes de trabajo en campo que suban desde el celular van a aparecer acá."
             color={CYAN}
             style={{ padding: "24px 16px" }}
           />
@@ -529,10 +529,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
 
   /* ─── Datos de instalaciones ─── */
-  // Instalador = cualquier empleado que hoy hizo un reporte de obra (la tarea es "instalacion")
+  // En campo = cualquier empleado que hoy hizo un reporte de obra
   const legajosConObra = new Set(reportesObra.map(r => r.legajo).filter(Boolean));
-  const instaladoresActivos = empActivos.filter(e => legajosConObra.has(e.legajo));
-  const instaladoresPresentes = fichadasHoy.filter(f => legajosConObra.has(f.legajo));
+  const enCampoActivos = empActivos.filter(e => legajosConObra.has(e.legajo));
+  const enCampoPresentes = fichadasHoy.filter(f => legajosConObra.has(f.legajo));
   // Taller: el resto (produccion sin reporte de obra hoy)
   const tallerProd = resumenProd.filter(r => !legajosConObra.has(r.legajo));
   const obrasHoy = reportesObra.length;
@@ -641,7 +641,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── Botones Estado Taller / Estado Instalaciones ─── */}
+      {/* ─── Botones En planta / Trabajo en campo ─── */}
       <div className="grid grid-cols-2 gap-2 mb-3.5">
         <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")}
           className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
@@ -651,7 +651,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           }}
         >
           <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}><Icon name="hammer" size={18} /></div>
-          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? AMBER : "var(--color-text)" }}>Estado Taller</span>
+          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? AMBER : "var(--color-text)" }}>En planta</span>
         </button>
         <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
           className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
@@ -661,13 +661,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           }}
         >
           <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${CYAN}22`, color: CYAN }}><Icon name="building" size={18} /></div>
-          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "instalaciones" ? CYAN : "var(--color-text)" }}>Estado Instalaciones</span>
+          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "instalaciones" ? CYAN : "var(--color-text)" }}>Trabajo en campo</span>
         </button>
       </div>
 
-      {/* ─── Panel expandido: Estado Taller ─── */}
+      {/* ─── Panel expandido: En planta ─── */}
       {panelExpanded === "taller" && (
-        <section aria-label="Estado taller" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
+        <section aria-label="En planta" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
           <div className="flex justify-between items-center mb-3">
             <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Produccion en vivo</div>
             <div className="flex items-center gap-1.5">
@@ -738,11 +738,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── Panel expandido: Estado Instalaciones ─── */}
+      {/* ─── Panel expandido: Trabajo en campo ─── */}
       {panelExpanded === "instalaciones" && (
-        <section aria-label="Estado instalaciones" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${CYAN}30` }}>
+        <section aria-label="Trabajo en campo" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${CYAN}30` }}>
           <div className="flex justify-between items-center mb-3">
-            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Instalaciones hoy</div>
+            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Trabajo en campo hoy</div>
             <Tag color={CYAN}>{obrasHoy} reportes</Tag>
           </div>
 
@@ -766,15 +766,15 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             </div>
           </div>
 
-          {/* Instaladores presentes */}
+          {/* En campo hoy */}
           <div className="flex gap-2 mb-3">
             <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${GREEN}08` }}>
-              <div className="g-overline">Instaladores activos</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: GREEN }}>{instaladoresPresentes.length}</div>
+              <div className="g-overline">En campo hoy</div>
+              <div className="font-mono text-base font-bold mt-0.5" style={{ color: GREEN }}>{enCampoPresentes.length}</div>
             </div>
             <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${CYAN}08` }}>
-              <div className="g-overline">Total instaladores</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: CYAN }}>{instaladoresActivos.length}</div>
+              <div className="g-overline">Total en campo</div>
+              <div className="font-mono text-base font-bold mt-0.5" style={{ color: CYAN }}>{enCampoActivos.length}</div>
             </div>
           </div>
 

@@ -359,14 +359,14 @@ export function getDemoCtx(usuario) {
     misSolicitudes,
     reglas: [
       "El horario de ingreso tiene tolerancia de 5 minutos. A partir del minuto 6, se registra tardanza.",
-      "Tres tardanzas en el mes implican descuento de presentismo.",
+      "La tercera tardanza del mes requiere permiso de gerencia para ingresar.",
       "Los permisos deben solicitarse con 24hs de anticipación salvo urgencia.",
       "Las horas extra deben ser autorizadas previamente por gerencia.",
       "El fichaje de egreso debe realizarse antes de retirarse del establecimiento.",
     ],
     reglasRaw: [
       { id: 1, regla: "El horario de ingreso tiene tolerancia de 5 minutos." },
-      { id: 2, regla: "Tres tardanzas en el mes implican descuento de presentismo." },
+      { id: 2, regla: "La tercera tardanza del mes requiere permiso de gerencia para ingresar." },
     ],
     notificaciones,
   };

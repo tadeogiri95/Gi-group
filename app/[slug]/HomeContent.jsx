@@ -237,7 +237,7 @@ export default function HomeContent() {
   };
 
   const getScreenTitle = () => {
-    const titles = { solicitudes: "Inbox", equipo: "Personal", "mis-sols": "Solicitudes", actividad: "Mi Jornada", "ger-actividad": "Taller", config: "Gestión", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { solicitudes: "Inbox", equipo: "Personal", "mis-sols": "Solicitudes", actividad: "Mi Jornada", "ger-actividad": "Actividad", config: "Gestión", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -326,7 +326,7 @@ export default function HomeContent() {
         )}
         <ErrorBoundary name={screen}>
           {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} actividadesHoy={isDemo ? demoActividad.actividadesHoy : actividad.historial} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} reload={loadData} demo={isDemo} onPinCambiado={(t) => actualizarUsuario?.({ tiene_pin: t })} />}
-          {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} onBack={() => setScreen("home")} />}
+          {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} onBack={() => setScreen("home")} />}
           {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} fichadaHoy={ctx.fichadaHoy} />}
           {!uIsGer && screen === "chat" && <ChatScreen usuario={u} ctx={ctx} reload={loadData} empresa={empresa} onBack={() => setScreen("home")} />}
           {!uIsGer && screen === "mis-sols" && (
@@ -337,7 +337,7 @@ export default function HomeContent() {
             </div>
           )}
           {!uIsGer && screen === "documentos" && <DocumentosScreen />}
-          {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
+          {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={u?.empresa_id || empresa?.id} />}
           {uIsGer && screen === "ger-actividad" && <GerenciaActividadScreen empresaId={empresa?.id} />}

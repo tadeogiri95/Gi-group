@@ -315,7 +315,7 @@ function ReportesObraTab({ empresaId }) {
         <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
           <div className="text-[32px] mb-2">🏗️</div>
           <div className="text-sm font-bold text-gypi-text">Sin reportes en esta fecha</div>
-          <div className="text-xs text-gypi-dim mt-1.5">Los reportes de obra enviados por instaladores aparecerán acá.</div>
+          <div className="text-xs text-gypi-dim mt-1.5">Los reportes de trabajo en campo aparecerán acá.</div>
         </div>
       ) : (
         <div className="flex flex-col gap-2">

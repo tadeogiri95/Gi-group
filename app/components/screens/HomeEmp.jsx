@@ -325,7 +325,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
           </div>
           <div className="text-left">
             <div className="text-[13px] font-bold text-gypi-text">Historial de fichajes</div>
-            <div className="text-[11px] text-gypi-dim mt-0.5">Tardanzas, presentismo y conversaciones</div>
+            <div className="text-[11px] text-gypi-dim mt-0.5">Tardanzas, permisos y conversaciones</div>
           </div>
         </div>
         <span className="text-gypi-dim"><Ic.chevR /></span>
