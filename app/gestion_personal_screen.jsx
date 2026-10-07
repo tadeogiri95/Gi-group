@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { sb, apiFetch } from "./lib/supabase";
+import { imprimirTarjetas, linkPersonal } from "./lib/tarjetasQR";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
@@ -200,7 +201,7 @@ function textoCodigo(c, vigencia) {
   return `Hola ${c.nombre}! Para entrar a Gypi abrí este link y creá tu contraseña: ${c.link || ""}\nTu código: ${c.codigo} (vence en ${vigencia} días)`;
 }
 
-function ModalCodigos({ codigos, vigencia, onClose }) {
+function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
   const [copiado, setCopiado] = useState(null);
   const copiar = (clave, texto) => {
     navigator.clipboard?.writeText(texto).then(() => {
@@ -209,6 +210,22 @@ function ModalCodigos({ codigos, vigencia, onClose }) {
     }).catch(() => {});
   };
   const todos = codigos.map(c => `${c.legajo} · ${c.nombre} · ${c.codigo}${c.link ? ` · ${c.link}` : ""}`).join("\n");
+  const [errorQR, setErrorQR] = useState("");
+  // Tarjetas con el QR del link de activación (ítem 18): escanear = abrir el link con el código
+  const conLink = codigos.filter(c => c.link);
+  const imprimirQR = () => {
+    setErrorQR("");
+    imprimirTarjetas({
+      titulo: "Códigos de acceso",
+      empresa: empresa?.nombre_corto || empresa?.nombre || "",
+      tarjetas: conLink.map(c => ({
+        nombre: c.nombre,
+        detalle: `Legajo ${c.legajo} · Código ${c.codigo}`,
+        link: c.link,
+        pie: `Escaneá con la cámara del celular y creá tu contraseña. Sirve una vez y vence en ${vigencia} días.`,
+      })),
+    }).catch(e => setErrorQR(e.message));
+  };
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Códigos de acceso">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
@@ -239,6 +256,12 @@ function ModalCodigos({ codigos, vigencia, onClose }) {
             </div>
           ))}
         </div>
+        {conLink.length > 0 && (
+          <button onClick={imprimirQR} className="g-btn g-btn-secondary w-full mb-2">
+            {conLink.length === 1 ? "Imprimir tarjeta con QR" : `Imprimir tarjetas con QR (${conLink.length})`}
+          </button>
+        )}
+        {errorQR && <div role="alert" className="text-xs text-gypi-red mb-2">{errorQR}</div>}
         {codigos.length > 1 && (
           <button onClick={() => copiar("todos", todos)} className="g-btn g-btn-secondary w-full mb-2">
             {copiado === "todos" ? "Copiados" : "Copiar todos"}
@@ -252,7 +275,7 @@ function ModalCodigos({ codigos, vigencia, onClose }) {
 
 /* ═══ MAIN COMPONENT ═══ */
 export default function GestionPersonalScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, usuario: sesion } = useAuth();
+  const { divisiones: divisionesCtx, usuario: sesion, empresa } = useAuth();
   // Un administrativo no puede crear/asignar rol gerencial (misma regla que /api/empleados)
   const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : ROLES.filter(r => r !== "gerencial");
   const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
@@ -313,6 +336,23 @@ export default function GestionPersonalScreen({ empresaId }) {
     const d = e.division || "sin_asignar";
     porDiv[d] = (porDiv[d] || 0) + 1;
   });
+
+  /* ── Tarjetas con QR personal (ítem 18) ── */
+  // Escanear abre el ingreso con PIN y el legajo cargado: solo operarios activos de la lista filtrada
+  const operariosParaQR = filtrados.filter(e => e.activo !== false && e.rol === "operativo");
+  const imprimirQRPersonales = () => {
+    if (!empresa?.slug || operariosParaQR.length === 0) return;
+    imprimirTarjetas({
+      titulo: "Tarjetas de ingreso",
+      empresa: empresa.nombre_corto || empresa.nombre || "",
+      tarjetas: operariosParaQR.map(e => ({
+        nombre: e.nombre,
+        detalle: `Legajo ${e.legajo}`,
+        link: linkPersonal(window.location.origin, empresa.slug, e.legajo),
+        pie: "Escaneá con la cámara y poné tu PIN. ¿Sin PIN? Entrá con tu contraseña y crealo en el inicio.",
+      })),
+    }).catch(e => toast.error(e.message));
+  };
 
   /* ── Alta ── */
   // Va por POST /api/empleados (no /api/data): hashea la contraseña inicial
@@ -558,6 +598,14 @@ export default function GestionPersonalScreen({ empresaId }) {
           CSV
         </button>
         <input ref={fileRef} type="file" accept=".csv" onChange={handleCSVFile} className="hidden" />
+        <button
+          onClick={imprimirQRPersonales}
+          disabled={operariosParaQR.length === 0 || !empresa?.slug}
+          title="Imprimir una tarjeta con QR por operario (los de la lista filtrada)"
+          className="g-btn g-btn-secondary flex-1 text-xs font-bold font-heading disabled:opacity-50"
+        >
+          Tarjetas QR
+        </button>
       </div>
 
       {/* Tip CSV */}
@@ -691,6 +739,7 @@ export default function GestionPersonalScreen({ empresaId }) {
         <ModalCodigos
           codigos={modalCodigos.codigos}
           vigencia={modalCodigos.vigencia}
+          empresa={empresa}
           onClose={() => setModalCodigos(null)}
         />
       )}
