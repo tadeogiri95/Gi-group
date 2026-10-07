@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sendTrialVencimiento } from "../../../lib/email";
 import { logger } from "../../../lib/logger";
 
+import { conMonitoreoCron } from "../../../lib/cronMonitor";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
@@ -14,7 +15,7 @@ async function sbGet(path: string) {
   return r.json();
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function ejecutar(request: NextRequest): Promise<NextResponse> {
   const auth = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -78,3 +79,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Error interno del cron", detail: (e as Error).message }, { status: 500 });
   }
 }
+
+// Registra cada corrida en cron_ejecuciones y avisa a Sentry si falla (F3-12)
+export const GET = conMonitoreoCron("trial-reminder", ejecutar);

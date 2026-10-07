@@ -76,10 +76,10 @@
 | F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | **Hecho** (tadeogiri95/Gi-group#15, fusionado): todas las páginas + aviso en pantalla |
 | F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | **Hecho** (#6: botón “Código de acceso”) |
 | F4-02 | Link del email de invitación roto (`?screen=unirse`) | Alto | S | **Hecho** (#6) |
-| F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | En PR #17 + migración 071 (la regla `solicitudes_tipo_check` de prod solo aceptaba 5 tipos): tipos `hora_extra` y `salida_anticipada` permitidos; al aprobar, la hora extra se carga en la fichada |
-| F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | En PR #17: se quitó el código muerto; aprobar avisa al empleado y la grilla se ajusta en Gestión de personal. Queda: flujo con propuesta de grilla, si hace falta |
-| F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | En PR #17: idempotencia por (pago, estado) con PATCH condicionado |
-| F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | En PR #17: acepta segundos y milisegundos. Queda: prueba punta a punta en el sandbox de MP (F6-03) |
+| F1-06 | “Solicitar hora extra” siempre falla (tipo no permitido) | Medio | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado) + migración 071 (la regla `solicitudes_tipo_check` de prod solo aceptaba 5 tipos): tipos `hora_extra` y `salida_anticipada` permitidos; al aprobar, la hora extra se carga en la fichada |
+| F1-07 | Aprobar un cambio de horario no hace nada | Medio | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): se quitó el código muerto; aprobar avisa al empleado y la grilla se ajusta en Gestión de personal. Queda: flujo con propuesta de grilla, si hace falta |
+| F1-08 | Webhook: pago pendiente → aprobado se pierde | Medio | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): idempotencia por (pago, estado) con PATCH condicionado |
+| F1-09 | Webhook: unidad del `ts` de la firma sin verificar | Medio | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): acepta segundos y milisegundos. Queda: prueba punta a punta en el sandbox de MP (F6-03) |
 | F1-10 | Fecha de actividad en UTC (después de las 21 h) | Medio | S | **Hecho** (#10 fusionado) |
 | F1-11 | Horas extra en turno noche | Medio | S | **Hecho** (#10 fusionado) |
 | F1-12 | Escrituras de varios pasos sin transacción | Medio | M | Pendiente |
@@ -91,7 +91,7 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | En PR #17: encabezado con “← Volver” |
+| F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): encabezado con “← Volver” |
 | F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Pendiente |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
 | F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Pendiente |
@@ -136,7 +136,7 @@
 | F3-11 | Un solo ambiente (previews posiblemente contra prod) | Alto | M | Pendiente (confirmar en Vercel) |
 | F0-12 | Vercel Hobby prohíbe el uso comercial | Alto | S | Pendiente (pasar a Pro antes de cobrar) |
 | F3-09 / F0-05 | Drift de esquema, índices duplicados, migraciones manuales | Medio | M | Pendiente |
-| F3-12 | Observabilidad (Sentry, uptime, logs estructurados) | Medio | S | Pendiente (confirmar el DSN) |
+| F3-12 | Observabilidad (Sentry, uptime, logs estructurados) | Medio | S | **Hecho** (tadeogiri95/Gi-group#18, fusionado) + migración 072: monitoreo de crons en `/api/health`, Sentry ajustado al plan gratis (falta cargar el DSN y crear el monitor de UptimeRobot: `como-configurar-monitoreo.md`). Queda: logs con *request id* |
 | H15 | Tenant del piloto con slug `gypi` | Bajo | S | Pendiente |
 
 ### 2.6 Calidad de código y tests
