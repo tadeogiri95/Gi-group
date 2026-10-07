@@ -101,11 +101,6 @@ test("alta de empleado: gerencia crea un empleado y aparece en la lista", async 
   };
   await mockApis(page, state);
 
-  // Consent de cookies ya decidido — el banner es fixed bottom z-9999 y
-  // taparía los botones de la barra de navegación inferior.
-  await page.addInitScript(() => {
-    try { localStorage.setItem("gypi_cookie_consent", "0"); } catch {}
-  });
 
   await page.goto(`/${EMPRESA.slug}`);
 

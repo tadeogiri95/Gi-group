@@ -23,7 +23,6 @@ export const PLANES = {
     soporte: "email",
     branding_gypi: false,
     api_access: false,
-    mostrar_publicidad: false,
   },
   free: {
     id: "free",
@@ -44,7 +43,6 @@ export const PLANES = {
     soporte: false,
     branding_gypi: true,
     api_access: false,
-    mostrar_publicidad: true,
   },
   starter: {
     id: "starter",
@@ -65,7 +63,6 @@ export const PLANES = {
     soporte: "email",
     branding_gypi: false,
     api_access: false,
-    mostrar_publicidad: false,
   },
   pro: {
     id: "pro",
@@ -86,7 +83,6 @@ export const PLANES = {
     soporte: "prioritario",
     branding_gypi: false,
     api_access: false,
-    mostrar_publicidad: false,
   },
   enterprise: {
     id: "enterprise",
@@ -107,7 +103,6 @@ export const PLANES = {
     soporte: "sla",
     branding_gypi: false,
     api_access: true,
-    mostrar_publicidad: false,
   },
 };
 

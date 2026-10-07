@@ -269,3 +269,14 @@ describe("XSS prevention — schemas con strict no pasan scripts", () => {
     assert.equal(r.data.clave, "<img onerror=alert(1)>");
   });
 });
+
+// ─── Sin publicidad (D20, F4-16) ───
+test("CSP — sin dominios de publicidad y sin iframes de terceros", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
+  for (const dominio of ["googlesyndication", "doubleclick", "adtrafficquality", "googletagservices"]) {
+    assert.ok(!src.includes(dominio), `la CSP todavía permite ${dominio}`);
+  }
+  assert.match(src, /"frame-src 'none'"/);
+  assert.ok(!fs.existsSync(new URL("../public/ads.txt", import.meta.url)), "ads.txt ya no corresponde");
+});
