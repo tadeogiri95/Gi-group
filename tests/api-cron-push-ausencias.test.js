@@ -138,3 +138,37 @@ test("cron/push-ausencias — error fatal devuelve 500", async (t) => {
     t.mock.timers.reset();
   }
 });
+
+// ─── F3-07: sin tope oculto de empleados ───
+
+test("cron/push-ausencias — pagina los empleados: con más de 1000 no deja a nadie afuera", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: LUNES });
+  try {
+    const DIAG = { lun: { in: "08:00", out: "17:00" } };
+    const todos = Array.from({ length: 1500 }, (_, i) => ({ id: `emp-${String(i).padStart(4, "0")}`, empresa_id: EMPRESA_ID, legajo: i + 1, diagrama: DIAG }));
+    const offsets = [];
+    global.fetch = createFetchMock([
+      {
+        match: (url) => url.includes("/rest/v1/empleados") && url.includes("diagrama=not.is.null"),
+        respond: (url) => {
+          const u = new URL(url);
+          const offset = Number(u.searchParams.get("offset"));
+          const limit = Number(u.searchParams.get("limit"));
+          offsets.push(offset);
+          assert.ok(url.includes("order=id.asc"), "paginar necesita un orden estable");
+          return { status: 200, body: todos.slice(offset, offset + limit) };
+        },
+      },
+      handlerFichadasHoy([]),
+      handlerGerenciales([]),
+      handlerPushTokens([]),
+    ]);
+    const res = await GET(cronReq());
+    const json = await res.json();
+    assert.equal(res.status, 200);
+    assert.deepEqual(offsets, [0, 1000]);
+    assert.equal(json.ausentes, 1500, "antes el limit=2000 fijo (y el tope de 1000 de PostgREST) dejaba empleados afuera");
+  } finally {
+    t.mock.timers.reset();
+  }
+});

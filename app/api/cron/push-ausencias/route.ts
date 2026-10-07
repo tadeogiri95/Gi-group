@@ -27,6 +27,21 @@ async function sbGet<T = unknown>(path: string): Promise<T[]> {
   return r.json();
 }
 
+// PostgREST corta cada respuesta en 1000 filas sin avisar (y antes había un
+// limit=2000 fijo): con muchas empresas, empleados quedaban afuera sin que
+// nadie se enterara (F3-07). Se pagina hasta traer todo. `path` necesita un
+// order= con desempate único para que las páginas no se pisen.
+const PAGINA = 1000;
+async function sbGetTodo<T = unknown>(path: string): Promise<T[]> {
+  const sep = path.includes("?") ? "&" : "?";
+  const todo: T[] = [];
+  for (let offset = 0; ; offset += PAGINA) {
+    const pagina = await sbGet<T>(`${path}${sep}limit=${PAGINA}&offset=${offset}`);
+    todo.push(...pagina);
+    if (pagina.length < PAGINA) return todo;
+  }
+}
+
 function getFirebaseApp() {
   if (admin.apps.length > 0) return admin.app();
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -126,14 +141,13 @@ async function ejecutar(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    // Todos los empleados activos con diagrama que tienen turno hoy
-    // Carga en lotes para no saturar memoria con empresas grandes
-    const empleados = await sbGet<{
+    // Todos los empleados activos con diagrama (paginado, F3-07)
+    const empleados = await sbGetTodo<{
       id: string;
       empresa_id: string;
       legajo: number;
       diagrama: Record<string, unknown> | null;
-    }>(`empleados?activo=eq.true&diagrama=not.is.null&select=id,empresa_id,legajo,diagrama&limit=2000`);
+    }>(`empleados?activo=eq.true&diagrama=not.is.null&select=id,empresa_id,legajo,diagrama&order=id.asc`);
 
     // Filtrar los que tienen turno programado para hoy
     const conTurnoHoy = empleados.filter((e) => {
@@ -159,8 +173,8 @@ async function ejecutar(request: NextRequest): Promise<NextResponse> {
     for (const [empresaId, empList] of porEmpresa) {
       try {
         // Fichadas de hoy para esta empresa
-        const fichadasHoy = await sbGet<{ empleado_id: string }>(
-          `fichadas?empresa_id=eq.${empresaId}&fecha=eq.${fecha}&ingreso=not.is.null&select=empleado_id`
+        const fichadasHoy = await sbGetTodo<{ empleado_id: string }>(
+          `fichadas?empresa_id=eq.${empresaId}&fecha=eq.${fecha}&ingreso=not.is.null&select=empleado_id&order=id.asc`
         );
         const fichados = new Set(fichadasHoy.map((f) => f.empleado_id));
 

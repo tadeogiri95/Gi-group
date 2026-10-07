@@ -18,6 +18,11 @@ const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const SESSION_CACHE = new Map();
 const SESSION_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
+// Flag email_verificado por empresa (F3-05). No es de seguridad: puede tardar
+// hasta 5 minutos en reflejar un cambio.
+const EMPRESA_CACHE = new Map();
+const EMPRESA_CACHE_TTL = 5 * 60 * 1000;
+
 const CB_THRESHOLD = 3;
 const CB_RESET_MS = 60_000; // 1 min
 let cbFailures = 0;
@@ -112,8 +117,13 @@ export async function validarToken(request) {
   }
 
   // email_verificado se expone como flag informativo pero NO bloquea el acceso.
+  // Se cachea 5 minutos por empresa (F3-05): antes era una consulta extra a la
+  // base en CADA pedido a la API.
   let emailVerificado = true;
-  if (!payload.imp && SB_URL && SB_KEY) {
+  const enCache = EMPRESA_CACHE.get(payload.eid);
+  if (enCache && Date.now() - enCache.ts < EMPRESA_CACHE_TTL) {
+    emailVerificado = enCache.emailVerificado;
+  } else if (!payload.imp && SB_URL && SB_KEY) {
     try {
       const re = await fetch(
         `${SB_URL}/rest/v1/empresa?id=eq.${payload.eid}&select=email_verificado&limit=1`,
@@ -124,6 +134,8 @@ export async function validarToken(request) {
         if (Array.isArray(rows) && rows.length > 0 && rows[0].email_verificado === false) {
           emailVerificado = false;
         }
+        if (EMPRESA_CACHE.size >= 1000) EMPRESA_CACHE.delete(EMPRESA_CACHE.keys().next().value);
+        EMPRESA_CACHE.set(payload.eid, { emailVerificado, ts: Date.now() });
       }
     } catch {
       // fail-open for non-security flag

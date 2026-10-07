@@ -55,9 +55,9 @@
 | F2-15 | Rate limits en memoria | Medio | S | Pendiente |
 | F2-16 | `/api/geocode` público | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado): exige sesión, caché de 24 h y límite por empresa |
 | F2-17 | Privacidad: proveedores omitidos, GPS “opcional”, Ley 25.326/DPA | Medio | M | Pendiente (legal) |
-| F2-18 | Exenciones de CSRF amplias | Bajo | S | En PR #22: solo quedan exentos los webhooks firmados, crons y health (se agregó el de Resend, que se bloqueaba) |
+| F2-18 | Exenciones de CSRF amplias | Bajo | S | **Hecho** (tadeogiri95/Gi-group#22, fusionado): solo quedan exentos los webhooks firmados, crons y health (se agregó el de Resend, que se bloqueaba) |
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
-| F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | En PR #22: `ipCliente()` (x-real-ip de Vercel, validada) en todas las rutas |
+| F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | **Hecho** (tadeogiri95/Gi-group#22, fusionado): `ipCliente()` (x-real-ip de Vercel, validada) en todas las rutas |
 | F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **Hecho** (tadeogiri95/Gi-group#1, fusionado): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
 | F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
 | H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | **Hecho** (#8, migración 066 aplicada) |
@@ -104,7 +104,7 @@
 | F4-13 / H1–H5, H9 | Reglas y textos de la fábrica → configuración por tenant (D5) | Medio | M | Pendiente |
 | F4-14 | Onboarding extendido + checklist de activación | Medio | M | Pendiente |
 | F4-15 | Formato de hora unificado | Bajo | S | Pendiente |
-| F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | En PR #21: sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |
+| F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | **Hecho** (tadeogiri95/Gi-group#21, fusionado): sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |
 | F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Pendiente |
 | F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
 | — | **Resumen semanal automático** (D10) | Nuevo | S–M | Pendiente |
@@ -117,9 +117,9 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F3-04 | Polling de 8 consultas cada 2 min + recargas por Realtime | Alto | M | Pendiente |
-| F3-05 | `validarToken` consulta la empresa en cada request | Medio | S | Pendiente |
+| F3-05 | `validarToken` consulta la empresa en cada request | Medio | S | En PR #24: caché de 5 min por empresa (el plan sigue con su caché por instancia) |
 | F3-06 | Lógica de negocio en el navegador → servicios por dominio | Medio | M–L | Pendiente |
-| F3-07 | `push-ausencias` con `limit=2000` global | Medio | S | Pendiente |
+| F3-07 | `push-ausencias` con `limit=2000` global | Medio | S | En PR #24: paginado completo (empleados y fichadas). Queda: RPC por empresa si crece mucho |
 | F3-08 | Crons diarios por el plan Hobby (inactividad de 30 min = diaria) | Medio | S | Pendiente |
 | F3-13 | Transacciones en Postgres (imprescindible para stock/OP) | Medio | M | Pendiente |
 | F3-14 | Rate limit y cachés en memoria | Bajo | S | Pendiente |
