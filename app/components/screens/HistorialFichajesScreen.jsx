@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { sb } from "../../lib/supabase";
 import { hoyArg } from "../../lib/dates";
+import { clasificarTardanzas } from "../../lib/calc";
 import { Ic } from "../Icons";
 import EmptyState from "../ui/EmptyState";
 
@@ -10,7 +11,7 @@ const GREEN = "#16A34A";
 const RED = "#DC2626";
 const CYAN = "#0891B2";
 
-export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBack }) {
+export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBack, reglas }) {
   const [fichadas, setFichadas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mes, setMes] = useState(() => hoyArg().slice(0, 7));
@@ -44,20 +45,10 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
   }, [legajo, mes, empleadoId]);
 
   const totalTardes = fichadas.filter(f => f.llegada_tarde).length;
-  const tardanzasMap = useMemo(() => {
-    const sorted = [...fichadas].sort((a, b) => a.fecha.localeCompare(b.fecha));
-    const map = new Map();
-    let acumulado = 0;
-    for (const f of sorted) {
-      if (!f.llegada_tarde) continue;
-      acumulado++;
-      const conPerdida = f.minutos_tarde > 30 || acumulado >= 3;
-      map.set(f.id ?? f.fecha, { conPerdida, numero: acumulado });
-    }
-    return map;
-  }, [fichadas]);
-  const tardesComunes = fichadas.filter(f => f.llegada_tarde && !tardanzasMap.get(f.id ?? f.fecha)?.conPerdida);
-  const tardesConPerdida = fichadas.filter(f => f.llegada_tarde && tardanzasMap.get(f.id ?? f.fecha)?.conPerdida);
+  // Reglas de asistencia de la empresa (Configuración → Reglas), no las de la fábrica piloto
+  const tardanzasMap = useMemo(() => clasificarTardanzas(fichadas, reglas), [fichadas, reglas]);
+  const tardesComunes = fichadas.filter(f => f.llegada_tarde && !tardanzasMap.get(f.id ?? f.fecha)?.excede);
+  const tardesExcedidas = fichadas.filter(f => f.llegada_tarde && tardanzasMap.get(f.id ?? f.fecha)?.excede);
   const cambiarMes = (dir) => { const [y, m] = mes.split("-").map(Number); const d = new Date(y, m - 1 + dir, 1); setMes(hoyArg(d).slice(0, 7)); };
   const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const [y2, m2] = mes.split("-").map(Number);
@@ -86,8 +77,8 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
           <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Comunes</div>
         </div>
         <div className="rounded-[14px] p-3.5 text-center" style={{ background: `${RED}08`, border: `1px solid ${RED}30` }}>
-          <div className="font-heading text-[22px] font-bold text-gypi-red">{tardesConPerdida.length}</div>
-          <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Con pérdida</div>
+          <div className="font-heading text-[22px] font-bold text-gypi-red">{tardesExcedidas.length}</div>
+          <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Exceden la regla</div>
         </div>
       </div>
 
@@ -99,13 +90,13 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
         <div className="flex flex-col gap-2">
           {fichadas.map((f, i) => {
             const info = tardanzasMap.get(f.id ?? f.fecha);
-            const esTardeComun = f.llegada_tarde && info && !info.conPerdida;
-            const esTardeConPerdida = f.llegada_tarde && info?.conPerdida;
-            const bgColor = esTardeConPerdida ? `${RED}10` : esTardeComun ? "rgba(245,158,11,0.08)" : `${GREEN}05`;
-            const borderColor = esTardeConPerdida ? `${RED}30` : esTardeComun ? "#F59E0B30" : "var(--color-border)";
-            const statusColor = esTardeConPerdida ? RED : esTardeComun ? "#F59E0B" : GREEN;
-            const statusIcon = esTardeConPerdida ? "⛔" : esTardeComun ? "⚠️" : "✓";
-            const statusLabel = esTardeConPerdida ? "Pérdida de presentismo" : esTardeComun ? `Tarde +${f.minutos_tarde}min` : "Puntual";
+            const esTardeComun = f.llegada_tarde && info && !info.excede;
+            const esTardeExcedida = f.llegada_tarde && info?.excede;
+            const bgColor = esTardeExcedida ? `${RED}10` : esTardeComun ? "rgba(245,158,11,0.08)" : `${GREEN}05`;
+            const borderColor = esTardeExcedida ? `${RED}30` : esTardeComun ? "#F59E0B30" : "var(--color-border)";
+            const statusColor = esTardeExcedida ? RED : esTardeComun ? "#F59E0B" : GREEN;
+            const statusIcon = esTardeExcedida ? "⛔" : esTardeComun ? "⚠️" : "✓";
+            const statusLabel = esTardeExcedida ? "Excede la regla de tardanzas" : esTardeComun ? `Tarde +${f.minutos_tarde}min` : "Puntual";
             const tardeCuenta = info?.numero || 0;
             return (
               <div key={f.id || i} className="rounded-[14px] p-3.5" style={{ background: bgColor, border: `1px solid ${borderColor}` }}>

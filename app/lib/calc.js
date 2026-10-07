@@ -102,6 +102,27 @@ export function normalizarReglasAsistencia(reglas) {
 }
 
 /**
+ * Numera las llegadas tarde del mes y marca las que exceden las reglas de la
+ * empresa (minutos máximos o cantidad de tardanzas). Antes el historial usaba
+ * fijo "más de 30 min o la 3ra" y lo llamaba "pérdida de presentismo", que es
+ * una regla de la fábrica piloto (F4-13, H1-H2). Sin reglas, nada se excede.
+ * @returns {Map<string, { numero: number, excede: boolean }>} clave: id o fecha de la fichada
+ */
+export function clasificarTardanzas(fichadas = [], reglas) {
+  const { bloqueo_min, bloqueo_tardanzas_mes } = normalizarReglasAsistencia(reglas);
+  const map = new Map();
+  let numero = 0;
+  for (const f of [...fichadas].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))) {
+    if (!f.llegada_tarde) continue;
+    numero++;
+    const excede = (bloqueo_min != null && Number(f.minutos_tarde) > bloqueo_min)
+      || (bloqueo_tardanzas_mes != null && numero >= bloqueo_tardanzas_mes);
+    map.set(f.id ?? f.fecha, { numero, excede });
+  }
+  return map;
+}
+
+/**
  * Calcula el estado de tardanza de un fichaje de ingreso según las reglas
  * de la empresa (ver REGLAS_ASISTENCIA_DEFAULT).
  *
