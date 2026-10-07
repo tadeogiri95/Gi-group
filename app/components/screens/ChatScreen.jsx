@@ -24,6 +24,7 @@ import { sb } from "../../lib/supabase";
 import { callClaude, parseAction, ACCIONES_CON_EFECTO, descripcionAccion } from "../../lib/claude";
 import { sendPushToRole } from "../../lib/push";
 import { ficharServer, obtenerGeo } from "../../lib/fichar";
+import { pedirPermisoIngreso, pedirSalidaAnticipada, pedirHoraExtra } from "../../lib/pedidosOperario";
 import { Ic } from "../Icons";
 import FichadaCard from "../cards/FichadaCard";
 import SolSentCard from "../cards/SolSentCard";
@@ -126,24 +127,16 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
     // Quick-action shortcuts
     if (t === "✅ Sí, solicitar permiso") {
       try {
-        const hoy = hoyArg();
-        const hora2 = fmtTime(new Date());
-        await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "permiso", motivo: `🔓 Permiso de INGRESO por bloqueo (${hora2})`, fecha: hoy, desde: hora2, hasta: "—", estado: "pendiente", empresa_id: usuario.empresa_id });
-        await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `🔓 ${usuario.apodo} solicita permiso de INGRESO`, detalle: `Ingreso bloqueado a las ${hora2}. Requiere autorización para fichar.`, urgencia: "alta", empresa_id: usuario.empresa_id });
-        sendPushToRole("gerencial", "🔓 Permiso de ingreso", `${usuario.apodo} solicita autorización para ingresar (${hora2})`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        setMsgs(m => [...m, { from: "bot", text: "✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: "🔓 Permiso de INGRESO por bloqueo", fecha: hoy } }]);
+        const p = await pedirPermisoIngreso(usuario);
+        setMsgs(m => [...m, { from: "bot", text: "✅ Listo, se envió la solicitud de permiso de ingreso a gerencia. Te voy a avisar cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: p.motivo, fecha: p.fecha } }]);
         if (reload) reload();
       } catch (e) { console.error(e); setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud. Probá de nuevo.", time: new Date() }]); }
       setLoading(false); return;
     }
     if (t === "✅ Sí, pedir permiso de salida") {
       try {
-        const hoy = hoyArg();
-        const hora2 = fmtTime(new Date());
-        await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "salida_anticipada", motivo: `🚪 Permiso de SALIDA anticipada (pidió a las ${hora2})`, fecha: hoy, desde: hora2, hasta: "—", estado: "pendiente", empresa_id: usuario.empresa_id });
-        await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `🚪 ${usuario.apodo} pide salir antes`, detalle: `Quiere retirarse a las ${hora2}, antes del fin de su jornada.`, urgencia: "alta", empresa_id: usuario.empresa_id });
-        sendPushToRole("gerencial", "🚪 Permiso de salida", `${usuario.apodo} pide retirarse antes (${hora2})`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        setMsgs(m => [...m, { from: "bot", text: "✅ Le pedí el permiso a gerencia. Cuando lo aprueben te aviso y ahí fichás tu salida con \"Me voy\".", time: new Date(), card: { type: "solicitud", motivo: "🚪 Permiso de salida anticipada", fecha: hoy } }]);
+        const p = await pedirSalidaAnticipada(usuario);
+        setMsgs(m => [...m, { from: "bot", text: "✅ Le pedí el permiso a gerencia. Cuando lo aprueben te aviso y ahí fichás tu salida con \"Me voy\".", time: new Date(), card: { type: "solicitud", motivo: p.motivo, fecha: p.fecha } }]);
         if (reload) reload();
       } catch (e) { console.error(e); setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud. Probá de nuevo.", time: new Date() }]); }
       setLoading(false); return;
@@ -168,11 +161,8 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
     }
     if (t === "✅ Sí, solicitar hora extra") {
       try {
-        const hoy = hoyArg();
-        await sb.post("solicitudes", { empleado_id: usuario.id, legajo: usuario.legajo, nombre_empleado: usuario.nombre, tipo: "hora_extra", motivo: "Solicitud de hora extra — llegó tarde pero trabajó más de la jornada habitual", fecha: hoy, estado: "pendiente", empresa_id: usuario.empresa_id });
-        await sb.post("notificaciones", { destinatario_rol: "gerencial", tipo: "solicitud", asunto: `${usuario.apodo} solicita hora extra`, detalle: "Llegó tarde pero trabajó más tiempo que su jornada habitual.", urgencia: "normal", empresa_id: usuario.empresa_id });
-        sendPushToRole("gerencial", "🕐 Hora extra", `${usuario.apodo} solicita aprobación de hora extra`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        setMsgs(m => [...m, { from: "bot", text: "✅ Solicitud de hora extra enviada a gerencia. Te aviso cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: "Hora extra", fecha: hoy } }]);
+        const p = await pedirHoraExtra(usuario);
+        setMsgs(m => [...m, { from: "bot", text: "✅ Solicitud de hora extra enviada a gerencia. Te aviso cuando la resuelvan.", time: new Date(), card: { type: "solicitud", motivo: p.motivo, fecha: p.fecha } }]);
         if (reload) reload();
       } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al enviar la solicitud.", time: new Date() }]); }
       setLoading(false); return;
