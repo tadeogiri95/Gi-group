@@ -38,6 +38,7 @@ function crearSolicitudPendiente() {
     id: SOLICITUD_ID,
     empleado_id: "22222222-2222-2222-2222-222222222222",
     legajo: GERENTE.legajo,
+    nombre_empleado: "Juan Pérez",
     tipo: "permiso",
     estado: "pendiente",
     motivo: "Permiso médico",
@@ -114,10 +115,12 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   await page.getByRole("button", { name: "Inbox" }).click();
 
   await expect(page.getByText("Permiso médico")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByRole("button", { name: `Aprobar solicitud de legajo ${GERENTE.legajo}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aprobar solicitud de Juan Pérez" })).toBeVisible();
 
-  // ─── Aprobarla ───
-  await page.getByRole("button", { name: `Aprobar solicitud de legajo ${GERENTE.legajo}` }).click();
+  // ─── Aprobarla (pide confirmación y deja 5 s para deshacer, F4-07) ───
+  await page.getByRole("button", { name: "Aprobar solicitud de Juan Pérez" }).click();
+  await page.getByRole("button", { name: "Sí, aprobar" }).click();
+  await expect(page.getByRole("button", { name: "Deshacer" })).toBeVisible();
 
   // ─── Desaparece de "Pendientes" ───
   // Acotado a la Bandeja de solicitudes (Inbox): DashboardGerencia queda
@@ -126,6 +129,6 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   // también puede mostrar el mismo texto, lo que rompe un getByText
   // global en modo estricto (resuelve a 2 elementos).
   const bandeja = page.getByRole("region", { name: "Bandeja de solicitudes" });
-  await expect(bandeja.getByText("Permiso médico")).not.toBeVisible({ timeout: 10_000 });
+  await expect(bandeja.getByText("Permiso médico")).not.toBeVisible({ timeout: 15_000 });
   await expect(bandeja.getByText("Todo al día")).toBeVisible();
 });

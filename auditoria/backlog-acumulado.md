@@ -95,7 +95,7 @@
 | F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Hecho (PR #26): botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Queda: formulario de solicitudes con rango (F4-12) |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
 | F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Pendiente |
-| F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Pendiente |
+| F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | En PR #29: nombre e inicial del empleado, confirmación con comentario o motivo opcional (se guarda y se le avisa al empleado) y 5 s para deshacer antes de enviar |
 | F4-08 | Reorganizar “Gestión” (operación vs. configuración) | Medio | M | Pendiente |
 | F4-09 | Accesibilidad: objetivos táctiles ≥48 px, texto ≥12 px | Medio | M | Pendiente |
 | F4-10 | Unificar el sistema de diseño | Medio | M | Pendiente |
@@ -116,7 +116,7 @@
 
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
-| F3-04 | Polling de 8 consultas cada 2 min + recargas por Realtime | Alto | M | En PR #28: polling solo con la pestaña a la vista (inicio, tablero y actividad), recarga al volver si los datos quedaron viejos, avisos de Realtime agrupados y sin recargas en paralelo. Queda: datos por pantalla en vez de las 8 consultas globales |
+| F3-04 | Polling de 8 consultas cada 2 min + recargas por Realtime | Alto | M | Hecho (PR #28): polling solo con la pestaña a la vista (inicio, tablero y actividad), recarga al volver si los datos quedaron viejos, avisos de Realtime agrupados y sin recargas en paralelo. Queda: datos por pantalla en vez de las 8 consultas globales |
 | F3-05 | `validarToken` consulta la empresa en cada request | Medio | S | En PR #24: caché de 5 min por empresa (el plan sigue con su caché por instancia) |
 | F3-06 | Lógica de negocio en el navegador → servicios por dominio | Medio | M–L | Pendiente |
 | F3-07 | `push-ausencias` con `limit=2000` global | Medio | S | En PR #24: paginado completo (empleados y fichadas). Queda: RPC por empresa si crece mucho |
