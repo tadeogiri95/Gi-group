@@ -95,6 +95,9 @@ export async function POST(request) {
           jti: newJti,
           token_hash: (await import("crypto")).createHash("sha256").update(newJti).digest("hex"),
           refresh_jti: newRefreshJti,
+          // La sesión dura 30 días desde el último uso, no desde el login (F1-03):
+          // el cron limpiar-tokens borra las filas con expira_en vencido.
+          expira_en: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         }),
       });
       if (!patchRes.ok) {

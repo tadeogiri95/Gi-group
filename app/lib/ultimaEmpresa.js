@@ -26,3 +26,14 @@ export function normalizarCodigo(texto) {
     .replace(/^https?:\/\//, "").replace(/^[^/]*gypi\.app\//, "").split(/[/?#]/)[0]
     .replace(/[^a-z0-9-]/g, "");
 }
+
+/**
+ * Adónde mandar a quien abre la app instalada (start_url "/?source=pwa") o la
+ * página principal en modo app: a la última empresa usada en el dispositivo.
+ * En el navegador común la página comercial se muestra normal.
+ * @returns {string | null}
+ */
+export function destinoAppInstalada(search, esStandalone, ultima) {
+  const desdeApp = esStandalone || new URLSearchParams(search || "").get("source") === "pwa";
+  return desdeApp && ultima?.slug ? `/${ultima.slug}` : null;
+}

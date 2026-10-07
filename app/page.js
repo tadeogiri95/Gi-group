@@ -6,6 +6,7 @@ import { PLANES, precioAnual } from "./lib/plans";
 import EnterpriseContactButton from "./components/EnterpriseContactButton";
 import GoogleIcon from "./components/GoogleIcon";
 import { getOauthErrorMessage } from "./lib/oauthErrorMessages";
+import { ultimaEmpresa, destinoAppInstalada } from "./lib/ultimaEmpresa";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "#000";
@@ -142,14 +143,12 @@ export default function Landing() {
     setError(mensaje);
   };
 
+  // La app instalada abre en "/" (start_url): la mandamos directo a su empresa
+  // en vez de mostrarle la página comercial (F1-03). Antes buscaba una sesión en
+  // localStorage que nunca se guardaba, así que no redirigía nunca.
   useEffect(() => {
-    try {
-      const s = localStorage.getItem("gi-session");
-      if (s) {
-        const u = JSON.parse(s);
-        if (u?.empresa?.slug) router.replace("/" + u.empresa.slug);
-      }
-    } catch {}
+    const destino = destinoAppInstalada(window.location.search, window.matchMedia?.("(display-mode: standalone)")?.matches, ultimaEmpresa());
+    if (destino) router.replace(destino);
   }, [router]);
 
   const continuarConGoogle = () => {

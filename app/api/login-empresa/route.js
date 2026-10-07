@@ -13,6 +13,7 @@ import { validarPassword } from "../../lib/auth";
 import { signAccessToken, signRefreshToken } from "../../lib/jwt";
 import { logAudit } from "../../lib/audit";
 import { logger } from "../../lib/logger";
+import { usuarioSeguro } from "../../lib/usuarioSeguro";
 import { sbGet, sbPatch, sbPost } from "../../lib/sbHelpers";
 import { ventana15min } from "../../lib/rateLimit";
 import { loginBody, cambiarPasswordBody } from "../../lib/schemas";
@@ -114,9 +115,7 @@ export async function POST(req) {
       }
       // Cerrar las demás sesiones del empleado (F2-12); la actual sigue abierta.
       await revocarSesiones(userId, { exceptoJti: sesion.jti });
-      const u = updated[0];
-      delete u.password;
-      return NextResponse.json({ usuario: u });
+      return NextResponse.json({ usuario: usuarioSeguro(updated[0]) });
     }
 
     // ─── Login normal ───
@@ -243,9 +242,7 @@ export async function POST(req) {
       `empresa?id=eq.${usuario.empresa_id}&select=id,nombre,nombre_corto,slug,color_primario,color_secundario,logo_url,plan_activo,max_empleados`
     );
 
-    const safe = { ...usuario };
-    delete safe.password;
-    delete safe.password_reset_jti;
+    const safe = usuarioSeguro(usuario);
     safe.empresa = empresaData?.[0] || null;
 
     logAudit({

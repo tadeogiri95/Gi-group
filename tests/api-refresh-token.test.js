@@ -149,6 +149,8 @@ test("refresh-token — rotación exitosa devuelve nuevo token y cookies httpOnl
   assert.equal(sessionPatched, true, "debe actualizar la sesión con el nuevo JTI");
   assert.ok(patchBody.refresh_jti, "debe rotar el refresh_jti");
   assert.ok(patchBody.token_hash, "debe actualizar token_hash");
+  const dias = (Date.parse(patchBody.expira_en) - Date.now()) / 86400000;
+  assert.ok(dias > 29.9 && dias <= 30, "la sesión se extiende 30 días desde este uso (F1-03)");
 
   const setCookie = res.headers.get("set-cookie") || "";
   assert.ok(setCookie.includes("gypi_token="), "debe setear cookie gypi_token");

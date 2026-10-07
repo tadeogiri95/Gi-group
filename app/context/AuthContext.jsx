@@ -24,12 +24,11 @@ import { setToken, getToken, clearToken, onUnauthorized, setEmpresaId, setRefres
 import { setColoresEmpresa } from "../lib/theme";
 
 import { recordarEmpresa } from "../lib/ultimaEmpresa";
+import { restaurarSesion } from "../lib/restaurarSesion";
 // Exportado (además de useAuth) para poder envolver componentes en tests
 // con un valor de contexto mínimo, sin pasar por el AuthProvider real
 // (que depende de next/navigation y hace fetch al montar).
 export const AuthContext = createContext(null);
-
-const SIETE_DIAS = 7 * 24 * 60 * 60 * 1000;
 
 export function AuthProvider({ children }) {
   const { slug } = useParams();
@@ -125,25 +124,37 @@ export function AuthProvider({ children }) {
   // ─── Resolver branding al montar ───
   useEffect(() => { cargarEmpresa(); }, [cargarEmpresa]);
 
-  // ─── Restaurar sesión de sessionStorage ───
+  // ─── Restaurar sesión ───
+  // Primero la copia de esta pestaña; si no hay (app recién abierta), se le
+  // pregunta al servidor por la sesión de las cookies, que dura 30 días (F1-03).
   useEffect(() => {
+    let cancelado = false;
+    let enPestana = null;
     try {
       const s = sessionStorage.getItem("gi-session");
-      if (s) {
-        const parsed = JSON.parse(s);
-        const guardado = sessionStorage.getItem("gi-session-time");
-        const ahora = Date.now();
-        if (guardado && (ahora - Number(guardado)) > SIETE_DIAS) {
-          sessionStorage.removeItem("gi-session");
-          sessionStorage.removeItem("gi-session-time");
-          clearToken();
-        } else {
-          setUsuario(parsed);
-          if (parsed.empresa_id) setEmpresaId(parsed.empresa_id);
-        }
-      }
+      if (s) enPestana = JSON.parse(s);
     } catch {}
-    setInit(true);
+    if (enPestana && (!slug || !enPestana.empresa?.slug || enPestana.empresa.slug === slug)) {
+      setUsuario(enPestana);
+      setInit(true);
+      return;
+    }
+    restaurarSesion(slug).then((u) => {
+      if (cancelado) return;
+      if (u) {
+        setUsuario(u);
+        try {
+          sessionStorage.setItem("gi-session", JSON.stringify(u));
+        } catch {}
+        recordarEmpresa(u.empresa);
+        loadConfigEmpresa(u.empresa_id);
+        cargarEmpresa();
+      }
+      setInit(true);
+    });
+    return () => { cancelado = true; };
+    // Solo al montar: cargarEmpresa/loadConfigEmpresa cambian con el slug, que no cambia sin remontar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Auto-logout en 401 del servidor ───
@@ -153,7 +164,6 @@ export function AuthProvider({ children }) {
       clearToken();
       try {
         sessionStorage.removeItem("gi-session");
-        sessionStorage.removeItem("gi-session-time");
       } catch {}
       // Re-cargar empresa por slug para que empresa.id esté disponible al re-loguear
       cargarEmpresa();
@@ -171,11 +181,11 @@ export function AuthProvider({ children }) {
     if (tokens.token) setToken(tokens.token);
     if (tokens.refresh_token) setRefreshToken(tokens.refresh_token);
 
-    // Persistir sesión
+    // Copia en la pestaña; al reabrir la app la sesión se restaura desde las cookies
     try {
       sessionStorage.setItem("gi-session", JSON.stringify(safe));
-      sessionStorage.setItem("gi-session-time", String(Date.now()));
     } catch {}
+    recordarEmpresa(safe.empresa);
 
     // Cargar config de empresa
     if (safe.empresa_id) loadConfigEmpresa(safe.empresa_id);
@@ -188,12 +198,12 @@ export function AuthProvider({ children }) {
     clearToken();
     try {
       sessionStorage.removeItem("gi-session");
-      sessionStorage.removeItem("gi-session-time");
     } catch {}
     // Limpiar cookies httpOnly desde el servidor
     await fetch("/api/logout", { method: "POST", credentials: "include" }).catch(() => {});
-    router.push("/");
-  }, [router]);
+    // Vuelve al ingreso de su empresa, no a la página comercial (F1-03)
+    router.push(slug ? `/${slug}` : "/");
+  }, [router, slug]);
 
   // ─── Actualizar empresa (desde admin_empresa_screen) ───
   const updateEmpresa = useCallback((updates) => {

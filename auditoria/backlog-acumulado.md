@@ -71,7 +71,7 @@
 | F3-02 | UNIQUE `empleados (email)` global | Alto | S | **Hecho** (tadeogiri95/Gi-group#2 fusionado + migración 064 aplicada y verificada) |
 | F1-01 | Horas `NaN` en el egreso si `ingreso` viene con segundos | Crítico→a verificar | S | **Hecho** (#10 fusionado): `calcularJornada` con parseo `HH:MM:SS` + migración 067 opcional para recalcular |
 | F1-02 | Tipo, causa y división de actividades descartados por la whitelist | Alto | S | **Hecho** (#10 fusionado) (whitelist + validación de catálogo) |
-| F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | Pendiente |
+| F1-03 | Sesión en `sessionStorage` + `start_url` = landing | Alto | S–M | En PR #30: al abrir la app la sesión se restaura desde las cookies (`/api/me`), la app instalada abre en la última empresa y el logout vuelve al ingreso de la empresa |
 | F1-04 | Liquidación truncada a 1.000 filas | Alto | S | **Hecho** (tadeogiri95/Gi-group#15, fusionado): paginación server-side + aviso `truncado`; agregados en SQL quedan para H2 |
 | F3-03 | Dashboard mensual truncado a 500 filas (ya afecta al piloto) | Alto | S | **Hecho** (tadeogiri95/Gi-group#15, fusionado): todas las páginas + aviso en pantalla |
 | F4-01 | Empleados sin email no pueden activarse nunca | Alto | S | **Hecho** (#6: botón “Código de acceso”) |
@@ -94,8 +94,8 @@
 | F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): encabezado con “← Volver” |
 | F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Hecho (PR #26): botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Queda: formulario de solicitudes con rango (F4-12) |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
-| F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Pendiente |
-| F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | En PR #29: nombre e inicial del empleado, confirmación con comentario o motivo opcional (se guarda y se le avisa al empleado) y 5 s para deshacer antes de enviar |
+| F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Sesión persistente en PR #30. Queda: PIN (con migración) |
+| F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Hecho (PR #29): nombre e inicial del empleado, confirmación con comentario o motivo opcional (se guarda y se le avisa al empleado) y 5 s para deshacer antes de enviar |
 | F4-08 | Reorganizar “Gestión” (operación vs. configuración) | Medio | M | Pendiente |
 | F4-09 | Accesibilidad: objetivos táctiles ≥48 px, texto ≥12 px | Medio | M | Pendiente |
 | F4-10 | Unificar el sistema de diseño | Medio | M | Pendiente |
@@ -117,9 +117,9 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F3-04 | Polling de 8 consultas cada 2 min + recargas por Realtime | Alto | M | Hecho (PR #28): polling solo con la pestaña a la vista (inicio, tablero y actividad), recarga al volver si los datos quedaron viejos, avisos de Realtime agrupados y sin recargas en paralelo. Queda: datos por pantalla en vez de las 8 consultas globales |
-| F3-05 | `validarToken` consulta la empresa en cada request | Medio | S | En PR #24: caché de 5 min por empresa (el plan sigue con su caché por instancia) |
+| F3-05 | `validarToken` consulta la empresa en cada request | Medio | S | Hecho (PR #24): caché de 5 min por empresa (el plan sigue con su caché por instancia) |
 | F3-06 | Lógica de negocio en el navegador → servicios por dominio | Medio | M–L | Pendiente |
-| F3-07 | `push-ausencias` con `limit=2000` global | Medio | S | En PR #24: paginado completo (empleados y fichadas). Queda: RPC por empresa si crece mucho |
+| F3-07 | `push-ausencias` con `limit=2000` global | Medio | S | Hecho (PR #24): paginado completo (empleados y fichadas). Queda: RPC por empresa si crece mucho |
 | F3-08 | Crons diarios por el plan Hobby (inactividad de 30 min = diaria) | Medio | S | Pendiente |
 | F3-13 | Transacciones en Postgres (imprescindible para stock/OP) | Medio | M | Pendiente |
 | F3-14 | Rate limit y cachés en memoria | Bajo | S | Pendiente |
