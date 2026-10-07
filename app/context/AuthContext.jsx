@@ -23,6 +23,7 @@ import * as Sentry from "@sentry/nextjs";
 import { setToken, getToken, clearToken, onUnauthorized, setEmpresaId, setRefreshToken } from "../lib/supabase";
 import { setColoresEmpresa } from "../lib/theme";
 
+import { recordarEmpresa } from "../lib/ultimaEmpresa";
 // Exportado (además de useAuth) para poder envolver componentes en tests
 // con un valor de contexto mínimo, sin pasar por el AuthProvider real
 // (que depende de next/navigation y hace fetch al montar).
@@ -76,6 +77,7 @@ export function AuthProvider({ children }) {
           const r = await fetch(`/api/empresa?slug=${encodeURIComponent(slug)}`);
           const d = await r.json();
           if (r.status === 404 || d?.error) { setSlugInvalido(true); return; }
+          recordarEmpresa(d); // F4-17: para ofrecer volver si un link falla
           setEmpresa(d);
           setColoresEmpresa(d);
           return;
