@@ -60,7 +60,9 @@ export async function ficharServer(accion, opciones = {}) {
   return data;
 }
 
-export async function obtenerGeo(empleado) {
+// timeoutMs: el chat espera hasta 15 s; el botón grande de fichar, 8 s (D6),
+// mostrando un contador para que el operario sepa que está buscando.
+export async function obtenerGeo(empleado, { timeoutMs = 15000 } = {}) {
   if (!navigator?.geolocation) return { lat: null, lng: null, distancia: null, msg: null };
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
@@ -84,7 +86,7 @@ export async function obtenerGeo(empleado) {
         const motivos = { 1: "Permiso de ubicación denegado", 2: "No se pudo obtener ubicación", 3: "Tiempo agotado obteniendo ubicación" };
         resolve({ lat: null, lng: null, distancia: null, msg: `⚠️ ${motivos[err.code] || "Error GPS"}`, error: true });
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 0 }
     );
   });
 }

@@ -297,11 +297,15 @@ test("solicitud con un tipo inventado sigue rechazándose (400)", async () => {
   assert.equal(llamadas.length, 0);
 });
 
-test("todos los tipos de solicitud que crea el chat están permitidos", async () => {
+test("todos los tipos de solicitud que crea la app (chat y botón de fichar) están permitidos", async () => {
   const fs = await import("node:fs");
   const { TIPOS_SOLICITUD } = await import("../app/lib/dataPolicy.js");
-  const src = fs.readFileSync(new URL("../app/components/screens/ChatScreen.jsx", import.meta.url), "utf8");
-  const usados = [...src.matchAll(/sb\.post\("solicitudes", \{[^}]*tipo: "([a-z_]+)"/g)].map((m) => m[1]);
+  const src = ["../app/components/screens/ChatScreen.jsx", "../app/lib/pedidosOperario.js"]
+    .map((f) => fs.readFileSync(new URL(f, import.meta.url), "utf8")).join("\n");
+  const usados = [
+    ...[...src.matchAll(/sb\.post\("solicitudes", \{[^}]*tipo: "([a-z_]+)"/g)].map((m) => m[1]),
+    ...[...src.matchAll(/solicitud: \{ tipo: "([a-z_]+)"/g)].map((m) => m[1]),
+  ];
   assert.ok(usados.length >= 5, `se esperaban varios tipos, se encontraron: ${usados}`);
   for (const t of usados) assert.ok(TIPOS_SOLICITUD.includes(t), `el chat crea "${t}" pero /api/data no lo acepta`);
 });

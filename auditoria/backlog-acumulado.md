@@ -92,7 +92,7 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): encabezado con “← Volver” |
-| F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Pendiente |
+| F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | En PR #26: botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Queda: formulario de solicitudes con rango (F4-12) |
 | F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
 | F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Pendiente |
 | F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Pendiente |
@@ -133,7 +133,7 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F3-10 | Sin backups (Supabase Free) | Alto | S | **Hecho** (tadeogiri95/Gi-group#19, fusionado; primera copia OK el 2026-10-07): backup diario encriptado y verificado (GitHub Actions, 30 días; falta cargar los 2 secretos: `como-restaurar-backup.md`). Queda: archivos de Storage y Supabase Pro antes de cobrar |
-| F3-11 | Un solo ambiente (previews posiblemente contra prod) | Alto | M | En PR #23: workflow "Preparar base de staging" + guía `como-armar-staging.md` (falta crear el proyecto y cargar variables de Preview en Vercel) |
+| F3-11 | Un solo ambiente (previews posiblemente contra prod) | Alto | M | **Hecho** (#23 y #25 fusionados; staging preparado el 2026-10-07, variables de Preview cargadas): workflow "Preparar base de staging" + guía `como-armar-staging.md` (falta crear el proyecto y cargar variables de Preview en Vercel) |
 | F0-12 | Vercel Hobby prohíbe el uso comercial | Alto | S | Pendiente (pasar a Pro antes de cobrar) |
 | F3-09 / F0-05 | Drift de esquema, índices duplicados, migraciones manuales | Medio | M | En PR #20 (fusionado) + #23: exportación del esquema real y línea base `supabase/baseline/esquema-base.sql` (hasta la 072). Queda: índices duplicados de `proyectos` y completar la 070 en `logos`/`reportes-obra` |
 | F3-12 | Observabilidad (Sentry, uptime, logs estructurados) | Medio | S | **Hecho** (tadeogiri95/Gi-group#18, fusionado) + migración 072: monitoreo de crons en `/api/health`, Sentry ajustado al plan gratis (falta cargar el DSN y crear el monitor de UptimeRobot: `como-configurar-monitoreo.md`). Queda: logs con *request id* |

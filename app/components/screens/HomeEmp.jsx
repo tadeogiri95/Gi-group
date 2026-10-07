@@ -6,6 +6,7 @@ import { Ic } from "../Icons";
 import Icon from "../Icon";
 import SolCard from "../cards/SolCard";
 import EmptyState from "../ui/EmptyState";
+import BotonFichar from "../BotonFichar";
 
 function fmtMin(m) {
   const h = Math.floor(m / 60);
@@ -13,7 +14,7 @@ function fmtMin(m) {
   return h > 0 ? `${h}h ${min}m` : `${min}m`;
 }
 
-export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [] }) {
+export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false }) {
   const misSols = ctx.misSolicitudes || [];
   const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
@@ -122,33 +123,32 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         </div>
       )}
 
-      {/* Bot CTA */}
+      {/* Botón grande de fichar (D6): fichar ya no depende del chat */}
+      <BotonFichar
+        usuario={usuario}
+        fichadaHoy={ctx.fichadaHoy}
+        fichadaAbierta={ctx.fichadaAbierta}
+        onFichado={reload}
+        irAlChat={() => goto("chat")}
+        demo={demo}
+      />
+
+      {/* Chat: permisos, avisos y consultas */}
       <button
         onClick={() => goto("chat")}
-        aria-label="Abrir chat para fichar o hacer solicitudes"
-        className="w-full p-[18px_20px] rounded-[18px] cursor-pointer flex items-center gap-3.5 font-body mb-[22px] transition-[transform,box-shadow] duration-150 ease-in-out"
-        style={{
-          background: `linear-gradient(135deg,color-mix(in srgb, var(--color-empresa-primary) 7%, transparent),color-mix(in srgb, var(--color-empresa-secondary) 6%, transparent))`,
-          border: `1.5px solid color-mix(in srgb, var(--color-empresa-primary) 15%, transparent)`,
-          boxShadow: `0 4px 16px color-mix(in srgb, var(--color-empresa-primary) 3%, transparent)`,
-        }}
+        aria-label="Abrir el asistente para pedir permisos o dar avisos"
+        className="w-full p-[14px_16px] rounded-[16px] cursor-pointer flex items-center gap-3 font-body mb-[22px] border border-gypi-border bg-gypi-surface"
+        style={{ minHeight: 56 }}
       >
         <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center text-black shrink-0"
-          style={{
-            background: `linear-gradient(135deg,var(--color-empresa-primary),var(--color-empresa-secondary))`,
-            boxShadow: `0 4px 12px color-mix(in srgb, var(--color-empresa-primary) 19%, transparent)`,
-          }}
+          className="w-10 h-10 rounded-[12px] flex items-center justify-center text-black shrink-0"
+          style={{ background: `linear-gradient(135deg,var(--color-empresa-primary),var(--color-empresa-secondary))` }}
         >
           <Ic.bot />
         </div>
         <div className="flex-1 text-left">
-          <div className="text-[15px] font-extrabold text-gypi-text leading-[1.3] tracking-tight">
-            Tocame para fichar ingreso, salida,
-          </div>
-          <div className="text-[13px] font-medium text-gypi-dim leading-[1.3] mt-0.5">
-            pedir permisos o dar avisos
-          </div>
+          <div className="text-[14px] font-bold text-gypi-text leading-[1.3]">Pedir permisos o dar avisos</div>
+          <div className="text-[12px] text-gypi-dim leading-[1.3] mt-0.5">Hablá con el asistente</div>
         </div>
         <span className="text-gypi-amber shrink-0 opacity-60"><Ic.chevR /></span>
       </button>
