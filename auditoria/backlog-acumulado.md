@@ -59,7 +59,7 @@
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
 | F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | **Hecho** (tadeogiri95/Gi-group#22, fusionado): `ipCliente()` (x-real-ip de Vercel, validada) en todas las rutas |
 | F1-05 | `next` 16.2.6 con CVE crítico + 18 dependencias vulnerables | Alto | S | **Hecho** (tadeogiri95/Gi-group#1, fusionado): next 16.3.8, 0 críticas; quedan 9 altas de firebase/eslint |
-| F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Pendiente |
+| F0-11 / H6 | Proyecto Firebase del piloto (`gi-group-app-*`) | Medio | S | Código listo (ítem 33): el service worker y la app toman el proyecto de las variables NEXT_PUBLIC_FIREBASE_* (sin ellas, sigue el del piloto). Falta de tu lado crear el proyecto y cargar las variables: `auditoria/como-crear-firebase-gypi.md` |
 | H13 | `empleados.password` DEFAULT `'gigroup2025'` | Medio | S | **Hecho** (#8, migración 066 aplicada) |
 | H14 | Columna `_deprecated_ubicacion_fichaje` con datos del piloto (Córdoba) | Bajo | S | **Hecho** (#8, migración 066 aplicada) |
 
@@ -139,7 +139,7 @@
 | F0-12 | Vercel Hobby prohíbe el uso comercial | Alto | S | Pendiente (pasar a Pro antes de cobrar) |
 | F3-09 / F0-05 | Drift de esquema, índices duplicados, migraciones manuales | Medio | M | En PR #20 (fusionado) + #23: exportación del esquema real y línea base `supabase/baseline/esquema-base.sql` (hasta la 072). Queda: índices duplicados de `proyectos` y completar la 070 en `logos`/`reportes-obra` |
 | F3-12 | Observabilidad (Sentry, uptime, logs estructurados) | Medio | S | **Hecho** (tadeogiri95/Gi-group#18, fusionado) + migración 072: monitoreo de crons en `/api/health`, Sentry ajustado al plan gratis (falta cargar el DSN y crear el monitor de UptimeRobot: `como-configurar-monitoreo.md`). Queda: logs con *request id* |
-| H15 | Tenant del piloto con slug `gypi` | Bajo | S | Pendiente |
+| H15 | Tenant del piloto con slug `gypi` | Bajo | S | Código listo (ítem 33): `/gypi/...` lleva a `/gi-group/...` cuando el slug ya no existe, y `gypi` y las rutas de la app quedan reservadas. Falta correr el UPDATE del slug (ver PR) |
 
 ### 2.6 Calidad de código y tests
 

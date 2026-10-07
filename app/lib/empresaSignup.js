@@ -7,6 +7,7 @@
 // admin_password puede ser null (signup vía Google, sin password propia).
 
 import { logger } from "./logger";
+import { slugReservado } from "./slugs";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -55,6 +56,10 @@ export function generarSlug(nombre) {
 // por el registro con password como por el signup vía Google.
 export async function generarSlugUnico(nombre) {
   let slug = generarSlug(nombre);
+  // Las rutas de la app y la marca no se pueden usar como dirección (H15)
+  if (slugReservado(slug) || slug.length < 2) {
+    return `${slug || "empresa"}-${Date.now().toString(36).slice(-4)}`;
+  }
   const slugCheck = await sbFetch(`empresa?slug=eq.${slug}&select=id`);
   if (slugCheck && slugCheck.length > 0) {
     slug = slug + "-" + Date.now().toString(36).slice(-4);
