@@ -13,8 +13,10 @@ export default function LoginScreen({ onLogin, empresa }) {
   const pathname = usePathname();
   const oauthError = searchParams.get("oauth_error");
 
-  // Ingreso con PIN (F4-06): si en este celular ya se entró con PIN, arranca así
-  const [legajoPin] = useState(() => legajoPinRecordado(empresa?.slug));
+  // Ingreso con PIN (F4-06): arranca así si se escaneó el QR personal
+  // (?legajo=N, ítem 18) o si en este celular ya se entró con PIN
+  const legajoQR = /^\d{1,9}$/.test(searchParams.get("legajo") || "") ? searchParams.get("legajo") : "";
+  const [legajoPin] = useState(() => legajoQR || legajoPinRecordado(empresa?.slug));
   const [modoPin, setModoPin] = useState(!!legajoPin);
   const [legajo, setLegajo]   = useState(legajoPin);
   const [password, setPassword] = useState("");
