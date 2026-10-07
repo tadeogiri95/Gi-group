@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
 import { getToken, apiFetch } from "./lib/supabase";
+import ResumenSemanalSwitch from "./components/ResumenSemanalSwitch";
 import { useToast } from "./components/ui/Toast";
 
 /* ─── Icon list for selectors ─── */
@@ -328,6 +329,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             <input className="g-input" value={rubro} onChange={(e) => setRubro(e.target.value)} placeholder="Ej: Tecnología, Construcción..." />
           </div>
           <button className={`g-btn g-btn-primary w-full ${saving ? 'opacity-50' : ''}`} onClick={handleSave} disabled={saving}>{saving ? "Guardando..." : "Guardar cambios"}</button>
+          <ResumenSemanalSwitch empresa={empresa} onUpdate={onUpdate} />
         </>;
 
       case "apariencia":
