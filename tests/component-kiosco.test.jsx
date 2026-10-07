@@ -65,3 +65,20 @@ test("Kiosco — tarea en curso al salir: ofrece cerrarla y reenvía con el mism
   await screen.findByText(/Salida registrada a las 17:00/);
   assert.equal(llamadas.length, 1);
 });
+
+// Gestión de personal muestra "Modo kiosco · Activar acá" (y la pantalla monta
+// sin errores con los datos de la empresa del contexto).
+const { default: GestionPersonalScreen } = await import("../app/gestion_personal_screen.jsx");
+const { AuthContext } = await import("../app/context/AuthContext.jsx");
+
+test("Gestión de personal — monta y ofrece activar el modo kiosco", async () => {
+  global.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+  const ctx = { divisiones: [], usuario: { rol: "gerencial", empresa_id: "e-1" }, empresa: { id: "e-1", slug: "gi-group", nombre_corto: "Gi" } };
+  render(
+    <AuthContext.Provider value={ctx}>
+      <GestionPersonalScreen empresaId="e-1" />
+    </AuthContext.Provider>
+  );
+  const boton = await screen.findByRole("button", { name: "Activar acá" });
+  assert.equal(boton.disabled, false);
+});

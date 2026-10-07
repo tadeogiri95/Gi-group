@@ -253,7 +253,7 @@ function ModalCodigos({ codigos, vigencia, onClose }) {
 
 /* ═══ MAIN COMPONENT ═══ */
 export default function GestionPersonalScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, usuario: sesion } = useAuth();
+  const { divisiones: divisionesCtx, usuario: sesion, empresa } = useAuth();
   // Un administrativo no puede crear/asignar rol gerencial (misma regla que /api/empleados)
   const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : ROLES.filter(r => r !== "gerencial");
   const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
