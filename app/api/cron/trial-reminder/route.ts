@@ -33,8 +33,8 @@ async function ejecutar(request: NextRequest): Promise<NextResponse> {
       return { desde: desde.toISOString(), hasta: hasta.toISOString() };
     }
 
-    // Días restantes a notificar: 11 (día 3 del trial), 4 (día 10), 7 (día 7), 1 (día 13/último)
-    const INTERVALOS = [11, 7, 4, 1];
+    // Días restantes a notificar en la prueba de 30 días (D20): 27 (día 3), 7, 3 y 1 (último)
+    const INTERVALOS = [27, 7, 3, 1];
     const rangos = INTERVALOS.map((d) => ({ dias: d, rango: rangoFecha(d) }));
 
     const resultados = await Promise.all(

@@ -12,6 +12,8 @@ import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calc
 import { logEvent, EVT } from "./analytics";
 
 import { ipCliente } from "./ip";
+import { planVigente } from "./plans";
+import { MENSAJE_SIN_PLAN } from "./planEnforcement";
 import { validarMomento, horaLocal } from "./offline";
 // ─── Hora local según timezone de empresa ───
 const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
@@ -43,11 +45,16 @@ export async function procesarFichaje(sesion, rawBody, request) {
     // Timezone y plan de la empresa en una sola consulta
     let empresaTz = TZ_DEFAULT;
     let plan = "free";
+    let planLeido = false;
     try {
       const empData = await sbGet(`empresa?id=eq.${sesion.empresa_id}&select=timezone,plan_activo&limit=1`);
       if (empData?.[0]?.timezone) empresaTz = empData[0].timezone;
-      if (empData?.[0]?.plan_activo) plan = empData[0].plan_activo;
+      if (empData?.[0]?.plan_activo) { plan = empData[0].plan_activo; planLeido = true; }
     } catch { /* usa defaults */ }
+    // Cuenta en pausa (D20): no se ficha. Si no se pudo leer el plan, no se bloquea.
+    if (planLeido && !planVigente(plan)) {
+      return NextResponse.json({ ok: false, error: MENSAJE_SIN_PLAN, tipo: "sin_plan" }, { status: 402 });
+    }
 
     // Sin conexión (ítem 21): vale la hora en que se fichó, no la del envío
     let instante = new Date();

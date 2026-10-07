@@ -77,7 +77,7 @@ test("billing/info — free plan sin suscripcion devuelve plan free, estado acti
   assert.equal(json.dias_restantes, null);
 });
 
-test("billing/info — trial sin fila en suscripciones (doble falla en registro) usa created_at+14d sintético, sigue trial", async () => {
+test("billing/info — trial sin fila en suscripciones (doble falla en registro) usa created_at+30d sintético, sigue trial", async () => {
   const token = await tokenConRol("administrativo");
   global.fetch = createFetchMock([
     ...authPassHandlers(),
@@ -91,11 +91,11 @@ test("billing/info — trial sin fila en suscripciones (doble falla en registro)
   assert.ok(json.dias_restantes > 0, `dias_restantes deberia ser > 0, fue ${json.dias_restantes}`);
 });
 
-test("billing/info — trial sin fila en suscripciones y created_at de hace más de 14 días devuelve vencida, no activa", async () => {
+test("billing/info — trial sin fila en suscripciones y created_at de hace más de 30 días devuelve vencida, no activa", async () => {
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([
     ...authPassHandlers(),
-    sbEmpresa({ plan_activo: "trial", created_at: haceNDias(20) }), // venció hace 6 días
+    sbEmpresa({ plan_activo: "trial", created_at: haceNDias(36) }), // venció hace 6 días
     sbSuscripciones(null),
   ]);
   const res = await GET(getReq(token));

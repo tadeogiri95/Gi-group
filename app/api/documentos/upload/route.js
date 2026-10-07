@@ -5,6 +5,7 @@
 // operativo: solo puede subir para sí mismo (empleado_id se fuerza desde el token).
 // gerencial/administrativo: puede subir para cualquier empleado de su empresa.
 import { NextResponse } from "next/server";
+import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { validarToken } from "../../../lib/auth";
 import { isUUID, safeErrorMessage } from "../../../lib/validate";
 import { sbGet, sbPost, sbDelete } from "../../../lib/sbHelpers";
@@ -36,6 +37,8 @@ export async function POST(req) {
   try {
     const sesion = await validarToken(req);
     if (!sesion) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
+    if (sinPlan) return sinPlan;
 
     const formData = await req.formData();
     const file = formData.get("file");

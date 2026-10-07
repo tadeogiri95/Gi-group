@@ -354,7 +354,7 @@ export default function BillingScreen({ onClose }) {
               ¿Cancelar suscripción?
             </h2>
             <p className="text-[13px] text-gypi-dim text-center leading-normal mx-0 mt-2.5 mb-[18px]">
-              Vas a seguir teniendo acceso hasta el fin del período pago. Después pasarás al plan Free.
+              Vas a seguir teniendo acceso hasta el fin del período pago. Después la cuenta queda en pausa hasta que elijas un plan (tus datos se guardan).
             </p>
             <div className="flex gap-2.5">
               <button onClick={() => setConfirmCancel(false)} className="g-btn g-btn-secondary flex-1">

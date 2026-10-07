@@ -18,6 +18,8 @@ import { useActividad } from "../hooks/useActividad";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import { useRefrescoVisible } from "../hooks/useRefrescoVisible";
 import PushManager from "../components/PushManager";
+import CuentaEnPausa from "../components/CuentaEnPausa";
+import { planVigente } from "../lib/plans";
 import { guardarInstantanea, leerInstantanea } from "../lib/instantanea";
 import { registrarServiceWorker } from "../lib/registrarSW";
 
@@ -292,6 +294,10 @@ export default function HomeContent() {
         <CambiarPasswordScreen usuario={usuario} onDone={(u) => login(u)} />
       </div>
     </div>
+  );
+  // Sin plan vigente (D20): prueba vencida o suscripción cancelada
+  if (!isDemo && empresa?.plan_activo && !planVigente(empresa.plan_activo)) return (
+    <CuentaEnPausa usuario={usuario} empresa={empresa} onLogout={logout} />
   );
   if (!isDemo && uIsGer && empresa?.onboarding_completado === false) return (
     <div className="app-shell">

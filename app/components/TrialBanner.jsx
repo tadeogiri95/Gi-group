@@ -45,8 +45,8 @@ export default function TrialBanner({ onUpgrade, reload }) {
       <div role="status" className="flex items-center gap-2.5 rounded-xl px-3.5 py-3 mb-3.5" style={{ background: "var(--color-empresa-primary-subtle, rgba(249,115,22,0.1))", border: "1px solid color-mix(in srgb, var(--color-empresa-primary) 25%, transparent)" }}>
         <span aria-hidden="true" className="text-[22px] shrink-0">🎁</span>
         <div className="flex-1 font-body">
-          <div className="text-[13px] font-bold text-gypi-text">¿Querés probar el plan Pro gratis?</div>
-          <div className="text-[11px] text-gypi-dim mt-px">14 días sin cargo, sin tarjeta. {errorTrial && <span className="text-gypi-red">{errorTrial}</span>}</div>
+          <div className="text-[13px] font-bold text-gypi-text">Activá tu prueba gratuita</div>
+          <div className="text-[11px] text-gypi-dim mt-px">30 días con todas las funciones, sin tarjeta. {errorTrial && <span className="text-gypi-red">{errorTrial}</span>}</div>
         </div>
         <button onClick={iniciarTrial} disabled={iniciando} className="shrink-0 border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body text-black disabled:opacity-60" style={{ background: "var(--color-empresa-primary, #F97316)" }}>
           {iniciando ? "Iniciando..." : "Iniciar prueba"}
@@ -67,10 +67,10 @@ export default function TrialBanner({ onUpgrade, reload }) {
             {info.dias_restantes === 0
               ? "Tu prueba gratuita termina HOY"
               : info.dias_restantes === 1
-              ? "Te queda 1 día de prueba Pro"
-              : `Te quedan ${info.dias_restantes} días de prueba Pro`}
+              ? "Te queda 1 día de prueba"
+              : `Te quedan ${info.dias_restantes} días de prueba`}
           </div>
-          <div className="text-[11px] text-gypi-dim mt-px">Al vencer pasarás al plan Free (límite: 5 empleados).</div>
+          <div className="text-[11px] text-gypi-dim mt-px">Al terminar, la cuenta queda en pausa hasta que elijas un plan. Tus datos se guardan.</div>
         </div>
         <button onClick={onUpgrade} className="shrink-0 border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body text-black" style={{ background: color }}>
           Suscribirme
@@ -88,7 +88,7 @@ export default function TrialBanner({ onUpgrade, reload }) {
         <span aria-hidden="true" className="text-[22px] shrink-0">🔒</span>
         <div className="flex-1 font-body">
           <div className="text-[13px] font-bold text-gypi-text">Tu prueba terminó</div>
-          <div className="text-[11px] text-gypi-dim mt-px">Estás en plan Free. Suscribite para recuperar todas las funciones.</div>
+          <div className="text-[11px] text-gypi-dim mt-px">La cuenta está en pausa: elegí un plan para que tu equipo siga fichando.</div>
         </div>
         <button onClick={onUpgrade} className="shrink-0 bg-gypi-red text-white border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body">
           Ver planes

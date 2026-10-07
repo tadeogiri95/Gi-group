@@ -85,8 +85,8 @@ export async function POST(request) {
     invalidarCachePlan(sesion.empresa_id);
 
     const graceMsg = periodoFin && new Date(periodoFin) > new Date()
-      ? `Seguirás en tu plan actual hasta ${new Date(periodoFin).toLocaleDateString("es-AR")}. Después pasarás al plan Free.`
-      : "Tu plan fue cambiado a Free.";
+      ? `Seguirás en tu plan actual hasta ${new Date(periodoFin).toLocaleDateString("es-AR")}. Después la cuenta queda en pausa hasta que elijas un plan.`
+      : "La cuenta quedó en pausa hasta que elijas un plan.";
 
     return NextResponse.json({ ok: true, mensaje: `Suscripción cancelada. ${graceMsg}` });
   } catch (err) {

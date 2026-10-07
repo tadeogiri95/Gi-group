@@ -10,7 +10,7 @@ import { ventana15min } from "../../lib/rateLimit";
 import { registroEmpresaBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
-import { sbFetch, crearEmpresaConAdmin, generarSlugUnico, EmpresaSignupError } from "../../lib/empresaSignup";
+import { sbFetch, crearEmpresaConAdmin, generarSlugUnico, EmpresaSignupError, iniciarTrialEmpresa } from "../../lib/empresaSignup";
 
 import { ipCliente } from "../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -101,9 +101,9 @@ export async function POST(req) {
       throw e;
     }
 
-    // La empresa arranca en plan Free — el admin inicia la prueba Pro de 14
-    // días cuando quiera desde el botón en el dashboard (ver iniciarTrialEmpresa
-    // en /api/billing/iniciar-trial).
+    // Solo versión paga con prueba de 30 días (D20): arranca sola al registrarse.
+    // Si falla, la empresa queda en 'free' y puede iniciarla desde el aviso del inicio.
+    await iniciarTrialEmpresa(emp.id);
 
     // Fire-and-forget — no bloquea la respuesta
     const appBase = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
@@ -113,7 +113,7 @@ export async function POST(req) {
 
     logEvent(EVT.REGISTRO, {
       empresa_id: emp.id,
-      plan: "free",
+      plan: "trial",
       meta: { rubro: rubro || "general", slug: emp.slug },
     });
 
