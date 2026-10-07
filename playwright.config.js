@@ -12,6 +12,10 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
+    // Teléfono con el permiso de ubicación dado (F1-17): sin esto el fichaje
+    // esperaba el GPS hasta agotar el tiempo y el test fallaba fuera de CI.
+    geolocation: { latitude: -31.4201, longitude: -64.1888, accuracy: 20 },
+    permissions: ["geolocation"],
   },
   webServer: {
     command: "npm run dev",
