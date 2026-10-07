@@ -9,6 +9,7 @@
 //   5. push_tokens huérfanos     (sin empleado activo dueño — ver migración 053)
 //   6. audit_log > 180 días      (sin TTL previo, crece con cada fichaje/alta/impersonación)
 //   7. geo_registros > 90 días   (pings de ubicación de fichadas ya resueltas)
+//   8. operaciones_offline > 30 días (idempotencia de lo enviado sin conexión)
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
@@ -140,6 +141,20 @@ async function ejecutar(request) {
   } catch (e) {
     logger.error("[limpiar-tokens] Error eliminando geo_registros", e);
     resultados.geo_registros_error = e.message;
+  }
+
+  try {
+    // 8. operaciones_offline > 30 días (idempotencia de lo enviado sin conexión; migración 079)
+    const corteOps = new Date(now);
+    corteOps.setDate(corteOps.getDate() - 30);
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/operaciones_offline?creado_en=lt.${corteOps.toISOString()}`,
+      { method: "DELETE", headers: headersNoReturn }
+    );
+    resultados.operaciones_offline_limpiadas = true;
+  } catch (e) {
+    logger.error("[limpiar-tokens] Error eliminando operaciones_offline", e);
+    resultados.operaciones_offline_error = e.message;
   }
 
   logger.debug("[limpiar-tokens] Completado", resultados);

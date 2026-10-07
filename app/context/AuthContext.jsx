@@ -25,6 +25,8 @@ import { setColoresEmpresa } from "../lib/theme";
 
 import { recordarEmpresa } from "../lib/ultimaEmpresa";
 import { restaurarSesion } from "../lib/restaurarSesion";
+import { borrarInstantaneas } from "../lib/instantanea";
+import { CACHE_DATOS_OFFLINE } from "../lib/registrarSW";
 // Exportado (además de useAuth) para poder envolver componentes en tests
 // con un valor de contexto mínimo, sin pasar por el AuthProvider real
 // (que depende de next/navigation y hace fetch al montar).
@@ -199,6 +201,9 @@ export function AuthProvider({ children }) {
     try {
       sessionStorage.removeItem("gi-session");
     } catch {}
+    // Lo guardado para abrir sin conexión (ítem 21) no queda para el próximo
+    borrarInstantaneas();
+    try { await globalThis.caches?.delete(CACHE_DATOS_OFFLINE); } catch {}
     // Limpiar cookies httpOnly desde el servidor
     await fetch("/api/logout", { method: "POST", credentials: "include" }).catch(() => {});
     // Vuelve al ingreso de su empresa, no a la página comercial (F1-03)
