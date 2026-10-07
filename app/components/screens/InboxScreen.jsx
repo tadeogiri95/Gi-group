@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { sb } from "../../lib/supabase";
 import { sendPushToLegajo } from "../../lib/push";
 import { Ic } from "../Icons";
@@ -11,6 +11,9 @@ import { cargarHoraExtraAprobada } from "../../lib/solicitudes";
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const GREEN = "#16A34A";
 const RED = "#DC2626";
+// Tiempo para "Deshacer" antes de enviar la respuesta (F4-07)
+export const ESPERA_DESHACER_MS = 5000;
+const sinId = (obj, id) => Object.fromEntries(Object.entries(obj).filter(([k]) => k !== String(id)));
 
 export default function InboxScreen({ ctx, reload, usuario }) {
   const [f, setF] = useState("pendiente");
@@ -47,11 +50,12 @@ export default function InboxScreen({ ctx, reload, usuario }) {
     return bI - aI;
   });
 
-  const resolver = async (id, estado) => {
+  const resolver = async (id, estado, nota = "") => {
     setErrorMsg(null);
     try {
       const sol = solicitudes.find(s => s.id === id);
-      await sb.patch(`solicitudes?id=eq.${id}`, { estado, aprobador: usuario.apodo, resuelto_at: new Date().toISOString() });
+      await sb.patch(`solicitudes?id=eq.${id}`, { estado, aprobador: usuario.apodo, resuelto_at: new Date().toISOString(), notas_gerencia: nota || null });
+      const conNota = (texto) => (nota ? `${texto} Comentario: "${nota}"` : texto);
       if (sol) {
         const esPermisoIngreso = sol.motivo?.includes("🔓") || sol.motivo?.toLowerCase().includes("permiso de ingreso");
         const esCambioHorario = sol.tipo === "cambio_horario" || sol.motivo?.toLowerCase().includes("cambio de horario");
@@ -64,33 +68,73 @@ export default function InboxScreen({ ctx, reload, usuario }) {
           if (!ex || !ex.length) {
             await sb.post("fichadas", { empleado_id: sol.empleado_id, legajo: sol.legajo, fecha: today, ingreso: horaIngreso, llegada_tarde: true, minutos_tarde: 0, permiso_ingreso: true, empresa_id: usuario.empresa_id });
           }
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Ingreso APROBADO — Ya quedaste fichado", detalle: `${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Ingreso APROBADO — Ya quedaste fichado", detalle: conNota(`${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), "✅ Ingreso aprobado", `Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else if (sol.tipo === "salida_anticipada") {
           // El empleado ficha su salida él mismo cuando se va: así las horas son las reales
           const ok = estado === "aprobado";
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: ok ? "✅ Salida APROBADA — ya podés fichar tu salida" : "❌ Salida anticipada RECHAZADA", detalle: ok ? `${usuario.apodo} aprobó que te retires antes. Fichá tu salida con "Me voy" cuando te vayas.` : `${usuario.apodo} rechazó el permiso para retirarte antes.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: ok ? "✅ Salida APROBADA — ya podés fichar tu salida" : "❌ Salida anticipada RECHAZADA", detalle: conNota(ok ? `${usuario.apodo} aprobó que te retires antes. Fichá tu salida con "Me voy" cuando te vayas.` : `${usuario.apodo} rechazó el permiso para retirarte antes.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), ok ? "✅ Salida aprobada" : "❌ Salida rechazada", ok ? "Ya podés fichar tu salida" : `${usuario.apodo} rechazó tu permiso de salida`, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else if (sol.tipo === "hora_extra" && estado === "aprobado") {
           // F1-06: la hora extra aprobada se carga en la fichada (cuenta en la liquidación)
           const horas = await cargarHoraExtraAprobada(sb, sol);
           const detalle = horas > 0 ? `${usuario.apodo} aprobó ${horas}h extra; ya figuran en tu fichada.` : `${usuario.apodo} aprobó tu hora extra.`;
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Hora extra APROBADA", detalle, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Hora extra APROBADA", detalle: conNota(detalle), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), "✅ Hora extra aprobada", detalle, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else if (esCambioHorario && estado === "aprobado") {
           // F1-07: antes intentaba aplicar una propuesta que nunca se guardaba
           // (datos_horario no existe) y no cambiaba nada. La grilla la ajusta
           // gestión desde Gestión de personal; acá solo se avisa.
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Cambio de horario APROBADO", detalle: `${usuario.apodo} aprobó tu cambio de horario. Vas a ver la grilla nueva cuando la actualicen en Gestión de personal.`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Cambio de horario APROBADO", detalle: conNota(`${usuario.apodo} aprobó tu cambio de horario. Vas a ver la grilla nueva cuando la actualicen en Gestión de personal.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), "✅ Cambio de horario aprobado", `Tu cambio de horario fue aprobado por ${usuario.apodo}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else {
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: `Solicitud ${estado === "aprobado" ? "APROBADA ✅" : "RECHAZADA ❌"}`, detalle: `${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`, urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: `Solicitud ${estado === "aprobado" ? "APROBADA ✅" : "RECHAZADA ❌"}`, detalle: conNota(`${sol.tipo}: "${sol.motivo}" por ${usuario.apodo}`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), estado === "aprobado" ? "✅ Permiso aprobado" : "❌ Permiso rechazado", estado === "aprobado" ? `Tu ${sol.tipo} fue aprobado por ${usuario.apodo}` : `Tu ${sol.tipo} fue rechazado por ${usuario.apodo}`, { empresa_id: usuario.empresa_id }).catch(() => {});
         }
       }
       await cargarSolicitudes(); reload();
     } catch (e) { console.error(e); setErrorMsg("Error al procesar la solicitud. Intentá de nuevo."); }
   };
+
+  // Aprobar/Rechazar espera unos segundos antes de enviarse, para poder deshacer
+  // un toque equivocado (F4-07). Si se sale de la pantalla, se envía enseguida.
+  const [enEspera, setEnEspera] = useState({}); // id -> { estado, nota, hasta }
+  const timersRef = useRef(new Map());
+  const resolverRef = useRef(resolver);
+  useEffect(() => { resolverRef.current = resolver; });
+
+  const enviar = useCallback((id, estado, nota) => {
+    const t = timersRef.current.get(id);
+    if (t) clearTimeout(t.timer);
+    timersRef.current.delete(id);
+    setEnEspera(prev => sinId(prev, id));
+    return resolverRef.current(id, estado, nota);
+  }, []);
+
+  const pedirResolver = (id, estado, nota) => {
+    const hasta = Date.now() + ESPERA_DESHACER_MS;
+    const timer = setTimeout(() => enviar(id, estado, nota), ESPERA_DESHACER_MS);
+    timersRef.current.set(id, { timer, estado, nota });
+    setEnEspera(prev => ({ ...prev, [id]: { estado, hasta } }));
+  };
+
+  const deshacer = (id) => {
+    const t = timersRef.current.get(id);
+    if (t) clearTimeout(t.timer);
+    timersRef.current.delete(id);
+    setEnEspera(prev => sinId(prev, id));
+  };
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const [id, t] of timers) {
+        clearTimeout(t.timer);
+        resolverRef.current(id, t.estado, t.nota);
+      }
+      timers.clear();
+    };
+  }, []);
 
   return (
     <section aria-label="Bandeja de solicitudes" className="px-[18px] pb-[110px] overflow-y-auto flex-1">
@@ -116,7 +160,7 @@ export default function InboxScreen({ ctx, reload, usuario }) {
               <div className="text-gypi-green inline-flex mb-3"><Ic.check size={20} /></div>
               <div className="text-sm font-bold text-gypi-text">Todo al día</div>
             </div>
-          ) : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={resolver} />)}
+          ) : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={pedirResolver} enEspera={enEspera[s.id]} onDeshacer={deshacer} />)}
           {hayMas && !cargandoMas && (
             <button onClick={() => cargarSolicitudes(cursor)} className="w-full py-3.5 rounded-[14px] bg-gypi-surface border border-gypi-border text-gypi-amber text-[13px] font-bold font-body cursor-pointer mt-1">Cargar más solicitudes</button>
           )}
