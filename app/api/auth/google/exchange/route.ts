@@ -15,6 +15,7 @@ import { verifyOAuthExchangeCode, signAccessToken, signRefreshToken } from "../.
 import { isUUID } from "../../../../lib/validate";
 import { logger } from "../../../../lib/logger";
 
+import { ipCliente } from "../../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Código inválido o expirado" }, { status: 401 });
   }
 
-  const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+  const ip = ipCliente(req);
 
   const auditInsert = await fetch(`${SB_URL}/rest/v1/audit_log`, {
     method: "POST",

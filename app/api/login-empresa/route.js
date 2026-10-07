@@ -19,6 +19,7 @@ import { loginBody, cambiarPasswordBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
 
+import { ipCliente } from "../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -128,7 +129,7 @@ export async function POST(req) {
     }
 
     // Rate limiting por IP — bloquea brute force (migración 013 requerida)
-    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const clientIp = ipCliente(req);
     if (await checkLoginRateLimit(clientIp)) {
       return NextResponse.json(
         { error: "Demasiados intentos. Intentá de nuevo en 15 minutos." },
@@ -184,7 +185,7 @@ export async function POST(req) {
     }
 
     // ─── Generar JWT tokens ───
-    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+    const ip = ipCliente(req);
     const userAgent = req.headers.get("user-agent") || "unknown";
 
     let accessToken, refreshToken, accessJti, refreshJti;

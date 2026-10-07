@@ -7,28 +7,21 @@
 //   3. Attacker sites can't read the cookie (SameSite=Lax + HttpOnly=false so JS can read it)
 //      but the CSRF page won't have the cookie value to send in the header
 //
-// Exempt endpoints:
-//   - /api/billing/webhook (external service, uses HMAC)
-//   - /api/cron/* (internal, uses bearer tokens)
-//   - /api/health (GET only)
-//   - /api/registro-empresa (pre-login, no session cookie to protect)
-//   - /api/unirse (pre-login)
+// Exentos (F2-18): solo lo que NO llama un navegador y trae su propia firma.
+//   - /api/billing/webhook (Mercado Pago, firma HMAC)
+//   - /api/email/webhook   (Resend, firma Svix; antes no estaba exento y se bloqueaba)
+//   - /api/cron/*          (Vercel Cron, Bearer CRON_SECRET)
+//   - /api/health          (solo GET)
+// Login, recupero, alta, superadmin, etc. ya NO están exentos: el navegador
+// siempre manda el header Origin en un POST, así que pasan por la capa 2.
 
 import { NextResponse } from "next/server";
 
 const EXEMPT_PATHS = [
   "/api/billing/webhook",
+  "/api/email/webhook",
   "/api/cron/",
   "/api/health",
-  "/api/registro-empresa",
-  "/api/unirse",
-  "/api/verificar-email",
-  "/api/superadmin/",
-  "/api/login-empresa",
-  "/api/logout",
-  "/api/refresh-token",
-  "/api/recuperar-password",
-  "/api/resetear-password",
 ];
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);

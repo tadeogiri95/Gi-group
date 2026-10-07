@@ -13,6 +13,7 @@ import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { haversine as distanciaMetros, calcularTardanza, parseHoraAMinutos, calcularJornada, normalizarReglasAsistencia, salidaAnticipada } from "../../lib/calc";
 import { logEvent, EVT } from "../../lib/analytics";
 
+import { ipCliente } from "../../lib/ip";
 // ─── Hora local según timezone de empresa ───
 const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
@@ -237,7 +238,7 @@ export async function POST(request) {
         actor_rol: sesion.rol,
         accion: "fichar_ingreso",
         entidad: "fichada",
-        ip: request.headers.get("x-forwarded-for") || "unknown",
+        ip: ipCliente(request),
         datos_despues: { fecha, hora, tardanza: tardanza.estado },
       });
       broadcastRefresh(empresaId, "fichadas");
@@ -422,7 +423,7 @@ export async function POST(request) {
       actor_rol: sesion.rol,
       accion: "fichar_egreso",
       entidad: "fichada",
-      ip: request.headers.get("x-forwarded-for") || "unknown",
+      ip: ipCliente(request),
       datos_despues: { fecha, hora, horas_extra: horasExtra },
     });
     broadcastRefresh(empresaId, "fichadas");

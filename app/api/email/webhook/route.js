@@ -15,6 +15,7 @@ import { sbPost } from "../../../lib/sbHelpers";
 import { logger } from "../../../lib/logger";
 import { safeErrorMessage } from "../../../lib/validate";
 
+import { ipCliente } from "../../../lib/ip";
 const WH_SECRET = process.env.RESEND_WEBHOOK_SECRET;
 
 function validarFirma(rawBody, svixId, svixTimestamp, svixSignature) {
@@ -65,7 +66,7 @@ export async function POST(request) {
 
     if (!validarFirma(rawBody, svixId, svixTimestamp, svixSignature)) {
       logger.warn("Firma Svix inválida en webhook de email — posible ataque", {
-        ip: request.headers.get("x-forwarded-for"),
+        ip: ipCliente(request),
       });
       return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
     }

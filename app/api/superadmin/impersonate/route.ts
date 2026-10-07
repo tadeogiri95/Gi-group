@@ -4,6 +4,7 @@ import { signImpersonateCode, verifyAdminToken } from "../../../lib/jwt";
 import { logAudit } from "../../../lib/audit";
 import { isUUID } from "../../../lib/validate";
 
+import { ipCliente } from "../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     entidad: "empresa",
     entidad_id: empresa_id,
     datos_despues: { empleado: u.nombre, legajo: u.legajo },
-    ip: req.headers.get("x-forwarded-for") || "unknown",
+    ip: ipCliente(req),
   });
   if (!auditado) {
     return NextResponse.json({ error: "No se pudo registrar la auditoría; no se impersonó" }, { status: 500 });

@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, signImpersonateToken } from "../../../lib/jwt";
 import { isUUID } from "../../../lib/validate";
 
+import { ipCliente } from "../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       entidad: "code",
       entidad_id: codeJti,
       datos_despues: { empleado_id: payload.sub, legajo: payload.leg, rol: payload.rol },
-      ip: req.headers.get("x-forwarded-for") || "unknown",
+      ip: ipCliente(req),
     }),
   });
 

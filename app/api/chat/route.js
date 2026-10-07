@@ -22,6 +22,7 @@ import { PLANES } from "../../lib/plans";
 import { hoyArg } from "../../lib/dates";
 import { TIPOS_IA, MODELO_IA, construirPromptChat, construirPromptObra } from "../../lib/iaPrompts";
 
+import { ipCliente } from "../../lib/ip";
 const RATE_LIMIT = 20;
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -206,7 +207,7 @@ export async function POST(request) {
         tokens_output: data.usage?.output_tokens,
         model: data.model,
       },
-      ip: request.headers.get("x-forwarded-for") || "unknown",
+      ip: ipCliente(request),
     });
 
     const texto = (data.content || []).map((b) => (b.type === "text" ? b.text : "")).join("");

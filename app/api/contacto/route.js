@@ -8,6 +8,7 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
 import { logger } from "../../lib/logger";
 
+import { ipCliente } from "../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -38,7 +39,7 @@ async function checkContactoRateLimit(ip) {
 
 export async function POST(req) {
   try {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const ip = ipCliente(req);
     const limitado = await checkContactoRateLimit(ip);
     if (limitado) {
       return NextResponse.json(

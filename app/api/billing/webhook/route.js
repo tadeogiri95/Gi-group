@@ -16,6 +16,7 @@ import { sbGet, sbPost, sbPatch, sbPatchOk } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
 import { safeErrorMessage } from "../../../lib/validate";
 
+import { ipCliente } from "../../../lib/ip";
 const WH_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
 // ═══════════════════════════════════════════════════════════
@@ -81,7 +82,7 @@ export async function POST(request) {
       logger.warn("Firma HMAC inválida — posible ataque", {
         signature: request.headers.get("x-signature")?.slice(0, 30) + "...",
         requestId: request.headers.get("x-request-id"),
-        ip: request.headers.get("x-forwarded-for"),
+        ip: ipCliente(request),
       });
       return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
     }
@@ -106,7 +107,7 @@ export async function POST(request) {
         logger.warn("Webhook replay detectado: timestamp demasiado antiguo", {
           ts: tsRaw,
           diffSeconds: Math.floor(diffMs / 1000),
-          ip: request.headers.get("x-forwarded-for"),
+          ip: ipCliente(request),
         });
         return NextResponse.json(
           { ok: false, error: "Webhook replay detected: timestamp too old" },
@@ -118,7 +119,7 @@ export async function POST(request) {
         logger.warn("Webhook rechazado: timestamp en el futuro", {
           ts: tsRaw,
           diffSeconds: Math.floor(diffMs / 1000),
-          ip: request.headers.get("x-forwarded-for"),
+          ip: ipCliente(request),
         });
         return NextResponse.json(
           { ok: false, error: "Webhook replay detected: timestamp in the future" },

@@ -14,6 +14,7 @@ import { isUUID } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
 import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../lib/activacion";
 
+import { ipCliente } from "../../lib/ip";
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
 const CAMPOS_PUBLICOS =
@@ -135,7 +136,7 @@ export async function POST(request) {
     entidad: "empleado",
     entidad_id: String(nuevo.id),
     datos_despues: { legajo: legajoNum, nombre: nombre.trim(), rol: rolFinal },
-    ip: request.headers.get("x-forwarded-for") || "unknown",
+    ip: ipCliente(request),
   });
 
   // Email de invitación (fire-and-forget, solo si tiene email)
@@ -258,7 +259,7 @@ export async function DELETE(request) {
     entidad: "empleado",
     entidad_id: String(id),
     datos_antes: { legajo: check[0].legajo, nombre: check[0].nombre },
-    ip: request.headers.get("x-forwarded-for") || "unknown",
+    ip: ipCliente(request),
   });
 
   return NextResponse.json({ ok: true });
