@@ -28,6 +28,7 @@ import { Tag } from "./components/ui";
 import Icon from "./components/Icon";
 import EscanerCodigo, { escanerDisponible } from "./components/EscanerCodigo";
 import { otDesdeCodigo, recordarOT, otsRecientes } from "./lib/ot";
+import { pendientes } from "./lib/colaOffline";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -35,6 +36,11 @@ function getEtapaInfo(etapas, codigo) {
 }
 
 /* ═══ MAIN COMPONENT ═══ */
+// Entrada fichada sin señal que todavía no llegó al servidor (ítem 21)
+function ingresoSinEnviar(empleadoId) {
+  return !!empleadoId && pendientes(empleadoId).some((op) => op.tipo === "fichar" && op.body?.accion === "ingreso");
+}
+
 export default function ActividadScreen({
   tareaActiva,
   elapsed,
@@ -130,14 +136,14 @@ export default function ActividadScreen({
       setTipoSeleccionado("N");
       setStep(1);
       setState("active");
-    } catch (e) { console.error(e); setErrorMsg("Error al iniciar la tarea. Intentá de nuevo."); }
+    } catch (e) { console.error(e); setErrorMsg(e?.message || "Error al iniciar la tarea. Intentá de nuevo."); }
     setSaving(false);
   };
 
   const finalizarTarea = async (nextAction = "idle") => {
     setSaving(true);
     setErrorMsg(null);
-    try { await onFinalizar(); } catch (e) { console.error(e); setErrorMsg("Error al finalizar la tarea. Intentá de nuevo."); setSaving(false); return; }
+    try { await onFinalizar(); } catch (e) { console.error(e); setErrorMsg(e?.message || "Error al finalizar la tarea. Intentá de nuevo."); setSaving(false); return; }
     setSaving(false);
     if (nextAction === "cambiar") {
       setState("selecting");
@@ -153,7 +159,7 @@ export default function ActividadScreen({
     try {
       await onIniciar({ etapa: 0, codigo_proyecto: null, tipo: "N", causa });
       setState("active");
-    } catch (e) { console.error(e); setErrorMsg("Error al registrar tiempo muerto. Intentá de nuevo."); }
+    } catch (e) { console.error(e); setErrorMsg(e?.message || "Error al registrar tiempo muerto. Intentá de nuevo."); }
     setSaving(false);
   };
 
@@ -210,7 +216,7 @@ export default function ActividadScreen({
               <div className="text-lg font-bold font-heading mb-2">Sin tarea activa</div>
               <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Iniciá una tarea para registrar tu actividad en el proyecto</div>
               <button
-                onClick={() => { if (!fichadaHoy?.ingreso) { setErrorMsg("Debés fichar tu ingreso para comenzar a trabajar"); return; } setState("selecting"); setStep(1); }}
+                onClick={() => { if (!fichadaHoy?.ingreso && !ingresoSinEnviar(usuario?.id)) { setErrorMsg("Debés fichar tu ingreso para comenzar a trabajar"); return; } setState("selecting"); setStep(1); }}
                 className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-amber text-black"
               >
                 <Icon name="play" size={18} /> Iniciar tarea

@@ -46,9 +46,12 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
       const res = await ficharServer(tipo, {
         geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision,
         ...(forzarCierreTarea ? { forzar_cierre_tarea: true } : {}),
+        empleadoId: usuario.id, // sin señal se guarda en el celular (ítem 21)
       });
       const hora = res.hora || fmtTime(new Date());
-      if (tipo === "ingreso") {
+      if (res.encolado) {
+        terminar("aviso", `Sin señal: guardamos tu ${tipo === "ingreso" ? "entrada" : "salida"} de las ${hora}. Se envía sola cuando vuelva la conexión, con esa hora.`);
+      } else if (tipo === "ingreso") {
         const trd = res.tardanza;
         if (trd?.estado === "tarde") terminar("aviso", `Ingreso fichado a las ${hora}, con ${trd.minutos} min de tarde (tardanza #${trd.llegadasTarde} del mes).`);
         else terminar("ok", `¡Listo! Ingreso fichado a las ${hora}. Buen día, ${usuario.apodo}.`);
