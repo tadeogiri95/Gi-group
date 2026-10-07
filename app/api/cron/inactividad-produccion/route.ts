@@ -173,6 +173,7 @@ async function ejecutar(request: Request) {
           if (
             code === "messaging/registration-token-not-registered" ||
             code === "messaging/invalid-registration-token" ||
+            code === "messaging/mismatched-credential" ||
             code === "messaging/invalid-argument"
           ) {
             tokensInvalidos.push(t.token);
