@@ -186,7 +186,24 @@ export const ficharBody = z.object({
   geo_lng: longitude.optional().nullable(),
   geo_precision: z.number().min(0).max(100000).optional().nullable(), // metros, coords.accuracy del teléfono
   forzar_cierre_tarea: z.boolean().optional(),
+  // Sin conexión (F4-05, ítem 21): id de la operación (idempotencia) y cuándo se hizo
+  op_id: z.string().uuid().optional(),
+  momento: z.string().datetime({ offset: true }).optional(),
 }).strip();
+
+// ── /api/actividad (ítem 21): iniciar o finalizar una tarea ────────────────
+export const actividadBody = z.object({
+  accion: z.enum(["iniciar", "finalizar"]),
+  etapa: z.number().int().min(0).max(8).optional(),
+  codigo_proyecto: z.union([z.string().trim().max(40), z.number()]).optional().nullable(),
+  tipo: z.enum(["N", "R", "E", "C"]).optional(),
+  causa: z.enum(["M", "H", "I", "O"]).optional().nullable(),
+  observaciones: z.string().trim().max(500).optional().nullable(),
+  op_id: z.string().uuid().optional(),
+  momento: z.string().datetime({ offset: true }).optional(),
+}).strict().refine((b) => b.accion !== "iniciar" || b.etapa != null, { message: "Falta la etapa" })
+  .refine((b) => b.accion !== "iniciar" || b.etapa !== 0 || !!b.causa, { message: "Una espera necesita la causa" })
+  .refine((b) => b.accion !== "iniciar" || b.etapa === 0 || (b.codigo_proyecto != null && String(b.codigo_proyecto) !== ""), { message: "Falta la OT" });
 
 // ── /api/kiosco (D7, ítem 19) ──────────────────────────────────────────────
 export const kioscoActivarBody = z.object({

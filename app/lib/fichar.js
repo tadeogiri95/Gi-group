@@ -7,6 +7,7 @@
 
 import { getToken, clearToken, getCsrfToken } from "./supabase";
 import { haversine } from "./calc";
+import { enviarOEncolar, horaDeOp } from "./colaOffline";
 
 // Reintentos solo ante fallo de RED (fetch() no llega a completarse — sin
 // señal, típico en planta industrial). Un rechazo lógico del servidor (4xx/5xx
@@ -15,39 +16,62 @@ import { haversine } from "./calc";
 // intento — no hace falta volver a pedir GPS.
 const REINTENTOS_RED = [800, 1600];
 
-export async function ficharServer(accion, opciones = {}) {
+// Un intento de envío con reintentos de red. Tira solo si nunca llegó al servidor.
+async function enviarFichaje(op) {
   // La sesión viaja en la cookie httpOnly; el token en memoria es solo un
-  // respaldo y se pierde al recargar la página. Antes, sin él, se cortaba acá
-  // con "Sin sesión" y el chat lo mostraba como fichaje exitoso.
+  // respaldo y se pierde al recargar la página.
   const token = getToken();
   const headers = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   const csrf = getCsrfToken();
   if (csrf) headers["x-csrf-token"] = csrf;
-  const body = JSON.stringify({ accion, ...opciones });
-
-  let res;
+  const body = JSON.stringify(op.body);
   for (let intento = 0; ; intento++) {
     try {
-      res = await fetch("/api/fichar", { method: "POST", headers, body });
-      break;
-    } catch {
-      if (intento >= REINTENTOS_RED.length) {
-        const err = new Error("Sin conexión a internet. Probá de nuevo cuando tengas señal.");
-        err.tipo = "sin_conexion";
-        throw err;
-      }
+      const res = await fetch(op.url || "/api/fichar", { method: "POST", headers, body });
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, data };
+    } catch (e) {
+      if (intento >= REINTENTOS_RED.length) throw e;
       await new Promise((r) => setTimeout(r, REINTENTOS_RED[intento]));
     }
   }
+}
 
-  if (res.status === 401) {
+/**
+ * Ficha ingreso o egreso. Con `empleadoId`, si no hay señal lo guarda en el
+ * celular con la hora real y lo manda solo al volver la conexión (ítem 21):
+ * devuelve { ok: true, encolado: true, hora }.
+ */
+export async function ficharServer(accion, opciones = {}) {
+  const { empleadoId, ...resto } = opciones;
+  const body = { accion, ...resto };
+
+  let r;
+  if (empleadoId) {
+    r = await enviarOEncolar({
+      empleadoId, tipo: "fichar", url: "/api/fichar", body, enviar: enviarFichaje,
+      // Una salida guardada sin señal cierra la tarea en curso a esa hora (no se le puede preguntar después)
+      paraCola: (b) => (b.accion === "egreso" ? { ...b, forzar_cierre_tarea: true } : b),
+    });
+    if (r.encolado) return { ok: true, encolado: true, hora: horaDeOp(r.op) };
+  } else {
+    try {
+      r = await enviarFichaje({ url: "/api/fichar", body });
+    } catch {
+      const err = new Error("Sin conexión a internet. Probá de nuevo cuando tengas señal.");
+      err.tipo = "sin_conexion";
+      throw err;
+    }
+  }
+
+  if (r.status === 401) {
     clearToken();
     const err = new Error("Tu sesión venció. Volvé a iniciar sesión.");
     err.tipo = "sesion_expirada";
     throw err;
   }
-  const data = await res.json().catch(() => ({}));
+  const data = r.data || {};
   if (!data.ok) {
     const err = new Error(data.error || "No se pudo fichar. Intentá de nuevo.");
     err.tipo = data.tipo || "error_servidor";

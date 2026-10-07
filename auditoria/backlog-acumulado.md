@@ -93,7 +93,7 @@
 |---|---|---|---|---|
 | F4-03 | Chat sin botón “volver” (PWA en iOS atrapada) | Alto | S | **Hecho** (tadeogiri95/Gi-group#17, fusionado): encabezado con “← Volver” |
 | F4-04 | Botón grande de fichar + GPS con feedback (D6) | Alto | S | Hecho (PR #26): botón en el inicio con confirmación, GPS de 8 s con contador, permisos/tarea activa/hora extra resueltos ahí y turno noche. Formulario de solicitudes con rango en PR #38 |
-| F4-05 | Cola offline de fichajes y tareas | Alto | M | Pendiente |
+| F4-05 | Cola offline de fichajes y tareas | Alto | M | Hecho (ítem 21): sin señal, fichar e iniciar/terminar tareas quedan en una cola del celular con la hora real y se envían solos al volver la conexión (op_id idempotente en el servidor, hasta 12 h de atraso, nota "sin conexión" en la fichada); tareas por /api/actividad; service worker que guarda la app, la sesión y la empresa para abrir sin señal (migración 079, que además quita chk_division de registro_actividades) |
 | F4-06 | Sesión persistente por dispositivo + PIN (D7) | Alto | S–M | Hecho: sesión persistente (PR #30) y PIN (PR #31, migración 073: solo operarios, hash bcrypt, bloqueo de 15 min cada 5 fallos y PIN borrado a los 15). QR imprimibles (PR #32) y kiosco (PR #33) |
 | F4-07 | Inbox: nombres, confirmación, deshacer | Medio | S | Hecho (PR #29): nombre e inicial del empleado, confirmación con comentario o motivo opcional (se guarda y se le avisa al empleado) y 5 s para deshacer antes de enviar |
 | F4-08 | Reorganizar “Gestión” (operación vs. configuración) | Medio | M | Pendiente |
