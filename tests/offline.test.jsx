@@ -199,7 +199,7 @@ function mockActividad({ abiertas = [] } = {}) {
     { match: (url, o) => url.includes("/rest/v1/registro_actividades") && o?.method === "POST", respond: (url, o) => { r.nueva = JSON.parse(o.body); return { status: 201, body: [{ id: 99, ...r.nueva }] }; } },
     { match: (url) => url.includes("/rest/v1/registro_actividades"), respond: () => ({ status: 200, body: abiertas }) },
     { match: (url) => url.includes("/rest/v1/empleados?id=eq.") && url.includes("select=division"), respond: () => ({ status: 200, body: [{ division: "produccion", legajo: 7 }] }) },
-    { match: (url) => url.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro" }] }) },
     { match: (url) => url.includes("/realtime/"), respond: () => ({ status: 200, body: {} }) },
   ]);
   return r;

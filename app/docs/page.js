@@ -102,7 +102,7 @@ const FAQS = [
   },
   {
     q: "¿Qué pasa si cancelo mi suscripción?",
-    a: "Tu cuenta pasa al plan Free automáticamente. Los datos se conservan por 30 días adicionales, durante los cuales podés solicitar exportación completa. Luego se eliminan.",
+    a: "Al terminar el período pago la cuenta queda en pausa: se pueden ver los datos pero no cargar nuevos hasta elegir un plan. Podés descargar todos tus datos o dar de baja la cuenta cuando quieras.",
   },
   {
     q: "¿La app funciona sin conexión?",

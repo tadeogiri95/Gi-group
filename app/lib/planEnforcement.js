@@ -3,7 +3,8 @@
 // Se llama desde /api/data antes de POST en tablas sensibles
 // ═══════════════════════════════════════════════════════════
 
-import { PLANES, planTieneModulo, planLimite, planPermite } from "./plans";
+import { NextResponse } from "next/server";
+import { PLANES, planTieneModulo, planLimite, planPermite, planVigente } from "./plans";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -12,8 +13,11 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const cache = new Map();
 const TTL = 5 * 60 * 1000;
 
-export async function getPlanEmpresa(empresaId) {
-  if (!empresaId) return "free";
+// `siFalla`: qué devolver si no se puede leer el plan (por defecto "free", lo
+// más restrictivo para los límites; rechazarSiSinPlan pide null para no
+// bloquear a nadie por un corte momentáneo de la base).
+export async function getPlanEmpresa(empresaId, { siFalla = "free" } = {}) {
+  if (!empresaId) return siFalla;
   const cached = cache.get(empresaId);
   if (cached && Date.now() - cached.t < TTL) return cached.plan;
 
@@ -22,6 +26,7 @@ export async function getPlanEmpresa(empresaId) {
       `${SUPABASE_URL}/rest/v1/empresa?id=eq.${empresaId}&select=plan_activo,plan_vence`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
     );
+    if (!res.ok) return siFalla;
     const data = await res.json();
     let plan = data?.[0]?.plan_activo || "free";
 
@@ -40,8 +45,21 @@ export async function getPlanEmpresa(empresaId) {
     cache.set(empresaId, { plan, t: Date.now() });
     return plan;
   } catch {
-    return "free";
+    return siFalla;
   }
+}
+
+export const MENSAJE_SIN_PLAN = "La cuenta de tu empresa está en pausa: terminó la prueba o la suscripción no está activa. El dueño puede elegir un plan para seguir cargando datos.";
+
+/**
+ * Sin plan vigente (D20: prueba vencida o suscripción cancelada) no se cargan
+ * datos nuevos. Se pueden seguir viendo y descargando, y pagar.
+ * @returns {Promise<NextResponse|null>} 402 para cortar, o null para seguir
+ */
+export async function rechazarSiSinPlan(empresaId) {
+  const plan = await getPlanEmpresa(empresaId, { siFalla: null });
+  if (plan === null || planVigente(plan)) return null;
+  return NextResponse.json({ ok: false, error: MENSAJE_SIN_PLAN, tipo: "sin_plan", paywall: true }, { status: 402 });
 }
 
 export function invalidarCachePlan(empresaId) {
