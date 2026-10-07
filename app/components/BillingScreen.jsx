@@ -3,10 +3,11 @@ import { useState, useEffect } from "react";
 import { PLANES, precioAnual } from "../lib/plans";
 import { sb, getToken } from "../lib/supabase";
 import EnterpriseContactButton from "./EnterpriseContactButton";
+import { esAppAndroid } from "../lib/appAndroid";
 
 const ORDEN_PLANES = ["free", "starter", "pro", "enterprise"];
 
-export default function BillingScreen({ onClose }) {
+function BillingWeb({ onClose }) {
   const [info, setInfo] = useState(null);
   const [pagos, setPagos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -363,4 +364,26 @@ export default function BillingScreen({ onClose }) {
       )}
     </div>
   );
+}
+
+// En la app de Google Play no se muestran precios ni se cobra (ítem 34): las
+// reglas de Play obligan a usar su sistema de pagos para vender dentro de una
+// app. La suscripción se gestiona desde la web.
+function BillingEnAndroid({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-[18px]">
+      <div onClick={onClose} className="absolute inset-0 bg-black/70" />
+      <div role="dialog" aria-label="Suscripción" className="relative w-full max-w-[420px] bg-gypi-bg rounded-3xl p-7 border border-gypi-border text-center">
+        <h2 className="m-0 font-heading text-lg font-bold text-gypi-text">Suscripción</h2>
+        <p className="text-[13px] text-gypi-dim leading-relaxed my-3">
+          La suscripción de tu empresa se gestiona desde la web. Entrá a <b className="text-gypi-text">gypi.app</b> desde el navegador de una computadora o del celular con tu usuario de dueño.
+        </p>
+        <button onClick={onClose} className="g-btn g-btn-secondary w-full">Entendido</button>
+      </div>
+    </div>
+  );
+}
+
+export default function BillingScreen(props) {
+  return esAppAndroid() ? <BillingEnAndroid {...props} /> : <BillingWeb {...props} />;
 }

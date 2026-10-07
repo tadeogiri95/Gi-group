@@ -7,6 +7,8 @@ import EnterpriseContactButton from "./components/EnterpriseContactButton";
 import GoogleIcon from "./components/GoogleIcon";
 import { getOauthErrorMessage } from "./lib/oauthErrorMessages";
 import { ultimaEmpresa, destinoAppInstalada } from "./lib/ultimaEmpresa";
+import { marcarSiEsAppAndroid, esAppAndroid } from "./lib/appAndroid";
+import IngresoApp from "./components/IngresoApp";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "#000";
@@ -146,9 +148,13 @@ export default function Landing() {
   // La app instalada abre en "/" (start_url): la mandamos directo a su empresa
   // en vez de mostrarle la página comercial (F1-03). Antes buscaba una sesión en
   // localStorage que nunca se guardaba, así que no redirigía nunca.
+  // En la app de Google Play (ítem 34) no se muestra la página comercial: tiene precios
+  const [appAndroid, setAppAndroid] = useState(false);
   useEffect(() => {
+    marcarSiEsAppAndroid(window.location.search, document.referrer);
     const destino = destinoAppInstalada(window.location.search, window.matchMedia?.("(display-mode: standalone)")?.matches, ultimaEmpresa());
     if (destino) router.replace(destino);
+    else if (esAppAndroid()) setAppAndroid(true);
   }, [router]);
 
   const continuarConGoogle = () => {
@@ -193,6 +199,8 @@ export default function Landing() {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth" });
   };
+
+  if (appAndroid) return <IngresoApp />;
 
   /* ─── Registro Wizard (pantalla completa) ─── */
   if (showRegistro) {
