@@ -16,6 +16,9 @@ export default defineConfig({
     // esperaba el GPS hasta agotar el tiempo y el test fallaba fuera de CI.
     geolocation: { latitude: -31.4201, longitude: -64.1888, accuracy: 20 },
     permissions: ["geolocation"],
+    // page.route() no intercepta lo que pide el service worker (ítem 21): sin
+    // bloquearlo, /api/me y /api/empresa irían al servidor real.
+    serviceWorkers: "block",
   },
   webServer: {
     command: "npm run dev",
