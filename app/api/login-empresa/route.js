@@ -17,7 +17,7 @@ import { usuarioSeguro } from "../../lib/usuarioSeguro";
 import { sbGet, sbPatch, sbPost } from "../../lib/sbHelpers";
 import { ventana15min } from "../../lib/rateLimit";
 import { loginBody, loginPinBody, cambiarPasswordBody } from "../../lib/schemas";
-import { minutosBloqueo, registrarFalloPin } from "../../lib/pin";
+import { verificarPin } from "../../lib/pinServidor";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { logEvent, EVT } from "../../lib/analytics";
 
@@ -94,33 +94,9 @@ async function autenticarConPin(body, clientIp) {
   if (await checkLoginRateLimit(clientIp)) {
     return { response: NextResponse.json({ error: "Demasiados intentos. Intentá de nuevo en 15 minutos." }, { status: 429 }) };
   }
-
-  const incorrecto = (extra = "") => ({ response: NextResponse.json({ error: "Legajo o PIN incorrectos." + extra }, { status: 401 }) });
-  const empleados = await sbGet(`empleados?legajo=eq.${encodeURIComponent(String(legajo))}&activo=eq.true&empresa_id=eq.${empresa_id}&select=*`);
-  const candidatos = (empleados || []).filter((e) => e.rol === "operativo" && e.pin_hash);
-  if (candidatos.length !== 1) return incorrecto();
-  const emp = candidatos[0];
-
-  const minutos = minutosBloqueo(emp);
-  if (minutos > 0) {
-    return { response: NextResponse.json({ error: `El PIN está bloqueado por demasiados intentos. Probá en ${minutos} min o entrá con tu contraseña.` }, { status: 429 }) };
-  }
-
-  if (!(await bcrypt.compare(pin, emp.pin_hash))) {
-    const fallo = registrarFalloPin(emp);
-    await sbPatch(`empleados?id=eq.${emp.id}`, fallo.cambios).catch((e) => logger.error("PIN: no se pudo registrar el intento", e));
-    if (fallo.borrado) {
-      return { response: NextResponse.json({ error: "Por seguridad borramos tu PIN después de muchos intentos fallidos. Entrá con tu contraseña y creá uno nuevo." }, { status: 429 }) };
-    }
-    if (fallo.bloqueado) {
-      return { response: NextResponse.json({ error: "PIN bloqueado por demasiados intentos. Entrá con tu contraseña o esperá 15 min." }, { status: 429 }) };
-    }
-    return incorrecto(fallo.restantes <= 2 ? ` Te quedan ${fallo.restantes} intento${fallo.restantes === 1 ? "" : "s"}.` : "");
-  }
-  if (emp.pin_intentos || emp.pin_bloqueado_hasta) {
-    await sbPatch(`empleados?id=eq.${emp.id}`, { pin_intentos: 0, pin_bloqueado_hasta: null }).catch(() => {});
-  }
-  return { usuario: emp };
+  const r = await verificarPin({ empresaId: empresa_id, legajo, pin });
+  if (r.error) return { response: NextResponse.json({ error: r.error }, { status: r.status }) };
+  return { usuario: r.empleado };
 }
 
 export async function POST(req) {

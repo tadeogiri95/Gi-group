@@ -188,6 +188,20 @@ export const ficharBody = z.object({
   forzar_cierre_tarea: z.boolean().optional(),
 }).strip();
 
+// ── /api/kiosco (D7, ítem 19) ──────────────────────────────────────────────
+export const kioscoActivarBody = z.object({
+  nombre: z.string().trim().min(1).max(60).optional(),
+}).strict();
+
+export const kioscoFicharBody = z.object({
+  legajo: z.union([z.number().int().positive(), z.string().regex(/^\d{1,9}$/)]),
+  pin: z.string().regex(/^\d{4}$/),
+  geo_lat: latitude.optional().nullable(),
+  geo_lng: longitude.optional().nullable(),
+  geo_precision: z.number().min(0).max(100000).optional().nullable(),
+  forzar_cierre_tarea: z.boolean().optional(),
+}).strict();
+
 // ── /api/unirse ─────────────────────────────────────────────────────────────
 export const unirseBody = z.object({
   action: z.enum(["verificar", "activar"]),

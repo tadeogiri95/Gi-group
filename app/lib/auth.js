@@ -69,6 +69,7 @@ export async function validarToken(request) {
 
   if (!payload || !payload.sub || !payload.eid) return null;
   if (payload.type === "refresh") return null;
+  if (payload.type === "kiosco") return null; // el kiosco solo ficha por /api/kiosco/*
   if (payload.code) return null;
 
   // Tokens de impersonación (1h) se validan solo por firma — no tienen sesión en DB.

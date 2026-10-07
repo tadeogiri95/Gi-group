@@ -108,10 +108,10 @@
 | F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Hecho (PR #27): volver a la última empresa del dispositivo, buscar por código y link a la landing |
 | F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
 | — | **Resumen semanal automático** (D10) | Nuevo | S–M | Pendiente |
-| — | **QR de activación y QR personal** imprimibles (D7, ítem 18) | Nuevo | S | En PR #32: tarjetas para imprimir desde Gestión de personal (QR personal → ingreso con PIN y legajo cargado) y desde los códigos de acceso (QR → link de activación) |
-| — | **Modo kiosco** con QR + PIN (D7, D11) | Nuevo | M | Pendiente |
+| — | **QR de activación y QR personal** imprimibles (D7, ítem 18) | Nuevo | S | Hecho (PR #32): tarjetas para imprimir desde Gestión de personal (QR personal → ingreso con PIN y legajo cargado) y desde los códigos de acceso (QR → link de activación) |
+| — | **Modo kiosco** con QR + PIN (D7, D11) | Nuevo | M | En PR #33: `/{slug}/kiosco` activado por gestión en el dispositivo (cookie propia guardada como sesión revocable); el operario escanea su QR o escribe el legajo + PIN y el servidor decide entrada o salida (turno noche incluido) con la misma lógica que el celular; vuelve solo al inicio. Queda: iniciar tareas desde el kiosco |
 | — | **TWA en Google Play** (D12, D14) | Nuevo | S | Pendiente |
-| F5-camera | `Permissions-Policy: camera=()` bloquea el escáner | Medio | S | Pendiente |
+| F5-camera | `Permissions-Policy: camera=()` bloquea el escáner | Medio | S | En PR #33: `camera=(self)` (escaneo del QR en el kiosco; sirve también para el escáner de OT) |
 
 ### 2.4 Arquitectura, performance y escalabilidad
 

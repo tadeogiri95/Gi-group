@@ -45,6 +45,20 @@ export async function signRefreshToken(input: { empleadoId: string; empresaId: s
   return { token, jti };
 }
 
+// Modo kiosco (D7, ítem 19): identifica un dispositivo de la empresa que solo
+// puede fichar con legajo + PIN. No es una sesión de empleado: validarToken lo
+// rechaza y solo lo aceptan las rutas /api/kiosco/*.
+export async function signKioscoToken(input: { empresaId: string; activadoPor: string }): Promise<TokenResult> {
+  const jti = generateJti();
+  const token = await new SignJWT({ sub: input.activadoPor, eid: input.empresaId, type: "kiosco", jti })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("365d")
+    .setIssuer("gypi")
+    .sign(getSecret());
+  return { token, jti };
+}
+
 export async function signImpersonateToken(input: AccessTokenInput): Promise<TokenResult> {
   const jti = generateJti();
   const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, leg: input.legajo, rol: input.rol, jti, imp: true })
