@@ -24,7 +24,6 @@ import LoginScreen from "../components/screens/LoginScreen";
 import Nav from "../components/nav/BottomNav";
 import SolCard from "../components/cards/SolCard";
 import ErrorBoundary from "../components/ErrorBoundary";
-import AdSlot from "../components/AdSlot";
 
 // Screens — lazy-loaded: solo se descarga el código de la pantalla activa
 const CambiarPasswordScreen = dynamic(() => import("../components/screens/CambiarPasswordScreen"), { ssr: false });
@@ -315,11 +314,6 @@ export default function HomeContent() {
         </button>
       )}
 
-      {!isChat && (empresa?.id || isDemo) && (u?.rol === "gerencial" || u?.rol === "administrativo") && (
-        <div className="px-[18px] shrink-0">
-          <AdSlot plan={isDemo ? "free" : (empresa.plan_activo || "free")} />
-        </div>
-      )}
 
       <div className="flex-1 overflow-hidden flex flex-col">
         {uIsGer && (
