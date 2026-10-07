@@ -15,6 +15,7 @@ import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
 import { rechazarSiSupervisor } from "../../../lib/alcance";
+import { BASES_AUSENCIA, diasEnPeriodo } from "../../../lib/tiposSolicitud";
 
 const ROLES_PERMITIDOS = new Set(["gerencial", "administrativo"]);
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -24,7 +25,7 @@ const MAX_DIAS_RANGO = 366;
 // representan un día completo fuera del trabajo — "permiso" se mide en
 // horas (desde/hasta son "HH:MM", no fechas) y no debe contarse como un
 // día de ausencia.
-const TIPOS_AUSENCIA = ["ausencia", "vacaciones"];
+const TIPOS_AUSENCIA = BASES_AUSENCIA;
 
 const redondear = (n) => Math.round(n * 100) / 100;
 
@@ -77,7 +78,9 @@ export async function GET(request) {
     const [emps, fichs, sols] = await Promise.all([
       sbGetAll(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=legajo,nombre&order=legajo.asc`),
       sbGetAll(`fichadas?empresa_id=eq.${empresaId}&fecha=gte.${desde}&fecha=lte.${hasta}&select=legajo,horas_trabajadas,llegada_tarde,minutos_tarde,horas_extra&order=fecha.asc,id.asc`),
-      sbGetAll(`solicitudes?empresa_id=eq.${empresaId}&estado=eq.aprobado&fecha=gte.${desde}&fecha=lte.${hasta}&tipo=in.(${TIPOS_AUSENCIA.join(",")})&select=legajo&order=id.asc`),
+      // Solicitudes de varios días (F1-21) que tocan el período: empiezan antes del
+      // fin y terminan (fecha_hasta, o fecha si es de un día) después del inicio
+      sbGetAll(`solicitudes?empresa_id=eq.${empresaId}&estado=eq.aprobado&fecha=lte.${hasta}&or=(fecha_hasta.gte.${desde},and(fecha_hasta.is.null,fecha.gte.${desde}))&tipo=in.(${TIPOS_AUSENCIA.join(",")})&select=legajo,fecha,fecha_hasta&order=id.asc`),
     ]);
     const empleados = emps.data;
     const fichadas = fichs.data;
@@ -111,7 +114,7 @@ export async function GET(request) {
     for (const s of solicitudes || []) {
       const row = porLegajo.get(s.legajo);
       if (!row) continue;
-      row.dias_ausencia += 1;
+      row.dias_ausencia += diasEnPeriodo(s, desde, hasta);
     }
 
     const resultado = Array.from(porLegajo.values()).map((r) => ({

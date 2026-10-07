@@ -27,7 +27,7 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["egreso", "horas_trabajadas", "horas_extra"],
   },
   solicitudes: {
-    POST: ["legajo", "tipo", "motivo", "fecha", "desde", "hasta", "nombre_empleado", "empleado_id", "estado", "destinatario_rol"],
+    POST: ["legajo", "tipo", "motivo", "fecha", "desde", "hasta", "nombre_empleado", "empleado_id", "estado", "destinatario_rol", "fecha_hasta", "etiqueta"],
     PATCH: ["estado", "aprobador", "resuelto_at"],
   },
   notificaciones: {
@@ -328,6 +328,13 @@ export const empresaPatchBody = z.object({
   prompt_ia_chat: z.string().max(5000).optional(),
   // Escaneo de OT con la cámara al iniciar una tarea (D8, migración 074)
   escaner_ot: z.boolean().optional(),
+  // Tipos de solicitud que ofrece la empresa (H9, migración 076). null = los de siempre
+  tipos_solicitud: z.array(z.object({
+    clave: z.string().max(40).optional(),
+    nombre: z.string().trim().min(1).max(40),
+    base: z.enum(["permiso", "vacaciones", "ausencia", "justificacion", "cambio_horario", "otro"]),
+    multiDia: z.boolean().optional(),
+  }).strict()).max(20).nullable().optional(),
   // Reglas de asistencia de la fábrica (D5). null = sin bloqueo.
   reglas_asistencia: z.object({
     tolerancia_min: z.number().int().min(0).max(120),

@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { fmtDate } from "../../lib/theme";
 import { hoyArg, ahoraArg } from "../../lib/dates";
 import { duracionMinutos } from "../../lib/calc";
@@ -8,6 +9,7 @@ import SolCard from "../cards/SolCard";
 import EmptyState from "../ui/EmptyState";
 import BotonFichar from "../BotonFichar";
 import PinCard from "../PinCard";
+import NuevaSolicitud from "../NuevaSolicitud";
 
 function fmtMin(m) {
   const h = Math.floor(m / 60);
@@ -17,6 +19,7 @@ function fmtMin(m) {
 
 export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado }) {
   const misSols = ctx.misSolicitudes || [];
+  const [formSolicitud, setFormSolicitud] = useState(false);
   const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
 
@@ -467,9 +470,19 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
 
       {/* Mis solicitudes */}
       <section aria-label="Mis solicitudes">
-        <div className="mb-3">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="m-0 text-base font-bold text-gypi-text font-heading">Mis solicitudes</h3>
+          <button onClick={() => setFormSolicitud(true)} className="min-h-[40px] px-3.5 rounded-[10px] border-none bg-gypi-amber/[0.13] text-gypi-amber text-xs font-bold cursor-pointer">+ Nueva solicitud</button>
         </div>
+        {formSolicitud && (
+          <NuevaSolicitud
+            usuario={usuario}
+            empresa={empresa}
+            demo={demo}
+            onCerrar={() => setFormSolicitud(false)}
+            onEnviada={() => { setFormSolicitud(false); reload?.(); }}
+          />
+        )}
         <div className="flex flex-col gap-2.5">
           {misSols.length === 0
             ? (
@@ -477,7 +490,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                 <EmptyState
                   icon="inbox"
                   title="Sin solicitudes"
-                  description="Cuando pidas permisos o justifiques ausencias desde el chat, aparecerán acá."
+                  description="Cuando pidas un permiso, vacaciones o justifiques una falta, aparecen acá."
                   color="var(--color-empresa-secondary)"
                   style={{ padding: "28px 16px" }}
                 />

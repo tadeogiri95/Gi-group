@@ -139,5 +139,5 @@ test("GET /api/empresa — si falta la columna (migración 074 sin correr) sigue
   const res = await GET(new Request("http://localhost/api/empresa", { headers: { Authorization: `Bearer ${await token()}` } }));
   const json = await res.json();
   assert.equal(json.nombre, "Gi");
-  assert.equal(pedidos.length, 2);
+  assert.ok(!pedidos.at(-1).includes("escaner_ot"), "el último pedido va sin las columnas nuevas");
 });

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Tag } from "../ui";
+import { nombreSolicitud, rangoTexto } from "../../lib/tiposSolicitud";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const GREEN = "#16A34A";
@@ -63,7 +64,7 @@ export default function SolCard({ s, showActions, onResolve, enEspera, onDeshace
           {showActions && <div className="text-[13px] font-bold text-gypi-text">{nombre}</div>}
           <div className={showActions ? "text-[13px] text-gypi-text mt-0.5" : "text-[13px] font-semibold text-gypi-text"}>{s.motivo || s.tipo}</div>
           <div className="text-xs text-gypi-dim mt-1">
-            Legajo {s.legajo} · {s.fecha || new Date(s.created_at).toLocaleDateString("es-AR")}
+            {showActions ? `Legajo ${s.legajo} · ` : ""}{nombreSolicitud(s)} · {s.fecha ? rangoTexto(s) : new Date(s.created_at).toLocaleDateString("es-AR")}
           </div>
           {s.detalle && <div className="text-xs text-gypi-dim mt-1.5 font-mono">{s.detalle}</div>}
           {s.notas_gerencia && s.estado !== "pendiente" && (
