@@ -83,8 +83,12 @@ test("tablero — presentes, ausentes y cumplimiento de hoy con los programados"
       <DashboardGerencia goto={() => {}} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme" }} />
     </AuthContext.Provider>
   );
-  assert.ok(await screen.findByText("1 ausente hoy"));
-  assert.ok(screen.getByText("3/3 hoy"), "3 presentes de 3 programados");
+  // Resumen de arriba (R9): 2 de los 3 esperados vinieron y falta 1
+  const resumen = await screen.findByRole("region", { name: "Resumen de hoy" });
+  assert.ok(within(resumen).getByText("2/3"));
+  assert.ok(within(resumen).getByText("Falta hoy"));
+  assert.ok(within(resumen).getByText("1"));
+  assert.ok(screen.getByText("3 ficharon hoy"), "también cuenta a quien vino fuera de su horario");
   assert.ok(screen.getByText("67%"), "cumplimiento: 2 de los 3 programados (Franco no infla el número)");
 });
 

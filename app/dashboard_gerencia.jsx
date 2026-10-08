@@ -33,7 +33,7 @@ import { useAuth } from "./context/AuthContext";
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 
-import { Tag, EmptyState } from "./components/ui";
+import { Tag, EmptyState, Stat } from "./components/ui";
 import Icon from "./components/Icon";
 import { nombreSolicitud } from "./lib/tiposSolicitud";
 
@@ -289,6 +289,15 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const [showBilling, setShowBilling] = useState(false);
   const [scoreDetail, setScoreDetail] = useState(null);
   const [showFullRanking, setShowFullRanking] = useState(false);
+  // Ranking entre compañeros: delicado para el clima de trabajo, así que se ve
+  // solo si el dueño lo pide; se recuerda en este dispositivo.
+  const [verRanking, setVerRanking] = useState(() => {
+    try { return localStorage.getItem("gypi_ver_ranking") === "1"; } catch { return false; }
+  });
+  const cambiarVerRanking = (v) => {
+    setVerRanking(v);
+    try { localStorage.setItem("gypi_ver_ranking", v ? "1" : "0"); } catch { /* sin almacenamiento */ }
+  };
   const [refreshing, setRefreshing] = useState(false);
 
   const hoy = hoyArg();
@@ -492,9 +501,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const alertas = useMemo(() => {
     const items = [];
     if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} para entrar sin responder`, color: RED, urgencia: "alta", target: "solicitudes" });
-    if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: RED, urgencia: "alta" });
-    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} parado${enEspera > 1 ? "s" : ""}`, color: AMBER, urgencia: "media", target: "ger-actividad" });
-    if (pendientes.length > permisosIngreso.length) items.push({ icon: "\u{1F4CB}", text: `${pendientes.length - permisosIngreso.length} pedido${(pendientes.length - permisosIngreso.length) > 1 ? "s" : ""} sin responder`, target: "solicitudes", color: VIOLET, urgencia: "normal", target: "solicitudes" });
+    // Ausentes, parados y pedidos están en el resumen de arriba (R9): no se repiten acá
     const urgentes = notificaciones.filter(n => {
       if (n.urgencia !== "alta") return false;
       // Si la notificacion tiene solicitud_id, verificar que siga pendiente
@@ -576,9 +583,6 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={refreshing ? AMBER : "currentColor"} strokeWidth="2.5" style={{ animation: refreshing ? "spin 0.8s linear infinite" : "none" }}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
             </button>
-            <button onClick={logout} aria-label="Cerrar sesion" className="w-10 h-10 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-            </button>
           </div>
         </div>
       </header>
@@ -591,6 +595,16 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           Hay más datos de los que se pueden mostrar juntos: algunos totales del mes pueden estar incompletos.
         </div>
       )}
+      {/* ─── Resumen de hoy (R9): lo que el dueño necesita saber en 30 segundos ─── */}
+      <section aria-label="Resumen de hoy" className="grid grid-cols-2 gap-2.5 mb-4">
+        <Stat value={`${presentesProgramados}/${programados}`} label="Vinieron hoy (de los esperados)" tone={programados > 0 && presentesProgramados >= programados ? "bien" : "normal"} />
+        <Stat value={ausentes} label={ausentes === 1 ? "Falta hoy" : "Faltan hoy"} tone={ausentes > 0 ? "mal" : "bien"} />
+        {conTareas
+          ? <Stat value={enEspera} label="Parados ahora" tone={enEspera > 0 ? "atencion" : "bien"} onClick={() => goto?.("ger-actividad")} />
+          : <Stat value={tardesEstaSemana} label="Tardanzas esta semana" tone={tardesEstaSemana > 0 ? "atencion" : "bien"} />}
+        <Stat value={pendientes.length} label="Pedidos sin responder" tone={pendientes.length > 0 ? "atencion" : "bien"} onClick={() => goto?.("solicitudes")} />
+      </section>
+
       {/* Modal de billing */}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
 
@@ -794,19 +808,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       <section aria-label="Asistencia" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
           <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Asistencia</div>
-          <Tag color={GREEN}>{presentes}/{programados} hoy</Tag>
+          <Tag color={GREEN}>{presentes} {presentes === 1 ? "fichó" : "ficharon"} hoy</Tag>
         </div>
 
         {/* Asistencia diaria */}
-        <div className="grid grid-cols-4 gap-2 mb-3.5">
-          <div className="g-kpi" style={{ background: `${GREEN}10` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: GREEN }}>{presentes}</div>
-            <div className="g-kpi-label">Presentes</div>
-          </div>
-          <div className="g-kpi" style={{ background: `${RED}10` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: ausentes > 0 ? RED : GREEN }}>{ausentes}</div>
-            <div className="g-kpi-label">Ausentes</div>
-          </div>
+        <div className="grid grid-cols-2 gap-2 mb-3.5">
           <div className="g-kpi" style={{ background: pctAsist == null ? "var(--color-surf-lo)" : `${pctColor(pctAsist)}10` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: pctAsist == null ? "var(--color-text-muted)" : pctColor(pctAsist) }}>{pctAsist == null ? "—" : `${pctAsist}%`}</div>
             <div className="g-kpi-label">Cumplimiento</div>
@@ -839,8 +845,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         )}
       </section>
 
-      {/* ─── Ranking de empleados ─── */}
-      {ranking.length > 0 && (() => {
+      {/* ─── Ranking de empleados: opcional y apagado por defecto (R9) ─── */}
+      {ranking.length > 0 && !verRanking && (
+        <button onClick={() => cambiarVerRanking(true)} className="w-full min-h-[48px] mb-4 rounded-xl bg-transparent border border-gypi-border text-[14px] text-gypi-text font-semibold cursor-pointer font-body">
+          🏆 Mostrar el ranking del mes
+        </button>
+      )}
+      {ranking.length > 0 && verRanking && (() => {
         const top3 = ranking.slice(0, 3);
         const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
         return (
@@ -871,12 +882,17 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 </div>
               ))}
             </div>
-            <div className="mt-2.5 text-center text-[11px] text-gypi-amber-ink font-semibold">
+            <div className="mt-2.5 text-center text-xs text-gypi-amber-ink font-semibold">
               Ver ranking completo ({ranking.length})
             </div>
           </button>
         );
       })()}
+      {ranking.length > 0 && verRanking && (
+        <button onClick={() => cambiarVerRanking(false)} className="w-full min-h-[44px] -mt-2 mb-4 bg-transparent border-none text-[13px] text-gypi-dim underline cursor-pointer font-body">
+          Ocultar el ranking
+        </button>
+      )}
 
       {/* ─── Productividad divisional/general ─── */}
       <section aria-label="Productividad" className="card-hover g-card mb-4">
@@ -889,15 +905,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         <div className="flex gap-2 mb-3.5">
           <div className="flex-1 g-kpi" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(pctProd) }}>{pctProd}%</div>
-            <div className="g-kpi-label">General</div>
-          </div>
-          <div className="flex-1 g-kpi" style={{ background: `${GREEN}10` }}>
-            <div className="font-heading text-[22px] font-bold text-gypi-green">{enActividad}</div>
-            <div className="g-kpi-label">Trabajando</div>
-          </div>
-          <div className="flex-1 g-kpi" style={{ background: `${RED}10` }}>
-            <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{enEspera + sinTarea}</div>
-            <div className="g-kpi-label">Inactivos</div>
+            <div className="g-kpi-label">Tiempo productivo del equipo</div>
           </div>
         </div>
 
