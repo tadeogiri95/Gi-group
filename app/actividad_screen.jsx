@@ -6,8 +6,8 @@ import { tieneModulo } from "./lib/modulos";
 const TIPOS = [
   { cod: "N", nombre: "Normal", color: "#16A34A" },
   { cod: "R", nombre: "Retrabajo", color: "#DC2626" },
-  { cod: "E", nombre: "Error previo", color: "var(--color-empresa-primary, #F97316)" },
-  { cod: "C", nombre: "Cambio cliente", color: "#7C3AED" },
+  { cod: "E", nombre: "Corrige un error previo", color: "var(--color-empresa-primary, #F97316)" },
+  { cod: "C", nombre: "Cambio pedido por el cliente", color: "#7C3AED" },
 ];
 const CAUSAS = [
   { cod: "M", nombre: "Falta material", icon: "📦" },
@@ -30,6 +30,7 @@ import Icon from "./components/Icon";
 import EscanerCodigo, { escanerDisponible } from "./components/EscanerCodigo";
 import { otDesdeCodigo, recordarOT, otsRecientes } from "./lib/ot";
 import { pendientes } from "./lib/colaOffline";
+import { vibrar } from "./lib/vibrar";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -69,6 +70,7 @@ export default function ActividadScreen({
   const [tipoSeleccionado, setTipoSeleccionado] = useState("N");
   const [showHistorial, setShowHistorial] = useState(false);
   const [step, setStep] = useState(1);
+  const [verTipos, setVerTipos] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const inputRef = useRef(null);
@@ -85,10 +87,9 @@ export default function ActividadScreen({
       setAvisoEscaneo(`El código «${String(texto).slice(0, 40)}» no coincide con ninguna OT de la lista.`);
       return;
     }
-    setProyectoSeleccionado(p);
     setEscaneando(false);
     setAvisoEscaneo("");
-    setStep(3);
+    iniciarTarea(p.ot);
   };
 
   useEffect(() => {
@@ -117,9 +118,11 @@ export default function ActividadScreen({
     );
   });
 
-  const iniciarTarea = async () => {
-    const otFinal = modoManual ? manualOT.trim() : proyectoSeleccionado?.ot;
-    if (!otFinal) return;
+  // Reforma UX R7: elegir la OT ya inicia la tarea (etapa + OT = 2 toques).
+  // El tipo es "Normal" salvo que se marque otro antes de elegir la OT.
+  const iniciarTarea = async (ot) => {
+    const otFinal = ot ?? (modoManual ? manualOT.trim() : proyectoSeleccionado?.ot);
+    if (!otFinal || saving) return;
     setSaving(true);
     setErrorMsg(null);
     try {
@@ -130,6 +133,7 @@ export default function ActividadScreen({
         causa: null,
       });
       if (etapaSeleccionada !== 0) recordarOT(usuario?.id, otFinal);
+      vibrar();
       setProyectoSeleccionado(null);
       setBusqueda("");
       setManualOT("");
@@ -139,6 +143,23 @@ export default function ActividadScreen({
       setStep(1);
       setState("active");
     } catch (e) { console.error(e); setErrorMsg(e?.message || "Error al iniciar la tarea. Intentá de nuevo."); }
+    setSaving(false);
+  };
+
+  // "Cambiar tarea" ya no cierra la actual antes de elegir la nueva (U-05): al
+  // iniciar la nueva, el servidor cierra la anterior. Si vuelve atrás, sigue igual.
+  const cambiarTarea = () => { setErrorMsg(null); setState("selecting"); setStep(1); };
+
+  // Después de estar parado: volver a lo último que estaba haciendo (U-07)
+  const ultimaProductiva = [...(historial || [])].reverse().find((r) => r.etapa > 0 && r.codigo_proyecto);
+  const seguirConLoMismo = async () => {
+    if (!ultimaProductiva) return;
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      await onIniciar({ etapa: ultimaProductiva.etapa, codigo_proyecto: ultimaProductiva.codigo_proyecto, tipo: ultimaProductiva.tipo || "N", causa: null });
+      vibrar();
+    } catch (e) { setErrorMsg(e?.message || "No se pudo retomar la tarea. Intentá de nuevo."); }
     setSaving(false);
   };
 
@@ -160,6 +181,7 @@ export default function ActividadScreen({
     setErrorMsg(null);
     try {
       await onIniciar({ etapa: 0, codigo_proyecto: null, tipo: "N", causa });
+      vibrar();
       setState("active");
     } catch (e) { console.error(e); setErrorMsg(e?.message || "No se pudo registrar que estás parado. Intentá de nuevo."); }
     setSaving(false);
@@ -325,10 +347,10 @@ export default function ActividadScreen({
           <button onClick={() => { setState(tareaActiva ? "active" : "idle"); setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} aria-label="Volver" className="min-w-[48px] min-h-[48px] -ml-2 bg-transparent border-none text-gypi-text cursor-pointer text-2xl flex items-center justify-center">←</button>
           <div className="flex-1">
             <div className="g-overline text-gypi-amber-ink">Nueva tarea</div>
-            <div className="text-base font-bold font-heading">Paso {step} de 3</div>
+            <div className="text-base font-bold font-heading">Paso {Math.min(step, 2)} de 2</div>
           </div>
           <div className="flex gap-1">
-            {[1, 2, 3].map(s => (
+            {[1, 2].map(s => (
               <div key={s} className={`h-2 rounded transition-all ${s <= step ? 'bg-gypi-amber' : 'bg-gypi-surf-hi'}`} style={{ width: s === step ? 24 : 8 }} />
             ))}
           </div>
@@ -359,7 +381,24 @@ export default function ActividadScreen({
           {/* STEP 2: Selector de proyecto */}
           {step === 2 && (
             <div>
-              <div className="text-[15px] font-bold mb-1 font-heading">OT</div>
+              <div className="text-[15px] font-bold mb-1 font-heading">¿En qué OT?</div>
+              <div className="text-xs text-gypi-dim mb-3">Tocá la OT y la tarea arranca.</div>
+
+              {/* Tipo de trabajo (R7): casi siempre Normal, así que va plegado */}
+              {verTipos ? (
+                <div role="radiogroup" aria-label="Tipo de trabajo" className="flex gap-1.5 flex-wrap mb-3">
+                  {TIPOS.map(t => (
+                    <button key={t.cod} role="radio" aria-checked={tipoSeleccionado === t.cod} onClick={() => setTipoSeleccionado(t.cod)}
+                      className={`min-h-[44px] px-3 rounded-[10px] text-xs font-bold font-body cursor-pointer border-2 ${tipoSeleccionado === t.cod ? "border-gypi-amber bg-gypi-amber/[0.09] text-gypi-text" : "border-transparent bg-gypi-surface text-gypi-dim"}`}>
+                      {t.nombre}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button onClick={() => setVerTipos(true)} className="min-h-[44px] mb-2 px-1 bg-transparent border-none text-[13px] text-gypi-dim underline cursor-pointer font-body">
+                  ¿Es retrabajo u otro caso especial?
+                </button>
+              )}
 
               <div className="flex gap-1.5 mb-3">
                 <button onClick={() => { setModoManual(false); setManualOT(""); }} className={`flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body ${!modoManual ? 'bg-gypi-amber/[0.13] text-gypi-amber-ink' : 'bg-gypi-surface text-gypi-dim'}`}>🔍 Buscar OT</button>
@@ -390,7 +429,7 @@ export default function ActividadScreen({
                     <div className="text-xs text-gypi-dim mb-1.5">Recientes</div>
                     <div className="flex gap-1.5 flex-wrap">
                       {recientes.map(p => (
-                        <button key={p.ot} onClick={() => setProyectoSeleccionado(p)} className={`min-h-[40px] px-3 rounded-[10px] border-2 text-xs font-bold font-mono cursor-pointer ${proyectoSeleccionado?.ot === p.ot ? "border-gypi-amber bg-gypi-amber/[0.09] text-gypi-amber-ink" : "border-transparent bg-gypi-surface text-gypi-text"}`}>
+                        <button key={p.ot} onClick={() => iniciarTarea(p.ot)} disabled={saving} className={`min-h-[48px] px-3 rounded-[10px] border-2 text-[13px] font-bold font-mono cursor-pointer ${proyectoSeleccionado?.ot === p.ot ? "border-gypi-amber bg-gypi-amber/[0.09] text-gypi-amber-ink" : "border-transparent bg-gypi-surface text-gypi-text"}`}>
                           OT {p.ot}{p.cliente ? <span className="font-body font-semibold text-gypi-dim"> · {p.cliente}</span> : null}
                         </button>
                       ))}
@@ -436,7 +475,7 @@ export default function ActividadScreen({
                     proyectosFiltrados.slice(0, 20).map(p => {
                       const sel = proyectoSeleccionado?.ot === p.ot;
                       return (
-                        <button key={p.ot} onClick={() => setProyectoSeleccionado(p)} className={`py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all border-2 ${sel ? 'bg-gypi-amber/[0.09] border-gypi-amber' : 'bg-gypi-surface border-transparent'}`}>
+                        <button key={p.ot} onClick={() => iniciarTarea(p.ot)} disabled={saving} className={`min-h-[56px] py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all border-2 ${sel ? 'bg-gypi-amber/[0.09] border-gypi-amber' : 'bg-gypi-surface border-transparent'}`}>
                           <div className={`min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5 ${sel ? 'bg-gypi-amber/10 text-gypi-amber-ink' : 'bg-gypi-surf-hi text-gypi-text'}`}>{p.ot}</div>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text truncate">{p.cliente}</div>
@@ -454,10 +493,8 @@ export default function ActividadScreen({
                   )}
                 </div>
 
-                <div className="flex gap-2">
-                  <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer bg-gypi-surf-hi text-gypi-dim">Atrás</button>
-                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} className={`flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body ${proyectoSeleccionado ? 'bg-gypi-amber text-gypi-on-amber cursor-pointer' : 'bg-gypi-surf-hi text-gypi-mute cursor-default'}`}>Siguiente →</button>
-                </div>
+                {saving && <div role="status" className="text-center text-[13px] text-gypi-dim mb-2">Iniciando…</div>}
+                <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="w-full min-h-[48px] p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer bg-gypi-surf-hi text-gypi-text">← Cambiar la etapa</button>
               </>)}
 
               {/* Modo manual */}
@@ -469,7 +506,7 @@ export default function ActividadScreen({
                   inputMode="numeric"
                   value={manualOT}
                   onChange={e => setManualOT(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && manualOT.trim() && setStep(3)}
+                  onKeyDown={e => e.key === "Enter" && manualOT.trim() && iniciarTarea()}
                   placeholder="Número de OT"
                   className="w-full py-[18px] px-5 rounded-[14px] bg-gypi-surface text-gypi-text text-[32px] font-mono font-bold text-center outline-none box-border mb-4 border-2 border-gypi-amber/40 tracking-[4px]"
                 />
@@ -486,67 +523,12 @@ export default function ActividadScreen({
 
                 <div className="flex gap-2">
                   <button onClick={() => { setStep(1); setManualOT(""); setModoManual(false); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer bg-gypi-surf-hi text-gypi-dim">Atrás</button>
-                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} className={`flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body ${manualOT.trim() ? 'bg-gypi-amber text-gypi-on-amber cursor-pointer' : 'bg-gypi-surf-hi text-gypi-mute cursor-default'}`}>Siguiente →</button>
+                  <button disabled={!manualOT.trim() || saving} onClick={() => iniciarTarea()} className={`flex-[2] min-h-[56px] p-3.5 rounded-[14px] border-none text-base font-bold font-body ${manualOT.trim() && !saving ? 'bg-gypi-green text-white cursor-pointer' : 'bg-gypi-surf-hi text-gypi-mute cursor-default'}`}>{saving ? "Iniciando…" : "▶ Iniciar"}</button>
                 </div>
               </>)}
             </div>
           )}
 
-          {/* STEP 3: Tipo + Confirmar */}
-          {step === 3 && (
-            <div>
-              <div className="text-[15px] font-bold mb-1 font-heading">Tipo de trabajo</div>
-              <div className="text-xs text-gypi-dim mb-4">¿Es trabajo normal o hay algo especial?</div>
-              <div className="flex flex-col gap-2 mb-6">
-                {TIPOS.map(t => (
-                  <button key={t.cod} onClick={() => setTipoSeleccionado(t.cod)} className="py-3.5 px-4 rounded-[14px] cursor-pointer flex items-center gap-3 font-body transition-all bg-gypi-surface" style={{ background: tipoSeleccionado === t.cod ? `color-mix(in srgb, ${t.color} 9%, transparent)` : undefined, border: `2px solid ${tipoSeleccionado === t.cod ? t.color : "transparent"}` }}>
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center transition-all" style={{ border: `2px solid ${tipoSeleccionado === t.cod ? t.color : 'var(--color-text-secondary)'}`, background: tipoSeleccionado === t.cod ? t.color : "transparent" }}>
-                      {tipoSeleccionado === t.cod && <span className="text-xs font-black text-black">✓</span>}
-                    </div>
-                    <div className="text-left">
-                      <div className="text-[13px] font-bold text-gypi-text">{t.nombre}</div>
-                    </div>
-                    <Tag color={t.color} style={{ marginLeft: "auto" }}>{t.cod}</Tag>
-                  </button>
-                ))}
-              </div>
-
-              {etapaSelInfo && (proyectoSeleccionado || modoManual) && (
-                <div className="rounded-2xl p-4 mb-4 bg-gypi-surf-hi border border-[var(--color-border-hi)]">
-                  <div className="g-overline mb-2.5">Resumen</div>
-                  <div className="flex justify-between mb-1.5">
-                    <span className="text-xs text-gypi-dim">Etapa</span>
-                    <span className="text-xs font-bold">{etapaSelInfo.icon} {etapaSelInfo.nombre}</span>
-                  </div>
-                  <div className="flex justify-between mb-1.5">
-                    <span className="text-xs text-gypi-dim">OT</span>
-                    <span className="text-xs font-bold font-mono">OT {modoManual ? manualOT : proyectoSeleccionado?.ot}</span>
-                  </div>
-                  {!modoManual && proyectoSeleccionado?.cliente && (
-                    <div className="flex justify-between mb-1.5">
-                      <span className="text-xs text-gypi-dim">Cliente</span>
-                      <span className="text-xs font-semibold max-w-[180px] truncate">{proyectoSeleccionado.cliente}</span>
-                    </div>
-                  )}
-                  {modoManual && (
-                    <div className="flex justify-between mb-1.5">
-                      <span className="text-xs text-gypi-dim">Modo</span>
-                      <Tag color="var(--color-empresa-primary)">Manual</Tag>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-xs text-gypi-dim">Tipo</span>
-                    <Tag color={TIPOS.find(t => t.cod === tipoSeleccionado)?.color}>{tipoSeleccionado} — {TIPOS.find(t => t.cod === tipoSeleccionado)?.nombre}</Tag>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <button onClick={() => setStep(2)} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer bg-gypi-surf-hi text-gypi-dim">Atrás</button>
-                <button onClick={iniciarTarea} disabled={saving} className={`flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body flex items-center justify-center gap-1.5 ${saving ? 'bg-gypi-surf-hi text-gypi-mute cursor-default' : 'bg-gypi-green text-black cursor-pointer'}`}>{saving ? "Guardando..." : "▶ Iniciar"}</button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -569,7 +551,6 @@ export default function ActividadScreen({
               <div className="w-11 h-11 rounded-xl flex items-center justify-center text-[22px] bg-gypi-red/10">{c.icon}</div>
               <div className="text-left">
                 <div className="text-sm font-bold text-gypi-text">{c.nombre}</div>
-                <div className="text-[11px] text-gypi-dim font-mono">Código: {c.cod}</div>
               </div>
             </button>
           ))}
@@ -602,7 +583,7 @@ export default function ActividadScreen({
                 )}
                 {isEspera && <div className="text-[13px] text-gypi-red">Causa: {CAUSAS.find(c => c.cod === tareaActiva?.causa)?.nombre}</div>}
               </div>
-              <Tag color={TIPOS.find(t => t.cod === tareaActiva?.tipo)?.color}>{tareaActiva?.tipo}</Tag>
+              {tareaActiva?.tipo && tareaActiva.tipo !== "N" && <Tag color={TIPOS.find(t => t.cod === tareaActiva.tipo)?.color}>{TIPOS.find(t => t.cod === tareaActiva.tipo)?.nombre}</Tag>}
             </div>
 
             <div className="text-center mb-5">
@@ -612,15 +593,22 @@ export default function ActividadScreen({
 
             <div className="flex items-center justify-center gap-2 mb-1">
               <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: accentColor }} />
-              <span className="text-[11px] text-gypi-dim font-semibold">{isEspera ? "EN ESPERA" : "REGISTRANDO"}</span>
+              <span className="text-xs text-gypi-dim font-semibold">{isEspera ? "PARADO" : "TRABAJANDO"}</span>
             </div>
           </div>
         </div>
 
+        {/* Parado: volver con un toque a lo que estaba haciendo (U-07) */}
+        {isEspera && ultimaProductiva && (
+          <button onClick={seguirConLoMismo} disabled={saving} className={`w-full min-h-[64px] p-4 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-green text-white ${saving ? 'opacity-50' : ''}`}>
+            ▶ Seguir con {getEtapaInfo(etapas, ultimaProductiva.etapa).nombre} · OT {ultimaProductiva.codigo_proyecto}
+          </button>
+        )}
+
         <div className="flex gap-2.5">
-          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className={`flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-amber text-gypi-on-amber ${saving ? 'opacity-50' : ''}`}><Icon name="refresh" size={15} /> Cambiar tarea</button>
+          <button onClick={cambiarTarea} disabled={saving} className={`flex-1 min-h-[64px] p-4 rounded-2xl border-none text-[15px] font-bold font-body cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-amber text-gypi-on-amber ${saving ? 'opacity-50' : ''}`}><Icon name="refresh" size={16} /> {isEspera ? "Otra tarea" : "Cambiar tarea"}</button>
           {!isEspera && (
-            <button onClick={() => setState("pausing")} disabled={saving} aria-label="Estoy parado" className={`flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red flex items-center justify-center ${saving ? 'opacity-50' : ''}`}><Icon name="pause" size={18} /></button>
+            <button onClick={() => setState("pausing")} disabled={saving} className={`flex-1 min-h-[64px] p-4 rounded-2xl text-[15px] font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red flex items-center justify-center gap-1.5 ${saving ? 'opacity-50' : ''}`}><Icon name="pause" size={16} /> Estoy parado</button>
           )}
         </div>
 

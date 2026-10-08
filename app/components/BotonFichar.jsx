@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { ficharServer, obtenerGeo } from "../lib/fichar";
 import { pedirPermisoIngreso, pedirSalidaAnticipada, pedirHoraExtra } from "../lib/pedidosOperario";
 import { fmtTime } from "../lib/theme";
+import { vibrar } from "../lib/vibrar";
 
 const GPS_SEGUNDOS = 8;
 
@@ -32,7 +33,8 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
 
   useEffect(() => () => clearInterval(timer.current), []);
 
-  const terminar = (tono, texto, acciones = []) => { setResultado({ tono, texto, acciones }); setFase("resultado"); };
+  // Vibración corta al fichar bien (R7): con guantes y ruido se siente en la mano
+  const terminar = (tono, texto, acciones = []) => { if (tono === "ok") vibrar(); setResultado({ tono, texto, acciones }); setFase("resultado"); };
 
   const fichar = async ({ forzarCierreTarea = false } = {}) => {
     const tipo = accion === "egreso" ? "egreso" : "ingreso";
