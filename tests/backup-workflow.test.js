@@ -87,6 +87,9 @@ test("sin-credenciales.sh — detecta JWT, cadenas de conexión con contraseña 
 
 const wfStaging = readFileSync(new URL("../.github/workflows/preparar-staging.yml", import.meta.url), "utf8");
 const preparar = readFileSync(new URL("../scripts/staging/preparar.sh", import.meta.url), "utf8");
+const comun = readFileSync(new URL("../scripts/staging/comun.sh", import.meta.url), "utf8");
+const actualizar = readFileSync(new URL("../scripts/staging/actualizar.sh", import.meta.url), "utf8");
+const wfActualizar = readFileSync(new URL("../.github/workflows/actualizar-staging.yml", import.meta.url), "utf8");
 const base = readFileSync(new URL("../supabase/baseline/esquema-base.sql", import.meta.url), "utf8");
 
 test("preparar-staging — solo a mano, secretos por env y con chequeo contra producción", () => {
@@ -96,7 +99,8 @@ test("preparar-staging — solo a mano, secretos por env y con chequeo contra pr
     if (linea.includes("secrets.")) assert.match(linea, /^\s+[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}\s*$/, linea);
   }
   assert.match(wfStaging, /PROD_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/);
-  assert.match(preparar, /es el mismo proyecto que producción/);
+  assert.match(comun, /es el mismo proyecto que producción/);
+  assert.match(preparar, /chequear_no_es_produccion/);
   assert.match(preparar, /ya tiene tablas de Gypi/);
 });
 
@@ -142,4 +146,30 @@ test("preparar.sh — limpia errores de copiado, muestra el proyecto sin la cont
   assert.match(ok.stdout, /proyecto: stgref/);
   assert.ok(!/mismo proyecto|No reconozco/.test(ok.stdout));
   assert.ok(!ok.stdout.includes("ClaveStg1"));
+});
+
+test("actualizar-staging — corre solo al llegar migraciones a main o a mano, nunca contra producción", () => {
+  assert.match(wfActualizar, /push:\s*\n\s*branches: \[main\]\s*\n\s*paths: \["supabase\/migrations\/\*\*"\]/);
+  assert.match(wfActualizar, /workflow_dispatch:/);
+  assert.ok(!/schedule:/.test(wfActualizar));
+  for (const linea of wfActualizar.split("\n")) {
+    if (linea.includes("secrets.")) assert.match(linea, /^\s+[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}\s*$/, linea);
+  }
+  assert.match(wfActualizar, /PROD_DB_URL: \$\{\{ secrets\.SUPABASE_DB_URL \}\}/);
+  // Sin staging configurado, el aviso al llegar a main no falla
+  assert.match(wfActualizar, /No hay staging configurado/);
+  assert.match(actualizar, /chequear_no_es_produccion/);
+  assert.match(actualizar, /Primero corré \\"Preparar base de staging\\"/);
+  // Toma de preparar.sh hasta qué migración trae la línea base (una sola fuente)
+  assert.match(actualizar, /ULTIMA_EN_BASE="\$\(sed .*preparar\.sh"\)"/);
+});
+
+test("actualizar.sh — frena si la dirección es la de producción, sin mostrar contraseñas", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const script = new URL("../scripts/staging/actualizar.sh", import.meta.url).pathname;
+  const PROD = "postgresql://postgres.prodref:ClaveProd1@aws-0.pooler.supabase.com:5432/postgres";
+  const r = spawnSync("bash", [script], { env: { ...process.env, STAGING_DB_URL: PROD, PROD_DB_URL: PROD, PSQL: "false" }, encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /mismo proyecto que producción \(prodref\)/);
+  assert.ok(!r.stdout.includes("ClaveProd1"));
 });

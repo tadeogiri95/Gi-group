@@ -29,4 +29,5 @@ Son ~20 minutos. **No me pases ninguna clave:** todo se carga directo en Supabas
 
 ## Después
 - En staging no hay empresas: en una vista previa podés registrar una empresa de prueba desde la pantalla de alta, sin miedo.
-- Las migraciones nuevas se prueban primero en staging.
+- **Las migraciones nuevas llegan solas a staging:** cada vez que se fusiona un PR que trae una migración, GitHub la aplica en staging (Actions → "Actualizar base de staging"). En **producción** las seguís corriendo vos a mano, antes de fusionar, como hasta ahora.
+- Si alguna vez staging quedó atrasado, Actions → **"Actualizar base de staging" → Run workflow** lo pone al día: vuelve a pasar todas las migraciones en orden (las que ya estaban no cambian nada). No borra ni copia datos.

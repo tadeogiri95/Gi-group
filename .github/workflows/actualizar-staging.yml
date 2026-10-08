@@ -1,0 +1,60 @@
+name: Actualizar base de staging
+
+# Aplica a staging las migraciones nuevas apenas llegan a main, para que las
+# vistas previas de cada PR no fallen por tablas que faltan. La base de
+# producción NO se toca: sus migraciones las sigue corriendo el dueño a mano.
+# También se puede correr a mano (Actions → Actualizar base de staging).
+# Guía: auditoria/como-armar-staging.md
+
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/migrations/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preparar-staging
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.repository == 'tadeogiri95/Gi-group'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar el secreto
+        id: secreto
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          if [ -z "$STAGING_DB_URL" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Falta el secreto STAGING_DB_URL (ver auditoria/como-armar-staging.md)"
+              exit 1
+            fi
+            echo "::notice::No hay staging configurado (falta STAGING_DB_URL): no hay nada que actualizar."
+            echo "hay=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "hay=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar cliente de Postgres 17
+        if: steps.secreto.outputs.hay == 'si'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Actualizar staging
+        if: steps.secreto.outputs.hay == 'si'
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+          PROD_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PSQL: /usr/lib/postgresql/17/bin/psql
+        run: scripts/staging/actualizar.sh
