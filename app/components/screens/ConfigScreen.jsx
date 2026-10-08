@@ -15,12 +15,17 @@ import { MODULO_SECCION_GESTION, seccionBloqueada } from "../../lib/modulos";
 import { seccionesMas, GRUPOS } from "../../lib/menuGestion";
 import ListItem from "../ui/ListItem";
 import AsistenciaReglasScreen from "./AsistenciaReglasScreen";
+import CerrarSesion from "../CerrarSesion";
 
 // Gypi no muestra publicidad (D20): solo usa lo necesario para la sesión.
 function PrivacidadPanel({ usuario, empresa }) {
   const { logout } = useAuth();
   return (
     <div className="px-4 py-6 flex flex-col gap-5 overflow-y-auto flex-1">
+      <div>
+        <p className="g-overline text-gypi-dim mb-1">Tu sesión</p>
+        <CerrarSesion usuario={usuario} />
+      </div>
       <CuentaDatos usuario={usuario} empresa={empresa} onLogout={logout} />
       <div>
         <p className="g-overline text-gypi-dim mb-1">Cookies</p>
@@ -80,6 +85,7 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
             </div>
           );
         })}
+        <CerrarSesion usuario={usuario} />
       </nav>
     );
   }

@@ -94,3 +94,27 @@ test("Planta — En vivo y OT; lo que no está en el plan, con candado", async (
   fireEvent.click(screen.getByRole("tab", { name: "En vivo 🔒" }));
   assert.ok(await screen.findByText("Tareas"), "explica el módulo que falta");
 });
+
+// ─── Cerrar sesión (desde R9 el tablero no tiene el botón arriba) ───────────
+
+test("Más — al final está 'Cerrar sesión' con quién entró, y también en 'Mi cuenta y privacidad'", async () => {
+  const { default: CerrarSesion } = await import("../app/components/CerrarSesion.jsx");
+  let salio = 0;
+  const usuario = { rol: "administrativo", solo_su_division: true, apodo: "Carla" };
+  render(
+    <AuthContext.Provider value={{ logout: async () => { salio++; }, usuario }}>
+      <CerrarSesion usuario={usuario} />
+    </AuthContext.Provider>
+  );
+  assert.ok(screen.getByText("Carla"));
+  assert.ok(screen.getByText(/Supervisor/));
+  const boton = screen.getByRole("button", { name: /Cerrar sesión/ });
+  assert.equal(boton.style.minHeight, "48px");
+  fireEvent.click(boton);
+  assert.equal(salio, 1);
+
+  // Está en los dos lugares: al final de la lista de "Más" y en la sección de la cuenta
+  const config = readFileSync(new URL("../app/components/screens/ConfigScreen.jsx", import.meta.url), "utf8");
+  assert.equal((config.match(/<CerrarSesion usuario=\{usuario\} \/>/g) || []).length, 2);
+  assert.match(config, /<CerrarSesion usuario=\{usuario\} \/>\s*<\/nav>/, "al final de la lista de Más");
+});
