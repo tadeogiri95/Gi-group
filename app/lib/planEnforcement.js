@@ -4,8 +4,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
-import { PLANES, planLimite, planPermite, planVigente, capacidades, planSiguiente, ADDONS } from "./plans";
-import { MODULOS, modulosEfectivos, configModulos } from "./modulos";
+import { PLANES, planLimite, planPermite, planVigente, capacidades, planSiguiente } from "./plans";
+import { modulosEfectivos, configModulos, comoSumarModulo } from "./modulos";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -115,16 +115,6 @@ export async function getModulosEmpresa(empresaId, { plan: planLeido } = {}) {
   };
 }
 
-// Cuál es la forma de sumar un módulo que falta: un add-on, Planta o el tramo siguiente
-function comoSumar(plan, modulo) {
-  const addon = Object.values(ADDONS).find((a) => a.modulos.includes(modulo));
-  if (addon) return { upgrade_a: addon.id, error: `${MODULOS[modulo].nombre} es parte del add-on ${addon.nombre}. Sumalo desde Facturación.` };
-  if (modulo === "proyectos" || modulo === "actividad") {
-    return { upgrade_a: planSiguiente(plan, { necesitaPlanta: true }), error: `${MODULOS[modulo].nombre} es parte del plan Planta.` };
-  }
-  return { upgrade_a: planSiguiente(plan), error: `Tu plan no incluye ${MODULOS[modulo]?.nombre || modulo}.` };
-}
-
 /**
  * Corta con 402 si la empresa no tiene el módulo (ítem 36).
  * @returns {Promise<NextResponse|null>}
@@ -132,7 +122,7 @@ function comoSumar(plan, modulo) {
 export async function requireModulo(empresaId, modulo) {
   const { plan, modulos } = await getModulosEmpresa(empresaId);
   if (modulos.includes(modulo)) return null;
-  const { error, upgrade_a } = comoSumar(plan, modulo);
+  const { error, upgrade_a } = comoSumarModulo(plan, modulo);
   return NextResponse.json({ ok: false, error, tipo: "sin_modulo", modulo, upgrade_a, paywall: true }, { status: 402 });
 }
 
@@ -189,7 +179,7 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
   let modulosEmpresa = null;
   if (modulo) {
     ({ modulos: modulosEmpresa } = await getModulosEmpresa(empresaId));
-    if (!modulosEmpresa.includes(modulo)) return { ok: false, ...comoSumar(plan, modulo) };
+    if (!modulosEmpresa.includes(modulo)) return { ok: false, ...comoSumarModulo(plan, modulo) };
   }
 
   // ─── empleados: chequear max_empleados ───

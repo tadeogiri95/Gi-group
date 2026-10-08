@@ -13,7 +13,11 @@ const Icons = {
   history: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
 };
 
-function getItems(role, pend) {
+// Pestañas del operario según los módulos de la empresa (ítem 36). Sin la
+// lista de módulos (demo, versión vieja en caché) se muestran todas.
+const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => modulos.includes(m));
+
+export function getItems(role, pend, modulos) {
   if (role === 'gerencial' || role === 'administrativo') {
     return [
       { id: 'home',         label: 'Inicio',    icon: Icons.home },
@@ -24,14 +28,14 @@ function getItems(role, pend) {
   }
   return [
     { id: 'home',       label: 'Inicio',      icon: Icons.home },
-    { id: 'actividad',  label: 'Actividad',   icon: Icons.hammer },
-    { id: 'chat',       label: 'Chat',        icon: Icons.chat },
+    tiene(modulos, 'actividad', 'obra') && { id: 'actividad', label: 'Actividad', icon: Icons.hammer },
+    tiene(modulos, 'chat') && { id: 'chat', label: 'Chat', icon: Icons.chat },
     { id: 'mis-sols',   label: 'Solicitudes', icon: Icons.history },
-  ];
+  ].filter(Boolean);
 }
 
-export default function BottomNav({ active, onChange, role, pend }) {
-  const items = getItems(role, pend);
+export default function BottomNav({ active, onChange, role, pend, modulos }) {
+  const items = getItems(role, pend, modulos);
   return (
     <nav
       role="navigation"

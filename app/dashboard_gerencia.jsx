@@ -18,6 +18,7 @@ import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
 import ChecklistActivacion from "./components/ChecklistActivacion";
 import BillingScreen from "./components/BillingScreen";
+import { tieneModulo } from "./lib/modulos";
 import FotoViewer from "./components/FotoViewer";
 /* ═══════════════════════════════════════════════════════
    DASHBOARD GERENCIAL — Vista en tiempo real
@@ -543,6 +544,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
   /* ─── Estado expandido de paneles ─── */
   const [panelExpanded, setPanelExpanded] = useState(null); // "taller" | "instalaciones" | null
+  // Módulos de la empresa (ítem 36): producción en vivo y trabajo en campo
+  const conTareas = tieneModulo(empresa, "actividad");
+  const conObra = tieneModulo(empresa, "obra");
 
   /* ═══ RENDER ═══ */
   return (
@@ -644,7 +648,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       )}
 
       {/* ─── Botones En planta / Trabajo en campo ─── */}
-      <div className="grid grid-cols-2 gap-2 mb-3.5">
+      <div className={`grid ${conObra ? "grid-cols-2" : "grid-cols-1"} gap-2 mb-3.5`}>
         <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")}
           className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
           style={{
@@ -655,7 +659,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}><Icon name="hammer" size={18} /></div>
           <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? AMBER : "var(--color-text)" }}>En planta</span>
         </button>
-        <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
+        {conObra && <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
           className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
           style={{
             background: panelExpanded === "instalaciones" ? `${CYAN}18` : "var(--color-surface)",
@@ -664,7 +668,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         >
           <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${CYAN}22`, color: CYAN }}><Icon name="building" size={18} /></div>
           <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "instalaciones" ? CYAN : "var(--color-text)" }}>Trabajo en campo</span>
-        </button>
+        </button>}
       </div>
 
       {/* ─── Panel expandido: En planta ─── */}
@@ -731,17 +735,17 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             </>
           )}
 
-          <button onClick={() => goto?.("ger-actividad")}
+          {conTareas && <button onClick={() => goto?.("ger-actividad")}
             className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
             style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 15%, transparent)`, color: AMBER }}
           >
             <Icon name="hammer" size={14} /> Ver detalle por operario &rarr;
-          </button>
+          </button>}
         </section>
       )}
 
       {/* ─── Panel expandido: Trabajo en campo ─── */}
-      {panelExpanded === "instalaciones" && (
+      {conObra && panelExpanded === "instalaciones" && (
         <section aria-label="Trabajo en campo" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${CYAN}30` }}>
           <div className="flex justify-between items-center mb-3">
             <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Trabajo en campo hoy</div>

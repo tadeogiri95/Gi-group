@@ -20,6 +20,8 @@ import { useRefrescoVisible } from "../hooks/useRefrescoVisible";
 import PushManager from "../components/PushManager";
 import CuentaEnPausa from "../components/CuentaEnPausa";
 import { planVigente } from "../lib/plans";
+import { tieneModulo } from "../lib/modulos";
+import ModuloBloqueado from "../components/ModuloBloqueado";
 import { guardarInstantanea, leerInstantanea } from "../lib/instantanea";
 import { registrarServiceWorker } from "../lib/registrarSW";
 
@@ -236,7 +238,11 @@ export default function HomeContent() {
   useRealtimeSync(!isDemo && u ? (u.empresa_id || empresa?.id) : null, pedirRecarga);
 
   const pend = (ctx.solicitudes || []).filter(s => s.estado === "pendiente").length;
-  const isChat = screen === "chat";
+  // Pantallas que son de un módulo (ítem 36): sin el módulo se ve el aviso en vez de la pantalla
+  const MODULO_PANTALLA = { chat: ["chat"], actividad: ["actividad", "obra"], "ger-actividad": ["actividad"] };
+  const moduloFaltante = (MODULO_PANTALLA[screen] && !MODULO_PANTALLA[screen].some((m) => tieneModulo(empresa, m)))
+    ? MODULO_PANTALLA[screen][0] : null;
+  const isChat = screen === "chat" && !moduloFaltante;
   const showBack = screen === "reglas" || screen === "historial-fichajes" || screen === "ger-actividad";
 
   const getScreenSubtitle = () => {
@@ -342,6 +348,9 @@ export default function HomeContent() {
           </div>
         )}
         <ErrorBoundary name={screen}>
+          {moduloFaltante ? (
+            <ModuloBloqueado modulo={moduloFaltante} empresa={empresa} rol={u?.rol} onVerPlanes={() => setShowBilling(true)} />
+          ) : <>
           {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} actividadesHoy={isDemo ? demoActividad.actividadesHoy : actividad.historial} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} reload={loadData} demo={isDemo} onPinCambiado={(t) => actualizarUsuario?.({ tiene_pin: t })} />}
           {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} onBack={() => setScreen("home")} />}
           {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} fichadaHoy={ctx.fichadaHoy} />}
@@ -368,13 +377,15 @@ export default function HomeContent() {
               divisiones={divisionesEmpresa}
               etapas={etapasEmpresa}
               onUpdateEmpresa={updateEmpresa}
+              onVerPlanes={() => setShowBilling(true)}
             />
           )}
           {/* Bot IA removido de vista gerencial */}
+          </>}
         </ErrorBoundary>
       </div>
 
-      {!isChat && <Nav active={screen} onChange={setScreen} role={u.rol} pend={pend} />}
+      {!isChat && <Nav active={screen} onChange={setScreen} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} />}
 
       {paywallInfo && (
         <Paywall

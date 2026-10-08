@@ -11,6 +11,8 @@ import GestionPersonalScreen from "../../gestion_personal_screen";
 import DocumentosEmpleadoScreen from "../../documentos_empleado_screen";
 import CuentaDatos from "../CuentaDatos";
 import { useAuth } from "../../context/AuthContext";
+import ModuloBloqueado from "../ModuloBloqueado";
+import { MODULO_SECCION_GESTION, seccionBloqueada } from "../../lib/modulos";
 
 const SECTIONS = [
   { id: "parametros", label: "Parámetros" },
@@ -94,7 +96,7 @@ function PrivacidadPanel({ usuario, empresa }) {
   );
 }
 
-export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [] }) {
+export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [], onVerPlanes }) {
   const [section, setSection] = useState("parametros");
   const [subtab, setSubtab] = useState("horarios");
   const empresaId = usuario?.empresa_id || empresa?.id;
@@ -105,6 +107,9 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
   };
 
   const currentSubtabs = SUBTABS[section] || [];
+  // Secciones de módulos que la empresa no tiene (ítem 36): se ven con candado
+  const moduloDe = (id) => MODULO_SECCION_GESTION[id];
+  const bloqueado = (id) => seccionBloqueada(id, empresa);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -132,6 +137,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
       {currentSubtabs.length > 1 && (
         <div role="tablist" aria-label="Opciones de la sección" className="px-4 py-2 flex gap-1 overflow-x-auto shrink-0 scrollbar-none">
           {currentSubtabs.map(({ id, label, icon }) => {
+            const conCandado = bloqueado(id);
             const isActive = subtab === id;
             return (
               <button
@@ -143,6 +149,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
               >
                 <span className={`flex ${isActive ? "opacity-100" : "opacity-60"}`}>{icon}</span>
                 {label}
+                {conCandado && <span aria-label="no incluido en tu plan">🔒</span>}
               </button>
             );
           })}
@@ -151,6 +158,8 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
 
       {/* Content */}
       <div role="tabpanel" aria-label={`Contenido de ${(currentSubtabs.find(t => t.id === subtab) || {}).label || subtab}`} className="flex-1 overflow-hidden flex flex-col">
+        {bloqueado(subtab) && <ModuloBloqueado modulo={moduloDe(subtab)} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
+        {!bloqueado(subtab) && <>
         {subtab === "asistencia"  && <ReportesScreen />}
         {subtab === "horarios"    && <GrillaHorarioScreen empresaId={empresaId} />}
         {subtab === "proyectos"   && <ProyectosScreen empresaId={empresaId} />}
@@ -161,6 +170,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
         {subtab === "reglas"      && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
         {subtab === "admin"       && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
         {subtab === "privacidad"  && <PrivacidadPanel usuario={usuario} empresa={empresa} />}
+        </>}
       </div>
     </div>
   );

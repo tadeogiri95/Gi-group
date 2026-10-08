@@ -13,6 +13,7 @@ import NuevaSolicitud from "../NuevaSolicitud";
 import EstadoConexion from "../EstadoConexion";
 import { useColaOffline } from "../../hooks/useColaOffline";
 import { fichadaConPendientes } from "../../lib/colaOffline";
+import { tieneModulo } from "../../lib/modulos";
 
 function fmtMin(m) {
   const h = Math.floor(m / 60);
@@ -22,6 +23,9 @@ function fmtMin(m) {
 
 export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado }) {
   const misSols = ctx.misSolicitudes || [];
+  // Lo que se muestra según los módulos de la empresa (ítem 36)
+  const conChat = tieneModulo(empresa, "chat");
+  const conTareas = tieneModulo(empresa, "actividad");
   const [formSolicitud, setFormSolicitud] = useState(false);
   // Lo fichado sin señal todavía no está en ctx: se suma para que el botón no ofrezca fichar de nuevo (ítem 21)
   const cola = useColaOffline(demo ? null : usuario.id, { alTerminar: reload });
@@ -144,12 +148,12 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         fichadaHoy={fichadaHoy}
         fichadaAbierta={fichadaAbierta}
         onFichado={reload}
-        irAlChat={() => goto("chat")}
+        irAlChat={conChat ? () => goto("chat") : undefined}
         demo={demo}
       />
 
       {/* Chat: permisos, avisos y consultas */}
-      <button
+      {conChat && <button
         onClick={() => goto("chat")}
         aria-label="Abrir el asistente para pedir permisos o dar avisos"
         className="w-full p-[14px_16px] rounded-[16px] cursor-pointer flex items-center gap-3 font-body mb-[22px] border border-gypi-border bg-gypi-surface"
@@ -166,7 +170,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
           <div className="text-[12px] text-gypi-dim leading-[1.3] mt-0.5">Hablá con el asistente</div>
         </div>
         <span className="text-gypi-amber shrink-0 opacity-60"><Ic.chevR /></span>
-      </button>
+      </button>}
 
       {/* PIN para entrar rápido (F4-06) */}
       {usuario.rol === "operativo" && (
@@ -174,7 +178,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       )}
 
       {/* Jornada de hoy */}
-      {(hayActividad || (fichado && !fichadaHoy?.egreso)) && (
+      {conTareas && (hayActividad || (fichado && !fichadaHoy?.egreso)) && (
         <section className="mb-[22px]" aria-label="Jornada de hoy">
           <div className="flex justify-between items-center mb-3.5">
             <h3 className="m-0 font-heading text-lg font-extrabold text-gypi-text tracking-tight">
