@@ -119,9 +119,7 @@ test("tareas — elegir etapa y OT inicia la tarea con esos datos", async () => 
   const llamadas = pantalla();
   fireEvent.click(await screen.findByText(/Iniciar tarea/i));
   fireEvent.click(screen.getByText("Armado"));
-  fireEvent.click(screen.getByText("Acme"));
-  fireEvent.click(screen.getByText("Siguiente →"));
-  fireEvent.click(screen.getByText("▶ Iniciar"));
+  fireEvent.click(screen.getByText("Acme")); // R7: tocar la OT ya inicia la tarea
   await waitFor(() => assert.equal(llamadas.iniciar.length, 1));
   assert.deepEqual({ etapa: llamadas.iniciar[0].etapa, ot: String(llamadas.iniciar[0].codigo_proyecto) }, { etapa: 2, ot: "1001" });
 });

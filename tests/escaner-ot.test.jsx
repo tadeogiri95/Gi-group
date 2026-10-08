@@ -59,12 +59,14 @@ test("recordarOT / otsRecientes — las últimas 5 por empleado, sin repetir, so
 
 const ETAPAS = [{ codigo: 1, nombre: "Corte", icon: "✂️", color: "#F00" }];
 
+const iniciadas = [];
 function pantalla(empresa) {
+  iniciadas.length = 0;
   return render(
     <ActividadScreen
       tareaActiva={null} historial={[]} etapas={ETAPAS} proyectos={PROYECTOS}
       loading={false} usuario={{ id: "emp-1" }} empresa={empresa} fichadaHoy={{ ingreso: "08:00:00" }}
-      iniciarTarea={async () => {}} finalizarTarea={async () => {}} cambiarTarea={async () => {}}
+      iniciarTarea={async (t) => { iniciadas.push(t); }} finalizarTarea={async () => {}} cambiarTarea={async () => {}}
     />
   );
 }
@@ -81,7 +83,7 @@ test("Iniciar tarea — sin el escáner activado por la empresa no aparece el bo
   assert.equal(screen.queryByText(/Escanear código de la OT/), null);
 });
 
-test("Iniciar tarea — con el escáner activado, escanear la OT la elige y pasa al paso siguiente", async () => {
+test("Iniciar tarea — con el escáner activado, escanear la OT ya inicia la tarea (R7)", async () => {
   window.BarcodeDetector = class {
     static async getSupportedFormats() { return ["qr_code", "code_128"]; }
     async detect() { return [{ rawValue: "OT-1234" }]; }
@@ -90,8 +92,9 @@ test("Iniciar tarea — con el escáner activado, escanear la OT la elige y pasa
   pantalla({ escaner_ot: true });
   await irAElegirOT();
   fireEvent.click(screen.getByText(/Escanear código de la OT/));
-  await waitFor(() => assert.ok(screen.getAllByText(/OT 1234/).length > 0), { timeout: 2000 });
-  assert.ok(screen.getByText("Acme"));
+  await waitFor(() => assert.equal(iniciadas.length, 1), { timeout: 2000 });
+  assert.equal(String(iniciadas[0].codigo_proyecto), "1234");
+  assert.equal(iniciadas[0].tipo, "N");
 });
 
 test("Iniciar tarea — muestra las OT recientes de este empleado", async () => {
@@ -100,7 +103,8 @@ test("Iniciar tarea — muestra las OT recientes de este empleado", async () => 
   await irAElegirOT();
   assert.ok(screen.getByText("Recientes"));
   fireEvent.click(screen.getByRole("button", { name: /OT 00077/ }));
-  assert.equal(screen.getByText("Siguiente →").disabled, false);
+  await waitFor(() => assert.equal(iniciadas.length, 1), "tocar una OT reciente inicia la tarea");
+  assert.equal(String(iniciadas[0].codigo_proyecto), "77");
 });
 
 // ── /api/empresa ──
