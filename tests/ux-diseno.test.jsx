@@ -91,11 +91,23 @@ test("pantallas de muestra — Pedidos del operario usa el botón de planta", ()
 });
 
 test("R11 — pantallas ya pasadas al diseño nuevo no vuelven a tener estilos sueltos", () => {
-  for (const ruta of ["app/[slug]/unirse/page.js"]) {
+  for (const ruta of ["app/[slug]/unirse/page.js", "app/components/screens/ChatScreen.jsx"]) {
     const src = readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
     assert.equal((src.match(/style=\{\{/g) || []).length, 0, ruta);
     assert.doesNotMatch(src, /["'`]#[0-9A-Fa-f]{6}\b/, `${ruta}: colores a mano`);
   }
+});
+
+test("R11 — Asistente: botones de respuesta rápida tocables y tu mensaje con letra legible sobre el color de la empresa", async () => {
+  const { default: ChatScreen } = await import("../app/components/screens/ChatScreen.jsx");
+  global.fetch = async () => Response.json({ ok: true });
+  render(<ChatScreen usuario={{ id: "e", apodo: "Ana", empresa_id: "x" }} ctx={{}} reload={() => {}} onBack={() => {}} />);
+  const rapido = screen.getByRole("button", { name: "Necesito un permiso" });
+  assert.match(rapido.className, /min-h-11/);
+  assert.match(screen.getByRole("button", { name: "Enviar mensaje" }).className, /w-12 h-12/);
+  fireEvent.change(screen.getByLabelText("Mensaje para el asistente"), { target: { value: "hola" } });
+  assert.match(screen.getByRole("button", { name: "Enviar mensaje" }).className, /text-gypi-on-amber/);
+  assert.ok(screen.getByRole("button", { name: "Volver al inicio" }));
 });
 
 // ─── Los estilos sueltos solo pueden bajar ──────────────────────────────────
@@ -110,8 +122,8 @@ function archivos(dir = new URL("../app", import.meta.url).pathname) {
 const cuenta = (re) => archivos().reduce((n, f) => n + (readFileSync(f, "utf8").match(re) || []).length, 0);
 
 // Al migrar una pantalla a components/ui, bajá estos números.
-const MAX_STYLE_SUELTOS = 776;
-const MAX_COLORES_A_MANO = 369;
+const MAX_STYLE_SUELTOS = 749;
+const MAX_COLORES_A_MANO = 368;
 
 test("estilos sueltos y colores escritos a mano: no aparecen nuevos", () => {
   const estilos = cuenta(/style=\{\{/g);
