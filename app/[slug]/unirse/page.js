@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { fH, fB } from "../../lib/theme";
+import { problemaPin, recordarLegajoPin } from "../../lib/pin";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const AMBER_TEXT = "#000";
@@ -28,6 +29,12 @@ export default function UnirseScreen() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPwd, setShowPwd] = useState(false);
+  // Reforma UX R6: el operario elige un PIN de 4 números (más fácil que una
+  // contraseña con mayúsculas); puede preferir contraseña. Gestión usa contraseña.
+  const [usarPin, setUsarPin] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [conPin, setConPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -61,29 +68,42 @@ export default function UnirseScreen() {
       const data = await res.json();
       if (!res.ok || data.error) { setError(data.error || "Error"); setLoading(false); return; }
       setEmpleado(data);
+      setUsarPin(data.rol === "operativo");
       setStep(2);
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
 
   const activar = async () => {
-    if (!password || password.length < 8) { setError("Mínimo 8 caracteres con mayúscula, minúscula y número"); return; }
-    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) { setError("Debe tener mayúscula, minúscula y número"); return; }
-    if (password !== confirm) { setError("Las contraseñas no coinciden"); return; }
+    if (usarPin) {
+      const problema = problemaPin(pin);
+      if (problema) { setError(problema); return; }
+      if (pin !== pinConfirm) { setError("Los dos PIN no son iguales. Escribilo de nuevo."); return; }
+    } else {
+      if (!password || password.length < 8) { setError("Mínimo 8 caracteres con mayúscula, minúscula y número"); return; }
+      if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) { setError("Debe tener mayúscula, minúscula y número"); return; }
+      if (password !== confirm) { setError("Las contraseñas no coinciden"); return; }
+    }
     setLoading(true); setError("");
     try {
       const res = await fetch("/api/unirse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "activar", slug, codigo: codigo.trim(), password }),
+        body: JSON.stringify({ action: "activar", slug, codigo: codigo.trim(), ...(usarPin ? { pin } : { password }) }),
       });
       const data = await res.json();
       if (!res.ok || data.error) { setError(data.error || "Error"); setLoading(false); return; }
+      // Con PIN, el ingreso se abre en modo PIN con el legajo ya cargado
+      if (data.con_pin) recordarLegajoPin(slug, data.legajo ?? empleado?.legajo);
+      setConPin(!!data.con_pin);
       setStep(3);
-      setTimeout(() => router.push(`/${slug}`), 2500);
+      if (!data.con_pin) setTimeout(() => router.push(`/${slug}`), 2500);
     } catch (e) { setError(e.message); }
     setLoading(false);
   };
+
+  const soloNumeros = (v) => v.replace(/\D/g, "").slice(0, 4);
+  const listoPin = pin.length === 4 && pinConfirm.length === 4;
 
   // Slug inválido
   if (empresaNotFound) {
@@ -149,8 +169,43 @@ export default function UnirseScreen() {
         </>
       )}
 
+      {/* STEP 2 (operario): elegir PIN */}
+      {step === 2 && usarPin && (
+        <>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: `${GREEN}22`, display: "flex", alignItems: "center", justifyContent: "center", color: GREEN, marginBottom: 16, fontSize: 28 }}>✓</div>
+          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 24, fontWeight: 700, color: TEXT }}>¡Hola, {empleado?.apodo || empleado?.nombre}!</h1>
+          <p style={{ fontSize: 15, color: TEXT, marginTop: 8, marginBottom: 20, lineHeight: 1.5 }}>
+            Elegí un <b>PIN de 4 números</b>. Con tu legajo <b>{empleado?.legajo}</b> y este PIN entrás a la app y fichás en el kiosco.
+          </p>
+
+          <div style={{ marginBottom: 14 }}>
+            <label htmlFor="pin" style={lblStyle}>Tu PIN</label>
+            <input id="pin" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]*" maxLength={4}
+              value={pin} onChange={e => setPin(soloNumeros(e.target.value))} placeholder="••••"
+              style={{ ...inputStyle, fontSize: 28, letterSpacing: "0.5em", textAlign: "center", fontFamily: "monospace" }} />
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label htmlFor="pin2" style={lblStyle}>Repetí el PIN</label>
+            <input id="pin2" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]*" maxLength={4}
+              value={pinConfirm} onChange={e => setPinConfirm(soloNumeros(e.target.value))} onKeyDown={e => e.key === "Enter" && activar()} placeholder="••••"
+              style={{ ...inputStyle, fontSize: 28, letterSpacing: "0.5em", textAlign: "center", fontFamily: "monospace" }} />
+          </div>
+          <p style={{ fontSize: 13, color: DIM, margin: "0 0 16px", lineHeight: 1.5 }}>No uses números repetidos (1111) ni seguidos (1234).</p>
+
+          <button onClick={activar} disabled={loading || !listoPin} style={{ width: "100%", minHeight: 56, padding: 14, borderRadius: 12, background: listoPin && !loading ? AMBER : SURFACE, color: listoPin && !loading ? AMBER_TEXT : MUTE, border: "none", fontSize: 16, fontWeight: 700, cursor: listoPin && !loading ? "pointer" : "default" }}>
+            {loading ? "Activando..." : "Activar mi cuenta"}
+          </button>
+
+          {error && <div role="alert" style={{ padding: 12, background: `${RED}15`, color: RED, borderRadius: 10, fontSize: 13, marginTop: 12 }}>{error}</div>}
+
+          <button onClick={() => { setUsarPin(false); setError(""); }} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 14, minHeight: 48, marginTop: 8, textDecoration: "underline" }}>
+            Prefiero una contraseña
+          </button>
+        </>
+      )}
+
       {/* STEP 2: Crear contraseña */}
-      {step === 2 && (
+      {step === 2 && !usarPin && (
         <>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: `${GREEN}22`, display: "flex", alignItems: "center", justifyContent: "center", color: GREEN, marginBottom: 16, fontSize: 28 }}>✓</div>
           <h1 style={{ margin: 0, fontFamily: fH, fontSize: 24, fontWeight: 700, color: TEXT }}>¡Hola, {empleado?.apodo || empleado?.nombre}!</h1>
@@ -175,6 +230,12 @@ export default function UnirseScreen() {
           </button>
 
           {error && <div style={{ padding: 12, background: `${RED}15`, color: RED, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
+
+          {empleado?.rol === "operativo" && (
+            <button onClick={() => { setUsarPin(true); setError(""); }} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 14, minHeight: 48, marginTop: 8, textDecoration: "underline" }}>
+              Prefiero un PIN de 4 números
+            </button>
+          )}
         </>
       )}
 
@@ -183,7 +244,18 @@ export default function UnirseScreen() {
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
           <h1 style={{ margin: 0, fontFamily: fH, fontSize: 26, fontWeight: 700, color: GREEN }}>¡Cuenta activada!</h1>
-          <p style={{ fontSize: 14, color: DIM, marginTop: 12 }}>Redirigiendo al login...</p>
+          {conPin ? (
+            <>
+              <p style={{ fontSize: 16, color: TEXT, marginTop: 12, lineHeight: 1.5 }}>
+                Para entrar: tu legajo <b>{empleado?.legajo}</b> y tu PIN.
+              </p>
+              <button onClick={() => router.push(`/${slug}`)} style={{ marginTop: 20, width: "100%", minHeight: 56, borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
+                Entrar ahora
+              </button>
+            </>
+          ) : (
+            <p style={{ fontSize: 14, color: DIM, marginTop: 12 }}>Redirigiendo al login...</p>
+          )}
         </div>
       )}
     </div>

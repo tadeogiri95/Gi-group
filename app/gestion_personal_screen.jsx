@@ -7,6 +7,7 @@ import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
 import { useToast } from "./components/ui/Toast";
+import { useConfirm } from "./components/ui/ConfirmDialog";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
@@ -224,7 +225,7 @@ function ModalConfirmarBaja({ empleado, onClose, onConfirm, saving }) {
 // Muestra los códigos de activación recién generados. Se ven UNA sola vez:
 // el servidor guarda solo el hash. El empleado los usa en /{slug}/unirse.
 function textoCodigo(c, vigencia) {
-  return `Hola ${c.nombre}! Para entrar a Gypi abrí este link y creá tu contraseña: ${c.link || ""}\nTu código: ${c.codigo} (vence en ${vigencia} días)`;
+  return `Hola ${c.nombre}! Para entrar a Gypi abrí este link y elegí tu PIN o tu contraseña: ${c.link || ""}\nTu código: ${c.codigo} (vence en ${vigencia} días)`;
 }
 
 function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
@@ -248,7 +249,7 @@ function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
         nombre: c.nombre,
         detalle: `Legajo ${c.legajo} · Código ${c.codigo}`,
         link: c.link,
-        pie: `Escaneá con la cámara del celular y creá tu contraseña. Sirve una vez y vence en ${vigencia} días.`,
+        pie: `Escaneá con la cámara del celular y elegí tu PIN de 4 números. Sirve una vez y vence en ${vigencia} días.`,
       })),
     }).catch(e => setErrorQR(e.message));
   };
@@ -261,7 +262,7 @@ function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
           {codigos.length === 1 ? "Código de acceso" : `Códigos de acceso (${codigos.length})`}
         </h3>
         <p className="text-xs text-gypi-dim mb-3">
-          Entregá cada código a su empleado (en mano o por WhatsApp). Con el link y el código crea su contraseña.
+          Entregá cada código a su empleado (en mano o por WhatsApp). Con el link y el código elige su PIN de 4 números.
           Sirve una sola vez y vence en {vigencia} días. <b>Anotalos ahora: no se pueden volver a ver</b>; si se pierde, generá uno nuevo.
         </p>
         <div className="flex flex-col gap-2 mb-3">
@@ -300,6 +301,48 @@ function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
 }
 
 /* ═══ MAIN COMPONENT ═══ */
+/* ═══ MODAL PIN ASIGNADO (reforma UX R6) ═══ */
+// Administración le da un PIN al operario: con su legajo y este PIN ficha en el
+// kiosco o entra desde cualquier celular. Se ve una sola vez.
+function ModalPin({ datos, empresa, onClose }) {
+  const [errorQR, setErrorQR] = useState("");
+  const imprimir = () => {
+    setErrorQR("");
+    imprimirTarjetas({
+      titulo: "Acceso a Gypi",
+      empresa: empresa?.nombre_corto || empresa?.nombre || "",
+      tarjetas: [{
+        nombre: datos.nombre,
+        detalle: `Legajo ${datos.legajo} · PIN ${datos.pin}`,
+        link: linkPersonal(window.location.origin, empresa?.slug || "", datos.legajo),
+        pie: "Escaneá con el celular o usá el kiosco: legajo + PIN. Guardá esta tarjeta y no la compartas.",
+      }],
+    }).catch(e => setErrorQR(e.message));
+  };
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="PIN nuevo">
+      <div onClick={onClose} className="absolute inset-0 bg-black/60" />
+      <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] border border-gypi-border">
+        <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
+        <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">PIN de {datos.nombre}</h3>
+        <p className="text-[13px] text-gypi-dim mt-0 mb-4">Legajo {datos.legajo}</p>
+        <div className="text-center font-mono text-[44px] font-bold tracking-[0.3em] text-gypi-text bg-gypi-surface border border-gypi-border rounded-2xl py-4 mb-4" aria-label={`PIN ${datos.pin.split("").join(" ")}`}>
+          {datos.pin}
+        </div>
+        <p className="text-[14px] text-gypi-text leading-relaxed mt-0 mb-1">
+          Con su <b>legajo y este PIN</b> ficha en el kiosco o entra desde cualquier celular.
+        </p>
+        <p className="text-[13px] text-gypi-dim leading-relaxed mt-0 mb-4">
+          <b>Anotalo o imprimilo ahora: no se vuelve a mostrar.</b> El PIN anterior ya no sirve.
+        </p>
+        <button onClick={imprimir} className="g-btn g-btn-secondary w-full mb-2">Imprimir tarjeta con QR</button>
+        {errorQR && <div role="alert" className="text-xs text-gypi-red mb-2">{errorQR}</div>}
+        <button onClick={onClose} className="g-btn g-btn-primary w-full">Listo</button>
+      </div>
+    </div>
+  );
+}
+
 export default function GestionPersonalScreen({ empresaId }) {
   const { divisiones: divisionesCtx, usuario: sesion, empresa, plantas: plantasCtx } = useAuth();
   const plantas = ordenarPlantas(plantasCtx);
@@ -326,6 +369,8 @@ export default function GestionPersonalScreen({ empresaId }) {
   const [csvRawText, setCsvRawText] = useState(null);
   const fileRef = useRef(null);
   const toast = useToast();
+  const [confirmar, ConfirmDialog] = useConfirm();
+  const [modalPin, setModalPin] = useState(null); // { nombre, legajo, pin }
 
   /* ── Cargar empleados ── */
   const cargar = useCallback(async () => {
@@ -576,6 +621,28 @@ export default function GestionPersonalScreen({ empresaId }) {
     }
   };
 
+  /* ── PIN asignado por administración (reforma UX R6) ── */
+  const puedeDarPin = (emp) => emp.id !== sesion?.id && (emp.rol || "operativo") === "operativo";
+  const darPin = async (emp) => {
+    const ok = await confirmar(
+      `Se genera un PIN nuevo de 4 números para ${emp.nombre}. Si ya tenía uno, deja de servir.`,
+      { title: "¿Dar un PIN nuevo?", confirmLabel: "Dar PIN" }
+    );
+    if (!ok) return;
+    setSaving(true);
+    try {
+      const res = await apiFetch("/api/empleados/pin", { method: "POST", body: JSON.stringify({ empleado_id: emp.id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo generar el PIN");
+      setModalPin({ nombre: data.nombre, legajo: data.legajo, pin: data.pin });
+      cargar();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   /* ── Iniciales avatar ── */
   const iniciales = (nombre) => (nombre || "").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
 
@@ -736,18 +803,28 @@ export default function GestionPersonalScreen({ empresaId }) {
 
                 {/* Acciones */}
                 {!isInactivo && (
-                  <div className="flex gap-2 mt-2.5 pt-2.5 border-t border-gypi-border">
+                  <div className="flex flex-wrap gap-2 mt-2.5 pt-2.5 border-t border-gypi-border">
                     <button
                       onClick={() => setModalEditar({ ...emp })}
-                      className="g-btn g-btn-secondary flex-1 text-[11px]"
+                      className="g-btn g-btn-secondary flex-1 min-w-[120px] text-xs"
                     >
                       Editar
                     </button>
+                    {puedeDarPin(emp) && (
+                      <button
+                        onClick={() => darPin(emp)}
+                        disabled={saving}
+                        className="g-btn g-btn-secondary flex-1 min-w-[120px] text-xs"
+                        title="Le da un PIN de 4 números para fichar en el kiosco o entrar sin contraseña"
+                      >
+                        Dar PIN
+                      </button>
+                    )}
                     {puedeGenerarCodigo(emp) && (
                       <button
                         onClick={() => generarCodigo(emp)}
                         disabled={saving}
-                        className="g-btn g-btn-secondary flex-1 text-[11px]"
+                        className="g-btn g-btn-secondary flex-1 min-w-[120px] text-xs"
                         title="Genera un código nuevo para activar la cuenta o recuperar el acceso"
                       >
                         Código de acceso
@@ -755,7 +832,7 @@ export default function GestionPersonalScreen({ empresaId }) {
                     )}
                     <button
                       onClick={() => setModalBaja(emp)}
-                      className="g-btn g-btn-danger flex-1 text-[11px]"
+                      className="g-btn g-btn-danger flex-1 min-w-[120px] text-xs"
                     >
                       Dar de baja
                     </button>
@@ -813,6 +890,8 @@ export default function GestionPersonalScreen({ empresaId }) {
           progreso={progresoCSV}
         />
       )}
+      {modalPin && <ModalPin datos={modalPin} empresa={empresa} onClose={() => setModalPin(null)} />}
+      {ConfirmDialog}
       {modalCodigos && (
         <ModalCodigos
           codigos={modalCodigos.codigos}

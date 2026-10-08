@@ -225,6 +225,7 @@ export const unirseBody = z.object({
   slug: z.string().min(1).max(50),
   codigo: z.string().min(4).max(20),
   password: z.string().max(200).optional(),
+  pin: z.string().max(10).optional(),
 }).strict();
 
 // ── /api/chat ───────────────────────────────────────────────────────────────
