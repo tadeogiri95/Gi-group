@@ -55,7 +55,7 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] p-[20px_18px_30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
         <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
-        <h3 className="m-0 mb-4 font-heading text-lg font-bold text-gypi-text">{editando ? "Editar proyecto" : "Nuevo proyecto"}</h3>
+        <h3 className="m-0 mb-4 font-heading text-lg font-bold text-gypi-text">{editando ? "Editar OT" : "Nueva OT"}</h3>
 
         <div className="mb-3">
           <label className="g-label">OT / Código *</label>
@@ -70,7 +70,7 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
           <input value={f.obra} onChange={e => set("obra", e.target.value)} className="g-input" />
         </div>
         <div className="mb-3">
-          <label className="g-label">Proyecto / Descripción</label>
+          <label className="g-label">Descripción</label>
           <input value={f.proyecto} onChange={e => set("proyecto", e.target.value)} className="g-input" />
         </div>
         <div className="mb-5">
@@ -85,7 +85,7 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
           disabled={!valid || saving}
           className={`w-full py-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer ${valid && !saving ? "bg-gypi-green text-black" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
         >
-          {saving ? "Guardando..." : editando ? "Guardar cambios" : "Crear proyecto"}
+          {saving ? "Guardando..." : editando ? "Guardar cambios" : "Crear OT"}
         </button>
       </div>
     </div>
@@ -100,7 +100,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] p-[20px_18px_30px] max-h-[85vh] overflow-y-auto border border-gypi-border">
         <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" />
         <h3 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Vista previa CSV</h3>
-        <p className="text-xs text-gypi-dim mb-3.5">{filas.length} proyectos detectados. Revisá y confirmá.</p>
+        <p className="text-xs text-gypi-dim mb-3.5">{filas.length} OT detectadas. Revisá y confirmá.</p>
 
         <div className="max-h-80 overflow-y-auto mb-3.5 border border-gypi-border rounded-[10px]">
           {filas.slice(0, 50).map((r, i) => (
@@ -125,7 +125,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
             disabled={saving}
             className={`flex-2 py-3 rounded-xl border-none text-sm font-bold cursor-pointer ${saving ? "bg-gypi-surface text-gypi-dim cursor-default" : "bg-gypi-green text-black"}`}
           >
-            {saving ? "Importando..." : `Importar ${filas.length} proyectos`}
+            {saving ? "Importando..." : `Importar ${filas.length} OT`}
           </button>
         </div>
       </div>
@@ -188,7 +188,7 @@ export default function ProyectosScreen({ empresaId }) {
           proyecto: form.proyecto || null,
           division: form.division || null,
         });
-        showToast("✅ Proyecto actualizado", GREEN);
+        showToast("✅ OT actualizada", GREEN);
       } else {
         await sb.post("proyectos", {
           ot: form.ot.trim(),
@@ -198,7 +198,7 @@ export default function ProyectosScreen({ empresaId }) {
           division: form.division || null,
           estado: "activo",
         });
-        showToast("✅ Proyecto creado", GREEN);
+        showToast("✅ OT creada", GREEN);
       }
       setModal(null);
       await cargar();
@@ -209,11 +209,11 @@ export default function ProyectosScreen({ empresaId }) {
   };
 
   const cerrarProyecto = async (id) => {
-    if (!await confirmFn("¿Cerrar este proyecto?", { title: "Cerrar proyecto", confirmLabel: "Cerrar" })) return;
+    if (!await confirmFn("¿Cerrar esta OT?", { title: "Cerrar OT", confirmLabel: "Cerrar" })) return;
     try {
       await sb.patch(`proyectos?id=eq.${id}`, { estado: "cerrado" });
       await cargar();
-      showToast("Proyecto cerrado", AMBER);
+      showToast("OT cerrada", AMBER);
     } catch (e) { showToast(`Error: ${e.message}`, RED); }
   };
 
@@ -221,7 +221,7 @@ export default function ProyectosScreen({ empresaId }) {
     try {
       await sb.patch(`proyectos?id=eq.${id}`, { estado: "activo" });
       await cargar();
-      showToast("Proyecto reactivado", GREEN);
+      showToast("OT reactivada", GREEN);
     } catch (e) { showToast(`Error: ${e.message}`, RED); }
   };
 
@@ -260,7 +260,7 @@ export default function ProyectosScreen({ empresaId }) {
       const res = await apiFetch("/api/proyectos/sync-csv", { method: "POST" });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error sync");
-      showToast(`✅ ${data.procesados} proyectos sincronizados`, GREEN);
+      showToast(`✅ ${data.procesados} OT sincronizadas`, GREEN);
       await cargar(); await cargarSyncCfg();
     } catch (e) { showToast(`Error: ${e.message}`, RED); }
     setSyncLoading(false);
@@ -374,7 +374,7 @@ export default function ProyectosScreen({ empresaId }) {
 
       {/* Acciones */}
       <div className="flex gap-2 mb-2">
-        <button onClick={() => setModal({})} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[13px] font-bold cursor-pointer">+ Nuevo</button>
+        <button onClick={() => setModal({})} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[13px] font-bold cursor-pointer">+ Nueva OT</button>
         <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsv} />
         <button onClick={() => fileRef.current?.click()} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-cyan/15 text-gypi-cyan text-[13px] font-bold cursor-pointer">📤 CSV</button>
         <button onClick={cargar} className="w-10 h-10 rounded-xl border-none bg-gypi-surface text-gypi-dim cursor-pointer text-[15px] shrink-0">🔄</button>
@@ -414,7 +414,7 @@ export default function ProyectosScreen({ empresaId }) {
         {showSyncPanel && (
           <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
             <div className="text-[11px] text-gypi-dim mb-2 leading-relaxed">
-              URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: proyectos nuevos se crean, los existentes se actualizan.
+              URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: las OT nuevas se crean y las existentes se actualizan.
             </div>
             {syncCfg.ultima_sync && (
               <div className="text-xs text-gypi-green mb-2">
@@ -453,7 +453,7 @@ export default function ProyectosScreen({ empresaId }) {
         <div className="g-card py-8 px-6 text-center">
           <div className="text-[28px] mb-2">📋</div>
           <div className="text-sm font-bold text-gypi-text mb-1">
-            {search || filtroDiv ? "Sin resultados" : "Sin proyectos"}
+            {search || filtroDiv ? "Sin resultados" : "Todavía no hay OT"}
           </div>
           <div className="text-xs text-gypi-dim">
             {search || filtroDiv ? "Probá con otro filtro o búsqueda." : "Creá el primero con el botón o importá un CSV."}

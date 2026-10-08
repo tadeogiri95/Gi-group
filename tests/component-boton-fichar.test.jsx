@@ -45,14 +45,14 @@ test("accionFichaje — decide ingreso, salida (incluido turno noche) o jornada 
   assert.equal(accionFichaje(null, { ingreso: "22:00:00", egreso: null, fecha: "ayer" }), "egreso", "turno noche: ingresó ayer");
 });
 
-test("sin fichar: muestra 'Fichar ingreso', pide confirmación y ficha con la ubicación", async () => {
+test("sin fichar: muestra 'Fichar entrada', pide confirmación y ficha con la ubicación", async () => {
   const llamadas = servidor([{ body: { ok: true, hora: "08:01" } }]);
   let recargo = 0;
   render(<BotonFichar usuario={USUARIO} fichadaHoy={null} onFichado={() => recargo++} />);
-  fireEvent.click(screen.getByRole("button", { name: /Fichar ingreso/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Fichar entrada/i }));
   assert.ok(screen.getByRole("dialog"), "pide confirmación antes de fichar");
   fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
-  await screen.findByText(/Ingreso fichado a las 08:01/);
+  await screen.findByText(/Entrada fichada a las 08:01/);
   const f = llamadas.find((l) => l.url.includes("/api/fichar"));
   assert.equal(f.body.accion, "ingreso");
   assert.equal(f.body.geo_lat, -34.6);
@@ -62,18 +62,18 @@ test("sin fichar: muestra 'Fichar ingreso', pide confirmación y ficha con la ub
 test("cancelar la confirmación no ficha nada", () => {
   const llamadas = servidor([]);
   render(<BotonFichar usuario={USUARIO} fichadaHoy={null} />);
-  fireEvent.click(screen.getByRole("button", { name: /Fichar ingreso/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Fichar entrada/i }));
   fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-  assert.ok(screen.getByRole("button", { name: /Fichar ingreso/i }));
+  assert.ok(screen.getByRole("button", { name: /Fichar entrada/i }));
   assert.equal(llamadas.length, 0);
 });
 
 test("ingreso bloqueado por tardanza: ofrece pedir permiso y lo manda a gerencia", async () => {
   const llamadas = servidor([{ body: { ok: false, tipo: "bloqueado_tardanza", error: "Llegás 40 min tarde: necesitás permiso." } }]);
   render(<BotonFichar usuario={USUARIO} fichadaHoy={null} />);
-  await tocarYConfirmar("Fichar ingreso");
+  await tocarYConfirmar("Fichar entrada");
   await screen.findByText(/necesitás permiso/);
-  fireEvent.click(screen.getByRole("button", { name: "Pedir permiso de ingreso" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pedir permiso para entrar" }));
   await screen.findByText(/le pediste permiso a gerencia/);
   const solicitud = llamadas.find((l) => l.url.includes("/api/data") && l.body?.path === "solicitudes");
   assert.equal(solicitud.body.body.tipo, "permiso");
@@ -120,14 +120,14 @@ test("jornada cerrada: no hay botón, se muestra el resumen", () => {
   servidor([]);
   render(<BotonFichar usuario={USUARIO} fichadaHoy={{ ingreso: "08:00:00", egreso: "17:00:00" }} />);
   assert.ok(screen.getByText("Jornada cerrada"));
-  assert.ok(screen.getByText(/Ingreso 08:00 · Salida 17:00/));
+  assert.ok(screen.getByText(/Entrada 08:00 · Salida 17:00/));
   assert.equal(screen.queryByRole("button"), null);
 });
 
 test("modo demo: no llama al servidor", async () => {
   const llamadas = servidor([]);
   render(<BotonFichar usuario={USUARIO} fichadaHoy={null} demo />);
-  await tocarYConfirmar("Fichar ingreso");
+  await tocarYConfirmar("Fichar entrada");
   await screen.findByText(/Modo demo/);
   await waitFor(() => assert.equal(llamadas.filter((l) => l.url.includes("/api/fichar")).length, 0));
 });

@@ -161,7 +161,7 @@ export default function ActividadScreen({
     try {
       await onIniciar({ etapa: 0, codigo_proyecto: null, tipo: "N", causa });
       setState("active");
-    } catch (e) { console.error(e); setErrorMsg(e?.message || "Error al registrar tiempo muerto. Intentá de nuevo."); }
+    } catch (e) { console.error(e); setErrorMsg(e?.message || "No se pudo registrar que estás parado. Intentá de nuevo."); }
     setSaving(false);
   };
 
@@ -233,7 +233,7 @@ export default function ActividadScreen({
             <div className="relative">
               <div className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mx-auto mb-4 text-gypi-amber bg-gypi-amber/10"><Icon name="hammer" size={32} /></div>
               <div className="text-lg font-bold font-heading mb-2">Sin tarea activa</div>
-              <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Iniciá una tarea para registrar tu actividad en el proyecto</div>
+              <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Elegí la etapa y la OT en la que vas a trabajar.</div>
               <button
                 onClick={() => { if (!fichadaHoy?.ingreso && !ingresoSinEnviar(usuario?.id)) { setErrorMsg("Primero fichá tu entrada en Inicio."); return; } setState("selecting"); setStep(1); }}
                 className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-amber text-gypi-on-amber"
@@ -351,7 +351,7 @@ export default function ActividadScreen({
                 ))}
               </div>
               <button onClick={() => setState("pausing")} className="w-full mt-3 p-3.5 rounded-[14px] text-[13px] font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-red/10 text-gypi-red border border-gypi-red/20">
-                ⏸ Registrar espera / tiempo muerto
+                ⏸ Estoy parado
               </button>
             </div>
           )}
@@ -359,7 +359,7 @@ export default function ActividadScreen({
           {/* STEP 2: Selector de proyecto */}
           {step === 2 && (
             <div>
-              <div className="text-[15px] font-bold mb-1 font-heading">Proyecto</div>
+              <div className="text-[15px] font-bold mb-1 font-heading">OT</div>
 
               <div className="flex gap-1.5 mb-3">
                 <button onClick={() => { setModoManual(false); setManualOT(""); }} className={`flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body ${!modoManual ? 'bg-gypi-amber/[0.13] text-gypi-amber' : 'bg-gypi-surface text-gypi-dim'}`}>🔍 Buscar OT</button>
@@ -405,7 +405,7 @@ export default function ActividadScreen({
                   inputMode="search"
                   value={busqueda}
                   onChange={e => { setBusqueda(e.target.value); setProyectoSeleccionado(null); }}
-                  placeholder="🔍  Buscar proyecto..."
+                  placeholder="🔍  Buscar OT o cliente..."
                   className="w-full py-3.5 px-4 rounded-[14px] bg-gypi-surface text-gypi-text text-[15px] font-body outline-none box-border mb-3 border-2 border-gypi-amber/40"
                 />
 
@@ -430,7 +430,7 @@ export default function ActividadScreen({
                           <div className="mb-2">No se encontró &quot;{busqueda}&quot;</div>
                           <button onClick={() => { setModoManual(true); setManualOT(busqueda.replace(/\D/g, "")); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className="py-2.5 px-4 rounded-[10px] bg-gypi-surface text-xs font-bold font-body cursor-pointer border border-gypi-amber/40 text-gypi-amber">✏️ Cargar OT manualmente</button>
                         </div>
-                      ) : "Sin proyectos disponibles"}
+                      ) : "No hay OT cargadas"}
                     </div>
                   ) : (
                     proyectosFiltrados.slice(0, 20).map(p => {
@@ -519,7 +519,7 @@ export default function ActividadScreen({
                     <span className="text-xs font-bold">{etapaSelInfo.icon} {etapaSelInfo.nombre}</span>
                   </div>
                   <div className="flex justify-between mb-1.5">
-                    <span className="text-xs text-gypi-dim">Proyecto</span>
+                    <span className="text-xs text-gypi-dim">OT</span>
                     <span className="text-xs font-bold font-mono">OT {modoManual ? manualOT : proyectoSeleccionado?.ot}</span>
                   </div>
                   {!modoManual && proyectoSeleccionado?.cliente && (
@@ -559,7 +559,7 @@ export default function ActividadScreen({
         <div className="pt-5 px-5 flex items-center gap-3">
           <button onClick={() => setState(tareaActiva ? "active" : "selecting")} aria-label="Volver" className="min-w-[48px] min-h-[48px] -ml-2 bg-transparent border-none text-gypi-text cursor-pointer text-2xl flex items-center justify-center">←</button>
           <div>
-            <div className="g-overline text-gypi-red">Tiempo muerto</div>
+            <div className="g-overline text-gypi-red">Parado</div>
             <div className="text-base font-bold font-heading">¿Cuál es la causa?</div>
           </div>
         </div>
@@ -620,7 +620,7 @@ export default function ActividadScreen({
         <div className="flex gap-2.5">
           <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className={`flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-amber text-gypi-on-amber ${saving ? 'opacity-50' : ''}`}><Icon name="refresh" size={15} /> Cambiar tarea</button>
           {!isEspera && (
-            <button onClick={() => setState("pausing")} disabled={saving} aria-label="Registrar espera / tiempo muerto" className={`flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red flex items-center justify-center ${saving ? 'opacity-50' : ''}`}><Icon name="pause" size={18} /></button>
+            <button onClick={() => setState("pausing")} disabled={saving} aria-label="Estoy parado" className={`flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red flex items-center justify-center ${saving ? 'opacity-50' : ''}`}><Icon name="pause" size={18} /></button>
           )}
         </div>
 

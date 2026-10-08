@@ -35,3 +35,26 @@ export function bandejaVacia(filtro) {
     default: return { titulo: "Sin pedidos", detalle: "Cuando alguien del equipo pida un permiso, aparece acá." };
   }
 }
+
+// ─── Vocabulario único (reforma UX R3) ─────────────────────────────────────
+// Un nombre para cada cosa en toda la app. Las pantallas y módulos nuevos
+// (Producción, Stock, Compras…) usan estos términos y no otros.
+export const VOCABULARIO = {
+  tareas: "Tareas",            // no "Actividad", "Mi Jornada", "Registro de actividades"
+  ot: "OT",                    // no "Proyecto"; la primera vez, "Orden de trabajo (OT)"
+  asistente: "Asistente",      // no "Chat", "bot", "Reglas IA"
+  pedidos: "Pedidos",          // no "Inbox", "Bandeja", "Solicitudes"
+  equipo: "Equipo",            // no "Personal", "Gestión de personal"
+  entrada: "Entrada",          // no "Ingreso"
+  salida: "Salida",            // no "Egreso"
+  parado: "Parado",            // no "Espera", "Tiempo muerto", "Improductivo"
+};
+
+// Roles como los entiende la gente (los valores internos no cambian)
+const NOMBRE_ROL = { operativo: "Operario", administrativo: "Administración", gerencial: "Dueño" };
+
+/** Nombre visible del rol. Administración que ve solo su división es "Supervisor". */
+export function nombreRol(rol, { soloSuDivision = false } = {}) {
+  if (rol === "administrativo" && soloSuDivision) return "Supervisor";
+  return NOMBRE_ROL[rol] || "Operario";
+}

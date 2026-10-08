@@ -28,7 +28,7 @@ export default function KioscoPage() {
         <p className="text-gypi-dim max-w-[380px] mb-6">
           {estado.error
             ? "No se pudo conectar. Revisá internet y recargá la página."
-            : "Para usarlo como punto de fichaje, un gerente tiene que entrar en este dispositivo y tocar “Activar modo kiosco” en Gestión de personal."}
+            : "Para usarlo como punto de fichaje, un gerente tiene que entrar en este dispositivo y tocar “Activar modo kiosco” en Equipo."}
         </p>
         <a href={`/${slug}`} className="min-h-[48px] px-6 py-3 rounded-xl bg-gypi-surface border border-gypi-border text-gypi-text font-bold no-underline">Ir al ingreso</a>
       </main>

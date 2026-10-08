@@ -21,16 +21,16 @@ export function getItems(role, pend, modulos) {
   if (role === 'gerencial' || role === 'administrativo') {
     return [
       { id: 'home',         label: 'Inicio',    icon: Icons.home },
-      { id: 'solicitudes',  label: 'Inbox',     icon: Icons.inbox, badge: pend },
+      { id: 'solicitudes',  label: 'Pedidos',   icon: Icons.inbox, badge: pend },
       { id: 'equipo',       label: 'Equipo',    icon: Icons.users },
       { id: 'config',       label: 'Gestión',   icon: Icons.gear },
     ];
   }
   return [
     { id: 'home',       label: 'Inicio',      icon: Icons.home },
-    tiene(modulos, 'actividad', 'obra') && { id: 'actividad', label: 'Actividad', icon: Icons.hammer },
-    tiene(modulos, 'chat') && { id: 'chat', label: 'Chat', icon: Icons.chat },
-    { id: 'mis-sols',   label: 'Solicitudes', icon: Icons.history },
+    tiene(modulos, 'actividad', 'obra') && { id: 'actividad', label: 'Tareas', icon: Icons.hammer },
+    tiene(modulos, 'chat') && { id: 'chat', label: 'Asistente', icon: Icons.chat },
+    { id: 'mis-sols',   label: 'Pedidos', icon: Icons.history },
   ].filter(Boolean);
 }
 

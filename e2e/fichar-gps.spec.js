@@ -53,9 +53,9 @@ test("operario: ficha la entrada con el botón grande y manda la ubicación del 
   await page.getByText("Ingresar", { exact: true }).click();
   await expect(page.getByText(`Hola, ${USUARIO.apodo}`)).toBeVisible({ timeout: 10_000 });
 
-  await page.getByRole("button", { name: /Fichar ingreso/i }).click();
+  await page.getByRole("button", { name: /Fichar entrada/i }).click();
   await page.getByRole("button", { name: "Confirmar" }).click();
-  await expect(page.getByText(/Ingreso fichado a las 08:02/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Entrada fichada a las 08:02/)).toBeVisible({ timeout: 10_000 });
 
   expect(fichadas).toHaveLength(1);
   expect(fichadas[0].accion).toBe("ingreso");

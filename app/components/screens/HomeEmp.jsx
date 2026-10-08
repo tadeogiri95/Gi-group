@@ -38,7 +38,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
   const diagH = usuario.diagrama?.[dH];
 
   const etapaLabel = (id) => {
-    if (id === 0) return "Espera / tiempo muerto";
+    if (id === 0) return "Parado";
     const e = etapas.find(e => e.id === id);
     return e?.nombre || `Etapa ${id}`;
   };
@@ -110,7 +110,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
             />
             <span className="text-[13px] font-bold" style={{ color: statusColor }}>
               {fichado
-                ? `Ingreso ${fichadaHoy.ingreso.slice(0, 5)}${fichadaHoy?.egreso ? " · Egreso " + fichadaHoy.egreso.slice(0, 5) : ""}`
+                ? `Entrada ${fichadaHoy.ingreso.slice(0, 5)}${fichadaHoy?.egreso ? " · Salida " + fichadaHoy.egreso.slice(0, 5) : ""}`
                 : "Sin fichar"}
             </span>
           </div>

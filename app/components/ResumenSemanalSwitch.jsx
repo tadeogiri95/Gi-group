@@ -26,7 +26,7 @@ export default function ResumenSemanalSwitch({ empresa, onUpdate }) {
     <div className="g-card mt-3.5">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs text-gypi-dim">
-          <b className="text-gypi-text">Resumen semanal por email:</b> cada lunes a la mañana, horas por OT, tiempo muerto y ausencias de la semana anterior{empresa?.admin_email ? ` (a ${empresa.admin_email})` : ""}.
+          <b className="text-gypi-text">Resumen semanal por email:</b> cada lunes a la mañana, horas por OT, tiempo parado y ausencias de la semana anterior{empresa?.admin_email ? ` (a ${empresa.admin_email})` : ""}.
         </div>
         <button
           role="switch"

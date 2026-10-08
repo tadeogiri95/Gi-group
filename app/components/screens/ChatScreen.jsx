@@ -300,7 +300,7 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
       </div>
       <div className="safe-bottom" style={{ padding: "10px 14px 12px", borderTop: `1px solid ${BORDER}`, background: BG, display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", background: SURFACE, borderRadius: 22, padding: "4px 8px 4px 16px", border: `1px solid ${BORDER}` }}>
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Hablale al bot..." aria-label="Mensaje para el asistente" disabled={loading} style={{ flex: 1, border: "none", background: "transparent", color: TEXT, fontSize: 14, fontFamily: FB, outline: "none", padding: "10px 0", opacity: loading ? .5 : 1 }} />
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Escribile al asistente..." aria-label="Mensaje para el asistente" disabled={loading} style={{ flex: 1, border: "none", background: "transparent", color: TEXT, fontSize: 14, fontFamily: FB, outline: "none", padding: "10px 0", opacity: loading ? .5 : 1 }} />
         </div>
         <button onClick={() => handleSend()} disabled={!input.trim() || loading} aria-label="Enviar mensaje" style={{ width: 44, height: 44, borderRadius: 22, border: "none", background: input.trim() && !loading ? AMBER : SURFACE, color: input.trim() && !loading ? AMBER_TEXT : MUTE, cursor: input.trim() && !loading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.send size={18} /></button>
       </div>

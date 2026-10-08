@@ -81,7 +81,7 @@ test("smoke: login → fichar ingreso → ver historial", async ({ page }) => {
   await expect(page.getByText(`Hola, ${USUARIO.apodo}`)).toBeVisible({ timeout: 10_000 });
 
   // ─── Ir al chat y fichar ingreso ("Ya llegué" es acción directa, sin IA) ───
-  await page.getByText("Chat", { exact: true }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Asistente", exact: true }).click();
   await page.getByText("Ya llegué", { exact: true }).click();
   await expect(page.getByText(/Fichado|Ingreso registrado/i)).toBeVisible({ timeout: 10_000 });
 

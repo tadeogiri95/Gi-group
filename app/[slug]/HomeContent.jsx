@@ -246,15 +246,15 @@ export default function HomeContent() {
 
   const getScreenSubtitle = () => {
     if (uIsGer) {
-      const subtitles = { "ger-actividad": "Producción en vivo", config: "Configuración", equipo: "Gestión de personal", "historial-fichajes": "Control de asistencia" };
+      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Configuración", equipo: "Personas de la empresa", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
-    const subtitles = { actividad: "Registro de actividades", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
+    const subtitles = { actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
     return subtitles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
   const getScreenTitle = () => {
-    const titles = { solicitudes: "Inbox", equipo: "Personal", "mis-sols": "Solicitudes", actividad: "Mi Jornada", "ger-actividad": "Actividad", config: "Gestión", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Gestión", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 

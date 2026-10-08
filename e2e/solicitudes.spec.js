@@ -110,9 +110,9 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   await page.getByPlaceholder("Contraseña").fill("Segura123");
   await page.getByText("Ingresar", { exact: true }).click();
 
-  // ─── Ir al Inbox y ver la solicitud pendiente ───
-  await expect(page.getByRole("button", { name: "Inbox" })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Inbox" }).click();
+  // ─── Ir a Pedidos y ver la solicitud pendiente ───
+  await expect(page.getByRole("navigation").getByRole("button", { name: "Pedidos", exact: true })).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("navigation").getByRole("button", { name: "Pedidos", exact: true }).click();
 
   await expect(page.getByText("Permiso médico")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Aprobar solicitud de Juan Pérez" })).toBeVisible();

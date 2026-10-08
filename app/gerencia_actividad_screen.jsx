@@ -293,11 +293,11 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                 {fichadaDetalle && (
                                   <div className="flex flex-wrap gap-2.5 mb-3 text-[11px]">
                                     <div className="flex items-center gap-1">
-                                      <span className="text-gypi-dim">Ingreso:</span>
+                                      <span className="text-gypi-dim">Entrada:</span>
                                       <span className="font-mono font-semibold text-gypi-text">{fichadaDetalle.ingreso?.slice(0, 5) || "—"}</span>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                      <span className="text-gypi-dim">Egreso:</span>
+                                      <span className="text-gypi-dim">Salida:</span>
                                       <span className="font-mono font-semibold text-gypi-text">{fichadaDetalle.egreso?.slice(0, 5) || "en planta"}</span>
                                     </div>
                                     {fichadaDetalle.horas_trabajadas > 0 && (
