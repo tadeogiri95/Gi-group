@@ -9,8 +9,7 @@
 // de plan "reportes" (mismo gate que reportes_obra en planEnforcement.js).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
-import { getPlanEmpresa } from "../../../lib/planEnforcement";
-import { planTieneModulo, planSiguiente } from "../../../lib/plans";
+import { requireModulo } from "../../../lib/planEnforcement";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
@@ -60,18 +59,9 @@ export async function GET(request) {
       return NextResponse.json({ error: `El rango no puede superar ${MAX_DIAS_RANGO} días` }, { status: 400 });
     }
 
-    // ─── Gate de plan: liquidación requiere el módulo "reportes" ───
-    const plan = await getPlanEmpresa(empresaId);
-    if (!planTieneModulo(plan, "reportes")) {
-      return NextResponse.json(
-        {
-          error: "La liquidación de horas está incluida en Asistencia y en Planta.",
-          upgrade_a: planSiguiente(plan),
-          paywall: true,
-        },
-        { status: 402 }
-      );
-    }
+    // ─── Gate: la liquidación es parte del módulo "reportes" (ítem 36) ───
+    const sinModulo = await requireModulo(empresaId, "reportes");
+    if (sinModulo) return sinModulo;
 
     // Todas las páginas: Supabase corta cada respuesta en 1000 filas sin avisar
     // y 50 empleados × 22 días ya son 1100 fichadas (auditoría F1-04).
