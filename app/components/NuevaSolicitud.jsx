@@ -36,10 +36,10 @@ export default function NuevaSolicitud({ usuario, empresa, onEnviada, onCerrar, 
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Nueva solicitud">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Nuevo pedido">
       <div onClick={onCerrar} className="absolute inset-0 bg-black/60" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[90vh] overflow-y-auto border border-gypi-border">
-        <h3 className="m-0 mb-4 font-heading text-lg font-bold text-gypi-text">Nueva solicitud</h3>
+        <h3 className="m-0 mb-4 font-heading text-lg font-bold text-gypi-text">Nuevo pedido</h3>
 
         <label className="g-label block mb-1.5" htmlFor="ns-tipo">¿Qué necesitás?</label>
         <select id="ns-tipo" value={clave} onChange={(e) => setClave(e.target.value)} className="g-input mb-3 text-[15px]">

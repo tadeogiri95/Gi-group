@@ -18,7 +18,7 @@ test("roles con nombres que la gente entiende", () => {
 });
 
 test("barra de abajo: Pedidos, Tareas y Asistente", () => {
-  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Pedidos", "Equipo", "Gestión"]);
+  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Pedidos", "Planta", "Equipo", "Más"]);
   assert.deepEqual(getItems("operativo", 0).map((i) => i.label), ["Inicio", "Tareas", "Asistente", "Pedidos"]);
   assert.equal(VOCABULARIO.entrada, "Entrada");
 });

@@ -32,6 +32,7 @@ import Nav from "../components/nav/BottomNav";
 import ErrorBoundary from "../components/ErrorBoundary";
 import EmpresaNoEncontrada from "../components/EmpresaNoEncontrada";
 import MisSolicitudesScreen from "../components/screens/MisSolicitudesScreen";
+import { partirDestino } from "../lib/menuGestion";
 
 // Screens — lazy-loaded: solo se descarga el código de la pantalla activa
 const CambiarPasswordScreen = dynamic(() => import("../components/screens/CambiarPasswordScreen"), { ssr: false });
@@ -48,6 +49,7 @@ const BillingScreen = dynamic(() => import("../components/BillingScreen"), { ssr
 // External screens — lazy-loaded
 const ActividadScreen = dynamic(() => import("../actividad_screen"), { ssr: false });
 const GerenciaActividadScreen = dynamic(() => import("../gerencia_actividad_screen"), { ssr: false });
+const PlantaScreen = dynamic(() => import("../components/screens/PlantaScreen"), { ssr: false });
 const DashboardGerencia = dynamic(() => import("../dashboard_gerencia"), { ssr: false });
 const GestionPersonalScreen = dynamic(() => import("../gestion_personal_screen"), { ssr: false });
 const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: false });
@@ -57,7 +59,7 @@ const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: fa
 // ─── Valid screens whitelist ───
 const VALID_SCREENS = new Set([
   "home", "chat", "solicitudes", "mis-sols", "actividad",
-  "historial-fichajes", "equipo", "config", "ger-actividad", "reglas",
+  "historial-fichajes", "equipo", "config", "ger-actividad", "reglas", "planta",
   "documentos",
 ]);
 
@@ -151,6 +153,15 @@ export default function HomeContent() {
   const [historialLegajo, setHistorialLegajo] = useState(null);
   const [paywallInfo, setPaywallInfo] = useState(null);
   const [showBilling, setShowBilling] = useState(false);
+  // Sección abierta dentro de "Más" (R5). irA("config:ubicaciones") abre la
+  // sección justa (lo usan los primeros pasos y el tablero).
+  const [seccionMas, setSeccionMas] = useState(null);
+  const irA = (destino, legajo) => {
+    const { pantalla, seccion } = partirDestino(destino);
+    if (legajo) setHistorialLegajo(legajo);
+    setSeccionMas(seccion);
+    setScreen(pantalla);
+  };
 
   // ─── Carga de datos de la app ───
   const loadData = useCallback(async () => {
@@ -246,7 +257,7 @@ export default function HomeContent() {
 
   const getScreenSubtitle = () => {
     if (uIsGer) {
-      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Configuración", equipo: "Personas de la empresa", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
+      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Todo lo demás", planta: "Hoy en la planta", equipo: "Personas de la empresa", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
     const subtitles = { actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
@@ -254,7 +265,7 @@ export default function HomeContent() {
   };
 
   const getScreenTitle = () => {
-    const titles = { solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Gestión", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -316,7 +327,8 @@ export default function HomeContent() {
     <div className="app-shell bg-gypi-bg">
       {!isDemo && <PushManager legajo={u.legajo} empresaId={u.empresa_id || empresa?.id} />}
 
-      {!isChat && screen !== "home" && (
+      {/* Dentro de una sección de "Más" el título lo pone la sección, con "← Más" */}
+      {!isChat && screen !== "home" && !(screen === "config" && seccionMas) && (
         <div className="safe-top px-[18px] pt-4 pb-2.5 shrink-0">
           {screen === "ger-actividad" && (
             <button onClick={() => setScreen("home")} className="min-h-[44px] -ml-1 mb-1 px-1 bg-transparent border-none cursor-pointer text-[14px] font-semibold text-gypi-text">
@@ -346,7 +358,7 @@ export default function HomeContent() {
         {uIsGer && (
           <div className={screen === "home" ? "contents" : "hidden"}>
             <ErrorBoundary name="home">
-              <DashboardGerencia goto={(s, leg) => { if (leg) setHistorialLegajo(leg); setScreen(s); }} ctx={ctx} reload={loadData} logout={logout} empresa={empresa} isDemo={isDemo} />
+              <DashboardGerencia goto={irA} ctx={ctx} reload={loadData} logout={logout} empresa={empresa} isDemo={isDemo} />
             </ErrorBoundary>
           </div>
         )}
@@ -366,9 +378,11 @@ export default function HomeContent() {
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={u?.empresa_id || empresa?.id} />}
           {uIsGer && screen === "ger-actividad" && <GerenciaActividadScreen empresaId={empresa?.id} />}
+          {uIsGer && screen === "planta" && <PlantaScreen empresa={empresa} usuario={u} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "config" && (
             <ConfigScreen
-              goto={(s, leg) => { if (leg) setHistorialLegajo(leg); setScreen(s); }}
+              seccion={seccionMas}
+              onSeccion={setSeccionMas}
               ctx={ctx}
               reload={loadData}
               usuario={u}
@@ -384,7 +398,7 @@ export default function HomeContent() {
         </ErrorBoundary>
       </div>
 
-      {!isChat && <Nav active={screen} onChange={setScreen} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} />}
+      {!isChat && <Nav active={screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} />}
 
       {paywallInfo && (
         <Paywall

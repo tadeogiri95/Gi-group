@@ -43,7 +43,7 @@ export default function ReglasAsistencia() {
     <div className="rounded-card p-4 border border-gypi-border mb-3.5 bg-gypi-surface">
       <div className="g-overline text-gypi-amber-ink">REGLAS DE ASISTENCIA</div>
       <div className="text-xs text-gypi-dim mt-1 mb-2 leading-relaxed">
-        Se aplican al fichar ingreso. {esDueno ? "" : "Solo el dueño de la cuenta puede cambiarlas."}
+        Se aplican al fichar la entrada. {esDueno ? "" : "Solo el dueño de la cuenta puede cambiarlas."}
       </div>
 
       <div className={fila}>
