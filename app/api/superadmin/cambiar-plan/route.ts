@@ -3,12 +3,14 @@ import { cookies } from "next/headers";
 import { verifyAdminToken } from "../../../lib/jwt";
 import { logAudit } from "../../../lib/audit";
 import { logger } from "../../../lib/logger";
+import { PLANES } from "../../../lib/plans";
 
 import { ipCliente } from "../../../lib/ip";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 
-const PLANES_VALIDOS = ["free", "trial", "starter", "pro", "enterprise"];
+// Todos los planes del catálogo (incluye Asistencia/Planta por tramos, ítem 25)
+const PLANES_VALIDOS = Object.keys(PLANES);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {

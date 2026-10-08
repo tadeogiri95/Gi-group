@@ -23,6 +23,7 @@ export const CRONS_ESPERADOS = {
   "reengagement-onboarding": 26 * HORA,
   "reconciliacion-mp": 26 * HORA,
   "purgar-empresas": 26 * HORA,
+  "actualizar-precios": 26 * HORA,
   "resumen-semanal": 8 * 24 * HORA, // semanal (lunes)
 };
 

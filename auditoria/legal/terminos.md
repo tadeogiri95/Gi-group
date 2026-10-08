@@ -38,7 +38,7 @@ No está permitido:
 
 1. **Prueba:** al registrarse, el Cliente tiene **30 días de prueba gratuita** con todas las funciones, sin tarjeta.
 2. **Planes:** después de la prueba, para seguir usando el Servicio hay que contratar un plan. Los planes, los tramos de cantidad de operarios, los módulos adicionales y los precios vigentes se publican en **[DOMINIO]/pricing**.
-3. **Moneda:** los precios se fijan en **dólares estadounidenses** y se cobran en **pesos argentinos**, al tipo de cambio de referencia **[A DEFINIR: p. ej. dólar oficial vendedor del Banco Nación]**. El importe en pesos se actualiza periódicamente, con **al menos 30 días de aviso** por email al administrador. **[REDACCIÓN A REVISAR CON EL ABOGADO]**
+3. **Moneda:** los precios se fijan en **dólares estadounidenses** y se cobran en **pesos argentinos**, al tipo de cambio de referencia: **dólar oficial vendedor del Banco Nación** del día de la suscripción. Si ese tipo de cambio mueve el importe en pesos un 5% o más, el importe nuevo se cobra recién después de **30 días de aviso** por email al administrador. **[REDACCIÓN A REVISAR CON EL ABOGADO]**
 4. **Cobro:** la suscripción se cobra por adelantado, todos los meses (o todos los años, si se eligió el pago anual), mediante **Mercado Pago**. El Cliente puede cancelarla cuando quiera desde la App. Sigue teniendo acceso hasta el final del período pagado y no se hacen reintegros proporcionales.
 5. **Factura:** Gypi emite **Factura C** a nombre del Cliente, con los datos fiscales que este informe.
 6. **Sin plan vigente** (prueba terminada, pago rechazado o suscripción cancelada), la cuenta queda **en pausa**:

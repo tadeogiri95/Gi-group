@@ -2,11 +2,17 @@
 import { useState, useCallback, useRef } from "react";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
+import { PLANES } from "../lib/plans";
 
-const PLAN_LABEL = { free: "Free", trial: "Trial", starter: "Starter", pro: "Pro", enterprise: "Enterprise" };
-const PLAN_COLOR = { free: "#6B7280", trial: "#0F6E56", starter: "#3B82F6", pro: "#F97316", enterprise: "#A78BFA" };
-const PLANES_OPCIONES = ["free", "trial", "starter", "pro", "enterprise"];
-const PLAN_ORDEN = ["free", "trial", "starter", "pro", "enterprise"];
+// Asistencia/Planta por tramos (ítem 25) + los planes viejos que siguen vigentes
+const PLAN_ORDEN = ["free", "trial", "asistencia_15", "asistencia_40", "asistencia_80", "planta_15", "planta_40", "planta_80", "starter", "pro", "enterprise"];
+const PLANES_OPCIONES = PLAN_ORDEN;
+const PLAN_LABEL = Object.fromEntries(PLAN_ORDEN.map((p) => [p, p === "free" ? "En pausa" : PLANES[p]?.nombre || p]));
+const PLAN_COLOR = {
+  free: "#6B7280", trial: "#0F6E56", starter: "#3B82F6", pro: "#F97316", enterprise: "#A78BFA",
+  asistencia_15: "#3B82F6", asistencia_40: "#3B82F6", asistencia_80: "#3B82F6",
+  planta_15: "#F97316", planta_40: "#F97316", planta_80: "#F97316",
+};
 
 const ACCION_COLOR = {
   login: "#3B82F6", logout: "#6B7280",

@@ -1,8 +1,17 @@
 "use client";
-import { PLANES } from "../lib/plans";
+import { PLANES, ADDONS } from "../lib/plans";
 
-export default function Paywall({ planActual = "free", planRequerido = "starter", feature, mensaje, onClose, onUpgrade }) {
-  const target = PLANES[planRequerido] || PLANES.starter;
+// planRequerido puede ser un plan ("planta_15") o un add-on ("campo", ítem 25)
+function precioDe(p) {
+  if (p.usd != null) return `USD ${p.usd}/mes`;
+  if (p.precio_usd != null) return `USD ${p.precio_usd}/mes`;
+  if (p.precio) return `$${p.precio.toLocaleString("es-AR")}/mes`;
+  return "A convenir";
+}
+
+export default function Paywall({ planActual = "free", planRequerido = "asistencia_15", feature, mensaje, onClose, onUpgrade }) {
+  const addon = ADDONS[planRequerido];
+  const target = addon || PLANES[planRequerido] || PLANES.asistencia_15;
   const actual = PLANES[planActual] || PLANES.free;
 
   return (
@@ -23,11 +32,12 @@ export default function Paywall({ planActual = "free", planRequerido = "starter"
 
         <div className="bg-gypi-surface rounded-[14px] p-4 border border-gypi-border mb-[18px]">
           <div className="flex justify-between items-center mb-2.5">
-            <span className="text-sm font-bold text-gypi-amber">Plan {target.nombre}</span>
-            <span className="text-base font-bold text-gypi-text font-heading">
-              {target.precio ? `$${target.precio.toLocaleString("es-AR")}/mes` : "A convenir"}
-            </span>
+            <span className="text-sm font-bold text-gypi-amber">{addon ? `Add-on ${target.nombre}` : `Plan ${target.nombre}`}</span>
+            <span className="text-base font-bold text-gypi-text font-heading">{precioDe(target)}</span>
           </div>
+          {addon ? (
+            <div className="text-xs text-gypi-dim leading-relaxed">{addon.descripcion}</div>
+          ) : (
           <div className="text-xs text-gypi-dim leading-relaxed">
             ✓ Hasta {target.max_empleados.toLocaleString("es-AR")} empleados<br />
             {target.geolocalizacion && <>✓ Geolocalización ({target.max_ubicaciones >= 999 ? "ilimitada" : target.max_ubicaciones + " ubicación"})<br /></>}
@@ -37,6 +47,7 @@ export default function Paywall({ planActual = "free", planRequerido = "starter"
             {target.reglas_bot && <>✓ Bot con reglas personalizadas<br /></>}
             {target.soporte && <>✓ Soporte {target.soporte}<br /></>}
           </div>
+          )}
         </div>
 
         <div className="flex gap-2.5">

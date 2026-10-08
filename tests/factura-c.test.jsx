@@ -107,7 +107,7 @@ test("create-subscription — sin datos de facturación no deja contratar", asyn
     { match: (url) => url.includes("select=razon_social"), respond: () => ({ status: 200, body: [{ razon_social: "Acme", cuit: null }] }) },
     { match: (url) => url.includes("api.mercadopago.com"), respond: () => { mp = true; return { status: 201, body: {} }; } },
   ]);
-  const res = await crearSuscripcion(await req("http://localhost/api/billing/create-subscription", { method: "POST", body: JSON.stringify({ plan: "pro" }) }));
+  const res = await crearSuscripcion(await req("http://localhost/api/billing/create-subscription", { method: "POST", body: JSON.stringify({ linea: "asistencia" }) }));
   assert.equal(res.status, 409);
   assert.equal((await res.json()).falta_perfil_fiscal, true);
   assert.equal(mp, false);

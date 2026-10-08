@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { PLANES } from "../lib/plans";
+import { PLANES, LINEAS, ADDONS, TRAMOS } from "../lib/plans";
 
 const S = {
   // height + overflowY (no minHeight): html/body llevan overflow:hidden en mobile,
@@ -43,13 +43,13 @@ const S = {
 
 const SECTIONS = ["Inicio rápido", "Fichaje", "Actividades", "Gestión", "FAQs", "Planes"];
 
-const PLAN_IDS = ["free", "starter", "pro", "enterprise"];
+// Una ficha por línea (las capacidades no cambian con el tramo) + Enterprise
+const PLAN_IDS = ["asistencia_15", "planta_15", "enterprise"];
 
 const PLAN_META = {
-  free: { color: "#8A7F75", desc: "Para equipos pequeños que están empezando." },
-  starter: { color: "#3B82F6", desc: "Para empresas en crecimiento." },
-  pro: { color: "#F97316", desc: "Para operaciones industriales completas." },
-  enterprise: { color: "#8B5CF6", desc: "Para grupos con múltiples empresas." },
+  asistencia_15: { color: "#3B82F6", nombre: LINEAS.asistencia.nombre, desc: LINEAS.asistencia.descripcion },
+  planta_15: { color: "#F97316", nombre: LINEAS.planta.nombre, desc: LINEAS.planta.descripcion },
+  enterprise: { color: "#8B5CF6", nombre: "Enterprise", desc: `Más de ${TRAMOS.at(-1)} operarios, varias plantas o acuerdos a medida.` },
 };
 
 const MODULO_LABELS = {
@@ -63,13 +63,13 @@ const MODULO_LABELS = {
 };
 
 function formatPrecioPlan(p) {
-  if (p.precio == null) return "A consultar";
-  if (p.precio === 0) return "Sin costo";
-  return "$" + p.precio.toLocaleString("es-AR") + " / mes";
+  const l = LINEAS[p.linea];
+  if (!l) return "A consultar";
+  return TRAMOS.map((t) => `USD ${l.usd[t]}`).join(" / ") + " por mes";
 }
 
 function featuresDePlan(p) {
-  const f = [p.max_empleados >= 99999 ? "Empleados ilimitados" : `Hasta ${p.max_empleados} empleados`];
+  const f = [p.linea ? `Tramos de hasta ${TRAMOS.join(", ")} operarios activos` : "Operarios ilimitados"];
   p.modulos.forEach((m) => { if (MODULO_LABELS[m]) f.push(MODULO_LABELS[m]); });
   if (p.geolocalizacion) f.push("Geolocalización y geofence");
   if (p.exportar_csv) f.push("Exportación CSV");
@@ -291,7 +291,7 @@ export default function DocsPage() {
             return (
               <div key={id} style={{ ...S.card, borderColor: `${meta.color}44`, marginBottom: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: meta.color, fontFamily: "'Bricolage Grotesque', system-ui" }}>{p.nombre}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: meta.color, fontFamily: "'Bricolage Grotesque', system-ui" }}>{meta.nombre}</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "#F5F0E8" }}>{formatPrecioPlan(p)}</div>
                 </div>
                 <div style={{ ...S.p, marginBottom: 12 }}>{meta.desc}</div>
@@ -305,6 +305,12 @@ export default function DocsPage() {
               </div>
             );
           })}
+
+          <p style={{ ...S.p, marginTop: 16 }}>
+            <b>Add-ons:</b> {Object.values(ADDONS).map((a) => `${a.nombre} (USD ${a.usd}/mes)`).join(" · ")}.
+            Los precios están en dólares y se cobran en pesos al dólar oficial del día; si cambia, avisamos 30 días antes.
+            Todas las empresas empiezan con 30 días de prueba gratis.
+          </p>
 
           <p style={{ ...S.p, marginTop: 24 }}>Para contratar o consultar precios actualizados: <a href="mailto:contacto@gypi.app" style={{ color: "#F97316" }}>contacto@gypi.app</a> o desde la pantalla de Configuración dentro de la app.</p>
         </div>

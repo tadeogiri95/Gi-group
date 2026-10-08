@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
-import { PLANES, planTieneModulo, planLimite, planPermite, planVigente } from "./plans";
+import { PLANES, planLimite, planPermite, planVigente, capacidades, planSiguiente } from "./plans";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -49,6 +49,29 @@ export async function getPlanEmpresa(empresaId, { siFalla = "free" } = {}) {
   }
 }
 
+// Add-ons contratados (empresa.addons, migración 082). Consulta aparte y
+// silenciosa: sin la migración la columna no existe y no hay add-ons, pero el
+// plan se sigue leyendo bien.
+const cacheAddons = new Map();
+export async function getAddonsEmpresa(empresaId) {
+  if (!empresaId) return [];
+  const cached = cacheAddons.get(empresaId);
+  if (cached && Date.now() - cached.t < TTL) return cached.addons;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/empresa?id=eq.${empresaId}&select=addons`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const addons = Array.isArray(data?.[0]?.addons) ? data[0].addons : [];
+    cacheAddons.set(empresaId, { addons, t: Date.now() });
+    return addons;
+  } catch {
+    return [];
+  }
+}
+
 export const MENSAJE_SIN_PLAN = "La cuenta de tu empresa está en pausa: terminó la prueba o la suscripción no está activa. El dueño puede elegir un plan para seguir cargando datos.";
 
 /**
@@ -63,7 +86,7 @@ export async function rechazarSiSinPlan(empresaId) {
 }
 
 export function invalidarCachePlan(empresaId) {
-  if (empresaId) cache.delete(empresaId);
+  if (empresaId) { cache.delete(empresaId); cacheAddons.delete(empresaId); }
 }
 
 // Cuenta filas activas en una tabla para una empresa
@@ -95,8 +118,8 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
     if (actuales >= planInfo.max_empleados) {
       return {
         ok: false,
-        error: `Tu plan ${planInfo.nombre} permite hasta ${planInfo.max_empleados} empleados activos. Tenés ${actuales}. Actualizá el plan para agregar más.`,
-        upgrade_a: plan === "free" ? "starter" : plan === "starter" ? "pro" : "enterprise",
+        error: `Tu plan ${planInfo.nombre} permite hasta ${planInfo.max_empleados} empleados activos. Tenés ${actuales}. Pasá al tramo siguiente para agregar más.`,
+        upgrade_a: planSiguiente(plan),
       };
     }
   }
@@ -106,16 +129,16 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
     if (planInfo.max_ubicaciones === 0) {
       return {
         ok: false,
-        error: `Tu plan ${planInfo.nombre} no incluye control de ubicación. Actualizá a Starter o superior.`,
-        upgrade_a: "starter",
+        error: `Tu plan ${planInfo.nombre} no incluye control de ubicación. Está incluido en Asistencia y en Planta.`,
+        upgrade_a: planSiguiente(plan),
       };
     }
     const actuales = await contarFilas("geo_zonas", empresaId);
     if (actuales >= planInfo.max_ubicaciones) {
       return {
         ok: false,
-        error: `Tu plan ${planInfo.nombre} permite hasta ${planInfo.max_ubicaciones} ubicación(es). Actualizá a Pro para tener ilimitadas.`,
-        upgrade_a: "pro",
+        error: `Tu plan ${planInfo.nombre} permite hasta ${planInfo.max_ubicaciones} ubicación(es). Asistencia y Planta las tienen ilimitadas.`,
+        upgrade_a: planSiguiente(plan),
       };
     }
   }
@@ -125,8 +148,8 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
     if (!planPermite(plan, "reglas_bot")) {
       return {
         ok: false,
-        error: `Las reglas personalizadas del bot requieren plan Pro o Enterprise.`,
-        upgrade_a: "pro",
+        error: `Las reglas personalizadas del bot requieren un plan Asistencia, Planta o Enterprise.`,
+        upgrade_a: planSiguiente(plan),
       };
     }
   }
@@ -136,8 +159,8 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
     if (!planPermite(plan, "calendario")) {
       return {
         ok: false,
-        error: `El calendario con notas requiere plan Pro o Enterprise.`,
-        upgrade_a: "pro",
+        error: `El calendario con notas requiere un plan Asistencia, Planta o Enterprise.`,
+        upgrade_a: planSiguiente(plan),
       };
     }
   }
@@ -147,19 +170,20 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
     if (!planPermite(plan, "calendario")) {
       return {
         ok: false,
-        error: `La planificación de turnos requiere plan Pro o Enterprise.`,
-        upgrade_a: "pro",
+        error: `La planificación de turnos requiere un plan Asistencia, Planta o Enterprise.`,
+        upgrade_a: planSiguiente(plan),
       };
     }
   }
 
-  // ─── reportes_obra: requiere módulo "reportes" (no incluido en Free) ───
+  // ─── reportes_obra: módulo "obra" (en Asistencia y Planta, add-on Trabajo en campo) ───
   if (tabla === "reportes_obra") {
-    if (!planTieneModulo(plan, "reportes")) {
+    const addons = await getAddonsEmpresa(empresaId);
+    if (!capacidades(plan, addons).modulos.includes("obra")) {
       return {
         ok: false,
-        error: `Los reportes de obra requieren plan Starter o superior.`,
-        upgrade_a: "starter",
+        error: `Los reportes de obra son parte del add-on Trabajo en campo. Sumalo desde Facturación.`,
+        upgrade_a: "campo",
       };
     }
   }
@@ -171,8 +195,10 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
     if (actuales >= max) {
       return {
         ok: false,
-        error: `Tu plan ${planInfo.nombre} permite hasta ${max} proyectos. Actualizá tu plan para crear más.`,
-        upgrade_a: plan === "free" ? "starter" : "pro",
+        error: max === 0
+          ? `Las órdenes de trabajo son parte del plan Planta. Tu plan ${planInfo.nombre} incluye solo asistencia.`
+          : `Tu plan ${planInfo.nombre} permite hasta ${max} proyectos. Actualizá tu plan para crear más.`,
+        upgrade_a: planSiguiente(plan, { necesitaPlanta: max === 0 }),
       };
     }
   }

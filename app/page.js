@@ -2,8 +2,8 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fH, fB } from "./lib/theme";
-import { PLANES, precioAnual } from "./lib/plans";
-import EnterpriseContactButton from "./components/EnterpriseContactButton";
+import { DIAS_TRIAL } from "./lib/plans";
+import TablaPrecios from "./components/TablaPrecios";
 import GoogleIcon from "./components/GoogleIcon";
 import { getOauthErrorMessage } from "./lib/oauthErrorMessages";
 import { ultimaEmpresa, destinoAppInstalada } from "./lib/ultimaEmpresa";
@@ -15,7 +15,6 @@ const AMBER_TEXT = "#000";
 const AMBER_S = "var(--color-empresa-primary-subtle, rgba(249,115,22,0.12))";
 const VIOLET = "var(--color-empresa-secondary, #7C3AED)";
 const VIOLET_S = "var(--color-empresa-secondary-subtle, rgba(124,58,237,0.12))";
-const GREEN = "#16A34A";
 const RED = "#DC2626";
 const RED_S = "rgba(220,38,38,0.12)";
 const DIM = "var(--color-text-dim)";
@@ -77,26 +76,6 @@ function AnimatedTagline() {
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   Pricing helpers
-   ═══════════════════════════════════════════════════ */
-const FEATURES_CHECK = [
-  { key: "fichaje",     label: "Fichaje de asistencia" },
-  { key: "chat",        label: "Chat operativo" },
-  { key: "geolocalizacion", label: "Geolocalización" },
-  { key: "exportar_csv", label: "Exportar CSV" },
-  { key: "exportar_pdf", label: "Exportar PDF" },
-  { key: "calendario",  label: "Calendario" },
-  { key: "reglas_bot",  label: "Reglas automáticas (bot)" },
-  { key: "reportes_avanzados", label: "Reportes avanzados" },
-  { key: "soporte",     label: "Soporte dedicado" },
-  { key: "api_access",  label: "Acceso API" },
-];
-
-function formatPrecio(n) {
-  if (n == null) return "A medida";
-  return "$" + n.toLocaleString("es-AR");
-}
 
 /* ═══════════════════════════════════════════════════
    KPI counter animation
@@ -135,7 +114,6 @@ export default function Landing() {
   const [form, setForm] = useState({ nombre_empresa: "", nombre_admin: "", email: "", password: "", rubro: "general" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [anual, setAnual] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   // Si vino de /api/auth/google/callback con un error, abre el wizard para
@@ -254,7 +232,6 @@ export default function Landing() {
   }
 
   /* ─── Secciones ─── */
-  const plans = ["free", "starter", "pro", "enterprise"];
 
   const FEATURES = [
     { icon: icons.clock,  title: "Fichaje inteligente",   desc: "Control de asistencia con geolocalización, fotos y validación automática." },
@@ -452,96 +429,9 @@ export default function Landing() {
       {/* ═══ PRICING ═══ */}
       <section id="pricing" style={sectionPad}>
         <h2 style={sectionTitle}>Planes simples, sin sorpresas</h2>
-        <p style={sectionSub}>Empezá gratis y escalá cuando lo necesites. Todos los planes incluyen soporte.</p>
-
-        {/* Toggle mensual / anual */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 40 }}>
-          <span style={{ fontSize: 14, color: anual ? DIM : TEXT, fontWeight: anual ? 400 : 700 }}>Mensual</span>
-          <button onClick={() => setAnual(!anual)}
-            style={{ width: 52, height: 28, borderRadius: 14, background: anual ? AMBER : SURFACE, border: `1px solid ${anual ? AMBER : BORDER}`, cursor: "pointer", position: "relative", transition: "all 0.3s" }}>
-            <div style={{ width: 22, height: 22, borderRadius: 11, background: anual ? "#000" : DIM, position: "absolute", top: 2, left: anual ? 27 : 3, transition: "left 0.3s" }} />
-          </button>
-          <span style={{ fontSize: 14, color: anual ? TEXT : DIM, fontWeight: anual ? 700 : 400 }}>
-            Anual <span style={{ fontSize: 11, color: GREEN, fontWeight: 700 }}>-20%</span>
-          </span>
-        </div>
-
-        {/* 4 Plan cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, maxWidth: 1000, margin: "0 auto" }}>
-          {plans.map(pid => {
-            const p = PLANES[pid];
-            const isPopular = pid === "pro";
-            const precio = p.precio;
-            const precioShow = anual ? precioAnual(pid) : precio;
-
-            return (
-              <div key={pid} style={{
-                padding: 28, borderRadius: 20,
-                background: isPopular ? `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})` : SURFACE,
-                border: isPopular ? `2px solid ${AMBER}` : `1px solid ${BORDER}`,
-                position: "relative",
-                transition: "transform 0.2s, box-shadow 0.2s",
-              }}
-                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = `0 8px 32px ${AMBER_S}`; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
-
-                {/* Badge POPULAR */}
-                {isPopular && (
-                  <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", padding: "4px 16px", borderRadius: 20, background: AMBER, color: AMBER_TEXT, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em" }}>
-                    POPULAR
-                  </div>
-                )}
-
-                <h3 style={{ fontFamily: fH, fontSize: 20, fontWeight: 700, margin: isPopular ? "8px 0 4px" : "0 0 4px" }}>{p.nombre}</h3>
-                <div style={{ fontSize: 13, color: DIM, marginBottom: 16 }}>
-                  Hasta {p.max_empleados >= 99999 ? "ilimitados" : p.max_empleados} empleados
-                </div>
-
-                <div style={{ marginBottom: 20 }}>
-                  <span style={{ fontFamily: fH, fontSize: 36, fontWeight: 800, color: isPopular ? AMBER : TEXT }}>
-                    {formatPrecio(precioShow)}
-                  </span>
-                  {precio != null && precio > 0 && (
-                    <span style={{ fontSize: 13, color: DIM }}>/{anual ? "mes" : "mes"}</span>
-                  )}
-                  {precio === 0 && <span style={{ fontSize: 13, color: DIM }}> forever</span>}
-                </div>
-
-                {/* Feature checklist */}
-                <div style={{ marginBottom: 24 }}>
-                  {FEATURES_CHECK.map(f => {
-                    const has = p[f.key] === true || (typeof p[f.key] === "string") || (f.key === "fichaje" && p.modulos?.includes("fichaje")) || (f.key === "chat" && p.modulos?.includes("chat"));
-                    return (
-                      <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13, color: has ? TEXT : MUTE }}>
-                        <span style={{ color: has ? GREEN : MUTE, fontSize: 14 }}>{has ? "✓" : "–"}</span>
-                        <span style={{ textDecoration: has ? "none" : "line-through" }}>{f.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {pid === "enterprise" ? (
-                  <EnterpriseContactButton
-                    style={{
-                      width: "100%", padding: 12, borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                      background: SURF_HI, color: TEXT,
-                    }}
-                  >
-                    Contactanos
-                  </EnterpriseContactButton>
-                ) : (
-                  <button onClick={() => setShowRegistro(true)}
-                    style={{
-                      width: "100%", padding: 12, borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH,
-                      background: isPopular ? AMBER : SURF_HI,
-                      color: isPopular ? "#000" : TEXT,
-                    }}>
-                    {pid === "free" ? "Empezar gratis" : "Elegir plan"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+        <p style={sectionSub}>Pagás según cuánta gente tenés y qué querés controlar. Empezá con {DIAS_TRIAL} días de prueba gratis, con todo incluido.</p>
+        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+          <TablaPrecios onEmpezar={() => setShowRegistro(true)} />
         </div>
       </section>
 

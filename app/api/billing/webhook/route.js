@@ -17,7 +17,22 @@ import { logEvent, EVT } from "../../../lib/analytics";
 import { safeErrorMessage } from "../../../lib/validate";
 
 import { ipCliente } from "../../../lib/ip";
+import { verificarSuscripcion, montoCoincide } from "../../../lib/validarCobro";
 const WH_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+// Lo que hace falta de la suscripción para validar el aviso (ítem 25)
+const SUSC_CAMPOS = "plan,estado,empresa_id,gateway_subscription_id,precio,precio_nuevo,periodo,addons";
+// Sin la migración 082 no existen precio_nuevo ni addons: se lee lo de antes
+// para no dejar de activar planes por una columna que falta.
+const SUSC_CAMPOS_PREVIOS = "plan,estado,empresa_id,gateway_subscription_id,precio,periodo";
+async function leerSuscripcion(suscId) {
+  try {
+    return (await sbGet(`suscripciones?id=eq.${suscId}&select=${SUSC_CAMPOS}&limit=1`))?.[0] ?? null;
+  } catch {
+    return (await sbGet(`suscripciones?id=eq.${suscId}&select=${SUSC_CAMPOS_PREVIOS}&limit=1`, { silent: true, fallback: [] }))?.[0] ?? null;
+  }
+}
+// Add-ons de la suscripción → empresa.addons (solo si la fila los trae)
+const addonsDe = (susc) => (Array.isArray(susc?.addons) ? { addons: susc.addons } : {});
 
 // ═══════════════════════════════════════════════════════════
 // CAMBIO 1D: Firma OBLIGATORIA
@@ -150,8 +165,22 @@ export async function POST(request) {
       else if (preapproval.status === "cancelled") nuevoEstado = "cancelada";
       else if (preapproval.status === "pending") nuevoEstado = "suspendida";
 
+      const suscActual = await leerSuscripcion(suscId);
+
+      // F2-11: la suscripción tiene que ser de esa empresa y de ese preapproval
+      const control = verificarSuscripcion(suscActual, { empresaId, preapprovalId: preapproval.id });
+      if (!control.ok) {
+        logger.warn("[webhook] Preapproval que no corresponde a la suscripción", { suscId, empresaId, motivo: control.motivo });
+        return NextResponse.json({ ok: true, ignorado: control.motivo });
+      }
+      // Y el monto autorizado, el acordado: si no, no se activa el plan
+      const montoAutorizado = preapproval.auto_recurring?.transaction_amount;
+      if (nuevoEstado === "activa" && montoAutorizado != null && !montoCoincide(suscActual, montoAutorizado)) {
+        logger.error("[webhook] Monto del preapproval distinto del acordado", new Error("monto_no_coincide"), { suscId, empresaId, montoAutorizado });
+        return NextResponse.json({ ok: true, accion: "monto_no_coincide" });
+      }
+
       // ═══ P4: Idempotencia — si el estado local ya coincide, skip ═══
-      const [suscActual] = await sbGet(`suscripciones?id=eq.${suscId}&select=estado,plan&limit=1`, { silent: true, fallback: [] });
       if (suscActual?.estado === nuevoEstado) {
         logger.debug("[webhook] Preapproval ya procesado, mismo estado", { suscId, estado: nuevoEstado });
         return NextResponse.json({ ok: true, accion: `susc_${nuevoEstado}_ya_procesado` });
@@ -196,6 +225,7 @@ export async function POST(request) {
             plan_activo: plan,
             suscripcion_activa_id: suscId,
             plan_vence: null,
+            ...addonsDe(suscActual),
           });
         }
       } else if (nuevoEstado === "suspendida" || nuevoEstado === "cancelada") {
@@ -255,6 +285,19 @@ export async function POST(request) {
       const empresaId = match?.[1];
       const suscId = match?.[2];
 
+      // F2-11: la suscripción del external_reference tiene que ser de esa empresa
+      let suscPago = null;
+      if (suscId) {
+        suscPago = await leerSuscripcion(suscId);
+        const control = verificarSuscripcion(suscPago, { empresaId });
+        if (!control.ok) {
+          logger.warn("[webhook] Pago que no corresponde a la suscripción", { pagoId: pago.id, suscId, empresaId, motivo: control.motivo });
+          return NextResponse.json({ ok: true, ignorado: control.motivo });
+        }
+      }
+      // Monto distinto del acordado: el pago se registra, pero no activa el plan
+      const montoOk = montoCoincide(suscPago, pago.transaction_amount);
+
       let estadoPago = "pendiente";
       if (pago.status === "approved") estadoPago = "aprobado";
       else if (pago.status === "rejected") estadoPago = "rechazado";
@@ -272,7 +315,7 @@ export async function POST(request) {
           // Reintento del mismo estado: no se reprocesa. Si el pago existe pero
           // empresa.plan_activo no fue actualizado (ej: el PATCH falló en el
           // intento anterior), repararlo antes de retornar.
-          if (pago.status === "approved" && suscId && empresaId) {
+          if (pago.status === "approved" && suscId && empresaId && montoOk) {
             try {
               const [susc] = await sbGet(`suscripciones?id=eq.${suscId}&select=plan&limit=1`);
               const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_activo,plan_override_manual&limit=1`);
@@ -317,6 +360,13 @@ export async function POST(request) {
         fecha_pago: pago.date_approved || pago.date_created,
       });
 
+      if (estadoPago === "aprobado" && suscId && !montoOk) {
+        logger.error("[webhook] Pago aprobado con un monto distinto del acordado: no activa el plan", new Error("monto_no_coincide"), {
+          pagoId: pago.id, suscId, empresaId, monto: pago.transaction_amount,
+        });
+        return NextResponse.json({ ok: true, accion: "pago_monto_no_coincide" });
+      }
+
       if (estadoPago === "aprobado" && suscId) {
         await sbPatchOk(`suscripciones?id=eq.${suscId}`, { estado: "activa" });
         if (empresaId) {
@@ -328,6 +378,7 @@ export async function POST(request) {
               plan_activo: susc[0].plan,
               suscripcion_activa_id: suscId,
               plan_vence: null,
+              ...addonsDe(suscPago),
             });
           }
           try {

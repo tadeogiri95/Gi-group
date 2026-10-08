@@ -10,7 +10,7 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { getPlanEmpresa } from "../../../lib/planEnforcement";
-import { planTieneModulo } from "../../../lib/plans";
+import { planTieneModulo, planSiguiente } from "../../../lib/plans";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
@@ -65,8 +65,8 @@ export async function GET(request) {
     if (!planTieneModulo(plan, "reportes")) {
       return NextResponse.json(
         {
-          error: "Los reportes de liquidación requieren plan Starter o superior.",
-          upgrade_a: "starter",
+          error: "La liquidación de horas está incluida en Asistencia y en Planta.",
+          upgrade_a: planSiguiente(plan),
           paywall: true,
         },
         { status: 402 }

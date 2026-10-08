@@ -107,6 +107,12 @@ export async function GET(request) {
       moneda,
       gateway,
       trial_disponible,
+      // Precios en USD (ítem 25): lo que vale en dólares, los add-ons y el
+      // próximo monto si el dólar cambió y ya se avisó
+      precio_usd: sub?.precio_usd ?? null,
+      addons: Array.isArray(sub?.addons) ? sub.addons : [],
+      precio_nuevo: sub?.precio_nuevo ?? null,
+      precio_nuevo_desde: sub?.precio_nuevo_desde ?? null,
     }, {
       headers: { "Cache-Control": "private, no-store" },
     });
