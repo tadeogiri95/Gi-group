@@ -39,7 +39,7 @@ export default function EmptyState({
       {action && (
         <button
           onClick={action.onClick}
-          className="mt-[18px] py-2.5 px-5 rounded-[10px] bg-gypi-amber text-white border-none text-[13px] font-bold font-body cursor-pointer"
+          className="mt-[18px] py-2.5 px-5 rounded-[10px] bg-gypi-amber text-gypi-on-amber border-none text-[13px] font-bold font-body cursor-pointer"
         >{action.label}</button>
       )}
     </div>

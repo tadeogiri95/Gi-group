@@ -67,7 +67,7 @@ export default function NuevaSolicitud({ usuario, empresa, onEnviada, onCerrar, 
 
         <div className="flex gap-2">
           <button onClick={onCerrar} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-transparent text-gypi-dim text-sm font-bold cursor-pointer">Cancelar</button>
-          <button onClick={enviar} disabled={enviando} className="flex-[2] min-h-[48px] rounded-xl border-none bg-gypi-amber text-white text-sm font-bold cursor-pointer disabled:opacity-60">
+          <button onClick={enviar} disabled={enviando} className="flex-[2] min-h-[48px] rounded-xl border-none bg-gypi-amber text-gypi-on-amber text-sm font-bold cursor-pointer disabled:opacity-60">
             {enviando ? "Enviando..." : "Enviar solicitud"}
           </button>
         </div>

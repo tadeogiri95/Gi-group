@@ -409,7 +409,7 @@ export default function ProyectosScreen({ empresaId }) {
           className="w-full py-2 px-3 rounded-[10px] border border-gypi-border bg-transparent text-gypi-dim text-xs font-semibold cursor-pointer flex justify-between items-center"
         >
           <span>🔗 Sincronización automática {syncCfg.url ? "· configurada" : ""}</span>
-          <span className="text-[10px]">{showSyncPanel ? "▲" : "▼"}</span>
+          <span className="text-xs">{showSyncPanel ? "▲" : "▼"}</span>
         </button>
         {showSyncPanel && (
           <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
@@ -417,7 +417,7 @@ export default function ProyectosScreen({ empresaId }) {
               URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: proyectos nuevos se crean, los existentes se actualizan.
             </div>
             {syncCfg.ultima_sync && (
-              <div className="text-[10px] text-gypi-green mb-2">
+              <div className="text-xs text-gypi-green mb-2">
                 Última sync: {new Date(syncCfg.ultima_sync).toLocaleString("es-AR")}
               </div>
             )}

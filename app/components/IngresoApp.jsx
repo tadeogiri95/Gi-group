@@ -34,7 +34,7 @@ export default function IngresoApp({ irA = (u) => { window.location.href = u; } 
         <label htmlFor="codigo-app" className="text-[12px] font-bold text-gypi-dim uppercase tracking-[0.06em]">Código de tu empresa</label>
         <input id="codigo-app" value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="por ejemplo: mi-empresa" autoCapitalize="none" autoCorrect="off" className="g-input w-full text-base py-3.5 px-4 rounded-xl" />
         {error && <div role="alert" className="text-[13px] text-gypi-red">{error}</div>}
-        <button type="submit" disabled={buscando} className="w-full py-3.5 rounded-[14px] border-none bg-gypi-amber text-black font-bold text-[15px] cursor-pointer" style={{ minHeight: 52 }}>
+        <button type="submit" disabled={buscando} className="w-full py-3.5 rounded-[14px] border-none bg-gypi-amber text-gypi-on-amber font-bold text-[15px] cursor-pointer" style={{ minHeight: 52 }}>
           {buscando ? "Buscando…" : "Entrar"}
         </button>
       </form>

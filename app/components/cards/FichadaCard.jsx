@@ -15,7 +15,7 @@ export default function FichadaCard({ tipo, hora, geoMsg, tardanza }) {
         <div className="text-[11px] font-bold tracking-wide" style={{ color }}>{label}</div>
         <div className="text-[22px] font-bold text-gypi-text font-heading mt-1">{hora}</div>
         {extraMsg && <div className="text-xs font-semibold mt-1" style={{ color }}>{extraMsg}</div>}
-        {geoMsg && <div className="text-[10px] text-gypi-dim mt-1">{geoMsg}</div>}
+        {geoMsg && <div className="text-xs text-gypi-dim mt-1">{geoMsg}</div>}
       </div>
       {(!tardanza || tardanza.estado === "puntual") && <span className="text-gypi-green"><Ic.check size={20} /></span>}
       {tardanza?.estado === "bloqueado" && <span className="text-[24px]" style={{ color: RED }}>⛔</span>}

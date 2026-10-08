@@ -100,7 +100,7 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
       <button
         onClick={cambiar}
         disabled={!canSubmit}
-        className={`mt-4 w-full py-3.5 rounded-xl border-none bg-gypi-amber text-white text-base font-bold font-heading cursor-pointer ${
+        className={`mt-4 w-full py-3.5 rounded-xl border-none bg-gypi-amber text-gypi-on-amber text-base font-bold font-heading cursor-pointer ${
           canSubmit ? "opacity-100" : "opacity-50 cursor-default"
         }`}
       >

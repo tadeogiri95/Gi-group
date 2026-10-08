@@ -6,8 +6,8 @@
 const _base = {
   bg:"#F7F7F5", surface:"#FFFFFF", surfHi:"#EDEDED", surfLo:"#F0F0EE",
   border:"rgba(0,0,0,0.08)", borderHi:"rgba(0,0,0,0.14)",
-  text:"#1A1A1A", dim:"#595959", mute:"#8C8C8C",
-  amber:"#F97316", amberText:"#FFFFFF", amberS:"rgba(249,115,22,0.10)",
+  text:"#1A1A1A", dim:"rgba(26,26,26,0.68)", mute:"rgba(26,26,26,0.58)",
+  amber:"#F97316", amberText:"#000000", amberS:"rgba(249,115,22,0.10)",
   green:"#16A34A", greenS:"rgba(22,163,74,0.10)",
   red:"#DC2626", redS:"rgba(220,38,38,0.10)",
   cyan:"#0891B2", cyanS:"rgba(8,145,178,0.10)",
@@ -69,32 +69,44 @@ function deriveSurfaces(bgHex) {
   };
 }
 
-// Genera dim/mute a partir de color de texto
-// WCAG AA: dim (text-muted) needs 4.5:1 for normal text;
-//          mute (text-secondary/placeholders) needs 3:1 min for large text/UI.
-// Alpha 0.60/0.42 passes AA across all dark presets including medianoche.
-function deriveDimMute(textHex, bgHex) {
-  const h = textHex.replace('#', '');
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  // Detect dark vs light to pick correct alpha ramp
-  if (bgHex) {
-    const bh = bgHex.replace('#', '');
-    const br = parseInt(bh.substring(0, 2), 16);
-    const bg = parseInt(bh.substring(2, 4), 16);
-    const bb = parseInt(bh.substring(4, 6), 16);
-    const lum = (br * 299 + bg * 587 + bb * 114) / 1000;
-    if (lum <= 140) {
-      return {
-        dim: `rgba(${r},${g},${b},0.60)`,
-        mute: `rgba(${r},${g},${b},0.42)`,
-      };
-    }
+// Genera dim/mute a partir de color de texto (reforma UX R2).
+// dim (texto secundario) necesita 4,5 a 1 contra el fondo; mute (marcadores,
+// textos grandes) 3 a 1. Se parte de una transparencia y se sube hasta llegar,
+// así cada combinación de colores de la empresa queda legible al sol.
+const DIM_MIN = 4.6;
+const MUTE_MIN = 3.2;
+
+function rgb(hex) {
+  const h = hex.replace('#', '');
+  return [0, 2, 4].map((i) => parseInt(h.substring(i, i + 2), 16));
+}
+function luminancia([r, g, b]) {
+  const lin = (c) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+/** Contraste WCAG entre dos colores [r,g,b]. */
+export function contraste(a, b) {
+  const [x, y] = [luminancia(a), luminancia(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+function alfaMinimo(texto, fondo, desde, minimo) {
+  for (let a = desde; a < 1; a = Math.round((a + 0.02) * 100) / 100) {
+    const mezcla = texto.map((c, i) => c * a + fondo[i] * (1 - a));
+    if (contraste(mezcla, fondo) >= minimo) return a;
   }
+  return 1;
+}
+
+export function deriveDimMute(textHex, bgHex = "#F7F7F5") {
+  const texto = rgb(textHex);
+  const fondo = rgb(bgHex);
+  const oscuro = (fondo[0] * 299 + fondo[1] * 587 + fondo[2] * 114) / 1000 <= 140;
+  const dim = alfaMinimo(texto, fondo, oscuro ? 0.70 : 0.68, DIM_MIN);
+  const mute = Math.min(dim, alfaMinimo(texto, fondo, oscuro ? 0.55 : 0.58, MUTE_MIN));
+  const [r, g, b] = texto;
   return {
-    dim: `rgba(${r},${g},${b},0.50)`,
-    mute: `rgba(${r},${g},${b},0.45)`,
+    dim: `rgba(${r},${g},${b},${dim})`,
+    mute: `rgba(${r},${g},${b},${mute})`,
   };
 }
 

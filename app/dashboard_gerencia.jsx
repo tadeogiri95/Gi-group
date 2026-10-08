@@ -73,7 +73,7 @@ function MiniBarChart({ data, maxVal, color = AMBER, height = 80, barWidth = 16,
       {labels.length > 0 && (
         <div className="flex mt-1">
           {labels.map((l, i) => (
-            <div key={i} className="text-center text-gypi-mute font-mono font-semibold" style={{ width: barWidth + gap, fontSize: 9 }}>{l}</div>
+            <div key={i} className="text-center text-gypi-mute font-mono font-semibold" style={{ width: barWidth + gap, fontSize: 11 }}>{l}</div>
           ))}
         </div>
       )}
@@ -181,7 +181,7 @@ function ReportesObraPanel({ reportesObra }) {
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-[10px] text-gypi-dim">
+                      <span className="text-xs text-gypi-dim">
                         {new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" className="transition-transform duration-200" style={{ transform: isExpanded ? "rotate(180deg)" : "none" }}><polyline points="6 9 12 15 18 9" /></svg>
@@ -231,7 +231,7 @@ function ReportesObraPanel({ reportesObra }) {
                             {r.fotos_urls.map((url, i) => (
                               <div key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} className="cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative" style={{ aspectRatio: r.fotos_urls.length === 1 ? "16/9" : "1" }}>
                                 <Image src={url} alt={`Foto ${i + 1}`} fill sizes="(max-width: 768px) 50vw, 300px" className="object-cover" />
-                                <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-md bg-black/60 text-white text-[10px] font-semibold">&#x1F50D; Ampliar</div>
+                                <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-md bg-black/60 text-white text-xs font-semibold">&#x1F50D; Ampliar</div>
                               </div>
                             ))}
                           </div>
@@ -722,7 +722,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 const pct = parseFloat(op.pct_productivo) || 0;
                 return (
                   <div key={op.empleado_id} className="flex items-center gap-2.5 py-1.5" style={{ borderBottom: i < topProductivos.length - 1 ? "1px solid var(--color-border)" : "none" }}>
-                    <div className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold font-mono" style={{ background: i === 0 ? AMBER_S : "var(--color-surf-hi)", color: i === 0 ? AMBER : "var(--color-text-muted)" }}>{i + 1}</div>
+                    <div className="w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold font-mono" style={{ background: i === 0 ? AMBER_S : "var(--color-surf-hi)", color: i === 0 ? AMBER : "var(--color-text-muted)" }}>{i + 1}</div>
                     <div className="flex-1 text-xs font-semibold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{op.empleado_nombre}</div>
                     <div className="w-[60px]">
                       <div className="h-1 rounded-sm bg-gypi-surf-hi overflow-hidden">
@@ -860,13 +860,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                     <div className="text-xs font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">
                       {e.nombre}
                     </div>
-                    <div className="text-[10px] text-gypi-dim mt-px">
+                    <div className="text-xs text-gypi-dim mt-px">
                       {e.division || "Sin división"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-extrabold text-gypi-green font-heading">{e.score}</div>
-                    <div className="text-[9px] text-gypi-dim font-semibold">pts</div>
+                    <div className="text-[11px] text-gypi-dim font-semibold">pts</div>
                   </div>
                 </div>
               ))}
@@ -924,7 +924,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               <div key={d.id} className="flex-1 text-center px-1 py-2 rounded-[10px]" style={{ background: `${d.color}10` }}>
                 <div className="text-sm">{d.icon}</div>
                 <div className="font-mono text-sm font-bold mt-0.5" style={{ color: d.color }}>{count}</div>
-                <div className="text-[8px] text-gypi-dim font-semibold mt-px">{d.label}</div>
+                <div className="text-[11px] text-gypi-dim font-semibold mt-px">{d.label}</div>
               </div>
             );
           })}
@@ -935,7 +935,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       <section aria-label="Jornadas hoy" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-1.5">
           <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Jornadas hoy</div>
-          <span className="text-[10px] text-gypi-mute font-mono">7:00 ——— 19:00</span>
+          <span className="text-xs text-gypi-mute font-mono">7:00 ——— 19:00</span>
         </div>
         {fichadasHoy.length === 0 ? (
           <EmptyState
@@ -963,7 +963,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Footer info ─── */}
       <footer className="text-center py-2 pb-3">
-        <div className="text-[10px] text-gypi-mute">
+        <div className="text-xs text-gypi-mute">
           Se actualiza sola cada minuto &middot; Última vez: {fmtTime(now)}
         </div>
       </footer>
@@ -1006,7 +1006,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                     { label: "Esfuerzo Extra", w: `${PESOS_SCORE.esfuerzo}%`, color: AMBER },
                     { label: "Documentación", w: `${PESOS_SCORE.documentacion}%`, color: INDIGO },
                   ].map(c => (
-                    <span key={c.label} className="text-[9px] font-bold px-[7px] py-[3px] rounded-md" style={{ background: `${c.color}12`, color: c.color }}>{c.label} {c.w}</span>
+                    <span key={c.label} className="text-[11px] font-bold px-[7px] py-[3px] rounded-md" style={{ background: `${c.color}12`, color: c.color }}>{c.label} {c.w}</span>
                   ))}
                 </div>
               </div>
@@ -1026,13 +1026,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                         <div className="text-[13px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">
                           {e.nombre}
                         </div>
-                        <div className="text-[10px] text-gypi-dim mt-px">
+                        <div className="text-xs text-gypi-dim mt-px">
                           {e.division || "Sin división"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}{e.diasPermiso > 0 ? ` · ${e.diasPermiso} con permiso` : ""}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-heading text-[15px] font-extrabold" style={{ color: i < 3 ? GREEN : i >= len - 3 ? RED : "var(--color-text)" }}>{e.score}</div>
-                        <div className="text-[9px] text-gypi-dim font-semibold">pts</div>
+                        <div className="text-[11px] text-gypi-dim font-semibold">pts</div>
                       </div>
                     </button>
                   );
@@ -1068,7 +1068,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 </div>
                 <div className="w-12 h-12 rounded-[14px] flex flex-col items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
                   <div className="text-lg font-extrabold font-heading leading-none" style={{ color: AMBER }}>{d.score}</div>
-                  <div className="text-[8px] text-gypi-dim font-bold">pts</div>
+                  <div className="text-[11px] text-gypi-dim font-bold">pts</div>
                 </div>
               </div>
 
@@ -1082,7 +1082,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                     <div className="h-1 rounded-sm overflow-hidden" style={{ background: `${r.color}15` }}>
                       <div className="h-full rounded-sm transition-[width] duration-400 ease-out" style={{ width: `${r.pct}%`, background: r.color }} />
                     </div>
-                    <div className="text-[10px] text-gypi-dim mt-1">{r.detail}</div>
+                    <div className="text-xs text-gypi-dim mt-1">{r.detail}</div>
                   </div>
                 ))}
               </div>
@@ -1092,7 +1092,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 <span className="text-lg font-extrabold font-heading" style={{ color: AMBER }}>{d.score} pts</span>
               </div>
 
-              <div className="text-[10px] text-gypi-mute mt-3 leading-snug text-center">
+              <div className="text-xs text-gypi-mute mt-3 leading-snug text-center">
                 Asist. {PESOS_SCORE.asistencia}% + Punt. {PESOS_SCORE.puntualidad}% + Disp. {PESOS_SCORE.disponibilidad}% + Esfuerzo {PESOS_SCORE.esfuerzo}% + Docs. {PESOS_SCORE.documentacion}%
               </div>
 

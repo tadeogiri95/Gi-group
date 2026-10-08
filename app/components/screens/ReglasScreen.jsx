@@ -53,7 +53,7 @@ export default function ReglasScreen({ ctx, reload, usuario }) {
           onClick={add}
           disabled={!hasText}
           className={`w-11 h-11 rounded-xl border-none flex items-center justify-center ${
-            hasText ? "bg-gypi-amber text-white cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"
+            hasText ? "bg-gypi-amber text-gypi-on-amber cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"
           }`}
         >
           <Ic.plus />

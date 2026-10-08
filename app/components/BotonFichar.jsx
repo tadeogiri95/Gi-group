@@ -100,17 +100,21 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
   }
 
   const esIngreso = accion === "ingreso";
-  const color = esIngreso ? "var(--color-green)" : "var(--color-empresa-primary)";
+  // Letra legible al sol (R2): el verde se oscurece un poco para la letra blanca
+  // y sobre el color de la empresa va negra o blanca según contraste.
+  const color = esIngreso ? "color-mix(in srgb, var(--color-green) 82%, #000)" : "var(--color-empresa-primary)";
+  const colorLetra = esIngreso ? "#FFFFFF" : "var(--color-empresa-primary-text, #000)";
   const etiqueta = esIngreso ? "Fichar ingreso" : "Fichar salida";
-  const tonoColor = { ok: "var(--color-green)", aviso: "var(--color-empresa-primary)", error: "var(--color-red)" };
+  const tonoColor = { ok: "color-mix(in srgb, var(--color-green) 82%, #000)", aviso: "var(--color-empresa-primary)", error: "var(--color-red)" };
+  const tonoLetra = { ok: "#FFFFFF", aviso: "var(--color-empresa-primary-text, #000)", error: "#FFFFFF" };
 
   return (
     <div className="mb-[18px]">
       {fase === "inicio" && (
         <button
           onClick={() => setFase("confirmar")}
-          className="w-full rounded-[22px] border-none cursor-pointer font-body text-white flex flex-col items-center justify-center gap-1"
-          style={{ minHeight: 112, background: color, boxShadow: `0 8px 24px color-mix(in srgb, ${color} 30%, transparent)` }}
+          className="w-full rounded-[22px] border-none cursor-pointer font-body flex flex-col items-center justify-center gap-1"
+          style={{ minHeight: 112, background: color, color: colorLetra, boxShadow: `0 8px 24px color-mix(in srgb, ${color} 30%, transparent)` }}
         >
           <span className="text-[24px] font-extrabold tracking-tight leading-none">{etiqueta}</span>
           <span className="text-[13px] font-semibold opacity-90">Son las {fmtTime(new Date())}</span>
@@ -124,7 +128,7 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
             <button onClick={() => setFase("inicio")} className="flex-1 py-3.5 rounded-[14px] border border-gypi-border bg-transparent text-gypi-text font-bold text-[15px] cursor-pointer" style={{ minHeight: 52 }}>
               Cancelar
             </button>
-            <button onClick={() => fichar()} className="flex-1 py-3.5 rounded-[14px] border-none text-white font-extrabold text-[15px] cursor-pointer" style={{ minHeight: 52, background: color }}>
+            <button onClick={() => fichar()} className="flex-1 py-3.5 rounded-[14px] border-none font-extrabold text-[15px] cursor-pointer" style={{ minHeight: 52, background: color, color: colorLetra }}>
               Confirmar
             </button>
           </div>
@@ -157,7 +161,7 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
           <div className="text-[15px] font-bold text-gypi-text leading-[1.4]">{resultado.texto}</div>
           <div className="flex flex-col gap-2 mt-4">
             {resultado.acciones.map((a) => (
-              <button key={a.etiqueta} onClick={() => ejecutarAccion(a.hacer)} className="w-full py-3.5 rounded-[14px] border-none text-white font-extrabold text-[15px] cursor-pointer" style={{ minHeight: 52, background: tonoColor[resultado.tono] }}>
+              <button key={a.etiqueta} onClick={() => ejecutarAccion(a.hacer)} className="w-full py-3.5 rounded-[14px] border-none font-extrabold text-[15px] cursor-pointer" style={{ minHeight: 52, background: tonoColor[resultado.tono], color: tonoLetra[resultado.tono] }}>
                 {a.etiqueta}
               </button>
             ))}

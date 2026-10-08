@@ -90,7 +90,7 @@ export default function PinCard({ tienePin, onCambio, demo = false }) {
         <button
           onClick={guardar}
           disabled={guardando || pin.length !== 4 || repetir.length !== 4}
-          className="flex-1 min-h-[44px] rounded-lg border-none bg-gypi-amber text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+          className="flex-1 min-h-[44px] rounded-lg border-none bg-gypi-amber text-gypi-on-amber text-xs font-bold cursor-pointer disabled:opacity-50"
         >
           {guardando ? "Guardando..." : "Guardar PIN"}
         </button>

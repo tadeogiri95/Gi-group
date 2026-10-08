@@ -302,13 +302,13 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
                 {addressLoading ? "..." : "Buscar"}
               </button>
             </div>
-            <div className="mt-1.5 text-[10px] text-gypi-mute">
+            <div className="mt-1.5 text-xs text-gypi-mute">
               También acepta: link de Google Maps, coordenadas, o Plus Code
             </div>
             {/* Resultados de búsqueda */}
             {addressResults.length > 0 && (
               <div className="mt-2 flex flex-col gap-1">
-                <div className="text-[10px] font-bold text-gypi-dim uppercase mb-1">Seleccioná un resultado:</div>
+                <div className="text-xs font-bold text-gypi-dim uppercase mb-1">Seleccioná un resultado:</div>
                 {addressResults.map((r, i) => (
                   <button key={i} onClick={() => selectAddressResult(r)}
                     className="text-left w-full py-2.5 px-3 rounded-lg border border-gypi-border cursor-pointer text-[12px] font-body bg-gypi-surface text-gypi-text">
@@ -346,7 +346,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
                 Decodificar
               </button>
             </div>
-            <div className="mt-1.5 text-[10px] text-gypi-mute">
+            <div className="mt-1.5 text-xs text-gypi-mute">
               Encontrá el Plus Code en Google Maps: tocá en el mapa → copiá el código corto (ej: 87GC+2G)
             </div>
           </div>
@@ -368,7 +368,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
                 Extraer
               </button>
             </div>
-            <div className="mt-1.5 text-[10px] text-gypi-mute">
+            <div className="mt-1.5 text-xs text-gypi-mute">
               Abrí Google Maps → click derecho → "¿Qué hay aquí?" → copiá el link
             </div>
           </div>
@@ -413,7 +413,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
           </label>
           <input type="range" min={50} max={500} step={10} value={radio} onChange={e => setRadio(Number(e.target.value))}
             className="w-full" style={{ accentColor: CYAN }} />
-          <div className="flex justify-between text-[10px] text-gypi-mute mt-1">
+          <div className="flex justify-between text-xs text-gypi-mute mt-1">
             <span>50m</span><span>500m</span>
           </div>
         </div>
@@ -788,7 +788,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                     className="w-full"
                     style={{ accentColor: CYAN }}
                   />
-                  <div className="flex justify-between text-[10px] text-gypi-mute mt-1">
+                  <div className="flex justify-between text-xs text-gypi-mute mt-1">
                     <span>50m</span>
                     <span>500m</span>
                   </div>
@@ -848,7 +848,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.apodo || emp.nombre}</div>
-                      <div className="text-[10px] text-gypi-dim">
+                      <div className="text-xs text-gypi-dim">
                         L-{emp.legajo} · {gc.activo ? `📍 ${getUbicacionNombre(gc.ubicacion_id)}` : "Sin control"}
                       </div>
                     </div>
@@ -901,7 +901,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold text-gypi-text truncate">{emp.apodo || emp.nombre}</div>
-                      <div className="text-[10px] text-gypi-dim mt-0.5">
+                      <div className="text-xs text-gypi-dim mt-0.5">
                         L-{emp.legajo} · {gc.activo ? `📍 ${getUbicacionNombre(gc.ubicacion_id)} · ${gc.radio || 150}m` : "Sin control de ubicación"}
                       </div>
                     </div>
@@ -926,7 +926,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   {!isExp && gc.activo && (
                     <div className="px-3.5 pb-2.5">
                       <div
-                        className="inline-block py-1 px-2.5 rounded-lg text-[10px] font-bold font-mono"
+                        className="inline-block py-1 px-2.5 rounded-lg text-xs font-bold font-mono"
                         style={{ background: `${GREEN}15`, color: GREEN }}
                       >
                         📍 {getUbicacionNombre(gc.ubicacion_id)} · {gc.radio || 150}m
@@ -980,7 +980,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                               className="w-full"
                               style={{ accentColor: CYAN }}
                             />
-                            <div className="flex justify-between text-[10px] text-gypi-mute mt-1">
+                            <div className="flex justify-between text-xs text-gypi-mute mt-1">
                               <span>50m</span>
                               <span>500m</span>
                             </div>
@@ -1021,7 +1021,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
         </div>
       )}
 
-      <div className="text-center mt-4 text-[10px] text-gypi-mute">
+      <div className="text-center mt-4 text-xs text-gypi-mute">
         {empleados.length} empleados activos · {ubicaciones.length} ubicación{ubicaciones.length !== 1 ? "es" : ""} · {totalCambios} con cambios
       </div>
 

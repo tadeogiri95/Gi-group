@@ -292,7 +292,7 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
               {m.card?.type === "fichada" && <FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg} tardanza={m.card.tardanza} />}
               {m.card?.type === "solicitud" && <SolSentCard motivo={m.card.motivo} fecha={m.card.fecha} />}
               {m.quickReplies && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{m.quickReplies.map((c, j) => <button key={j} onClick={() => handleSend(c)} style={{ padding: "10px 16px", borderRadius: 999, background: SURF_HI, border: `1px solid ${BORDER_HI}`, color: TEXT, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FB, minHeight: 44 }}>{c}</button>)}</div>}
-              <span style={{ fontSize: 10, color: MUTE, marginTop: 4, fontFamily: FM }}>{fmtTime(m.time)}</span>
+              <span style={{ fontSize: 12, color: MUTE, marginTop: 4, fontFamily: FM }}>{fmtTime(m.time)}</span>
             </div>
           </div>
         ))}

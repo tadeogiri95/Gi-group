@@ -557,7 +557,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             className={`py-2 px-4 rounded-full border-none cursor-pointer text-xs font-bold whitespace-nowrap shrink-0 ${
-              tab === t.key ? 'bg-gypi-amber text-black' : 'bg-transparent text-gypi-dim'
+              tab === t.key ? 'bg-gypi-amber text-gypi-on-amber' : 'bg-transparent text-gypi-dim'
             }`}
           >{t.label}</button>
         ))}
