@@ -67,7 +67,7 @@ export function TarjetaLinea({ linea, cotizacion, tramoMinimo, anual, busy, actu
 
       <div className="flex items-baseline justify-between mb-3">
         <div>
-          <div className="font-heading text-xl font-bold text-gypi-amber">{usd(total)}<span className="text-[11px] text-gypi-dim font-normal">/mes</span></div>
+          <div className="font-heading text-xl font-bold text-gypi-amber-ink">{usd(total)}<span className="text-[11px] text-gypi-dim font-normal">/mes</span></div>
           {anual && <div className="text-xs text-gypi-green">Con 20% de descuento · se cobran 12 meses juntos</div>}
         </div>
         <div className="text-right text-[11px] text-gypi-dim">
@@ -78,7 +78,7 @@ export function TarjetaLinea({ linea, cotizacion, tramoMinimo, anual, busy, actu
       </div>
 
       {esActual ? (
-        <div className="text-gypi-amber text-center py-2.5 rounded-lg text-xs font-bold" style={{ background: "var(--color-empresa-primary-subtle)" }}>
+        <div className="text-gypi-amber-ink text-center py-2.5 rounded-lg text-xs font-bold" style={{ background: "var(--color-empresa-primary-subtle)" }}>
           Plan actual
         </div>
       ) : (

@@ -77,7 +77,7 @@ export default function CuentaDatos({ usuario, empresa, onLogout, fetcher = apiF
                 <li>Se cancela la suscripción y no se cobra más.</li>
                 <li>A los 30 días se borra todo para siempre. Hasta entonces la podés recuperar con el link que te mandamos por email.</li>
               </ul>
-              {!descargado && <p className="text-xs text-gypi-amber m-0">Te recomendamos descargar los datos antes: después no vas a poder entrar.</p>}
+              {!descargado && <p className="text-xs text-gypi-amber-ink m-0">Te recomendamos descargar los datos antes: después no vas a poder entrar.</p>}
               <label className="text-xs text-gypi-dim">Para confirmar, escribí el nombre de la empresa: <b className="text-gypi-text">{empresa?.nombre}</b>
                 <input value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} className="g-input w-full mt-1" autoComplete="off" />
               </label>

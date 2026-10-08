@@ -5,6 +5,7 @@ import { useState } from "react";
 import NuevaSolicitud from "../NuevaSolicitud";
 import SolCard from "../cards/SolCard";
 import EmptyState from "../ui/EmptyState";
+import { Button } from "../ui";
 
 export default function MisSolicitudesScreen({ solicitudes = [], usuario, empresa, demo = false, reload }) {
   const [pidiendo, setPidiendo] = useState(false);
@@ -21,12 +22,9 @@ export default function MisSolicitudesScreen({ solicitudes = [], usuario, empres
           onEnviada={() => { setPidiendo(false); reload?.(); }}
         />
       ) : (
-        <button
-          onClick={() => setPidiendo(true)}
-          className="w-full min-h-[56px] rounded-2xl border-none bg-gypi-amber text-gypi-on-amber text-base font-bold font-body cursor-pointer"
-        >
+        <Button size="planta" onClick={() => setPidiendo(true)} className="w-full">
           + Pedir permiso, vacaciones o avisar una falta
-        </button>
+        </Button>
       )}
 
       {lista.length === 0 ? (
@@ -37,7 +35,6 @@ export default function MisSolicitudesScreen({ solicitudes = [], usuario, empres
               title="Todavía no pediste nada"
               description="Tocá el botón de arriba para pedir un permiso o vacaciones. Acá vas a ver si te lo aprobaron."
               color="var(--color-empresa-secondary)"
-              style={{ padding: "28px 16px" }}
             />
           </div>
         )

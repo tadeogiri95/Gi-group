@@ -231,7 +231,7 @@ export default function ActividadScreen({
           <ErrorBanner />
           <div className="rounded-3xl p-8 text-center relative overflow-hidden bg-gypi-surface border border-gypi-border">
             <div className="relative">
-              <div className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mx-auto mb-4 text-gypi-amber bg-gypi-amber/10"><Icon name="hammer" size={32} /></div>
+              <div className="w-[72px] h-[72px] rounded-[20px] flex items-center justify-center mx-auto mb-4 text-gypi-amber-ink bg-gypi-amber/10"><Icon name="hammer" size={32} /></div>
               <div className="text-lg font-bold font-heading mb-2">Sin tarea activa</div>
               <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Elegí la etapa y la OT en la que vas a trabajar.</div>
               <button
@@ -324,7 +324,7 @@ export default function ActividadScreen({
         <div className="pt-5 px-5 flex items-center gap-3">
           <button onClick={() => { setState(tareaActiva ? "active" : "idle"); setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} aria-label="Volver" className="min-w-[48px] min-h-[48px] -ml-2 bg-transparent border-none text-gypi-text cursor-pointer text-2xl flex items-center justify-center">←</button>
           <div className="flex-1">
-            <div className="g-overline text-gypi-amber">Nueva tarea</div>
+            <div className="g-overline text-gypi-amber-ink">Nueva tarea</div>
             <div className="text-base font-bold font-heading">Paso {step} de 3</div>
           </div>
           <div className="flex gap-1">
@@ -362,8 +362,8 @@ export default function ActividadScreen({
               <div className="text-[15px] font-bold mb-1 font-heading">OT</div>
 
               <div className="flex gap-1.5 mb-3">
-                <button onClick={() => { setModoManual(false); setManualOT(""); }} className={`flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body ${!modoManual ? 'bg-gypi-amber/[0.13] text-gypi-amber' : 'bg-gypi-surface text-gypi-dim'}`}>🔍 Buscar OT</button>
-                <button onClick={() => { setModoManual(true); setProyectoSeleccionado(null); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className={`flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body ${modoManual ? 'bg-gypi-amber/[0.13] text-gypi-amber' : 'bg-gypi-surface text-gypi-dim'}`}>✏️ Cargar manual</button>
+                <button onClick={() => { setModoManual(false); setManualOT(""); }} className={`flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body ${!modoManual ? 'bg-gypi-amber/[0.13] text-gypi-amber-ink' : 'bg-gypi-surface text-gypi-dim'}`}>🔍 Buscar OT</button>
+                <button onClick={() => { setModoManual(true); setProyectoSeleccionado(null); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className={`flex-1 py-2 px-3 rounded-[10px] border-none cursor-pointer text-xs font-bold font-body ${modoManual ? 'bg-gypi-amber/[0.13] text-gypi-amber-ink' : 'bg-gypi-surface text-gypi-dim'}`}>✏️ Cargar manual</button>
               </div>
 
               {/* Modo búsqueda */}
@@ -381,7 +381,7 @@ export default function ActividadScreen({
                       <button onClick={() => { setEscaneando(false); setAvisoEscaneo(""); }} className="w-full py-2.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-xs font-bold font-body cursor-pointer text-gypi-dim">Cancelar escaneo</button>
                     </div>
                   ) : (
-                    <button onClick={() => setEscaneando(true)} className="w-full min-h-[48px] mb-3 rounded-[14px] bg-gypi-amber/[0.13] border-none text-gypi-amber text-sm font-bold font-body cursor-pointer">📷 Escanear código de la OT</button>
+                    <button onClick={() => setEscaneando(true)} className="w-full min-h-[48px] mb-3 rounded-[14px] bg-gypi-amber/[0.13] border-none text-gypi-amber-ink text-sm font-bold font-body cursor-pointer">📷 Escanear código de la OT</button>
                   )
                 )}
 
@@ -390,7 +390,7 @@ export default function ActividadScreen({
                     <div className="text-xs text-gypi-dim mb-1.5">Recientes</div>
                     <div className="flex gap-1.5 flex-wrap">
                       {recientes.map(p => (
-                        <button key={p.ot} onClick={() => setProyectoSeleccionado(p)} className={`min-h-[40px] px-3 rounded-[10px] border-2 text-xs font-bold font-mono cursor-pointer ${proyectoSeleccionado?.ot === p.ot ? "border-gypi-amber bg-gypi-amber/[0.09] text-gypi-amber" : "border-transparent bg-gypi-surface text-gypi-text"}`}>
+                        <button key={p.ot} onClick={() => setProyectoSeleccionado(p)} className={`min-h-[40px] px-3 rounded-[10px] border-2 text-xs font-bold font-mono cursor-pointer ${proyectoSeleccionado?.ot === p.ot ? "border-gypi-amber bg-gypi-amber/[0.09] text-gypi-amber-ink" : "border-transparent bg-gypi-surface text-gypi-text"}`}>
                           OT {p.ot}{p.cliente ? <span className="font-body font-semibold text-gypi-dim"> · {p.cliente}</span> : null}
                         </button>
                       ))}
@@ -416,7 +416,7 @@ export default function ActividadScreen({
                       <div className="text-[11px] text-gypi-dim">Etapa seleccionada</div>
                       <div className="text-[13px] font-bold">{etapaSelInfo.nombre}</div>
                     </div>
-                    <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="bg-transparent border-none cursor-pointer text-xs font-semibold font-body text-gypi-amber">Cambiar</button>
+                    <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="bg-transparent border-none cursor-pointer text-xs font-semibold font-body text-gypi-amber-ink">Cambiar</button>
                   </div>
                 )}
 
@@ -428,7 +428,7 @@ export default function ActividadScreen({
                       {busqueda ? (
                         <div>
                           <div className="mb-2">No se encontró &quot;{busqueda}&quot;</div>
-                          <button onClick={() => { setModoManual(true); setManualOT(busqueda.replace(/\D/g, "")); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className="py-2.5 px-4 rounded-[10px] bg-gypi-surface text-xs font-bold font-body cursor-pointer border border-gypi-amber/40 text-gypi-amber">✏️ Cargar OT manualmente</button>
+                          <button onClick={() => { setModoManual(true); setManualOT(busqueda.replace(/\D/g, "")); setBusqueda(""); setTimeout(() => manualInputRef.current?.focus(), 100); }} className="py-2.5 px-4 rounded-[10px] bg-gypi-surface text-xs font-bold font-body cursor-pointer border border-gypi-amber/40 text-gypi-amber-ink">✏️ Cargar OT manualmente</button>
                         </div>
                       ) : "No hay OT cargadas"}
                     </div>
@@ -437,12 +437,12 @@ export default function ActividadScreen({
                       const sel = proyectoSeleccionado?.ot === p.ot;
                       return (
                         <button key={p.ot} onClick={() => setProyectoSeleccionado(p)} className={`py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all border-2 ${sel ? 'bg-gypi-amber/[0.09] border-gypi-amber' : 'bg-gypi-surface border-transparent'}`}>
-                          <div className={`min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5 ${sel ? 'bg-gypi-amber/10 text-gypi-amber' : 'bg-gypi-surf-hi text-gypi-text'}`}>{p.ot}</div>
+                          <div className={`min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5 ${sel ? 'bg-gypi-amber/10 text-gypi-amber-ink' : 'bg-gypi-surf-hi text-gypi-text'}`}>{p.ot}</div>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text truncate">{p.cliente}</div>
                             <div className="text-[11px] text-gypi-dim truncate mt-[1px]">{p.proyecto}</div>
                           </div>
-                          {sel && <span className="text-base text-gypi-amber">✓</span>}
+                          {sel && <span className="text-base text-gypi-amber-ink">✓</span>}
                         </button>
                       );
                     })

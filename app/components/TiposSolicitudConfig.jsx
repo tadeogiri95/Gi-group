@@ -34,7 +34,7 @@ export default function TiposSolicitudConfig() {
 
   return (
     <div className="rounded-card p-4 border border-gypi-border mb-3.5 bg-gypi-surface">
-      <div className="g-overline text-gypi-amber">TIPOS DE SOLICITUD</div>
+      <div className="g-overline text-gypi-amber-ink">TIPOS DE SOLICITUD</div>
       <div className="text-xs text-gypi-dim mt-1 mb-3 leading-relaxed">
         Los que el operario puede elegir en “Nueva solicitud”. Podés renombrarlos, sacar los que no usan o crear los suyos (por ejemplo “Examen” o “Donación de sangre”).
       </div>

@@ -106,7 +106,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
           {filas.slice(0, 50).map((r, i) => (
             <div key={i} className={`p-2.5 text-xs ${i < Math.min(filas.length, 50) - 1 ? "border-b border-gypi-border" : ""}`}>
               <div className="flex gap-2 items-center">
-                <span className="font-mono font-bold text-gypi-amber min-w-[60px]">{r.ot}</span>
+                <span className="font-mono font-bold text-gypi-amber-ink min-w-[60px]">{r.ot}</span>
                 <span className="flex-1 text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{r.cliente || r.proyecto || "—"}</span>
                 {r.division && <Tag color={CYAN}>{r.division}</Tag>}
               </div>
@@ -116,7 +116,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
           {filas.length > 50 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filas.length - 50} más</div>}
         </div>
 
-        {saving && progreso && <div className="p-2.5 bg-gypi-amber/10 text-gypi-amber rounded-[10px] text-xs mb-2.5 text-center">{progreso}</div>}
+        {saving && progreso && <div className="p-2.5 bg-gypi-amber/10 text-gypi-amber-ink rounded-[10px] text-xs mb-2.5 text-center">{progreso}</div>}
 
         <div className="flex gap-2">
           <button onClick={onClose} disabled={saving} className="g-btn g-btn-secondary flex-1">Cancelar</button>
@@ -354,7 +354,7 @@ export default function ProyectosScreen({ empresaId }) {
           <div className="g-overline mt-0.5">Cerrados</div>
         </div>
         <div className="g-card text-center !p-3">
-          <div className="font-heading text-[22px] font-bold text-gypi-amber">{proyectos.length}</div>
+          <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{proyectos.length}</div>
           <div className="g-overline mt-0.5">Total</div>
         </div>
       </div>
@@ -431,7 +431,7 @@ export default function ProyectosScreen({ empresaId }) {
               <button
                 onClick={guardarSyncUrl}
                 disabled={syncLoading || !syncCfg.url.trim()}
-                className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
+                className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber-ink cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
               >
                 Guardar URL
               </button>
@@ -477,7 +477,7 @@ export default function ProyectosScreen({ empresaId }) {
                 <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
                   <button onClick={() => setModal(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
                   {p.estado === "activo" ? (
-                    <button onClick={() => cerrarProyecto(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber text-[11px] font-bold cursor-pointer min-h-[44px]">Cerrar</button>
+                    <button onClick={() => cerrarProyecto(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">Cerrar</button>
                   ) : (
                     <button onClick={() => reabrir(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-green/10 text-gypi-green text-[11px] font-bold cursor-pointer min-h-[44px]">Reactivar</button>
                   )}

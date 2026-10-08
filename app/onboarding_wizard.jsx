@@ -378,7 +378,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
     <div className="flex-1 overflow-y-auto px-[18px] pb-6 font-body">
       {/* Header con progreso */}
       <div className="pt-5 pb-4 border-b border-gypi-border mb-4">
-        <div className="g-overline text-gypi-amber">Configuración inicial</div>
+        <div className="g-overline text-gypi-amber-ink">Configuración inicial</div>
         <h1 className="mt-1 mb-3 font-heading text-[22px] font-bold text-gypi-text">{step > TOTAL_PASOS ? "¡Listo!" : `Paso ${step} de ${TOTAL_PASOS}`}</h1>
         <div className="flex gap-1.5">
           {Array.from({ length: TOTAL_PASOS }, (_, i) => i + 1).map(s => (
@@ -408,7 +408,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
               onClick={() => aplicarPlantilla(k)}
               className={`p-2.5 rounded-[10px] border text-xs font-semibold font-body cursor-pointer text-left flex items-center gap-1.5 ${
                 rubro === k
-                  ? 'border-gypi-amber bg-gypi-amber/[0.08] text-gypi-amber'
+                  ? 'border-gypi-amber bg-gypi-amber/[0.08] text-gypi-amber-ink'
                   : 'border-gypi-border bg-gypi-surface text-gypi-text'
               }`}
             >

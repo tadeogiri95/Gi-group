@@ -170,7 +170,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
           <div className="text-[14px] font-bold text-gypi-text leading-[1.3]">Pedir permisos o dar avisos</div>
           <div className="text-[12px] text-gypi-dim leading-[1.3] mt-0.5">Hablá con el asistente</div>
         </div>
-        <span className="text-gypi-amber shrink-0 opacity-60"><Ic.chevR /></span>
+        <span className="text-gypi-amber-ink shrink-0 opacity-60"><Ic.chevR /></span>
       </button>}
 
       {/* PIN para entrar rápido (F4-06) */}
@@ -187,7 +187,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
             </h3>
             <button
               onClick={() => goto("actividad")}
-              className="text-xs text-gypi-amber font-bold font-body border-none cursor-pointer py-1.5 px-3 rounded-[10px]"
+              className="text-xs text-gypi-amber-ink font-bold font-body border-none cursor-pointer py-1.5 px-3 rounded-[10px]"
               style={{ background: `color-mix(in srgb, var(--color-empresa-primary) 3%, transparent)` }}
             >
               Ver jornada →
@@ -236,7 +236,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
               )}
               {minMuerto > 0 && (
                 <span
-                  className="text-[11px] font-bold text-gypi-amber font-body py-1 px-2.5 rounded-lg"
+                  className="text-[11px] font-bold text-gypi-amber-ink font-body py-1 px-2.5 rounded-lg"
                   style={{ background: `color-mix(in srgb, var(--color-empresa-primary) 7%, transparent)` }}
                 >
                   ⏸ {fmtMin(minMuerto)} espera
@@ -423,7 +423,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                     )}
                     {esHoy && (
                       <span
-                        className="text-xs text-gypi-amber font-bold py-0.5 px-2 rounded-[6px] ml-1.5"
+                        className="text-xs text-gypi-amber-ink font-bold py-0.5 px-2 rounded-[6px] ml-1.5"
                         style={{ background: `color-mix(in srgb, var(--color-empresa-primary) 13%, transparent)` }}
                       >
                         HOY
@@ -488,7 +488,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       <section aria-label="Mis solicitudes">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="m-0 text-base font-bold text-gypi-text font-heading">Mis solicitudes</h3>
-          <button onClick={() => setFormSolicitud(true)} className="min-h-[40px] px-3.5 rounded-[10px] border-none bg-gypi-amber/[0.13] text-gypi-amber text-xs font-bold cursor-pointer">+ Nueva solicitud</button>
+          <button onClick={() => setFormSolicitud(true)} className="min-h-[40px] px-3.5 rounded-[10px] border-none bg-gypi-amber/[0.13] text-gypi-amber-ink text-xs font-bold cursor-pointer">+ Nueva solicitud</button>
         </div>
         {formSolicitud && (
           <NuevaSolicitud

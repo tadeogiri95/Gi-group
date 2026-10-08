@@ -447,7 +447,7 @@ export default function CalendarioScreen({ empresaId }) {
                 <div className="text-[11px] text-gypi-dim">Operativos</div>
               </div>
               <div className="text-center">
-                <div className="font-heading text-xl font-bold text-gypi-amber">{notas.length}</div>
+                <div className="font-heading text-xl font-bold text-gypi-amber-ink">{notas.length}</div>
                 <div className="text-[11px] text-gypi-dim">Notas</div>
               </div>
               <div className="text-center">

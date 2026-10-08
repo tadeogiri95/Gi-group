@@ -145,7 +145,7 @@ export default function ConfigScreen({ goto, ctx, reload, usuario, empresa, onUp
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => setSubtab(id)}
-                className={`flex items-center gap-[5px] py-2 px-3 rounded-full border-none cursor-pointer whitespace-nowrap shrink-0 text-xs font-body transition-all ${isActive ? "bg-gypi-amber/10 text-gypi-amber font-bold" : "bg-transparent text-gypi-dim font-medium"}`}
+                className={`flex items-center gap-[5px] py-2 px-3 rounded-full border-none cursor-pointer whitespace-nowrap shrink-0 text-xs font-body transition-all ${isActive ? "bg-gypi-amber/10 text-gypi-amber-ink font-bold" : "bg-transparent text-gypi-dim font-medium"}`}
               >
                 <span className={`flex ${isActive ? "opacity-100" : "opacity-60"}`}>{icon}</span>
                 {label}

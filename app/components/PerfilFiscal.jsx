@@ -51,7 +51,7 @@ export default function PerfilFiscal({ abiertoAlInicio = false, onCompleto }) {
       <div className="flex justify-between items-center mb-2">
         <div className="text-xs text-gypi-dim font-semibold tracking-wide">DATOS DE FACTURACIÓN</div>
         {!editando && perfil?.completo && (
-          <button onClick={() => setEditando(true)} className="text-xs font-bold text-gypi-amber bg-transparent border-none cursor-pointer">Cambiar</button>
+          <button onClick={() => setEditando(true)} className="text-xs font-bold text-gypi-amber-ink bg-transparent border-none cursor-pointer">Cambiar</button>
         )}
       </div>
       {!editando && perfil?.completo && (

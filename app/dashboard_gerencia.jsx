@@ -212,7 +212,7 @@ function ReportesObraPanel({ reportesObra }) {
                       {/* Desvios */}
                       {r.desvios?.length > 0 && (
                         <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 9%, transparent)` }}>
-                          <div className="g-overline text-gypi-amber mb-1.5">&#x26A0;&#xFE0F; Desvios</div>
+                          <div className="g-overline text-gypi-amber-ink mb-1.5">&#x26A0;&#xFE0F; Desvios</div>
                           <div className="flex flex-wrap gap-1">
                             {r.desvios.map((d, i) => (
                               <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>
@@ -491,10 +491,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const permisosIngreso = pendientes.filter(s => s.motivo?.includes("\u{1F513}") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo"));
   const alertas = useMemo(() => {
     const items = [];
-    if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} de ingreso pendiente${permisosIngreso.length > 1 ? "s" : ""}`, color: RED, urgencia: "alta", target: "solicitudes" });
+    if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} para entrar sin responder`, color: RED, urgencia: "alta", target: "solicitudes" });
     if (ausentes > 0) items.push({ icon: "⚠️", text: `${ausentes} ausente${ausentes > 1 ? "s" : ""} hoy`, color: RED, urgencia: "alta" });
-    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} en espera`, color: AMBER, urgencia: "media", target: "ger-actividad" });
-    if (pendientes.length > permisosIngreso.length) items.push({ icon: "\u{1F4CB}", text: `${pendientes.length - permisosIngreso.length} solicitud${(pendientes.length - permisosIngreso.length) > 1 ? "es" : ""} pendiente${(pendientes.length - permisosIngreso.length) > 1 ? "s" : ""}`, color: VIOLET, urgencia: "normal", target: "solicitudes" });
+    if (enEspera > 0) items.push({ icon: "⏸", text: `${enEspera} operario${enEspera > 1 ? "s" : ""} parado${enEspera > 1 ? "s" : ""}`, color: AMBER, urgencia: "media", target: "ger-actividad" });
+    if (pendientes.length > permisosIngreso.length) items.push({ icon: "\u{1F4CB}", text: `${pendientes.length - permisosIngreso.length} pedido${(pendientes.length - permisosIngreso.length) > 1 ? "s" : ""} sin responder`, target: "solicitudes", color: VIOLET, urgencia: "normal", target: "solicitudes" });
     const urgentes = notificaciones.filter(n => {
       if (n.urgencia !== "alta") return false;
       // Si la notificacion tiene solicitud_id, verificar que siga pendiente
@@ -606,8 +606,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               }}
               onClick={() => {
                 if (a.target) goto?.(a.target);
-                else if (a.text.includes("solicitud")) goto?.("solicitudes");
-                else if (a.text.includes("espera")) goto?.("ger-actividad");
+                else if (a.text.includes("pedido")) goto?.("solicitudes");
+                else if (a.text.includes("parado")) goto?.("ger-actividad");
                 else if (a.text.includes("BLOQUEADO") || a.text.includes("permiso") || a.text.includes("ingreso")) goto?.("solicitudes");
               }}
             >
@@ -621,9 +621,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Solicitudes pendientes ─── */}
       {pendientes.length > 0 && (
-        <section aria-label="Solicitudes pendientes" className="g-card mb-4" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
+        <section aria-label="Pedidos sin responder" className="g-card mb-4" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
           <div className="flex justify-between items-center mb-3">
-            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Solicitudes pendientes</div>
+            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Pedidos sin responder</div>
             <Tag color={AMBER}>{pendientes.length} pendientes</Tag>
           </div>
 
@@ -643,7 +643,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
             style={{ background: `${VIOLET}12`, border: `1px solid ${VIOLET}25`, color: VIOLET }}
           >
-            <Icon name="clipboard" size={14} /> Gestionar solicitudes &rarr;
+            <Icon name="clipboard" size={14} /> Ver todos los pedidos &rarr;
           </button>
         </section>
       )}
@@ -871,7 +871,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 </div>
               ))}
             </div>
-            <div className="mt-2.5 text-center text-[11px] text-gypi-amber font-semibold">
+            <div className="mt-2.5 text-center text-[11px] text-gypi-amber-ink font-semibold">
               Ver ranking completo ({ranking.length})
             </div>
           </button>
@@ -896,7 +896,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <div className="g-kpi-label">Trabajando</div>
           </div>
           <div className="flex-1 g-kpi" style={{ background: `${RED}10` }}>
-            <div className="font-heading text-[22px] font-bold text-gypi-amber">{enEspera + sinTarea}</div>
+            <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{enEspera + sinTarea}</div>
             <div className="g-kpi-label">Inactivos</div>
           </div>
         </div>

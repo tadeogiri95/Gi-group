@@ -139,7 +139,7 @@ export default function KioscoScreen({ empresa, slug }) {
               <div className="text-xl text-gypi-text mt-2">
                 {resultado.accion === "ingreso" ? "Entrada" : "Salida"} registrada a las {String(resultado.hora || "").slice(0, 5)}
               </div>
-              {resultado.tardanza?.estado === "tarde" && <div className="text-base text-gypi-amber mt-2">Llegaste {resultado.tardanza.minutos} min tarde.</div>}
+              {resultado.tardanza?.estado === "tarde" && <div className="text-base text-gypi-amber-ink mt-2">Llegaste {resultado.tardanza.minutos} min tarde.</div>}
               {resultado.solicitar_hora_extra && <div className="text-base text-gypi-dim mt-2">Si hiciste hora extra, pedila desde tu celular.</div>}
             </>
           ) : (

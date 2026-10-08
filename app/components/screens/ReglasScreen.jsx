@@ -32,7 +32,7 @@ export default function ReglasScreen({ ctx, reload, usuario }) {
           </div>
         ) : (ctx.reglasRaw || []).map((r, i) => (
           <div key={r.id} className="bg-gypi-surface rounded-xl p-3.5 border border-gypi-border flex gap-2.5">
-            <div className="w-6 h-6 rounded-[7px] bg-gypi-amber/10 text-gypi-amber flex items-center justify-center font-mono text-[11px] font-bold shrink-0">{i + 1}</div>
+            <div className="w-6 h-6 rounded-[7px] bg-gypi-amber/10 text-gypi-amber-ink flex items-center justify-center font-mono text-[11px] font-bold shrink-0">{i + 1}</div>
             <div className="flex-1 text-[13px] text-gypi-text leading-snug">{r.regla}</div>
             <button onClick={() => del(r.id)} className="bg-transparent border-none text-gypi-red cursor-pointer p-1 flex shrink-0 opacity-60 hover:opacity-100"><Ic.trash /></button>
           </div>
