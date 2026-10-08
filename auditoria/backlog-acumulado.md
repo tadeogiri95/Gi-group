@@ -106,7 +106,7 @@
 | F4-15 | Formato de hora unificado | Bajo | S | Pendiente |
 | F4-16 / F6-08 | Quitar AdSense; trial en lugar de Free con publicidad | Bajo/Medio | S | **Hecho** (tadeogiri95/Gi-group#21, fusionado): sin AdSense, sin banner de cookies (solo quedan las necesarias), CSP sin dominios de anuncios y `frame-src 'none'`, privacidad actualizada. El plan "free" de la base queda como estado interno (D20) |
 | F4-17 | “Empresa no encontrada” sin salida | Bajo | S | Hecho (PR #27): volver a la última empresa del dispositivo, buscar por código y link a la landing |
-| F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Pendiente |
+| F1-17 | GPS de 15 s; E2E frágil | Bajo | S | Hecho (ítem 35): el chat espera el GPS hasta 8 s como el botón grande, y Playwright corre con el permiso de ubicación dado (los 4 E2E pasan también fuera de CI) |
 | — | **Roles por división** (D2, ítem 22): supervisor limitado a su división; facturación solo del dueño | Nuevo | M | Hecho (PR #35) (migración 075): `empleados.solo_su_division` (lo marca el dueño); `/api/data`, `/api/empleados`, documentos, activación y push filtrados por división; liquidación, consultas de IA, importar/borrar empleados y configuración bloqueadas para el supervisor; cambiar plan o cancelar solo el dueño. Queda: filtrar por división la liquidación y las consultas de IA en vez de bloquearlas |
 | — | **Resumen semanal automático** (D10) | Nuevo | S–M | Hecho (ítem 31): cron de los lunes 8:00 con horas por OT, tiempo muerto por causa, faltas sin aviso y ausencias justificadas; se apaga por empresa en Gestión → Empresa (migración 077) |
 | — | **QR de activación y QR personal** imprimibles (D7, ítem 18) | Nuevo | S | Hecho (PR #32): tarjetas para imprimir desde Gestión de personal (QR personal → ingreso con PIN y legajo cargado) y desde los códigos de acceso (QR → link de activación) |
@@ -147,7 +147,7 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F1-15 | `tsc` no chequea JS (27 de 163 archivos) | Medio | M–L | Pendiente |
-| F1-16 | Cobertura engañosa; flujos críticos sin test | Medio | M | Pendiente |
+| F1-16 | Cobertura engañosa; flujos críticos sin test | Medio | M | Hecho (ítem 35): tests de chat, tablero de gerencia y tareas del operario, más un E2E de fichar con GPS; los demás flujos de la lista ya tenían test (Inbox, liquidación >1.000 filas, egreso con `time`, sesión/PIN, CSRF, roles por división) |
 | F1-18 | Patrones inconsistentes (fetch crudo, zod en 9 de 60 rutas) | Bajo | M | Pendiente |
 | F1-19 | Errores tragados; `Promise.all` frágil | Bajo | S | Pendiente |
 | F1-20 / F0-13 | Código muerto (`DataTable`, `usePlan`, prompt gerencial, cambio de horario) | Bajo | S | Pendiente |
