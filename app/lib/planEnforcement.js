@@ -4,7 +4,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
-import { PLANES, planLimite, planPermite, planVigente, capacidades, planSiguiente } from "./plans";
+import { PLANES, planLimite, planPermite, planVigente, capacidades, planSiguiente, ADDONS } from "./plans";
+import { MODULOS, modulosEfectivos, configModulos } from "./modulos";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -72,6 +73,69 @@ export async function getAddonsEmpresa(empresaId) {
   }
 }
 
+// Ajustes de módulos propios de la empresa (tabla empresa_modulos, migración
+// 083). Silencioso: sin la tabla no hay ajustes y vale lo del plan.
+const cacheAjustes = new Map();
+async function getAjustesModulos(empresaId) {
+  if (!empresaId) return [];
+  const cached = cacheAjustes.get(empresaId);
+  if (cached && Date.now() - cached.t < TTL) return cached.ajustes;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/empresa_modulos?empresa_id=eq.${empresaId}&select=modulo,activo,config`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const ajustes = Array.isArray(data) ? data : [];
+    cacheAjustes.set(empresaId, { ajustes, t: Date.now() });
+    return ajustes;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Plan, add-ons y módulos que la empresa tiene en la práctica (ítem 36).
+ * `capacidades` trae los límites del plan con el cupo de IA de los add-ons.
+ * Si la ruta ya leyó el plan de la empresa, lo pasa en `plan` y no se vuelve a pedir.
+ */
+export async function getModulosEmpresa(empresaId, { plan: planLeido } = {}) {
+  const [plan, addons, ajustes] = await Promise.all([
+    planLeido ?? getPlanEmpresa(empresaId),
+    getAddonsEmpresa(empresaId),
+    getAjustesModulos(empresaId),
+  ]);
+  return {
+    plan,
+    addons,
+    modulos: modulosEfectivos({ plan, addons, ajustes }),
+    config: configModulos(ajustes),
+    capacidades: capacidades(plan, addons),
+  };
+}
+
+// Cuál es la forma de sumar un módulo que falta: un add-on, Planta o el tramo siguiente
+function comoSumar(plan, modulo) {
+  const addon = Object.values(ADDONS).find((a) => a.modulos.includes(modulo));
+  if (addon) return { upgrade_a: addon.id, error: `${MODULOS[modulo].nombre} es parte del add-on ${addon.nombre}. Sumalo desde Facturación.` };
+  if (modulo === "proyectos" || modulo === "actividad") {
+    return { upgrade_a: planSiguiente(plan, { necesitaPlanta: true }), error: `${MODULOS[modulo].nombre} es parte del plan Planta.` };
+  }
+  return { upgrade_a: planSiguiente(plan), error: `Tu plan no incluye ${MODULOS[modulo]?.nombre || modulo}.` };
+}
+
+/**
+ * Corta con 402 si la empresa no tiene el módulo (ítem 36).
+ * @returns {Promise<NextResponse|null>}
+ */
+export async function requireModulo(empresaId, modulo) {
+  const { plan, modulos } = await getModulosEmpresa(empresaId);
+  if (modulos.includes(modulo)) return null;
+  const { error, upgrade_a } = comoSumar(plan, modulo);
+  return NextResponse.json({ ok: false, error, tipo: "sin_modulo", modulo, upgrade_a, paywall: true }, { status: 402 });
+}
+
 export const MENSAJE_SIN_PLAN = "La cuenta de tu empresa está en pausa: terminó la prueba o la suscripción no está activa. El dueño puede elegir un plan para seguir cargando datos.";
 
 /**
@@ -86,7 +150,7 @@ export async function rechazarSiSinPlan(empresaId) {
 }
 
 export function invalidarCachePlan(empresaId) {
-  if (empresaId) { cache.delete(empresaId); cacheAddons.delete(empresaId); }
+  if (empresaId) { cache.delete(empresaId); cacheAddons.delete(empresaId); cacheAjustes.delete(empresaId); }
 }
 
 // Cuenta filas activas en una tabla para una empresa
@@ -105,11 +169,28 @@ async function contarFilas(tabla, empresaId, filtroExtra = "") {
  * Valida si se puede crear un registro nuevo según el plan.
  * Retorna { ok: true } o { ok: false, error, upgrade_a }
  */
+// Tablas que pertenecen a un módulo: sin el módulo no se cargan (ítem 36)
+const TABLA_MODULO = {
+  notas_calendario: "calendario",
+  turnos_planificados: "calendario",
+  reportes_obra: "obra",
+  proyectos: "proyectos",
+  registro_actividades: "actividad",
+};
+
 export async function validarLimite({ tabla, empresaId, body, method }) {
   if (method !== "POST" || !empresaId) return { ok: true };
 
   const plan = await getPlanEmpresa(empresaId);
   const planInfo = PLANES[plan] || PLANES.free;
+
+  // ─── Módulo de la tabla (plan + add-ons + ajustes de la empresa) ───
+  const modulo = TABLA_MODULO[tabla];
+  let modulosEmpresa = null;
+  if (modulo) {
+    ({ modulos: modulosEmpresa } = await getModulosEmpresa(empresaId));
+    if (!modulosEmpresa.includes(modulo)) return { ok: false, ...comoSumar(plan, modulo) };
+  }
 
   // ─── empleados: chequear max_empleados ───
   if (tabla === "empleados") {
@@ -154,43 +235,10 @@ export async function validarLimite({ tabla, empresaId, body, method }) {
     }
   }
 
-  // ─── notas_calendario: solo Pro+ ───
-  if (tabla === "notas_calendario") {
-    if (!planPermite(plan, "calendario")) {
-      return {
-        ok: false,
-        error: `El calendario con notas requiere un plan Asistencia, Planta o Enterprise.`,
-        upgrade_a: planSiguiente(plan),
-      };
-    }
-  }
-
-  // ─── turnos_planificados: mismo gate que notas_calendario (feature "calendario") ───
-  if (tabla === "turnos_planificados") {
-    if (!planPermite(plan, "calendario")) {
-      return {
-        ok: false,
-        error: `La planificación de turnos requiere un plan Asistencia, Planta o Enterprise.`,
-        upgrade_a: planSiguiente(plan),
-      };
-    }
-  }
-
-  // ─── reportes_obra: módulo "obra" (en Asistencia y Planta, add-on Trabajo en campo) ───
-  if (tabla === "reportes_obra") {
-    const addons = await getAddonsEmpresa(empresaId);
-    if (!capacidades(plan, addons).modulos.includes("obra")) {
-      return {
-        ok: false,
-        error: `Los reportes de obra son parte del add-on Trabajo en campo. Sumalo desde Facturación.`,
-        upgrade_a: "campo",
-      };
-    }
-  }
-
   // ─── proyectos: chequear max_proyectos ───
   if (tabla === "proyectos") {
-    const max = planLimite(plan, "max_proyectos");
+    // Un plan sin OT al que se le dio el módulo a mano no tiene tope
+    const max = planLimite(plan, "max_proyectos") || (modulosEmpresa?.includes("proyectos") ? Infinity : 0);
     const actuales = await contarFilas("proyectos", empresaId);
     if (actuales >= max) {
       return {
