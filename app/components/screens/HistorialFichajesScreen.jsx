@@ -57,7 +57,7 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
   return (
     <section aria-label={`Fichajes de ${empNombre}`} className="px-[18px] pb-[110px] overflow-y-auto flex-1">
       <div className="flex items-center gap-3 mb-4">
-        <button onClick={onBack} aria-label="Volver" className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 flex"><Ic.chevL /></button>
+        <button onClick={onBack} aria-label="Volver" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-gypi-text cursor-pointer p-1.5 flex items-center justify-center"><Ic.chevL /></button>
         <h2 className="m-0 font-heading text-xl font-bold text-gypi-text flex-1">Fichajes de {empNombre}</h2>
       </div>
 

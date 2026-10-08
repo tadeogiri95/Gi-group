@@ -48,9 +48,24 @@ export function tiposDeEmpresa(config) {
 }
 
 /** Nombre a mostrar de una solicitud guardada. */
+// Tipos que crea el sistema (chat, aprobaciones) y no se eligen en el formulario
+const NOMBRES_SISTEMA = {
+  tardanza: "Tardanza",
+  hora_extra: "Hora extra",
+  horas_extra: "Horas extra",
+  salida_anticipada: "Salida anticipada",
+  cambio_turno: "Cambio de turno",
+};
+
 export function nombreSolicitud(s) {
   if (s?.etiqueta) return s.etiqueta;
-  return TIPOS_BASE[s?.tipo]?.nombre || s?.tipo || "Solicitud";
+  const tipo = s?.tipo;
+  const nombre = TIPOS_BASE[tipo]?.nombre || NOMBRES_SISTEMA[tipo];
+  if (nombre) return nombre;
+  if (!tipo) return "Solicitud";
+  // Nunca mostrar un código crudo ("algo_nuevo" → "Algo nuevo")
+  const legible = String(tipo).replace(/_/g, " ").trim();
+  return legible.charAt(0).toUpperCase() + legible.slice(1);
 }
 
 /** Días (inclusive) entre dos fechas YYYY-MM-DD; 0 si el rango es inválido. */

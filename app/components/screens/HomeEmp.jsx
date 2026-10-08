@@ -10,6 +10,7 @@ import EmptyState from "../ui/EmptyState";
 import BotonFichar from "../BotonFichar";
 import PinCard from "../PinCard";
 import NuevaSolicitud from "../NuevaSolicitud";
+import { notificacionAprobada } from "../../lib/textos";
 import EstadoConexion from "../EstadoConexion";
 import { useColaOffline } from "../../hooks/useColaOffline";
 import { fichadaConPendientes } from "../../lib/colaOffline";
@@ -120,7 +121,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       {notisResolucion.length > 0 && (
         <div className="mb-[18px]" role="status">
           {notisResolucion.map(n => {
-            const isApproved = n.asunto?.includes("APROBADA") || n.asunto?.includes("aprobado");
+            const isApproved = notificacionAprobada(n.asunto);
             const ac = isApproved ? "var(--color-green)" : "var(--color-red)";
             return (
               <div

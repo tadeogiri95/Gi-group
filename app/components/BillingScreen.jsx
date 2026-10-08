@@ -5,6 +5,7 @@ import { sb, getToken } from "../lib/supabase";
 import ElegirPlan from "./ElegirPlan";
 import PerfilFiscal from "./PerfilFiscal";
 import { esAppAndroid } from "../lib/appAndroid";
+import { mensajeErrorPago, mensajeErrorRed } from "../lib/textos";
 
 function BillingWeb({ onClose }) {
   const [info, setInfo] = useState(null);
@@ -32,7 +33,7 @@ function BillingWeb({ onClose }) {
       setInfo(rInfo);
       setPagos(Array.isArray(rPagos) ? rPagos : []);
     } catch (e) {
-      setError(e.message);
+      setError(mensajeErrorRed(e));
     } finally {
       setLoading(false);
     }
@@ -56,12 +57,13 @@ function BillingWeb({ onClose }) {
       try { d = txt ? JSON.parse(txt) : {}; } catch {}
       if (d.falta_perfil_fiscal) setPedirFiscal(true);
       if (!r.ok || !d.init_point) {
-        throw new Error(d.error || `Error ${r.status}: ${txt?.slice(0, 200) || "respuesta vacía"}`);
+        // El detalle técnico va al registro del servidor, no a la pantalla
+        throw new Error(mensajeErrorPago({ status: r.ok ? 502 : r.status, error: d.error }));
       }
       // Redirigir a Mercado Pago
       window.location.href = d.init_point;
     } catch (e) {
-      setError(e.message);
+      setError(mensajeErrorRed(e));
       setBusy(false);
     }
   };
@@ -76,12 +78,12 @@ function BillingWeb({ onClose }) {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Error cancelando");
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(mensajeErrorPago({ status: r.status, error: d.error }));
       setConfirmCancel(false);
       await cargar();
     } catch (e) {
-      setError(e.message);
+      setError(mensajeErrorRed(e));
     } finally {
       setBusy(false);
     }
@@ -94,7 +96,7 @@ function BillingWeb({ onClose }) {
       const d = await r.json();
       if (d.portal_url) window.open(d.portal_url, "_blank");
       else if (d.error) setError(d.error);
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(mensajeErrorRed(e)); }
   };
 
   const planActual = info?.plan || "free";
