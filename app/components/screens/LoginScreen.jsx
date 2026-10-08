@@ -218,6 +218,7 @@ export default function LoginScreen({ onLogin, empresa }) {
               style={{ marginBottom: 0, letterSpacing: "0.4em" }}
               onKeyDown={e => e.key === "Enter" && login()}
             />
+            <p className="text-[13px] text-gypi-dim m-0">¿Te olvidaste el PIN? Pedile uno nuevo a administración.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">

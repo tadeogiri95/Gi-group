@@ -8,7 +8,9 @@
 //
 // - "verificar": confirma que el código existe y no venció; devuelve el nombre.
 // - "activar":  define la contraseña, borra el código (un solo uso) y cierra
-//               las sesiones abiertas de esa cuenta.
+//               las sesiones abiertas de esa cuenta. Los operarios pueden
+//               elegir un PIN de 4 números en lugar de la contraseña
+//               (reforma UX R6): con legajo y PIN entran y fichan en el kiosco.
 // Ver app/lib/activacion.js.
 // ═══════════════════════════════════════════════════════════
 
@@ -21,6 +23,7 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { hashCodigo, normalizarCodigo } from "../../lib/activacion";
 import { logAudit } from "../../lib/audit";
+import { problemaPin } from "../../lib/pin";
 
 import { ipCliente } from "../../lib/ip";
 const CODIGO_INVALIDO = "El código no es válido o ya venció. Pedile uno nuevo a tu empresa.";
@@ -39,7 +42,7 @@ export async function POST(request) {
     const rawBody = await request.json();
     const parsed = validateBody(unirseBody, rawBody);
     if (parsed.response) return parsed.response;
-    const { action, slug, codigo, password } = parsed.data;
+    const { action, slug, codigo, password, pin } = parsed.data;
 
     if (normalizarCodigo(codigo).length !== 8) {
       return NextResponse.json({ error: CODIGO_INVALIDO }, { status: 404 });
@@ -63,22 +66,33 @@ export async function POST(request) {
     }
 
     if (action === "verificar") {
-      return NextResponse.json({ ok: true, nombre: empleado.nombre, apodo: empleado.apodo, legajo: empleado.legajo, empresaNombre });
+      // rol: la pantalla ofrece PIN a los operarios y contraseña a gestión
+      return NextResponse.json({ ok: true, nombre: empleado.nombre, apodo: empleado.apodo, legajo: empleado.legajo, rol: empleado.rol, empresaNombre });
     }
 
-    // ─── activar ───
-    const pwCheck = validarPassword(password);
-    if (!pwCheck.valido) {
-      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
+    // ─── activar: con PIN (operarios) o con contraseña ───
+    let credencial;
+    if (pin !== undefined) {
+      if (empleado.rol !== "operativo") {
+        return NextResponse.json({ error: "Tu cuenta entra con contraseña. Creá una para continuar." }, { status: 400 });
+      }
+      const problema = problemaPin(pin);
+      if (problema) return NextResponse.json({ error: problema }, { status: 400 });
+      credencial = { pin_hash: await bcrypt.hash(pin, 10), pin_intentos: 0, pin_bloqueado_hasta: null };
+    } else {
+      const pwCheck = validarPassword(password);
+      if (!pwCheck.valido) {
+        return NextResponse.json({ error: pwCheck.error }, { status: 400 });
+      }
+      credencial = { password: await bcrypt.hash(password, 10) };
     }
-    const hashed = await bcrypt.hash(password, 10);
 
     // Filtrar también por el hash hace el uso único atómico: si dos pedidos
     // llegan a la vez con el mismo código, solo uno actualiza la fila.
     const actualizado = await sbPatch(
       `empleados?id=eq.${empleado.id}&empresa_id=eq.${empresaId}&activacion_codigo_hash=eq.${hash}`,
       {
-        password: hashed,
+        ...credencial,
         estado_activacion: "activo",
         debe_cambiar_password: false,
         password_reset_jti: null,
@@ -98,13 +112,13 @@ export async function POST(request) {
       actor_id: empleado.id,
       actor_legajo: empleado.legajo,
       actor_rol: empleado.rol,
-      accion: "activar_cuenta",
+      accion: pin !== undefined ? "activar_cuenta_pin" : "activar_cuenta",
       entidad: "empleado",
       entidad_id: String(empleado.id),
       ip,
     });
 
-    return NextResponse.json({ ok: true, nombre: empleado.nombre, empresaNombre });
+    return NextResponse.json({ ok: true, nombre: empleado.nombre, legajo: empleado.legajo, con_pin: pin !== undefined, empresaNombre });
   } catch (err) {
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }

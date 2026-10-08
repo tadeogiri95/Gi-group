@@ -140,7 +140,7 @@ test("login con PIN — bloqueado: no prueba el PIN aunque sea correcto", async 
   servidorLogin({ ...OPERARIO(), pin_bloqueado_hasta: hasta });
   const res = await login(reqLogin({ legajo: "7", pin: PIN_OK, empresa_id: EMPRESA_ID }));
   assert.equal(res.status, 429);
-  assert.match((await res.json()).error, /Probá en 10 min o entrá con tu contraseña/);
+  assert.match((await res.json()).error, /Probá en 10 min o pedile a administración un PIN nuevo/);
 });
 
 test("login con PIN — gestión no entra con PIN; sin PIN creado tampoco", async () => {
