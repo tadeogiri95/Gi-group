@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { sb } from "./lib/supabase";
-import { Tag, Chip } from "./components/ui";
+import { Tag, Chip, Button } from "./components/ui";
 import { haversine } from "./lib/calc";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const GREEN = "#16A34A";
-const RED = "#DC2626";
-const CYAN = "#0891B2";
-const VIOLET = "#7C3AED";
+// Colores por token (R11): el de la empresa para lo principal, cian para la
+// asignación masiva y verde para "control activo".
+const MARCA = "var(--color-empresa-primary)";
+const CIAN = "var(--color-cyan)";
 
 import { getDivisionesConTodos } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
@@ -108,7 +107,7 @@ const decodePlusCode = (code) => {
 };
 
 /* ═══ LEAFLET MAP (dynamic import — SSR-safe) ═══ */
-const LeafletMap = dynamic(() => import("./components/LeafletMap"), { ssr: false, loading: () => <div style={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f0ee", borderRadius: 12 }}>Cargando mapa...</div> });
+const LeafletMap = dynamic(() => import("./components/LeafletMap"), { ssr: false, loading: () => <div className="h-[260px] flex items-center justify-center bg-gypi-surf-hi rounded-xl text-gypi-dim text-[13px]">Cargando mapa...</div> });
 
 /* ═══ GEOCODING via server-side proxy ═══ */
 async function geocodeAddress(query) {
@@ -243,7 +242,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={isEdit ? "Editar ubicación" : "Nueva ubicación"}>
-      <div onClick={onClose} className="absolute inset-0 bg-black/60" style={{ backdropFilter: "blur(4px)" }} />
+      <div onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-xs" />
       <div className="relative w-full max-w-[460px] bg-gypi-bg rounded-t-[20px] px-[18px] pt-5 pb-[30px] max-h-[90vh] overflow-y-auto border border-gypi-border">
         <div className="w-9 h-1 rounded-sm bg-gypi-mute mx-auto mb-4" aria-hidden="true" />
         <h3 className="m-0 mb-1 font-heading text-lg font-bold text-gypi-text">
@@ -273,8 +272,8 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
         <div className="flex mb-3 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
           {MODOS.map(m => (
             <button key={m.key} onClick={() => setModo(m.key)}
-              className="flex-1 py-2 rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-heading transition-all"
-              style={{ background: modo === m.key ? CYAN : "transparent", color: modo === m.key ? "#000" : "var(--color-text-dim)", minHeight: 40 }}>
+              aria-pressed={modo === m.key}
+              className={`flex-1 py-2 rounded-[10px] border-none cursor-pointer text-[12px] font-bold font-heading transition-all min-h-11 ${modo === m.key ? "bg-gypi-cyan text-black" : "bg-transparent text-gypi-dim"}`}>
               {m.icon} {m.label}
             </button>
           ))}
@@ -282,7 +281,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
 
         {/* Error */}
         {error && (
-          <div role="alert" className="mb-3 p-2.5 rounded-lg text-[12px] font-semibold font-body" style={{ background: `${RED}15`, color: RED, border: `1px solid ${RED}30` }}>
+          <div role="alert" className="mb-3 p-2.5 rounded-lg text-[13px] font-semibold font-body bg-gypi-red/[0.08] text-gypi-red-ink border border-gypi-red/20">
             {error}
           </div>
         )}
@@ -297,8 +296,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
                 placeholder="Av. Corrientes 1234, CABA"
                 className="g-input flex-1" />
               <button onClick={handleAddressSearch} disabled={!addressQuery.trim() || addressLoading}
-                className="py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading cursor-pointer shrink-0"
-                style={{ background: addressQuery.trim() && !addressLoading ? CYAN : "var(--color-surface)", color: addressQuery.trim() && !addressLoading ? "#000" : "var(--color-text-muted)", minHeight: 44 }}>
+                className={`py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading shrink-0 min-h-11 ${addressQuery.trim() && !addressLoading ? "bg-gypi-cyan text-black cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}>
                 {addressLoading ? "..." : "Buscar"}
               </button>
             </div>
@@ -324,7 +322,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
         {modo === "mapa" && (
           <div className="mb-3">
             <div className="text-[11px] text-gypi-dim mb-2">Tocá en el mapa para ubicar el punto de fichaje</div>
-            <div className="rounded-xl overflow-hidden border border-gypi-border" style={{ height: 260 }}>
+            <div className="rounded-xl overflow-hidden border border-gypi-border h-[260px]">
               <LeafletMap lat={hasCoords ? latNum : -34.6037} lng={hasCoords ? lngNum : -58.3816}
                 zoom={hasCoords ? 16 : 12} radio={radio} onMapClick={handleMapClick} />
             </div>
@@ -341,8 +339,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
                 placeholder="Ej: 87GC+2G"
                 className="g-input flex-1 font-mono" />
               <button onClick={handlePlusCodeDecode} disabled={!plusCode.trim()}
-                className="py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading cursor-pointer shrink-0"
-                style={{ background: plusCode.trim() ? CYAN : "var(--color-surface)", color: plusCode.trim() ? "#000" : "var(--color-text-muted)", minHeight: 44 }}>
+                className={`py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading shrink-0 min-h-11 ${plusCode.trim() ? "bg-gypi-cyan text-black cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}>
                 Decodificar
               </button>
             </div>
@@ -363,8 +360,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
                 className="g-input flex-1" />
               <button onClick={() => { const result = parseMapsInput(mapaUrl); if (result) setCoords(result.lat, result.lng); else setError("No se pudieron extraer coordenadas del link."); }}
                 disabled={!mapaUrl.trim()}
-                className="py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading cursor-pointer shrink-0"
-                style={{ background: mapaUrl.trim() ? CYAN : "var(--color-surface)", color: mapaUrl.trim() ? "#000" : "var(--color-text-muted)", minHeight: 44 }}>
+                className={`py-3 px-4 rounded-[10px] border-none text-[13px] font-bold font-heading shrink-0 min-h-11 ${mapaUrl.trim() ? "bg-gypi-cyan text-black cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}>
                 Extraer
               </button>
             </div>
@@ -376,8 +372,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
 
         {/* Botón GPS */}
         <button onClick={handleUseGPS} disabled={gpsLoading}
-          className="w-full py-2.5 rounded-xl border border-gypi-border text-[13px] font-bold font-body cursor-pointer mb-3 flex items-center justify-center gap-2 bg-transparent"
-          style={{ color: CYAN, minHeight: 44 }}>
+          className="w-full py-2.5 rounded-xl border border-gypi-border text-[14px] font-bold font-body cursor-pointer mb-3 flex items-center justify-center gap-2 bg-transparent text-gypi-cyan-ink min-h-11">
           {gpsLoading ? "Obteniendo ubicación..." : "📡 Usar mi ubicación actual"}
         </button>
 
@@ -399,7 +394,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
 
             {/* Mapa preview (en modos que no son "mapa") */}
             {modo !== "mapa" && (
-              <div className="mb-3 rounded-xl overflow-hidden border border-gypi-border" style={{ height: 180 }}>
+              <div className="mb-3 rounded-xl overflow-hidden border border-gypi-border h-[180px]">
                 <LeafletMap lat={latNum} lng={lngNum} zoom={16} radio={radio} onMapClick={handleMapClick} />
               </div>
             )}
@@ -412,18 +407,21 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
             Radio de tolerancia: {radio}m
           </label>
           <input type="range" min={50} max={500} step={10} value={radio} onChange={e => setRadio(Number(e.target.value))}
-            className="w-full" style={{ accentColor: CYAN }} />
+            className="w-full accent-gypi-cyan" />
           <div className="flex justify-between text-xs text-gypi-mute mt-1">
             <span>50m</span><span>500m</span>
           </div>
         </div>
 
         {/* Botón guardar */}
-        <button onClick={handleSave} disabled={!canSave || saving}
-          className="w-full py-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer"
-          style={{ background: canSave && !saving ? GREEN : "var(--color-surface)", color: canSave && !saving ? "#000" : "var(--color-text-muted)", minHeight: 48 }}>
-          {saving ? "Guardando..." : isEdit ? "Actualizar ubicación" : "Crear ubicación"}
-        </button>
+        <Button size="lg" className="w-full" onClick={handleSave} disabled={!canSave} loading={saving}>
+          {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Crear ubicación"}
+        </Button>
+        {!canSave && !saving && (
+          <div className="mt-2 text-center text-[12px] text-gypi-dim">
+            {!nombre.trim() ? "Falta ponerle un nombre." : "Falta marcar dónde queda: buscá la dirección o tocá el mapa."}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -437,13 +435,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting, plan
         <div className="text-[32px] mb-2">📍</div>
         <div className="text-[15px] font-bold font-heading text-gypi-text mb-1">Sin ubicaciones</div>
         <div className="text-[13px] text-gypi-dim mb-4">Creá puntos de fichaje para habilitar el control de geolocalización</div>
-        <button
-          onClick={onNew}
-          className="py-3 px-6 rounded-xl border-none text-[14px] font-bold font-heading cursor-pointer"
-          style={{ background: GREEN, color: "#000" }}
-        >
-          + Nueva ubicación
-        </button>
+        <Button onClick={onNew}>+ Nueva ubicación</Button>
       </div>
     );
   }
@@ -454,13 +446,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting, plan
         <div className="g-overline">
           Ubicaciones ({ubicaciones.length})
         </div>
-        <button
-          onClick={onNew}
-          className="py-1.5 px-3 rounded-lg border-none text-[12px] font-bold font-body cursor-pointer"
-          style={{ background: `${GREEN}22`, color: GREEN }}
-        >
-          + Nueva
-        </button>
+        <Button size="sm" variant="secondary" onClick={onNew}>+ Nueva ubicación</Button>
       </div>
       <div className="flex flex-col gap-1.5">
         {ubicaciones.map(u => (
@@ -468,7 +454,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting, plan
             key={u.id}
             className="g-card flex items-center gap-3"
           >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ background: `${CYAN}18` }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 bg-gypi-cyan/10" aria-hidden="true">
               📍
             </div>
             <div className="flex-1 min-w-0">
@@ -484,8 +470,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting, plan
               <button
                 onClick={() => onEdit(u)}
                 aria-label={`Editar ${u.nombre}`}
-                className="w-8 h-8 rounded-lg border-none cursor-pointer flex items-center justify-center text-[14px]"
-                style={{ background: `color-mix(in srgb, ${AMBER} 9%, transparent)`, color: AMBER }}
+                className="w-11 h-11 rounded-lg border-none cursor-pointer flex items-center justify-center text-[16px] bg-gypi-amber/10"
               >
                 ✏️
               </button>
@@ -493,8 +478,7 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting, plan
                 onClick={() => onDelete(u.id)}
                 disabled={deleting}
                 aria-label={`Eliminar ${u.nombre}`}
-                className="w-8 h-8 rounded-lg border-none cursor-pointer flex items-center justify-center text-[14px]"
-                style={{ background: `${RED}18`, color: RED }}
+                className="w-11 h-11 rounded-lg border-none cursor-pointer flex items-center justify-center text-[16px] bg-gypi-red/10"
               >
                 🗑
               </button>
@@ -527,8 +511,6 @@ export default function GeolocalizacionScreen({ empresaId }) {
   const [masivoCfg, setMasivoCfg] = useState({ activo: true, ubicacion_id: "", radio: 150 });
   const [modalUbicacion, setModalUbicacion] = useState(null);
   const [savingUbicacion, setSavingUbicacion] = useState(false);
-
-  const showToast = (msg, color) => toast.show(msg, color);
 
   const cargarDatos = useCallback(async () => {
     setLoading(true);
@@ -580,8 +562,8 @@ export default function GeolocalizacionScreen({ empresaId }) {
   };
 
   const aplicarMasivo = () => {
-    if (seleccionados.size === 0) { showToast("Seleccioná al menos un empleado", AMBER); return; }
-    if (masivoCfg.activo && !masivoCfg.ubicacion_id) { showToast("Seleccioná una ubicación", AMBER); return; }
+    if (seleccionados.size === 0) { toast.show("Seleccioná al menos un empleado"); return; }
+    if (masivoCfg.activo && !masivoCfg.ubicacion_id) { toast.show("Seleccioná una ubicación"); return; }
     setConfig(p => {
       const c = { ...p };
       seleccionados.forEach(id => {
@@ -589,12 +571,12 @@ export default function GeolocalizacionScreen({ empresaId }) {
       });
       return c;
     });
-    showToast(`Configuración aplicada a ${seleccionados.size} empleado${seleccionados.size > 1 ? "s" : ""}`, GREEN);
+    toast.success(`Listo para ${seleccionados.size} empleado${seleccionados.size > 1 ? "s" : ""}. Tocá "Guardar" abajo para confirmar.`);
   };
 
   const guardar = async () => {
     const cambios = empleados.filter(e => tienesCambios(e.id));
-    if (!cambios.length) { showToast("No hay cambios para guardar", AMBER); return; }
+    if (!cambios.length) { toast.show("No hay cambios para guardar"); return; }
     setSaving(true);
     let ok = 0, errores = 0;
     for (const emp of cambios) {
@@ -623,11 +605,10 @@ export default function GeolocalizacionScreen({ empresaId }) {
       setOriginal(JSON.parse(JSON.stringify(config)));
       setSeleccionados(new Set());
     }
-    showToast(
+    (errores > 0 ? toast.show : toast.success)(
       errores > 0
         ? `⚠️ ${ok} guardado${ok !== 1 ? "s" : ""}, ${errores} con error.`
-        : `✅ ${ok} configuración${ok > 1 ? "es" : ""} guardada${ok > 1 ? "s" : ""}`,
-      errores > 0 ? AMBER : GREEN
+        : `✅ ${ok} configuración${ok > 1 ? "es" : ""} guardada${ok > 1 ? "s" : ""}`
     );
     setSaving(false);
   };
@@ -644,7 +625,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
           radio: data.radio,
           ...(data.planta_id ? { planta_id: data.planta_id } : {}),
         });
-        showToast("Ubicación actualizada", GREEN);
+        toast.success("Ubicación actualizada");
       } else {
         await sb.post("geo_zonas", {
           empresa_id: empresaId,
@@ -654,13 +635,13 @@ export default function GeolocalizacionScreen({ empresaId }) {
           radio: data.radio,
           ...(data.planta_id ? { planta_id: data.planta_id } : {}),
         });
-        showToast("Ubicación creada", GREEN);
+        toast.success("Ubicación creada");
       }
       setModalUbicacion(null);
       cargarDatos();
     } catch (e) {
       console.error("Error guardando ubicación:", e);
-      showToast("Error al guardar ubicación", RED);
+      toast.error("Error al guardar ubicación");
     } finally {
       setSavingUbicacion(false);
     }
@@ -671,11 +652,11 @@ export default function GeolocalizacionScreen({ empresaId }) {
     setDeleting(true);
     try {
       await sb.del(`geo_zonas?id=eq.${id}`);
-      showToast("Ubicación eliminada", GREEN);
+      toast.success("Ubicación eliminada");
       cargarDatos();
     } catch (e) {
       console.error("Error eliminando ubicación:", e);
-      showToast("Error al eliminar", RED);
+      toast.error("Error al eliminar");
     } finally {
       setDeleting(false);
     }
@@ -687,18 +668,14 @@ export default function GeolocalizacionScreen({ empresaId }) {
   };
 
   /* ── Toggle switch reusable ── */
-  const Toggle = ({ on, onClick, color = GREEN, label }) => (
+  const Toggle = ({ on, onClick, label }) => (
     <button
       onClick={onClick}
       aria-label={label || (on ? "Desactivar" : "Activar")}
       aria-pressed={on}
-      className="relative border-none cursor-pointer rounded-full shrink-0"
-      style={{ width: 48, height: 28, background: on ? color : "var(--color-text-muted)", transition: "all 0.2s" }}
+      className={`relative border-none cursor-pointer rounded-full shrink-0 w-12 h-7 transition-all duration-200 ${on ? "bg-gypi-green" : "bg-(--color-text-muted)"}`}
     >
-      <div
-        className="absolute rounded-full bg-white"
-        style={{ width: 22, height: 22, top: 3, left: on ? 23 : 3, transition: "all 0.2s" }}
-      />
+      <div className={`absolute rounded-full bg-white w-[22px] h-[22px] top-[3px] transition-all duration-200 ${on ? "left-[23px]" : "left-[3px]"}`} />
     </button>
   );
 
@@ -711,37 +688,37 @@ export default function GeolocalizacionScreen({ empresaId }) {
       <div className="flex mb-3.5 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
         <button
           onClick={() => setModo("masivo")}
-          className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all"
-          style={{ background: modo === "masivo" ? CYAN : "transparent", color: modo === "masivo" ? "#000" : "var(--color-text-dim)" }}
+          aria-pressed={modo === "masivo"}
+          className={`flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all min-h-11 ${modo === "masivo" ? "bg-gypi-cyan text-black" : "bg-transparent text-gypi-dim"}`}
         >
-          ⚡ Asignación masiva
+          ⚡ Varios a la vez
         </button>
         <button
           onClick={() => setModo("individual")}
-          className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all"
-          style={{ background: modo === "individual" ? AMBER : "transparent", color: modo === "individual" ? "#000" : "var(--color-text-dim)" }}
+          aria-pressed={modo === "individual"}
+          className={`flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all min-h-11 ${modo === "individual" ? "bg-gypi-amber text-gypi-on-amber" : "bg-transparent text-gypi-dim"}`}
         >
-          ✏️ Individual
+          ✏️ De a uno
         </button>
       </div>
 
-      {/* Panel de Ubicaciones (siempre visible) */}
-      <PanelUbicaciones
+      {/* Panel de Ubicaciones (al terminar de cargar: antes mostraba "Sin ubicaciones" un instante) */}
+      {!loading && <PanelUbicaciones
         ubicaciones={ubicaciones}
         onEdit={(u) => setModalUbicacion(u)}
         onDelete={handleDeleteUbicacion}
         onNew={() => setModalUbicacion({})}
         deleting={deleting}
         plantas={plantas}
-      />
+      />}
 
       {loading ? (
-        <div className="gypi-dots"><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /></div>
+        <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-cyan" /><span className="bg-gypi-cyan" /><span className="bg-gypi-cyan" /></div>
       ) : modo === "masivo" ? (
         <>
           {/* Paso 1: Configuración masiva */}
-          <div className="bg-gypi-surface rounded-2xl p-4 mb-3.5" style={{ border: `1px solid ${CYAN}30` }}>
-            <div className="text-[11px] font-bold uppercase tracking-[0.08em] mb-3" style={{ color: CYAN }}>
+          <div className="bg-gypi-surface rounded-2xl p-4 mb-3.5 border border-gypi-cyan/20">
+            <div className="text-[12px] font-bold uppercase tracking-[0.08em] mb-3 text-gypi-cyan-ink">
               ① Definí la configuración
             </div>
 
@@ -753,7 +730,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   {masivoCfg.activo ? "Fichaje con geolocalización" : "Sin control de ubicación"}
                 </div>
               </div>
-              <Toggle on={masivoCfg.activo} onClick={() => setMasivoCfg(p => ({ ...p, activo: !p.activo }))} color={GREEN} />
+              <Toggle on={masivoCfg.activo} onClick={() => setMasivoCfg(p => ({ ...p, activo: !p.activo }))} />
             </div>
 
             {masivoCfg.activo && (
@@ -785,8 +762,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                     step={10}
                     value={masivoCfg.radio}
                     onChange={e => setMasivoCfg(p => ({ ...p, radio: Number(e.target.value) }))}
-                    className="w-full"
-                    style={{ accentColor: CYAN }}
+                    className="w-full accent-gypi-cyan"
                   />
                   <div className="flex justify-between text-xs text-gypi-mute mt-1">
                     <span>50m</span>
@@ -800,22 +776,21 @@ export default function GeolocalizacionScreen({ empresaId }) {
           {/* Paso 2: Seleccionar empleados */}
           <div className="g-card mb-3.5">
             <div className="flex justify-between items-center mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: CYAN }}>
+              <div className="text-[12px] font-bold uppercase tracking-[0.08em] text-gypi-cyan-ink">
                 ② Seleccioná empleados
               </div>
-              <Tag color={seleccionados.size > 0 ? AMBER : "var(--color-text-dim)"}>{seleccionados.size} seleccionados</Tag>
+              <Tag color={seleccionados.size > 0 ? MARCA : "var(--color-text-dim)"}>{seleccionados.size} seleccionados</Tag>
             </div>
             <div className="flex gap-1 mb-2.5 overflow-x-auto pb-0.5">
               {DIVISIONES.map(d => (
-                <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || CYAN}>
+                <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || CIAN}>
                   {d.label}
                 </Chip>
               ))}
             </div>
             <button
               onClick={seleccionarTodosFiltrados}
-              className="w-full py-2 rounded-lg text-gypi-cyan text-xs font-bold font-body cursor-pointer mb-2 bg-transparent"
-              style={{ border: `1px dashed var(--color-border)` }}
+              className="w-full py-2 rounded-lg text-gypi-cyan-ink text-[13px] font-bold font-body cursor-pointer mb-2 bg-transparent border border-dashed border-gypi-border min-h-11"
             >
               {empsFiltrados.every(e => seleccionados.has(e.id)) && empsFiltrados.length > 0
                 ? "✕ Deseleccionar todos"
@@ -830,19 +805,12 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   <button
                     key={emp.id}
                     onClick={() => toggleEmpleado(emp.id)}
-                    className="flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] cursor-pointer font-body text-left transition-all"
-                    style={{
-                      border: `1px solid ${sel ? `${CYAN}40` : "var(--color-border)"}`,
-                      background: sel ? `${CYAN}10` : "transparent",
-                    }}
+                    aria-pressed={sel}
+                    className={`flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] cursor-pointer font-body text-left transition-all border min-h-11 ${sel ? "border-gypi-cyan/25 bg-gypi-cyan/[0.06]" : "border-gypi-border bg-transparent"}`}
                   >
                     <div
-                      className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0"
-                      style={{
-                        border: `2px solid ${sel ? CYAN : "var(--color-text-muted)"}`,
-                        background: sel ? CYAN : "transparent",
-                        color: "#000",
-                      }}
+                      className={`w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0 border-2 text-black ${sel ? "border-gypi-cyan bg-gypi-cyan" : "border-(--color-text-muted) bg-transparent"}`}
+                      aria-hidden="true"
                     >
                       {sel && "✓"}
                     </div>
@@ -852,7 +820,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                         L-{emp.legajo} · {gc.activo ? `📍 ${getUbicacionNombre(gc.ubicacion_id)}` : "Sin control"}
                       </div>
                     </div>
-                    {changed && <Tag color={AMBER}>Editado</Tag>}
+                    {changed && <Tag color={MARCA}>Editado</Tag>}
                   </button>
                 );
               })}
@@ -862,12 +830,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
           <button
             onClick={aplicarMasivo}
             disabled={seleccionados.size === 0}
-            className="w-full py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading mb-2.5"
-            style={{
-              background: seleccionados.size > 0 ? `linear-gradient(135deg, ${CYAN}, ${GREEN})` : "var(--color-surface)",
-              color: seleccionados.size > 0 ? "#000" : "var(--color-text-muted)",
-              cursor: seleccionados.size > 0 ? "pointer" : "default",
-            }}
+            className={`w-full py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading mb-2.5 min-h-12 ${seleccionados.size > 0 ? "bg-gypi-cyan text-black cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
           >
             ⚡ Aplicar a {seleccionados.size || "..."} empleado{seleccionados.size !== 1 ? "s" : ""}
           </button>
@@ -877,7 +840,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
         <>
           <div className="flex gap-1 mb-2.5 overflow-x-auto pb-0.5">
             {DIVISIONES.map(d => (
-              <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || AMBER}>
+              <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || MARCA}>
                 {d.label}
               </Chip>
             ))}
@@ -890,8 +853,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
               return (
                 <div
                   key={emp.id}
-                  className="bg-gypi-surface rounded-[14px] overflow-hidden"
-                  style={{ border: `1px solid ${changed ? `color-mix(in srgb, ${AMBER} 25%, transparent)` : "var(--color-border)"}` }}
+                  className={`bg-gypi-surface rounded-[14px] overflow-hidden border ${changed ? "border-gypi-amber/25" : "border-gypi-border"}`}
                 >
                   {/* Header */}
                   <button
@@ -907,16 +869,10 @@ export default function GeolocalizacionScreen({ empresaId }) {
                     </div>
                     <div className="flex items-center gap-1.5">
                       {gc.activo && (
-                        <div
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ background: GREEN }}
-                        />
+                        <div className="w-2 h-2 rounded-full shrink-0 bg-gypi-green" aria-hidden="true" />
                       )}
-                      {changed && <Tag color={AMBER}>Editado</Tag>}
-                      <span
-                        className="text-gypi-dim text-xs transition-transform"
-                        style={{ transform: isExp ? "rotate(90deg)" : "rotate(0)" }}
-                      >
+                      {changed && <Tag color={MARCA}>Editado</Tag>}
+                      <span className={`text-gypi-dim text-xs transition-transform ${isExp ? "rotate-90" : ""}`} aria-hidden="true">
                         ▶
                       </span>
                     </div>
@@ -926,8 +882,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   {!isExp && gc.activo && (
                     <div className="px-3.5 pb-2.5">
                       <div
-                        className="inline-block py-1 px-2.5 rounded-lg text-xs font-bold font-mono"
-                        style={{ background: `${GREEN}15`, color: GREEN }}
+                        className="inline-block py-1 px-2.5 rounded-lg text-xs font-bold font-mono bg-gypi-green/10 text-gypi-green-ink"
                       >
                         📍 {getUbicacionNombre(gc.ubicacion_id)} · {gc.radio || 150}m
                       </div>
@@ -938,14 +893,14 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   {isExp && (
                     <div className="px-3.5 pb-3.5">
                       {/* Toggle activo */}
-                      <div className="flex items-center justify-between py-2.5 mb-3 px-2 rounded-lg" style={{ background: gc.activo ? `${GREEN}08` : "color-mix(in srgb, var(--color-text-muted) 3%, transparent)" }}>
+                      <div className={`flex items-center justify-between py-2.5 mb-3 px-2 rounded-lg ${gc.activo ? "bg-gypi-green/5" : "bg-gypi-surf-hi"}`}>
                         <div>
                           <div className="text-[13px] font-semibold text-gypi-text">Control de ubicación</div>
                           <div className="text-[11px] text-gypi-dim mt-0.5">
                             {gc.activo ? "Fichaje requiere geolocalización" : "Fichaje sin restricción de ubicación"}
                           </div>
                         </div>
-                        <Toggle on={gc.activo} onClick={() => toggleGeoActivo(emp.id)} color={GREEN} />
+                        <Toggle on={gc.activo} onClick={() => toggleGeoActivo(emp.id)} />
                       </div>
 
                       {gc.activo && (
@@ -977,8 +932,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                               step={10}
                               value={gc.radio || 150}
                               onChange={e => setGeoConfig(emp.id, "radio", Number(e.target.value))}
-                              className="w-full"
-                              style={{ accentColor: CYAN }}
+                              className="w-full accent-gypi-cyan"
                             />
                             <div className="flex justify-between text-xs text-gypi-mute mt-1">
                               <span>50m</span>
@@ -990,7 +944,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
 
                       {changed && (
                         <div className="mt-2 text-[11px] text-gypi-dim">
-                          <Tag color={AMBER}>sin guardar</Tag>
+                          <Tag color={MARCA}>sin guardar</Tag>
                         </div>
                       )}
                     </div>
@@ -1008,13 +962,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
           <button
             onClick={guardar}
             disabled={saving}
-            className="w-full py-4 rounded-2xl border-none text-[15px] font-bold font-heading flex items-center justify-center gap-2"
-            style={{
-              background: saving ? "var(--color-surface)" : `linear-gradient(135deg, ${AMBER}, ${VIOLET})`,
-              color: saving ? "var(--color-text-dim)" : "#000",
-              cursor: saving ? "default" : "pointer",
-              boxShadow: `0 8px 32px color-mix(in srgb, ${AMBER} 19%, transparent)`,
-            }}
+            className={`w-full py-4 rounded-2xl border-none text-[15px] font-bold font-heading flex items-center justify-center gap-2 min-h-14 shadow-[0_8px_32px_color-mix(in_srgb,var(--color-empresa-primary)_19%,transparent)] ${saving ? "bg-gypi-surface text-gypi-dim cursor-default" : "bg-gypi-amber text-gypi-on-amber cursor-pointer"}`}
           >
             {saving ? "⏳ Guardando..." : `📤 Guardar ${totalCambios} cambio${totalCambios > 1 ? "s" : ""}`}
           </button>

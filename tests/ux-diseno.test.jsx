@@ -91,7 +91,7 @@ test("pantallas de muestra — Pedidos del operario usa el botón de planta", ()
 });
 
 test("R11 — pantallas ya pasadas al diseño nuevo no vuelven a tener estilos sueltos", () => {
-  for (const ruta of ["app/[slug]/unirse/page.js", "app/components/screens/ChatScreen.jsx"]) {
+  for (const ruta of ["app/[slug]/unirse/page.js", "app/components/screens/ChatScreen.jsx", "app/geolocalizacion_screen.jsx"]) {
     const src = readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
     assert.equal((src.match(/style=\{\{/g) || []).length, 0, ruta);
     assert.doesNotMatch(src, /["'`]#[0-9A-Fa-f]{6}\b/, `${ruta}: colores a mano`);
@@ -122,8 +122,8 @@ function archivos(dir = new URL("../app", import.meta.url).pathname) {
 const cuenta = (re) => archivos().reduce((n, f) => n + (readFileSync(f, "utf8").match(re) || []).length, 0);
 
 // Al migrar una pantalla a components/ui, bajá estos números.
-const MAX_STYLE_SUELTOS = 749;
-const MAX_COLORES_A_MANO = 368;
+const MAX_STYLE_SUELTOS = 710;
+const MAX_COLORES_A_MANO = 363;
 
 test("estilos sueltos y colores escritos a mano: no aparecen nuevos", () => {
   const estilos = cuenta(/style=\{\{/g);
