@@ -29,9 +29,9 @@ import { registrarServiceWorker } from "../lib/registrarSW";
 // estática para no agregar un salto de carga al camino crítico de entrada.
 import LoginScreen from "../components/screens/LoginScreen";
 import Nav from "../components/nav/BottomNav";
-import SolCard from "../components/cards/SolCard";
 import ErrorBoundary from "../components/ErrorBoundary";
 import EmpresaNoEncontrada from "../components/EmpresaNoEncontrada";
+import MisSolicitudesScreen from "../components/screens/MisSolicitudesScreen";
 
 // Screens — lazy-loaded: solo se descarga el código de la pantalla activa
 const CambiarPasswordScreen = dynamic(() => import("../components/screens/CambiarPasswordScreen"), { ssr: false });
@@ -243,11 +243,9 @@ export default function HomeContent() {
   const moduloFaltante = (MODULO_PANTALLA[screen] && !MODULO_PANTALLA[screen].some((m) => tieneModulo(empresa, m)))
     ? MODULO_PANTALLA[screen][0] : null;
   const isChat = screen === "chat" && !moduloFaltante;
-  const showBack = screen === "reglas" || screen === "historial-fichajes" || screen === "ger-actividad";
 
   const getScreenSubtitle = () => {
     if (uIsGer) {
-      if (showBack) return "Configuración";
       const subtitles = { "ger-actividad": "Producción en vivo", config: "Configuración", equipo: "Gestión de personal", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
@@ -320,6 +318,11 @@ export default function HomeContent() {
 
       {!isChat && screen !== "home" && (
         <div className="safe-top px-[18px] pt-4 pb-2.5 shrink-0">
+          {screen === "ger-actividad" && (
+            <button onClick={() => setScreen("home")} className="min-h-[44px] -ml-1 mb-1 px-1 bg-transparent border-none cursor-pointer text-[14px] font-semibold text-gypi-text">
+              ← Volver al inicio
+            </button>
+          )}
           <div className="g-overline text-gypi-dim mb-0.5">
             {getScreenSubtitle()}
           </div>
@@ -353,14 +356,10 @@ export default function HomeContent() {
           ) : <>
           {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} actividadesHoy={isDemo ? demoActividad.actividadesHoy : actividad.historial} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} reload={loadData} demo={isDemo} onPinCambiado={(t) => actualizarUsuario?.({ tiene_pin: t })} />}
           {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} onBack={() => setScreen("home")} />}
-          {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} fichadaHoy={ctx.fichadaHoy} />}
+          {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} fichadaHoy={ctx.fichadaHoy} onIrAInicio={() => setScreen("home")} />}
           {!uIsGer && screen === "chat" && <ChatScreen usuario={u} ctx={ctx} reload={loadData} empresa={empresa} onBack={() => setScreen("home")} />}
           {!uIsGer && screen === "mis-sols" && (
-            <div className="px-[18px] pb-5 overflow-y-auto flex-1">
-              <div className="flex flex-col gap-2.5">
-                {(ctx.misSolicitudes || []).map(s => <SolCard key={s.id} s={s} />)}
-              </div>
-            </div>
+            <MisSolicitudesScreen solicitudes={ctx.misSolicitudes} usuario={u} empresa={empresa} demo={isDemo} reload={loadData} />
           )}
           {!uIsGer && screen === "documentos" && <DocumentosScreen />}
           {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}

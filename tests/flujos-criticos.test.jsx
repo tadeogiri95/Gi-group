@@ -111,7 +111,7 @@ function pantalla(props = {}) {
 test("tareas — sin fichar la entrada no deja empezar", async () => {
   const llamadas = pantalla({ fichadaHoy: null });
   fireEvent.click(await screen.findByText(/Iniciar tarea/i));
-  assert.ok(screen.getByText(/Debés fichar tu ingreso/));
+  assert.ok(screen.getByText(/Primero fichá tu entrada/));
   assert.equal(llamadas.iniciar.length, 0);
 });
 
@@ -126,8 +126,8 @@ test("tareas — elegir etapa y OT inicia la tarea con esos datos", async () => 
   assert.deepEqual({ etapa: llamadas.iniciar[0].etapa, ot: String(llamadas.iniciar[0].codigo_proyecto) }, { etapa: 2, ot: "1001" });
 });
 
-test("tareas — con una tarea en curso, 'Finalizar jornada' la cierra", async () => {
+test("tareas — con una tarea en curso, 'Terminar tarea' la cierra", async () => {
   const llamadas = pantalla({ tareaActiva: { id: 9, etapa: 1, codigo_proyecto: "1001", hora_inicio: new Date(Date.now() - 600000).toISOString(), tipo: "N" } });
-  fireEvent.click(await screen.findByText(/Finalizar jornada/));
+  fireEvent.click(await screen.findByText(/Terminar tarea/));
   await waitFor(() => assert.equal(llamadas.finalizar, 1));
 });

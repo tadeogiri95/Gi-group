@@ -57,6 +57,7 @@ export default function ActividadScreen({
   usuario,
   empresa,
   fichadaHoy,
+  onIrAInicio,
 }) {
   const [state, setState] = useState("idle");
   const [showReporte, setShowReporte] = useState(false);
@@ -213,7 +214,12 @@ export default function ActividadScreen({
   const ErrorBanner = () => errorMsg ? (
     <div className="p-3 rounded-[10px] text-xs flex items-center justify-between mb-3.5 bg-gypi-red/10 text-gypi-red">
       <span>{errorMsg}</span>
-      <button onClick={() => setErrorMsg(null)} className="bg-transparent border-none cursor-pointer text-sm font-bold text-gypi-red">✕</button>
+      <span className="flex items-center gap-1 shrink-0">
+        {onIrAInicio && !fichadaHoy?.ingreso && (
+          <button onClick={onIrAInicio} className="min-h-[44px] px-3 rounded-lg border-none cursor-pointer text-xs font-bold bg-gypi-red text-white">Ir a fichar</button>
+        )}
+        <button onClick={() => setErrorMsg(null)} aria-label="Cerrar aviso" className="min-w-[44px] min-h-[44px] bg-transparent border-none cursor-pointer text-sm font-bold text-gypi-red">✕</button>
+      </span>
     </div>
   ) : null;
 
@@ -229,13 +235,20 @@ export default function ActividadScreen({
               <div className="text-lg font-bold font-heading mb-2">Sin tarea activa</div>
               <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Iniciá una tarea para registrar tu actividad en el proyecto</div>
               <button
-                onClick={() => { if (!fichadaHoy?.ingreso && !ingresoSinEnviar(usuario?.id)) { setErrorMsg("Debés fichar tu ingreso para comenzar a trabajar"); return; } setState("selecting"); setStep(1); }}
+                onClick={() => { if (!fichadaHoy?.ingreso && !ingresoSinEnviar(usuario?.id)) { setErrorMsg("Primero fichá tu entrada en Inicio."); return; } setState("selecting"); setStep(1); }}
                 className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-amber text-black"
               >
                 <Icon name="play" size={18} /> Iniciar tarea
               </button>
             </div>
           </div>
+
+          {/* "Terminar tarea" no ficha la salida (U-02): se lo recordamos y lo llevamos */}
+          {onIrAInicio && fichadaHoy?.ingreso && !fichadaHoy?.egreso && (
+            <button onClick={onIrAInicio} className="w-full mt-3 min-h-[48px] py-3 px-4 rounded-2xl bg-gypi-surface border border-gypi-border text-gypi-text text-sm font-semibold font-body cursor-pointer">
+              ¿Terminaste el día? Fichá tu salida en Inicio →
+            </button>
+          )}
 
           {conObra && (
             <button onClick={() => setShowReporte(true)} className="w-full mt-3 py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-cyan text-black">
@@ -611,7 +624,8 @@ export default function ActividadScreen({
           )}
         </div>
 
-        <button onClick={() => finalizarTarea("idle")} disabled={saving} className={`w-full p-4 rounded-2xl bg-transparent border border-gypi-border text-gypi-dim text-sm font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5 ${saving ? 'opacity-50' : ''}`}><Icon name="stop" size={15} /> Finalizar jornada</button>
+        <button onClick={() => finalizarTarea("idle")} disabled={saving} className={`w-full p-4 rounded-2xl bg-transparent border border-gypi-border text-gypi-dim text-sm font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5 ${saving ? 'opacity-50' : ''}`}><Icon name="stop" size={15} /> Terminar tarea</button>
+        <p className="text-[12px] text-gypi-dim text-center m-0 -mt-1">Terminar la tarea no ficha tu salida.</p>
 
         {historial.length > 0 && (
           <button onClick={() => setShowHistorial(true)} className="w-full p-3 rounded-xl bg-gypi-surface border border-gypi-border text-gypi-text text-xs font-semibold font-body cursor-pointer flex items-center justify-between">

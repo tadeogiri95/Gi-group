@@ -35,6 +35,7 @@ const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 
 import { Tag, EmptyState } from "./components/ui";
 import Icon from "./components/Icon";
+import { nombreSolicitud } from "./lib/tiposSolicitud";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -634,7 +635,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 <div className="text-xs font-semibold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{s.nombre_empleado}</div>
                 <div className="text-[11px] text-gypi-dim overflow-hidden text-ellipsis whitespace-nowrap">{s.motivo}</div>
               </div>
-              <Tag color={AMBER}>{s.tipo}</Tag>
+              <Tag color={AMBER}>{nombreSolicitud(s)}</Tag>
             </div>
           ))}
 
@@ -675,7 +676,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       {panelExpanded === "taller" && (
         <section aria-label="En planta" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
           <div className="flex justify-between items-center mb-3">
-            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Produccion en vivo</div>
+            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Producción en vivo</div>
             <div className="flex items-center gap-1.5">
               <PulseDot color={enActividad > 0 ? GREEN : MUTE} size={6} />
               <span className="text-[11px] text-gypi-dim">{enActividad} activos</span>
@@ -700,11 +701,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
           <div className="flex gap-2 mb-3">
             <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${GREEN}08` }}>
-              <div className="g-overline">T. productivo</div>
+              <div className="g-overline">Tiempo productivo</div>
               <div className="font-mono text-base font-bold mt-0.5" style={{ color: GREEN }}>{fmtMin(totalMinProd)}</div>
             </div>
             <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${RED}08` }}>
-              <div className="g-overline">T. espera</div>
+              <div className="g-overline">Tiempo en espera</div>
               <div className="font-mono text-base font-bold mt-0.5" style={{ color: RED }}>{fmtMin(totalMinEspera)}</div>
             </div>
             <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${pctColor(pctProd)}08` }}>
@@ -808,11 +809,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           </div>
           <div className="g-kpi" style={{ background: pctAsist == null ? "var(--color-surf-lo)" : `${pctColor(pctAsist)}10` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: pctAsist == null ? "var(--color-text-muted)" : pctColor(pctAsist) }}>{pctAsist == null ? "—" : `${pctAsist}%`}</div>
-            <div className="g-kpi-label">Cumplim.</div>
+            <div className="g-kpi-label">Cumplimiento</div>
           </div>
           <div className="g-kpi" style={{ background: tardesEstaSemana > 0 ? `color-mix(in srgb, ${AMBER} 6%, transparent)` : `${GREEN}05` }}>
             <div className="font-heading text-[22px] font-bold" style={{ color: tardesEstaSemana > 0 ? AMBER : GREEN }}>{tardesEstaSemana}</div>
-            <div className="g-kpi-label">Tardes sem.</div>
+            <div className="g-kpi-label">Tardanzas (semana)</div>
           </div>
         </div>
 
@@ -832,7 +833,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         {/* Promedio horas / dia semana */}
         {promedioHorasDia > 0 && (
           <div className="mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between" style={{ background: `${CYAN}10` }}>
-            <span className="text-[11px] text-gypi-dim font-semibold">Prom. horas/dia semana</span>
+            <span className="text-[11px] text-gypi-dim font-semibold">Promedio de horas por día</span>
             <span className="font-heading text-sm font-bold" style={{ color: CYAN }}>{promedioHorasDia.toFixed(1)}h</span>
           </div>
         )}
@@ -860,7 +861,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                       {e.nombre}
                     </div>
                     <div className="text-[10px] text-gypi-dim mt-px">
-                      {e.division || "Sin division"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tard.`}
+                      {e.division || "Sin división"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
@@ -901,7 +902,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </div>
 
         {/* Por division (donuts) */}
-        <div className="g-label mb-2.5">Por division</div>
+        <div className="g-label mb-2.5">Por división</div>
         <div className="flex justify-around flex-wrap gap-3">
           {prodPorDiv.map(d => (
             <DonutChart key={d.id} value={d.prod} total={d.prod + d.espera} color={d.color} size={64} strokeWidth={6} label={d.label} />
@@ -963,7 +964,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       {/* ─── Footer info ─── */}
       <footer className="text-center py-2 pb-3">
         <div className="text-[10px] text-gypi-mute">
-          Actualizacion automatica cada 60s &middot; Ultimo refresh: {fmtTime(now)}
+          Se actualiza sola cada minuto &middot; Última vez: {fmtTime(now)}
         </div>
       </footer>
 
@@ -1026,7 +1027,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                           {e.nombre}
                         </div>
                         <div className="text-[10px] text-gypi-dim mt-px">
-                          {e.division || "Sin division"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tard.`}{e.diasPermiso > 0 ? ` · ${e.diasPermiso} perm.` : ""}
+                          {e.division || "Sin división"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}{e.diasPermiso > 0 ? ` · ${e.diasPermiso} con permiso` : ""}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
@@ -1063,7 +1064,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 <div>
                   <div className="g-overline">Desglose</div>
                   <div className="text-lg font-extrabold text-gypi-text font-heading mt-0.5">{d.nombre}</div>
-                  <div className="text-[11px] text-gypi-dim mt-0.5">{d.division || "Sin division"} &middot; L-{d.legajo}</div>
+                  <div className="text-[11px] text-gypi-dim mt-0.5">{d.division || "Sin división"} &middot; L-{d.legajo}</div>
                 </div>
                 <div className="w-12 h-12 rounded-[14px] flex flex-col items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
                   <div className="text-lg font-extrabold font-heading leading-none" style={{ color: AMBER }}>{d.score}</div>

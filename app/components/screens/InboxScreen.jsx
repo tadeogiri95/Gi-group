@@ -8,6 +8,7 @@ import { Chip } from "../ui";
 import { hoyArg } from "../../lib/dates";
 import { cargarHoraExtraAprobada } from "../../lib/solicitudes";
 import { nombreSolicitud } from "../../lib/tiposSolicitud";
+import { bandejaVacia } from "../../lib/textos";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const GREEN = "#16A34A";
@@ -74,7 +75,7 @@ export default function InboxScreen({ ctx, reload, usuario }) {
         } else if (sol.tipo === "salida_anticipada") {
           // El empleado ficha su salida él mismo cuando se va: así las horas son las reales
           const ok = estado === "aprobado";
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: ok ? "✅ Salida APROBADA — ya podés fichar tu salida" : "❌ Salida anticipada RECHAZADA", detalle: conNota(ok ? `${usuario.apodo} aprobó que te retires antes. Fichá tu salida con "Me voy" cuando te vayas.` : `${usuario.apodo} rechazó el permiso para retirarte antes.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
+          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: ok ? "✅ Salida APROBADA — ya podés fichar tu salida" : "❌ Salida anticipada RECHAZADA", detalle: conNota(ok ? `${usuario.apodo} aprobó que te retires antes. Cuando te vayas, tocá "Fichar salida" en el inicio.` : `${usuario.apodo} rechazó el permiso para retirarte antes.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
           sendPushToLegajo(String(sol.legajo), ok ? "✅ Salida aprobada" : "❌ Salida rechazada", ok ? "Ya podés fichar tu salida" : `${usuario.apodo} rechazó tu permiso de salida`, { empresa_id: usuario.empresa_id }).catch(() => {});
         } else if (sol.tipo === "hora_extra" && estado === "aprobado") {
           // F1-06: la hora extra aprobada se carga en la fichada (cuenta en la liquidación)
@@ -150,7 +151,7 @@ export default function InboxScreen({ ctx, reload, usuario }) {
         <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={GREEN}>Aprobados</Chip>
         <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={RED}>Rechazados</Chip>
         <Chip active={f === "todas"} onClick={() => setF("todas")}>Todas</Chip>
-        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" className="w-[30px] h-[30px] rounded-lg bg-gypi-surface border border-gypi-border text-gypi-dim flex items-center justify-center cursor-pointer shrink-0"><Ic.refresh /></button>
+        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" className="w-11 h-11 rounded-lg bg-gypi-surface border border-gypi-border text-gypi-dim flex items-center justify-center cursor-pointer shrink-0"><Ic.refresh /></button>
       </div>
       {cargando ? (
         <div role="status" aria-live="polite" className="text-center py-8 text-gypi-dim text-[13px]">Cargando solicitudes...</div>
@@ -159,7 +160,8 @@ export default function InboxScreen({ ctx, reload, usuario }) {
           {sortedFiltered.length === 0 ? (
             <div className="g-card py-10 text-center">
               <div className="text-gypi-green inline-flex mb-3"><Ic.check size={20} /></div>
-              <div className="text-sm font-bold text-gypi-text">Todo al día</div>
+              <div className="text-sm font-bold text-gypi-text">{bandejaVacia(f).titulo}</div>
+              <div className="text-[13px] text-gypi-dim mt-1">{bandejaVacia(f).detalle}</div>
             </div>
           ) : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={pedirResolver} enEspera={enEspera[s.id]} onDeshacer={deshacer} />)}
           {hayMas && !cargandoMas && (
