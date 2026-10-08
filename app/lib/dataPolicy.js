@@ -50,6 +50,7 @@ export const POLICY = {
   tipos_documento_requerido:    { GET: "all",     POST: "gestion", PATCH: "gestion" },
   etapas:                       { GET: "all" },   // se editan por /api/config-empresa
   divisiones:                   { GET: "all" },   // se editan por /api/config-empresa
+  plantas:                      { GET: "all" },   // se editan por /api/config-empresa
   empresa:                      { GET: "all",     PATCH: "gestion" },
 
   // Solo gestión.
@@ -251,4 +252,5 @@ export function validarConsulta(tabla, path) {
 export const REFERENCIAS = {
   empleado_id: "empleados",
   tipo_documento_id: "tipos_documento_requerido",
+  planta_id: "plantas",
 };

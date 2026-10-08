@@ -44,6 +44,7 @@ export function AuthProvider({ children }) {
   });
   const [divisiones, setDivisionesState] = useState([]);
   const [etapas, setEtapas] = useState([]);
+  const [plantas, setPlantas] = useState([]);
   const [init, setInit] = useState(false);
   const [slugInvalido, setSlugInvalido] = useState(false);
 
@@ -59,6 +60,7 @@ export function AuthProvider({ children }) {
         setDivisionesState(data.divisiones);
       }
       if (data.etapas) setEtapas(data.etapas);
+      if (data.plantas) setPlantas(data.plantas);
     } catch (e) {
       console.error("Error cargando config empresa:", e);
     }
@@ -238,6 +240,7 @@ export function AuthProvider({ children }) {
       empresa,
       divisiones,
       etapas,
+      plantas,
       init,
       slugInvalido,
       isGer,
@@ -246,6 +249,7 @@ export function AuthProvider({ children }) {
       updateEmpresa,
       actualizarUsuario,
       loadConfigEmpresa,
+      recargarConfig: () => loadConfigEmpresa(usuario?.empresa_id),
       cargarEmpresa,
     }}>
       {children}
