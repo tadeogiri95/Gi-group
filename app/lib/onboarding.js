@@ -95,11 +95,11 @@ export function diasRestantes(creadaEl, ahora = Date.now()) {
  */
 export function pasosActivacion(hay = {}) {
   return [
-    { id: "ubicacion", titulo: "Cargar la ubicación de la planta", detalle: "Para que solo se pueda fichar estando ahí.", hecho: !!hay.ubicacion, ir: "config" },
-    { id: "horario", titulo: "Asignar el horario de trabajo", detalle: "Con el horario se calculan las tardanzas y las horas.", hecho: !!hay.horario, ir: "config" },
+    { id: "ubicacion", titulo: "Cargar la ubicación de la planta", detalle: "Para que solo se pueda fichar estando ahí.", hecho: !!hay.ubicacion, ir: "config:ubicaciones" },
+    { id: "horario", titulo: "Asignar el horario de trabajo", detalle: "Con el horario se calculan las tardanzas y las horas.", hecho: !!hay.horario, ir: "config:horarios" },
     { id: "equipo", titulo: "Cargar a tu equipo", detalle: "Uno por uno, con un archivo o desde el asistente.", hecho: !!hay.equipo, ir: "equipo" },
-    { id: "equipoActivo", titulo: "Que tu equipo entre a la app", detalle: "Imprimí los QR de activación desde Personal.", hecho: !!hay.equipoActivo, ir: "equipo" },
-    { id: "ot", titulo: "Crear la primera OT", detalle: "Las tareas se cargan contra una orden de trabajo.", hecho: !!hay.ot, ir: "config" },
+    { id: "equipoActivo", titulo: "Que tu equipo entre a la app", detalle: "Imprimí los QR de activación desde Equipo.", hecho: !!hay.equipoActivo, ir: "equipo" },
+    { id: "ot", titulo: "Crear la primera OT", detalle: "Las tareas se cargan contra una orden de trabajo.", hecho: !!hay.ot, ir: "config:proyectos" },
     { id: "fichada", titulo: "Primera fichada", detalle: "Alguien de tu equipo ficha su entrada.", hecho: !!hay.fichada, ir: null },
     { id: "tarea", titulo: "Primera tarea registrada", detalle: "Un operario inicia una tarea sobre una OT.", hecho: !!hay.tarea, ir: null },
   ];

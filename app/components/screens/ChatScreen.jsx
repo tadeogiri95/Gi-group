@@ -197,7 +197,7 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
           setMsgs(m => [...m, { from: "bot", text: tardMsg, card: cr, time: new Date() }]);
         }
         if (reload) reload();
-      } catch (e) { setMsgs(m => [...m, { from: "bot", text: "Error al fichar ingreso.", time: new Date() }]); }
+      } catch (e) { setMsgs(m => [...m, { from: "bot", text: "No se pudo fichar la entrada. Probá con el botón de Inicio.", time: new Date() }]); }
       setLoading(false); return;
     }
 

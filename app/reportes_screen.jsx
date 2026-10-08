@@ -26,6 +26,8 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
+import { tieneModulo } from "./lib/modulos";
+import { esSupervisor } from "./lib/menuGestion";
 
 /* ─── Helpers ─── */
 const parseHora = (str) => { if (!str) return null; const [h, m] = str.split(":").map(Number); return h * 60 + m; };
@@ -655,10 +657,11 @@ export default function ReportesScreen() {
       {/* Tabs */}
       <div className="flex gap-1.5 mb-3.5 overflow-x-auto pb-0.5">
         <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={AMBER}>📊 Cumplimiento</Chip>
-        <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={GREEN}>⚙️ Producción</Chip>
-        <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={CYAN}>🏗️ Obra</Chip>
+        {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
+        {tieneModulo(empresa, "actividad") && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={GREEN}>⚙️ Producción</Chip>}
+        {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={CYAN}>🏗️ Obra</Chip>}
         <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={VIOLET}>📥 Exportar</Chip>
-        <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={RED}>💰 Liquidación</Chip>
+        {!esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={RED}>💰 Liquidación</Chip>}
       </div>
 
       {/* Periodo */}

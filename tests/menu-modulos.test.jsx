@@ -117,18 +117,19 @@ test("/api/empresa — con sesión manda los módulos de la empresa para armar e
   assert.deepEqual(json.modulos, ["fichaje", "reportes", "calendario", "obra"]);
 });
 
-test("Gestión — Proyectos, Calendario, Reportes y Reglas IA con candado si faltan sus módulos", async () => {
+test("Más — OT, Calendario, Reportes y Asistente con candado si faltan sus módulos", async () => {
   const { seccionBloqueada } = await import("../app/lib/modulos.js");
   const asistencia = { modulos: ASISTENCIA };
   assert.equal(seccionBloqueada("proyectos", asistencia), true);
   assert.equal(seccionBloqueada("calendario", asistencia), false);
   assert.equal(seccionBloqueada("horarios", asistencia), false, "Horarios es de todos");
-  assert.equal(seccionBloqueada("asistencia", { modulos: ["fichaje"] }), true);
+  assert.equal(seccionBloqueada("reportes", { modulos: ["fichaje"] }), true);
+  assert.equal(seccionBloqueada("asistencia", { modulos: ["fichaje"] }), false, "las reglas de asistencia no dependen del Asistente (U-03)");
   assert.equal(seccionBloqueada("reglas", { modulos: ["fichaje", "reportes"] }), true);
   assert.equal(seccionBloqueada("proyectos", {}), false, "sin lista de módulos no se bloquea nada");
   // La pantalla de Gestión usa esto para el candado y el aviso
   const { readFileSync } = await import("node:fs");
   const config = readFileSync(new URL("../app/components/screens/ConfigScreen.jsx", import.meta.url), "utf8");
   assert.match(config, /seccionBloqueada\(id, empresa\)/);
-  assert.match(config, /<ModuloBloqueado modulo=\{moduloDe\(subtab\)\}/);
+  assert.match(config, /<ModuloBloqueado modulo=\{MODULO_SECCION_GESTION\[id\]\}/);
 });

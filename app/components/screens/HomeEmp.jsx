@@ -485,10 +485,10 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       </section>
 
       {/* Mis solicitudes */}
-      <section aria-label="Mis solicitudes">
+      <section aria-label="Mis pedidos">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="m-0 text-base font-bold text-gypi-text font-heading">Mis solicitudes</h3>
-          <button onClick={() => setFormSolicitud(true)} className="min-h-[40px] px-3.5 rounded-[10px] border-none bg-gypi-amber/[0.13] text-gypi-amber-ink text-xs font-bold cursor-pointer">+ Nueva solicitud</button>
+          <h3 className="m-0 text-base font-bold text-gypi-text font-heading">Mis pedidos</h3>
+          <button onClick={() => setFormSolicitud(true)} className="min-h-[40px] px-3.5 rounded-[10px] border-none bg-gypi-amber/[0.13] text-gypi-amber-ink text-xs font-bold cursor-pointer">+ Pedir permiso</button>
         </div>
         {formSolicitud && (
           <NuevaSolicitud

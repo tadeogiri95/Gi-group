@@ -77,7 +77,7 @@ export function comoSumarModulo(plan, modulo) {
 export const MODULO_SECCION_GESTION = {
   proyectos: "proyectos",
   calendario: "calendario",
-  asistencia: "reportes",
+  reportes: "reportes",
   reglas: "chat",
 };
 

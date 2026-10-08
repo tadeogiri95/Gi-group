@@ -223,7 +223,7 @@ test("Checklist — muestra lo que falta, lleva a la pantalla y se puede ocultar
   assert.ok(await screen.findByText("Primeros pasos · 2 de 7"));
   assert.ok(screen.getByText(/Te quedan 11 días/));
   fireEvent.click(screen.getAllByText("Ir")[0]);
-  assert.deepEqual(destinos, ["config"], "el primer pendiente es el horario");
+  assert.deepEqual(destinos, ["config:horarios"], "el primer pendiente es el horario y abre esa sección");
   fireEvent.click(screen.getByLabelText("Ocultar primeros pasos"));
   assert.equal(screen.queryByText(/Primeros pasos/), null);
   cleanup();

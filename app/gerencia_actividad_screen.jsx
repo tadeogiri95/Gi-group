@@ -158,7 +158,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
               <div className="text-[11px] text-gypi-dim mt-0.5">{fmtMinutos(totalMinProd)} acumuladas</div>
             </div>
             <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">En espera</div>
+              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">Parados</div>
               <div className="font-heading text-[28px] font-bold text-gypi-red mt-1">{enEspera}</div>
               <div className="text-[11px] text-gypi-dim mt-0.5">{fmtMinutos(totalMinEspera)} acumuladas</div>
             </div>
@@ -377,7 +377,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                               </span>
                                             )}
                                             {act.etapa === 0 && (
-                                              <span style={{ color: RED }}>⏸ En espera</span>
+                                              <span style={{ color: RED }}>⏸ Parado</span>
                                             )}
                                             <span className="ml-auto font-mono font-semibold text-gypi-text">
                                               {fmtMinutos(durMin)}
