@@ -13,13 +13,13 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NextResponse } from "next/server";
-import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan, getAddonsEmpresa } from "../../lib/planEnforcement";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { logAudit } from "../../lib/audit";
 import { logger } from "../../lib/logger";
 import { sbGet } from "../../lib/sbHelpers";
 import { chatBody } from "../../lib/schemas";
-import { PLANES } from "../../lib/plans";
+import { capacidades } from "../../lib/plans";
 import { hoyArg } from "../../lib/dates";
 import { TIPOS_IA, MODELO_IA, construirPromptChat, construirPromptObra } from "../../lib/iaPrompts";
 
@@ -131,7 +131,8 @@ export async function POST(request) {
       `empresa?id=eq.${sesion.empresa_id}&select=nombre,nombre_corto,rubro,plan_activo,prompt_ia_chat,prompt_ia_obra&limit=1`
     ) || [];
     if (!empresa) return respuestaNoAutorizado();
-    const plan = PLANES[empresa.plan_activo] ?? PLANES.free;
+    // Plan + add-ons (Asistente IA suma cupo; Trabajo en campo, el reporte de obra)
+    const plan = capacidades(empresa.plan_activo, await getAddonsEmpresa(sesion.empresa_id));
     if (!plan.modulos.includes(conf.modulo)) {
       return NextResponse.json(
         { error: "Tu plan no incluye esta función.", upgrade: true },

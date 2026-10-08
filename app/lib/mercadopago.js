@@ -69,3 +69,13 @@ export async function cancelarPreapproval(id) {
 export async function getPago(id) {
   return mpFetch(`/v1/payments/${id}`);
 }
+/**
+ * Cambia el monto que cobra un preapproval de acá en adelante (ítem 25:
+ * precio en USD actualizado al tipo de cambio, con aviso previo).
+ */
+export async function actualizarMontoPreapproval(id, monto) {
+  return mpFetch(`/preapproval/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ auto_recurring: { transaction_amount: Number(monto), currency_id: "ARS" } }),
+  });
+}

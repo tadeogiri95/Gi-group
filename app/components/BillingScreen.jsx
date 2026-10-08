@@ -1,11 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
-import { PLANES, precioAnual } from "../lib/plans";
+import { PLANES, ADDONS } from "../lib/plans";
 import { sb, getToken } from "../lib/supabase";
-import EnterpriseContactButton from "./EnterpriseContactButton";
+import ElegirPlan from "./ElegirPlan";
 import { esAppAndroid } from "../lib/appAndroid";
-
-const ORDEN_PLANES = ["free", "starter", "pro", "enterprise"];
 
 function BillingWeb({ onClose }) {
   const [info, setInfo] = useState(null);
@@ -40,17 +38,16 @@ function BillingWeb({ onClose }) {
 
   useEffect(() => { cargar(); }, []);
 
-  const upgrade = async (plan) => {
+  const upgrade = async ({ linea, tramo, addons, periodo }) => {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
       const token = getToken();
-      const periodo = anual ? "anual" : "mensual";
       const r = await fetch("/api/billing/create-subscription", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, periodo }),
+        body: JSON.stringify({ linea, tramo, addons, periodo }),
       });
       const txt = await r.text();
       let d = {};
@@ -164,9 +161,22 @@ function BillingWeb({ onClose }) {
                 </div>
               )}
 
+              {info.addons?.length > 0 && (
+                <div className="text-xs text-gypi-text mt-1">
+                  Add-ons: {info.addons.map((a) => ADDONS[a]?.nombre || a).join(", ")}
+                </div>
+              )}
+
               {info.precio > 0 && (
                 <div className="text-[13px] text-gypi-dim mt-1">
                   ${Number(info.precio).toLocaleString("es-AR")} {info.moneda}/mes
+                  {info.precio_usd != null && <> (USD {Number(info.precio_usd).toLocaleString("es-AR")} al dólar oficial)</>}
+                </div>
+              )}
+
+              {info.precio_nuevo != null && info.precio_nuevo_desde && (
+                <div className="text-xs text-gypi-amber mt-1">
+                  Desde el {new Date(info.precio_nuevo_desde).toLocaleDateString("es-AR")} se cobra ${Number(info.precio_nuevo).toLocaleString("es-AR")}/mes por el cambio del dólar.
                 </div>
               )}
 
@@ -217,76 +227,12 @@ function BillingWeb({ onClose }) {
               </div>
             </div>
 
-            <div className="grid gap-3 mb-6">
-              {ORDEN_PLANES.map((pid) => {
-                const p = PLANES[pid];
-                const esActual = pid === planActual && estado === "activa";
-                const esEnterprise = pid === "enterprise";
-                return (
-                  <div
-                    key={pid}
-                    className="g-card p-4"
-                    style={{
-                      borderColor: esActual ? "var(--color-empresa-primary)" : undefined,
-                      opacity: esActual ? 0.7 : 1,
-                    }}
-                  >
-                    <div className="flex justify-between items-start mb-2.5">
-                      <div>
-                        <div className="font-heading text-lg font-bold text-gypi-text">{p.nombre}</div>
-                        <div className="text-xs text-gypi-dim mt-0.5">
-                          Hasta {p.max_empleados.toLocaleString("es-AR")} empleados
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-heading text-xl font-bold text-gypi-amber">
-                          {p.precio === 0 ? "Gratis" : p.precio ? `$${(anual ? precioAnual(pid) : p.precio).toLocaleString("es-AR")}` : "A convenir"}
-                        </div>
-                        {p.precio > 0 && <div className="text-[11px] text-gypi-dim">{p.moneda}/mes</div>}
-                        {p.precio > 0 && anual && <div className="text-[10px] text-gypi-green">Total anual: ${(precioAnual(pid) * 12).toLocaleString("es-AR")}</div>}
-                      </div>
-                    </div>
-
-                    <div className="text-xs text-gypi-dim leading-[1.7] mb-3">
-                      {p.geolocalizacion && <>&#x2713; Geo {p.max_ubicaciones >= 999 ? "ilimitada" : `(${p.max_ubicaciones} ubic.)`}<br /></>}
-                      {p.exportar_csv && <>&#x2713; Exportar CSV<br /></>}
-                      {p.exportar_pdf && <>&#x2713; Reportes PDF<br /></>}
-                      {p.calendario && <>&#x2713; Calendario con notas<br /></>}
-                      {p.reglas_bot && <>&#x2713; Reglas personalizadas del bot<br /></>}
-                      {p.soporte && <>&#x2713; Soporte {p.soporte}<br /></>}
-                      {p.api_access && <>&#x2713; Acceso API<br /></>}
-                    </div>
-
-                    {esActual ? (
-                      <div
-                        className="text-gypi-amber text-center py-2.5 rounded-lg text-xs font-bold"
-                        style={{ background: "var(--color-empresa-primary-subtle)" }}
-                      >
-                        Plan actual
-                      </div>
-                    ) : esEnterprise ? (
-                      <EnterpriseContactButton
-                        className="block w-full text-center py-[11px] rounded-[10px] bg-transparent font-body text-[13px] font-bold cursor-pointer"
-                        style={{
-                          border: "1px solid var(--color-empresa-primary)",
-                          color: "var(--color-empresa-primary)",
-                        }}
-                      >
-                        Contactanos
-                      </EnterpriseContactButton>
-                    ) : pid === "free" ? null : (
-                      <button
-                        onClick={() => upgrade(pid)}
-                        disabled={busy}
-                        className="g-btn g-btn-primary w-full"
-                      >
-                        {busy ? "Redirigiendo a MP..." : `Suscribirme a ${p.nombre}`}
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <ElegirPlan
+              anual={anual}
+              busy={busy}
+              actual={estado === "activa" ? { plan: planActual, addons: info.addons || [] } : null}
+              onElegir={upgrade}
+            />
 
             {/* --- Historial de pagos --- */}
             <div className="mb-2 text-xs text-gypi-dim font-semibold tracking-wide">HISTORIAL DE PAGOS</div>

@@ -95,7 +95,7 @@ test("reportes/liquidacion — plan free sin módulo reportes devuelve 402", asy
   const res = await GET(liqReq("?desde=2026-06-01&hasta=2026-06-30", token));
   assert.equal(res.status, 402);
   const json = await res.json();
-  assert.equal(json.upgrade_a, "starter");
+  assert.equal(json.upgrade_a, "asistencia_15");
   assert.equal(json.paywall, true);
 });
 

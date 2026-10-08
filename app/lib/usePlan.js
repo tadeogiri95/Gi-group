@@ -2,7 +2,7 @@
 // Hook y helpers frontend para chequear plan/features
 // ═══════════════════════════════════════════════════════════
 
-import { PLANES } from "./plans";
+import { PLANES, planSiguiente } from "./plans";
 
 /**
  * Devuelve info del plan actual basado en empresa.plan_activo
@@ -41,9 +41,5 @@ export function porcentajeUso(empresa, campo, actual) {
  * Plan sugerido para upgrade desde el actual
  */
 export function siguientePlan(empresa) {
-  const actual = empresa?.plan_activo || "free";
-  if (actual === "free") return "starter";
-  if (actual === "starter") return "pro";
-  if (actual === "pro") return "enterprise";
-  return "enterprise";
+  return planSiguiente(empresa?.plan_activo || "free");
 }

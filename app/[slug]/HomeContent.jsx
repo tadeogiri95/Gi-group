@@ -379,7 +379,7 @@ export default function HomeContent() {
       {paywallInfo && (
         <Paywall
           planActual={empresa?.plan_activo || "free"}
-          planRequerido={paywallInfo.upgrade_a || "starter"}
+          planRequerido={paywallInfo.upgrade_a || "asistencia_15"}
           mensaje={paywallInfo.mensaje}
           onClose={() => setPaywallInfo(null)}
           onUpgrade={() => { setPaywallInfo(null); setShowBilling(true); }}

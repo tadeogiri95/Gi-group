@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { fH, fB } from "../lib/theme";
-import { PLANES } from "../lib/plans";
+import { PLANES, LINEAS, ADDONS, TRAMOS } from "../lib/plans";
 import PricingCards from "./PricingCards";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
@@ -17,7 +17,7 @@ const BORDER = "var(--color-border)";
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 const TITLE = "Precios — Gypi";
-const DESCRIPTION = "Planes simples para fichaje digital, seguimiento de obra y reportes en tiempo real. Empezá gratis con hasta 5 empleados, sin tarjeta de crédito.";
+const DESCRIPTION = "Asistencia y Planta por tramos de operarios activos, con add-ons. Precios en dólares cobrados en pesos. 30 días de prueba gratis, sin tarjeta.";
 
 export const metadata = {
   title: TITLE,
@@ -40,23 +40,24 @@ export const metadata = {
   },
 };
 
-const PLAN_IDS = ["free", "starter", "pro", "enterprise"];
+// Comparador: el tramo de 40 de cada línea (las capacidades no cambian con el tramo)
+const PLAN_IDS = ["asistencia_40", "planta_40"];
+const NOMBRE = { asistencia_40: LINEAS.asistencia.nombre, planta_40: LINEAS.planta.nombre };
 
 const FILAS = [
-  { label: "Empleados", get: (p) => (p.max_empleados >= 99999 ? "Ilimitados" : `Hasta ${p.max_empleados}`) },
-  { label: "Proyectos", get: (p) => (p.max_proyectos >= 9999 ? "Ilimitados" : `Hasta ${p.max_proyectos}`) },
-  { label: "Ubicaciones (geofencing)", get: (p) => (p.max_ubicaciones === 0 ? "—" : p.max_ubicaciones >= 999 ? "Ilimitadas" : `Hasta ${p.max_ubicaciones}`) },
-  { label: "Fichaje digital", get: () => true },
-  { label: "Chat operativo (bot IA)", get: (p) => p.modulos?.includes("chat") },
-  { label: "Reportes de obra", get: (p) => p.modulos?.includes("reportes") },
+  { label: "Operarios activos", get: () => `Hasta ${TRAMOS.join(" / ")}` },
+  { label: "Fichaje (botón, QR, PIN, kiosco)", get: () => true },
   { label: "Geolocalización", get: (p) => p.geolocalizacion },
-  { label: "Calendario y turnos", get: (p) => p.calendario },
-  { label: "Reglas automáticas del bot", get: (p) => p.reglas_bot },
-  { label: "Reportes avanzados", get: (p) => p.reportes_avanzados },
-  { label: "Exportar CSV", get: (p) => p.exportar_csv },
-  { label: "Exportar PDF", get: (p) => p.exportar_pdf },
-  { label: "Acceso API", get: (p) => p.api_access },
-  { label: "Soporte", get: (p) => (p.soporte === "sla" ? "SLA dedicado" : p.soporte === "prioritario" ? "Prioritario" : p.soporte === "email" ? "Email" : "Comunidad") },
+  { label: "Solicitudes, horarios y turnos", get: (p) => p.calendario },
+  { label: "Liquidación de horas", get: (p) => p.modulos?.includes("reportes") },
+  { label: "Resumen semanal por email", get: () => true },
+  { label: "Órdenes de trabajo y etapas", get: (p) => p.modulos?.includes("proyectos") },
+  { label: "Tareas con tiempo improductivo y causa", get: (p) => p.modulos?.includes("actividad") },
+  { label: "Reportes por OT y avanzados", get: (p) => p.reportes_avanzados },
+  { label: "Exportar CSV y PDF", get: (p) => p.exportar_csv && p.exportar_pdf },
+  { label: "Asistente IA", get: (p) => `${p.ia_consultas_mes} consultas/mes (más con el add-on)` },
+  { label: ADDONS.campo.nombre, get: () => "Add-on" },
+  { label: "Soporte", get: (p) => (p.soporte === "prioritario" ? "Prioritario" : "Email") },
 ];
 
 function Celda({ value }) {
@@ -72,11 +73,11 @@ export default function PricingPage() {
     "@type": "Product",
     name: "Gypi",
     description: DESCRIPTION,
-    offers: PLAN_IDS.map((id) => ({
+    offers: Object.values(LINEAS).map((l) => ({
       "@type": "Offer",
-      name: PLANES[id].nombre,
-      price: PLANES[id].precio ?? 0,
-      priceCurrency: "ARS",
+      name: l.nombre,
+      price: l.usd[TRAMOS[0]],
+      priceCurrency: "USD",
       url: `${SITE_URL}/pricing`,
     })),
   };
@@ -97,7 +98,7 @@ export default function PricingPage() {
       <section style={{ padding: "48px 24px 16px", maxWidth: 1100, margin: "0 auto", textAlign: "center" }}>
         <h1 style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, margin: "0 0 8px" }}>Planes simples, sin sorpresas</h1>
         <p style={{ fontSize: 15, color: DIM, maxWidth: 520, margin: "0 auto" }}>
-          Empezá gratis y escalá cuando lo necesites. Todos los planes pagos incluyen soporte.
+          Pagás según cuánta gente tenés y qué querés controlar. 30 días de prueba gratis, con todo incluido y sin tarjeta.
         </p>
       </section>
 
@@ -114,7 +115,7 @@ export default function PricingPage() {
               <th style={{ textAlign: "left", padding: "10px 12px", fontSize: 12, color: DIM, fontWeight: 600, borderBottom: `1px solid ${BORDER}` }}>Característica</th>
               {PLAN_IDS.map((id) => (
                 <th key={id} style={{ textAlign: "center", padding: "10px 12px", fontSize: 13, color: TEXT, fontWeight: 700, borderBottom: `1px solid ${BORDER}` }}>
-                  {PLANES[id].nombre}
+                  {NOMBRE[id]}
                 </th>
               ))}
             </tr>

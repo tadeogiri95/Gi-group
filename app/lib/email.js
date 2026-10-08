@@ -279,6 +279,36 @@ export async function sendPlanSuspendido({ to, nombre, empresa, slug, motivo = "
   }).catch((e) => logger.error("email sendPlanSuspendido", e));
 }
 
+// ─── Aviso de cambio de precio en pesos (ítem 25, D18) ───
+export async function sendAvisoPrecio({ to, nombre, empresa, slug, precioActual, precioNuevo, desde, precioUsd, cotizacion, periodo = "mensual", empresaId }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const url = `${APP_BASE}/${slug}`;
+  const pesos = (n) => `$${Number(n).toLocaleString("es-AR")}`;
+  const fecha = new Date(desde).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Argentina/Buenos_Aires" });
+  const sube = Number(precioNuevo) > Number(precioActual);
+  const cuerpo = `
+    <p style="margin:0 0 12px">Hola <strong>${escapeHtml(nombre)}</strong>,</p>
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      El plan de <strong>${escapeHtml(empresa)}</strong> cuesta USD ${escapeHtml(String(precioUsd))} por mes y se cobra en pesos al dólar oficial.
+      Como el dólar cambió, a partir del <strong>${escapeHtml(fecha)}</strong> el cobro ${sube ? "sube" : "baja"}:
+    </p>
+    <div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:16px;margin:0 0 20px;font-size:14px;color:#9A3412">
+      Hoy: <strong>${pesos(precioActual)}</strong> por mes · Desde el ${escapeHtml(fecha)}: <strong>${pesos(precioNuevo)}</strong> por mes
+      <br/><span style="font-size:12px">Dólar oficial usado: ${pesos(cotizacion)}${periodo === "anual" ? " · Tu plan es anual: se cobran 12 meses juntos al renovar." : ""}</span>
+    </div>
+    <p style="margin:0 0 16px;color:#444;font-size:14px">No tenés que hacer nada. Si querés cambiar de plan o darlo de baja, podés hacerlo antes de esa fecha.</p>
+    ${btn(`${url}?screen=config`, "Ver mi plan →")}
+  `;
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Cambio en el precio de tu plan desde el ${fecha} — ${empresa}`,
+    html: buildHtml("Cambio de precio", empresa, cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("aviso_precio", empresaId),
+  }).catch((e) => logger.error("email sendAvisoPrecio", e));
+}
+
 // ─── Confirmación de pago exitoso ───
 export async function sendPagoConfirmado({ to, nombre, empresa, slug, monto, plan, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
