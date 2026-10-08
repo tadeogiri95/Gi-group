@@ -14,6 +14,9 @@
   --color-gypi-mute: var(--color-text-secondary);
   --color-gypi-amber: var(--color-empresa-primary);
   --color-gypi-on-amber: var(--color-empresa-primary-text, #000);
+  /* Color de la empresa para TEXTO sobre el fondo (R4): theme.js lo calcula
+     mezclándolo con el color de texto hasta 4,5 a 1. "Ver ranking", chips, enlaces. */
+  --color-gypi-amber-ink: var(--color-empresa-primary-ink, #A95317);
   --color-gypi-green: var(--color-green);
   --color-gypi-red: var(--color-red);
   --color-gypi-cyan: var(--color-cyan);
@@ -53,6 +56,7 @@
   --color-empresa-primary: #F97316;
   /* Letra sobre el color de la empresa: negra o blanca según contraste (textOnColor) */
   --color-empresa-primary-text: #000000;
+  --color-empresa-primary-ink: #A95317;
   --color-empresa-primary-subtle: rgba(249,115,22,0.10);
   --color-empresa-secondary: #7C3AED;
   --color-empresa-secondary-subtle: rgba(124,58,237,0.10);

@@ -8,7 +8,7 @@ export default function SolSentCard({ motivo, fecha }) {
     <div className="mt-2 p-3.5 bg-gypi-amber/10 rounded-[14px] min-w-[220px]" style={{ border: `1px solid color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
       <div className="flex justify-between items-start">
         <div>
-          <div className="text-[11px] text-gypi-amber font-bold tracking-wide">ENVIADA A GERENCIA</div>
+          <div className="text-[11px] text-gypi-amber-ink font-bold tracking-wide">ENVIADA A GERENCIA</div>
           <div className="text-[13px] text-gypi-text font-semibold mt-1">{motivo}</div>
           <div className="text-[11px] text-gypi-dim mt-1">📅 {fecha} · ⏳ Esperando</div>
         </div>

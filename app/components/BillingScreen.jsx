@@ -103,10 +103,10 @@ function BillingWeb({ onClose }) {
   const estado = info?.estado || "activa";
 
   const estadoMap = {
-    trial:      { txt: "Período de prueba", colorClass: "text-gypi-amber",  bgStyle: "var(--color-empresa-primary)" },
+    trial:      { txt: "Período de prueba", colorClass: "text-gypi-amber-ink",  bgStyle: "var(--color-empresa-primary)" },
     activa:     { txt: "Activa",            colorClass: "text-gypi-green",  bgStyle: "var(--color-green)" },
     vencida:    { txt: "Vencida",           colorClass: "text-gypi-red",    bgStyle: "var(--color-red)" },
-    suspendida: { txt: "Suspendida",        colorClass: "text-gypi-amber",  bgStyle: "var(--color-empresa-primary)" },
+    suspendida: { txt: "Suspendida",        colorClass: "text-gypi-amber-ink",  bgStyle: "var(--color-empresa-primary)" },
     cancelada:  { txt: "Cancelada",         colorClass: "text-gypi-dim",    bgStyle: "var(--color-text-muted)" },
   };
   const estadoLabel = estadoMap[estado] || { txt: estado, colorClass: "text-gypi-dim", bgStyle: "var(--color-text-muted)" };
@@ -143,7 +143,7 @@ function BillingWeb({ onClose }) {
             <div className="g-card mb-[18px] p-[18px]">
               <div className="text-[11px] text-gypi-dim font-semibold tracking-wide mb-1.5">TU PLAN ACTUAL</div>
               <div className="flex items-baseline gap-2.5 mb-2">
-                <span className="font-heading text-[28px] font-bold text-gypi-amber">
+                <span className="font-heading text-[28px] font-bold text-gypi-amber-ink">
                   {PLANES[planActual]?.nombre || planActual}
                 </span>
                 <span
@@ -180,7 +180,7 @@ function BillingWeb({ onClose }) {
               )}
 
               {info.precio_nuevo != null && info.precio_nuevo_desde && (
-                <div className="text-xs text-gypi-amber mt-1">
+                <div className="text-xs text-gypi-amber-ink mt-1">
                   Desde el {new Date(info.precio_nuevo_desde).toLocaleDateString("es-AR")} se cobra ${Number(info.precio_nuevo).toLocaleString("es-AR")}/mes por el cambio del dólar.
                 </div>
               )}
@@ -249,7 +249,7 @@ function BillingWeb({ onClose }) {
                 <div className="p-6 text-center text-gypi-dim text-[13px]">Aún no hay pagos registrados.</div>
               ) : (
                 pagos.map((p, i) => {
-                  const estadoCol = p.estado === "aprobado" ? "text-gypi-green" : p.estado === "rechazado" ? "text-gypi-red" : "text-gypi-amber";
+                  const estadoCol = p.estado === "aprobado" ? "text-gypi-green" : p.estado === "rechazado" ? "text-gypi-red" : "text-gypi-amber-ink";
                   const estadoBgVar = p.estado === "aprobado" ? "var(--color-green)" : p.estado === "rechazado" ? "var(--color-red)" : "var(--color-empresa-primary)";
                   return (
                     <div
@@ -266,7 +266,7 @@ function BillingWeb({ onClose }) {
                           {p.gateway && ` · ${p.gateway}`}
                         </div>
                         {p.cae && (
-                          <a href={`/api/billing/comprobante?id=${encodeURIComponent(p.id)}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-gypi-amber">
+                          <a href={`/api/billing/comprobante?id=${encodeURIComponent(p.id)}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-gypi-amber-ink">
                             Ver factura
                           </a>
                         )}

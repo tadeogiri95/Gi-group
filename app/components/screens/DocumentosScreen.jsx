@@ -78,7 +78,7 @@ export default function DocumentosScreen() {
         </div>
         <div className="g-card text-center">
           <div className="g-overline">Exigidos</div>
-          <div className="font-heading text-[26px] font-bold text-gypi-amber mt-0.5">{exigidos.length}</div>
+          <div className="font-heading text-[26px] font-bold text-gypi-amber-ink mt-0.5">{exigidos.length}</div>
         </div>
       </div>
 

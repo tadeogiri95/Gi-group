@@ -296,7 +296,7 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
                     {t.activo === false ? (
                       <button onClick={() => reactivarTipo(t)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-green/10 text-gypi-green text-[11px] font-bold cursor-pointer min-h-[44px]">Reactivar</button>
                     ) : (
-                      <button onClick={() => desactivarTipo(t)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber text-[11px] font-bold cursor-pointer min-h-[44px]">Desactivar</button>
+                      <button onClick={() => desactivarTipo(t)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">Desactivar</button>
                     )}
                   </div>
                 </div>

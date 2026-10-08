@@ -97,6 +97,25 @@ function alfaMinimo(texto, fondo, desde, minimo) {
   return 1;
 }
 
+/**
+ * Un color de marca o de estado usado como TEXTO (R4): se mezcla con el color
+ * de texto del tema hasta tener 4,5 a 1 contra el fondo. Devuelve un hex.
+ * Así el naranja, el amarillo o el verde de la empresa se leen sobre blanco
+ * y sobre los temas oscuros.
+ */
+export function tintaLegible(colorHex, textoHex = C.text, fondoHex = C.bg) {
+  const ok = (h) => typeof h === "string" && /^#[0-9A-Fa-f]{6}$/.test(h);
+  if (!ok(colorHex)) return colorHex;
+  const color = rgb(colorHex);
+  const texto = rgb(ok(textoHex) ? textoHex : "#1A1A1A");
+  const fondo = rgb(ok(fondoHex) ? fondoHex : "#F7F7F5");
+  for (let a = 1; a >= 0; a = Math.round((a - 0.04) * 100) / 100) {
+    const mezcla = color.map((c, i) => Math.round(c * a + texto[i] * (1 - a)));
+    if (contraste(mezcla, fondo) >= DIM_MIN) return "#" + mezcla.map((c) => c.toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+  return textoHex;
+}
+
 export function deriveDimMute(textHex, bgHex = "#F7F7F5") {
   const texto = rgb(textHex);
   const fondo = rgb(bgHex);
@@ -209,6 +228,7 @@ export function setColoresEmpresa(primarioOrObj, secundario) {
     // Brand
     s.setProperty('--color-empresa-primary', C.amber);
     s.setProperty('--color-empresa-primary-text', C.amberText);
+    s.setProperty('--color-empresa-primary-ink', tintaLegible(C.amber, C.text, C.bg));
     s.setProperty('--color-empresa-primary-subtle', C.amberS);
     s.setProperty('--color-empresa-secondary', C.violet);
     s.setProperty('--color-empresa-secondary-subtle', C.violetS);

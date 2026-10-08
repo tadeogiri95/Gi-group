@@ -92,7 +92,7 @@ export function PasoHorario({ horario, setHorario, usarHorario, setUsarHorario }
           <div className="flex gap-1 mb-3 flex-wrap">
             {DIAS.map((d) => (
               <button key={d} onClick={() => toggleDia(d)} aria-pressed={horario.dias.includes(d)}
-                className={`min-w-[42px] min-h-[40px] rounded-lg border text-xs font-bold cursor-pointer ${horario.dias.includes(d) ? "border-gypi-amber bg-gypi-amber/10 text-gypi-amber" : "border-gypi-border bg-transparent text-gypi-dim"}`}>
+                className={`min-w-[42px] min-h-[40px] rounded-lg border text-xs font-bold cursor-pointer ${horario.dias.includes(d) ? "border-gypi-amber bg-gypi-amber/10 text-gypi-amber-ink" : "border-gypi-border bg-transparent text-gypi-dim"}`}>
                 {DIAS_LABEL[d]}
               </button>
             ))}

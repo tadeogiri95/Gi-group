@@ -59,7 +59,7 @@ export default function DataTable({ columns = [], data = [], onRowClick, emptyMe
                 <span className="inline-flex items-center gap-1">
                   {col.label}
                   {col.sortable && sortKey === col.key && (
-                    <span className="text-gypi-amber">{sortDir === "asc" ? "↑" : "↓"}</span>
+                    <span className="text-gypi-amber-ink">{sortDir === "asc" ? "↑" : "↓"}</span>
                   )}
                 </span>
               </th>

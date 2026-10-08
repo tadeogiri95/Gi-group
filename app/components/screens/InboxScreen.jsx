@@ -4,7 +4,7 @@ import { sb } from "../../lib/supabase";
 import { sendPushToLegajo } from "../../lib/push";
 import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
-import { Chip } from "../ui";
+import { Chip, Button, EmptyState } from "../ui";
 import { hoyArg } from "../../lib/dates";
 import { cargarHoraExtraAprobada } from "../../lib/solicitudes";
 import { nombreSolicitud } from "../../lib/tiposSolicitud";
@@ -151,21 +151,19 @@ export default function InboxScreen({ ctx, reload, usuario }) {
         <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={GREEN}>Aprobados</Chip>
         <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={RED}>Rechazados</Chip>
         <Chip active={f === "todas"} onClick={() => setF("todas")}>Todas</Chip>
-        <button onClick={() => cargarSolicitudes()} aria-label="Actualizar solicitudes" className="w-11 h-11 rounded-lg bg-gypi-surface border border-gypi-border text-gypi-dim flex items-center justify-center cursor-pointer shrink-0"><Ic.refresh /></button>
+        <Button variant="secondary" size="sm" onClick={() => cargarSolicitudes()} aria-label="Actualizar pedidos" className="shrink-0"><Ic.refresh /></Button>
       </div>
       {cargando ? (
         <div role="status" aria-live="polite" className="text-center py-8 text-gypi-dim text-[13px]">Cargando solicitudes...</div>
       ) : (
         <div className="flex flex-col gap-3">
           {sortedFiltered.length === 0 ? (
-            <div className="g-card py-10 text-center">
-              <div className="text-gypi-green inline-flex mb-3"><Ic.check size={20} /></div>
-              <div className="text-sm font-bold text-gypi-text">{bandejaVacia(f).titulo}</div>
-              <div className="text-[13px] text-gypi-dim mt-1">{bandejaVacia(f).detalle}</div>
+            <div className="g-card">
+              <EmptyState icon="inbox" title={bandejaVacia(f).titulo} description={bandejaVacia(f).detalle} color="var(--color-green)" />
             </div>
           ) : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={pedirResolver} enEspera={enEspera[s.id]} onDeshacer={deshacer} />)}
           {hayMas && !cargandoMas && (
-            <button onClick={() => cargarSolicitudes(cursor)} className="w-full py-3.5 rounded-[14px] bg-gypi-surface border border-gypi-border text-gypi-amber text-[13px] font-bold font-body cursor-pointer mt-1">Cargar más solicitudes</button>
+            <Button variant="secondary" onClick={() => cargarSolicitudes(cursor)} className="w-full mt-1">Ver más pedidos</Button>
           )}
           {cargandoMas && <div role="status" aria-live="polite" className="text-center py-3.5 text-gypi-dim text-xs">Cargando...</div>}
         </div>

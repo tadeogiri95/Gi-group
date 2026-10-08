@@ -65,7 +65,7 @@ class ErrorBoundary extends Component {
           {/* Retry button */}
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="px-5 py-2.5 rounded-btn bg-gypi-amber/15 text-gypi-amber text-xs font-bold border-none cursor-pointer hover:bg-gypi-amber/25"
+            className="px-5 py-2.5 rounded-btn bg-gypi-amber/15 text-gypi-amber-ink text-xs font-bold border-none cursor-pointer hover:bg-gypi-amber/25"
           >
             Reintentar
           </button>

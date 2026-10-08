@@ -221,7 +221,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
           <div className="text-[11px] text-gypi-dim font-bold">Empleados</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
-          <div className="font-heading text-xl font-bold text-gypi-amber">{fmtMin(totalMin)}</div>
+          <div className="font-heading text-xl font-bold text-gypi-amber-ink">{fmtMin(totalMin)}</div>
           <div className="text-[11px] text-gypi-dim font-bold">Tiempo total</div>
         </div>
       </div>
@@ -253,7 +253,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
                   <div className="text-xs text-gypi-dim mt-0.5">{Object.keys(p.empleados).length} empleado{Object.keys(p.empleados).length !== 1 ? "s" : ""} · {p.registros} registro{p.registros !== 1 ? "s" : ""}</div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="font-heading text-sm font-bold text-gypi-amber">{fmtMin(p.totalMin)}</div>
+                  <div className="font-heading text-sm font-bold text-gypi-amber-ink">{fmtMin(p.totalMin)}</div>
                   <div className="text-[11px] text-gypi-dim">{isExpanded ? "▲" : "▼"}</div>
                 </div>
               </button>
@@ -476,7 +476,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
           <div className="text-[11px] text-gypi-dim font-bold">Horas</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
-          <div className="font-heading text-base font-bold text-gypi-amber">{fmtHora(totales.minutosExtra)}</div>
+          <div className="font-heading text-base font-bold text-gypi-amber-ink">{fmtHora(totales.minutosExtra)}</div>
           <div className="text-[11px] text-gypi-dim font-bold">Hs. extra</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
@@ -750,7 +750,7 @@ export default function ReportesScreen() {
                           </div>
                           {c.totalTardanzaMin > 0 && (
                             <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
-                              <div className="font-mono text-sm font-bold text-gypi-amber">{c.totalTardanzaMin}m</div>
+                              <div className="font-mono text-sm font-bold text-gypi-amber-ink">{c.totalTardanzaMin}m</div>
                               <div className="text-[11px] text-gypi-dim">Tard. total</div>
                             </div>
                           )}
@@ -822,7 +822,7 @@ export default function ReportesScreen() {
                 <div className="text-xs text-gypi-dim mt-0.5">Ausencias totales</div>
               </div>
               <div className="py-2.5 text-center rounded-[10px]" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)` }}>
-                <div className="font-heading text-[22px] font-bold text-gypi-amber">{metricas.totalTardanzas}</div>
+                <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{metricas.totalTardanzas}</div>
                 <div className="text-xs text-gypi-dim mt-0.5">Tardanzas totales</div>
               </div>
             </div>

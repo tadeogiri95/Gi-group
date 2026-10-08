@@ -7,11 +7,16 @@
 
 import { useId } from 'react';
 import Icon from './Icon';
+import { tintaLegible } from '../lib/theme';
 
 // Re-export canonical versions from standalone files
 export { default as Avatar } from './ui/Avatar';
 export { default as EmptyState } from './ui/EmptyState';
 export { default as Modal } from './ui/Modal';
+export { default as Screen } from './ui/Screen';
+export { default as ListItem } from './ui/ListItem';
+export { default as Field } from './ui/Field';
+export { default as Stat } from './ui/Stat';
 
 // ============================================
 // BUTTON
@@ -30,16 +35,19 @@ export function Button({
   ...props
 }) {
   const sizes = {
-    sm: { minHeight: 32, padding: '0 12px', fontSize: 13, gap: 6, borderRadius: 'var(--radius-sm)' },
-    md: { minHeight: 40, padding: '0 16px', fontSize: 14, gap: 8, borderRadius: 'var(--radius-md)' },
-    lg: { minHeight: 48, padding: '0 24px', fontSize: 15, gap: 10, borderRadius: 'var(--radius-md)' },
+    // R4: nada que se toque mide menos de 44 px; "planta" (64 px) para lo que
+    // se usa con guantes: fichar, iniciar o parar una tarea, pedir permiso.
+    sm: { minHeight: 44, padding: '0 14px', fontSize: 13, gap: 6, borderRadius: 'var(--radius-sm)' },
+    md: { minHeight: 48, padding: '0 18px', fontSize: 15, gap: 8, borderRadius: 'var(--radius-md)' },
+    lg: { minHeight: 56, padding: '0 24px', fontSize: 16, gap: 10, borderRadius: 'var(--radius-md)' },
+    planta: { minHeight: 64, padding: '0 24px', fontSize: 18, gap: 10, borderRadius: 'var(--radius-lg)' },
   };
 
   const variants = {
-    primary:   { background: 'var(--color-empresa-primary)', color: '#000', fontWeight: 700 },
+    primary:   { background: 'var(--color-empresa-primary)', color: 'var(--color-empresa-primary-text, #000)', fontWeight: 700 },
     secondary: { background: 'var(--color-surf-hi)', color: 'var(--color-text)', border: '1px solid var(--color-border)' },
-    danger:    { background: 'var(--color-red-subtle)', color: 'var(--color-red)', fontWeight: 700 },
-    ghost:     { background: 'transparent', color: 'var(--color-text-muted)' },
+    danger:    { background: 'var(--color-red-subtle)', color: tinta('var(--color-red)'), fontWeight: 700 },
+    ghost:     { background: 'transparent', color: 'var(--color-text)' },
     outline:   { background: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border-hi)' },
   };
 
@@ -99,7 +107,7 @@ export function Card({ children, className = '', padding = true, hover = false, 
 
 export function Tag({ children, color, className = '', style, ...props }) {
   const bg = color ? hexToSubtle(color, 0.12) : 'var(--color-surf-hi)';
-  const fg = color || 'var(--color-text-muted)';
+  const fg = tinta(color);
 
   return (
     <span
@@ -117,6 +125,15 @@ export function Tag({ children, color, className = '', style, ...props }) {
       {children}
     </span>
   );
+}
+
+// Color usado como letra (R4): legible sobre el fondo en cualquier tema.
+// Los var() de la empresa ya tienen su versión "-ink"; el resto se mezcla con el texto.
+export function tinta(color) {
+  if (!color) return 'var(--color-text-muted)';
+  if (color === 'var(--color-empresa-primary)' || color.startsWith('var(--color-empresa-primary,')) return 'var(--color-empresa-primary-ink)';
+  if (color.startsWith('var(')) return `color-mix(in srgb, ${color} 65%, var(--color-text))`;
+  return tintaLegible(color);
 }
 
 function hexToSubtle(color, alpha = 0.12) {
@@ -142,10 +159,10 @@ export function Badge({ children, variant = 'default', color, dot = false, class
 
   const variants = {
     default: { bg: 'var(--color-surf-hi)', fg: 'var(--color-text-muted)' },
-    brand:   { bg: 'var(--color-empresa-primary-subtle)', fg: 'var(--color-empresa-primary)' },
-    success: { bg: 'var(--color-green-subtle)', fg: 'var(--color-green)' },
-    danger:  { bg: 'var(--color-red-subtle)', fg: 'var(--color-red)' },
-    info:    { bg: 'var(--color-cyan-subtle)', fg: 'var(--color-cyan)' },
+    brand:   { bg: 'var(--color-empresa-primary-subtle)', fg: 'var(--color-empresa-primary-ink)' },
+    success: { bg: 'var(--color-green-subtle)', fg: tinta('var(--color-green)') },
+    danger:  { bg: 'var(--color-red-subtle)', fg: tinta('var(--color-red)') },
+    info:    { bg: 'var(--color-cyan-subtle)', fg: tinta('var(--color-cyan)') },
   };
 
   const v = variants[variant] || variants.default;
@@ -175,15 +192,15 @@ export function Badge({ children, variant = 'default', color, dot = false, class
 
 export function Chip({ children, active = false, onClick, color, className = '', style, ...props }) {
   const activeBg = color ? hexToSubtle(color, 0.15) : 'var(--color-empresa-primary-subtle)';
-  const activeFg = color || 'var(--color-empresa-primary)';
+  const activeFg = color ? tinta(color) : 'var(--color-empresa-primary-ink)';
 
   return (
     <button
       onClick={onClick}
       style={{
         display: 'inline-flex', alignItems: 'center',
-        padding: '6px 12px', borderRadius: 'var(--radius-full)',
-        fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+        padding: '6px 14px', minHeight: 40, borderRadius: 'var(--radius-full)',
+        fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
         border: active ? `1.5px solid ${activeFg}` : '1.5px solid transparent',
         background: active ? activeBg : 'var(--color-surf-hi)',
         color: active ? activeFg : 'var(--color-text-muted)',

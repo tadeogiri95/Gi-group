@@ -25,14 +25,14 @@ export default function Paywall({ planActual = "free", planRequerido = "asistenc
           {mensaje || (
             <>
               <b className="text-gypi-text">{feature || "Esta función"}</b> no está disponible en tu plan <b className="text-gypi-text">{actual.nombre}</b>.
-              Actualizá a <b className="text-gypi-amber">{target.nombre}</b> para desbloquearla.
+              Actualizá a <b className="text-gypi-amber-ink">{target.nombre}</b> para desbloquearla.
             </>
           )}
         </p>
 
         <div className="bg-gypi-surface rounded-[14px] p-4 border border-gypi-border mb-[18px]">
           <div className="flex justify-between items-center mb-2.5">
-            <span className="text-sm font-bold text-gypi-amber">{addon ? `Add-on ${target.nombre}` : `Plan ${target.nombre}`}</span>
+            <span className="text-sm font-bold text-gypi-amber-ink">{addon ? `Add-on ${target.nombre}` : `Plan ${target.nombre}`}</span>
             <span className="text-base font-bold text-gypi-text font-heading">{precioDe(target)}</span>
           </div>
           {addon ? (
