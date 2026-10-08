@@ -54,7 +54,7 @@
 | F2-14 | Un único `JWT_SECRET` para 8 tipos de token, sin `aud` | Medio | M | Pendiente |
 | F2-15 | Rate limits en memoria | Medio | S | Pendiente |
 | F2-16 | `/api/geocode` público | Medio | S | **Hecho** (tadeogiri95/Gi-group#16, fusionado): exige sesión, caché de 24 h y límite por empresa |
-| F2-17 | Privacidad: proveedores omitidos, GPS “opcional”, Ley 25.326/DPA | Medio | M | Pendiente (legal) |
+| F2-17 | Privacidad: proveedores omitidos, GPS “opcional”, Ley 25.326/DPA | Medio | M | Borradores listos (ítem 29): `auditoria/legal/` (términos, privacidad, acuerdo de tratamiento de datos y preguntas para el abogado). En la página publicada ya se corrigieron los proveedores, el GPS y los plazos. Falta la revisión del abogado |
 | F2-18 | Exenciones de CSRF amplias | Bajo | S | **Hecho** (tadeogiri95/Gi-group#22, fusionado): solo quedan exentos los webhooks firmados, crons y health (se agregó el de Resend, que se bloqueaba) |
 | F2-19 | CSP con `unsafe-inline`/`unsafe-eval` + AdSense | Bajo | S | Pendiente |
 | F2-20 | IP de `x-forwarded-for` sin normalizar | Bajo | S | **Hecho** (tadeogiri95/Gi-group#22, fusionado): `ipCliente()` (x-real-ip de Vercel, validada) en todas las rutas |
@@ -163,7 +163,7 @@
 | F6-04 | Planes y módulos en la base + entitlements en el servidor | Alto | M | Hecho en parte (ítem 25b): planes por tramos y add-ons en `plans.js` con el check de la base (082); el servidor aplica tramo, OT (Planta), cupo de IA y reporte de obra según plan + add-ons. Faltan tablas de módulos para planes a medida (ítem 45) |
 | F6-05 | Indexación de precios | Medio | S | Hecho (ítem 25b): precio en USD; el cron actualizar-precios guarda la cotización del día y, si el precio en pesos se mueve 5% o más, avisa por email y cambia el monto en Mercado Pago a los 30 días |
 | F6-06 | Medición de uso (operarios activos, IA, storage) | Medio | M | Pendiente |
-| F6-07 | Términos, privacidad, DPA y SLA (abogado) | Medio | S | Pendiente (legal) |
+| F6-07 | Términos, privacidad, DPA y SLA (abogado) | Medio | S | Borradores listos (ítem 29): `auditoria/legal/`. Falta la revisión del abogado y completar titular, CUIT y domicilio |
 | F6-09 | Superadmin: módulos, add-ons, pagos manuales, consumo | Medio | M | Pendiente |
 | F6-10 | Canal de soporte y página de estado | Bajo | S | Pendiente |
 | F6-11 | Comprobantes descargables | Bajo | S | Pendiente |

@@ -22,7 +22,7 @@ export default function TermsOfService() {
     <div style={S.wrap}>
       <a href="/" style={{ fontSize: 13, color: "#F97316", textDecoration: "none", display: "inline-block", marginBottom: 24 }}>← Volver a Gypi</a>
       <h1 style={S.h1}>Términos y Condiciones de Uso</h1>
-      <p style={S.date}>Última actualización: 10 de junio de 2026</p>
+      <p style={S.date}>Última actualización: 7 de octubre de 2026</p>
 
       <p style={S.p}>Estos términos regulan el uso de la aplicación Gypi (Gestión y productividad industrial) ("la App"), operada por Gypi Software ("Gypi", "nosotros"). Al usar la App, aceptás estos términos.</p>
 
@@ -45,12 +45,12 @@ export default function TermsOfService() {
       </ul>
 
       <h2 style={S.h2}>4. Planes y facturación</h2>
-      <p style={S.p}>Gypi ofrece planes gratuitos y de pago. Los planes de pago se facturan mensualmente a través de MercadoPago. Las tarifas vigentes se publican en gypi.app. Gypi se reserva el derecho de ajustar los precios con 30 días de preaviso.</p>
+      <p style={S.p}>Gypi ofrece una prueba gratuita de 30 días y planes de pago. Los planes se facturan a través de Mercado Pago. Al terminar la prueba o la suscripción, la cuenta queda en pausa (se pueden ver los datos pero no cargar nuevos) hasta contratar un plan. Las tarifas vigentes se publican en gypi.app. Gypi se reserva el derecho de ajustar los precios con 30 días de preaviso.</p>
 
       <h2 style={S.h2}>5. Disponibilidad del servicio</h2>
       <p style={S.p}>Gypi hace sus mejores esfuerzos para mantener el servicio disponible de forma continua para los planes de pago (Starter, Pro y Enterprise), incluyendo monitoreo activo y mantenimiento preventivo. Las ventanas de mantenimiento programado se notifican con al menos 24 horas de anticipación cuando es posible.</p>
       <p style={S.p}>Actualmente no se garantiza un porcentaje de disponibilidad (SLA) numérico ni créditos compensatorios automáticos por interrupciones. Si tu empresa necesita un SLA contractual con métricas formales, contactanos para evaluarlo como acuerdo Enterprise.</p>
-      <p style={S.p}>Para el plan gratuito (Free) no aplica ningún compromiso de disponibilidad.</p>
+      <p style={S.p}>Durante la prueba gratuita no aplica ningún compromiso de disponibilidad.</p>
 
       <h2 style={S.h2}>6. Propiedad intelectual</h2>
       <p style={S.p}>Todos los derechos de propiedad intelectual sobre la App pertenecen a Gypi Software. Se te otorga una licencia limitada, no exclusiva y revocable para usar la App según estos términos. Los datos que tu empresa carga pertenecen a tu empresa.</p>
