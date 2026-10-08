@@ -20,6 +20,11 @@
   --color-gypi-green: var(--color-green);
   --color-gypi-red: var(--color-red);
   --color-gypi-cyan: var(--color-cyan);
+  /* Verde, cian y rojo como LETRA (R11): mezclados con el color de texto para
+     que se lean sobre fondo claro, igual que tinta() en components/ui.jsx. */
+  --color-gypi-green-ink: color-mix(in srgb, var(--color-green) 65%, var(--color-text));
+  --color-gypi-cyan-ink: color-mix(in srgb, var(--color-cyan) 65%, var(--color-text));
+  --color-gypi-red-ink: color-mix(in srgb, var(--color-red) 65%, var(--color-text));
   --color-gypi-violet: var(--color-empresa-secondary);
 
   --font-heading: "Bricolage Grotesque", system-ui, sans-serif;
