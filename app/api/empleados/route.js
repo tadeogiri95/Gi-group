@@ -19,6 +19,16 @@ import { ipCliente } from "../../lib/ip";
 import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance, filtroAlcance } from "../../lib/alcance";
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
+// Una planta indicada a mano tiene que ser de la empresa y estar activa (ítem 36).
+// Sin planta, la base asigna la principal (migración 084).
+async function plantaInvalida(empresaId, plantaId) {
+  if (plantaId === undefined || plantaId === null || plantaId === "") return null;
+  const error = NextResponse.json({ error: "La planta elegida no existe" }, { status: 400 });
+  if (!isUUID(plantaId)) return error;
+  const filas = await sbGet(`plantas?id=eq.${plantaId}&empresa_id=eq.${empresaId}&activa=eq.true&select=id&limit=1`, { silent: true, fallback: [] });
+  return filas?.length ? null : error;
+}
+
 const CAMPOS_PUBLICOS =
   "id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at";
 
@@ -55,7 +65,7 @@ export async function POST(request) {
   if (sinPlan) return sinPlan;
 
   const body = await request.json();
-  const { legajo, nombre, email, area, division, rol, apodo, pre_cargado } = body;
+  const { legajo, nombre, email, area, division, rol, apodo, pre_cargado, planta_id } = body;
 
   if (!legajo || !nombre) {
     return NextResponse.json({ error: "legajo y nombre son requeridos" }, { status: 400 });
@@ -68,6 +78,9 @@ export async function POST(request) {
   if (emailNorm && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
     return NextResponse.json({ error: "Formato de email inválido" }, { status: 400 });
   }
+
+  const plantaMal = await plantaInvalida(sesion.empresa_id, planta_id);
+  if (plantaMal) return plantaMal;
 
   // Verificar legajo único dentro de la empresa
   const existente = await sbGet(
@@ -126,6 +139,7 @@ export async function POST(request) {
       email: emailNorm,
       area: area?.trim() || "produccion",
       division: alcance ? alcance.division : division?.trim() || null,
+      ...(planta_id ? { planta_id } : {}),
       rol: rolFinal,
       activo: true,
       password: passwordHash,
@@ -212,7 +226,7 @@ export async function PATCH(request) {
   // Campos permitidos — rol y "ve solo su división" (supervisor, D2) solo el dueño;
   // un supervisor tampoco cambia divisiones
   const CAMPOS_EDITABLES = ["nombre", "apodo", "email", "area", "diagrama", "activo"];
-  if (!alcance) CAMPOS_EDITABLES.push("division");
+  if (!alcance) CAMPOS_EDITABLES.push("division", "planta_id");
   if (sesion.rol === "gerencial") CAMPOS_EDITABLES.push("rol", "solo_su_division");
   if (body.solo_su_division !== undefined && typeof body.solo_su_division !== "boolean") {
     return NextResponse.json({ error: "solo_su_division inválido" }, { status: 400 });
@@ -221,6 +235,11 @@ export async function PATCH(request) {
   const updates = {};
   for (const campo of CAMPOS_EDITABLES) {
     if (body[campo] !== undefined) updates[campo] = body[campo];
+  }
+  if (updates.planta_id !== undefined) {
+    if (!updates.planta_id) delete updates.planta_id; // no se deja a nadie sin planta
+    const plantaMal = await plantaInvalida(sesion.empresa_id, updates.planta_id);
+    if (plantaMal) return plantaMal;
   }
 
   if (Object.keys(updates).length === 0) {

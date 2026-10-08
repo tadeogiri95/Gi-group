@@ -14,6 +14,8 @@ import { getDivisionesConTodos } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
+import PlantasPanel from "./components/PlantasPanel";
+import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
 
 /* ═══ GOOGLE MAPS PARSER ═══ */
 /**
@@ -118,9 +120,11 @@ async function geocodeAddress(query) {
 }
 
 /* ═══ MODAL UBICACIÓN ═══ */
-function ModalUbicacion({ ubicacion, onClose, onSave, saving }) {
+function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
   const isEdit = !!ubicacion?.id;
   const [nombre, setNombre] = useState(ubicacion?.nombre || "");
+  // Con una sola planta no se pregunta: la base asigna la principal
+  const [plantaId, setPlantaId] = useState(ubicacion?.planta_id || plantas[0]?.id || "");
   const [lat, setLat] = useState(ubicacion?.lat != null ? String(ubicacion.lat) : "");
   const [lng, setLng] = useState(ubicacion?.lng != null ? String(ubicacion.lng) : "");
   const [radio, setRadio] = useState(ubicacion?.radio || 150);
@@ -227,7 +231,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving }) {
 
   const handleSave = () => {
     if (!canSave) return;
-    onSave({ ...(isEdit ? { id: ubicacion.id } : {}), nombre: nombre.trim(), lat: latNum, lng: lngNum, radio });
+    onSave({ ...(isEdit ? { id: ubicacion.id } : {}), nombre: nombre.trim(), lat: latNum, lng: lngNum, radio, ...(plantas.length > 1 && plantaId ? { planta_id: plantaId } : {}) });
   };
 
   const MODOS = [
@@ -255,6 +259,15 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving }) {
           <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Oficina Central, Planta 2"
             className="g-input" />
         </div>
+
+        {plantas.length > 1 && (
+          <div className="mb-3">
+            <label htmlFor="ubicacion-planta" className="g-label">¿De qué planta es?</label>
+            <select id="ubicacion-planta" value={plantaId} onChange={e => setPlantaId(e.target.value)} className="g-input cursor-pointer">
+              {plantas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </div>
+        )}
 
         {/* Modo toggle */}
         <div className="flex mb-3 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
@@ -417,7 +430,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving }) {
 }
 
 /* ═══ PANEL UBICACIONES ═══ */
-function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting }) {
+function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting, plantas = [] }) {
   if (ubicaciones.length === 0) {
     return (
       <div className="g-card p-6 text-center mb-3.5">
@@ -463,6 +476,9 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting }) {
               <div className="text-[11px] text-gypi-dim font-mono mt-0.5">
                 {u.lat?.toFixed(5)}, {u.lng?.toFixed(5)} · {u.radio || 150}m
               </div>
+              {plantas.length > 1 && nombrePlanta(plantas, u.planta_id) && (
+                <div className="text-[11px] text-gypi-dim mt-0.5">🏭 {nombrePlanta(plantas, u.planta_id)}</div>
+              )}
             </div>
             <div className="flex gap-1.5 shrink-0">
               <button
@@ -492,7 +508,8 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function GeolocalizacionScreen({ empresaId }) {
-  const { divisiones: divisionesCtx } = useAuth();
+  const { divisiones: divisionesCtx, plantas: plantasCtx } = useAuth();
+  const plantas = ordenarPlantas(plantasCtx);
   const DIVISIONES = getDivisionesConTodos(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [ubicaciones, setUbicaciones] = useState([]);
@@ -625,6 +642,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
           lat: data.lat,
           lng: data.lng,
           radio: data.radio,
+          ...(data.planta_id ? { planta_id: data.planta_id } : {}),
         });
         showToast("Ubicación actualizada", GREEN);
       } else {
@@ -634,6 +652,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
           lat: data.lat,
           lng: data.lng,
           radio: data.radio,
+          ...(data.planta_id ? { planta_id: data.planta_id } : {}),
         });
         showToast("Ubicación creada", GREEN);
       }
@@ -686,6 +705,8 @@ export default function GeolocalizacionScreen({ empresaId }) {
   return (
     <section aria-label="Geolocalización" className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
 
+      <PlantasPanel />
+
       {/* Modo toggle */}
       <div className="flex mb-3.5 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
         <button
@@ -711,6 +732,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
         onDelete={handleDeleteUbicacion}
         onNew={() => setModalUbicacion({})}
         deleting={deleting}
+        plantas={plantas}
       />
 
       {loading ? (
@@ -1010,6 +1032,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
           onClose={() => setModalUbicacion(null)}
           onSave={handleSaveUbicacion}
           saving={savingUbicacion}
+          plantas={plantas}
         />
       )}
       {ConfirmDialog}

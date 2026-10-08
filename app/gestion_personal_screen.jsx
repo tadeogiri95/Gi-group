@@ -5,6 +5,7 @@ import { activarKiosco } from "./lib/kioscoCliente";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
+import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
 import { useToast } from "./components/ui/Toast";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
@@ -62,7 +63,7 @@ function legajoProvisorio() {
 }
 
 /* ═══ MODAL EMPLEADO ═══ */
-function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES, puedeMarcarSupervisor = false, divisionBloqueada = false }) {
+function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES, puedeMarcarSupervisor = false, divisionBloqueada = false, plantas = [] }) {
   const [form, setForm] = useState(initialData);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const valid = form.nombre?.trim();
@@ -102,6 +103,16 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
             </select>
           </div>
         </div>
+
+        {/* Planta (ítem 36): solo se pregunta cuando la empresa tiene más de una */}
+        {plantas.length > 1 && (
+          <div className="mb-3">
+            <label htmlFor="empleado-planta" className="g-label block mb-1.5">¿En qué planta trabaja?{divisionBloqueada ? " (la elige el dueño)" : ""}</label>
+            <select id="empleado-planta" value={form.planta_id || plantas[0].id} onChange={e => set("planta_id", e.target.value)} disabled={divisionBloqueada} className="g-input cursor-pointer text-[13px] disabled:opacity-60">
+              {plantas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="mb-5">
           <label className="g-label block mb-1.5">Rol</label>
@@ -290,7 +301,8 @@ function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
 
 /* ═══ MAIN COMPONENT ═══ */
 export default function GestionPersonalScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, usuario: sesion, empresa } = useAuth();
+  const { divisiones: divisionesCtx, usuario: sesion, empresa, plantas: plantasCtx } = useAuth();
+  const plantas = ordenarPlantas(plantasCtx);
   // Un administrativo no puede crear/asignar rol gerencial (misma regla que /api/empleados)
   // Supervisor de división (D2): da de alta solo operarios de su división y no cambia divisiones
   const soySupervisor = sesion?.rol === "administrativo" && !!sesion?.solo_su_division;
@@ -301,6 +313,7 @@ export default function GestionPersonalScreen({ empresaId }) {
   const [search, setSearch] = useState("");
   const [filtroDiv, setFiltroDiv] = useState("todas");
   const [filtroRol, setFiltroRol] = useState("todos");
+  const [filtroPlanta, setFiltroPlanta] = useState("todas");
   const [filtroEstado, setFiltroEstado] = useState("activos");
   const [modalAlta, setModalAlta] = useState(null);
   const [modalEditar, setModalEditar] = useState(null);
@@ -337,6 +350,7 @@ export default function GestionPersonalScreen({ empresaId }) {
     if (filtroEstado === "inactivos" && e.activo !== false) return false;
     if (filtroDiv !== "todas" && e.division !== filtroDiv) return false;
     if (filtroRol !== "todos" && e.rol !== filtroRol) return false;
+    if (filtroPlanta !== "todas" && e.planta_id !== filtroPlanta) return false;
     if (search) {
       const q = search.toLowerCase();
       return (e.nombre || "").toLowerCase().includes(q) || String(e.legajo).includes(q) || (e.apodo || "").toLowerCase().includes(q);
@@ -406,6 +420,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           area: form.area || "produccion",
           email: form.email?.trim() || null,
           pre_cargado: !!form.pre_cargado,
+          ...(plantas.length > 1 && form.planta_id ? { planta_id: form.planta_id } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -443,6 +458,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           rol: form.rol || "operativo",
           area: form.area || "produccion",
           email: form.email?.trim() || null,
+          ...(plantas.length > 1 && form.planta_id && !soySupervisor ? { planta_id: form.planta_id } : {}),
           ...(sesion?.rol === "gerencial" && form.solo_su_division !== undefined
             ? { solo_su_division: form.rol === "administrativo" && !!form.solo_su_division }
             : {}),
@@ -582,6 +598,16 @@ export default function GestionPersonalScreen({ empresaId }) {
         </div>
       </div>
 
+      {/* Filtro planta: solo con más de una (ítem 36) */}
+      {plantas.length > 1 && (
+        <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1" aria-label="Filtrar por planta">
+          <Chip active={filtroPlanta === "todas"} onClick={() => setFiltroPlanta("todas")} color={AMBER}>Todas las plantas</Chip>
+          {plantas.map(p => (
+            <Chip key={p.id} active={filtroPlanta === p.id} onClick={() => setFiltroPlanta(p.id)} color={CYAN}>🏭 {p.nombre}</Chip>
+          ))}
+        </div>
+      )}
+
       {/* Filtro división */}
       <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
         <Chip active={filtroDiv === "todas"} onClick={() => setFiltroDiv("todas")} color={AMBER}>Todas</Chip>
@@ -695,6 +721,7 @@ export default function GestionPersonalScreen({ empresaId }) {
                     <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
                     <div className="text-[11px] text-gypi-dim mt-px truncate">
                       {divInfo?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}
+                      {plantas.length > 1 && nombrePlanta(plantas, emp.planta_id) ? ` · 🏭 ${nombrePlanta(plantas, emp.planta_id)}` : ""}
                     </div>
                   </div>
 
@@ -748,6 +775,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           divisiones={DIVISIONES}
           divisionBloqueada={soySupervisor}
           rolesPermitidos={rolesPermitidos}
+          plantas={plantas}
           onClose={() => setModalAlta(null)}
           onSave={handleAlta}
           saving={saving}
@@ -761,6 +789,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           puedeMarcarSupervisor={sesion?.rol === "gerencial"}
           divisionBloqueada={soySupervisor}
           rolesPermitidos={rolesPermitidos}
+          plantas={plantas}
           onClose={() => setModalEditar(null)}
           onSave={handleEditar}
           saving={saving}

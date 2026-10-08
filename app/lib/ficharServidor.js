@@ -15,6 +15,7 @@ import { ipCliente } from "./ip";
 import { planVigente } from "./plans";
 import { MENSAJE_SIN_PLAN } from "./planEnforcement";
 import { validarMomento, horaLocal } from "./offline";
+import { zonasDePlanta } from "./plantas";
 // ─── Hora local según timezone de empresa ───
 const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
 
@@ -74,15 +75,20 @@ export async function procesarFichaje(sesion, rawBody, request) {
     // Si la empresa tiene zonas cargadas, se ficha solo dentro de una. Si el
     // empleado tiene una ubicación asignada (geo_config), vale solo esa.
     // Antes dependía del plan y el plan Free no controlaba nada.
+    // Con varias plantas (ítem 36), sin ubicación asignada valen los puntos de
+    // su planta (ver zonasDePlanta). select=* y el reintento sin planta_id
+    // mantienen el fichaje andando aunque la migración 084 no esté corrida.
     try {
-      const zonas = await sbGet(`geo_zonas?empresa_id=eq.${empresaId}&select=id,lat,lng,radio,nombre`);
+      const zonas = await sbGet(`geo_zonas?empresa_id=eq.${empresaId}&select=*`);
       if (zonas && zonas.length > 0) {
-        const [emp] = await sbGet(`empleados?id=eq.${empleadoId}&select=geo_config&limit=1`, { silent: true, fallback: [] }) || [];
+        const emp =
+          (await sbGet(`empleados?id=eq.${empleadoId}&select=geo_config,planta_id&limit=1`, { silent: true, fallback: null }))?.[0] ??
+          (await sbGet(`empleados?id=eq.${empleadoId}&select=geo_config&limit=1`, { silent: true, fallback: [] }) || [])[0];
         const gc = emp?.geo_config;
         const asignada = gc?.activo && gc.ubicacion_id != null
           ? zonas.filter((z) => String(z.id) === String(gc.ubicacion_id))
           : [];
-        const validas = asignada.length > 0 ? asignada : zonas;
+        const validas = asignada.length > 0 ? asignada : zonasDePlanta(zonas, emp?.planta_id);
         if (geo_lat == null || geo_lng == null) {
           return NextResponse.json({
             ok: false,

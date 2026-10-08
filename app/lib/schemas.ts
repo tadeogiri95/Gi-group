@@ -60,8 +60,8 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["updated_at"],
   },
   geo_zonas: {
-    POST: ["nombre", "lat", "lng", "radio"],
-    PATCH: ["nombre", "lat", "lng", "radio"],
+    POST: ["nombre", "lat", "lng", "radio", "planta_id"],
+    PATCH: ["nombre", "lat", "lng", "radio", "planta_id"],
   },
   geo_registros: {
     POST: ["empleado_id", "lat", "lng", "accion"],
@@ -267,6 +267,11 @@ export const configPostBody = z.discriminatedUnion("action", [
     action: z.literal("save_logo"),
     logo_url: z.string().max(2048).nullable(),
   }),
+  z.object({
+    action: z.literal("add_planta"),
+    nombre: z.string().trim().min(1).max(80),
+    direccion: z.string().trim().max(200).optional().nullable(),
+  }),
 ]);
 
 export const configPatchBody = z.discriminatedUnion("action", [
@@ -288,6 +293,12 @@ export const configPatchBody = z.discriminatedUnion("action", [
     codigo: z.number().int().optional(),
     orden: z.number().int().min(0).max(999).optional(),
     activa: z.boolean().optional(),
+  }),
+  z.object({
+    action: z.literal("update_planta"),
+    id: uuid,
+    nombre: z.string().trim().min(1).max(80).optional(),
+    direccion: z.string().trim().max(200).optional().nullable(),
   }),
 ]);
 

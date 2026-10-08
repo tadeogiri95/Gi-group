@@ -11,6 +11,7 @@ import { configPostBody, configPatchBody } from "../../lib/schemas";
 import { validateBody, isUUID, safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
 import { rechazarSiSupervisor } from "../../lib/alcance";
+import { ordenarPlantas } from "../../lib/plantas";
 
 // ─── Helper: extraer empresa_id del request via auth compartido ───
 async function getEmpresaIdFromRequest(request) {
@@ -32,17 +33,38 @@ async function perteneceAEmpresa(tabla, id, empresaId) {
   return rows.length > 0 && rows[0].empresa_id === empresaId;
 }
 
+// Baja de una planta: su gente y sus puntos de fichaje pasan a la principal,
+// así nadie queda sin planta ni sin poder fichar. La principal no se da de baja.
+async function darDeBajaPlanta(empresaId, id) {
+  const plantas = await sbGet(`plantas?empresa_id=eq.${empresaId}&activa=eq.true&select=id,principal`);
+  const planta = plantas.find((p) => p.id === id);
+  if (!planta) return NextResponse.json({ error: "Planta no encontrada" }, { status: 404 });
+  if (planta.principal) {
+    return NextResponse.json({ error: "La planta principal no se puede dar de baja. Podés cambiarle el nombre." }, { status: 400 });
+  }
+  const principal = plantas.find((p) => p.principal);
+  if (!principal) return NextResponse.json({ error: "Tu empresa no tiene planta principal" }, { status: 409 });
+  const [movidos] = await Promise.all([
+    sbPatch(`empleados?empresa_id=eq.${empresaId}&planta_id=eq.${id}`, { planta_id: principal.id }),
+    sbPatch(`geo_zonas?empresa_id=eq.${empresaId}&planta_id=eq.${id}`, { planta_id: principal.id }),
+  ]);
+  await sbPatch(`plantas?id=eq.${id}&empresa_id=eq.${empresaId}`, { activa: false });
+  return NextResponse.json({ ok: true, empleados_movidos: movidos?.length || 0 });
+}
+
 // ═══ GET ═══
 export async function GET(request) {
   try {
     const empresaId = await getEmpresaIdFromRequest(request);
     if (!empresaId) return respuestaNoAutorizado();
 
-    const [divisiones, etapas] = await Promise.all([
+    const [divisiones, etapas, plantas] = await Promise.all([
       sbGet(`divisiones?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       sbGet(`etapas?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
+      // Sin la migración 084 la tabla no existe: la app sigue como con una sola planta
+      sbGet(`plantas?empresa_id=eq.${empresaId}&activa=eq.true&select=id,nombre,direccion,principal`, { silent: true, fallback: [] }),
     ]);
-    return NextResponse.json({ divisiones: divisiones || [], etapas: etapas || [] }, {
+    return NextResponse.json({ divisiones: divisiones || [], etapas: etapas || [], plantas: ordenarPlantas(plantas) }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (err) {
@@ -97,6 +119,20 @@ export async function POST(request) {
       } catch (err) {
         if (esViolacionUnica(err)) {
           return NextResponse.json({ error: "Ya existe una etapa con ese código en tu empresa." }, { status: 409 });
+        }
+        throw err;
+      }
+    }
+
+    if (action === "add_planta") {
+      try {
+        const [planta] = await sbPost("plantas", {
+          empresa_id: empresaId, nombre: body.nombre, direccion: body.direccion || null,
+        });
+        return NextResponse.json({ planta });
+      } catch (err) {
+        if (esViolacionUnica(err)) {
+          return NextResponse.json({ error: "Ya tenés una planta con ese nombre." }, { status: 409 });
         }
         throw err;
       }
@@ -169,6 +205,23 @@ export async function PATCH(request) {
       }
     }
 
+    if (action === "update_planta") {
+      if (!(await perteneceAEmpresa("plantas", id, empresaId)))
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+      const updates = {};
+      if (body.nombre !== undefined) updates.nombre = body.nombre;
+      if (body.direccion !== undefined) updates.direccion = body.direccion || null;
+      try {
+        const [planta] = await sbPatch(`plantas?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
+        return NextResponse.json({ planta });
+      } catch (err) {
+        if (esViolacionUnica(err)) {
+          return NextResponse.json({ error: "Ya tenés una planta con ese nombre." }, { status: 409 });
+        }
+        throw err;
+      }
+    }
+
     return NextResponse.json({ error: "action inválido" }, { status: 400 });
   } catch (err) {
     logger.error("[config-empresa] PATCH Error", err);
@@ -191,6 +244,12 @@ export async function DELETE(request) {
     const id = searchParams.get("id");
     if (!id || !type) return NextResponse.json({ error: "type e id requeridos" }, { status: 400 });
     if (!isUUID(id)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
+
+    if (type === "planta") {
+      const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
+      if (bloqueoSupervisor) return bloqueoSupervisor;
+      return darDeBajaPlanta(empresaId, id);
+    }
 
     const tabla = type === "division" ? "divisiones" : type === "etapa" ? "etapas" : null;
     if (!tabla) return NextResponse.json({ error: "type inválido" }, { status: 400 });
