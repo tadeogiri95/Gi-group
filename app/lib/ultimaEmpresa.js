@@ -34,6 +34,7 @@ export function normalizarCodigo(texto) {
  * @returns {string | null}
  */
 export function destinoAppInstalada(search, esStandalone, ultima) {
-  const desdeApp = esStandalone || new URLSearchParams(search || "").get("source") === "pwa";
+  const source = new URLSearchParams(search || "").get("source");
+  const desdeApp = esStandalone || source === "pwa" || source === "twa"; // twa: app de Google Play (ítem 34)
   return desdeApp && ultima?.slug ? `/${ultima.slug}` : null;
 }
