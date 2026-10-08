@@ -8,6 +8,7 @@ import { CAMPOS_EMPRESA_SOLO_DUENO } from "../../lib/dataPolicy";
 
 import { ipCliente } from "../../lib/ip";
 import { rechazarSiSupervisor } from "../../lib/alcance";
+import { getModulosEmpresa } from "../../lib/planEnforcement";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -88,7 +89,13 @@ export async function GET(request) {
     }
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return NextResponse.json(DEFAULTS);
-    return NextResponse.json(data[0], {
+    // Módulos que tiene la empresa (ítem 36): la app arma el menú con esto.
+    // Si no se pueden calcular, no se mandan y la app muestra todo (el servidor bloquea igual).
+    let modulos;
+    try {
+      ({ modulos } = await getModulosEmpresa(sesion.empresa_id, { plan: data[0].plan_activo || "free" }));
+    } catch { /* sin módulos en la respuesta */ }
+    return NextResponse.json(modulos ? { ...data[0], modulos } : data[0], {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (err) {

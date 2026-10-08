@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import InstaladorScreen from "./instalador_screen";
+import { tieneModulo } from "./lib/modulos";
 
 /* ═══ CONSTANTES UI ═══ */
 const TIPOS = [
@@ -180,7 +181,19 @@ export default function ActividadScreen({
     );
   }
 
+  // Módulos de la empresa (ítem 36): tareas sobre OT y/o reporte de obra
+  const conTareas = tieneModulo(empresa, "actividad");
+  const conObra = tieneModulo(empresa, "obra");
+
   // ═══ RENDER: REPORTE DE INSTALACIÓN ═══
+  // Sin el módulo de tareas, la pestaña es directamente el reporte de obra
+  if (!conTareas && conObra) {
+    return (
+      <div className="font-body flex flex-col flex-1 overflow-hidden">
+        <InstaladorScreen usuario={usuario} empresa={empresa} />
+      </div>
+    );
+  }
   if (showReporte) {
     return (
       <div className="font-body flex flex-col flex-1 overflow-hidden">
@@ -224,9 +237,11 @@ export default function ActividadScreen({
             </div>
           </div>
 
-          <button onClick={() => setShowReporte(true)} className="w-full mt-3 py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-cyan text-black">
-            <Icon name="clipboard" size={18} /> Reporte de Instalación
-          </button>
+          {conObra && (
+            <button onClick={() => setShowReporte(true)} className="w-full mt-3 py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-cyan text-black">
+              <Icon name="clipboard" size={18} /> Reporte de Instalación
+            </button>
+          )}
 
           {historial.length > 0 && (
             <button onClick={() => setShowHistorial(true)} className="w-full mt-4 p-4 rounded-2xl bg-gypi-surface border border-gypi-border text-gypi-text text-sm font-semibold font-body cursor-pointer flex items-center justify-between">

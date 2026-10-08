@@ -11,7 +11,7 @@
 // El catálogo vive acá (con nombres para la app) y en la tabla `modulos` de la
 // base (para las claves foráneas); un test controla que coincidan.
 
-import { capacidades } from "./plans";
+import { capacidades, ADDONS, planSiguiente } from "./plans";
 
 export const MODULOS = {
   fichaje:       { id: "fichaje",       nombre: "Fichaje",               disponible: true,  descripcion: "Entrada y salida con botón, QR, PIN, kiosco y GPS." },
@@ -51,4 +51,38 @@ export function configModulos(ajustes = []) {
     if (MODULOS[a?.modulo] && a.activo !== false && a.config && typeof a.config === "object") out[a.modulo] = a.config;
   }
   return out;
+}
+
+/**
+ * ¿La empresa tiene el módulo? Para la app: usa empresa.modulos (lo manda
+ * /api/empresa). Si no vino (demo, versión vieja en caché), muestra todo: el
+ * servidor es el que bloquea de verdad.
+ */
+export function tieneModulo(empresa, modulo) {
+  return !Array.isArray(empresa?.modulos) || empresa.modulos.includes(modulo);
+}
+
+/** Cómo sumar un módulo que falta: { upgrade_a, error } (add-on, Planta o el tramo siguiente). */
+export function comoSumarModulo(plan, modulo) {
+  const nombre = MODULOS[modulo]?.nombre || modulo;
+  const addon = Object.values(ADDONS).find((a) => a.modulos.includes(modulo));
+  if (addon) return { upgrade_a: addon.id, error: `${nombre} es parte del add-on ${addon.nombre}. Sumalo desde Facturación.` };
+  if (modulo === "proyectos" || modulo === "actividad") {
+    return { upgrade_a: planSiguiente(plan, { necesitaPlanta: true }), error: `${nombre} es parte del plan Planta.` };
+  }
+  return { upgrade_a: planSiguiente(plan), error: `Tu plan no incluye ${nombre}.` };
+}
+
+// Secciones de Gestión que son de un módulo (ítem 36); las demás son de todos
+export const MODULO_SECCION_GESTION = {
+  proyectos: "proyectos",
+  calendario: "calendario",
+  asistencia: "reportes",
+  reglas: "chat",
+};
+
+/** ¿Esa sección de Gestión va con candado para esta empresa? */
+export function seccionBloqueada(seccion, empresa) {
+  const modulo = MODULO_SECCION_GESTION[seccion];
+  return !!modulo && !tieneModulo(empresa, modulo);
 }
