@@ -1,20 +1,27 @@
 "use client";
 import { useState } from "react";
-import ReportesScreen from "../../reportes_screen";
-import GrillaHorarioScreen from "../../grilla_horario_screen";
-import ProyectosScreen from "../../proyectos_screen.jsx";
-import GeolocalizacionScreen from "../../geolocalizacion_screen";
-import CalendarioScreen from "../../calendario_screen";
-import ReglasScreen from "./ReglasScreen";
-import AdminEmpresaScreen from "../../admin_empresa_screen";
-import DocumentosEmpleadoScreen from "../../documentos_empleado_screen";
+import dynamic from "next/dynamic";
 import CuentaDatos from "../CuentaDatos";
 import { useAuth } from "../../context/AuthContext";
 import ModuloBloqueado from "../ModuloBloqueado";
 import { MODULO_SECCION_GESTION, seccionBloqueada } from "../../lib/modulos";
 import { seccionesMas, GRUPOS } from "../../lib/menuGestion";
 import ListItem from "../ui/ListItem";
-import AsistenciaReglasScreen from "./AsistenciaReglasScreen";
+import { Spinner } from "../ui";
+
+// Cada sección se baja recién cuando se abre (app liviana): antes "Más"
+// descargaba el código de las 10 pantallas juntas (~200 KB) para mostrar una lista.
+const cargando = () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
+const perezosa = (importar) => dynamic(importar, { ssr: false, loading: cargando });
+const ReportesScreen = perezosa(() => import("../../reportes_screen"));
+const GrillaHorarioScreen = perezosa(() => import("../../grilla_horario_screen"));
+const ProyectosScreen = perezosa(() => import("../../proyectos_screen.jsx"));
+const GeolocalizacionScreen = perezosa(() => import("../../geolocalizacion_screen"));
+const CalendarioScreen = perezosa(() => import("../../calendario_screen"));
+const ReglasScreen = perezosa(() => import("./ReglasScreen"));
+const AdminEmpresaScreen = perezosa(() => import("../../admin_empresa_screen"));
+const DocumentosEmpleadoScreen = perezosa(() => import("../../documentos_empleado_screen"));
+const AsistenciaReglasScreen = perezosa(() => import("./AsistenciaReglasScreen"));
 import CerrarSesion from "../CerrarSesion";
 
 // Gypi no muestra publicidad (D20): solo usa lo necesario para la sesión.

@@ -33,6 +33,7 @@ import ErrorBoundary from "../components/ErrorBoundary";
 import EmpresaNoEncontrada from "../components/EmpresaNoEncontrada";
 import MisSolicitudesScreen from "../components/screens/MisSolicitudesScreen";
 import { partirDestino } from "../lib/menuGestion";
+import { consultasInicio } from "../lib/cargaInicio";
 
 // Screens — lazy-loaded: solo se descarga el código de la pantalla activa
 const CambiarPasswordScreen = dynamic(() => import("../components/screens/CambiarPasswordScreen"), { ssr: false });
@@ -177,25 +178,12 @@ export default function HomeContent() {
     try {
       const today = hoyArg();
       const monStr = lunesDeLaSemana(0);
-      const isG = usuario.rol === "gerencial" || usuario.rol === "administrativo";
-
       const ayer = hoyArg(new Date(Date.now() - 24 * 60 * 60 * 1000));
-      const [empleados, fichadasHoy, miFichada, fichadasSemana, solicitudes, misSolicitudes, reglas, notificaciones, miAbierta] = await Promise.all([
-        // Todas las páginas: con más de 500 empleados (o 200 fichadas en el día) se cortaba sin avisar (F3-03)
-        sbGetAll("empleados?select=id,legajo,nombre,apodo,email,rol,area,division,diagrama,activo,debe_cambiar_password,estado_activacion,created_at&activo=eq.true&order=legajo.asc,id.asc").then((r) => r.data),
-        sbGetAll(`fichadas?select=legajo,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=eq.${today}&order=legajo.asc,id.asc`).then((r) => r.data),
-        sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=eq.${today}`),
-        sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${monStr}&order=fecha.asc`),
-        sb.get("solicitudes?select=*&order=created_at.desc&limit=50"),
-        sb.get(`solicitudes?legajo=eq.${usuario.legajo}&order=created_at.desc&limit=20`),
-        sb.get("reglas_bot?activa=eq.true&order=id.asc"),
-        sb.get(isG
-          ? "notificaciones?destinatario_rol=eq.gerencial&order=created_at.desc&limit=10"
-          : `notificaciones?destinatario_rol=eq.${usuario.legajo}&order=created_at.desc&limit=10`
-        ),
-        // Turno noche: si ingresó ayer y todavía no fichó la salida, el botón grande ofrece "Fichar salida"
-        sb.get(`fichadas?legajo=eq.${usuario.legajo}&fecha=gte.${ayer}&fecha=lt.${today}&ingreso=not.is.null&egreso=is.null&order=fecha.desc&limit=1`),
-      ]);
+      // Solo lo que usa cada rol (app liviana): ver lib/cargaInicio.js
+      const consultas = Object.entries(consultasInicio({ usuario, hoy: today, lunes: monStr, ayer }));
+      const resultados = await Promise.all(consultas.map(([, c]) => (c.todas ? sbGetAll(c.path).then((r) => r.data) : sb.get(c.path))));
+      const d = Object.fromEntries(consultas.map(([clave], i) => [clave, resultados[i] || []]));
+      const { empleados = [], fichadasHoy = [], miFichada = [], fichadasSemana = [], solicitudes = [], misSolicitudes = [], reglas = [], notificaciones = [], miAbierta = [] } = d;
 
       const fHoy = fichadasHoy.map(f => ({ ...f, nombre: f.empleados?.nombre || "", division: f.empleados?.division || "" }));
 
@@ -243,8 +231,9 @@ export default function HomeContent() {
   const uIsGer = isDemo ? (u?.rol === "gerencial" || u?.rol === "administrativo") : isGer;
   const demoActividad = isDemo && demoMod ? demoMod.getDemoActividades() : null;
 
+  // Las tareas propias son del operario: gestión no las baja (app liviana)
   const actividad = useActividad(
-    u && !isDemo ? { id: u.id, legajo: u.legajo, division: u.division, empresa_id: u?.empresa_id || empresa?.id } : null
+    u && !isDemo && !uIsGer ? { id: u.id, legajo: u.legajo, division: u.division, empresa_id: u?.empresa_id || empresa?.id } : null
   );
   useRealtimeSync(!isDemo && u ? (u.empresa_id || empresa?.id) : null, pedirRecarga);
 
