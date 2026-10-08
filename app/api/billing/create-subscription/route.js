@@ -14,6 +14,7 @@ import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { crearPreapproval, getPreapproval } from "../../../lib/mercadopago";
 import { PLANES, LINEAS, TRAMOS, ADDONS, addonsValidos, planParaOperarios, precioUsd, aPesos } from "../../../lib/plans";
 import { cotizacionVigente } from "../../../lib/cotizacion";
+import { perfilCompleto } from "../../../lib/perfilFiscal";
 import { sbGet, sbPost, sbPatchOk } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
 import { logger } from "../../../lib/logger";
@@ -46,6 +47,19 @@ export async function POST(request) {
       return NextResponse.json({ error: "Hay un add-on que no existe." }, { status: 400 });
     }
     const addons = addonsValidos(body.addons);
+
+    // Factura C al CUIT del cliente (ítem 26): sin datos fiscales no se contrata.
+    // Si la migración 081 no corrió (no se pueden leer), no se bloquea el pago.
+    const fiscal = await sbGet(
+      `empresa?id=eq.${sesion.empresa_id}&select=razon_social,cuit,condicion_iva,domicilio_fiscal&limit=1`,
+      { silent: true, fallback: null }
+    );
+    if (Array.isArray(fiscal) && !perfilCompleto(fiscal[0])) {
+      return NextResponse.json({
+        error: "Antes de elegir un plan completá los datos de facturación (razón social, CUIT, condición frente al IVA y domicilio).",
+        falta_perfil_fiscal: true,
+      }, { status: 409 });
+    }
 
     // El tramo tiene que alcanzar para los operarios activos de hoy
     const activos = (await sbGet(`empleados?empresa_id=eq.${sesion.empresa_id}&activo=eq.true&select=id`, { silent: true, fallback: [] })) || [];

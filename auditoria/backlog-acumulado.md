@@ -158,7 +158,7 @@
 | ID | Título | Sev. | Esf. | Estado |
 |---|---|---|---|---|
 | F6-01 | Exportación y baja de datos prometidas y no implementadas | Alto | M | Hecho (ítem 28): el dueño descarga un .zip con un CSV por tabla y da de baja la cuenta desde Gestión → Privacidad; la baja cancela Mercado Pago, cierra sesiones y manda un link para recuperarla; a los 30 días el cron purgar-empresas borra archivos y filas (migración 078). Las suscripciones vencidas sin baja explícita no se borran solas (decisión pendiente, ítem 29) |
-| F6-02 | Perfil fiscal del cliente + factura al CUIT | Alto | M | Pendiente (validar con el contador) |
+| F6-02 | Perfil fiscal del cliente + factura al CUIT | Alto | M | Código listo (ítem 26): datos de facturación obligatorios para contratar (CUIT validado), Factura C con DocTipo 80 y la condición frente al IVA del cliente (migración 081). Falta de tu lado habilitar ARCA y cargar las variables: `auditoria/como-activar-factura-c.md` |
 | F6-03 | Prueba de cobro de punta a punta (sandbox MP) | Alto | M | Pendiente |
 | F6-04 | Planes y módulos en la base + entitlements en el servidor | Alto | M | Hecho en parte (ítem 25b): planes por tramos y add-ons en `plans.js` con el check de la base (082); el servidor aplica tramo, OT (Planta), cupo de IA y reporte de obra según plan + add-ons. Faltan tablas de módulos para planes a medida (ítem 45) |
 | F6-05 | Indexación de precios | Medio | S | Hecho (ítem 25b): precio en USD; el cron actualizar-precios guarda la cotización del día y, si el precio en pesos se mueve 5% o más, avisa por email y cambia el monto en Mercado Pago a los 30 días |
@@ -166,7 +166,7 @@
 | F6-07 | Términos, privacidad, DPA y SLA (abogado) | Medio | S | Borradores listos (ítem 29): `auditoria/legal/`. Falta la revisión del abogado y completar titular, CUIT y domicilio |
 | F6-09 | Superadmin: módulos, add-ons, pagos manuales, consumo | Medio | M | Pendiente |
 | F6-10 | Canal de soporte y página de estado | Bajo | S | Pendiente |
-| F6-11 | Comprobantes descargables | Bajo | S | Pendiente |
+| F6-11 | Comprobantes descargables | Bajo | S | Hecho (ítem 26): "Ver factura" en el historial de pagos, con el QR de ARCA, para imprimir o guardar en PDF |
 
 ## 3. Preguntas abiertas que condicionan el plan
 

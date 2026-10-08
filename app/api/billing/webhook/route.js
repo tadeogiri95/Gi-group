@@ -401,12 +401,23 @@ export async function POST(request) {
           // AFIP_ACCESS_TOKEN).
           if (pagoInsertado?.id) {
             try {
+              // Factura C al CUIT del cliente (ítem 26). Sin la migración 081 o sin
+              // perfil fiscal, sale a Consumidor Final como antes.
+              const [fiscal] = await sbGet(
+                `empresa?id=eq.${empresaId}&select=razon_social,cuit,condicion_iva,domicilio_fiscal&limit=1`,
+                { silent: true, fallback: [] }
+              ) || [];
+              const receptor = fiscal?.cuit ? fiscal : null;
               const factura = await emitirFacturaC({
                 monto: pago.transaction_amount,
                 fechaPago: pago.date_approved || pago.date_created,
                 periodoInicio: susc?.[0]?.periodo_inicio,
                 periodoFin: susc?.[0]?.periodo_fin,
+                receptor,
               });
+              // Copia de lo informado a ARCA para el comprobante (aparte: si la columna
+              // no existe, no se pierde el CAE de abajo)
+              if (receptor && factura.ok) await sbPatchOk(`pagos?id=eq.${pagoInsertado.id}`, { receptor });
               if (factura.ok) {
                 await sbPatchOk(`pagos?id=eq.${pagoInsertado.id}`, {
                   cae: factura.cae,
