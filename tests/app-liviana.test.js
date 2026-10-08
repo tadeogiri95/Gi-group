@@ -51,3 +51,11 @@ test("tiempo real — el cliente de Supabase se baja recién con la sesión inic
   assert.doesNotMatch(hook, /^import .*lib\/realtime/m);
   assert.match(hook, /import\("\.\.\/lib\/realtime"\)/);
 });
+
+test("servidor — las funciones corren en Oregón (pdx1), al lado de la base (Supabase us-west-2)", () => {
+  // Cada /api/data hace 3 o 4 consultas seguidas a la base (sesión, alcance,
+  // plan, datos): en Virginia (iad1, el valor por defecto) cada una cruzaba el país.
+  const cfg = JSON.parse(leer("vercel.json"));
+  assert.deepEqual(cfg.regions, ["pdx1"]);
+  assert.ok(Array.isArray(cfg.crons) && cfg.crons.length > 0, "los cron siguen");
+});
