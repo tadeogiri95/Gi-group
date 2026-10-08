@@ -3,19 +3,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { fH, fB } from "../../lib/theme";
+import { Button, Field } from "../../components/ui";
 import { problemaPin, recordarLegajoPin } from "../../lib/pin";
-
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const AMBER_TEXT = "#000";
-const GREEN = "#16A34A";
-const RED = "#DC2626";
-const VIOLET = "#7C3AED";
-const DIM = "var(--color-text-dim)";
-const MUTE = "var(--color-text-muted)";
-const TEXT = "var(--color-text)";
-const SURFACE = "var(--color-surface)";
-const BORDER = "var(--color-border)";
 
 export default function UnirseScreen() {
   const params = useParams();
@@ -108,156 +97,138 @@ export default function UnirseScreen() {
   // Slug inválido
   if (empresaNotFound) {
     return (
-      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, color: TEXT, fontFamily: fB, textAlign: "center" }}>
-        <div style={{ fontSize: 52, marginBottom: 16 }}>🔍</div>
-        <h2 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, margin: 0 }}>Empresa no encontrada</h2>
-        <p style={{ color: DIM, fontSize: 14, marginTop: 8 }}>El enlace <code style={{ color: AMBER }}>gypi.app/{slug}/unirse</code> no es válido.</p>
-        <button onClick={() => router.push("/")} style={{ marginTop: 24, padding: "12px 24px", borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Volver al inicio</button>
-      </div>
+      <main className="max-w-[480px] mx-auto min-h-dvh flex flex-col items-center justify-center p-7 text-center text-gypi-text font-body">
+        <div aria-hidden="true" className="text-[52px] mb-4">🔍</div>
+        <h1 className="font-heading text-[22px] font-bold m-0">Empresa no encontrada</h1>
+        <p className="text-gypi-dim text-[15px] mt-2">El enlace <code className="text-gypi-amber-ink">gypi.app/{slug}/unirse</code> no es válido. Pedile el link correcto a tu empresa.</p>
+        <Button onClick={() => router.push("/")} className="mt-6">Volver al inicio</Button>
+      </main>
     );
   }
 
   if (!empresa) return null;
 
-  const inputStyle = { width: "100%", padding: "14px 16px", borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 15, fontFamily: fB, outline: "none", boxSizing: "border-box" };
-  const lblStyle = { display: "block", fontSize: 11, fontWeight: 700, color: DIM, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 };
+  const codigoListo = !!codigo.trim() && !loading;
+  const avisoError = error ? <div role="alert" className="p-3 mt-3 rounded-[10px] text-[14px] bg-gypi-red/10 text-gypi-red">{error}</div> : null;
+  const saludo = (
+    <>
+      <div aria-hidden="true" className="w-14 h-14 rounded-2xl bg-gypi-green/15 text-gypi-green flex items-center justify-center text-[28px] mb-4">✓</div>
+      <h1 className="m-0 font-heading text-2xl font-bold">¡Hola, {empleado?.apodo || empleado?.nombre}!</h1>
+    </>
+  );
+  // Activación (reforma UX R11): mismas piezas que el resto de la app (Button,
+  // Field, tokens); sin estilos sueltos ni colores escritos a mano.
+  const claseCodigo = "g-input text-center font-mono! text-[28px]! tracking-[0.5em]";
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "0 28px", justifyContent: "center", color: TEXT, fontFamily: fB }}>
-      {/* Logo */}
+    <main className="max-w-[480px] mx-auto min-h-dvh flex flex-col justify-center px-7 py-8 text-gypi-text font-body">
       {empresa.logo_url ? (
-        <Image src={empresa.logo_url} alt={empresa.nombre_corto} width={72} height={72} style={{ borderRadius: 20, objectFit: "contain", marginBottom: 24 }} />
+        <Image src={empresa.logo_url} alt={empresa.nombre_corto || empresa.nombre} width={72} height={72} className="rounded-[20px] object-contain mb-6" />
       ) : (
-        <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", marginBottom: 24 }}>
-          <span style={{ fontFamily: fH, fontSize: empresa.nombre_corto?.length > 4 ? 18 : 26, fontWeight: 800 }}>{empresa.nombre_corto || "Gypi"}</span>
+        <div aria-hidden="true" className="w-[72px] h-[72px] rounded-[20px] bg-gypi-amber text-gypi-on-amber flex items-center justify-center mb-6 font-heading font-extrabold text-[22px]">
+          {(empresa.nombre_corto || "Gypi").slice(0, 4)}
         </div>
       )}
 
-      {/* STEP 1: Código de activación */}
+      {/* PASO 1: código de activación */}
       {step === 1 && (
         <>
-          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 28, fontWeight: 700, color: TEXT, letterSpacing: "-0.025em" }}>Unite a {empresa.nombre_corto || empresa.nombre}</h1>
-          <p style={{ fontSize: 13, color: DIM, marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
-            Ingresá el código de activación que te dio tu empresa. Si no lo tenés o venció, pedile uno nuevo a tu supervisor.
+          <h1 className="m-0 font-heading text-[28px] font-bold tracking-tight">Unite a {empresa.nombre_corto || empresa.nombre}</h1>
+          <p className="text-[15px] text-gypi-dim mt-2 mb-6 leading-relaxed">
+            Escribí el código que te dio tu empresa. Si no lo tenés o venció, pedile uno nuevo a tu supervisor.
           </p>
-
-          <label style={lblStyle}>Código de activación</label>
-          <input
-            value={codigo}
-            onChange={e => setCodigo(e.target.value.toUpperCase())}
-            onKeyDown={e => e.key === "Enter" && verificarCodigo()}
-            autoCapitalize="characters"
-            autoComplete="one-time-code"
-            spellCheck={false}
-            placeholder="XXXX-XXXX"
-            maxLength={20}
-            style={{ ...inputStyle, marginBottom: 16, letterSpacing: "0.15em", fontFamily: "monospace", fontSize: 18, textAlign: "center" }}
-          />
-
-          <button onClick={verificarCodigo} disabled={loading || !codigo.trim()} style={{ width: "100%", padding: 14, borderRadius: 12, background: codigo.trim() && !loading ? AMBER : SURFACE, color: codigo.trim() && !loading ? AMBER_TEXT : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: codigo.trim() && !loading ? "pointer" : "default" }}>
+          <Field label="Código de activación">
+            <input
+              value={codigo}
+              onChange={e => setCodigo(e.target.value.toUpperCase())}
+              onKeyDown={e => e.key === "Enter" && verificarCodigo()}
+              autoCapitalize="characters"
+              autoComplete="one-time-code"
+              spellCheck={false}
+              placeholder="XXXX-XXXX"
+              maxLength={20}
+              className="g-input text-center font-mono! text-[20px]! tracking-[0.15em]"
+            />
+          </Field>
+          <Button size="lg" onClick={verificarCodigo} disabled={!codigoListo} className="w-full">
             {loading ? "Verificando..." : "Continuar"}
-          </button>
-
-          {error && <div style={{ padding: 12, background: `${RED}15`, color: RED, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
-
-          <div style={{ textAlign: "center", marginTop: 24, fontSize: 13, color: DIM }}>
+          </Button>
+          {avisoError}
+          <p className="text-center mt-6 text-[14px] text-gypi-dim">
             ¿Ya tenés cuenta?{" "}
-            <button onClick={() => router.push(`/${slug}`)} style={{ background: "none", border: "none", color: AMBER, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
-              Iniciar sesión
-            </button>
-          </div>
+            <button onClick={() => router.push(`/${slug}`)} className="min-h-[44px] bg-transparent border-none text-gypi-amber-ink font-bold cursor-pointer text-[14px]">Iniciar sesión</button>
+          </p>
         </>
       )}
 
-      {/* STEP 2 (operario): elegir PIN */}
+      {/* PASO 2 (operario): elegir PIN */}
       {step === 2 && usarPin && (
         <>
-          <div style={{ width: 56, height: 56, borderRadius: 16, background: `${GREEN}22`, display: "flex", alignItems: "center", justifyContent: "center", color: GREEN, marginBottom: 16, fontSize: 28 }}>✓</div>
-          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 24, fontWeight: 700, color: TEXT }}>¡Hola, {empleado?.apodo || empleado?.nombre}!</h1>
-          <p style={{ fontSize: 15, color: TEXT, marginTop: 8, marginBottom: 20, lineHeight: 1.5 }}>
+          {saludo}
+          <p className="text-[15px] mt-2 mb-5 leading-relaxed">
             Elegí un <b>PIN de 4 números</b>. Con tu legajo <b>{empleado?.legajo}</b> y este PIN entrás a la app y fichás en el kiosco.
           </p>
-
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="pin" style={lblStyle}>Tu PIN</label>
+          <Field label="Tu PIN">
             <input id="pin" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]*" maxLength={4}
-              value={pin} onChange={e => setPin(soloNumeros(e.target.value))} placeholder="••••"
-              style={{ ...inputStyle, fontSize: 28, letterSpacing: "0.5em", textAlign: "center", fontFamily: "monospace" }} />
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <label htmlFor="pin2" style={lblStyle}>Repetí el PIN</label>
+              value={pin} onChange={e => setPin(soloNumeros(e.target.value))} placeholder="••••" className={claseCodigo} />
+          </Field>
+          <Field label="Repetí el PIN" help="No uses números repetidos (1111) ni seguidos (1234).">
             <input id="pin2" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]*" maxLength={4}
-              value={pinConfirm} onChange={e => setPinConfirm(soloNumeros(e.target.value))} onKeyDown={e => e.key === "Enter" && activar()} placeholder="••••"
-              style={{ ...inputStyle, fontSize: 28, letterSpacing: "0.5em", textAlign: "center", fontFamily: "monospace" }} />
-          </div>
-          <p style={{ fontSize: 13, color: DIM, margin: "0 0 16px", lineHeight: 1.5 }}>No uses números repetidos (1111) ni seguidos (1234).</p>
-
-          <button onClick={activar} disabled={loading || !listoPin} style={{ width: "100%", minHeight: 56, padding: 14, borderRadius: 12, background: listoPin && !loading ? AMBER : SURFACE, color: listoPin && !loading ? AMBER_TEXT : MUTE, border: "none", fontSize: 16, fontWeight: 700, cursor: listoPin && !loading ? "pointer" : "default" }}>
+              value={pinConfirm} onChange={e => setPinConfirm(soloNumeros(e.target.value))} onKeyDown={e => e.key === "Enter" && activar()} placeholder="••••" className={claseCodigo} />
+          </Field>
+          <Button size="lg" onClick={activar} disabled={loading || !listoPin} className="w-full">
             {loading ? "Activando..." : "Activar mi cuenta"}
-          </button>
-
-          {error && <div role="alert" style={{ padding: 12, background: `${RED}15`, color: RED, borderRadius: 10, fontSize: 13, marginTop: 12 }}>{error}</div>}
-
-          <button onClick={() => { setUsarPin(false); setError(""); }} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 14, minHeight: 48, marginTop: 8, textDecoration: "underline" }}>
+          </Button>
+          {avisoError}
+          <button onClick={() => { setUsarPin(false); setError(""); }} className="min-h-[48px] mt-2 bg-transparent border-none text-gypi-dim underline cursor-pointer text-[14px]">
             Prefiero una contraseña
           </button>
         </>
       )}
 
-      {/* STEP 2: Crear contraseña */}
+      {/* PASO 2: crear contraseña */}
       {step === 2 && !usarPin && (
         <>
-          <div style={{ width: 56, height: 56, borderRadius: 16, background: `${GREEN}22`, display: "flex", alignItems: "center", justifyContent: "center", color: GREEN, marginBottom: 16, fontSize: 28 }}>✓</div>
-          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 24, fontWeight: 700, color: TEXT }}>¡Hola, {empleado?.apodo || empleado?.nombre}!</h1>
-          <p style={{ fontSize: 13, color: DIM, marginTop: 8, marginBottom: 24, lineHeight: 1.5 }}>
-            Creá tu contraseña para terminar de activar tu cuenta en <b style={{ color: TEXT }}>{empleado?.empresaNombre}</b>.
+          {saludo}
+          <p className="text-[15px] text-gypi-dim mt-2 mb-5 leading-relaxed">
+            Creá tu contraseña para terminar de activar tu cuenta en <b className="text-gypi-text">{empleado?.empresaNombre}</b>.
           </p>
-
-          <div style={{ marginBottom: 14 }}>
-            <label style={lblStyle}>Nueva contraseña</label>
-            <input type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" style={inputStyle} />
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <label style={lblStyle}>Confirmar contraseña</label>
-            <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === "Enter" && activar()} placeholder="Repetí la contraseña" style={inputStyle} />
-          </div>
-          <button onClick={() => setShowPwd(!showPwd)} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 12, fontFamily: fB, padding: "4px 0", marginBottom: 16, textAlign: "left" }}>
+          <Field label="Nueva contraseña" help="8 caracteres o más, con mayúscula, minúscula y número.">
+            <input type={showPwd ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} className="g-input" />
+          </Field>
+          <Field label="Repetí la contraseña">
+            <input type={showPwd ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === "Enter" && activar()} className="g-input" />
+          </Field>
+          <button onClick={() => setShowPwd(!showPwd)} className="min-h-[44px] mb-3 self-start bg-transparent border-none text-gypi-dim cursor-pointer text-[14px]">
             {showPwd ? "🙈 Ocultar contraseñas" : "👁️ Mostrar contraseñas"}
           </button>
-
-          <button onClick={activar} disabled={loading || !password || !confirm} style={{ width: "100%", padding: 14, borderRadius: 12, background: password && confirm && !loading ? GREEN : SURFACE, color: password && confirm && !loading ? "#000" : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: password && confirm && !loading ? "pointer" : "default" }}>
-            {loading ? "Activando..." : "🚀 Activar mi cuenta"}
-          </button>
-
-          {error && <div style={{ padding: 12, background: `${RED}15`, color: RED, borderRadius: 10, fontSize: 12, marginTop: 12 }}>{error}</div>}
-
+          <Button size="lg" onClick={activar} disabled={loading || !password || !confirm} className="w-full">
+            {loading ? "Activando..." : "Activar mi cuenta"}
+          </Button>
+          {avisoError}
           {empleado?.rol === "operativo" && (
-            <button onClick={() => { setUsarPin(true); setError(""); }} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 14, minHeight: 48, marginTop: 8, textDecoration: "underline" }}>
+            <button onClick={() => { setUsarPin(true); setError(""); }} className="min-h-[48px] mt-2 bg-transparent border-none text-gypi-dim underline cursor-pointer text-[14px]">
               Prefiero un PIN de 4 números
             </button>
           )}
         </>
       )}
 
-      {/* STEP 3: Éxito */}
+      {/* PASO 3: listo */}
       {step === 3 && (
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
-          <h1 style={{ margin: 0, fontFamily: fH, fontSize: 26, fontWeight: 700, color: GREEN }}>¡Cuenta activada!</h1>
+        <div role="status" className="text-center">
+          <div aria-hidden="true" className="text-[64px] mb-4">🎉</div>
+          <h1 className="m-0 font-heading text-[26px] font-bold text-gypi-green">¡Cuenta activada!</h1>
           {conPin ? (
             <>
-              <p style={{ fontSize: 16, color: TEXT, marginTop: 12, lineHeight: 1.5 }}>
-                Para entrar: tu legajo <b>{empleado?.legajo}</b> y tu PIN.
-              </p>
-              <button onClick={() => router.push(`/${slug}`)} style={{ marginTop: 20, width: "100%", minHeight: 56, borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
-                Entrar ahora
-              </button>
+              <p className="text-base mt-3 leading-relaxed">Para entrar: tu legajo <b>{empleado?.legajo}</b> y tu PIN.</p>
+              <Button size="lg" onClick={() => router.push(`/${slug}`)} className="w-full mt-5">Entrar ahora</Button>
             </>
           ) : (
-            <p style={{ fontSize: 14, color: DIM, marginTop: 12 }}>Redirigiendo al login...</p>
+            <p className="text-[15px] text-gypi-dim mt-3">Te llevamos al inicio de sesión…</p>
           )}
         </div>
       )}
-    </div>
+    </main>
   );
 }
