@@ -6,20 +6,6 @@
 import { useState, useEffect, useRef } from "react";
 import { fmtTime, fmtDate } from "../../lib/theme";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const AMBER_TEXT = "var(--color-empresa-primary-text, #000)";
-const VIOLET = "var(--color-empresa-secondary, #7C3AED)";
-const RED = "#DC2626";
-const SURF_HI = "var(--color-surf-hi)";
-const BORDER = "var(--color-border)";
-const BORDER_HI = "var(--color-border-hi)";
-const TEXT = "var(--color-text)";
-const DIM = "var(--color-text-dim)";
-const MUTE = "var(--color-text-muted)";
-const BG = "var(--color-bg)";
-const SURFACE = "var(--color-surface)";
-const FB = "var(--font-body)";
-const FM = "var(--font-mono)";
 import { sb } from "../../lib/supabase";
 import { callClaude, parseAction, ACCIONES_CON_EFECTO, descripcionAccion } from "../../lib/claude";
 import { sendPushToRole } from "../../lib/push";
@@ -265,44 +251,71 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
     setLoading(false);
   };
 
+  const avatarBot = (
+    <div className="w-[30px] h-[30px] rounded-[10px] mr-2 bg-linear-135 from-gypi-amber to-gypi-violet flex items-center justify-center text-black shrink-0" aria-hidden="true">
+      <Ic.bot size={16} />
+    </div>
+  );
+  const puedeEnviar = input.trim() && !loading;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div className="flex flex-col h-full font-body">
       {/* F4-03: el chat oculta la barra de navegación; sin esto, en la app instalada en iOS no había forma de salir */}
       {onBack && (
-        <div className="safe-top" style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", borderBottom: `1px solid ${BORDER}`, background: BG, flexShrink: 0 }}>
-          <button onClick={onBack} aria-label="Volver al inicio" style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: TEXT, cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: FB, padding: "4px 8px", minHeight: 44 }}>
+        <div className="safe-top flex items-center gap-1.5 px-2.5 py-2 border-b border-gypi-border bg-gypi-bg shrink-0">
+          <button onClick={onBack} aria-label="Volver al inicio" className="flex items-center gap-1 bg-transparent border-none text-gypi-text cursor-pointer text-[14px] font-semibold px-2 py-1 min-h-11">
             <Ic.chevL /> Volver
           </button>
-          <span style={{ flex: 1, textAlign: "center", fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: FB, marginRight: 60 }}>Asistente</span>
+          <span className="flex-1 text-center text-[15px] font-bold text-gypi-text mr-[60px]">Asistente</span>
         </div>
       )}
       {geoError && (
-        <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: `${RED}12`, borderBottom: `1px solid ${RED}30` }}>
-          <span style={{ fontSize: 14 }} aria-hidden="true">📍</span>
-          <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: RED, fontFamily: FB }}>{geoError}</span>
-          <button onClick={() => setGeoError(null)} aria-label="Cerrar alerta de ubicación" style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 16, padding: 4, minHeight: 44, minWidth: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+        <div role="alert" className="flex items-center gap-2.5 px-4 py-2.5 bg-gypi-red/[0.07] border-b border-gypi-red/20">
+          <span className="text-[14px]" aria-hidden="true">📍</span>
+          <span className="flex-1 text-[12px] font-semibold text-gypi-red">{geoError}</span>
+          <button onClick={() => setGeoError(null)} aria-label="Cerrar alerta de ubicación" className="bg-transparent border-none text-gypi-red cursor-pointer text-[16px] p-1 min-h-11 min-w-11 flex items-center justify-center">✕</button>
         </div>
       )}
-      <div ref={ref} role="log" aria-label="Historial de mensajes" aria-live="polite" style={{ flex: 1, overflowY: "auto", padding: "8px 18px 12px", WebkitOverflowScrolling: "touch" }}>
-        {msgs.map((m, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: m.from === "bot" ? "flex-start" : "flex-end", marginBottom: 12 }}>
-            {m.from === "bot" && <div style={{ width: 30, height: 30, borderRadius: 10, marginRight: 8, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000", flexShrink: 0 }}><Ic.bot size={16} /></div>}
-            <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: m.from === "bot" ? "flex-start" : "flex-end" }}>
-              <div style={{ padding: "10px 14px", background: m.from === "bot" ? SURF_HI : AMBER, color: m.from === "bot" ? TEXT : AMBER_TEXT, borderRadius: m.from === "bot" ? "16px 16px 16px 4px" : "16px 16px 4px 16px", fontSize: 14, fontFamily: FB, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", border: m.from === "bot" ? `1px solid ${BORDER}` : "none", fontWeight: m.from === "bot" ? 400 : 500 }}>{m.text}</div>
-              {m.card?.type === "fichada" && <FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg} tardanza={m.card.tardanza} />}
-              {m.card?.type === "solicitud" && <SolSentCard motivo={m.card.motivo} fecha={m.card.fecha} />}
-              {m.quickReplies && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{m.quickReplies.map((c, j) => <button key={j} onClick={() => handleSend(c)} style={{ padding: "10px 16px", borderRadius: 999, background: SURF_HI, border: `1px solid ${BORDER_HI}`, color: TEXT, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: FB, minHeight: 44 }}>{c}</button>)}</div>}
-              <span style={{ fontSize: 12, color: MUTE, marginTop: 4, fontFamily: FM }}>{fmtTime(m.time)}</span>
+      <div ref={ref} role="log" aria-label="Historial de mensajes" aria-live="polite" className="flex-1 overflow-y-auto px-[18px] pt-2 pb-3">
+        {msgs.map((m, i) => {
+          const esBot = m.from === "bot";
+          return (
+            <div key={i} className={`flex mb-3 ${esBot ? "justify-start" : "justify-end"}`}>
+              {esBot && avatarBot}
+              <div className={`max-w-[78%] flex flex-col ${esBot ? "items-start" : "items-end"}`}>
+                <div className={`px-3.5 py-2.5 text-[14px] leading-normal whitespace-pre-wrap wrap-break-word ${esBot ? "bg-gypi-surf-hi text-gypi-text rounded-[16px_16px_16px_4px] border border-gypi-border font-normal" : "bg-gypi-amber text-gypi-on-amber rounded-[16px_16px_4px_16px] font-medium"}`}>{m.text}</div>
+                {m.card?.type === "fichada" && <FichadaCard tipo={m.card.sub} hora={m.card.hora} geoMsg={m.card.geoMsg} tardanza={m.card.tardanza} />}
+                {m.card?.type === "solicitud" && <SolSentCard motivo={m.card.motivo} fecha={m.card.fecha} />}
+                {m.quickReplies && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {m.quickReplies.map((c, j) => (
+                      <button key={j} onClick={() => handleSend(c)} className="px-4 py-2.5 rounded-full bg-gypi-surf-hi border border-(--color-border-hi) text-gypi-text text-[13px] font-semibold cursor-pointer min-h-11">{c}</button>
+                    ))}
+                  </div>
+                )}
+                <span className="text-[12px] text-gypi-mute mt-1 font-mono">{fmtTime(m.time)}</span>
+              </div>
+            </div>
+          );
+        })}
+        {loading && (
+          <div className="flex mb-2.5 items-end">
+            {avatarBot}
+            <div className="px-4 py-3 bg-gypi-surf-hi rounded-[16px_16px_16px_4px] border border-gypi-border flex gap-[5px] items-center">
+              <span className="text-gypi-amber-ink flex"><Ic.sparkle size={14} /></span>
+              <span className="text-[12px] text-gypi-dim">Pensando...</span>
+              <span className="flex gap-[3px]" aria-hidden="true">
+                {["[animation-delay:0s]", "[animation-delay:0.2s]", "[animation-delay:0.4s]"].map((d) => <span key={d} className={`w-1 h-1 rounded-[2px] bg-gypi-dim animate-[typing_1.4s_infinite] ${d}`} />)}
+              </span>
             </div>
           </div>
-        ))}
-        {loading && <div style={{ display: "flex", marginBottom: 10, alignItems: "flex-end" }}><div style={{ width: 30, height: 30, borderRadius: 10, marginRight: 8, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#000" }}><Ic.bot size={16} /></div><div style={{ padding: "12px 16px", background: SURF_HI, borderRadius: "16px 16px 16px 4px", border: `1px solid ${BORDER}`, display: "flex", gap: 5, alignItems: "center" }}><span style={{ color: AMBER, display: "flex" }}><Ic.sparkle size={14} /></span><span style={{ fontSize: 12, color: DIM }}>Pensando...</span><span style={{ display: "flex", gap: 3 }}>{[0, 1, 2].map(i => <span key={i} style={{ width: 4, height: 4, borderRadius: 2, background: DIM, animation: `typing 1.4s ${i * .2}s infinite` }} />)}</span></div></div>}
+        )}
       </div>
-      <div className="safe-bottom" style={{ padding: "10px 14px 12px", borderTop: `1px solid ${BORDER}`, background: BG, display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", background: SURFACE, borderRadius: 22, padding: "4px 8px 4px 16px", border: `1px solid ${BORDER}` }}>
-          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Escribile al asistente..." aria-label="Mensaje para el asistente" disabled={loading} style={{ flex: 1, border: "none", background: "transparent", color: TEXT, fontSize: 14, fontFamily: FB, outline: "none", padding: "10px 0", opacity: loading ? .5 : 1 }} />
+      <div className="safe-bottom px-3.5 pt-2.5 pb-3 border-t border-gypi-border bg-gypi-bg flex items-center gap-2">
+        <div className="flex-1 flex items-center bg-gypi-surface rounded-[22px] py-1 pr-2 pl-4 border border-gypi-border">
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} placeholder="Escribile al asistente..." aria-label="Mensaje para el asistente" disabled={loading} className={`flex-1 border-none bg-transparent text-gypi-text text-[16px] outline-none py-2.5 ${loading ? "opacity-50" : ""}`} />
         </div>
-        <button onClick={() => handleSend()} disabled={!input.trim() || loading} aria-label="Enviar mensaje" style={{ width: 44, height: 44, borderRadius: 22, border: "none", background: input.trim() && !loading ? AMBER : SURFACE, color: input.trim() && !loading ? AMBER_TEXT : MUTE, cursor: input.trim() && !loading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center" }}><Ic.send size={18} /></button>
+        <button onClick={() => handleSend()} disabled={!puedeEnviar} aria-label="Enviar mensaje" className={`w-12 h-12 rounded-full border-none flex items-center justify-center shrink-0 ${puedeEnviar ? "bg-gypi-amber text-gypi-on-amber cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}><Ic.send size={18} /></button>
       </div>
     </div>
   );
