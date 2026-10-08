@@ -192,7 +192,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                     <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0" style={{ border: `2px solid ${sel ? CYAN : "var(--color-text-muted)"}`, background: sel ? CYAN : "transparent", color: "#000" }}>{sel && "✓"}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.nombre}</div>
-                      <div className="text-[10px] text-gypi-dim truncate">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}</div>
+                      <div className="text-xs text-gypi-dim truncate">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}</div>
                     </div>
                     {changed && <Tag color={AMBER}>Editado</Tag>}
                   </button>
@@ -224,7 +224,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                   <button onClick={() => setExpandedId(isExp ? null : emp.id)} aria-expanded={isExp} className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left">
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
-                      <div className="text-[10px] text-gypi-dim mt-0.5">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"} · {diasActivos}d · {horas.toFixed(1)}h/sem</div>
+                      <div className="text-xs text-gypi-dim mt-0.5">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"} · {diasActivos}d · {horas.toFixed(1)}h/sem</div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {changed && <Tag color={AMBER}>Editado</Tag>}
@@ -234,7 +234,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                   {!isExp && (
                     <div className="px-3.5 pb-2.5 flex gap-[3px]">
                       {DIAS.map(d => (
-                        <div key={d} className="flex-1 text-center py-[3px] rounded-[5px] text-[8px] font-bold font-mono uppercase" style={{ background: row[d] ? `${GREEN}15` : `${"var(--color-text-muted)"}10`, color: row[d] ? GREEN : "var(--color-text-muted)" }}>{DIAS_L[d]}</div>
+                        <div key={d} className="flex-1 text-center py-[3px] rounded-[5px] text-[11px] font-bold font-mono uppercase" style={{ background: row[d] ? `${GREEN}15` : `${"var(--color-text-muted)"}10`, color: row[d] ? GREEN : "var(--color-text-muted)" }}>{DIAS_L[d]}</div>
                       ))}
                     </div>
                   )}
@@ -251,7 +251,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                               {activo ? (
                                 <div className="flex items-center gap-1 flex-1">
                                   <input type="time" value={row[d].in} onChange={e => setHorario(emp.id, d, "in", e.target.value)} className="bg-gypi-surf-hi border border-gypi-border rounded-md py-[3px] px-[5px] text-gypi-text text-xs font-mono outline-none w-[78px]" />
-                                  <span className="text-gypi-dim text-[10px]">→</span>
+                                  <span className="text-gypi-dim text-xs">→</span>
                                   <input type="time" value={row[d].out} onChange={e => setHorario(emp.id, d, "out", e.target.value)} className="bg-gypi-surf-hi border border-gypi-border rounded-md py-[3px] px-[5px] text-gypi-text text-xs font-mono outline-none w-[78px]" />
                                 </div>
                               ) : <span className="text-[11px] text-gypi-mute">Franco</span>}
@@ -279,7 +279,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
         </div>
       )}
 
-      <div className="text-center mt-4 text-[10px] text-gypi-mute">{empleados.length} empleados activos · {totalCambios} con cambios</div>
+      <div className="text-center mt-4 text-xs text-gypi-mute">{empleados.length} empleados activos · {totalCambios} con cambios</div>
     </section>
   );
 }

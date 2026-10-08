@@ -199,7 +199,7 @@ export default function ActividadScreen({
     return (
       <div className="font-body flex flex-col flex-1 overflow-hidden">
         <div className="py-3 px-5 flex items-center gap-3 shrink-0">
-          <button onClick={() => setShowReporte(false)} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
+          <button onClick={() => setShowReporte(false)} aria-label="Volver" className="min-w-[48px] min-h-[48px] -ml-2 bg-transparent border-none text-gypi-text cursor-pointer text-2xl flex items-center justify-center">←</button>
           <div>
             <div className="g-overline text-gypi-cyan">Reporte</div>
             <div className="text-base font-bold font-heading">Instalación</div>
@@ -236,7 +236,7 @@ export default function ActividadScreen({
               <div className="text-[13px] text-gypi-dim mb-6 leading-normal">Iniciá una tarea para registrar tu actividad en el proyecto</div>
               <button
                 onClick={() => { if (!fichadaHoy?.ingreso && !ingresoSinEnviar(usuario?.id)) { setErrorMsg("Primero fichá tu entrada en Inicio."); return; } setState("selecting"); setStep(1); }}
-                className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-amber text-black"
+                className="w-full py-4 px-6 rounded-2xl border-none text-base font-bold font-body cursor-pointer flex items-center justify-center gap-2 bg-gypi-amber text-gypi-on-amber"
               >
                 <Icon name="play" size={18} /> Iniciar tarea
               </button>
@@ -272,7 +272,7 @@ export default function ActividadScreen({
     return (
       <div className="font-body flex-1 overflow-y-auto">
         <div className="pt-5 px-5 flex items-center gap-3">
-          <button onClick={() => setShowHistorial(false)} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
+          <button onClick={() => setShowHistorial(false)} aria-label="Volver" className="min-w-[48px] min-h-[48px] -ml-2 bg-transparent border-none text-gypi-text cursor-pointer text-2xl flex items-center justify-center">←</button>
           <h2 className="m-0 font-heading text-[22px] font-bold flex-1">Historial de hoy</h2>
           <Tag color="#16A34A">{historial.length} tramos</Tag>
         </div>
@@ -322,7 +322,7 @@ export default function ActividadScreen({
     return (
       <div className="font-body flex flex-col flex-1 overflow-y-auto">
         <div className="pt-5 px-5 flex items-center gap-3">
-          <button onClick={() => { setState(tareaActiva ? "active" : "idle"); setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
+          <button onClick={() => { setState(tareaActiva ? "active" : "idle"); setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} aria-label="Volver" className="min-w-[48px] min-h-[48px] -ml-2 bg-transparent border-none text-gypi-text cursor-pointer text-2xl flex items-center justify-center">←</button>
           <div className="flex-1">
             <div className="g-overline text-gypi-amber">Nueva tarea</div>
             <div className="text-base font-bold font-heading">Paso {step} de 3</div>
@@ -456,7 +456,7 @@ export default function ActividadScreen({
 
                 <div className="flex gap-2">
                   <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer bg-gypi-surf-hi text-gypi-dim">Atrás</button>
-                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} className={`flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body ${proyectoSeleccionado ? 'bg-gypi-amber text-black cursor-pointer' : 'bg-gypi-surf-hi text-gypi-mute cursor-default'}`}>Siguiente →</button>
+                  <button disabled={!proyectoSeleccionado} onClick={() => setStep(3)} className={`flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body ${proyectoSeleccionado ? 'bg-gypi-amber text-gypi-on-amber cursor-pointer' : 'bg-gypi-surf-hi text-gypi-mute cursor-default'}`}>Siguiente →</button>
                 </div>
               </>)}
 
@@ -486,7 +486,7 @@ export default function ActividadScreen({
 
                 <div className="flex gap-2">
                   <button onClick={() => { setStep(1); setManualOT(""); setModoManual(false); }} className="flex-1 p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer bg-gypi-surf-hi text-gypi-dim">Atrás</button>
-                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} className={`flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body ${manualOT.trim() ? 'bg-gypi-amber text-black cursor-pointer' : 'bg-gypi-surf-hi text-gypi-mute cursor-default'}`}>Siguiente →</button>
+                  <button disabled={!manualOT.trim()} onClick={() => setStep(3)} className={`flex-[2] p-3.5 rounded-[14px] border-none text-sm font-bold font-body ${manualOT.trim() ? 'bg-gypi-amber text-gypi-on-amber cursor-pointer' : 'bg-gypi-surf-hi text-gypi-mute cursor-default'}`}>Siguiente →</button>
                 </div>
               </>)}
             </div>
@@ -557,7 +557,7 @@ export default function ActividadScreen({
     return (
       <div className="font-body flex-1">
         <div className="pt-5 px-5 flex items-center gap-3">
-          <button onClick={() => setState(tareaActiva ? "active" : "selecting")} className="bg-transparent border-none text-gypi-text cursor-pointer p-1.5 text-xl">←</button>
+          <button onClick={() => setState(tareaActiva ? "active" : "selecting")} aria-label="Volver" className="min-w-[48px] min-h-[48px] -ml-2 bg-transparent border-none text-gypi-text cursor-pointer text-2xl flex items-center justify-center">←</button>
           <div>
             <div className="g-overline text-gypi-red">Tiempo muerto</div>
             <div className="text-base font-bold font-heading">¿Cuál es la causa?</div>
@@ -618,7 +618,7 @@ export default function ActividadScreen({
         </div>
 
         <div className="flex gap-2.5">
-          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className={`flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-amber text-black ${saving ? 'opacity-50' : ''}`}><Icon name="refresh" size={15} /> Cambiar tarea</button>
+          <button onClick={() => finalizarTarea("cambiar")} disabled={saving} className={`flex-[2] p-4 rounded-2xl border-none text-sm font-bold font-body cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-amber text-gypi-on-amber ${saving ? 'opacity-50' : ''}`}><Icon name="refresh" size={15} /> Cambiar tarea</button>
           {!isEspera && (
             <button onClick={() => setState("pausing")} disabled={saving} aria-label="Registrar espera / tiempo muerto" className={`flex-1 p-4 rounded-2xl text-sm font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red flex items-center justify-center ${saving ? 'opacity-50' : ''}`}><Icon name="pause" size={18} /></button>
           )}

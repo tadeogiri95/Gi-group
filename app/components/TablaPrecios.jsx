@@ -40,7 +40,7 @@ export default function TablaPrecios({ onEmpezar }) {
           <span aria-hidden="true" style={{ position: "absolute", top: 2, left: anual ? 22 : 3, width: 18, height: 18, borderRadius: "50%", transition: "left 0.2s", background: anual ? "#000" : "var(--color-text-muted)" }} />
         </button>
         <span style={{ fontSize: 13, fontWeight: anual ? 700 : 400, color: anual ? TEXT : DIM }}>
-          Anual <span style={{ fontSize: 10, color: GREEN, fontWeight: 700 }}>-{Math.round(DESCUENTO_ANUAL * 100)}%</span>
+          Anual <span style={{ fontSize: 12, color: GREEN, fontWeight: 700 }}>-{Math.round(DESCUENTO_ANUAL * 100)}%</span>
         </span>
       </div>
 

@@ -37,7 +37,7 @@ const pctColor = (pct) => pct >= 95 ? GREEN : pct >= 80 ? AMBER : RED;
 const KPI = ({ value, label, color }) => (
   <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border text-center">
     <div className="font-heading text-2xl font-bold" style={{ color }}>{value}</div>
-    <div className="text-[9px] text-gypi-dim font-bold uppercase mt-0.5">{label}</div>
+    <div className="text-[11px] text-gypi-dim font-bold uppercase mt-0.5">{label}</div>
   </div>
 );
 
@@ -214,15 +214,15 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
       <div className="grid grid-cols-3 gap-2 mb-3.5">
         <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
           <div className="font-heading text-xl font-bold text-gypi-green">{resumen.length}</div>
-          <div className="text-[9px] text-gypi-dim font-bold">Proyectos</div>
+          <div className="text-[11px] text-gypi-dim font-bold">Proyectos</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
           <div className="font-heading text-xl font-bold text-gypi-cyan">{empsUnicos}</div>
-          <div className="text-[9px] text-gypi-dim font-bold">Empleados</div>
+          <div className="text-[11px] text-gypi-dim font-bold">Empleados</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
           <div className="font-heading text-xl font-bold text-gypi-amber">{fmtMin(totalMin)}</div>
-          <div className="text-[9px] text-gypi-dim font-bold">Tiempo total</div>
+          <div className="text-[11px] text-gypi-dim font-bold">Tiempo total</div>
         </div>
       </div>
 
@@ -250,22 +250,22 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold text-gypi-text truncate">OT {p.ot}{p.nombre ? ` — ${p.nombre}` : ""}</div>
-                  <div className="text-[10px] text-gypi-dim mt-0.5">{Object.keys(p.empleados).length} empleado{Object.keys(p.empleados).length !== 1 ? "s" : ""} · {p.registros} registro{p.registros !== 1 ? "s" : ""}</div>
+                  <div className="text-xs text-gypi-dim mt-0.5">{Object.keys(p.empleados).length} empleado{Object.keys(p.empleados).length !== 1 ? "s" : ""} · {p.registros} registro{p.registros !== 1 ? "s" : ""}</div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-heading text-sm font-bold text-gypi-amber">{fmtMin(p.totalMin)}</div>
-                  <div className="text-[9px] text-gypi-dim">{isExpanded ? "▲" : "▼"}</div>
+                  <div className="text-[11px] text-gypi-dim">{isExpanded ? "▲" : "▼"}</div>
                 </div>
               </button>
 
               {isExpanded && (
                 <div className="px-3 pb-3 pt-0 border-t border-gypi-border">
-                  <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.06em] mt-2.5 mb-1.5">Detalle por empleado</div>
+                  <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.06em] mt-2.5 mb-1.5">Detalle por empleado</div>
                   {p.empleadosList.map((e, i) => (
                     <div key={i} className="flex items-center justify-between py-1.5 border-b border-gypi-border last:border-b-0">
                       <div className="text-xs text-gypi-text font-semibold">L-{e.legajo}</div>
                       <div className="flex items-center gap-3">
-                        <span className="text-[10px] text-gypi-dim">{e.registros} reg.</span>
+                        <span className="text-xs text-gypi-dim">{e.registros} reg.</span>
                         <span className="text-xs font-bold text-gypi-cyan font-heading">{fmtMin(e.min)}</span>
                       </div>
                     </div>
@@ -302,11 +302,11 @@ function ReportesObraTab({ empresaId }) {
   return (
     <>
       <div className="flex items-center justify-between mb-3.5 bg-gypi-surface rounded-[14px] py-2.5 px-4 border border-gypi-border">
-        <button onClick={() => cambiarFecha(-1)} className="bg-transparent border-none text-gypi-text cursor-pointer text-lg p-1">←</button>
+        <button onClick={() => cambiarFecha(-1)} aria-label="Día anterior" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">←</button>
         <span className="font-heading text-sm font-bold text-gypi-text">
           {new Date(fechaFiltro + "T12:00:00").toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "long", year: "numeric" })}
         </span>
-        <button onClick={() => cambiarFecha(1)} className="bg-transparent border-none text-gypi-text cursor-pointer text-lg p-1">→</button>
+        <button onClick={() => cambiarFecha(1)} aria-label="Día siguiente" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">→</button>
       </div>
 
       {loading ? (
@@ -336,19 +336,19 @@ function ReportesObraTab({ empresaId }) {
                     <div className="text-[11px] text-gypi-dim mt-0.5 truncate">{r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}</div>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-[10px] text-gypi-dim">{new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-xs text-gypi-dim">{new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={"var(--color-text-muted)"} strokeWidth="2" style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9" /></svg>
                   </div>
                 </div>
                 {isExpanded && (
                   <div className="px-3 pb-3.5 border-t border-gypi-border">
                     <div className="py-3 pb-2">
-                      <div className="text-[10px] font-bold text-gypi-green uppercase tracking-[0.06em] mb-1.5">✅ Progreso</div>
+                      <div className="text-xs font-bold text-gypi-green uppercase tracking-[0.06em] mb-1.5">✅ Progreso</div>
                       <div className="text-[13px] text-gypi-text leading-relaxed">{r.progreso || "—"}</div>
                     </div>
                     {r.faltantes?.length > 0 && (
                       <div className="py-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${RED}10`, border: `1px solid ${RED}18` }}>
-                        <div className="text-[10px] font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: RED }}>🚫 Faltantes</div>
+                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: RED }}>🚫 Faltantes</div>
                         <div className="flex flex-wrap gap-1">
                           {r.faltantes.map((f, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold" style={{ background: `${RED}20`, color: RED }}>{f}</span>)}
                         </div>
@@ -356,7 +356,7 @@ function ReportesObraTab({ empresaId }) {
                     )}
                     {r.desvios?.length > 0 && (
                       <div className="py-2 px-2.5 rounded-[10px] mb-2" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 9%, transparent)` }}>
-                        <div className="text-[10px] font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: AMBER }}>⚠️ Desvíos</div>
+                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: AMBER }}>⚠️ Desvíos</div>
                         <div className="flex flex-wrap gap-1">
                           {r.desvios.map((d, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>)}
                         </div>
@@ -364,12 +364,12 @@ function ReportesObraTab({ empresaId }) {
                     )}
                     {tieneFotos && (
                       <div className="py-2">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.06em] mb-2" style={{ color: CYAN }}>📷 Fotos ({r.fotos_urls.length})</div>
+                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-2" style={{ color: CYAN }}>📷 Fotos ({r.fotos_urls.length})</div>
                         <div className="gap-2" style={{ display: "grid", gridTemplateColumns: r.fotos_urls.length === 1 ? "1fr" : "repeat(2, 1fr)" }}>
                           {r.fotos_urls.map((url, i) => (
                             <div key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} className="cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative" style={{ aspectRatio: r.fotos_urls.length === 1 ? "16/9" : "1" }}>
                               <Image src={url} alt={`Foto ${i + 1}`} fill sizes="(max-width: 768px) 50vw, 300px" className="object-cover" />
-                              <div className="absolute bottom-1.5 right-1.5 py-[3px] px-2 rounded-md bg-black/60 text-white text-[10px] font-semibold">🔍 Ampliar</div>
+                              <div className="absolute bottom-1.5 right-1.5 py-[3px] px-2 rounded-md bg-black/60 text-white text-xs font-semibold">🔍 Ampliar</div>
                             </div>
                           ))}
                         </div>
@@ -473,19 +473,19 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
       <div className="grid grid-cols-4 gap-2 mb-3.5">
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-text">{fmtHora(totales.minutos)}</div>
-          <div className="text-[9px] text-gypi-dim font-bold">Horas</div>
+          <div className="text-[11px] text-gypi-dim font-bold">Horas</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-amber">{fmtHora(totales.minutosExtra)}</div>
-          <div className="text-[9px] text-gypi-dim font-bold">Hs. extra</div>
+          <div className="text-[11px] text-gypi-dim font-bold">Hs. extra</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-red">{totales.tardanzas}</div>
-          <div className="text-[9px] text-gypi-dim font-bold">Tardanzas</div>
+          <div className="text-[11px] text-gypi-dim font-bold">Tardanzas</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-cyan">{totales.ausencias}</div>
-          <div className="text-[9px] text-gypi-dim font-bold">Ausencias</div>
+          <div className="text-[11px] text-gypi-dim font-bold">Ausencias</div>
         </div>
       </div>
 
@@ -499,7 +499,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
             <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-[11px] font-bold shrink-0" style={{ background: `${RED}15`, color: RED }}>L-{d.legajo}</div>
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-bold text-gypi-text truncate">{d.nombre}</div>
-              <div className="text-[10px] text-gypi-dim mt-0.5">
+              <div className="text-xs text-gypi-dim mt-0.5">
                 {fmtHora(Math.round((Number(d.horas_trabajadas) || 0) * 60))} trabajadas
                 {d.tardanzas > 0 && <span style={{ color: AMBER }}> · {d.tardanzas} tard. ({d.minutos_tarde}m)</span>}
                 {d.horas_extra > 0 && <span style={{ color: GREEN }}> · {fmtHora(Math.round(Number(d.horas_extra) * 60))} extra</span>}
@@ -669,11 +669,11 @@ export default function ReportesScreen() {
 
       {/* Nav periodo */}
       <div className="flex items-center justify-between py-2.5 px-3.5 bg-gypi-surface rounded-[14px] border border-gypi-border mb-3.5">
-        <button onClick={navAnterior} className="bg-transparent border-none text-gypi-text cursor-pointer text-lg py-1 px-2">←</button>
+        <button onClick={navAnterior} aria-label="Anterior" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">←</button>
         <div className="text-center">
           <div className="text-sm font-bold text-gypi-text font-heading">{labelPeriodo}</div>
         </div>
-        <button onClick={navSiguiente} className="bg-transparent border-none text-gypi-text cursor-pointer text-lg py-1 px-2">→</button>
+        <button onClick={navSiguiente} aria-label="Siguiente" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">→</button>
       </div>
 
       {/* Filtro división */}
@@ -731,7 +731,7 @@ export default function ReportesScreen() {
                       {periodo === "semana" && (
                         <div className="flex gap-[3px]">
                           {c.diasData.map((d, i) => (
-                            <div key={i} className="w-[18px] h-[18px] rounded text-[9px] font-bold flex items-center justify-center" style={{ background: `${d.color}22`, color: d.color }}>{d.icon}</div>
+                            <div key={i} className="w-[18px] h-[18px] rounded text-[11px] font-bold flex items-center justify-center" style={{ background: `${d.color}22`, color: d.color }}>{d.icon}</div>
                           ))}
                         </div>
                       )}
@@ -742,22 +742,22 @@ export default function ReportesScreen() {
                         <div className="flex gap-2 mt-3 mb-3">
                           <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `${GREEN}12` }}>
                             <div className="font-mono text-sm font-bold text-gypi-green">{c.presentes}/{c.laborales}</div>
-                            <div className="text-[9px] text-gypi-dim">Presentes</div>
+                            <div className="text-[11px] text-gypi-dim">Presentes</div>
                           </div>
                           <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `${pctColor(c.pctHoras)}12` }}>
                             <div className="font-mono text-sm font-bold" style={{ color: pctColor(c.pctHoras) }}>{c.pctHoras}%</div>
-                            <div className="text-[9px] text-gypi-dim">Horas</div>
+                            <div className="text-[11px] text-gypi-dim">Horas</div>
                           </div>
                           {c.totalTardanzaMin > 0 && (
                             <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
                               <div className="font-mono text-sm font-bold text-gypi-amber">{c.totalTardanzaMin}m</div>
-                              <div className="text-[9px] text-gypi-dim">Tard. total</div>
+                              <div className="text-[11px] text-gypi-dim">Tard. total</div>
                             </div>
                           )}
                         </div>
                         {c.diasData.filter(d => d.estado !== "futuro").map((d, i) => (
                           <div key={i} className="flex items-center gap-2 py-[7px]" style={{ borderBottom: i < c.diasData.filter(x => x.estado !== "futuro").length - 1 ? `1px solid ${"var(--color-border)"}` : "none" }}>
-                            <div className="w-[22px] h-[22px] rounded-md text-[10px] font-bold flex items-center justify-center" style={{ background: `${d.color}22`, color: d.color }}>{d.icon}</div>
+                            <div className="w-[22px] h-[22px] rounded-md text-xs font-bold flex items-center justify-center" style={{ background: `${d.color}22`, color: d.color }}>{d.icon}</div>
                             <div className="w-10 text-[11px] font-semibold text-gypi-text">{d.fecha.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit" })}</div>
                             <div className="flex-1 text-[11px] text-gypi-dim truncate">{d.detalle || d.estado}</div>
                           </div>
@@ -811,19 +811,19 @@ export default function ReportesScreen() {
             <div className="grid grid-cols-2 gap-2">
               <div className="py-2.5 text-center rounded-[10px]" style={{ background: `${GREEN}10` }}>
                 <div className="font-heading text-[22px] font-bold text-gypi-green">{metricas.pctPromedio}%</div>
-                <div className="text-[10px] text-gypi-dim mt-0.5">Asistencia prom.</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Asistencia prom.</div>
               </div>
               <div className="py-2.5 text-center rounded-[10px]" style={{ background: `${pctColor(metricas.pctHorasPromedio)}10` }}>
                 <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(metricas.pctHorasPromedio) }}>{metricas.pctHorasPromedio}%</div>
-                <div className="text-[10px] text-gypi-dim mt-0.5">Cumpl. horas</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Cumpl. horas</div>
               </div>
               <div className="py-2.5 text-center rounded-[10px]" style={{ background: `${RED}10` }}>
                 <div className="font-heading text-[22px] font-bold text-gypi-red">{metricas.totalAusencias}</div>
-                <div className="text-[10px] text-gypi-dim mt-0.5">Ausencias totales</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Ausencias totales</div>
               </div>
               <div className="py-2.5 text-center rounded-[10px]" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)` }}>
                 <div className="font-heading text-[22px] font-bold text-gypi-amber">{metricas.totalTardanzas}</div>
-                <div className="text-[10px] text-gypi-dim mt-0.5">Tardanzas totales</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Tardanzas totales</div>
               </div>
             </div>
             <div className="mt-3 text-[11px] text-gypi-dim text-center">{metricas.total} empleados · {metricas.perfectos} con asistencia perfecta</div>

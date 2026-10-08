@@ -21,7 +21,7 @@ function Teclado({ onTecla, okHabilitado, okTexto = "Seguir" }) {
           disabled={t === "ok" && !okHabilitado}
           aria-label={t === "borrar" ? "Borrar" : t === "ok" ? okTexto : t}
           className={`h-[68px] rounded-2xl border text-2xl font-bold cursor-pointer disabled:opacity-40 ${
-            t === "ok" ? "bg-gypi-amber text-white border-transparent text-base" : "bg-gypi-surface border-gypi-border text-gypi-text"
+            t === "ok" ? "bg-gypi-amber text-gypi-on-amber border-transparent text-base" : "bg-gypi-surface border-gypi-border text-gypi-text"
           }`}
         >
           {t === "borrar" ? "⌫" : t === "ok" ? okTexto : t}
@@ -148,7 +148,7 @@ export default function KioscoScreen({ empresa, slug }) {
               {resultado.apodo && <div className="text-2xl font-bold text-gypi-text mb-1">{resultado.apodo}</div>}
               <div className="text-lg text-gypi-text">{resultado.error || "No se pudo fichar."}</div>
               {resultado.tipo === "tarea_activa" && (
-                <button onClick={() => enviar(pin, { forzar_cierre_tarea: true })} className="mt-4 min-h-[56px] px-6 rounded-xl border-none bg-gypi-amber text-white font-bold cursor-pointer">
+                <button onClick={() => enviar(pin, { forzar_cierre_tarea: true })} className="mt-4 min-h-[56px] px-6 rounded-xl border-none bg-gypi-amber text-gypi-on-amber font-bold cursor-pointer">
                   Finalizar tarea y fichar salida
                 </button>
               )}

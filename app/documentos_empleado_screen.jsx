@@ -349,7 +349,7 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
                     <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0" style={{ border: `2px solid ${sel ? CYAN : "var(--color-text-muted)"}`, background: sel ? CYAN : "transparent", color: "#000" }}>{sel && "✓"}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.nombre}</div>
-                      <div className="text-[10px] text-gypi-dim truncate">{divisiones.find((d) => d.id === emp.division)?.label || "Sin división"}</div>
+                      <div className="text-xs text-gypi-dim truncate">{divisiones.find((d) => d.id === emp.division)?.label || "Sin división"}</div>
                     </div>
                   </button>
                 );
@@ -386,7 +386,7 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
                     <button onClick={() => setExpandedEmp(isExp ? null : emp.id)} aria-expanded={isExp} className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left">
                       <div className="flex-1 min-w-0">
                         <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
-                        <div className="text-[10px] text-gypi-dim mt-0.5">{divisiones.find((d) => d.id === emp.division)?.label || "Sin división"}</div>
+                        <div className="text-xs text-gypi-dim mt-0.5">{divisiones.find((d) => d.id === emp.division)?.label || "Sin división"}</div>
                       </div>
                       {total > 0 && <Tag color={color}>{completos}/{total} documentos</Tag>}
                       <span className="text-gypi-dim text-xs transition-transform" style={{ transform: isExp ? "rotate(90deg)" : "rotate(0)" }}>▶</span>
@@ -403,12 +403,12 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
                                 {docs.length > 0 ? (
                                   <>
                                     <Tag color={GREEN}>cargado</Tag>
-                                    <button onClick={() => descargar(docs[0].id)} className="py-1 px-2 rounded-md border-none bg-gypi-cyan/15 text-gypi-cyan text-[10px] font-bold cursor-pointer">⬇ Ver</button>
+                                    <button onClick={() => descargar(docs[0].id)} className="py-1 px-2 rounded-md border-none bg-gypi-cyan/15 text-gypi-cyan text-xs font-bold cursor-pointer">⬇ Ver</button>
                                   </>
                                 ) : (
                                   <>
                                     <Tag color={RED}>falta</Tag>
-                                    <button onClick={() => desasignar(emp.id, tipo.id)} className="py-1 px-2 rounded-md border-none bg-gypi-surf-hi text-gypi-dim text-[10px] font-bold cursor-pointer">Quitar</button>
+                                    <button onClick={() => desasignar(emp.id, tipo.id)} className="py-1 px-2 rounded-md border-none bg-gypi-surf-hi text-gypi-dim text-xs font-bold cursor-pointer">Quitar</button>
                                   </>
                                 )}
                               </div>

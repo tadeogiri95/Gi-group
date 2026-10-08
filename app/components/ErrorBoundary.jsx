@@ -57,7 +57,7 @@ class ErrorBoundary extends Component {
 
           {/* Error detail (dev only) */}
           {process.env.NODE_ENV === "development" && this.state.error && (
-            <pre className="text-[10px] text-gypi-red/70 bg-gypi-surface rounded-lg p-3 mb-4 max-w-full overflow-x-auto text-left font-mono">
+            <pre className="text-xs text-gypi-red/70 bg-gypi-surface rounded-lg p-3 mb-4 max-w-full overflow-x-auto text-left font-mono">
               {this.state.error.message}
             </pre>
           )}

@@ -54,7 +54,7 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
             ✓ Contraseña actualizada. Ya podés iniciar sesión.
           </div>
           <button onClick={onVolver}
-            className="w-full py-3.5 rounded-xl border-none bg-gypi-amber text-white text-base font-bold font-heading cursor-pointer">
+            className="w-full py-3.5 rounded-xl border-none bg-gypi-amber text-gypi-on-amber text-base font-bold font-heading cursor-pointer">
             Ir al login
           </button>
         </div>
@@ -95,7 +95,7 @@ export default function ResetPasswordScreen({ token, empresa, onVolver }) {
           <button
             onClick={resetear}
             disabled={loading || !nueva || !confirmar}
-            className={`w-full py-3.5 rounded-xl border-none bg-gypi-amber text-white text-base font-bold font-heading cursor-pointer ${(loading || !nueva || !confirmar) ? "opacity-60" : "opacity-100"}`}>
+            className={`w-full py-3.5 rounded-xl border-none bg-gypi-amber text-gypi-on-amber text-base font-bold font-heading cursor-pointer ${(loading || !nueva || !confirmar) ? "opacity-60" : "opacity-100"}`}>
             {loading ? "Guardando..." : "Guardar nueva contraseña"}
           </button>
         </>

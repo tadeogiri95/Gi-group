@@ -54,8 +54,8 @@ export default function BottomNav({ active, onChange, role, pend, modulos }) {
             onClick={() => onChange(item.id)}
             aria-label={item.label}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex-1 bg-transparent border-none py-1 px-0 flex flex-col items-center gap-0.5 cursor-pointer font-body text-[10px] transition-colors duration-150 ${
-              isActive ? 'text-gypi-amber font-bold' : 'text-gypi-dim font-medium'
+            className={`flex-1 min-h-[52px] bg-transparent border-none py-1 px-0 flex flex-col items-center gap-0.5 cursor-pointer font-body text-xs transition-colors duration-150 ${
+              isActive ? 'text-gypi-text font-bold' : 'text-gypi-dim font-medium'
             }`}
           >
             <div
@@ -73,7 +73,7 @@ export default function BottomNav({ active, onChange, role, pend, modulos }) {
               </span>
               {item.badge > 0 && (
                 <span
-                  className="absolute -top-0.5 flex items-center justify-center min-w-[17px] h-[17px] px-[5px] rounded-full bg-gypi-red text-white text-[9px] font-extrabold font-mono"
+                  className="absolute -top-0.5 flex items-center justify-center min-w-[20px] h-[20px] px-[5px] rounded-full bg-gypi-red text-white text-[11px] font-extrabold font-mono"
                   style={{
                     right: isActive ? 2 : -2,
                     border: '2px solid var(--color-bg)',

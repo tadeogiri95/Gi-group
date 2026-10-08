@@ -66,7 +66,7 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
                   <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: n.color || AMBER }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold text-gypi-text">{n.texto}</div>
-                    {emp && <div className="text-[10px] text-gypi-dim mt-0.5">{emp.apodo || emp.nombre}</div>}
+                    {emp && <div className="text-xs text-gypi-dim mt-0.5">{emp.apodo || emp.nombre}</div>}
                   </div>
                 </div>
               );
@@ -131,7 +131,7 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
 
         {turnosDia.length > 0 && (
           <div className="mb-4">
-            <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Turnos asignados</div>
+            <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Turnos asignados</div>
             {turnosDia.map((t, i) => {
               const emp = empleados.find(e => e.id === t.empleado_id);
               return (
@@ -139,9 +139,9 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
                   <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: CYAN }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold text-gypi-text">{emp?.nombre || "?"}</div>
-                    <div className="text-[10px] text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
+                    <div className="text-xs text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
                   </div>
-                  <button onClick={() => onDelete(t.id)} aria-label="Eliminar turno" className="text-[10px] px-2 py-1 rounded-md border-none cursor-pointer" style={{ background: `${RED}15`, color: RED }}>✕</button>
+                  <button onClick={() => onDelete(t.id)} aria-label="Eliminar turno" className="text-xs px-2 py-1 rounded-md border-none cursor-pointer" style={{ background: `${RED}15`, color: RED }}>✕</button>
                 </div>
               );
             })}
@@ -339,7 +339,7 @@ export default function CalendarioScreen({ empresaId }) {
           {/* Headers días */}
           <div role="row" className="grid grid-cols-7 gap-0.5 mb-1">
             {DIAS_LABEL.map(d => (
-              <div key={d} role="columnheader" className="text-center text-[10px] font-bold text-gypi-mute py-1 uppercase">{d}</div>
+              <div key={d} role="columnheader" className="text-center text-xs font-bold text-gypi-mute py-1 uppercase">{d}</div>
             ))}
           </div>
 
@@ -358,8 +358,8 @@ export default function CalendarioScreen({ empresaId }) {
                   background: isHoy ? `color-mix(in srgb, ${AMBER} 7%, transparent)` : tieneNotas ? `${CYAN}08` : "var(--color-surface)",
                 }}>
                   <div className="font-heading" style={{ fontSize: 14, fontWeight: isHoy ? 800 : 600, color: isHoy ? AMBER : esFinDeSemana ? "var(--color-text-muted)" : "var(--color-text)" }}>{dia}</div>
-                  {info.disponibles > 0 && <div className="text-[8px] font-bold" style={{ color: GREEN }}>{info.disponibles}👷</div>}
-                  {info.turnos.length > 0 && <div className="text-[8px] font-bold" style={{ color: CYAN }}>{info.turnos.length}⏱</div>}
+                  {info.disponibles > 0 && <div className="text-[11px] font-bold" style={{ color: GREEN }}>{info.disponibles}👷</div>}
+                  {info.turnos.length > 0 && <div className="text-[11px] font-bold" style={{ color: CYAN }}>{info.turnos.length}⏱</div>}
                   {tieneNotas && (
                     <div className="flex gap-0.5">
                       {info.notas.slice(0, 3).map((n, i) => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: n.color || AMBER }} />)}
@@ -391,14 +391,14 @@ export default function CalendarioScreen({ empresaId }) {
 
                 {info.turnos.length > 0 && (
                   <div className="mb-3">
-                    <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Turnos planificados</div>
+                    <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Turnos planificados</div>
                     {info.turnos.map((t, i) => {
                       const emp = empleados.find(e => e.id === t.empleado_id);
                       return (
                         <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${CYAN}10`, borderLeft: `3px solid ${CYAN}` }}>
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text">{emp?.nombre || "?"} <span className="font-normal text-gypi-dim">· {emp?.division || "sin div."}</span></div>
-                            <div className="text-[10px] text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
+                            <div className="text-xs text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
                           </div>
                         </div>
                       );
@@ -413,7 +413,7 @@ export default function CalendarioScreen({ empresaId }) {
                       return (
                         <div key={i} className="p-2 rounded-lg mb-1.5" style={{ background: `${n.color || AMBER}10`, borderLeft: `3px solid ${n.color || AMBER}` }}>
                           <div className="text-xs font-semibold text-gypi-text">{n.texto}</div>
-                          {emp && <div className="text-[10px] text-gypi-dim mt-0.5">{emp.apodo || emp.nombre} · {emp.division || "general"}</div>}
+                          {emp && <div className="text-xs text-gypi-dim mt-0.5">{emp.apodo || emp.nombre} · {emp.division || "general"}</div>}
                         </div>
                       );
                     })}
@@ -428,8 +428,8 @@ export default function CalendarioScreen({ empresaId }) {
                     return (
                       <div key={emp.id} className="py-1 px-2 rounded-md flex items-center gap-1" style={{ background: franco ? `${"var(--color-text-muted)"}15` : `${GREEN}12` }}>
                         <div className="w-[5px] h-[5px] rounded-full" style={{ background: franco ? "var(--color-text-muted)" : GREEN }} />
-                        <span className="text-[10px] font-semibold" style={{ color: franco ? "var(--color-text-muted)" : "var(--color-text)" }}>{emp.apodo || emp.nombre.split(" ")[0]}</span>
-                        {horario && <span className="text-[9px] text-gypi-dim font-mono">{horario.in}</span>}
+                        <span className="text-xs font-semibold" style={{ color: franco ? "var(--color-text-muted)" : "var(--color-text)" }}>{emp.apodo || emp.nombre.split(" ")[0]}</span>
+                        {horario && <span className="text-[11px] text-gypi-dim font-mono">{horario.in}</span>}
                       </div>
                     );
                   })}
@@ -444,11 +444,11 @@ export default function CalendarioScreen({ empresaId }) {
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
                 <div className="font-heading text-xl font-bold text-gypi-green">{empsFiltrados.filter(e => e.rol === "operativo").length}</div>
-                <div className="text-[9px] text-gypi-dim">Operativos</div>
+                <div className="text-[11px] text-gypi-dim">Operativos</div>
               </div>
               <div className="text-center">
                 <div className="font-heading text-xl font-bold text-gypi-amber">{notas.length}</div>
-                <div className="text-[9px] text-gypi-dim">Notas</div>
+                <div className="text-[11px] text-gypi-dim">Notas</div>
               </div>
               <div className="text-center">
                 <div className="font-heading text-xl font-bold text-gypi-cyan">
@@ -461,7 +461,7 @@ export default function CalendarioScreen({ empresaId }) {
                     return diasLab;
                   })()}
                 </div>
-                <div className="text-[9px] text-gypi-dim">Días hábiles</div>
+                <div className="text-[11px] text-gypi-dim">Días hábiles</div>
               </div>
             </div>
           </div>

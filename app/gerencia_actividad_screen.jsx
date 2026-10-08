@@ -153,22 +153,22 @@ export default function GerenciaActividadScreen({ empresaId }) {
           {/* Cards resumen */}
           <div className="grid grid-cols-2 gap-2 mb-4">
             <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.08em]">Trabajando</div>
+              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">Trabajando</div>
               <div className="font-heading text-[28px] font-bold text-gypi-green mt-1">{enActividad}</div>
               <div className="text-[11px] text-gypi-dim mt-0.5">{fmtMinutos(totalMinProd)} acumuladas</div>
             </div>
             <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.08em]">En espera</div>
+              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">En espera</div>
               <div className="font-heading text-[28px] font-bold text-gypi-red mt-1">{enEspera}</div>
               <div className="text-[11px] text-gypi-dim mt-0.5">{fmtMinutos(totalMinEspera)} acumuladas</div>
             </div>
             <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.08em]">Sin tarea</div>
+              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">Sin tarea</div>
               <div className="font-heading text-[28px] font-bold text-gypi-mute mt-1">{sinTarea}</div>
               <div className="text-[11px] text-gypi-dim mt-0.5">de {totalOperarios} total</div>
             </div>
             <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-[10px] font-bold text-gypi-dim uppercase tracking-[0.08em]">% Productivo</div>
+              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">% Productivo</div>
               <div className="font-heading text-[28px] font-bold mt-1" style={{ color: (totalMinProd + totalMinEspera) > 0 ? (totalMinProd / (totalMinProd + totalMinEspera) >= 0.7 ? GREEN : AMBER) : "var(--color-text-muted)" }}>
                 {(totalMinProd + totalMinEspera) > 0 ? Math.round(totalMinProd * 100 / (totalMinProd + totalMinEspera)) : 0}%
               </div>
@@ -256,7 +256,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                   ) : (
                                     <Tag color={"var(--color-text-muted)"}>—</Tag>
                                   )}
-                                  <span className="text-[10px] text-gypi-mute" style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+                                  <span className="text-xs text-gypi-mute" style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
                                 </div>
                               </div>
 
@@ -354,11 +354,11 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                             <span className="font-mono text-[11px] font-semibold text-gypi-text">
                                               {fmtHora(act.hora_inicio)} → {enCurso ? "en curso" : fmtHora(act.hora_fin)}
                                             </span>
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: tipoAct.bg, color: tipoAct.color }}>
+                                            <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: tipoAct.bg, color: tipoAct.color }}>
                                               {tipoAct.label}
                                             </span>
                                             {enCurso && (
-                                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>
+                                              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>
                                                 EN CURSO
                                               </span>
                                             )}
@@ -386,7 +386,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
 
                                           {/* Línea 3: tipo de registro + causa (si aplica) */}
                                           {(act.tipo !== "N" || act.causa) && (
-                                            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gypi-dim">
+                                            <div className="flex items-center gap-1.5 mt-1 text-xs text-gypi-dim">
                                               {act.tipo !== "N" && (
                                                 <span className="font-bold" style={{ color: tipoReg.color }}>
                                                   {tipoReg.nombre}
@@ -400,7 +400,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
 
                                           {/* Observaciones */}
                                           {act.observaciones && (
-                                            <div className="mt-1 text-[10px] text-gypi-dim italic truncate">
+                                            <div className="mt-1 text-xs text-gypi-dim italic truncate">
                                               "{act.observaciones}"
                                             </div>
                                           )}
@@ -409,7 +409,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                     })}
 
                                     {/* Resumen del detalle */}
-                                    <div className="mt-1 pt-2 flex gap-3 text-[10px] text-gypi-dim" style={{ borderTop: `1px solid ${"var(--color-border)"}` }}>
+                                    <div className="mt-1 pt-2 flex gap-3 text-xs text-gypi-dim" style={{ borderTop: `1px solid ${"var(--color-border)"}` }}>
                                       <span>{actividades.length} actividad{actividades.length !== 1 ? "es" : ""}</span>
                                       <span>·</span>
                                       <span className="font-semibold" style={{ color: GREEN }}>
@@ -442,7 +442,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
           <button onClick={cargarResumen} aria-label="Actualizar datos de actividad" className="w-full mt-3 p-3 rounded-xl bg-gypi-surface border border-gypi-border text-gypi-dim text-xs font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5">
             🔄 Actualizar datos
           </button>
-          <div className="text-center mt-2 text-[10px] text-gypi-mute">
+          <div className="text-center mt-2 text-xs text-gypi-mute">
             Se actualiza automáticamente cada 60 segundos
           </div>
         </>

@@ -36,7 +36,7 @@ export function useConfirm() {
         <button
           onClick={handleConfirm}
           className={`flex-1 py-3 px-4 rounded-xl border-none text-sm font-bold font-body cursor-pointer min-h-[44px] ${
-            state.destructive ? "bg-gypi-red text-white" : "bg-gypi-amber text-white"
+            state.destructive ? "bg-gypi-red text-white" : "bg-gypi-amber text-gypi-on-amber"
           }`}
         >
           {state.confirmLabel}

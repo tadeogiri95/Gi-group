@@ -62,23 +62,23 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
       </div>
 
       <div className="g-card flex items-center justify-between !py-2.5 !px-4 mb-4">
-        <button onClick={() => cambiarMes(-1)} aria-label="Mes anterior" className="bg-transparent border-none text-gypi-text cursor-pointer text-lg p-1">←</button>
+        <button onClick={() => cambiarMes(-1)} aria-label="Mes anterior" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">←</button>
         <span className="font-heading text-base font-bold text-gypi-text">{mesLabel}</span>
-        <button onClick={() => cambiarMes(1)} aria-label="Mes siguiente" className="bg-transparent border-none text-gypi-text cursor-pointer text-lg p-1">→</button>
+        <button onClick={() => cambiarMes(1)} aria-label="Mes siguiente" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">→</button>
       </div>
 
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="g-card text-center !p-3.5">
           <div className="font-heading text-[22px] font-bold" style={{ color: totalTardes > 0 ? "#F59E0B" : GREEN }}>{totalTardes}</div>
-          <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Tardes total</div>
+          <div className="text-xs text-gypi-dim font-semibold mt-0.5">Tardes total</div>
         </div>
         <div className="rounded-[14px] p-3.5 text-center" style={{ background: `color-mix(in srgb, ${AMBER} 3%, transparent)`, border: "1px solid #F59E0B30" }}>
           <div className="font-heading text-[22px] font-bold" style={{ color: "#F59E0B" }}>{tardesComunes.length}</div>
-          <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Comunes</div>
+          <div className="text-xs text-gypi-dim font-semibold mt-0.5">Comunes</div>
         </div>
         <div className="rounded-[14px] p-3.5 text-center" style={{ background: `${RED}08`, border: `1px solid ${RED}30` }}>
           <div className="font-heading text-[22px] font-bold text-gypi-red">{tardesExcedidas.length}</div>
-          <div className="text-[10px] text-gypi-dim font-semibold mt-0.5">Exceden la regla</div>
+          <div className="text-xs text-gypi-dim font-semibold mt-0.5">Exceden la regla</div>
         </div>
       </div>
 
@@ -107,8 +107,8 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
                     {f.horas_trabajadas && <div className="text-[11px] text-gypi-dim mt-0.5">{Number(f.horas_trabajadas).toFixed(1)}h trabajadas</div>}
                   </div>
                   <div className="text-right">
-                    <span className="inline-flex items-center gap-1 py-[3px] px-2 rounded-md text-[10px] font-bold" style={{ background: `color-mix(in srgb, ${statusColor} 13%, transparent)`, color: statusColor }}>{statusIcon} {statusLabel}</span>
-                    {f.llegada_tarde && tardeCuenta > 0 && <div className="text-[10px] font-semibold mt-1" style={{ color: statusColor }}>Tarde #{tardeCuenta} del mes</div>}
+                    <span className="inline-flex items-center gap-1 py-[3px] px-2 rounded-md text-xs font-bold" style={{ background: `color-mix(in srgb, ${statusColor} 13%, transparent)`, color: statusColor }}>{statusIcon} {statusLabel}</span>
+                    {f.llegada_tarde && tardeCuenta > 0 && <div className="text-xs font-semibold mt-1" style={{ color: statusColor }}>Tarde #{tardeCuenta} del mes</div>}
                   </div>
                 </div>
               </div>
@@ -132,7 +132,7 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
             <div key={i} className={`flex mb-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] py-2 px-3 text-xs text-gypi-text leading-relaxed ${m.role === "user" ? "rounded-[12px_12px_4px_12px] bg-gypi-amber/20" : "rounded-[12px_12px_12px_4px] bg-gypi-surf-hi"}`}>
                 <div className="whitespace-pre-wrap">{m.content}</div>
-                <div className={`text-[9px] text-gypi-mute mt-1 ${m.role === "user" ? "text-right" : "text-left"}`}>{new Date(m.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                <div className={`text-[11px] text-gypi-mute mt-1 ${m.role === "user" ? "text-right" : "text-left"}`}>{new Date(m.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
               </div>
             </div>
           ))}

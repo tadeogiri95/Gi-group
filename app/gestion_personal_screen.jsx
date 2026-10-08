@@ -681,7 +681,7 @@ export default function GestionPersonalScreen({ empresaId }) {
       </div>
 
       {/* Tip CSV */}
-      <div className="text-[10px] text-gypi-mute mb-3 text-center">
+      <div className="text-xs text-gypi-mute mb-3 text-center">
         CSV: columnas <span className="font-mono text-gypi-dim">legajo, nombre</span> (obligatorias), <span className="font-mono text-gypi-dim">division, rol, area, email</span> (opcionales)
       </div>
 

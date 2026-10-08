@@ -54,7 +54,7 @@ export default function Paywall({ planActual = "free", planRequerido = "asistenc
           <button onClick={onClose} className="flex-1 py-3.5 rounded-xl border border-gypi-border bg-transparent text-gypi-dim text-sm font-semibold font-body cursor-pointer">
             Ahora no
           </button>
-          <button onClick={onUpgrade} className="flex-[2] py-3.5 rounded-xl border-none bg-gypi-amber text-white text-sm font-bold font-heading cursor-pointer">
+          <button onClick={onUpgrade} className="flex-[2] py-3.5 rounded-xl border-none bg-gypi-amber text-gypi-on-amber text-sm font-bold font-heading cursor-pointer">
             🚀 Actualizar plan
           </button>
         </div>

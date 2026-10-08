@@ -23,7 +23,7 @@ export default function MisSolicitudesScreen({ solicitudes = [], usuario, empres
       ) : (
         <button
           onClick={() => setPidiendo(true)}
-          className="w-full min-h-[56px] rounded-2xl border-none bg-gypi-amber text-black text-base font-bold font-body cursor-pointer"
+          className="w-full min-h-[56px] rounded-2xl border-none bg-gypi-amber text-gypi-on-amber text-base font-bold font-body cursor-pointer"
         >
           + Pedir permiso, vacaciones o avisar una falta
         </button>

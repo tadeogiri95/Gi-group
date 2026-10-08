@@ -230,7 +230,7 @@ function BillingWeb({ onClose }) {
                   />
                 </button>
                 <span className={`text-xs ${anual ? "text-gypi-text font-bold" : "text-gypi-dim font-normal"}`}>
-                  Anual <span className="text-[10px] text-gypi-green font-bold">-20%</span>
+                  Anual <span className="text-xs text-gypi-green font-bold">-20%</span>
                 </span>
               </div>
             </div>

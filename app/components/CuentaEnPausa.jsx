@@ -21,7 +21,7 @@ export default function CuentaEnPausa({ usuario, empresa, onLogout }) {
             <p className="text-sm text-gypi-dim max-w-[360px] mb-6">
               Terminó la prueba gratuita o la suscripción no está activa. Tus datos siguen guardados: elegí un plan y tu equipo vuelve a fichar y cargar tareas al instante.
             </p>
-            <button onClick={() => setPlanes(true)} className="w-full max-w-[320px] min-h-[48px] rounded-xl border-none bg-gypi-amber text-black text-[15px] font-bold cursor-pointer mb-3">
+            <button onClick={() => setPlanes(true)} className="w-full max-w-[320px] min-h-[48px] rounded-xl border-none bg-gypi-amber text-gypi-on-amber text-[15px] font-bold cursor-pointer mb-3">
               Elegir un plan
             </button>
           </>

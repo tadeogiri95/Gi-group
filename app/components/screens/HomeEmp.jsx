@@ -415,7 +415,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                     {h ? (
                       <div className="flex-1 flex items-center gap-1.5">
                         <span className="font-mono text-sm font-semibold" style={{ color: esHoy ? "var(--color-text)" : "var(--color-text-muted)" }}>{h.in}</span>
-                        <span className="text-gypi-mute text-[10px]">→</span>
+                        <span className="text-gypi-mute text-xs">→</span>
                         <span className="font-mono text-sm font-semibold" style={{ color: esHoy ? "var(--color-text)" : "var(--color-text-muted)" }}>{h.out}</span>
                       </div>
                     ) : (
@@ -423,7 +423,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                     )}
                     {esHoy && (
                       <span
-                        className="text-[10px] text-gypi-amber font-bold py-0.5 px-2 rounded-[6px] ml-1.5"
+                        className="text-xs text-gypi-amber font-bold py-0.5 px-2 rounded-[6px] ml-1.5"
                         style={{ background: `color-mix(in srgb, var(--color-empresa-primary) 13%, transparent)` }}
                       >
                         HOY
@@ -470,7 +470,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
                 </div>
                 <div className="flex items-center gap-1.5">
                   {d.horas_trabajadas && (
-                    <span className="text-[10px] text-gypi-dim font-mono">{Number(d.horas_trabajadas).toFixed(1)}h</span>
+                    <span className="text-xs text-gypi-dim font-mono">{Number(d.horas_trabajadas).toFixed(1)}h</span>
                   )}
                   <span
                     className="font-mono text-sm font-bold"
