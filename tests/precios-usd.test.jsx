@@ -391,3 +391,10 @@ test("webhook — sin la migración 082 (faltan columnas) igual activa el plan l
   assert.equal(empresa.plan_activo, "pro");
   assert.equal("addons" in empresa, false);
 });
+
+test("términos publicados — explican el cobro en dólares y no nombran planes que ya no se venden", () => {
+  const terminos = readFileSync(new URL("../app/terms/page.js", import.meta.url), "utf8");
+  assert.match(terminos, /Banco Nación/);
+  assert.match(terminos, /30 días de anticipación/);
+  assert.doesNotMatch(terminos, /Starter|plan gratuito \(Free\)/);
+});

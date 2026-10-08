@@ -45,10 +45,10 @@ export default function TermsOfService() {
       </ul>
 
       <h2 style={S.h2}>4. Planes y facturación</h2>
-      <p style={S.p}>Gypi ofrece una prueba gratuita de 30 días y planes de pago. Los planes se facturan a través de Mercado Pago. Al terminar la prueba o la suscripción, la cuenta queda en pausa (se pueden ver los datos pero no cargar nuevos) hasta contratar un plan. Las tarifas vigentes se publican en gypi.app. Gypi se reserva el derecho de ajustar los precios con 30 días de preaviso.</p>
+      <p style={S.p}>Gypi ofrece una prueba gratuita de 30 días y planes de pago. Los planes (Asistencia y Planta, por tramos de operarios activos, y sus add-ons) tienen precio en dólares y se cobran en pesos a través de Mercado Pago, al tipo de cambio oficial del Banco Nación del día de la suscripción. Si ese tipo de cambio mueve el precio en pesos un 5% o más, avisamos por email con 30 días de anticipación antes de cobrar el monto nuevo. Al terminar la prueba o la suscripción, la cuenta queda en pausa (se pueden ver los datos pero no cargar nuevos) hasta contratar un plan. Las tarifas vigentes se publican en gypi.app. Gypi se reserva el derecho de ajustar los precios con 30 días de preaviso.</p>
 
       <h2 style={S.h2}>5. Disponibilidad del servicio</h2>
-      <p style={S.p}>Gypi hace sus mejores esfuerzos para mantener el servicio disponible de forma continua para los planes de pago (Starter, Pro y Enterprise), incluyendo monitoreo activo y mantenimiento preventivo. Las ventanas de mantenimiento programado se notifican con al menos 24 horas de anticipación cuando es posible.</p>
+      <p style={S.p}>Gypi hace sus mejores esfuerzos para mantener el servicio disponible de forma continua para los planes de pago, incluyendo monitoreo activo y mantenimiento preventivo. Las ventanas de mantenimiento programado se notifican con al menos 24 horas de anticipación cuando es posible.</p>
       <p style={S.p}>Actualmente no se garantiza un porcentaje de disponibilidad (SLA) numérico ni créditos compensatorios automáticos por interrupciones. Si tu empresa necesita un SLA contractual con métricas formales, contactanos para evaluarlo como acuerdo Enterprise.</p>
       <p style={S.p}>Durante la prueba gratuita no aplica ningún compromiso de disponibilidad.</p>
 
@@ -69,7 +69,6 @@ export default function TermsOfService() {
       <p style={S.p}>Tu acceso puede ser terminado por tu empleador en cualquier momento, o por Gypi en caso de violación de estos términos o falta de pago.</p>
       <p style={S.p}><strong style={{ color: "#F5F0E8" }}>Retención de datos tras la cancelación:</strong> cuando una Empresa cancela su suscripción o esta vence sin renovación, los datos de esa empresa se conservarán durante <strong style={{ color: "#F5F0E8" }}>30 días calendario</strong> adicionales. Durante ese período la Empresa puede solicitar la exportación completa de sus datos a contacto@gypi.app. Transcurridos los 30 días, los datos serán eliminados de forma permanente.</p>
       <p style={S.p}><strong style={{ color: "#F5F0E8" }}>Exportación y baja desde la App:</strong> el titular de la cuenta puede descargar en cualquier momento todos los datos de la Empresa (Gestión → Configuración → Privacidad) y dar de baja la cuenta desde la misma pantalla. Con la baja, la cuenta queda inactiva, se cancela la suscripción y los datos y archivos se eliminan de forma definitiva a los 30 días; hasta entonces puede recuperarse con el enlace que enviamos por email.</p>
-      <p style={S.p}>El plan gratuito (Free) no tiene garantía de retención de datos; los datos pueden eliminarse tras 90 días de inactividad total.</p>
 
       <h2 style={S.h2}>9. Modificaciones</h2>
       <p style={S.p}>Podemos modificar estos términos. Los cambios con impacto significativo se notificarán con 15 días de anticipación a través de la App o al email de administración registrado. El uso continuado constituye aceptación.</p>
