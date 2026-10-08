@@ -18,8 +18,8 @@ export default function ReglasScreen({ ctx, reload, usuario }) {
 
       {/* Header card */}
       <div className="rounded-card p-4 border border-gypi-border mb-3.5 bg-gradient-to-br from-gypi-violet/[0.07] to-gypi-surface">
-        <div className="g-overline text-gypi-violet">REGLAS DEL BOT</div>
-        <div className="text-[13px] text-gypi-text mt-1.5 leading-relaxed">Cambios aplican inmediatamente al bot.</div>
+        <div className="g-overline text-gypi-violet">Reglas del asistente</div>
+        <div className="text-[13px] text-gypi-text mt-1.5 leading-relaxed">Los cambios se aplican al asistente en el momento.</div>
       </div>
 
       {/* Rules list */}

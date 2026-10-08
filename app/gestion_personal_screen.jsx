@@ -5,6 +5,7 @@ import { activarKiosco } from "./lib/kioscoCliente";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
+import { nombreRol } from "./lib/textos";
 import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
@@ -119,7 +120,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
           <label className="g-label block mb-1.5">Rol</label>
           <div className="flex gap-1.5">
             {rolesPermitidos.map(r => (
-              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "var(--color-surface)", color: form.rol === r ? AMBER : "var(--color-text-dim)" }}>{r}</button>
+              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "var(--color-surface)", color: form.rol === r ? AMBER : "var(--color-text-dim)" }}>{nombreRol(r)}</button>
             ))}
           </div>
         </div>
@@ -648,7 +649,7 @@ export default function GestionPersonalScreen({ empresaId }) {
 
   /* ═══ RENDER ═══ */
   return (
-    <section aria-label="Gestión de personal" className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px]">
+    <section aria-label="Equipo" className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px]">
       {/* Métricas */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="g-card text-center">
@@ -687,7 +688,7 @@ export default function GestionPersonalScreen({ empresaId }) {
 
       {/* Filtro rol */}
       <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
-        {[["todos", "Todos", "var(--color-text-dim)"], ...ROLES.map(r => [r, r, AMBER])].map(([key, label, color]) => (
+        {[["todos", "Todos", "var(--color-text-dim)"], ...ROLES.map(r => [r, nombreRol(r), AMBER])].map(([key, label, color]) => (
           <Chip key={`rol-${key}`} active={filtroRol === key} onClick={() => setFiltroRol(key)} color={color}>{label}</Chip>
         ))}
       </div>
@@ -787,7 +788,7 @@ export default function GestionPersonalScreen({ empresaId }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
                     <div className="text-[11px] text-gypi-dim mt-px truncate">
-                      {divInfo?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}
+                      {divInfo?.label || "Sin división"} · {emp.area || "produccion"} · {nombreRol(emp.rol, { soloSuDivision: emp.solo_su_division })}
                       {plantas.length > 1 && nombrePlanta(plantas, emp.planta_id) ? ` · 🏭 ${nombrePlanta(plantas, emp.planta_id)}` : ""}
                     </div>
                   </div>

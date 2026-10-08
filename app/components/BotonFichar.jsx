@@ -53,8 +53,8 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
         terminar("aviso", `Sin señal: guardamos tu ${tipo === "ingreso" ? "entrada" : "salida"} de las ${hora}. Se envía sola cuando vuelva la conexión, con esa hora.`);
       } else if (tipo === "ingreso") {
         const trd = res.tardanza;
-        if (trd?.estado === "tarde") terminar("aviso", `Ingreso fichado a las ${hora}, con ${trd.minutos} min de tarde (tardanza #${trd.llegadasTarde} del mes).`);
-        else terminar("ok", `¡Listo! Ingreso fichado a las ${hora}. Buen día, ${usuario.apodo}.`);
+        if (trd?.estado === "tarde") terminar("aviso", `Entrada fichada a las ${hora}, con ${trd.minutos} min de tarde (tardanza #${trd.llegadasTarde} del mes).`);
+        else terminar("ok", `¡Listo! Entrada fichada a las ${hora}. Buen día, ${usuario.apodo}.`);
       } else if (res.solicitar_hora_extra) {
         const dj = res.datos_jornada;
         terminar("ok", `Salida fichada a las ${hora}. Trabajaste ${Math.round(dj.excedente_min)} min más que tu jornada: ¿pedís que te aprueben la hora extra?`, [
@@ -67,7 +67,7 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
     } catch (e) {
       if (e.tipo === "bloqueado_tardanza" || e.tipo === "bloqueado_3ra_tarde") {
         terminar("error", e.message, [
-          { etiqueta: "Pedir permiso de ingreso", hacer: async () => { await pedirPermisoIngreso(usuario); terminar("ok", "Listo: le pediste permiso a gerencia. Te avisamos cuando lo resuelvan."); onFichado?.(); } },
+          { etiqueta: "Pedir permiso para entrar", hacer: async () => { await pedirPermisoIngreso(usuario); terminar("ok", "Listo: le pediste permiso a gerencia. Te avisamos cuando lo resuelvan."); onFichado?.(); } },
         ]);
       } else if (e.tipo === "salida_anticipada") {
         terminar("aviso", e.message, e.pendiente ? [] : [
@@ -93,7 +93,7 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
       <div className="w-full rounded-[22px] p-5 mb-[18px] text-center border border-gypi-border bg-gypi-surface" role="status">
         <div className="text-[15px] font-extrabold text-gypi-text">Jornada cerrada</div>
         <div className="text-[13px] text-gypi-dim mt-1">
-          Ingreso {fichadaHoy.ingreso.slice(0, 5)} · Salida {fichadaHoy.egreso.slice(0, 5)}
+          Entrada {fichadaHoy.ingreso.slice(0, 5)} · Salida {fichadaHoy.egreso.slice(0, 5)}
         </div>
       </div>
     );
@@ -104,7 +104,7 @@ export default function BotonFichar({ usuario, fichadaHoy, fichadaAbierta, onFic
   // y sobre el color de la empresa va negra o blanca según contraste.
   const color = esIngreso ? "color-mix(in srgb, var(--color-green) 82%, #000)" : "var(--color-empresa-primary)";
   const colorLetra = esIngreso ? "#FFFFFF" : "var(--color-empresa-primary-text, #000)";
-  const etiqueta = esIngreso ? "Fichar ingreso" : "Fichar salida";
+  const etiqueta = esIngreso ? "Fichar entrada" : "Fichar salida";
   const tonoColor = { ok: "color-mix(in srgb, var(--color-green) 82%, #000)", aviso: "var(--color-empresa-primary)", error: "var(--color-red)" };
   const tonoLetra = { ok: "#FFFFFF", aviso: "var(--color-empresa-primary-text, #000)", error: "#FFFFFF" };
 

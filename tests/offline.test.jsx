@@ -265,7 +265,7 @@ test("BotonFichar + EstadoConexion — sin señal avisa que quedó guardado y lo
   global.fetch = sinRed;
   const usuario = { id: "emp-y", legajo: 7, apodo: "Ana", empresa_id: E };
   render(<BotonFichar usuario={usuario} fichadaHoy={null} />);
-  fireEvent.click(screen.getByRole("button", { name: /Fichar ingreso/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Fichar entrada/i }));
   fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
   assert.ok(await screen.findByText(/Sin señal: guardamos tu entrada de las \d{2}:\d{2}/));
   cleanup();
