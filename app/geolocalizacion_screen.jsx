@@ -872,7 +872,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                         <div className="w-2 h-2 rounded-full shrink-0 bg-gypi-green" aria-hidden="true" />
                       )}
                       {changed && <Tag color={MARCA}>Editado</Tag>}
-                      <span className={`text-gypi-dim text-xs transition-transform ${isExp ? "rotate-90" : ""}`} aria-hidden="true">
+                      <span className={`inline-block text-gypi-dim text-xs transition-transform ${isExp ? "rotate-90" : ""}`} aria-hidden="true">
                         ▶
                       </span>
                     </div>

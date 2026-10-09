@@ -221,7 +221,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                     </div>
                     <div className="flex items-center gap-1.5">
                       {changed && <Tag color={MARCA}>Editado</Tag>}
-                      <span className={`text-gypi-dim text-xs transition-transform ${isExp ? "rotate-90" : ""}`} aria-hidden="true">▶</span>
+                      <span className={`inline-block text-gypi-dim text-xs transition-transform ${isExp ? "rotate-90" : ""}`} aria-hidden="true">▶</span>
                     </div>
                   </button>
                   {!isExp && (
