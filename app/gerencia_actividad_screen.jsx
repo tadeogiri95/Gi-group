@@ -2,26 +2,41 @@ import { useState, useEffect, useCallback } from "react";
 import { sb } from "./lib/supabase";
 import { useRefrescoVisible } from "./hooks/useRefrescoVisible";
 import { Tag, Chip } from "./components/ui";
+import Stat from "./components/ui/Stat";
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { hoyArg } from "./lib/dates";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const GREEN = "#16A34A";
-const RED = "#DC2626";
-const RED_S = "rgba(220,38,38,0.10)";
-const GREEN_S = "rgba(22,163,74,0.10)";
-const CYAN = "#0891B2";
-const VIOLET = "#7C3AED";
+// R11: el color dice el ESTADO de la persona (trabajando / parado / sin tarea),
+// no la etapa; la etapa va con su ícono y su nombre.
+const MARCA = "var(--color-empresa-primary)";
+const ESTADO = {
+  trabajando: { txt: "text-gypi-green-ink", fondo: "bg-gypi-green/10", borde: "border-gypi-green/25", barra: "fill-gypi-green" },
+  parado: { txt: "text-gypi-red-ink", fondo: "bg-gypi-red/10", borde: "border-gypi-red/25", barra: "fill-gypi-red" },
+  aviso: { txt: "text-gypi-amber-ink", fondo: "bg-gypi-amber/10", borde: "border-gypi-amber/25", barra: "fill-gypi-amber" },
+  sinTarea: { txt: "text-gypi-mute", fondo: "bg-gypi-surf-lo", borde: "border-gypi-border", barra: "fill-gypi-mute" },
+};
+const tonoPct = (pct) => pct >= 80 ? "trabajando" : pct >= 60 ? "aviso" : "parado";
 
 /* ═══ CONSTANTES ═══ */
 const CAUSAS_MAP = { M: "Falta material", H: "Falta herramienta", I: "Indicación", O: "Otro" };
 const TIPOS_MAP = {
-  N: { nombre: "Normal", color: GREEN },
-  R: { nombre: "Retrabajo", color: RED },
-  E: { nombre: "Error", color: AMBER },
-  C: { nombre: "Cambio", color: VIOLET },
+  N: { nombre: "Normal", txt: "text-gypi-green-ink" },
+  R: { nombre: "Retrabajo", txt: "text-gypi-red-ink" },
+  E: { nombre: "Error", txt: "text-gypi-amber-ink" },
+  C: { nombre: "Cambio", txt: "text-gypi-violet" },
 };
+// Minutos de un registro: los guardados o, si sigue abierto, hasta ahora
+const minutosDe = (a) => a.duracion_min ? parseFloat(a.duracion_min) : a.hora_fin ? (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000 : (Date.now() - new Date(a.hora_inicio).getTime()) / 60000;
+
+/** Barra de porcentaje sin estilos sueltos: un SVG con el ancho como atributo. */
+function Barra({ pct, tono }) {
+  return (
+    <svg className="mt-2 w-full h-1 rounded-sm bg-gypi-surf-hi block" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+      <rect width={Math.max(0, Math.min(pct, 100))} height="4" rx="1" className={ESTADO[tono].barra} />
+    </svg>
+  );
+}
 
 const fmtElapsed = (seconds) => {
   if (!seconds || seconds < 0) return "00:00";
@@ -129,10 +144,11 @@ export default function GerenciaActividadScreen({ empresaId }) {
   });
 
   const getTipoActividad = (etapaCodigo) => {
-    if (etapaCodigo === 0) return { label: "Espera", color: RED, bg: RED_S };
-    if (etapaCodigo > 0) return { label: "Productivo", color: GREEN, bg: GREEN_S };
-    return { label: "Improductivo", color: "var(--color-text-muted)", bg: "var(--color-surf-lo)" };
+    if (etapaCodigo === 0) return { label: "Parado", tono: "parado" };
+    if (etapaCodigo > 0) return { label: "Trabajando", tono: "trabajando" };
+    return { label: "Otro", tono: "sinTarea" };
   };
+  const pctTotal = (totalMinProd + totalMinEspera) > 0 ? Math.round(totalMinProd * 100 / (totalMinProd + totalMinEspera)) : null;
 
   /* ═══ RENDER ═══ */
   return (
@@ -140,61 +156,43 @@ export default function GerenciaActividadScreen({ empresaId }) {
       {/* Filtros */}
       <div role="group" aria-label="Filtros por división" className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
         {DIVISIONES.map(d => (
-          <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || AMBER}>
+          <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || MARCA}>
             {d.icon ? `${d.icon} ` : ""}{d.label}
           </Chip>
         ))}
       </div>
 
       {loading && resumen.length === 0 ? (
-        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
+        <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       ) : (
         <>
-          {/* Cards resumen */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">Trabajando</div>
-              <div className="font-heading text-[28px] font-bold text-gypi-green mt-1">{enActividad}</div>
-              <div className="text-[11px] text-gypi-dim mt-0.5">{fmtMinutos(totalMinProd)} acumuladas</div>
-            </div>
-            <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">Parados</div>
-              <div className="font-heading text-[28px] font-bold text-gypi-red mt-1">{enEspera}</div>
-              <div className="text-[11px] text-gypi-dim mt-0.5">{fmtMinutos(totalMinEspera)} acumuladas</div>
-            </div>
-            <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">Sin tarea</div>
-              <div className="font-heading text-[28px] font-bold text-gypi-mute mt-1">{sinTarea}</div>
-              <div className="text-[11px] text-gypi-dim mt-0.5">de {totalOperarios} total</div>
-            </div>
-            <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-              <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.08em]">% Productivo</div>
-              <div className="font-heading text-[28px] font-bold mt-1" style={{ color: (totalMinProd + totalMinEspera) > 0 ? (totalMinProd / (totalMinProd + totalMinEspera) >= 0.7 ? GREEN : AMBER) : "var(--color-text-muted)" }}>
-                {(totalMinProd + totalMinEspera) > 0 ? Math.round(totalMinProd * 100 / (totalMinProd + totalMinEspera)) : 0}%
-              </div>
-              <div className="text-[11px] text-gypi-dim mt-0.5">prod / (prod+espera)</div>
-            </div>
-          </div>
+          {/* Resumen (R11: Stat, etiquetas completas) */}
+          <section aria-label="Ahora en la planta" className="grid grid-cols-2 gap-2 mb-4">
+            <Stat value={enActividad} label={`Trabajando · ${fmtMinutos(totalMinProd)} en el día`} tone={enActividad > 0 ? "bien" : "normal"} />
+            <Stat value={enEspera} label={`Parados · ${fmtMinutos(totalMinEspera)} en el día`} tone={enEspera > 0 ? "mal" : "normal"} />
+            <Stat value={sinTarea} label={`Sin tarea, de ${totalOperarios}`} />
+            <Stat value={pctTotal == null ? "—" : `${pctTotal}%`} label="Del tiempo, trabajando (el resto, parados)" tone={pctTotal == null ? "normal" : pctTotal >= 70 ? "bien" : "atencion"} />
+          </section>
 
           {/* Lista de operarios */}
           {datos.length === 0 ? (
             <div className="bg-gypi-surface rounded-2xl p-10 text-center border border-gypi-border">
-              <div className="text-[32px] mb-3">📋</div>
+              <div className="text-[32px] mb-3" aria-hidden="true">📋</div>
               <div className="text-sm font-bold text-gypi-text">Sin actividad hoy</div>
-              <div className="text-xs text-gypi-dim mt-1.5">
+              <div className="text-[13px] text-gypi-dim mt-1.5">
                 Todavía nadie registró tareas{division !== "todas" ? ` en ${DIVISIONES.find(d => d.id === division)?.label}` : ""}
               </div>
             </div>
           ) : (
             Object.entries(porDivision).sort(([a], [b]) => a.localeCompare(b)).map(([div, operarios]) => {
-              const divInfo = DIVISIONES.find(d => d.id === div) || { label: div, icon: "📦", color: "var(--color-text-dim)" };
+              const divInfo = DIVISIONES.find(d => d.id === div) || { label: div, icon: "📦" };
               return (
                 <div key={div} className="mb-5">
                   {division === "todas" && (
                     <div className="flex items-center gap-2 mb-2.5">
-                      <span className="text-base">{divInfo.icon}</span>
-                      <span className="text-sm font-bold font-heading" style={{ color: divInfo.color }}>{divInfo.label}</span>
-                      <span className="text-[11px] text-gypi-dim">· {operarios.length} operarios</span>
+                      <span className="text-base" aria-hidden="true">{divInfo.icon}</span>
+                      <h3 className="m-0 text-sm font-bold font-heading text-gypi-text">{divInfo.label}</h3>
+                      <span className="text-[12px] text-gypi-dim">· {operarios.length} operarios</span>
                     </div>
                   )}
 
@@ -212,124 +210,81 @@ export default function GerenciaActividadScreen({ empresaId }) {
                         const pctProd = parseFloat(op.pct_productivo) || 0;
                         const isExpanded = expandido === op.empleado_id;
                         const nombre = op.empleado_nombre || op.nombre || "";
+                        const estado = !tieneActiva ? "sinTarea" : isEspera ? "parado" : "trabajando";
 
                         return (
-                          <div key={op.empleado_id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{
-                            border: `1px solid ${tieneActiva ? (isEspera ? `${RED}30` : `${etapa?.color}30`) : "var(--color-border)"}`,
-                          }}>
-                            {/* Card clickeable */}
-                            <div
-                              className="p-3.5 cursor-pointer"
-                              role="button"
-                              tabIndex={0}
+                          <div key={op.empleado_id} className={`bg-gypi-surface rounded-[14px] overflow-hidden border ${ESTADO[estado].borde}`}>
+                            {/* Card que se abre (R11: botón de verdad) */}
+                            <button
+                              type="button"
+                              className="w-full p-3.5 cursor-pointer select-none bg-transparent border-none text-left font-body"
                               aria-expanded={isExpanded}
-                              aria-label={`Detalle de ${nombre}`}
+                              aria-label={`${nombre}: ${estado === "trabajando" ? `trabajando en ${etapa?.nombre} hace ${fmtElapsed(elapsedSec)}` : estado === "parado" ? "parado" : "sin tarea"}. Ver su día`}
                               onClick={() => toggleDetalle(op.empleado_id)}
-                              onKeyDown={e => (e.key === "Enter" || e.key === " ") && toggleDetalle(op.empleado_id)}
-                              style={{ userSelect: "none" }}
                             >
                               {/* Row 1: nombre + estado */}
                               <div className="flex items-center gap-2.5 mb-2">
-                                <div className="w-[38px] h-[38px] rounded-[10px] flex items-center justify-center font-heading text-xs font-bold" style={{
-                                  background: tieneActiva ? (isEspera ? RED_S : `${etapa?.color}22`) : "var(--color-surf-lo)",
-                                  color: tieneActiva ? (isEspera ? RED : etapa?.color) : "var(--color-text-muted)",
-                                }}>
-                                  {tieneActiva ? etapa?.icon : nombre.split(" ").map(w => w[0]).slice(0, 2).join("")}
+                                <div className={`w-[38px] h-[38px] rounded-[10px] flex items-center justify-center font-heading text-xs font-bold shrink-0 ${ESTADO[estado].fondo} ${ESTADO[estado].txt}`} aria-hidden="true">
+                                  {tieneActiva ? (isEspera ? "⏸" : etapa?.icon) : nombre.split(" ").map(w => w[0]).slice(0, 2).join("")}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-[13px] font-bold text-gypi-text truncate">{nombre}</div>
-                                  <div className="text-[11px] text-gypi-dim mt-px">
+                                  <div className="text-[14px] font-bold text-gypi-text truncate">{nombre}</div>
+                                  <div className="text-[12px] text-gypi-dim mt-px">
                                     L-{op.legajo}
-                                    {tieneActiva && ` · ${etapa?.nombre}`}
+                                    {tieneActiva && !isEspera && ` · ${etapa?.nombre}`}
+                                    {isEspera && " · parado"}
                                     {!tieneActiva && " · sin tarea"}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {tieneActiva ? (
-                                    <div className="text-right">
-                                      {isEspera ? (
-                                        <Tag color={RED}>⏸ Espera</Tag>
-                                      ) : (
-                                        <Tag color={etapa?.color}>● {fmtElapsed(elapsedSec)}</Tag>
-                                      )}
-                                    </div>
+                                    isEspera ? <Tag color="var(--color-red)">⏸ Parado</Tag> : <Tag color="var(--color-green)">● {fmtElapsed(elapsedSec)}</Tag>
                                   ) : (
-                                    <Tag color={"var(--color-text-muted)"}>—</Tag>
+                                    <Tag color="var(--color-text-muted)">—</Tag>
                                   )}
-                                  <span className="text-xs text-gypi-mute" style={{ transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+                                  <span className={`inline-block text-xs text-gypi-mute transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} aria-hidden="true">▼</span>
                                 </div>
                               </div>
 
                               {/* Row 2: métricas del día */}
-                              <div className="flex gap-2 text-[11px]">
-                                <div className="flex-1 flex items-center gap-1">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-gypi-green" />
-                                  <span className="text-gypi-dim">Prod:</span>
-                                  <span className="font-mono font-semibold text-gypi-text">{fmtMinutos(parseFloat(op.minutos_productivos))}</span>
-                                </div>
-                                <div className="flex-1 flex items-center gap-1">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-gypi-red" />
-                                  <span className="text-gypi-dim">Espera:</span>
-                                  <span className="font-mono font-semibold text-gypi-text">{fmtMinutos(parseFloat(op.minutos_espera))}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="font-mono font-bold" style={{ color: pctProd >= 80 ? GREEN : pctProd >= 60 ? AMBER : RED }}>{Math.round(pctProd)}%</span>
-                                </div>
+                              <div className="flex gap-3 text-[12px] items-center">
+                                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gypi-green" aria-hidden="true" /><span className="text-gypi-dim">Trabajó</span> <span className="font-mono font-semibold text-gypi-text">{fmtMinutos(parseFloat(op.minutos_productivos))}</span></span>
+                                <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-gypi-red" aria-hidden="true" /><span className="text-gypi-dim">Parado</span> <span className="font-mono font-semibold text-gypi-text">{fmtMinutos(parseFloat(op.minutos_espera))}</span></span>
+                                <span className={`ml-auto font-mono font-bold ${ESTADO[tonoPct(pctProd)].txt}`}>{Math.round(pctProd)}%</span>
                               </div>
 
-                              {/* Progress bar */}
-                              <div className="mt-2 h-1 rounded-sm bg-gypi-surf-hi overflow-hidden">
-                                <div className="h-full rounded-sm transition-[width] duration-500" style={{
-                                  background: pctProd >= 80 ? GREEN : pctProd >= 60 ? AMBER : RED,
-                                  width: `${Math.min(pctProd, 100)}%`,
-                                }} />
-                              </div>
-                            </div>
+                              <Barra pct={pctProd} tono={tonoPct(pctProd)} />
+                            </button>
 
                             {/* ═══ PANEL DE DETALLE EXPANDIBLE ═══ */}
                             {isExpanded && (
-                              <div style={{ borderTop: `1px solid ${"var(--color-border)"}`, background: "var(--color-surf-lo)", padding: "12px 14px" }}>
+                              <div className="border-t border-gypi-border bg-gypi-surf-lo px-3.5 py-3">
                                 {/* Fichada del día */}
                                 {fichadaDetalle && (
-                                  <div className="flex flex-wrap gap-2.5 mb-3 text-[11px]">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-gypi-dim">Entrada:</span>
-                                      <span className="font-mono font-semibold text-gypi-text">{fichadaDetalle.ingreso?.slice(0, 5) || "—"}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-gypi-dim">Salida:</span>
-                                      <span className="font-mono font-semibold text-gypi-text">{fichadaDetalle.egreso?.slice(0, 5) || "en planta"}</span>
-                                    </div>
+                                  <div className="flex flex-wrap gap-2.5 mb-3 text-[12px]">
+                                    <span><span className="text-gypi-dim">Entrada </span><span className="font-mono font-semibold text-gypi-text">{fichadaDetalle.ingreso?.slice(0, 5) || "—"}</span></span>
+                                    <span><span className="text-gypi-dim">Salida </span><span className="font-mono font-semibold text-gypi-text">{fichadaDetalle.egreso?.slice(0, 5) || "todavía en planta"}</span></span>
                                     {fichadaDetalle.horas_trabajadas > 0 && (
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-gypi-dim">Hs trab:</span>
-                                        <span className="font-mono font-semibold text-gypi-text">{parseFloat(fichadaDetalle.horas_trabajadas).toFixed(1)}h</span>
-                                      </div>
+                                      <span><span className="text-gypi-dim">Horas </span><span className="font-mono font-semibold text-gypi-text">{parseFloat(fichadaDetalle.horas_trabajadas).toFixed(1)} h</span></span>
                                     )}
                                     {parseFloat(fichadaDetalle.horas_extra) > 0 && (
-                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)` }}>
-                                        <span className="font-bold" style={{ color: AMBER }}>+{parseFloat(fichadaDetalle.horas_extra).toFixed(1)}h extra</span>
-                                      </div>
+                                      <span className={`px-1.5 py-0.5 rounded font-bold ${ESTADO.aviso.fondo} ${ESTADO.aviso.txt}`}>+{parseFloat(fichadaDetalle.horas_extra).toFixed(1)} h extra</span>
                                     )}
                                     {fichadaDetalle.llegada_tarde && (
-                                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: RED_S }}>
-                                        <span className="font-bold" style={{ color: RED }}>Tarde {fichadaDetalle.minutos_tarde}min</span>
-                                      </div>
+                                      <span className={`px-1.5 py-0.5 rounded font-bold ${ESTADO.parado.fondo} ${ESTADO.parado.txt}`}>Llegó {fichadaDetalle.minutos_tarde} min tarde</span>
                                     )}
                                   </div>
                                 )}
 
-                                <div className="text-[11px] font-bold text-gypi-dim uppercase tracking-[0.08em] mb-2.5">
-                                  Actividades de la jornada
-                                </div>
+                                <h4 className="m-0 text-[12px] font-bold text-gypi-dim uppercase tracking-[0.08em] mb-2.5">Lo que hizo hoy</h4>
 
                                 {loadingDetalle ? (
                                   <div className="text-center py-4">
-                                    <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
+                                    <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
                                   </div>
                                 ) : actividades.length === 0 ? (
-                                  <div className="text-center py-3 text-[12px] text-gypi-dim">
-                                    Sin registros de actividad detallados
+                                  <div className="text-center py-3 text-[13px] text-gypi-dim">
+                                    Todavía no cargó tareas hoy
                                   </div>
                                 ) : (
                                   <div className="flex flex-col gap-1.5">
@@ -337,93 +292,58 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                       const tipoAct = getTipoActividad(act.etapa);
                                       const etapaInfo = act.etapa > 0 ? getEtapa(act.division || op.division, act.etapa) : null;
                                       const tipoReg = TIPOS_MAP[act.tipo] || TIPOS_MAP.N;
-                                      const durMin = act.duracion_min
-                                        ? parseFloat(act.duracion_min)
-                                        : act.hora_fin
-                                          ? (new Date(act.hora_fin) - new Date(act.hora_inicio)) / 60000
-                                          : (Date.now() - new Date(act.hora_inicio).getTime()) / 60000;
+                                      const durMin = minutosDe(act);
                                       const enCurso = !act.hora_fin;
 
                                       return (
-                                        <div key={act.id || idx} className="rounded-[10px] p-2.5" style={{
-                                          background: "var(--color-surface)",
-                                          border: `1px solid ${enCurso ? `${tipoAct.color}40` : "var(--color-border)"}`,
-                                        }}>
+                                        <div key={act.id || idx} className={`rounded-[10px] p-2.5 bg-gypi-surface border ${enCurso ? ESTADO[tipoAct.tono].borde : "border-gypi-border"}`}>
                                           {/* Línea 1: horario + tipo */}
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-mono text-[11px] font-semibold text-gypi-text">
-                                              {fmtHora(act.hora_inicio)} → {enCurso ? "en curso" : fmtHora(act.hora_fin)}
+                                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                            <span className="font-mono text-[12px] font-semibold text-gypi-text">
+                                              {fmtHora(act.hora_inicio)} → {enCurso ? "ahora" : fmtHora(act.hora_fin)}
                                             </span>
-                                            <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: tipoAct.bg, color: tipoAct.color }}>
+                                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ESTADO[tipoAct.tono].fondo} ${ESTADO[tipoAct.tono].txt}`}>
                                               {tipoAct.label}
                                             </span>
                                             {enCurso && (
-                                              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>
-                                                EN CURSO
-                                              </span>
+                                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${ESTADO.aviso.fondo} ${ESTADO.aviso.txt}`}>En curso</span>
                                             )}
                                           </div>
 
                                           {/* Línea 2: proyecto + etapa + duración */}
-                                          <div className="flex items-center gap-1.5 text-[11px]">
+                                          <div className="flex items-center gap-1.5 text-[12px]">
                                             {act.codigo_proyecto && (
-                                              <span className="font-mono font-semibold" style={{ color: AMBER }}>
-                                                OT {act.codigo_proyecto}
-                                              </span>
+                                              <span className="font-mono font-semibold text-gypi-amber-ink">OT {act.codigo_proyecto}</span>
                                             )}
                                             {etapaInfo && (
-                                              <span style={{ color: etapaInfo.color }}>
-                                                {etapaInfo.icon} {etapaInfo.nombre}
-                                              </span>
+                                              <span className="text-gypi-text">{etapaInfo.icon} {etapaInfo.nombre}</span>
                                             )}
                                             {act.etapa === 0 && (
-                                              <span style={{ color: RED }}>⏸ Parado</span>
+                                              <span className={ESTADO.parado.txt}>⏸ Parado</span>
                                             )}
-                                            <span className="ml-auto font-mono font-semibold text-gypi-text">
-                                              {fmtMinutos(durMin)}
-                                            </span>
+                                            <span className="ml-auto font-mono font-semibold text-gypi-text">{fmtMinutos(durMin)}</span>
                                           </div>
 
                                           {/* Línea 3: tipo de registro + causa (si aplica) */}
                                           {(act.tipo !== "N" || act.causa) && (
                                             <div className="flex items-center gap-1.5 mt-1 text-xs text-gypi-dim">
-                                              {act.tipo !== "N" && (
-                                                <span className="font-bold" style={{ color: tipoReg.color }}>
-                                                  {tipoReg.nombre}
-                                                </span>
-                                              )}
-                                              {act.causa && (
-                                                <span>· {CAUSAS_MAP[act.causa] || act.causa}</span>
-                                              )}
+                                              {act.tipo !== "N" && <span className={`font-bold ${tipoReg.txt}`}>{tipoReg.nombre}</span>}
+                                              {act.causa && <span>· {CAUSAS_MAP[act.causa] || act.causa}</span>}
                                             </div>
                                           )}
 
-                                          {/* Observaciones */}
                                           {act.observaciones && (
-                                            <div className="mt-1 text-xs text-gypi-dim italic truncate">
-                                              "{act.observaciones}"
-                                            </div>
+                                            <div className="mt-1 text-xs text-gypi-dim italic truncate">&ldquo;{act.observaciones}&rdquo;</div>
                                           )}
                                         </div>
                                       );
                                     })}
 
                                     {/* Resumen del detalle */}
-                                    <div className="mt-1 pt-2 flex gap-3 text-xs text-gypi-dim" style={{ borderTop: `1px solid ${"var(--color-border)"}` }}>
-                                      <span>{actividades.length} actividad{actividades.length !== 1 ? "es" : ""}</span>
-                                      <span>·</span>
-                                      <span className="font-semibold" style={{ color: GREEN }}>
-                                        {fmtMinutos(actividades.filter(a => a.etapa > 0).reduce((s, a) => {
-                                          const d = a.duracion_min ? parseFloat(a.duracion_min) : a.hora_fin ? (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000 : (Date.now() - new Date(a.hora_inicio).getTime()) / 60000;
-                                          return s + d;
-                                        }, 0))} prod
-                                      </span>
-                                      <span className="font-semibold" style={{ color: RED }}>
-                                        {fmtMinutos(actividades.filter(a => a.etapa === 0).reduce((s, a) => {
-                                          const d = a.duracion_min ? parseFloat(a.duracion_min) : a.hora_fin ? (new Date(a.hora_fin) - new Date(a.hora_inicio)) / 60000 : (Date.now() - new Date(a.hora_inicio).getTime()) / 60000;
-                                          return s + d;
-                                        }, 0))} espera
-                                      </span>
+                                    <div className="mt-1 pt-2 flex gap-3 text-[12px] text-gypi-dim border-t border-gypi-border">
+                                      <span>{actividades.length} registro{actividades.length !== 1 ? "s" : ""}</span>
+                                      <span className={`font-semibold ${ESTADO.trabajando.txt}`}>{fmtMinutos(actividades.filter(a => a.etapa > 0).reduce((t, a) => t + minutosDe(a), 0))} trabajando</span>
+                                      <span className={`font-semibold ${ESTADO.parado.txt}`}>{fmtMinutos(actividades.filter(a => a.etapa === 0).reduce((t, a) => t + minutosDe(a), 0))} parado</span>
                                     </div>
                                   </div>
                                 )}
@@ -439,12 +359,10 @@ export default function GerenciaActividadScreen({ empresaId }) {
           )}
 
           {/* Refresh manual */}
-          <button onClick={cargarResumen} aria-label="Actualizar datos de actividad" className="w-full mt-3 p-3 rounded-xl bg-gypi-surface border border-gypi-border text-gypi-dim text-xs font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5">
-            🔄 Actualizar datos
+          <button onClick={cargarResumen} aria-label="Actualizar datos de actividad" className="w-full mt-3 p-3 min-h-11 rounded-xl bg-gypi-surface border border-gypi-border text-gypi-dim text-[13px] font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5">
+            🔄 Actualizar ahora
           </button>
-          <div className="text-center mt-2 text-xs text-gypi-mute">
-            Se actualiza automáticamente cada 60 segundos
-          </div>
+          <div className="text-center mt-2 text-xs text-gypi-mute">Se actualiza sola cada minuto</div>
         </>
       )}
     </section>

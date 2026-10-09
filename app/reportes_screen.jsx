@@ -48,7 +48,7 @@ const pctTono = (pct) => pct >= 95 ? "bien" : pct >= 80 ? "aviso" : "mal";
 const TONO_STAT = { bien: "bien", aviso: "atencion", mal: "mal" };
 
 const Puntos = () => <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
-const flecha = (abierto) => <span aria-hidden="true" className={`text-gypi-dim text-xs transition-transform ${abierto ? "rotate-90" : ""}`}>›</span>;
+const flecha = (abierto) => <span aria-hidden="true" className={`inline-block text-gypi-dim text-xs transition-transform ${abierto ? "rotate-90" : ""}`}>›</span>;
 
 const getWeekDates = (offset = 0) => {
   const now = new Date();
