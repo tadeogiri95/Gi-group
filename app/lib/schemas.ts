@@ -72,7 +72,8 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["valor"],
   },
   notas_calendario: {
-    POST: ["fecha", "texto", "empleado_id"],
+    // color: el nombre ("verde"); sin él toda nota quedaba naranja aunque se eligiera otro (R11)
+    POST: ["fecha", "texto", "empleado_id", "color"],
     PATCH: ["texto"],
   },
   mensajes_chat: {

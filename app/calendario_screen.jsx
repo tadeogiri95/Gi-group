@@ -3,11 +3,7 @@ import { sb } from "./lib/supabase";
 import { hoyArg } from "./lib/dates";
 import { Chip } from "./components/ui";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const GREEN = "#16A34A";
-const RED = "#DC2626";
-const CYAN = "#0891B2";
-const VIOLET = "#7C3AED";
+import { Button } from "./components/ui";
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
@@ -16,6 +12,24 @@ import { useToast } from "./components/ui/Toast";
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+// Colores de las notas (R11). Se guarda el nombre ("verde"); las notas viejas
+// tienen el color escrito en hexadecimal (16A34A) y se reconocen por esos seis dígitos.
+const COLORES_NOTA = {
+  marca: { nombre: "Color de la empresa", punto: "bg-gypi-amber", fondo: "bg-gypi-amber/10", borde: "border-gypi-amber" },
+  verde: { nombre: "Verde", punto: "bg-gypi-green", fondo: "bg-gypi-green/10", borde: "border-gypi-green" },
+  cian: { nombre: "Celeste", punto: "bg-gypi-cyan", fondo: "bg-gypi-cyan/10", borde: "border-gypi-cyan" },
+  violeta: { nombre: "Violeta", punto: "bg-gypi-violet", fondo: "bg-gypi-violet/10", borde: "border-gypi-violet" },
+  rojo: { nombre: "Rojo", punto: "bg-gypi-red", fondo: "bg-gypi-red/10", borde: "border-gypi-red" },
+};
+const COLOR_VIEJO = { "16a34a": "verde", "0891b2": "cian", "7c3aed": "violeta", "dc2626": "rojo" };
+/** Clases del color de una nota, sea el nombre nuevo o el color viejo escrito. */
+export function colorNota(valor) {
+  if (COLORES_NOTA[valor]) return COLORES_NOTA[valor];
+  const hex = String(valor || "").replace("#", "").toLowerCase();
+  return COLORES_NOTA[COLOR_VIEJO[hex]] || COLORES_NOTA.marca;
+}
+const MARCA = "var(--color-empresa-primary)";
 
 /* ═══ HELPERS ═══ */
 function getDiasDelMes(year, month) {
@@ -44,7 +58,7 @@ function getHorario(diagrama, fecha) {
 function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
   const [empId, setEmpId] = useState("");
   const [texto, setTexto] = useState("");
-  const [color, setColor] = useState(AMBER);
+  const [color, setColor] = useState("marca");
 
   const fechaStr = fecha.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
   const notasDelDia = notas.filter(n => n.fecha === fecha.toISOString().slice(0, 10));
@@ -62,8 +76,8 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
             {notasDelDia.map((n, i) => {
               const emp = empleados.find(e => e.id === n.empleado_id);
               return (
-                <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${n.color || AMBER}12`, border: `1px solid ${n.color || AMBER}30` }}>
-                  <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: n.color || AMBER }} />
+                <div key={i} className={`p-2 rounded-lg mb-1.5 flex items-center gap-2 ${colorNota(n.color).fondo}`}>
+                  <div className={`w-1 h-6 rounded-sm shrink-0 ${colorNota(n.color).punto}`} aria-hidden="true" />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold text-gypi-text">{n.texto}</div>
                     {emp && <div className="text-xs text-gypi-dim mt-0.5">{emp.apodo || emp.nombre}</div>}
@@ -76,35 +90,32 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
 
         {/* Nueva nota */}
         <div className="mb-3">
-          <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Empleado (opcional)</label>
-          <select value={empId} onChange={e => setEmpId(e.target.value)} className="w-full p-2.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-gypi-text text-[13px] font-body outline-none">
+          <label htmlFor="nota-empleado" className="g-label">Empleado (opcional)</label>
+          <select id="nota-empleado" value={empId} onChange={e => setEmpId(e.target.value)} className="g-input cursor-pointer">
             <option value="">General (sin asignar)</option>
             {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{e.apodo || e.nombre} (L-{e.legajo})</option>)}
           </select>
         </div>
 
         <div className="mb-3">
-          <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Nota / Tarea</label>
-          <input value={texto} onChange={e => setTexto(e.target.value)} placeholder="Ej: Instalar mueble OT 7450" className="w-full py-[11px] px-3.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-gypi-text text-sm font-body outline-none box-border" />
+          <label htmlFor="nota-texto" className="g-label">Nota o tarea</label>
+          <input id="nota-texto" value={texto} onChange={e => setTexto(e.target.value)} placeholder="Ej: Instalar mueble OT 7450" className="g-input" />
         </div>
 
         <div className="mb-4">
-          <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Color</label>
-          <div className="flex gap-2">
-            {[AMBER, GREEN, CYAN, VIOLET, RED].map(c => (
-              <button key={c} onClick={() => setColor(c)} className="w-8 h-8 rounded-[10px] cursor-pointer flex items-center justify-center" style={{ background: `${c}22`, border: `2px solid ${color === c ? c : "transparent"}` }}>
-                <div className="w-3.5 h-3.5 rounded-full" style={{ background: c }} />
+          <div className="g-label" id="nota-color">Color</div>
+          <div className="flex gap-2" role="radiogroup" aria-labelledby="nota-color">
+            {Object.entries(COLORES_NOTA).map(([clave, c]) => (
+              <button key={clave} onClick={() => setColor(clave)} role="radio" aria-checked={color === clave} aria-label={c.nombre} className={`w-11 h-11 rounded-[10px] cursor-pointer flex items-center justify-center border-2 ${c.fondo} ${color === clave ? c.borde : "border-transparent"}`}>
+                <div className={`w-4 h-4 rounded-full ${c.punto}`} />
               </button>
             ))}
           </div>
         </div>
 
-        <button onClick={() => { if (texto.trim()) onSave({ fecha: fecha.toISOString().slice(0, 10), empleado_id: empId || null, texto: texto.trim(), color }); }} disabled={!texto.trim() || saving} className="w-full p-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer" style={{
-          background: texto.trim() && !saving ? AMBER : "var(--color-surface)",
-          color: texto.trim() && !saving ? "#000" : "var(--color-text-muted)",
-        }}>
+        <Button size="lg" className="w-full" onClick={() => { if (texto.trim()) onSave({ fecha: fecha.toISOString().slice(0, 10), empleado_id: empId || null, texto: texto.trim(), color }); }} disabled={!texto.trim()} loading={saving}>
           {saving ? "Guardando..." : "Agregar nota"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -135,13 +146,13 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
             {turnosDia.map((t, i) => {
               const emp = empleados.find(e => e.id === t.empleado_id);
               return (
-                <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${CYAN}10`, border: `1px solid ${CYAN}25` }}>
-                  <div className="w-1 h-6 rounded-sm shrink-0" style={{ background: CYAN }} />
+                <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2 bg-gypi-cyan/[0.06] border border-gypi-cyan/20">
+                  <div className="w-1 h-6 rounded-sm shrink-0 bg-gypi-cyan" aria-hidden="true" />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-bold text-gypi-text">{emp?.nombre || "?"}</div>
                     <div className="text-xs text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
                   </div>
-                  <button onClick={() => onDelete(t.id)} aria-label="Eliminar turno" className="text-xs px-2 py-1 rounded-md border-none cursor-pointer" style={{ background: `${RED}15`, color: RED }}>✕</button>
+                  <button onClick={() => onDelete(t.id)} aria-label={`Sacar el turno de ${emp?.nombre || "este empleado"}`} className="w-11 h-11 text-sm rounded-md border-none cursor-pointer bg-gypi-red/10 text-gypi-red-ink">✕</button>
                 </div>
               );
             })}
@@ -149,8 +160,8 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
         )}
 
         <div className="mb-3">
-          <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Empleado *</label>
-          <select value={empId} onChange={e => setEmpId(e.target.value)} className="w-full p-2.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-gypi-text text-[13px] font-body outline-none">
+          <label htmlFor="turno-empleado" className="g-label">Empleado</label>
+          <select id="turno-empleado" value={empId} onChange={e => setEmpId(e.target.value)} className="g-input cursor-pointer">
             <option value="">Seleccionar...</option>
             {empsDisponibles.map(e => <option key={e.id} value={e.id}>{e.nombre} (L-{e.legajo}) · {e.division || "sin div."}</option>)}
           </select>
@@ -158,26 +169,24 @@ function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, savin
 
         <div className="flex gap-2 mb-3">
           <div className="flex-1">
-            <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Entrada</label>
-            <input type="time" value={horaInicio} onChange={e => setHoraInicio(e.target.value)} className="w-full p-2.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-gypi-text text-[13px] font-body outline-none" />
+            <label htmlFor="turno-entrada" className="g-label">Entrada</label>
+            <input id="turno-entrada" type="time" value={horaInicio} onChange={e => setHoraInicio(e.target.value)} className="g-input" />
           </div>
           <div className="flex-1">
-            <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Salida</label>
-            <input type="time" value={horaFin} onChange={e => setHoraFin(e.target.value)} className="w-full p-2.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-gypi-text text-[13px] font-body outline-none" />
+            <label htmlFor="turno-salida" className="g-label">Salida</label>
+            <input id="turno-salida" type="time" value={horaFin} onChange={e => setHoraFin(e.target.value)} className="g-input" />
           </div>
         </div>
 
         <div className="mb-4">
-          <label className="block text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-1.5">Nota (opcional)</label>
-          <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Ej: Cubrir a Juan" className="w-full py-[11px] px-3.5 rounded-[10px] bg-gypi-surface border border-gypi-border text-gypi-text text-sm font-body outline-none box-border" />
+          <label htmlFor="turno-nota" className="g-label">Nota (opcional)</label>
+          <input id="turno-nota" value={nota} onChange={e => setNota(e.target.value)} placeholder="Ej: Cubrir a Juan" className="g-input" />
         </div>
 
-        <button onClick={() => { if (empId) onSave({ fecha: fecha.toISOString().slice(0, 10), empleado_id: empId, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota.trim() }); }} disabled={!empId || saving} className="w-full p-3.5 rounded-xl border-none text-[15px] font-bold font-heading cursor-pointer" style={{
-          background: empId && !saving ? CYAN : "var(--color-surface)",
-          color: empId && !saving ? "#000" : "var(--color-text-muted)",
-        }}>
+        <Button size="lg" className="w-full" onClick={() => { if (empId) onSave({ fecha: fecha.toISOString().slice(0, 10), empleado_id: empId, hora_inicio: horaInicio, hora_fin: horaFin, nota: nota.trim() }); }} disabled={!empId} loading={saving}>
           {saving ? "Guardando..." : "Asignar turno"}
-        </button>
+        </Button>
+        {!empId && !saving && <div className="mt-2 text-center text-[12px] text-gypi-dim">Elegí a quién le asignás el turno.</div>}
       </div>
     </div>
   );
@@ -237,7 +246,6 @@ export default function CalendarioScreen({ empresaId }) {
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  const showToast = (msg, color) => toast.show(msg, color);
 
   const guardarNota = async (nota) => {
     setSaving(true);
@@ -246,9 +254,9 @@ export default function CalendarioScreen({ empresaId }) {
       await sb.post("notas_calendario", payload);
       await cargarDatos();
       setSelectedDate(null);
-      showToast("✅ Nota agregada", GREEN);
+      toast.success("✅ Nota agregada");
     } catch (e) {
-      showToast(`Error: ${e.message}`, RED);
+      toast.error(`Error: ${e.message}`);
     } finally { setSaving(false); }
   };
 
@@ -258,12 +266,12 @@ export default function CalendarioScreen({ empresaId }) {
       const payload = empresaId ? { ...turno, empresa_id: empresaId } : turno;
       await sb.post("turnos_planificados", payload);
       await cargarDatos();
-      showToast("✅ Turno asignado", CYAN);
+      toast.success("✅ Turno asignado");
     } catch (e) {
       if (e.message?.includes("duplicate") || e.message?.includes("unique")) {
-        showToast("Ya tiene turno asignado ese día", AMBER);
+        toast.show("Ya tiene turno asignado ese día");
       } else {
-        showToast(`Error: ${e.message}`, RED);
+        toast.error(`Error: ${e.message}`);
       }
     } finally { setSaving(false); }
   };
@@ -272,9 +280,9 @@ export default function CalendarioScreen({ empresaId }) {
     try {
       await sb.del(`turnos_planificados?id=eq.${turnoId}`);
       await cargarDatos();
-      showToast("Turno eliminado", "var(--color-text-muted)");
+      toast.show("Turno eliminado");
     } catch (e) {
-      showToast(`Error: ${e.message}`, RED);
+      toast.error(`Error: ${e.message}`);
     }
   };
 
@@ -317,25 +325,26 @@ export default function CalendarioScreen({ empresaId }) {
 
       {/* Navegación mes */}
       <div className="flex justify-between items-center mb-3.5">
-        <button onClick={() => cambiarMes(-1)} aria-label="Mes anterior" className="w-9 h-9 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">◀</button>
+        <button onClick={() => cambiarMes(-1)} aria-label="Mes anterior" className="w-12 h-12 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">◀</button>
         <div className="text-center">
           <div className="font-heading text-xl font-bold text-gypi-text">{MESES[month]}</div>
           <div className="text-xs text-gypi-dim">{year}</div>
         </div>
-        <button onClick={() => cambiarMes(1)} aria-label="Mes siguiente" className="w-9 h-9 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">▶</button>
+        <button onClick={() => cambiarMes(1)} aria-label="Mes siguiente" className="w-12 h-12 rounded-[10px] bg-gypi-surface border-none text-gypi-text text-base cursor-pointer flex items-center justify-center">▶</button>
       </div>
 
       {/* Filtro división */}
       <div className="flex gap-1 mb-3 overflow-x-auto pb-0.5">
         {DIVISIONES.map(d => (
-          <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || CYAN}>{d.label}</Chip>
+          <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || MARCA}>{d.label}</Chip>
         ))}
       </div>
 
       {loading ? (
-        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
+        <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       ) : (
         <>
+          <p className="m-0 mb-2 text-[13px] text-gypi-dim">Tocá un día para ver quién trabaja y agregar un turno o una nota. <span className="whitespace-nowrap">👷 trabajan</span> · <span className="whitespace-nowrap">⏱ turnos extra</span> · <span className="whitespace-nowrap">● notas</span></p>
           {/* Headers días */}
           <div role="row" className="grid grid-cols-7 gap-0.5 mb-1">
             {DIAS_LABEL.map(d => (
@@ -353,16 +362,13 @@ export default function CalendarioScreen({ empresaId }) {
               const esFinDeSemana = new Date(year, month, dia).getDay() === 0 || new Date(year, month, dia).getDay() === 6;
 
               return (
-                <button key={dia} onClick={() => setVistaDetalle(vistaDetalle === dia ? null : dia)} aria-label={`${dia} de ${MESES[month]}${isHoy ? ' (hoy)' : ''}`} aria-pressed={vistaDetalle === dia} className="py-1.5 px-0.5 rounded-[10px] cursor-pointer flex flex-col items-center gap-0.5 min-h-[52px] transition-all duration-150" style={{
-                  border: isHoy ? `2px solid ${AMBER}` : `1px solid ${"var(--color-border)"}`,
-                  background: isHoy ? `color-mix(in srgb, ${AMBER} 7%, transparent)` : tieneNotas ? `${CYAN}08` : "var(--color-surface)",
-                }}>
-                  <div className="font-heading" style={{ fontSize: 14, fontWeight: isHoy ? 800 : 600, color: isHoy ? AMBER : esFinDeSemana ? "var(--color-text-muted)" : "var(--color-text)" }}>{dia}</div>
-                  {info.disponibles > 0 && <div className="text-[11px] font-bold" style={{ color: GREEN }}>{info.disponibles}👷</div>}
-                  {info.turnos.length > 0 && <div className="text-[11px] font-bold" style={{ color: CYAN }}>{info.turnos.length}⏱</div>}
+                <button key={dia} onClick={() => setVistaDetalle(vistaDetalle === dia ? null : dia)} aria-label={`${dia} de ${MESES[month]}${isHoy ? " (hoy)" : ""}: ${info.disponibles} trabajan${info.turnos.length ? `, ${info.turnos.length} turno${info.turnos.length > 1 ? "s" : ""}` : ""}${tieneNotas ? `, ${info.notas.length} nota${info.notas.length > 1 ? "s" : ""}` : ""}`} aria-pressed={vistaDetalle === dia} className={`py-1.5 px-0.5 rounded-[10px] cursor-pointer flex flex-col items-center gap-0.5 min-h-[52px] transition-all duration-150 ${isHoy ? "border-2 border-gypi-amber bg-gypi-amber/[0.07]" : vistaDetalle === dia ? "border-2 border-gypi-text bg-gypi-surface" : `border ${tieneNotas ? "border-gypi-border bg-gypi-cyan/[0.05]" : "border-gypi-border bg-gypi-surface"}`}`}>
+                  <div className={`font-heading text-[14px] ${isHoy ? "font-extrabold text-gypi-amber-ink" : esFinDeSemana ? "font-semibold text-gypi-mute" : "font-semibold text-gypi-text"}`}>{dia}</div>
+                  {info.disponibles > 0 && <div className="text-[11px] font-bold text-gypi-green-ink">{info.disponibles}👷</div>}
+                  {info.turnos.length > 0 && <div className="text-[11px] font-bold text-gypi-cyan-ink">{info.turnos.length}⏱</div>}
                   {tieneNotas && (
-                    <div className="flex gap-0.5">
-                      {info.notas.slice(0, 3).map((n, i) => <div key={i} className="w-[5px] h-[5px] rounded-full" style={{ background: n.color || AMBER }} />)}
+                    <div className="flex gap-0.5" aria-hidden="true">
+                      {info.notas.slice(0, 3).map((n, i) => <div key={i} className={`w-[5px] h-[5px] rounded-full ${colorNota(n.color).punto}`} />)}
                     </div>
                   )}
                 </button>
@@ -378,14 +384,14 @@ export default function CalendarioScreen({ empresaId }) {
 
             return (
               <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3.5">
-                <div className="flex justify-between items-center mb-3">
+                <div className="flex flex-col gap-2.5 mb-3">
                   <div>
                     <div className="text-sm font-bold font-heading text-gypi-text">{fechaLabel}</div>
-                    <div className="text-[11px] text-gypi-dim mt-0.5">{info.disponibles} disponibles · {info.francos} franco · {info.turnos.length} turno{info.turnos.length !== 1 ? "s" : ""}</div>
+                    <div className="text-[12px] text-gypi-dim mt-0.5">{info.disponibles} trabajan · {info.francos} de franco · {info.turnos.length} turno{info.turnos.length !== 1 ? "s" : ""} extra</div>
                   </div>
-                  <div className="flex gap-1.5">
-                    <button onClick={() => setTurnoDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `${CYAN}22`, color: CYAN }}>+ Turno</button>
-                    <button onClick={() => setSelectedDate(fecha)} className="py-2 px-3.5 rounded-[10px] border-none text-xs font-bold font-body cursor-pointer" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>+ Nota</button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="secondary" className="flex-1" onClick={() => setTurnoDate(fecha)}>+ Turno</Button>
+                    <Button size="sm" variant="secondary" className="flex-1" onClick={() => setSelectedDate(fecha)}>+ Nota</Button>
                   </div>
                 </div>
 
@@ -395,7 +401,7 @@ export default function CalendarioScreen({ empresaId }) {
                     {info.turnos.map((t, i) => {
                       const emp = empleados.find(e => e.id === t.empleado_id);
                       return (
-                        <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2" style={{ background: `${CYAN}10`, borderLeft: `3px solid ${CYAN}` }}>
+                        <div key={i} className="p-2 rounded-lg mb-1.5 flex items-center gap-2 bg-gypi-cyan/[0.06] border-l-[3px] border-gypi-cyan">
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text">{emp?.nombre || "?"} <span className="font-normal text-gypi-dim">· {emp?.division || "sin div."}</span></div>
                             <div className="text-xs text-gypi-dim mt-0.5">{t.hora_inicio?.slice(0,5)} — {t.hora_fin?.slice(0,5)}{t.nota ? ` · ${t.nota}` : ""}</div>
@@ -411,7 +417,7 @@ export default function CalendarioScreen({ empresaId }) {
                     {info.notas.map((n, i) => {
                       const emp = empleados.find(e => e.id === n.empleado_id);
                       return (
-                        <div key={i} className="p-2 rounded-lg mb-1.5" style={{ background: `${n.color || AMBER}10`, borderLeft: `3px solid ${n.color || AMBER}` }}>
+                        <div key={i} className={`p-2 rounded-lg mb-1.5 border-l-[3px] ${colorNota(n.color).fondo} ${colorNota(n.color).borde}`}>
                           <div className="text-xs font-semibold text-gypi-text">{n.texto}</div>
                           {emp && <div className="text-xs text-gypi-dim mt-0.5">{emp.apodo || emp.nombre} · {emp.division || "general"}</div>}
                         </div>
@@ -426,9 +432,9 @@ export default function CalendarioScreen({ empresaId }) {
                     const franco = isFranco(emp.diagrama, fecha);
                     const horario = getHorario(emp.diagrama, fecha);
                     return (
-                      <div key={emp.id} className="py-1 px-2 rounded-md flex items-center gap-1" style={{ background: franco ? `${"var(--color-text-muted)"}15` : `${GREEN}12` }}>
-                        <div className="w-[5px] h-[5px] rounded-full" style={{ background: franco ? "var(--color-text-muted)" : GREEN }} />
-                        <span className="text-xs font-semibold" style={{ color: franco ? "var(--color-text-muted)" : "var(--color-text)" }}>{emp.apodo || emp.nombre.split(" ")[0]}</span>
+                      <div key={emp.id} className={`py-1 px-2 rounded-md flex items-center gap-1 ${franco ? "bg-gypi-surf-hi" : "bg-gypi-green/10"}`}>
+                        <div className={`w-[5px] h-[5px] rounded-full ${franco ? "bg-(--color-text-muted)" : "bg-gypi-green"}`} aria-hidden="true" />
+                        <span className={`text-xs font-semibold ${franco ? "text-gypi-mute line-through" : "text-gypi-text"}`}>{emp.apodo || emp.nombre.split(" ")[0]}</span>
                         {horario && <span className="text-[11px] text-gypi-dim font-mono">{horario.in}</span>}
                       </div>
                     );
@@ -443,7 +449,7 @@ export default function CalendarioScreen({ empresaId }) {
             <div className="text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-2">Resumen del mes</div>
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
-                <div className="font-heading text-xl font-bold text-gypi-green">{empsFiltrados.filter(e => e.rol === "operativo").length}</div>
+                <div className="font-heading text-xl font-bold text-gypi-green-ink">{empsFiltrados.filter(e => e.rol === "operativo").length}</div>
                 <div className="text-[11px] text-gypi-dim">Operativos</div>
               </div>
               <div className="text-center">
@@ -451,7 +457,7 @@ export default function CalendarioScreen({ empresaId }) {
                 <div className="text-[11px] text-gypi-dim">Notas</div>
               </div>
               <div className="text-center">
-                <div className="font-heading text-xl font-bold text-gypi-cyan">
+                <div className="font-heading text-xl font-bold text-gypi-cyan-ink">
                   {(() => {
                     let diasLab = 0;
                     for (let d = 1; d <= new Date(year, month + 1, 0).getDate(); d++) {
