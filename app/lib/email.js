@@ -361,6 +361,43 @@ export async function sendInvitacionEmpleado({ to, nombre, empresa, codigo, link
   }).catch((e) => logger.error("email sendInvitacionEmpleado", e));
 }
 
+// ─── Tarjetas con QR del equipo recién cargado (R10) ───
+// Van al email del dueño con las tarjetas listas para imprimir como adjunto:
+// así no las pierde si cierra la pantalla del alta. Devuelve true si salió.
+export async function sendTarjetasQR({ to, empresa, tarjetas, htmlImprimible, empresaId }) {
+  if (!process.env.RESEND_API_KEY) return false;
+  const filas = tarjetas.map((t) => `
+      <tr>
+        <td style="padding:8px 0;border-bottom:1px solid #E5E5E3">${escapeHtml(t.nombre)}<br><a href="${escapeHtml(t.link)}" style="font-size:12px;color:#F97316">Link para activar</a></td>
+        <td style="padding:8px 0;border-bottom:1px solid #E5E5E3;font-family:monospace;text-align:right">${escapeHtml(t.codigo)}</td>
+      </tr>`).join("");
+  const cuerpo = `
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">
+      Te mandamos las tarjetas de acceso de tu equipo. Abrí el archivo adjunto
+      (mejor desde la computadora), imprimilo y dale a cada persona la suya: escanean
+      el QR con el celular y crean su contraseña. Si alguien está lejos, reenviale su link.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px">${filas}</table>
+    <p style="margin:0;font-size:12px;color:#9B9B9B">Cada código sirve una sola vez y vence a los 14 días. Si alguno se pierde, generás uno nuevo desde Personal.</p>
+  `;
+  try {
+    const r = await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `Tarjetas de acceso para tu equipo — ${empresa}`,
+      html: buildHtml("Tarjetas de acceso", empresa, cuerpo),
+      text: stripHtml(cuerpo),
+      attachments: [{ filename: "tarjetas-gypi.html", content: Buffer.from(htmlImprimible).toString("base64") }],
+      tags: buildTags("tarjetas_qr", empresaId),
+    });
+    if (r?.error) { logger.error("email sendTarjetasQR", r.error); return false; }
+    return true;
+  } catch (e) {
+    logger.error("email sendTarjetasQR", e);
+    return false;
+  }
+}
+
 // ─── Fallo de pago ───
 export async function sendFalloPago({ to, nombre, empresa, slug, monto, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;

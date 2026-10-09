@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { sb, getToken } from './lib/supabase';
 import { setColoresEmpresa } from './lib/theme';
 
@@ -8,7 +8,7 @@ import { PasoPlanta, PasoHorario, PasoOT } from './components/onboarding/PasosAl
 import { horarioTipoDefault, diagramaDesde, textoHorario } from './lib/onboarding';
 import { imprimirTarjetas } from './lib/tarjetasQR';
 
-const TOTAL_PASOS = 7;
+const TOTAL_PASOS = 6;
 
 function trackOnboarding(evento, meta = {}) {
   const token = getToken();
@@ -193,35 +193,111 @@ function csvField(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/* ═══ BORRADOR (U-15) ═══
+   Lo que lleva cargado se guarda en este navegador a cada cambio: si cierra la
+   pestaña o se le apaga el celular, al volver sigue desde el mismo paso. El
+   logo no se guarda (pesa demasiado); se vuelve a subir si hace falta. */
+const claveBorrador = (eid) => `gypi_alta_${eid || "sin-empresa"}`;
+
+function leerBorrador(eid) {
+  try {
+    const b = JSON.parse(localStorage.getItem(claveBorrador(eid)) || "null");
+    return b && typeof b === "object" && b.v === 1 ? b : null;
+  } catch { return null; }
+}
+
+function guardarBorrador(eid, datos) {
+  try { localStorage.setItem(claveBorrador(eid), JSON.stringify({ v: 1, ...datos })); } catch { /* sin almacenamiento: sigue sin borrador */ }
+}
+
+function borrarBorrador(eid) {
+  try { localStorage.removeItem(claveBorrador(eid)); } catch { /* nada */ }
+}
+
+// Colores de la marca por defecto (los mismos que trae la app).
+const PRIM_DEF = "#F97316";
+const SEC_DEF = "#8B5CF6";
+
+const NOMBRES_PASOS = ["Tu empresa", "Ubicación", "Horario", "Equipo", "Primer trabajo", "Confirmar"];
+
+function Fila({ label, children }) {
+  return (
+    <div className="flex justify-between gap-3 py-1.5 border-t border-gypi-border first:border-t-0 items-center">
+      <span className="text-gypi-dim text-[13px]">{label}</span>
+      <span className="text-gypi-text font-semibold text-[13px] text-right">{children}</span>
+    </div>
+  );
+}
+
+/* La plantilla del rubro, para leer: sin claves, códigos ni colores. */
+function VistaPlantilla({ divisiones, etapas }) {
+  return (
+    <div className="g-card mb-3">
+      <div className="g-label">Sectores ({divisiones.length})</div>
+      <ul className="flex flex-wrap gap-1.5 mb-3 list-none p-0 m-0">
+        {divisiones.map(d => <li key={d.clave} className="px-2.5 py-1 rounded-full bg-gypi-surf-hi text-gypi-text text-[13px]">{d.icon} {d.label}</li>)}
+      </ul>
+      <div className="g-label">Etapas de trabajo ({etapas.length})</div>
+      <ol className="flex flex-wrap gap-1.5 mb-2 list-none p-0 m-0">
+        {etapas.map((e, i) => <li key={e.codigo} className="px-2.5 py-1 rounded-full bg-gypi-surf-hi text-gypi-text text-[13px]">{i + 1}. {e.nombre}</li>)}
+      </ol>
+      <p className="text-xs text-gypi-dim m-0">Las cambiás cuando quieras desde Más → Empresa. No hace falta acertar ahora.</p>
+    </div>
+  );
+}
+
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function OnboardingWizard({ empresa, usuario, onComplete }) {
-  const [step, setStepRaw] = useState(1);
-  const stepRef = useRef(1);
+  const eid = empresa?.id || usuario?.empresa_id;
+  const [borrador] = useState(() => leerBorrador(eid));
+  const b = borrador || {};
+  const [retomado, setRetomado] = useState(!!borrador);
+
+  const pasoInicial = Number.isInteger(b.step) && b.step >= 1 && b.step <= TOTAL_PASOS ? b.step : 1;
+  const [step, setStepRaw] = useState(pasoInicial);
+  const stepRef = useRef(pasoInicial);
   const setStep = (s) => {
     trackOnboarding('onboarding_step', { from: stepRef.current, to: s });
     stepRef.current = s;
     setStepRaw(s);
   };
-  const [nombreEmpresa, setNombreEmpresa] = useState(empresa?.nombre || "");
-  const [rubro, setRubro] = useState(empresa?.rubro || "");
-  const [divisiones, setDivisiones] = useState([]);
-  const [etapas, setEtapas] = useState([]);
-  const [colorPrim, setColorPrim] = useState(empresa?.color_primario || "#F97316");
-  const [colorSec, setColorSec] = useState(empresa?.color_secundario || "#8B5CF6");
+  const [nombreEmpresa, setNombreEmpresa] = useState(b.nombreEmpresa ?? (empresa?.nombre || ""));
+  const [rubro, setRubro] = useState(b.rubro ?? (empresa?.rubro || ""));
+  const [divisiones, setDivisiones] = useState(b.divisiones || []);
+  const [etapas, setEtapas] = useState(b.etapas || []);
+  const [colorPrim, setColorPrim] = useState(b.colorPrim || empresa?.color_primario || PRIM_DEF);
+  const [colorSec, setColorSec] = useState(b.colorSec || empresa?.color_secundario || SEC_DEF);
   const [logoBase64, setLogoBase64] = useState(null);
   const [logoPreview, setLogoPreview] = useState(empresa?.logo_url || null);
-  const [empleados, setEmpleados] = useState([]);
+  const [personalizar, setPersonalizar] = useState(false);
+  const [empleados, setEmpleados] = useState(b.empleados || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [planta, setPlanta] = useState({ nombre: "Planta", lat: null, lng: null, radio: 150, direccion: "" });
-  const [horario, setHorario] = useState(horarioTipoDefault);
-  const [usarHorario, setUsarHorario] = useState(true);
-  const [ot, setOt] = useState({ ot: "", cliente: "", proyecto: "" });
+  const [planta, setPlanta] = useState(b.planta || { nombre: "Planta", lat: null, lng: null, radio: 150, direccion: "" });
+  const [horario, setHorario] = useState(b.horario || horarioTipoDefault);
+  const [usarHorario, setUsarHorario] = useState(b.usarHorario ?? true);
+  const [ot, setOt] = useState(b.ot || { ot: "", cliente: "", proyecto: "" });
   const [avisos, setAvisos] = useState([]);
   const [codigos, setCodigos] = useState(null); // códigos de activación del equipo recién cargado
   const [empresaFinal, setEmpresaFinal] = useState(null);
+  const [envioEmail, setEnvioEmail] = useState({ estado: "", texto: "" });
   const fileLogoRef = useRef(null);
   const fileCsvRef = useRef(null);
+
+  // Guarda el borrador a cada cambio, hasta terminar (el cierre con los QR no).
+  useEffect(() => {
+    if (step > TOTAL_PASOS) return;
+    guardarBorrador(eid, { step, nombreEmpresa, rubro, divisiones, etapas, colorPrim, colorSec, empleados, planta, horario, usarHorario, ot });
+  }, [eid, step, nombreEmpresa, rubro, divisiones, etapas, colorPrim, colorSec, empleados, planta, horario, usarHorario, ot]);
+
+  const empezarDeNuevo = () => {
+    borrarBorrador(eid);
+    setNombreEmpresa(empresa?.nombre || ""); setRubro(""); setDivisiones([]); setEtapas([]);
+    setColorPrim(empresa?.color_primario || PRIM_DEF); setColorSec(empresa?.color_secundario || SEC_DEF);
+    setEmpleados([]); setPlanta({ nombre: "Planta", lat: null, lng: null, radio: 150, direccion: "" });
+    setHorario(horarioTipoDefault); setUsarHorario(true); setOt({ ot: "", cliente: "", proyecto: "" });
+    setRetomado(false); setStep(1);
+  };
 
   const aplicarPlantilla = (r) => {
     setRubro(r);
@@ -232,19 +308,9 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
     }
   };
 
-  const saltarPlantilla = () => { setDivisiones([]); setEtapas([]); };
-
-  const addDiv = () => setDivisiones(p => [...p, { clave: `div_${p.length+1}`, label: "Nueva división", icon: "📦", color: "#F97316" }]);
-  const updDiv = (i, k, v) => setDivisiones(p => p.map((d, j) => j === i ? { ...d, [k]: v } : d));
-  const delDiv = (i) => setDivisiones(p => p.filter((_, j) => j !== i));
-
-  const addEt = () => setEtapas(p => [...p, { codigo: p.length + 1, nombre: "Nueva etapa", icon: "🔧", color: "#F97316" }]);
-  const updEt = (i, k, v) => setEtapas(p => p.map((e, j) => j === i ? { ...e, [k]: v } : e));
-  const delEt = (i) => setEtapas(p => p.filter((_, j) => j !== i));
-
   const onLogoFile = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
-    if (f.size > 2 * 1024 * 1024) { setError("Logo: máx 2MB"); return; }
+    if (f.size > 2 * 1024 * 1024) { setError("El logo pesa más de 2 MB. Probá con una imagen más chica."); return; }
     const reader = new FileReader();
     reader.onload = () => {
       const b64 = reader.result.split(",")[1];
@@ -268,9 +334,25 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
     reader.readAsText(f);
   };
 
+  const mandarPorEmail = async () => {
+    setEnvioEmail({ estado: "enviando", texto: "" });
+    const token = getToken();
+    try {
+      const r = await fetch("/api/empleados/tarjetas-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ tarjetas: (codigos || []).map(c => ({ legajo: c.legajo, codigo: c.codigo })) }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.error || "No pudimos mandar el email. Probá en un rato.");
+      setEnvioEmail({ estado: "ok", texto: `Listo: te las mandamos a ${d.email}. Revisá también la carpeta de spam.` });
+    } catch (err) {
+      setEnvioEmail({ estado: "error", texto: err.message });
+    }
+  };
+
   const finalizar = async () => {
     setSaving(true); setError("");
-    const eid = empresa?.id || usuario?.empresa_id;
     const token = getToken();
     try {
       await Promise.all([
@@ -346,6 +428,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
       }
 
       setColoresEmpresa(colorPrim, colorSec);
+      borrarBorrador(eid);
       trackOnboarding('onboarding_complete', {
         rubro: rubro || 'otro',
         divisiones: divisiones.length,
@@ -364,34 +447,46 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         setCodigos(activaciones);
         setEmpresaFinal(final);
         setSaving(false);
-        setStep(8);
+        setStep(TOTAL_PASOS + 1);
         return;
       }
       onComplete && onComplete(final);
     } catch (err) {
-      setError(err.message || "Error finalizando onboarding");
+      setError(err.message || "No pudimos guardar todo. Revisá la conexión y tocá de nuevo: lo que cargaste sigue acá.");
       setSaving(false);
     }
   };
+
+
+  const titulo = step > TOTAL_PASOS ? "¡Listo!" : `Paso ${step} de ${TOTAL_PASOS} · ${NOMBRES_PASOS[step - 1]}`;
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6 font-body">
       {/* Header con progreso */}
       <div className="pt-5 pb-4 border-b border-gypi-border mb-4">
         <div className="g-overline text-gypi-amber-ink">Configuración inicial</div>
-        <h1 className="mt-1 mb-3 font-heading text-[22px] font-bold text-gypi-text">{step > TOTAL_PASOS ? "¡Listo!" : `Paso ${step} de ${TOTAL_PASOS}`}</h1>
-        <div className="flex gap-1.5">
+        <h1 className="mt-1 mb-3 font-heading text-[22px] font-bold text-gypi-text">{titulo}</h1>
+        <div className="flex gap-1.5" aria-hidden="true">
           {Array.from({ length: TOTAL_PASOS }, (_, i) => i + 1).map(s => (
             <div key={s} className={`flex-1 h-1 rounded-sm ${s <= step ? 'bg-gypi-amber' : 'bg-gypi-surf-hi'}`} />
           ))}
         </div>
+        {step <= TOTAL_PASOS && <p className="text-xs text-gypi-dim mt-2 mb-0">Se guarda solo: si cerrás, seguís desde acá.</p>}
       </div>
 
-      {/* PASO 1: NOMBRE + RUBRO + PLANTILLA */}
+      {retomado && step <= TOTAL_PASOS && (
+        <div role="status" className="flex items-center justify-between gap-2 p-3 mb-4 rounded-[10px] bg-gypi-cyan/10 text-gypi-text text-[13px]">
+          <span>Seguís donde lo dejaste.</span>
+          <Button size="sm" variant="ghost" onClick={empezarDeNuevo}>Empezar de nuevo</Button>
+        </div>
+      )}
+
+      {/* PASO 1: NOMBRE + RUBRO (la plantilla se muestra para leer) */}
       {step === 1 && <>
-        <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">¿Cómo se llama tu empresa?</h2>
+        <label htmlFor="alta-nombre" className="block m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">¿Cómo se llama tu empresa?</label>
         <p className="text-xs text-gypi-dim mb-2">Te pusimos un nombre provisorio — cambialo por el real.</p>
         <input
+          id="alta-nombre"
           value={nombreEmpresa}
           onChange={e => setNombreEmpresa(e.target.value)}
           className="g-input w-full mb-4"
@@ -399,14 +494,15 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
           maxLength={120}
         />
 
-        <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">¿De qué rubro es tu empresa?</h2>
-        <p className="text-xs text-gypi-dim mb-3.5">Elegí uno y te proponemos divisiones y etapas. Podés editarlas debajo.</p>
+        <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">¿A qué se dedica?</h2>
+        <p className="text-xs text-gypi-dim mb-3.5">Con eso armamos los sectores y las etapas de trabajo. Si no está el tuyo, elegí «Otro / General».</p>
         <div className="grid grid-cols-2 gap-1.5 mb-4">
           {Object.entries(PLANTILLAS).map(([k, v]) => (
             <button
               key={k}
               onClick={() => aplicarPlantilla(k)}
-              className={`p-2.5 rounded-[10px] border text-xs font-semibold font-body cursor-pointer text-left flex items-center gap-1.5 ${
+              aria-pressed={rubro === k}
+              className={`min-h-11 p-2.5 rounded-[10px] border text-[13px] font-semibold font-body cursor-pointer text-left flex items-center gap-1.5 ${
                 rubro === k
                   ? 'border-gypi-amber bg-gypi-amber/[0.08] text-gypi-amber-ink'
                   : 'border-gypi-border bg-gypi-surface text-gypi-text'
@@ -417,44 +513,9 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
           ))}
         </div>
 
-        {rubro && <>
-          <div className="g-card mb-3">
-            <div className="flex justify-between items-center mb-2.5">
-              <span className="g-label">Divisiones ({divisiones.length})</span>
-              <button onClick={addDiv} className="g-btn-ghost text-[11px] py-1.5 px-3 rounded-[var(--radius-md)] border border-gypi-border font-semibold">+ Agregar</button>
-            </div>
-            {divisiones.map((d, i) => (
-              <div key={i} className="grid grid-cols-[40px_60px_1fr_32px_32px] gap-1.5 mb-1.5 items-center">
-                <input value={d.icon} onChange={e => updDiv(i, "icon", e.target.value)} className="g-input text-center !py-2 !px-1" maxLength={4} />
-                <input value={d.clave} onChange={e => updDiv(i, "clave", e.target.value)} className="g-input !py-2 !px-2 text-[11px]" placeholder="clave" />
-                <input value={d.label} onChange={e => updDiv(i, "label", e.target.value)} className="g-input !py-2 !px-2" placeholder="Nombre" />
-                <input type="color" value={d.color} onChange={e => updDiv(i, "color", e.target.value)} className="w-8 h-9 border border-gypi-border rounded-lg cursor-pointer bg-transparent" />
-                <button onClick={() => delDiv(i)} className="w-8 h-9 rounded-lg border-none bg-red-500/10 text-gypi-red cursor-pointer text-sm">✕</button>
-              </div>
-            ))}
-            {divisiones.length === 0 && <div className="py-3.5 text-center text-gypi-dim text-xs">Sin divisiones — agregá una o aplicá una plantilla</div>}
-          </div>
+        {rubro && PLANTILLAS[rubro] && <VistaPlantilla divisiones={divisiones} etapas={etapas} />}
 
-          <div className="g-card mb-3">
-            <div className="flex justify-between items-center mb-2.5">
-              <span className="g-label">Etapas de trabajo ({etapas.length})</span>
-              <button onClick={addEt} className="g-btn-ghost text-[11px] py-1.5 px-3 rounded-[var(--radius-md)] border border-gypi-border font-semibold">+ Agregar</button>
-            </div>
-            {etapas.map((e, i) => (
-              <div key={i} className="grid grid-cols-[40px_50px_1fr_32px_32px] gap-1.5 mb-1.5 items-center">
-                <input value={e.icon} onChange={ev => updEt(i, "icon", ev.target.value)} className="g-input text-center !py-2 !px-1" maxLength={4} />
-                <input value={e.codigo} onChange={ev => updEt(i, "codigo", parseInt(ev.target.value) || 0)} type="number" className="g-input !py-2 !px-2 text-center" />
-                <input value={e.nombre} onChange={ev => updEt(i, "nombre", ev.target.value)} className="g-input !py-2 !px-2" placeholder="Nombre" />
-                <input type="color" value={e.color} onChange={ev => updEt(i, "color", ev.target.value)} className="w-8 h-9 border border-gypi-border rounded-lg cursor-pointer bg-transparent" />
-                <button onClick={() => delEt(i)} className="w-8 h-9 rounded-lg border-none bg-red-500/10 text-gypi-red cursor-pointer text-sm">✕</button>
-              </div>
-            ))}
-            {etapas.length === 0 && <div className="py-3.5 text-center text-gypi-dim text-xs">Sin etapas</div>}
-          </div>
-        </>}
-
-        <div className="flex justify-between gap-2 mt-4">
-          <Button variant="secondary" onClick={() => { saltarPlantilla(); trackOnboarding('onboarding_skip', { step: 1 }); setStep(2); }} disabled={!nombreEmpresa.trim()}>Saltar plantilla</Button>
+        <div className="flex justify-end gap-2 mt-4">
           <Button variant="primary" onClick={() => setStep(2)} disabled={!nombreEmpresa.trim()}>Siguiente →</Button>
         </div>
       </>}
@@ -477,79 +538,43 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </div>
       </>}
 
-      {/* PASO 6: PERSONALIZACIÓN */}
-      {step === 6 && <>
-        <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Personalización</h2>
-        <p className="text-xs text-gypi-dim mb-3.5">Logo y colores. Podés saltarlo y editarlo después.</p>
-
-        <div className="g-card mb-3">
-          <label className="g-label">Logo</label>
-          {logoPreview && (
-            <div className="text-center mb-2.5">
-              <img src={logoPreview} alt="logo" className="max-w-[120px] max-h-[120px] rounded-xl bg-gypi-bg p-1.5" />
-            </div>
-          )}
-          <input ref={fileLogoRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onLogoFile} />
-          <button onClick={() => fileLogoRef.current?.click()} className="w-full py-2.5 rounded-[10px] border border-gypi-border bg-gypi-surf-hi text-gypi-text text-xs font-semibold cursor-pointer">
-            {logoPreview ? "🔄 Cambiar logo" : "📤 Subir logo"}
-          </button>
-        </div>
-
-        <div className="g-card mb-3">
-          <label className="g-label">Color primario</label>
-          <div className="flex items-center gap-2.5 mb-3">
-            <input type="color" value={colorPrim} onChange={e => setColorPrim(e.target.value)} className="w-[50px] h-10 border border-gypi-border rounded-lg cursor-pointer bg-transparent" />
-            <div className="flex-1 h-10 rounded-[10px] flex items-center justify-center font-mono text-xs font-bold text-black" style={{ background: colorPrim }}>{colorPrim}</div>
-          </div>
-          <label className="g-label">Color secundario</label>
-          <div className="flex items-center gap-2.5">
-            <input type="color" value={colorSec} onChange={e => setColorSec(e.target.value)} className="w-[50px] h-10 border border-gypi-border rounded-lg cursor-pointer bg-transparent" />
-            <div className="flex-1 h-10 rounded-[10px] flex items-center justify-center font-mono text-xs font-bold text-white" style={{ background: colorSec }}>{colorSec}</div>
-          </div>
-        </div>
-
-        <div className="flex justify-between gap-2">
-          <Button variant="secondary" onClick={() => setStep(5)}>← Atrás</Button>
-          <Button variant="primary" onClick={() => setStep(7)}>Siguiente →</Button>
-        </div>
-      </>}
-
       {/* PASO 4: EQUIPO */}
       {step === 4 && <>
-        <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Cargá empleados</h2>
-        <p className="text-xs text-gypi-dim mb-3.5">Manual, CSV, o saltá y hacelo después.</p>
-
-        <div className="g-card mb-3">
-          <label className="g-label">Importar CSV</label>
-          <p className="text-[11px] text-gypi-dim mb-2">Columnas: <code className="font-mono">nombre, legajo, division, rol</code> (la primera fila debe tener los encabezados)</p>
-          <input ref={fileCsvRef} type="file" accept=".csv,text/csv" hidden onChange={onCsvFile} />
-          <button onClick={() => fileCsvRef.current?.click()} className="w-full py-2.5 rounded-[10px] border border-gypi-cyan/40 bg-gypi-cyan/10 text-gypi-cyan text-xs font-bold cursor-pointer">📤 Subir archivo .csv</button>
-        </div>
+        <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">¿Quiénes trabajan con vos?</h2>
+        <p className="text-xs text-gypi-dim mb-3.5">Cargá a tu equipo ahora o saltalo y hacelo después desde Personal.</p>
 
         <div className="g-card mb-3">
           <div className="flex justify-between items-center mb-2.5">
-            <span className="g-label">Empleados ({empleados.length})</span>
-            <button onClick={addEmp} className="g-btn-ghost text-[11px] py-1.5 px-3 rounded-[var(--radius-md)] border border-gypi-border font-semibold">+ Agregar</button>
+            <span className="g-label">Personas ({empleados.length})</span>
+            <Button size="sm" variant="outline" onClick={addEmp}>+ Agregar</Button>
           </div>
           {empleados.map((e, i) => (
-            <div key={i} className="grid grid-cols-[1fr_70px_90px_32px] gap-1.5 mb-1.5 items-center">
-              <input value={e.nombre} onChange={ev => updEmp(i, "nombre", ev.target.value)} className="g-input !py-2 !px-2" placeholder="Nombre completo" />
-              <input value={e.legajo} onChange={ev => updEmp(i, "legajo", ev.target.value)} className="g-input !py-2 !px-2" placeholder="Legajo" />
-              <select value={e.division} onChange={ev => updEmp(i, "division", ev.target.value)} className="g-input !py-2 !px-2 cursor-pointer">
-                <option value="">División</option>
+            <div key={i} className="grid grid-cols-[1fr_70px_90px_44px] gap-1.5 mb-1.5 items-center">
+              <input value={e.nombre} onChange={ev => updEmp(i, "nombre", ev.target.value)} className="g-input !py-2 !px-2" placeholder="Nombre completo" aria-label={`Nombre de la persona ${i + 1}`} />
+              <input value={e.legajo} onChange={ev => updEmp(i, "legajo", ev.target.value)} className="g-input !py-2 !px-2" placeholder="Legajo" inputMode="numeric" aria-label={`Legajo de la persona ${i + 1} (opcional)`} />
+              <select value={e.division} onChange={ev => updEmp(i, "division", ev.target.value)} className="g-input !py-2 !px-2 cursor-pointer" aria-label={`Sector de la persona ${i + 1}`}>
+                <option value="">Sector</option>
                 {divisiones.map(d => <option key={d.clave} value={d.clave}>{d.label}</option>)}
               </select>
-              <button onClick={() => delEmp(i)} className="w-8 h-9 rounded-lg border-none bg-red-500/10 text-gypi-red cursor-pointer text-sm">✕</button>
+              <button onClick={() => delEmp(i)} aria-label={`Quitar a ${e.nombre || `la persona ${i + 1}`}`} className="w-11 h-11 rounded-lg border-none bg-gypi-red/10 text-gypi-red cursor-pointer text-sm">✕</button>
             </div>
           ))}
-          {empleados.length === 0 && <div className="py-3.5 text-center text-gypi-dim text-xs">Sin empleados todavía</div>}
+          {empleados.length === 0 && <div className="py-3.5 text-center text-gypi-dim text-xs">Todavía no cargaste a nadie</div>}
+          {empleados.length > 0 && <p className="text-[11px] text-gypi-dim mt-2 mb-0">Si no ponés legajo, te asignamos uno.</p>}
+        </div>
+
+        <div className="g-card mb-3">
+          <div className="g-label">¿Tenés la lista en Excel?</div>
+          <p className="text-[11px] text-gypi-dim mb-2">Guardala como CSV con las columnas nombre, legajo, división y rol (en la primera fila).</p>
+          <input ref={fileCsvRef} type="file" accept=".csv,text/csv" hidden onChange={onCsvFile} />
+          <Button size="sm" variant="secondary" className="w-full" onClick={() => fileCsvRef.current?.click()}>📤 Subir la lista</Button>
         </div>
 
         {empleados.length > 0 && <p className="text-[11px] text-gypi-dim mb-3">Al terminar te damos un QR por persona para que entren a la app y creen su contraseña.</p>}
 
         <div className="flex justify-between gap-2">
           <Button variant="secondary" onClick={() => setStep(3)}>← Atrás</Button>
-          <Button variant="primary" onClick={() => setStep(5)}>Siguiente →</Button>
+          <Button variant="primary" onClick={() => setStep(5)}>{empleados.some(e => e.nombre?.trim()) ? "Siguiente →" : "Saltar →"}</Button>
         </div>
       </>}
 
@@ -562,34 +587,61 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         </div>
       </>}
 
-      {/* PASO 7: RESUMEN */}
-      {step === 7 && <>
+      {/* PASO 6: RESUMEN (+ logo y colores, opcional) */}
+      {step === 6 && <>
         <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Listo para empezar</h2>
-        <p className="text-xs text-gypi-dim mb-4">Revisá la configuración y confirmá.</p>
+        <p className="text-xs text-gypi-dim mb-4">Revisá y confirmá. Todo se puede cambiar después.</p>
 
         <div className="g-card mb-3">
-          <div className="flex justify-between py-1.5"><span className="text-gypi-dim text-[13px]">Nombre</span><span className="text-gypi-text font-semibold text-[13px]">{nombreEmpresa.trim()}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Rubro</span><span className="text-gypi-text font-semibold text-[13px]">{rubro ? PLANTILLAS[rubro]?.label : "Sin definir"}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Divisiones</span><span className="text-gypi-text font-semibold text-[13px]">{divisiones.length}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Etapas</span><span className="text-gypi-text font-semibold text-[13px]">{etapas.length}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Logo</span><span className="text-gypi-text font-semibold text-[13px]">{logoPreview ? "✅ Cargado" : "—"}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border items-center">
-            <span className="text-gypi-dim text-[13px]">Colores</span>
-            <span className="flex gap-1">
-              <span className="w-[18px] h-[18px] rounded" style={{ background: colorPrim }} />
-              <span className="w-[18px] h-[18px] rounded" style={{ background: colorSec }} />
-            </span>
-          </div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Ubicación</span><span className="text-gypi-text font-semibold text-[13px] text-right">{planta.lat != null ? planta.nombre || "Planta" : "—"}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Horario</span><span className="text-gypi-text font-semibold text-[13px] text-right">{usarHorario ? textoHorario(horario) : "—"}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Empleados</span><span className="text-gypi-text font-semibold text-[13px]">{empleados.length}</span></div>
-          <div className="flex justify-between py-1.5 border-t border-gypi-border"><span className="text-gypi-dim text-[13px]">Primera OT</span><span className="text-gypi-text font-semibold text-[13px]">{ot.ot.trim() || "—"}</span></div>
+          <Fila label="Nombre">{nombreEmpresa.trim()}</Fila>
+          <Fila label="Rubro">{rubro ? PLANTILLAS[rubro]?.label : "Sin definir"}</Fila>
+          <Fila label="Sectores">{divisiones.length}</Fila>
+          <Fila label="Etapas de trabajo">{etapas.length}</Fila>
+          <Fila label="Ubicación">{planta.lat != null ? planta.nombre || "Planta" : "—"}</Fila>
+          <Fila label="Horario">{usarHorario ? textoHorario(horario) : "—"}</Fila>
+          <Fila label="Personas">{empleados.filter(e => e.nombre?.trim()).length}</Fila>
+          <Fila label="Primer trabajo">{ot.ot.trim() || "—"}</Fila>
         </div>
 
-        {error && <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red rounded-[10px] text-xs mb-2.5">{error}</div>}
+        <div className="g-card mb-3">
+          <button
+            onClick={() => setPersonalizar(v => !v)}
+            aria-expanded={personalizar}
+            className="w-full min-h-11 flex items-center justify-between bg-transparent border-none p-0 cursor-pointer text-left font-body"
+          >
+            <span>
+              <span className="block text-sm font-semibold text-gypi-text">🎨 Logo y colores</span>
+              <span className="block text-xs text-gypi-dim">Opcional · {logoPreview ? "logo cargado" : "sin logo"}</span>
+            </span>
+            <span className={`inline-block text-gypi-dim transition-transform ${personalizar ? 'rotate-90' : ''}`} aria-hidden="true">›</span>
+          </button>
+          {personalizar && <div className="mt-3">
+            {logoPreview && (
+              <div className="text-center mb-2.5">
+                <img src={logoPreview} alt="Logo de la empresa" className="max-w-[120px] max-h-[120px] rounded-xl bg-gypi-bg p-1.5" />
+              </div>
+            )}
+            <input ref={fileLogoRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onLogoFile} />
+            <Button size="sm" variant="secondary" className="w-full mb-3" onClick={() => fileLogoRef.current?.click()}>
+              {logoPreview ? "🔄 Cambiar logo" : "📤 Subir logo"}
+            </Button>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-[13px] text-gypi-text">
+                <input type="color" value={colorPrim} onChange={e => setColorPrim(e.target.value)} className="w-11 h-11 border border-gypi-border rounded-lg cursor-pointer bg-transparent" />
+                Color principal
+              </label>
+              <label className="flex items-center gap-2 text-[13px] text-gypi-text">
+                <input type="color" value={colorSec} onChange={e => setColorSec(e.target.value)} className="w-11 h-11 border border-gypi-border rounded-lg cursor-pointer bg-transparent" />
+                Color secundario
+              </label>
+            </div>
+          </div>}
+        </div>
+
+        {error && <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red-ink rounded-[10px] text-xs mb-2.5">{error}</div>}
 
         <div className="flex justify-between gap-2">
-          <Button variant="secondary" onClick={() => setStep(6)} disabled={saving}>← Atrás</Button>
+          <Button variant="secondary" onClick={() => setStep(5)} disabled={saving}>← Atrás</Button>
           <Button variant="primary" onClick={finalizar} disabled={saving} loading={saving}>
             {saving ? "Guardando..." : "🚀 Empezar a usar Gypi"}
           </Button>
@@ -597,10 +649,10 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
       </>}
 
       {/* CIERRE: QR de activación del equipo */}
-      {step === 8 && <>
+      {step === TOTAL_PASOS + 1 && <>
         {codigos?.length > 0 && <>
           <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Tu equipo ya está cargado</h2>
-          <p className="text-xs text-gypi-dim mb-3.5">Imprimí una tarjeta por persona: escanean el QR con el celular y crean su contraseña. Los códigos se muestran solo ahora; si los perdés, generás nuevos desde Personal.</p>
+          <p className="text-xs text-gypi-dim mb-3.5">Cada persona necesita su tarjeta: escanea el QR con el celular y crea su contraseña. Mandátelas por email para no perderlas, o imprimilas ahora.</p>
           <div className="g-card mb-3 max-h-[240px] overflow-y-auto">
             {codigos.map(c => (
               <div key={c.legajo} className="flex justify-between py-1.5 border-b border-gypi-border last:border-0 text-[13px]">
@@ -609,6 +661,18 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
               </div>
             ))}
           </div>
+          <Button
+            variant="primary"
+            className="w-full mb-2"
+            onClick={mandarPorEmail}
+            loading={envioEmail.estado === "enviando"}
+            disabled={envioEmail.estado === "enviando" || envioEmail.estado === "ok"}
+          >📧 Mandármelas por email</Button>
+          {envioEmail.texto && (
+            <div role={envioEmail.estado === "error" ? "alert" : "status"} className={`p-3 rounded-[10px] text-xs mb-2 ${envioEmail.estado === "error" ? "bg-gypi-red/10 text-gypi-red-ink" : "bg-gypi-green/10 text-gypi-green-ink"}`}>
+              {envioEmail.texto}
+            </div>
+          )}
           <Button variant="secondary" className="w-full mb-3" onClick={() => imprimirTarjetas({
             titulo: "Códigos de acceso",
             empresa: nombreEmpresa.trim(),
@@ -619,14 +683,15 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
               pie: "Escaneá con la cámara del celular y creá tu contraseña. Sirve una vez.",
             })),
           }).catch(() => setError("No se pudo abrir la impresión. Permití las ventanas emergentes."))}>🖨️ Imprimir tarjetas con QR</Button>
+          <p className="text-[11px] text-gypi-dim mb-3">Si perdés algún código, generás uno nuevo desde Personal.</p>
         </>}
         {avisos.length > 0 && (
           <div role="alert" className="p-3 bg-gypi-amber/10 text-gypi-text rounded-[10px] text-xs mb-3">
             No pudimos guardar {avisos.join(", ")}. Lo podés cargar desde Gestión; te lo recordamos en la lista de primeros pasos.
           </div>
         )}
-        {error && <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red rounded-[10px] text-xs mb-2.5">{error}</div>}
-        <Button variant="primary" className="w-full" onClick={() => onComplete && onComplete(empresaFinal)}>Entrar a Gypi →</Button>
+        {error && <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red-ink rounded-[10px] text-xs mb-2.5">{error}</div>}
+        <Button variant={codigos?.length > 0 ? "outline" : "primary"} className="w-full" onClick={() => onComplete && onComplete(empresaFinal)}>Entrar a Gypi →</Button>
       </>}
     </div>
   );

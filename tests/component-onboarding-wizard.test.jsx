@@ -11,7 +11,7 @@ const { default: OnboardingWizard } = await import("../app/onboarding_wizard.jsx
 const { setToken } = await import("../app/lib/supabase.js");
 
 before(() => setToken("fake-token-de-test"));
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); localStorage.clear(); });
 
 const EMPRESA = { id: "emp-1" };
 
@@ -21,16 +21,15 @@ function completarNombre() {
 
 function irAPasoEmpleados() {
   completarNombre();
-  fireEvent.click(screen.getByText("Saltar plantilla")); // 1 empresa → 2 planta (sin divisiones/etapas)
+  fireEvent.click(screen.getByText("Siguiente →")); // 1 empresa → 2 planta (sin rubro: sin divisiones/etapas)
   fireEvent.click(screen.getByText("Saltar →")); // 2 planta → 3 horario
   fireEvent.click(screen.getByText("Siguiente →")); // 3 horario → 4 equipo
 }
 
-// Del paso 4 (equipo) al resumen, salteando la OT y la marca
+// Del paso 4 (equipo) al resumen, salteando la OT
 function irAlResumen() {
-  fireEvent.click(screen.getByText("Siguiente →")); // 4 equipo → 5 OT
-  fireEvent.click(screen.getByText("Saltar →")); // 5 OT → 6 marca
-  fireEvent.click(screen.getByText("Siguiente →")); // 6 marca → 7 resumen
+  fireEvent.click(screen.getByText(/^(Siguiente|Saltar) →$/)); // 4 equipo → 5 OT
+  fireEvent.click(screen.getByText("Saltar →")); // 5 OT → 6 resumen
 }
 
 function handlerEmpresaPatch() {
