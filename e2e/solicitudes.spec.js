@@ -28,11 +28,10 @@ const GERENTE = {
   debe_cambiar_password: false,
 };
 
-const SOLICITUD_ID = "33333333-3333-3333-3333-333333333333";
+const SOLICITUD_ID = 33;
 
-// tipo "permiso" sin palabras clave de permiso-de-ingreso/cambio-de-horario
-// cae en el branch genérico de InboxScreen.resolver() (solo dispara un POST
-// a notificaciones además del PATCH), que es lo único que nos importa mockear.
+// Aprobar/rechazar va a POST /api/solicitudes/resolver (ítem 38): el servidor
+// guarda todo junto. El mock marca la solicitud como resuelta en el estado.
 function crearSolicitudPendiente() {
   return {
     id: SOLICITUD_ID,
@@ -66,22 +65,17 @@ async function mockApis(page, state) {
     });
   });
 
+  await page.route("**/api/solicitudes/resolver", async (route) => {
+    const { id, estado } = JSON.parse(route.request().postData() || "{}");
+    state.solicitudes = state.solicitudes.map((s) => (s.id === id ? { ...s, estado } : s));
+    await route.fulfill({ json: { ok: true, push: null } });
+  });
+
   await page.route("**/api/data", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
     const tabla = (body.path || "").split("?")[0];
 
-    // PATCH a solicitudes (aprobar/rechazar) — muta el estado compartido para
-    // que los refetch posteriores (cargarSolicitudes() + reload de HomeContent)
-    // vean la solicitud ya resuelta y deje de listarse como pendiente.
-    if (tabla === "solicitudes" && body.method === "PATCH") {
-      const id = (body.path.match(/id=eq\.([^&]+)/) || [])[1];
-      state.solicitudes = state.solicitudes.map((s) => (s.id === id ? { ...s, ...body.body } : s));
-      await route.fulfill({ json: { ok: true, data: state.solicitudes.filter((s) => s.id === id) } });
-      return;
-    }
-
-    // Cualquier otra escritura (ej. POST a notificaciones tras resolver) —
-    // no le importa al test, solo que no rompa la cadena de promesas.
+    // Cualquier escritura que no le importa al test: que no rompa la cadena.
     if (body.method === "POST") {
       await route.fulfill({ json: { ok: true, data: [{}] } });
       return;

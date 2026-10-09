@@ -16,7 +16,7 @@ const SOL = {
   motivo: "Turno médico", estado: "pendiente", fecha: "2026-10-08", created_at: "2026-10-07T12:00:00Z",
 };
 
-function servidor() {
+function servidor({ resolver = () => Response.json({ ok: true, push: { legajo: "7", titulo: "❌ Permiso rechazado", cuerpo: "Tu permiso fue rechazado por Laura" } }) } = {}) {
   const llamadas = [];
   global.fetch = async (url, opts) => {
     const u = String(url);
@@ -26,13 +26,15 @@ function servidor() {
       if (body.method === "GET" && body.path.startsWith("solicitudes")) return Response.json({ data: [SOL], nextCursor: null });
       return Response.json({ data: [{ id: 1 }] });
     }
+    if (u.includes("/api/solicitudes/resolver")) return resolver(body);
     if (u.includes("/api/send-push")) return Response.json({ ok: true });
     throw new Error("fetch inesperado " + u);
   };
   return llamadas;
 }
 
-const patches = (llamadas) => llamadas.filter((l) => l.body?.method === "PATCH");
+// Aprobar/rechazar es un solo pedido al servidor (ítem 38)
+const patches = (llamadas) => llamadas.filter((l) => l.url.includes("/api/solicitudes/resolver"));
 
 // Acelera la espera de "Deshacer" sin tocar los timers de React/testing-library
 function conEsperaCorta() {
@@ -97,11 +99,10 @@ test("Confirmar con motivo: pasada la espera, guarda el motivo y se lo avisa al 
     assert.equal(patches(llamadas).length, 0, "no se envía antes de la espera");
     await waitFor(() => assert.equal(recargas, 1));
     const [p] = patches(llamadas);
-    assert.equal(p.body.path, "solicitudes?id=eq.42");
-    assert.equal(p.body.body.estado, "rechazado");
-    assert.equal(p.body.body.notas_gerencia, "Falta el certificado");
-    const aviso = llamadas.find((l) => l.body?.method === "POST" && l.body.path === "notificaciones");
-    assert.match(aviso.body.body.detalle, /Comentario: "Falta el certificado"/);
+    assert.deepEqual(p.body, { id: 42, estado: "rechazado", nota: "Falta el certificado" });
+    assert.equal(llamadas.filter((l) => l.body?.method === "PATCH" || l.body?.method === "POST").length, 0, "el celular ya no escribe tablas sueltas");
+    const push = llamadas.find((l) => l.url.includes("/api/send-push"));
+    assert.deepEqual(push.body, { legajo: "7", title: "❌ Permiso rechazado", body: "Tu permiso fue rechazado por Laura", data: { empresa_id: "e-1" } });
   } finally {
     restaurar();
   }
@@ -114,6 +115,34 @@ test("Salir de la pantalla durante la espera envía la respuesta igual", async (
   fireEvent.click(screen.getByRole("button", { name: "Sí, aprobar" }));
   unmount();
   await waitFor(() => assert.equal(patches(llamadas).length, 1));
-  assert.equal(patches(llamadas)[0].body.body.estado, "aprobado");
-  assert.equal(patches(llamadas)[0].body.body.notas_gerencia, null);
+  assert.deepEqual(patches(llamadas)[0].body, { id: 42, estado: "aprobado", nota: null });
+  // Espera el aviso al celular para que no caiga en la prueba siguiente
+  await waitFor(() => assert.equal(llamadas.filter((l) => l.url.includes("/api/send-push")).length, 1));
+});
+
+test("Si otra persona ya lo respondió, lo dice y no manda aviso al celular", async () => {
+  const restaurar = conEsperaCorta();
+  try {
+    const llamadas = servidor({ resolver: () => Response.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este pedido." }, { status: 409 }) });
+    render(<InboxScreen ctx={{ solicitudes: [SOL] }} reload={() => {}} usuario={GERENTE} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Aprobar solicitud de Juan Pérez" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, aprobar" }));
+    assert.ok(await screen.findByText("Otra persona ya respondió este pedido.", {}, { timeout: 2000 }));
+    assert.equal(llamadas.filter((l) => l.url.includes("/api/send-push")).length, 0);
+  } finally {
+    restaurar();
+  }
+});
+
+test("Si falla la conexión, avisa que no se pudo", async () => {
+  const restaurar = conEsperaCorta();
+  try {
+    servidor({ resolver: () => Response.json({ ok: false, error: "caído" }, { status: 500 }) });
+    render(<InboxScreen ctx={{ solicitudes: [SOL] }} reload={() => {}} usuario={GERENTE} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Aprobar solicitud de Juan Pérez" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, aprobar" }));
+    assert.ok(await screen.findByText(/No se pudo responder el pedido/, {}, { timeout: 2000 }));
+  } finally {
+    restaurar();
+  }
 });

@@ -1,13 +1,10 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { sb } from "../../lib/supabase";
+import { sb, apiFetch } from "../../lib/supabase";
 import { sendPushToLegajo } from "../../lib/push";
 import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
 import { Chip, Button, EmptyState } from "../ui";
-import { hoyArg } from "../../lib/dates";
-import { cargarHoraExtraAprobada } from "../../lib/solicitudes";
-import { nombreSolicitud } from "../../lib/tiposSolicitud";
 import { bandejaVacia } from "../../lib/textos";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
@@ -52,50 +49,18 @@ export default function InboxScreen({ ctx, reload, usuario }) {
     return bI - aI;
   });
 
+  // Todo se guarda junto en el servidor (ítem 38): la solicitud, la fichada
+  // del permiso de ingreso o la hora extra, y el aviso al empleado.
   const resolver = async (id, estado, nota = "") => {
     setErrorMsg(null);
     try {
-      const sol = solicitudes.find(s => s.id === id);
-      await sb.patch(`solicitudes?id=eq.${id}`, { estado, aprobador: usuario.apodo, resuelto_at: new Date().toISOString(), notas_gerencia: nota || null });
-      const conNota = (texto) => (nota ? `${texto} Comentario: "${nota}"` : texto);
-      if (sol) {
-        const esPermisoIngreso = sol.motivo?.includes("🔓") || sol.motivo?.toLowerCase().includes("permiso de ingreso");
-        const esCambioHorario = sol.tipo === "cambio_horario" || sol.motivo?.toLowerCase().includes("cambio de horario");
-
-        if (esPermisoIngreso && estado === "aprobado") {
-          const today = hoyArg();
-          const matchHora = sol.motivo?.match(/\((\d{1,2}:\d{2})/);
-          const horaIngreso = matchHora ? matchHora[1] : sol.desde && sol.desde !== "—" ? sol.desde : new Date(sol.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
-          const ex = await sb.get(`fichadas?legajo=eq.${sol.legajo}&fecha=eq.${today}`);
-          if (!ex || !ex.length) {
-            await sb.post("fichadas", { empleado_id: sol.empleado_id, legajo: sol.legajo, fecha: today, ingreso: horaIngreso, llegada_tarde: true, minutos_tarde: 0, permiso_ingreso: true, empresa_id: usuario.empresa_id });
-          }
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Ingreso APROBADO — Ya quedaste fichado", detalle: conNota(`${usuario.apodo} aprobó tu ingreso. Se registró tu fichada de las ${horaIngreso}.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
-          sendPushToLegajo(String(sol.legajo), "✅ Ingreso aprobado", `Tu ingreso fue aprobado por ${usuario.apodo}. Fichada registrada a las ${horaIngreso}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        } else if (sol.tipo === "salida_anticipada") {
-          // El empleado ficha su salida él mismo cuando se va: así las horas son las reales
-          const ok = estado === "aprobado";
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: ok ? "✅ Salida APROBADA — ya podés fichar tu salida" : "❌ Salida anticipada RECHAZADA", detalle: conNota(ok ? `${usuario.apodo} aprobó que te retires antes. Cuando te vayas, tocá "Fichar salida" en el inicio.` : `${usuario.apodo} rechazó el permiso para retirarte antes.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
-          sendPushToLegajo(String(sol.legajo), ok ? "✅ Salida aprobada" : "❌ Salida rechazada", ok ? "Ya podés fichar tu salida" : `${usuario.apodo} rechazó tu permiso de salida`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        } else if (sol.tipo === "hora_extra" && estado === "aprobado") {
-          // F1-06: la hora extra aprobada se carga en la fichada (cuenta en la liquidación)
-          const horas = await cargarHoraExtraAprobada(sb, sol);
-          const detalle = horas > 0 ? `${usuario.apodo} aprobó ${horas}h extra; ya figuran en tu fichada.` : `${usuario.apodo} aprobó tu hora extra.`;
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Hora extra APROBADA", detalle: conNota(detalle), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
-          sendPushToLegajo(String(sol.legajo), "✅ Hora extra aprobada", detalle, { empresa_id: usuario.empresa_id }).catch(() => {});
-        } else if (esCambioHorario && estado === "aprobado") {
-          // F1-07: antes intentaba aplicar una propuesta que nunca se guardaba
-          // (datos_horario no existe) y no cambiaba nada. La grilla la ajusta
-          // gestión desde Gestión de personal; acá solo se avisa.
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: "✅ Cambio de horario APROBADO", detalle: conNota(`${usuario.apodo} aprobó tu cambio de horario. Vas a ver la grilla nueva cuando la actualicen en Gestión de personal.`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
-          sendPushToLegajo(String(sol.legajo), "✅ Cambio de horario aprobado", `Tu cambio de horario fue aprobado por ${usuario.apodo}.`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        } else {
-          await sb.post("notificaciones", { destinatario_rol: String(sol.legajo), tipo: "aprobacion", asunto: `Solicitud ${estado === "aprobado" ? "APROBADA ✅" : "RECHAZADA ❌"}`, detalle: conNota(`${nombreSolicitud(sol)}: "${sol.motivo}" por ${usuario.apodo}`), urgencia: "alta", solicitud_id: id, empresa_id: usuario.empresa_id });
-          sendPushToLegajo(String(sol.legajo), estado === "aprobado" ? "✅ Permiso aprobado" : "❌ Permiso rechazado", estado === "aprobado" ? `Tu ${nombreSolicitud(sol)} fue aprobado por ${usuario.apodo}` : `Tu ${nombreSolicitud(sol)} fue rechazado por ${usuario.apodo}`, { empresa_id: usuario.empresa_id }).catch(() => {});
-        }
-      }
+      const r = await apiFetch("/api/solicitudes/resolver", { method: "POST", body: JSON.stringify({ id, estado, nota: nota || null }) });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 409) setErrorMsg("Otra persona ya respondió este pedido.");
+      else if (!r.ok || !d.ok) throw new Error(d.error || `Error ${r.status}`);
+      else if (d.push) sendPushToLegajo(d.push.legajo, d.push.titulo, d.push.cuerpo, { empresa_id: usuario.empresa_id }).catch(() => {});
       await cargarSolicitudes(); reload();
-    } catch (e) { console.error(e); setErrorMsg("Error al procesar la solicitud. Intentá de nuevo."); }
+    } catch (e) { console.error(e); setErrorMsg("No se pudo responder el pedido. Revisá la conexión e intentá de nuevo."); }
   };
 
   // Aprobar/Rechazar espera unos segundos antes de enviarse, para poder deshacer
