@@ -45,14 +45,15 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
       switch (action.type) {
         case "FICHAR_INGRESO": {
           const geo = await obtenerGeo(usuario, { timeoutMs: 8000 }); // igual que el botón grande (D6, F1-17)
-          const res = await ficharServer("ingreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision });
-          card = { type: "fichada", sub: "ingreso", hora: res.hora || hora, geoMsg: geo.msg, tardanza: res.tardanza };
+          // empleadoId: sin señal queda guardada y se envía sola, igual que con el botón grande (R8, U-08)
+          const res = await ficharServer("ingreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision, empleadoId: usuario.id });
+          card = { type: "fichada", sub: "ingreso", hora: res.hora || hora, geoMsg: geo.msg, tardanza: res.tardanza, encolado: res.encolado };
           break;
         }
         case "FICHAR_EGRESO": {
           const geo = await obtenerGeo(usuario, { timeoutMs: 8000 }); // igual que el botón grande (D6, F1-17)
-          const res = await ficharServer("egreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision });
-          card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg, horas_extra: res.horas_extra, solicitar_hora_extra: res.solicitar_hora_extra, datos_jornada: res.datos_jornada };
+          const res = await ficharServer("egreso", { geo_lat: geo.lat, geo_lng: geo.lng, geo_precision: geo.precision, empleadoId: usuario.id });
+          card = { type: "fichada", sub: "egreso", hora: res.hora || hora, geoMsg: geo.msg, horas_extra: res.horas_extra, solicitar_hora_extra: res.solicitar_hora_extra, datos_jornada: res.datos_jornada, encolado: res.encolado };
           break;
         }
         case "FICHAR_EGRESO_FORZAR": {
@@ -174,6 +175,9 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
         if (cr?.type === "error") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
         else if (cr?.type === "fichada_bloqueada" && cr.permiso) { setMsgs(m => [...m, { from: "bot", text: cr.msg + "\n\n¿Querés que solicite el permiso de ingreso a gerencia?", time: new Date(), quickReplies: ["✅ Sí, solicitar permiso", "❌ No, cancelar"] }]); }
         else if (cr?.type === "fichada_bloqueada") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date() }]); }
+        else if (cr?.encolado) {
+          setMsgs(m => [...m, { from: "bot", text: `📶 Sin señal: guardamos tu entrada de las ${cr.hora}. Se envía sola cuando vuelva la conexión, con esa hora.`, time: new Date() }]);
+        }
         else if (cr) {
           let tardMsg = "✅ ¡Fichado! Buen día, " + usuario.apodo + " 👋";
           const trd = cr.tardanza;
@@ -193,6 +197,9 @@ export default function ChatScreen({ usuario, ctx, reload, onBack }) {
         const cr = await execAction({ type: "FICHAR_EGRESO" });
         if (cr?.type === "tarea_activa") { setMsgs(m => [...m, { from: "bot", text: cr.msg, time: new Date(), quickReplies: ["✅ Sí, fichar salida", "❌ No, cancelar"] }]); }
         else if (cr?.type === "fichada_bloqueada" || cr?.type === "error") { setMsgs(m => [...m, msgBloqueo(cr)]); }
+        else if (cr?.encolado) {
+          setMsgs(m => [...m, { from: "bot", text: `📶 Sin señal: guardamos tu salida de las ${cr.hora}. Se envía sola cuando vuelva la conexión, con esa hora.`, time: new Date() }]);
+        }
         else if (cr?.solicitar_hora_extra) {
           const dj = cr.datos_jornada;
           setMsgs(m => [...m, { from: "bot", text: `✅ Salida registrada. ¡Hasta mañana, ${usuario.apodo}! 👋\n\nLlegaste tarde (${dj.ingreso_real} vs ${dj.ingreso_grilla}) pero trabajaste ${Math.round(dj.excedente_min)}min más de tu jornada.\n\n¿Querés solicitar hora extra a gerencia?`, card: cr, time: new Date(), quickReplies: ["✅ Sí, solicitar hora extra", "❌ No, cancelar"] }]);

@@ -92,6 +92,8 @@ test("smoke: login → fichar ingreso → ver historial", async ({ page }) => {
   // ─── Volver a inicio (el chat ocupa toda la pantalla, sin nav) y ver historial ───
   await page.goBack();
   await expect(page.getByText(`Hola, ${USUARIO.apodo}`)).toBeVisible({ timeout: 10_000 });
+  // R8: el historial está en "Mi cuenta"
+  await page.getByRole("button", { name: /Mi cuenta/ }).click();
   await page.getByText("Historial de fichajes", { exact: true }).click();
   await expect(page.getByText(/Fichajes|Mi asistencia/i)).toBeVisible({ timeout: 10_000 });
 });
