@@ -122,7 +122,7 @@ function archivos(dir = new URL("../app", import.meta.url).pathname) {
 const cuenta = (re) => archivos().reduce((n, f) => n + (readFileSync(f, "utf8").match(re) || []).length, 0);
 
 // Al migrar una pantalla a components/ui, bajá estos números.
-const MAX_STYLE_SUELTOS = 285;
+const MAX_STYLE_SUELTOS = 281;
 const MAX_COLORES_A_MANO = 339;
 
 test("estilos sueltos y colores escritos a mano: no aparecen nuevos", () => {

@@ -142,7 +142,7 @@ test("Asistente — planta, horario, equipo y OT se guardan, y al final ofrece i
 
   // 1 · Empresa
   fireEvent.change(screen.getByPlaceholderText("Nombre de la empresa"), { target: { value: "Acme" } });
-  fireEvent.click(screen.getByText("Saltar plantilla"));
+  fireEvent.click(screen.getByText("Siguiente →"));
   // 2 · Planta: busca la dirección y la elige
   fireEvent.change(screen.getByLabelText("Dirección"), { target: { value: "Av. Colón 100, Córdoba" } });
   fireEvent.click(screen.getByText("Buscar"));
@@ -162,8 +162,7 @@ test("Asistente — planta, horario, equipo y OT se guardan, y al final ofrece i
   fireEvent.change(screen.getByLabelText("Número de OT"), { target: { value: "1001" } });
   fireEvent.change(screen.getByLabelText("Cliente"), { target: { value: "Constructora Sur" } });
   fireEvent.click(screen.getByText("Siguiente →"));
-  // 6 · Marca → 7 · Resumen
-  fireEvent.click(screen.getByText("Siguiente →"));
+  // 6 · Resumen
   assert.ok(screen.getByText("Lun a Sáb · 07:00 a 17:00"));
   fireEvent.click(screen.getByText("🚀 Empezar a usar Gypi"));
 
@@ -196,7 +195,7 @@ test("Asistente — sin días elegidos no deja avanzar; desmarcando 'mismo horar
   let completado = false;
   render(<OnboardingWizard empresa={{ id: "emp-1" }} usuario={{ empresa_id: "emp-1" }} onComplete={() => { completado = true; }} />);
   fireEvent.change(screen.getByPlaceholderText("Nombre de la empresa"), { target: { value: "Acme" } });
-  fireEvent.click(screen.getByText("Saltar plantilla"));
+  fireEvent.click(screen.getByText("Siguiente →"));
   fireEvent.click(screen.getByText("Saltar →"));
   for (const d of ["Lun", "Mar", "Mié", "Jue", "Vie"]) fireEvent.click(screen.getByRole("button", { name: d }));
   assert.equal(screen.getByText("Siguiente →").closest("button").disabled, true);
@@ -206,7 +205,6 @@ test("Asistente — sin días elegidos no deja avanzar; desmarcando 'mismo horar
   fireEvent.change(screen.getByPlaceholderText("Nombre completo"), { target: { value: "Ana Gómez" } });
   fireEvent.click(screen.getByText("Siguiente →"));
   fireEvent.click(screen.getByText("Saltar →"));
-  fireEvent.click(screen.getByText("Siguiente →"));
   fireEvent.click(screen.getByText("🚀 Empezar a usar Gypi"));
   await waitFor(() => assert.equal(completado, true));
   assert.equal("diagrama" in importBody, false);
