@@ -1,24 +1,32 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { sb, sbGetAll, getToken } from "./lib/supabase";
-import { Tag, Chip } from "./components/ui";
+import { Tag, Chip, Button } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
 import FotoViewer from "./components/FotoViewer";
 import Paywall from "./components/Paywall";
 import BillingScreen from "./components/BillingScreen";
 import { hoyArg, ahoraArg } from "./lib/dates";
 import { duracionMinutos } from "./lib/calc";
+import { exportCSV, exportImagen } from "./lib/exportarReporte";
+import Stat from "./components/ui/Stat";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
    Vista gerencial con exportación PDF/Excel
    ═══════════════════════════════════════════════════════ */
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const GREEN = "#16A34A";
-const RED = "#DC2626";
-const CYAN = "#0891B2";
-const VIOLET = "#7C3AED";
+// Colores por tono (R11): cada estado tiene letra legible, fondo y borde.
+const TONO = {
+  bien: { txt: "text-gypi-green-ink", fondo: "bg-gypi-green/10", borde: "border-gypi-green/25" },
+  aviso: { txt: "text-gypi-amber-ink", fondo: "bg-gypi-amber/10", borde: "border-gypi-amber/25" },
+  mal: { txt: "text-gypi-red-ink", fondo: "bg-gypi-red/10", borde: "border-gypi-red/25" },
+  extra: { txt: "text-gypi-cyan-ink", fondo: "bg-gypi-cyan/10", borde: "border-gypi-cyan/25" },
+  neutro: { txt: "text-gypi-mute", fondo: "bg-gypi-surf-hi", borde: "border-gypi-border" },
+};
+const MARCA = "var(--color-empresa-primary)";
+// Qué quiere decir cada ícono de día (antes no había leyenda)
+const LEYENDA_DIAS = [["✓", "bien", "vino"], ["⏰", "aviso", "tarde"], ["↗", "aviso", "salió antes"], ["✗", "mal", "faltó"], ["F", "neutro", "franco"], ["★", "extra", "vino en franco"]];
 const DIAS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
 const DIAS_LABEL = { lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom" };
 const DIAS_SEMANA_JS = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
@@ -32,16 +40,15 @@ import { esSupervisor } from "./lib/menuGestion";
 /* ─── Helpers ─── */
 const parseHora = (str) => { if (!str) return null; const [h, m] = str.split(":").map(Number); return h * 60 + m; };
 const fmtHora = (min) => { if (min == null) return "—"; const h = Math.floor(min / 60); const m = min % 60; return `${h}:${String(m).padStart(2, "0")}`; };
+// "25 min" o "1 h 05 min": se entiende mejor que "0:25"
+const minutosLegibles = (min) => min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min`;
 const diffMin = (a, b) => (a != null && b != null) ? b - a : null;
-const pctColor = (pct) => pct >= 95 ? GREEN : pct >= 80 ? AMBER : RED;
+const pctTono = (pct) => pct >= 95 ? "bien" : pct >= 80 ? "aviso" : "mal";
+// Stat usa otros nombres de tono
+const TONO_STAT = { bien: "bien", aviso: "atencion", mal: "mal" };
 
-/* ── KPI Card ── */
-const KPI = ({ value, label, color }) => (
-  <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border text-center">
-    <div className="font-heading text-2xl font-bold" style={{ color }}>{value}</div>
-    <div className="text-[11px] text-gypi-dim font-bold uppercase mt-0.5">{label}</div>
-  </div>
-);
+const Puntos = () => <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
+const flecha = (abierto) => <span aria-hidden="true" className={`text-gypi-dim text-xs transition-transform ${abierto ? "rotate-90" : ""}`}>›</span>;
 
 const getWeekDates = (offset = 0) => {
   const now = new Date();
@@ -63,12 +70,12 @@ function calcEstado(diagrama, fecha, fichada) {
   const esperado = diagrama?.[diaKey];
   const hoy = new Date();
   const esFuturo = fecha > hoy;
-  if (esFuturo) return { estado: "futuro", color: "var(--color-text-secondary)", icon: "·", detalle: "" };
+  if (esFuturo) return { estado: "futuro", tono: "neutro", icon: "·", detalle: "" };
   if (!esperado) {
-    if (fichada) return { estado: "extra", color: CYAN, icon: "★", detalle: `Trabajó en franco: ${fichada.ingreso?.slice(0, 5) || "?"} → ${fichada.egreso?.slice(0, 5) || "?"}` };
-    return { estado: "franco", color: "var(--color-text-secondary)", icon: "F", detalle: "Franco" };
+    if (fichada) return { estado: "extra", tono: "extra", icon: "★", detalle: `Trabajó en franco: ${fichada.ingreso?.slice(0, 5) || "?"} → ${fichada.egreso?.slice(0, 5) || "?"}` };
+    return { estado: "franco", tono: "neutro", icon: "F", detalle: "Franco" };
   }
-  if (!fichada || !fichada.ingreso) return { estado: "ausente", color: RED, icon: "✗", detalle: "Ausente" };
+  if (!fichada || !fichada.ingreso) return { estado: "ausente", tono: "mal", icon: "✗", detalle: "Ausente" };
 
   const inEsperado = parseHora(esperado.in);
   const outEsperado = parseHora(esperado.out);
@@ -79,57 +86,12 @@ function calcEstado(diagrama, fecha, fichada) {
   const minEsperados = diffMin(inEsperado, outEsperado) || 0;
   const minReales = outReal != null ? diffMin(inReal, outReal) : null;
 
-  let estado = "ok", color = GREEN, icon = "✓";
+  let estado = "ok", tono = "bien", icon = "✓";
   const detalles = [`${fichada.ingreso?.slice(0, 5)} → ${fichada.egreso?.slice(0, 5) || "en curso"}`];
-  if (tardanza > 5) { estado = "tardanza"; color = AMBER; icon = "⏰"; detalles.push(`Tardanza: +${tardanza}min`); }
-  if (salidaTemp > 5) { estado = tardanza > 5 ? "tardanza" : "salida_temp"; color = AMBER; icon = tardanza > 5 ? "⏰" : "↗"; detalles.push(`Salió ${salidaTemp}min antes`); }
+  if (tardanza > 5) { estado = "tardanza"; tono = "aviso"; icon = "⏰"; detalles.push(`Tardanza: +${tardanza}min`); }
+  if (salidaTemp > 5) { estado = tardanza > 5 ? "tardanza" : "salida_temp"; tono = "aviso"; icon = tardanza > 5 ? "⏰" : "↗"; detalles.push(`Salió ${salidaTemp}min antes`); }
   if (minReales != null && minEsperados > 0) { const pct = Math.round((minReales / minEsperados) * 100); detalles.push(`${fmtHora(minReales)} de ${fmtHora(minEsperados)} (${pct}%)`); }
-  return { estado, color, icon, detalle: detalles.join(" · "), tardanza, salidaTemp, minEsperados, minReales };
-}
-
-/* ─── Exportar CSV ─── */
-function exportCSV(rows, filename) {
-  const BOM = "﻿";
-  const csv = BOM + rows.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
-}
-
-/* ─── Exportar PDF (canvas → PNG) ─── */
-function exportPDF(title, headers, rows, meta = "") {
-  const W = 842, H = 595;
-  const canvas = document.createElement("canvas"); canvas.width = W * 2; canvas.height = H * 2;
-  const ctx = canvas.getContext("2d"); ctx.scale(2, 2);
-  ctx.fillStyle = "#0C0A09"; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#1C1917"; ctx.fillRect(0, 0, W, 56);
-  ctx.fillStyle = "#F5F0E8"; ctx.font = "bold 18px system-ui, sans-serif"; ctx.fillText(title, 24, 36);
-  ctx.fillStyle = "#8B8680"; ctx.font = "12px system-ui, sans-serif"; ctx.fillText(meta, W - ctx.measureText(meta).width - 24, 36);
-  const startY = 76, rowH = 22, colW = Math.min(Math.floor((W - 48) / headers.length), 140), startX = 24;
-  ctx.fillStyle = "#292524"; ctx.fillRect(startX, startY, colW * headers.length, rowH + 4);
-  ctx.fillStyle = "#D4A843"; ctx.font = "bold 10px system-ui, sans-serif";
-  headers.forEach((h, i) => { ctx.fillText(String(h).slice(0, 18), startX + i * colW + 6, startY + 15); });
-  const maxRows = Math.floor((H - startY - rowH - 40) / rowH);
-  rows.slice(0, maxRows).forEach((row, ri) => {
-    const y = startY + rowH + 4 + ri * rowH;
-    if (ri % 2 === 0) { ctx.fillStyle = "#1C191710"; ctx.fillRect(startX, y, colW * headers.length, rowH); }
-    ctx.strokeStyle = "#292524"; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(startX, y + rowH); ctx.lineTo(startX + colW * headers.length, y + rowH); ctx.stroke();
-    ctx.font = "11px system-ui, sans-serif";
-    row.forEach((cell, ci) => {
-      const val = String(cell ?? "—");
-      if (val.includes("✓") || val.includes("100%")) ctx.fillStyle = "#4ADE80";
-      else if (val.includes("✗") || val.includes("Ausente")) ctx.fillStyle = "#F87171";
-      else if (val.includes("⏰") || val.includes("Tardanza")) ctx.fillStyle = "#D4A843";
-      else ctx.fillStyle = "#D6D0C4";
-      ctx.fillText(val.slice(0, 20), startX + ci * colW + 6, y + 15);
-    });
-  });
-  if (rows.length > maxRows) { ctx.fillStyle = "#8B8680"; ctx.font = "italic 10px system-ui, sans-serif"; ctx.fillText(`... y ${rows.length - maxRows} filas más (ver Excel para reporte completo)`, startX, H - 20); }
-  ctx.fillStyle = "#44403C"; ctx.font = "9px system-ui, sans-serif"; ctx.fillText(`Gypi · Generado ${new Date().toLocaleString("es-AR")}`, startX, H - 8);
-  canvas.toBlob(blob => {
-    const url = URL.createObjectURL(blob); const a = document.createElement("a");
-    a.href = url; a.download = title.replace(/[^a-zA-Z0-9áéíóúñ ]/g, "").replace(/ /g, "_") + ".png"; a.click(); URL.revokeObjectURL(url);
-  }, "image/png");
+  return { estado, tono, icon, detalle: detalles.join(" · "), tardanza, salidaTemp, minEsperados, minReales };
 }
 
 /* ─── Tab de Reporte de Producción ─── */
@@ -196,7 +158,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
     exportCSV(rows, `reporte_produccion_${fechaDesde}_${fechaHasta}.csv`);
   };
 
-  if (loading) return <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>;
+  if (loading) return <Puntos />;
 
   if (resumen.length === 0) return (
     <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
@@ -212,32 +174,22 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
 
   return (
     <>
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-2 mb-3.5">
-        <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
-          <div className="font-heading text-xl font-bold text-gypi-green">{resumen.length}</div>
-          <div className="text-[11px] text-gypi-dim font-bold">Proyectos</div>
-        </div>
-        <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
-          <div className="font-heading text-xl font-bold text-gypi-cyan">{empsUnicos}</div>
-          <div className="text-[11px] text-gypi-dim font-bold">Empleados</div>
-        </div>
-        <div className="bg-gypi-surface rounded-xl p-3 text-center border border-gypi-border">
-          <div className="font-heading text-xl font-bold text-gypi-amber-ink">{fmtMin(totalMin)}</div>
-          <div className="text-[11px] text-gypi-dim font-bold">Tiempo total</div>
-        </div>
-      </div>
+      <section aria-label="Resumen de producción" className="grid grid-cols-3 gap-2 mb-3.5">
+        <Stat value={resumen.length} label="Órdenes de trabajo" />
+        <Stat value={empsUnicos} label="Personas" />
+        <Stat value={fmtMin(totalMin)} label="Tiempo total" />
+      </section>
 
       {/* Aviso de datos incompletos */}
       {truncado && (
-        <div role="alert" className="p-3 rounded-[10px] text-xs mb-3.5 font-body" style={{ background: `color-mix(in srgb, ${AMBER} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 19%, transparent)`, color: AMBER }}>
+        <div role="alert" className="p-3 rounded-[10px] text-[13px] mb-3.5 font-body bg-gypi-amber/10 border border-gypi-amber/20 text-gypi-amber-ink">
           ⚠ El período tiene más registros de los que se pueden mostrar (5000). Los totales están incompletos — acotá el rango de fechas.
         </div>
       )}
 
       {/* Botón exportar */}
-      <button onClick={exportarCSV} className="w-full py-2.5 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-xs font-bold text-gypi-text cursor-pointer mb-3.5 font-body">
-        📥 Exportar CSV producción
+      <button onClick={exportarCSV} className="w-full min-h-11 py-2.5 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-[13px] font-bold text-gypi-text cursor-pointer mb-3.5 font-body">
+        📥 Descargar producción (Excel)
       </button>
 
       {/* Lista por proyecto */}
@@ -246,8 +198,8 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
           const isExpanded = expandedOT === p.ot;
           return (
             <div key={p.ot} className="bg-gypi-surface rounded-xl overflow-hidden border border-gypi-border">
-              <button onClick={() => setExpandedOT(isExpanded ? null : p.ot)} className="w-full flex items-center gap-3 p-3 text-left cursor-pointer bg-transparent border-none">
-                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: `color-mix(in srgb, ${AMBER} 8%, transparent)` }}>
+              <button onClick={() => setExpandedOT(isExpanded ? null : p.ot)} aria-expanded={isExpanded} className="w-full flex items-center gap-3 p-3 text-left cursor-pointer bg-transparent border-none font-body">
+                <div className="w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0 bg-gypi-amber/10" aria-hidden="true">
                   <span className="text-base">📋</span>
                 </div>
                 <div className="flex-1 min-w-0">
@@ -256,7 +208,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-heading text-sm font-bold text-gypi-amber-ink">{fmtMin(p.totalMin)}</div>
-                  <div className="text-[11px] text-gypi-dim">{isExpanded ? "▲" : "▼"}</div>
+                  <div className="text-[11px] text-gypi-dim" aria-hidden="true">{isExpanded ? "▲" : "▼"}</div>
                 </div>
               </button>
 
@@ -312,7 +264,7 @@ function ReportesObraTab({ empresaId }) {
       </div>
 
       {loading ? (
-        <div className="gypi-dots"><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /><span style={{ background: "var(--color-cyan)" }} /></div>
+        <Puntos />
       ) : reportesObra.length === 0 ? (
         <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
           <div className="text-[32px] mb-2">🏗️</div>
@@ -321,64 +273,64 @@ function ReportesObraTab({ empresaId }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <Tag color={CYAN} style={{ alignSelf: "flex-start", marginBottom: 4 }}>{reportesObra.length} reportes</Tag>
+          <div className="self-start mb-1"><Tag color="var(--color-cyan)">{reportesObra.length} reportes</Tag></div>
           {reportesObra.map(r => {
             const isExpanded = expandedReport === r.id;
             const tieneFotos = r.fotos_urls && r.fotos_urls.length > 0;
             return (
-              <div key={r.id} className="bg-gypi-surface rounded-xl overflow-hidden transition-all" style={{ border: `1px solid ${isExpanded ? `${CYAN}30` : "var(--color-border)"}` }}>
-                <div onClick={() => setExpandedReport(isExpanded ? null : r.id)} className="flex items-center gap-2.5 p-3 cursor-pointer">
-                  <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base shrink-0" style={{ background: `${CYAN}18`, color: CYAN }}>🏗️</div>
+              <div key={r.id} className={`bg-gypi-surface rounded-xl overflow-hidden transition-all border ${isExpanded ? "border-gypi-cyan/25" : "border-gypi-border"}`}>
+                <button onClick={() => setExpandedReport(isExpanded ? null : r.id)} aria-expanded={isExpanded} className="w-full flex items-center gap-2.5 p-3 cursor-pointer bg-transparent border-none text-left font-body">
+                  <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base shrink-0 bg-gypi-cyan/10" aria-hidden="true">🏗️</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[13px] font-bold text-gypi-text">{r.nombre}</span>
-                      {tieneFotos && <Tag color={CYAN}>📷 {r.fotos_urls.length}</Tag>}
-                      {r.faltantes?.length > 0 && <Tag color={RED}>⚠ {r.faltantes.length}</Tag>}
+                      {tieneFotos && <Tag color="var(--color-cyan)">📷 {r.fotos_urls.length}</Tag>}
+                      {r.faltantes?.length > 0 && <Tag color="var(--color-red)">⚠ {r.faltantes.length}</Tag>}
                     </div>
                     <div className="text-[11px] text-gypi-dim mt-0.5 truncate">{r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}</div>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">
                     <span className="text-xs text-gypi-dim">{new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={"var(--color-text-muted)"} strokeWidth="2" style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9" /></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className={`text-gypi-mute transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
                   </div>
-                </div>
+                </button>
                 {isExpanded && (
                   <div className="px-3 pb-3.5 border-t border-gypi-border">
                     <div className="py-3 pb-2">
-                      <div className="text-xs font-bold text-gypi-green uppercase tracking-[0.06em] mb-1.5">✅ Progreso</div>
+                      <div className="text-xs font-bold text-gypi-green-ink uppercase tracking-[0.06em] mb-1.5">✅ Progreso</div>
                       <div className="text-[13px] text-gypi-text leading-relaxed">{r.progreso || "—"}</div>
                     </div>
                     {r.faltantes?.length > 0 && (
-                      <div className="py-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${RED}10`, border: `1px solid ${RED}18` }}>
-                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: RED }}>🚫 Faltantes</div>
+                      <div className="py-2 px-2.5 rounded-[10px] mb-2 bg-gypi-red/[0.06] border border-gypi-red/10">
+                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5 text-gypi-red-ink">🚫 Faltantes</div>
                         <div className="flex flex-wrap gap-1">
-                          {r.faltantes.map((f, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold" style={{ background: `${RED}20`, color: RED }}>{f}</span>)}
+                          {r.faltantes.map((f, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold bg-gypi-red/10 text-gypi-red-ink">{f}</span>)}
                         </div>
                       </div>
                     )}
                     {r.desvios?.length > 0 && (
-                      <div className="py-2 px-2.5 rounded-[10px] mb-2" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 9%, transparent)` }}>
-                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5" style={{ color: AMBER }}>⚠️ Desvíos</div>
+                      <div className="py-2 px-2.5 rounded-[10px] mb-2 bg-gypi-amber/[0.06] border border-gypi-amber/10">
+                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5 text-gypi-amber-ink">⚠️ Desvíos</div>
                         <div className="flex flex-wrap gap-1">
-                          {r.desvios.map((d, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>)}
+                          {r.desvios.map((d, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold bg-gypi-amber/10 text-gypi-amber-ink">{d}</span>)}
                         </div>
                       </div>
                     )}
                     {tieneFotos && (
                       <div className="py-2">
-                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-2" style={{ color: CYAN }}>📷 Fotos ({r.fotos_urls.length})</div>
-                        <div className="gap-2" style={{ display: "grid", gridTemplateColumns: r.fotos_urls.length === 1 ? "1fr" : "repeat(2, 1fr)" }}>
+                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-2 text-gypi-cyan-ink">📷 Fotos ({r.fotos_urls.length})</div>
+                        <div className={`gap-2 grid ${r.fotos_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
                           {r.fotos_urls.map((url, i) => (
-                            <div key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} className="cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative" style={{ aspectRatio: r.fotos_urls.length === 1 ? "16/9" : "1" }}>
+                            <button key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} aria-label={`Ampliar foto ${i + 1}`} className={`cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative p-0 ${r.fotos_urls.length === 1 ? "aspect-video" : "aspect-square"}`}>
                               <Image src={url} alt={`Foto ${i + 1}`} fill sizes="(max-width: 768px) 50vw, 300px" className="object-cover" />
-                              <div className="absolute bottom-1.5 right-1.5 py-[3px] px-2 rounded-md bg-black/60 text-white text-xs font-semibold">🔍 Ampliar</div>
-                            </div>
+                              <div className="absolute bottom-1.5 right-1.5 py-[3px] px-2 rounded-md bg-black/60 text-white text-xs font-semibold" aria-hidden="true">🔍 Ampliar</div>
+                            </button>
                           ))}
                         </div>
                       </div>
                     )}
                     {!tieneFotos && r.fotos > 0 && (
-                      <div className="py-2 px-2.5 rounded-lg text-[11px] text-gypi-dim" style={{ background: `${"var(--color-text-secondary)"}08` }}>
+                      <div className="py-2 px-2.5 rounded-lg text-[12px] text-gypi-dim bg-gypi-surf-hi">
                         📷 El instalador indicó {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
                       </div>
                     )}
@@ -425,10 +377,10 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
     const headers = ["Legajo", "Nombre", "Horas trabajadas", "Tardanzas", "Minutos tarde", "Horas extra", "Días ausencia"];
     const rows = datos.map(d => [d.legajo, d.nombre, d.horas_trabajadas, d.tardanzas, d.minutos_tarde, d.horas_extra, d.dias_ausencia]);
     exportCSV([headers, ...rows], `Liquidacion_${fechaDesde}_a_${fechaHasta}.csv`);
-    toast.show("✅ CSV de liquidación descargado", GREEN);
+    toast.success("Listo: la planilla de liquidación quedó en tus descargas.");
   };
 
-  if (loading) return <div className="gypi-dots"><span style={{ background: RED }} /><span style={{ background: RED }} /><span style={{ background: RED }} /></div>;
+  if (loading) return <Puntos />;
 
   if (paywallInfo) {
     return (
@@ -467,9 +419,9 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 
   return (
     <>
-      <div className="rounded-2xl p-[18px] border border-gypi-border mb-4" style={{ background: `linear-gradient(135deg, ${RED}12, ${"var(--color-surface)"})` }}>
-        <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: RED }}>LIQUIDACIÓN DE SUELDOS</div>
-        <div className="text-[13px] text-gypi-text mt-1.5 leading-normal">Novedades del periodo <strong style={{ color: AMBER }}>{labelPeriodo}</strong> para pasarle al contador: horas, tardanzas, horas extra y ausencias por empleado.</div>
+      <div className="rounded-2xl p-[18px] border border-gypi-border mb-4 bg-gypi-surface">
+        <div className="g-overline">Liquidación de sueldos</div>
+        <div className="text-[13px] text-gypi-text mt-1.5 leading-normal">Novedades del periodo <strong className="text-gypi-amber-ink">{labelPeriodo}</strong> para pasarle al contador: horas, tardanzas, horas extra y ausencias por empleado.</div>
       </div>
 
       <div className="grid grid-cols-4 gap-2 mb-3.5">
@@ -482,30 +434,28 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
           <div className="text-[11px] text-gypi-dim font-bold">Hs. extra</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
-          <div className="font-heading text-base font-bold text-gypi-red">{totales.tardanzas}</div>
+          <div className="font-heading text-base font-bold text-gypi-red-ink">{totales.tardanzas}</div>
           <div className="text-[11px] text-gypi-dim font-bold">Tardanzas</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
-          <div className="font-heading text-base font-bold text-gypi-cyan">{totales.ausencias}</div>
+          <div className="font-heading text-base font-bold text-gypi-cyan-ink">{totales.ausencias}</div>
           <div className="text-[11px] text-gypi-dim font-bold">Ausencias</div>
         </div>
       </div>
 
-      <button onClick={exportarCSV} className="w-full py-2.5 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-xs font-bold text-gypi-text cursor-pointer mb-3.5 font-body">
-        📥 Exportar CSV liquidación
-      </button>
+      <Button className="w-full mb-3.5" onClick={exportarCSV}>📥 Descargar para el contador (Excel)</Button>
 
       <div className="flex flex-col gap-2">
         {datos.map(d => (
           <div key={d.legajo} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-[11px] font-bold shrink-0" style={{ background: `${RED}15`, color: RED }}>L-{d.legajo}</div>
+            <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-[11px] font-bold shrink-0 bg-gypi-surf-hi text-gypi-dim">L-{d.legajo}</div>
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-bold text-gypi-text truncate">{d.nombre}</div>
               <div className="text-xs text-gypi-dim mt-0.5">
                 {fmtHora(Math.round((Number(d.horas_trabajadas) || 0) * 60))} trabajadas
-                {d.tardanzas > 0 && <span style={{ color: AMBER }}> · {d.tardanzas} tard. ({d.minutos_tarde}m)</span>}
-                {d.horas_extra > 0 && <span style={{ color: GREEN }}> · {fmtHora(Math.round(Number(d.horas_extra) * 60))} extra</span>}
-                {d.dias_ausencia > 0 && <span style={{ color: RED }}> · {d.dias_ausencia} ausencia{d.dias_ausencia > 1 ? "s" : ""}</span>}
+                {d.tardanzas > 0 && <span className="text-gypi-amber-ink"> · {d.tardanzas} tardanza{d.tardanzas > 1 ? "s" : ""} ({d.minutos_tarde} min)</span>}
+                {d.horas_extra > 0 && <span className="text-gypi-green-ink"> · {fmtHora(Math.round(Number(d.horas_extra) * 60))} extra</span>}
+                {d.dias_ausencia > 0 && <span className="text-gypi-red-ink"> · {d.dias_ausencia} ausencia{d.dias_ausencia > 1 ? "s" : ""}</span>}
               </div>
             </div>
           </div>
@@ -532,8 +482,6 @@ export default function ReportesScreen() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(null);
   const toast = useToast();
-
-  const showToast = (msg, color) => toast.show(msg, color);
 
   const fechasPeriodo = useMemo(() => {
     if (periodo === "semana") return getWeekDates(weekOffset);
@@ -616,14 +564,14 @@ export default function ReportesScreen() {
     const headers = ["Empleado", "Legajo", "División", "Días laborales", "Presentes", "Ausencias", "Tardanzas", "Min. tardanza", "% Asistencia", "Hs esperadas", "Hs reales", "% Horas"];
     const rows = cumplimiento.map(c => [c.emp.nombre, c.emp.legajo, c.emp.division || "—", c.laborales, c.presentes, c.ausencias, c.tardanzas, c.totalTardanzaMin || 0, c.pctCumplimiento + "%", fmtHora(c.totalMinEsperados), fmtHora(c.totalMinReales), c.pctHoras + "%"]);
     exportCSV([headers, ...rows], `Cumplimiento_${labelPeriodo.replace(/ /g, "_")}.csv`);
-    showToast("✅ CSV descargado", GREEN); setTimeout(() => setExporting(null), 1000);
+    toast.success("Listo: la planilla quedó en tus descargas."); setTimeout(() => setExporting(null), 1000);
   };
   const handleExportPDF = () => {
     setExporting("pdf");
     const headers = ["Empleado", "Legajo", "Div", "Laborales", "Presentes", "Ausencias", "Tard.", "% Asist.", "% Horas"];
     const rows = cumplimiento.map(c => [c.emp.apodo || c.emp.nombre, c.emp.legajo, c.emp.division || "—", c.laborales, c.presentes, c.ausencias, c.tardanzas, c.pctCumplimiento + "%", c.pctHoras + "%"]);
-    exportPDF(`Reporte Cumplimiento — ${labelPeriodo}`, headers, rows, `División: ${division === "todas" ? "Todas" : division} · ${new Date().toLocaleDateString("es-AR")}`);
-    showToast("✅ Reporte descargado", GREEN); setTimeout(() => setExporting(null), 1000);
+    exportImagen(`Reporte Cumplimiento — ${labelPeriodo}`, headers, rows, `División: ${division === "todas" ? "Todas" : division} · ${new Date().toLocaleDateString("es-AR")}`);
+    toast.success("Listo: la imagen quedó en tus descargas."); setTimeout(() => setExporting(null), 1000);
   };
   const handleExportDetalleCSV = () => {
     setExporting("detalle");
@@ -638,7 +586,7 @@ export default function ReportesScreen() {
       });
     });
     exportCSV([headers, ...rows], `Detalle_Fichadas_${labelPeriodo.replace(/ /g, "_")}.csv`);
-    showToast("✅ Detalle CSV descargado", GREEN); setTimeout(() => setExporting(null), 1000);
+    toast.success("Listo: el detalle quedó en tus descargas."); setTimeout(() => setExporting(null), 1000);
   };
 
   const navAnterior = () => {
@@ -656,36 +604,36 @@ export default function ReportesScreen() {
 
       {/* Tabs */}
       <div className="flex gap-1.5 mb-3.5 overflow-x-auto pb-0.5">
-        <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={AMBER}>📊 Cumplimiento</Chip>
+        <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
-        {tieneModulo(empresa, "actividad") && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={GREEN}>⚙️ Producción</Chip>}
-        {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={CYAN}>🏗️ Obra</Chip>}
-        <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={VIOLET}>📥 Exportar</Chip>
-        {!esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={RED}>💰 Liquidación</Chip>}
+        {tieneModulo(empresa, "actividad") && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
+        {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
+        <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>
+        {!esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </div>
 
       {/* Periodo */}
       <div className="flex gap-1.5 mb-2.5">
-        <Chip active={periodo === "semana"} onClick={() => setPeriodo("semana")} color={CYAN}>Semanal</Chip>
-        <Chip active={periodo === "mes"} onClick={() => setPeriodo("mes")} color={CYAN}>Mensual</Chip>
+        <Chip active={periodo === "semana"} onClick={() => setPeriodo("semana")} color={MARCA}>Por semana</Chip>
+        <Chip active={periodo === "mes"} onClick={() => setPeriodo("mes")} color={MARCA}>Por mes</Chip>
       </div>
 
       {/* Nav periodo */}
       <div className="flex items-center justify-between py-2.5 px-3.5 bg-gypi-surface rounded-[14px] border border-gypi-border mb-3.5">
-        <button onClick={navAnterior} aria-label="Anterior" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">←</button>
+        <button onClick={navAnterior} aria-label={periodo === "semana" ? "Semana anterior" : "Mes anterior"} className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">←</button>
         <div className="text-center">
           <div className="text-sm font-bold text-gypi-text font-heading">{labelPeriodo}</div>
         </div>
-        <button onClick={navSiguiente} aria-label="Siguiente" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">→</button>
+        <button onClick={navSiguiente} aria-label={periodo === "semana" ? "Semana siguiente" : "Mes siguiente"} className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">→</button>
       </div>
 
       {/* Filtro división */}
       <div className="flex gap-[5px] mb-3.5 overflow-x-auto pb-1">
-        {DIVISIONES.map(d => <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || AMBER}>{d.label}</Chip>)}
+        {DIVISIONES.map(d => <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || MARCA}>{d.label}</Chip>)}
       </div>
 
       {loading ? (
-        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
+        <Puntos />
       ) : tab === "produccion" ? (
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
       ) : tab === "obra" ? (
@@ -694,19 +642,24 @@ export default function ReportesScreen() {
         <ReporteLiquidacionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} empresa={empresa} />
       ) : tab === "cumplimiento" ? (
         <>
-          {/* KPIs */}
-          <div className="grid grid-cols-3 gap-2 mb-2">
-            <KPI value={`${metricas.pctPromedio}%`} label="Asistencia" color={pctColor(metricas.pctPromedio)} />
-            <KPI value={metricas.totalAusencias} label="Ausencias" color={RED} />
-            <KPI value={metricas.totalTardanzas} label="Tardanzas" color={AMBER} />
-          </div>
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            <KPI value={`${metricas.pctHorasPromedio}%`} label="Cumpl. horas" color={pctColor(metricas.pctHorasPromedio)} />
-            <KPI value={metricas.perfectos} label="Sin falta ni tard." color={GREEN} />
-            <KPI value={metricas.totalMinTardanzas > 0 ? fmtHora(metricas.totalMinTardanzas) : "0m"} label="Tiempo perdido" color={metricas.totalMinTardanzas > 0 ? AMBER : GREEN} />
-          </div>
+          {/* Números del período (R11: Stat, con la etiqueta completa) */}
+          <section aria-label="Resumen del período" className="grid grid-cols-2 gap-2 mb-4">
+            <Stat value={`${metricas.pctPromedio}%`} label="Asistencia" tone={TONO_STAT[pctTono(metricas.pctPromedio)]} />
+            <Stat value={`${metricas.pctHorasPromedio}%`} label="Horas cumplidas" tone={TONO_STAT[pctTono(metricas.pctHorasPromedio)]} />
+            <Stat value={metricas.totalAusencias} label="Faltas" tone={metricas.totalAusencias > 0 ? "mal" : "bien"} />
+            <Stat value={metricas.totalTardanzas} label={metricas.totalMinTardanzas > 0 ? `Tardanzas (${minutosLegibles(metricas.totalMinTardanzas)} en total)` : "Tardanzas"} tone={metricas.totalTardanzas > 0 ? "atencion" : "bien"} />
+          </section>
 
-          <div className="mb-2"><div className="text-xs font-bold text-gypi-text font-heading">Detalle por empleado</div></div>
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <h3 className="m-0 text-[14px] font-bold text-gypi-text font-heading">Por empleado</h3>
+            <span className="text-[12px] text-gypi-dim">{metricas.perfectos} con asistencia perfecta</span>
+          </div>
+          {/* Qué significa cada ícono de los días */}
+          <ul aria-label="Qué significa cada ícono" className="flex flex-wrap gap-x-3 gap-y-1 m-0 mb-2.5 p-0 list-none text-[12px] text-gypi-dim">
+            {LEYENDA_DIAS.map(([icono, tono, texto]) => (
+              <li key={icono} className="flex items-center gap-1"><span className={`w-[18px] h-[18px] rounded text-[11px] font-bold flex items-center justify-center ${TONO[tono].fondo} ${TONO[tono].txt}`} aria-hidden="true">{icono}</span>{texto}</li>
+            ))}
+          </ul>
 
           {cumplimiento.length === 0 ? (
             <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
@@ -719,50 +672,50 @@ export default function ReportesScreen() {
               {cumplimiento.map(c => {
                 const isExpanded = expandedEmp === c.emp.id;
                 return (
-                  <div key={c.emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${c.ausencias > 0 ? `${RED}30` : c.tardanzas > 0 ? `color-mix(in srgb, ${AMBER} 19%, transparent)` : "var(--color-border)"}` }}>
-                    <div onClick={() => setExpandedEmp(isExpanded ? null : c.emp.id)} className="p-3.5 cursor-pointer flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-[13px] font-bold" style={{ background: `${pctColor(c.pctCumplimiento)}15`, color: pctColor(c.pctCumplimiento) }}>{c.pctCumplimiento}%</div>
+                  <div key={c.emp.id} className={`bg-gypi-surface rounded-[14px] overflow-hidden border ${c.ausencias > 0 ? TONO.mal.borde : c.tardanzas > 0 ? TONO.aviso.borde : "border-gypi-border"}`}>
+                    <button onClick={() => setExpandedEmp(isExpanded ? null : c.emp.id)} aria-expanded={isExpanded} className="w-full p-3.5 cursor-pointer flex items-center gap-2.5 bg-transparent border-none text-left font-body">
+                      <div className={`w-11 h-9 rounded-[10px] flex items-center justify-center font-heading text-[13px] font-bold shrink-0 ${TONO[pctTono(c.pctCumplimiento)].fondo} ${TONO[pctTono(c.pctCumplimiento)].txt}`} title="Asistencia">{c.pctCumplimiento}%</div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[13px] font-bold text-gypi-text truncate">{c.emp.apodo || c.emp.nombre}</div>
                         <div className="text-[11px] text-gypi-dim mt-[1px]">
                           L-{c.emp.legajo}
-                          {c.ausencias > 0 && <span style={{ color: RED }}> · {c.ausencias} falta{c.ausencias > 1 ? "s" : ""}</span>}
-                          {c.tardanzas > 0 && <span style={{ color: AMBER }}> · {c.tardanzas} tard.</span>}
-                          {c.extras > 0 && <span style={{ color: CYAN }}> · {c.extras} extra</span>}
+                          {c.ausencias > 0 && <span className={TONO.mal.txt}> · {c.ausencias} falta{c.ausencias > 1 ? "s" : ""}</span>}
+                          {c.tardanzas > 0 && <span className={TONO.aviso.txt}> · {c.tardanzas} tardanza{c.tardanzas > 1 ? "s" : ""}</span>}
+                          {c.extras > 0 && <span className={TONO.extra.txt}> · {c.extras} en franco</span>}
                         </div>
                       </div>
                       {periodo === "semana" && (
-                        <div className="flex gap-[3px]">
+                        <div className="flex gap-[3px]" aria-hidden="true">
                           {c.diasData.map((d, i) => (
-                            <div key={i} className="w-[18px] h-[18px] rounded text-[11px] font-bold flex items-center justify-center" style={{ background: `${d.color}22`, color: d.color }}>{d.icon}</div>
+                            <div key={i} className={`w-[18px] h-[18px] rounded text-[11px] font-bold flex items-center justify-center ${TONO[d.tono].fondo} ${TONO[d.tono].txt}`}>{d.icon}</div>
                           ))}
                         </div>
                       )}
-                      <span className="text-gypi-dim text-xs" style={{ transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>›</span>
-                    </div>
+                      {flecha(isExpanded)}
+                    </button>
                     {isExpanded && (
                       <div className="px-3.5 pb-3.5 border-t border-gypi-border">
                         <div className="flex gap-2 mt-3 mb-3">
-                          <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `${GREEN}12` }}>
-                            <div className="font-mono text-sm font-bold text-gypi-green">{c.presentes}/{c.laborales}</div>
-                            <div className="text-[11px] text-gypi-dim">Presentes</div>
+                          <div className={`flex-1 py-2 text-center rounded-lg ${TONO.bien.fondo}`}>
+                            <div className={`font-mono text-sm font-bold ${TONO.bien.txt}`}>{c.presentes}/{c.laborales}</div>
+                            <div className="text-[12px] text-gypi-dim">Días que vino</div>
                           </div>
-                          <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `${pctColor(c.pctHoras)}12` }}>
-                            <div className="font-mono text-sm font-bold" style={{ color: pctColor(c.pctHoras) }}>{c.pctHoras}%</div>
-                            <div className="text-[11px] text-gypi-dim">Horas</div>
+                          <div className={`flex-1 py-2 text-center rounded-lg ${TONO[pctTono(c.pctHoras)].fondo}`}>
+                            <div className={`font-mono text-sm font-bold ${TONO[pctTono(c.pctHoras)].txt}`}>{c.pctHoras}%</div>
+                            <div className="text-[12px] text-gypi-dim">Horas</div>
                           </div>
                           {c.totalTardanzaMin > 0 && (
-                            <div className="flex-1 py-2 text-center rounded-lg" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
-                              <div className="font-mono text-sm font-bold text-gypi-amber-ink">{c.totalTardanzaMin}m</div>
-                              <div className="text-[11px] text-gypi-dim">Tard. total</div>
+                            <div className={`flex-1 py-2 text-center rounded-lg ${TONO.aviso.fondo}`}>
+                              <div className={`font-mono text-sm font-bold ${TONO.aviso.txt}`}>{c.totalTardanzaMin} min</div>
+                              <div className="text-[12px] text-gypi-dim">Tarde en total</div>
                             </div>
                           )}
                         </div>
                         {c.diasData.filter(d => d.estado !== "futuro").map((d, i) => (
-                          <div key={i} className="flex items-center gap-2 py-[7px]" style={{ borderBottom: i < c.diasData.filter(x => x.estado !== "futuro").length - 1 ? `1px solid ${"var(--color-border)"}` : "none" }}>
-                            <div className="w-[22px] h-[22px] rounded-md text-xs font-bold flex items-center justify-center" style={{ background: `${d.color}22`, color: d.color }}>{d.icon}</div>
-                            <div className="w-10 text-[11px] font-semibold text-gypi-text">{d.fecha.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit" })}</div>
-                            <div className="flex-1 text-[11px] text-gypi-dim truncate">{d.detalle || d.estado}</div>
+                          <div key={i} className="flex items-center gap-2 py-[7px] border-b border-gypi-border last:border-b-0">
+                            <div className={`w-[22px] h-[22px] rounded-md text-xs font-bold flex items-center justify-center ${TONO[d.tono].fondo} ${TONO[d.tono].txt}`} aria-hidden="true">{d.icon}</div>
+                            <div className="w-12 text-[12px] font-semibold text-gypi-text">{d.fecha.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit" })}</div>
+                            <div className="flex-1 text-[12px] text-gypi-dim truncate">{d.detalle || d.estado}</div>
                           </div>
                         ))}
                       </div>
@@ -776,61 +729,38 @@ export default function ReportesScreen() {
       ) : (
         /* ═══ TAB EXPORTAR ═══ */
         <>
-          <div className="rounded-2xl p-[18px] border border-gypi-border mb-4" style={{ background: `linear-gradient(135deg, ${VIOLET}12, ${"var(--color-surface)"})` }}>
-            <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: VIOLET }}>EXPORTAR REPORTES</div>
-            <div className="text-[13px] text-gypi-text mt-1.5 leading-normal">Generá reportes del periodo <strong style={{ color: AMBER }}>{labelPeriodo}</strong> para la división <strong style={{ color: AMBER }}>{division === "todas" ? "Todas" : division}</strong>.</div>
+          <div className="rounded-2xl p-[18px] border border-gypi-border mb-4 bg-gypi-surface">
+            <div className="g-overline">Descargar</div>
+            <div className="text-[13px] text-gypi-text mt-1.5 leading-normal">Del periodo <strong className="text-gypi-amber-ink">{labelPeriodo}</strong>, división <strong className="text-gypi-amber-ink">{division === "todas" ? "Todas" : division}</strong>. Las planillas se abren con Excel.</div>
           </div>
 
           {/* Resumen cumplimiento */}
           <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: `${GREEN}22`, color: GREEN }}>📊</div>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-gypi-green/10" aria-hidden="true">📊</div>
               <div className="flex-1">
-                <div className="text-[13px] font-bold text-gypi-text">Resumen de cumplimiento</div>
-                <div className="text-[11px] text-gypi-dim mt-0.5">Asistencia, ausencias, tardanzas y horas por empleado</div>
+                <div className="text-[14px] font-bold text-gypi-text">Resumen de asistencia</div>
+                <div className="text-[12px] text-gypi-dim mt-0.5">Una fila por empleado: días, faltas, tardanzas y horas</div>
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={handleExportCSV} disabled={exporting === "csv"} className="flex-1 py-3 rounded-xl text-xs font-bold font-body cursor-pointer flex items-center justify-center gap-1.5" style={{ border: `1px solid ${GREEN}30`, background: `${GREEN}12`, color: GREEN }}>{exporting === "csv" ? "⏳" : "📄"} CSV / Excel</button>
-              <button onClick={handleExportPDF} disabled={exporting === "pdf"} className="flex-1 py-3 rounded-xl text-xs font-bold font-body cursor-pointer flex items-center justify-center gap-1.5" style={{ border: `1px solid ${RED}30`, background: `${RED}12`, color: RED }}>{exporting === "pdf" ? "⏳" : "🖼"} Reporte visual</button>
+              <Button className="flex-1" onClick={handleExportCSV} loading={exporting === "csv"}>📄 Excel</Button>
+              <Button className="flex-1" variant="secondary" onClick={handleExportPDF} loading={exporting === "pdf"}>🖼 Imagen</Button>
             </div>
           </div>
 
           {/* Detalle fichadas */}
           <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: `${CYAN}22`, color: CYAN }}>🕐</div>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-gypi-cyan/10" aria-hidden="true">🕐</div>
               <div className="flex-1">
-                <div className="text-[13px] font-bold text-gypi-text">Detalle de fichadas</div>
-                <div className="text-[11px] text-gypi-dim mt-0.5">Cada día de cada empleado: horario esperado vs real, tardanza</div>
+                <div className="text-[14px] font-bold text-gypi-text">Detalle de fichadas</div>
+                <div className="text-[12px] text-gypi-dim mt-0.5">Cada día de cada empleado: a qué hora tenía que entrar y a qué hora fichó</div>
               </div>
             </div>
-            <button onClick={handleExportDetalleCSV} disabled={exporting === "detalle"} className="w-full py-3 rounded-xl text-xs font-bold font-body cursor-pointer flex items-center justify-center gap-1.5" style={{ border: `1px solid ${CYAN}30`, background: `${CYAN}12`, color: CYAN }}>{exporting === "detalle" ? "⏳ Generando..." : "📄 Exportar detalle completo (CSV)"}</button>
+            <Button className="w-full" variant="secondary" onClick={handleExportDetalleCSV} loading={exporting === "detalle"}>📄 Planilla con el detalle (Excel)</Button>
           </div>
 
-          {/* Preview */}
-          <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3">
-            <div className="text-xs font-bold text-gypi-text font-heading mb-3">Preview del periodo</div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="py-2.5 text-center rounded-[10px]" style={{ background: `${GREEN}10` }}>
-                <div className="font-heading text-[22px] font-bold text-gypi-green">{metricas.pctPromedio}%</div>
-                <div className="text-xs text-gypi-dim mt-0.5">Asistencia prom.</div>
-              </div>
-              <div className="py-2.5 text-center rounded-[10px]" style={{ background: `${pctColor(metricas.pctHorasPromedio)}10` }}>
-                <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(metricas.pctHorasPromedio) }}>{metricas.pctHorasPromedio}%</div>
-                <div className="text-xs text-gypi-dim mt-0.5">Cumpl. horas</div>
-              </div>
-              <div className="py-2.5 text-center rounded-[10px]" style={{ background: `${RED}10` }}>
-                <div className="font-heading text-[22px] font-bold text-gypi-red">{metricas.totalAusencias}</div>
-                <div className="text-xs text-gypi-dim mt-0.5">Ausencias totales</div>
-              </div>
-              <div className="py-2.5 text-center rounded-[10px]" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)` }}>
-                <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{metricas.totalTardanzas}</div>
-                <div className="text-xs text-gypi-dim mt-0.5">Tardanzas totales</div>
-              </div>
-            </div>
-            <div className="mt-3 text-[11px] text-gypi-dim text-center">{metricas.total} empleados · {metricas.perfectos} con asistencia perfecta</div>
-          </div>
         </>
       )}
     </div>
