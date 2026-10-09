@@ -3,14 +3,16 @@ import Image from "next/image";
 import { useRefrescoVisible } from "./hooks/useRefrescoVisible";
 import { fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const AMBER_S = "rgba(249,115,22,0.10)";
-const GREEN = "#16A34A";
-const RED = "#DC2626";
-const CYAN = "#0891B2";
-const VIOLET = "#7C3AED";
-const INDIGO = "#4F46E5";
-const MUTE = "var(--color-text-muted)";
+// R11: colores por token. El color dice si algo está bien, para atender o mal;
+// el de la empresa es solo para lo principal.
+const MARCA = "var(--color-empresa-primary)";
+const TONO = {
+  bien: { txt: "text-gypi-green-ink", fondo: "bg-gypi-green/10", borde: "border-gypi-green/25", relleno: "fill-gypi-green" },
+  aviso: { txt: "text-gypi-amber-ink", fondo: "bg-gypi-amber/10", borde: "border-gypi-amber/25", relleno: "fill-gypi-amber" },
+  mal: { txt: "text-gypi-red-ink", fondo: "bg-gypi-red/10", borde: "border-gypi-red/25", relleno: "fill-gypi-red" },
+  info: { txt: "text-gypi-cyan-ink", fondo: "bg-gypi-cyan/10", borde: "border-gypi-cyan/25", relleno: "fill-gypi-cyan" },
+  neutro: { txt: "text-gypi-text", fondo: "bg-gypi-surf-hi", borde: "border-gypi-border", relleno: "fill-gypi-mute" },
+};
 
 import { sb, sbGetAll } from "./lib/supabase";
 import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
@@ -45,95 +47,97 @@ const fmtMin = (min) => {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
-const pctColor = (pct) => pct >= 80 ? GREEN : pct >= 60 ? AMBER : RED;
+const tonoPct = (pct) => pct >= 80 ? "bien" : pct >= 60 ? "aviso" : "mal";
 
-/* ─── Mini SVG Bar Chart ─── */
-function MiniBarChart({ data, maxVal, color = AMBER, height = 80, barWidth = 16, labels = [] }) {
-  const max = maxVal || Math.max(...data, 1);
-  const gap = 4;
-  const w = data.length * (barWidth + gap) - gap;
+/** Título de cada tarjeta del tablero. */
+const Titulo = ({ children }) => <h3 className="m-0 font-heading text-[15px] font-bold text-gypi-text">{children}</h3>;
 
+/** Número chico de una tarjeta, con el color de su tono. */
+function Dato({ valor, etiqueta, tono = "neutro", grande = false }) {
   return (
-    <div className="relative" style={{ height: height + 20 }}>
-      <svg width={w} height={height} viewBox={`0 0 ${w} ${height}`} style={{ overflow: "visible" }}>
-        {data.map((v, i) => {
-          const bh = Math.max(2, (v / max) * (height - 4));
-          const x = i * (barWidth + gap);
-          const y = height - bh;
-          return (
-            <g key={i}>
-              <rect x={x} y={y} width={barWidth} height={bh} rx={4} fill={color} fillOpacity={v > 0 ? 0.8 : 0.2} />
-              {v > 0 && (
-                <text x={x + barWidth / 2} y={y - 4} textAnchor="middle" fill="var(--color-text-muted)" fontSize="9" fontFamily="var(--font-mono)" fontWeight="600">{Math.round(v)}</text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      {labels.length > 0 && (
-        <div className="flex mt-1">
-          {labels.map((l, i) => (
-            <div key={i} className="text-center text-gypi-mute font-mono font-semibold" style={{ width: barWidth + gap, fontSize: 11 }}>{l}</div>
-          ))}
-        </div>
-      )}
+    <div className={`g-kpi ${TONO[tono].fondo}`}>
+      <div className={`font-heading font-bold ${grande ? "text-[22px]" : "text-base font-mono"} ${TONO[tono].txt}`}>{valor}</div>
+      <div className="g-kpi-label">{etiqueta}</div>
     </div>
   );
 }
 
-/* ─── Donut Chart ─── */
-function DonutChart({ value, total, color = GREEN, size = 72, strokeWidth = 7, label }) {
+/** Barra de porcentaje: un SVG con el ancho como atributo (sin estilos sueltos). */
+function Barra({ pct, tono, alto = 4, className = "" }) {
+  return (
+    <svg className={`w-full block rounded-sm bg-gypi-surf-hi ${className}`} height={alto} viewBox={`0 0 100 ${alto}`} preserveAspectRatio="none" aria-hidden="true">
+      <rect width={Math.max(0, Math.min(pct, 100))} height={alto} rx="1" className={TONO[tono].relleno} />
+    </svg>
+  );
+}
+
+/* ─── Gráfico de barras chico (todo en SVG: barras, números y días) ─── */
+function MiniBarChart({ data, maxVal, height = 70, barWidth = 28, labels = [] }) {
+  const max = maxVal || Math.max(...data, 1);
+  const gap = 4;
+  const w = data.length * (barWidth + gap) - gap;
+  const alto = height + 18;
+  return (
+    <svg width={w} height={alto} viewBox={`0 0 ${w} ${alto}`} className="overflow-visible" role="img" aria-label={`Fichadas por día: ${labels.map((l, i) => `${l} ${data[i]}`).join(", ")}`}>
+      {data.map((v, i) => {
+        const bh = Math.max(2, (v / max) * (height - 4));
+        const x = i * (barWidth + gap);
+        const y = height - bh;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barWidth} height={bh} rx={4} className="fill-gypi-green" fillOpacity={v > 0 ? 0.8 : 0.2} />
+            {v > 0 && <text x={x + barWidth / 2} y={y - 4} textAnchor="middle" className="fill-gypi-dim font-mono" fontSize="10" fontWeight="600">{Math.round(v)}</text>}
+            {labels[i] && <text x={x + barWidth / 2} y={alto - 2} textAnchor="middle" className="fill-gypi-mute font-mono" fontSize="11" fontWeight="600">{labels[i]}</text>}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ─── Dona ─── */
+function DonutChart({ value, total, size = 64, strokeWidth = 6, label }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (pct / 100) * circ;
-
+  const tono = total > 0 ? tonoPct(pct) : "neutro";
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-border)" strokeWidth={strokeWidth} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={strokeWidth}
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${label}: ${total > 0 ? `${pct}% del tiempo trabajando` : "sin datos"}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-gypi-border" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" className={`${TONO[tono].relleno.replace("fill-", "stroke-")} transition-[stroke-dashoffset] duration-700 ease-out`} strokeWidth={strokeWidth}
           strokeDasharray={circ} strokeDashoffset={offset}
-          strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          className="transition-[stroke-dashoffset] duration-700 ease-out" />
-        <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="middle"
-          fill={color} fontSize="16" fontFamily="var(--font-mono)" fontWeight="700">{pct}%</text>
+          strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="middle" className="fill-gypi-text font-mono" fontSize="15" fontWeight="700">{total > 0 ? `${pct}%` : "—"}</text>
       </svg>
       {label && <div className="g-overline">{label}</div>}
     </div>
   );
 }
 
-/* ─── Pulse dot ─── */
-const PulseDot = ({ color = GREEN, size = 8 }) => (
-  <span className="inline-block rounded-full animate-[pulse_2s_ease-in-out_infinite]" style={{
-    width: size, height: size,
-    background: color, boxShadow: `0 0 ${size}px color-mix(in srgb, ${color} 53%, transparent)`,
-  }} />
+/* ─── Punto que late ("en vivo") ─── */
+const PulseDot = ({ activo = true, chico = false }) => (
+  <span className={`inline-block rounded-full animate-pulse ${chico ? "w-1.5 h-1.5" : "w-2 h-2"} ${activo ? "bg-gypi-green" : "bg-(--color-text-muted)"}`} aria-hidden="true" />
 );
 
-/* ─── Timeline Row ─── */
-function TimelineRow({ nombre, ingreso, egreso, horasTrabajadas, onClick }) {
+/* ─── Jornada de una persona: barra de 7 a 19 h ─── */
+function TimelineRow({ nombre, ingreso, egreso, onClick }) {
   const parseH = (t) => { if (!t) return 0; const [h, m] = t.split(":").map(Number); return h + m / 60; };
   const jStart = 7, jEnd = 19, jLen = jEnd - jStart;
   const inH = parseH(ingreso);
   const outH = egreso ? parseH(egreso) : parseH(fmtTime(new Date()));
   const left = Math.max(0, ((inH - jStart) / jLen) * 100);
-  const width = Math.min(100 - left, ((outH - inH) / jLen) * 100);
-
+  const width = Math.max(1, Math.min(100 - left, ((outH - inH) / jLen) * 100));
   return (
-    <div onClick={onClick} className="flex items-center gap-2.5 py-2" style={{ cursor: onClick ? "pointer" : "default" }}>
-      <div className="w-20 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-semibold text-gypi-text">{nombre}</div>
-      <div className="flex-1 h-3.5 bg-gypi-surf-hi rounded overflow-hidden relative">
-        <div className="absolute top-px bottom-px rounded-[3px] min-w-1" style={{
-          left: `${left}%`, width: `${width}%`,
-          background: egreso ? `${GREEN}88` : `linear-gradient(90deg, ${GREEN}88, color-mix(in srgb, ${AMBER} 40%, transparent))`,
-        }} />
-      </div>
-      <div className="w-[46px] text-right font-mono text-[11px] font-bold" style={{ color: egreso ? GREEN : AMBER }}>
-        {ingreso?.slice(0, 5)}
-      </div>
-    </div>
+    <button type="button" onClick={onClick} disabled={!onClick} className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-none text-left font-body cursor-pointer disabled:cursor-default"
+      aria-label={`${nombre}: entró ${ingreso?.slice(0, 5)}${egreso ? `, salió ${egreso.slice(0, 5)}` : ", todavía adentro"}. Ver sus fichajes`}>
+      <span className="w-20 truncate text-[12px] font-semibold text-gypi-text">{nombre}</span>
+      <svg className="flex-1 h-3.5 rounded bg-gypi-surf-hi" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
+        <rect x={left} y="1" width={width} height="12" rx="2" className={egreso ? "fill-gypi-green" : "fill-gypi-amber"} fillOpacity="0.7" />
+      </svg>
+      <span className={`w-[46px] text-right font-mono text-[12px] font-bold ${egreso ? TONO.bien.txt : TONO.aviso.txt}`}>{ingreso?.slice(0, 5)}</span>
+    </button>
   );
 }
 
@@ -147,8 +151,8 @@ function ReportesObraPanel({ reportesObra }) {
     <>
       <section aria-label="Reportes de obra" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3">
-          <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Reportes de Obra (Hoy)</div>
-          {reportesObra.length > 0 && <Tag color={CYAN}>{reportesObra.length} reportes</Tag>}
+          <Titulo>Reportes de obra de hoy</Titulo>
+          {reportesObra.length > 0 && <Tag color="var(--color-cyan)">{reportesObra.length} reportes</Tag>}
         </div>
 
         {reportesObra.length === 0 ? (
@@ -156,8 +160,7 @@ function ReportesObraPanel({ reportesObra }) {
             icon="mapPin"
             title="Sin reportes de obra hoy"
             description="Los reportes de trabajo en campo que suban desde el celular van a aparecer acá."
-            color={CYAN}
-            style={{ padding: "24px 16px" }}
+            color="var(--color-cyan)"
           />
         ) : (
           <div className="flex flex-col gap-2">
@@ -166,82 +169,69 @@ function ReportesObraPanel({ reportesObra }) {
               const tieneFotos = r.fotos_urls && r.fotos_urls.length > 0;
 
               return (
-                <div key={r.id} className="rounded-xl overflow-hidden transition-all duration-200" style={{ background: "var(--color-surf-hi)", border: `1px solid ${isExpanded ? `${CYAN}30` : "var(--color-border-hi)"}` }}>
-                  {/* Header clickeable */}
-                  <div onClick={() => setExpandedReport(isExpanded ? null : r.id)} className="flex items-center gap-2.5 p-3 cursor-pointer">
-                    <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: `${CYAN}18`, color: CYAN }}><Icon name="building" size={18} /></div>
+                <div key={r.id} className={`rounded-xl overflow-hidden transition-all duration-200 bg-gypi-surf-hi border ${isExpanded ? TONO.info.borde : "border-(--color-border-hi)"}`}>
+                  <button type="button" onClick={() => setExpandedReport(isExpanded ? null : r.id)} aria-expanded={isExpanded} className="w-full flex items-center gap-2.5 p-3 cursor-pointer bg-transparent border-none text-left font-body">
+                    <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 ${TONO.info.fondo} ${TONO.info.txt}`} aria-hidden="true"><Icon name="building" size={18} /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[13px] font-bold text-gypi-text">{r.nombre}</span>
-                        {tieneFotos && <Tag color={CYAN}>&#x1F4F7; {r.fotos_urls.length}</Tag>}
-                        {r.faltantes?.length > 0 && <Tag color={RED}>&#x26A0; {r.faltantes.length}</Tag>}
+                        {tieneFotos && <Tag color="var(--color-cyan)">&#x1F4F7; {r.fotos_urls.length}</Tag>}
+                        {r.faltantes?.length > 0 && <Tag color="var(--color-red)">&#x26A0; {r.faltantes.length}</Tag>}
                       </div>
-                      <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">
+                      <div className="text-[12px] text-gypi-dim mt-0.5 truncate">
                         {r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-0.5">
                       <span className="text-xs text-gypi-dim">
-                        {new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(r.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
                       </span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" className="transition-transform duration-200" style={{ transform: isExpanded ? "rotate(180deg)" : "none" }}><polyline points="6 9 12 15 18 9" /></svg>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className={`text-gypi-mute transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
                     </div>
-                  </div>
+                  </button>
 
-                  {/* Detalle expandido */}
                   {isExpanded && (
                     <div className="px-3 pb-3.5 border-t border-gypi-border">
-                      {/* Progreso */}
                       <div className="pt-3 pb-2">
-                        <div className="g-overline text-gypi-green mb-1.5">&#x2705; Progreso</div>
+                        <div className={`g-overline mb-1.5 ${TONO.bien.txt}`}>&#x2705; Progreso</div>
                         <div className="text-[13px] text-gypi-text leading-relaxed">{r.progreso || "—"}</div>
                       </div>
 
-                      {/* Faltantes */}
                       {r.faltantes?.length > 0 && (
-                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `${RED}10`, border: `1px solid ${RED}18` }}>
-                          <div className="g-overline text-gypi-red mb-1.5">&#x1F6AB; Faltantes</div>
+                        <div className="p-2 px-2.5 rounded-[10px] mb-2 bg-gypi-red/[0.06] border border-gypi-red/10">
+                          <div className={`g-overline mb-1.5 ${TONO.mal.txt}`}>&#x1F6AB; Faltantes</div>
                           <div className="flex flex-wrap gap-1">
-                            {r.faltantes.map((f, i) => (
-                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `${RED}20`, color: RED }}>{f}</span>
-                            ))}
+                            {r.faltantes.map((f, i) => <span key={i} className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${TONO.mal.fondo} ${TONO.mal.txt}`}>{f}</span>)}
                           </div>
                         </div>
                       )}
 
-                      {/* Desvios */}
                       {r.desvios?.length > 0 && (
-                        <div className="p-2 px-2.5 rounded-[10px] mb-2" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 9%, transparent)` }}>
-                          <div className="g-overline text-gypi-amber-ink mb-1.5">&#x26A0;&#xFE0F; Desvios</div>
+                        <div className="p-2 px-2.5 rounded-[10px] mb-2 bg-gypi-amber/[0.06] border border-gypi-amber/10">
+                          <div className={`g-overline mb-1.5 ${TONO.aviso.txt}`}>&#x26A0;&#xFE0F; Desvíos</div>
                           <div className="flex flex-wrap gap-1">
-                            {r.desvios.map((d, i) => (
-                              <span key={i} className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>
-                            ))}
+                            {r.desvios.map((d, i) => <span key={i} className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${TONO.aviso.fondo} ${TONO.aviso.txt}`}>{d}</span>)}
                           </div>
                         </div>
                       )}
 
-
-
-                      {/* Fotos */}
                       {tieneFotos && (
                         <div className="py-2">
-                          <div className="g-overline text-gypi-cyan mb-2">&#x1F4F7; Fotos ({r.fotos_urls.length})</div>
-                          <div className="grid gap-2" style={{ gridTemplateColumns: r.fotos_urls.length === 1 ? "1fr" : "repeat(2, 1fr)" }}>
+                          <div className={`g-overline mb-2 ${TONO.info.txt}`}>&#x1F4F7; Fotos ({r.fotos_urls.length})</div>
+                          <div className={`grid gap-2 ${r.fotos_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
                             {r.fotos_urls.map((url, i) => (
-                              <div key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} className="cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative" style={{ aspectRatio: r.fotos_urls.length === 1 ? "16/9" : "1" }}>
+                              <button key={i} type="button" onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} aria-label={`Ampliar foto ${i + 1}`} className={`cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative p-0 ${r.fotos_urls.length === 1 ? "aspect-video" : "aspect-square"}`}>
                                 <Image src={url} alt={`Foto ${i + 1}`} fill sizes="(max-width: 768px) 50vw, 300px" className="object-cover" />
-                                <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-md bg-black/60 text-white text-xs font-semibold">&#x1F50D; Ampliar</div>
-                              </div>
+                                <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-md bg-black/60 text-white text-xs font-semibold" aria-hidden="true">&#x1F50D; Ampliar</div>
+                              </button>
                             ))}
                           </div>
                         </div>
                       )}
 
-                      {/* Sin fotos pero dice que adjunto */}
                       {!tieneFotos && r.fotos > 0 && (
-                        <div className="p-2 px-2.5 rounded-lg text-[11px] text-gypi-dim" style={{ background: `color-mix(in srgb, ${MUTE} 3%, transparent)` }}>
-                          &#x1F4F7; El instalador indico {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
+                        <div className="p-2 px-2.5 rounded-lg text-[12px] text-gypi-dim bg-gypi-surface">
+                          &#x1F4F7; El instalador indicó {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
                         </div>
                       )}
                     </div>
@@ -253,7 +243,6 @@ function ReportesObraPanel({ reportesObra }) {
         )}
       </section>
 
-      {/* Visor de fotos fullscreen */}
       {fotoViewer && (
         <FotoViewer
           fotos={fotoViewer.fotos}
@@ -500,7 +489,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const permisosIngreso = pendientes.filter(s => s.motivo?.includes("\u{1F513}") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo"));
   const alertas = useMemo(() => {
     const items = [];
-    if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} para entrar sin responder`, color: RED, urgencia: "alta", target: "solicitudes" });
+    if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} para entrar sin responder`, urgencia: "alta", target: "solicitudes" });
     // Ausentes, parados y pedidos están en el resumen de arriba (R9): no se repiten acá
     const urgentes = notificaciones.filter(n => {
       if (n.urgencia !== "alta") return false;
@@ -516,7 +505,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       return true;
     });
     urgentes.slice(0, 2).forEach(n => {
-      items.push({ icon: "\u{1F534}", text: n.asunto, color: RED, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
+      items.push({ icon: "\u{1F534}", text: n.asunto, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
     });
     return items;
   }, [ausentes, enEspera, pendientes, notificaciones, permisosIngreso, solicitudes]);
@@ -571,17 +560,16 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: `${GREEN}10`, border: `1px solid ${GREEN}20` }}>
-              <PulseDot color={GREEN} />
-              <span className="text-[11px] text-gypi-green font-bold">En vivo</span>
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${TONO.bien.fondo} ${TONO.bien.borde}`}>
+              <PulseDot />
+              <span className={`text-[12px] font-bold ${TONO.bien.txt}`}>En vivo</span>
             </div>
             <button
               onClick={async () => { setRefreshing(true); try { await Promise.all([reload?.(), cargarDatos()]) } finally { setNow(new Date()); setRefreshing(false) } }}
               aria-label="Actualizar datos"
-              className="w-10 h-10 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm transition-transform duration-300"
-              style={{ transform: refreshing ? "rotate(360deg)" : "none" }}
+              className="w-11 h-11 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={refreshing ? AMBER : "currentColor"} strokeWidth="2.5" style={{ animation: refreshing ? "spin 0.8s linear infinite" : "none" }}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true" className={refreshing ? "animate-spin text-gypi-amber-ink" : ""}><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
             </button>
           </div>
         </div>
@@ -591,7 +579,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />
       {!isDemo && <ChecklistActivacion empresa={empresa} goto={goto} />}
       {datosIncompletos && (
-        <div role="alert" className="mx-[18px] mb-3 p-3 rounded-xl text-xs text-gypi-red bg-gypi-red/10">
+        <div role="alert" className={`mx-[18px] mb-3 p-3 rounded-xl text-[13px] ${TONO.mal.fondo} ${TONO.mal.txt}`}>
           Hay más datos de los que se pueden mostrar juntos: algunos totales del mes pueden estar incompletos.
         </div>
       )}
@@ -612,12 +600,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       {alertas.length > 0 && (
         <section aria-label="Alertas activas" className="mb-4">
           {alertas.map((a, i) => (
-            <div key={i}
-              className="flex items-center gap-3 px-3.5 py-3 rounded-[14px] mb-2 cursor-pointer transition-[transform,box-shadow] duration-150 ease-out"
-              style={{
-                background: `color-mix(in srgb, ${a.color} 3%, transparent)`, border: `1.5px solid color-mix(in srgb, ${a.color} 13%, transparent)`,
-                boxShadow: `0 2px 8px color-mix(in srgb, ${a.color} 6%, transparent)`,
-              }}
+            <button key={i} type="button"
+              className={`w-full flex items-center gap-3 px-3.5 py-3 min-h-12 rounded-[14px] mb-2 cursor-pointer text-left font-body border-[1.5px] ${TONO.mal.fondo} ${TONO.mal.borde}`}
               onClick={() => {
                 if (a.target) goto?.(a.target);
                 else if (a.text.includes("pedido")) goto?.("solicitudes");
@@ -625,222 +609,161 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 else if (a.text.includes("BLOQUEADO") || a.text.includes("permiso") || a.text.includes("ingreso")) goto?.("solicitudes");
               }}
             >
-              <span className="text-sm">{a.icon}</span>
-              <span className="flex-1 text-xs font-semibold text-gypi-text">{a.text}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
-            </div>
+              <span className="text-sm" aria-hidden="true">{a.icon}</span>
+              <span className="flex-1 text-[13px] font-semibold text-gypi-text">{a.text}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gypi-mute" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
           ))}
         </section>
       )}
 
       {/* ─── Solicitudes pendientes ─── */}
       {pendientes.length > 0 && (
-        <section aria-label="Pedidos sin responder" className="g-card mb-4" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
+        <section aria-label="Pedidos sin responder" className={`g-card mb-4 ${TONO.aviso.borde}`}>
           <div className="flex justify-between items-center mb-3">
-            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Pedidos sin responder</div>
-            <Tag color={AMBER}>{pendientes.length} pendientes</Tag>
+            <Titulo>Pedidos sin responder</Titulo>
+            <Tag color={MARCA}>{pendientes.length} pendiente{pendientes.length !== 1 ? "s" : ""}</Tag>
           </div>
 
-          {/* Ultimas pendientes */}
           {pendientes.slice(0, 5).map(s => (
             <div key={s.id} className="flex items-center gap-2.5 py-2 border-b border-gypi-border">
-              <div className="w-1.5 h-1.5 rounded-full bg-gypi-amber shrink-0" />
+              <div className="w-1.5 h-1.5 rounded-full bg-gypi-amber shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{s.nombre_empleado}</div>
-                <div className="text-[11px] text-gypi-dim overflow-hidden text-ellipsis whitespace-nowrap">{s.motivo}</div>
+                <div className="text-[13px] font-semibold text-gypi-text truncate">{s.nombre_empleado}</div>
+                <div className="text-[12px] text-gypi-dim truncate">{s.motivo}</div>
               </div>
-              <Tag color={AMBER}>{nombreSolicitud(s)}</Tag>
+              <Tag color={MARCA}>{nombreSolicitud(s)}</Tag>
             </div>
           ))}
 
           <button onClick={() => goto?.("solicitudes")}
-            className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
-            style={{ background: `${VIOLET}12`, border: `1px solid ${VIOLET}25`, color: VIOLET }}
+            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 border-none bg-gypi-amber text-gypi-on-amber"
           >
-            <Icon name="clipboard" size={14} /> Ver todos los pedidos &rarr;
+            <Icon name="clipboard" size={14} /> Responder pedidos &rarr;
           </button>
         </section>
       )}
 
-      {/* ─── Botones En planta / Trabajo en campo ─── */}
-      <div className={`grid ${conObra ? "grid-cols-2" : "grid-cols-1"} gap-2 mb-3.5`}>
-        <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")}
-          className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
-          style={{
-            background: panelExpanded === "taller" ? `color-mix(in srgb, ${AMBER} 9%, transparent)` : "var(--color-surface)",
-            border: `1px solid ${panelExpanded === "taller" ? `color-mix(in srgb, ${AMBER} 31%, transparent)` : "var(--color-border)"}`,
-          }}
-        >
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}><Icon name="hammer" size={18} /></div>
-          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "taller" ? AMBER : "var(--color-text)" }}>En planta</span>
-        </button>
-        {conObra && <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
-          className="p-3.5 px-2 rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body"
-          style={{
-            background: panelExpanded === "instalaciones" ? `${CYAN}18` : "var(--color-surface)",
-            border: `1px solid ${panelExpanded === "instalaciones" ? CYAN + "50" : "var(--color-border)"}`,
-          }}
-        >
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${CYAN}22`, color: CYAN }}><Icon name="building" size={18} /></div>
-          <span className="text-[11px] font-semibold" style={{ color: panelExpanded === "instalaciones" ? CYAN : "var(--color-text)" }}>Trabajo en campo</span>
-        </button>}
-      </div>
+      {/* ─── Botones En planta / Trabajo en campo (solo con esos módulos) ─── */}
+      {(conTareas || conObra) && (
+        <div className={`grid ${conTareas && conObra ? "grid-cols-2" : "grid-cols-1"} gap-2 mb-3.5`}>
+          {conTareas && <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")}
+            aria-expanded={panelExpanded === "taller"}
+            className={`p-3.5 px-2 min-h-[88px] rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body border ${panelExpanded === "taller" ? `${TONO.aviso.fondo} ${TONO.aviso.borde}` : "bg-gypi-surface border-gypi-border"}`}
+          >
+            <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center ${TONO.aviso.fondo} ${TONO.aviso.txt}`} aria-hidden="true"><Icon name="hammer" size={18} /></div>
+            <span className={`text-[13px] font-semibold ${panelExpanded === "taller" ? TONO.aviso.txt : "text-gypi-text"}`}>En planta</span>
+          </button>}
+          {conObra && <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
+            aria-expanded={panelExpanded === "instalaciones"}
+            className={`p-3.5 px-2 min-h-[88px] rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body border ${panelExpanded === "instalaciones" ? `${TONO.info.fondo} ${TONO.info.borde}` : "bg-gypi-surface border-gypi-border"}`}
+          >
+            <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center ${TONO.info.fondo} ${TONO.info.txt}`} aria-hidden="true"><Icon name="building" size={18} /></div>
+            <span className={`text-[13px] font-semibold ${panelExpanded === "instalaciones" ? TONO.info.txt : "text-gypi-text"}`}>Trabajo en campo</span>
+          </button>}
+        </div>
+      )}
 
       {/* ─── Panel expandido: En planta ─── */}
-      {panelExpanded === "taller" && (
-        <section aria-label="En planta" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
+      {conTareas && panelExpanded === "taller" && (
+        <section aria-label="En planta" className={`g-card mb-4 animate-[fadeIn_0.2s_ease] ${TONO.aviso.borde}`}>
           <div className="flex justify-between items-center mb-3">
-            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Producción en vivo</div>
+            <Titulo>Producción en vivo</Titulo>
             <div className="flex items-center gap-1.5">
-              <PulseDot color={enActividad > 0 ? GREEN : MUTE} size={6} />
-              <span className="text-[11px] text-gypi-dim">{enActividad} activos</span>
+              <PulseDot activo={enActividad > 0} chico />
+              <span className="text-[12px] text-gypi-dim">{enActividad} trabajando</span>
             </div>
           </div>
 
-          {/* Metricas de produccion */}
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className="g-kpi" style={{ background: `${GREEN}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: GREEN }}>{enActividad}</div>
+            <div className={`g-kpi ${TONO.bien.fondo}`}>
+              <div className={`font-mono text-base font-bold ${TONO.bien.txt}`}>{enActividad}</div>
               <div className="g-kpi-label">Trabajando</div>
             </div>
-            <div className="g-kpi" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
-              <div className="font-mono text-base font-bold" style={{ color: AMBER }}>{enEspera}</div>
-              <div className="g-kpi-label">En espera</div>
-            </div>
-            <div className="g-kpi" style={{ background: `${RED}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: RED }}>{sinTarea}</div>
-              <div className="g-kpi-label">Sin tarea</div>
-            </div>
+            <Dato valor={enEspera} etiqueta="Parados" tono={enEspera > 0 ? "mal" : "neutro"} />
+            <Dato valor={sinTarea} etiqueta="Sin tarea" />
           </div>
 
           <div className="flex gap-2 mb-3">
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${GREEN}08` }}>
-              <div className="g-overline">Tiempo productivo</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: GREEN }}>{fmtMin(totalMinProd)}</div>
-            </div>
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${RED}08` }}>
-              <div className="g-overline">Tiempo en espera</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: RED }}>{fmtMin(totalMinEspera)}</div>
-            </div>
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${pctColor(pctProd)}08` }}>
-              <div className="g-overline">% Productivo</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: pctColor(pctProd) }}>{pctProd}%</div>
-            </div>
+            <Dato valor={fmtMin(totalMinProd)} etiqueta="Tiempo trabajando" tono="bien" />
+            <Dato valor={fmtMin(totalMinEspera)} etiqueta="Tiempo parados" tono={totalMinEspera > 0 ? "mal" : "neutro"} />
+            <Dato valor={`${pctProd}%`} etiqueta="Del tiempo, trabajando" tono={tonoPct(pctProd)} />
           </div>
 
-          {/* Top rendimiento */}
           {topProductivos.length > 0 && (
             <>
-              <div className="g-label mb-2">Top rendimiento</div>
+              <div className="g-label mb-2">Los que más trabajaron hoy</div>
               {topProductivos.map((op, i) => {
                 const pct = parseFloat(op.pct_productivo) || 0;
                 return (
-                  <div key={op.empleado_id} className="flex items-center gap-2.5 py-1.5" style={{ borderBottom: i < topProductivos.length - 1 ? "1px solid var(--color-border)" : "none" }}>
-                    <div className="w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold font-mono" style={{ background: i === 0 ? AMBER_S : "var(--color-surf-hi)", color: i === 0 ? AMBER : "var(--color-text-muted)" }}>{i + 1}</div>
-                    <div className="flex-1 text-xs font-semibold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{op.empleado_nombre}</div>
-                    <div className="w-[60px]">
-                      <div className="h-1 rounded-sm bg-gypi-surf-hi overflow-hidden">
-                        <div className="h-full rounded-sm" style={{ background: pctColor(pct), width: `${Math.min(pct, 100)}%` }} />
-                      </div>
-                    </div>
-                    <span className="font-mono text-xs font-bold w-9 text-right" style={{ color: pctColor(pct) }}>{Math.round(pct)}%</span>
+                  <div key={op.empleado_id} className="flex items-center gap-2.5 py-1.5 border-b border-gypi-border last:border-b-0">
+                    <div className={`w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold font-mono ${i === 0 ? `${TONO.aviso.fondo} ${TONO.aviso.txt}` : "bg-gypi-surf-hi text-gypi-mute"}`}>{i + 1}</div>
+                    <div className="flex-1 text-[13px] font-semibold text-gypi-text truncate">{op.empleado_nombre}</div>
+                    <div className="w-[60px]"><Barra pct={pct} tono={tonoPct(pct)} /></div>
+                    <span className={`font-mono text-xs font-bold w-9 text-right ${TONO[tonoPct(pct)].txt}`}>{Math.round(pct)}%</span>
                   </div>
                 );
               })}
             </>
           )}
 
-          {conTareas && <button onClick={() => goto?.("ger-actividad")}
-            className="w-full mt-3 p-3 rounded-[var(--radius-md)] font-body text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5"
-            style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)`, border: `1px solid color-mix(in srgb, ${AMBER} 15%, transparent)`, color: AMBER }}
+          <button onClick={() => goto?.("ger-actividad")}
+            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
           >
             <Icon name="hammer" size={14} /> Ver detalle por operario &rarr;
-          </button>}
+          </button>
         </section>
       )}
 
       {/* ─── Panel expandido: Trabajo en campo ─── */}
       {conObra && panelExpanded === "instalaciones" && (
-        <section aria-label="Trabajo en campo" className="g-card mb-4 animate-[fadeIn_0.2s_ease]" style={{ borderColor: `${CYAN}30` }}>
+        <section aria-label="Trabajo en campo" className={`g-card mb-4 animate-[fadeIn_0.2s_ease] ${TONO.info.borde}`}>
           <div className="flex justify-between items-center mb-3">
-            <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Trabajo en campo hoy</div>
-            <Tag color={CYAN}>{obrasHoy} reportes</Tag>
+            <Titulo>Trabajo en campo hoy</Titulo>
+            <Tag color="var(--color-cyan)">{obrasHoy} reporte{obrasHoy !== 1 ? "s" : ""}</Tag>
           </div>
 
-          {/* KPIs de instalaciones */}
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="g-kpi" style={{ background: `${CYAN}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: CYAN }}>{obrasHoy}</div>
-              <div className="g-kpi-label">Obras reportadas</div>
-            </div>
-            <div className="g-kpi" style={{ background: `${GREEN}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: GREEN }}>{obrasConFotos}</div>
-              <div className="g-kpi-label">Con fotos</div>
-            </div>
-            <div className="g-kpi" style={{ background: `${RED}12` }}>
-              <div className="font-mono text-base font-bold" style={{ color: obrasConFaltantes > 0 ? RED : GREEN }}>{obrasConFaltantes}</div>
-              <div className="g-kpi-label">Con faltantes</div>
-            </div>
-            <div className="g-kpi" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
-              <div className="font-mono text-base font-bold" style={{ color: obrasConDesvios > 0 ? AMBER : GREEN }}>{obrasConDesvios}</div>
-              <div className="g-kpi-label">Con desvios</div>
-            </div>
+            <Dato valor={obrasHoy} etiqueta="Obras reportadas" tono="info" />
+            <Dato valor={obrasConFotos} etiqueta="Con fotos" tono="bien" />
+            <Dato valor={obrasConFaltantes} etiqueta="Con faltantes" tono={obrasConFaltantes > 0 ? "mal" : "bien"} />
+            <Dato valor={obrasConDesvios} etiqueta="Con desvíos" tono={obrasConDesvios > 0 ? "aviso" : "bien"} />
           </div>
 
-          {/* En campo hoy */}
           <div className="flex gap-2 mb-3">
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${GREEN}08` }}>
-              <div className="g-overline">En campo hoy</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: GREEN }}>{enCampoPresentes.length}</div>
-            </div>
-            <div className="flex-1 rounded-[10px] px-3 py-2.5" style={{ background: `${CYAN}08` }}>
-              <div className="g-overline">Total en campo</div>
-              <div className="font-mono text-base font-bold mt-0.5" style={{ color: CYAN }}>{enCampoActivos.length}</div>
-            </div>
+            <Dato valor={enCampoPresentes.length} etiqueta="Ficharon y están en campo" tono="bien" />
+            <Dato valor={enCampoActivos.length} etiqueta="Reportaron obra hoy" tono="info" />
           </div>
 
-          {/* Ultimos reportes de obra */}
           <ReportesObraPanel reportesObra={reportesObra} />
         </section>
       )}
 
-      {/* ─── Indicadores: Asistencia diaria/semanal ─── */}
+      {/* ─── Asistencia ─── */}
       <section aria-label="Asistencia" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
-          <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Asistencia</div>
-          <Tag color={GREEN}>{presentes} {presentes === 1 ? "fichó" : "ficharon"} hoy</Tag>
+          <Titulo>Asistencia</Titulo>
+          <Tag color="var(--color-green)">{presentes} {presentes === 1 ? "fichó" : "ficharon"} hoy</Tag>
         </div>
 
-        {/* Asistencia diaria */}
         <div className="grid grid-cols-2 gap-2 mb-3.5">
-          <div className="g-kpi" style={{ background: pctAsist == null ? "var(--color-surf-lo)" : `${pctColor(pctAsist)}10` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: pctAsist == null ? "var(--color-text-muted)" : pctColor(pctAsist) }}>{pctAsist == null ? "—" : `${pctAsist}%`}</div>
-            <div className="g-kpi-label">Cumplimiento</div>
-          </div>
-          <div className="g-kpi" style={{ background: tardesEstaSemana > 0 ? `color-mix(in srgb, ${AMBER} 6%, transparent)` : `${GREEN}05` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: tardesEstaSemana > 0 ? AMBER : GREEN }}>{tardesEstaSemana}</div>
-            <div className="g-kpi-label">Tardanzas (semana)</div>
-          </div>
+          <Dato grande valor={pctAsist == null ? "—" : `${pctAsist}%`} etiqueta="Cumplimiento" tono={pctAsist == null ? "neutro" : tonoPct(pctAsist)} />
+          <Dato grande valor={tardesEstaSemana} etiqueta="Tardanzas (semana)" tono={tardesEstaSemana > 0 ? "aviso" : "bien"} />
         </div>
 
-        {/* Asistencia semanal bar chart */}
-        <div className="g-label mb-2">Asistencia semanal</div>
+        <div className="g-label mb-2">Cuántos ficharon cada día de esta semana</div>
         <div className="flex justify-center">
           <MiniBarChart
             data={fichadasPorDia.map(d => d.count)}
             maxVal={programados || 20}
-            color={GREEN}
-            height={70}
-            barWidth={28}
             labels={fichadasPorDia.map(d => d.label)}
           />
         </div>
 
-        {/* Promedio horas / dia semana */}
         {promedioHorasDia > 0 && (
-          <div className="mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between" style={{ background: `${CYAN}10` }}>
-            <span className="text-[11px] text-gypi-dim font-semibold">Promedio de horas por día</span>
-            <span className="font-heading text-sm font-bold" style={{ color: CYAN }}>{promedioHorasDia.toFixed(1)}h</span>
+          <div className={`mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between ${TONO.info.fondo}`}>
+            <span className="text-[13px] text-gypi-dim font-semibold">Promedio de horas por día</span>
+            <span className={`font-heading text-sm font-bold ${TONO.info.txt}`}>{promedioHorasDia.toFixed(1)} h</span>
           </div>
         )}
       </section>
@@ -855,34 +778,32 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         const top3 = ranking.slice(0, 3);
         const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
         return (
-          <button onClick={() => setShowFullRanking(true)} className="card-hover g-card mb-4 w-full cursor-pointer text-left block" style={{ borderColor: `color-mix(in srgb, ${AMBER} 19%, transparent)` }}>
+          <button onClick={() => setShowFullRanking(true)} className={`card-hover g-card mb-4 w-full cursor-pointer text-left block ${TONO.aviso.borde}`}>
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-1.5">
-                <span className="text-base">&#x1F3C6;</span>
-                <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Ranking de empleados</div>
+                <span className="text-base" aria-hidden="true">&#x1F3C6;</span>
+                <Titulo>Ranking de empleados</Titulo>
               </div>
-              <Tag color={AMBER}>Este mes</Tag>
+              <Tag color={MARCA}>Este mes</Tag>
             </div>
             <div className="flex flex-col gap-2">
               {top3.map((e, i) => (
                 <div key={e.id} className="flex items-center gap-2.5 px-1 py-1.5 rounded-lg">
-                  <span className="text-base shrink-0">{medals[i]}</span>
+                  <span className="text-base shrink-0" aria-hidden="true">{medals[i]}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">
-                      {e.nombre}
-                    </div>
+                    <div className="text-[13px] font-bold text-gypi-text truncate">{e.nombre}</div>
                     <div className="text-xs text-gypi-dim mt-px">
-                      {e.division || "Sin división"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}
+                      {e.division || "Sin división"} &middot; {e.diasTrabajados} días &middot; {e.horasTrabajadas} h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-sm font-extrabold text-gypi-green font-heading">{e.score}</div>
-                    <div className="text-[11px] text-gypi-dim font-semibold">pts</div>
+                    <div className={`text-sm font-extrabold font-heading ${TONO.bien.txt}`}>{e.score}</div>
+                    <div className="text-[11px] text-gypi-dim font-semibold">puntos</div>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-2.5 text-center text-xs text-gypi-amber-ink font-semibold">
+            <div className="mt-2.5 text-center text-[13px] text-gypi-amber-ink font-semibold">
               Ver ranking completo ({ranking.length})
             </div>
           </button>
@@ -894,45 +815,37 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </button>
       )}
 
-      {/* ─── Productividad divisional/general ─── */}
-      <section aria-label="Productividad" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-3.5">
-          <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Productividad</div>
-          <Tag color={pctColor(pctProd)}>{pctProd}% general</Tag>
-        </div>
-
-        {/* General */}
-        <div className="flex gap-2 mb-3.5">
-          <div className="flex-1 g-kpi" style={{ background: `color-mix(in srgb, ${AMBER} 6%, transparent)` }}>
-            <div className="font-heading text-[22px] font-bold" style={{ color: pctColor(pctProd) }}>{pctProd}%</div>
-            <div className="g-kpi-label">Tiempo productivo del equipo</div>
+      {/* ─── Productividad por división (solo con Tareas: sin ellas siempre daba 0%) ─── */}
+      {conTareas && (
+        <section aria-label="Productividad" className="card-hover g-card mb-4">
+          <div className="flex justify-between items-center mb-3.5">
+            <Titulo>Productividad por división</Titulo>
+            <Tag color={pctProd >= 80 ? "var(--color-green)" : pctProd >= 60 ? MARCA : "var(--color-red)"}>{pctProd}% en general</Tag>
           </div>
-        </div>
-
-        {/* Por division (donuts) */}
-        <div className="g-label mb-2.5">Por división</div>
-        <div className="flex justify-around flex-wrap gap-3">
-          {prodPorDiv.map(d => (
-            <DonutChart key={d.id} value={d.prod} total={d.prod + d.espera} color={d.color} size={64} strokeWidth={6} label={d.label} />
-          ))}
-        </div>
-      </section>
+          <p className="m-0 mb-3 text-[13px] text-gypi-dim">Del tiempo con tarea cargada, cuánto estuvieron trabajando (el resto, parados).</p>
+          <div className="flex justify-around flex-wrap gap-3">
+            {prodPorDiv.map(d => (
+              <DonutChart key={d.id} value={d.prod} total={d.prod + d.espera} label={d.label} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ─── Equipo ─── */}
       <section aria-label="Equipo" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
-          <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Equipo</div>
-          <Tag color={CYAN}>{totalEmp} activos</Tag>
+          <Titulo>Equipo</Titulo>
+          <Tag color="var(--color-cyan)">{totalEmp} activos</Tag>
         </div>
 
         <div className="flex gap-2 mb-3">
           {DIVISIONES.filter(d => d.id !== "todas").map(d => {
             const count = empActivos.filter(e => e.division === d.id).length;
             return (
-              <div key={d.id} className="flex-1 text-center px-1 py-2 rounded-[10px]" style={{ background: `${d.color}10` }}>
-                <div className="text-sm">{d.icon}</div>
-                <div className="font-mono text-sm font-bold mt-0.5" style={{ color: d.color }}>{count}</div>
-                <div className="text-[11px] text-gypi-dim font-semibold mt-px">{d.label}</div>
+              <div key={d.id} className="flex-1 text-center px-1 py-2 rounded-[10px] bg-gypi-surf-hi">
+                <div className="text-sm" aria-hidden="true">{d.icon}</div>
+                <div className="font-mono text-sm font-bold mt-0.5 text-gypi-text">{count}</div>
+                <div className="text-[12px] text-gypi-dim font-semibold mt-px">{d.label}</div>
               </div>
             );
           })}
@@ -941,27 +854,30 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── Jornadas hoy ─── */}
       <section aria-label="Jornadas hoy" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-1.5">
-          <div className="font-heading font-bold text-gypi-text" style={{ font: "var(--text-caption)" }}>Jornadas hoy</div>
+        <div className="flex justify-between items-center mb-1">
+          <Titulo>Jornadas de hoy</Titulo>
           <span className="text-xs text-gypi-mute font-mono">7:00 ——— 19:00</span>
         </div>
+        {fichadasHoy.length > 0 && (
+          <p className="m-0 mb-1 text-[12px] text-gypi-dim">
+            <span className={TONO.bien.txt}>■</span> ya salió · <span className={TONO.aviso.txt}>■</span> todavía adentro · tocá a alguien para ver sus fichajes
+          </p>
+        )}
         {fichadasHoy.length === 0 ? (
           <EmptyState
             icon="clock"
             title="Sin fichadas hoy"
             description="Los ingresos y egresos del equipo van a aparecer acá a medida que fichen."
-            color={CYAN}
-            style={{ padding: "24px 16px" }}
+            color="var(--color-cyan)"
           />
         ) : (
-          <div className="max-h-[200px] overflow-y-auto">
+          <div className="max-h-[220px] overflow-y-auto">
             {fichadasHoy.map((f, i) => (
               <TimelineRow
                 key={f.legajo || i}
                 nombre={f.nombre || `L-${f.legajo}`}
                 ingreso={f.ingreso}
                 egreso={f.egreso}
-                horasTrabajadas={f.horas_trabajadas}
                 onClick={() => goto?.("historial-fichajes", f.legajo)}
               />
             ))}
@@ -976,23 +892,15 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </div>
       </footer>
 
-      {/* ─── Full Ranking Modal ─── */}
+      {/* ─── Ranking completo ─── */}
       {showFullRanking && ranking.length > 0 && (() => {
         const len = ranking.length;
-        const rowColor = (i) => {
-          if (i === 0) return { bg: `${GREEN}18`, border: `${GREEN}35` };
-          if (i === 1) return { bg: `${GREEN}12`, border: `${GREEN}25` };
-          if (i === 2) return { bg: `${GREEN}08`, border: `${GREEN}18` };
-          if (i === len - 1) return { bg: `${RED}18`, border: `${RED}35` };
-          if (i === len - 2) return { bg: `${RED}12`, border: `${RED}25` };
-          if (i === len - 3) return { bg: `${RED}08`, border: `${RED}18` };
-          return { bg: "transparent", border: "var(--color-border)" };
-        };
+        // Los 3 primeros en verde y los 3 últimos en rojo
+        const tonoFila = (i) => i < 3 ? "bien" : i >= len - 3 ? "mal" : null;
         const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
         return (
           <div onClick={() => setShowFullRanking(false)}
-            className="fixed inset-0 z-[999] flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease]"
-            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
+            className="fixed inset-0 z-[999] flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease] bg-black/45 backdrop-blur-xs"
             role="dialog" aria-label="Ranking completo"
           >
             <div onClick={ev => ev.stopPropagation()} className="bg-gypi-surface rounded-[20px] w-full max-w-[400px] max-h-[80vh] flex flex-col shadow-lg">
@@ -1003,44 +911,33 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                     <div className="text-lg font-extrabold text-gypi-text font-heading mt-0.5">Ranking de empleados</div>
                   </div>
                   <button onClick={() => setShowFullRanking(false)} aria-label="Cerrar ranking"
-                    className="w-8 h-8 rounded-[10px] border-none bg-gypi-surf-hi cursor-pointer flex items-center justify-center text-base text-gypi-dim"
+                    className="w-11 h-11 rounded-[10px] border-none bg-gypi-surf-hi cursor-pointer flex items-center justify-center text-base text-gypi-dim"
                   >&#x2715;</button>
                 </div>
-                <div className="mt-3 flex gap-1 flex-wrap">
-                  {[
-                    { label: "Asistencia", w: `${PESOS_SCORE.asistencia}%`, color: GREEN },
-                    { label: "Puntualidad", w: `${PESOS_SCORE.puntualidad}%`, color: CYAN },
-                    { label: "Disponibilidad", w: `${PESOS_SCORE.disponibilidad}%`, color: VIOLET },
-                    { label: "Esfuerzo Extra", w: `${PESOS_SCORE.esfuerzo}%`, color: AMBER },
-                    { label: "Documentación", w: `${PESOS_SCORE.documentacion}%`, color: INDIGO },
-                  ].map(c => (
-                    <span key={c.label} className="text-[11px] font-bold px-[7px] py-[3px] rounded-md" style={{ background: `${c.color}12`, color: c.color }}>{c.label} {c.w}</span>
-                  ))}
+                <div className="mt-3 text-[12px] text-gypi-dim">
+                  Cómo se arman los puntos: asistencia {PESOS_SCORE.asistencia}%, puntualidad {PESOS_SCORE.puntualidad}%, disponibilidad {PESOS_SCORE.disponibilidad}%, horas extra {PESOS_SCORE.esfuerzo}% y documentación {PESOS_SCORE.documentacion}%.
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-3 pb-3" style={{ scrollbarWidth: "none" }}>
+              <div className="flex-1 overflow-y-auto px-3 pb-3 [scrollbar-width:none]">
                 {ranking.map((e, i) => {
-                  const rc = rowColor(i);
+                  const t = tonoFila(i);
                   return (
                     <button key={e.id} onClick={() => setScoreDetail(e)}
-                      className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[10px] mb-1 w-full text-left cursor-pointer transition-colors duration-150"
-                      style={{ background: rc.bg, border: `1px solid ${rc.border}` }}
+                      className={`flex items-center gap-2.5 px-2.5 py-2.5 rounded-[10px] mb-1 w-full text-left cursor-pointer transition-colors duration-150 border font-body ${t ? `${TONO[t].fondo} ${TONO[t].borde}` : "bg-transparent border-gypi-border"}`}
                     >
-                      <div className="w-6 text-center shrink-0 font-bold text-gypi-dim" style={{ fontSize: i < 3 ? 16 : 12 }}>
+                      <div className={`w-6 text-center shrink-0 font-bold text-gypi-dim ${i < 3 ? "text-base" : "text-xs"}`}>
                         {i < 3 ? medals[i] : `${i + 1}`}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">
-                          {e.nombre}
-                        </div>
+                        <div className="text-[13px] font-bold text-gypi-text truncate">{e.nombre}</div>
                         <div className="text-xs text-gypi-dim mt-px">
-                          {e.division || "Sin división"} &middot; {e.diasTrabajados}d &middot; {e.horasTrabajadas}h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}{e.diasPermiso > 0 ? ` · ${e.diasPermiso} con permiso` : ""}
+                          {e.division || "Sin división"} &middot; {e.diasTrabajados} días &middot; {e.horasTrabajadas} h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}{e.diasPermiso > 0 ? ` · ${e.diasPermiso} con permiso` : ""}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="font-heading text-[15px] font-extrabold" style={{ color: i < 3 ? GREEN : i >= len - 3 ? RED : "var(--color-text)" }}>{e.score}</div>
-                        <div className="text-[11px] text-gypi-dim font-semibold">pts</div>
+                        <div className={`font-heading text-[15px] font-extrabold ${t ? TONO[t].txt : "text-gypi-text"}`}>{e.score}</div>
+                        <div className="text-[11px] text-gypi-dim font-semibold">puntos</div>
                       </div>
                     </button>
                   );
@@ -1051,73 +948,59 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         );
       })()}
 
-      {/* ─── Score Detail Modal ─── */}
+      {/* ─── Detalle de los puntos ─── */}
       {scoreDetail && (() => {
         const d = scoreDetail;
         const rows = [
-          { label: "Asistencia", pct: d.pAsistencia, weight: `${PESOS_SCORE.asistencia}%`, detail: `${d.diasTrabajados} / ${d.diasProgramados} dias`, color: GREEN },
-          { label: "Puntualidad", pct: d.pPuntualidad, weight: `${PESOS_SCORE.puntualidad}%`, detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}`, color: CYAN },
-          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: `${PESOS_SCORE.disponibilidad}%`, detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}`, color: VIOLET },
-          { label: "Esfuerzo Extra", pct: d.pEsfuerzo, weight: `${PESOS_SCORE.esfuerzo}%`, detail: `${d.horasExtra}h extra de ${d.horasTrabajadas}h`, color: AMBER },
-          { label: "Documentación", pct: d.pDocumentacion, weight: `${PESOS_SCORE.documentacion}%`, detail: d.documentosExigidos === 0 ? "Sin documentos exigidos" : `${d.documentosCompletos} de ${d.documentosExigidos} documentos cargados`, color: INDIGO },
+          { label: "Asistencia", pct: d.pAsistencia, weight: `${PESOS_SCORE.asistencia}%`, detail: `Vino ${d.diasTrabajados} de ${d.diasProgramados} días` },
+          { label: "Puntualidad", pct: d.pPuntualidad, weight: `${PESOS_SCORE.puntualidad}%`, detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}` },
+          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: `${PESOS_SCORE.disponibilidad}%`, detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}` },
+          { label: "Horas extra", pct: d.pEsfuerzo, weight: `${PESOS_SCORE.esfuerzo}%`, detail: `${d.horasExtra} h extra de ${d.horasTrabajadas} h` },
+          { label: "Documentación", pct: d.pDocumentacion, weight: `${PESOS_SCORE.documentacion}%`, detail: d.documentosExigidos === 0 ? "Sin documentos exigidos" : `${d.documentosCompletos} de ${d.documentosExigidos} documentos cargados` },
         ];
         return (
           <div onClick={() => setScoreDetail(null)}
-            className="fixed inset-0 z-[1000] flex items-center justify-center p-5 animate-[fadeIn_0.2s_ease]"
-            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
-            role="dialog" aria-label="Detalle de score"
+            className="fixed inset-0 z-[1000] flex items-center justify-center p-5 animate-[fadeIn_0.2s_ease] bg-black/45 backdrop-blur-xs"
+            role="dialog" aria-label="Detalle de los puntos"
           >
             <div onClick={ev => ev.stopPropagation()} className="bg-gypi-surface rounded-[20px] p-6 w-full max-w-[360px] shadow-lg">
               <div className="flex justify-between items-center mb-5">
                 <div>
-                  <div className="g-overline">Desglose</div>
+                  <div className="g-overline">De dónde salen sus puntos</div>
                   <div className="text-lg font-extrabold text-gypi-text font-heading mt-0.5">{d.nombre}</div>
-                  <div className="text-[11px] text-gypi-dim mt-0.5">{d.division || "Sin división"} &middot; L-{d.legajo}</div>
+                  <div className="text-[12px] text-gypi-dim mt-0.5">{d.division || "Sin división"} &middot; L-{d.legajo}</div>
                 </div>
-                <div className="w-12 h-12 rounded-[14px] flex flex-col items-center justify-center" style={{ background: `color-mix(in srgb, ${AMBER} 7%, transparent)` }}>
-                  <div className="text-lg font-extrabold font-heading leading-none" style={{ color: AMBER }}>{d.score}</div>
-                  <div className="text-[11px] text-gypi-dim font-bold">pts</div>
+                <div className={`w-14 h-12 rounded-[14px] flex flex-col items-center justify-center ${TONO.aviso.fondo}`}>
+                  <div className={`text-lg font-extrabold font-heading leading-none ${TONO.aviso.txt}`}>{d.score}</div>
+                  <div className="text-[11px] text-gypi-dim font-bold">puntos</div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
                 {rows.map((r) => (
-                  <div key={r.label} className="px-3 py-2.5 rounded-[10px]" style={{ background: `${r.color}08`, border: `1px solid ${r.color}15` }}>
+                  <div key={r.label} className={`px-3 py-2.5 rounded-[10px] border ${TONO.neutro.borde}`}>
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs font-bold text-gypi-text">{r.label} <span className="font-medium text-gypi-dim">({r.weight})</span></span>
-                      <span className="text-sm font-extrabold font-heading" style={{ color: r.color }}>{r.pct}%</span>
+                      <span className="text-[13px] font-bold text-gypi-text">{r.label} <span className="font-medium text-gypi-dim">(vale {r.weight})</span></span>
+                      <span className={`text-sm font-extrabold font-heading ${TONO[tonoPct(r.pct)].txt}`}>{r.pct}%</span>
                     </div>
-                    <div className="h-1 rounded-sm overflow-hidden" style={{ background: `${r.color}15` }}>
-                      <div className="h-full rounded-sm transition-[width] duration-400 ease-out" style={{ width: `${r.pct}%`, background: r.color }} />
-                    </div>
+                    <Barra pct={r.pct} tono={tonoPct(r.pct)} />
                     <div className="text-xs text-gypi-dim mt-1">{r.detail}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-3.5 px-3 py-2.5 rounded-[10px] flex justify-between items-center" style={{ background: `color-mix(in srgb, ${AMBER} 3%, transparent)`, border: `1.5px solid color-mix(in srgb, ${AMBER} 15%, transparent)` }}>
-                <span className="text-xs font-bold text-gypi-text">Score total (0&ndash;100)</span>
-                <span className="text-lg font-extrabold font-heading" style={{ color: AMBER }}>{d.score} pts</span>
-              </div>
-
-              <div className="text-xs text-gypi-mute mt-3 leading-snug text-center">
-                Asist. {PESOS_SCORE.asistencia}% + Punt. {PESOS_SCORE.puntualidad}% + Disp. {PESOS_SCORE.disponibilidad}% + Esfuerzo {PESOS_SCORE.esfuerzo}% + Docs. {PESOS_SCORE.documentacion}%
+              <div className={`mt-3.5 px-3 py-2.5 rounded-[10px] flex justify-between items-center border-[1.5px] ${TONO.aviso.fondo} ${TONO.aviso.borde}`}>
+                <span className="text-[13px] font-bold text-gypi-text">Total (de 0 a 100)</span>
+                <span className={`text-lg font-extrabold font-heading ${TONO.aviso.txt}`}>{d.score} puntos</span>
               </div>
 
               <button onClick={() => setScoreDetail(null)}
-                className="mt-4 w-full p-3 rounded-xl border-none bg-gypi-surf-hi text-gypi-text text-sm font-bold cursor-pointer font-body"
+                className="mt-4 w-full p-3 min-h-12 rounded-xl border-none bg-gypi-surf-hi text-gypi-text text-sm font-bold cursor-pointer font-body"
               >Cerrar</button>
             </div>
           </div>
         );
       })()}
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.5); }
-        }
-      `}</style>
     </div>
   );
 }

@@ -56,7 +56,7 @@ test("tablero — los pedidos se nombran en castellano, nunca con el código int
   assert.equal(nombreSolicitud({ tipo: "salida_anticipada" }), "Salida anticipada");
   assert.equal(nombreSolicitud({ tipo: "algo_nuevo" }), "Algo nuevo");
   const tablero = fuente("app/dashboard_gerencia.jsx");
-  assert.match(tablero, /<Tag color=\{AMBER\}>\{nombreSolicitud\(s\)\}<\/Tag>/);
+  assert.match(tablero, /<Tag color=\{MARCA\}>\{nombreSolicitud\(s\)\}<\/Tag>/);
   for (const viejo of ["Cumplim.", "Tardes sem.", "T. productivo", "Produccion en vivo", "Ultimo refresh", "Sin division"]) {
     assert.ok(!tablero.includes(viejo), `queda "${viejo}"`);
   }
