@@ -3,11 +3,9 @@ import { sb } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const GREEN = "#16A34A";
-const RED = "#DC2626";
-const CYAN = "#0891B2";
-const VIOLET = "#7C3AED";
+// Colores por token (R11): el de la empresa para lo principal y cian para "varios a la vez"
+const MARCA = "var(--color-empresa-primary)";
+const CIAN = "var(--color-cyan)";
 
 const DIAS = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
 const DIAS_L = { lun: "Lun", mar: "Mar", mie: "Mié", jue: "Jue", vie: "Vie", sab: "Sáb", dom: "Dom" };
@@ -32,6 +30,18 @@ const calcHoras = (row) => {
 const fmtHorario = (row) => {
   return DIAS.map(d => row[d] ? `${DIAS_L[d]} ${row[d].in}-${row[d].out}` : `${DIAS_L[d]} Franco`).join(" · ");
 };
+
+// Interruptor de "trabaja / franco": 48×28 (antes 34×20, difícil de tocar)
+const Toggle = ({ on, onClick, label }) => (
+  <button onClick={onClick} aria-pressed={on} aria-label={label || (on ? "Desactivar" : "Activar")} className={`relative border-none cursor-pointer shrink-0 rounded-full w-12 h-7 transition-colors duration-200 ${on ? "bg-gypi-green" : "bg-(--color-text-muted)"}`}>
+    <div className={`absolute rounded-full bg-white w-[22px] h-[22px] top-[3px] transition-all duration-200 ${on ? "left-[23px]" : "left-[3px]"}`} />
+  </button>
+);
+
+// Fuera del componente: definida adentro se volvía a crear en cada tecla y el campo perdía el foco
+const TimeInput = ({ value, onChange, className = "" }) => (
+  <input type="time" value={value} onChange={onChange} className={`bg-gypi-surf-hi border border-gypi-border rounded-lg py-1.5 px-1.5 min-h-10 text-gypi-text text-[15px] font-mono font-semibold outline-none w-[92px] ${className}`} />
+);
 
 export default function GrillaHorarioScreen({ empresaId }) {
   const { divisiones: divisionesCtx } = useAuth();
@@ -69,7 +79,6 @@ export default function GrillaHorarioScreen({ empresaId }) {
 
   const tienesCambios = (id) => JSON.stringify(grilla[id]) !== JSON.stringify(original[id]);
   const totalCambios = empleados.filter(e => tienesCambios(e.id)).length;
-  const showToast = (msg, color) => toast.show(msg, color);
 
   const setHorario = (empId, dia, campo, valor) => {
     setGrilla(p => { const c = { ...p }; const row = { ...c[empId] }; if (!row[dia]) row[dia] = { in: DEFAULT_IN, out: DEFAULT_OUT }; row[dia] = { ...row[dia], [campo]: valor }; c[empId] = row; return c; });
@@ -90,14 +99,14 @@ export default function GrillaHorarioScreen({ empresaId }) {
     else setSeleccionados(p => { const n = new Set(p); ids.forEach(id => n.add(id)); return n; });
   };
   const aplicarMasivo = () => {
-    if (seleccionados.size === 0) { showToast("Seleccioná al menos un empleado", AMBER); return; }
+    if (seleccionados.size === 0) { toast.show("Seleccioná al menos un empleado"); return; }
     setGrilla(p => { const c = { ...p }; seleccionados.forEach(id => { c[id] = JSON.parse(JSON.stringify(horarioMasivo)); }); return c; });
-    showToast(`✅ Horario aplicado a ${seleccionados.size} empleado${seleccionados.size > 1 ? "s" : ""}`, GREEN);
+    toast.success(`Listo para ${seleccionados.size} empleado${seleccionados.size > 1 ? "s" : ""}. Tocá "Guardar" abajo para confirmar y avisarles.`);
   };
 
   const guardarYNotificar = async () => {
     const cambios = empleados.filter(e => tienesCambios(e.id));
-    if (!cambios.length) { showToast("No hay cambios para guardar", AMBER); return; }
+    if (!cambios.length) { toast.show("No hay cambios para guardar"); return; }
     setSaving(true); let ok = 0, errores = 0;
     for (const emp of cambios) {
       const row = grilla[emp.id]; const diagrama = {};
@@ -111,50 +120,37 @@ export default function GrillaHorarioScreen({ empresaId }) {
       } catch (e) { console.error("Error guardando horario de", emp.nombre, ":", e); errores++; }
     }
     if (ok > 0) { setOriginal(JSON.parse(JSON.stringify(grilla))); setSeleccionados(new Set()); }
-    showToast(errores > 0 ? `⚠️ ${ok} guardado${ok !== 1 ? "s" : ""}, ${errores} con error.` : `✅ ${ok} horario${ok > 1 ? "s" : ""} guardado${ok > 1 ? "s" : ""} y notificado${ok > 1 ? "s" : ""}`, errores > 0 ? AMBER : GREEN);
+    if (errores > 0) toast.show(`⚠️ ${ok} guardado${ok !== 1 ? "s" : ""}, ${errores} con error.`);
+    else toast.success(`✅ ${ok} horario${ok > 1 ? "s" : ""} guardado${ok > 1 ? "s" : ""} y notificado${ok > 1 ? "s" : ""}`);
     setSaving(false);
   };
 
   const empsFiltrados = filtroDivision === "todas" ? empleados : empleados.filter(e => e.division === filtroDivision);
 
   /* ── Toggle switch reusable ── */
-  const Toggle = ({ on, onClick, color = GREEN, size = "sm" }) => {
-    const w = size === "sm" ? 34 : 48; const h = size === "sm" ? 20 : 28; const d = size === "sm" ? 16 : 22;
-    return (
-      <button onClick={onClick} aria-pressed={on} aria-label={on ? "Desactivar" : "Activar"} className="relative border-none cursor-pointer shrink-0 rounded-full" style={{ width: w, height: h, background: on ? color : "var(--color-text-muted)", transition: "background 0.2s" }}>
-        <div className="absolute rounded-full bg-white" style={{ width: d, height: d, top: (h - d) / 2, left: on ? w - d - 2 : 2, transition: "left 0.2s" }} />
-      </button>
-    );
-  };
-
-  /* ── Time input ── */
-  const TimeInput = ({ value, onChange, className = "" }) => (
-    <input type="time" value={value} onChange={onChange} className={`bg-gypi-surf-hi border border-gypi-border rounded-lg py-1 px-1.5 text-gypi-text text-[13px] font-mono font-semibold outline-none w-[82px] ${className}`} />
-  );
-
   return (
     <section aria-label="Grilla de horarios" className="font-body flex-1 overflow-y-auto px-[18px] pb-[110px] relative">
 
       {/* Modo toggle */}
       <div className="flex mb-3.5 bg-gypi-surface rounded-xl p-[3px] border border-gypi-border">
-        <button onClick={() => setModo("masivo")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "masivo" ? CYAN : "transparent", color: modo === "masivo" ? "#000" : "var(--color-text-dim)" }}>⚡ Asignación masiva</button>
-        <button onClick={() => setModo("individual")} className="flex-1 py-2.5 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all" style={{ background: modo === "individual" ? AMBER : "transparent", color: modo === "individual" ? "#000" : "var(--color-text-dim)" }}>✏️ Individual</button>
+        <button onClick={() => setModo("masivo")} aria-pressed={modo === "masivo"} className={`flex-1 py-2.5 min-h-11 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all ${modo === "masivo" ? "bg-gypi-cyan text-black" : "bg-transparent text-gypi-dim"}`}>⚡ Varios a la vez</button>
+        <button onClick={() => setModo("individual")} aria-pressed={modo === "individual"} className={`flex-1 py-2.5 min-h-11 rounded-[10px] border-none cursor-pointer text-[13px] font-bold font-heading transition-all ${modo === "individual" ? "bg-gypi-amber text-gypi-on-amber" : "bg-transparent text-gypi-dim"}`}>✏️ De a uno</button>
       </div>
 
       {loading ? (
-        <div className="gypi-dots"><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /><span style={{ background: "var(--color-empresa-primary, #F97316)" }} /></div>
+        <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       ) : modo === "masivo" ? (
         <>
           {/* Paso 1: horario */}
-          <div className="bg-gypi-surface rounded-2xl p-4 mb-3.5" style={{ border: `1px solid ${CYAN}30` }}>
-            <div className="text-[11px] font-bold uppercase tracking-[0.08em] mb-3" style={{ color: CYAN }}>① Definí el horario</div>
+          <div className="bg-gypi-surface rounded-2xl p-4 mb-3.5 border border-gypi-cyan/20">
+            <div className="text-[12px] font-bold uppercase tracking-[0.08em] mb-3 text-gypi-cyan-ink">① Definí el horario</div>
             <div className="flex flex-col gap-1.5">
               {DIAS.map(d => {
                 const activo = !!horarioMasivo[d];
                 return (
                   <div key={d} className="flex items-center gap-2 py-1.5">
-                    <Toggle on={activo} onClick={() => toggleDiaMasivo(d)} />
-                    <span className="w-[34px] text-xs font-bold font-heading" style={{ color: activo ? "var(--color-text)" : "var(--color-text-muted)" }}>{DIAS_L[d]}</span>
+                    <Toggle on={activo} onClick={() => toggleDiaMasivo(d)} label={`${DIAS_L[d]}: ${activo ? "trabaja (tocá para franco)" : "franco (tocá para que trabaje)"}`} />
+                    <span className={`w-[34px] text-[13px] font-bold font-heading ${activo ? "text-gypi-text" : "text-gypi-mute"}`}>{DIAS_L[d]}</span>
                     {activo ? (
                       <div className="flex items-center gap-1.5 flex-1">
                         <TimeInput value={horarioMasivo[d].in} onChange={e => setHorarioMasivoField(d, "in", e.target.value)} />
@@ -162,25 +158,25 @@ export default function GrillaHorarioScreen({ empresaId }) {
                         <TimeInput value={horarioMasivo[d].out} onChange={e => setHorarioMasivoField(d, "out", e.target.value)} />
                       </div>
                     ) : (
-                      <span className="text-[11px] text-gypi-mute font-semibold">Franco</span>
+                      <span className="text-[13px] text-gypi-mute font-semibold">Franco</span>
                     )}
                   </div>
                 );
               })}
             </div>
-            <div className="mt-2.5 text-xs text-gypi-dim">{calcHoras(horarioMasivo).toFixed(1)}h/semana · {DIAS.filter(d => horarioMasivo[d]).length} días</div>
+            <div className="mt-2.5 text-[13px] text-gypi-dim">{calcHoras(horarioMasivo).toFixed(1)} horas por semana · {DIAS.filter(d => horarioMasivo[d]).length} días</div>
           </div>
 
           {/* Paso 2: seleccionar empleados */}
           <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3.5">
             <div className="flex justify-between items-center mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: CYAN }}>② Seleccioná empleados</div>
-              <Tag color={seleccionados.size > 0 ? AMBER : "var(--color-text-dim)"}>{seleccionados.size} seleccionados</Tag>
+              <div className="text-[12px] font-bold uppercase tracking-[0.08em] text-gypi-cyan-ink">② Seleccioná empleados</div>
+              <Tag color={seleccionados.size > 0 ? MARCA : "var(--color-text-dim)"}>{seleccionados.size} seleccionados</Tag>
             </div>
             <div className="flex gap-1 mb-2.5 overflow-x-auto pb-0.5">
-              {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || CYAN}>{d.label}</Chip>)}
+              {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || CIAN}>{d.label}</Chip>)}
             </div>
-            <button onClick={seleccionarTodosFiltrados} className="w-full py-2 rounded-lg text-gypi-cyan text-xs font-bold font-body cursor-pointer mb-2 bg-transparent" style={{ border: `1px dashed ${"var(--color-border)"}` }}>
+            <button onClick={seleccionarTodosFiltrados} className="w-full py-2 min-h-11 rounded-lg text-gypi-cyan-ink text-[13px] font-bold font-body cursor-pointer mb-2 bg-transparent border border-dashed border-gypi-border">
               {empsFiltrados.every(e => seleccionados.has(e.id)) && empsFiltrados.length > 0 ? "✕ Deseleccionar todos" : `☑ Seleccionar todos (${empsFiltrados.length})`}
             </button>
             <div className="flex flex-col gap-1 max-h-[280px] overflow-y-auto">
@@ -188,29 +184,26 @@ export default function GrillaHorarioScreen({ empresaId }) {
                 const sel = seleccionados.has(emp.id);
                 const changed = tienesCambios(emp.id);
                 return (
-                  <button key={emp.id} onClick={() => toggleEmpleado(emp.id)} className="flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] cursor-pointer font-body text-left transition-all" style={{ border: `1px solid ${sel ? `${CYAN}40` : "var(--color-border)"}`, background: sel ? `${CYAN}10` : "transparent" }}>
-                    <div className="w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0" style={{ border: `2px solid ${sel ? CYAN : "var(--color-text-muted)"}`, background: sel ? CYAN : "transparent", color: "#000" }}>{sel && "✓"}</div>
+                  <button key={emp.id} onClick={() => toggleEmpleado(emp.id)} aria-pressed={sel} className={`flex items-center gap-2.5 py-2.5 px-3 min-h-11 rounded-[10px] cursor-pointer font-body text-left transition-all border ${sel ? "border-gypi-cyan/25 bg-gypi-cyan/[0.06]" : "border-gypi-border bg-transparent"}`}>
+                    <div className={`w-[22px] h-[22px] rounded-md flex items-center justify-center text-xs font-bold shrink-0 border-2 text-black ${sel ? "border-gypi-cyan bg-gypi-cyan" : "border-(--color-text-muted) bg-transparent"}`} aria-hidden="true">{sel && "✓"}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.nombre}</div>
                       <div className="text-xs text-gypi-dim truncate">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"}</div>
                     </div>
-                    {changed && <Tag color={AMBER}>Editado</Tag>}
+                    {changed && <Tag color={MARCA}>Editado</Tag>}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <button onClick={aplicarMasivo} disabled={seleccionados.size === 0} className="w-full py-3.5 rounded-[14px] border-none text-[15px] font-bold font-heading mb-2.5" style={{
-            background: seleccionados.size > 0 ? `linear-gradient(135deg, ${CYAN}, ${GREEN})` : "var(--color-surface)",
-            color: seleccionados.size > 0 ? "#000" : "var(--color-text-muted)", cursor: seleccionados.size > 0 ? "pointer" : "default",
-          }}>⚡ Aplicar horario a {seleccionados.size || "..."} empleado{seleccionados.size !== 1 ? "s" : ""}</button>
+          <button onClick={aplicarMasivo} disabled={seleccionados.size === 0} className={`w-full py-3.5 min-h-12 rounded-[14px] border-none text-[15px] font-bold font-heading mb-2.5 ${seleccionados.size > 0 ? "bg-gypi-cyan text-black cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}>⚡ Aplicar horario a {seleccionados.size || "..."} empleado{seleccionados.size !== 1 ? "s" : ""}</button>
         </>
       ) : (
         /* ═══ MODO INDIVIDUAL ═══ */
         <>
           <div className="flex gap-1 mb-2.5 overflow-x-auto pb-0.5">
-            {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || AMBER}>{d.label}</Chip>)}
+            {DIVISIONES.map(d => <Chip key={d.id} active={filtroDivision === d.id} onClick={() => setFiltroDivision(d.id)} color={d.color || MARCA}>{d.label}</Chip>)}
           </div>
           <div className="flex flex-col gap-2">
             {empsFiltrados.map(emp => {
@@ -220,46 +213,46 @@ export default function GrillaHorarioScreen({ empresaId }) {
               const horas = calcHoras(row);
               const diasActivos = DIAS.filter(d => row[d]).length;
               return (
-                <div key={emp.id} className="bg-gypi-surface rounded-[14px] overflow-hidden" style={{ border: `1px solid ${changed ? `color-mix(in srgb, ${AMBER} 25%, transparent)` : "var(--color-border)"}` }}>
+                <div key={emp.id} className={`bg-gypi-surface rounded-[14px] overflow-hidden border ${changed ? "border-gypi-amber/25" : "border-gypi-border"}`}>
                   <button onClick={() => setExpandedId(isExp ? null : emp.id)} aria-expanded={isExp} className="w-full py-3 px-3.5 bg-transparent border-none cursor-pointer flex items-center gap-2.5 font-body text-left">
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
-                      <div className="text-xs text-gypi-dim mt-0.5">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"} · {diasActivos}d · {horas.toFixed(1)}h/sem</div>
+                      <div className="text-xs text-gypi-dim mt-0.5">{DIVISIONES.find(d => d.id === emp.division)?.label || "Sin división"} · {emp.area || "produccion"} · {emp.rol || "operativo"} · {diasActivos} días · {horas.toFixed(1)} h/semana</div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {changed && <Tag color={AMBER}>Editado</Tag>}
-                      <span className="text-gypi-dim text-xs transition-transform" style={{ transform: isExp ? "rotate(90deg)" : "rotate(0)" }}>▶</span>
+                      {changed && <Tag color={MARCA}>Editado</Tag>}
+                      <span className={`text-gypi-dim text-xs transition-transform ${isExp ? "rotate-90" : ""}`} aria-hidden="true">▶</span>
                     </div>
                   </button>
                   {!isExp && (
-                    <div className="px-3.5 pb-2.5 flex gap-[3px]">
+                    <div className="px-3.5 pb-2.5 flex gap-[3px]" aria-label={`Trabaja: ${DIAS.filter(d => row[d]).map(d => DIAS_L[d]).join(", ") || "ningún día"}`}>
                       {DIAS.map(d => (
-                        <div key={d} className="flex-1 text-center py-[3px] rounded-[5px] text-[11px] font-bold font-mono uppercase" style={{ background: row[d] ? `${GREEN}15` : `${"var(--color-text-muted)"}10`, color: row[d] ? GREEN : "var(--color-text-muted)" }}>{DIAS_L[d]}</div>
+                        <div key={d} className={`flex-1 text-center py-[3px] rounded-[5px] text-[11px] font-bold font-mono uppercase ${row[d] ? "bg-gypi-green/10 text-gypi-green-ink" : "bg-gypi-surf-hi text-gypi-mute line-through"}`}>{DIAS_L[d]}</div>
                       ))}
                     </div>
                   )}
                   {isExp && (
                     <div className="px-3.5 pb-3.5">
-                      <button onClick={() => aplicarDefault(emp.id)} className="py-1.5 px-3 rounded-lg border-none text-[11px] font-bold font-body cursor-pointer mb-2.5" style={{ background: `${CYAN}22`, color: CYAN }}>🔄 Default L-V</button>
+                      <button onClick={() => aplicarDefault(emp.id)} className="py-1.5 px-3 min-h-11 rounded-lg border-none text-[13px] font-bold font-body cursor-pointer mb-2.5 bg-gypi-cyan/10 text-gypi-cyan-ink">🔄 Lunes a viernes, {DEFAULT_IN} a {DEFAULT_OUT}</button>
                       <div className="flex flex-col gap-[5px]">
                         {DIAS.map(d => {
                           const activo = !!row[d];
                           return (
-                            <div key={d} className="flex items-center gap-2 py-1.5 px-2 rounded-lg" style={{ background: activo ? `${GREEN}08` : "var(--color-surf-lo)", border: `1px solid ${activo ? `${GREEN}20` : "var(--color-border)"}` }}>
-                              <span className="w-[30px] text-[11px] font-bold font-heading" style={{ color: activo ? "var(--color-text)" : "var(--color-text-muted)" }}>{DIAS_L[d]}</span>
-                              <Toggle on={activo} onClick={() => toggleFranco(emp.id, d)} size="sm" />
+                            <div key={d} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg border ${activo ? "bg-gypi-green/5 border-gypi-green/15" : "bg-gypi-surf-lo border-gypi-border"}`}>
+                              <span className={`w-[34px] text-[13px] font-bold font-heading ${activo ? "text-gypi-text" : "text-gypi-mute"}`}>{DIAS_L[d]}</span>
+                              <Toggle on={activo} onClick={() => toggleFranco(emp.id, d)} label={`${DIAS_L[d]}: ${activo ? "trabaja (tocá para franco)" : "franco (tocá para que trabaje)"}`} />
                               {activo ? (
                                 <div className="flex items-center gap-1 flex-1">
-                                  <input type="time" value={row[d].in} onChange={e => setHorario(emp.id, d, "in", e.target.value)} className="bg-gypi-surf-hi border border-gypi-border rounded-md py-[3px] px-[5px] text-gypi-text text-xs font-mono outline-none w-[78px]" />
+                                  <TimeInput value={row[d].in} onChange={e => setHorario(emp.id, d, "in", e.target.value)} />
                                   <span className="text-gypi-dim text-xs">→</span>
-                                  <input type="time" value={row[d].out} onChange={e => setHorario(emp.id, d, "out", e.target.value)} className="bg-gypi-surf-hi border border-gypi-border rounded-md py-[3px] px-[5px] text-gypi-text text-xs font-mono outline-none w-[78px]" />
+                                  <TimeInput value={row[d].out} onChange={e => setHorario(emp.id, d, "out", e.target.value)} />
                                 </div>
-                              ) : <span className="text-[11px] text-gypi-mute">Franco</span>}
+                              ) : <span className="text-[13px] text-gypi-mute">Franco</span>}
                             </div>
                           );
                         })}
                       </div>
-                      <div className="mt-2 text-[11px] text-gypi-dim">{diasActivos} días · {horas.toFixed(1)}h/semana {changed && <Tag color={AMBER}>sin guardar</Tag>}</div>
+                      <div className="mt-2 text-[13px] text-gypi-dim">{diasActivos} días · {horas.toFixed(1)} horas por semana {changed && <Tag color={MARCA}>sin guardar</Tag>}</div>
                     </div>
                   )}
                 </div>
@@ -272,10 +265,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
       {/* Botón guardar flotante */}
       {totalCambios > 0 && (
         <div className="fixed bottom-[100px] left-1/2 -translate-x-1/2 z-50 max-w-[440px] w-[calc(100%-36px)]">
-          <button onClick={guardarYNotificar} disabled={saving} className="w-full py-4 rounded-2xl border-none text-[15px] font-bold font-heading flex items-center justify-center gap-2" style={{
-            background: saving ? "var(--color-surface)" : `linear-gradient(135deg, ${AMBER}, ${VIOLET})`,
-            color: saving ? "var(--color-text-dim)" : "#000", cursor: saving ? "default" : "pointer", boxShadow: `0 8px 32px color-mix(in srgb, ${AMBER} 19%, transparent)`,
-          }}>{saving ? "⏳ Guardando..." : `📤 Guardar y notificar ${totalCambios} empleado${totalCambios > 1 ? "s" : ""}`}</button>
+          <button onClick={guardarYNotificar} disabled={saving} className={`w-full py-4 min-h-14 rounded-2xl border-none text-[15px] font-bold font-heading flex items-center justify-center gap-2 shadow-[0_8px_32px_color-mix(in_srgb,var(--color-empresa-primary)_19%,transparent)] ${saving ? "bg-gypi-surface text-gypi-dim cursor-default" : "bg-gypi-amber text-gypi-on-amber cursor-pointer"}`}>{saving ? "⏳ Guardando..." : `📤 Guardar y notificar ${totalCambios} empleado${totalCambios > 1 ? "s" : ""}`}</button>
         </div>
       )}
 
