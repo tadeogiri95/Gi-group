@@ -1,7 +1,6 @@
 "use client";
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fH, fB } from "./lib/theme";
 import { DIAS_TRIAL } from "./lib/plans";
 import TablaPrecios from "./components/TablaPrecios";
 import GoogleIcon from "./components/GoogleIcon";
@@ -10,26 +9,29 @@ import { ultimaEmpresa, destinoAppInstalada } from "./lib/ultimaEmpresa";
 import { marcarSiEsAppAndroid, esAppAndroid } from "./lib/appAndroid";
 import IngresoApp from "./components/IngresoApp";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const AMBER_TEXT = "#000";
-const AMBER_S = "var(--color-empresa-primary-subtle, rgba(249,115,22,0.12))";
-const VIOLET = "var(--color-empresa-secondary, #7C3AED)";
-const VIOLET_S = "var(--color-empresa-secondary-subtle, rgba(124,58,237,0.12))";
-const RED = "#DC2626";
-const RED_S = "rgba(220,38,38,0.12)";
-const DIM = "var(--color-text-dim)";
-const MUTE = "var(--color-text-muted)";
-const TEXT = "var(--color-text)";
-const BG = "var(--color-bg)";
-const SURFACE = "var(--color-surface)";
-const SURF_HI = "var(--color-surf-hi)";
-const BORDER = "var(--color-border)";
+// R11: todo con clases y tokens; el color de Gypi sale de las variables por defecto.
+const CAMPO = "w-full min-h-12 px-3.5 py-3 rounded-xl bg-gypi-surface border border-gypi-border text-gypi-text text-[16px] font-body outline-none box-border focus:border-gypi-amber";
+const BOTON_PRINCIPAL = "inline-flex items-center justify-center min-h-12 px-8 py-3.5 rounded-xl bg-gypi-amber text-gypi-on-amber border-none text-[16px] font-bold font-heading cursor-pointer no-underline disabled:opacity-60";
+const BOTON_SECUNDARIO = "inline-flex items-center justify-center min-h-12 px-8 py-3.5 rounded-xl bg-gypi-surface text-gypi-text border border-gypi-border text-[16px] font-semibold font-body cursor-pointer no-underline";
+const Logo = ({ chico = false }) => (
+  <span className={`${chico ? "w-8 h-8 rounded-lg" : "w-9 h-9 rounded-[10px]"} bg-linear-135 from-gypi-amber to-gypi-violet flex items-center justify-center`} aria-hidden="true">
+    <span className={`font-heading font-extrabold text-black ${chico ? "text-xs" : "text-sm"}`}>G</span>
+  </span>
+);
+/** Separador "— o … —" entre Google y el formulario. */
+const Separador = ({ children }) => (
+  <div className="flex items-center gap-3 my-5">
+    <div className="flex-1 h-px bg-gypi-border" />
+    <span className="text-[12px] text-gypi-dim font-bold uppercase tracking-[0.06em]">{children}</span>
+    <div className="flex-1 h-px bg-gypi-border" />
+  </div>
+);
 
 /* ═══════════════════════════════════════════════════
    SVG Icons (inline para zero deps)
    ═══════════════════════════════════════════════════ */
-const Icon = ({ d, size = 22, color = AMBER }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+const Icon = ({ d, size = 22, className = "text-gypi-amber-ink" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
     <path d={d} />
   </svg>
 );
@@ -52,11 +54,11 @@ const icons = {
    Taglines animados
    ═══════════════════════════════════════════════════ */
 const TAGLINES = [
-  "Fichaje inteligente",
-  "Chat operativo",
-  "Reportes en tiempo real",
-  "Gestión de obras",
-  "Control de asistencia",
+  "fichar desde el celular",
+  "pedir permisos sin papeles",
+  "cargar sus tareas en 2 toques",
+  "saber quién vino hoy",
+  "pasarle las horas al contador",
 ];
 
 function AnimatedTagline() {
@@ -70,19 +72,12 @@ function AnimatedTagline() {
     return () => clearInterval(t);
   }, []);
   return (
-    <span style={{ display: "inline-block", transition: "opacity 0.4s, transform 0.4s", opacity: fade ? 1 : 0, transform: fade ? "translateY(0)" : "translateY(8px)", color: AMBER }}>
+    <span className={`inline-block transition-all duration-400 text-gypi-amber-ink ${fade ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}>
       {TAGLINES[idx]}
     </span>
   );
 }
 
-
-/* ═══════════════════════════════════════════════════
-   KPI counter animation
-   ═══════════════════════════════════════════════════ */
-function AnimatedNumber({ target, suffix = "" }) {
-  return <span>{target === 0 ? "0" : target.toLocaleString("es-AR")}{suffix}</span>;
-}
 
 /* ═══════════════════════════════════════════════════
    MAIN COMPONENT
@@ -92,17 +87,20 @@ function AnimatedNumber({ target, suffix = "" }) {
 // el resto de la landing siga pre-renderizándose estática por completo.
 // Sin este aislamiento, /page.js entero pierde el prerender (pantalla en
 // blanco hasta hidratar + contenido invisible para crawlers).
-function OauthErrorBridge({ onError }) {
+function OauthErrorBridge({ onError, onRegistro }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const oauthError = searchParams.get("oauth_error");
+  // "Crear mi empresa gratis" en /pricing abre el registro directo (antes caía en el inicio)
+  const registro = searchParams.get("registro") === "1";
 
   useEffect(() => {
+    if (registro) onRegistro?.();
     if (!oauthError) return;
     onError(getOauthErrorMessage(oauthError));
     router.replace("/", { scroll: false });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oauthError]);
+  }, [oauthError, registro]);
 
   return null;
 }
@@ -143,11 +141,9 @@ export default function Landing() {
     window.location.href = "/api/auth/google/start?intent=login";
   };
 
-  useEffect(() => {
-    const h = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", h, { passive: true });
-    return () => window.removeEventListener("scroll", h);
-  }, []);
+  // Lo que se desplaza es la caja de la página, no la ventana: antes el menú de
+  // arriba quedaba siempre transparente y se encimaba con el texto.
+  const alDesplazar = (e) => setScrolled(e.currentTarget.scrollTop > 20);
 
   const entrar = () => {
     const s = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
@@ -182,49 +178,43 @@ export default function Landing() {
 
   /* ─── Registro Wizard (pantalla completa) ─── */
   if (showRegistro) {
+    const CAMPOS = [
+      { k: "nombre_empresa", l: "Nombre de tu empresa", p: "Ej: Metalúrgica García", ac: "organization" },
+      { k: "nombre_admin", l: "Tu nombre completo", p: "Ej: Juan García", ac: "name" },
+      { k: "email", l: "Email", p: "admin@tuempresa.com", type: "email", ac: "email" },
+      { k: "password", l: "Contraseña", p: "Mínimo 6 caracteres", type: "password", ac: "new-password" },
+    ];
     return (
-      <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", padding: "40px 28px", color: TEXT, fontFamily: fB, overflowY: "auto" }}>
-        <Suspense fallback={null}><OauthErrorBridge onError={handleOauthError} /></Suspense>
-        <button onClick={() => setShowRegistro(false)} style={{ background: "none", border: "none", color: AMBER, cursor: "pointer", fontSize: 13, padding: "8px 0", marginBottom: 8 }}>← Volver</button>
-        <h1 style={{ margin: 0, fontFamily: fH, fontSize: 26, fontWeight: 700 }}>Registrar empresa</h1>
-        <div style={{ fontSize: 13, color: DIM, marginTop: 6, marginBottom: 24 }}>Creá tu cuenta para empezar a usar Gypi</div>
+      <div className="max-w-[480px] mx-auto min-h-dvh px-7 py-10 text-gypi-text font-body overflow-y-auto">
+        <Suspense fallback={null}><OauthErrorBridge onError={handleOauthError} onRegistro={() => setShowRegistro(true)} /></Suspense>
+        <button onClick={() => setShowRegistro(false)} className="bg-transparent border-none text-gypi-text cursor-pointer text-[15px] font-semibold py-2 mb-2 min-h-11">← Volver</button>
+        <h1 className="m-0 font-heading text-[26px] font-bold">Registrar empresa</h1>
+        <div className="text-[14px] text-gypi-dim mt-1.5 mb-6">Creá tu cuenta para empezar a usar Gypi. {DIAS_TRIAL} días gratis, sin tarjeta.</div>
 
-        {error && <div style={{ padding: 12, background: RED_S, color: RED, borderRadius: 10, fontSize: 12, marginBottom: 16 }}>{error}</div>}
+        {error && <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red-ink rounded-[10px] text-[13px] mb-4">{error}</div>}
 
-        <button onClick={continuarConGoogle}
-          style={{ width: "100%", padding: 13, borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <button onClick={continuarConGoogle} className={`${BOTON_SECUNDARIO} w-full gap-2.5 text-[15px]`}>
           <GoogleIcon size={18} /> Continuar con Google
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
-          <div style={{ flex: 1, height: 1, background: BORDER }} />
-          <span style={{ fontSize: 11, color: DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>o completá los datos</span>
-          <div style={{ flex: 1, height: 1, background: BORDER }} />
-        </div>
+        <Separador>o completá los datos</Separador>
 
-        {[
-          { k: "nombre_empresa", l: "Nombre de tu empresa", p: "Ej: Metalúrgica García" },
-          { k: "nombre_admin", l: "Tu nombre completo", p: "Ej: Juan García" },
-          { k: "email", l: "Email", p: "admin@tuempresa.com", type: "email" },
-          { k: "password", l: "Contraseña", p: "Mínimo 6 caracteres", type: "password" },
-        ].map(f => (
-          <div key={f.k} style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: DIM, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{f.l}</label>
-            <input type={f.type || "text"} value={form[f.k]} onChange={e => setForm({ ...form, [f.k]: e.target.value })} placeholder={f.p}
-              style={{ width: "100%", padding: "12px 14px", borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}`, color: TEXT, fontSize: 14, fontFamily: fB, outline: "none", boxSizing: "border-box" }} />
+        {CAMPOS.map(f => (
+          <div key={f.k} className="mb-3">
+            <label htmlFor={`registro-${f.k}`} className="g-label">{f.l}</label>
+            <input id={`registro-${f.k}`} type={f.type || "text"} autoComplete={f.ac} value={form[f.k]} onChange={e => setForm({ ...form, [f.k]: e.target.value })} placeholder={f.p} className={CAMPO} />
           </div>
         ))}
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: DIM, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Rubro</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div className="mb-5">
+          <div className="g-label" id="registro-rubro">Rubro</div>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby="registro-rubro">
             {["general", "industria", "construcción", "servicios", "comercio", "tecnología"].map(r => (
-              <button key={r} onClick={() => setForm({ ...form, rubro: r })}
-                style={{ padding: "6px 12px", borderRadius: 20, border: `1px solid ${form.rubro === r ? AMBER : BORDER}`, background: form.rubro === r ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "transparent", color: form.rubro === r ? AMBER : DIM, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{r}</button>
+              <button key={r} onClick={() => setForm({ ...form, rubro: r })} role="radio" aria-checked={form.rubro === r}
+                className={`px-3.5 py-2 min-h-11 rounded-full border text-[13px] font-semibold cursor-pointer capitalize ${form.rubro === r ? "border-gypi-amber bg-gypi-amber/10 text-gypi-amber-ink" : "border-gypi-border bg-transparent text-gypi-dim"}`}>{r}</button>
             ))}
           </div>
         </div>
-        <button onClick={registrar} disabled={loading}
-          style={{ width: "100%", padding: 14, borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
+        <button onClick={registrar} disabled={loading} className={`${BOTON_PRINCIPAL} w-full`}>
           {loading ? "Creando empresa..." : "Crear empresa gratis"}
         </button>
       </div>
@@ -233,26 +223,28 @@ export default function Landing() {
 
   /* ─── Secciones ─── */
 
+  // Lo que la app hace de verdad, con las palabras que usa la app
   const FEATURES = [
-    { icon: icons.clock,  title: "Fichaje inteligente",   desc: "Control de asistencia con geolocalización, fotos y validación automática." },
-    { icon: icons.chat,   title: "Chat operativo",        desc: "Comunicación directa entre equipos con canales por área y notificaciones push." },
-    { icon: icons.chart,  title: "Reportes en tiempo real", desc: "Dashboards con métricas de productividad, ausentismo y horas trabajadas." },
-    { icon: icons.map,    title: "Gestión de obras",      desc: "Seguimiento de ubicaciones, tareas por obra y estado de instalaciones." },
-    { icon: icons.shield, title: "Reglas automáticas",    desc: "Bot configurable que aplica políticas de fichaje, alertas y recordatorios." },
-    { icon: icons.globe,  title: "PWA multiplataforma",   desc: "Funciona en cualquier dispositivo sin instalar nada. Sin conexión con push activado." },
+    { icon: icons.clock,  title: "Fichaje con el celular", desc: "Un botón grande para la entrada y la salida, con la ubicación. También con PIN o en un kiosco." },
+    { icon: icons.users,  title: "Pedidos sin papeles",    desc: "Permisos, vacaciones y horas extra: el operario los pide desde el celular y vos los respondés en un toque." },
+    { icon: icons.zap,    title: "Tareas y órdenes de trabajo", desc: "Cada operario carga en qué OT y etapa está; ves en vivo quién trabaja y quién está parado." },
+    { icon: icons.chart,  title: "Reportes y liquidación", desc: "Asistencia, tardanzas y horas por persona, listas para pasarle al contador en Excel." },
+    { icon: icons.chat,   title: "Asistente",              desc: "El equipo le escribe para fichar, pedir un permiso o consultar sus horas." },
+    { icon: icons.map,    title: "Trabajo en campo",        desc: "Reportes de obra con fotos, faltantes y desvíos, desde donde estén." },
   ];
 
   const PASOS = [
-    { num: "1", title: "Registrá tu empresa", desc: "Creá tu cuenta en 30 segundos. Sin tarjeta de crédito." },
-    { num: "2", title: "Sumá a tu equipo",    desc: "Invitá empleados con un link. Ellos fichan desde el celular." },
-    { num: "3", title: "Controlá todo",        desc: "Visualizá asistencia, productividad y comunicación en un solo lugar." },
+    { num: "1", title: "Registrá tu empresa", desc: "Creá tu cuenta en un minuto. Sin tarjeta de crédito." },
+    { num: "2", title: "Sumá a tu equipo",    desc: "Les mandás un link y entran con un PIN desde el celular." },
+    { num: "3", title: "Mirá tu tablero",      desc: "Quién vino, quién falta, quién está parado y qué pedidos esperan respuesta." },
   ];
 
+  // Datos ciertos (antes decía "14 días" de prueba y un "99%" sin respaldo)
   const KPIS = [
-    { value: 14, suffix: " días", label: "Trial Pro gratis" },
-    { value: 30, suffix: " seg", label: "Registro de empresa" },
-    { value: 99, suffix: "%", label: "Disponibilidad promedio" },
-    { value: 0, suffix: "$", label: "Setup — sin costo" },
+    { valor: `${DIAS_TRIAL} días`, label: "de prueba gratis, con todo incluido" },
+    { valor: "1 minuto", label: "para registrar tu empresa" },
+    { valor: "$0", label: "para empezar: sin tarjeta" },
+    { valor: "Celular", label: "Android, iPhone o computadora, sin descargar nada" },
   ];
 
   const RUBROS = [
@@ -273,231 +265,196 @@ export default function Landing() {
     { icon: "🚫", label: "Sin tarjeta de crédito para empezar" },
   ];
 
-  const sectionPad = { padding: "80px 24px", maxWidth: 1100, margin: "0 auto" };
-  const sectionTitle = { fontFamily: fH, fontSize: 28, fontWeight: 700, color: TEXT, textAlign: "center", margin: "0 0 8px" };
-  const sectionSub = { fontFamily: fB, fontSize: 15, color: DIM, textAlign: "center", margin: "0 0 48px", maxWidth: 520, marginLeft: "auto", marginRight: "auto" };
+  const SECCION = "px-6 py-20 max-w-[1100px] mx-auto";
+  const TITULO = "font-heading text-[28px] font-bold text-gypi-text text-center m-0 mb-2";
+  const BAJADA = "font-body text-[15px] text-gypi-dim text-center m-0 mb-12 max-w-[520px] mx-auto";
 
   return (
-    <div style={{ background: BG, color: TEXT, fontFamily: fB, height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-      <Suspense fallback={null}><OauthErrorBridge onError={handleOauthError} /></Suspense>
+    <div className="bg-gypi-bg text-gypi-text font-body h-dvh overflow-y-auto" onScroll={alDesplazar}>
+      <Suspense fallback={null}><OauthErrorBridge onError={handleOauthError} onRegistro={() => setShowRegistro(true)} /></Suspense>
 
-      {/* ═══ NAV STICKY ═══ */}
-      <nav style={{
-        position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-        padding: "14px 24px",
-        background: scrolled ? "rgba(12,10,9,0.85)" : "transparent",
-        backdropFilter: scrolled ? "blur(16px)" : "none",
-        WebkitBackdropFilter: scrolled ? "blur(16px)" : "none",
-        borderBottom: scrolled ? `1px solid ${BORDER}` : "1px solid transparent",
-        transition: "all 0.3s ease",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        maxWidth: 1200, margin: "0 auto",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontFamily: fH, fontSize: 14, fontWeight: 800, color: "#000" }}>G</span>
-          </div>
-          <span style={{ fontFamily: fH, fontSize: 18, fontWeight: 700 }}>Gypi</span>
+      {/* ═══ NAV FIJA ═══ */}
+      <nav className={`fixed top-0 inset-x-0 z-[100] px-6 py-3.5 flex items-center justify-between max-w-[1200px] mx-auto transition-all duration-300 border-b ${scrolled ? "bg-gypi-bg/85 backdrop-blur-lg border-gypi-border" : "bg-transparent border-transparent"}`}>
+        <div className="flex items-center gap-2.5">
+          <Logo />
+          <span className="font-heading text-[18px] font-bold">Gypi</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <button onClick={() => scrollTo("features")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13, fontFamily: fB }}>Features</button>
-          <button onClick={() => scrollTo("pricing")} style={{ background: "none", border: "none", color: DIM, cursor: "pointer", fontSize: 13, fontFamily: fB }}>Precios</button>
-          <button onClick={() => scrollTo("login")} style={{ background: "none", border: "none", color: AMBER, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: fB }}>Ingresar</button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => scrollTo("features")} className="bg-transparent border-none text-gypi-dim cursor-pointer text-[14px] font-body px-2.5 min-h-11">Qué hace</button>
+          <button onClick={() => scrollTo("pricing")} className="bg-transparent border-none text-gypi-dim cursor-pointer text-[14px] font-body px-2.5 min-h-11">Precios</button>
+          <button onClick={() => scrollTo("login")} className="bg-transparent border-none text-gypi-amber-ink cursor-pointer text-[14px] font-bold font-body px-2.5 min-h-11">Ingresar</button>
         </div>
       </nav>
 
       {/* ═══ HERO ═══ */}
-      <section style={{ padding: "140px 24px 80px", textAlign: "center", maxWidth: 800, margin: "0 auto" }}>
-        <div style={{ display: "inline-block", padding: "6px 16px", borderRadius: 20, background: AMBER_S, color: AMBER, fontSize: 12, fontWeight: 700, marginBottom: 24, letterSpacing: "0.04em" }}>
-          GESTIÓN DE PERSONAL INTELIGENTE
+      <section className="px-6 pt-[140px] pb-20 text-center max-w-[800px] mx-auto">
+        <div className="inline-block px-4 py-1.5 rounded-full bg-gypi-amber/10 text-gypi-amber-ink text-[12px] font-bold mb-6 tracking-[0.04em] uppercase">
+          Para equipos de planta, taller y obra
         </div>
-        <h1 style={{ fontFamily: fH, fontSize: "clamp(32px, 6vw, 52px)", fontWeight: 800, lineHeight: 1.1, margin: "0 0 16px", letterSpacing: "-0.03em" }}>
-          Tu equipo necesita<br /><AnimatedTagline />
+        <h1 className="font-heading text-[clamp(32px,6vw,52px)] font-extrabold leading-[1.1] m-0 mb-4 tracking-[-0.03em]">
+          Tu equipo va a poder<br /><AnimatedTagline />
         </h1>
-        <p style={{ fontSize: 17, color: DIM, lineHeight: 1.6, maxWidth: 540, margin: "0 auto 36px" }}>
-          Gypi es la plataforma todo-en-uno para gestionar fichaje, comunicación y productividad de tu equipo operativo. Sin instalaciones, desde cualquier dispositivo.
+        <p className="text-[17px] text-gypi-dim leading-relaxed max-w-[540px] mx-auto mb-9">
+          Gypi es la app para el fichaje, los pedidos y las tareas de tu equipo operativo. Ellos la usan desde el celular; vos ves todo en un tablero.
         </p>
-        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <button onClick={() => setShowRegistro(true)}
-            style={{ padding: "14px 32px", borderRadius: 12, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 16, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
-            Empezar gratis
-          </button>
-          <a
-            href="/demo?demo=true"
-            style={{ padding: "14px 32px", borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 16, fontWeight: 600, fontFamily: fB, cursor: "pointer", textDecoration: "none", display: "inline-block" }}
-          >
-            Ver demo
-          </a>
-          <button onClick={() => scrollTo("features")}
-            style={{ padding: "14px 32px", borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 16, fontWeight: 600, fontFamily: fB, cursor: "pointer" }}>
-            Ver features
-          </button>
+        <div className="flex gap-3 justify-center flex-wrap">
+          <button onClick={() => setShowRegistro(true)} className={BOTON_PRINCIPAL}>Empezar gratis</button>
+          <a href="/demo?demo=true" className={BOTON_SECUNDARIO}>Ver cómo funciona</a>
         </div>
       </section>
 
-      {/* ═══ 4 KPIs ═══ */}
-      <section style={{ padding: "0 24px 80px", maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
-          {KPIS.map((k, i) => (
-            <div key={i} style={{ textAlign: "center", padding: "28px 16px", background: SURFACE, borderRadius: 16, border: `1px solid ${BORDER}` }}>
-              <div style={{ fontFamily: fH, fontSize: 32, fontWeight: 800, color: AMBER }}>
-                <AnimatedNumber target={k.value} suffix={k.suffix} />
-              </div>
-              <div style={{ fontSize: 13, color: DIM, marginTop: 6 }}>{k.label}</div>
+      {/* ═══ 4 DATOS ═══ */}
+      <section className="px-6 pb-20 max-w-[900px] mx-auto">
+        <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
+          {KPIS.map((k) => (
+            <div key={k.label} className="text-center px-4 py-7 bg-gypi-surface rounded-2xl border border-gypi-border">
+              <div className="font-heading text-[28px] font-extrabold text-gypi-amber-ink">{k.valor}</div>
+              <div className="text-[14px] text-gypi-dim mt-1.5">{k.label}</div>
             </div>
           ))}
         </div>
       </section>
 
       {/* ═══ RUBROS + CONFIANZA (social proof honesto) ═══ */}
-      <section style={{ padding: "0 24px 80px", maxWidth: 1000, margin: "0 auto" }}>
-        <p style={{ textAlign: "center", fontSize: 12, color: DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 20 }}>
+      <section className="px-6 pb-20 max-w-[1000px] mx-auto">
+        <p className="text-center text-[12px] text-gypi-dim font-bold uppercase tracking-[0.08em] mb-5">
           Pensado para equipos operativos de todos los rubros
         </p>
-        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 10, marginBottom: 40 }}>
+        <div className="flex flex-wrap justify-center gap-2.5 mb-10">
           {RUBROS.map((r) => (
-            <span key={r.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 20, background: SURFACE, border: `1px solid ${BORDER}`, fontSize: 13, color: TEXT }}>
+            <span key={r.label} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-gypi-surface border border-gypi-border text-[14px] text-gypi-text">
               <span aria-hidden="true">{r.icon}</span> {r.label}
             </span>
           ))}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+        <div className="grid gap-3.5 grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
           {CONFIANZA.map((c) => (
-            <div key={c.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", background: SURFACE, borderRadius: 12, border: `1px solid ${BORDER}` }}>
-              <span aria-hidden="true" style={{ fontSize: 18 }}>{c.icon}</span>
-              <span style={{ fontSize: 13, color: DIM, lineHeight: 1.4 }}>{c.label}</span>
+            <div key={c.label} className="flex items-center gap-2.5 px-4 py-3.5 bg-gypi-surface rounded-xl border border-gypi-border">
+              <span aria-hidden="true" className="text-[18px]">{c.icon}</span>
+              <span className="text-[14px] text-gypi-dim leading-snug">{c.label}</span>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ═══ 6 FEATURE CARDS ═══ */}
-      <section id="features" style={sectionPad}>
-        <h2 style={sectionTitle}>Todo lo que tu empresa necesita</h2>
-        <p style={sectionSub}>Herramientas diseñadas para equipos operativos que necesitan simplicidad y control.</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
-          {FEATURES.map((f, i) => (
-            <div key={i} style={{ padding: 28, background: SURFACE, borderRadius: 16, border: `1px solid ${BORDER}`, transition: "border-color 0.2s, transform 0.2s" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = AMBER; e.currentTarget.style.transform = "translateY(-2px)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.transform = "translateY(0)"; }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: AMBER_S, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-                <Icon d={f.icon} size={22} color={AMBER} />
+      {/* ═══ QUÉ HACE ═══ */}
+      <section id="features" className={SECCION}>
+        <h2 className={TITULO}>Qué hace Gypi</h2>
+        <p className={BAJADA}>Pensado para gente que trabaja con las manos: botones grandes, pocas pantallas y palabras simples.</p>
+        <div className="grid gap-5 grid-cols-[repeat(auto-fit,minmax(300px,1fr))]">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="p-7 bg-gypi-surface rounded-2xl border border-gypi-border transition-[border-color,transform] duration-200 hover:border-gypi-amber hover:-translate-y-0.5">
+              <div className="w-11 h-11 rounded-xl bg-gypi-amber/10 flex items-center justify-center mb-4">
+                <Icon d={f.icon} size={22} />
               </div>
-              <h3 style={{ fontFamily: fH, fontSize: 17, fontWeight: 700, margin: "0 0 8px" }}>{f.title}</h3>
-              <p style={{ fontSize: 14, color: DIM, lineHeight: 1.5, margin: 0 }}>{f.desc}</p>
+              <h3 className="font-heading text-[17px] font-bold m-0 mb-2">{f.title}</h3>
+              <p className="text-[15px] text-gypi-dim leading-normal m-0">{f.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ═══ CÓMO FUNCIONA — 3 PASOS ═══ */}
-      <section style={sectionPad}>
-        <h2 style={sectionTitle}>Empezá en 3 pasos</h2>
-        <p style={sectionSub}>Sin configuración compleja. Tu equipo operativo ficha hoy mismo.</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24 }}>
-          {PASOS.map((p, i) => (
-            <div key={i} style={{ textAlign: "center", padding: 32 }}>
-              <div style={{ width: 56, height: 56, borderRadius: "50%", background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 22, fontWeight: 800, fontFamily: fH, color: "#000" }}>
+      <section className={SECCION}>
+        <h2 className={TITULO}>Empezá en 3 pasos</h2>
+        <p className={BAJADA}>Sin configuración complicada: tu equipo puede fichar hoy mismo.</p>
+        <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
+          {PASOS.map((p) => (
+            <div key={p.num} className="text-center p-8">
+              <div className="w-14 h-14 rounded-full bg-linear-135 from-gypi-amber to-gypi-violet flex items-center justify-center mx-auto mb-5 text-[22px] font-extrabold font-heading text-black" aria-hidden="true">
                 {p.num}
               </div>
-              <h3 style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, margin: "0 0 8px" }}>{p.title}</h3>
-              <p style={{ fontSize: 14, color: DIM, lineHeight: 1.5, margin: 0 }}>{p.desc}</p>
+              <h3 className="font-heading text-[18px] font-bold m-0 mb-2">{p.title}</h3>
+              <p className="text-[15px] text-gypi-dim leading-normal m-0">{p.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ═══ HIGHLIGHT PWA ═══ */}
-      <section style={{ padding: "60px 24px", maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
-        <div style={{ padding: 40, background: `linear-gradient(135deg, ${AMBER_S}, ${VIOLET_S})`, borderRadius: 24, border: `1px solid ${BORDER}` }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: AMBER, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-            <Icon d={icons.download} size={28} color="#000" />
+      {/* ═══ EN EL CELULAR ═══ */}
+      <section className="px-6 py-[60px] max-w-[800px] mx-auto text-center">
+        <div className="p-10 bg-linear-135 from-gypi-amber/10 to-gypi-violet/10 rounded-3xl border border-gypi-border">
+          <div className="w-16 h-16 rounded-2xl bg-gypi-amber flex items-center justify-center mx-auto mb-5">
+            <Icon d={icons.download} size={28} className="text-gypi-on-amber" />
           </div>
-          <h2 style={{ fontFamily: fH, fontSize: 24, fontWeight: 700, margin: "0 0 12px" }}>App progresiva (PWA)</h2>
-          <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, maxWidth: 500, margin: "0 auto 24px" }}>
-            Gypi se instala como una app nativa desde el navegador. Sin App Store, sin actualizaciones manuales. Con push activado, funciona sin conexión y envía notificaciones.
+          <h2 className="font-heading text-[24px] font-bold m-0 mb-3">Se usa desde el celular, sin descargar nada</h2>
+          <p className="text-[15px] text-gypi-dim leading-relaxed max-w-[500px] mx-auto mb-6">
+            Se abre en el navegador y se puede agregar a la pantalla de inicio como cualquier app. Si se corta la señal, la entrada o la salida quedan guardadas y se envían solas cuando vuelve.
           </p>
-          <div style={{ display: "flex", gap: 24, justifyContent: "center", flexWrap: "wrap", fontSize: 13, color: TEXT }}>
-            <span>✓ Sin descarga</span>
-            <span>✓ Modo sin conexión (con push activado)</span>
-            <span>✓ Push notifications</span>
-            <span>✓ Android + iOS + Desktop</span>
+          <div className="flex gap-6 justify-center flex-wrap text-[14px] text-gypi-text">
+            <span>✓ Sin pasar por la tienda de apps</span>
+            <span>✓ Funciona con poca señal</span>
+            <span>✓ Avisos en el celular</span>
+            <span>✓ Android, iPhone y computadora</span>
           </div>
         </div>
       </section>
 
-      {/* ═══ PRICING ═══ */}
-      <section id="pricing" style={sectionPad}>
-        <h2 style={sectionTitle}>Planes simples, sin sorpresas</h2>
-        <p style={sectionSub}>Pagás según cuánta gente tenés y qué querés controlar. Empezá con {DIAS_TRIAL} días de prueba gratis, con todo incluido.</p>
-        <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+      {/* ═══ PRECIOS ═══ */}
+      <section id="pricing" className={SECCION}>
+        <h2 className={TITULO}>Planes simples, sin sorpresas</h2>
+        <p className={BAJADA}>Pagás según cuánta gente tenés y qué querés controlar. Empezá con {DIAS_TRIAL} días de prueba gratis, con todo incluido.</p>
+        <div className="max-w-[1000px] mx-auto">
           <TablaPrecios onEmpezar={() => setShowRegistro(true)} />
         </div>
       </section>
 
       {/* ═══ CTA FINAL ═══ */}
-      <section style={{ padding: "80px 24px", textAlign: "center" }}>
-        <div style={{ maxWidth: 600, margin: "0 auto", padding: 48, background: `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})`, borderRadius: 28, border: `1px solid ${BORDER}` }}>
-          <h2 style={{ fontFamily: fH, fontSize: 28, fontWeight: 800, margin: "0 0 12px" }}>¿Listo para transformar tu gestión?</h2>
-          <p style={{ fontSize: 15, color: DIM, lineHeight: 1.6, margin: "0 0 28px" }}>
-            Empezá con 30 días de prueba gratis, con todas las funciones y sin tarjeta.
+      <section className="px-6 py-20 text-center">
+        <div className="max-w-[600px] mx-auto p-12 bg-linear-160 from-gypi-surface to-gypi-surf-hi rounded-[28px] border border-gypi-border">
+          <h2 className="font-heading text-[28px] font-extrabold m-0 mb-3">Probalo con tu equipo</h2>
+          <p className="text-[15px] text-gypi-dim leading-relaxed m-0 mb-7">
+            {DIAS_TRIAL} días de prueba gratis, con todas las funciones y sin tarjeta.
           </p>
-          <button onClick={() => setShowRegistro(true)}
-            style={{ padding: "16px 40px", borderRadius: 14, background: AMBER, color: AMBER_TEXT, border: "none", fontSize: 17, fontWeight: 700, fontFamily: fH, cursor: "pointer" }}>
+          <button onClick={() => setShowRegistro(true)} className={`${BOTON_PRINCIPAL} px-10 text-[17px]`}>
             Crear mi empresa gratis
           </button>
         </div>
       </section>
 
-      {/* ═══ LOGIN / INGRESAR ═══ */}
-      <section id="login" style={{ padding: "60px 24px 40px", maxWidth: 420, margin: "0 auto" }}>
-        <h2 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, textAlign: "center", margin: "0 0 20px" }}>¿Ya tenés cuenta?</h2>
+      {/* ═══ INGRESAR ═══ */}
+      <section id="login" className="px-6 pt-[60px] pb-10 max-w-[420px] mx-auto">
+        <h2 className="font-heading text-[22px] font-bold text-center m-0 mb-5">¿Ya tenés cuenta?</h2>
 
-        <button onClick={iniciarSesionConGoogle}
-          style={{ width: "100%", padding: 13, borderRadius: 12, background: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, fontSize: 14, fontWeight: 600, fontFamily: fB, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
+        <button onClick={iniciarSesionConGoogle} className={`${BOTON_SECUNDARIO} w-full gap-2.5 text-[15px] mb-2`}>
           <GoogleIcon size={18} /> Iniciar sesión con Google
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
-          <div style={{ flex: 1, height: 1, background: BORDER }} />
-          <span style={{ fontSize: 11, color: DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>o ingresá tu empresa</span>
-          <div style={{ flex: 1, height: 1, background: BORDER }} />
-        </div>
+        <Separador>o escribí el nombre de tu empresa</Separador>
 
-        <div style={{ display: "flex", alignItems: "center", background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "0 14px", marginBottom: 8 }}>
-          <span style={{ color: MUTE, fontSize: 14 }}>gypi.app/</span>
-          <input value={slug} onChange={e => setSlug(e.target.value)} onKeyDown={e => e.key === "Enter" && entrar()} placeholder="mi-empresa"
-            style={{ flex: 1, padding: "14px 4px", border: "none", background: "transparent", color: TEXT, fontSize: 15, outline: "none", fontFamily: fB }} />
+        <label htmlFor="ingresar-empresa" className="sr-only">Dirección de tu empresa</label>
+        <div className="flex items-center bg-gypi-surface border border-gypi-border rounded-xl px-3.5 mb-2 focus-within:border-gypi-amber">
+          <span className="text-gypi-mute text-[15px]">gypi.app/</span>
+          <input id="ingresar-empresa" value={slug} onChange={e => setSlug(e.target.value)} onKeyDown={e => e.key === "Enter" && entrar()} placeholder="mi-empresa" autoCapitalize="none" autoCorrect="off"
+            className="flex-1 px-1 py-3.5 border-none bg-transparent text-gypi-text text-[16px] outline-none font-body" />
         </div>
-        <button onClick={entrar} disabled={!slug.trim()}
-          style={{ width: "100%", padding: 14, borderRadius: 12, background: slug.trim() ? AMBER : SURFACE, color: slug.trim() ? AMBER_TEXT : MUTE, border: "none", fontSize: 15, fontWeight: 700, cursor: slug.trim() ? "pointer" : "default", fontFamily: fH }}>
+        <button onClick={entrar} disabled={!slug.trim()} className={`${BOTON_PRINCIPAL} w-full ${slug.trim() ? "" : "bg-gypi-surface! text-gypi-mute! cursor-default!"}`}>
           Ir a mi empresa
         </button>
+        <p className="text-center text-[13px] text-gypi-dim mt-3 mb-0">¿No sabés la dirección? Pedísela a quien te dio de alta, o buscá el link que te mandaron.</p>
       </section>
 
-      {/* ═══ FOOTER ═══ */}
-      <footer style={{ padding: "40px 24px", borderTop: `1px solid ${BORDER}`, maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg,${AMBER},${VIOLET})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontFamily: fH, fontSize: 12, fontWeight: 800, color: "#000" }}>G</span>
-            </div>
-            <span style={{ fontFamily: fH, fontSize: 15, fontWeight: 700 }}>Gypi</span>
+      {/* ═══ PIE ═══ */}
+      <footer className="px-6 py-10 border-t border-gypi-border max-w-[1100px] mx-auto">
+        <div className="flex justify-between items-center flex-wrap gap-4">
+          <div className="flex items-center gap-2.5">
+            <Logo chico />
+            <span className="font-heading text-[15px] font-bold">Gypi</span>
           </div>
-          <div style={{ display: "flex", gap: 24, fontSize: 13, color: DIM }}>
-            <a href="#features" style={{ color: DIM, textDecoration: "none", fontSize: 13 }}>Features</a>
-            <a href="/pricing" style={{ color: DIM, textDecoration: "none", fontSize: 13 }}>Precios</a>
-            <a href="#login" style={{ color: DIM, textDecoration: "none", fontSize: 13 }}>Ingresar</a>
+          <div className="flex gap-6 text-[14px] text-gypi-dim">
+            <a href="#features" className="text-gypi-dim no-underline">Qué hace</a>
+            <a href="/pricing" className="text-gypi-dim no-underline">Precios</a>
+            <a href="#login" className="text-gypi-dim no-underline">Ingresar</a>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}`, flexWrap: "wrap" }}>
-          <a href="/nosotros" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Nosotros</a>
-          <a href="/docs" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Documentación</a>
-          <a href="/terms" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Términos</a>
-          <a href="/privacy" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Privacidad</a>
-          <a href="/contacto" style={{ fontSize: 12, color: DIM, textDecoration: "none" }}>Contacto</a>
+        <div className="flex justify-center gap-6 mt-6 pt-5 border-t border-gypi-border flex-wrap text-[13px]">
+          <a href="/nosotros" className="text-gypi-dim no-underline">Nosotros</a>
+          <a href="/docs" className="text-gypi-dim no-underline">Documentación</a>
+          <a href="/terms" className="text-gypi-dim no-underline">Términos</a>
+          <a href="/privacy" className="text-gypi-dim no-underline">Privacidad</a>
+          <a href="/contacto" className="text-gypi-dim no-underline">Contacto</a>
         </div>
-        <div style={{ textAlign: "center", fontSize: 12, color: MUTE, marginTop: 12 }}>
+        <div className="text-center text-[13px] text-gypi-mute mt-3">
           © {new Date().getFullYear()} Gypi · Gestión y productividad industrial · Todos los derechos reservados
         </div>
       </footer>

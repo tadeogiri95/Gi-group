@@ -6,87 +6,77 @@ import { useState } from "react";
 import { LINEAS, TRAMOS, ADDONS, DESCUENTO_ANUAL, DIAS_TRIAL } from "../lib/plans";
 import EnterpriseContactButton from "./EnterpriseContactButton";
 
-const AMBER = "var(--color-empresa-primary, #F97316)";
-const GREEN = "#16A34A";
-const DIM = "var(--color-text-dim)";
-const TEXT = "var(--color-text)";
-const SURFACE = "var(--color-surface)";
-const SURF_HI = "var(--color-surf-hi)";
-const BORDER = "var(--color-border)";
-const fH = "'Bricolage Grotesque', system-ui";
-
 export function usdMes(n, anual) {
   const v = anual ? Math.round(n * (1 - DESCUENTO_ANUAL) * 100) / 100 : n;
   return `USD ${v.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
 }
 
+// R11: clases en vez de estilos sueltos; el botón principal con el color de la marca
+const BOTON = "block text-center w-full min-h-12 p-3 rounded-xl border-none cursor-pointer text-[15px] font-bold font-heading no-underline";
+
 export default function TablaPrecios({ onEmpezar }) {
   const [anual, setAnual] = useState(false);
-  const boton = {
-    display: "block", textAlign: "center", width: "100%", padding: 12, borderRadius: 12,
-    border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: fH, textDecoration: "none",
-  };
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, margin: "0 0 28px" }}>
-        <span style={{ fontSize: 13, fontWeight: anual ? 400 : 700, color: anual ? DIM : TEXT }}>Mensual</span>
+      <div className="flex justify-center items-center gap-2.5 mb-7">
+        <span className={`text-[14px] ${anual ? "font-normal text-gypi-dim" : "font-bold text-gypi-text"}`}>Mensual</span>
         <button
           onClick={() => setAnual(!anual)}
           aria-label={anual ? "Ver precio mensual" : "Ver precio pagando un año"}
           aria-pressed={anual}
-          style={{ position: "relative", width: 44, height: 24, borderRadius: 999, cursor: "pointer", padding: 0, border: `1px solid ${anual ? AMBER : BORDER}`, background: anual ? AMBER : SURFACE }}
+          className={`relative w-12 h-7 rounded-full cursor-pointer p-0 border ${anual ? "border-gypi-amber bg-gypi-amber" : "border-gypi-border bg-gypi-surface"}`}
         >
-          <span aria-hidden="true" style={{ position: "absolute", top: 2, left: anual ? 22 : 3, width: 18, height: 18, borderRadius: "50%", transition: "left 0.2s", background: anual ? "#000" : "var(--color-text-muted)" }} />
+          <span aria-hidden="true" className={`absolute top-[3px] w-5 h-5 rounded-full transition-all duration-200 ${anual ? "left-[23px] bg-gypi-on-amber" : "left-[3px] bg-(--color-text-muted)"}`} />
         </button>
-        <span style={{ fontSize: 13, fontWeight: anual ? 700 : 400, color: anual ? TEXT : DIM }}>
-          Anual <span style={{ fontSize: 12, color: GREEN, fontWeight: 700 }}>-{Math.round(DESCUENTO_ANUAL * 100)}%</span>
+        <span className={`text-[14px] ${anual ? "font-bold text-gypi-text" : "font-normal text-gypi-dim"}`}>
+          Anual <span className="text-[13px] font-bold text-gypi-green-ink">-{Math.round(DESCUENTO_ANUAL * 100)}%</span>
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+      <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
         {Object.values(LINEAS).map((l) => {
           const destacada = l.id === "planta";
           return (
-            <div key={l.id} style={{ padding: 28, borderRadius: 20, background: destacada ? `linear-gradient(160deg, ${SURFACE}, ${SURF_HI})` : SURFACE, border: destacada ? `2px solid ${AMBER}` : `1px solid ${BORDER}` }}>
-              <h3 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, margin: "0 0 6px" }}>{l.nombre}</h3>
-              <p style={{ fontSize: 13, color: DIM, lineHeight: 1.5, margin: "0 0 16px" }}>{l.descripcion}</p>
-              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 20 }}>
-                <caption style={{ textAlign: "left", fontSize: 11, color: DIM, fontWeight: 600, paddingBottom: 6 }}>Por mes, según operarios activos</caption>
+            <div key={l.id} className={`p-7 rounded-[20px] ${destacada ? "bg-linear-160 from-gypi-surface to-gypi-surf-hi border-2 border-gypi-amber" : "bg-gypi-surface border border-gypi-border"}`}>
+              <h3 className="font-heading text-[22px] font-bold m-0 mb-1.5">{l.nombre}</h3>
+              <p className="text-[14px] text-gypi-dim leading-normal m-0 mb-4">{l.descripcion}</p>
+              <table className="w-full border-collapse mb-5">
+                <caption className="text-left text-[12px] text-gypi-dim font-semibold pb-1.5">Por mes, según operarios activos</caption>
                 <tbody>
                   {TRAMOS.map((t) => (
                     <tr key={t}>
-                      <th scope="row" style={{ textAlign: "left", fontSize: 13, color: DIM, fontWeight: 400, padding: "6px 0", borderTop: `1px solid ${BORDER}` }}>Hasta {t}</th>
-                      <td style={{ textAlign: "right", fontFamily: fH, fontSize: 18, fontWeight: 800, color: destacada ? AMBER : TEXT, padding: "6px 0", borderTop: `1px solid ${BORDER}` }}>{usdMes(l.usd[t], anual)}</td>
+                      <th scope="row" className="text-left text-[14px] text-gypi-dim font-normal py-1.5 border-t border-gypi-border">Hasta {t}</th>
+                      <td className={`text-right font-heading text-[18px] font-extrabold py-1.5 border-t border-gypi-border ${destacada ? "text-gypi-amber-ink" : "text-gypi-text"}`}>{usdMes(l.usd[t], anual)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <button onClick={onEmpezar} style={{ ...boton, background: destacada ? AMBER : SURF_HI, color: destacada ? "#000" : TEXT }}>
+              <button onClick={onEmpezar} className={`${BOTON} ${destacada ? "bg-gypi-amber text-gypi-on-amber" : "bg-gypi-surf-hi text-gypi-text"}`}>
                 Probar {DIAS_TRIAL} días gratis
               </button>
             </div>
           );
         })}
 
-        <div style={{ padding: 28, borderRadius: 20, background: SURFACE, border: `1px solid ${BORDER}` }}>
-          <h3 style={{ fontFamily: fH, fontSize: 22, fontWeight: 700, margin: "0 0 6px" }}>Add-ons</h3>
-          <p style={{ fontSize: 13, color: DIM, lineHeight: 1.5, margin: "0 0 16px" }}>Se suman a cualquiera de los dos planes.</p>
+        <div className="p-7 rounded-[20px] bg-gypi-surface border border-gypi-border">
+          <h3 className="font-heading text-[22px] font-bold m-0 mb-1.5">Add-ons</h3>
+          <p className="text-[14px] text-gypi-dim leading-normal m-0 mb-4">Se suman a cualquiera de los dos planes.</p>
           {Object.values(ADDONS).map((a) => (
-            <div key={a.id} style={{ padding: "8px 0", borderTop: `1px solid ${BORDER}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700 }}>
+            <div key={a.id} className="py-2 border-t border-gypi-border">
+              <div className="flex justify-between text-[14px] font-bold">
                 <span>{a.nombre}</span><span>{usdMes(a.usd, anual)}</span>
               </div>
-              <div style={{ fontSize: 12, color: DIM, marginTop: 2 }}>{a.descripcion}</div>
+              <div className="text-[13px] text-gypi-dim mt-0.5">{a.descripcion}</div>
             </div>
           ))}
-          <h3 style={{ fontFamily: fH, fontSize: 18, fontWeight: 700, margin: "20px 0 6px" }}>Enterprise</h3>
-          <p style={{ fontSize: 13, color: DIM, lineHeight: 1.5, margin: "0 0 12px" }}>Más de {TRAMOS.at(-1)} operarios, varias plantas o acuerdos a medida.</p>
-          <EnterpriseContactButton style={{ ...boton, background: SURF_HI, color: TEXT }}>Contactanos</EnterpriseContactButton>
+          <h3 className="font-heading text-[18px] font-bold mt-5 mb-1.5">Enterprise</h3>
+          <p className="text-[14px] text-gypi-dim leading-normal m-0 mb-3">Más de {TRAMOS.at(-1)} operarios, varias plantas o acuerdos a medida.</p>
+          <EnterpriseContactButton className={`${BOTON} bg-gypi-surf-hi text-gypi-text`}>Contactanos</EnterpriseContactButton>
         </div>
       </div>
 
-      <p style={{ fontSize: 12, color: DIM, textAlign: "center", lineHeight: 1.6, maxWidth: 640, margin: "20px auto 0" }}>
+      <p className="text-[13px] text-gypi-dim text-center leading-relaxed max-w-[640px] mx-auto mt-5">
         Los precios están en dólares y se cobran en pesos con Mercado Pago, al dólar oficial del Banco Nación del día en que te suscribís.
         Si el dólar se mueve, te avisamos 30 días antes de cobrar otro monto. El tramo se calcula con las personas activas cargadas en la app.
         {anual ? " Pagando un año, se cobran los 12 meses juntos con el descuento." : ""}

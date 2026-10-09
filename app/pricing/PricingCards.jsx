@@ -4,5 +4,5 @@ import TablaPrecios from "../components/TablaPrecios";
 
 export default function PricingCards() {
   const router = useRouter();
-  return <TablaPrecios onEmpezar={() => router.push("/")} />;
+  return <TablaPrecios onEmpezar={() => router.push("/?registro=1")} />;
 }
