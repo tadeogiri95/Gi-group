@@ -93,8 +93,10 @@ test("tablero de gestión — Trabajo en campo y el detalle por operario según 
   fireEvent.click(screen.getByText("En planta"));
   assert.ok(screen.getByText(/Ver detalle por operario/));
   cleanup();
+  // R11: sin Tareas el panel "En planta" siempre estaba vacío, así que no se ofrece
   tablero(ASISTENCIA);
-  fireEvent.click(await screen.findByText("En planta"));
+  await screen.findByRole("region", { name: "Resumen de hoy" });
+  assert.equal(screen.queryByText("En planta"), null);
   assert.equal(screen.queryByText(/Ver detalle por operario/), null);
   cleanup();
   tablero([...PLANTA, "obra"]);
