@@ -29,5 +29,5 @@ test("InboxScreen — ya no depende de datos_horario, que no existe (F1-07)", as
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("../app/components/screens/InboxScreen.jsx", import.meta.url), "utf8");
   assert.ok(!src.includes("sol.datos_horario"));
-  assert.ok(src.includes("cargarHoraExtraAprobada"), "aprobar una hora extra la carga en la fichada (F1-06)");
+  assert.ok(src.includes("/api/solicitudes/resolver"), "aprobar pasa por el servidor, que carga la hora extra (F1-06, ítem 38)");
 });

@@ -28,7 +28,8 @@ test("U-09 — los avisos aprobados se ven como aprobados (antes 'APROBADO' sal�
 });
 
 test("U-10 — el aviso de salida aprobada nombra el botón que existe", () => {
-  const inbox = fuente("app/components/screens/InboxScreen.jsx");
+  // El texto del aviso lo arma el servidor desde el ítem 38 (lib/solicitudes.js)
+  const inbox = fuente("app/lib/solicitudes.js");
   assert.doesNotMatch(inbox, /"Me voy"/);
   assert.match(inbox, /"Fichar salida"/);
 });

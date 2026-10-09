@@ -398,3 +398,10 @@ export const cambiarPasswordBody = z.object({
   userId: uuid,
   nuevaPassword: z.string().min(8).max(200),
 }).strict();
+
+// POST /api/solicitudes/resolver — aprobar o rechazar (ítem 38)
+export const resolverSolicitudBody = z.object({
+  id: z.number().int().positive(),
+  estado: z.enum(["aprobado", "rechazado"]),
+  nota: z.string().trim().max(500).optional().nullable(),
+}).strict();
