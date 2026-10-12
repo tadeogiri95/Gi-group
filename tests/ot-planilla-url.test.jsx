@@ -65,3 +65,26 @@ test("090 — la clave primaria pasa a (empresa_id, clave), solo si todavía es 
   assert.match(sql, /drop constraint config_sistema_pkey/);
   assert.match(sql, /add constraint config_sistema_pkey primary key \(empresa_id, clave\)/);
 });
+
+test("listado de OT — trae todas las páginas, no se corta en 500", async () => {
+  const pedidos = [];
+  global.fetch = async (url, opts = {}) => {
+    const { method, path } = JSON.parse(opts.body || "{}");
+    pedidos.push({ method, path });
+    if (path.startsWith("proyectos?")) {
+      const offset = Number(new URLSearchParams(path.split("?")[1]).get("offset") || 0);
+      const n = offset === 0 ? 1000 : offset === 1000 ? 200 : 0;
+      const data = Array.from({ length: n }, (_, i) => ({ id: `p${offset + i}`, ot: `OT-${offset + i}`, estado: "activo" }));
+      return new Response(JSON.stringify({ ok: true, data }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: true, data: [] }), { status: 200 });
+  };
+  render(
+    <AuthContext.Provider value={{ divisiones: [], empresa: { nombre: "Acme" }, updateEmpresa: () => {} }}>
+      <ProyectosScreen empresaId="11111111-1111-1111-1111-111111111111" />
+    </AuthContext.Provider>
+  );
+  await waitFor(() => assert.ok(pedidos.some((p) => p.path.startsWith("proyectos?") && p.path.includes("offset=1000"))));
+  assert.ok(pedidos.every((p) => !p.path.includes("limit=500")));
+  assert.ok((await screen.findAllByText(/1200/)).length > 0);
+});

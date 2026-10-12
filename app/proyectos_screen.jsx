@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from "react";
-import { sb, apiFetch } from "./lib/supabase";
+import { sb, sbGetAll, apiFetch } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
@@ -160,7 +160,8 @@ export default function ProyectosScreen({ empresaId }) {
     if (!empresaId) return;
     setLoading(true);
     try {
-      const data = await sb.get(`proyectos?empresa_id=eq.${empresaId}&order=created_at.desc&limit=500`);
+      // Todas las OT, no solo las primeras 500 (cada pedido trae hasta 1000)
+      const { data } = await sbGetAll(`proyectos?empresa_id=eq.${empresaId}&order=created_at.desc,id.desc`, { maxFilas: 20000 });
       setProyectos(data || []);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -260,7 +261,14 @@ export default function ProyectosScreen({ empresaId }) {
       const res = await apiFetch("/api/proyectos/sync-csv", { method: "POST" });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error sync");
-      showToast(`✅ ${data.procesados} OT sincronizadas`, GREEN);
+      if (data.errores?.length) {
+        const faltan = (data.total || 0) - (data.procesados || 0);
+        showToast(`⚠️ ${data.procesados} OT sincronizadas, ${faltan} no se pudieron guardar. Probá de nuevo.`, AMBER);
+        console.warn("Errores sync OT:", data.errores);
+      } else {
+        const rep = data.repetidas ? ` (${data.repetidas} repetida${data.repetidas > 1 ? "s" : ""} en la planilla)` : "";
+        showToast(`✅ ${data.procesados} OT sincronizadas${rep}`, GREEN);
+      }
       await cargar(); await cargarSyncCfg();
     } catch (e) { showToast(`Error: ${e.message}`, RED); }
     setSyncLoading(false);
