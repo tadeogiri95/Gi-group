@@ -1,8 +1,7 @@
 // tests/rls-rutas-chat.test.js — RLS real en el chat (ítem 37, etapa 2)
 // Con RLS_RUTAS=on, /api/chat y /api/chat/query leen los datos de la empresa
 // con el pase del usuario (rol authenticated + claim eid). El control de
-// costos (rpc_check_rate_limit, audit_log) y la vista v_resumen_diario siguen
-// con service_role.
+// costos (rpc_check_rate_limit, audit_log) sigue con service_role.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { jwtVerify } from "jose";
@@ -107,13 +106,13 @@ test("chat/query con RLS_RUTAS=on — las consultas van con el pase del usuario"
   for (const c of capturas) assert.equal(await eidDe(c.headers), EMPRESA_ID, `${c.tabla} con el pase del usuario`);
 });
 
-test("chat/query con RLS_RUTAS=on — la vista v_resumen_diario sigue con service_role", async () => {
+test("chat/query con RLS_RUTAS=on — la vista v_resumen_diario también va con el pase del usuario (096)", async () => {
   const capturas = [];
   global.fetch = createFetchMock([...authPassHandlers(), tabla("v_resumen_diario", capturas)]);
   const res = await chatQuery.POST(req("/api/chat/query", await token("gerencial"), { query_type: "productividad_promedio" }));
   assert.equal(res.status, 200);
   assert.equal(capturas.length, 1);
-  assert.ok(esServiceRole(capturas[0].headers));
+  assert.equal(await eidDe(capturas[0].headers), EMPRESA_ID);
 });
 
 test("chat/query con RLS_RUTAS apagado — sigue con service_role", async () => {

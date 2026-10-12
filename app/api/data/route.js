@@ -16,7 +16,7 @@ import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
 import { alcanceDe, filtroAlcance, dentroDelAlcance, COLUMNA_PERSONA } from "../../lib/alcance";
 import { diasEntre, MAX_DIAS_SOLICITUD } from "../../lib/tiposSolicitud";
 import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
-import { rlsActivo, configRlsFaltante, headersUsuario } from "../../lib/supabaseUsuario";
+import { rlsActivo, rlsRutasActivo, configRlsFaltante, headersUsuario } from "../../lib/supabaseUsuario";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -59,10 +59,17 @@ const TABLAS_PERMITIDAS = [
 const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado"];
 
 // Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
-// base aplica la RLS. Las dos vistas de resumen siguen con service_role: una
-// vista materializada (v_scores_empleados) no admite RLS. El filtro por
-// empresa_id que inyecta este gateway las sigue cubriendo.
+// base aplica la RLS. Las dos vistas de resumen necesitan además la migración
+// 096 (security_invoker: la vista aplica la RLS de sus tablas), así que van
+// con el pase recién cuando también está RLS_RUTAS=on, que se prende después
+// de correr las migraciones 094 en adelante. Antes, siguen con service_role
+// y el filtro por empresa_id que inyecta este gateway.
 const TABLAS_SIN_RLS = ["v_resumen_diario", "v_scores_empleados"];
+function usaPaseUsuario(tabla) {
+  if (!rlsActivo()) return false;
+  return !TABLAS_SIN_RLS.includes(tabla) || rlsRutasActivo();
+}
+
 // Tablas de REFERENCIAS (lib/dataPolicy.js) que el chequeo sigue leyendo con
 // service_role.
 const TABLAS_REF_SIN_RLS = ["plantas"];
@@ -433,7 +440,7 @@ export async function POST(request) {
     if (method === "POST") { opts.method = "POST"; opts.body = JSON.stringify(finalBody); }
     else if (method === "PATCH") { opts.method = "PATCH"; opts.body = JSON.stringify(finalBody); }
     else if (method === "DELETE") { opts.method = "DELETE"; }
-    if (rlsActivo() && !TABLAS_SIN_RLS.includes(pathCheck.tabla)) {
+    if (usaPaseUsuario(pathCheck.tabla)) {
       opts.headers = await headersUsuario(sesion);
     }
 

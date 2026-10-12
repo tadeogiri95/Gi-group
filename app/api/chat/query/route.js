@@ -17,13 +17,12 @@ import { sbHeaders } from "../../../lib/sbHelpers";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-// Con RLS_RUTAS=on va con el pase del usuario (ítem 37, etapa 2). La vista
-// v_resumen_diario sigue con service_role, igual que en /api/data: no tiene
-// RLS propia y el filtro por empresa_id de la consulta la cubre.
+// Con RLS_RUTAS=on va con el pase del usuario (ítem 37, etapas 2 y 3). La
+// vista v_resumen_diario también: desde la migración 096 la base la filtra por
+// empresa con la RLS de sus tablas (security_invoker).
 async function sbQuery(path, sesion) {
-  const esVista = path.startsWith("v_");
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: await sbHeaders(esVista ? {} : { sesion }),
+    headers: await sbHeaders({ sesion }),
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) return [];
