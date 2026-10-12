@@ -34,26 +34,32 @@ export function filasCsv(text) {
   return filas.map(f => f.map(c => c.trim())).filter(f => f.some(c => c));
 }
 
+const MAX_DESCRIPCION = 500;
 const limpio = (s) => (s || "").replace(/\s+/g, " ").trim();
 
 /**
  * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion}[], repetidas: number }}
- * filas: una por OT (si una OT aparece varias veces, vale la última fila, y las
- * columnas vacías se completan con las filas anteriores).
+ * filas: una por OT. Si una OT aparece varias veces (un renglón por ítem), vale
+ * la última fila, las columnas vacías se completan con las anteriores y las
+ * descripciones de todos los ítems se juntan con " / ".
  */
 export function parseCsvProyectos(text) {
   const todas = filasCsv(text);
   if (todas.length < 2) return { filas: [], repetidas: 0 };
   const headers = todas[0].map(h => h.toLowerCase());
-  const idx = (n) => headers.findIndex(h => h.includes(n));
-  let iOt = headers.findIndex(h => h === "ot");
-  if (iOt < 0) iOt = idx("ot");
+  // Primero el título exacto ("OBRA"), después uno que lo contenga: si no,
+  // "PROYECTO / OBRA" (columna C) le ganaba a "OBRA" (columna E).
+  const idx = (n) => {
+    const exacto = headers.findIndex(h => h === n);
+    return exacto >= 0 ? exacto : headers.findIndex(h => h.includes(n));
+  };
+  const iOt = idx("ot");
   if (iOt < 0) return { filas: [], repetidas: 0 };
   const iCli = idx("cliente");
   const iObra = idx("obra");
   const iProy = idx("proyecto");
   const iDiv = idx("divis");
-  const iDesc = idx("descrip");
+  const iDesc = idx("descripcion") >= 0 ? idx("descripcion") : idx("descrip");
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);
 
@@ -61,12 +67,16 @@ export function parseCsvProyectos(text) {
   let repetidas = 0;
   for (const c of todas.slice(1)) {
     const ot = limpio(c[iOt]);
-    if (!ot || ot === tituloOt) continue; // vacía o título repetido de otro bloque
+    // vacía, título repetido de otro bloque, o renglón sin número ("M-", "-")
+    if (!ot || ot === tituloOt || !/\d/.test(ot)) continue;
     const fila = { ot, cliente: valor(c, iCli), obra: valor(c, iObra), proyecto: valor(c, iProy), division: valor(c, iDiv), descripcion: valor(c, iDesc) };
     const previa = porOt.get(ot);
     if (previa) {
+      // Una OT con varios ítems (P1, P3, P4…): se juntan las descripciones
       repetidas++;
+      const descs = [previa.descripcion, fila.descripcion].filter(Boolean);
       for (const k of Object.keys(fila)) if (fila[k] == null) fila[k] = previa[k];
+      fila.descripcion = [...new Set(descs.flatMap(d => d.split(" / ")))].join(" / ").slice(0, MAX_DESCRIPCION) || null;
     }
     porOt.set(ot, fila);
   }
