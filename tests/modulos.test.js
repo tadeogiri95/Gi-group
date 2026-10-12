@@ -125,8 +125,7 @@ test("/api/actividad — sin el módulo no se empieza una tarea, pero una abiert
     plan: "asistencia_15",
     extra: [
       ...authPassHandlers(),
-      { match: (u, o) => u.includes("/rest/v1/registro_actividades") && o?.method === "PATCH", respond: () => { cerrada = true; return { status: 200, body: [{}] }; } },
-      { match: (u) => u.includes("/rest/v1/registro_actividades"), respond: () => ({ status: 200, body: [{ id: 9, hora_inicio: "2026-10-08T10:00:00Z" }] }) },
+      { match: (u) => u.includes("/rest/v1/rpc/registrar_actividad"), respond: (u, o) => { cerrada = JSON.parse(o.body).p_nueva === null; return { status: 200, body: { ok: true, cerradas: 1 } }; } },
     ],
   });
   const iniciar = await pedir({ accion: "iniciar", etapa: 1, codigo_proyecto: "OT-1" });

@@ -189,15 +189,27 @@ test("/api/fichar — algo de hace más de 12 h no se acepta, y un op_id raro no
 
 const pedirActividad = async (body) => actividad(new Request("http://localhost/api/actividad", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await tk()}` }, body: JSON.stringify(body) }));
 
+// Simula registrar_actividad (migración 087) sobre una lista de tareas abiertas
 function mockActividad({ abiertas = [] } = {}) {
-  const r = { cierres: [], nueva: null };
+  const r = { llamadas: [], cierres: [], nueva: null };
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (url) => url.includes("/rest/v1/operaciones_offline?op_id="), respond: () => ({ status: 200, body: [] }) },
     { match: (url, o) => url.includes("/rest/v1/operaciones_offline") && o?.method === "POST", respond: () => ({ status: 201, body: [{}] }) },
-    { match: (url, o) => url.includes("/rest/v1/registro_actividades?id=eq.") && o?.method === "PATCH", respond: (url, o) => { r.cierres.push({ url, ...JSON.parse(o.body) }); return { status: 200, body: [{}] }; } },
-    { match: (url, o) => url.includes("/rest/v1/registro_actividades") && o?.method === "POST", respond: (url, o) => { r.nueva = JSON.parse(o.body); return { status: 201, body: [{ id: 99, ...r.nueva }] }; } },
-    { match: (url) => url.includes("/rest/v1/registro_actividades"), respond: () => ({ status: 200, body: abiertas }) },
+    {
+      match: (url) => url.includes("/rest/v1/rpc/registrar_actividad"),
+      respond: (url, o) => {
+        const p = JSON.parse(o.body);
+        r.llamadas.push(p);
+        const t = Date.parse(p.p_instante);
+        if (abiertas.some((a) => Date.parse(a.hora_inicio) > t)) return { status: 200, body: { ok: false, tipo: "desfasada" } };
+        for (const a of abiertas) r.cierres.push({ id: a.id, hora_fin: p.p_instante, duracion_min: Math.round((t - Date.parse(a.hora_inicio)) / 6000) / 10, observaciones: p.p_observaciones });
+        if (!p.p_nueva) return { status: 200, body: { ok: true, cerradas: abiertas.length } };
+        r.nueva = { ...p.p_nueva, hora_inicio: p.p_instante, empresa_id: p.p_empresa, empleado_id: p.p_empleado };
+        return { status: 200, body: { ok: true, cerradas: abiertas.length, tarea: { id: 99, ...r.nueva } } };
+      },
+    },
+    { match: (url) => url.includes("/rest/v1/registro_actividades"), respond: () => { throw new Error("ya no se escribe registro_actividades en pasos sueltos"); } },
     { match: (url) => url.includes("/rest/v1/empleados?id=eq.") && url.includes("select=division"), respond: () => ({ status: 200, body: [{ division: "produccion", legajo: 7 }] }) },
     { match: (url) => url.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro" }] }) },
     { match: (url) => url.includes("/realtime/"), respond: () => ({ status: 200, body: {} }) },
@@ -216,6 +228,9 @@ test("/api/actividad — iniciar cierra lo abierto y abre la nueva a la hora en 
   assert.equal(r.cierres[0].duracion_min, 120);
   assert.equal(Date.parse(r.nueva.hora_inicio), Date.parse(momento));
   assert.deepEqual({ etapa: r.nueva.etapa, ot: r.nueva.codigo_proyecto, division: r.nueva.division, empresa: r.nueva.empresa_id, empleado: r.nueva.empleado_id }, { etapa: 2, ot: "1001", division: "produccion", empresa: E, empleado: EMP });
+  assert.equal(r.llamadas.length, 1, "cerrar y abrir van en una sola llamada (ítem 38)");
+  assert.equal(r.nueva.legajo, "7");
+  assert.match(r.nueva.fecha, /^\d{4}-\d{2}-\d{2}$/);
 });
 
 test("/api/actividad — algo viejo no pisa una tarea empezada después; validaciones", async () => {
@@ -233,7 +248,7 @@ test("/api/actividad — finalizar cierra la tarea abierta con observaciones", a
   const json = await (await pedirActividad({ accion: "finalizar", observaciones: "Terminado" })).json();
   assert.deepEqual(json, { ok: true, cerradas: 1 });
   assert.equal(r.cierres[0].observaciones, "Terminado");
-  assert.match(r.cierres[0].url, /hora_fin=is\.null/);
+  assert.equal(r.llamadas[0].p_nueva, null);
   assert.equal(r.nueva, null);
 });
 
