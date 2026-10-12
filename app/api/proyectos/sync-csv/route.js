@@ -66,24 +66,35 @@ async function syncEmpresa(empresaId) {
 
   let procesados = 0;
   const errores = [];
+  // Sin la migración 091 la tabla no tiene `descripcion`: se reintenta sin ella
+  // para que la sincronización no se corte.
+  let conDescripcion = true;
+  const subir = (batch) => sbFetch("proyectos?on_conflict=empresa_id,ot", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(conDescripcion ? batch : batch.map(({ descripcion, ...r }) => r)),
+  });
   for (let i = 0; i < filas.length; i += BATCH) {
     const batch = filas.slice(i, i + BATCH).map(r => ({
-      empresa_id: empresaId,
-      ot:         r.ot,
-      cliente:    r.cliente,
-      obra:       r.obra,
-      proyecto:   r.proyecto,
-      division:   r.division,
-      estado:     "activo",
+      empresa_id:  empresaId,
+      ot:          r.ot,
+      cliente:     r.cliente,
+      obra:        r.obra,
+      proyecto:    r.proyecto,
+      division:    r.division,
+      descripcion: r.descripcion,
+      estado:      "activo",
     }));
     try {
       // on_conflict explícito: sin esto, PostgREST usa la PK (id, siempre ausente
       // en este insert) como target de conflicto y el upsert por OT nunca matchea.
-      await sbFetch("proyectos?on_conflict=empresa_id,ot", {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify(batch),
-      });
+      try {
+        await subir(batch);
+      } catch (e) {
+        if (!conDescripcion || !String(e.message).includes("descripcion")) throw e;
+        conDescripcion = false;
+        await subir(batch);
+      }
       procesados += batch.length;
     } catch (e) {
       logger.error(`[proyectos/sync-csv] Error en lote ${Math.floor(i / BATCH) + 1}`, e);

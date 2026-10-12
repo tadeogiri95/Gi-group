@@ -1,10 +1,16 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { sb } from "../lib/supabase";
+import { sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { duracionMinutos } from "../lib/calc";
 import { enviarOEncolar } from "../lib/colaOffline";
 import { guardarInstantanea, leerInstantanea } from "../lib/instantanea";
+
+// Número de una OT ("M-7495" → 7495) para ordenar de la más nueva a la más vieja.
+const numeroOt = (ot) => Number(String(ot || "").match(/\d+/g)?.pop() ?? -1);
+export function ordenarPorOt(lista) {
+  return [...lista].sort((a, b) => numeroOt(b.ot) - numeroOt(a.ot) || String(a.ot).localeCompare(String(b.ot)));
+}
 
 // Minutos (1 decimal) entre un timestamp de inicio y un ISO de cierre.
 const minutosHasta = (horaInicio, isoFin) =>
@@ -48,9 +54,11 @@ export function useActividad(empleado) {
     if (!empleado?.empresa_id) return;
     setProyectosLoading(true);
     try {
-      const data = await sb.get(`proyectos?empresa_id=eq.${empleado.empresa_id}&estado=eq.activo&order=created_at.desc&limit=1000`);
-      setProyectos(data || []);
-      guardarInstantanea(`proyectos_${empleado.empresa_id}`, (data || []).map(({ id, ot, cliente, obra, proyecto, division }) => ({ id, ot, cliente, obra, proyecto, division })));
+      // Todas las OT activas (de a 1000 por pedido), de la más nueva a la más vieja por número
+      const { data } = await sbGetAll(`proyectos?empresa_id=eq.${empleado.empresa_id}&estado=eq.activo&order=id.desc`, { maxFilas: 20000 });
+      const lista = ordenarPorOt(data || []);
+      setProyectos(lista);
+      guardarInstantanea(`proyectos_${empleado.empresa_id}`, lista.map(({ id, ot, cliente, obra, proyecto, division, descripcion }) => ({ id, ot, cliente, obra, proyecto, division, descripcion })));
     } catch (err) {
       const previos = leerInstantanea(`proyectos_${empleado.empresa_id}`);
       if (!previos) console.error("Error cargando proyectos:", err);

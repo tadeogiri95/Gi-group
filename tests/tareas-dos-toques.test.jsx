@@ -113,3 +113,16 @@ test("parar: el botón dice 'Estoy parado' y las causas sin códigos", async () 
   await waitFor(() => assert.equal(llamadas.iniciar.length, 1));
   assert.deepEqual({ etapa: llamadas.iniciar[0].etapa, causa: llamadas.iniciar[0].causa }, { etapa: 0, causa: "M" });
 });
+
+test("elegir OT — muestra todas (no solo 20) con cliente, obra y descripción, y busca por descripción", async () => {
+  const muchos = Array.from({ length: 400 }, (_, i) => ({ ot: `M-${7000 + i}`, cliente: `Cliente ${i}`, obra: `Obra ${i}`, descripcion: `Desc ${i}` }));
+  muchos.push({ ot: "M-7495", cliente: "SICILIANO ROMINA", obra: "CASA REMODELACION", descripcion: "MUEBLE DIVISOR" });
+  pantalla({ proyectos: muchos });
+  fireEvent.click(await screen.findByText(/Iniciar tarea/i));
+  fireEvent.click(screen.getByText("Corte"));
+  assert.ok(screen.getByText("M-7495"), "la OT 401 también está en la lista");
+  assert.equal(screen.queryByText(/refiná la búsqueda/), null);
+  assert.ok(screen.getByText("CASA REMODELACION · MUEBLE DIVISOR"));
+  fireEvent.change(screen.getByPlaceholderText(/Buscar OT/), { target: { value: "divisor" } });
+  assert.ok(screen.getByText("SICILIANO ROMINA"));
+});

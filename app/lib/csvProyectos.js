@@ -37,7 +37,7 @@ export function filasCsv(text) {
 const limpio = (s) => (s || "").replace(/\s+/g, " ").trim();
 
 /**
- * @returns {{ filas: {ot,cliente,obra,proyecto,division}[], repetidas: number }}
+ * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion}[], repetidas: number }}
  * filas: una por OT (si una OT aparece varias veces, vale la última fila, y las
  * columnas vacías se completan con las filas anteriores).
  */
@@ -53,6 +53,7 @@ export function parseCsvProyectos(text) {
   const iObra = idx("obra");
   const iProy = idx("proyecto");
   const iDiv = idx("divis");
+  const iDesc = idx("descrip");
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);
 
@@ -61,7 +62,7 @@ export function parseCsvProyectos(text) {
   for (const c of todas.slice(1)) {
     const ot = limpio(c[iOt]);
     if (!ot || ot === tituloOt) continue; // vacía o título repetido de otro bloque
-    const fila = { ot, cliente: valor(c, iCli), obra: valor(c, iObra), proyecto: valor(c, iProy), division: valor(c, iDiv) };
+    const fila = { ot, cliente: valor(c, iCli), obra: valor(c, iObra), proyecto: valor(c, iProy), division: valor(c, iDiv), descripcion: valor(c, iDesc) };
     const previa = porOt.get(ot);
     if (previa) {
       repetidas++;
