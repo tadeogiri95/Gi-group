@@ -54,6 +54,10 @@
     {
       "path": "/api/cron/actualizar-precios",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/sync-ot",
+      "schedule": "0 9 * * *"
     }
   ]
 }

@@ -25,6 +25,7 @@ export const CRONS_ESPERADOS = {
   "purgar-empresas": 26 * HORA,
   "actualizar-precios": 26 * HORA,
   "resumen-semanal": 8 * 24 * HORA, // semanal (lunes)
+  "sync-ot": 26 * HORA, // 6 de la mañana en Argentina
 };
 
 async function registrar(nombre, datos) {

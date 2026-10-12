@@ -29,6 +29,7 @@ import { Tag } from "./components/ui";
 import Icon from "./components/Icon";
 import EscanerCodigo, { escanerDisponible } from "./components/EscanerCodigo";
 import { otDesdeCodigo, recordarOT, otsRecientes } from "./lib/ot";
+import { apiFetch } from "./lib/supabase";
 import { pendientes } from "./lib/colaOffline";
 import { vibrar } from "./lib/vibrar";
 
@@ -59,6 +60,7 @@ export default function ActividadScreen({
   empresa,
   fichadaHoy,
   onIrAInicio,
+  recargarProyectos,
 }) {
   const [state, setState] = useState("idle");
   const [showReporte, setShowReporte] = useState(false);
@@ -81,8 +83,32 @@ export default function ActividadScreen({
   const [avisoEscaneo, setAvisoEscaneo] = useState("");
   const recientes = otsRecientes(usuario?.id, proyectos);
 
-  const alEscanear = (texto) => {
-    const p = otDesdeCodigo(texto, proyectos);
+  // OT que la app todavía no tiene: se trae la planilla de nuevo (el servidor
+  // lo hace como mucho una vez cada 5 minutos) y se recarga la lista.
+  const [buscandoPlanilla, setBuscandoPlanilla] = useState(false);
+  const planillaEnCurso = useRef(false);
+  const busquedasSinResultado = useRef(new Set());
+  const traerDePlanilla = async () => {
+    if (!recargarProyectos || planillaEnCurso.current) return null;
+    planillaEnCurso.current = true;
+    setBuscandoPlanilla(true);
+    try {
+      await apiFetch("/api/proyectos/sync-csv", { method: "POST" }).catch(() => null);
+      return (await recargarProyectos()) || null;
+    } finally {
+      planillaEnCurso.current = false;
+      setBuscandoPlanilla(false);
+    }
+  };
+
+  const alEscanear = async (texto) => {
+    if (planillaEnCurso.current) return;
+    let p = otDesdeCodigo(texto, proyectos);
+    if (!p && recargarProyectos) {
+      setAvisoEscaneo("Buscando la OT en la planilla…");
+      const nuevos = await traerDePlanilla();
+      p = nuevos ? otDesdeCodigo(texto, nuevos) : null;
+    }
     if (!p) {
       setAvisoEscaneo(`El código «${String(texto).slice(0, 40)}» no coincide con ninguna OT de la lista.`);
       return;
@@ -118,6 +144,17 @@ export default function ActividadScreen({
       p.codigo?.toLowerCase().includes(q)
     );
   });
+
+  // Búsqueda sin resultados: probar una vez con la planilla actualizada
+  const sinResultados = busqueda.trim().length >= 3 && proyectosFiltrados.length === 0;
+  useEffect(() => {
+    if (!sinResultados || !recargarProyectos) return;
+    const q = busqueda.trim().toLowerCase();
+    if (busquedasSinResultado.current.has(q)) return;
+    const t = setTimeout(() => { busquedasSinResultado.current.add(q); traerDePlanilla(); }, 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sinResultados, busqueda]);
 
   // Reforma UX R7: elegir la OT ya inicia la tarea (etapa + OT = 2 toques).
   // El tipo es "Normal" salvo que se marque otro antes de elegir la OT.
@@ -461,7 +498,9 @@ export default function ActividadScreen({
                 )}
 
                 <div className="max-h-[300px] overflow-y-auto flex flex-col gap-1.5 mb-4">
-                  {proyectosLoading ? (
+                  {buscandoPlanilla && proyectosFiltrados.length === 0 ? (
+                    <div role="status" className="text-center py-5 text-gypi-dim text-[13px]">Buscando la OT en la planilla…</div>
+                  ) : proyectosLoading ? (
                     <div className="gypi-dots py-5"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
                   ) : proyectosFiltrados.length === 0 ? (
                     <div className="text-center py-5 text-gypi-dim text-[13px]">

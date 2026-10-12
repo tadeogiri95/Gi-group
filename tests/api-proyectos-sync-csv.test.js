@@ -67,11 +67,55 @@ test("sync-csv — cron-secret incorrecto devuelve 401", async () => {
   assert.equal(res.status, 401);
 });
 
-test("sync-csv — rol operativo devuelve 403", async () => {
-  global.fetch = createFetchMock(authPassHandlers());
-  const tok = await tokenConRol("operativo");
-  const res = await POST(jwtReq(tok));
-  assert.equal(res.status, 403);
+// El empleado que no encuentra una OT dispara la sincronización, pero como
+// mucho una vez cada 5 minutos por empresa.
+function configConUltima(ultima_sync) {
+  return {
+    match: (u, o) => u.includes("/rest/v1/config_sistema") && u.includes("clave=eq.proyectos_csv_url") && (!o?.method || o.method === "GET"),
+    respond: () => ({ status: 200, body: [{ valor: { url: CSV_URL, ultima_sync } }] }),
+  };
+}
+
+test("sync-csv — empleado: si se sincronizó hace menos de 5 minutos, no descarga de nuevo", async () => {
+  let descargas = 0;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    configConUltima(new Date(Date.now() - 60 * 1000).toISOString()),
+    { match: (u) => u === CSV_URL, respond: () => { descargas++; return { status: 200, body: CSV_TEXTO }; } },
+    upsertHandler(),
+    patchConfigHandler(),
+  ]);
+  const res = await POST(jwtReq(await tokenConRol("operativo")));
+  const json = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(json.omitido, true);
+  assert.equal(descargas, 0);
+});
+
+test("sync-csv — empleado: si pasaron más de 5 minutos, sincroniza", async () => {
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    configConUltima(new Date(Date.now() - 10 * 60 * 1000).toISOString()),
+    csvHandler(),
+    upsertHandler(),
+    patchConfigHandler(),
+  ]);
+  const res = await POST(jwtReq(await tokenConRol("operativo")));
+  const json = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(json.procesados, 2);
+});
+
+test("sync-csv — gerencial sincroniza siempre, aunque haya sido recién", async () => {
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    configConUltima(new Date().toISOString()),
+    csvHandler(),
+    upsertHandler(),
+    patchConfigHandler(),
+  ]);
+  const res = await POST(jwtReq(await tokenConRol("gerencial")));
+  assert.equal((await res.json()).procesados, 2);
 });
 
 test("sync-csv — sin URL de CSV configurada devuelve 500", async () => {

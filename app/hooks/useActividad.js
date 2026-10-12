@@ -59,6 +59,7 @@ export function useActividad(empleado) {
       const lista = ordenarPorOt(data || []);
       setProyectos(lista);
       guardarInstantanea(`proyectos_${empleado.empresa_id}`, lista.map(({ id, ot, cliente, obra, proyecto, division, descripcion }) => ({ id, ot, cliente, obra, proyecto, division, descripcion })));
+      return lista;
     } catch (err) {
       const previos = leerInstantanea(`proyectos_${empleado.empresa_id}`);
       if (!previos) console.error("Error cargando proyectos:", err);

@@ -126,3 +126,30 @@ test("elegir OT — muestra todas (no solo 20) con cliente, obra y descripción,
   fireEvent.change(screen.getByPlaceholderText(/Buscar OT/), { target: { value: "divisor" } });
   assert.ok(screen.getByText("SICILIANO ROMINA"));
 });
+
+test("elegir OT — si no encuentra la OT, la trae de la planilla y aparece", async () => {
+  const pedidos = [];
+  global.fetch = async (url, opts = {}) => { pedidos.push(String(url)); return new Response(JSON.stringify({ ok: true, procesados: 1 }), { status: 200 }); };
+  let recargas = 0;
+  const nueva = { ot: "M-9001", cliente: "Cliente Nuevo", obra: "Obra nueva" };
+  pantalla({ recargarProyectos: async () => { recargas++; return [...PROYECTOS, nueva]; } });
+  fireEvent.click(await screen.findByText(/Iniciar tarea/i));
+  fireEvent.click(screen.getByText("Corte"));
+  fireEvent.change(screen.getByPlaceholderText(/Buscar OT/), { target: { value: "M-9001" } });
+  await waitFor(() => assert.equal(recargas, 1), { timeout: 3000 });
+  assert.ok(pedidos.some((u) => u.includes("/api/proyectos/sync-csv")));
+});
+
+test("elegir OT — la misma búsqueda sin resultado no vuelve a pedir la planilla", async () => {
+  global.fetch = async () => new Response(JSON.stringify({ ok: true }), { status: 200 });
+  let recargas = 0;
+  pantalla({ recargarProyectos: async () => { recargas++; return PROYECTOS; } });
+  fireEvent.click(await screen.findByText(/Iniciar tarea/i));
+  fireEvent.click(screen.getByText("Corte"));
+  const input = screen.getByPlaceholderText(/Buscar OT/);
+  fireEvent.change(input, { target: { value: "zzz-no-existe" } });
+  await waitFor(() => assert.equal(recargas, 1), { timeout: 3000 });
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.equal(recargas, 1);
+  assert.ok(await screen.findByText(/No se encontró/));
+});
