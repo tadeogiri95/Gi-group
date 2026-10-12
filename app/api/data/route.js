@@ -63,6 +63,9 @@ const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "document
 // vista materializada (v_scores_empleados) no admite RLS. El filtro por
 // empresa_id que inyecta este gateway las sigue cubriendo.
 const TABLAS_SIN_RLS = ["v_resumen_diario", "v_scores_empleados"];
+// Tablas de REFERENCIAS (lib/dataPolicy.js) que el chequeo sigue leyendo con
+// service_role.
+const TABLAS_REF_SIN_RLS = ["plantas"];
 
 const CAMPOS_EXCLUIDOS = {
   empleados: ["password", "password_reset_jti", "activacion_codigo_hash", "pin_hash", "pin_intentos", "pin_bloqueado_hasta"],
@@ -413,7 +416,12 @@ export async function POST(request) {
         const valor = finalBody[campo];
         if (valor === undefined || valor === null || valor === sesion.empleado_id) continue;
         // Un id mal formado hace fallar a PostgREST: se trata igual que uno ajeno.
-        const ok = await sbFetch(`${tablaRef}?id=eq.${encodeURIComponent(String(valor))}&empresa_id=eq.${empresaId}&select=id&limit=1`).catch(() => null);
+        // Con RLS_API_DATA=on el chequeo va con el pase del usuario (ítem 37,
+        // etapa 3). `plantas` sigue con service_role: no tiene permisos para
+        // `authenticated` (migración 084) y su clave foránea compuesta
+        // (planta_id, empresa_id) ya impide en la base usar una planta ajena.
+        const refOpts = rlsActivo() && !TABLAS_REF_SIN_RLS.includes(tablaRef) ? { headers: await headersUsuario(sesion) } : {};
+        const ok = await sbFetch(`${tablaRef}?id=eq.${encodeURIComponent(String(valor))}&empresa_id=eq.${empresaId}&select=id&limit=1`, refOpts).catch(() => null);
         if (!Array.isArray(ok) || ok.length === 0) {
           return NextResponse.json({ error: `Referencia inválida (${campo})` }, { status: 400 });
         }

@@ -8,7 +8,7 @@
 // Las rutas que todavía no saben filtrar por división le responden 403 a un
 // supervisor (rechazarSiSupervisor), así nunca ve de más.
 import { NextResponse } from "next/server";
-import { sbGet } from "./sbHelpers";
+import { sbGet, sbHeaders } from "./sbHelpers";
 
 const CACHE_MS = 60 * 1000;
 const cache = new Map(); // empleado_id → { ts, alcance }
@@ -21,12 +21,13 @@ export function _limpiarCacheAlcance() {
 // Si la migración 075 todavía no se corrió, la columna no existe y nadie puede
 // estar marcado como supervisor → sin alcance. Cualquier otro error corta la
 // operación (mejor un error que mostrarle a un supervisor toda la empresa).
+// Con RLS_RUTAS=on las dos lecturas van con el pase del usuario (ítem 37,
+// etapa 3): la base solo deja ver empleados de su propia empresa.
 async function leerSupervisor(sesion) {
   const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
   const r = await fetch(
     `${SB_URL}/rest/v1/empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${sesion.empresa_id}&select=id,legajo,division,solo_su_division&limit=1`,
-    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
+    { headers: await sbHeaders({ sesion }) }
   );
   if (r.ok) return r.json();
   const texto = await r.text().catch(() => "");
@@ -49,7 +50,7 @@ export async function alcanceDe(sesion) {
   if (fila?.solo_su_division) {
     // Sin división asignada, el supervisor solo se ve a sí mismo
     const miembros = fila.division
-      ? await sbGet(`empleados?empresa_id=eq.${sesion.empresa_id}&division=eq.${encodeURIComponent(fila.division)}&select=id,legajo`)
+      ? await sbGet(`empleados?empresa_id=eq.${sesion.empresa_id}&division=eq.${encodeURIComponent(fila.division)}&select=id,legajo`, { sesion })
       : [];
     const todos = [...(miembros || []), { id: fila.id, legajo: fila.legajo }];
     alcance = {
