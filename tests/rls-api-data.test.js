@@ -1,0 +1,136 @@
+// tests/rls-api-data.test.js — RLS real en /api/data (ítem 37, primera etapa)
+// Con RLS_API_DATA=on la consulta principal va con un pase de Supabase por
+// usuario (rol authenticated + claim eid) en vez de la llave service_role.
+import { test, before, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { jwtVerify } from "jose";
+import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
+
+const SUPABASE_JWT_SECRET = "secreto_jwt_de_supabase_para_tests_123456";
+
+before(() => {
+  if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
+  process.env.SUPABASE_SERVICE_KEY = "test-service-key";
+});
+
+const { signAccessToken } = await import("../app/lib/jwt.ts");
+const { POST } = await import("../app/api/data/route.js");
+const { POLICY } = await import("../app/lib/dataPolicy.js");
+
+const EMPRESA_ID = "11111111-1111-1111-1111-111111111111";
+const EMPLEADO_ID = "22222222-2222-2222-2222-222222222222";
+
+async function tokenValido() {
+  const { token } = await signAccessToken({ empleadoId: EMPLEADO_ID, empresaId: EMPRESA_ID, legajo: 7, rol: "gerencial" });
+  return token;
+}
+
+function req(body, token) {
+  return new Request("http://localhost/api/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
+
+// Captura los headers con los que se pidió la tabla de la consulta principal.
+function mockTabla(tabla, captura) {
+  return createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url) => url.includes(`/rest/v1/${tabla}`),
+      respond: (url, opts) => { captura.headers = opts.headers; return { status: 200, body: [{ id: "x" }] }; },
+    },
+  ]);
+}
+
+beforeEach(() => {
+  process.env.SUPABASE_JWT_SECRET = SUPABASE_JWT_SECRET;
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+});
+
+afterEach(() => {
+  delete process.env.RLS_API_DATA;
+});
+
+test("RLS apagado — la consulta sigue con service_role", async () => {
+  const captura = {};
+  global.fetch = mockTabla("empleados", captura);
+  const res = await POST(req({ method: "GET", path: "empleados?select=id" }, await tokenValido()));
+  assert.equal(res.status, 200);
+  assert.equal(captura.headers.apikey, "test-service-key");
+  assert.equal(captura.headers.Authorization, "Bearer test-service-key");
+});
+
+test("RLS prendido — la consulta va con el pase del usuario, no con service_role", async () => {
+  process.env.RLS_API_DATA = "on";
+  const captura = {};
+  global.fetch = mockTabla("empleados", captura);
+  const res = await POST(req({ method: "GET", path: "empleados?select=id" }, await tokenValido()));
+  assert.equal(res.status, 200);
+  assert.equal(captura.headers.apikey, "test-anon-key");
+  assert.notEqual(captura.headers.Authorization, "Bearer test-service-key");
+
+  const pase = captura.headers.Authorization.replace("Bearer ", "");
+  const { payload } = await jwtVerify(pase, new TextEncoder().encode(SUPABASE_JWT_SECRET), { audience: "authenticated" });
+  assert.equal(payload.role, "authenticated");
+  assert.equal(payload.eid, EMPRESA_ID, "el claim eid sale de la sesión");
+  assert.equal(payload.sub, EMPLEADO_ID);
+  assert.ok(payload.exp - payload.iat <= 300, "el pase dura 5 minutos como máximo");
+});
+
+test("RLS prendido — también en escrituras", async () => {
+  process.env.RLS_API_DATA = "on";
+  const captura = {};
+  global.fetch = mockTabla("empleados", captura);
+  const res = await POST(req({ method: "PATCH", path: "empleados?id=eq.x", body: { nombre: "Ana" } }, await tokenValido()));
+  assert.equal(res.status, 200);
+  assert.equal(captura.headers.apikey, "test-anon-key");
+});
+
+test("RLS prendido — las vistas de resumen siguen con service_role", async () => {
+  process.env.RLS_API_DATA = "on";
+  const captura = {};
+  global.fetch = mockTabla("v_resumen_diario", captura);
+  const res = await POST(req({ method: "GET", path: "v_resumen_diario?select=*" }, await tokenValido()));
+  assert.equal(res.status, 200);
+  assert.equal(captura.headers.apikey, "test-service-key");
+});
+
+test("RLS prendido sin SUPABASE_JWT_SECRET — corta con 500 y no consulta datos", async () => {
+  process.env.RLS_API_DATA = "on";
+  delete process.env.SUPABASE_JWT_SECRET;
+  const captura = {};
+  global.fetch = mockTabla("empleados", captura);
+  const res = await POST(req({ method: "GET", path: "empleados?select=id" }, await tokenValido()));
+  assert.equal(res.status, 500);
+  assert.equal(captura.headers, undefined, "no debe volver en silencio a la llave maestra");
+});
+
+// ─── Migración 089: los permisos de authenticated acompañan a POLICY ────────
+const SQL = readFileSync(new URL("../supabase/migrations/089_rls_api_data.sql", import.meta.url), "utf8")
+  .split("\n").filter((l) => !l.trim().startsWith("--")).join("\n").toLowerCase();
+
+function permisosDe(tabla) {
+  const re = new RegExp(`grant ([a-z, ]+?)\\s+on public\\.${tabla}\\s+to authenticated`);
+  const m = SQL.match(re);
+  return m ? m[1].split(",").map((s) => s.trim()) : [];
+}
+
+const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"];
+const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
+
+test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {
+  for (const [tabla, reglas] of Object.entries(POLICY)) {
+    if (SIN_RLS.includes(tabla)) continue;
+    const esperados = Object.keys(PRIVILEGIO).filter((m) => reglas[m]).map((m) => PRIVILEGIO[m]).sort();
+    assert.deepEqual(permisosDe(tabla).sort(), esperados, `permisos de ${tabla}`);
+  }
+});
+
+test("089 — sin TRUNCATE ni permisos para anon", () => {
+  assert.ok(!SQL.includes("truncate"));
+  assert.ok(!/to\s+anon/.test(SQL));
+});

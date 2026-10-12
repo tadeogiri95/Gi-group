@@ -16,6 +16,7 @@ import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
 import { alcanceDe, filtroAlcance, dentroDelAlcance, COLUMNA_PERSONA } from "../../lib/alcance";
 import { diasEntre, MAX_DIAS_SOLICITUD } from "../../lib/tiposSolicitud";
 import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
+import { rlsActivo, configRlsFaltante, headersUsuario } from "../../lib/supabaseUsuario";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -56,6 +57,12 @@ const TABLAS_PERMITIDAS = [
 // de escribir la fila). Sin esto, un POST directo podría crear filas con
 // storage_path arbitrario sin que exista el archivo.
 const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado"];
+
+// Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
+// base aplica la RLS. Las dos vistas de resumen siguen con service_role: una
+// vista materializada (v_scores_empleados) no admite RLS. El filtro por
+// empresa_id que inyecta este gateway las sigue cubriendo.
+const TABLAS_SIN_RLS = ["v_resumen_diario", "v_scores_empleados"];
 
 const CAMPOS_EXCLUIDOS = {
   empleados: ["password", "password_reset_jti", "activacion_codigo_hash", "pin_hash", "pin_intentos", "pin_bloqueado_hasta"],
@@ -261,6 +268,13 @@ export async function POST(request) {
       logger.error("[data] Falta configuración: SUPABASE_URL o SUPABASE_SERVICE_KEY");
       return NextResponse.json({ error: "Servidor mal configurado" }, { status: 500 });
     }
+    if (rlsActivo()) {
+      const faltan = configRlsFaltante();
+      if (faltan.length) {
+        logger.error(`[data] RLS_API_DATA=on pero falta configuración: ${faltan.join(", ")}`);
+        return NextResponse.json({ error: "Servidor mal configurado" }, { status: 500 });
+      }
+    }
 
     const { method, path, body, limit, offset, cursor } = await request.json();
     if (!path) {
@@ -411,6 +425,9 @@ export async function POST(request) {
     if (method === "POST") { opts.method = "POST"; opts.body = JSON.stringify(finalBody); }
     else if (method === "PATCH") { opts.method = "PATCH"; opts.body = JSON.stringify(finalBody); }
     else if (method === "DELETE") { opts.method = "DELETE"; }
+    if (rlsActivo() && !TABLAS_SIN_RLS.includes(pathCheck.tabla)) {
+      opts.headers = await headersUsuario(sesion);
+    }
 
     const data = await sbFetch(finalPath, opts);
 
