@@ -2,6 +2,8 @@
 // Antes el celular escribía registro_actividades directo con su propia hora;
 // ahora lo decide el servidor, con op_id para que lo enviado al recuperar la
 // conexión se registre una sola vez y con la hora en que se hizo (momento).
+// Cerrar lo abierto y abrir lo nuevo se hace en una sola transacción con
+// registrar_actividad (migración 087, ítem 38).
 //
 // Body: { accion: "iniciar", etapa, codigo_proyecto?, tipo?, causa?, op_id?, momento? }
 //       { accion: "finalizar", observaciones?, op_id?, momento? }
@@ -9,15 +11,13 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody } from "../../lib/validate";
 import { actividadBody } from "../../lib/schemas";
-import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
+import { sbGet, sbRpc } from "../../lib/sbHelpers";
 import { validarMomento, horaLocal } from "../../lib/offline";
 import { unaSolaVez } from "../../lib/operacionesOffline";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
-
-const minutosEntre = (inicio, fin) => Math.max(0, Math.round(((Date.parse(fin) - Date.parse(inicio)) / 60000) * 10) / 10);
 
 async function procesar(sesion, datos) {
   const { accion, momento } = datos;
@@ -30,51 +30,48 @@ async function procesar(sesion, datos) {
   const cuando = instante.toISOString();
   const e = sesion.empresa_id;
 
-  const abiertas = (await sbGet(
-    `registro_actividades?empleado_id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&hora_fin=is.null&select=id,hora_inicio&order=hora_inicio.asc&limit=10`
-  )) || [];
-  // Algo hecho sin conexión que quedó viejo: ya hay una tarea empezada después
-  if (abiertas.some((t) => Date.parse(t.hora_inicio) > instante.getTime())) {
-    return NextResponse.json({
-      ok: false,
-      tipo: "desfasada",
-      error: "Esto se hizo sin conexión y después ya se registró otra tarea. Revisá tus tareas de hoy.",
-    });
+  let nueva = null;
+  if (accion === "iniciar") {
+    const [[emp], [empresa]] = await Promise.all([
+      sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=division,legajo&limit=1`).then((r) => r || []),
+      sbGet(`empresa?id=eq.${e}&select=timezone&limit=1`, { silent: true, fallback: [] }).then((r) => r || []),
+    ]);
+    const espera = datos.etapa === 0;
+    nueva = {
+      legajo: String(emp?.legajo ?? sesion.legajo),
+      // Fecha del lugar de la empresa, no UTC (F1-10)
+      fecha: horaLocal(empresa?.timezone || undefined, instante).fecha,
+      codigo_proyecto: espera ? null : String(datos.codigo_proyecto).trim(),
+      etapa: datos.etapa,
+      tipo: datos.tipo || "N",
+      causa: espera ? datos.causa : null,
+      division: emp?.division || "general",
+    };
   }
 
-  // Nunca dos tareas abiertas: se cierra lo que haya quedado abierto
-  for (const t of abiertas) {
-    await sbPatch(`registro_actividades?id=eq.${t.id}&empresa_id=eq.${e}&hora_fin=is.null`, {
-      hora_fin: cuando,
-      duracion_min: minutosEntre(t.hora_inicio, cuando),
-      ...(accion === "finalizar" && datos.observaciones ? { observaciones: datos.observaciones } : {}),
-    });
+  // Cerrar lo abierto y abrir la nueva va junto (ítem 38): nunca quedan dos
+  // tareas abiertas ni el operario sin tarea por un corte a mitad.
+  const r = await sbRpc("registrar_actividad", {
+    p_empresa: e,
+    p_empleado: sesion.empleado_id,
+    p_instante: cuando,
+    p_observaciones: accion === "finalizar" ? datos.observaciones || null : null,
+    p_nueva: nueva,
+  });
+  if (!r?.ok) {
+    // Algo hecho sin conexión que quedó viejo: ya hay una tarea empezada después
+    if (r?.tipo === "desfasada") {
+      return NextResponse.json({
+        ok: false,
+        tipo: "desfasada",
+        error: "Esto se hizo sin conexión y después ya se registró otra tarea. Revisá tus tareas de hoy.",
+      });
+    }
+    return NextResponse.json({ ok: false, error: "No se pudo registrar la tarea. Probá de nuevo." }, { status: 404 });
   }
-
-  if (accion === "finalizar") {
-    broadcastRefresh(e, "registro_actividades");
-    return NextResponse.json({ ok: true, cerradas: abiertas.length });
-  }
-
-  const [emp] = (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=division,legajo&limit=1`)) || [];
-  const [empresa] = (await sbGet(`empresa?id=eq.${e}&select=timezone&limit=1`, { silent: true, fallback: [] })) || [];
-  const espera = datos.etapa === 0;
-  const codigo = espera ? null : String(datos.codigo_proyecto).trim();
-  const [creada] = (await sbPost("registro_actividades", {
-    empleado_id: sesion.empleado_id,
-    legajo: Number(emp?.legajo ?? sesion.legajo),
-    // Fecha del lugar de la empresa, no UTC (F1-10)
-    fecha: horaLocal(empresa?.timezone || undefined, instante).fecha,
-    hora_inicio: cuando,
-    codigo_proyecto: codigo,
-    etapa: datos.etapa,
-    tipo: datos.tipo || "N",
-    causa: espera ? datos.causa : null,
-    division: emp?.division || "general",
-    empresa_id: e,
-  })) || [];
   broadcastRefresh(e, "registro_actividades");
-  return NextResponse.json({ ok: true, tarea: creada || null });
+  if (accion === "finalizar") return NextResponse.json({ ok: true, cerradas: r.cerradas });
+  return NextResponse.json({ ok: true, tarea: r.tarea || null });
 }
 
 export async function POST(request) {
