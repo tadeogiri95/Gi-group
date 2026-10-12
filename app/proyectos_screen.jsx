@@ -242,7 +242,7 @@ export default function ProyectosScreen({ empresaId }) {
     if (!syncCfg.url.trim()) return;
     setSyncLoading(true);
     try {
-      const rows = await sb.get("config_sistema?clave=eq.proyectos_csv_url&select=id&limit=1");
+      const rows = await sb.get("config_sistema?clave=eq.proyectos_csv_url&select=clave&limit=1");
       if (rows?.length) {
         await sb.patch("config_sistema?clave=eq.proyectos_csv_url", { valor: { url: syncCfg.url.trim() } });
       } else {
