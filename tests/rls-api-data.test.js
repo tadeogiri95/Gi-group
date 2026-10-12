@@ -134,3 +134,28 @@ test("089 — sin TRUNCATE ni permisos para anon", () => {
   assert.ok(!SQL.includes("truncate"));
   assert.ok(!/to\s+anon/.test(SQL));
 });
+
+// ─── Migración 093: el arreglo de permisos que se corrió a mano ─────────────
+// Misma lista que la 089, en un bloque que no se deshace si falta algo.
+const SQL_093 = readFileSync(new URL("../supabase/migrations/093_permisos_api_data.sql", import.meta.url), "utf8")
+  .split("\n").filter((l) => !l.trim().startsWith("--")).join("\n").toLowerCase();
+
+function permisos093(tabla) {
+  const m = SQL_093.match(new RegExp(`\\('${tabla}', '([a-z, ]+)'\\)`));
+  return m ? m[1].split(",").map((s) => s.trim()) : [];
+}
+
+test("093 — mismos permisos que la 089 para cada tabla del gateway", () => {
+  for (const [tabla, reglas] of Object.entries(POLICY)) {
+    if (SIN_RLS.includes(tabla)) continue;
+    const esperados = Object.keys(PRIVILEGIO).filter((m) => reglas[m]).map((m) => PRIVILEGIO[m]).sort();
+    assert.deepEqual(permisos093(tabla).sort(), esperados, `permisos de ${tabla} en la 093`);
+  }
+});
+
+test("093 — sin TRUNCATE, sin anon y tolerante a tablas que falten", () => {
+  assert.ok(!SQL_093.includes("truncate"));
+  assert.ok(!/to\s+anon/.test(SQL_093));
+  assert.ok(SQL_093.includes("to_regclass"));
+  assert.ok(!/^\s*begin;/m.test(SQL_093), "no va en una transacción que se deshaga entera");
+});
