@@ -9,46 +9,13 @@ import { NextResponse } from "next/server";
 import { validarToken } from "../../../lib/auth";
 import { logger } from "../../../lib/logger";
 import { safeErrorMessage } from "../../../lib/validate";
+import { parseCsvProyectos } from "../../../lib/csvProyectos";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const CRON_SECRET = process.env.CRON_SECRET;
 const ROLES_OK = new Set(["gerencial", "administrativo"]);
 const BATCH = 100;
-
-/* ─── CSV parser (misma lógica que proyectos_screen.jsx) ─── */
-function parseCsvProyectos(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-  const parseRow = (line) => {
-    const out = []; let cur = ""; let inQ = false;
-    for (const ch of line) {
-      if (ch === '"') inQ = !inQ;
-      else if (ch === "," && !inQ) { out.push(cur.trim()); cur = ""; }
-      else cur += ch;
-    }
-    out.push(cur.trim());
-    return out;
-  };
-  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/^﻿/, "").trim());
-  const idx = n => headers.findIndex(h => h.includes(n));
-  const iOt  = idx("ot");
-  const iCli = idx("cliente");
-  const iObra = idx("obra");
-  const iProy = idx("proyecto");
-  const iDiv  = idx("divis");
-  if (iOt < 0) return [];
-  return lines.slice(1).map(line => {
-    const c = parseRow(line);
-    return {
-      ot:       c[iOt]?.trim()                    || "",
-      cliente:  iCli  >= 0 ? c[iCli]?.trim()  || null : null,
-      obra:     iObra >= 0 ? c[iObra]?.trim()  || null : null,
-      proyecto: iProy >= 0 ? c[iProy]?.trim()  || null : null,
-      division: iDiv  >= 0 ? c[iDiv]?.trim()   || null : null,
-    };
-  }).filter(r => r.ot);
-}
 
 /* ─── Supabase helper (service key, sin proxy) ─── */
 async function sbFetch(path, opts = {}) {
@@ -94,7 +61,7 @@ async function syncEmpresa(empresaId) {
   if (!csvRes.ok) throw new Error(`HTTP ${csvRes.status} al descargar CSV`);
   const csvText = await csvRes.text();
 
-  const filas = parseCsvProyectos(csvText);
+  const { filas, repetidas } = parseCsvProyectos(csvText);
   if (!filas.length) throw new Error("CSV sin datos válidos (columna OT requerida)");
 
   let procesados = 0;
@@ -138,7 +105,7 @@ async function syncEmpresa(empresaId) {
     );
   } catch {}
 
-  return { procesados, total: filas.length, errores };
+  return { procesados, total: filas.length, repetidas, errores };
 }
 
 /* ─── Handler ─── */
