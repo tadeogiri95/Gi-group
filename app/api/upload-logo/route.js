@@ -9,6 +9,7 @@ import { logger } from "../../lib/logger";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { contenidoCoincide, EXT_POR_MIME } from "../../lib/fileSignature";
 import { rechazarSiSupervisor } from "../../lib/alcance";
+import { sbHeaders } from "../../lib/sbHelpers";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -53,10 +54,11 @@ export async function POST(request) {
 
     const logo_url = `${SB_URL}/storage/v1/object/public/logos/${fileName}`;
 
-    // Forzar empresa del token, ignorar cualquier id del formData
+    // Forzar empresa del token, ignorar cualquier id del formData.
+    // El archivo va con service_role (Storage); la fila, con el pase del usuario si RLS_RUTAS=on.
     await fetch(`${SB_URL}/rest/v1/empresa?id=eq.${empresaId}`, {
       method: "PATCH",
-      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" },
+      headers: await sbHeaders({ sesion }),
       body: JSON.stringify({ logo_url }),
     });
 

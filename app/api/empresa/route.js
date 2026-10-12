@@ -9,6 +9,7 @@ import { CAMPOS_EMPRESA_SOLO_DUENO } from "../../lib/dataPolicy";
 import { ipCliente } from "../../lib/ip";
 import { rechazarSiSupervisor } from "../../lib/alcance";
 import { getModulosEmpresa } from "../../lib/planEnforcement";
+import { sbHeaders } from "../../lib/sbHelpers";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
@@ -71,12 +72,15 @@ export async function GET(request) {
     }
 
     // ─── CASO 2: viene con token (post-login, datos completos) ───
+    // Con RLS_RUTAS=on va con el pase del usuario (ítem 37, etapa 2). El caso 1
+    // (por slug, sin sesión) sigue con service_role y solo campos públicos.
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return NextResponse.json(DEFAULTS);
 
+    const headers = await sbHeaders({ sesion });
     const pedir = (extra) => fetch(
       `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}&select=${CAMPOS_PRIVADOS}${extra}&limit=1`,
-      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
+      { headers }
     );
     let opcionales = [...COLUMNAS_OPCIONALES];
     let res = await pedir(opcionales.map((c) => `,${c}`).join(""));
@@ -137,17 +141,12 @@ export async function PATCH(request) {
       return NextResponse.json({ error: "Nada que actualizar" }, { status: 400 });
     }
 
-    // PATCH en Supabase REST
+    // PATCH en Supabase REST (con RLS_RUTAS=on, con el pase del usuario)
     const res = await fetch(
       `${SB_URL}/rest/v1/empresa?id=eq.${sesion.empresa_id}`,
       {
         method: "PATCH",
-        headers: {
-          apikey: SB_KEY,
-          Authorization: `Bearer ${SB_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
+        headers: await sbHeaders({ sesion }, { Prefer: "return=representation" }),
         body: JSON.stringify(updates),
       }
     );
