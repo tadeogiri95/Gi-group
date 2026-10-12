@@ -129,3 +129,29 @@ test("lista del empleado — ordena por número de OT, de la más nueva a la má
   const lista = ordenarPorOt([{ ot: "M-120" }, { ot: "M-7495" }, { ot: "C-8000" }, { ot: "905" }]);
   assert.deepEqual(lista.map(p => p.ot), ["C-8000", "M-7495", "905", "M-120"]);
 });
+
+// ─── Planilla "DB PROYECTOS" real: títulos y renglones como los de producción ──
+const DB_PROYECTOS = [
+  "OT,DIVISIÓN,PROYECTO / OBRA,CLIENTE ,OBRA,DESCRIPCION,CANT",
+  "M-7100,MUEBLES ,7100,BCG,HOTEL AMANCAY,P1 - PUERTA DE INGRESO + REV,107",
+  "M-7100,MUEBLES ,7100,BCG,HOTEL AMANCAY,P3 - PUERTA CERRADURA SIMPLE,17",
+  "M-7100,MUEBLES ,7100,BCG,HOTEL AMANCAY,P1 - PUERTA DE INGRESO + REV,1",
+  "M-,,,,,,",
+  "-,,,,,,",
+  "M-7495,MUEBLES ,7495,SICILIANO ROMINA,CASA REMODELACIÓN,MUEBLE DIVISORIO TV,1",
+].join("\n");
+
+test("DB PROYECTOS — 'OBRA' es la columna E, no 'PROYECTO / OBRA'", () => {
+  const { filas } = parseCsvProyectos(DB_PROYECTOS);
+  const f = filas.find(x => x.ot === "M-7495");
+  assert.equal(f.obra, "CASA REMODELACIÓN");
+  assert.equal(f.proyecto, "7495");
+  assert.equal(f.cliente, "SICILIANO ROMINA");
+});
+
+test("DB PROYECTOS — saltea renglones sin número ('M-', '-') y junta los ítems de una OT", () => {
+  const { filas, repetidas } = parseCsvProyectos(DB_PROYECTOS);
+  assert.deepEqual(filas.map(f => f.ot), ["M-7100", "M-7495"]);
+  assert.equal(repetidas, 2);
+  assert.equal(filas[0].descripcion, "P1 - PUERTA DE INGRESO + REV / P3 - PUERTA CERRADURA SIMPLE");
+});
