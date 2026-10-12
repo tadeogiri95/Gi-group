@@ -74,11 +74,11 @@ async function contextoChat(sesion) {
   const hoy = hoyArg();
   const e = sesion.empresa_id;
   const [usuarios, fichadaHoy, enPlanta, misSolicitudes, reglas] = await Promise.all([
-    sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre,apodo,legajo,area,cc,rol,division,diagrama,horas_semanales,geo_config&limit=1`),
-    sbGet(`fichadas?empresa_id=eq.${e}&legajo=eq.${sesion.legajo}&fecha=eq.${hoy}&select=ingreso,egreso&limit=1`, { silent: true, fallback: [] }),
-    sbGet(`fichadas?empresa_id=eq.${e}&fecha=eq.${hoy}&select=legajo,ingreso,egreso,empleados(nombre)&limit=200`, { silent: true, fallback: [] }),
-    sbGet(`solicitudes?empresa_id=eq.${e}&legajo=eq.${sesion.legajo}&select=id,estado,tipo,motivo,fecha,aprobador&order=created_at.desc&limit=20`, { silent: true, fallback: [] }),
-    sbGet(`reglas_bot?empresa_id=eq.${e}&activa=eq.true&select=regla&order=id.asc&limit=50`, { silent: true, fallback: [] }),
+    sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre,apodo,legajo,area,cc,rol,division,diagrama,horas_semanales,geo_config&limit=1`, { sesion }),
+    sbGet(`fichadas?empresa_id=eq.${e}&legajo=eq.${sesion.legajo}&fecha=eq.${hoy}&select=ingreso,egreso&limit=1`, { silent: true, fallback: [], sesion }),
+    sbGet(`fichadas?empresa_id=eq.${e}&fecha=eq.${hoy}&select=legajo,ingreso,egreso,empleados(nombre)&limit=200`, { silent: true, fallback: [], sesion }),
+    sbGet(`solicitudes?empresa_id=eq.${e}&legajo=eq.${sesion.legajo}&select=id,estado,tipo,motivo,fecha,aprobador&order=created_at.desc&limit=20`, { silent: true, fallback: [], sesion }),
+    sbGet(`reglas_bot?empresa_id=eq.${e}&activa=eq.true&select=regla&order=id.asc&limit=50`, { silent: true, fallback: [], sesion }),
   ]);
   const usuario = usuarios?.[0];
   if (!usuario) return null;
@@ -88,7 +88,7 @@ async function contextoChat(sesion) {
   if (gc?.activo && gc.ubicacion_id) {
     const zonas = await sbGet(
       `geo_zonas?id=eq.${encodeURIComponent(gc.ubicacion_id)}&empresa_id=eq.${e}&select=nombre&limit=1`,
-      { silent: true, fallback: [] }
+      { silent: true, fallback: [], sesion }
     );
     geoZonaNombre = zonas?.[0]?.nombre || null;
   }
@@ -127,7 +127,8 @@ export async function POST(request) {
     }
 
     const [empresa] = await sbGet(
-      `empresa?id=eq.${sesion.empresa_id}&select=nombre,nombre_corto,rubro,plan_activo,prompt_ia_chat,prompt_ia_obra&limit=1`
+      `empresa?id=eq.${sesion.empresa_id}&select=nombre,nombre_corto,rubro,plan_activo,prompt_ia_chat,prompt_ia_obra&limit=1`,
+      { sesion }
     ) || [];
     if (!empresa) return respuestaNoAutorizado();
     // Plan + add-ons + ajustes de la empresa (ítem 36): módulos y cupo de IA

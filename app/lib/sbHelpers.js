@@ -30,7 +30,8 @@ import { rlsRutasActivo, configRlsFaltante, headersUsuario } from "./supabaseUsu
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-async function headers(opts = {}, extra = {}) {
+// Exportado para rutas que arman su propio fetch (timeouts, count=exact).
+export async function sbHeaders(opts = {}, extra = {}) {
   if (opts.sesion && rlsRutasActivo()) {
     // Con el interruptor prendido y sin configuración se corta (fail-closed)
     // en vez de volver en silencio a la llave maestra.
@@ -52,7 +53,7 @@ async function headers(opts = {}, extra = {}) {
 export async function sbGet(path, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-      headers: await headers(opts),
+      headers: await sbHeaders(opts),
     });
     if (!r.ok) {
       if (opts.silent) return opts.fallback ?? null;
@@ -87,7 +88,7 @@ export async function sbPost(path, body, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
       method: "POST",
-      headers: await headers(opts, { Prefer: "return=representation" }),
+      headers: await sbHeaders(opts, { Prefer: "return=representation" }),
       body: JSON.stringify(body),
     });
     if (!r.ok) {
@@ -106,7 +107,7 @@ export async function sbPatch(path, body, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
       method: "PATCH",
-      headers: await headers(opts, { Prefer: "return=representation" }),
+      headers: await sbHeaders(opts, { Prefer: "return=representation" }),
       body: JSON.stringify(body),
     });
     if (!r.ok) {
@@ -124,7 +125,7 @@ export async function sbPatch(path, body, opts = {}) {
 export async function sbPatchOk(path, body, opts = {}) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
     method: "PATCH",
-    headers: await headers(opts),
+    headers: await sbHeaders(opts),
     body: JSON.stringify(body),
   });
   return r.ok;
@@ -135,7 +136,7 @@ export async function sbDelete(path, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
       method: "DELETE",
-      headers: await headers(opts),
+      headers: await sbHeaders(opts),
     });
     if (!r.ok && !opts.silent) {
       throw new Error(`DELETE ${path}: ${await r.text()}`);
@@ -152,7 +153,7 @@ export async function sbRpc(fnName, params = {}, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
       method: "POST",
-      headers: await headers(opts),
+      headers: await sbHeaders(opts),
       body: JSON.stringify(params),
     });
     if (!r.ok) {

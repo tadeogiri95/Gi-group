@@ -13,13 +13,17 @@ import { chatQueryBody } from "../../../lib/schemas";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { duracionMinutos } from "../../../lib/calc";
 import { rechazarSiSupervisor } from "../../../lib/alcance";
+import { sbHeaders } from "../../../lib/sbHelpers";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-async function sbQuery(path) {
+// Con RLS_RUTAS=on va con el pase del usuario (ítem 37, etapa 2). La vista
+// v_resumen_diario sigue con service_role, igual que en /api/data: no tiene
+// RLS propia y el filtro por empresa_id de la consulta la cubre.
+async function sbQuery(path, sesion) {
+  const esVista = path.startsWith("v_");
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    headers: await sbHeaders(esVista ? {} : { sesion }),
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) return [];
@@ -30,9 +34,9 @@ const HOY = () => hoyArg();
 const MES_INICIO = () => hoyArg().slice(0, 7) + "-01";
 
 const QUERIES = {
-  proyectos_hoy: async (empresaId, params) => {
+  proyectos_hoy: async (empresaId, params, sb) => {
     const fecha = params?.fecha || HOY();
-    const regs = await sbQuery(
+    const regs = await sb(
       `registro_actividades?empresa_id=eq.${empresaId}&fecha=eq.${fecha}&etapa=gt.0&select=codigo_proyecto,empleado_id,legajo,duracion_min,hora_inicio,hora_fin,etapa,observaciones&order=hora_inicio.desc&limit=50`
     );
     if (!regs.length) return "No hay registros de producción para esa fecha.";
@@ -49,14 +53,14 @@ const QUERIES = {
     )).join("\n");
   },
 
-  quien_trabajo_proyecto: async (empresaId, params) => {
+  quien_trabajo_proyecto: async (empresaId, params, sb) => {
     const ot = params?.ot || params?.codigo_proyecto;
     if (!ot) return "Necesito el código OT del proyecto.";
-    const regs = await sbQuery(
+    const regs = await sb(
       `registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=legajo,fecha,duracion_min,hora_inicio,hora_fin,etapa,observaciones&order=fecha.desc&limit=30`
     );
     if (!regs.length) return `No encontré registros para OT ${ot}.`;
-    const emps = await sbQuery(
+    const emps = await sb(
       `empleados?empresa_id=eq.${empresaId}&select=legajo,nombre,division`
     );
     const empMap = Object.fromEntries(emps.map(e => [e.legajo, e]));
@@ -70,48 +74,48 @@ const QUERIES = {
     )).join("\n");
   },
 
-  ultimo_responsable_tarea: async (empresaId, params) => {
+  ultimo_responsable_tarea: async (empresaId, params, sb) => {
     const ot = params?.ot || params?.codigo_proyecto;
     const etapa = params?.etapa;
     let q = `registro_actividades?empresa_id=eq.${empresaId}&etapa=gt.0&order=hora_inicio.desc&limit=1&select=legajo,codigo_proyecto,etapa,fecha,hora_inicio,observaciones`;
     if (ot) q += `&codigo_proyecto=eq.${ot}`;
     if (etapa) q += `&etapa=eq.${etapa}`;
-    const regs = await sbQuery(q);
+    const regs = await sb(q);
     if (!regs.length) return "No encontré registros con esos filtros.";
     const r = regs[0];
-    const emps = await sbQuery(`empleados?empresa_id=eq.${empresaId}&legajo=eq.${r.legajo}&select=nombre,division`);
+    const emps = await sb(`empleados?empresa_id=eq.${empresaId}&legajo=eq.${r.legajo}&select=nombre,division`);
     const emp = emps[0];
     return `Último: ${emp?.nombre || `L-${r.legajo}`} (${emp?.division || "?"}) — OT ${r.codigo_proyecto || "?"}, etapa ${r.etapa}, fecha ${r.fecha}${r.observaciones ? ` — obs: ${r.observaciones}` : ""}`;
   },
 
-  reporte_instalacion: async (empresaId, params) => {
+  reporte_instalacion: async (empresaId, params, sb) => {
     const ot = params?.ot || params?.codigo_proyecto;
     const fecha = params?.fecha;
     let q = `reportes_obra?empresa_id=eq.${empresaId}&order=created_at.desc&limit=5&select=id,nombre,legajo,fecha,texto_original,progreso`;
     if (ot) q += `&texto_original=ilike.*${ot}*`;
     if (fecha) q += `&fecha=eq.${fecha}`;
-    const reps = await sbQuery(q);
+    const reps = await sb(q);
     if (!reps.length) return "No encontré reportes de instalación con esos filtros.";
     return reps.map(r => (
       `[${r.fecha}] ${r.nombre || `L-${r.legajo}`}: ${(r.texto_original || "").slice(0, 200)}`
     )).join("\n---\n");
   },
 
-  fichadas_hoy: async (empresaId, params) => {
+  fichadas_hoy: async (empresaId, params, sb) => {
     const fecha = params?.fecha || HOY();
-    const fichs = await sbQuery(
+    const fichs = await sb(
       `fichadas?empresa_id=eq.${empresaId}&fecha=eq.${fecha}&select=legajo,ingreso,egreso,horas_trabajadas,horas_extra&order=ingreso.asc&limit=60`
     );
     if (!fichs.length) return `No hay fichadas para ${fecha}.`;
-    const emps = await sbQuery(`empleados?empresa_id=eq.${empresaId}&select=legajo,nombre`);
+    const emps = await sb(`empleados?empresa_id=eq.${empresaId}&select=legajo,nombre`);
     const empMap = Object.fromEntries(emps.map(e => [e.legajo, e.nombre]));
     return fichs.map(f => (
       `${empMap[f.legajo] || `L-${f.legajo}`}: ${f.ingreso?.slice(0,5) || "?"} → ${f.egreso?.slice(0,5) || "en planta"}${f.horas_trabajadas ? ` (${f.horas_trabajadas}h)` : ""}${parseFloat(f.horas_extra) > 0 ? ` [+${f.horas_extra}h extra]` : ""}`
     )).join("\n");
   },
 
-  solicitudes_pendientes: async (empresaId) => {
-    const sols = await sbQuery(
+  solicitudes_pendientes: async (empresaId, _params, sb) => {
+    const sols = await sb(
       `solicitudes?empresa_id=eq.${empresaId}&estado=eq.pendiente&select=id,nombre_empleado,tipo,motivo,fecha,created_at&order=created_at.desc&limit=10`
     );
     if (!sols.length) return "No hay solicitudes pendientes.";
@@ -120,17 +124,17 @@ const QUERIES = {
     )).join("\n");
   },
 
-  empleados_division: async (empresaId, params) => {
+  empleados_division: async (empresaId, params, sb) => {
     const div = params?.division;
     let q = `empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=nombre,legajo,division,rol&order=nombre.asc&limit=50`;
     if (div) q += `&division=ilike.*${div}*`;
-    const emps = await sbQuery(q);
+    const emps = await sb(q);
     if (!emps.length) return "No encontré empleados con ese filtro.";
     return emps.map(e => `${e.nombre} (L-${e.legajo}) — ${e.division || "sin div."} [${e.rol}]`).join("\n");
   },
 
-  proyectos_activos: async (empresaId) => {
-    const proys = await sbQuery(
+  proyectos_activos: async (empresaId, _params, sb) => {
+    const proys = await sb(
       `proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=ot,cliente,proyecto&order=ot.asc&limit=30`
     );
     if (!proys.length) return "No hay proyectos activos.";
@@ -139,7 +143,7 @@ const QUERIES = {
 
   // ═══ QUERIES GERENCIALES (nuevas) ═══
 
-  horas_empleado: async (empresaId, params) => {
+  horas_empleado: async (empresaId, params, sb) => {
     const desde = params?.desde || MES_INICIO();
     const hasta = params?.hasta || HOY();
     const nombre = params?.nombre_o_legajo;
@@ -148,12 +152,12 @@ const QUERIES = {
     const isLegajo = /^\d+$/.test(nombre);
     let empQ = `empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,legajo,division`;
     empQ += isLegajo ? `&legajo=eq.${nombre}` : `&nombre=ilike.*${nombre}*`;
-    const emps = await sbQuery(empQ + "&limit=5");
+    const emps = await sb(empQ + "&limit=5");
     if (!emps.length) return `No encontré empleado con ${isLegajo ? "legajo" : "nombre"} "${nombre}".`;
 
     const resultados = [];
     for (const emp of emps) {
-      const fichs = await sbQuery(
+      const fichs = await sb(
         `fichadas?empresa_id=eq.${empresaId}&empleado_id=eq.${emp.id}&fecha=gte.${desde}&fecha=lte.${hasta}&select=fecha,horas_trabajadas,horas_extra,llegada_tarde&order=fecha.asc`
       );
       const totalHoras = fichs.reduce((s, f) => s + (parseFloat(f.horas_trabajadas) || 0), 0);
@@ -164,7 +168,7 @@ const QUERIES = {
     return resultados.join("\n");
   },
 
-  ausencias_semana: async (empresaId, params) => {
+  ausencias_semana: async (empresaId, params, sb) => {
     const hasta = params?.hasta || HOY();
     const desde = params?.desde || (() => {
       const d = new Date(hasta);
@@ -172,10 +176,10 @@ const QUERIES = {
       return d.toISOString().slice(0, 10);
     })();
 
-    const emps = await sbQuery(
+    const emps = await sb(
       `empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,legajo,diagrama,division`
     );
-    const fichs = await sbQuery(
+    const fichs = await sb(
       `fichadas?empresa_id=eq.${empresaId}&fecha=gte.${desde}&fecha=lte.${hasta}&select=empleado_id,fecha`
     );
     const fichMap = {};
@@ -207,10 +211,10 @@ const QUERIES = {
     return ausentes.sort((a, b) => b.split(": ")[1] - a.split(": ")[1]).join("\n");
   },
 
-  productividad_promedio: async (empresaId, params) => {
+  productividad_promedio: async (empresaId, params, sb) => {
     const desde = params?.desde || MES_INICIO();
     const hasta = params?.hasta || HOY();
-    const data = await sbQuery(
+    const data = await sb(
       `v_resumen_diario?empresa_id=eq.${empresaId}&fecha=gte.${desde}&fecha=lte.${hasta}&select=fecha,minutos_productivos,minutos_espera`
     );
     if (!data.length) return `Sin datos de productividad entre ${desde} y ${hasta}.`;
@@ -235,7 +239,7 @@ const QUERIES = {
     return lineas.join("\n") + `\n\nPromedio general: ${pctGlobal}% productivo`;
   },
 
-  ranking_tardanzas: async (empresaId, params) => {
+  ranking_tardanzas: async (empresaId, params, sb) => {
     const [anioHoy, mesHoy] = hoyArg().split("-").map(Number);
     const mes = params?.mes || mesHoy;
     const anio = params?.anio || anioHoy;
@@ -243,12 +247,12 @@ const QUERIES = {
     const hastaDate = new Date(anio, mes, 0);
     const hasta = hastaDate.toISOString().slice(0, 10);
 
-    const fichs = await sbQuery(
+    const fichs = await sb(
       `fichadas?empresa_id=eq.${empresaId}&fecha=gte.${desde}&fecha=lte.${hasta}&llegada_tarde=eq.true&select=empleado_id,legajo,minutos_tarde`
     );
     if (!fichs.length) return `No hay tardanzas registradas en ${mes}/${anio}.`;
 
-    const emps = await sbQuery(`empleados?empresa_id=eq.${empresaId}&select=id,nombre,legajo,division`);
+    const emps = await sb(`empleados?empresa_id=eq.${empresaId}&select=id,nombre,legajo,division`);
     const empMap = Object.fromEntries(emps.map(e => [e.id, e]));
 
     const byEmp = {};
@@ -266,7 +270,7 @@ const QUERIES = {
       }).join("\n");
   },
 
-  horas_extra_mes: async (empresaId, params) => {
+  horas_extra_mes: async (empresaId, params, sb) => {
     const [anioHoy2, mesHoy2] = hoyArg().split("-").map(Number);
     const mes = params?.mes || mesHoy2;
     const anio = params?.anio || anioHoy2;
@@ -274,12 +278,12 @@ const QUERIES = {
     const hastaDate = new Date(anio, mes, 0);
     const hasta = hastaDate.toISOString().slice(0, 10);
 
-    const fichs = await sbQuery(
+    const fichs = await sb(
       `fichadas?empresa_id=eq.${empresaId}&fecha=gte.${desde}&fecha=lte.${hasta}&horas_extra=gt.0&select=empleado_id,horas_extra`
     );
     if (!fichs.length) return `No hay horas extra registradas en ${mes}/${anio}.`;
 
-    const emps = await sbQuery(`empleados?empresa_id=eq.${empresaId}&select=id,nombre,legajo,division`);
+    const emps = await sb(`empleados?empresa_id=eq.${empresaId}&select=id,nombre,legajo,division`);
     const empMap = Object.fromEntries(emps.map(e => [e.id, e]));
 
     const byEmp = {};
@@ -296,21 +300,21 @@ const QUERIES = {
       }).join("\n");
   },
 
-  ots_activas: async (empresaId, params) => {
+  ots_activas: async (empresaId, params, sb) => {
     const dias = params?.dias || 7;
     const desde = new Date();
     desde.setDate(desde.getDate() - dias);
     const desdeStr = desde.toISOString().slice(0, 10);
 
-    const regs = await sbQuery(
+    const regs = await sb(
       `registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${desdeStr}&etapa=gt.0&select=codigo_proyecto,legajo,duracion_min,hora_inicio,hora_fin,fecha&order=fecha.desc&limit=200`
     );
     if (!regs.length) return `No hay actividad productiva en los últimos ${dias} días.`;
 
-    const emps = await sbQuery(`empleados?empresa_id=eq.${empresaId}&select=legajo,nombre`);
+    const emps = await sb(`empleados?empresa_id=eq.${empresaId}&select=legajo,nombre`);
     const empMap = Object.fromEntries(emps.map(e => [e.legajo, e.nombre]));
 
-    const proys = await sbQuery(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=ot,cliente,proyecto`);
+    const proys = await sb(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=ot,cliente,proyecto`);
     const proyMap = Object.fromEntries(proys.map(p => [p.ot, p.cliente || p.proyecto]));
 
     const byOt = {};
@@ -377,7 +381,8 @@ export async function POST(request) {
       params[k] = typeof v === "string" ? sanitizePostgrestParam(v) : v;
     }
 
-    const resultado = await QUERIES[query_type](sesion.empresa_id, params);
+    const sb = (path) => sbQuery(path, sesion);
+    const resultado = await QUERIES[query_type](sesion.empresa_id, params, sb);
     return NextResponse.json({ resultado });
   } catch (err) {
     return NextResponse.json({ error: "Error al consultar datos" }, { status: 500 });
