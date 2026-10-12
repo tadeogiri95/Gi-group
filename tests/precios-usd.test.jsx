@@ -31,7 +31,7 @@ afterEach(() => cleanup());
 
 const EMPRESA = "11111111-1111-1111-1111-111111111111";
 const OTRA = "99999999-9999-9999-9999-999999999999";
-const SUSC = "5";
+const SUSC = "55555555-5555-5555-5555-555555555555";
 
 // ─── Catálogo ───────────────────────────────────────────────────────────────
 
@@ -250,22 +250,22 @@ function pagoMP({ monto = 94800, ref = `gypi-${EMPRESA}-${SUSC}` } = {}) {
   return { match: (u) => u.includes("api.mercadopago.com/v1/payments/"), respond: () => ({ status: 200, body: { id: 777, status: "approved", transaction_amount: monto, currency_id: "ARS", external_reference: ref, date_approved: "2026-10-08T00:00:00Z" } }) };
 }
 
+// Suscripción, plan y add-ons de la empresa se guardan juntos con
+// aplicar_suscripcion (migración 088; los add-ons los copia la base desde la
+// suscripción, probado en Postgres local).
 test("webhook — pago aprobado con el monto acordado activa el plan con sus add-ons", async () => {
-  let empresa = null;
+  let rpc = null;
   global.fetch = createFetchMock([
     pagoMP(),
     { match: (u) => u.includes("/rest/v1/suscripciones?id=eq.") && u.includes("select=plan,estado,empresa_id"), respond: () => ({ status: 200, body: [SUSC_FILA] }) },
     { match: (u) => u.includes("/rest/v1/pagos") && u.includes("gateway_payment_id"), respond: () => ({ status: 200, body: [] }) },
     { match: (u, o) => u.includes("/rest/v1/pagos") && o.method === "POST", respond: () => ({ status: 201, body: [{ id: 1 }] }) },
-    { match: (u, o) => u.includes("/rest/v1/suscripciones") && o.method === "PATCH", respond: () => ({ status: 204 }) },
-    { match: (u) => u.includes("/rest/v1/suscripciones") && u.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "planta_15" }] }) },
-    { match: (u, o) => u.includes("/rest/v1/empresa") && o.method === "PATCH", respond: (u, o) => { empresa = JSON.parse(o.body); return { status: 204 }; } },
+    { match: (u) => u.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: (u, o) => { rpc = JSON.parse(o.body); return { status: 200, body: { ok: true, plan: "planta_15", override: false, canceladas: [] } }; } },
     { match: (u) => u.includes("/rest/v1/empresa"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
   ]);
   const res = await webhook(firmado({ type: "payment", data: { id: "777" } }, "777"));
   assert.equal((await res.json()).accion, "pago_aprobado");
-  assert.equal(empresa.plan_activo, "planta_15");
-  assert.deepEqual(empresa.addons, ["ia", "campo"]);
+  assert.deepEqual(rpc, { p_empresa: EMPRESA, p_susc: SUSC, p_estado: "activa", p_datos: null, p_cancelar_otras: false, p_plan_vence: null });
 });
 
 test("webhook — pago con un monto distinto del acordado: se registra pero NO activa el plan", async () => {
@@ -301,19 +301,17 @@ function preapprovalMP({ id = "mp-77", monto = 94800, status = "authorized" } = 
 }
 
 test("webhook — preapproval autorizado por el monto acordado activa el plan con los add-ons", async () => {
-  let empresa = null;
+  let rpc = null;
   global.fetch = createFetchMock([
     preapprovalMP(),
     { match: (u) => u.includes("/rest/v1/suscripciones?id=eq.") && u.includes("select=plan,estado"), respond: () => ({ status: 200, body: [SUSC_FILA] }) },
-    { match: (u, o) => u.includes("/rest/v1/suscripciones") && o.method === "PATCH", respond: () => ({ status: 204 }) },
-    { match: (u) => u.includes("/rest/v1/suscripciones?empresa_id=eq."), respond: () => ({ status: 200, body: [] }) },
-    { match: (u) => u.includes("/rest/v1/empresa") && u.includes("select=plan_override_manual"), respond: () => ({ status: 200, body: [{ plan_override_manual: false }] }) },
-    { match: (u, o) => u.includes("/rest/v1/empresa") && o.method === "PATCH", respond: (u, o) => { empresa = JSON.parse(o.body); return { status: 204 }; } },
+    { match: (u) => u.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: (u, o) => { rpc = JSON.parse(o.body); return { status: 200, body: { ok: true, plan: "planta_15", override: false, canceladas: [] } }; } },
   ]);
   const res = await webhook(firmado({ type: "subscription_preapproval", data: { id: "mp-77" } }, "mp-77"));
   assert.equal((await res.json()).accion, "susc_activa");
-  assert.equal(empresa.plan_activo, "planta_15");
-  assert.deepEqual(empresa.addons, ["ia", "campo"]);
+  assert.equal(rpc.p_estado, "activa");
+  assert.equal(rpc.p_cancelar_otras, true, "las otras suscripciones se cancelan en la misma transacción");
+  assert.equal(rpc.p_datos.periodo_fin, "2026-11-08T00:00:00Z");
 });
 
 test("webhook — preapproval con otro monto o de otro preapproval no activa nada", async () => {
@@ -374,22 +372,19 @@ test("TablaPrecios — muestra los tramos en USD, los add-ons y cambia a anual c
 });
 
 test("webhook — sin la migración 082 (faltan columnas) igual activa el plan leyendo los campos de antes", async () => {
-  let empresa = null;
+  let rpc = null;
   global.fetch = createFetchMock([
     pagoMP({ monto: 35000 }),
     { match: (u) => u.includes("/rest/v1/suscripciones?id=eq.") && u.includes("precio_nuevo"), respond: () => ({ status: 400, body: { message: "column suscripciones.precio_nuevo does not exist" } }) },
     { match: (u) => u.includes("/rest/v1/suscripciones?id=eq.") && u.includes("select=plan,estado,empresa_id"), respond: () => ({ status: 200, body: [{ plan: "pro", estado: "activa", empresa_id: EMPRESA, precio: 35000, periodo: "mensual" }] }) },
     { match: (u) => u.includes("/rest/v1/pagos") && u.includes("gateway_payment_id"), respond: () => ({ status: 200, body: [] }) },
     { match: (u, o) => u.includes("/rest/v1/pagos") && o.method === "POST", respond: () => ({ status: 201, body: [{ id: 1 }] }) },
-    { match: (u, o) => u.includes("/rest/v1/suscripciones") && o.method === "PATCH", respond: () => ({ status: 204 }) },
-    { match: (u) => u.includes("/rest/v1/suscripciones") && u.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
-    { match: (u, o) => u.includes("/rest/v1/empresa") && o.method === "PATCH", respond: (u, o) => { empresa = JSON.parse(o.body); return { status: 204 }; } },
+    { match: (u) => u.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: (u, o) => { rpc = JSON.parse(o.body); return { status: 200, body: { ok: true, plan: "planta_15", override: false, canceladas: [] } }; } },
     { match: (u) => u.includes("/rest/v1/empresa"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
   ]);
   const res = await webhook(firmado({ type: "payment", data: { id: "777" } }, "777"));
   assert.equal((await res.json()).accion, "pago_aprobado");
-  assert.equal(empresa.plan_activo, "pro");
-  assert.equal("addons" in empresa, false);
+  assert.equal(rpc.p_estado, "activa");
 });
 
 test("términos publicados — explican el cobro en dólares y no nombran planes que ya no se venden", () => {

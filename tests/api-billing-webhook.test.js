@@ -19,7 +19,7 @@ before(() => {
 const { POST } = await import("../app/api/billing/webhook/route.js");
 
 const EMPRESA_ID = "11111111-1111-1111-1111-111111111111";
-const SUSC_ID = "5";
+const SUSC_ID = "55555555-5555-5555-5555-555555555555";
 
 function firmar({ dataId, requestId = "req-1", ts = String(Date.now()) }) {
   const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
@@ -64,9 +64,9 @@ test("webhook — pago aprobado nuevo: inserta pago, activa suscripción y plan"
     }) },
     { match: (url) => url.includes("/rest/v1/pagos") && url.includes("gateway_payment_id"), respond: () => ({ status: 200, body: [] }) }, // idempotencia: no existe todavía
     { match: (url, opts) => url.includes("/rest/v1/pagos") && opts.method === "POST", respond: (url, opts) => { pagoInsertado = JSON.parse(opts.body); return { status: 201, body: [{ id: 1 }] }; } },
-    { match: (url, opts) => url.includes("/rest/v1/suscripciones") && opts.method === "PATCH", respond: () => ({ status: 204 }) },
     { match: (url) => url.includes("/rest/v1/suscripciones") && url.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
-    { match: (url, opts) => url.includes("/rest/v1/empresa") && opts.method === "PATCH", respond: (url, opts) => { empresaPatched = JSON.parse(opts.body); return { status: 204 }; } },
+    // Suscripción activa y plan de la empresa van juntos (migración 088)
+    { match: (url) => url.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: (url, opts) => { empresaPatched = JSON.parse(opts.body); return { status: 200, body: { ok: true, plan: "pro", override: false, canceladas: [] } }; } },
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("admin_email"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
   ]);
 
@@ -77,7 +77,7 @@ test("webhook — pago aprobado nuevo: inserta pago, activa suscripción y plan"
   assert.equal(json.accion, "pago_aprobado");
   assert.equal(pagoInsertado.estado, "aprobado");
   assert.equal(pagoInsertado.gateway_payment_id, "777");
-  assert.equal(empresaPatched.plan_activo, "pro");
+  assert.deepEqual(empresaPatched, { p_empresa: EMPRESA_ID, p_susc: SUSC_ID, p_estado: "activa", p_datos: null, p_cancelar_otras: false, p_plan_vence: null });
 });
 
 test("webhook — pago ya procesado (retry de MP) es idempotente", async () => {
@@ -143,7 +143,7 @@ test("webhook — firma válida con timestamp fresco procesa pago aprobado", asy
     { match: (u) => u.includes("api.mercadopago.com/v1/payments/"), respond: () => ({ status: 200, body: { id: Number(dataId), status: "approved", transaction_amount: 35000, currency_id: "ARS", external_reference: externalRef, date_approved: "2026-06-16T00:00:00Z" } }) },
     { match: (u) => u.includes("/rest/v1/pagos") && u.includes("gateway_payment_id"), respond: () => ({ status: 200, body: [] }) },
     { match: (u, o) => u.includes("/rest/v1/pagos") && o.method === "POST", respond: () => ({ status: 201, body: [{ id: 10 }] }) },
-    { match: (u, o) => u.includes("/rest/v1/suscripciones") && o.method === "PATCH", respond: () => ({ status: 204 }) },
+    { match: (u) => u.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: () => ({ status: 200, body: { ok: true, plan: "pro", override: false, canceladas: [] } }) },
     { match: (u) => u.includes("/rest/v1/suscripciones") && u.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
     { match: (u, o) => u.includes("/rest/v1/empresa") && o.method === "PATCH", respond: () => ({ status: 204 }) },
     { match: (u) => u.includes("/rest/v1/empresa") && u.includes("admin_email"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
@@ -217,7 +217,7 @@ test("webhook — un fallo de facturación ARCA no rompe la aprobación del pago
     { match: (u) => u.includes("api.mercadopago.com/v1/payments/"), respond: () => ({ status: 200, body: { id: 555, status: "approved", transaction_amount: 35000, currency_id: "ARS", external_reference: externalRef, date_approved: "2026-06-16T00:00:00Z" } }) },
     { match: (u) => u.includes("/rest/v1/pagos") && u.includes("gateway_payment_id"), respond: () => ({ status: 200, body: [] }) },
     { match: (u, o) => u.includes("/rest/v1/pagos") && o.method === "POST", respond: () => ({ status: 201, body: [{ id: 99 }] }) },
-    { match: (u, o) => u.includes("/rest/v1/suscripciones") && o.method === "PATCH", respond: () => ({ status: 204 }) },
+    { match: (u) => u.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: () => ({ status: 200, body: { ok: true, plan: "pro", override: false, canceladas: [] } }) },
     { match: (u) => u.includes("/rest/v1/suscripciones") && u.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
     { match: (u, o) => u.includes("/rest/v1/empresa") && o.method === "PATCH", respond: () => ({ status: 204 }) },
     { match: (u) => u.includes("/rest/v1/empresa") && u.includes("admin_email"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
@@ -241,7 +241,7 @@ test("webhook — mismo payment_id enviado dos veces: segundo call es no-op (ide
     { match: (u) => u.includes("api.mercadopago.com/v1/payments/"), respond: () => ({ status: 200, body: { id: Number(dataId), status: "approved", transaction_amount: 35000, currency_id: "ARS", external_reference: externalRef, date_approved: "2026-06-16T00:00:00Z" } }) },
     { match: (u) => u.includes("/rest/v1/pagos") && u.includes("gateway_payment_id"), respond: () => ({ status: 200, body: [] }) }, // no existe aún
     { match: (u, o) => u.includes("/rest/v1/pagos") && o.method === "POST", respond: () => { insertCount++; return { status: 201, body: [{ id: 1 }] }; } },
-    { match: (u, o) => u.includes("/rest/v1/suscripciones") && o.method === "PATCH", respond: () => ({ status: 204 }) },
+    { match: (u) => u.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: () => ({ status: 200, body: { ok: true, plan: "pro", override: false, canceladas: [] } }) },
     { match: (u) => u.includes("/rest/v1/suscripciones") && u.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
     { match: (u, o) => u.includes("/rest/v1/empresa") && o.method === "PATCH", respond: () => ({ status: 204 }) },
     { match: (u) => u.includes("/rest/v1/empresa") && u.includes("admin_email"), respond: () => ({ status: 200, body: [{ admin_email: null }] }) },
@@ -315,7 +315,7 @@ function handlersTransicion({ previo, statusMP, patchRows = [{ id: 1, estado: "a
     { match: (url, opts) => url.includes("/rest/v1/pagos") && url.includes("gateway_payment_id") && (opts.method || "GET") === "GET", respond: () => ({ status: 200, body: previo ? [previo] : [] }) },
     { match: (url, opts) => url.includes("/rest/v1/pagos?id=eq.") && opts.method === "PATCH", respond: (url, opts) => { registro.patchPago.push({ url, body: JSON.parse(opts.body) }); return { status: 200, body: patchRows }; } },
     { match: (url, opts) => url.includes("/rest/v1/pagos") && opts.method === "POST", respond: () => { registro.insertado = true; return { status: 201, body: [{ id: 99 }] }; } },
-    { match: (url, opts) => url.includes("/rest/v1/suscripciones") && opts.method === "PATCH", respond: (url, opts) => { registro.suscPatch = JSON.parse(opts.body); return { status: 204 }; } },
+    { match: (url) => url.includes("/rest/v1/rpc/aplicar_suscripcion"), respond: (url, opts) => { registro.suscPatch = JSON.parse(opts.body); return { status: 200, body: { ok: true, plan: "pro", override: false, canceladas: [] } }; } },
     { match: (url) => url.includes("/rest/v1/suscripciones") && url.includes("select=plan"), respond: () => ({ status: 200, body: [{ plan: "pro" }] }) },
     { match: (url, opts) => url.includes("/rest/v1/empresa") && opts.method === "PATCH", respond: (url, opts) => { registro.empresaPatch = JSON.parse(opts.body); return { status: 204 }; } },
     { match: (url) => url.includes("/rest/v1/empresa") && url.includes("plan_override_manual"), respond: () => ({ status: 200, body: [{ plan_override_manual: false, plan_activo: "free" }] }) },
@@ -334,8 +334,7 @@ test("webhook — pago que estaba pendiente y llega aprobado: actualiza el pago 
   assert.ok(registro.patchPago[0].url.includes("estado=eq.pendiente"), "el PATCH se condiciona al estado anterior");
   assert.equal(registro.patchPago[0].body.estado, "aprobado");
   assert.equal(registro.insertado, undefined, "no inserta un pago duplicado");
-  assert.equal(registro.suscPatch.estado, "activa");
-  assert.equal(registro.empresaPatch.plan_activo, "pro");
+  assert.equal(registro.suscPatch.p_estado, "activa", "suscripción y plan en una sola transacción");
 });
 
 test("webhook — dos avisos simultáneos de la misma transición: solo uno la procesa", async () => {

@@ -12,12 +12,12 @@ import { getPreapproval, getPago, cancelarPreapproval } from "../../../lib/merca
 import { sendFalloPago, sendPlanSuspendido, sendPagoConfirmado } from "../../../lib/email";
 import { emitirFacturaC } from "../../../lib/afip";
 import { logger } from "../../../lib/logger";
-import { sbGet, sbPost, sbPatch, sbPatchOk } from "../../../lib/sbHelpers";
+import { sbGet, sbPost, sbPatch, sbPatchOk, sbRpc } from "../../../lib/sbHelpers";
 import { logEvent, EVT } from "../../../lib/analytics";
 import { safeErrorMessage } from "../../../lib/validate";
 
 import { ipCliente } from "../../../lib/ip";
-import { verificarSuscripcion, montoCoincide } from "../../../lib/validarCobro";
+import { verificarSuscripcion, montoCoincide, leerReferencia } from "../../../lib/validarCobro";
 const WH_SECRET = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 // Lo que hace falta de la suscripción para validar el aviso (ítem 25)
 const SUSC_CAMPOS = "plan,estado,empresa_id,gateway_subscription_id,precio,precio_nuevo,periodo,addons";
@@ -31,8 +31,6 @@ async function leerSuscripcion(suscId) {
     return (await sbGet(`suscripciones?id=eq.${suscId}&select=${SUSC_CAMPOS_PREVIOS}&limit=1`, { silent: true, fallback: [] }))?.[0] ?? null;
   }
 }
-// Add-ons de la suscripción → empresa.addons (solo si la fila los trae)
-const addonsDe = (susc) => (Array.isArray(susc?.addons) ? { addons: susc.addons } : {});
 
 // ═══════════════════════════════════════════════════════════
 // CAMBIO 1D: Firma OBLIGATORIA
@@ -151,13 +149,12 @@ export async function POST(request) {
     if (tipo === "subscription_preapproval" || tipo === "preapproval") {
       const preapproval = await getPreapproval(dataId);
       const externalRef = preapproval.external_reference || "";
-      const match = externalRef.match(/^gypi-([0-9a-f-]+)-([0-9a-f-]+)$/i);
-      if (!match) {
+      const ref = leerReferencia(externalRef);
+      if (!ref) {
         logger.warn("external_reference inválido", { externalRef });
         return NextResponse.json({ ok: true });
       }
-      const empresaId = match[1];
-      const suscId = match[2];
+      const { empresaId, suscId } = ref;
 
       let nuevoEstado = "suspendida";
       if (preapproval.status === "authorized") nuevoEstado = "activa";
@@ -186,70 +183,39 @@ export async function POST(request) {
         return NextResponse.json({ ok: true, accion: `susc_${nuevoEstado}_ya_procesado` });
       }
 
-      await sbPatchOk(`suscripciones?id=eq.${suscId}`, {
-        estado: nuevoEstado,
-        gateway_customer_id: preapproval.payer_id?.toString() || null,
-        periodo_inicio: preapproval.date_created || null,
-        periodo_fin: preapproval.next_payment_date || null,
+      // Suscripción, otras suscripciones y plan de la empresa van juntos en
+      // una transacción (aplicar_suscripcion, migración 088; ítem 38).
+      const aplicado = await sbRpc("aplicar_suscripcion", {
+        p_empresa: empresaId,
+        p_susc: suscId,
+        p_estado: nuevoEstado,
+        p_datos: {
+          gateway_customer_id: preapproval.payer_id?.toString() || null,
+          periodo_inicio: preapproval.date_created || null,
+          periodo_fin: preapproval.next_payment_date || null,
+        },
+        p_cancelar_otras: nuevoEstado === "activa",
+        p_plan_vence: nuevoEstado === "activa" ? null : preapproval.next_payment_date || null,
       });
+      if (aplicado?.sin_cambios) {
+        return NextResponse.json({ ok: true, accion: `susc_${nuevoEstado}_ya_procesado` });
+      }
+      if (aplicado?.override) {
+        logger.warn("[webhook] plan_override_manual activo, no se cambia el plan", { empresaId, estado: nuevoEstado });
+      }
 
       if (nuevoEstado === "activa") {
-        const plan = suscActual?.plan || "free";
-
-        // ═══ P1: Cancelar suscripciones concurrentes en MP (no solo local) ═══
-        const otras = await sbGet(
-          `suscripciones?empresa_id=eq.${empresaId}&estado=in.(trial,activa)&id=neq.${suscId}&select=id,gateway_subscription_id`,
-          { silent: true, fallback: [] }
-        );
-        for (const otra of otras) {
-          if (otra.gateway_subscription_id) {
-            try {
-              await cancelarPreapproval(otra.gateway_subscription_id);
-              logger.debug("[webhook] Preapproval concurrente cancelado en MP", { id: otra.gateway_subscription_id });
-            } catch (e) {
-              logger.error("[webhook] Error cancelando preapproval concurrente", e, { id: otra.gateway_subscription_id });
-            }
+        // ═══ P1: las suscripciones que se cancelaron, también en MP ═══
+        for (const id of aplicado?.canceladas || []) {
+          try {
+            await cancelarPreapproval(id);
+            logger.debug("[webhook] Preapproval concurrente cancelado en MP", { id });
+          } catch (e) {
+            logger.error("[webhook] Error cancelando preapproval concurrente", e, { id });
           }
-        }
-        await sbPatchOk(
-          `suscripciones?empresa_id=eq.${empresaId}&estado=in.(trial,activa)&id=neq.${suscId}`,
-          { estado: "cancelada" }
-        );
-
-        // ═══ P3: Respetar override manual del superadmin ═══
-        const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_override_manual&limit=1`, { silent: true, fallback: [] });
-        if (emp?.plan_override_manual) {
-          logger.warn("[webhook] plan_override_manual activo, no se cambia plan_activo", { empresaId, plan });
-        } else {
-          await sbPatchOk(`empresa?id=eq.${empresaId}`, {
-            plan_activo: plan,
-            suscripcion_activa_id: suscId,
-            plan_vence: null,
-            ...addonsDe(suscActual),
-          });
         }
       } else if (nuevoEstado === "suspendida" || nuevoEstado === "cancelada") {
-        // ═══ P2: Grace period — mantener plan hasta periodo_fin ═══
-        // ═══ P3: Respetar override manual ═══
-        const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_override_manual,admin_email,nombre_corto,nombre,slug&limit=1`, { silent: true, fallback: [] });
-
-        if (!emp?.plan_override_manual) {
-          const periodoFin = preapproval.next_payment_date;
-          if (periodoFin && new Date(periodoFin) > new Date()) {
-            // Grace period: mantener plan activo hasta fin del período pago
-            await sbPatchOk(`empresa?id=eq.${empresaId}`, {
-              plan_vence: periodoFin,
-              suscripcion_activa_id: null,
-            });
-            logger.debug("[webhook] Grace period activado", { empresaId, plan_vence: periodoFin });
-          } else {
-            await sbPatchOk(`empresa?id=eq.${empresaId}`, {
-              plan_activo: "free",
-              suscripcion_activa_id: null,
-              plan_vence: null,
-            });
-          }
-        }
+        const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=admin_email,nombre_corto,nombre,slug&limit=1`, { silent: true, fallback: [] });
 
         // Notificar al admin (fire-and-forget)
         try {
@@ -280,10 +246,9 @@ export async function POST(request) {
     // ─── Pago ───
     if (tipo === "payment" || tipo === "subscription_authorized_payment") {
       const pago = await getPago(dataId);
-      const externalRef = pago.external_reference || "";
-      const match = externalRef.match(/^gypi-([0-9a-f-]+)-([0-9a-f-]+)$/i);
-      const empresaId = match?.[1];
-      const suscId = match?.[2];
+      const ref = leerReferencia(pago.external_reference);
+      const empresaId = ref?.empresaId;
+      const suscId = ref?.suscId;
 
       // F2-11: la suscripción del external_reference tiene que ser de esa empresa
       let suscPago = null;
@@ -368,19 +333,16 @@ export async function POST(request) {
       }
 
       if (estadoPago === "aprobado" && suscId) {
-        await sbPatchOk(`suscripciones?id=eq.${suscId}`, { estado: "activa" });
+        // Suscripción activa y plan de la empresa, juntos (migración 088)
+        const aplicado = await sbRpc("aplicar_suscripcion", {
+          p_empresa: empresaId,
+          p_susc: suscId,
+          p_estado: "activa",
+          p_datos: null,
+          p_cancelar_otras: false,
+          p_plan_vence: null,
+        });
         if (empresaId) {
-          const susc = await sbGet(`suscripciones?id=eq.${suscId}&select=plan,periodo_inicio,periodo_fin`);
-          // P3: Respetar override manual
-          const [empCheck] = await sbGet(`empresa?id=eq.${empresaId}&select=plan_override_manual&limit=1`, { silent: true, fallback: [] });
-          if (susc?.[0]?.plan && !empCheck?.plan_override_manual) {
-            await sbPatchOk(`empresa?id=eq.${empresaId}`, {
-              plan_activo: susc[0].plan,
-              suscripcion_activa_id: suscId,
-              plan_vence: null,
-              ...addonsDe(suscPago),
-            });
-          }
           try {
             const [emp] = await sbGet(`empresa?id=eq.${empresaId}&select=admin_email,nombre_corto,nombre,slug`);
             if (emp?.admin_email) {
@@ -390,7 +352,7 @@ export async function POST(request) {
                 empresa: emp.nombre_corto || emp.nombre,
                 slug: emp.slug,
                 monto: pago.transaction_amount,
-                plan: susc?.[0]?.plan || "Pro",
+                plan: aplicado?.plan || "Pro",
                 empresaId,
               });
             }

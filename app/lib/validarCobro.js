@@ -36,3 +36,18 @@ export function verificarSuscripcion(susc, { empresaId, preapprovalId } = {}) {
   }
   return { ok: true };
 }
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const RE_REFERENCIA = new RegExp(`^gypi-(${UUID})-(${UUID})$`, "i");
+
+/**
+ * Empresa y suscripción del external_reference "gypi-<empresa>-<suscripción>".
+ * Las dos son UUID (con guiones): se leen enteras. La expresión anterior,
+ * ([0-9a-f-]+)-([0-9a-f-]+), cortaba en el último guion y la suscripción
+ * quedaba en "su último pedazo", así que un pago real no se encontraba.
+ * @returns {{ empresaId: string, suscId: string } | null}
+ */
+export function leerReferencia(ref) {
+  const m = String(ref || "").match(RE_REFERENCIA);
+  return m ? { empresaId: m[1].toLowerCase(), suscId: m[2].toLowerCase() } : null;
+}
