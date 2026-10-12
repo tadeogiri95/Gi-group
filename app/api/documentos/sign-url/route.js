@@ -26,7 +26,7 @@ export async function POST(req) {
     const documentoId = body?.documento_id;
     if (!isUUID(documentoId)) return NextResponse.json({ error: "documento_id inválido" }, { status: 400 });
 
-    const docs = await sbGet(`documentos_empleado?id=eq.${documentoId}&select=empresa_id,empleado_id,storage_path`);
+    const docs = await sbGet(`documentos_empleado?id=eq.${documentoId}&select=empresa_id,empleado_id,storage_path`, { sesion });
     const doc = docs?.[0];
     if (!doc || doc.empresa_id !== sesion.empresa_id) {
       return NextResponse.json({ error: "Documento no encontrado" }, { status: 404 });

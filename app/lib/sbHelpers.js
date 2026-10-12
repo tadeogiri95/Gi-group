@@ -17,12 +17,27 @@
 //
 // Para rutas que necesitan no lanzar (webhook, login):
 //   const data = await sbGet("tabla?...", { silent: true }); // null si falla
+//
+// RLS por usuario (ítem 37, etapa 2): con { sesion } y RLS_RUTAS=on la consulta
+// va con el pase del usuario (rol authenticated + claim eid) y la base aplica
+// la separación por empresa por su cuenta. Sin { sesion }, o con el
+// interruptor apagado, sigue con service_role como siempre.
+//   await sbGet(`documentos_empleado?id=eq.${id}`, { sesion });
 // ═══════════════════════════════════════════════════════════
+
+import { rlsRutasActivo, configRlsFaltante, headersUsuario } from "./supabaseUsuario";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-function headers(extra = {}) {
+async function headers(opts = {}, extra = {}) {
+  if (opts.sesion && rlsRutasActivo()) {
+    // Con el interruptor prendido y sin configuración se corta (fail-closed)
+    // en vez de volver en silencio a la llave maestra.
+    const faltan = configRlsFaltante();
+    if (faltan.length) throw new Error(`RLS_RUTAS=on pero falta configuración: ${faltan.join(", ")}`);
+    return { ...(await headersUsuario(opts.sesion)), "Content-Type": "application/json", ...extra };
+  }
   return {
     apikey: SB_KEY,
     Authorization: `Bearer ${SB_KEY}`,
@@ -37,7 +52,7 @@ function headers(extra = {}) {
 export async function sbGet(path, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
-      headers: headers(),
+      headers: await headers(opts),
     });
     if (!r.ok) {
       if (opts.silent) return opts.fallback ?? null;
@@ -56,11 +71,11 @@ export async function sbGet(path, opts = {}) {
 // limit/offset. `path` debe tener un order= con desempate único (p. ej.
 // order=fecha.asc,id.asc) para que las páginas no se pisen.
 // Devuelve { data, truncado }: truncado=true si se llegó a maxFilas.
-export async function sbGetAll(path, { pageSize = 1000, maxFilas = 20000 } = {}) {
+export async function sbGetAll(path, { pageSize = 1000, maxFilas = 20000, sesion } = {}) {
   const sep = path.includes("?") ? "&" : "?";
   const data = [];
   for (let offset = 0; offset < maxFilas; offset += pageSize) {
-    const page = await sbGet(`${path}${sep}limit=${pageSize}&offset=${offset}`);
+    const page = await sbGet(`${path}${sep}limit=${pageSize}&offset=${offset}`, { sesion });
     data.push(...(page || []));
     if (!page || page.length < pageSize) return { data, truncado: false };
   }
@@ -72,7 +87,7 @@ export async function sbPost(path, body, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
       method: "POST",
-      headers: headers({ Prefer: "return=representation" }),
+      headers: await headers(opts, { Prefer: "return=representation" }),
       body: JSON.stringify(body),
     });
     if (!r.ok) {
@@ -91,7 +106,7 @@ export async function sbPatch(path, body, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
       method: "PATCH",
-      headers: headers({ Prefer: "return=representation" }),
+      headers: await headers(opts, { Prefer: "return=representation" }),
       body: JSON.stringify(body),
     });
     if (!r.ok) {
@@ -106,10 +121,10 @@ export async function sbPatch(path, body, opts = {}) {
 }
 
 // ─── PATCH sin representation (webhook style: retorna boolean) ───
-export async function sbPatchOk(path, body) {
+export async function sbPatchOk(path, body, opts = {}) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
     method: "PATCH",
-    headers: headers(),
+    headers: await headers(opts),
     body: JSON.stringify(body),
   });
   return r.ok;
@@ -120,7 +135,7 @@ export async function sbDelete(path, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
       method: "DELETE",
-      headers: headers(),
+      headers: await headers(opts),
     });
     if (!r.ok && !opts.silent) {
       throw new Error(`DELETE ${path}: ${await r.text()}`);
@@ -137,7 +152,7 @@ export async function sbRpc(fnName, params = {}, opts = {}) {
   try {
     const r = await fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
       method: "POST",
-      headers: headers(),
+      headers: await headers(opts),
       body: JSON.stringify(params),
     });
     if (!r.ok) {
