@@ -8,6 +8,9 @@
 //   - el resto (el empleado que busca o escanea una OT que la app no tiene):
 //     solo si la última sincronización fue hace más de 5 minutos.
 // POST con x-cron-secret → sincroniza todas las empresas que tienen URL configurada.
+//
+// Con RLS_RUTAS=on, la ruta de usuario va con el pase del usuario; el cron,
+// que no tiene sesión y recorre todas las empresas, sigue con service_role.
 
 import { NextResponse } from "next/server";
 import { validarToken } from "../../../lib/auth";
@@ -37,7 +40,7 @@ export async function POST(req) {
     const sesion = await validarToken(req);
     if (!sesion) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     const gestion = ROLES_OK.has(sesion.rol);
-    const result = await syncEmpresa(sesion.empresa_id, { minIntervaloMs: gestion ? 0 : INTERVALO_EMPLEADO_MS });
+    const result = await syncEmpresa(sesion.empresa_id, { minIntervaloMs: gestion ? 0 : INTERVALO_EMPLEADO_MS, sesion });
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     logger.error("[sync-csv] Error", err);
