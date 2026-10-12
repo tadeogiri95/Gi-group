@@ -6,23 +6,20 @@
 import { logger } from "./logger";
 import { safeErrorMessage } from "./validate";
 import { parseCsvProyectos } from "./csvProyectos";
+import { sbHeaders } from "./sbHelpers";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 const BATCH = 100;
 
-/* ─── Supabase helper (service key, sin proxy) ─── */
-async function sbFetch(path, opts = {}) {
+/* ─── Supabase helper ───
+ * Con `sesion` y RLS_RUTAS=on va con el pase del usuario (ítem 37, etapa 2);
+ * sin sesión (el cron, que recorre todas las empresas) sigue con service_role. */
+async function sbFetch(path, opts = {}, sesion) {
   if (!SB_URL || !SB_KEY) throw new Error("SUPABASE_URL/KEY no configuradas");
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
     ...opts,
-    headers: {
-      apikey: SB_KEY,
-      Authorization: `Bearer ${SB_KEY}`,
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-      ...opts.headers,
-    },
+    headers: await sbHeaders({ sesion }, { Prefer: "return=representation", ...opts.headers }),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -35,12 +32,15 @@ async function sbFetch(path, opts = {}) {
 /* ─── Sync de una empresa ─── */
 /**
  * @param {string} empresaId
- * @param {{ minIntervaloMs?: number }} [opts] si la última sincronización fue
- *   hace menos de esto, no hace nada y devuelve { omitido: true }.
+ * @param {{ minIntervaloMs?: number, sesion?: object }} [opts] si la última
+ *   sincronización fue hace menos de minIntervaloMs, no hace nada y devuelve
+ *   { omitido: true }. Con `sesion`, la base se consulta con el pase del usuario.
  */
-export async function syncEmpresa(empresaId, { minIntervaloMs = 0 } = {}) {
+export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}) {
   const cfg = await sbFetch(
-    `config_sistema?empresa_id=eq.${empresaId}&clave=eq.proyectos_csv_url&select=valor&limit=1`
+    `config_sistema?empresa_id=eq.${empresaId}&clave=eq.proyectos_csv_url&select=valor&limit=1`,
+    {},
+    sesion
   );
   const csvUrl = cfg?.[0]?.valor?.url;
   if (!csvUrl) throw new Error("No hay URL de CSV configurada");
@@ -76,7 +76,7 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0 } = {}) {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     body: JSON.stringify(conDescripcion ? batch : batch.map(({ descripcion, ...r }) => r)),
-  });
+  }, sesion);
   for (let i = 0; i < filas.length; i += BATCH) {
     const batch = filas.slice(i, i + BATCH).map(r => ({
       empresa_id:  empresaId,
@@ -115,7 +115,8 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0 } = {}) {
         body: JSON.stringify({
           valor: { url: csvUrl, ultima_sync: new Date().toISOString() },
         }),
-      }
+      },
+      sesion
     );
   } catch {}
 
