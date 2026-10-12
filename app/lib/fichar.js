@@ -8,6 +8,7 @@
 import { getToken, clearToken, getCsrfToken } from "./supabase";
 import { haversine } from "./calc";
 import { enviarOEncolar, horaDeOp } from "./colaOffline";
+import { modoGeo } from "./geoConfig";
 
 // Reintentos solo ante fallo de RED (fetch() no llega a completarse — sin
 // señal, típico en planta industrial). Un rechazo lógico del servidor (4xx/5xx
@@ -87,6 +88,8 @@ export async function ficharServer(accion, opciones = {}) {
 // timeoutMs: el chat espera hasta 15 s; el botón grande de fichar, 8 s (D6),
 // mostrando un contador para que el operario sepa que está buscando.
 export async function obtenerGeo(empleado, { timeoutMs = 15000 } = {}) {
+  // Ficha desde cualquier lugar: no se pide el GPS (ni se hace esperar)
+  if (modoGeo(empleado?.geo_config) === "libre") return { lat: null, lng: null, distancia: null, msg: null };
   if (!navigator?.geolocation) return { lat: null, lng: null, distancia: null, msg: null };
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(

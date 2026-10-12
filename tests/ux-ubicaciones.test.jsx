@@ -67,3 +67,32 @@ test("ubicaciones — al crear, dice qué falta para poder guardar", async () =>
   fireEvent.change(screen.getByPlaceholderText(/Oficina Central/), { target: { value: "Depósito" } });
   assert.ok(screen.getByText(/Falta marcar dónde queda/));
 });
+
+test("ubicaciones — 'Cualquier lugar' guarda libre y avisa que ficha sin control", async () => {
+  const pedidos = [];
+  global.fetch = async (_url, opts) => {
+    const body = JSON.parse(opts?.body || "{}");
+    pedidos.push(body);
+    const path = body.path || "";
+    if (body.method === "GET" && path.startsWith("geo_zonas")) return Response.json({ ok: true, data: [UBI] });
+    if (body.method === "GET" && path.startsWith("empleados")) return Response.json({ ok: true, data: EMPS });
+    return Response.json({ ok: true, data: [] });
+  };
+  render(
+    <AuthContext.Provider value={{ divisiones: [], plantas: [], usuario: { rol: "gerencial" } }}>
+      <GeolocalizacionScreen empresaId="emp-1" />
+    </AuthContext.Provider>
+  );
+  fireEvent.click(await screen.findByRole("button", { name: /Ana/ }));
+  const libre = screen.getByRole("radio", { name: /Cualquier lugar/ });
+  fireEvent.click(libre);
+  assert.equal(screen.getByRole("radio", { name: /Cualquier lugar/ }).getAttribute("aria-checked"), "true");
+  assert.ok(screen.getAllByText(/Ficha desde cualquier lugar/).length > 0);
+  fireEvent.click(screen.getByRole("button", { name: /Guardar 1 cambio/ }));
+  await new Promise((r) => setTimeout(r, 50));
+  const patch = pedidos.find((p) => p.method === "PATCH" && p.path.startsWith("empleados"));
+  assert.equal(patch.body.geo_config.libre, true);
+  assert.equal(patch.body.geo_config.activo, false);
+  const aviso = pedidos.find((p) => p.method === "POST" && p.path.startsWith("notificaciones"));
+  assert.match(aviso.body.asunto, /cualquier lugar/);
+});
