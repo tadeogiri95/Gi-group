@@ -305,7 +305,7 @@ export default function ProyectosScreen({ empresaId }) {
     if (filtroDiv && p.division !== filtroDiv) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
-      return p.ot?.toLowerCase().includes(q) || p.cliente?.toLowerCase().includes(q) || p.obra?.toLowerCase().includes(q) || p.proyecto?.toLowerCase().includes(q);
+      return p.ot?.toLowerCase().includes(q) || p.cliente?.toLowerCase().includes(q) || p.obra?.toLowerCase().includes(q) || p.proyecto?.toLowerCase().includes(q) || p.descripcion?.toLowerCase().includes(q);
     }
     return true;
   });
@@ -478,7 +478,7 @@ export default function ProyectosScreen({ empresaId }) {
                   <div className="min-w-[60px] h-10 rounded-[10px] flex items-center justify-center font-mono text-[13px] font-bold px-2" style={{ background: `${divColor}22`, color: divColor }}>{p.ot}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
-                    <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{p.obra || p.proyecto || ""}{p.division ? ` · ${divInfo.label}` : ""}</div>
+                    <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{[p.obra || p.proyecto, p.descripcion].filter(Boolean).join(" · ")}{p.division ? ` · ${divInfo.label}` : ""}</div>
                   </div>
                   {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
                 </div>

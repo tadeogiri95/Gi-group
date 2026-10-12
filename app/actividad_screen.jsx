@@ -114,6 +114,7 @@ export default function ActividadScreen({
       p.cliente?.toLowerCase().includes(q) ||
       p.proyecto?.toLowerCase().includes(q) ||
       p.obra?.toLowerCase().includes(q) ||
+      p.descripcion?.toLowerCase().includes(q) ||
       p.codigo?.toLowerCase().includes(q)
     );
   });
@@ -472,24 +473,21 @@ export default function ActividadScreen({
                       ) : "No hay OT cargadas"}
                     </div>
                   ) : (
-                    proyectosFiltrados.slice(0, 20).map(p => {
+                    proyectosFiltrados.map(p => {
                       const sel = proyectoSeleccionado?.ot === p.ot;
                       return (
                         <button key={p.ot} onClick={() => iniciarTarea(p.ot)} disabled={saving} className={`min-h-[56px] py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all border-2 ${sel ? 'bg-gypi-amber/[0.09] border-gypi-amber' : 'bg-gypi-surface border-transparent'}`}>
                           <div className={`min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5 ${sel ? 'bg-gypi-amber/10 text-gypi-amber-ink' : 'bg-gypi-surf-hi text-gypi-text'}`}>{p.ot}</div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-gypi-text truncate">{p.cliente}</div>
-                            <div className="text-[11px] text-gypi-dim truncate mt-[1px]">{p.proyecto}</div>
+                            <div className="text-xs font-bold text-gypi-text truncate">{p.cliente || p.proyecto}</div>
+                            {(p.obra || p.descripcion) && (
+                              <div className="text-[11px] text-gypi-dim truncate mt-[1px]">{[p.obra, p.descripcion].filter(Boolean).join(" · ")}</div>
+                            )}
                           </div>
                           {sel && <span className="text-base text-gypi-amber-ink">✓</span>}
                         </button>
                       );
                     })
-                  )}
-                  {proyectosFiltrados.length > 20 && (
-                    <div className="text-center py-2 text-gypi-dim text-[11px]">
-                      +{proyectosFiltrados.length - 20} más — refiná la búsqueda
-                    </div>
                   )}
                 </div>
 

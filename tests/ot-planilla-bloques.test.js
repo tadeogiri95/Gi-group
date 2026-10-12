@@ -80,3 +80,52 @@ test("sync-csv — la base nunca recibe la misma OT dos veces en un lote", async
   for (const lote of lotes) assert.equal(new Set(lote.map(r => r.ot)).size, lote.length);
   assert.equal(lotes.flat().find(r => r.ot === "5").cliente, "Repetida");
 });
+
+// ─── Cliente, obra y descripción (columnas D, E y F de la planilla) ─────────
+const PLANILLA_REAL = [
+  "OT,DIVISIÓN,PROYECTO / N°,CLIENTE,OBRA,DESCRIPCION,CANT,PPTO,ENTREGA,INFO PROY,N.P",
+  "M-7495,MUEBLES,7495,SICILIANO ROMINA,CASA REMODELACION,MUEBLE DIVISOR,1,,1/05/2026,GR,",
+].join("\n");
+
+test("planilla real — lee cliente, obra y descripción", () => {
+  const { filas } = parseCsvProyectos(PLANILLA_REAL);
+  assert.deepEqual(filas, [{
+    ot: "M-7495", cliente: "SICILIANO ROMINA", obra: "CASA REMODELACION",
+    proyecto: "7495", division: "MUEBLES", descripcion: "MUEBLE DIVISOR",
+  }]);
+});
+
+test("sync-csv — sin la columna descripcion en la base (falta la 091) igual sincroniza", async () => {
+  const CSV_URL = "https://files.example.com/ot.csv";
+  const cuerpos = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u, o) => u.includes("/rest/v1/config_sistema") && (!o?.method || o.method === "GET"), respond: () => ({ status: 200, body: [{ valor: { url: CSV_URL } }] }) },
+    { match: (u) => u === CSV_URL, respond: () => ({ status: 200, body: PLANILLA_REAL }) },
+    {
+      match: (u, o) => u.includes("/rest/v1/proyectos?on_conflict=") && o?.method === "POST",
+      respond: (u, o) => {
+        const lote = JSON.parse(o.body);
+        cuerpos.push(lote);
+        if ("descripcion" in lote[0]) return { status: 400, body: { code: "PGRST204", message: "Could not find the 'descripcion' column of 'proyectos' in the schema cache" } };
+        return { status: 200, body: null };
+      },
+    },
+    { match: (u, o) => u.includes("/rest/v1/config_sistema") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
+  ]);
+  const { signAccessToken } = await import("../app/lib/jwt.ts");
+  const { POST } = await import("../app/api/proyectos/sync-csv/route.js");
+  const { token } = await signAccessToken({ empleadoId: "22222222-2222-2222-2222-222222222222", empresaId: "11111111-1111-1111-1111-111111111111", legajo: 7, rol: "gerencial" });
+  const res = await POST(new Request("http://localhost/api/proyectos/sync-csv", { method: "POST", headers: { Authorization: `Bearer ${token}` } }));
+  const json = await res.json();
+  assert.equal(json.procesados, 1);
+  assert.deepEqual(json.errores, []);
+  assert.equal(cuerpos.length, 2, "reintenta una vez sin la descripción");
+  assert.equal(cuerpos[1][0].ot, "M-7495");
+});
+
+test("lista del empleado — ordena por número de OT, de la más nueva a la más vieja", async () => {
+  const { ordenarPorOt } = await import("../app/hooks/useActividad.js");
+  const lista = ordenarPorOt([{ ot: "M-120" }, { ot: "M-7495" }, { ot: "C-8000" }, { ot: "905" }]);
+  assert.deepEqual(lista.map(p => p.ot), ["C-8000", "M-7495", "905", "M-120"]);
+});
