@@ -12,6 +12,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { ahoraArg, fechaSegura } from "./dates";
+import { modoGeo } from "./geoConfig";
 
 /** Configuración por tipo de uso: módulo del plan, tokens máximos, historial. */
 export const TIPOS_IA = {
@@ -136,8 +137,11 @@ export function construirPromptChat({ usuario, empresa, fichadaHoy, enPlanta, mi
   const apodo = usuario.apodo || usuario.nombre || "";
 
   const gc = usuario.geo_config;
-  let geoInfo = "Sin control de ubicación (puede fichar desde cualquier lugar)";
-  if (gc && gc.activo) {
+  const modo = modoGeo(gc);
+  let geoInfo = "Si la empresa tiene ubicaciones cargadas, debe fichar dentro de alguna de ellas; si no, puede fichar desde cualquier lugar.";
+  if (modo === "libre") {
+    geoInfo = "Sin control de ubicación (puede fichar desde cualquier lugar)";
+  } else if (modo === "asignada") {
     geoInfo = `Debe fichar desde: ${geoZonaNombre || "Ubicación asignada"} (radio: ${gc.radio || 150}m). Si no está en rango, el sistema rechazará el fichaje automáticamente.`;
   }
 

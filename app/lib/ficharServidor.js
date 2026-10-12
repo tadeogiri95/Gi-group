@@ -16,6 +16,7 @@ import { planVigente } from "./plans";
 import { MENSAJE_SIN_PLAN } from "./planEnforcement";
 import { validarMomento, horaLocal } from "./offline";
 import { zonasDePlanta } from "./plantas";
+import { modoGeo } from "./geoConfig";
 // ─── Hora local según timezone de empresa ───
 const TZ_DEFAULT = "America/Argentina/Buenos_Aires";
 
@@ -85,51 +86,54 @@ export async function procesarFichaje(sesion, rawBody, request) {
           (await sbGet(`empleados?id=eq.${empleadoId}&select=geo_config,planta_id&limit=1`, { silent: true, fallback: null }))?.[0] ??
           (await sbGet(`empleados?id=eq.${empleadoId}&select=geo_config&limit=1`, { silent: true, fallback: [] }) || [])[0];
         const gc = emp?.geo_config;
-        const asignada = gc?.activo && gc.ubicacion_id != null
-          ? zonas.filter((z) => String(z.id) === String(gc.ubicacion_id))
-          : [];
-        const validas = asignada.length > 0 ? asignada : zonasDePlanta(zonas, emp?.planta_id);
-        if (geo_lat == null || geo_lng == null) {
-          return NextResponse.json({
-            ok: false,
-            error: "Esta empresa requiere geolocalización para fichar. Habilitá el GPS e intentá de nuevo.",
-            tipo: "geo_requerida",
+        // Empleado que ficha desde cualquier lugar: no se controla la ubicación
+        if (modoGeo(gc) !== "libre") {
+          const asignada = gc?.activo && gc.ubicacion_id != null
+            ? zonas.filter((z) => String(z.id) === String(gc.ubicacion_id))
+            : [];
+          const validas = asignada.length > 0 ? asignada : zonasDePlanta(zonas, emp?.planta_id);
+          if (geo_lat == null || geo_lng == null) {
+            return NextResponse.json({
+              ok: false,
+              error: "Esta empresa requiere geolocalización para fichar. Habilitá el GPS e intentá de nuevo.",
+              tipo: "geo_requerida",
+            });
+          }
+          // El GPS bajo techo puede errar varios cientos de metros: se descuenta la
+          // precisión que informa el teléfono, con tope (si no, cualquiera ficha
+          // desde lejos declarando una precisión enorme).
+          const margen = Math.min(Number(geo_precision) || 0, MARGEN_GPS_MAX_M);
+          const medidas = validas.map((z) => {
+            // Vale el mayor entre el radio de la zona y el del empleado: el del
+            // empleado nace en 150 m por defecto y antes pisaba al de la zona.
+            const radio = Math.max(Number(z.radio) || 0, asignada.length > 0 ? Number(gc?.radio) || 0 : 0) || 150;
+            const dist = distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng));
+            return { nombre: z.nombre, radio, dist };
           });
-        }
-        // El GPS bajo techo puede errar varios cientos de metros: se descuenta la
-        // precisión que informa el teléfono, con tope (si no, cualquiera ficha
-        // desde lejos declarando una precisión enorme).
-        const margen = Math.min(Number(geo_precision) || 0, MARGEN_GPS_MAX_M);
-        const medidas = validas.map((z) => {
-          // Vale el mayor entre el radio de la zona y el del empleado: el del
-          // empleado nace en 150 m por defecto y antes pisaba al de la zona.
-          const radio = Math.max(Number(z.radio) || 0, asignada.length > 0 ? Number(gc?.radio) || 0 : 0) || 150;
-          const dist = distanciaMetros(geo_lat, geo_lng, Number(z.lat), Number(z.lng));
-          return { nombre: z.nombre, radio, dist };
-        });
-        const dentroDeAlgunaZona = medidas.some((m) => m.dist - margen <= m.radio);
-        if (!dentroDeAlgunaZona) {
-          const cerca = medidas.reduce((a, b) => (b.dist < a.dist ? b : a));
-          const precisionTxt = geo_precision ? `, precisión del GPS ±${Math.round(geo_precision)} m` : "";
-          const aproximada = Number(geo_precision) > PRECISION_APROXIMADA_M
-            ? ` Tu teléfono está dando una ubicación aproximada (±${Math.round(geo_precision)} m): activá la ubicación precisa del navegador en los ajustes del teléfono y volvé a intentar.`
-            : "";
-          logAudit({
-            empresa_id: empresaId,
-            actor_id: empleadoId,
-            actor_legajo: legajo,
-            actor_rol: sesion.rol,
-            accion: "fichaje_fuera_de_zona",
-            entidad: "fichada",
-            datos_despues: { accion, zona: cerca.nombre, distancia_m: Math.round(cerca.dist), radio_m: cerca.radio, precision_m: geo_precision ?? null },
-          });
-          return NextResponse.json({
-            ok: false,
-            error: `Estás fuera de la zona de fichaje: a ${Math.round(cerca.dist)} m de ${cerca.nombre || "la zona"} (radio ${cerca.radio} m${precisionTxt}).${aproximada || " Si estás en el lugar, pedile a tu supervisor que revise la ubicación de la zona."}`,
-            tipo: "fuera_de_zona",
-            distancia_m: Math.round(cerca.dist),
-            radio_m: cerca.radio,
-          });
+          const dentroDeAlgunaZona = medidas.some((m) => m.dist - margen <= m.radio);
+          if (!dentroDeAlgunaZona) {
+            const cerca = medidas.reduce((a, b) => (b.dist < a.dist ? b : a));
+            const precisionTxt = geo_precision ? `, precisión del GPS ±${Math.round(geo_precision)} m` : "";
+            const aproximada = Number(geo_precision) > PRECISION_APROXIMADA_M
+              ? ` Tu teléfono está dando una ubicación aproximada (±${Math.round(geo_precision)} m): activá la ubicación precisa del navegador en los ajustes del teléfono y volvé a intentar.`
+              : "";
+            logAudit({
+              empresa_id: empresaId,
+              actor_id: empleadoId,
+              actor_legajo: legajo,
+              actor_rol: sesion.rol,
+              accion: "fichaje_fuera_de_zona",
+              entidad: "fichada",
+              datos_despues: { accion, zona: cerca.nombre, distancia_m: Math.round(cerca.dist), radio_m: cerca.radio, precision_m: geo_precision ?? null },
+            });
+            return NextResponse.json({
+              ok: false,
+              error: `Estás fuera de la zona de fichaje: a ${Math.round(cerca.dist)} m de ${cerca.nombre || "la zona"} (radio ${cerca.radio} m${precisionTxt}).${aproximada || " Si estás en el lugar, pedile a tu supervisor que revise la ubicación de la zona."}`,
+              tipo: "fuera_de_zona",
+              distancia_m: Math.round(cerca.dist),
+              radio_m: cerca.radio,
+            });
+          }
         }
       }
     } catch (e) {

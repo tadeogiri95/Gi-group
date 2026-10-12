@@ -15,6 +15,7 @@ import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import PlantasPanel from "./components/PlantasPanel";
 import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
+import { MODOS_GEO, modoGeo, configParaModo, resumenGeo, avisoGeo } from "./lib/geoConfig";
 
 /* ═══ GOOGLE MAPS PARSER ═══ */
 /**
@@ -508,7 +509,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
   const [filtroDivision, setFiltroDivision] = useState("todas");
   const [expandedId, setExpandedId] = useState(null);
   const [seleccionados, setSeleccionados] = useState(new Set());
-  const [masivoCfg, setMasivoCfg] = useState({ activo: true, ubicacion_id: "", radio: 150 });
+  const [masivoCfg, setMasivoCfg] = useState({ modo: "asignada", ubicacion_id: "", radio: 150 });
   const [modalUbicacion, setModalUbicacion] = useState(null);
   const [savingUbicacion, setSavingUbicacion] = useState(false);
 
@@ -544,8 +545,8 @@ export default function GeolocalizacionScreen({ empresaId }) {
   const setGeoConfig = (empId, campo, valor) => {
     setConfig(p => ({ ...p, [empId]: { ...p[empId], [campo]: valor } }));
   };
-  const toggleGeoActivo = (empId) => {
-    setConfig(p => ({ ...p, [empId]: { ...p[empId], activo: !p[empId]?.activo } }));
+  const setModoGeo = (empId, modo) => {
+    setConfig(p => ({ ...p, [empId]: configParaModo(modo, p[empId]) }));
   };
 
   const toggleEmpleado = (id) => {
@@ -563,11 +564,11 @@ export default function GeolocalizacionScreen({ empresaId }) {
 
   const aplicarMasivo = () => {
     if (seleccionados.size === 0) { toast.show("Seleccioná al menos un empleado"); return; }
-    if (masivoCfg.activo && !masivoCfg.ubicacion_id) { toast.show("Seleccioná una ubicación"); return; }
+    if (masivoCfg.modo === "asignada" && !masivoCfg.ubicacion_id) { toast.show("Seleccioná una ubicación"); return; }
     setConfig(p => {
       const c = { ...p };
       seleccionados.forEach(id => {
-        c[id] = { activo: masivoCfg.activo, ubicacion_id: masivoCfg.activo ? masivoCfg.ubicacion_id : null, radio: masivoCfg.radio };
+        c[id] = configParaModo(masivoCfg.modo, masivoCfg);
       });
       return c;
     });
@@ -584,13 +585,12 @@ export default function GeolocalizacionScreen({ empresaId }) {
       try {
         await sb.patch(`empleados?id=eq.${emp.id}`, { geo_config: gc });
         try {
+          const aviso = avisoGeo(gc, getUbicacionNombre(gc.ubicacion_id));
           await sb.post("notificaciones", {
             destinatario_rol: String(emp.legajo),
             tipo: "info",
-            asunto: gc.activo ? "📍 Control de ubicación activado" : "📍 Control de ubicación desactivado",
-            detalle: gc.activo
-              ? `Se activó el control de geolocalización. Radio: ${gc.radio}m.`
-              : "Se desactivó el control de ubicación para tu fichaje.",
+            asunto: aviso.asunto,
+            detalle: aviso.detalle,
             urgencia: "normal",
             empresa_id: empresaId,
           });
@@ -667,16 +667,22 @@ export default function GeolocalizacionScreen({ empresaId }) {
     return u ? u.nombre : "Sin asignar";
   };
 
-  /* ── Toggle switch reusable ── */
-  const Toggle = ({ on, onClick, label }) => (
-    <button
-      onClick={onClick}
-      aria-label={label || (on ? "Desactivar" : "Activar")}
-      aria-pressed={on}
-      className={`relative border-none cursor-pointer rounded-full shrink-0 w-12 h-7 transition-all duration-200 ${on ? "bg-gypi-green" : "bg-(--color-text-muted)"}`}
-    >
-      <div className={`absolute rounded-full bg-white w-[22px] h-[22px] top-[3px] transition-all duration-200 ${on ? "left-[23px]" : "left-[3px]"}`} />
-    </button>
+  /* ── Elegir cómo se controla la ubicación al fichar ── */
+  const ModoGeoSelector = ({ valor, onChange }) => (
+    <div role="radiogroup" aria-label="Control de ubicación al fichar" className="flex flex-col gap-1.5 mb-3">
+      {MODOS_GEO.map(m => (
+        <button
+          key={m.id}
+          role="radio"
+          aria-checked={valor === m.id}
+          onClick={() => onChange(m.id)}
+          className={`text-left py-2 px-3 rounded-lg border cursor-pointer font-body ${valor === m.id ? "border-gypi-cyan bg-gypi-cyan/10" : "border-gypi-border bg-transparent"}`}
+        >
+          <div className="text-[13px] font-semibold text-gypi-text">{m.label}</div>
+          <div className="text-[11px] text-gypi-dim mt-0.5">{m.detalle}</div>
+        </button>
+      ))}
+    </div>
   );
 
   return (
@@ -722,18 +728,11 @@ export default function GeolocalizacionScreen({ empresaId }) {
               ① Definí la configuración
             </div>
 
-            {/* Control activo */}
-            <div className="flex items-center justify-between py-2.5 mb-2">
-              <div>
-                <div className="text-[13px] font-semibold text-gypi-text">Control de ubicación</div>
-                <div className="text-[11px] text-gypi-dim mt-0.5">
-                  {masivoCfg.activo ? "Fichaje con geolocalización" : "Sin control de ubicación"}
-                </div>
-              </div>
-              <Toggle on={masivoCfg.activo} onClick={() => setMasivoCfg(p => ({ ...p, activo: !p.activo }))} />
-            </div>
+            {/* Control de ubicación */}
+            <div className="text-[13px] font-semibold text-gypi-text mb-1.5">Control de ubicación</div>
+            <ModoGeoSelector valor={masivoCfg.modo} onChange={(modo) => setMasivoCfg(p => ({ ...p, modo }))} />
 
-            {masivoCfg.activo && (
+            {masivoCfg.modo === "asignada" && (
               <>
                 {/* Ubicación */}
                 <div className="mb-3">
@@ -817,7 +816,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-semibold text-gypi-text truncate">{emp.apodo || emp.nombre}</div>
                       <div className="text-xs text-gypi-dim">
-                        L-{emp.legajo} · {gc.activo ? `📍 ${getUbicacionNombre(gc.ubicacion_id)}` : "Sin control"}
+                        L-{emp.legajo} · {resumenGeo(gc, getUbicacionNombre(gc.ubicacion_id))}
                       </div>
                     </div>
                     {changed && <Tag color={MARCA}>Editado</Tag>}
@@ -864,7 +863,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold text-gypi-text truncate">{emp.apodo || emp.nombre}</div>
                       <div className="text-xs text-gypi-dim mt-0.5">
-                        L-{emp.legajo} · {gc.activo ? `📍 ${getUbicacionNombre(gc.ubicacion_id)} · ${gc.radio || 150}m` : "Sin control de ubicación"}
+                        L-{emp.legajo} · {resumenGeo(gc, getUbicacionNombre(gc.ubicacion_id))}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -892,18 +891,11 @@ export default function GeolocalizacionScreen({ empresaId }) {
                   {/* Expanded */}
                   {isExp && (
                     <div className="px-3.5 pb-3.5">
-                      {/* Toggle activo */}
-                      <div className={`flex items-center justify-between py-2.5 mb-3 px-2 rounded-lg ${gc.activo ? "bg-gypi-green/5" : "bg-gypi-surf-hi"}`}>
-                        <div>
-                          <div className="text-[13px] font-semibold text-gypi-text">Control de ubicación</div>
-                          <div className="text-[11px] text-gypi-dim mt-0.5">
-                            {gc.activo ? "Fichaje requiere geolocalización" : "Fichaje sin restricción de ubicación"}
-                          </div>
-                        </div>
-                        <Toggle on={gc.activo} onClick={() => toggleGeoActivo(emp.id)} />
-                      </div>
+                      {/* Control de ubicación */}
+                      <div className="text-[13px] font-semibold text-gypi-text mb-1.5">Control de ubicación</div>
+                      <ModoGeoSelector valor={modoGeo(gc)} onChange={(modo) => setModoGeo(emp.id, modo)} />
 
-                      {gc.activo && (
+                      {modoGeo(gc) === "asignada" && (
                         <>
                           {/* Ubicación select */}
                           <div className="mb-3">

@@ -45,7 +45,7 @@ export interface Empleado {
   diagrama?: Record<string, { in?: string; out?: string }>;
   created_at?: string;
   updated_at?: string;
-  geo_config?: { activo: boolean; ubicacion_id: string | null; radio: number };
+  geo_config?: { activo: boolean; libre?: boolean; ubicacion_id: string | null; radio: number };
   pre_cargado?: boolean;
   estado_activacion?: string;
   horas_semanales?: number;
