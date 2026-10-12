@@ -6,7 +6,8 @@
 // policies `tenant_isolation_auth_*` (migraciones 050, 058 y 089): aunque el
 // código tuviera un error, la base no devuelve ni toca filas de otra empresa.
 //
-// Se activa con RLS_API_DATA=on. Apagado, todo sigue con service_role.
+// Se activa con RLS_API_DATA=on (/api/data) y RLS_RUTAS=on (las demás rutas
+// que pasan `{ sesion }` a sbHelpers, etapa 2). Apagado, siguen con service_role.
 // ═══════════════════════════════════════════════════════════
 
 import { SignJWT } from "jose";
@@ -15,6 +16,10 @@ const DURACION_SEGUNDOS = 5 * 60;
 
 export function rlsActivo() {
   return process.env.RLS_API_DATA === "on";
+}
+
+export function rlsRutasActivo() {
+  return process.env.RLS_RUTAS === "on";
 }
 
 // Falta de configuración con el interruptor prendido: se corta (fail-closed)

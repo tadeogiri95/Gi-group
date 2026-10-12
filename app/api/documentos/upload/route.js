@@ -51,14 +51,14 @@ export async function POST(req) {
     // ─── Resolver empleado destino ───
     let empleadoId = sesion.empleado_id;
     if (ROLES_GERENCIA.has(sesion.rol) && empleadoIdSolicitado && isUUID(empleadoIdSolicitado)) {
-      const empleado = await sbGet(`empleados?id=eq.${empleadoIdSolicitado}&empresa_id=eq.${sesion.empresa_id}&select=id`);
+      const empleado = await sbGet(`empleados?id=eq.${empleadoIdSolicitado}&empresa_id=eq.${sesion.empresa_id}&select=id`, { sesion });
       if (!empleado?.length) return NextResponse.json({ error: "Empleado no encontrado" }, { status: 404 });
       if (!dentroDelAlcance(await alcanceDe(sesion), { id: empleadoIdSolicitado })) return respuestaFueraDeAlcance();
       empleadoId = empleadoIdSolicitado;
     }
 
     // ─── Validar tipo de documento (pertenece a la empresa, formatos aceptados) ───
-    const tipos = await sbGet(`tipos_documento_requerido?id=eq.${tipoDocumentoId}&empresa_id=eq.${sesion.empresa_id}&select=id,formatos_aceptados,admite_multiples`);
+    const tipos = await sbGet(`tipos_documento_requerido?id=eq.${tipoDocumentoId}&empresa_id=eq.${sesion.empresa_id}&select=id,formatos_aceptados,admite_multiples`, { sesion });
     const tipo = tipos?.[0];
     if (!tipo) return NextResponse.json({ error: "Tipo de documento no encontrado" }, { status: 404 });
 
@@ -78,7 +78,7 @@ export async function POST(req) {
 
     // ─── Si no admite múltiples, reemplazar: borrar archivo(s) + fila(s) previas ───
     if (!tipo.admite_multiples) {
-      const previos = await sbGet(`documentos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=eq.${empleadoId}&tipo_documento_id=eq.${tipoDocumentoId}&select=id,storage_path`);
+      const previos = await sbGet(`documentos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=eq.${empleadoId}&tipo_documento_id=eq.${tipoDocumentoId}&select=id,storage_path`, { sesion });
       if (previos?.length) {
         try {
           await fetch(`${SB_URL}/storage/v1/object/remove/${BUCKET}`, {
@@ -88,7 +88,7 @@ export async function POST(req) {
           });
         } catch { /* si falla el borrado del storage, seguimos: no debe bloquear el reemplazo */ }
         const ids = previos.map((p) => p.id).join(",");
-        await sbDelete(`documentos_empleado?id=in.(${ids})`, { silent: true });
+        await sbDelete(`documentos_empleado?id=in.(${ids})`, { silent: true, sesion });
       }
     }
 
@@ -118,7 +118,7 @@ export async function POST(req) {
       mime_type: file.type,
       tamano_bytes: file.size,
       estado: "cargado",
-    });
+    }, { sesion });
 
     return NextResponse.json({ ok: true, documento: created?.[0] || null });
   } catch (err) {

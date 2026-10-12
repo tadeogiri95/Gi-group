@@ -15,8 +15,8 @@ export async function GET(req) {
     if (!sesion) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const [exigidos, cargados] = await Promise.all([
-      sbGet(`documentos_exigidos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=eq.${sesion.empleado_id}&select=tipo_documento_id,tipos_documento_requerido(id,nombre,formatos_aceptados,admite_multiples,tipo_carga)`),
-      sbGet(`documentos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=eq.${sesion.empleado_id}&order=fecha_carga.desc&select=id,tipo_documento_id,nombre_archivo,mime_type,estado,fecha_carga`),
+      sbGet(`documentos_exigidos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=eq.${sesion.empleado_id}&select=tipo_documento_id,tipos_documento_requerido(id,nombre,formatos_aceptados,admite_multiples,tipo_carga)`, { sesion }),
+      sbGet(`documentos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=eq.${sesion.empleado_id}&order=fecha_carga.desc&select=id,tipo_documento_id,nombre_archivo,mime_type,estado,fecha_carga`, { sesion }),
     ]);
 
     const exigidosConDetalle = (exigidos || [])

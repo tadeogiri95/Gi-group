@@ -30,14 +30,14 @@ export async function POST(req) {
     const alcance = await alcanceDe(sesion);
     if (empleadoIds.some((id) => !dentroDelAlcance(alcance, { id }))) return respuestaFueraDeAlcance();
 
-    const tipo = await sbGet(`tipos_documento_requerido?id=eq.${tipoDocumentoId}&empresa_id=eq.${sesion.empresa_id}&select=id`);
+    const tipo = await sbGet(`tipos_documento_requerido?id=eq.${tipoDocumentoId}&empresa_id=eq.${sesion.empresa_id}&select=id`, { sesion });
     if (!tipo?.length) return NextResponse.json({ error: "Tipo de documento no encontrado" }, { status: 404 });
 
-    const empleadosValidos = await sbGet(`empleados?empresa_id=eq.${sesion.empresa_id}&id=in.(${empleadoIds.join(",")})&select=id`);
+    const empleadosValidos = await sbGet(`empleados?empresa_id=eq.${sesion.empresa_id}&id=in.(${empleadoIds.join(",")})&select=id`, { sesion });
     const idsValidos = (empleadosValidos || []).map((e) => e.id);
     if (idsValidos.length === 0) return NextResponse.json({ error: "Ningún empleado válido" }, { status: 400 });
 
-    const yaAsignados = await sbGet(`documentos_exigidos_empleado?tipo_documento_id=eq.${tipoDocumentoId}&empleado_id=in.(${idsValidos.join(",")})&select=empleado_id`);
+    const yaAsignados = await sbGet(`documentos_exigidos_empleado?tipo_documento_id=eq.${tipoDocumentoId}&empleado_id=in.(${idsValidos.join(",")})&select=empleado_id`, { sesion });
     const yaAsignadosSet = new Set((yaAsignados || []).map((a) => a.empleado_id));
     const nuevos = idsValidos.filter((id) => !yaAsignadosSet.has(id));
 
@@ -46,7 +46,7 @@ export async function POST(req) {
         empresa_id: sesion.empresa_id,
         empleado_id,
         tipo_documento_id: tipoDocumentoId,
-      })));
+      })), { sesion });
     }
 
     return NextResponse.json({ ok: true, asignados: nuevos.length, ya_asignados: yaAsignadosSet.size });
@@ -79,7 +79,7 @@ export async function DELETE(req) {
     const alcance = await alcanceDe(sesion);
     if (empleadoIds.some((id) => !dentroDelAlcance(alcance, { id }))) return respuestaFueraDeAlcance();
 
-    await sbDelete(`documentos_exigidos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=in.(${empleadoIds.join(",")})&tipo_documento_id=eq.${tipoDocumentoId}`);
+    await sbDelete(`documentos_exigidos_empleado?empresa_id=eq.${sesion.empresa_id}&empleado_id=in.(${empleadoIds.join(",")})&tipo_documento_id=eq.${tipoDocumentoId}`, { sesion });
     return NextResponse.json({ ok: true, desasignados: empleadoIds.length });
   } catch (err) {
     logger.error("[documentos/asignar] DELETE Error", err);
