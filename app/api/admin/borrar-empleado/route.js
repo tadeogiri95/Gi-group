@@ -9,8 +9,8 @@ import { logAudit } from "../../../lib/audit";
 
 import { ipCliente } from "../../../lib/ip";
 import { rechazarSiSupervisor } from "../../../lib/alcance";
+import { sbHeaders } from "../../../lib/sbHelpers";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 export async function POST(req) {
   const sesion = await validarToken(req);
@@ -27,10 +27,12 @@ export async function POST(req) {
   const { empleado_id } = body;
   if (!empleado_id) return NextResponse.json({ error: "empleado_id requerido" }, { status: 400 });
 
-  // Verificar que el empleado pertenece a la misma empresa que el solicitante
+  // Verificar que el empleado pertenece a la misma empresa que el solicitante.
+  // Con RLS_RUTAS=on, la lectura y la anonimización van con el pase del
+  // usuario (ítem 37, etapa 2): la base tampoco deja tocar otra empresa.
   const checkRes = await fetch(
     `${SB_URL}/rest/v1/empleados?id=eq.${empleado_id}&empresa_id=eq.${sesion.empresa_id}&select=id,legajo,nombre&limit=1`,
-    { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } }
+    { headers: await sbHeaders({ sesion }) }
   );
   const rows = await checkRes.json();
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -49,12 +51,7 @@ export async function POST(req) {
     `${SB_URL}/rest/v1/empleados?id=eq.${empleado_id}&empresa_id=eq.${sesion.empresa_id}`,
     {
       method: "PATCH",
-      headers: {
-        apikey: SB_KEY,
-        Authorization: `Bearer ${SB_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
+      headers: await sbHeaders({ sesion }, { Prefer: "return=minimal" }),
       body: JSON.stringify({
         nombre: `Empleado ${emp.legajo}`,
         email: null,
