@@ -4,7 +4,8 @@
 // quién trabajó y retrabajos, con las tareas que ya se registran. Desde la
 // parte 4 también la cantidad hecha por etapa y las paradas en la OT; desde
 // la parte 6, los módulos hechos contra el total y las no conformidades; desde
-// la parte 8, el costo de mano de obra (solo el dueño, con costoHora).
+// la parte 8, el costo de mano de obra (solo el dueño, con costoHora); desde
+// la parte 9, cuántos sueltos hay y cuántos están en acopio y cargados.
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
@@ -12,6 +13,7 @@ import { buscarDivision } from "../lib/rutas";
 import { fechaCorta } from "../lib/ot";
 import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from "../lib/calidad";
 import { costoOp, fmtPesos } from "../lib/costo";
+import { resumenSueltos } from "../lib/sueltos";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -41,6 +43,7 @@ function Barra({ pct }) {
 export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, onClose }) {
   const [tareas, setTareas] = useState(null);
   const [noConformes, setNoConformes] = useState([]);
+  const [sueltos, setSueltos] = useState([]);
   const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
 
@@ -50,14 +53,17 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
     (async () => {
       try {
         const ot = encodeURIComponent(proyecto.ot);
-        const [regs, emps, ncs] = await Promise.all([
+        const [regs, emps, ncs, sts] = await Promise.all([
           sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,etapa,tipo,causa,cantidad,duracion_min&order=hora_inicio.asc`),
           sb.get(`empleados?empresa_id=eq.${empresaId}&select=id,legajo,nombre,apodo`).catch(() => []),
           // Sin la migración 101 no hay tabla: el detalle sigue sin ese dato
           sb.get(`no_conformidades?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,defecto,cantidad,pieza,decision,minutos_retrabajo,created_at&order=created_at.desc`).catch(() => []),
+          // Sin la migración 103, igual
+          sb.get(`sueltos_ot?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,acopio,carga`).catch(() => []),
         ]);
         if (!vivo) return;
         setNoConformes(ncs || []);
+        setSueltos(sts || []);
         setTareas(regs.data || []);
         setEmpleados(emps || []);
       } catch (e) {
@@ -75,6 +81,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   );
   const maxEtapa = resumen ? Math.max(1, ...resumen.etapas.map((e) => e.min)) : 1;
   const costo = useMemo(() => costoOp(resumen, costoHora), [resumen, costoHora]);
+  const resSueltos = resumenSueltos(sueltos);
 
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Detalle de la OT ${proyecto?.ot}`}>
@@ -95,6 +102,10 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
+
+        {resSueltos.total > 0 && (
+          <div className="text-xs text-gypi-dim mb-3">📦 Sueltos: {resSueltos.total === 1 ? "1 ítem" : `${resSueltos.total} ítems`} · Acopio {resSueltos.acopio} de {resSueltos.total} · Carga {resSueltos.carga} de {resSueltos.total}</div>
+        )}
 
         {error ? (
           <div role="alert" className="text-sm text-gypi-red">{error}</div>

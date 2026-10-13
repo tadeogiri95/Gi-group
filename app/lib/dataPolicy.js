@@ -53,6 +53,7 @@ export const POLICY = {
   plantas:                      { GET: "all" },   // se editan por /api/config-empresa
   avance_etapas:                { GET: "all" },   // se escribe por /api/avance (OP parte 5)
   no_conformidades:             { GET: "all" },   // se escribe por /api/no-conformidades (OP parte 6)
+  sueltos_ot:                   { GET: "all" },   // se escribe por /api/sueltos (OP parte 9)
   empresa:                      { GET: "all",     PATCH: "gestion" },
 
   // Solo gestión.
