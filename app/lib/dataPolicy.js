@@ -56,6 +56,8 @@ export const POLICY = {
   sueltos_ot:                   { GET: "all" },   // se escribe por /api/sueltos (OP parte 9)
   bultos_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   cargas_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
+  actas_ot:                     { GET: "all" },   // se escribe por /api/acta (OP parte 11)
+  pendientes_obra:              { GET: "all" },   // se escribe por /api/acta (OP parte 11)
   empresa:                      { GET: "all",     PATCH: "gestion" },
 
   // Solo gestión.

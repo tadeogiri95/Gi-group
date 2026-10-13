@@ -10,6 +10,7 @@ import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { esEtapaDeModulos, modulosHechos, textoModulos } from "../lib/calidad";
 import { fechaCorta } from "../lib/ot";
 import { hoyArg } from "../lib/dates";
+import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 
 function claseCelda(estado) {
   switch (estado) {
@@ -52,6 +53,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
   const [horas, setHoras] = useState(new Set());
   const [modulos, setModulos] = useState(new Map()); // "OT|etapa" → módulos hechos (101)
   const [ncPendientes, setNcPendientes] = useState(new Map()); // OT → no conformidades sin decidir
+  const [instalacion, setInstalacion] = useState(new Map()); // OT → estado del acta (105)
   const [cargando, setCargando] = useState(true);
   const [aviso, setAviso] = useState(null);
   const [soloPorFirmar, setSoloPorFirmar] = useState(false);
@@ -67,11 +69,14 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
     setCargando(true);
     // Horas de los últimos 6 meses: alcanza para marcar las etapas "en curso"
     const desde = hoyArg(new Date(Date.now() - 183 * 86400000));
-    const [av, hs, nc] = await Promise.all([
+    const [av, hs, nc, actas, pendObra] = await Promise.all([
       sbGetAll(`avance_etapas?empresa_id=eq.${empresaId}&select=ot,etapa,estado,terminada_at,aprobada_at`).catch(() => null),
       sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&etapa=gt.0&fecha=gte.${desde}&select=codigo_proyecto,etapa,cantidad`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
       // Sin la migración 101 no hay tabla: el tablero sigue sin ese dato
       sbGetAll(`no_conformidades?empresa_id=eq.${empresaId}&decision=is.null&select=ot`).catch(() => ({ data: [] })),
+      // Actas de instalación y pendientes abiertos (105); sin migración, sin dato
+      sbGetAll(`actas_ot?empresa_id=eq.${empresaId}&firmada_at=not.is.null&select=ot,firmada_at`).catch(() => ({ data: [] })),
+      sbGetAll(`pendientes_obra?empresa_id=eq.${empresaId}&resuelto=eq.false&select=ot,resuelto`).catch(() => ({ data: [] })),
     ]);
     setAviso(av ? null : "No se pudo leer el avance (¿falta correr la migración 100?). Se muestran solo las horas.");
     setAvance(av?.data || []);
@@ -80,6 +85,9 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
     const pend = new Map();
     for (const r of nc?.data || []) pend.set(String(r.ot), (pend.get(String(r.ot)) || 0) + 1);
     setNcPendientes(pend);
+    const abiertos = new Map();
+    for (const r of pendObra?.data || []) abiertos.set(String(r.ot), [...(abiertos.get(String(r.ot)) || []), r]);
+    setInstalacion(new Map((actas?.data || []).map((a) => [String(a.ot), estadoActa({ acta: a, pendientes: abiertos.get(String(a.ot)) || [] }).estado])));
     setCargando(false);
   }, [empresaId]);
 
@@ -170,6 +178,9 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
                   )}
                 </button>
                 {p.puntos_criticos && <div className="text-[11px] text-gypi-amber-ink truncate mb-1">⚠ {p.puntos_criticos}</div>}
+                {instalacion.has(String(p.ot)) && (
+                  <div className={`text-[11px] font-bold mb-1 ${instalacion.get(String(p.ot)) === "instalada" ? "text-gypi-green" : "text-gypi-amber-ink"}`}>{NOMBRE_ESTADO_ACTA[instalacion.get(String(p.ot))]}</div>
+                )}
                 {ncPendientes.get(String(p.ot)) > 0 && (
                   <div className="text-[11px] text-gypi-red font-bold mb-1">🟥 {ncPendientes.get(String(p.ot)) === 1 ? "1 pieza no conforme" : `${ncPendientes.get(String(p.ot))} piezas no conformes`} sin decidir</div>
                 )}
