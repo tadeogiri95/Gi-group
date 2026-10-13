@@ -8,6 +8,7 @@ import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
+import DetalleOp from "./components/DetalleOp";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -136,7 +137,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ProyectosScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, empresa, updateEmpresa } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, empresa, updateEmpresa } = useAuth();
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -145,6 +146,7 @@ export default function ProyectosScreen({ empresaId }) {
   const [search, setSearch] = useState("");
   const [filtroDiv, setFiltroDiv] = useState("");
   const [modal, setModal] = useState(null);
+  const [detalle, setDetalle] = useState(null);
   const [csvFilas, setCsvFilas] = useState(null);
   const [csvRawText, setCsvRawText] = useState(null);
   const [csvProgreso, setCsvProgreso] = useState("");
@@ -488,6 +490,7 @@ export default function ProyectosScreen({ empresaId }) {
                   {p.estado !== "cerrado" && p.terminado_planilla && <Tag color="var(--color-text-muted)">terminada en planilla</Tag>}
                 </div>
                 <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
+                  <button onClick={() => setDetalle(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">📊 Detalle</button>
                   <button onClick={() => setModal(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
                   {p.estado === "activo" ? (
                     <button onClick={() => cerrarProyecto(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">Cerrar</button>
@@ -499,6 +502,9 @@ export default function ProyectosScreen({ empresaId }) {
             );
           })}
         </div>
+      )}
+      {detalle && (
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} onClose={() => setDetalle(null)} />
       )}
       {ConfirmDialog}
     </div>
