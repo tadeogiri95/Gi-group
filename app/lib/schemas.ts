@@ -285,6 +285,8 @@ export const configPatchBody = z.discriminatedUnion("action", [
     color: color.optional(),
     orden: z.number().int().min(0).max(999).optional(),
     activa: z.boolean().optional(),
+    // Ruta de etapas (098): códigos en orden; null o [] = sin ruta
+    ruta_etapas: z.array(z.number().int().min(1).max(999)).max(40).nullable().optional(),
   }),
   z.object({
     action: z.literal("update_etapa"),

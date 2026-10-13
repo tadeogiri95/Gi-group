@@ -32,6 +32,7 @@ import { otDesdeCodigo, recordarOT, otsRecientes } from "./lib/ot";
 import { apiFetch } from "./lib/supabase";
 import { pendientes } from "./lib/colaOffline";
 import { vibrar } from "./lib/vibrar";
+import { etapasParaOperario, otPasaPorEtapa } from "./lib/rutas";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -49,6 +50,7 @@ export default function ActividadScreen({
   elapsed,
   historial,
   etapas = [],
+  divisiones = [],
   proyectos = [],
   proyectosLoading = false,
   loading,
@@ -81,7 +83,11 @@ export default function ActividadScreen({
   const puedeEscanear = !!empresa?.escaner_ot && escanerDisponible();
   const [escaneando, setEscaneando] = useState(false);
   const [avisoEscaneo, setAvisoEscaneo] = useState("");
-  const recientes = otsRecientes(usuario?.id, proyectos);
+  // Órdenes de Producción, parte 2: con ruta en su división, el operario ve solo
+  // esas etapas, y al elegir una, solo las OT cuya división pasa por ella.
+  const etapasVisibles = etapasParaOperario(etapas, divisiones, usuario?.division);
+  const enRutaDeEtapa = (p) => !(etapaSeleccionada > 0) || otPasaPorEtapa(p, divisiones, etapaSeleccionada);
+  const recientes = otsRecientes(usuario?.id, proyectos).filter(enRutaDeEtapa);
 
   // OT que la app todavía no tiene: se trae la planilla de nuevo (el servidor
   // lo hace como mucho una vez cada 5 minutos) y se recarga la lista.
@@ -132,7 +138,7 @@ export default function ActividadScreen({
     }
   }, [state, step]);
 
-  const proyectosFiltrados = proyectos.filter(p => {
+  const coincidencias = proyectos.filter(p => {
     if (!busqueda.trim()) return true;
     const q = busqueda.toLowerCase();
     return (
@@ -146,7 +152,9 @@ export default function ActividadScreen({
   });
 
   // Búsqueda sin resultados: probar una vez con la planilla actualizada
-  const sinResultados = busqueda.trim().length >= 3 && proyectosFiltrados.length === 0;
+  const proyectosFiltrados = coincidencias.filter(enRutaDeEtapa);
+  const ocultasPorRuta = coincidencias.length - proyectosFiltrados.length;
+  const sinResultados = busqueda.trim().length >= 3 && coincidencias.length === 0;
   useEffect(() => {
     if (!sinResultados || !recargarProyectos) return;
     const q = busqueda.trim().toLowerCase();
@@ -401,7 +409,7 @@ export default function ActividadScreen({
               <div className="text-[15px] font-bold mb-1 font-heading">¿Qué vas a hacer?</div>
               <div className="text-xs text-gypi-dim mb-4">Elegí la etapa de trabajo</div>
               <div className="grid grid-cols-2 gap-2">
-                {etapas.filter(e => e.codigo > 0).map(e => (
+                {etapasVisibles.map(e => (
                   <button key={e.codigo} onClick={() => { setEtapaSeleccionada(e.codigo); setStep(2); }} className="bg-gypi-surface border border-gypi-border rounded-[14px] py-3.5 px-3 cursor-pointer text-left flex items-center gap-2.5 font-body transition-all">
                     <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-lg shrink-0" style={{ background: `${e.color}22`, color: e.color }}>{e.icon}</div>
                     <div>
@@ -529,6 +537,9 @@ export default function ActividadScreen({
                     })
                   )}
                 </div>
+                {busqueda && ocultasPorRuta > 0 && (
+                  <div className="text-xs text-gypi-dim -mt-2 mb-3">{ocultasPorRuta === 1 ? "Otra OT coincide" : `Otras ${ocultasPorRuta} OT coinciden`}, pero su división no pasa por esta etapa.</div>
+                )}
 
                 {saving && <div role="status" className="text-center text-[13px] text-gypi-dim mb-2">Iniciando…</div>}
                 <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="w-full min-h-[48px] p-3.5 rounded-[14px] border-none text-sm font-semibold font-body cursor-pointer bg-gypi-surf-hi text-gypi-text">← Cambiar la etapa</button>

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
 import { getToken, apiFetch } from "./lib/supabase";
 import ResumenSemanalSwitch from "./components/ResumenSemanalSwitch";
+import RutasEditor from "./components/RutasEditor";
 import { useToast } from "./components/ui/Toast";
 
 /* ─── Icon list for selectors ─── */
@@ -19,6 +20,7 @@ const TABS = [
   { key: "logo", label: "Logo" },
   { key: "divisiones", label: "Divisiones" },
   { key: "etapas", label: "Etapas" },
+  { key: "rutas", label: "Rutas" },
 ];
 
 /* ─── Hex validation ─── */
@@ -541,6 +543,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             ))}
           </div>}
         </>;
+
+      case "rutas":
+        return <RutasEditor divisiones={divisiones} etapas={etapas} avisar={showToast}
+          onGuardado={(div) => { setDivisiones((prev) => prev.map((d) => (d.id === div.id ? div : d))); onUpdate?.({}); }} />;
 
       default: return null;
     }
