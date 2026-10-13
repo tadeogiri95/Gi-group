@@ -90,7 +90,7 @@ test("RLS prendido — también en escrituras", async () => {
   assert.equal(captura.headers.apikey, "test-anon-key");
 });
 
-test("RLS prendido — las vistas de resumen siguen con service_role", async () => {
+test("RLS prendido sin RLS_RUTAS — las vistas de resumen siguen con service_role", async () => {
   process.env.RLS_API_DATA = "on";
   const captura = {};
   global.fetch = mockTabla("v_resumen_diario", captura);
