@@ -172,15 +172,23 @@ export async function PATCH(request) {
     if (action === "update_division") {
       if (!(await perteneceAEmpresa("divisiones", id, empresaId)))
         return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-      const { label, icon, color, orden, activa } = body;
+      const { label, icon, color, orden, activa, ruta_etapas } = body;
       const updates = {};
+      if (ruta_etapas !== undefined) updates.ruta_etapas = ruta_etapas?.length ? [...new Set(ruta_etapas)] : null;
       if (label !== undefined) updates.label = label;
       if (icon !== undefined) updates.icon = icon;
       if (color !== undefined) updates.color = color;
       if (orden !== undefined) updates.orden = orden;
       if (activa !== undefined) updates.activa = activa;
-      const result = await sbPatch(`divisiones?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
-      return NextResponse.json({ division: result[0] });
+      try {
+        const result = await sbPatch(`divisiones?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
+        return NextResponse.json({ division: result[0] });
+      } catch (err) {
+        if (updates.ruta_etapas !== undefined && String(err?.message).includes("ruta_etapas")) {
+          return NextResponse.json({ error: "Para guardar rutas falta correr la migración 098 en Supabase." }, { status: 409 });
+        }
+        throw err;
+      }
     }
 
     if (action === "update_etapa") {
