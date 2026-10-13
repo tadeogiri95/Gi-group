@@ -28,6 +28,7 @@ const TABS = [
   { key: "rutas", label: "Rutas" },
   { key: "paradas", label: "Paradas" },
   { key: "liberacion", label: "Liberación" },
+  { key: "carga", label: "Carga" },
   { key: "defectos", label: "Defectos" },
   { key: "costo", label: "Costo", soloDueno: true },
 ];
@@ -60,7 +61,7 @@ function ColorRow({ label, value, onChange }) {
 
 export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [] }) {
   const [tab, setTab] = useState("general");
-  const { usuario, causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, defectos, setDefectos } = useAuth();
+  const { usuario, causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, checklistCarga, setChecklistCarga, defectos, setDefectos } = useAuth();
   // Los costos los ve solo el dueño (OP parte 8)
   const tabs = TABS.filter((t) => !t.soloDueno || usuario?.rol === "gerencial");
   const [saving, setSaving] = useState(false);
@@ -571,7 +572,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         return <CausasEditor causas={causasParada} onGuardadas={setCausasParada} avisar={showToast} />;
 
       case "liberacion":
-        return <ChecklistEditor items={checklistLiberacion} onGuardado={setChecklistLiberacion} avisar={showToast} />;
+        return <ChecklistEditor key="liberacion" items={checklistLiberacion} onGuardado={setChecklistLiberacion} avisar={showToast} />;
+
+      case "carga":
+        return <ChecklistEditor key="carga" tipo="carga" items={checklistCarga} onGuardado={setChecklistCarga} avisar={showToast} />;
 
       case "defectos":
         return <DefectosEditor defectos={defectos} etapas={etapas} onGuardados={setDefectos} avisar={showToast} />;

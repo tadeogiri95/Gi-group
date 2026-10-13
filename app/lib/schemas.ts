@@ -265,6 +265,24 @@ export const sueltosBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
 ]);
 
+// ── /api/carga (104): acopio y carga de la OT ─────────────────────────────
+const idCarga = z.number().int().positive();
+export const cargaBody = z.discriminatedUnion("accion", [
+  z.object({ accion: z.literal("bulto_agregar"), ot: otSuelto, contenido: textoSuelto(300) }).strict(),
+  z.object({ accion: z.literal("bulto_borrar"), id: idCarga }).strict(),
+  z.object({ accion: z.literal("bulto_tildar"), id: idCarga, valor: z.boolean() }).strict(),
+  z.object({ accion: z.literal("checklist"), ot: otSuelto, items: z.array(z.string().trim().min(1).max(200)).max(20) }).strict(),
+  z.object({
+    accion: z.literal("faltantes"),
+    ot: otSuelto,
+    texto: textoSuelto(1000),
+    fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
+  }).strict(),
+  z.object({ accion: z.literal("foto"), ot: otSuelto, url: z.string().trim().url().max(500).nullable() }).strict(),
+  z.object({ accion: z.literal("firmar"), ot: otSuelto, rol: z.enum(["carga", "instalacion"]) }).strict(),
+  z.object({ accion: z.literal("desfirmar"), ot: otSuelto }).strict(),
+]);
+
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
 export const costoHoraBody = z.object({
   costo_hora: z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100),
@@ -375,6 +393,11 @@ export const configPatchBody = z.discriminatedUnion("action", [
   z.object({
     // Checklist de liberación de la OT (100); [] = sin checklist
     action: z.literal("update_checklist"),
+    items: z.array(z.string().trim().min(1).max(200)).max(20),
+  }),
+  z.object({
+    // Checklist de carga del camión (104); [] = sin checklist
+    action: z.literal("update_checklist_carga"),
     items: z.array(z.string().trim().min(1).max(200)).max(20),
   }),
   z.object({

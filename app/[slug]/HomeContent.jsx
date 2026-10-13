@@ -54,6 +54,7 @@ const PlantaScreen = dynamic(() => import("../components/screens/PlantaScreen"),
 const DashboardGerencia = dynamic(() => import("../dashboard_gerencia"), { ssr: false });
 const GestionPersonalScreen = dynamic(() => import("../gestion_personal_screen"), { ssr: false });
 const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: false });
+const CargaOt = dynamic(() => import("../components/CargaOt"), { ssr: false });
 
 // Demo data — cargado dinámicamente solo cuando ?demo=true (nunca para usuarios reales)
 
@@ -72,7 +73,7 @@ export default function HomeContent() {
   // ─── Auth y empresa desde contexto ───
   const {
     usuario, empresa,
-    divisiones: divisionesEmpresa, etapas: etapasEmpresa, causasParada, defectos,
+    divisiones: divisionesEmpresa, etapas: etapasEmpresa, causasParada, defectos, checklistCarga,
     init, slugInvalido, isGer,
     login, logout, updateEmpresa, cargarEmpresa, actualizarUsuario,
   } = useAuth();
@@ -91,6 +92,15 @@ export default function HomeContent() {
     }
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
+  // ─── Carga de una OT desde el QR de un bulto (?carga=OT) ───
+  const otCarga = /^[\w.-]{1,40}$/.test(searchParams.get("carga") || "") ? searchParams.get("carga") : null;
+  const cerrarCarga = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("carga");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   // ─── Impersonation exchange (superadmin → ?imp=code) ───
@@ -399,6 +409,11 @@ export default function HomeContent() {
         />
       )}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
+      {/* QR del rótulo de un bulto (OP parte 10): ?carga=OT abre la carga de esa OT */}
+      {otCarga && !isDemo && (
+        <CargaOt ot={otCarga} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} usuario={u} checklist={checklistCarga}
+          esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarCarga} />
+      )}
     </div>
   );
 }
