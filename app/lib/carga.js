@@ -67,12 +67,25 @@ export function linkCarga(origen, slug, ot) {
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 
+export const MAX_ETIQUETAS = 999;
+
 /**
- * Página con un rótulo por bulto, del tamaño del rollo de la impresora de
- * etiquetas (una etiqueta por página).
- * @param {{ empresa: string, proyecto: object, bultos: object[], link: string, tamano: { ancho: number, alto: number } }} datos
+ * Etiquetas de módulo (parte 12): una por módulo, "Módulo 3 de 12". Los
+ * nombres son opcionales, uno por renglón (copiados del Excel de despiece);
+ * si hay más nombres que módulos, manda la lista de nombres.
+ * @returns {{ numero: number, contenido: string|null }[]}
  */
-export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano }) {
+export function modulosParaEtiquetas(total, nombres = "") {
+  const lista = String(nombres || "").split(/\r?\n/).map((t) => t.split("\t")[0].trim()).filter(Boolean);
+  const n = Math.min(MAX_ETIQUETAS, Math.max(Number.isInteger(total) && total > 0 ? total : 0, lista.length));
+  return Array.from({ length: n }, (_, i) => ({ numero: i + 1, contenido: lista.at(i)?.slice(0, 80) || null }));
+}
+/**
+ * Página con una etiqueta por bulto (o por módulo, con titulo "Módulo"), del
+ * tamaño del rollo de la impresora de etiquetas (una etiqueta por página).
+ * @param {{ empresa: string, proyecto: object, bultos: object[], link: string, tamano: { ancho: number, alto: number }, titulo?: string }} datos
+ */
+export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, titulo = "Bulto" }) {
   const qr = await svgQR(link);
   const total = bultos.length;
   const qrMm = Math.min(tamano.alto - 8, tamano.ancho * 0.42);
@@ -83,14 +96,14 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano }) {
     <div class="texto">
       <div class="empresa">${esc(empresa)}</div>
       <div class="ot">OT ${esc(proyecto.ot)}</div>
-      <div class="bulto">Bulto ${b.numero} de ${total}</div>
+      <div class="bulto">${esc(titulo)} ${b.numero} de ${total}</div>
       ${datosObra ? `<div class="obra">${esc(datosObra)}</div>` : ""}
       ${entrega ? `<div class="obra">${esc(entrega)}</div>` : ""}
       ${b.contenido ? `<div class="contenido">${esc(b.contenido)}</div>` : ""}
     </div>
     <div class="qr">${qr}</div>
   </div>`).join("");
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Rótulos OT ${esc(proyecto.ot)}</title>
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo === "Bulto" ? "Rótulos" : "Etiquetas"} OT ${esc(proyecto.ot)}</title>
 <style>
   @page { size: ${tamano.ancho}mm ${tamano.alto}mm; margin: 0; }
   * { box-sizing: border-box; }
@@ -106,7 +119,7 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano }) {
 </style></head><body>${items}</body></html>`;
 }
 
-/** Abre los rótulos en una pestaña nueva con el diálogo de impresión. */
+/** Abre los rótulos (o las etiquetas de módulo) en una pestaña nueva con el diálogo de impresión. */
 export async function imprimirRotulos(datos) {
   const ventana = window.open("", "_blank");
   if (!ventana) throw new Error("El navegador bloqueó la ventana. Permití las ventanas emergentes e intentá de nuevo.");
