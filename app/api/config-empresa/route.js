@@ -13,6 +13,7 @@ import { logger } from "../../lib/logger";
 import { rechazarSiSupervisor } from "../../lib/alcance";
 import { ordenarPlantas } from "../../lib/plantas";
 import { CLAVE_CAUSAS, normalizarCausas } from "../../lib/causas";
+import { CLAVE_CHECKLIST, normalizarChecklist } from "../../lib/avance";
 
 // Sin la migración 099 no existe etapas.unidad
 function faltaMigracion099(err) {
@@ -20,6 +21,22 @@ function faltaMigracion099(err) {
 }
 function respuestaFalta099() {
   return NextResponse.json({ error: "Para guardar la unidad de la etapa falta correr la migración 099 en Supabase." }, { status: 409 });
+}
+
+// Sin la migración 100 no existe etapas.condicion_cierre
+function faltaMigracion100(err) {
+  return String(err?.message).includes("condicion_cierre");
+}
+function respuestaFalta100() {
+  return NextResponse.json({ error: "Para guardar la condición de cierre falta correr la migración 100 en Supabase." }, { status: 409 });
+}
+
+// Guarda un ajuste de la empresa en config_sistema (lo crea si no existe)
+async function guardarConfig(empresaId, clave, valor) {
+  const filtro = `config_sistema?empresa_id=eq.${empresaId}&clave=eq.${clave}`;
+  const [existe] = (await sbGet(`${filtro}&select=clave&limit=1`)) || [];
+  if (existe) await sbPatch(filtro, { valor });
+  else await sbPost("config_sistema", { empresa_id: empresaId, clave, valor });
 }
 
 // ─── Helper: extraer empresa_id del request via auth compartido ───
@@ -67,17 +84,20 @@ export async function GET(request) {
     const empresaId = await getEmpresaIdFromRequest(request);
     if (!empresaId) return respuestaNoAutorizado();
 
-    const [divisiones, etapas, plantas, causas] = await Promise.all([
+    const [divisiones, etapas, plantas, causas, checklist] = await Promise.all([
       sbGet(`divisiones?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       sbGet(`etapas?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       // Sin la migración 084 la tabla no existe: la app sigue como con una sola planta
       sbGet(`plantas?empresa_id=eq.${empresaId}&activa=eq.true&select=id,nombre,direccion,principal`, { silent: true, fallback: [] }),
       // Causas de parada propias (099); sin lista, la app usa las de siempre
       sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_CAUSAS}&select=valor&limit=1`, { silent: true, fallback: [] }),
+      // Checklist de liberación de la OT (100)
+      sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_CHECKLIST}&select=valor&limit=1`, { silent: true, fallback: [] }),
     ]);
     return NextResponse.json({
       divisiones: divisiones || [], etapas: etapas || [], plantas: ordenarPlantas(plantas),
       causas_parada: normalizarCausas(causas?.[0]?.valor?.lista),
+      checklist_liberacion: normalizarChecklist(checklist?.[0]?.valor?.lista),
     }, {
       headers: { "Cache-Control": "private, no-store" },
     });
@@ -122,7 +142,7 @@ export async function POST(request) {
     }
 
     if (action === "add_etapa") {
-      const { nombre, icon, color, orden, unidad } = body;
+      const { nombre, icon, color, orden, unidad, condicion_cierre } = body;
       if (!nombre) return NextResponse.json({ error: "nombre requerido" }, { status: 400 });
       let { codigo } = body;
       if (codigo === undefined) {
@@ -136,6 +156,7 @@ export async function POST(request) {
           empresa_id: empresaId, codigo, nombre,
           icon: icon || "🔨", color: color || "#F97316", orden: orden || 99,
           ...(unidad ? { unidad } : {}),
+          ...(condicion_cierre ? { condicion_cierre } : {}),
         });
         return NextResponse.json({ etapa: result[0] });
       } catch (err) {
@@ -143,6 +164,7 @@ export async function POST(request) {
           return NextResponse.json({ error: "Ya existe una etapa con ese código en tu empresa." }, { status: 409 });
         }
         if (unidad && faltaMigracion099(err)) return respuestaFalta099();
+        if (condicion_cierre && faltaMigracion100(err)) return respuestaFalta100();
         throw err;
       }
     }
@@ -217,9 +239,10 @@ export async function PATCH(request) {
     if (action === "update_etapa") {
       if (!(await perteneceAEmpresa("etapas", id, empresaId)))
         return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-      const { nombre, icon, color, codigo, orden, activa, unidad } = body;
+      const { nombre, icon, color, codigo, orden, activa, unidad, condicion_cierre } = body;
       const updates = {};
       if (unidad !== undefined) updates.unidad = unidad;
+      if (condicion_cierre !== undefined) updates.condicion_cierre = condicion_cierre;
       if (nombre !== undefined) updates.nombre = nombre;
       if (icon !== undefined) updates.icon = icon;
       if (color !== undefined) updates.color = color;
@@ -234,6 +257,7 @@ export async function PATCH(request) {
           return NextResponse.json({ error: "Ya existe una etapa con ese código en tu empresa." }, { status: 409 });
         }
         if (updates.unidad !== undefined && faltaMigracion099(err)) return respuestaFalta099();
+        if (updates.condicion_cierre !== undefined && faltaMigracion100(err)) return respuestaFalta100();
         throw err;
       }
     }
@@ -244,11 +268,15 @@ export async function PATCH(request) {
       if (lista.length !== body.causas.length) {
         return NextResponse.json({ error: "Hay códigos repetidos en las causas de parada." }, { status: 400 });
       }
-      const filtro = `config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_CAUSAS}`;
-      const [existe] = (await sbGet(`${filtro}&select=clave&limit=1`)) || [];
-      if (existe) await sbPatch(filtro, { valor: { lista } });
-      else await sbPost("config_sistema", { empresa_id: empresaId, clave: CLAVE_CAUSAS, valor: { lista } });
+      await guardarConfig(empresaId, CLAVE_CAUSAS, { lista });
       return NextResponse.json({ causas_parada: lista });
+    }
+
+    if (action === "update_checklist") {
+      // Checklist de liberación de la OT (100). Vacío = sin checklist.
+      const lista = normalizarChecklist(body.items);
+      await guardarConfig(empresaId, CLAVE_CHECKLIST, { lista });
+      return NextResponse.json({ checklist_liberacion: lista });
     }
 
     if (action === "update_planta") {

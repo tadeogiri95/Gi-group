@@ -208,6 +208,15 @@ export const actividadBody = z.object({
   .refine((b) => b.accion !== "iniciar" || b.etapa !== 0 || !!b.causa, { message: "Una espera necesita la causa" })
   .refine((b) => b.accion !== "iniciar" || b.etapa === 0 || (b.codigo_proyecto != null && String(b.codigo_proyecto) !== ""), { message: "Falta la OT" });
 
+// ── /api/avance (100): avance de etapas por OT y liberación ───────────────
+export const avanceBody = z.object({
+  accion: z.enum(["terminar", "aprobar", "reabrir", "no_aplica", "liberar", "desliberar", "puntos"]),
+  ot: z.union([z.string().trim().min(1).max(40), z.number()]).transform(String),
+  etapa: z.number().int().min(1).max(999).optional(),
+  liberacion: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
+  puntos_criticos: z.string().trim().max(2000).nullable().optional(),
+}).strict().refine((b) => !["terminar", "aprobar", "reabrir", "no_aplica"].includes(b.accion) || b.etapa != null, { message: "Falta la etapa" });
+
 // ── /api/kiosco (D7, ítem 19) ──────────────────────────────────────────────
 export const kioscoActivarBody = z.object({
   nombre: z.string().trim().min(1).max(60).optional(),
@@ -252,6 +261,8 @@ export const chatQueryBody = z.object({
 // ── /api/config-empresa ─────────────────────────────────────────────────────
 // Unidad en que se mide una etapa (099): "placas", "metros"…; vacío = sin unidad
 const unidadEtapa = z.string().trim().max(20).nullable().optional().transform((v) => (v === "" ? null : v));
+// Qué tiene que cumplirse para firmar el cierre de la etapa (100)
+const condicionCierre = z.string().trim().max(300).nullable().optional().transform((v) => (v === "" ? null : v));
 
 export const configPostBody = z.discriminatedUnion("action", [
   z.object({
@@ -271,6 +282,7 @@ export const configPostBody = z.discriminatedUnion("action", [
     color: color.optional(),
     orden: z.number().int().min(0).max(999).optional(),
     unidad: unidadEtapa,
+    condicion_cierre: condicionCierre,
   }),
   z.object({
     action: z.literal("save_logo"),
@@ -305,6 +317,12 @@ export const configPatchBody = z.discriminatedUnion("action", [
     orden: z.number().int().min(0).max(999).optional(),
     activa: z.boolean().optional(),
     unidad: unidadEtapa,
+    condicion_cierre: condicionCierre,
+  }),
+  z.object({
+    // Checklist de liberación de la OT (100); [] = sin checklist
+    action: z.literal("update_checklist"),
+    items: z.array(z.string().trim().min(1).max(200)).max(20),
   }),
   z.object({
     // Causas de parada de la empresa (099); [] vuelve a las de siempre

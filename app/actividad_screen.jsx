@@ -77,6 +77,7 @@ export default function ActividadScreen({
   const [verTipos, setVerTipos] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [avanceMsg, setAvanceMsg] = useState(null);
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
   // Escáner de OT (D8): solo si la empresa lo activó y el navegador puede leer códigos
@@ -220,6 +221,30 @@ export default function ActividadScreen({
     } else {
       setState("idle");
     }
+  };
+
+  // "Terminé esta etapa" (OP parte 5): queda esperando la firma del responsable
+  const terminarEtapa = async () => {
+    if (!tareaActiva?.codigo_proyecto || !(tareaActiva.etapa > 0)) return;
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      const r = await apiFetch("/api/avance", {
+        method: "POST",
+        body: JSON.stringify({ accion: "terminar", ot: String(tareaActiva.codigo_proyecto), etapa: tareaActiva.etapa }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "No se pudo marcar la etapa");
+      vibrar();
+      // El aviso es de esta tarea: al cambiar de tarea vuelve el botón
+      setAvanceMsg({
+        tareaId: tareaActiva.id,
+        texto: data.avance?.estado === "aprobada"
+          ? "Esta etapa ya estaba firmada."
+          : "Listo: queda esperando la firma del responsable. Podés cambiar de tarea.",
+      });
+    } catch (e) { setErrorMsg(e?.message || "No se pudo marcar la etapa. Intentá de nuevo."); }
+    setSaving(false);
   };
 
   const confirmarPausa = async (causa) => {
@@ -534,6 +559,7 @@ export default function ActividadScreen({
                             {(p.obra || p.descripcion) && (
                               <div className="text-[11px] text-gypi-dim truncate mt-[1px]">{[p.obra, p.descripcion].filter(Boolean).join(" · ")}</div>
                             )}
+                            {p.puntos_criticos && <div className="text-[11px] text-gypi-amber-ink truncate mt-[1px]">⚠ {p.puntos_criticos}</div>}
                           </div>
                           {sel && <span className="text-base text-gypi-amber-ink">✓</span>}
                         </button>
@@ -650,6 +676,9 @@ export default function ActividadScreen({
             {!isEspera && !tareaActiva?.sinEnviar && (
               <CantidadTarea key={tareaActiva?.id} tareaId={tareaActiva?.id} unidad={etapaActiva?.unidad} valor={tareaActiva?.cantidad} />
             )}
+            {!isEspera && proyectoActivo?.puntos_criticos && (
+              <div className="mt-3 text-[12px] text-gypi-amber-ink whitespace-pre-line"><b>⚠ Puntos críticos:</b> {proyectoActivo.puntos_criticos}</div>
+            )}
           </div>
         </div>
 
@@ -666,6 +695,12 @@ export default function ActividadScreen({
             <button onClick={() => setState("pausing")} disabled={saving} className={`flex-1 min-h-[64px] p-4 rounded-2xl text-[15px] font-bold font-body cursor-pointer bg-gypi-red/10 border border-gypi-red/20 text-gypi-red flex items-center justify-center gap-1.5 ${saving ? 'opacity-50' : ''}`}><Icon name="pause" size={16} /> Estoy parado</button>
           )}
         </div>
+
+        {!isEspera && tareaActiva?.codigo_proyecto && !tareaActiva?.sinEnviar && (
+          avanceMsg && avanceMsg.tareaId === tareaActiva.id
+            ? <div role="status" className="text-[13px] text-gypi-green text-center">✓ {avanceMsg.texto}</div>
+            : <button onClick={terminarEtapa} disabled={saving} className={`w-full min-h-[52px] p-3 rounded-2xl bg-gypi-green/10 border border-gypi-green/30 text-gypi-green text-sm font-bold font-body cursor-pointer ${saving ? 'opacity-50' : ''}`}>✓ Terminé esta etapa de la OT</button>
+        )}
 
         <button onClick={() => finalizarTarea("idle")} disabled={saving} className={`w-full p-4 rounded-2xl bg-transparent border border-gypi-border text-gypi-dim text-sm font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5 ${saving ? 'opacity-50' : ''}`}><Icon name="stop" size={15} /> Terminar tarea</button>
         <p className="text-[12px] text-gypi-dim text-center m-0 -mt-1">Terminar la tarea no ficha tu salida.</p>

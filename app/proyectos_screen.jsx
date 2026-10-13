@@ -9,6 +9,7 @@ import { useConfirm } from "./components/ui/ConfirmDialog";
 import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
 import DetalleOp from "./components/DetalleOp";
+import TableroOt from "./components/TableroOt";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -137,7 +138,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ProyectosScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, empresa, updateEmpresa } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, empresa, updateEmpresa } = useAuth();
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +148,7 @@ export default function ProyectosScreen({ empresaId }) {
   const [filtroDiv, setFiltroDiv] = useState("");
   const [modal, setModal] = useState(null);
   const [detalle, setDetalle] = useState(null);
+  const [vista, setVista] = useState("lista");
   const [csvFilas, setCsvFilas] = useState(null);
   const [csvRawText, setCsvRawText] = useState(null);
   const [csvProgreso, setCsvProgreso] = useState("");
@@ -458,7 +460,22 @@ export default function ProyectosScreen({ empresaId }) {
         )}
       </div>
 
-      {loading ? (
+      <div className="flex gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
+        <Chip active={vista === "lista"} onClick={() => setVista("lista")}>Lista</Chip>
+        <Chip active={vista === "tablero"} onClick={() => setVista("tablero")}>Tablero</Chip>
+      </div>
+
+      {vista === "tablero" && !loading ? (
+        <TableroOt
+          proyectos={filtrados.filter(p => p.estado !== "cerrado")}
+          empresaId={empresaId}
+          etapas={etapasCtx || []}
+          divisiones={divisionesCtx || []}
+          checklist={checklistLiberacion || []}
+          onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))}
+          onVerDetalle={setDetalle}
+        />
+      ) : loading ? (
         <div className="gypi-dots"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       ) : filtrados.length === 0 ? (
         <div className="g-card py-8 px-6 text-center">
