@@ -31,7 +31,7 @@ export async function validarKiosco(request) {
   if (!token) return null;
   let payload;
   try {
-    payload = await verifyToken(token);
+    payload = await verifyToken(token, "kiosco");
   } catch {
     return null;
   }

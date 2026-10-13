@@ -21,7 +21,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!code) return NextResponse.json({ error: "Código requerido" }, { status: 400 });
 
   // Verificar firma JWT y que sea un código de impersonación válido
-  const payload = await verifyToken(code);
+  const payload = await verifyToken(code, "impersonate_code");
   if (
     !payload || !payload.imp || !payload.code ||
     !payload.sub || !payload.eid || payload.leg === undefined ||
