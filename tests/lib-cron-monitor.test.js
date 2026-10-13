@@ -47,7 +47,7 @@ test("conMonitoreoCron — respuesta 5xx registra el error y NO actualiza ultima
 
 test("conMonitoreoCron — una excepción se registra y se relanza", async () => {
   const registros = capturar();
-  const GET = conMonitoreoCron("refresh-scores", async () => { throw new Error("se cayó"); });
+  const GET = conMonitoreoCron("health-check", async () => { throw new Error("se cayó"); });
   await assert.rejects(() => GET(req), /se cayó/);
   assert.equal(registros[0].body.ultimo_error, "se cayó");
 });
