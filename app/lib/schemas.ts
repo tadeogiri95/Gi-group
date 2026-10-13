@@ -259,7 +259,8 @@ export const configPostBody = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("add_etapa"),
-    codigo: z.number().int(),
+    // Sin código, el servidor usa el siguiente libre (pantalla de Rutas)
+    codigo: z.number().int().optional(),
     nombre: shortString,
     icon: emoji.optional(),
     color: color.optional(),

@@ -108,8 +108,15 @@ export async function POST(request) {
     }
 
     if (action === "add_etapa") {
-      const { codigo, nombre, icon, color, orden } = body;
-      if (codigo === undefined || !nombre) return NextResponse.json({ error: "codigo y nombre requeridos" }, { status: 400 });
+      const { nombre, icon, color, orden } = body;
+      if (!nombre) return NextResponse.json({ error: "nombre requerido" }, { status: 400 });
+      let { codigo } = body;
+      if (codigo === undefined) {
+        // El siguiente número libre, contando también las etapas dadas de baja
+        // (siguen ocupando su código)
+        const [ultima] = await sbGet(`etapas?empresa_id=eq.${empresaId}&select=codigo&order=codigo.desc&limit=1`) || [];
+        codigo = Math.max(0, Number(ultima?.codigo) || 0) + 1;
+      }
       try {
         const result = await sbPost("etapas", {
           empresa_id: empresaId, codigo, nombre,
