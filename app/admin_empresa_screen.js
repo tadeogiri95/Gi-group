@@ -6,6 +6,7 @@ import { getToken, apiFetch } from "./lib/supabase";
 import ResumenSemanalSwitch from "./components/ResumenSemanalSwitch";
 import RutasEditor from "./components/RutasEditor";
 import CausasEditor from "./components/CausasEditor";
+import ChecklistEditor from "./components/ChecklistEditor";
 import { useToast } from "./components/ui/Toast";
 import { useAuth } from "./context/AuthContext";
 
@@ -24,6 +25,7 @@ const TABS = [
   { key: "etapas", label: "Etapas" },
   { key: "rutas", label: "Rutas" },
   { key: "paradas", label: "Paradas" },
+  { key: "liberacion", label: "Liberación" },
 ];
 
 /* ─── Hex validation ─── */
@@ -54,7 +56,7 @@ function ColorRow({ label, value, onChange }) {
 
 export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [] }) {
   const [tab, setTab] = useState("general");
-  const { causasParada, setCausasParada } = useAuth();
+  const { causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion } = useAuth();
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -80,7 +82,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const [editDivId, setEditDivId] = useState(null);
 
   const [etapas, setEtapas] = useState(etapasProp);
-  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "" });
+  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" });
   const [editEtapaId, setEditEtapaId] = useState(null);
 
   const showToast = useCallback((msg, type = "success") => {
@@ -287,7 +289,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         setEtapas((prev) => [...prev, etapa]);
         showToast("Etapa agregada");
       }
-      setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "" });
+      setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" });
       onUpdate?.({});
     } catch (err) {
       showToast(err.message || "Error al guardar", "error");
@@ -295,7 +297,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   };
 
   const handleEditEtapa = (etapa) => {
-    setEtapaForm({ icon: etapa.icon, codigo: etapa.codigo, nombre: etapa.nombre, color: etapa.color, unidad: etapa.unidad || "" });
+    setEtapaForm({ icon: etapa.icon, codigo: etapa.codigo, nombre: etapa.nombre, color: etapa.color, unidad: etapa.unidad || "", condicion_cierre: etapa.condicion_cierre || "" });
     setEditEtapaId(etapa.id);
   };
 
@@ -309,7 +311,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
       });
       if (!r.ok) throw new Error((await r.json()).error || "Error eliminando");
       setEtapas((prev) => prev.filter((e) => e.id !== id));
-      if (editEtapaId === id) { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "" }); }
+      if (editEtapaId === id) { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" }); }
       showToast("Etapa eliminada");
       onUpdate?.({});
     } catch (err) {
@@ -524,6 +526,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             <div className="g-label mb-1.5">Unidad (opcional)</div>
             <input className="g-input mb-1" maxLength={20} value={etapaForm.unidad} onChange={(e) => setEtapaForm((f) => ({ ...f, unidad: e.target.value }))} placeholder="Ej: placas, metros, piezas, módulos" />
             <div className="text-[11px] text-gypi-dim mb-2.5">En qué se mide lo hecho en esta etapa. Si la cargás, el operario puede anotar la cantidad de cada tarea.</div>
+            <div className="g-label mb-1.5">Condición para firmar el cierre (opcional)</div>
+            <input className="g-input mb-1" maxLength={300} value={etapaForm.condicion_cierre} onChange={(e) => setEtapaForm((f) => ({ ...f, condicion_cierre: e.target.value }))} placeholder="Ej: Todas las piezas cortadas y con sticker" />
+            <div className="text-[11px] text-gypi-dim mb-2.5">El responsable la ve en el tablero al firmar la etapa de una OT.</div>
             <div className="g-label mb-1.5">Color</div>
             <div className="flex gap-2.5 mb-3.5">
               <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} className="w-10 h-10 rounded-[10px] border border-gypi-border cursor-pointer bg-transparent p-0" />
@@ -531,7 +536,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             </div>
             <div className="flex gap-2.5">
               <button onClick={handleAddEtapa} className="g-btn g-btn-primary flex-1">{editEtapaId !== null ? "Actualizar" : "Agregar"}</button>
-              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "" }); }} className="g-btn g-btn-secondary">Cancelar</button>}
+              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" }); }} className="g-btn g-btn-secondary">Cancelar</button>}
             </div>
           </div>
           {etapas.length > 0 && <div className="g-card mb-3.5">
@@ -558,6 +563,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
 
       case "paradas":
         return <CausasEditor causas={causasParada} onGuardadas={setCausasParada} avisar={showToast} />;
+
+      case "liberacion":
+        return <ChecklistEditor items={checklistLiberacion} onGuardado={setChecklistLiberacion} avisar={showToast} />;
 
       default: return null;
     }

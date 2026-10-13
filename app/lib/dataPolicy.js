@@ -51,6 +51,7 @@ export const POLICY = {
   etapas:                       { GET: "all" },   // se editan por /api/config-empresa
   divisiones:                   { GET: "all" },   // se editan por /api/config-empresa
   plantas:                      { GET: "all" },   // se editan por /api/config-empresa
+  avance_etapas:                { GET: "all" },   // se escribe por /api/avance (OP parte 5)
   empresa:                      { GET: "all",     PATCH: "gestion" },
 
   // Solo gestión.

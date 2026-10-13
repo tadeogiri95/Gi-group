@@ -120,11 +120,14 @@ function permisosDe(tabla) {
 }
 
 const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"];
+// Tablas con permisos en su propia migración (también los usa una ruta propia):
+// avance_etapas → 100 (/api/avance escribe con el pase del usuario)
+const MIGRACION_PROPIA = ["avance_etapas"];
 const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
 
 test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {
   for (const [tabla, reglas] of Object.entries(POLICY)) {
-    if (SIN_RLS.includes(tabla)) continue;
+    if (SIN_RLS.includes(tabla) || MIGRACION_PROPIA.includes(tabla)) continue;
     const esperados = Object.keys(PRIVILEGIO).filter((m) => reglas[m]).map((m) => PRIVILEGIO[m]).sort();
     assert.deepEqual(permisosDe(tabla).sort(), esperados, `permisos de ${tabla}`);
   }
@@ -147,7 +150,7 @@ function permisos093(tabla) {
 
 test("093 — mismos permisos que la 089 para cada tabla del gateway", () => {
   for (const [tabla, reglas] of Object.entries(POLICY)) {
-    if (SIN_RLS.includes(tabla)) continue;
+    if (SIN_RLS.includes(tabla) || MIGRACION_PROPIA.includes(tabla)) continue;
     const esperados = Object.keys(PRIVILEGIO).filter((m) => reglas[m]).map((m) => PRIVILEGIO[m]).sort();
     assert.deepEqual(permisos093(tabla).sort(), esperados, `permisos de ${tabla} en la 093`);
   }

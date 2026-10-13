@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
   const [etapas, setEtapas] = useState([]);
   const [plantas, setPlantas] = useState([]);
   const [causasParada, setCausasParada] = useState([]);
+  const [checklistLiberacion, setChecklistLiberacion] = useState([]);
   const [init, setInit] = useState(false);
   const [slugInvalido, setSlugInvalido] = useState(false);
 
@@ -63,6 +64,7 @@ export function AuthProvider({ children }) {
       if (data.etapas) setEtapas(data.etapas);
       if (data.plantas) setPlantas(data.plantas);
       if (Array.isArray(data.causas_parada)) setCausasParada(data.causas_parada);
+      if (Array.isArray(data.checklist_liberacion)) setChecklistLiberacion(data.checklist_liberacion);
     } catch (e) {
       console.error("Error cargando config empresa:", e);
     }
@@ -245,6 +247,8 @@ export function AuthProvider({ children }) {
       plantas,
       causasParada,
       setCausasParada,
+      checklistLiberacion,
+      setChecklistLiberacion,
       init,
       slugInvalido,
       isGer,
