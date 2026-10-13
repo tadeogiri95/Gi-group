@@ -8,14 +8,17 @@ import { rutaDe } from "../lib/rutas";
 
 const BOTON = "min-w-[44px] min-h-[44px] rounded-lg border border-gypi-border bg-gypi-surface text-gypi-text text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-default";
 
-export default function RutasEditor({ divisiones = [], etapas = [], onGuardado, avisar = () => {} }) {
+export default function RutasEditor({ divisiones = [], etapas = [], onGuardado, onEtapaCreada, avisar = () => {} }) {
   const [divId, setDivId] = useState(divisiones[0]?.id ?? null);
   const division = divisiones.find((d) => d.id === divId) || null;
   const [borrador, setBorrador] = useState(() => rutaDe(division));
   const [guardando, setGuardando] = useState(false);
+  const [nuevaEtapa, setNuevaEtapa] = useState("");
+  const [creando, setCreando] = useState(false);
 
   // Al cambiar de división (o al recargar las divisiones) se parte de lo guardado
-  useEffect(() => { setBorrador(rutaDe(division)); }, [divId, division?.ruta_etapas]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rutaGuardada = JSON.stringify(rutaDe(division));
+  useEffect(() => { setBorrador(rutaDe(division)); }, [divId, rutaGuardada]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const productivas = etapas.filter((e) => e.codigo > 0);
   const porCodigo = new Map(productivas.map((e) => [e.codigo, e]));
@@ -46,6 +49,30 @@ export default function RutasEditor({ divisiones = [], etapas = [], onGuardado, 
       avisar(err.message, "error");
     } finally {
       setGuardando(false);
+    }
+  };
+
+  // Etapa nueva con solo el nombre: el servidor le pone el siguiente número
+  // libre. Se suma al final de la ruta (falta tocar "Guardar ruta").
+  const crearEtapa = async () => {
+    const nombre = nuevaEtapa.trim();
+    if (!nombre || creando) return;
+    setCreando(true);
+    try {
+      const r = await apiFetch("/api/config-empresa", {
+        method: "POST",
+        body: JSON.stringify({ action: "add_etapa", nombre, icon: "🔨" }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.etapa) throw new Error(data.error || "No se pudo crear la etapa");
+      onEtapaCreada?.(data.etapa);
+      setBorrador([...enRuta, data.etapa.codigo]);
+      setNuevaEtapa("");
+      avisar(`Etapa ${data.etapa.nombre} creada. Tocá "Guardar ruta" para guardarla en ${division?.label}.`);
+    } catch (err) {
+      avisar(err.message, "error");
+    } finally {
+      setCreando(false);
     }
   };
 
@@ -99,6 +126,16 @@ export default function RutasEditor({ divisiones = [], etapas = [], onGuardado, 
           ))}
         </div>
       </>}
+
+      <div className="g-label mb-1.5">Crear etapa nueva</div>
+      <div className="flex gap-2 mb-3.5">
+        <input className="g-input flex-1" value={nuevaEtapa} maxLength={60} aria-label="Nombre de la etapa nueva"
+          onChange={(e) => setNuevaEtapa(e.target.value)} onKeyDown={(e) => e.key === "Enter" && crearEtapa()}
+          placeholder="Ej: Corte de perfiles" />
+        <button onClick={crearEtapa} disabled={creando || !nuevaEtapa.trim()} className="g-btn g-btn-secondary">
+          {creando ? "Creando…" : "Crear"}
+        </button>
+      </div>
 
       <div className="flex gap-2.5">
         <button onClick={() => guardar(enRuta)} disabled={guardando || !cambiado} className="g-btn g-btn-primary flex-1">

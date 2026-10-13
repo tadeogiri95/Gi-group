@@ -182,3 +182,56 @@ test("config-empresa — sin la migración 098 avisa qué falta", async () => {
   assert.equal(res.status, 409);
   assert.match((await res.json()).error, /migración 098/);
 });
+
+// ─── Crear etapa desde Rutas, con solo el nombre ───
+
+test("pantalla de rutas — crear una etapa nueva la suma al final de la ruta sin guardarla todavía", async () => {
+  const pedidos = [];
+  global.fetch = async (url, opts) => {
+    pedidos.push({ method: opts.method, body: JSON.parse(opts.body) });
+    return new Response(JSON.stringify({ etapa: { id: "e-9", codigo: 9, nombre: "Corte de perfiles", icon: "🔨", color: "#F97316" } }), { status: 200 });
+  };
+  const creadas = [];
+  const { rerender } = render(<RutasEditor divisiones={DIVISIONES} etapas={ETAPAS} onEtapaCreada={(e) => creadas.push(e)} />);
+  fireEvent.click(screen.getByRole("tab", { name: /Aluminio/ }));
+  fireEvent.change(screen.getByLabelText("Nombre de la etapa nueva"), { target: { value: "  Corte de perfiles " } });
+  fireEvent.click(screen.getByText("Crear"));
+  await waitFor(() => assert.equal(creadas.length, 1));
+  assert.deepEqual(pedidos[0], { method: "POST", body: { action: "add_etapa", nombre: "Corte de perfiles", icon: "🔨" } });
+  // El padre suma la etapa a la lista; queda en la ruta y falta guardar
+  rerender(<RutasEditor divisiones={DIVISIONES} etapas={[...ETAPAS, creadas[0]]} onEtapaCreada={() => {}} />);
+  const ruta = screen.getByRole("list", { name: "Ruta de Aluminio" });
+  assert.match(ruta.textContent, /Corte de perfiles/);
+  assert.equal(screen.getByText("Guardar ruta").disabled, false);
+});
+
+const { POST } = await import("../app/api/config-empresa/route.js");
+
+async function crearEtapaServidor(body, ultimas) {
+  const { token } = await signAccessToken({ empleadoId: "22222222-2222-2222-2222-222222222222", empresaId: EMPRESA_ID, legajo: 7, rol: "gerencial" });
+  let creada = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u, o) => u.includes("/rest/v1/etapas?") && u.includes("order=codigo.desc") && (!o?.method || o.method === "GET"), respond: () => ({ status: 200, body: ultimas }) },
+    { match: (u, o) => u.includes("/rest/v1/etapas") && o?.method === "POST", respond: (u, o) => { creada = JSON.parse(o.body); return { status: 201, body: [{ id: "e-new", ...creada }] }; } },
+  ]);
+  const res = await POST(new Request("http://localhost/api/config-empresa", {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  }));
+  return { res, creada };
+}
+
+test("config-empresa — etapa sin número toma el siguiente libre (incluye las dadas de baja)", async () => {
+  const { res, creada } = await crearEtapaServidor({ action: "add_etapa", nombre: "Corte de perfiles" }, [{ codigo: 12 }]);
+  assert.equal(res.status, 200);
+  assert.equal(creada.codigo, 13);
+  assert.equal(creada.nombre, "Corte de perfiles");
+});
+
+test("config-empresa — la primera etapa sin número es la 1; con número se respeta", async () => {
+  let r = await crearEtapaServidor({ action: "add_etapa", nombre: "Corte" }, []);
+  assert.equal(r.creada.codigo, 1);
+  r = await crearEtapaServidor({ action: "add_etapa", nombre: "Corte", codigo: 40 }, [{ codigo: 12 }]);
+  assert.equal(r.creada.codigo, 40);
+});

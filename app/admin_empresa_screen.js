@@ -546,6 +546,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
 
       case "rutas":
         return <RutasEditor divisiones={divisiones} etapas={etapas} avisar={showToast}
+          onEtapaCreada={(etapa) => setEtapas((prev) => [...prev, etapa])}
           onGuardado={(div) => { setDivisiones((prev) => prev.map((d) => (d.id === div.id ? div : d))); onUpdate?.({}); }} />;
 
       default: return null;
