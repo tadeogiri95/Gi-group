@@ -63,6 +63,7 @@ test("sync-csv — la base nunca recibe la misma OT dos veces en un lote", async
     { match: (u, o) => u.includes("/rest/v1/config_sistema") && (!o?.method || o.method === "GET"), respond: () => ({ status: 200, body: [{ valor: { url: CSV_URL } }] }) },
     { match: (u) => u === CSV_URL, respond: () => ({ status: 200, body: filasCsvGrande.join("\n") }) },
     { match: (u, o) => u.includes("/rest/v1/proyectos?on_conflict=") && o?.method === "POST", respond: (u, o) => { lotes.push(JSON.parse(o.body)); return { status: 200, body: null }; } },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?empresa_id=") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
     { match: (u, o) => u.includes("/rest/v1/config_sistema") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
   ]);
   const { signAccessToken } = await import("../app/lib/jwt.ts");
@@ -92,6 +93,7 @@ test("planilla real — lee cliente, obra y descripción", () => {
   assert.deepEqual(filas, [{
     ot: "M-7495", cliente: "SICILIANO ROMINA", obra: "CASA REMODELACION",
     proyecto: "7495", division: "MUEBLES", descripcion: "MUEBLE DIVISOR",
+    fecha_entrega: "2026-05-01", cantidad: 1, terminado_planilla: null,
   }]);
 });
 
@@ -112,6 +114,7 @@ test("sync-csv — sin la columna descripcion en la base (falta la 091) igual si
       },
     },
     { match: (u, o) => u.includes("/rest/v1/config_sistema") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?empresa_id=") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
   ]);
   const { signAccessToken } = await import("../app/lib/jwt.ts");
   const { POST } = await import("../app/api/proyectos/sync-csv/route.js");

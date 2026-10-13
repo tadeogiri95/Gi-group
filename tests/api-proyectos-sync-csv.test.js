@@ -48,7 +48,7 @@ function csvHandler(texto = CSV_TEXTO) {
 }
 
 function upsertHandler() {
-  return { match: (u, o) => u.includes("/rest/v1/proyectos?on_conflict=") && o?.method === "POST", respond: () => ({ status: 200, body: null }) };
+  return { match: (u, o) => (u.includes("/rest/v1/proyectos?on_conflict=") && o?.method === "POST") || (u.includes("/rest/v1/proyectos?") && o?.method === "PATCH"), respond: () => ({ status: 200, body: null }) };
 }
 
 function patchConfigHandler() {

@@ -33,6 +33,7 @@ test("cron sync-ot — sincroniza cada empresa con planilla y una con error no f
     { match: (u) => u === "https://x.example.com/a.csv", respond: () => ({ status: 200, body: "OT,Cliente\nM-1,Ana\nM-2,Luis" }) },
     { match: (u) => u === "https://x.example.com/b.csv", respond: () => ({ status: 404, body: "no" }) },
     { match: (u, o) => u.includes("/rest/v1/proyectos?on_conflict=") && o?.method === "POST", respond: (u, o) => { subidas.push(...JSON.parse(o.body)); return { status: 200, body: null }; } },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?empresa_id=") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
     { match: (u, o) => o?.method === "PATCH" || u.includes("cron_ejecuciones"), respond: () => ({ status: 200, body: null }) },
   ]);
   const res = await GET(req("Bearer secreto-cron"));

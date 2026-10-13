@@ -49,3 +49,9 @@ export function otsRecientes(empleadoId, proyectos = []) {
     return [];
   }
 }
+
+// "2026-05-01" → "1/5/2026" (sin pasar por Date: no corre un día por la zona horaria)
+export function fechaCorta(iso) {
+  const [a, m, d] = String(iso).slice(0, 10).split("-");
+  return a && m && d ? `${Number(d)}/${Number(m)}/${a}` : "";
+}
