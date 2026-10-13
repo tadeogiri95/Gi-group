@@ -41,7 +41,9 @@ async function procesar(sesion, datos) {
       legajo: String(emp?.legajo ?? sesion.legajo),
       // Fecha del lugar de la empresa, no UTC (F1-10)
       fecha: horaLocal(empresa?.timezone || undefined, instante).fecha,
-      codigo_proyecto: espera ? null : String(datos.codigo_proyecto).trim(),
+      // Una tarea siempre lleva OT (lo exige actividadBody); una parada, la OT
+      // en la que se estaba si había una (099)
+      codigo_proyecto: String(datos.codigo_proyecto ?? "").trim() || null,
       etapa: datos.etapa,
       tipo: datos.tipo || "N",
       causa: espera ? datos.causa : null,

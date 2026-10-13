@@ -2,6 +2,7 @@
 // Producción, parte 3; ítem 39): horas por etapa, quién trabajó y retrabajos,
 // a partir de las tareas que ya se registran (registro_actividades).
 import { rutaDe } from "./rutas";
+import { nombreCausa } from "./causas";
 
 export const TIPOS_RETRABAJO = {
   R: "Retrabajo",
@@ -27,13 +28,31 @@ export function fmtHoras(min) {
 }
 
 /**
- * @param {object[]} tareas registro_actividades de la OT (etapa > 0)
- * @param {{ etapas?: object[], division?: object|null, empleados?: object[], ahora?: number }} ctx
+ * @param {object[]} tareas registro_actividades de la OT (tareas y paradas)
+ * @param {{ etapas?: object[], division?: object|null, empleados?: object[], causas?: object[], ahora?: number }} ctx
  * @returns resumen con totales, etapas (en el orden de la ruta, después las que
- *   están fuera de ella), personas y retrabajos.
+ *   están fuera de ella, con la cantidad hecha si la etapa tiene unidad),
+ *   personas, retrabajos y paradas por causa.
  */
-export function resumirOp(tareas, { etapas = [], division = null, empleados = [], ahora = Date.now() } = {}) {
+function nuevaEtapa(codigo, info) {
+  return {
+    codigo, nombre: info?.nombre || `Etapa ${codigo}`, icon: info?.icon || "🔨", unidad: info?.unidad || null,
+    min: 0, retrabajoMin: 0, personas: new Set(), cantidad: 0, minConCantidad: 0,
+  };
+}
+
+export function resumirOp(tareas, { etapas = [], division = null, empleados = [], causas = [], ahora = Date.now() } = {}) {
   const productivas = (tareas || []).filter((t) => Number(t.etapa) > 0);
+  // Desde la 099 una parada puede llevar la OT en la que se estaba
+  const paradasMap = new Map();
+  for (const t of tareas || []) {
+    if (Number(t.etapa) !== 0) continue;
+    const cod = t.causa || "?";
+    const p = paradasMap.get(cod) || { causa: cod, nombre: nombreCausa(causas, cod) || "Sin causa", veces: 0, min: 0 };
+    p.veces++;
+    p.min += minutosDe(t, ahora);
+    paradasMap.set(cod, p);
+  }
   const porCodigo = new Map(etapas.map((e) => [Number(e.codigo), e]));
   const nombreDe = new Map();
   for (const e of empleados) {
@@ -60,10 +79,14 @@ export function resumirOp(tareas, { etapas = [], division = null, empleados = []
 
     if (!etapasMap.has(codigo)) {
       const info = porCodigo.get(codigo);
-      etapasMap.set(codigo, { codigo, nombre: info?.nombre || `Etapa ${codigo}`, icon: info?.icon || "🔨", min: 0, retrabajoMin: 0, personas: new Set() });
+      etapasMap.set(codigo, nuevaEtapa(codigo, info));
     }
     const et = etapasMap.get(codigo);
     et.min += min;
+    if (t.cantidad != null && Number.isFinite(Number(t.cantidad))) {
+      et.cantidad += Number(t.cantidad);
+      et.minConCantidad += min;
+    }
     et.personas.add(quien);
 
     const p = personasMap.get(quien) || { nombre: quien, min: 0, etapas: new Set() };
@@ -86,7 +109,7 @@ export function resumirOp(tareas, { etapas = [], division = null, empleados = []
   const ruta = rutaDe(division);
   const ordenadas = [];
   for (const c of ruta) {
-    const et = etapasMap.get(c) || (porCodigo.has(c) ? { codigo: c, nombre: porCodigo.get(c).nombre, icon: porCodigo.get(c).icon || "🔨", min: 0, retrabajoMin: 0, personas: new Set() } : null);
+    const et = etapasMap.get(c) || (porCodigo.has(c) ? nuevaEtapa(c, porCodigo.get(c)) : null);
     if (et) ordenadas.push({ ...et, enRuta: true });
     etapasMap.delete(c);
   }
@@ -101,9 +124,16 @@ export function resumirOp(tareas, { etapas = [], division = null, empleados = []
     hasta: dias.at(-1) || null,
     ahoraTrabajando: [...ahoraTrabajando],
     tieneRuta: ruta.length > 0,
-    etapas: [...ordenadas, ...fuera].map((et) => ({ ...et, personas: [...et.personas] })),
+    etapas: [...ordenadas, ...fuera].map(({ minConCantidad, ...et }) => ({
+      ...et,
+      personas: [...et.personas],
+      // Minutos por unidad: solo con las tareas que tienen la cantidad anotada
+      minPorUnidad: et.unidad && et.cantidad > 0 ? minConCantidad / et.cantidad : null,
+    })),
     personas: [...personasMap.values()].sort((a, b) => b.min - a.min).map((p) => ({ ...p, etapas: [...p.etapas] })),
     retrabajos: [...retrabajos.values()].sort((a, b) => b.min - a.min),
     retrabajoMin: [...retrabajos.values()].reduce((s, r) => s + r.min, 0),
+    paradas: [...paradasMap.values()].sort((a, b) => b.min - a.min),
+    paradaMin: [...paradasMap.values()].reduce((s, p) => s + p.min, 0),
   };
 }

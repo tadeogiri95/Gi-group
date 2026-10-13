@@ -137,7 +137,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ProyectosScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, etapas: etapasCtx, empresa, updateEmpresa } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, empresa, updateEmpresa } = useAuth();
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -504,7 +504,7 @@ export default function ProyectosScreen({ empresaId }) {
         </div>
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} onClose={() => setDetalle(null)} />
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} onClose={() => setDetalle(null)} />
       )}
       {ConfirmDialog}
     </div>

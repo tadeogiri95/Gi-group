@@ -12,6 +12,15 @@ import { validateBody, isUUID, safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
 import { rechazarSiSupervisor } from "../../lib/alcance";
 import { ordenarPlantas } from "../../lib/plantas";
+import { CLAVE_CAUSAS, normalizarCausas } from "../../lib/causas";
+
+// Sin la migración 099 no existe etapas.unidad
+function faltaMigracion099(err) {
+  return String(err?.message).includes("unidad");
+}
+function respuestaFalta099() {
+  return NextResponse.json({ error: "Para guardar la unidad de la etapa falta correr la migración 099 en Supabase." }, { status: 409 });
+}
 
 // ─── Helper: extraer empresa_id del request via auth compartido ───
 async function getEmpresaIdFromRequest(request) {
@@ -58,13 +67,18 @@ export async function GET(request) {
     const empresaId = await getEmpresaIdFromRequest(request);
     if (!empresaId) return respuestaNoAutorizado();
 
-    const [divisiones, etapas, plantas] = await Promise.all([
+    const [divisiones, etapas, plantas, causas] = await Promise.all([
       sbGet(`divisiones?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       sbGet(`etapas?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       // Sin la migración 084 la tabla no existe: la app sigue como con una sola planta
       sbGet(`plantas?empresa_id=eq.${empresaId}&activa=eq.true&select=id,nombre,direccion,principal`, { silent: true, fallback: [] }),
+      // Causas de parada propias (099); sin lista, la app usa las de siempre
+      sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_CAUSAS}&select=valor&limit=1`, { silent: true, fallback: [] }),
     ]);
-    return NextResponse.json({ divisiones: divisiones || [], etapas: etapas || [], plantas: ordenarPlantas(plantas) }, {
+    return NextResponse.json({
+      divisiones: divisiones || [], etapas: etapas || [], plantas: ordenarPlantas(plantas),
+      causas_parada: normalizarCausas(causas?.[0]?.valor?.lista),
+    }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (err) {
@@ -108,7 +122,7 @@ export async function POST(request) {
     }
 
     if (action === "add_etapa") {
-      const { nombre, icon, color, orden } = body;
+      const { nombre, icon, color, orden, unidad } = body;
       if (!nombre) return NextResponse.json({ error: "nombre requerido" }, { status: 400 });
       let { codigo } = body;
       if (codigo === undefined) {
@@ -121,12 +135,14 @@ export async function POST(request) {
         const result = await sbPost("etapas", {
           empresa_id: empresaId, codigo, nombre,
           icon: icon || "🔨", color: color || "#F97316", orden: orden || 99,
+          ...(unidad ? { unidad } : {}),
         });
         return NextResponse.json({ etapa: result[0] });
       } catch (err) {
         if (esViolacionUnica(err)) {
           return NextResponse.json({ error: "Ya existe una etapa con ese código en tu empresa." }, { status: 409 });
         }
+        if (unidad && faltaMigracion099(err)) return respuestaFalta099();
         throw err;
       }
     }
@@ -201,8 +217,9 @@ export async function PATCH(request) {
     if (action === "update_etapa") {
       if (!(await perteneceAEmpresa("etapas", id, empresaId)))
         return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-      const { nombre, icon, color, codigo, orden, activa } = body;
+      const { nombre, icon, color, codigo, orden, activa, unidad } = body;
       const updates = {};
+      if (unidad !== undefined) updates.unidad = unidad;
       if (nombre !== undefined) updates.nombre = nombre;
       if (icon !== undefined) updates.icon = icon;
       if (color !== undefined) updates.color = color;
@@ -216,8 +233,22 @@ export async function PATCH(request) {
         if (esViolacionUnica(err)) {
           return NextResponse.json({ error: "Ya existe una etapa con ese código en tu empresa." }, { status: 409 });
         }
+        if (updates.unidad !== undefined && faltaMigracion099(err)) return respuestaFalta099();
         throw err;
       }
+    }
+
+    if (action === "update_causas") {
+      // Lista de causas de parada de la empresa (099). Vacía = las de siempre.
+      const lista = normalizarCausas(body.causas);
+      if (lista.length !== body.causas.length) {
+        return NextResponse.json({ error: "Hay códigos repetidos en las causas de parada." }, { status: 400 });
+      }
+      const filtro = `config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_CAUSAS}`;
+      const [existe] = (await sbGet(`${filtro}&select=clave&limit=1`)) || [];
+      if (existe) await sbPatch(filtro, { valor: { lista } });
+      else await sbPost("config_sistema", { empresa_id: empresaId, clave: CLAVE_CAUSAS, valor: { lista } });
+      return NextResponse.json({ causas_parada: lista });
     }
 
     if (action === "update_planta") {

@@ -56,7 +56,7 @@ const QUERIES = {
     const ot = params?.ot || params?.codigo_proyecto;
     if (!ot) return "Necesito el código OT del proyecto.";
     const regs = await sb(
-      `registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=legajo,fecha,duracion_min,hora_inicio,hora_fin,etapa,observaciones&order=fecha.desc&limit=30`
+      `registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&etapa=gt.0&select=legajo,fecha,duracion_min,hora_inicio,hora_fin,etapa,observaciones&order=fecha.desc&limit=30`
     );
     if (!regs.length) return `No encontré registros para OT ${ot}.`;
     const emps = await sb(

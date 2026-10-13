@@ -9,12 +9,6 @@ const TIPOS = [
   { cod: "E", nombre: "Corrige un error previo", color: "var(--color-empresa-primary, #F97316)" },
   { cod: "C", nombre: "Cambio pedido por el cliente", color: "#7C3AED" },
 ];
-const CAUSAS = [
-  { cod: "M", nombre: "Falta material", icon: "📦" },
-  { cod: "H", nombre: "Falta herramienta", icon: "🔧" },
-  { cod: "I", nombre: "Indicación", icon: "💬" },
-  { cod: "O", nombre: "Otro", icon: "❓" },
-];
 
 /* ═══ HELPERS ═══ */
 import { fmtTime } from "./lib/theme";
@@ -33,6 +27,8 @@ import { apiFetch } from "./lib/supabase";
 import { pendientes } from "./lib/colaOffline";
 import { vibrar } from "./lib/vibrar";
 import { etapasParaOperario, otPasaPorEtapa } from "./lib/rutas";
+import { causasDe, nombreCausa } from "./lib/causas";
+import CantidadTarea from "./components/CantidadTarea";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -51,6 +47,7 @@ export default function ActividadScreen({
   historial,
   etapas = [],
   divisiones = [],
+  causas = [],
   proyectos = [],
   proyectosLoading = false,
   loading,
@@ -63,7 +60,10 @@ export default function ActividadScreen({
   fichadaHoy,
   onIrAInicio,
   recargarProyectos,
+  recargar,
 }) {
+  // Causas de parada de la empresa (099); sin lista propia, las de siempre
+  const CAUSAS = causasDe(causas);
   const [state, setState] = useState("idle");
   const [showReporte, setShowReporte] = useState(false);
   const [proyectoSeleccionado, setProyectoSeleccionado] = useState(null);
@@ -226,7 +226,8 @@ export default function ActividadScreen({
     setSaving(true);
     setErrorMsg(null);
     try {
-      await onIniciar({ etapa: 0, codigo_proyecto: null, tipo: "N", causa });
+      // La parada queda en la OT en la que se estaba (099)
+      await onIniciar({ etapa: 0, codigo_proyecto: tareaActiva?.codigo_proyecto || null, tipo: "N", causa });
       vibrar();
       setState("active");
     } catch (e) { console.error(e); setErrorMsg(e?.message || "No se pudo registrar que estás parado. Intentá de nuevo."); }
@@ -369,7 +370,10 @@ export default function ActividadScreen({
                 <div className="flex justify-between text-[11px] text-gypi-dim mt-1">
                   <span className="font-mono">{horaIni} → {horaFin}</span>
                 </div>
-                {r.causa && <div className="mt-1.5 text-[11px] text-gypi-red">Causa: {CAUSAS.find(c => c.cod === r.causa)?.nombre}</div>}
+                {r.causa && <div className="mt-1.5 text-[11px] text-gypi-red">Causa: {nombreCausa(causas, r.causa)}</div>}
+                {r.etapa > 0 && r.hora_fin && !r.sinEnviar && (
+                  <CantidadTarea key={r.id} tareaId={r.id} unidad={etapa.unidad} valor={r.cantidad} onGuardada={() => recargar?.()} />
+                )}
               </div>
             );
           })}
@@ -629,7 +633,7 @@ export default function ActividadScreen({
                     {proyectoActivo && <span> · {proyectoActivo.cliente}</span>}
                   </div>
                 )}
-                {isEspera && <div className="text-[13px] text-gypi-red">Causa: {CAUSAS.find(c => c.cod === tareaActiva?.causa)?.nombre}</div>}
+                {isEspera && <div className="text-[13px] text-gypi-red">Causa: {nombreCausa(causas, tareaActiva?.causa)}{tareaActiva?.codigo_proyecto ? ` · OT ${tareaActiva.codigo_proyecto}` : ""}</div>}
               </div>
               {tareaActiva?.tipo && tareaActiva.tipo !== "N" && <Tag color={TIPOS.find(t => t.cod === tareaActiva.tipo)?.color}>{TIPOS.find(t => t.cod === tareaActiva.tipo)?.nombre}</Tag>}
             </div>
@@ -643,6 +647,9 @@ export default function ActividadScreen({
               <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: accentColor }} />
               <span className="text-xs text-gypi-dim font-semibold">{isEspera ? "PARADO" : "TRABAJANDO"}</span>
             </div>
+            {!isEspera && !tareaActiva?.sinEnviar && (
+              <CantidadTarea key={tareaActiva?.id} tareaId={tareaActiva?.id} unidad={etapaActiva?.unidad} valor={tareaActiva?.cantidad} />
+            )}
           </div>
         </div>
 

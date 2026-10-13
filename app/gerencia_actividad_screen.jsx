@@ -6,6 +6,7 @@ import Stat from "./components/ui/Stat";
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { hoyArg } from "./lib/dates";
+import { nombreCausa } from "./lib/causas";
 
 // R11: el color dice el ESTADO de la persona (trabajando / parado / sin tarea),
 // no la etapa; la etapa va con su ícono y su nombre.
@@ -19,7 +20,6 @@ const ESTADO = {
 const tonoPct = (pct) => pct >= 80 ? "trabajando" : pct >= 60 ? "aviso" : "parado";
 
 /* ═══ CONSTANTES ═══ */
-const CAUSAS_MAP = { M: "Falta material", H: "Falta herramienta", I: "Indicación", O: "Otro" };
 const TIPOS_MAP = {
   N: { nombre: "Normal", txt: "text-gypi-green-ink" },
   R: { nombre: "Retrabajo", txt: "text-gypi-red-ink" },
@@ -60,7 +60,7 @@ const fmtHora = (ts) => {
 
 /* ═══ COMPONENT ═══ */
 export default function GerenciaActividadScreen({ empresaId }) {
-  const { divisiones: divisionesCtx } = useAuth();
+  const { divisiones: divisionesCtx, causasParada } = useAuth();
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [division, setDivision] = useState("todas");
   const [resumen, setResumen] = useState([]);
@@ -328,7 +328,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                           {(act.tipo !== "N" || act.causa) && (
                                             <div className="flex items-center gap-1.5 mt-1 text-xs text-gypi-dim">
                                               {act.tipo !== "N" && <span className={`font-bold ${tipoReg.txt}`}>{tipoReg.nombre}</span>}
-                                              {act.causa && <span>· {CAUSAS_MAP[act.causa] || act.causa}</span>}
+                                              {act.causa && <span>· {nombreCausa(causasParada, act.causa)}</span>}
                                             </div>
                                           )}
 
