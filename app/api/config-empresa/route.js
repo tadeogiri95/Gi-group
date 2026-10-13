@@ -14,6 +14,7 @@ import { rechazarSiSupervisor } from "../../lib/alcance";
 import { ordenarPlantas } from "../../lib/plantas";
 import { CLAVE_CAUSAS, normalizarCausas } from "../../lib/causas";
 import { CLAVE_CHECKLIST, normalizarChecklist } from "../../lib/avance";
+import { CLAVE_CHECKLIST_CARGA } from "../../lib/carga";
 import { CLAVE_DEFECTOS, normalizarDefectos } from "../../lib/calidad";
 
 // Sin la migración 099 no existe etapas.unidad
@@ -85,7 +86,7 @@ export async function GET(request) {
     const empresaId = await getEmpresaIdFromRequest(request);
     if (!empresaId) return respuestaNoAutorizado();
 
-    const [divisiones, etapas, plantas, causas, checklist, defectos] = await Promise.all([
+    const [divisiones, etapas, plantas, causas, checklist, defectos, checklistCarga] = await Promise.all([
       sbGet(`divisiones?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       sbGet(`etapas?empresa_id=eq.${empresaId}&activa=eq.true&order=orden.asc`),
       // Sin la migración 084 la tabla no existe: la app sigue como con una sola planta
@@ -96,12 +97,15 @@ export async function GET(request) {
       sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_CHECKLIST}&select=valor&limit=1`, { silent: true, fallback: [] }),
       // Defectos de las no conformidades (101)
       sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_DEFECTOS}&select=valor&limit=1`, { silent: true, fallback: [] }),
+      // Checklist de carga del camión (104)
+      sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_CHECKLIST_CARGA}&select=valor&limit=1`, { silent: true, fallback: [] }),
     ]);
     return NextResponse.json({
       divisiones: divisiones || [], etapas: etapas || [], plantas: ordenarPlantas(plantas),
       causas_parada: normalizarCausas(causas?.[0]?.valor?.lista),
       checklist_liberacion: normalizarChecklist(checklist?.[0]?.valor?.lista),
       defectos: normalizarDefectos(defectos?.[0]?.valor?.lista),
+      checklist_carga: normalizarChecklist(checklistCarga?.[0]?.valor?.lista),
     }, {
       headers: { "Cache-Control": "private, no-store" },
     });
@@ -281,6 +285,13 @@ export async function PATCH(request) {
       const lista = normalizarChecklist(body.items);
       await guardarConfig(empresaId, CLAVE_CHECKLIST, { lista });
       return NextResponse.json({ checklist_liberacion: lista });
+    }
+
+    if (action === "update_checklist_carga") {
+      // Checklist de carga del camión (104). Vacío = sin checklist.
+      const lista = normalizarChecklist(body.items);
+      await guardarConfig(empresaId, CLAVE_CHECKLIST_CARGA, { lista });
+      return NextResponse.json({ checklist_carga: lista });
     }
 
     if (action === "update_defectos") {
