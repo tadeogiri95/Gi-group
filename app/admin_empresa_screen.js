@@ -7,6 +7,7 @@ import ResumenSemanalSwitch from "./components/ResumenSemanalSwitch";
 import RutasEditor from "./components/RutasEditor";
 import CausasEditor from "./components/CausasEditor";
 import ChecklistEditor from "./components/ChecklistEditor";
+import DefectosEditor from "./components/DefectosEditor";
 import { useToast } from "./components/ui/Toast";
 import { useAuth } from "./context/AuthContext";
 
@@ -26,6 +27,7 @@ const TABS = [
   { key: "rutas", label: "Rutas" },
   { key: "paradas", label: "Paradas" },
   { key: "liberacion", label: "Liberación" },
+  { key: "defectos", label: "Defectos" },
 ];
 
 /* ─── Hex validation ─── */
@@ -56,7 +58,7 @@ function ColorRow({ label, value, onChange }) {
 
 export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [] }) {
   const [tab, setTab] = useState("general");
-  const { causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion } = useAuth();
+  const { causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, defectos, setDefectos } = useAuth();
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -566,6 +568,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
 
       case "liberacion":
         return <ChecklistEditor items={checklistLiberacion} onGuardado={setChecklistLiberacion} avisar={showToast} />;
+
+      case "defectos":
+        return <DefectosEditor defectos={defectos} etapas={etapas} onGuardados={setDefectos} avisar={showToast} />;
 
       default: return null;
     }

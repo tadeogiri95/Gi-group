@@ -29,6 +29,7 @@ import { vibrar } from "./lib/vibrar";
 import { etapasParaOperario, otPasaPorEtapa } from "./lib/rutas";
 import { causasDe, nombreCausa } from "./lib/causas";
 import CantidadTarea from "./components/CantidadTarea";
+import NoConformeForm from "./components/NoConformeForm";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -48,6 +49,7 @@ export default function ActividadScreen({
   etapas = [],
   divisiones = [],
   causas = [],
+  defectos = [],
   proyectos = [],
   proyectosLoading = false,
   loading,
@@ -78,6 +80,9 @@ export default function ActividadScreen({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [avanceMsg, setAvanceMsg] = useState(null);
+  // Pieza con defecto (OP parte 6): formulario abierto y aviso al guardar
+  const [verNoConforme, setVerNoConforme] = useState(false);
+  const [noConformeMsg, setNoConformeMsg] = useState(null);
   const inputRef = useRef(null);
   const manualInputRef = useRef(null);
   // Escáner de OT (D8): solo si la empresa lo activó y el navegador puede leer códigos
@@ -700,6 +705,21 @@ export default function ActividadScreen({
           avanceMsg && avanceMsg.tareaId === tareaActiva.id
             ? <div role="status" className="text-[13px] text-gypi-green text-center">✓ {avanceMsg.texto}</div>
             : <button onClick={terminarEtapa} disabled={saving} className={`w-full min-h-[52px] p-3 rounded-2xl bg-gypi-green/10 border border-gypi-green/30 text-gypi-green text-sm font-bold font-body cursor-pointer ${saving ? 'opacity-50' : ''}`}>✓ Terminé esta etapa de la OT</button>
+        )}
+
+        {!isEspera && tareaActiva?.codigo_proyecto && !tareaActiva?.sinEnviar && (
+          <>
+            {noConformeMsg && <div role="status" className="text-[13px] text-gypi-green text-center">✓ {noConformeMsg}</div>}
+            <button onClick={() => { setNoConformeMsg(null); setVerNoConforme(true); }} disabled={saving}
+              className={`w-full min-h-[48px] p-3 rounded-2xl bg-transparent border border-gypi-red/30 text-gypi-red text-sm font-bold font-body cursor-pointer ${saving ? 'opacity-50' : ''}`}>
+              🟥 Pieza con defecto
+            </button>
+          </>
+        )}
+        {verNoConforme && tareaActiva?.codigo_proyecto && (
+          <NoConformeForm ot={tareaActiva.codigo_proyecto} etapaDetecta={tareaActiva.etapa > 0 ? tareaActiva.etapa : null}
+            etapas={etapas} defectos={defectos} onClose={() => setVerNoConforme(false)}
+            onCreada={() => { setVerNoConforme(false); setNoConformeMsg("Pieza registrada. Llevala a la zona de no conformes."); vibrar(); }} />
         )}
 
         <button onClick={() => finalizarTarea("idle")} disabled={saving} className={`w-full p-4 rounded-2xl bg-transparent border border-gypi-border text-gypi-dim text-sm font-semibold font-body cursor-pointer flex items-center justify-center gap-1.5 ${saving ? 'opacity-50' : ''}`}><Icon name="stop" size={15} /> Terminar tarea</button>

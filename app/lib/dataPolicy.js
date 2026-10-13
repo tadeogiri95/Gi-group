@@ -52,6 +52,7 @@ export const POLICY = {
   divisiones:                   { GET: "all" },   // se editan por /api/config-empresa
   plantas:                      { GET: "all" },   // se editan por /api/config-empresa
   avance_etapas:                { GET: "all" },   // se escribe por /api/avance (OP parte 5)
+  no_conformidades:             { GET: "all" },   // se escribe por /api/no-conformidades (OP parte 6)
   empresa:                      { GET: "all",     PATCH: "gestion" },
 
   // Solo gestión.
@@ -171,6 +172,11 @@ export function validarPatch(tabla, body, sesion) {
   if (tabla === "registro_actividades" && body && body.cantidad !== undefined && body.cantidad !== null) {
     const n = body.cantidad;
     if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 99999999) return { status: 400, error: "Cantidad inválida" };
+  }
+  // Total de módulos de la OT (101): entero de 0 a 9999, o null
+  if (tabla === "proyectos" && body && body.total_modulos !== undefined && body.total_modulos !== null) {
+    const n = body.total_modulos;
+    if (!Number.isInteger(n) || n < 0 || n > 9999) return { status: 400, error: "Total de módulos inválido" };
   }
   if (tabla === "empresa" && sesion?.rol !== "gerencial") {
     const prohibido = CAMPOS_EMPRESA_SOLO_DUENO.find((c) => body && body[c] !== undefined);

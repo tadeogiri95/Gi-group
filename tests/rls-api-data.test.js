@@ -122,7 +122,8 @@ function permisosDe(tabla) {
 const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"];
 // Tablas con permisos en su propia migración (también los usa una ruta propia):
 // avance_etapas → 100 (/api/avance escribe con el pase del usuario)
-const MIGRACION_PROPIA = ["avance_etapas"];
+// no_conformidades → 101 (/api/no-conformidades, igual)
+const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades"];
 const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
 
 test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {

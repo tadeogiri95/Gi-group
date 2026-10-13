@@ -10,6 +10,7 @@ import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
 import DetalleOp from "./components/DetalleOp";
 import TableroOt from "./components/TableroOt";
+import NoConformidades from "./components/NoConformidades";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -50,7 +51,9 @@ function parseProyectosCSV(text) {
 function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
   const [f, setF] = useState(initial || { ot: "", cliente: "", obra: "", proyecto: "", division: "" });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const valid = f.ot?.trim();
+  const modulosTexto = String(f.total_modulos ?? "").trim();
+  const modulosValido = modulosTexto === "" || (/^\d{1,4}$/.test(modulosTexto));
+  const valid = f.ot?.trim() && modulosValido;
   const editando = !!initial?.id;
 
   return (
@@ -75,6 +78,11 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
         <div className="mb-3">
           <label className="g-label">Descripción</label>
           <input value={f.proyecto} onChange={e => set("proyecto", e.target.value)} className="g-input" />
+        </div>
+        <div className="mb-3">
+          <label className="g-label" htmlFor="ot-modulos">Total de módulos</label>
+          <input id="ot-modulos" value={f.total_modulos ?? ""} onChange={e => set("total_modulos", e.target.value)} className="g-input" inputMode="numeric" placeholder="Ej: 12 (si viene en la planilla, se completa solo)" />
+          {!modulosValido && <div className="text-[11px] text-gypi-red mt-1">Un número entero, sin decimales.</div>}
         </div>
         <div className="mb-5">
           <label className="g-label">División</label>
@@ -138,7 +146,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ProyectosScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, empresa, updateEmpresa } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, defectos, empresa, updateEmpresa } = useAuth();
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -185,6 +193,11 @@ export default function ProyectosScreen({ empresaId }) {
 
   const guardar = async (form) => {
     setSaving(true);
+    // Total de módulos (101): solo se manda si cambió, así la OT se puede
+    // editar aunque la migración todavía no esté corrida
+    const textoModulos = String(form.total_modulos ?? "").trim();
+    const modulos = textoModulos === "" ? null : Number(textoModulos);
+    const conModulos = modulos !== (modal?.total_modulos ?? null) ? { total_modulos: modulos } : {};
     try {
       if (modal?.id) {
         await sb.patch(`proyectos?id=eq.${modal.id}`, {
@@ -193,6 +206,7 @@ export default function ProyectosScreen({ empresaId }) {
           obra: form.obra || null,
           proyecto: form.proyecto || null,
           division: form.division || null,
+          ...conModulos,
         });
         showToast("✅ OT actualizada", GREEN);
       } else {
@@ -203,6 +217,7 @@ export default function ProyectosScreen({ empresaId }) {
           proyecto: form.proyecto || null,
           division: form.division || null,
           estado: "activo",
+          ...conModulos,
         });
         showToast("✅ OT creada", GREEN);
       }
@@ -463,9 +478,12 @@ export default function ProyectosScreen({ empresaId }) {
       <div className="flex gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
         <Chip active={vista === "lista"} onClick={() => setVista("lista")}>Lista</Chip>
         <Chip active={vista === "tablero"} onClick={() => setVista("tablero")}>Tablero</Chip>
+        <Chip active={vista === "calidad"} onClick={() => setVista("calidad")}>No conformes</Chip>
       </div>
 
-      {vista === "tablero" && !loading ? (
+      {vista === "calidad" && !loading ? (
+        <NoConformidades empresaId={empresaId} proyectos={proyectos} etapas={etapasCtx || []} defectos={defectos || []} />
+      ) : vista === "tablero" && !loading ? (
         <TableroOt
           proyectos={filtrados.filter(p => p.estado !== "cerrado")}
           empresaId={empresaId}
@@ -521,7 +539,7 @@ export default function ProyectosScreen({ empresaId }) {
         </div>
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} onClose={() => setDetalle(null)} />
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} onClose={() => setDetalle(null)} />
       )}
       {ConfirmDialog}
     </div>
