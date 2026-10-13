@@ -2,12 +2,14 @@
 // app/components/DetalleOp.jsx — Detalle de una orden de producción
 // (Órdenes de Producción, parte 3; ítem 39). Solo lectura: horas por etapa,
 // quién trabajó y retrabajos, con las tareas que ya se registran. Desde la
-// parte 4 también la cantidad hecha por etapa y las paradas en la OT.
+// parte 4 también la cantidad hecha por etapa y las paradas en la OT; desde
+// la parte 6, los módulos hechos contra el total y las no conformidades.
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
 import { buscarDivision } from "../lib/rutas";
 import { fechaCorta } from "../lib/ot";
+import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from "../lib/calidad";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -34,8 +36,9 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], onClose }) {
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], onClose }) {
   const [tareas, setTareas] = useState(null);
+  const [noConformes, setNoConformes] = useState([]);
   const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
 
@@ -45,11 +48,14 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
     (async () => {
       try {
         const ot = encodeURIComponent(proyecto.ot);
-        const [regs, emps] = await Promise.all([
+        const [regs, emps, ncs] = await Promise.all([
           sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,etapa,tipo,causa,cantidad,duracion_min&order=hora_inicio.asc`),
           sb.get(`empleados?empresa_id=eq.${empresaId}&select=id,legajo,nombre,apodo`).catch(() => []),
+          // Sin la migración 101 no hay tabla: el detalle sigue sin ese dato
+          sb.get(`no_conformidades?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,defecto,cantidad,pieza,decision,minutos_retrabajo,created_at&order=created_at.desc`).catch(() => []),
         ]);
         if (!vivo) return;
+        setNoConformes(ncs || []);
         setTareas(regs.data || []);
         setEmpleados(emps || []);
       } catch (e) {
@@ -78,9 +84,9 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
             <div className="text-xs text-gypi-dim mt-0.5">
               {[proyecto?.obra, proyecto?.descripcion, division?.label || proyecto?.division].filter(Boolean).join(" · ")}
             </div>
-            {(proyecto?.fecha_entrega || proyecto?.cantidad != null) && (
+            {(proyecto?.fecha_entrega || proyecto?.cantidad != null || proyecto?.total_modulos) && (
               <div className="text-xs text-gypi-dim mt-0.5">
-                {[proyecto?.fecha_entrega && `Entrega ${fechaCorta(proyecto.fecha_entrega)}`, proyecto?.cantidad != null && `Cantidad ${proyecto.cantidad}`].filter(Boolean).join(" · ")}
+                {[proyecto?.fecha_entrega && `Entrega ${fechaCorta(proyecto.fecha_entrega)}`, proyecto?.cantidad != null && `Cantidad ${proyecto.cantidad}`, proyecto?.total_modulos && `${proyecto.total_modulos} módulos`].filter(Boolean).join(" · ")}
               </div>
             )}
           </div>
@@ -121,9 +127,11 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                   {e.retrabajoMin > 0 && ` · ${fmtHoras(e.retrabajoMin)} de retrabajo`}
                   {resumen.tieneRuta && !e.enRuta && " · fuera de la ruta"}
                 </div>
-                {e.unidad && e.cantidad > 0 && (
+                {e.unidad && (e.cantidad > 0 || (esEtapaDeModulos(e) && proyecto?.total_modulos)) && (
                   <div className="text-[11px] text-gypi-dim mt-0.5">
-                    {`${Number(e.cantidad.toFixed(2))} ${e.unidad}`}
+                    {esEtapaDeModulos(e) && proyecto?.total_modulos
+                      ? `${textoModulos(e.cantidad, proyecto.total_modulos)} ${e.unidad}`
+                      : `${Number(e.cantidad.toFixed(2))} ${e.unidad}`}
                     {e.minPorUnidad != null && ` · ${fmtPorUnidad(e.minPorUnidad)} por ${e.unidad}`}
                   </div>
                 )}
@@ -172,7 +180,25 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               ))}
             </div>
           )}
-          <div className="text-[11px] text-gypi-dim">Las paradas cuentan desde que se anotan con la OT en la que se estaba; las anteriores no tienen OT.</div>
+          <div className="text-[11px] text-gypi-dim mb-4">Las paradas cuentan desde que se anotan con la OT en la que se estaba; las anteriores no tienen OT.</div>
+
+        </>)}
+        {noConformes.length > 0 && (<>
+          <div className="g-label mb-1.5">No conformidades</div>
+          <div className="flex flex-col gap-1.5">
+            {noConformes.map((nc) => (
+              <div key={nc.id} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
+                <span className="w-10 font-mono text-[12px] font-bold text-gypi-red">{nc.defecto}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold truncate">{nombreDefecto(defectos, nc.defecto)}</div>
+                  <div className="text-[11px] text-gypi-dim truncate">
+                    {[nc.cantidad > 1 ? `${nc.cantidad} piezas` : "1 pieza", nc.pieza, nc.minutos_retrabajo ? `${nc.minutos_retrabajo} min de retrabajo` : null].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                <span className={`text-[11px] font-bold ${nc.decision ? "text-gypi-green" : "text-gypi-red"}`}>{nc.decision ? nombreDecision(nc.decision) : "Sin decidir"}</span>
+              </div>
+            ))}
+          </div>
         </>)}
       </div>
     </div>

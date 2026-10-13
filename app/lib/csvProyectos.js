@@ -50,6 +50,12 @@ export function fechaPlanilla(texto) {
   return fecha.toISOString().slice(0, 10);
 }
 
+/** "12" → 12; vacío, texto o con decimales → null (total de módulos, 101). */
+function enteroPlanilla(texto) {
+  const n = Number(limpio(texto));
+  return limpio(texto) !== "" && Number.isInteger(n) && n >= 0 && n <= 9999 ? n : null;
+}
+
 /** "3", "2,5" o "1.5" → número; vacío o texto → null. */
 function cantidadPlanilla(texto) {
   const t = limpio(texto).replace(",", ".");
@@ -60,11 +66,11 @@ function cantidadPlanilla(texto) {
 const SI = new Set(["si", "sí", "x", "ok", "terminado", "terminada"]);
 
 /**
- * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,terminado_planilla}[], repetidas: number }}
+ * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla}[], repetidas: number }}
  * filas: una por OT. Si una OT aparece varias veces (un renglón por ítem), vale
  * la última fila, las columnas vacías se completan con las anteriores y las
  * descripciones de todos los ítems se juntan con " / ". De todos sus ítems:
- * la fecha de entrega es la más tardía, la cantidad es la suma, y la OT está
+ * la fecha de entrega es la más tardía, la cantidad y los módulos se suman, y la OT está
  * terminada en la planilla solo si todos sus ítems dicen SI en TERMINADO
  * (null si la planilla no tiene esa columna).
  */
@@ -86,7 +92,12 @@ export function parseCsvProyectos(text) {
   const iDiv = idx("divis");
   const iDesc = idx("descripcion") >= 0 ? idx("descripcion") : idx("descrip");
   const iEntrega = idx("entrega");
-  const iCant = idx("cant");
+  // Total de módulos (101): "MÓDULOS", "Modulos", "Cant. módulos"…
+  const sinTilde = headers.map(h => h.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const iMod = sinTilde.findIndex(h => h.includes("modulo"));
+  const iCant = headers.findIndex((h, i) => i !== iMod && h === "cant") >= 0
+    ? headers.findIndex((h, i) => i !== iMod && h === "cant")
+    : headers.findIndex((h, i) => i !== iMod && h.includes("cant"));
   const iTerminado = idx("terminado");
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);
@@ -101,6 +112,8 @@ export function parseCsvProyectos(text) {
       ot, cliente: valor(c, iCli), obra: valor(c, iObra), proyecto: valor(c, iProy), division: valor(c, iDiv), descripcion: valor(c, iDesc),
       fecha_entrega: iEntrega >= 0 ? fechaPlanilla(c[iEntrega]) : null,
       cantidad: iCant >= 0 ? cantidadPlanilla(c[iCant]) : null,
+      // Sin columna de módulos la clave no va: no pisa el total cargado a mano
+      ...(iMod >= 0 ? { total_modulos: enteroPlanilla(c[iMod]) } : {}),
       terminado_planilla: iTerminado >= 0 ? SI.has(limpio(c[iTerminado]).toLowerCase()) : null,
     };
     const previa = porOt.get(ot);
@@ -110,11 +123,13 @@ export function parseCsvProyectos(text) {
       const descs = [previa.descripcion, fila.descripcion].filter(Boolean);
       const fechas = [previa.fecha_entrega, fila.fecha_entrega].filter(Boolean).sort();
       const cantidad = previa.cantidad == null && fila.cantidad == null ? null : (previa.cantidad || 0) + (fila.cantidad || 0);
+      const modulos = previa.total_modulos == null && fila.total_modulos == null ? null : (previa.total_modulos || 0) + (fila.total_modulos || 0);
       const terminado = iTerminado >= 0 ? previa.terminado_planilla && fila.terminado_planilla : null;
       for (const k of Object.keys(fila)) if (fila[k] == null) fila[k] = previa[k];
       fila.descripcion = [...new Set(descs.flatMap(d => d.split(" / ")))].join(" / ").slice(0, MAX_DESCRIPCION) || null;
       fila.fecha_entrega = fechas.at(-1) || null;
       fila.cantidad = cantidad;
+      if (iMod >= 0) fila.total_modulos = modulos == null ? null : Math.min(modulos, 9999);
       fila.terminado_planilla = terminado;
     }
     porOt.set(ot, fila);

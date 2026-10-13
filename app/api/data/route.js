@@ -51,13 +51,14 @@ const TABLAS_PERMITIDAS = [
   "suscripciones", "pagos",
   "tipos_documento_requerido", "documentos_exigidos_empleado", "documentos_empleado",
   "avance_etapas", // OP parte 5 (100): solo lectura acá; se escribe por /api/avance
+  "no_conformidades", // OP parte 6 (101): solo lectura acá; se escribe por /api/no-conformidades
 ];
 
 // documentos_empleado: solo lectura vía /api/data — los inserts pasan SIEMPRE
 // por /api/documentos/upload (valida tipo/tamaño de archivo server-side antes
 // de escribir la fila). Sin esto, un POST directo podría crear filas con
 // storage_path arbitrario sin que exista el archivo.
-const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas"];
+const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades"];
 
 // Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
 // base aplica la RLS. Las dos vistas de resumen necesitan además la migración
@@ -109,6 +110,7 @@ const TABLAS_CON_EMPRESA = [
   "suscripciones", "pagos",
   "tipos_documento_requerido", "documentos_exigidos_empleado", "documentos_empleado",
   "avance_etapas", // OP parte 5 (100): solo lectura acá; se escribe por /api/avance
+  "no_conformidades", // OP parte 6 (101): solo lectura acá; se escribe por /api/no-conformidades
 ];
 
 function validarPath(path) {

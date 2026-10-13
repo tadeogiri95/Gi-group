@@ -53,8 +53,8 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
     PATCH: ["texto_formateado", "progreso"],
   },
   proyectos: {
-    POST: ["estado", "ot", "cliente", "obra", "proyecto", "division"],
-    PATCH: ["estado", "ot", "cliente", "obra", "proyecto", "division"],
+    POST: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos"],
+    PATCH: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos"],
   },
   push_tokens: {
     POST: ["legajo", "token", "plataforma"],
@@ -217,6 +217,32 @@ export const avanceBody = z.object({
   puntos_criticos: z.string().trim().max(2000).nullable().optional(),
 }).strict().refine((b) => !["terminar", "aprobar", "reabrir", "no_aplica"].includes(b.accion) || b.etapa != null, { message: "Falta la etapa" });
 
+// ── /api/no-conformidades (101): piezas con defecto por OT ────────────────
+const etapaNc = z.number().int().min(1).max(999).nullable().optional();
+export const noConformidadBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("crear"),
+    ot: z.union([z.string().trim().min(1).max(40), z.number()]).transform(String),
+    defecto: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{1,4}$/),
+    pieza: z.string().trim().max(80).nullable().optional().transform((v) => v || null),
+    cantidad: z.number().int().min(1).max(9999).optional(),
+    etapa_detecta: etapaNc,
+    etapa_origen: etapaNc,
+    nota: z.string().trim().max(300).nullable().optional().transform((v) => v || null),
+  }).strict(),
+  z.object({
+    accion: z.literal("decidir"),
+    id: z.number().int().positive(),
+    decision: z.enum(["reprocesar", "rehacer", "usar_igual", "descartar"]).nullable(),
+    minutos_retrabajo: z.number().int().min(0).max(99999).nullable().optional(),
+    etapa_origen: etapaNc,
+  }).strict(),
+  z.object({
+    accion: z.literal("borrar"),
+    id: z.number().int().positive(),
+  }).strict(),
+]);
+
 // ── /api/kiosco (D7, ítem 19) ──────────────────────────────────────────────
 export const kioscoActivarBody = z.object({
   nombre: z.string().trim().min(1).max(60).optional(),
@@ -323,6 +349,15 @@ export const configPatchBody = z.discriminatedUnion("action", [
     // Checklist de liberación de la OT (100); [] = sin checklist
     action: z.literal("update_checklist"),
     items: z.array(z.string().trim().min(1).max(200)).max(20),
+  }),
+  z.object({
+    // Defectos de la empresa (101); [] vuelve a los de siempre
+    action: z.literal("update_defectos"),
+    defectos: z.array(z.object({
+      cod: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{1,4}$/),
+      nombre: z.string().trim().min(1).max(60),
+      origen: z.number().int().min(1).max(999).nullable().optional(),
+    })).max(30),
   }),
   z.object({
     // Causas de parada de la empresa (099); [] vuelve a las de siempre

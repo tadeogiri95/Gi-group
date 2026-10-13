@@ -70,9 +70,9 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   let procesados = 0;
   const errores = [];
   // Columnas que agregaron migraciones posteriores (091: descripcion; 097:
-  // fecha_entrega, cantidad, terminado_planilla). Si la base todavía no tiene
+  // fecha_entrega, cantidad, terminado_planilla; 101: total_modulos). Si la base todavía no tiene
   // alguna, se reintenta sin ella para que la sincronización no se corte.
-  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla"];
+  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos"];
   const omitidas = new Set();
   const subir = (batch) => sbFetch("proyectos?on_conflict=empresa_id,ot", {
     method: "POST",
@@ -94,6 +94,9 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       fecha_entrega:      r.fecha_entrega,
       cantidad:           r.cantidad,
       terminado_planilla: r.terminado_planilla,
+      // Solo si la planilla tiene la columna (todas las filas la traen o
+      // ninguna: PostgREST pide las mismas claves en todo el lote)
+      ...("total_modulos" in r ? { total_modulos: r.total_modulos } : {}),
     }));
     try {
       // on_conflict explícito: sin esto, PostgREST usa la PK (id, siempre ausente
