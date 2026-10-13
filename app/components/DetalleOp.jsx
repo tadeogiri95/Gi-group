@@ -1,12 +1,18 @@
 'use client';
 // app/components/DetalleOp.jsx — Detalle de una orden de producción
 // (Órdenes de Producción, parte 3; ítem 39). Solo lectura: horas por etapa,
-// quién trabajó y retrabajos, con las tareas que ya se registran.
+// quién trabajó y retrabajos, con las tareas que ya se registran. Desde la
+// parte 4 también la cantidad hecha por etapa y las paradas en la OT.
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
 import { buscarDivision } from "../lib/rutas";
 import { fechaCorta } from "../lib/ot";
+
+// 4.5 → "4,5 min"; 95 → "1 h 35 min"
+function fmtPorUnidad(min) {
+  return min < 60 ? `${Number(min.toFixed(1)).toLocaleString("es-AR")} min` : fmtHoras(min);
+}
 
 function Dato({ label, valor }) {
   return (
@@ -28,7 +34,7 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], onClose }) {
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], onClose }) {
   const [tareas, setTareas] = useState(null);
   const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
@@ -40,7 +46,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
       try {
         const ot = encodeURIComponent(proyecto.ot);
         const [regs, emps] = await Promise.all([
-          sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,etapa,tipo,duracion_min&order=hora_inicio.asc`),
+          sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,etapa,tipo,causa,cantidad,duracion_min&order=hora_inicio.asc`),
           sb.get(`empleados?empresa_id=eq.${empresaId}&select=id,legajo,nombre,apodo`).catch(() => []),
         ]);
         if (!vivo) return;
@@ -56,8 +62,8 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
 
   const division = buscarDivision(divisiones, proyecto?.division);
   const resumen = useMemo(
-    () => (tareas ? resumirOp(tareas, { etapas, division, empleados }) : null),
-    [tareas, etapas, division, empleados]
+    () => (tareas ? resumirOp(tareas, { etapas, division, empleados, causas }) : null),
+    [tareas, etapas, division, empleados, causas]
   );
   const maxEtapa = resumen ? Math.max(1, ...resumen.etapas.map((e) => e.min)) : 1;
 
@@ -115,6 +121,12 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                   {e.retrabajoMin > 0 && ` · ${fmtHoras(e.retrabajoMin)} de retrabajo`}
                   {resumen.tieneRuta && !e.enRuta && " · fuera de la ruta"}
                 </div>
+                {e.unidad && e.cantidad > 0 && (
+                  <div className="text-[11px] text-gypi-dim mt-0.5">
+                    {`${Number(e.cantidad.toFixed(2))} ${e.unidad}`}
+                    {e.minPorUnidad != null && ` · ${fmtPorUnidad(e.minPorUnidad)} por ${e.unidad}`}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -146,7 +158,21 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               ))}
             </div>
           )}
-          <div className="text-[11px] text-gypi-dim">Las paradas (falta material, herramienta, etc.) no se cargan con OT, por eso no aparecen acá.</div>
+          <div className="g-label mb-1.5">Paradas en esta OT</div>
+          {resumen.paradas.length === 0 ? (
+            <div className="text-[13px] text-gypi-dim mb-4">Sin paradas registradas en esta OT.</div>
+          ) : (
+            <div className="flex flex-col gap-1.5 mb-4">
+              {resumen.paradas.map((p) => (
+                <div key={p.causa} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
+                  <span className="flex-1 min-w-0 text-[13px] font-bold truncate">{p.nombre}</span>
+                  <span className="text-[11px] text-gypi-dim">{p.veces === 1 ? "1 vez" : `${p.veces} veces`}</span>
+                  <span className="text-[13px] font-bold">{fmtHoras(p.min)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="text-[11px] text-gypi-dim">Las paradas cuentan desde que se anotan con la OT en la que se estaba; las anteriores no tienen OT.</div>
         </>)}
       </div>
     </div>

@@ -146,7 +146,8 @@ export function prepararBodyPost(tabla, body, sesion, ownFilter) {
 
 // Valores que entiende la pantalla de gerencia (gerencia_actividad_screen.jsx)
 export const TIPOS_ACTIVIDAD = new Set(["N", "R", "E", "C"]); // normal, retrabajo, error, cambio
-export const CAUSAS_IMPRODUCTIVO = new Set(["M", "H", "I", "O"]); // material, herramienta, indicación, otro
+// Causas de parada: cada empresa arma su lista (099); acá solo se controla el formato
+export const RE_CAUSA = /^[A-Z0-9]{1,4}$/;
 
 /** Normaliza y valida tipo/causa/division de un registro de actividad (F1-02). Muta `body`. */
 function validarActividad(body) {
@@ -154,7 +155,7 @@ function validarActividad(body) {
   if (!TIPOS_ACTIVIDAD.has(body.tipo)) return "Tipo de actividad inválido";
   if (body.causa === undefined || body.causa === "") body.causa = null;
   if (body.causa !== null) {
-    if (!CAUSAS_IMPRODUCTIVO.has(body.causa)) return "Causa inválida";
+    if (typeof body.causa !== "string" || !RE_CAUSA.test(body.causa)) return "Causa inválida";
     if (Number(body.etapa) !== 0) return "La causa solo aplica al tiempo improductivo";
   }
   if (body.division !== undefined && body.division !== null && (typeof body.division !== "string" || body.division.length > 50)) {
@@ -165,6 +166,11 @@ function validarActividad(body) {
 
 /** Restricciones de campos por rol en PATCH. Devuelve null si está OK, o { status, error }. */
 export function validarPatch(tabla, body, sesion) {
+  // Cantidad hecha en una tarea (099): número >= 0, o null para borrarla
+  if (tabla === "registro_actividades" && body && body.cantidad !== undefined && body.cantidad !== null) {
+    const n = body.cantidad;
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 99999999) return { status: 400, error: "Cantidad inválida" };
+  }
   if (tabla === "empresa" && sesion?.rol !== "gerencial") {
     const prohibido = CAMPOS_EMPRESA_SOLO_DUENO.find((c) => body && body[c] !== undefined);
     if (prohibido) return { status: 403, error: "Solo el dueño de la cuenta puede cambiar las instrucciones de la IA" };

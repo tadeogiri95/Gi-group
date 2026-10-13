@@ -45,7 +45,8 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   registro_actividades: {
     // tipo/causa/division: antes se descartaban en silencio (auditoría F1-02); se validan en dataPolicy
     POST: ["empleado_id", "legajo", "etapa", "codigo_proyecto", "hora_inicio", "hora_fin", "duracion_min", "observaciones", "fecha", "tipo", "causa", "division"],
-    PATCH: ["hora_fin", "duracion_min", "observaciones", "etapa"],
+    // cantidad (099): lo hecho en la tarea, en la unidad de su etapa
+    PATCH: ["hora_fin", "duracion_min", "observaciones", "etapa", "cantidad"],
   },
   reportes_obra: {
     POST: ["nombre", "legajo", "fecha", "texto_original", "texto_formateado", "progreso", "fotos"],
@@ -195,10 +196,11 @@ export const ficharBody = z.object({
 // ── /api/actividad (ítem 21): iniciar o finalizar una tarea ────────────────
 export const actividadBody = z.object({
   accion: z.enum(["iniciar", "finalizar"]),
-  etapa: z.number().int().min(0).max(8).optional(),
+  etapa: z.number().int().min(0).max(999).optional(),
   codigo_proyecto: z.union([z.string().trim().max(40), z.number()]).optional().nullable(),
   tipo: z.enum(["N", "R", "E", "C"]).optional(),
-  causa: z.enum(["M", "H", "I", "O"]).optional().nullable(),
+  // Código de la lista de causas de la empresa (099): hasta 4 letras o números
+  causa: z.string().regex(/^[A-Z0-9]{1,4}$/).optional().nullable(),
   observaciones: z.string().trim().max(500).optional().nullable(),
   op_id: z.string().uuid().optional(),
   momento: z.string().datetime({ offset: true }).optional(),
@@ -248,6 +250,9 @@ export const chatQueryBody = z.object({
 }).strict();
 
 // ── /api/config-empresa ─────────────────────────────────────────────────────
+// Unidad en que se mide una etapa (099): "placas", "metros"…; vacío = sin unidad
+const unidadEtapa = z.string().trim().max(20).nullable().optional().transform((v) => (v === "" ? null : v));
+
 export const configPostBody = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("add_division"),
@@ -265,6 +270,7 @@ export const configPostBody = z.discriminatedUnion("action", [
     icon: emoji.optional(),
     color: color.optional(),
     orden: z.number().int().min(0).max(999).optional(),
+    unidad: unidadEtapa,
   }),
   z.object({
     action: z.literal("save_logo"),
@@ -298,6 +304,16 @@ export const configPatchBody = z.discriminatedUnion("action", [
     codigo: z.number().int().optional(),
     orden: z.number().int().min(0).max(999).optional(),
     activa: z.boolean().optional(),
+    unidad: unidadEtapa,
+  }),
+  z.object({
+    // Causas de parada de la empresa (099); [] vuelve a las de siempre
+    action: z.literal("update_causas"),
+    causas: z.array(z.object({
+      cod: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{1,4}$/),
+      nombre: z.string().trim().min(1).max(60),
+      icon: emoji.optional(),
+    })).max(20),
   }),
   z.object({
     action: z.literal("update_planta"),

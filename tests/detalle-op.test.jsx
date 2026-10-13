@@ -108,7 +108,7 @@ test("DetalleOp — pide solo las tareas de esa OT y muestra horas, personas y r
   const pedido = pedidos.find((p) => p.startsWith("registro_actividades"));
   assert.match(pedido, /empresa_id=eq\.emp-1/);
   assert.match(pedido, /codigo_proyecto=eq\.7495/);
-  assert.match(pedido, /etapa=gt\.0/);
+  assert.match(pedido, /select=.*causa,cantidad/);
   assert.ok(screen.getByText("3 h 45 min"), "total de horas");
   assert.ok(screen.getByText("Entrega 1/11/2026 · Cantidad 1"));
   assert.ok(screen.getByText("Enchapado"));

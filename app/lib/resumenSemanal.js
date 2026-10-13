@@ -1,7 +1,15 @@
 // app/lib/resumenSemanal.js — Resumen semanal para el dueño (D10, ítem 31):
 // horas por OT, tiempo muerto por causa y ausencias de la semana pasada.
 
+import { nombreCausa } from "./causas";
+
 export const CAUSAS = { M: "Falta material", H: "Falta herramienta", I: "Esperando indicación", O: "Otro" };
+const CAUSAS_RESUMEN = new Map(Object.entries(CAUSAS));
+
+// Sin lista propia, los nombres de siempre del resumen; con lista, los de la empresa
+function nombreDeCausa(causas, cod) {
+  return !causas?.length && CAUSAS_RESUMEN.has(cod) ? CAUSAS_RESUMEN.get(cod) : nombreCausa(causas, cod);
+}
 // Solicitudes aprobadas que cubren un día sin fichar (no es falta sin aviso)
 export const TIPOS_QUE_JUSTIFICAN = ["ausencia", "vacaciones", "justificacion"];
 
@@ -48,8 +56,9 @@ function cubierto(sols, legajo, fecha) {
  *  - solicitudes: aprobadas que justifican { legajo, fecha, fecha_hasta, tipo }
  *  - empleados:   operativos activos { legajo, nombre, diagrama, created_at }
  *  - proyectos:   { ot, cliente, proyecto } para ponerle nombre a cada OT
+ *  - causas:      lista de causas de parada de la empresa (099); sin lista, las de siempre
  */
-export function armarResumen({ desde, hasta, actividades = [], fichadas = [], solicitudes = [], empleados = [], proyectos = [] }) {
+export function armarResumen({ desde, hasta, actividades = [], fichadas = [], solicitudes = [], empleados = [], proyectos = [], causas = null }) {
   // Horas por OT
   const porOT = new Map();
   const muerto = new Map();
@@ -57,7 +66,7 @@ export function armarResumen({ desde, hasta, actividades = [], fichadas = [], so
     const min = minutosDe(a);
     if (!min) continue;
     if (Number(a.etapa) === 0) {
-      const causa = CAUSAS[a.causa] ? a.causa : "O";
+      const causa = a.causa || "O";
       muerto.set(causa, (muerto.get(causa) || 0) + min);
     } else if (a.codigo_proyecto) {
       porOT.set(a.codigo_proyecto, (porOT.get(a.codigo_proyecto) || 0) + min);
@@ -104,7 +113,7 @@ export function armarResumen({ desde, hasta, actividades = [], fichadas = [], so
     tiempoMuerto: {
       horas: +(minutosMuerto / 60).toFixed(1),
       porcentaje: minutosOT + minutosMuerto > 0 ? Math.round((minutosMuerto / (minutosOT + minutosMuerto)) * 100) : 0,
-      causas: [...muerto.entries()].sort((a, b) => b[1] - a[1]).map(([c, min]) => ({ causa: CAUSAS[c], horas: +(min / 60).toFixed(1) })),
+      causas: [...muerto.entries()].sort((a, b) => b[1] - a[1]).map(([c, min]) => ({ causa: nombreDeCausa(causas, c), horas: +(min / 60).toFixed(1) })),
     },
     faltasSinAviso: faltas,
     diasJustificados,

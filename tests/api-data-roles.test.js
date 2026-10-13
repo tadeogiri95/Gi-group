@@ -189,7 +189,7 @@ test("actividad: valores fuera de catálogo → 400 sin escribir", async () => {
   global.fetch = createFetchMock(handlers);
   for (const body of [
     { etapa: 1, tipo: "X" },
-    { etapa: 0, causa: "Z" },
+    { etapa: 0, causa: "sin material" }, // código de hasta 4 letras o números (099)
     { etapa: 2, causa: "M" }, // causa solo en improductivo
     { etapa: 1, division: "x".repeat(51) },
   ]) {

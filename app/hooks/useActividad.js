@@ -159,13 +159,14 @@ export function useActividad(empleado) {
       const r = await enviarActividad({
         accion: "iniciar",
         etapa,
-        codigo_proyecto: etapa === 0 ? null : (codigo_proyecto != null ? String(codigo_proyecto) : null),
+        // Una parada lleva la OT en la que se estaba, si había una (099)
+        codigo_proyecto: codigo_proyecto != null && codigo_proyecto !== "" ? String(codigo_proyecto) : null,
         tipo: tipo || "N",
         causa: etapa === 0 ? causa : null,
       });
       if (r.encolado) {
         aplicarLocal(r.op.creado_en, {
-          id: null, hora_inicio: r.op.creado_en, etapa, codigo_proyecto: etapa === 0 ? null : codigo_proyecto,
+          id: null, hora_inicio: r.op.creado_en, etapa, codigo_proyecto: codigo_proyecto ?? null,
           tipo: tipo || "N", causa: etapa === 0 ? causa : null, sinEnviar: true,
         });
         return { encolado: true };
