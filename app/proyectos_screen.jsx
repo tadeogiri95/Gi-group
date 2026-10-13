@@ -13,6 +13,7 @@ import TableroOt from "./components/TableroOt";
 import NoConformidades from "./components/NoConformidades";
 import SueltosOt from "./components/SueltosOt";
 import CargaOt from "./components/CargaOt";
+import ActaOt from "./components/ActaOt";
 import { useCostoHora } from "./hooks/useCostoHora";
 
 const GREEN = "#16A34A";
@@ -149,7 +150,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ProyectosScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, defectos, empresa, updateEmpresa, usuario } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, checklistInstalacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(usuario?.rol === "gerencial");
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
@@ -163,6 +164,7 @@ export default function ProyectosScreen({ empresaId }) {
   const [detalle, setDetalle] = useState(null);
   const [sueltos, setSueltos] = useState(null);
   const [carga, setCarga] = useState(null);
+  const [acta, setActa] = useState(null);
   const [vista, setVista] = useState("lista");
   const [csvFilas, setCsvFilas] = useState(null);
   const [csvRawText, setCsvRawText] = useState(null);
@@ -543,6 +545,7 @@ export default function ProyectosScreen({ empresaId }) {
                 <div className="flex gap-1.5 mt-1.5">
                   <button onClick={() => setSueltos(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">📦 Sueltos</button>
                   <button onClick={() => setCarga(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">🚚 Carga</button>
+                  <button onClick={() => setActa(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✍️ Acta</button>
                 </div>
               </div>
             );
@@ -551,7 +554,12 @@ export default function ProyectosScreen({ empresaId }) {
       )}
       {carga && (
         <CargaOt ot={String(carga.ot)} empresaId={empresaId} empresa={empresa} usuario={usuario} checklist={checklistCarga || []}
-          esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setCarga(null)} />
+          esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setCarga(null)}
+          onAbrirActa={() => { setActa(carga); setCarga(null); }} />
+      )}
+      {acta && (
+        <ActaOt ot={String(acta.ot)} empresaId={empresaId} empresa={empresa} checklist={checklistInstalacion || []} etapas={etapasCtx || []} defectos={defectos || []}
+          esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setActa(null)} />
       )}
       {sueltos && (
         <SueltosOt proyecto={sueltos} empresaId={empresaId} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setSueltos(null)} />

@@ -16,6 +16,7 @@ import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from ".
 import { costoOp, fmtPesos } from "../lib/costo";
 import { resumenSueltos } from "../lib/sueltos";
 import { estadoCarga } from "../lib/carga";
+import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -47,6 +48,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const [noConformes, setNoConformes] = useState([]);
   const [sueltos, setSueltos] = useState([]);
   const [carga, setCarga] = useState({ bultos: [], fila: null });
+  const [acta, setActa] = useState({ fila: null, pendientes: [] });
   const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
 
@@ -56,7 +58,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
     (async () => {
       try {
         const ot = encodeURIComponent(proyecto.ot);
-        const [regs, emps, ncs, sts, bultos, cargas] = await Promise.all([
+        const [regs, emps, ncs, sts, bultos, cargas, actas, pendientes] = await Promise.all([
           sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,etapa,tipo,causa,cantidad,duracion_min&order=hora_inicio.asc`),
           sb.get(`empleados?empresa_id=eq.${empresaId}&select=id,legajo,nombre,apodo`).catch(() => []),
           // Sin la migración 101 no hay tabla: el detalle sigue sin ese dato
@@ -66,11 +68,15 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           // Sin la migración 104, igual
           sb.get(`bultos_ot?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,cargado`).catch(() => []),
           sb.get(`cargas_ot?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=faltantes,firma_carga_por,firma_instalacion_por&limit=1`).catch(() => []),
+          // Sin la migración 105, igual
+          sb.get(`actas_ot?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=firmada_at,cliente_nombre&limit=1`).catch(() => []),
+          sb.get(`pendientes_obra?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,resuelto`).catch(() => []),
         ]);
         if (!vivo) return;
         setNoConformes(ncs || []);
         setSueltos(sts || []);
         setCarga({ bultos: bultos || [], fila: cargas?.[0] || null });
+        setActa({ fila: actas?.[0] || null, pendientes: pendientes || [] });
         setTareas(regs.data || []);
         setEmpleados(emps || []);
       } catch (e) {
@@ -90,6 +96,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const costo = useMemo(() => costoOp(resumen, costoHora), [resumen, costoHora]);
   const resSueltos = resumenSueltos(sueltos);
   const resCarga = estadoCarga({ bultos: carga.bultos, carga: carga.fila });
+  const resActa = estadoActa({ acta: acta.fila, pendientes: acta.pendientes });
 
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Detalle de la OT ${proyecto?.ot}`}>
@@ -117,6 +124,10 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
 
         {resCarga.bultos > 0 && (
           <div className="text-xs text-gypi-dim mb-3">🚚 Carga: {resCarga.firmada ? `firmada${resCarga.conFaltantes ? ", con faltantes" : ""}` : `${resCarga.bultosCargados} de ${resCarga.bultos} bultos cargados${resCarga.empezada ? " · falta una firma" : ""}`}</div>
+        )}
+
+        {NOMBRE_ESTADO_ACTA[resActa.estado] && (
+          <div className="text-xs text-gypi-dim mb-3">{NOMBRE_ESTADO_ACTA[resActa.estado]}{resActa.firmada ? ` · acta firmada por ${acta.fila.cliente_nombre}` : ""}{resActa.abiertos ? ` · ${resActa.abiertos === 1 ? "1 pendiente" : `${resActa.abiertos} pendientes`}` : ""}</div>
         )}
 
         {error ? (

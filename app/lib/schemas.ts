@@ -283,6 +283,26 @@ export const cargaBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("desfirmar"), ot: otSuelto }).strict(),
 ]);
 
+// ── /api/acta (105): acta de conformidad de instalación ──────────────────
+const fechaActa = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null);
+const urlActa = z.string().trim().url().max(500);
+export const actaBody = z.discriminatedUnion("accion", [
+  z.object({ accion: z.literal("descarga"), id: idCarga, valor: z.boolean() }).strict(),
+  z.object({ accion: z.literal("checklist"), ot: otSuelto, items: z.array(z.string().trim().min(1).max(200)).max(20) }).strict(),
+  z.object({ accion: z.literal("observaciones"), ot: otSuelto, texto: textoSuelto(1000) }).strict(),
+  z.object({
+    accion: z.literal("pendiente_agregar"),
+    ot: otSuelto,
+    descripcion: z.string().trim().min(1).max(300),
+    fecha: fechaActa,
+    foto_url: urlActa.nullable().optional().transform((v) => v || null),
+  }).strict(),
+  z.object({ accion: z.literal("pendiente_borrar"), id: idCarga }).strict(),
+  z.object({ accion: z.literal("pendiente_resolver"), id: idCarga, valor: z.boolean() }).strict(),
+  z.object({ accion: z.literal("firmar"), ot: otSuelto, cliente_nombre: z.string().trim().min(2).max(120), firma_url: urlActa }).strict(),
+  z.object({ accion: z.literal("reabrir"), ot: otSuelto }).strict(),
+]);
+
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
 export const costoHoraBody = z.object({
   costo_hora: z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100),
@@ -398,6 +418,11 @@ export const configPatchBody = z.discriminatedUnion("action", [
   z.object({
     // Checklist de carga del camión (104); [] = sin checklist
     action: z.literal("update_checklist_carga"),
+    items: z.array(z.string().trim().min(1).max(200)).max(20),
+  }),
+  z.object({
+    // Checklist de instalación en obra (105); [] = sin checklist
+    action: z.literal("update_checklist_instalacion"),
     items: z.array(z.string().trim().min(1).max(200)).max(20),
   }),
   z.object({

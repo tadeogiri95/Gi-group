@@ -125,7 +125,8 @@ const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"]
 // no_conformidades → 101 (/api/no-conformidades, igual)
 // sueltos_ot → 103 (/api/sueltos, igual)
 // bultos_ot, cargas_ot → 104 (/api/carga, igual)
-const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot"];
+// actas_ot, pendientes_obra → 105 (/api/acta, igual)
+const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra"];
 const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
 
 test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {

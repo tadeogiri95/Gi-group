@@ -55,6 +55,7 @@ const DashboardGerencia = dynamic(() => import("../dashboard_gerencia"), { ssr: 
 const GestionPersonalScreen = dynamic(() => import("../gestion_personal_screen"), { ssr: false });
 const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: false });
 const CargaOt = dynamic(() => import("../components/CargaOt"), { ssr: false });
+const ActaOt = dynamic(() => import("../components/ActaOt"), { ssr: false });
 
 // Demo data — cargado dinámicamente solo cuando ?demo=true (nunca para usuarios reales)
 
@@ -73,7 +74,7 @@ export default function HomeContent() {
   // ─── Auth y empresa desde contexto ───
   const {
     usuario, empresa,
-    divisiones: divisionesEmpresa, etapas: etapasEmpresa, causasParada, defectos, checklistCarga,
+    divisiones: divisionesEmpresa, etapas: etapasEmpresa, causasParada, defectos, checklistCarga, checklistInstalacion,
     init, slugInvalido, isGer,
     login, logout, updateEmpresa, cargarEmpresa, actualizarUsuario,
   } = useAuth();
@@ -94,14 +95,20 @@ export default function HomeContent() {
     router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  // ─── Carga de una OT desde el QR de un bulto (?carga=OT) ───
-  const otCarga = /^[\w.-]{1,40}$/.test(searchParams.get("carga") || "") ? searchParams.get("carga") : null;
-  const cerrarCarga = () => {
+  // ─── Carga de una OT desde el QR de un bulto (?carga=OT) y acta de
+  // instalación (?acta=OT, se llega desde la carga firmada) ───
+  const otDeParam = (clave) => (/^[\w.-]{1,40}$/.test(searchParams.get(clave) || "") ? searchParams.get(clave) : null);
+  const otCarga = otDeParam("carga");
+  const otActa = otCarga ? null : otDeParam("acta");
+  const cambiarParams = (cambiar) => {
     const params = new URLSearchParams(searchParams);
-    params.delete("carga");
+    cambiar(params);
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
+  const cerrarCarga = () => cambiarParams((p) => p.delete("carga"));
+  const cerrarActa = () => cambiarParams((p) => p.delete("acta"));
+  const abrirActa = () => cambiarParams((p) => { p.delete("carga"); p.set("acta", otCarga); });
 
   // ─── Impersonation exchange (superadmin → ?imp=code) ───
   useEffect(() => {
@@ -412,7 +419,11 @@ export default function HomeContent() {
       {/* QR del rótulo de un bulto (OP parte 10): ?carga=OT abre la carga de esa OT */}
       {otCarga && !isDemo && (
         <CargaOt ot={otCarga} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} usuario={u} checklist={checklistCarga}
-          esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarCarga} />
+          esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarCarga} onAbrirActa={abrirActa} />
+      )}
+      {otActa && !isDemo && (
+        <ActaOt ot={otActa} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} checklist={checklistInstalacion}
+          etapas={etapasEmpresa} defectos={defectos} esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarActa} />
       )}
     </div>
   );

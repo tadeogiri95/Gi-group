@@ -2,40 +2,21 @@
 // app/components/CargaOt.jsx — Acopio y carga de una OT (Órdenes de
 // Producción, parte 10; ítem 39). Bultos numerados con rótulo y QR, sueltos
 // tildados al cargar, checklist de carga, faltantes con fecha, foto y las dos
-// firmas. Se abre desde la lista de OT o escaneando el QR de un bulto.
+// firmas. Se abre desde la lista de OT o escaneando el QR de un bulto. Con
+// la carga firmada, lleva al acta de instalación (parte 11).
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, sb } from "../lib/supabase";
 import { estadoCarga, imprimirRotulos, linkCarga, TAMANOS_ETIQUETA } from "../lib/carga";
 import { nombreSuelto } from "../lib/sueltos";
 import { normalizarChecklist } from "../lib/avance";
 import { fechaCorta } from "../lib/ot";
+import { fotoBase64, subirImagen } from "../lib/foto";
 
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
 const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer";
 
 function leerTamano() {
   try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
-}
-
-/** Achica la foto (lado mayor 1600 px, JPEG) para que no pase de 5 MB. Devuelve base64 sin prefijo. */
-async function fotoBase64(file) {
-  const dataUrl = await new Promise((ok, mal) => {
-    const r = new FileReader();
-    r.onload = () => ok(r.result);
-    r.onerror = mal;
-    r.readAsDataURL(file);
-  });
-  try {
-    const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = dataUrl; });
-    const escala = Math.min(1, 1600 / Math.max(img.width, img.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(img.width * escala);
-    canvas.height = Math.round(img.height * escala);
-    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-    return { base64: canvas.toDataURL("image/jpeg", 0.8).split(",")[1], tipo: "image/jpeg" };
-  } catch {
-    return { base64: String(dataUrl).split(",")[1], tipo: file.type || "image/jpeg" };
-  }
 }
 
 function Seccion({ titulo, children }) {
@@ -58,7 +39,7 @@ function Tilde({ activo, onClick, disabled, label, texto }) {
 
 const horaCorta = (iso) => (iso ? `${fechaCorta(String(iso).slice(0, 10))} ${String(new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }))}` : "");
 
-export default function CargaOt({ ot, empresaId, empresa = null, usuario = null, checklist = [], esGestion = false, onClose }) {
+export default function CargaOt({ ot, empresaId, empresa = null, usuario = null, checklist = [], esGestion = false, onClose, onAbrirActa }) {
   const [datos, setDatos] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
@@ -153,12 +134,9 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
     setGuardando(true);
     setError(null);
     try {
-      const { base64, tipo } = await fotoBase64(file);
-      const r = await apiFetch("/api/upload", { method: "POST", body: JSON.stringify({ fileBase64: base64, fileType: tipo }) });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data.url) throw new Error(data.error || "No se pudo subir la foto");
+      const url = await subirImagen(await fotoBase64(file));
       setGuardando(false);
-      ponerCarga(await accion({ accion: "foto", ot: otStr, url: data.url }));
+      ponerCarga(await accion({ accion: "foto", ot: otStr, url }));
     } catch (e) {
       setError(e.message);
       setGuardando(false);
@@ -308,6 +286,11 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
           <button onClick={() => setConfirmar("desfirmar")} className="w-full mt-2 min-h-[44px] rounded-lg border-none bg-transparent text-gypi-red text-xs cursor-pointer">Deshacer las firmas para corregir la carga</button>
         ))}
       </Seccion>
+
+      {/* En obra, el instalador escanea un bulto y sigue con el acta (parte 11) */}
+      {onAbrirActa && estado.firmada && (
+        <button onClick={onAbrirActa} className="g-btn g-btn-primary w-full">✍️ Acta de instalación</button>
+      )}
     </Marco>
   );
 }

@@ -2,11 +2,13 @@
 // app/components/ChecklistEditor.jsx — Checklist de liberación de la OT
 // (Órdenes de Producción, parte 5; ítem 39). Lo que el responsable tilda
 // antes de que una OT entre a producción. Sin checklist, liberar es un toque.
-// Desde la parte 10 también arma el checklist de carga del camión (TEXTOS.carga).
+// Desde la parte 10 también arma el checklist de carga del camión (TEXTOS.carga)
+// y desde la 11 el de instalación en obra (TEXTOS.instalacion).
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { CHECKLIST_FABRICA, MAX_ITEMS_CHECKLIST, normalizarChecklist } from "../lib/avance";
 import { CHECKLIST_CARGA_FABRICA } from "../lib/carga";
+import { CHECKLIST_INSTALACION_FABRICA } from "../lib/acta";
 
 const TEXTOS = {
   liberacion: {
@@ -20,6 +22,12 @@ const TEXTOS = {
     ayuda: "Lo que se revisa antes de que salga el camión. Se tilda en la carga de cada OT (botón 🚚 Carga). Sin checklist, alcanza con los bultos y los sueltos cargados.",
     lista: "Checklist de carga", ejemplo: "Ej: Foto de cada bulto antes de subirlo",
     guardado: "Checklist de carga guardado", vacio: "Las cargas se firman sin checklist",
+  },
+  instalacion: {
+    action: "update_checklist_instalacion", clave: "checklist_instalacion", fabrica: CHECKLIST_INSTALACION_FABRICA,
+    ayuda: "Lo que el instalador revisa antes de que el cliente firme el acta. Se tilda en el acta de cada OT (botón ✍️ Acta). Lo que no se pudo hacer se anota como pendiente.",
+    lista: "Checklist de instalación", ejemplo: "Ej: Probar la iluminación LED",
+    guardado: "Checklist de instalación guardado", vacio: "Las actas se firman sin checklist",
   },
 };
 
