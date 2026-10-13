@@ -8,6 +8,7 @@ import RutasEditor from "./components/RutasEditor";
 import CausasEditor from "./components/CausasEditor";
 import ChecklistEditor from "./components/ChecklistEditor";
 import DefectosEditor from "./components/DefectosEditor";
+import CostoEditor from "./components/CostoEditor";
 import { useToast } from "./components/ui/Toast";
 import { useAuth } from "./context/AuthContext";
 
@@ -28,6 +29,7 @@ const TABS = [
   { key: "paradas", label: "Paradas" },
   { key: "liberacion", label: "Liberación" },
   { key: "defectos", label: "Defectos" },
+  { key: "costo", label: "Costo", soloDueno: true },
 ];
 
 /* ─── Hex validation ─── */
@@ -58,7 +60,9 @@ function ColorRow({ label, value, onChange }) {
 
 export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [] }) {
   const [tab, setTab] = useState("general");
-  const { causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, defectos, setDefectos } = useAuth();
+  const { usuario, causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, defectos, setDefectos } = useAuth();
+  // Los costos los ve solo el dueño (OP parte 8)
+  const tabs = TABS.filter((t) => !t.soloDueno || usuario?.rol === "gerencial");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -572,6 +576,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
       case "defectos":
         return <DefectosEditor defectos={defectos} etapas={etapas} onGuardados={setDefectos} avisar={showToast} />;
 
+      case "costo":
+        return usuario?.rol === "gerencial" ? <CostoEditor avisar={showToast} /> : null;
+
       default: return null;
     }
   };
@@ -580,7 +587,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     <div className="flex flex-col h-full text-gypi-text">
       {/* Tab bar */}
       <div role="tablist" aria-label="Configuración de empresa" className="flex overflow-x-auto px-3.5 pb-2.5 gap-1 shrink-0">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             role="tab"
