@@ -1,3 +1,9 @@
+-- ⚠ NO CORRER. Esta migración nunca se aplicó en producción y quedó
+-- reemplazada: v_scores_empleados sigue siendo una VIEW común porque la 096
+-- le pone security_invoker para separar por empresa (una vista materializada
+-- no respeta RLS). Una vista común calcula al leer, así que no hace falta el
+-- cron de refresco (/api/cron/refresh-scores se eliminó).
+--
 -- 040: Convertir v_scores_empleados de VIEW a MATERIALIZED VIEW.
 -- La vista original (026) hace JOINs pesados en cada consulta.
 -- Con MATERIALIZED VIEW + UNIQUE INDEX se puede usar REFRESH CONCURRENTLY

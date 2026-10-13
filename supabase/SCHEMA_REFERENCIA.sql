@@ -471,11 +471,10 @@ CREATE TABLE IF NOT EXISTS documentos_empleado (
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- v_resumen_diario (003) — VIEW normal, dashboard de gerencia (actividad del día).
--- v_scores_empleados (026 → MATERIALIZED VIEW desde 040) — rankings mensuales.
---   Refresh: refresh_scores_empleados(), llamado por /api/cron/refresh-scores
---   una vez por día desde vercel.json (límite del plan Hobby de Vercel: 1
---   corrida/día por cron). Antes de esa migración 040 + cron, la vista
---   quedaba congelada con los datos del momento en que se materializó.
+-- v_scores_empleados (026, security_invoker desde 096) — rankings mensuales.
+--   VIEW normal: calcula al leer, no necesita refresco. La 040 (materializada
+--   + refresh_scores_empleados()) nunca corrió en producción y no debe
+--   correrse: la 096 necesita una vista común para separar por empresa.
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -492,7 +491,6 @@ CREATE TABLE IF NOT EXISTS documentos_empleado (
 -- vencer_trial_atomico(suscripcion_id, empresa_id)      (019) — 1 sola fila
 -- vencer_trials_batch()                                (036) — todas las vencidas en una TX
 -- rpc_crear_empresa_con_admin(...)                      (027) — registro atómico
--- refresh_scores_empleados()                            (040)
 -- empresa_publica(p_slug)                               (038) — único acceso público seguro a `empresa`
 -- rpc_superadmin_empresas(limit, offset, search)        (046) — paginado, reemplaza full scan
 -- rpc_superadmin_stats()                                (046)
