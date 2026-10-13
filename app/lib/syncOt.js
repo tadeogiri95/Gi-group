@@ -69,40 +69,62 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
 
   let procesados = 0;
   const errores = [];
-  // Sin la migración 091 la tabla no tiene `descripcion`: se reintenta sin ella
-  // para que la sincronización no se corte.
-  let conDescripcion = true;
+  // Columnas que agregaron migraciones posteriores (091: descripcion; 097:
+  // fecha_entrega, cantidad, terminado_planilla). Si la base todavía no tiene
+  // alguna, se reintenta sin ella para que la sincronización no se corte.
+  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla"];
+  const omitidas = new Set();
   const subir = (batch) => sbFetch("proyectos?on_conflict=empresa_id,ot", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(conDescripcion ? batch : batch.map(({ descripcion, ...r }) => r)),
+    body: JSON.stringify(batch.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !omitidas.has(k))))),
   }, sesion);
   for (let i = 0; i < filas.length; i += BATCH) {
+    // Sin `estado`: la planilla no decide si una OT está abierta o cerrada.
+    // Antes mandaba "activo" en cada sincronización y reabría las OT cerradas
+    // en la app. Las nuevas toman el valor por defecto (abajo se completa).
     const batch = filas.slice(i, i + BATCH).map(r => ({
-      empresa_id:  empresaId,
-      ot:          r.ot,
-      cliente:     r.cliente,
-      obra:        r.obra,
-      proyecto:    r.proyecto,
-      division:    r.division,
-      descripcion: r.descripcion,
-      estado:      "activo",
+      empresa_id:         empresaId,
+      ot:                 r.ot,
+      cliente:            r.cliente,
+      obra:               r.obra,
+      proyecto:           r.proyecto,
+      division:           r.division,
+      descripcion:        r.descripcion,
+      fecha_entrega:      r.fecha_entrega,
+      cantidad:           r.cantidad,
+      terminado_planilla: r.terminado_planilla,
     }));
     try {
       // on_conflict explícito: sin esto, PostgREST usa la PK (id, siempre ausente
       // en este insert) como target de conflicto y el upsert por OT nunca matchea.
-      try {
-        await subir(batch);
-      } catch (e) {
-        if (!conDescripcion || !String(e.message).includes("descripcion")) throw e;
-        conDescripcion = false;
-        await subir(batch);
+      for (;;) {
+        try {
+          await subir(batch);
+          break;
+        } catch (e) {
+          const falta = OPCIONALES.find(c => !omitidas.has(c) && String(e.message).includes(c));
+          if (!falta) throw e;
+          omitidas.add(falta);
+        }
       }
       procesados += batch.length;
     } catch (e) {
       logger.error(`[proyectos/sync-csv] Error en lote ${Math.floor(i / BATCH) + 1}`, e);
       errores.push(`Lote ${Math.floor(i / BATCH) + 1}: ${safeErrorMessage(e)}`);
     }
+  }
+
+  // Las OT nuevas quedan activas. La 097 pone 'activo' como valor por defecto;
+  // esto cubre la base que todavía no la tiene (estado vacío).
+  try {
+    await sbFetch(
+      `proyectos?empresa_id=eq.${empresaId}&estado=is.null`,
+      { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ estado: "activo" }) },
+      sesion
+    );
+  } catch (e) {
+    logger.error("[proyectos/sync-csv] No se pudo activar las OT nuevas", e);
   }
 
   // Actualizar última sync en config

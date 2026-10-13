@@ -7,6 +7,7 @@ import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import { imprimirTarjetas } from "./lib/tarjetasQR";
+import { fechaCorta } from "./lib/ot";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -479,8 +480,12 @@ export default function ProyectosScreen({ empresaId }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
                     <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{[p.obra || p.proyecto, p.descripcion].filter(Boolean).join(" · ")}{p.division ? ` · ${divInfo.label}` : ""}</div>
+                    {(p.fecha_entrega || p.cantidad != null) && (
+                      <div className="text-[11px] text-gypi-dim mt-0.5">{[p.fecha_entrega && `Entrega ${fechaCorta(p.fecha_entrega)}`, p.cantidad != null && `Cantidad ${p.cantidad}`].filter(Boolean).join(" · ")}</div>
+                    )}
                   </div>
                   {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
+                  {p.estado !== "cerrado" && p.terminado_planilla && <Tag color="var(--color-text-muted)">terminada en planilla</Tag>}
                 </div>
                 <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
                   <button onClick={() => setModal(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
