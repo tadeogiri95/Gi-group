@@ -5,6 +5,7 @@
 import { minutosDe, TIPOS_RETRABAJO } from "./detalleOp";
 import { nombreCausa } from "./causas";
 import { esEtapaDeModulos, nombreDefecto, DECISIONES } from "./calidad";
+import { esEtapaDeInstalacion } from "./costo";
 
 const pct = (parte, total) => (total > 0 ? Math.round((parte / total) * 1000) / 10 : 0);
 
@@ -26,7 +27,9 @@ export function calcularIndicadores({ tareas = [], etapas = [], causas = [], def
   let productivoMin = 0;
   let paradoMin = 0;
   let retrabajoMin = 0;
+  let instalacionMin = 0;
   const retrabajos = new Map();
+  const nuevaOt = (k) => ({ ot: k, min: 0, paradaMin: 0, instalacionMin: 0, modulosHechos: 0 });
 
   for (const t of tareas) {
     const min = minutosDe(t, ahora);
@@ -38,12 +41,21 @@ export function calcularIndicadores({ tareas = [], etapas = [], causas = [], def
       p.min += min;
       p.veces++;
       paradasMap.set(cod, p);
+      // Desde la 099 la parada puede llevar la OT: cuenta para su costo
+      if (t.codigo_proyecto) {
+        const k = String(t.codigo_proyecto);
+        const o = otsMap.get(k) || nuevaOt(k);
+        o.paradaMin += min;
+        otsMap.set(k, o);
+      }
       continue;
     }
     if (!(codigo > 0)) continue;
     productivoMin += min;
 
     const info = porCodigo.get(codigo);
+    const esInstalacion = esEtapaDeInstalacion(info);
+    if (esInstalacion) instalacionMin += min;
     const et = etapasMap.get(codigo) || {
       codigo, nombre: info?.nombre || `Etapa ${codigo}`, icon: info?.icon || "", unidad: info?.unidad || null,
       orden: info?.orden ?? codigo, min: 0, cantidad: 0, minConCantidad: 0,
@@ -67,8 +79,9 @@ export function calcularIndicadores({ tareas = [], etapas = [], causas = [], def
 
     if (t.codigo_proyecto) {
       const k = String(t.codigo_proyecto);
-      const o = otsMap.get(k) || { ot: k, min: 0, modulosHechos: 0 };
+      const o = otsMap.get(k) || nuevaOt(k);
       o.min += min;
+      if (esInstalacion) o.instalacionMin += min;
       if (info && esEtapaDeModulos(info) && Number.isFinite(n) && n > 0) o.modulosHechos += n;
       otsMap.set(k, o);
     }
@@ -139,6 +152,7 @@ export function calcularIndicadores({ tareas = [], etapas = [], causas = [], def
     productivoMin,
     paradoMin,
     paradoPct: pct(paradoMin, totalMin),
+    instalacionMin,
     retrabajoMin,
     retrabajoPct: pct(retrabajoMin, productivoMin),
     retrabajos: [...retrabajos.values()].sort((a, b) => b.min - a.min),

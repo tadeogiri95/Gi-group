@@ -3,7 +3,8 @@
 // (Órdenes de Producción, parte 7; ítem 39): minutos por unidad de cada
 // etapa, horas por módulo, tiempo parado por causa, retrabajo, no
 // conformidades, horas por OT y OT atrasadas. Es lo que pide la revisión
-// semanal del mapa de procesos. Mide el proceso, no a las personas.
+// semanal del mapa de procesos. Mide el proceso, no a las personas. Desde la
+// parte 8, para el dueño (costoHora), el costo de mano de obra.
 import { useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { calcularIndicadores, fmtPorUnidad, singular } from "../lib/indicadores";
@@ -11,6 +12,7 @@ import { fmtHoras } from "../lib/detalleOp";
 import { fechaCorta } from "../lib/ot";
 import { hoyArg } from "../lib/dates";
 import { exportCSV } from "../lib/exportarReporte";
+import { costoDe, fmtPesos } from "../lib/costo";
 import Stat from "./ui/Stat";
 
 const fmtPct = (n) => `${Number(n).toLocaleString("es-AR")} %`;
@@ -47,7 +49,7 @@ function diaSiguiente(fecha) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empresaId, etapas = [], causas = [], defectos = [] }) {
+export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empresaId, etapas = [], causas = [], defectos = [], costoHora = null }) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
 
@@ -78,6 +80,11 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
     [datos, etapas, causas, defectos]
   );
 
+  // Solo llega con valor para el dueño (useCostoHora)
+  const conCosto = Number(costoHora) > 0;
+  const pesos = (min) => costoDe(min, costoHora);
+  const costoOt = (o) => pesos(o.min + o.paradaMin);
+
   if (error) return <div role="alert" className="text-sm text-gypi-red">{error}</div>;
   if (!ind) return <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
 
@@ -91,7 +98,14 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
     }
     for (const p of ind.paradas) filas.push([`Parada ${p.causa}`, p.nombre, fmtPct(p.pct)]);
     for (const d of ind.calidad.porDefecto) filas.push([`Defecto ${d.clave}`, d.nombre, d.piezas]);
-    for (const o of ind.ots) filas.push([`OT ${o.ot}`, o.cliente, fmtHoras(o.min)]);
+    if (conCosto) {
+      filas.push(["Costo de la hora", "", fmtPesos(costoHora)]);
+      filas.push(["Costo fábrica", fmtHoras(ind.productivoMin - ind.instalacionMin), fmtPesos(pesos(ind.productivoMin - ind.instalacionMin))]);
+      filas.push(["Costo paradas", fmtHoras(ind.paradoMin), fmtPesos(pesos(ind.paradoMin))]);
+      filas.push(["Costo instalación", fmtHoras(ind.instalacionMin), fmtPesos(pesos(ind.instalacionMin))]);
+      filas.push(["Costo total", "", fmtPesos(pesos(ind.productivoMin + ind.paradoMin))]);
+    }
+    for (const o of ind.ots) filas.push([`OT ${o.ot}`, o.cliente, conCosto ? `${fmtHoras(o.min)} · ${fmtPesos(costoOt(o))}` : fmtHoras(o.min)]);
     for (const o of ind.atrasadas) filas.push([`Atrasada OT ${o.ot}`, o.cliente, `${o.dias} días`]);
     exportCSV(filas, `indicadores_${fechaDesde}_${fechaHasta}.csv`);
   };
@@ -114,6 +128,17 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
       <button onClick={exportar} className="w-full min-h-11 py-2.5 px-4 rounded-xl border border-gypi-border bg-gypi-surface text-[13px] font-bold text-gypi-text cursor-pointer mb-3.5">
         📥 Descargar indicadores (Excel)
       </button>
+
+      {conCosto && (
+        <Seccion titulo="Costo de mano de obra (solo lo ves vos)">
+          <div className="flex flex-col gap-1.5">
+            <Fila izquierda="Fábrica" abajo={fmtHoras(ind.productivoMin - ind.instalacionMin)} derecha={fmtPesos(pesos(ind.productivoMin - ind.instalacionMin))} />
+            {ind.paradoMin > 0 && <Fila izquierda="Paradas" abajo={fmtHoras(ind.paradoMin)} derecha={fmtPesos(pesos(ind.paradoMin))} />}
+            {ind.instalacionMin > 0 && <Fila izquierda="Instalación" abajo={fmtHoras(ind.instalacionMin)} derecha={fmtPesos(pesos(ind.instalacionMin))} />}
+            <Fila izquierda="Total del período" abajo={`A ${fmtPesos(costoHora)} la hora`} derecha={fmtPesos(pesos(ind.productivoMin + ind.paradoMin))} />
+          </div>
+        </Seccion>
+      )}
 
       <Seccion titulo="Tiempo por unidad en cada etapa">
         {ind.etapas.length === 0 ? <Vacio>No hay tareas en este período.</Vacio> : (
@@ -171,7 +196,10 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
           <div className="flex flex-col gap-1.5">
             {ind.ots.slice(0, 20).map((o) => (
               <Fila key={o.ot} izquierda={`OT ${o.ot}${o.cliente ? ` · ${o.cliente}` : ""}`}
-                abajo={o.totalModulos ? `${o.modulosHechos ? `${o.modulosHechos} de ${o.totalModulos} módulos` : `${o.totalModulos} módulos`} · ${fmtPorUnidad(o.minPorModulo)} por módulo` : null}
+                abajo={[
+                  o.totalModulos && `${o.modulosHechos ? `${o.modulosHechos} de ${o.totalModulos} módulos` : `${o.totalModulos} módulos`} · ${fmtPorUnidad(o.minPorModulo)} por módulo`,
+                  conCosto && `Costo ${fmtPesos(costoOt(o))}`,
+                ].filter(Boolean).join(" · ") || null}
                 derecha={fmtHoras(o.min)} />
             ))}
             {ind.ots.length > 20 && <Vacio>Y {ind.ots.length - 20} OT más (están en el Excel).</Vacio>}

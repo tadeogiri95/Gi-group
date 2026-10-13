@@ -11,6 +11,7 @@ import { fechaCorta } from "./lib/ot";
 import DetalleOp from "./components/DetalleOp";
 import TableroOt from "./components/TableroOt";
 import NoConformidades from "./components/NoConformidades";
+import { useCostoHora } from "./hooks/useCostoHora";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -146,7 +147,9 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ProyectosScreen({ empresaId }) {
-  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, defectos, empresa, updateEmpresa } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
+  // Costo de la hora: solo el dueño (OP parte 8)
+  const costoHora = useCostoHora(usuario?.rol === "gerencial");
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -539,7 +542,7 @@ export default function ProyectosScreen({ empresaId }) {
         </div>
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} onClose={() => setDetalle(null)} />
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} onClose={() => setDetalle(null)} />
       )}
       {ConfirmDialog}
     </div>

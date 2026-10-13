@@ -3,13 +3,15 @@
 // (Órdenes de Producción, parte 3; ítem 39). Solo lectura: horas por etapa,
 // quién trabajó y retrabajos, con las tareas que ya se registran. Desde la
 // parte 4 también la cantidad hecha por etapa y las paradas en la OT; desde
-// la parte 6, los módulos hechos contra el total y las no conformidades.
+// la parte 6, los módulos hechos contra el total y las no conformidades; desde
+// la parte 8, el costo de mano de obra (solo el dueño, con costoHora).
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
 import { buscarDivision } from "../lib/rutas";
 import { fechaCorta } from "../lib/ot";
 import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from "../lib/calidad";
+import { costoOp, fmtPesos } from "../lib/costo";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -36,7 +38,7 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], onClose }) {
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, onClose }) {
   const [tareas, setTareas] = useState(null);
   const [noConformes, setNoConformes] = useState([]);
   const [empleados, setEmpleados] = useState([]);
@@ -72,6 +74,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
     [tareas, etapas, division, empleados, causas]
   );
   const maxEtapa = resumen ? Math.max(1, ...resumen.etapas.map((e) => e.min)) : 1;
+  const costo = useMemo(() => costoOp(resumen, costoHora), [resumen, costoHora]);
 
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Detalle de la OT ${proyecto?.ot}`}>
@@ -110,6 +113,30 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               {resumen.desde === resumen.hasta ? `Trabajada el ${fechaCorta(resumen.desde)}` : `Del ${fechaCorta(resumen.desde)} al ${fechaCorta(resumen.hasta)}`}
               {resumen.ahoraTrabajando.length > 0 && ` · Ahora: ${resumen.ahoraTrabajando.join(", ")}`}
             </div>
+          )}
+
+          {costo && (
+            <section aria-label="Costo de mano de obra" className="mb-4">
+              <div className="g-label mb-1.5">Costo de mano de obra (solo lo ves vos)</div>
+              <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border">
+                {[
+                  ["Fábrica", costo.fabricaMin, costo.fabrica],
+                  ["Paradas en esta OT", costo.paradaMin, costo.paradas],
+                  ["Instalación", costo.instalacionMin, costo.instalacion],
+                ].filter(([, min], i) => i === 0 || min > 0).map(([nombre, min, pesos]) => (
+                  <div key={nombre} className="flex items-center gap-2 text-[13px] py-0.5">
+                    <span className="flex-1">{nombre}</span>
+                    <span className="text-[11px] text-gypi-dim">{fmtHoras(min)}</span>
+                    <span className="w-24 text-right font-bold">{fmtPesos(pesos)}</span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 text-[14px] font-bold border-t border-gypi-border mt-1.5 pt-1.5">
+                  <span className="flex-1">Total</span>
+                  <span className="w-24 text-right">{fmtPesos(costo.total)}</span>
+                </div>
+              </div>
+              <div className="text-[11px] text-gypi-dim mt-1">A {fmtPesos(costoHora)} la hora. Se cambia en Configuración → Costo.</div>
+            </section>
           )}
 
           <div className="g-label mb-1.5">Horas por etapa</div>

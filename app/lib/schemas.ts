@@ -243,6 +243,11 @@ export const noConformidadBody = z.discriminatedUnion("accion", [
   }).strict(),
 ]);
 
+// ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
+export const costoHoraBody = z.object({
+  costo_hora: z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100),
+}).strict();
+
 // ── /api/kiosco (D7, ítem 19) ──────────────────────────────────────────────
 export const kioscoActivarBody = z.object({
   nombre: z.string().trim().min(1).max(60).optional(),

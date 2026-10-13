@@ -11,6 +11,7 @@ import { duracionMinutos } from "./lib/calc";
 import { exportCSV, exportImagen } from "./lib/exportarReporte";
 import Stat from "./components/ui/Stat";
 import Indicadores from "./components/Indicadores";
+import { useCostoHora } from "./hooks/useCostoHora";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
@@ -470,6 +471,8 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 export default function ReportesScreen() {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, defectos, usuario, empresa } = useAuth();
   const empresaId = usuario?.empresa_id;
+  // Costo de la hora: solo el dueño (OP parte 8)
+  const costoHora = useCostoHora(usuario?.rol === "gerencial");
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [tab, setTab] = useState("cumplimiento");
   const [periodo, setPeriodo] = useState("semana");
@@ -640,7 +643,7 @@ export default function ReportesScreen() {
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
       ) : tab === "indicadores" ? (
         <Indicadores fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId}
-          etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} />
+          etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} />
       ) : tab === "obra" ? (
         <ReportesObraTab empresaId={empresaId} />
       ) : tab === "liquidacion" ? (
