@@ -10,6 +10,7 @@ import { hoyArg, ahoraArg } from "./lib/dates";
 import { duracionMinutos } from "./lib/calc";
 import { exportCSV, exportImagen } from "./lib/exportarReporte";
 import Stat from "./components/ui/Stat";
+import Indicadores from "./components/Indicadores";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
@@ -467,7 +468,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 export default function ReportesScreen() {
-  const { divisiones: divisionesCtx, usuario, empresa } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, defectos, usuario, empresa } = useAuth();
   const empresaId = usuario?.empresa_id;
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [tab, setTab] = useState("cumplimiento");
@@ -607,6 +608,7 @@ export default function ReportesScreen() {
         <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
         {tieneModulo(empresa, "actividad") && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
+        {tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
         {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
         <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>
         {!esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
@@ -636,6 +638,9 @@ export default function ReportesScreen() {
         <Puntos />
       ) : tab === "produccion" ? (
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
+      ) : tab === "indicadores" ? (
+        <Indicadores fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId}
+          etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} />
       ) : tab === "obra" ? (
         <ReportesObraTab empresaId={empresaId} />
       ) : tab === "liquidacion" ? (
