@@ -11,6 +11,7 @@ import { fechaCorta } from "./lib/ot";
 import DetalleOp from "./components/DetalleOp";
 import TableroOt from "./components/TableroOt";
 import NoConformidades from "./components/NoConformidades";
+import SueltosOt from "./components/SueltosOt";
 import { useCostoHora } from "./hooks/useCostoHora";
 
 const GREEN = "#16A34A";
@@ -159,6 +160,7 @@ export default function ProyectosScreen({ empresaId }) {
   const [filtroDiv, setFiltroDiv] = useState("");
   const [modal, setModal] = useState(null);
   const [detalle, setDetalle] = useState(null);
+  const [sueltos, setSueltos] = useState(null);
   const [vista, setVista] = useState("lista");
   const [csvFilas, setCsvFilas] = useState(null);
   const [csvRawText, setCsvRawText] = useState(null);
@@ -529,6 +531,7 @@ export default function ProyectosScreen({ empresaId }) {
                 </div>
                 <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
                   <button onClick={() => setDetalle(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">📊 Detalle</button>
+                  <button onClick={() => setSueltos(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">📦 Sueltos</button>
                   <button onClick={() => setModal(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
                   {p.estado === "activo" ? (
                     <button onClick={() => cerrarProyecto(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">Cerrar</button>
@@ -540,6 +543,9 @@ export default function ProyectosScreen({ empresaId }) {
             );
           })}
         </div>
+      )}
+      {sueltos && (
+        <SueltosOt proyecto={sueltos} empresaId={empresaId} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setSueltos(null)} />
       )}
       {detalle && (
         <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} onClose={() => setDetalle(null)} />

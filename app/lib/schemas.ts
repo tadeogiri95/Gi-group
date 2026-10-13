@@ -243,6 +243,28 @@ export const noConformidadBody = z.discriminatedUnion("accion", [
   }).strict(),
 ]);
 
+// ── /api/sueltos (103): hoja de sueltos y herrajes por OT ─────────────────
+const textoSuelto = (max: number) => z.string().trim().max(max).nullable().optional().transform((v) => v || null);
+const camposSuelto = {
+  tipo: textoSuelto(30),
+  codigo: textoSuelto(40),
+  descripcion: textoSuelto(200),
+  medida: textoSuelto(40),
+  cantidad: z.number().positive().max(99999).optional(),
+  va_con: textoSuelto(80),
+};
+const otSuelto = z.union([z.string().trim().min(1).max(40), z.number()]).transform(String);
+export const sueltosBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("agregar"),
+    ot: otSuelto,
+    items: z.array(z.object(camposSuelto).strict().refine((i) => !!(i.codigo || i.descripcion), { message: "Cada ítem necesita código o descripción" })).min(1).max(300),
+  }).strict(),
+  z.object({ accion: z.literal("tildar"), id: z.number().int().positive(), columna: z.enum(["acopio", "carga"]), valor: z.boolean() }).strict(),
+  z.object({ accion: z.literal("borrar"), id: z.number().int().positive() }).strict(),
+  z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
+]);
+
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
 export const costoHoraBody = z.object({
   costo_hora: z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100),
