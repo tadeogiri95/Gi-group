@@ -32,7 +32,7 @@ test("access token — verifyToken devuelve payload correcto", async () => {
     legajo: 7,
     rol: "gerencial",
   });
-  const payload = await verifyToken(token);
+  const payload = await verifyToken(token, "acceso");
   assert.equal(payload.sub, "emp-001");
   assert.equal(payload.eid, "org-001");
   assert.equal(payload.leg, 7);
@@ -42,7 +42,7 @@ test("access token — verifyToken devuelve payload correcto", async () => {
 
 test("access token — no tiene type:refresh", async () => {
   const { token } = await signAccessToken({ empleadoId: "x", empresaId: "y", legajo: 1, rol: "empleado" });
-  const p = await verifyToken(token);
+  const p = await verifyToken(token, "acceso");
   assert.notEqual(p.type, "refresh");
 });
 
@@ -55,30 +55,30 @@ test("signRefreshToken — genera token distinto al access", async () => {
 
 test("refresh token — payload tiene type:refresh", async () => {
   const { token } = await signRefreshToken({ empleadoId: "x", empresaId: "y" });
-  const p = await verifyToken(token);
+  const p = await verifyToken(token, "refresh");
   assert.equal(p.type, "refresh");
 });
 
 // ─── Impersonate token ───
 test("signImpersonateToken — payload tiene imp:true", async () => {
   const { token } = await signImpersonateToken({ empleadoId: "a", empresaId: "b", legajo: 1, rol: "gerencial" });
-  const p = await verifyToken(token);
+  const p = await verifyToken(token, "acceso");
   assert.equal(p.imp, true);
   assert.equal(p.rol, "gerencial");
 });
 
 // ─── verifyToken con token inválido ───
 test("verifyToken — devuelve null para token falso", async () => {
-  const r = await verifyToken("eyJhbGciOiJIUzI1NiJ9.fake.payload");
+  const r = await verifyToken("eyJhbGciOiJIUzI1NiJ9.fake.payload", "acceso");
   assert.equal(r, null);
 });
 
 test("verifyToken — devuelve null para string vacío", async () => {
-  assert.equal(await verifyToken(""), null);
+  assert.equal(await verifyToken("", "acceso"), null);
 });
 
 test("verifyToken — devuelve null para undefined", async () => {
-  assert.equal(await verifyToken(undefined), null);
+  assert.equal(await verifyToken(undefined, "acceso"), null);
 });
 
 // ─── JTIs únicos ───

@@ -26,7 +26,7 @@ export async function POST(request) {
     }
 
     // Verificar refresh token
-    const payload = await verifyToken(refresh_token);
+    const payload = await verifyToken(refresh_token, "refresh");
     if (!payload || payload.type !== "refresh") {
       return NextResponse.json({ error: "Refresh token inválido o expirado" }, { status: 401 });
     }

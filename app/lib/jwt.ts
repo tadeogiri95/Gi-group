@@ -30,6 +30,7 @@ export async function signAccessToken(input: AccessTokenInput): Promise<TokenRes
     .setIssuedAt()
     .setExpirationTime("30m")
     .setIssuer("gypi")
+    .setAudience(audiencia("acceso"))
     .sign(getSecret());
   return { token, jti };
 }
@@ -41,6 +42,7 @@ export async function signRefreshToken(input: { empleadoId: string; empresaId: s
     .setIssuedAt()
     .setExpirationTime("30d")
     .setIssuer("gypi")
+    .setAudience(audiencia("refresh"))
     .sign(getSecret());
   return { token, jti };
 }
@@ -55,6 +57,7 @@ export async function signKioscoToken(input: { empresaId: string; activadoPor: s
     .setIssuedAt()
     .setExpirationTime("365d")
     .setIssuer("gypi")
+    .setAudience(audiencia("kiosco"))
     .sign(getSecret());
   return { token, jti };
 }
@@ -66,15 +69,45 @@ export async function signImpersonateToken(input: AccessTokenInput): Promise<Tok
     .setIssuedAt()
     .setExpirationTime("1h")
     .setIssuer("gypi")
+    .setAudience(audiencia("acceso"))
     .sign(getSecret());
   return { token, jti };
 }
 
-export async function verifyToken(token: string | undefined | null): Promise<JWTPayload | null> {
+// ─── Tipos de token (F2-14, ítem 37 etapa 4) ────────────────────────────────
+// Todos se firman con el mismo JWT_SECRET, así que cada uno lleva un `aud`
+// propio y verifyToken exige el tipo que espera quien lo recibe: un token de
+// un tipo nunca pasa por otro (por ejemplo, un link de reseteo de contraseña
+// como sesión). La impersonación es una sesión más: usa "acceso".
+export type TipoToken =
+  | "acceso" | "refresh" | "kiosco" | "password_reset" | "reactivar_empresa"
+  | "oauth_state" | "oauth_exchange" | "impersonate_code" | "admin";
+
+const audiencia = (tipo: TipoToken): string => `gypi:${tipo}`;
+
+// Tokens firmados antes de que existiera `aud`: el tipo sale de sus claims,
+// como se distinguían antes. Ningún shape coincide con dos tipos. Se puede
+// sacar cuando venzan todos (el más largo es el kiosco, 365 días).
+function tipoLegacy(p: JWTPayload): TipoToken | null {
+  if (p.sub === "superadmin") return "admin";
+  if (p.typ === "oauth_exchange") return "oauth_exchange";
+  if (p.type !== undefined) {
+    const tipos: TipoToken[] = ["refresh", "kiosco", "password_reset", "reactivar_empresa"];
+    return tipos.includes(p.type as TipoToken) ? (p.type as TipoToken) : null;
+  }
+  if (p.imp && p.code) return "impersonate_code";
+  if (p.code) return null;
+  if (p.nonce !== undefined || p.intent !== undefined) return "oauth_state";
+  if (p.sub && p.eid && p.rol) return "acceso";
+  return null;
+}
+
+export async function verifyToken(token: string | undefined | null, tipo: TipoToken): Promise<JWTPayload | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecret(), { issuer: "gypi" });
-    return payload;
+    if (payload.aud !== undefined) return payload.aud === audiencia(tipo) ? payload : null;
+    return tipoLegacy(payload) === tipo ? payload : null;
   } catch {
     return null;
   }
@@ -87,6 +120,7 @@ export async function signPasswordResetToken(input: { empleadoId: string; empres
     .setIssuedAt()
     .setExpirationTime("1h")
     .setIssuer("gypi")
+    .setAudience(audiencia("password_reset"))
     .sign(getSecret());
   return { token, jti };
 }
@@ -94,7 +128,7 @@ export async function signPasswordResetToken(input: { empleadoId: string; empres
 export async function verifyPasswordResetToken(
   token: string | undefined | null
 ): Promise<{ empleadoId: string; empresaId: string; jti: string } | null> {
-  const payload = await verifyToken(token);
+  const payload = await verifyToken(token, "password_reset");
   if (!payload || payload.type !== "password_reset") return null;
   if (!payload.sub || !payload.eid || !payload.jti) return null;
   return { empleadoId: payload.sub as string, empresaId: payload.eid as string, jti: payload.jti as string };
@@ -110,13 +144,14 @@ export async function signReactivarToken(input: { empresaId: string; baja: strin
     .setIssuedAt()
     .setExpirationTime("30d")
     .setIssuer("gypi")
+    .setAudience(audiencia("reactivar_empresa"))
     .sign(getSecret());
 }
 
 export async function verifyReactivarToken(
   token: string | undefined | null
 ): Promise<{ empresaId: string; baja: string } | null> {
-  const payload = await verifyToken(token);
+  const payload = await verifyToken(token, "reactivar_empresa");
   if (!payload || payload.type !== "reactivar_empresa") return null;
   if (!payload.eid || !payload.baja) return null;
   return { empresaId: payload.eid as string, baja: payload.baja as string };
@@ -137,11 +172,12 @@ export async function signOAuthState(input: OAuthStateInput): Promise<string> {
     .setIssuedAt()
     .setExpirationTime("10m")
     .setIssuer("gypi")
+    .setAudience(audiencia("oauth_state"))
     .sign(getSecret());
 }
 
 export async function verifyOAuthState(token: string | undefined | null): Promise<OAuthStateInput | null> {
-  const payload = await verifyToken(token);
+  const payload = await verifyToken(token, "oauth_state");
   if (!payload || !payload.nonce || (payload.intent !== "registro" && payload.intent !== "login")) return null;
   return {
     intent: payload.intent,
@@ -162,6 +198,7 @@ export async function signOAuthExchangeCode(input: AccessTokenInput): Promise<To
     .setIssuedAt()
     .setExpirationTime("60s")
     .setIssuer("gypi")
+    .setAudience(audiencia("oauth_exchange"))
     .sign(getSecret());
   return { token, jti };
 }
@@ -169,7 +206,7 @@ export async function signOAuthExchangeCode(input: AccessTokenInput): Promise<To
 export async function verifyOAuthExchangeCode(
   token: string | undefined | null
 ): Promise<(AccessTokenInput & { jti: string }) | null> {
-  const payload = await verifyToken(token);
+  const payload = await verifyToken(token, "oauth_exchange");
   if (!payload || payload.typ !== "oauth_exchange") return null;
   if (!payload.sub || !payload.eid || payload.leg === undefined || !payload.rol || !payload.jti) return null;
   return {
@@ -188,6 +225,7 @@ export async function signImpersonateCode(input: AccessTokenInput): Promise<Toke
     .setIssuedAt()
     .setExpirationTime("60s")
     .setIssuer("gypi")
+    .setAudience(audiencia("impersonate_code"))
     .sign(getSecret());
   return { token, jti };
 }
@@ -195,7 +233,7 @@ export async function signImpersonateCode(input: AccessTokenInput): Promise<Toke
 export async function verifyImpersonateCode(
   token: string | undefined | null
 ): Promise<AccessTokenInput | null> {
-  const payload = await verifyToken(token);
+  const payload = await verifyToken(token, "impersonate_code");
   if (!payload || !payload.imp || !payload.code) return null;
   if (!payload.sub || !payload.eid || payload.leg === undefined || !payload.rol) return null;
   return {
@@ -216,12 +254,13 @@ export async function signAdminToken(): Promise<string> {
     .setIssuedAt()
     .setExpirationTime("8h")
     .setIssuer("gypi")
+    .setAudience(audiencia("admin"))
     .sign(getSecret());
 }
 
 export async function verifyAdminToken(token: string | undefined | null): Promise<boolean> {
   if (!token) return false;
-  const payload = await verifyToken(token);
+  const payload = await verifyToken(token, "admin");
   if (payload?.sub !== "superadmin") return false;
   const expectedVer = process.env.ADMIN_TOKEN_VERSION || "1";
   return payload.ver === expectedVer;

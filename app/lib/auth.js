@@ -62,7 +62,7 @@ export async function validarToken(request) {
 
   let payload;
   try {
-    payload = await verifyToken(token);
+    payload = await verifyToken(token, "acceso");
   } catch {
     return null;
   }

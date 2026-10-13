@@ -9,7 +9,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const cookieToken = request.cookies?.get("gypi_token")?.value;
   if (cookieToken && SB_URL && SB_KEY) {
     try {
-      const payload = await verifyToken(cookieToken);
+      const payload = await verifyToken(cookieToken, "acceso");
       if (payload?.jti) {
         await fetch(`${SB_URL}/rest/v1/sesiones?token=eq.${payload.jti}`, {
           method: "DELETE",
