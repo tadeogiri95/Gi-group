@@ -8,6 +8,7 @@ import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { calcularIndicadores, fmtPorUnidad, singular } from "../app/lib/indicadores.js";
 import { CAUSAS_FABRICA } from "../app/lib/causas.js";
 import { DEFECTOS_FABRICA } from "../app/lib/calidad.js";
+import { hoyArg } from "../app/lib/dates.js";
 
 afterEach(() => cleanup());
 
@@ -117,7 +118,9 @@ test("pantalla — muestra los indicadores del período", async () => {
   assert.ok(screen.getByText("SM · Sin material"));
   assert.ok(screen.getByText("K1 · Canto despegado o con rebaba"));
   assert.ok(screen.getByText(/2 de 12 módulos/));
-  assert.ok(screen.getByText("12 días"));
+  // La pantalla cuenta el atraso contra el día de hoy: el número cambia con el calendario
+  const dias = Math.round((Date.parse(hoyArg()) - Date.parse("2026-10-01")) / 86400000);
+  assert.ok(screen.getByText(`${dias} días`));
   const nc = pedidos.find((p) => p.startsWith("no_conformidades"));
   assert.match(nc, /created_at=gte\.2026-10-06&created_at=lt\.2026-10-13/, "incluye todo el último día");
 });

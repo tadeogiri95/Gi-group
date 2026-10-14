@@ -20,6 +20,7 @@ import EstadoConexion from "../EstadoConexion";
 import { useColaOffline } from "../../hooks/useColaOffline";
 import { fichadaConPendientes } from "../../lib/colaOffline";
 import { tieneModulo } from "../../lib/modulos";
+import ElegirOtCarga from "../ElegirOtCarga";
 
 function fmtMin(m) {
   const h = Math.floor(m / 60);
@@ -109,12 +110,13 @@ function MiCuenta({ usuario, ctx, goto, onVolver, onSalir, onPinCambiado, demo }
   );
 }
 
-export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado }) {
+export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado, onAbrirCarga }) {
   const misSols = ctx.misSolicitudes || [];
   // Lo que se muestra según los módulos de la empresa (ítem 36)
   const conChat = tieneModulo(empresa, "chat");
   const conTareas = tieneModulo(empresa, "actividad");
   const [formSolicitud, setFormSolicitud] = useState(false);
+  const [elegirCarga, setElegirCarga] = useState(false);
   const [vista, setVista] = useState("inicio"); // inicio | cuenta
   const [confirmar, ConfirmDialog] = useConfirm();
   // Lo fichado sin señal todavía no está en ctx: se suma para que el botón no ofrezca fichar de nuevo (ítem 21)
@@ -247,9 +249,15 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       </section>
 
       <div className="flex flex-col gap-2">
+        {/* Acopio y carga: el responsable elige la OT sin depender del QR de un rótulo */}
+        {conTareas && onAbrirCarga && <ListItem icon="🚚" title="Carga de una OT" detail="Armar bultos, imprimir rótulos y cargar el camión" right={flecha} onClick={() => setElegirCarga(true)} />}
         {conChat && <ListItem icon="💬" title="Escribirle al asistente" detail="Para avisar algo o hacer una consulta" right={flecha} onClick={() => goto("chat")} />}
         <ListItem icon="👤" title="Mi cuenta" detail="Horario, fichadas, documentos, PIN y salir" right={flecha} onClick={() => setVista("cuenta")} />
       </div>
+      {elegirCarga && (
+        <ElegirOtCarga empresaId={usuario.empresa_id || empresa?.id} onClose={() => setElegirCarga(false)}
+          onElegir={(ot) => { setElegirCarga(false); onAbrirCarga(ot); }} />
+      )}
     </div>
   );
 }
