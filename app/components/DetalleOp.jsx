@@ -6,7 +6,8 @@
 // la parte 6, los módulos hechos contra el total y las no conformidades; desde
 // la parte 8, el costo de mano de obra (solo el dueño, con costoHora); desde
 // la parte 9, cuántos sueltos hay y cuántos están en acopio y cargados; desde
-// la parte 10, los bultos cargados y si la carga está firmada.
+// la parte 10, los bultos cargados y si la carga está firmada; desde Stock
+// parte 16, el material necesario contra el retirado.
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
@@ -17,6 +18,7 @@ import { costoOp, fmtPesos } from "../lib/costo";
 import { resumenSueltos } from "../lib/sueltos";
 import { estadoCarga } from "../lib/carga";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
+import MaterialOt from "./MaterialOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -129,6 +131,8 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         {NOMBRE_ESTADO_ACTA[resActa.estado] && (
           <div className="text-xs text-gypi-dim mb-3">{NOMBRE_ESTADO_ACTA[resActa.estado]}{resActa.firmada ? ` · acta firmada por ${acta.fila.cliente_nombre}` : ""}{resActa.abiertos ? ` · ${resActa.abiertos === 1 ? "1 pendiente" : `${resActa.abiertos} pendientes`}` : ""}</div>
         )}
+
+        <MaterialOt ot={proyecto?.ot} empresaId={empresaId} />
 
         {error ? (
           <div role="alert" className="text-sm text-gypi-red">{error}</div>
