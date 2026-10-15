@@ -3,7 +3,9 @@
 // Chrome en Android). Lo usan el kiosco (tarjeta QR del operario) y el inicio
 // de tareas (código de la OT, D8). Si el navegador no lo soporta no muestra
 // nada (o el aviso), y quien lo usa ofrece escribir el dato a mano.
+// Cada código nuevo suena con un "bip" (y vibra).
 import { useState, useEffect, useRef } from "react";
+import { bip, debeSonar } from "../lib/bip";
 
 export function escanerDisponible() {
   return typeof window !== "undefined" && "BarcodeDetector" in window && !!navigator.mediaDevices?.getUserMedia;
@@ -28,6 +30,7 @@ export default function EscanerCodigo({ onCodigo, formatos = ["qr_code"], camara
     let stream = null;
     let timer = null;
     let cancelado = false;
+    let ultimoBip = null;
     (async () => {
       try {
         const soportados = (await window.BarcodeDetector.getSupportedFormats?.()) || formatosClave.split(",");
@@ -40,7 +43,14 @@ export default function EscanerCodigo({ onCodigo, formatos = ["qr_code"], camara
         timer = setInterval(async () => {
           try {
             const codigos = await detector.detect(videoRef.current);
-            for (const c of codigos) if (c.rawValue) onCodigoRef.current?.(c.rawValue);
+            for (const c of codigos) {
+              if (!c.rawValue) continue;
+              if (debeSonar(ultimoBip, c.rawValue)) {
+                ultimoBip = { codigo: c.rawValue, t: Date.now() };
+                bip();
+              }
+              onCodigoRef.current?.(c.rawValue);
+            }
           } catch { /* cuadro sin código */ }
         }, 350);
       } catch {
