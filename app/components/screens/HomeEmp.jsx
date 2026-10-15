@@ -22,6 +22,7 @@ import { fichadaConPendientes } from "../../lib/colaOffline";
 import { tieneModulo } from "../../lib/modulos";
 import ElegirOtCarga from "../ElegirOtCarga";
 import RetirarMaterial from "../RetirarMaterial";
+import EscanearPiezas from "../EscanearPiezas";
 
 function fmtMin(m) {
   const h = Math.floor(m / 60);
@@ -119,6 +120,7 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
   const [formSolicitud, setFormSolicitud] = useState(false);
   const [elegirCarga, setElegirCarga] = useState(false);
   const [retirar, setRetirar] = useState(false);
+  const [escanearPiezas, setEscanearPiezas] = useState(false);
   // Stock (ítem 40) va con las OT hasta que sea un módulo que se venda aparte
   const conStock = !demo && tieneModulo(empresa, "proyectos");
   const [vista, setVista] = useState("inicio"); // inicio | cuenta
@@ -255,10 +257,12 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
       <div className="flex flex-col gap-2">
         {/* Acopio y carga: el responsable elige la OT sin depender del QR de un rótulo */}
         {conTareas && onAbrirCarga && <ListItem icon="🚚" title="Carga de una OT" detail="Armar bultos, imprimir rótulos y cargar el camión" right={flecha} onClick={() => setElegirCarga(true)} />}
+        {conTareas && !demo && <ListItem icon="🧩" title="Escanear piezas" detail="Marcá por qué etapa pasó cada pieza de la OT" right={flecha} onClick={() => setEscanearPiezas(true)} />}
         {conStock && <ListItem icon="📦" title="Retirar material" detail="Escaneá el QR del artículo y anotá cuánto sacás" right={flecha} onClick={() => setRetirar(true)} />}
         {conChat && <ListItem icon="💬" title="Escribirle al asistente" detail="Para avisar algo o hacer una consulta" right={flecha} onClick={() => goto("chat")} />}
         <ListItem icon="👤" title="Mi cuenta" detail="Horario, fichadas, documentos, PIN y salir" right={flecha} onClick={() => setVista("cuenta")} />
       </div>
+      {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
       {retirar && <RetirarMaterial empresaId={usuario.empresa_id || empresa?.id} usuario={usuario} onClose={() => setRetirar(false)} />}
       {elegirCarga && (
         <ElegirOtCarga empresaId={usuario.empresa_id || empresa?.id} onClose={() => setElegirCarga(false)}

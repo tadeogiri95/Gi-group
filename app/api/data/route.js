@@ -57,6 +57,7 @@ const TABLAS_PERMITIDAS = [
   "movimientos_stock", // Stock parte 14 (107): solo lectura acá; se escribe por /api/stock/movimientos
   "necesidades_stock", // Stock parte 16 (108): solo lectura acá; la copia la sincronización de la planilla
   "piezas_ot", // OP parte 17 (109): solo lectura acá; se escribe por /api/piezas
+  "pasos_pieza", // OP parte 18 (110): solo lectura acá; se escribe por /api/piezas/paso
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
 ];
@@ -65,7 +66,7 @@ const TABLAS_PERMITIDAS = [
 // por /api/documentos/upload (valida tipo/tamaño de archivo server-side antes
 // de escribir la fila). Sin esto, un POST directo podría crear filas con
 // storage_path arbitrario sin que exista el archivo.
-const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot"];
+const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza"];
 
 // Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
 // base aplica la RLS. Las dos vistas de resumen necesitan además la migración
@@ -123,6 +124,7 @@ const TABLAS_CON_EMPRESA = [
   "movimientos_stock", // Stock parte 14 (107): solo lectura acá; se escribe por /api/stock/movimientos
   "necesidades_stock", // Stock parte 16 (108): solo lectura acá; la copia la sincronización de la planilla
   "piezas_ot", // OP parte 17 (109): solo lectura acá; se escribe por /api/piezas
+  "pasos_pieza", // OP parte 18 (110): solo lectura acá; se escribe por /api/piezas/paso
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
 ];

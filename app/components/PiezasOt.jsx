@@ -9,6 +9,7 @@ import { apiFetch, sbGetAll } from "../lib/supabase";
 import { TAMANOS_ETIQUETA } from "../lib/carga";
 import {
   ETAPAS_PIEZA, leerPiezas, expandirPiezas, agruparRenglones, cambiosAlReemplazar, medidas, imprimirEtiquetasPiezas,
+  avancePiezas, textoAvancePiezas,
 } from "../lib/piezas";
 
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
@@ -22,6 +23,8 @@ const piezasTexto = (n) => (n === 1 ? "1 pieza" : `${n.toLocaleString("es-AR")} 
 
 export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestion = false, onClose }) {
   const [piezas, setPiezas] = useState(null);
+  const [pasos, setPasos] = useState([]);
+  const [faltanEn, setFaltanEn] = useState("");
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
@@ -36,8 +39,14 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
   const cargar = useCallback(async () => {
     if (!ot || !empresaId) return;
     try {
-      const { data } = await sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&ot=eq.${encodeURIComponent(ot)}&order=renglon.asc,unidad.asc,id.asc&select=*`);
+      const filtro = `empresa_id=eq.${empresaId}&ot=eq.${encodeURIComponent(ot)}`;
+      const [{ data }, escaneos] = await Promise.all([
+        sbGetAll(`piezas_ot?${filtro}&order=renglon.asc,unidad.asc,id.asc&select=*`),
+        // Sin la migración 110 todavía no hay escaneos (parte 18)
+        sbGetAll(`pasos_pieza?${filtro}&order=id.asc&select=pieza_id,etapa`).then((r) => r.data || []).catch(() => []),
+      ]);
       setPiezas(data || []);
+      setPasos(escaneos);
       setAviso(null);
     } catch {
       setPiezas([]);
@@ -90,6 +99,10 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
   };
 
   const renglones = useMemo(() => agruparRenglones(piezas || []), [piezas]);
+  const avance = useMemo(() => avancePiezas(piezas || [], pasos), [piezas, pasos]);
+  const hechos = useMemo(() => new Set(pasos.map((p) => `${p.pieza_id}|${p.etapa}`)), [pasos]);
+  const pasaron = (r, etapa) => r.piezas.filter((p) => hechos.has(`${p.id}|${etapa}`)).length;
+  const visibles = faltanEn ? renglones.filter((r) => r.etapas.includes(faltanEn) && pasaron(r, faltanEn) < r.piezas.length) : renglones;
   const modulos = useMemo(() => {
     const m = new Map();
     for (const r of renglones) {
@@ -125,6 +138,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                 {modulos.filter(([m]) => m !== SIN_MODULO).length > 0 && ` · ${modulos.filter(([m]) => m !== SIN_MODULO).length} módulos`}
               </div>
             )}
+            {pasos.length > 0 && <div className="text-xs text-gypi-dim mt-0.5">Escaneadas: {textoAvancePiezas(avance)}</div>}
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
@@ -219,8 +233,19 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
               </button>
             </section>
 
+            {pasos.length > 0 && (
+              <label className="text-[11px] text-gypi-dim block mb-2">Ver
+                <select className="g-input w-full" value={faltanEn} onChange={(e) => setFaltanEn(e.target.value)}>
+                  <option value="">Todas las piezas</option>
+                  {ETAPAS_PIEZA.filter((e) => avance[e.id].total > 0).map((e) => (
+                    <option key={e.id} value={e.id}>Las que faltan en {e.nombre} ({avance[e.id].total - avance[e.id].pasaron})</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {faltanEn && !visibles.length && <div className="text-sm text-gypi-green mb-3">✅ Pasaron todas por {ETAPAS_PIEZA.find((e) => e.id === faltanEn)?.nombre}.</div>}
             <ul aria-label="Piezas de la OT" className="list-none p-0 m-0 mb-3 flex flex-col gap-1.5">
-              {renglones.map((r) => (
+              {visibles.map((r) => (
                 <li key={r.nombre} className="bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
                   <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
@@ -233,11 +258,13 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                   <div className="flex flex-wrap gap-1.5 mt-1.5" aria-label={`Etapas de ${r.nombre}`}>
                     {ETAPAS_PIEZA.map((e) => {
                       const activa = r.etapas.includes(e.id);
-                      if (!esGestion) return activa ? <span key={e.id} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-gypi-green/15 text-gypi-green">{e.nombre}</span> : null;
+                      const n = pasaron(r, e.id);
+                      const cuenta = activa && pasos.length > 0 ? ` ${n}/${r.piezas.length}` : "";
+                      if (!esGestion) return activa ? <span key={e.id} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-gypi-green/15 text-gypi-green">{e.nombre}{cuenta}</span> : null;
                       return (
                         <button key={e.id} onClick={() => cambiarEtapa(r, e.id)} disabled={guardando} aria-pressed={activa} aria-label={`${e.nombre} en ${r.nombre}`}
                           className={`min-h-[36px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${activa ? "bg-gypi-green/15 border-gypi-green text-gypi-green" : "bg-transparent border-gypi-border text-gypi-dim"}`}>
-                          {activa ? "✓ " : ""}{e.nombre}
+                          {activa ? "✓ " : ""}{e.nombre}{cuenta}
                         </button>
                       );
                     })}

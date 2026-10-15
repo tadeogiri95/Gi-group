@@ -130,7 +130,8 @@ test("etiquetas — una página por pieza con OT, nombre, 'n de N', medidas, mó
   assert.match(html, /GI · OT M-7495/);
   assert.match(html, /1 de 2 · 402 × 342/);
   assert.match(html, /Módulo M\.izq/);
-  assert.match(html, /Corte › Canto › CNC/);
+  assert.match(html, /Corte › Canto › CNC · N° 10/);
+  assert.match(html, /N° 11/);
   assert.equal((html.match(/<svg/g) || []).length, 2);
   assert.doesNotMatch(html, /<script>/);
 });
@@ -276,6 +277,8 @@ function mockPantalla(filas = []) {
       }
       return new Response(JSON.stringify({ ok: true, etapas: body.etapas }), { status: 200 });
     }
+    // Sin escaneos (parte 18)
+    if (String(opts.body || "").includes("pasos_pieza")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
     return new Response(JSON.stringify({ data: filas }), { status: 200 });
   };
   return pedidos;
