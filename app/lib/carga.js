@@ -59,9 +59,14 @@ export function estadoCarga({ bultos = [], sueltos = [], carga = null, checklist
   };
 }
 
-/** Link que abre la carga de la OT en la app (va en el QR del rótulo). */
-export function linkCarga(origen, slug, ot) {
-  return `${String(origen).replace(/\/$/, "")}/${encodeURIComponent(slug)}?carga=${encodeURIComponent(String(ot))}`;
+/**
+ * Link que abre la carga de la OT en la app (va en el QR del rótulo). Con
+ * extra ({ bulto: 3 } o { suelto: id }) el escáner de la carga sabe qué
+ * bulto o suelto es (ver escaneoCarga.js); la cámara del celular igual abre la carga.
+ */
+export function linkCarga(origen, slug, ot, extra = {}) {
+  const params = Object.entries(extra).filter(([, v]) => v != null).map(([k, v]) => `&${k}=${encodeURIComponent(String(v))}`).join("");
+  return `${String(origen).replace(/\/$/, "")}/${encodeURIComponent(slug)}?carga=${encodeURIComponent(String(ot))}${params}`;
 }
 
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
@@ -83,10 +88,12 @@ export function modulosParaEtiquetas(total, nombres = "") {
 /**
  * Página con una etiqueta por bulto (o por módulo, con titulo "Módulo"), del
  * tamaño del rollo de la impresora de etiquetas (una etiqueta por página).
+ * Cada bulto puede traer su propio link (b.link) para el QR; si no, va `link`.
  * @param {{ empresa: string, proyecto: object, bultos: object[], link: string, tamano: { ancho: number, alto: number }, titulo?: string }} datos
  */
 export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, titulo = "Bulto" }) {
-  const qr = await svgQR(link);
+  const qrs = new Map();
+  for (const l of new Set(bultos.map((b) => b.link || link))) qrs.set(l, await svgQR(l));
   const total = bultos.length;
   const qrMm = Math.min(tamano.alto - 8, tamano.ancho * 0.42);
   const datosObra = [proyecto.cliente || proyecto.proyecto, proyecto.obra].filter(Boolean).join(" · ");
@@ -101,7 +108,7 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, tit
       ${entrega ? `<div class="obra">${esc(entrega)}</div>` : ""}
       ${b.contenido ? `<div class="contenido">${esc(b.contenido)}</div>` : ""}
     </div>
-    <div class="qr">${qr}</div>
+    <div class="qr">${qrs.get(b.link || link)}</div>
   </div>`).join("");
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo === "Bulto" ? "Rótulos" : "Etiquetas"} OT ${esc(proyecto.ot)}</title>
 <style>

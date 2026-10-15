@@ -4,16 +4,40 @@
 // tildados al cargar, checklist de carga, faltantes con fecha, foto y las dos
 // firmas. Se abre desde la lista de OT o escaneando el QR de un bulto. Con
 // la carga firmada, lleva al acta de instalación (parte 11).
-import { useCallback, useEffect, useState } from "react";
+// "📷 Escanear carga": cada QR de bulto o suelto que se lee se tilda solo y
+// la lista muestra en verde lo cargado y en amarillo lo que falta.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, sb } from "../lib/supabase";
 import { estadoCarga, imprimirRotulos, linkCarga, TAMANOS_ETIQUETA } from "../lib/carga";
 import { nombreSuelto } from "../lib/sueltos";
 import { normalizarChecklist } from "../lib/avance";
 import { fechaCorta } from "../lib/ot";
 import { fotoBase64, subirImagen } from "../lib/foto";
+import { bultosPegados, cotejarQr } from "../lib/escaneoCarga";
+import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
 const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer";
+// Verde lo cargado, amarillo lo que falta
+const FILA = "flex items-center gap-2 rounded-xl p-2.5 border";
+const filaCargada = (cargado) => `${FILA} ${cargado ? "bg-gypi-green/10 border-gypi-green/50" : "bg-yellow-400/10 border-yellow-500/60"}`;
+const REPETIDO_MS = 2500;
+
+/** Pitido corto (ok) o doble (error) para quien escanea sin mirar la pantalla. */
+function avisar(ok) {
+  try { navigator.vibrate?.(ok ? 80 : [80, 60, 80]); } catch { /* sin vibración */ }
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    osc.frequency.value = ok ? 880 : 220;
+    osc.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + (ok ? 0.12 : 0.35));
+    osc.onended = () => ctx.close();
+  } catch { /* sin sonido */ }
+}
 
 function leerTamano() {
   try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
@@ -48,6 +72,11 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
   const [confirmar, setConfirmar] = useState(null);
   const [faltantes, setFaltantes] = useState({ texto: "", fecha: "" });
   const [tamano, setTamano] = useState(leerTamano);
+  const [escaneando, setEscaneando] = useState(false);
+  const [lectura, setLectura] = useState(null); // { tono: "ok"|"ya"|"error", texto }
+  const [pegado, setPegado] = useState("");
+  const ultimoQr = useRef({ texto: "", at: 0 });
+  const ocupado = useRef(false);
 
   const cargar = useCallback(async () => {
     if (!ot || !empresaId) return;
@@ -121,6 +150,38 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
   const tildarSuelto = async (s) => {
     const data = await enviar("/api/sueltos", { accion: "tildar", id: s.id, columna: "carga", valor: !s.carga });
     if (data) setDatos((d) => ({ ...d, sueltos: d.sueltos.map((x) => (x.id === s.id ? { ...x, carga: !s.carga } : x)) }));
+    return !!data;
+  };
+  const pegarBultos = async () => {
+    const contenidos = bultosPegados(pegado);
+    if (!contenidos.length) { setError("No encontré bultos en lo pegado. Copiá la columna ETIQUETA de la hoja CARGA."); return; }
+    const data = await accion({ accion: "bultos_pegar", ot: otStr, contenidos });
+    if (data?.bultos) { setDatos((d) => ({ ...d, bultos: [...d.bultos, ...data.bultos] })); setPegado(""); }
+  };
+  // Cada QR leído: se coteja con la lista de la OT y, si falta, se tilda
+  const alEscanear = async (texto) => {
+    const ahora = Date.now();
+    if (ocupado.current || (texto === ultimoQr.current.texto && ahora - ultimoQr.current.at < REPETIDO_MS)) return;
+    ultimoQr.current = { texto, at: ahora };
+    const r = cotejarQr(texto, { ot: otStr, bultos, sueltos });
+    if (r.error) { avisar(false); setLectura({ tono: "error", texto: r.error }); return; }
+    if (r.tipo === "ot") { setLectura({ tono: "ya", texto: "Es el QR de esta OT. Ahora escaneá los bultos y los sueltos." }); return; }
+    if (r.yaCargado) { avisar(true); setLectura({ tono: "ya", texto: `${r.nombre}: ya estaba cargado.` }); return; }
+    ocupado.current = true;
+    try {
+      let ok;
+      if (r.tipo === "bulto") {
+        const data = await accion({ accion: "bulto_tildar", id: r.item.id, valor: true });
+        ok = !!data;
+        if (data) setDatos((d) => ({ ...d, bultos: d.bultos.map((x) => (x.id === r.item.id ? { ...x, cargado: true, ...(data.bulto || {}) } : x)) }));
+      } else {
+        ok = await tildarSuelto({ ...r.item, carga: false });
+      }
+      avisar(ok);
+      setLectura(ok ? { tono: "ok", texto: `✓ ${r.nombre}: cargado.` } : { tono: "error", texto: `No se pudo tildar ${r.nombre}. Probá de nuevo.` });
+    } finally {
+      ocupado.current = false;
+    }
   };
   const tildarPunto = async (t) => {
     const nuevos = tildados.has(t) ? [...tildados].filter((x) => x !== t) : [...tildados, t];
@@ -151,9 +212,29 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
       await imprimirRotulos({
         empresa: empresa?.nombre_corto || empresa?.nombre || "",
         proyecto: proyecto || { ot: otStr },
-        bultos,
+        bultos: bultos.map((b) => ({ ...b, link: linkCarga(window.location.origin, empresa?.slug || "", otStr, { bulto: b.numero }) })),
         link: linkCarga(window.location.origin, empresa?.slug || "", otStr),
         tamano: t,
+      });
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  // Una etiqueta por renglón de sueltos, con su QR para escanearlo al cargar
+  const imprimirSueltos = async () => {
+    const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
+    try {
+      await imprimirRotulos({
+        empresa: empresa?.nombre_corto || empresa?.nombre || "",
+        proyecto: proyecto || { ot: otStr },
+        bultos: sueltos.map((s, i) => ({
+          numero: i + 1,
+          contenido: `${nombreSuelto(s)} × ${Number(s.cantidad).toLocaleString("es-AR")}`.slice(0, 80),
+          link: linkCarga(window.location.origin, empresa?.slug || "", otStr, { suelto: s.id }),
+        })),
+        link: linkCarga(window.location.origin, empresa?.slug || "", otStr),
+        tamano: t,
+        titulo: "Suelto",
       });
     } catch (e) {
       setError(e.message);
@@ -185,11 +266,29 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
       {error && <div role="alert" className="text-[12px] text-gypi-red mb-2.5">{error}</div>}
       {cerrada && !estado.firmada && <div className="text-[12px] text-gypi-dim mb-2.5">Con una firma puesta la lista queda cerrada. Falta la otra firma.</div>}
 
+      {!cerrada && (bultos.length > 0 || sueltos.length > 0) && escanerDisponible() && (
+        <div className="mb-3">
+          <button onClick={() => { setEscaneando(!escaneando); setLectura(null); }} aria-pressed={escaneando} className="g-btn g-btn-primary w-full">
+            {escaneando ? "Terminar de escanear" : "📷 Escanear carga"}
+          </button>
+          {escaneando && (
+            <div className="mt-2">
+              <EscanerCodigo onCodigo={alEscanear} ayuda="Apuntá al QR de cada bulto o suelto que subís al camión" />
+              {lectura && (
+                <div role="status" aria-live="polite" className={`p-3 rounded-[10px] text-[14px] font-bold border ${lectura.tono === "ok" ? "bg-gypi-green/15 border-gypi-green text-gypi-green-ink" : lectura.tono === "ya" ? "bg-yellow-400/15 border-yellow-500/60" : "bg-gypi-red/10 border-gypi-red text-gypi-red-ink"}`}>
+                  {lectura.texto}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <Seccion titulo="Bultos">
         {bultos.length === 0 ? <div className="text-[13px] text-gypi-dim mb-2">Todavía no hay bultos. Agregá uno por cada paquete que va al camión.</div> : (
           <ul aria-label="Lista de bultos" className="list-none p-0 m-0 mb-2 flex flex-col gap-1.5">
             {bultos.map((b) => (
-              <li key={b.id} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
+              <li key={b.id} className={filaCargada(b.cargado)}>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold">Bulto {b.numero} de {bultos.length}</div>
                   {b.contenido && <div className="text-[11px] text-gypi-dim">{b.contenido}</div>}
@@ -203,6 +302,17 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
               </li>
             ))}
           </ul>
+        )}
+        {!cerrada && bultos.length === 0 && (
+          <div className="mb-2">
+            <textarea className="g-input w-full min-h-[70px]" value={pegado} onChange={(e) => setPegado(e.target.value)} aria-label="Bultos pegados de la planilla"
+              placeholder="¿Tenés la planilla? Copiá la columna ETIQUETA de la hoja CARGA y pegala acá" />
+            {pegado.trim() && (
+              <button onClick={pegarBultos} disabled={guardando} className="g-btn g-btn-secondary w-full mt-1.5">
+                📋 Crear {bultosPegados(pegado).length} bultos
+              </button>
+            )}
+          </div>
         )}
         {proyecto?.total_modulos ? <div className="text-[11px] text-gypi-dim mb-2">La OT tiene {proyecto.total_modulos} módulos: revisá que todos estén en algún bulto.</div> : null}
         {!cerrada && (
@@ -226,12 +336,13 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
         <Seccion titulo="Sueltos">
           <ul aria-label="Sueltos para cargar" className="list-none p-0 m-0 flex flex-col gap-1.5">
             {sueltos.map((s) => (
-              <li key={s.id} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
+              <li key={s.id} className={filaCargada(s.carga)}>
                 <div className="flex-1 min-w-0 text-[13px]">{nombreSuelto(s)} <span className="text-[11px] text-gypi-dim">× {Number(s.cantidad).toLocaleString("es-AR")}</span></div>
                 <Tilde activo={s.carga} disabled={guardando || cerrada} onClick={() => tildarSuelto(s)} label={`Cargado ${nombreSuelto(s)}`} texto="Cargado" />
               </li>
             ))}
           </ul>
+          <button onClick={imprimirSueltos} className="g-btn g-btn-secondary w-full mt-2">🖨 Imprimir etiquetas de sueltos</button>
         </Seccion>
       )}
 
