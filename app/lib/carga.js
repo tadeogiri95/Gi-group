@@ -22,6 +22,7 @@ export const TAMANOS_ETIQUETA = [
   { id: "100x75", ancho: 100, alto: 75, nombre: "100 × 75 mm" },
   { id: "100x150", ancho: 100, alto: 150, nombre: "100 × 150 mm" },
   { id: "62x100", ancho: 62, alto: 100, nombre: "62 × 100 mm (Brother)" },
+  { id: "50x30", ancho: 50, alto: 30, nombre: "50 × 30 mm (chica, para piezas)" },
 ];
 
 /**

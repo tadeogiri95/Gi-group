@@ -265,6 +265,31 @@ export const sueltosBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
 ]);
 
+// ── /api/piezas (109): piezas de la OT con etiqueta QR (OP parte 17) ────────
+const etapasPieza = z.array(z.enum(["corte", "canto", "cnc", "especial"])).min(1).max(4)
+  .transform((l) => ["corte", "canto", "cnc", "especial"].filter((e) => l.includes(e as never)));
+const nombrePieza = z.string().trim().min(1).max(80);
+const medidaPieza = z.number().positive().max(99999).nullable().optional().transform((v) => v ?? null);
+export const piezasBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("cargar"),
+    ot: otSuelto,
+    renglones: z.array(z.object({
+      nombre: nombrePieza,
+      modulo: textoSuelto(40),
+      material: textoSuelto(120),
+      l1: medidaPieza,
+      l2: medidaPieza,
+      cantidad: z.number().int().min(1).max(500),
+      etapas: etapasPieza,
+    }).strict()).min(1).max(1000)
+      .refine((l) => l.reduce((n, r) => n + r.cantidad, 0) <= 3000, { message: "Una OT puede tener hasta 3000 piezas" })
+      .refine((l) => new Set(l.map((r) => r.nombre)).size === l.length, { message: "Hay renglones con el mismo nombre" }),
+  }).strict(),
+  z.object({ accion: z.literal("etapas"), ot: otSuelto, nombre: nombrePieza, etapas: etapasPieza }).strict(),
+  z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
+]);
+
 // ── /api/stock/movimientos (107): retiros, ingresos, ajustes y devoluciones ──
 const skuMovimiento = z.string().trim().min(1).max(60).regex(/^[\w.-]+$/, "Código de artículo inválido");
 const cantidadMovimiento = z.number().finite().refine((n) => n !== 0 && Math.abs(n) < 1e10, { message: "Cantidad inválida" });

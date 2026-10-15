@@ -15,6 +15,7 @@ import SueltosOt from "./components/SueltosOt";
 import CargaOt from "./components/CargaOt";
 import ActaOt from "./components/ActaOt";
 import EtiquetasModulos from "./components/EtiquetasModulos";
+import PiezasOt from "./components/PiezasOt";
 import { useCostoHora } from "./hooks/useCostoHora";
 
 const GREEN = "#16A34A";
@@ -167,6 +168,7 @@ export default function ProyectosScreen({ empresaId }) {
   const [carga, setCarga] = useState(null);
   const [acta, setActa] = useState(null);
   const [etiquetas, setEtiquetas] = useState(null);
+  const [piezasOt, setPiezasOt] = useState(null);
   const [vista, setVista] = useState("lista");
   const [csvFilas, setCsvFilas] = useState(null);
   const [csvRawText, setCsvRawText] = useState(null);
@@ -537,6 +539,7 @@ export default function ProyectosScreen({ empresaId }) {
                 </div>
                 <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
                   <button onClick={() => setDetalle(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">📊 Detalle</button>
+                  <button onClick={() => setPiezasOt(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">🧩 Piezas</button>
                   <button onClick={() => setModal(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
                   {p.estado === "activo" ? (
                     <button onClick={() => cerrarProyecto(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">Cerrar</button>
@@ -561,6 +564,9 @@ export default function ProyectosScreen({ empresaId }) {
           onAbrirActa={() => { setActa(carga); setCarga(null); }} />
       )}
       {etiquetas && <EtiquetasModulos proyecto={etiquetas} empresa={empresa} onClose={() => setEtiquetas(null)} />}
+      {piezasOt && (
+        <PiezasOt proyecto={piezasOt} empresaId={empresaId} empresa={empresa} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setPiezasOt(null)} />
+      )}
       {acta && (
         <ActaOt ot={String(acta.ot)} empresaId={empresaId} empresa={empresa} checklist={checklistInstalacion || []} etapas={etapasCtx || []} defectos={defectos || []}
           esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setActa(null)} />
