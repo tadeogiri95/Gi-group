@@ -269,6 +269,8 @@ export const sueltosBody = z.discriminatedUnion("accion", [
 const idCarga = z.number().int().positive();
 export const cargaBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("bulto_agregar"), ot: otSuelto, contenido: textoSuelto(300) }).strict(),
+  // Los bultos de la hoja CARGA de la planilla (columna ETIQUETA), en orden
+  z.object({ accion: z.literal("bultos_pegar"), ot: otSuelto, contenidos: z.array(z.string().trim().min(1).max(300)).min(1).max(200) }).strict(),
   z.object({ accion: z.literal("bulto_borrar"), id: idCarga }).strict(),
   z.object({ accion: z.literal("bulto_tildar"), id: idCarga, valor: z.boolean() }).strict(),
   z.object({ accion: z.literal("checklist"), ot: otSuelto, items: z.array(z.string().trim().min(1).max(200)).max(20) }).strict(),

@@ -4,11 +4,14 @@
 // carga solo llegaba a la carga escaneando el QR de un rótulo, y los rótulos
 // los imprimía gestión. Con la OT elegida se abre la misma carga (CargaOt),
 // donde arma los bultos e imprime los rótulos él mismo.
+// También se elige escaneando el QR de la OT de la planilla (o de un rótulo).
 import { useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { ordenarPorOt } from "../hooks/useActividad";
 import { fechaCorta } from "../lib/ot";
 import Modal from "./ui/Modal";
+import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
+import { leerQr, otDelQr } from "../lib/escaneoCarga";
 
 const MAX_VISIBLES = 50;
 
@@ -24,6 +27,8 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose }) {
   const [ots, setOts] = useState(null);
   const [error, setError] = useState(null);
   const [texto, setTexto] = useState("");
+  const [escaneando, setEscaneando] = useState(false);
+  const [aviso, setAviso] = useState(null);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -36,11 +41,28 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose }) {
 
   const filtradas = useMemo(() => filtrarOts(ots || [], texto), [ots, texto]);
 
+  const alEscanear = (codigo) => {
+    if (!ots) return;
+    const ot = otDelQr(codigo, ots);
+    if (ot) { onElegir(ot); return; }
+    const lectura = leerQr(codigo);
+    setAviso(lectura ? `La OT ${lectura.ot} no está entre las activas.` : "Ese código no es de una OT.");
+  };
+
   return (
     <Modal open onClose={onClose} title="¿Qué OT vas a cargar?">
       <div className="p-4 overflow-y-auto">
         <input className="g-input w-full mb-3" value={texto} onChange={(e) => setTexto(e.target.value)} inputMode="search"
           aria-label="Buscar OT" placeholder="Número de OT, cliente u obra" />
+        {escanerDisponible() && ots !== null && (
+          <div className="mb-3">
+            <button onClick={() => { setEscaneando(!escaneando); setAviso(null); }} aria-pressed={escaneando} className="g-btn g-btn-secondary w-full">
+              {escaneando ? "Cerrar la cámara" : "📷 Escanear el QR de la OT"}
+            </button>
+            {escaneando && <div className="mt-2"><EscanerCodigo onCodigo={alEscanear} ayuda="Apuntá al QR de la OT en la planilla" /></div>}
+            {aviso && <div role="alert" className="text-[12px] text-gypi-red">{aviso}</div>}
+          </div>
+        )}
         {error && <div role="alert" className="text-[12px] text-gypi-red mb-2">{error}</div>}
         {ots === null ? (
           <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>

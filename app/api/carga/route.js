@@ -4,6 +4,8 @@
 // Body: { accion, ... }. Lo hace cualquiera de la empresa (el responsable de
 // acopio y carga suele ser un operario), salvo desfirmar, que es de gestión.
 //   bulto_agregar / bulto_borrar / bulto_tildar
+//   bultos_pegar → varios bultos de una vez (columna ETIQUETA de la planilla),
+//                  numerados a continuación de los que ya hay
 //   checklist  → los puntos del checklist de carga tildados
 //   faltantes  → qué falta y cuándo se entrega
 //   foto       → la foto de la carga completa (subida por /api/upload)
@@ -102,6 +104,15 @@ async function procesar(sesion, datos) {
       const [fila] = (await sbPost("bultos_ot", { empresa_id: e, ot, numero, contenido: datos.contenido ?? null, creado_por: quien }, opts)) || [];
       broadcastRefresh(e, "bultos_ot");
       return json({ ok: true, bulto: fila || null });
+    }
+    case "bultos_pegar": {
+      const [ultimo] = (await sbGet(`bultos_ot?empresa_id=eq.${e}&ot=eq.${otq}&select=numero&order=numero.desc&limit=1`, opts)) || [];
+      const desde = (ultimo?.numero || 0) + 1;
+      if (desde + datos.contenidos.length - 1 > 999) return json({ error: "Una OT tiene hasta 999 bultos" }, 400);
+      const filas = datos.contenidos.map((contenido, i) => ({ empresa_id: e, ot, numero: desde + i, contenido, creado_por: quien }));
+      const creados = (await sbPost("bultos_ot", filas, opts)) || [];
+      broadcastRefresh(e, "bultos_ot");
+      return json({ ok: true, bultos: creados });
     }
     case "bulto_tildar": {
       const cambios = datos.valor ? { cargado: true, cargado_por: quien, cargado_at: ahora } : { cargado: false, cargado_por: null, cargado_at: null };
