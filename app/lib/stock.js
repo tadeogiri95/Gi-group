@@ -7,8 +7,9 @@
 //   - INVENTARIO (obligatoria): SKU, ARTICULO, STOCK TOTAL, NECESIDAD…,
 //     DISPONIBLE, PUNTO DE PEDIDO, PRÓXIMA NECESIDAD, SEMÁFORO MRP, CANTIDAD
 //     SUGERIDA, DIVISIÓN, EN TRÁNSITO.
-//   - ARTICULOS (opcional): ID_SKU, Nombre Articulo, División, Familia, Tipo
-//     de Material, Marca, Color/Acabado, Unidad Medida.
+//   - ARTICULOS (opcional): ID_SKU, Nombre normalizado (el nombre que se
+//     muestra; si está vacío, Nombre Articulo), División, Familia, Tipo de
+//     Material, Marca, Color/Acabado, Unidad Medida.
 // Las columnas se buscan por título (sin importar mayúsculas, acentos ni el
 // orden), así una columna nueva en la planilla no rompe nada.
 //
@@ -42,7 +43,9 @@ const CAMPOS_INVENTARIO = {
 };
 const CAMPOS_ARTICULOS = {
   sku: ["id_sku", "sku"],
-  nombre: ["nombre articulo", "nombre norma*", "articulo"],
+  // El nombre que se muestra es el normalizado (pedido del dueño, 15/10)
+  nombre: ["nombre norma*", "nombre articulo", "articulo"],
+  nombre_original: ["nombre articulo", "articulo"],
   division: ["division"],
   familia: ["familia"],
   tipo: ["tipo de mate*", "tipo"],
@@ -52,7 +55,7 @@ const CAMPOS_ARTICULOS = {
 };
 
 // Largo máximo de cada texto (los mismos que la migración 106)
-const LARGO = { sku: 60, nombre: 200, division: 60, familia: 80, tipo: 60, unidad: 20, marca: 80, color: 80, semaforo: 40 };
+const LARGO = { sku: 60, nombre: 200, nombre_original: 200, division: 60, familia: 80, tipo: 60, unidad: 20, marca: 80, color: 80, semaforo: 40 };
 const TEXTOS = ["nombre", "division", "familia", "tipo", "unidad", "marca", "color", "semaforo"];
 const NUMEROS = ["stock", "necesidad", "disponible", "en_transito", "punto_pedido", "sugerido"];
 const MAX_NUMERO = 1e10;
@@ -130,7 +133,7 @@ export function unirArticulos({ inventario, articulos = null }) {
   const inv = leerHoja(inventario, CAMPOS_INVENTARIO);
   const art = articulos ? leerHoja(articulos, CAMPOS_ARTICULOS) : { filas: [], conSku: true, sinSku: 0 };
   const porSku = new Map();
-  for (const a of art.filas) porSku.set(a.sku, { ...VACIO, ...a });
+  for (const { nombre_original, ...a } of art.filas) porSku.set(a.sku, { ...VACIO, ...a, nombre: a.nombre || nombre_original || null });
   for (const i of inv.filas) {
     const previo = porSku.get(i.sku) || { ...VACIO, sku: i.sku };
     const unido = { ...previo };
