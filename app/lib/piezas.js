@@ -308,7 +308,7 @@ export function tipoDeEtapa(etapa) {
   const n = norm(etapa?.nombre);
   if (!n) return null;
   if (n.includes("especial") || n.includes("diagonal") || n.includes("45")) return "especial";
-  if (n.includes("canto")) return "canto";
+  if (n.includes("canto") || n.includes("cante")) return "canto";
   if (["cnc", "proceso", "perfor", "mecaniz", "router", "ranur", "calad"].some((p) => n.includes(p))) return "cnc";
   if (n.includes("corte") || n.includes("seccion") || n.includes("escuadr")) return "corte";
   return null;

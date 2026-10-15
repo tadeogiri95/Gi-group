@@ -5,6 +5,9 @@ export const uuid = z.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 export const slug = z.string().min(1).max(50).regex(/^[a-z0-9-]+$/);
 export const color = z.string().max(20).regex(/^#[0-9a-fA-F]{3,8}$/);
 export const emoji = z.string().max(4);
+// Ícono de etapa o división: un emoji (algunos ocupan más de 4 letras, como
+// "🛠️" o "👷‍♂️") o, en etapas viejas, el nombre de un dibujo ("Hammer")
+export const icono = z.string().trim().max(40);
 export const safeString = z.string().max(500);
 export const shortString = z.string().max(100);
 export const url = z.string().url().max(2048);
@@ -419,7 +422,7 @@ export const configPostBody = z.discriminatedUnion("action", [
     action: z.literal("add_division"),
     clave: z.string().min(1).max(50),
     label: shortString,
-    icon: emoji.optional(),
+    icon: icono.optional(),
     color: color.optional(),
     orden: z.number().int().min(0).max(999).optional(),
   }),
@@ -428,7 +431,7 @@ export const configPostBody = z.discriminatedUnion("action", [
     // Sin código, el servidor usa el siguiente libre (pantalla de Rutas)
     codigo: z.number().int().optional(),
     nombre: shortString,
-    icon: emoji.optional(),
+    icon: icono.optional(),
     color: color.optional(),
     orden: z.number().int().min(0).max(999).optional(),
     unidad: unidadEtapa,
@@ -450,7 +453,7 @@ export const configPatchBody = z.discriminatedUnion("action", [
     action: z.literal("update_division"),
     id: uuid,
     label: shortString.optional(),
-    icon: emoji.optional(),
+    icon: icono.optional(),
     color: color.optional(),
     orden: z.number().int().min(0).max(999).optional(),
     activa: z.boolean().optional(),
@@ -461,7 +464,7 @@ export const configPatchBody = z.discriminatedUnion("action", [
     action: z.literal("update_etapa"),
     id: uuid,
     nombre: shortString.optional(),
-    icon: emoji.optional(),
+    icon: icono.optional(),
     color: color.optional(),
     codigo: z.number().int().optional(),
     orden: z.number().int().min(0).max(999).optional(),
