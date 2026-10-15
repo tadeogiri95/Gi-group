@@ -29,6 +29,25 @@ async function sbFetch(path, opts = {}, sesion) {
   return txt ? JSON.parse(txt) : null;
 }
 
+/* ─── Descarga de una planilla publicada como CSV ───
+ * Solo HTTPS y nunca a la red interna. También la usa la planilla MRP (syncStock.js). */
+export async function descargarCsv(csvUrl) {
+  let parsed;
+  try { parsed = new URL(csvUrl); } catch { throw new Error("URL de CSV inválida"); }
+  if (parsed.protocol !== "https:") throw new Error("Solo se permiten URLs HTTPS");
+  const host = parsed.hostname;
+  if (host === "localhost" || host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+    throw new Error("URL apunta a red privada");
+  }
+
+  const csvRes = await fetch(csvUrl, {
+    headers: { "User-Agent": "Gypi-CSV-Sync/1.0" },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!csvRes.ok) throw new Error(`HTTP ${csvRes.status} al descargar CSV`);
+  return csvRes.text();
+}
+
 /* ─── Sync de una empresa ─── */
 /**
  * @param {string} empresaId
@@ -49,20 +68,7 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     return { omitido: true, procesados: 0, total: 0, repetidas: 0, errores: [] };
   }
 
-  let parsed;
-  try { parsed = new URL(csvUrl); } catch { throw new Error("URL de CSV inválida"); }
-  if (parsed.protocol !== "https:") throw new Error("Solo se permiten URLs HTTPS");
-  const host = parsed.hostname;
-  if (host === "localhost" || host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
-    throw new Error("URL apunta a red privada");
-  }
-
-  const csvRes = await fetch(csvUrl, {
-    headers: { "User-Agent": "Gypi-CSV-Sync/1.0" },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!csvRes.ok) throw new Error(`HTTP ${csvRes.status} al descargar CSV`);
-  const csvText = await csvRes.text();
+  const csvText = await descargarCsv(csvUrl);
 
   const { filas, repetidas } = parseCsvProyectos(csvText);
   if (!filas.length) throw new Error("CSV sin datos válidos (columna OT requerida)");

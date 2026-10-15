@@ -39,8 +39,24 @@ test("cron sync-ot — sincroniza cada empresa con planilla y una con error no f
   const res = await GET(req("Bearer secreto-cron"));
   const json = await res.json();
   assert.equal(res.status, 200);
-  assert.deepEqual(json, { ok: true, empresas: 2, conError: 1 });
+  assert.deepEqual(json, { ok: true, empresas: 2, conError: 1, stock: 0 });
   assert.deepEqual(subidas.map(r => r.ot), ["M-1", "M-2"]);
+});
+
+test("cron sync-ot — después de las OT copia el stock de la planilla MRP; si falla, las OT igual quedan", async () => {
+  global.fetch = createFetchMock([
+    { match: (u) => u.includes("clave=eq.proyectos_csv_url") && u.includes("limit=500"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("clave=eq.stock_csv_url") && u.includes("limit=500"), respond: () => ({ status: 200, body: [
+      { empresa_id: "e1", valor: { inventario: "https://x.example.com/inv.csv" } },
+      { empresa_id: "e2", valor: {} },
+    ] }) },
+    { match: (u) => u.includes("clave=eq.stock_csv_url") && u.includes("empresa_id=eq.e1"), respond: () => ({ status: 200, body: [{ valor: { inventario: "https://x.example.com/inv.csv" } }] }) },
+    { match: (u) => u === "https://x.example.com/inv.csv", respond: () => ({ status: 500, body: "caída" }) },
+    { match: (u) => u.includes("cron_ejecuciones"), respond: () => ({ status: 200, body: null }) },
+  ]);
+  const res = await GET(req("Bearer secreto-cron"));
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, empresas: 0, conError: 0, stock: 1 });
 });
 
 test("cron sync-ot — está en vercel.json y en el monitoreo de crons", () => {

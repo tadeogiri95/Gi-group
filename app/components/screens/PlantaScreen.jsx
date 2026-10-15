@@ -1,16 +1,19 @@
 "use client";
 // Pestaña "Planta" de gestión (reforma UX R5): lo que pasa hoy en la planta
 // (quién trabaja en qué, quién está parado) y las OT, en un solo lugar.
-// Producción, Stock y Mantenimiento se suman acá como otra opción.
+// Producción, Stock y Mantenimiento se suman acá como otra opción. Stock
+// (ítem 40) va con las OT hasta que sea un módulo que se venda aparte.
 import { useState } from "react";
 import { tieneModulo } from "../../lib/modulos";
 import ModuloBloqueado from "../ModuloBloqueado";
 import GerenciaActividadScreen from "../../gerencia_actividad_screen";
 import ProyectosScreen from "../../proyectos_screen.jsx";
+import StockScreen from "../StockScreen";
 
 const OPCIONES = [
   { id: "vivo", label: "En vivo", modulo: "actividad" },
   { id: "ot", label: "OT", modulo: "proyectos" },
+  { id: "stock", label: "Stock", modulo: "proyectos" },
 ];
 
 export default function PlantaScreen({ empresa, usuario, onVerPlanes }) {
@@ -37,6 +40,7 @@ export default function PlantaScreen({ empresa, usuario, onVerPlanes }) {
         {bloqueado && <ModuloBloqueado modulo={actual.modulo} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} />}
+        {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} />}
       </div>
     </div>
   );

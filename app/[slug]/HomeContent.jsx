@@ -56,6 +56,7 @@ const GestionPersonalScreen = dynamic(() => import("../gestion_personal_screen")
 const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: false });
 const CargaOt = dynamic(() => import("../components/CargaOt"), { ssr: false });
 const ActaOt = dynamic(() => import("../components/ActaOt"), { ssr: false });
+const FichaArticulo = dynamic(() => import("../components/FichaArticulo"), { ssr: false });
 
 // Demo data — cargado dinámicamente solo cuando ?demo=true (nunca para usuarios reales)
 
@@ -109,6 +110,10 @@ export default function HomeContent() {
   const abrirCarga = (ot) => cambiarParams((p) => { p.delete("acta"); p.set("carga", ot); });
   const cerrarCarga = () => cambiarParams((p) => p.delete("carga"));
   const cerrarActa = () => cambiarParams((p) => p.delete("acta"));
+  // QR de la etiqueta de un artículo (Stock, parte 13): ?articulo=SKU abre su ficha
+  // (mismo formato que SKU_VALIDO de lib/stock.js, sin cargar esa librería acá)
+  const skuArticulo = /^[\w.-]{1,60}$/.test(searchParams.get("articulo") || "") ? searchParams.get("articulo") : null;
+  const cerrarArticulo = () => cambiarParams((p) => p.delete("articulo"));
   const abrirActa = () => cambiarParams((p) => { p.delete("carga"); p.set("acta", otCarga); });
 
   // ─── Impersonation exchange (superadmin → ?imp=code) ───
@@ -422,6 +427,7 @@ export default function HomeContent() {
         <CargaOt ot={otCarga} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} usuario={u} checklist={checklistCarga}
           esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarCarga} onAbrirActa={abrirActa} />
       )}
+      {skuArticulo && !otCarga && !otActa && !isDemo && <FichaArticulo sku={skuArticulo} onClose={cerrarArticulo} />}
       {otActa && !isDemo && (
         <ActaOt ot={otActa} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} checklist={checklistInstalacion}
           etapas={etapasEmpresa} defectos={defectos} esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarActa} />
