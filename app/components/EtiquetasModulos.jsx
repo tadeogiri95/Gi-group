@@ -76,7 +76,7 @@ export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) 
         <button onClick={imprimir} disabled={!modulos.length} className="g-btn g-btn-primary w-full">
           {modulos.length ? "🖨 Imprimir etiquetas" : "Poné cuántos módulos tiene"}
         </button>
-        <div className="text-[11px] text-gypi-dim mt-2">El QR abre la carga de la OT. La etiqueta de cada pieza la sigue imprimiendo la optimizadora.</div>
+        <div className="text-[11px] text-gypi-dim mt-2">El QR abre la carga de la OT. Las etiquetas de cada pieza se imprimen en 🧩 Piezas.</div>
       </div>
     </div>
   );

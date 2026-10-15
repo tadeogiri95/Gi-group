@@ -129,7 +129,8 @@ const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"]
 // articulos_stock → 106 (la escribe /api/stock/sync con el pase del usuario)
 // movimientos_stock → 107 (/api/stock/movimientos, igual)
 // necesidades_stock → 108 (la sincronización de la planilla, igual)
-const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock"];
+// piezas_ot → 109 (/api/piezas, igual)
+const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot"];
 const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
 
 test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {
