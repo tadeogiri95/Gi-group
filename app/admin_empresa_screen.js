@@ -9,6 +9,7 @@ import CausasEditor from "./components/CausasEditor";
 import ChecklistEditor from "./components/ChecklistEditor";
 import DefectosEditor from "./components/DefectosEditor";
 import CostoEditor from "./components/CostoEditor";
+import { cambiosEtapa } from "./lib/etapasForm";
 import { useToast } from "./components/ui/Toast";
 import { useAuth } from "./context/AuthContext";
 
@@ -92,6 +93,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const [etapas, setEtapas] = useState(etapasProp);
   const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" });
   const [editEtapaId, setEditEtapaId] = useState(null);
+  const formEtapaRef = useRef(null);
 
   const showToast = useCallback((msg, type = "success") => {
     if (type === "error") toast.error(msg);
@@ -271,7 +273,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
 
   const handleAddEtapa = async () => {
     if (!etapaForm.nombre.trim()) return showToast("El nombre es requerido", "error");
-    if (!etapaForm.codigo || etapaForm.codigo < 1) return showToast("El código debe ser un número positivo", "error");
+    const codigoAntes = etapas.find((e) => e.id === editEtapaId)?.codigo;
+    if (etapaForm.codigo !== codigoAntes && (!etapaForm.codigo || etapaForm.codigo < 1)) return showToast("El código debe ser un número positivo", "error");
     const token = getToken();
     if (!token) return showToast("Sin sesión", "error");
     try {
@@ -279,7 +282,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         const r = await fetch("/api/config-empresa", {
           method: "PATCH",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ action: "update_etapa", id: editEtapaId, ...etapaForm }),
+          body: JSON.stringify({ action: "update_etapa", id: editEtapaId, ...cambiosEtapa(etapas.find((e) => e.id === editEtapaId), etapaForm) }),
         });
         if (!r.ok) throw new Error((await r.json()).error || "Error actualizando");
         const { etapa } = await r.json();
@@ -307,6 +310,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const handleEditEtapa = (etapa) => {
     setEtapaForm({ icon: etapa.icon, codigo: etapa.codigo, nombre: etapa.nombre, color: etapa.color, unidad: etapa.unidad || "", condicion_cierre: etapa.condicion_cierre || "" });
     setEditEtapaId(etapa.id);
+    // El formulario está arriba de la lista: llevarlo a la vista
+    requestAnimationFrame(() => formEtapaRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }));
   };
 
   const handleDeleteEtapa = async (id) => {
@@ -517,7 +522,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
 
       case "etapas":
         return <>
-          <div className="g-card mb-3.5">
+          <div ref={formEtapaRef} className="g-card mb-3.5">
             <div className="g-label mb-1.5">{editEtapaId !== null ? "Editar etapa" : "Nueva etapa"}</div>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {ICON_OPTIONS.map((ic) => (

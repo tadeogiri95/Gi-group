@@ -44,6 +44,7 @@ test("etapas — cada etapa de la empresa se reconoce por su nombre; Armado no s
   assert.deepEqual(ETAPAS.map(tipoDeEtapa), ["corte", "canto", "cnc", "especial", null]);
   assert.equal(tipoDeEtapa({ nombre: "CNC / Perforado" }), "cnc");
   assert.equal(tipoDeEtapa({ nombre: "Tapacantos" }), "canto");
+  assert.equal(tipoDeEtapa({ nombre: "Canteado" }), "canto");
   assert.equal(tipoDeEtapa({ nombre: "Seccionadora" }), "corte");
   assert.equal(tipoDeEtapa({ nombre: "Corte a 45°" }), "especial");
   assert.equal(tipoDeEtapa(null), null);

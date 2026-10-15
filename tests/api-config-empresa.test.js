@@ -245,6 +245,31 @@ test("PATCH config-empresa — update_division propia actualiza correctamente", 
   assert.equal(patchedData.color, "#00FF00");
 });
 
+test("PATCH config-empresa — update_etapa acepta íconos largos (🛠️, nombres viejos) y renombra", async () => {
+  const token = await tokenConRol("gerencial");
+  let patchedData = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url) => url.includes("/rest/v1/etapas") && url.includes("select=empresa_id"),
+      respond: () => ({ status: 200, body: [{ empresa_id: EMPRESA_ID }] }),
+    },
+    {
+      match: (url, opts) => url.includes("/rest/v1/etapas") && opts?.method === "PATCH",
+      respond: (url, opts) => {
+        patchedData = JSON.parse(opts.body);
+        return { status: 200, body: [{ id: ETAPA_ID, ...patchedData }] };
+      },
+    },
+  ]);
+
+  for (const icon of ["🛠️", "👷‍♂️", "Hammer"]) {
+    const res = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, nombre: "Canto", icon }, token));
+    assert.equal(res.status, 200, `ícono ${icon}`);
+    assert.equal(patchedData.nombre, "Canto");
+  }
+});
+
 test("PATCH config-empresa — update_etapa con código duplicado devuelve 409 sin detalle de Postgres", async () => {
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([
@@ -332,4 +357,13 @@ test("DELETE config-empresa — división de otra empresa devuelve 403", async (
 
   const res = await DELETE(jsonReq("DELETE", null, token, { type: "division", id: DIV_ID }));
   assert.equal(res.status, 403);
+});
+
+test("cambiosEtapa — al editar manda solo lo que cambió", async () => {
+  const { cambiosEtapa } = await import("../app/lib/etapasForm.js");
+  const original = { id: "x", icon: "Hammer", codigo: 2, nombre: "Canteado", color: "orange", unidad: null, condicion_cierre: null };
+  const form = { icon: "Hammer", codigo: 2, nombre: " Canto ", color: "orange", unidad: "", condicion_cierre: "" };
+  assert.deepEqual(cambiosEtapa(original, form), { nombre: "Canto" });
+  assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado" }), {});
+  assert.deepEqual(cambiosEtapa(original, { ...form, unidad: "metros" }), { nombre: "Canto", unidad: "metros" });
 });
