@@ -263,7 +263,7 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano }) 
       <div class="unidad">${p.unidad} de ${p.de}${medidas(p) ? ` · ${esc(medidas(p))}` : ""}</div>
       ${p.material ? `<div class="chico">${esc(p.material)}</div>` : ""}
       ${p.modulo ? `<div class="chico">Módulo ${esc(p.modulo)}</div>` : ""}
-      ${ruta ? `<div class="ruta">${esc(ruta)}</div>` : ""}
+      ${ruta ? `<div class="ruta">${esc(ruta)} · N° ${p.id}</div>` : `<div class="ruta">N° ${p.id}</div>`}
     </div>
     <div class="qr">${qr}</div>
   </div>`);
@@ -292,4 +292,81 @@ export async function imprimirEtiquetasPiezas(datos) {
   ventana.document.close();
   ventana.focus();
   setTimeout(() => ventana.print(), 300);
+}
+
+// ─── Parte 18: escaneo de cada pieza en cada etapa ─────────────────────────
+
+/** Nombre de la etapa de pieza ("canto" → "Canto"). */
+export const nombreEtapaPieza = nombreEtapa;
+
+/**
+ * A qué etapa de pieza corresponde una etapa de la empresa, por su nombre:
+ * "Corte especial" → especial, "Canto"/"Tapacanto" → canto, "CNC"/"Procesos"/
+ * "Perforado" → cnc, "Corte"/"Seccionado" → corte. Las demás (Armado, …) → null.
+ */
+export function tipoDeEtapa(etapa) {
+  const n = norm(etapa?.nombre);
+  if (!n) return null;
+  if (n.includes("especial") || n.includes("diagonal") || n.includes("45")) return "especial";
+  if (n.includes("canto")) return "canto";
+  if (["cnc", "proceso", "perfor", "mecaniz", "router", "ranur", "calad"].some((p) => n.includes(p))) return "cnc";
+  if (n.includes("corte") || n.includes("seccion") || n.includes("escuadr")) return "corte";
+  return null;
+}
+
+/** La etapa de la empresa (activa) que corresponde a una etapa de pieza, o null. */
+export function etapaDeTipo(etapas = [], tipo) {
+  return etapas.filter((e) => e.activa !== false).find((e) => tipoDeEtapa(e) === tipo) || null;
+}
+
+/** Etapas de la pieza anteriores a `etapa` que todavía no tienen escaneo. */
+export function etapasSalteadas(pieza, etapa, pasosDeLaPieza = []) {
+  const hechas = new Set(pasosDeLaPieza.map((p) => p.etapa));
+  const orden = IDS_ETAPAS_PIEZA.filter((e) => (pieza?.etapas || []).includes(e));
+  const antes = IDS_ETAPAS_PIEZA.slice(0, IDS_ETAPAS_PIEZA.indexOf(etapa));
+  return orden.filter((e) => antes.includes(e) && !hechas.has(e));
+}
+
+/**
+ * Avance de las piezas de una OT por etapa: cuántas piezas llevan esa etapa,
+ * cuántas ya pasaron y cuáles faltan.
+ * @returns {Record<string, { total: number, pasaron: number, faltan: object[] }>}
+ */
+export function avancePiezas(piezas = [], pasos = []) {
+  const hechos = new Set(pasos.map((p) => `${p.pieza_id}|${p.etapa}`));
+  const out = {};
+  for (const e of IDS_ETAPAS_PIEZA) {
+    const llevan = piezas.filter((p) => (p.etapas || []).includes(e));
+    const faltan = llevan.filter((p) => !hechos.has(`${p.id}|${e}`));
+    out[e] = { total: llevan.length, pasaron: llevan.length - faltan.length, faltan };
+  }
+  return out;
+}
+
+/** "Corte 120 de 218 · Canto 80 de 190" (solo las etapas que alguna pieza lleva). */
+export function textoAvancePiezas(avance) {
+  return IDS_ETAPAS_PIEZA.filter((e) => avance[e]?.total)
+    .map((e) => `${nombreEtapa(e)} ${avance[e].pasaron} de ${avance[e].total}`)
+    .join(" · ");
+}
+
+/**
+ * Lo que se le muestra al operario después de escanear, a partir de la
+ * respuesta de /api/piezas/paso.
+ * @returns {{ tono: "verde"|"amarillo"|"rojo", texto: string, detalle: string|null }}
+ */
+export function mensajeEscaneo(r) {
+  if (!r?.ok) return { tono: "rojo", texto: r?.error || "No se pudo anotar la pieza.", detalle: null };
+  const p = r.pieza || {};
+  const cual = `${p.nombre}${p.de > 1 ? ` (${p.unidad} de ${p.de})` : ""}`;
+  const etapa = nombreEtapa(r.etapa);
+  const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la OT ${p.ot}.` : null;
+  const terminada = r.etapaTerminada ? ` ✅ Pasaron todas: la etapa ${r.etapaTerminada.nombre} quedó terminada, falta la firma.` : "";
+  const detalle = progreso ? `${progreso}${terminada}` : null;
+  if (r.ya) return { tono: "amarillo", texto: `${cual} ya estaba escaneada en ${etapa}.`, detalle };
+  if (!r.requerida) return { tono: "amarillo", texto: `${cual} quedó anotada en ${etapa}, pero según la planilla no pasa por esa etapa.`, detalle };
+  if (r.faltan?.length) {
+    return { tono: "amarillo", texto: `${cual} pasó por ${etapa}, pero no tiene escaneo de ${r.faltan.map(nombreEtapa).join(" ni ")}.`, detalle };
+  }
+  return { tono: "verde", texto: `${cual} pasó por ${etapa}.`, detalle };
 }

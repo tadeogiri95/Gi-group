@@ -22,7 +22,8 @@ import { logger } from "../../lib/logger";
 const LOTE = 500;
 
 function faltaMigracion(err) {
-  return String(err?.message).includes("piezas_ot");
+  const m = String(err?.message);
+  return m.includes("piezas_ot") && /does not exist|could not find|PGRST205|42P01/i.test(m);
 }
 
 async function upsertPiezas(filas, opts) {

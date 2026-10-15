@@ -290,6 +290,20 @@ export const piezasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
 ]);
 
+// ── /api/piezas/paso (110): escaneo de piezas en cada etapa (OP parte 18) ──
+const etapaPieza = z.enum(["corte", "canto", "cnc", "especial"]);
+export const pasoPiezaBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("escanear"),
+    codigo: z.string().trim().min(1).max(200),
+    etapa: etapaPieza,
+    // Desde la cola sin señal (colaOffline): id de la operación y cuándo se escaneó
+    op_id: z.string().uuid().optional(),
+    momento: z.string().datetime({ offset: true }).optional(),
+  }).strict(),
+  z.object({ accion: z.literal("deshacer"), pieza_id: z.number().int().positive(), etapa: etapaPieza }).strict(),
+]);
+
 // ── /api/stock/movimientos (107): retiros, ingresos, ajustes y devoluciones ──
 const skuMovimiento = z.string().trim().min(1).max(60).regex(/^[\w.-]+$/, "Código de artículo inválido");
 const cantidadMovimiento = z.number().finite().refine((n) => n !== 0 && Math.abs(n) < 1e10, { message: "Cantidad inválida" });

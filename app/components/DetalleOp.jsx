@@ -16,6 +16,7 @@ import { fechaCorta } from "../lib/ot";
 import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from "../lib/calidad";
 import { costoOp, fmtPesos } from "../lib/costo";
 import { resumenSueltos } from "../lib/sueltos";
+import { avancePiezas, textoAvancePiezas } from "../lib/piezas";
 import { estadoCarga } from "../lib/carga";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import MaterialOt from "./MaterialOt";
@@ -49,6 +50,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const [tareas, setTareas] = useState(null);
   const [noConformes, setNoConformes] = useState([]);
   const [sueltos, setSueltos] = useState([]);
+  const [piezas, setPiezas] = useState({ piezas: [], pasos: [] });
   const [carga, setCarga] = useState({ bultos: [], fila: null });
   const [acta, setActa] = useState({ fila: null, pendientes: [] });
   const [empleados, setEmpleados] = useState([]);
@@ -60,7 +62,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
     (async () => {
       try {
         const ot = encodeURIComponent(proyecto.ot);
-        const [regs, emps, ncs, sts, bultos, cargas, actas, pendientes] = await Promise.all([
+        const [regs, emps, ncs, sts, bultos, cargas, actas, pendientes, pzs, pasos] = await Promise.all([
           sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,etapa,tipo,causa,cantidad,duracion_min&order=hora_inicio.asc`),
           sb.get(`empleados?empresa_id=eq.${empresaId}&select=id,legajo,nombre,apodo`).catch(() => []),
           // Sin la migración 101 no hay tabla: el detalle sigue sin ese dato
@@ -73,10 +75,14 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           // Sin la migración 105, igual
           sb.get(`actas_ot?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=firmada_at,cliente_nombre&limit=1`).catch(() => []),
           sb.get(`pendientes_obra?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,resuelto`).catch(() => []),
+          // Sin las migraciones 109 y 110 (piezas con QR), igual
+          sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,etapas&order=id.asc`).then((r) => r.data || []).catch(() => []),
+          sbGetAll(`pasos_pieza?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=pieza_id,etapa&order=id.asc`).then((r) => r.data || []).catch(() => []),
         ]);
         if (!vivo) return;
         setNoConformes(ncs || []);
         setSueltos(sts || []);
+        setPiezas({ piezas: Array.isArray(pzs) ? pzs : [], pasos: Array.isArray(pasos) ? pasos : [] });
         setCarga({ bultos: bultos || [], fila: cargas?.[0] || null });
         setActa({ fila: actas?.[0] || null, pendientes: pendientes || [] });
         setTareas(regs.data || []);
@@ -97,6 +103,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const maxEtapa = resumen ? Math.max(1, ...resumen.etapas.map((e) => e.min)) : 1;
   const costo = useMemo(() => costoOp(resumen, costoHora), [resumen, costoHora]);
   const resSueltos = resumenSueltos(sueltos);
+  const textoPiezas = piezas.piezas.length ? textoAvancePiezas(avancePiezas(piezas.piezas, piezas.pasos)) : "";
   const resCarga = estadoCarga({ bultos: carga.bultos, carga: carga.fila });
   const resActa = estadoActa({ acta: acta.fila, pendientes: acta.pendientes });
 
@@ -119,6 +126,10 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
+
+        {textoPiezas && (
+          <div className="text-xs text-gypi-dim mb-3">🧩 Piezas escaneadas ({piezas.piezas.length}): {textoPiezas}</div>
+        )}
 
         {resSueltos.total > 0 && (
           <div className="text-xs text-gypi-dim mb-3">📦 Sueltos: {resSueltos.total === 1 ? "1 ítem" : `${resSueltos.total} ítems`} · Acopio {resSueltos.acopio} de {resSueltos.total} · Carga {resSueltos.carga} de {resSueltos.total}</div>
