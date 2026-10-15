@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { THEME_PRESETS, FONT_OPTIONS, setColoresEmpresa } from "./lib/theme";
-import { getToken, apiFetch } from "./lib/supabase";
+import { apiFetch } from "./lib/supabase";
 import ResumenSemanalSwitch from "./components/ResumenSemanalSwitch";
 import RutasEditor from "./components/RutasEditor";
 import CausasEditor from "./components/CausasEditor";
@@ -152,8 +152,6 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const handleSave = async () => {
     setSaving(true);
     try {
-      const token = getToken();
-      if (!token) throw new Error("Sin sesión");
 
       const body = {};
       if (tab === "general") {
@@ -172,9 +170,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
       if (tab === "logo" && logoFile) {
         const formData = new FormData();
         formData.append("file", logoFile);
-        const lr = await fetch("/api/upload-logo", {
+        const lr = await apiFetch("/api/upload-logo", {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
           body: formData,
         });
         if (!lr.ok) {
@@ -192,9 +189,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
       }
 
       if (Object.keys(body).length > 0) {
-        const r = await fetch("/api/empresa", {
+        const r = await apiFetch("/api/empresa", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify(body),
         });
         if (!r.ok) {
@@ -216,13 +212,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const handleAddDivision = async () => {
     if (!divForm.label.trim()) return showToast("El nombre es requerido", "error");
     if (!divForm.clave.trim()) return showToast("La clave es requerida", "error");
-    const token = getToken();
-    if (!token) return showToast("Sin sesión", "error");
     try {
       if (editDivId !== null) {
-        const r = await fetch("/api/config-empresa", {
+        const r = await apiFetch("/api/config-empresa", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ action: "update_division", id: editDivId, ...divForm }),
         });
         if (!r.ok) throw new Error((await r.json()).error || "Error actualizando");
@@ -231,9 +224,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         setEditDivId(null);
         showToast("División actualizada");
       } else {
-        const r = await fetch("/api/config-empresa", {
+        const r = await apiFetch("/api/config-empresa", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ action: "add_division", ...divForm }),
         });
         if (!r.ok) throw new Error((await r.json()).error || "Error agregando");
@@ -254,12 +246,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   };
 
   const handleDeleteDivision = async (id) => {
-    const token = getToken();
-    if (!token) return showToast("Sin sesión", "error");
     try {
-      const r = await fetch(`/api/config-empresa?type=division&id=${id}`, {
+      const r = await apiFetch(`/api/config-empresa?type=division&id=${id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error((await r.json()).error || "Error eliminando");
       setDivisiones((prev) => prev.filter((d) => d.id !== id));
@@ -275,13 +264,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
     if (!etapaForm.nombre.trim()) return showToast("El nombre es requerido", "error");
     const codigoAntes = etapas.find((e) => e.id === editEtapaId)?.codigo;
     if (etapaForm.codigo !== codigoAntes && (!etapaForm.codigo || etapaForm.codigo < 1)) return showToast("El código debe ser un número positivo", "error");
-    const token = getToken();
-    if (!token) return showToast("Sin sesión", "error");
     try {
       if (editEtapaId !== null) {
-        const r = await fetch("/api/config-empresa", {
+        const r = await apiFetch("/api/config-empresa", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ action: "update_etapa", id: editEtapaId, ...cambiosEtapa(etapas.find((e) => e.id === editEtapaId), etapaForm) }),
         });
         if (!r.ok) throw new Error((await r.json()).error || "Error actualizando");
@@ -290,9 +276,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         setEditEtapaId(null);
         showToast("Etapa actualizada");
       } else {
-        const r = await fetch("/api/config-empresa", {
+        const r = await apiFetch("/api/config-empresa", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ action: "add_etapa", ...etapaForm }),
         });
         if (!r.ok) throw new Error((await r.json()).error || "Error agregando");
@@ -315,12 +300,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   };
 
   const handleDeleteEtapa = async (id) => {
-    const token = getToken();
-    if (!token) return showToast("Sin sesión", "error");
     try {
-      const r = await fetch(`/api/config-empresa?type=etapa&id=${id}`, {
+      const r = await apiFetch(`/api/config-empresa?type=etapa&id=${id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error((await r.json()).error || "Error eliminando");
       setEtapas((prev) => prev.filter((e) => e.id !== id));
