@@ -2,7 +2,10 @@
 // una empresa (Stock, parte 13; ítem 40; migración 106).
 //
 // Los links están en config_sistema, clave stock_csv_url:
-//   { inventario: "https://…output=csv", articulos: "https://…" | null, ultima_sync }
+//   { inventario: "https://…output=csv", articulos: "https://…" | null,
+//     necesidades: "https://…" | null, ultima_sync }
+// La hoja de necesidades (fact_necesidades_stock, parte 16) es opcional y va
+// a necesidades_stock (108); si falla, el resto de la sincronización sigue.
 // Lo usan /api/stock/sync (botón Sincronizar) y /api/cron/sync-ot (todas las
 // mañanas, después de las OT). La planilla manda: lo que dejó de estar en
 // ella queda inactivo en la app, no se borra.
@@ -11,7 +14,7 @@ import { logger } from "./logger";
 import { safeErrorMessage } from "./validate";
 import { sbHeaders } from "./sbHelpers";
 import { descargarCsv } from "./syncOt";
-import { CLAVE_STOCK_CSV, unirArticulos } from "./stock";
+import { CLAVE_STOCK_CSV, unirArticulos, leerNecesidades } from "./stock";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -101,6 +104,8 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
     desactivados = Array.isArray(viejos) ? viejos.length : 0;
   }
 
+  const nec = urls.necesidades ? await syncNecesidades(empresaId, urls.necesidades, ahora, sesion) : { necesidades: 0, avisoNecesidades: null };
+
   try {
     await sbFetch(
       `config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_STOCK_CSV}`,
@@ -115,7 +120,45 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
     logger.error("[stock/sync] No se pudo guardar la fecha de sincronización", e);
   }
 
-  return { articulos: filas.length, desactivados, sinSku, errores };
+  return { articulos: filas.length, desactivados, sinSku, errores, ...nec };
+}
+
+/**
+ * Copia la hoja de necesidades por OT. Un renglón por OT y artículo; lo que ya
+ * no está en la planilla se borra (si todo se guardó bien).
+ * @returns {Promise<{ necesidades: number, avisoNecesidades: string|null }>}
+ */
+async function syncNecesidades(empresaId, url, ahora, sesion) {
+  let texto;
+  try {
+    texto = await descargarCsv(url);
+  } catch (e) {
+    return { necesidades: 0, avisoNecesidades: `No pude leer la hoja de necesidades (${e.message}). Revisá que esté publicada como CSV.` };
+  }
+  const { filas, faltaColumnas } = leerNecesidades(texto);
+  if (faltaColumnas) return { necesidades: 0, avisoNecesidades: "No encontré las columnas SKU, OT y CANTIDAD en la hoja de necesidades. ¿El link es de fact_necesidades_stock?" };
+  try {
+    for (let i = 0; i < filas.length; i += BATCH) {
+      const lote = filas.slice(i, i + BATCH).map((f) => ({ empresa_id: empresaId, ...f, sincronizado_at: ahora }));
+      await sbFetch("necesidades_stock?on_conflict=empresa_id,ot,sku", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(lote),
+      }, sesion);
+    }
+    await sbFetch(
+      `necesidades_stock?empresa_id=eq.${empresaId}&sincronizado_at=lt.${encodeURIComponent(ahora)}`,
+      { method: "DELETE", headers: { Prefer: "return=minimal" } },
+      sesion
+    );
+    return { necesidades: filas.length, avisoNecesidades: null };
+  } catch (e) {
+    if (String(e?.message).includes("necesidades_stock")) {
+      return { necesidades: 0, avisoNecesidades: "Para las necesidades por OT falta correr la migración 108 en Supabase." };
+    }
+    logger.error("[stock/sync] Error en necesidades", e);
+    return { necesidades: 0, avisoNecesidades: "No se pudieron guardar las necesidades por OT. Probá de nuevo." };
+  }
 }
 
 /** Sincroniza todas las empresas con planilla MRP; un error no frena a las demás. */

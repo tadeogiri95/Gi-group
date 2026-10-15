@@ -272,3 +272,107 @@ export async function imprimirEtiquetasArticulos(datos) {
   ventana.focus();
   setTimeout(() => ventana.print(), 300);
 }
+
+// ─── Necesidades por OT (Stock, parte 16; migración 108) ───────────────────
+// Hoja fact_necesidades_stock: SKU, FECHA, ARTICULO, CANTIDAD PRESUPUESTADA,
+// CANT. CANCELADA, OT, ¿OBRA TERMINADA?… Arriba tiene dos filas de título.
+
+const CAMPOS_NECESIDADES = {
+  sku: ["sku", "id_sku"],
+  nombre: ["articulo", "nombre*"],
+  cantidad: ["cantidad presu*", "cantidad"],
+  cancelada: ["cant. cancel*", "cantidad cancel*"],
+  ot: ["ot", "codigo proy*"],
+  fecha: ["fecha requ*", "fecha"],
+  terminada: ["obra terminada*"],
+};
+const SI_NO = { si: true, "sí": true, no: false };
+
+/**
+ * Lee la hoja de necesidades y junta los renglones de la misma OT y artículo:
+ * cantidad = presupuestada − cancelada; fecha = la primera; nombre = el primero.
+ * @returns {{ filas: object[], sinSku: number, faltaColumnas: boolean }}
+ */
+export function leerNecesidades(texto) {
+  const todas = filasCsv(texto);
+  const limpiarTitulo = (c) => String(c ?? "").replace(/[¿?]/g, "");
+  const iTitulos = todas.findIndex((f) => {
+    const t = f.map((c) => normalizarTitulo(limpiarTitulo(c)));
+    return t.some((c) => c === "sku" || c === "id_sku") && t.includes("ot");
+  });
+  if (iTitulos === -1) return { filas: [], sinSku: 0, faltaColumnas: true };
+  const col = columnas(todas[iTitulos].map(limpiarTitulo), CAMPOS_NECESIDADES);
+  if (col.cantidad === undefined) return { filas: [], sinSku: 0, faltaColumnas: true };
+  const celda = (f, campo) => (col[campo] === undefined ? "" : String(f[col[campo]] ?? "").replace(/\s+/g, " ").trim());
+
+  const porClave = new Map();
+  let sinSku = 0;
+  for (const f of todas.slice(iTitulos + 1)) {
+    const ot = celda(f, "ot").slice(0, 40);
+    const sku = celda(f, "sku");
+    if (!ot || !/\d/.test(ot)) continue;
+    if (!SKU_VALIDO.test(sku)) { sinSku++; continue; }
+    const cantidad = (numeroPlanilla(celda(f, "cantidad")) ?? 0) - (numeroPlanilla(celda(f, "cancelada")) ?? 0);
+    const fechaLeida = fechaPlanilla(celda(f, "fecha"));
+    const fecha = fechaLeida && fechaLeida >= "2000-01-01" ? fechaLeida : null;
+    const terminada = SI_NO[normalizarTitulo(celda(f, "terminada"))] ?? null;
+    const clave = `${ot}|${sku}`;
+    const previa = porClave.get(clave);
+    if (previa) {
+      previa.cantidad = Math.round((previa.cantidad + cantidad) * 1000) / 1000;
+      if (fecha && (!previa.fecha || fecha < previa.fecha)) previa.fecha = fecha;
+      if (terminada !== null) previa.obra_terminada = terminada;
+    } else {
+      porClave.set(clave, {
+        ot, sku,
+        nombre: celda(f, "nombre").slice(0, LARGO.nombre) || null,
+        cantidad: Math.round(cantidad * 1000) / 1000,
+        fecha,
+        obra_terminada: terminada,
+      });
+    }
+  }
+  return { filas: [...porClave.values()], sinSku, faltaColumnas: false };
+}
+
+/**
+ * Material de una OT: lo necesario (planilla) contra lo retirado desde la app
+ * (retiros menos devoluciones, sin los anulados).
+ * @param {object[]} necesidades renglones de necesidades_stock de la OT
+ * @param {object[]} movimientos renglones de movimientos_stock de la OT
+ * @param {object[]} [articulos] articulos_stock, para el nombre y la unidad
+ */
+export function materialOt(necesidades = [], movimientos = [], articulos = []) {
+  const art = new Map(articulos.map((a) => [a.sku, a]));
+  const porSku = new Map();
+  const fila = (sku) => {
+    if (!porSku.has(sku)) porSku.set(sku, { sku, nombre: art.get(sku)?.nombre || null, unidad: art.get(sku)?.unidad || null, necesario: 0, retirado: 0, conNecesidad: false });
+    return porSku.get(sku);
+  };
+  for (const n of necesidades) {
+    const f = fila(n.sku);
+    f.necesario += Number(n.cantidad) || 0;
+    f.conNecesidad = true;
+    f.nombre = f.nombre || n.nombre || null;
+  }
+  for (const m of movimientos) {
+    if (m.anulado || (m.tipo !== "consumo" && m.tipo !== "devolucion")) continue;
+    const f = fila(m.sku);
+    f.retirado += (m.tipo === "devolucion" ? -1 : 1) * (Number(m.cantidad) || 0);
+    f.nombre = f.nombre || m.nombre || null;
+    f.unidad = f.unidad || m.unidad || null;
+  }
+  const r3 = (n) => Math.round(n * 1000) / 1000;
+  const filas = [...porSku.values()].map((f) => ({
+    ...f,
+    necesario: r3(f.necesario),
+    retirado: r3(f.retirado),
+    falta: f.conNecesidad ? Math.max(0, r3(f.necesario - f.retirado)) : 0,
+  })).sort((a, b) => (b.falta > 0) - (a.falta > 0) || String(a.nombre || a.sku).localeCompare(String(b.nombre || b.sku), "es"));
+  return {
+    filas,
+    conFalta: filas.filter((f) => f.falta > 0).length,
+    completos: filas.filter((f) => f.conNecesidad && f.falta === 0).length,
+    sinNecesidad: filas.filter((f) => !f.conNecesidad).length,
+  };
+}

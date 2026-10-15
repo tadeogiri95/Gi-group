@@ -29,7 +29,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
   const [articulos, setArticulos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
-  const [cfg, setCfg] = useState({ inventario: "", articulos: "", ultima_sync: null });
+  const [cfg, setCfg] = useState({ inventario: "", articulos: "", necesidades: "", ultima_sync: null });
   const [verConfig, setVerConfig] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [texto, setTexto] = useState("");
@@ -59,7 +59,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_STOCK_CSV}&select=valor&limit=1`);
       const v = rows?.[0]?.valor;
       if (v) {
-        setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", ultima_sync: v.ultima_sync || null });
+        setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", necesidades: v.necesidades || "", ultima_sync: v.ultima_sync || null });
       } else {
         setVerConfig(true);
       }
@@ -73,7 +73,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
   const urgentesTotal = useMemo(() => filtrarArticulos(articulos, { urgentes: true }).length, [articulos]);
 
   const guardarCfg = async () => {
-    const valor = { inventario: cfg.inventario.trim(), articulos: cfg.articulos.trim() || null };
+    const valor = { inventario: cfg.inventario.trim(), articulos: cfg.articulos.trim() || null, necesidades: cfg.necesidades.trim() || null };
     if (!valor.inventario) { toast.show("Pegá el link de la hoja INVENTARIO", AMBER); return; }
     try {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_STOCK_CSV}&select=valor&limit=1`);
@@ -95,6 +95,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo sincronizar");
       if (data.errores?.length) toast.show(`⚠️ ${data.articulos} artículos leídos, pero algunos no se guardaron. Probá de nuevo.`, AMBER);
+      else if (data.avisoNecesidades) toast.show(`⚠️ ${data.articulos} artículos sincronizados. ${data.avisoNecesidades}`, AMBER);
       else toast.show(`✅ ${data.articulos} artículos sincronizados${data.desactivados ? ` (${data.desactivados} ya no están en la planilla)` : ""}`, GREEN);
       setCfg((c) => ({ ...c, ultima_sync: new Date().toISOString() }));
       await cargar();
@@ -151,6 +152,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
               placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?gid=…&output=csv" className="g-input w-full text-[13px] mb-2" />
             <label className="g-label" htmlFor="stock-art">Link de la hoja ARTICULOS (opcional: suma unidad, familia y marca)</label>
             <input id="stock-art" value={cfg.articulos} onChange={(e) => setCfg((c) => ({ ...c, articulos: e.target.value }))}
+              placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?gid=…&output=csv" className="g-input w-full text-[13px] mb-2" />
+            <label className="g-label" htmlFor="stock-nec">Link de la hoja fact_necesidades_stock (opcional: material de cada OT)</label>
+            <input id="stock-nec" value={cfg.necesidades} onChange={(e) => setCfg((c) => ({ ...c, necesidades: e.target.value }))}
               placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?gid=…&output=csv" className="g-input w-full text-[13px] mb-2" />
             <button onClick={async () => { if (await guardarCfg()) sincronizar(); }} disabled={sincronizando || !cfg.inventario.trim()}
               className="g-btn g-btn-primary w-full">Guardar y sincronizar</button>
