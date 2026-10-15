@@ -5,6 +5,8 @@
 // los imprimía gestión. Con la OT elegida se abre la misma carga (CargaOt),
 // donde arma los bultos e imprime los rótulos él mismo.
 // También se elige escaneando el QR de la OT de la planilla (o de un rótulo).
+// Retirar material (Stock, parte 14) usa la misma lista con su título y la
+// opción "Sin OT".
 import { useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { ordenarPorOt } from "../hooks/useActividad";
@@ -23,7 +25,7 @@ export function filtrarOts(lista, texto) {
   return lista.filter((p) => [p.ot, p.cliente, p.obra, p.proyecto].some((c) => normalizar(c).includes(q)));
 }
 
-export default function ElegirOtCarga({ empresaId, onElegir, onClose }) {
+export default function ElegirOtCarga({ empresaId, onElegir, onClose, titulo = "¿Qué OT vas a cargar?", verbo = "Cargar", onSinOt = null }) {
   const [ots, setOts] = useState(null);
   const [error, setError] = useState(null);
   const [texto, setTexto] = useState("");
@@ -50,7 +52,7 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose }) {
   };
 
   return (
-    <Modal open onClose={onClose} title="¿Qué OT vas a cargar?">
+    <Modal open onClose={onClose} title={titulo}>
       <div className="p-4 overflow-y-auto">
         <input className="g-input w-full mb-3" value={texto} onChange={(e) => setTexto(e.target.value)} inputMode="search"
           aria-label="Buscar OT" placeholder="Número de OT, cliente u obra" />
@@ -63,6 +65,9 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose }) {
             {aviso && <div role="alert" className="text-[12px] text-gypi-red">{aviso}</div>}
           </div>
         )}
+        {onSinOt && (
+          <button onClick={onSinOt} className="g-btn g-btn-secondary w-full mb-3">Sin OT (consumo general)</button>
+        )}
         {error && <div role="alert" className="text-[12px] text-gypi-red mb-2">{error}</div>}
         {ots === null ? (
           <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
@@ -72,7 +77,7 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose }) {
           <ul aria-label="OT activas" className="list-none p-0 m-0 flex flex-col gap-1.5">
             {filtradas.slice(0, MAX_VISIBLES).map((p) => (
               <li key={p.id ?? p.ot}>
-                <button onClick={() => onElegir(String(p.ot))} aria-label={`Cargar la OT ${p.ot}`}
+                <button onClick={() => onElegir(String(p.ot))} aria-label={`${verbo} la OT ${p.ot}`}
                   className="w-full min-h-[52px] text-left bg-gypi-surface rounded-xl px-3 py-2.5 border border-gypi-border cursor-pointer font-body text-gypi-text">
                   <div className="text-[14px] font-bold">OT {p.ot}{p.cliente ? ` · ${p.cliente}` : ""}</div>
                   <div className="text-[12px] text-gypi-dim truncate">

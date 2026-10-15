@@ -55,6 +55,7 @@ export const POLICY = {
   no_conformidades:             { GET: "all" },   // se escribe por /api/no-conformidades (OP parte 6)
   sueltos_ot:                   { GET: "all" },   // se escribe por /api/sueltos (OP parte 9)
   articulos_stock:              { GET: "all" },   // lo escribe la sincronización con la planilla MRP (Stock parte 13)
+  movimientos_stock:            { GET: "all" },   // se escribe por /api/stock/movimientos (Stock parte 14)
   bultos_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   cargas_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   actas_ot:                     { GET: "all" },   // se escribe por /api/acta (OP parte 11)

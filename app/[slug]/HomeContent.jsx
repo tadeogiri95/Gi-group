@@ -427,7 +427,7 @@ export default function HomeContent() {
         <CargaOt ot={otCarga} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} usuario={u} checklist={checklistCarga}
           esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarCarga} onAbrirActa={abrirActa} />
       )}
-      {skuArticulo && !otCarga && !otActa && !isDemo && <FichaArticulo sku={skuArticulo} onClose={cerrarArticulo} />}
+      {skuArticulo && !otCarga && !otActa && !isDemo && <FichaArticulo sku={skuArticulo} usuario={u} empresaId={u?.empresa_id || empresa?.id} onClose={cerrarArticulo} />}
       {otActa && !isDemo && (
         <ActaOt ot={otActa} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} checklist={checklistInstalacion}
           etapas={etapasEmpresa} defectos={defectos} esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarActa} />
