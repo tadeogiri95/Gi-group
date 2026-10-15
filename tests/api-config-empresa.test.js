@@ -408,3 +408,27 @@ test("cambiosEtapa — al editar manda solo lo que cambió", async () => {
   const lista = soltarTipoPieza([{ id: "a", tipo_pieza: "canto" }, { id: "b", tipo_pieza: "canto" }, { id: "c", tipo_pieza: "cnc" }], { id: "b", tipo_pieza: "canto" });
   assert.deepEqual(lista.map((e) => e.tipo_pieza), [null, "canto", "cnc"]);
 });
+
+test("Configuración — los cambios van con la sesión de las cookies (sin token en memoria)", async () => {
+  // Al reabrir la app la sesión se restaura de las cookies y el token en
+  // memoria queda vacío: la pantalla decía "Sin sesión" y no guardaba nada.
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../app/admin_empresa_screen.js", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /getToken\(/);
+  assert.doesNotMatch(src, /await fetch\(/);
+  assert.match(src, /apiFetch\("\/api\/config-empresa", \{\s*method: "PATCH"/);
+
+  const { apiFetch } = await import("../app/lib/supabase.js");
+  const pedidos = [];
+  const previo = global.fetch;
+  global.fetch = async (url, opts) => { pedidos.push(opts); return new Response("{}"); };
+  try {
+    await apiFetch("/api/config-empresa", { method: "PATCH", body: "{}" });
+    const fd = new FormData();
+    fd.append("file", new Blob(["x"]), "logo.png");
+    await apiFetch("/api/upload-logo", { method: "POST", body: fd });
+  } finally { global.fetch = previo; }
+  assert.equal(pedidos[0].credentials, "include");
+  assert.equal(pedidos[0].headers["Content-Type"], "application/json");
+  assert.equal(pedidos[1].headers["Content-Type"], undefined, "con un archivo, el navegador arma el Content-Type");
+});

@@ -163,7 +163,9 @@ async function req(method, path, body, { cursor, raw } = {}) {
  */
 export async function apiFetch(url, opts = {}) {
   const token = getToken();
-  const headers = { "Content-Type": "application/json", ...opts.headers };
+  // Con FormData (subir archivos) el navegador pone el Content-Type con su boundary
+  const esArchivo = typeof FormData !== "undefined" && opts.body instanceof FormData;
+  const headers = { ...(esArchivo ? {} : { "Content-Type": "application/json" }), ...opts.headers };
   if (token && !headers["Authorization"]) headers["Authorization"] = `Bearer ${token}`;
   const csrf = getCsrfToken();
   if (csrf) headers["x-csrf-token"] = csrf;
