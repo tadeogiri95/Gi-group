@@ -270,6 +270,42 @@ test("PATCH config-empresa — update_etapa acepta íconos largos (🛠️, nomb
   }
 });
 
+test("PATCH config-empresa — update_etapa con tipo_pieza se lo saca a la etapa que lo tenía", async () => {
+  const token = await tokenConRol("gerencial");
+  const patches = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url) => url.includes("/rest/v1/etapas") && url.includes("select=empresa_id"),
+      respond: () => ({ status: 200, body: [{ empresa_id: EMPRESA_ID }] }),
+    },
+    {
+      match: (url, opts) => url.includes("/rest/v1/etapas") && opts?.method === "PATCH",
+      respond: (url, opts) => {
+        patches.push({ url, body: JSON.parse(opts.body) });
+        return { status: 200, body: [{ id: ETAPA_ID, ...JSON.parse(opts.body) }] };
+      },
+    },
+  ]);
+
+  const res = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, tipo_pieza: "canto" }, token));
+  assert.equal(res.status, 200);
+  assert.equal(patches.length, 2);
+  assert.match(patches[0].url, /tipo_pieza=eq\.canto/);
+  assert.match(patches[0].url, new RegExp(`id=neq\\.${ETAPA_ID}`));
+  assert.deepEqual(patches[0].body, { tipo_pieza: null });
+  assert.deepEqual(patches[1].body, { tipo_pieza: "canto" });
+
+  // "No se escanea por pieza" llega vacío y se guarda null, sin tocar otras
+  patches.length = 0;
+  const res2 = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, tipo_pieza: "" }, token));
+  assert.equal(res2.status, 200);
+  assert.deepEqual(patches.map((p) => p.body), [{ tipo_pieza: null }]);
+
+  const res3 = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, tipo_pieza: "armado" }, token));
+  assert.equal(res3.status, 400);
+});
+
 test("PATCH config-empresa — update_etapa con código duplicado devuelve 409 sin detalle de Postgres", async () => {
   const token = await tokenConRol("gerencial");
   global.fetch = createFetchMock([
@@ -366,4 +402,9 @@ test("cambiosEtapa — al editar manda solo lo que cambió", async () => {
   assert.deepEqual(cambiosEtapa(original, form), { nombre: "Canto" });
   assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado" }), {});
   assert.deepEqual(cambiosEtapa(original, { ...form, unidad: "metros" }), { nombre: "Canto", unidad: "metros" });
+  assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado", tipo_pieza: "" }), {}, "sin 111 la etapa no trae tipo_pieza");
+  assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado", tipo_pieza: "canto" }), { tipo_pieza: "canto" });
+  const { soltarTipoPieza } = await import("../app/lib/etapasForm.js");
+  const lista = soltarTipoPieza([{ id: "a", tipo_pieza: "canto" }, { id: "b", tipo_pieza: "canto" }, { id: "c", tipo_pieza: "cnc" }], { id: "b", tipo_pieza: "canto" });
+  assert.deepEqual(lista.map((e) => e.tipo_pieza), [null, "canto", "cnc"]);
 });

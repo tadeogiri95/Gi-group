@@ -9,7 +9,7 @@ import CausasEditor from "./components/CausasEditor";
 import ChecklistEditor from "./components/ChecklistEditor";
 import DefectosEditor from "./components/DefectosEditor";
 import CostoEditor from "./components/CostoEditor";
-import { cambiosEtapa } from "./lib/etapasForm";
+import { cambiosEtapa, soltarTipoPieza, OPCIONES_TIPO_PIEZA } from "./lib/etapasForm";
 import { useToast } from "./components/ui/Toast";
 import { useAuth } from "./context/AuthContext";
 
@@ -91,7 +91,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const [editDivId, setEditDivId] = useState(null);
 
   const [etapas, setEtapas] = useState(etapasProp);
-  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" });
+  const [etapaForm, setEtapaForm] = useState({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "", tipo_pieza: "" });
   const [editEtapaId, setEditEtapaId] = useState(null);
   const formEtapaRef = useRef(null);
 
@@ -286,7 +286,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         });
         if (!r.ok) throw new Error((await r.json()).error || "Error actualizando");
         const { etapa } = await r.json();
-        setEtapas((prev) => prev.map((e) => (e.id === editEtapaId ? etapa : e)));
+        setEtapas((prev) => soltarTipoPieza(prev.map((e) => (e.id === editEtapaId ? etapa : e)), etapa));
         setEditEtapaId(null);
         showToast("Etapa actualizada");
       } else {
@@ -297,10 +297,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         });
         if (!r.ok) throw new Error((await r.json()).error || "Error agregando");
         const { etapa } = await r.json();
-        setEtapas((prev) => [...prev, etapa]);
+        setEtapas((prev) => soltarTipoPieza([...prev, etapa], etapa));
         showToast("Etapa agregada");
       }
-      setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" });
+      setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "", tipo_pieza: "" });
       onUpdate?.({});
     } catch (err) {
       showToast(err.message || "Error al guardar", "error");
@@ -308,7 +308,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   };
 
   const handleEditEtapa = (etapa) => {
-    setEtapaForm({ icon: etapa.icon, codigo: etapa.codigo, nombre: etapa.nombre, color: etapa.color, unidad: etapa.unidad || "", condicion_cierre: etapa.condicion_cierre || "" });
+    setEtapaForm({ icon: etapa.icon, codigo: etapa.codigo, nombre: etapa.nombre, color: etapa.color, unidad: etapa.unidad || "", condicion_cierre: etapa.condicion_cierre || "", tipo_pieza: etapa.tipo_pieza || "" });
     setEditEtapaId(etapa.id);
     // El formulario está arriba de la lista: llevarlo a la vista
     requestAnimationFrame(() => formEtapaRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }));
@@ -324,7 +324,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
       });
       if (!r.ok) throw new Error((await r.json()).error || "Error eliminando");
       setEtapas((prev) => prev.filter((e) => e.id !== id));
-      if (editEtapaId === id) { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" }); }
+      if (editEtapaId === id) { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "", tipo_pieza: "" }); }
       showToast("Etapa eliminada");
       onUpdate?.({});
     } catch (err) {
@@ -542,6 +542,11 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             <div className="g-label mb-1.5">Condición para firmar el cierre (opcional)</div>
             <input className="g-input mb-1" maxLength={300} value={etapaForm.condicion_cierre} onChange={(e) => setEtapaForm((f) => ({ ...f, condicion_cierre: e.target.value }))} placeholder="Ej: Todas las piezas cortadas y con sticker" />
             <div className="text-[11px] text-gypi-dim mb-2.5">El responsable la ve en el tablero al firmar la etapa de una OT.</div>
+            <label className="g-label mb-1.5 block" htmlFor="etapa-tipo-pieza">Se escanea por pieza como</label>
+            <select id="etapa-tipo-pieza" className="g-input mb-1" value={etapaForm.tipo_pieza} onChange={(e) => setEtapaForm((f) => ({ ...f, tipo_pieza: e.target.value }))}>
+              {OPCIONES_TIPO_PIEZA.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+            </select>
+            <div className="text-[11px] text-gypi-dim mb-2.5">El operario la ve con este nombre en 🧩 Escanear piezas. Las piezas que pasan por cada tipo salen de la planilla técnica (columnas de cantos, CNC y 45°). Cuando pasan todas, esta etapa queda terminada.</div>
             <div className="g-label mb-1.5">Color</div>
             <div className="flex gap-2.5 mb-3.5">
               <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} className="w-10 h-10 rounded-[10px] border border-gypi-border cursor-pointer bg-transparent p-0" />
@@ -549,7 +554,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             </div>
             <div className="flex gap-2.5">
               <button onClick={handleAddEtapa} className="g-btn g-btn-primary flex-1">{editEtapaId !== null ? "Actualizar" : "Agregar"}</button>
-              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "" }); }} className="g-btn g-btn-secondary">Cancelar</button>}
+              {editEtapaId !== null && <button onClick={() => { setEditEtapaId(null); setEtapaForm({ icon: "📋", codigo: 1, nombre: "", color: "#4f8cff", unidad: "", condicion_cierre: "", tipo_pieza: "" }); }} className="g-btn g-btn-secondary">Cancelar</button>}
             </div>
           </div>
           {etapas.length > 0 && <div className="g-card mb-3.5">
@@ -559,7 +564,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: etapa.color + "22" }}>{etapa.icon}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold text-gypi-text truncate">{etapa.nombre}</div>
-                  <div className="text-[11px] text-gypi-dim font-mono">{etapa.codigo}{etapa.unidad ? ` · en ${etapa.unidad}` : ""}</div>
+                  <div className="text-[11px] text-gypi-dim font-mono">{etapa.codigo}{etapa.unidad ? ` · en ${etapa.unidad}` : ""}{etapa.tipo_pieza ? ` · 🧩 ${OPCIONES_TIPO_PIEZA.find((o) => o.id === etapa.tipo_pieza)?.nombre}` : ""}</div>
                 </div>
                 <div className="w-4 h-4 rounded-full" style={{ background: etapa.color }} />
                 <button onClick={() => handleEditEtapa(etapa)} className="text-[11px] text-gypi-cyan bg-transparent border-none cursor-pointer">Editar</button>

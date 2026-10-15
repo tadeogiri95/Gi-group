@@ -48,9 +48,20 @@ function momentoValido(momento, ahora) {
   return new Date(t).toISOString();
 }
 
+/** Las etapas de la empresa, con tipo_pieza si ya se corrió la 111. */
+async function etapasDeEmpresa(e, opts) {
+  const base = `etapas?empresa_id=eq.${e}&order=orden.asc&select=id,codigo,nombre,activa,orden`;
+  try {
+    return (await sbGet(`${base},tipo_pieza`, opts)) || [];
+  } catch (err) {
+    if (!String(err?.message).includes("tipo_pieza")) throw err;
+    return (await sbGet(base, opts)) || [];
+  }
+}
+
 async function terminarEtapa(sesion, ot, tipo, opts) {
   const e = sesion.empresa_id;
-  const etapas = (await sbGet(`etapas?empresa_id=eq.${e}&select=codigo,nombre,activa,orden&order=orden.asc`, opts)) || [];
+  const etapas = await etapasDeEmpresa(e, opts);
   const etapa = etapaDeTipo(etapas, tipo);
   if (!etapa) return null;
   const filtro = `avance_etapas?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&etapa=eq.${etapa.codigo}`;
