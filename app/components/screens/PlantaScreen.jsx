@@ -40,7 +40,7 @@ export default function PlantaScreen({ empresa, usuario, onVerPlanes }) {
         {bloqueado && <ModuloBloqueado modulo={actual.modulo} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} />}
-        {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} />}
+        {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} />}
       </div>
     </div>
   );

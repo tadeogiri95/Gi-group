@@ -265,6 +265,24 @@ export const sueltosBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
 ]);
 
+// ── /api/stock/movimientos (107): retiros, ingresos, ajustes y devoluciones ──
+const skuMovimiento = z.string().trim().min(1).max(60).regex(/^[\w.-]+$/, "Código de artículo inválido");
+const cantidadMovimiento = z.number().finite().refine((n) => n !== 0 && Math.abs(n) < 1e10, { message: "Cantidad inválida" });
+export const movimientoStockBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("registrar"),
+    tipo: z.enum(["consumo", "devolucion", "ingreso", "ajuste"]),
+    sku: skuMovimiento,
+    cantidad: cantidadMovimiento,
+    ot: otSuelto.nullable().optional().transform((v) => v || null),
+    proveedor: textoSuelto(120),
+    comprobante: textoSuelto(60),
+    precio_unitario: z.number().finite().min(0).max(1e11).nullable().optional().transform((v) => v ?? null),
+    notas: textoSuelto(300),
+  }).strict().refine((m) => m.tipo === "ajuste" || m.cantidad > 0, { message: "La cantidad tiene que ser mayor a cero", path: ["cantidad"] }),
+  z.object({ accion: z.literal("anular"), id: z.number().int().positive() }).strict(),
+]);
+
 // ── /api/carga (104): acopio y carga de la OT ─────────────────────────────
 const idCarga = z.number().int().positive();
 export const cargaBody = z.discriminatedUnion("accion", [

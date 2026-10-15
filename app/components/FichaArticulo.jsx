@@ -2,10 +2,14 @@
 // app/components/FichaArticulo.jsx — Ficha de un artículo del stock (Stock,
 // parte 13; ítem 40). Se abre desde la lista de Stock o escaneando el QR de
 // la etiqueta (?articulo=SKU), para cualquiera de la empresa. Los números son
-// los que calculó la planilla MRP en la última sincronización.
+// los que calculó la planilla MRP en la última sincronización. Desde la ficha
+// se puede retirar o devolver ese artículo (parte 14).
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { sb } from "../lib/supabase";
 import { cantidadTexto, nivelSemaforo } from "../lib/stock";
+
+const RetirarMaterial = dynamic(() => import("./RetirarMaterial"), { ssr: false });
 
 const COLOR_NIVEL = {
   rojo: "bg-gypi-red/10 text-gypi-red",
@@ -30,8 +34,9 @@ function Dato({ label, valor, unidad }) {
   );
 }
 
-export default function FichaArticulo({ sku, articulo: dado = null, onClose }) {
+export default function FichaArticulo({ sku, articulo: dado = null, usuario = null, empresaId = null, onClose }) {
   const [articulo, setArticulo] = useState(dado);
+  const [retirando, setRetirando] = useState(false);
   const [estado, setEstado] = useState(dado ? "listo" : "cargando");
 
   useEffect(() => {
@@ -46,6 +51,8 @@ export default function FichaArticulo({ sku, articulo: dado = null, onClose }) {
       .catch(() => { if (vivo) setEstado("error"); });
     return () => { vivo = false; };
   }, [sku, dado]);
+
+  if (retirando) return <RetirarMaterial empresaId={empresaId} usuario={usuario} skuInicial={sku} onClose={onClose} />;
 
   const a = articulo;
   const u = a?.unidad || "";
@@ -91,6 +98,9 @@ export default function FichaArticulo({ sku, articulo: dado = null, onClose }) {
               </div>
             )}
             {(a.marca || a.color) && <div className="text-[13px] text-gypi-dim mb-3">{[a.marca, a.color].filter(Boolean).join(" · ")}</div>}
+            {usuario && a.activo !== false && (
+              <button onClick={() => setRetirando(true)} className="g-btn g-btn-primary w-full mb-3">📦 Retirar o devolver</button>
+            )}
             <div className="text-[12px] text-gypi-dim">
               Datos de la planilla MRP{a.sincronizado_at ? `, copiados el ${new Date(a.sincronizado_at).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}` : ""}.
             </div>

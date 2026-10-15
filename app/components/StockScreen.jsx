@@ -12,6 +12,7 @@ import {
   CLAVE_STOCK_CSV, MAX_ETIQUETAS_ARTICULO, cantidadTexto, divisionesDe, filtrarArticulos, imprimirEtiquetasArticulos,
 } from "../lib/stock";
 import FichaArticulo, { Semaforo } from "./FichaArticulo";
+import MovimientosStock from "./MovimientosStock";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -23,7 +24,7 @@ function leerTamano() {
   try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
 }
 
-export default function StockScreen({ empresa, empresaId }) {
+export default function StockScreen({ empresa, empresaId, usuario = null }) {
   const toast = useToast();
   const [articulos, setArticulos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -37,6 +38,7 @@ export default function StockScreen({ empresa, empresaId }) {
   const [elegidos, setElegidos] = useState(() => new Set());
   const [tamano, setTamano] = useState(leerTamano);
   const [ficha, setFicha] = useState(null);
+  const [vista, setVista] = useState("articulos");
 
   const cargar = useCallback(async () => {
     if (!empresaId) return;
@@ -127,6 +129,11 @@ export default function StockScreen({ empresa, empresaId }) {
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-28 text-gypi-text">
+      <div className="flex gap-1.5 mb-3" role="group" aria-label="Ver">
+        <Chip active={vista === "articulos"} onClick={() => setVista("articulos")}>Artículos</Chip>
+        <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos</Chip>
+      </div>
+      {vista === "movimientos" ? <MovimientosStock usuario={usuario} articulos={articulos} /> : (<>
       {/* Planilla MRP */}
       <div className="mb-3">
         <button onClick={() => setVerConfig((v) => !v)} aria-expanded={verConfig}
@@ -189,7 +196,7 @@ export default function StockScreen({ empresa, empresaId }) {
           </select>
           <button onClick={imprimir} disabled={!elegidos.size} className="g-btn g-btn-primary flex-1">🖨 Imprimir</button>
         </div>
-        <div className="text-[12px] text-gypi-dim mt-2">El QR abre la ficha del artículo. Más adelante, el operario lo escanea para registrar lo que retira.</div>
+        <div className="text-[12px] text-gypi-dim mt-2">El QR abre la ficha del artículo. El operario lo escanea para registrar lo que retira.</div>
       </div>
 
       {cargando ? (
@@ -220,7 +227,8 @@ export default function StockScreen({ empresa, empresaId }) {
           </ul>
         </>
       )}
-      {ficha && <FichaArticulo sku={ficha.sku} articulo={ficha} onClose={() => setFicha(null)} />}
+      </>)}
+      {ficha && <FichaArticulo sku={ficha.sku} articulo={ficha} usuario={usuario} empresaId={empresaId} onClose={() => setFicha(null)} />}
     </div>
   );
 }
