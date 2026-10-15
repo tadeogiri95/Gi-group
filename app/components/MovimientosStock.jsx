@@ -2,10 +2,11 @@
 // app/components/MovimientosStock.jsx — Movimientos de stock en Planta →
 // Stock (Stock, parte 14; ítem 40). La oficina ve lo que se retiró y
 // devolvió desde la app, carga ingresos de compras y ajustes de inventario, y
-// anula lo que se cargó mal. La planilla MRP los recibe en la parte 15.
+// anula lo que se cargó mal. La planilla MRP los trae sola (parte 15).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { filtrarArticulos } from "../lib/stock";
+import PlanillaMrpConexion from "./PlanillaMrpConexion";
 import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
 
 const CUANTOS = 100;
@@ -87,9 +88,7 @@ export default function MovimientosStock({ usuario, articulos = [] }) {
       {faltaMigracion && (
         <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">Para los movimientos falta correr la migración 107 en Supabase.</div>
       )}
-      <div className="text-[13px] text-gypi-dim mb-2">
-        Lo que se carga acá todavía no llega solo a la planilla MRP: eso viene en el próximo paso.
-      </div>
+      {(usuario?.rol === "gerencial" || usuario?.rol === "administrativo") && <PlanillaMrpConexion />}
 
       {!form ? (
         <button onClick={() => { setForm({ ...VACIO }); setError(null); }} className="g-btn g-btn-primary w-full mb-3">＋ Cargar ingreso, ajuste o devolución</button>

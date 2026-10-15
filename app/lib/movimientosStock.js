@@ -4,7 +4,7 @@
 // El operario retira material (consumo) escaneando el QR del artículo, con la
 // OT y la cantidad; también puede devolver lo que sobró. La oficina carga los
 // ingresos de compras y los ajustes de inventario. La planilla MRP sigue
-// mandando: en la parte 15 su script trae estos movimientos.
+// mandando: su script trae estos movimientos (parte 15, lib/planillaMrp.js).
 
 export const TIPOS_MOVIMIENTO = {
   consumo:    { id: "consumo",    nombre: "Retiro",     icono: "📦", gestion: false },
@@ -12,6 +12,9 @@ export const TIPOS_MOVIMIENTO = {
   ingreso:    { id: "ingreso",    nombre: "Ingreso",    icono: "🚛", gestion: true },
   ajuste:     { id: "ajuste",     nombre: "Ajuste",     icono: "⚖️", gestion: true },
 };
+
+/** config_sistema: { hash, creada_at, ultima_lectura } de la clave con que la planilla MRP trae los movimientos (parte 15). */
+export const CLAVE_PLANILLA_MRP = "stock_planilla_clave";
 
 /** ¿Este rol puede cargar este tipo de movimiento? */
 export function puedeCargar(tipo, rol) {
