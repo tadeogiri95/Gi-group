@@ -9,6 +9,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   tipoDeEtapa, etapaDeTipo, etapasSalteadas, avancePiezas, textoAvancePiezas, mensajeEscaneo,
+  etapasDePieza, botonesEtapasPieza, nombresEtapasPieza, tipoDeEtapaEn,
 } from "../app/lib/piezas.js";
 import { pasoPiezaBody } from "../app/lib/schemas.ts";
 import { autorizar } from "../app/lib/dataPolicy.js";
@@ -51,6 +52,45 @@ test("etapas — cada etapa de la empresa se reconoce por su nombre; Armado no s
   assert.equal(etapaDeTipo(ETAPAS, "cnc").codigo, 3);
   assert.equal(etapaDeTipo([{ codigo: 9, nombre: "Corte", activa: false }, ...ETAPAS], "corte").codigo, 1, "solo activas");
   assert.equal(etapaDeTipo([ETAPAS[4]], "canto"), null);
+});
+
+// Etapas de una empresa que eligió "Se escanea por pieza como" (111)
+const ELEGIDAS = [
+  { id: "e1", codigo: 1, nombre: "Seccionadora", tipo_pieza: "corte", icon: "🪚", orden: 1 },
+  { id: "e2", codigo: 2, nombre: "Canteado", tipo_pieza: "canto", icon: "Hammer", orden: 2 },
+  { id: "e3", codigo: 3, nombre: "Procesos", tipo_pieza: "cnc", orden: 3 },
+  { id: "e4", codigo: 4, nombre: "Corte especial", tipo_pieza: null, orden: 4 },
+  { id: "e5", codigo: 5, nombre: "Armado", tipo_pieza: null, orden: 5 },
+];
+
+test("etapas elegidas — mandan sobre el nombre; sin elegir ninguna, se adivina", () => {
+  const mapa = etapasDePieza(ELEGIDAS);
+  assert.equal(mapa.corte.codigo, 1);
+  assert.equal(mapa.canto.nombre, "Canteado");
+  assert.equal(mapa.cnc.codigo, 3);
+  assert.equal(mapa.especial, null, "Corte especial con 'No' no se adivina si la empresa ya eligió");
+  assert.equal(tipoDeEtapaEn(ELEGIDAS, ELEGIDAS[1]), "canto");
+  assert.equal(tipoDeEtapaEn(ELEGIDAS, ELEGIDAS[3]), null);
+  assert.equal(tipoDeEtapa({ nombre: "Lo que sea", tipo_pieza: "cnc" }), "cnc");
+  const botones = botonesEtapasPieza(ELEGIDAS);
+  assert.deepEqual(botones.map((b) => [b.id, b.nombre, b.icon]), [["corte", "Seccionadora", "🪚"], ["canto", "Canteado", null], ["cnc", "Procesos", null]]);
+  assert.deepEqual(nombresEtapasPieza(ELEGIDAS), { corte: "Seccionadora", canto: "Canteado", cnc: "Procesos", especial: "Corte especial" });
+  // Sin nada elegido: los 4 botones, con los nombres adivinados
+  assert.deepEqual(botonesEtapasPieza(ETAPAS).map((b) => b.nombre), ["Corte", "Canto", "Procesos", "Corte especial"]);
+  assert.deepEqual(botonesEtapasPieza([]).map((b) => b.nombre), ["Corte", "Canto", "CNC", "Corte especial"]);
+  // Una etapa dada de baja no cuenta
+  assert.equal(etapasDePieza([{ ...ELEGIDAS[1], activa: false }, ...ETAPAS]).canto.nombre, "Canto");
+  const m = mensajeEscaneo({ ok: true, ya: false, requerida: true, pieza: { nombre: "P", ot: "1", de: 1 }, etapa: "cnc", faltan: ["canto"], progreso: null }, nombresEtapasPieza(ELEGIDAS));
+  assert.equal(m.texto, "P pasó por Procesos, pero no tiene escaneo de Canteado.");
+});
+
+test("migración 111 — tipo de pieza por etapa, uno por empresa", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/111_etapas_tipo_pieza.sql", import.meta.url), "utf8");
+  assert.match(sql, /alter table public\.etapas add column if not exists tipo_pieza text/);
+  assert.match(sql, /tipo_pieza in \('corte', 'canto', 'cnc', 'especial'\)/);
+  assert.match(sql, /on public\.etapas \(empresa_id, tipo_pieza\) where tipo_pieza is not null/);
+  assert.match(sql, /^begin;$/m);
+  assert.match(sql, /^commit;$/m);
 });
 
 test("avance — etapas salteadas, piezas que faltan por etapa y texto", () => {
@@ -123,12 +163,17 @@ function req(body, t) {
 
 const PIEZA = { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2, etapas: ["corte", "canto", "cnc"] };
 
-function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null } = {}) {
+function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin111 = false } = {}) {
   const escrito = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
-    { match: (u) => u.includes("/rest/v1/etapas?"), respond: () => ({ status: 200, body: ETAPAS }) },
+    {
+      match: (u) => u.includes("/rest/v1/etapas?"),
+      respond: (u) => (sin111 && u.includes("tipo_pieza")
+        ? { status: 400, body: { code: "42703", message: "column etapas.tipo_pieza does not exist" } }
+        : { status: 200, body: etapas }),
+    },
     {
       match: (u, o) => u.includes("/rest/v1/piezas_ot?") && (!o?.method || o.method === "GET"),
       respond: (u) => {
@@ -194,6 +239,17 @@ test("/api/piezas/paso — la última pieza termina la etapa de la OT (si no est
   data = await res.json();
   assert.ok(data.etapaTerminada);
   assert.equal(escrito.filter((x) => x.url.includes("avance_etapas")).length, 0, "una etapa firmada no se toca");
+});
+
+test("/api/piezas/paso — termina la etapa elegida en Configuración; sin la 111, adivina por el nombre", async () => {
+  let escrito = mock({ pasos: [{ etapa: "corte" }], pasaron: 51, etapas: ELEGIDAS });
+  let data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - 7", etapa: "canto" }, await token()))).json();
+  assert.deepEqual(data.etapaTerminada, { codigo: 2, nombre: "Canteado" });
+  assert.equal(escrito.find((x) => x.url.includes("avance_etapas")).body.etapa, 2);
+
+  escrito = mock({ pasos: [{ etapa: "corte" }], pasaron: 51, sin111: true });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - 7", etapa: "canto" }, await token()))).json();
+  assert.deepEqual(data.etapaTerminada, { codigo: 2, nombre: "Canto" });
 });
 
 test("/api/piezas/paso — ya escaneada, etapa que no le toca, número a mano y hora de la cola sin señal", async () => {
@@ -295,6 +351,20 @@ test("operario — con una tarea de Canto en curso, la etapa ya viene elegida; a
   assert.deepEqual(pedidos[1], { accion: "deshacer", pieza_id: 7, etapa: "canto" });
 });
 
+test("operario — ve los botones con los nombres de su empresa", async () => {
+  const pedidos = mockPantalla((b) => ({
+    data: { ok: true, ya: false, pieza: { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 1, de: 1 }, etapa: b.etapa, requerida: true, faltan: [], progreso: { pasaron: 3, total: 51 }, etapaTerminada: null },
+  }));
+  render(<EscanearPiezas usuario={USUARIO} etapas={ELEGIDAS} tareaActiva={{ etapa: 2 }} onClose={() => {}} />);
+  assert.equal(screen.getByRole("button", { name: "Canteado" }).getAttribute("aria-pressed"), "true");
+  assert.ok(screen.getByRole("button", { name: "🪚 Seccionadora" }));
+  assert.equal(screen.queryByRole("button", { name: "Corte especial" }), null);
+  fireEvent.change(screen.getByLabelText("Número de la pieza"), { target: { value: "7" } });
+  fireEvent.click(screen.getByText("Anotar"));
+  await waitFor(() => assert.ok(screen.getByText("M.izq-11 pasó por Canteado.")));
+  assert.equal(pedidos[0].etapa, "canto");
+});
+
 test("operario — sin etapa elegida pide elegirla; avisos en amarillo y errores en rojo; recuerda la etapa", async () => {
   mockPantalla((b) => (b.codigo === "8"
     ? { status: 404, data: { error: "Esa pieza ya no está en la OT (puede que se haya vuelto a pegar la planilla). Reimprimí su etiqueta." } }
@@ -302,11 +372,11 @@ test("operario — sin etapa elegida pide elegirla; avisos en amarillo y errores
   render(<EscanearPiezas usuario={USUARIO} etapas={ETAPAS} onClose={() => {}} />);
   assert.ok(screen.getByText("Elegí la etapa y escaneá las etiquetas de las piezas."));
   assert.equal(screen.queryAllByLabelText("Número de la pieza").length, 0);
-  fireEvent.click(screen.getByRole("button", { name: "CNC" }));
+  fireEvent.click(screen.getByRole("button", { name: "Procesos" }));
   fireEvent.change(screen.getByLabelText("Número de la pieza"), { target: { value: "7" } });
   fireEvent.click(screen.getByText("Anotar"));
-  await waitFor(() => assert.ok(screen.getByText("11 ya estaba escaneada en CNC.")));
-  assert.match(screen.getByText("11 ya estaba escaneada en CNC.").closest("li").className, /amber/);
+  await waitFor(() => assert.ok(screen.getByText("11 ya estaba escaneada en Procesos.")));
+  assert.match(screen.getByText("11 ya estaba escaneada en Procesos.").closest("li").className, /amber/);
   assert.equal(screen.queryAllByText("Deshacer").length, 0);
   fireEvent.change(screen.getByLabelText("Número de la pieza"), { target: { value: "8" } });
   fireEvent.click(screen.getByText("Anotar"));
@@ -314,7 +384,7 @@ test("operario — sin etapa elegida pide elegirla; avisos en amarillo y errores
   assert.match(screen.getByText(/Reimprimí su etiqueta/).closest("li").className, /red/);
   cleanup();
   render(<EscanearPiezas usuario={USUARIO} etapas={ETAPAS} onClose={() => {}} />);
-  assert.equal(screen.getByRole("button", { name: "CNC" }).getAttribute("aria-pressed"), "true", "la próxima vez ya viene elegida");
+  assert.equal(screen.getByRole("button", { name: "Procesos" }).getAttribute("aria-pressed"), "true", "la próxima vez ya viene elegida");
 });
 
 // ─── Avance en 🧩 Piezas ───

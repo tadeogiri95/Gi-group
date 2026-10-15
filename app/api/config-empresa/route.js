@@ -30,6 +30,16 @@ function respuestaFalta099() {
 function faltaMigracion100(err) {
   return String(err?.message).includes("condicion_cierre");
 }
+function faltaMigracion111(err) {
+  return String(err?.message).includes("tipo_pieza");
+}
+function respuestaFalta111() {
+  return NextResponse.json({ error: "Para elegir cómo se escanea por pieza falta correr la migración 111 en Supabase." }, { status: 409 });
+}
+// Una sola etapa por tipo de pieza: se lo saca a la que lo tenía
+async function liberarTipoPieza(empresaId, tipo, salvoId) {
+  await sbPatch(`etapas?empresa_id=eq.${empresaId}&tipo_pieza=eq.${tipo}${salvoId ? `&id=neq.${salvoId}` : ""}`, { tipo_pieza: null });
+}
 function respuestaFalta100() {
   return NextResponse.json({ error: "Para guardar la condición de cierre falta correr la migración 100 en Supabase." }, { status: 409 });
 }
@@ -154,7 +164,7 @@ export async function POST(request) {
     }
 
     if (action === "add_etapa") {
-      const { nombre, icon, color, orden, unidad, condicion_cierre } = body;
+      const { nombre, icon, color, orden, unidad, condicion_cierre, tipo_pieza } = body;
       if (!nombre) return NextResponse.json({ error: "nombre requerido" }, { status: 400 });
       let { codigo } = body;
       if (codigo === undefined) {
@@ -164,11 +174,13 @@ export async function POST(request) {
         codigo = Math.max(0, Number(ultima?.codigo) || 0) + 1;
       }
       try {
+        if (tipo_pieza) await liberarTipoPieza(empresaId, tipo_pieza);
         const result = await sbPost("etapas", {
           empresa_id: empresaId, codigo, nombre,
           icon: icon || "🔨", color: color || "#F97316", orden: orden || 99,
           ...(unidad ? { unidad } : {}),
           ...(condicion_cierre ? { condicion_cierre } : {}),
+          ...(tipo_pieza ? { tipo_pieza } : {}),
         });
         return NextResponse.json({ etapa: result[0] });
       } catch (err) {
@@ -177,6 +189,7 @@ export async function POST(request) {
         }
         if (unidad && faltaMigracion099(err)) return respuestaFalta099();
         if (condicion_cierre && faltaMigracion100(err)) return respuestaFalta100();
+        if (tipo_pieza && faltaMigracion111(err)) return respuestaFalta111();
         throw err;
       }
     }
@@ -251,8 +264,9 @@ export async function PATCH(request) {
     if (action === "update_etapa") {
       if (!(await perteneceAEmpresa("etapas", id, empresaId)))
         return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-      const { nombre, icon, color, codigo, orden, activa, unidad, condicion_cierre } = body;
+      const { nombre, icon, color, codigo, orden, activa, unidad, condicion_cierre, tipo_pieza } = body;
       const updates = {};
+      if (tipo_pieza !== undefined) updates.tipo_pieza = tipo_pieza;
       if (unidad !== undefined) updates.unidad = unidad;
       if (condicion_cierre !== undefined) updates.condicion_cierre = condicion_cierre;
       if (nombre !== undefined) updates.nombre = nombre;
@@ -262,6 +276,7 @@ export async function PATCH(request) {
       if (orden !== undefined) updates.orden = orden;
       if (activa !== undefined) updates.activa = activa;
       try {
+        if (updates.tipo_pieza) await liberarTipoPieza(empresaId, updates.tipo_pieza, id);
         const result = await sbPatch(`etapas?id=eq.${id}&empresa_id=eq.${empresaId}`, updates);
         return NextResponse.json({ etapa: result[0] });
       } catch (err) {
@@ -270,6 +285,7 @@ export async function PATCH(request) {
         }
         if (updates.unidad !== undefined && faltaMigracion099(err)) return respuestaFalta099();
         if (updates.condicion_cierre !== undefined && faltaMigracion100(err)) return respuestaFalta100();
+        if (updates.tipo_pieza !== undefined && faltaMigracion111(err)) return respuestaFalta111();
         throw err;
       }
     }

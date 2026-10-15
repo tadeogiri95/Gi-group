@@ -416,6 +416,8 @@ export const chatQueryBody = z.object({
 const unidadEtapa = z.string().trim().max(20).nullable().optional().transform((v) => (v === "" ? null : v));
 // Qué tiene que cumplirse para firmar el cierre de la etapa (100)
 const condicionCierre = z.string().trim().max(300).nullable().optional().transform((v) => (v === "" ? null : v));
+// Como qué etapa de pieza se escanea (111); vacío = no se escanea por pieza
+const tipoPieza = z.enum(["corte", "canto", "cnc", "especial", ""]).nullable().optional().transform((v) => (v === "" ? null : v));
 
 export const configPostBody = z.discriminatedUnion("action", [
   z.object({
@@ -436,6 +438,7 @@ export const configPostBody = z.discriminatedUnion("action", [
     orden: z.number().int().min(0).max(999).optional(),
     unidad: unidadEtapa,
     condicion_cierre: condicionCierre,
+    tipo_pieza: tipoPieza,
   }),
   z.object({
     action: z.literal("save_logo"),
@@ -471,6 +474,7 @@ export const configPatchBody = z.discriminatedUnion("action", [
     activa: z.boolean().optional(),
     unidad: unidadEtapa,
     condicion_cierre: condicionCierre,
+    tipo_pieza: tipoPieza,
   }),
   z.object({
     // Checklist de liberación de la OT (100); [] = sin checklist

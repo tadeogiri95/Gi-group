@@ -1,8 +1,8 @@
 'use client';
 // app/components/EscanearPiezas.jsx — El operario escanea las piezas en su
-// etapa (Órdenes de Producción, parte 18). Elige la etapa (Corte, Canto, CNC
-// o Corte especial; si tiene una tarea en curso de esa etapa, ya viene
-// elegida) y escanea una pieza tras otra sin tocar la pantalla:
+// etapa (Órdenes de Producción, parte 18). Elige la etapa (las de la empresa
+// elegidas en Configuración → Etapas como Corte, Canto, CNC o Corte especial;
+// si tiene una tarea en curso de esa etapa, ya viene elegida) y escanea una pieza tras otra sin tocar la pantalla:
 //   verde    → la pieza pasó por la etapa
 //   amarillo → ya estaba escaneada, se salteó una etapa anterior o no le toca
 //   rojo     → no es una etiqueta de pieza, o la pieza ya no está en la OT
@@ -12,7 +12,7 @@ import { apiFetch } from "../lib/supabase";
 import { enviarOEncolar } from "../lib/colaOffline";
 import Modal from "./ui/Modal";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
-import { ETAPAS_PIEZA, tipoDeEtapa, mensajeEscaneo } from "../lib/piezas";
+import { botonesEtapasPieza, nombresEtapasPieza, tipoDeEtapaEn, mensajeEscaneo } from "../lib/piezas";
 
 const CLAVE_ETAPA = "gypi_etapa_piezas";
 const REPETIDO_MS = 5000;
@@ -25,18 +25,20 @@ const TONOS = {
   pendiente: "bg-gypi-surf-hi text-gypi-dim",
 };
 
-function etapaInicial(etapas, tareaActiva) {
+function etapaInicial(etapas, botones, tareaActiva) {
   const enCurso = tareaActiva?.etapa ? etapas.find((e) => e.codigo === tareaActiva.etapa || e.id === tareaActiva.etapa) : null;
-  const tipo = tipoDeEtapa(enCurso);
-  if (tipo) return tipo;
+  const tipo = tipoDeEtapaEn(etapas, enCurso);
+  if (tipo && botones.some((b) => b.id === tipo)) return tipo;
   try {
     const guardada = localStorage.getItem(CLAVE_ETAPA);
-    return ETAPAS_PIEZA.some((e) => e.id === guardada) ? guardada : null;
+    return botones.some((e) => e.id === guardada) ? guardada : null;
   } catch { return null; }
 }
 
 export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = null, onClose }) {
-  const [etapa, setEtapa] = useState(() => etapaInicial(etapas, tareaActiva));
+  const botones = botonesEtapasPieza(etapas);
+  const nombres = nombresEtapasPieza(etapas);
+  const [etapa, setEtapa] = useState(() => etapaInicial(etapas, botones, tareaActiva));
   const [resultados, setResultados] = useState([]);
   const [numero, setNumero] = useState("");
   const vistos = useRef(new Map());
@@ -67,7 +69,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
         return;
       }
       const data = r.data || {};
-      const m = mensajeEscaneo({ ...data, ok: r.status === 200 && data.ok });
+      const m = mensajeEscaneo({ ...data, ok: r.status === 200 && data.ok }, nombres);
       const deshacible = m.tono !== "rojo" && !data.ya && data.pieza?.id;
       agregar({ ...m, deshacer: deshacible ? { pieza_id: data.pieza.id, etapa: data.etapa } : null });
     } catch (e) {
@@ -96,17 +98,17 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
     setNumero("");
   };
 
-  const nombreEtapa = ETAPAS_PIEZA.find((e) => e.id === etapa)?.nombre;
+  const nombreEtapa = nombres[etapa];
 
   return (
     <Modal open onClose={onClose} title="Escanear piezas">
       <div className="p-4 overflow-y-auto text-gypi-text">
         <div className="text-[13px] font-bold text-gypi-dim mb-1.5" id="etapa-piezas">¿En qué etapa estás?</div>
         <div className="grid grid-cols-2 gap-1.5 mb-3" role="group" aria-labelledby="etapa-piezas">
-          {ETAPAS_PIEZA.map((e) => (
+          {botones.map((e) => (
             <button key={e.id} onClick={() => setEtapa(e.id)} aria-pressed={etapa === e.id}
               className={`min-h-[48px] rounded-lg border text-[14px] font-bold cursor-pointer ${etapa === e.id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-surface border-gypi-border text-gypi-dim"}`}>
-              {e.nombre}
+              {e.icon ? `${e.icon} ` : ""}{e.nombre}
             </button>
           ))}
         </div>

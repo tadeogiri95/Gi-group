@@ -300,11 +300,18 @@ export async function imprimirEtiquetasPiezas(datos) {
 export const nombreEtapaPieza = nombreEtapa;
 
 /**
- * A qué etapa de pieza corresponde una etapa de la empresa, por su nombre:
- * "Corte especial" → especial, "Canto"/"Tapacanto" → canto, "CNC"/"Procesos"/
- * "Perforado" → cnc, "Corte"/"Seccionado" → corte. Las demás (Armado, …) → null.
+ * A qué etapa de pieza corresponde una etapa de la empresa. Manda lo que se
+ * eligió en Configuración → Etapas ("Se escanea por pieza como", migración
+ * 111). Si no se eligió nada, se adivina por el nombre: "Corte especial" →
+ * especial, "Canto"/"Canteado" → canto, "CNC"/"Procesos"/"Perforado" → cnc,
+ * "Corte"/"Seccionado" → corte. Las demás (Armado, …) → null.
  */
 export function tipoDeEtapa(etapa) {
+  if (IDS_ETAPAS_PIEZA.includes(etapa?.tipo_pieza)) return etapa.tipo_pieza;
+  return tipoPorNombre(etapa);
+}
+
+function tipoPorNombre(etapa) {
   const n = norm(etapa?.nombre);
   if (!n) return null;
   if (n.includes("especial") || n.includes("diagonal") || n.includes("45")) return "especial";
@@ -314,9 +321,59 @@ export function tipoDeEtapa(etapa) {
   return null;
 }
 
+/**
+ * Las etapas de la empresa (activas) que se escanean pieza por pieza, una por
+ * tipo. Si alguna etapa tiene elegido "Se escanea por pieza como", solo
+ * cuentan las elegidas; si ninguna, se adivina por el nombre.
+ * @returns {Record<string, object|null>} tipo → etapa de la empresa
+ */
+export function etapasDePieza(etapas = []) {
+  const activas = (etapas || []).filter((e) => e && e.activa !== false);
+  const elegidas = activas.some((e) => IDS_ETAPAS_PIEZA.includes(e.tipo_pieza));
+  const out = {};
+  for (const tipo of IDS_ETAPAS_PIEZA) {
+    out[tipo] = (elegidas
+      ? activas.find((e) => e.tipo_pieza === tipo)
+      : activas.find((e) => tipoPorNombre(e) === tipo)) || null;
+  }
+  return out;
+}
+
 /** La etapa de la empresa (activa) que corresponde a una etapa de pieza, o null. */
 export function etapaDeTipo(etapas = [], tipo) {
-  return etapas.filter((e) => e.activa !== false).find((e) => tipoDeEtapa(e) === tipo) || null;
+  return etapasDePieza(etapas)[tipo] || null;
+}
+
+/** Tipo de pieza de una etapa de la empresa, mirando todas las etapas. */
+export function tipoDeEtapaEn(etapas = [], etapa) {
+  if (!etapa) return null;
+  const mapa = etapasDePieza(etapas);
+  const misma = (x) => x === etapa || (etapa.id != null && x.id === etapa.id) || (etapa.codigo != null && x.codigo === etapa.codigo);
+  return IDS_ETAPAS_PIEZA.find((t) => mapa[t] && misma(mapa[t])) || null;
+}
+
+/**
+ * Los botones del escaneo: los 4 tipos con el nombre, ícono y color de la
+ * etapa de la empresa que les corresponde (si hay).
+ */
+export function botonesEtapasPieza(etapas = []) {
+  const mapa = etapasDePieza(etapas);
+  // Si la empresa ya eligió sus etapas, solo se muestran las elegidas
+  const elegidas = (etapas || []).some((e) => e?.activa !== false && IDS_ETAPAS_PIEZA.includes(e?.tipo_pieza));
+  return ETAPAS_PIEZA.filter((e) => !elegidas || mapa[e.id]).map((e) => ({
+    id: e.id,
+    nombre: mapa[e.id]?.nombre || e.nombre,
+    // Etapas viejas guardan el nombre de un dibujo ("Hammer"): no se muestra
+    icon: mapa[e.id]?.icon && !/^[A-Za-z]/.test(mapa[e.id].icon) ? mapa[e.id].icon : null,
+    color: mapa[e.id]?.color || null,
+    etapa: mapa[e.id],
+  }));
+}
+
+/** tipo → nombre que usa la empresa ("canto" → "Canteado"). */
+export function nombresEtapasPieza(etapas = []) {
+  const mapa = etapasDePieza(etapas);
+  return Object.fromEntries(ETAPAS_PIEZA.map((e) => [e.id, mapa[e.id]?.nombre || e.nombre]));
 }
 
 /** Etapas de la pieza anteriores a `etapa` que todavía no tienen escaneo. */
@@ -355,7 +412,8 @@ export function textoAvancePiezas(avance) {
  * respuesta de /api/piezas/paso.
  * @returns {{ tono: "verde"|"amarillo"|"rojo", texto: string, detalle: string|null }}
  */
-export function mensajeEscaneo(r) {
+export function mensajeEscaneo(r, nombres = {}) {
+  const nombreEtapa = (id) => nombres[id] || nombreEtapaPieza(id);
   if (!r?.ok) return { tono: "rojo", texto: r?.error || "No se pudo anotar la pieza.", detalle: null };
   const p = r.pieza || {};
   const cual = `${p.nombre}${p.de > 1 ? ` (${p.unidad} de ${p.de})` : ""}`;
