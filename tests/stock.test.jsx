@@ -41,7 +41,7 @@ const ARTICULOS = [
   "ID,ID_SKU,Numero Articulo,Categoría,Nombre normalizado,Nombre Articulo,División,Familia,Tipo de Material,Marca,Color/Acabado,Unidad Medida,Pack/Bulto,Stock_de_seguridad",
   "0a0acaa2b157,2.10.2.52.15,1,C,LANA DE VIDRIO,Lana de vidrio 50 mm,HIERRO,Aislantes,Componente,Isover,S/COLOR,MT2,20 MT2,",
   "6397d35daafe,3.3.1.6.109.2,3,C,0277 TABLILLA,Tablilla 0277 negra,ALUMINIO,Herrajes y Accesorios,Procesable,Aluar,NEGRO,MT,6MT,",
-  "aaaaaaaaaaaa,9.9.9,4,C,SOLO EN ARTICULOS,Tornillo 4x40,MADERA,Herrajes y Accesorios,Insumo,Fischer,ZINCADO,UN,100 PZ,",
+  "aaaaaaaaaaaa,9.9.9,4,C,,Tornillo 4x40,MADERA,Herrajes y Accesorios,Insumo,Fischer,ZINCADO,UN,100 PZ,",
 ].join("\n");
 
 // ─── Lectura de la planilla ───
@@ -66,7 +66,7 @@ test("planilla — junta INVENTARIO y ARTICULOS por SKU, con los títulos reales
   const porSku = Object.fromEntries(filas.map((f) => [f.sku, f]));
 
   const tablilla = porSku["3.3.1.6.109.2"];
-  assert.equal(tablilla.nombre, "Tablilla 0277 negra", "el nombre sale de ARTICULOS");
+  assert.equal(tablilla.nombre, "0277 TABLILLA", "el nombre normalizado de ARTICULOS");
   assert.equal(tablilla.unidad, "MT");
   assert.equal(tablilla.familia, "Herrajes y Accesorios");
   assert.equal(tablilla.tipo, "Procesable");
@@ -84,7 +84,7 @@ test("planilla — junta INVENTARIO y ARTICULOS por SKU, con los títulos reales
   assert.equal(melamina.unidad, null);
 
   const tornillo = porSku["9.9.9"];
-  assert.equal(tornillo.nombre, "Tornillo 4x40", "solo en ARTICULOS: entra sin stock");
+  assert.equal(tornillo.nombre, "Tornillo 4x40", "solo en ARTICULOS: entra sin stock; sin normalizado usa Nombre Articulo");
   assert.equal(tornillo.stock, null);
 
   const claves = filas.map((f) => Object.keys(f).sort().join());
@@ -108,7 +108,7 @@ test("semáforo y búsqueda — urgentes primero, sin acentos, por división", (
   const lista = [...filas, { sku: "0.0.1", nombre: "Viejo", activo: false }];
   assert.equal(filtrarArticulos(lista)[0].sku, "3.3.1.6.109.2", "el urgente arriba");
   assert.equal(filtrarArticulos(lista).length, 4, "los inactivos no se muestran");
-  assert.deepEqual(filtrarArticulos(lista, { texto: "tablilla NEGRA" }).map((a) => a.sku), ["3.3.1.6.109.2"]);
+  assert.deepEqual(filtrarArticulos(lista, { texto: "tablilla 0277" }).map((a) => a.sku), ["3.3.1.6.109.2"]);
   assert.deepEqual(filtrarArticulos(lista, { texto: "aislantes" }).map((a) => a.sku), ["2.10.2.52.15"], "busca también en la familia");
   assert.deepEqual(filtrarArticulos(lista, { texto: "1.1.1.2" }).map((a) => a.sku), ["1.1.1.2.130.1"], "y en el SKU");
   assert.deepEqual(filtrarArticulos(lista, { urgentes: true }).map((a) => a.sku), ["3.3.1.6.109.2"]);
@@ -265,11 +265,11 @@ test("pantalla Stock — lista con semáforo, búsqueda, urgentes y ficha", asyn
   render(<StockScreen empresa={{ slug: "gi", nombre: "GI" }} empresaId={E} />);
   await waitFor(() => assert.ok(screen.getByText("4 artículos")));
   const nombres = screen.getAllByRole("listitem").map((li) => li.textContent);
-  assert.match(nombres[0], /Tablilla 0277 negra/, "el urgente arriba");
+  assert.match(nombres[0], /0277 TABLILLA/, "el urgente arriba");
   assert.ok(screen.getByText("🔴 Urgentes (1)"));
   fireEvent.change(screen.getByLabelText("Buscar artículo"), { target: { value: "lana" } });
   assert.ok(screen.getByText("1 de 4 artículos"));
-  fireEvent.click(screen.getByText("Lana de vidrio 50 mm"));
+  fireEvent.click(screen.getByText("LANA DE VIDRIO"));
   assert.ok(screen.getByRole("dialog", { name: "Artículo 2.10.2.52.15" }));
   assert.ok(screen.getByText("Necesitan las OT"));
 });
@@ -290,13 +290,13 @@ test("pantalla Stock — sincronizar y elegir etiquetas de lo filtrado", async (
   fireEvent.click(screen.getByText("ALUMINIO"));
   fireEvent.click(screen.getByText("Elegir 1 de la lista"));
   assert.ok(screen.getByText(/1 elegidas/));
-  assert.equal(screen.getByLabelText("Etiqueta de Tablilla 0277 negra").checked, true);
+  assert.equal(screen.getByLabelText("Etiqueta de 0277 TABLILLA").checked, true);
 });
 
 test("ficha del QR — busca el artículo por SKU; si no está, lo dice", async () => {
   mockPantalla({ articulos: [LISTA[1]] });
   render(<FichaArticulo sku="3.3.1.6.109.2" onClose={() => {}} />);
-  await waitFor(() => assert.ok(screen.getByText("Tablilla 0277 negra")));
+  await waitFor(() => assert.ok(screen.getByText("0277 TABLILLA")));
   assert.ok(screen.getByText("🔴 URGENTE"));
   assert.ok(screen.getByText(/Próxima necesidad: 10\/08\/2026/));
   cleanup();
