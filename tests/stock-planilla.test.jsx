@@ -164,7 +164,7 @@ test("/api/stock/planilla POST — gestión genera el código; guarda solo el ha
 // ─── El script de la planilla, corrido con una planilla de mentira ───
 
 class Hoja {
-  constructor(filas, ancho) { this.f = filas.map((r) => [...r, ...Array(ancho).fill("")].slice(0, ancho)); this.ancho = ancho; }
+  constructor(filas, ancho) { this.f = filas.map((r) => [...r, ...Array(ancho).fill("")].slice(0, ancho)); this.ancho = ancho; this.amarillas = []; }
   getMaxRows() { return this.f.length; }
   getLastRow() { for (let i = this.f.length - 1; i >= 0; i--) if (this.f[i].some((v) => v !== "" && v !== null)) return i + 1; return 0; }
   insertRowsAfter(_, n) { for (let i = 0; i < n; i++) this.f.push(Array(this.ancho).fill("")); }
@@ -175,6 +175,7 @@ class Hoja {
       getValues: () => hoja.f.slice(r - 1, r - 1 + nr).map((fila) => fila.slice(c - 1, c - 1 + nc)),
       setValues: (v) => v.forEach((fila, i) => fila.forEach((x, j) => { hoja.f[r - 1 + i][c - 1 + j] = x; })),
       setFormulas: (v) => v.forEach((fila, i) => fila.forEach((x, j) => { hoja.f[r - 1 + i][c - 1 + j] = x; })),
+      setBackground: (color) => { hoja.amarillas.push({ fila: r, color, id: hoja.f[r - 1][0] }); },
     };
   }
 }
@@ -205,6 +206,7 @@ test("script de la planilla — anota al final, reconoce al colaborador, no repi
     ["id_registro", "Marca temporal", "ID_SKU", "CODIGO COLABORADOR", "MES", "FECHA", "DESCRIPCIÓN  ARTICULO", "CANTIDAD CONSUMIDA", "COLABORADOR", "ORIGEN", "CODIGO PROYECTO ASOCIADO", "ORIGEN"],
     ["0098b61a", "", "1.1", 213, 9, new Date(2025, 8, 22), "CANTO", -68, "GIRI TADEO", "AJUSTE", "", ""],
     ["GY-4", "", "1.1", 200, 10, new Date(2026, 9, 14), "CANTO", 2, "GUZMAN FACUNDO ARIEL", "CONSUMO FÁBRICA", "", ""],
+    ["", "", "1.2.3", 213, 10, new Date(2026, 9, 15), "MDF", 2, "GIRI TADEO", "CONSUMO FÁBRICA", "m-7495", ""],
     ["", "", "=XLOOKUP(G4…)", "", "", "", "", "", "", "", "", ""],
     ["", "", "", "", "", "", "", "", "", "", "", ""],
   ], 15);
@@ -226,7 +228,7 @@ test("script de la planilla — anota al final, reconoce al colaborador, no repi
   const ids = cons.f.map((r) => r[0]);
   assert.deepEqual(ids.filter((x) => String(x).startsWith("GY-")), ["GY-4", "GY-11", "GY-14"], "sin repetir el 4 ni pasar el anulado 12");
   const fila11 = cons.f[ids.indexOf("GY-11")];
-  assert.equal(ids.indexOf("GY-11"), 3, "en la primera fila libre, aunque abajo haya fórmulas");
+  assert.equal(ids.indexOf("GY-11"), 4, "en la primera fila libre, aunque abajo haya fórmulas");
   assert.equal(fila11[2], "1.2.3");
   assert.equal(fila11[3], 200, "código de PERSONAL");
   assert.equal(fila11[4], 10, "mes");
@@ -234,6 +236,8 @@ test("script de la planilla — anota al final, reconoce al colaborador, no repi
   assert.equal(fila11[7], 2);
   assert.equal(fila11[8], "GUZMAN FACUNDO ARIEL");
   assert.equal(fila11[10], "M-7495");
+  assert.deepEqual(cons.amarillas.map((a) => [a.id, a.color]), [["GY-11", "yellow"]], "el 11 coincide con el renglón cargado a mano; el 14, igual, ya no tiene con cuál");
+  assert.match(fila11[11], /¿duplicado\?/);
   const fila14 = cons.f[ids.indexOf("GY-14")];
   assert.equal(fila14[3], "", "sin código si no está en PERSONAL");
   assert.equal(fila14[8], "NADIE CONOCIDO");
@@ -265,4 +269,17 @@ test("conectar la planilla — genera el código y muestra los pasos", async () 
   fireEvent.click(screen.getByText("Generar el código para la planilla"));
   await waitFor(() => assert.match(screen.getByLabelText("Código para la planilla").value, /gyp_x/));
   assert.ok(screen.getByText(/instalarGypi/));
+});
+
+// ─── Bip al escanear ───
+
+test("bip — suena una vez por código, aunque la cámara lo lea varias veces", async () => {
+  const { debeSonar, PAUSA_BIP_MS, bip } = await import("../app/lib/bip.js");
+  assert.equal(debeSonar(null, "A", 1000), true);
+  assert.equal(debeSonar({ codigo: "A", t: 1000 }, "A", 1350), false, "el mismo código, recién leído");
+  assert.equal(debeSonar({ codigo: "A", t: 1000 }, "B", 1350), true, "otro código suena enseguida");
+  assert.equal(debeSonar({ codigo: "A", t: 1000 }, "A", 1000 + PAUSA_BIP_MS), true, "el mismo, un rato después");
+  assert.doesNotThrow(() => bip(), "sin audio en el navegador no rompe");
+  const escaner = (await import("node:fs")).readFileSync(new URL("../app/components/EscanerCodigo.jsx", import.meta.url), "utf8");
+  assert.match(escaner, /bip\(\)/);
 });

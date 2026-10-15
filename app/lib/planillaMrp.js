@@ -120,27 +120,37 @@ function traerMovimientosGypi() {
     var ing = ss.getSheetByName(GYPI_HOJA_INGRESOS);
     var personal = gypiPersonal_(ss);
     var ya = {};
+    // Lo que se cargó a mano en la planilla, para avisar si llega lo mismo de la app
+    var aMano = gypiClaves_(cons, 3, 11, 6, 8).concat(gypiClaves_(ing, 2, 0, 8, 9));
+    var manual = {};
+    aMano.forEach(function (k) { manual[k] = (manual[k] || 0) + 1; });
     gypiIds_(cons).concat(gypiIds_(ing)).forEach(function (id) { ya[id] = true; });
     var anulados = null;
     for (var vuelta = 0; vuelta < 20; vuelta++) {
       var r = gypiPedir_(desde);
       if (anulados === null) anulados = r.anulados || [];
-      var filasC = [], filasI = [];
+      var filasC = [], filasI = [], dudasC = [], dudasI = [];
       r.movimientos.forEach(function (m) {
         if (m.anulado || ya[m.id]) return;
         ya[m.id] = true;
         var fecha = gypiFecha_(m.fecha);
+        var clave = gypiClave_(m.sku, m.hoja === "ingresos" ? "" : m.ot, m.fecha, m.cantidad);
+        var duda = manual[clave] > 0;
+        if (duda) manual[clave]--;
+        var detalle = duda ? m.detalle + " · ¿duplicado?" : m.detalle;
         if (m.hoja === "ingresos") {
+          dudasI.push(duda);
           filasI.push([m.id, m.sku, "", fecha, m.nombre, m.proveedor, m.comprobante, fecha, m.cantidad,
             m.precio_unitario === null ? "" : m.precio_unitario]);
         } else {
+          dudasC.push(duda);
           var col = gypiColaborador_(personal, m.colaborador);
           filasC.push([m.id, new Date(m.momento), m.sku, col.codigo, fecha.getMonth() + 1, fecha, m.nombre,
-            m.cantidad, col.nombre, m.origen, m.ot, m.detalle]);
+            m.cantidad, col.nombre, m.origen, m.ot, detalle]);
         }
       });
-      gypiAgregar_(cons, filasC, 6);
-      gypiAgregar_(ing, filasI, 4, true);
+      gypiAgregar_(cons, filasC, 6, false, dudasC);
+      gypiAgregar_(ing, filasI, 4, true, dudasI);
       desde = r.hasta;
       props.setProperty("GYPI_DESDE", String(desde));
       if (!r.hayMas) break;
@@ -185,7 +195,26 @@ function gypiPrimeraLibre_(hoja, columna) {
   return 2;
 }
 
-function gypiAgregar_(hoja, filas, columnaGuia, conTotales) {
+// Artículo, OT, día y cantidad: si coinciden con un renglón cargado a mano,
+// puede ser el mismo retiro anotado dos veces.
+function gypiClave_(sku, ot, fecha, cantidad) {
+  var dia = fecha instanceof Date
+    ? fecha.getFullYear() + "-" + ("0" + (fecha.getMonth() + 1)).slice(-2) + "-" + ("0" + fecha.getDate()).slice(-2)
+    : String(fecha || "");
+  return [String(sku || "").trim(), String(ot || "").trim().toUpperCase(), dia, Math.round(Number(cantidad) * 1000) / 1000].join("|");
+}
+
+// Claves de los renglones cargados a mano (con fecha y sin id GY-)
+function gypiClaves_(hoja, colSku, colOt, colFecha, colCantidad) {
+  var n = hoja.getLastRow();
+  if (n < 2) return [];
+  var ancho = Math.max(colSku, colOt, colFecha, colCantidad);
+  return hoja.getRange(2, 1, n - 1, ancho).getValues()
+    .filter(function (f) { return String(f[0]).indexOf("GY-") !== 0 && f[colFecha - 1] !== "" && f[colFecha - 1] !== null; })
+    .map(function (f) { return gypiClave_(f[colSku - 1], colOt ? f[colOt - 1] : "", f[colFecha - 1], f[colCantidad - 1]); });
+}
+
+function gypiAgregar_(hoja, filas, columnaGuia, conTotales, dudas) {
   if (!filas.length) return;
   var desde = gypiPrimeraLibre_(hoja, columnaGuia);
   var falta = desde + filas.length - 1 - hoja.getMaxRows();
@@ -198,6 +227,10 @@ function gypiAgregar_(hoja, filas, columnaGuia, conTotales) {
     });
     hoja.getRange(desde, 11, filas.length, 3).setFormulas(totales);
   }
+  // Posible duplicado de algo cargado a mano: amarillo, para revisarlo
+  (dudas || []).forEach(function (duda, i) {
+    if (duda) hoja.getRange(desde + i, 1, 1, filas[0].length).setBackground("yellow");
+  });
 }
 
 // Si en Gypi anularon un movimiento que ya estaba en la planilla, se borra su fila
