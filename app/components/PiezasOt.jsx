@@ -2,13 +2,14 @@
 // app/components/PiezasOt.jsx — Piezas de una OT con etiqueta QR (Órdenes de
 // Producción, parte 17). Técnica pega la planilla técnica (hoja PLANILLA o
 // CUT RITE) y se imprime una etiqueta por pieza física. Cada renglón muestra
-// las etapas que le tocan (Corte, Canto, CNC, Corte especial), que se pueden
-// corregir a mano. El escaneo en cada etapa es la parte 18.
+// las etapas que le tocan (las de la empresa que se escanean por pieza,
+// Configuración → Etapas), que se pueden corregir a mano. El escaneo en cada
+// etapa es la parte 18.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, sbGetAll } from "../lib/supabase";
 import { TAMANOS_ETIQUETA } from "../lib/carga";
 import {
-  ETAPAS_PIEZA, leerPiezas, expandirPiezas, agruparRenglones, cambiosAlReemplazar, medidas, imprimirEtiquetasPiezas,
+  reglasPieza, nombresEtapas, leerPiezas, expandirPiezas, agruparRenglones, cambiosAlReemplazar, medidas, imprimirEtiquetasPiezas,
   avancePiezas, textoAvancePiezas,
 } from "../lib/piezas";
 
@@ -24,6 +25,7 @@ const piezasTexto = (n) => (n === 1 ? "1 pieza" : `${n.toLocaleString("es-AR")} 
 export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestion = false, onClose }) {
   const [piezas, setPiezas] = useState(null);
   const [pasos, setPasos] = useState([]);
+  const [etapas, setEtapas] = useState([]);
   const [faltanEn, setFaltanEn] = useState("");
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);
@@ -40,13 +42,18 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
     if (!ot || !empresaId) return;
     try {
       const filtro = `empresa_id=eq.${empresaId}&ot=eq.${encodeURIComponent(ot)}`;
-      const [{ data }, escaneos] = await Promise.all([
+      const [{ data }, escaneos, deEmpresa] = await Promise.all([
         sbGetAll(`piezas_ot?${filtro}&order=renglon.asc,unidad.asc,id.asc&select=*`),
         // Sin la migración 110 todavía no hay escaneos (parte 18)
         sbGetAll(`pasos_pieza?${filtro}&order=id.asc&select=pieza_id,etapa`).then((r) => r.data || []).catch(() => []),
+        // Sin la 112 ninguna etapa se escanea por pieza
+        sbGetAll(`etapas?empresa_id=eq.${empresaId}&order=orden.asc&select=codigo,nombre,orden,activa,icon,color,por_pieza,columna_pieza`)
+          .catch(() => sbGetAll(`etapas?empresa_id=eq.${empresaId}&order=orden.asc&select=codigo,nombre,orden,activa`))
+          .then((r) => r.data || []).catch(() => []),
       ]);
       setPiezas(data || []);
       setPasos(escaneos);
+      setEtapas(deEmpresa);
       setAviso(null);
     } catch {
       setPiezas([]);
@@ -72,7 +79,11 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
     }
   };
 
-  const vista = useMemo(() => (pegando && pegado.trim() ? leerPiezas(pegado) : null), [pegando, pegado]);
+  const reglas = useMemo(() => reglasPieza(etapas), [etapas]);
+  const nombres = useMemo(() => nombresEtapas(etapas), [etapas]);
+  const orden = useMemo(() => reglas.map((r) => r.codigo), [reglas]);
+  const nombreDe = (c) => nombres[c] || `Etapa ${c}`;
+  const vista = useMemo(() => (pegando && pegado.trim() ? leerPiezas(pegado, reglas) : null), [pegando, pegado, reglas]);
   const nuevas = useMemo(() => (vista ? expandirPiezas(vista.renglones) : []), [vista]);
   const cambios = vista && piezas?.length ? cambiosAlReemplazar(piezas, nuevas) : null;
 
@@ -92,17 +103,18 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
 
   const cambiarEtapa = async (renglon, etapa) => {
     const tiene = renglon.etapas.includes(etapa);
-    const etapas = ETAPAS_PIEZA.map((e) => e.id).filter((e) => (e === etapa ? !tiene : renglon.etapas.includes(e)));
-    if (!etapas.length) { setError("Cada pieza tiene que pasar por al menos una etapa."); return; }
-    const data = await enviar({ accion: "etapas", ot, nombre: renglon.nombre, etapas });
+    const lista = orden.filter((e) => (e === etapa ? !tiene : renglon.etapas.includes(e)));
+    const data = await enviar({ accion: "etapas", ot, nombre: renglon.nombre, etapas: lista });
     if (data) setPiezas((prev) => prev.map((p) => (p.nombre === renglon.nombre ? { ...p, etapas: data.etapas } : p)));
   };
 
   const renglones = useMemo(() => agruparRenglones(piezas || []), [piezas]);
-  const avance = useMemo(() => avancePiezas(piezas || [], pasos), [piezas, pasos]);
+  const avance = useMemo(() => avancePiezas(piezas || [], pasos, orden), [piezas, pasos, orden]);
   const hechos = useMemo(() => new Set(pasos.map((p) => `${p.pieza_id}|${p.etapa}`)), [pasos]);
   const pasaron = (r, etapa) => r.piezas.filter((p) => hechos.has(`${p.id}|${etapa}`)).length;
   const visibles = faltanEn ? renglones.filter((r) => r.etapas.includes(faltanEn) && pasaron(r, faltanEn) < r.piezas.length) : renglones;
+  // Las etapas que se pueden marcar en cada renglón: las de la empresa y las que ya tenga la pieza
+  const etapasRenglon = (r) => [...orden, ...r.etapas.filter((e) => !orden.includes(e))];
   const modulos = useMemo(() => {
     const m = new Map();
     for (const r of renglones) {
@@ -118,7 +130,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
     const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
     try { localStorage.setItem(CLAVE_TAMANO, t.id); } catch { /* sin almacenamiento */ }
     try {
-      await imprimirEtiquetasPiezas({ empresa: empresa?.nombre_corto || "", ot, piezas: lista, tamano: t });
+      await imprimirEtiquetasPiezas({ empresa: empresa?.nombre_corto || "", ot, piezas: lista, tamano: t, nombres });
     } catch (e) {
       setError(e.message);
     }
@@ -138,7 +150,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                 {modulos.filter(([m]) => m !== SIN_MODULO).length > 0 && ` · ${modulos.filter(([m]) => m !== SIN_MODULO).length} módulos`}
               </div>
             )}
-            {pasos.length > 0 && <div className="text-xs text-gypi-dim mt-0.5">Escaneadas: {textoAvancePiezas(avance)}</div>}
+            {pasos.length > 0 && <div className="text-xs text-gypi-dim mt-0.5">Escaneadas: {textoAvancePiezas(avance, nombres)}</div>}
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
@@ -152,7 +164,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
           <section aria-label="Pegar la planilla técnica" className="g-card mb-3">
             <label htmlFor="piezas-pegar" className="g-label mb-1 block">Pegar la planilla técnica</label>
             <div className="text-[11px] text-gypi-dim mb-1.5">
-              En la hoja PLANILLA, copiá desde la fila de títulos (PANEL, MATERIAL, MEDIDAS…) hasta la última pieza y pegalo acá. También sirve la hoja CUT RITE, pero esa no dice qué piezas van al CNC.
+              En la hoja PLANILLA, copiá desde la fila de títulos (PANEL, MATERIAL, MEDIDAS…) hasta la última pieza y pegalo acá. También sirve la hoja CUT RITE, pero esa no tiene todas las columnas (por ejemplo, la de CNC).
             </div>
             <textarea id="piezas-pegar" className="g-input w-full min-h-[110px] font-mono text-[12px]" value={pegado} onChange={(e) => setPegado(e.target.value)}
               placeholder={"PANEL\tMATERIAL\tL1\tL2\tCANTIDAD …\nM.izq-11\tENCHAPADO 19MM\t402\t342\t2 …"} />
@@ -171,8 +183,10 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                         {cambios.salen > 0 && <span className="text-gypi-red"> · se sacan {cambios.salen} que ya no están en la planilla</span>}
                       </div>
                     )}
-                    {!vista.encontradas.canto && <div className="text-[11px] text-gypi-amber-ink">No encontré columnas de cantos: todas quedan con Canto. Lo podés sacar en cada renglón.</div>}
-                    {!vista.encontradas.cnc && <div className="text-[11px] text-gypi-amber-ink">No encontré las columnas FF, ranurado o calado: todas quedan con CNC. Lo podés sacar en cada renglón.</div>}
+                    {!reglas.length && <div className="text-[11px] text-gypi-amber-ink">Ninguna etapa se escanea por pieza todavía: las piezas quedan sin etapas. Se marcan en Configuración → Etapas.</div>}
+                    {vista.sinColumna.map((r) => (
+                      <div key={r.codigo} className="text-[11px] text-gypi-amber-ink">No encontré la columna {r.columnas.join(", ")} para {r.nombre}: ninguna pieza queda con {r.nombre}. La podés marcar en cada renglón.</div>
+                    ))}
                     {vista.avisos.map((a) => <div key={a} className="text-[11px] text-gypi-amber-ink">{a}</div>)}
                     {vista.renglones.length > 0 && (
                       <div className="overflow-x-auto mt-1">
@@ -182,7 +196,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                             {vista.renglones.slice(0, 60).map((r) => (
                               <tr key={r.nombre} className="border-t border-gypi-border">
                                 <td className="p-1">{r.nombre}</td><td className="p-1">{r.cantidad}</td><td className="p-1">{medidas(r) || "—"}</td>
-                                <td className="p-1">{r.etapas.map((e) => ETAPAS_PIEZA.find((x) => x.id === e)?.nombre).join(", ")}</td>
+                                <td className="p-1">{r.etapas.map(nombreDe).join(", ") || "—"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -235,15 +249,15 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
 
             {pasos.length > 0 && (
               <label className="text-[11px] text-gypi-dim block mb-2">Ver
-                <select className="g-input w-full" value={faltanEn} onChange={(e) => setFaltanEn(e.target.value)}>
+                <select className="g-input w-full" value={faltanEn} onChange={(e) => setFaltanEn(e.target.value ? Number(e.target.value) : "")}>
                   <option value="">Todas las piezas</option>
-                  {ETAPAS_PIEZA.filter((e) => avance[e.id].total > 0).map((e) => (
-                    <option key={e.id} value={e.id}>Las que faltan en {e.nombre} ({avance[e.id].total - avance[e.id].pasaron})</option>
+                  {avance.map((a) => (
+                    <option key={a.codigo} value={a.codigo}>Las que faltan en {nombreDe(a.codigo)} ({a.total - a.pasaron})</option>
                   ))}
                 </select>
               </label>
             )}
-            {faltanEn && !visibles.length && <div className="text-sm text-gypi-green mb-3">✅ Pasaron todas por {ETAPAS_PIEZA.find((e) => e.id === faltanEn)?.nombre}.</div>}
+            {faltanEn && !visibles.length && <div className="text-sm text-gypi-green mb-3">✅ Pasaron todas por {nombreDe(faltanEn)}.</div>}
             <ul aria-label="Piezas de la OT" className="list-none p-0 m-0 mb-3 flex flex-col gap-1.5">
               {visibles.map((r) => (
                 <li key={r.nombre} className="bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
@@ -256,15 +270,16 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                       className="min-w-[44px] min-h-[44px] rounded-lg border border-gypi-border bg-transparent text-sm cursor-pointer">🖨</button>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-1.5" aria-label={`Etapas de ${r.nombre}`}>
-                    {ETAPAS_PIEZA.map((e) => {
-                      const activa = r.etapas.includes(e.id);
-                      const n = pasaron(r, e.id);
+                    {etapasRenglon(r).map((codigo) => {
+                      const nombre = nombreDe(codigo);
+                      const activa = r.etapas.includes(codigo);
+                      const n = pasaron(r, codigo);
                       const cuenta = activa && pasos.length > 0 ? ` ${n}/${r.piezas.length}` : "";
-                      if (!esGestion) return activa ? <span key={e.id} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-gypi-green/15 text-gypi-green">{e.nombre}{cuenta}</span> : null;
+                      if (!esGestion) return activa ? <span key={codigo} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-gypi-green/15 text-gypi-green">{nombre}{cuenta}</span> : null;
                       return (
-                        <button key={e.id} onClick={() => cambiarEtapa(r, e.id)} disabled={guardando} aria-pressed={activa} aria-label={`${e.nombre} en ${r.nombre}`}
+                        <button key={codigo} onClick={() => cambiarEtapa(r, codigo)} disabled={guardando} aria-pressed={activa} aria-label={`${nombre} en ${r.nombre}`}
                           className={`min-h-[36px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${activa ? "bg-gypi-green/15 border-gypi-green text-gypi-green" : "bg-transparent border-gypi-border text-gypi-dim"}`}>
-                          {activa ? "✓ " : ""}{e.nombre}{cuenta}
+                          {activa ? "✓ " : ""}{nombre}{cuenta}
                         </button>
                       );
                     })}

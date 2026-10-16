@@ -8,7 +8,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   leerPiezas, expandirPiezas, agruparRenglones, cambiosAlReemplazar, moduloDe, tieneValor,
-  textoQrPieza, leerQrPieza, htmlEtiquetasPiezas, medidas,
+  textoQrPieza, leerQrPieza, htmlEtiquetasPiezas, medidas, reglasPieza, nombresEtapas, columnasDeTexto,
 } from "../app/lib/piezas.js";
 import { leerQr } from "../app/lib/escaneoCarga.js";
 import { piezasBody } from "../app/lib/schemas.ts";
@@ -35,36 +35,48 @@ const CUT_RITE = readFileSync(new URL("./fixtures/cutrite-7495-piezas.tsv", impo
 
 const buscar = (r, nombre) => r.renglones.find((x) => x.nombre === nombre);
 
+// Etapas de la empresa que se escanean por pieza (Configuración → Etapas,
+// migración 112), como las que deja la migración en la fábrica de la OT 7495
+const ETAPAS = [
+  { codigo: 1, nombre: "Corte", por_pieza: true, orden: 1 },
+  { codigo: 2, nombre: "Canto", por_pieza: true, orden: 2, columna_pieza: "Canto, L1A, L1B, L2A, L2B" },
+  { codigo: 3, nombre: "CNC", por_pieza: true, orden: 3, columna_pieza: "FF, RAN, Ranurado, CAL, Calado, CNC, Perforado, Perforacion" },
+  { codigo: 4, nombre: "Corte especial", por_pieza: true, orden: 4, columna_pieza: "Corte 45, 45, Diagonal, Diag, Corte especial" },
+  { codigo: 5, nombre: "Armado", orden: 5 },
+];
+const REGLAS = reglasPieza(ETAPAS);
+const leer = (texto) => leerPiezas(texto, REGLAS);
+
 // ─── Lo pegado de la planilla ───
 
 test("planilla — hoja PLANILLA: 47 renglones, 218 piezas, medidas, material y módulo", () => {
-  const r = leerPiezas(PLANILLA);
+  const r = leer(PLANILLA);
   assert.deepEqual(r.faltaColumnas, []);
   assert.deepEqual(r.errores, []);
-  assert.deepEqual(r.encontradas, { canto: true, cnc: true, especial: true });
+  assert.deepEqual(r.sinColumna, []);
   assert.equal(r.renglones.length, 47);
   assert.equal(expandirPiezas(r.renglones).length, 218);
   assert.deepEqual(buscar(r, "M.izq-11"), {
-    nombre: "M.izq-11", modulo: "M.izq", material: "ENCHAPADO 19MM SOBRE MDF KIRI", l1: 402, l2: 342, cantidad: 2, etapas: ["corte", "canto", "cnc"],
+    nombre: "M.izq-11", modulo: "M.izq", material: "ENCHAPADO 19MM SOBRE MDF KIRI", l1: 402, l2: 342, cantidad: 2, etapas: [1, 2, 3],
   });
   assert.equal(buscar(r, "11").modulo, null, "sin guion no hay módulo");
   assert.equal(buscar(r, "Cenefa - T1").modulo, "Cenefa");
   assert.equal(buscar(r, "TIRAS CORTAS").cantidad, 55);
 });
 
-test("planilla — etapas: canto si tiene cantos, CNC si tiene FF/ranurado/calado, especial si tiene 45° o diagonal", () => {
-  const r = leerPiezas(PLANILLA);
-  assert.deepEqual(buscar(r, "1-FONDO").etapas, ["corte"], "fondo de fibroplus: sin cantos");
-  assert.deepEqual(buscar(r, "1-FRENTE CAJON").etapas, ["corte", "canto"]);
-  assert.deepEqual(buscar(r, "M.der-52").etapas, ["corte", "cnc"], "calado '2 tomas' sin canto");
-  assert.deepEqual(buscar(r, "Bast.TV-21/31").etapas, ["corte", "canto", "cnc"], "calado 'VER PLANO'");
-  assert.deepEqual(buscar(r, "Cenefa - T1").etapas, ["corte", "canto", "especial"], "corte a 45°");
-  assert.deepEqual(buscar(r, "FZOC.T2").etapas, ["corte", "especial"]);
-  assert.deepEqual(buscar(r, "ZOC.T1").etapas, ["corte"]);
+test("planilla — etapas de la empresa: todas por Corte; Canto, CNC y Corte especial según sus columnas", () => {
+  const r = leer(PLANILLA);
+  assert.deepEqual(buscar(r, "1-FONDO").etapas, [1], "fondo de fibroplus: sin cantos");
+  assert.deepEqual(buscar(r, "1-FRENTE CAJON").etapas, [1, 2]);
+  assert.deepEqual(buscar(r, "M.der-52").etapas, [1, 3], "calado '2 tomas' sin canto");
+  assert.deepEqual(buscar(r, "Bast.TV-21/31").etapas, [1, 2, 3], "calado 'VER PLANO'");
+  assert.deepEqual(buscar(r, "Cenefa - T1").etapas, [1, 2, 4], "corte a 45°");
+  assert.deepEqual(buscar(r, "FZOC.T2").etapas, [1, 4]);
+  assert.deepEqual(buscar(r, "ZOC.T1").etapas, [1]);
 });
 
 test("planilla — nombre repetido: el segundo renglón pasa a 'nombre (2)' con aviso", () => {
-  const r = leerPiezas(PLANILLA);
+  const r = leer(PLANILLA);
   assert.ok(buscar(r, "M.central-91"));
   assert.equal(buscar(r, "M.central-91 (2)").l2, 600);
   assert.equal(r.avisos.length, 1);
@@ -72,35 +84,52 @@ test("planilla — nombre repetido: el segundo renglón pasa a 'nombre (2)' con 
   assert.equal(new Set(r.renglones.map((x) => x.nombre)).size, r.renglones.length);
 });
 
-test("planilla — hoja CUT RITE: mismas piezas y cantos; sin columnas de procesos, CNC queda en todas", () => {
-  const r = leerPiezas(CUT_RITE);
-  assert.deepEqual(r.encontradas, { canto: true, cnc: false, especial: false });
+test("planilla — hoja CUT RITE: mismas piezas y cantos; sin columnas de procesos ni 45°, ninguna pieza las lleva (con aviso)", () => {
+  const r = leer(CUT_RITE);
+  assert.deepEqual(r.sinColumna.map((x) => x.nombre), ["CNC", "Corte especial"]);
   assert.equal(expandirPiezas(r.renglones).length, 218);
-  const planilla = leerPiezas(PLANILLA);
+  const planilla = leer(PLANILLA);
   for (const x of r.renglones) {
-    assert.equal(x.etapas.includes("canto"), buscar(planilla, x.nombre).etapas.includes("canto"), `canto de ${x.nombre}`);
-    assert.ok(x.etapas.includes("cnc"));
-    assert.ok(!x.etapas.includes("especial"));
+    assert.equal(x.etapas.includes(2), buscar(planilla, x.nombre).etapas.includes(2), `canto de ${x.nombre}`);
+    assert.ok(x.etapas.includes(1));
+    assert.ok(!x.etapas.includes(3) && !x.etapas.includes(4));
   }
+});
+
+test("reglas — las etapas de cada empresa, con los nombres de columna que elija", () => {
+  assert.deepEqual(REGLAS.map((r) => [r.codigo, r.columnas.length]), [[1, 0], [2, 5], [3, 8], [4, 5]], "Armado no se escanea por pieza");
+  assert.deepEqual(columnasDeTexto(" Canto ; L1A,,L1B\nL2A "), ["Canto", "L1A", "L1B", "L2A"]);
+  assert.deepEqual(reglasPieza([{ codigo: 9, nombre: "X", por_pieza: true, activa: false }, { codigo: 0, nombre: "Sin tarea", por_pieza: true }]), [], "dadas de baja o sin código no");
+  assert.deepEqual(nombresEtapas(ETAPAS)[4], "Corte especial");
+  // Otra empresa, con otros nombres y otro orden: Pintura solo para las piezas con algo en "Color"
+  const otra = reglasPieza([
+    { codigo: 20, nombre: "Pintura", por_pieza: true, orden: 2, columna_pieza: "Color" },
+    { codigo: 10, nombre: "Plegado", por_pieza: true, orden: 1 },
+  ]);
+  const r = leerPiezas("PIEZA\tL1\tL2\tCANT\tCOLOR\nP-1\t100\t50\t2\tNegro\nP-2\t100\t50\t1\t", otra);
+  assert.deepEqual(r.renglones.map((x) => [x.nombre, x.etapas]), [["P-1", [10, 20]], ["P-2", [10]]]);
+  // Sin etapas por pieza, las piezas quedan sin etapas
+  assert.deepEqual(leerPiezas("PIEZA\tL1\tL2\tCANT\nP-1\t100\t50\t2", []).renglones[0].etapas, []);
 });
 
 test("planilla — sin títulos, sin cantidad o cantidad rara", () => {
   assert.match(leerPiezas("M.izq-11\tMDF\t402\t342\t2").faltaColumnas[0], /títulos/);
   assert.deepEqual(leerPiezas("PANEL\tMATERIAL\tL1\tL2\nA-1\tMDF\t1\t2").faltaColumnas, ["CANT."]);
-  const r = leerPiezas("PANEL\tL1\tL2\tCANT\nA-3\t400\t300\t2\nA-1\t400\t300\t\nA-2\t400\t300\t2,5\n0\t0\t0\t0");
+  const r = leer("PANEL\tL1\tL2\tCANT\nA-3\t400\t300\t2\nA-1\t400\t300\t\nA-2\t400\t300\t2,5\n0\t0\t0\t0");
   assert.deepEqual(r.errores.map((e) => e.fila), [3, 4]);
   assert.match(r.errores[0].motivo, /no tiene cantidad/);
   assert.match(r.errores[1].motivo, /2,5/);
   assert.deepEqual(r.renglones.map((x) => x.nombre), ["A-3"]);
-  assert.deepEqual(r.renglones[0].etapas, ["corte", "canto", "cnc"], "sin columnas de cantos ni procesos: todas");
+  assert.deepEqual(r.renglones[0].etapas, [1], "sin columnas de cantos, procesos ni 45°: solo Corte");
+  assert.equal(r.sinColumna.length, 3);
 });
 
 test("piezas — una por unidad física, agrupar, reemplazar y ayudas", () => {
-  const piezas = expandirPiezas([{ nombre: "A-1", modulo: "A", cantidad: 3, etapas: ["corte"] }, { nombre: "B", cantidad: 1, etapas: ["corte"] }]);
+  const piezas = expandirPiezas([{ nombre: "A-1", modulo: "A", cantidad: 3, etapas: [1] }, { nombre: "B", cantidad: 1, etapas: [1] }]);
   assert.deepEqual(piezas.map((p) => `${p.nombre} ${p.unidad} de ${p.de} r${p.renglon}`), ["A-1 1 de 3 r0", "A-1 2 de 3 r0", "A-1 3 de 3 r0", "B 1 de 1 r1"]);
   const renglones = agruparRenglones([...piezas].reverse());
   assert.deepEqual(renglones.map((r) => [r.nombre, r.piezas.map((p) => p.unidad)]), [["A-1", [1, 2, 3]], ["B", [1]]]);
-  const nuevas = expandirPiezas([{ nombre: "A-1", cantidad: 2, etapas: ["corte"] }, { nombre: "C", cantidad: 2, etapas: ["corte"] }]);
+  const nuevas = expandirPiezas([{ nombre: "A-1", cantidad: 2, etapas: [1] }, { nombre: "C", cantidad: 2, etapas: [1] }]);
   assert.deepEqual(cambiosAlReemplazar(piezas, nuevas), { nuevas: 2, siguen: 2, salen: 2 });
   assert.equal(moduloDe("M.der-CAJ1-FRENTE"), "M.der");
   assert.equal(moduloDe("-raro"), null);
@@ -120,9 +149,10 @@ test("QR — 'OT M-7495 - PIEZA - 1234' ida y vuelta; la carga no lo confunde co
 test("etiquetas — una página por pieza con OT, nombre, 'n de N', medidas, módulo, etapas y QR", async () => {
   const html = await htmlEtiquetasPiezas({
     empresa: "GI", ot: "M-7495", tamano: { ancho: 100, alto: 50 },
+    nombres: nombresEtapas(ETAPAS),
     piezas: [
-      { id: 10, nombre: "M.izq-11", modulo: "M.izq", material: "ENCHAPADO 19MM", l1: 402, l2: 342, unidad: 1, de: 2, etapas: ["corte", "canto", "cnc"] },
-      { id: 11, nombre: "<script>", unidad: 2, de: 2, etapas: ["corte"] },
+      { id: 10, nombre: "M.izq-11", modulo: "M.izq", material: "ENCHAPADO 19MM", l1: 402, l2: 342, unidad: 1, de: 2, etapas: [1, 2, 3] },
+      { id: 11, nombre: "<script>", unidad: 2, de: 2, etapas: [1] },
     ],
   });
   assert.equal((html.match(/class="etiqueta"/g) || []).length, 2);
@@ -137,18 +167,19 @@ test("etiquetas — una página por pieza con OT, nombre, 'n de N', medidas, mó
 });
 
 test("esquema y permisos — renglones válidos, nombres únicos, tope de piezas; la tabla solo se lee por /api/data", () => {
-  const r = { nombre: "A-1", cantidad: 2, etapas: ["cnc", "corte"] };
+  const r = { nombre: "A-1", cantidad: 2, etapas: [3, 1, 3] };
   const ok = piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [r] });
   assert.ok(ok.success);
-  assert.deepEqual(ok.data.renglones[0].etapas, ["corte", "cnc"], "etapas en orden");
+  assert.deepEqual(ok.data.renglones[0].etapas, [3, 1], "sin repetidas (el orden lo pone el servidor)");
   assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [r, r] }).success, "nombres repetidos");
   assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [{ ...r, cantidad: 1.5 }] }).success);
-  assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [{ ...r, etapas: [] }] }).success);
-  assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [{ ...r, etapas: ["armado"] }] }).success);
-  const muchos = Array.from({ length: 7 }, (_, i) => ({ nombre: `P${i}`, cantidad: 500, etapas: ["corte"] }));
+  assert.ok(piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [{ ...r, etapas: [] }] }).success, "sin etapas por pieza");
+  assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [{ ...r, etapas: ["corte"] }] }).success);
+  assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [{ ...r, etapas: [0] }] }).success);
+  const muchos = Array.from({ length: 7 }, (_, i) => ({ nombre: `P${i}`, cantidad: 500, etapas: [1] }));
   assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: muchos }).success, "más de 3000 piezas");
   assert.ok(!piezasBody.safeParse({ accion: "cargar", ot: "7495", renglones: [{ ...r, empresa_id: E }] }).success);
-  assert.ok(piezasBody.safeParse({ accion: "etapas", ot: "7495", nombre: "A-1", etapas: ["corte"] }).success);
+  assert.ok(piezasBody.safeParse({ accion: "etapas", ot: "7495", nombre: "A-1", etapas: [1] }).success);
   assert.equal(autorizar("piezas_ot", "GET", { rol: "operativo" }).ok, true);
   for (const m of ["POST", "PATCH", "DELETE"]) assert.equal(autorizar("piezas_ot", m, { rol: "gerencial" }).ok, false, m);
 });
@@ -179,10 +210,16 @@ function req(body, t) {
   });
 }
 
-function mock({ existe = true, actuales = [], falla = null } = {}) {
+function mock({ existe = true, actuales = [], falla = null, sin112 = false } = {}) {
   const escrito = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
+    {
+      match: (u) => u.includes("/rest/v1/etapas?"),
+      respond: () => (sin112
+        ? { status: 400, body: { code: "42703", message: "column etapas.por_pieza does not exist" } }
+        : { status: 200, body: ETAPAS }),
+    },
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/proyectos?"), respond: () => ({ status: 200, body: existe ? [{ id: 1, ot: "M-7495" }] : [] }) },
     {
@@ -203,7 +240,7 @@ function mock({ existe = true, actuales = [], falla = null } = {}) {
 }
 
 test("/api/piezas — cargar: una fila por unidad, upsert que conserva ids y borra lo que ya no está", async () => {
-  const { renglones } = leerPiezas(PLANILLA);
+  const { renglones } = leer(PLANILLA);
   let escrito = mock();
   let res = await api.POST(req({ accion: "cargar", ot: "M-7495", renglones }, await token("administrativo")));
   assert.equal(res.status, 200);
@@ -217,7 +254,7 @@ test("/api/piezas — cargar: una fila por unidad, upsert que conserva ids y bor
   assert.equal(fila.empresa_id, E);
   assert.equal(fila.ot, "M-7495");
   assert.equal(fila.creado_por, EMP);
-  assert.deepEqual(fila.etapas, ["corte", "canto", "cnc"]);
+  assert.deepEqual(fila.etapas, [1, 2, 3]);
   assert.equal(new Set(escrito[0].body.map((f) => Object.keys(f).sort().join())).size, 1, "mismas claves en todas las filas");
 
   escrito = mock({ actuales: [{ nombre: "M.izq-11", unidad: 1 }, { nombre: "VIEJA", unidad: 1 }] });
@@ -230,18 +267,18 @@ test("/api/piezas — cargar: una fila por unidad, upsert que conserva ids y bor
 
 test("/api/piezas — etapas de un renglón, vaciar; el operario no puede", async () => {
   let escrito = mock();
-  for (const body of [{ accion: "cargar", ot: "M-7495", renglones: [{ nombre: "A", cantidad: 1, etapas: ["corte"] }] }, { accion: "vaciar", ot: "M-7495" }]) {
+  for (const body of [{ accion: "cargar", ot: "M-7495", renglones: [{ nombre: "A", cantidad: 1, etapas: [1] }] }, { accion: "vaciar", ot: "M-7495" }]) {
     const res = await api.POST(req(body, await token("operativo")));
     assert.equal(res.status, 403, body.accion);
   }
   assert.equal(escrito.length, 0);
 
-  let res = await api.POST(req({ accion: "etapas", ot: "M-7495", nombre: "Bast.TV-21/31", etapas: ["canto", "corte"] }, await token("gerencial")));
+  let res = await api.POST(req({ accion: "etapas", ot: "M-7495", nombre: "Bast.TV-21/31", etapas: [2, 1, 5, 77] }, await token("gerencial")));
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { ok: true, etapas: ["corte", "canto"], piezas: 2 });
+  assert.deepEqual(await res.json(), { ok: true, etapas: [1, 2], piezas: 2 }, "en el orden de las etapas; Armado y las que no existen no");
   assert.equal(escrito[0].metodo, "PATCH");
   assert.match(escrito[0].url, /&nombre=eq\.Bast\.TV-21%2F31$/);
-  assert.deepEqual(escrito[0].body, { etapas: ["corte", "canto"] });
+  assert.deepEqual(escrito[0].body, { etapas: [1, 2] });
 
   escrito = mock();
   res = await api.POST(req({ accion: "vaciar", ot: "M-7495" }, await token("gerencial")));
@@ -250,16 +287,22 @@ test("/api/piezas — etapas de un renglón, vaciar; el operario no puede", asyn
   assert.match(escrito[0].url, new RegExp(`piezas_ot\\?empresa_id=eq\\.${E}&ot=eq\\.M-7495$`));
 });
 
-test("/api/piezas — OT que no existe y falta de la migración 109", async () => {
+test("/api/piezas — OT que no existe y falta de las migraciones 109 o 112", async () => {
   let escrito = mock({ existe: false });
   let res = await api.POST(req({ accion: "vaciar", ot: "9999" }, await token("gerencial")));
   assert.equal(res.status, 404);
   assert.equal(escrito.length, 0);
 
   mock({ falla: 'relation "public.piezas_ot" does not exist' });
-  res = await api.POST(req({ accion: "cargar", ot: "M-7495", renglones: [{ nombre: "A", cantidad: 1, etapas: ["corte"] }] }, await token("gerencial")));
+  res = await api.POST(req({ accion: "cargar", ot: "M-7495", renglones: [{ nombre: "A", cantidad: 1, etapas: [1] }] }, await token("gerencial")));
   assert.equal(res.status, 409);
   assert.match((await res.json()).error, /migración 109/);
+
+  escrito = mock({ sin112: true });
+  res = await api.POST(req({ accion: "cargar", ot: "M-7495", renglones: [{ nombre: "A", cantidad: 1, etapas: [1] }] }, await token("gerencial")));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 112/);
+  assert.equal(escrito.length, 0);
 });
 
 // ─── Pantalla ───
@@ -279,6 +322,7 @@ function mockPantalla(filas = []) {
     }
     // Sin escaneos (parte 18)
     if (String(opts.body || "").includes("pasos_pieza")) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    if (String(opts.body || "").includes("etapas?empresa_id")) return new Response(JSON.stringify({ data: ETAPAS }), { status: 200 });
     return new Response(JSON.stringify({ data: filas }), { status: 200 });
   };
   return pedidos;
@@ -294,7 +338,7 @@ test("pantalla — técnica pega la hoja PLANILLA, ve el resumen y guarda", asyn
   fireEvent.change(screen.getByRole("textbox", { name: "Pegar la planilla técnica" }), { target: { value: PLANILLA } });
   assert.ok(screen.getByText("218 piezas en 47 renglones"));
   assert.ok(screen.getByText(/M\.central-91" está repetido/));
-  assert.equal(screen.queryAllByText(/No encontré las columnas FF/).length, 0);
+  assert.equal(screen.queryAllByText(/No encontré la columna/).length, 0);
   fireEvent.click(screen.getByText("Guardar 218 piezas"));
   await waitFor(() => assert.ok(screen.getByText("Listo: la OT tiene 218 piezas.")));
   assert.equal(pedidos[0].accion, "cargar");
@@ -303,16 +347,17 @@ test("pantalla — técnica pega la hoja PLANILLA, ve el resumen y guarda", asyn
   assert.ok(screen.getByText(/218 piezas · 47 renglones · \d+ módulos/));
 });
 
-test("pantalla — CUT RITE avisa que CNC queda en todas; se corrige por renglón", async () => {
+test("pantalla — CUT RITE avisa que ninguna queda con CNC; se corrige por renglón", async () => {
   const pedidos = mockPantalla([
-    { id: 1, nombre: "M.izq-11", modulo: "M.izq", l1: 402, l2: 342, unidad: 1, de: 2, renglon: 0, etapas: ["corte", "canto", "cnc"] },
-    { id: 2, nombre: "M.izq-11", modulo: "M.izq", l1: 402, l2: 342, unidad: 2, de: 2, renglon: 0, etapas: ["corte", "canto", "cnc"] },
+    { id: 1, nombre: "M.izq-11", modulo: "M.izq", l1: 402, l2: 342, unidad: 1, de: 2, renglon: 0, etapas: [1, 2, 3] },
+    { id: 2, nombre: "M.izq-11", modulo: "M.izq", l1: 402, l2: 342, unidad: 2, de: 2, renglon: 0, etapas: [1, 2, 3] },
   ]);
   render(<PiezasOt proyecto={PROYECTO} empresaId={E} esGestion onClose={() => {}} />);
   await waitFor(() => assert.ok(screen.getByText("🖨 Imprimir 2 etiquetas")));
   fireEvent.click(screen.getByText("📋 Volver a pegar la planilla (si cambió)"));
   fireEvent.change(screen.getByRole("textbox", { name: "Pegar la planilla técnica" }), { target: { value: CUT_RITE } });
-  assert.ok(screen.getByText(/No encontré las columnas FF, ranurado o calado/));
+  assert.ok(screen.getByText(/No encontré la columna FF, RAN, .* para CNC: ninguna pieza queda con CNC/));
+  assert.ok(screen.getByText(/para Corte especial: ninguna pieza queda con Corte especial/));
   assert.ok(screen.getByText(/2 quedan como estaban/));
   fireEvent.click(screen.getByText("Cancelar"));
 
@@ -320,11 +365,11 @@ test("pantalla — CUT RITE avisa que CNC queda en todas; se corrige por rengló
   assert.equal(cnc.getAttribute("aria-pressed"), "true");
   fireEvent.click(cnc);
   await waitFor(() => assert.equal(screen.getByLabelText("CNC en M.izq-11").getAttribute("aria-pressed"), "false"));
-  assert.deepEqual(pedidos[0], { accion: "etapas", ot: "M-7495", nombre: "M.izq-11", etapas: ["corte", "canto"] });
+  assert.deepEqual(pedidos[0], { accion: "etapas", ot: "M-7495", nombre: "M.izq-11", etapas: [1, 2] });
 });
 
 test("pantalla — el operario ve las piezas y sus etapas, sin pegar ni cambiar", async () => {
-  mockPantalla([{ id: 1, nombre: "1-FONDO", modulo: "1", material: "FIBROPLUS 3MM", l1: 523, l2: 288, unidad: 1, de: 1, renglon: 0, etapas: ["corte"] }]);
+  mockPantalla([{ id: 1, nombre: "1-FONDO", modulo: "1", material: "FIBROPLUS 3MM", l1: 523, l2: 288, unidad: 1, de: 1, renglon: 0, etapas: [1] }]);
   render(<PiezasOt proyecto={PROYECTO} empresaId={E} onClose={() => {}} />);
   await waitFor(() => assert.ok(screen.getByText("523 × 288 · FIBROPLUS 3MM · Módulo 1")));
   assert.equal(screen.queryAllByText(/Pegar la planilla/).length, 0);

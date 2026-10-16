@@ -6,6 +6,8 @@
 //            ya estaban (mismo nombre y número) conservan su id, así las
 //            etiquetas impresas siguen valiendo; las que ya no están se borran.
 //   etapas → cambia las etapas de un renglón (todas sus unidades)
+// Las etapas de cada pieza son códigos de las etapas de la empresa que se
+// escanean por pieza (migración 112); se guardan en el orden de las etapas.
 //   vaciar → borra las piezas de la OT (se pegó mal)
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
@@ -16,7 +18,7 @@ import { sbGet, sbGetAll, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpe
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
-import { expandirPiezas, cambiosAlReemplazar } from "../../lib/piezas";
+import { expandirPiezas, cambiosAlReemplazar, reglasPieza } from "../../lib/piezas";
 import { logger } from "../../lib/logger";
 
 const LOTE = 500;
@@ -24,6 +26,14 @@ const LOTE = 500;
 function faltaMigracion(err) {
   const m = String(err?.message);
   return m.includes("piezas_ot") && /does not exist|could not find|PGRST205|42P01/i.test(m);
+}
+const falta112 = (err) => /por_pieza|columna_pieza/.test(String(err?.message));
+
+/** Deja solo las etapas de la empresa que se escanean por pieza, en su orden. */
+async function ordenarEtapas(e, opts) {
+  const etapas = (await sbGet(`etapas?empresa_id=eq.${e}&select=codigo,nombre,orden,activa,por_pieza,columna_pieza`, opts)) || [];
+  const orden = reglasPieza(etapas).map((r) => r.codigo);
+  return (lista) => orden.filter((c) => lista.includes(c));
 }
 
 async function upsertPiezas(filas, opts) {
@@ -50,11 +60,14 @@ async function procesar(sesion, datos) {
     return NextResponse.json({ ok: true });
   }
 
+  const ordenar = await ordenarEtapas(e, opts);
+
   if (datos.accion === "etapas") {
-    const filas = (await sbPatch(`${filtroOt}&nombre=eq.${encodeURIComponent(datos.nombre)}`, { etapas: datos.etapas }, opts)) || [];
+    const etapas = ordenar(datos.etapas);
+    const filas = (await sbPatch(`${filtroOt}&nombre=eq.${encodeURIComponent(datos.nombre)}`, { etapas }, opts)) || [];
     if (!filas.length) return NextResponse.json({ error: "No encontré esa pieza" }, { status: 404 });
     broadcastRefresh(e, "piezas_ot");
-    return NextResponse.json({ ok: true, etapas: datos.etapas, piezas: filas.length });
+    return NextResponse.json({ ok: true, etapas, piezas: filas.length });
   }
 
   // cargar
@@ -74,7 +87,7 @@ async function procesar(sesion, datos) {
     l2: p.l2,
     unidad: p.unidad,
     de: p.de,
-    etapas: p.etapas,
+    etapas: ordenar(p.etapas),
     cargada_at: ahora,
     creado_por: sesion.empleado_id || null,
   })), opts);
@@ -103,6 +116,9 @@ export async function POST(request) {
     } catch (err) {
       if (faltaMigracion(err)) {
         return NextResponse.json({ error: "Para las piezas con QR falta correr la migración 109 en Supabase." }, { status: 409 });
+      }
+      if (falta112(err)) {
+        return NextResponse.json({ error: "Para elegir qué etapas se escanean por pieza falta correr la migración 112 en Supabase." }, { status: 409 });
       }
       throw err;
     }

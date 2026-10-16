@@ -3,7 +3,8 @@
 //
 // Body: { accion, ... } (cualquier empleado)
 //   escanear → el QR de la etiqueta de la pieza ("OT M-7495 - PIEZA - 1234")
-//              y la etapa (corte, canto, cnc, especial). Anota que la pieza
+//              y la etapa (código de una etapa de la empresa que se escanea
+//              por pieza; migración 112). Anota que la pieza
 //              pasó por esa etapa. Si con esta pasaron todas las piezas de la
 //              OT que llevan esa etapa, marca la etapa de la OT como terminada
 //              (avance_etapas; la firma la sigue poniendo el responsable).
@@ -19,7 +20,7 @@ import { sbGet, sbPost, sbDelete, sbHeaders } from "../../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../../lib/planEnforcement";
-import { leerQrPieza, etapasSalteadas, etapaDeTipo } from "../../../lib/piezas";
+import { leerQrPieza, etapasSalteadas } from "../../../lib/piezas";
 import { normalizarOt } from "../../../lib/escaneoCarga";
 import { logger } from "../../../lib/logger";
 
@@ -30,6 +31,7 @@ function faltaMigracion(err) {
   const m = String(err?.message);
   return (m.includes("pasos_pieza") || m.includes("piezas_ot")) && /does not exist|could not find|PGRST205|42P01/i.test(m);
 }
+const falta112 = (err) => /por_pieza/.test(String(err?.message));
 
 /** Cuántas filas cumplen el filtro (sin traerlas). */
 async function contar(path, opts) {
@@ -48,22 +50,8 @@ function momentoValido(momento, ahora) {
   return new Date(t).toISOString();
 }
 
-/** Las etapas de la empresa, con tipo_pieza si ya se corrió la 111. */
-async function etapasDeEmpresa(e, opts) {
-  const base = `etapas?empresa_id=eq.${e}&order=orden.asc&select=id,codigo,nombre,activa,orden`;
-  try {
-    return (await sbGet(`${base},tipo_pieza`, opts)) || [];
-  } catch (err) {
-    if (!String(err?.message).includes("tipo_pieza")) throw err;
-    return (await sbGet(base, opts)) || [];
-  }
-}
-
-async function terminarEtapa(sesion, ot, tipo, opts) {
+async function terminarEtapa(sesion, ot, etapa, opts) {
   const e = sesion.empresa_id;
-  const etapas = await etapasDeEmpresa(e, opts);
-  const etapa = etapaDeTipo(etapas, tipo);
-  if (!etapa) return null;
   const filtro = `avance_etapas?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&etapa=eq.${etapa.codigo}`;
   const [actual] = (await sbGet(`${filtro}&select=id,estado&limit=1`, opts)) || [];
   // Ya terminada, firmada o "no aplica": no se toca
@@ -93,12 +81,17 @@ async function escanear(sesion, datos) {
   if (!pieza || (lectura.ot && normalizarOt(pieza.ot) !== normalizarOt(lectura.ot))) {
     return NextResponse.json({ error: "Esa pieza ya no está en la OT (puede que se haya vuelto a pegar la planilla). Reimprimí su etiqueta." }, { status: 404 });
   }
+  const [etapa] = (await sbGet(`etapas?empresa_id=eq.${e}&codigo=eq.${datos.etapa}&select=codigo,nombre,activa,por_pieza&limit=1`, opts)) || [];
+  if (!etapa || !etapa.por_pieza || etapa.activa === false) {
+    return NextResponse.json({ error: "Esa etapa ya no se escanea por pieza. Elegí otra (Configuración → Etapas)." }, { status: 400 });
+  }
   const datosPieza = { id: pieza.id, ot: pieza.ot, nombre: pieza.nombre, unidad: pieza.unidad, de: pieza.de };
+  const etapaNombre = etapa.nombre;
   const pasos = (await sbGet(`pasos_pieza?pieza_id=eq.${pieza.id}&empresa_id=eq.${e}&select=etapa,created_at`, opts)) || [];
-  const requerida = (pieza.etapas || []).includes(datos.etapa);
-  const previo = pasos.find((p) => p.etapa === datos.etapa);
+  const requerida = (pieza.etapas || []).map(Number).includes(datos.etapa);
+  const previo = pasos.find((p) => Number(p.etapa) === datos.etapa);
   if (previo) {
-    return NextResponse.json({ ok: true, ya: true, pieza: datosPieza, etapa: datos.etapa, requerida, faltan: [], progreso: null, etapaTerminada: null, momento: previo.created_at });
+    return NextResponse.json({ ok: true, ya: true, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan: [], progreso: null, etapaTerminada: null, momento: previo.created_at });
   }
 
   const faltan = requerida ? etapasSalteadas(pieza, datos.etapa, pasos) : [];
@@ -123,9 +116,9 @@ async function escanear(sesion, datos) {
       contar(`pasos_pieza?empresa_id=eq.${e}&ot=eq.${ot}&etapa=eq.${datos.etapa}&requerida=eq.true`, opts),
     ]);
     progreso = { pasaron: Math.min(pasaron, total), total };
-    if (total > 0 && pasaron >= total) etapaTerminada = await terminarEtapa(sesion, pieza.ot, datos.etapa, opts);
+    if (total > 0 && pasaron >= total) etapaTerminada = await terminarEtapa(sesion, pieza.ot, etapa, opts);
   }
-  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, requerida, faltan, progreso, etapaTerminada });
+  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada });
 }
 
 async function deshacer(sesion, datos) {
@@ -160,6 +153,9 @@ export async function POST(request) {
     } catch (err) {
       if (faltaMigracion(err)) {
         return NextResponse.json({ error: "Para escanear piezas falta correr la migración 110 en Supabase." }, { status: 409 });
+      }
+      if (falta112(err)) {
+        return NextResponse.json({ error: "Para escanear piezas falta correr la migración 112 en Supabase." }, { status: 409 });
       }
       throw err;
     }

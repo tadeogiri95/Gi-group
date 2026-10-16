@@ -6,14 +6,42 @@
 import { filasTsv } from "./sueltos";
 import { svgQR } from "./tarjetasQR";
 
-/** Etapas que se escanean pieza por pieza. Armado va por módulo. */
-export const ETAPAS_PIEZA = [
-  { id: "corte", nombre: "Corte" },
-  { id: "canto", nombre: "Canto" },
-  { id: "cnc", nombre: "CNC" },
-  { id: "especial", nombre: "Corte especial" },
-];
-export const IDS_ETAPAS_PIEZA = ETAPAS_PIEZA.map((e) => e.id);
+/**
+ * Las etapas que se escanean pieza por pieza son las de cada empresa: en
+ * Configuración → Etapas se marca "Se escanea por pieza" y, si no pasan
+ * todas las piezas, en qué columnas de la planilla técnica se fija Gypi
+ * (migración 112). Una pieza guarda la lista de códigos de etapa por los que
+ * pasa, en el orden de las etapas.
+ */
+export const MAX_COLUMNAS_REGLA = 12;
+
+/** "Canto, L1A; L1B" → ["Canto", "L1A", "L1B"]. */
+export function columnasDeTexto(texto) {
+  return String(texto ?? "").split(/[,;\n]/).map((t) => t.trim()).filter(Boolean).slice(0, MAX_COLUMNAS_REGLA);
+}
+
+/**
+ * Las etapas de la empresa que se escanean por pieza, en orden:
+ * { codigo, nombre, icon, color, columnas } (columnas vacía = pasan todas).
+ */
+export function reglasPieza(etapas = []) {
+  return (etapas || [])
+    .filter((e) => e && e.por_pieza && e.activa !== false && Number(e.codigo) > 0)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.codigo - b.codigo)
+    .map((e) => ({
+      codigo: Number(e.codigo),
+      nombre: e.nombre,
+      // Etapas viejas guardan el nombre de un dibujo ("Hammer"): no se muestra
+      icon: e.icon && !/^[A-Za-z]/.test(e.icon) ? e.icon : null,
+      color: e.color || null,
+      columnas: columnasDeTexto(e.columna_pieza),
+    }));
+}
+
+/** código de etapa → nombre ("2" → "Canteado"), de todas las etapas de la empresa. */
+export function nombresEtapas(etapas = []) {
+  return Object.fromEntries((etapas || []).filter((e) => e && e.codigo != null).map((e) => [Number(e.codigo), e.nombre]));
+}
 
 export const MAX_RENGLONES = 1000;
 export const MAX_POR_RENGLON = 500;
@@ -83,8 +111,6 @@ function columnas(titulos) {
 const NOMBRE = new Set(["panel", "pieza", "piezas", "nombre", "n", "na", "no", "nro", "numero"]);
 const MATERIAL = new Set(["material", "mat", "materiales"]);
 const CANTIDAD = new Set(["cant", "cantidad", "cantidades"]);
-const CNC = new Set(["ff", "ran", "ranurado", "cal", "calado", "cnc", "perforado", "perforacion"]);
-const ESPECIAL = ["corte45", "45", "diagonal", "diag", "corteespecial"];
 
 function buscarColumnas(cols) {
   const primera = (f, desde = 0) => cols.findIndex((c, i) => i >= desde && f(c));
@@ -93,43 +119,57 @@ function buscarColumnas(cols) {
   const cantidad = primera((c) => c.propios.some((p) => CANTIDAD.has(p)));
   const l1 = primera((c) => c.propios.some((p) => p === "l1" || p === "largo") && !c.partes.some((p) => p.includes("skp")));
   const l2 = primera((c) => c.propios.some((p) => p === "l2" || p === "ancho") && !c.partes.some((p) => p.includes("skp")), l1 + 1);
-  const indices = (f) => cols.map((c, i) => (f(c) ? i : -1)).filter((i) => i >= 0);
-  const canto = indices((c) => !c.partes.some((p) => p.includes("totales"))
-    && c.partes.some((p) => p.startsWith("canto") || ["l1a", "l1b", "l2a", "l2b"].includes(p)));
-  const cnc = indices((c) => CNC.has(c.hoja));
-  const especial = indices((c) => !c.partes.some((p) => p.includes("agregad"))
-    && c.partes.some((p) => ESPECIAL.includes(p)) && !!c.hoja);
-  return { nombre, material, cantidad, l1, l2, canto, cnc, especial };
+  return { nombre, material, cantidad, l1, l2 };
+}
+
+/**
+ * Columnas de la planilla que corresponden a los nombres que la empresa
+ * escribió para una etapa. Una columna cuenta si su título, o el del grupo
+ * de arriba, es uno de esos nombres (o empieza así, para nombres de 4 letras
+ * o más: "Canto" toma "CANTOS"). Las columnas de totales y agregados no
+ * cuentan: resumen lo de otras columnas.
+ */
+function columnasDeRegla(cols, columnas) {
+  const terminos = columnas.map(norm).filter(Boolean);
+  if (!terminos.length) return [];
+  const coincide = (p, t) => p === t || (t.length >= 4 && p.startsWith(t));
+  return cols.map((c, i) => {
+    if (!c.hoja || c.partes.some((p) => p.includes("total") || p.includes("agregad"))) return -1;
+    return terminos.some((t) => c.hoja === t || c.partes.some((p) => coincide(p, t))) ? i : -1;
+  }).filter((i) => i >= 0);
 }
 
 /**
  * Lo pegado de la planilla técnica (hoja PLANILLA desde la fila PANEL, o la
  * hoja CUT RITE) → renglones de piezas.
- * Qué etapas le tocan a cada pieza:
- *   - Corte: todas.
- *   - Canto: si alguna columna de cantos dice algo. Sin columnas de cantos, todas.
- *   - CNC: si FF, ranurado o calado dicen algo. Sin esas columnas, todas.
- *   - Corte especial: si corte 45° o diagonal dicen algo. Sin esas columnas, ninguna.
+ * Por qué etapas pasa cada pieza (reglas = reglasPieza(etapas)):
+ *   - Etapa sin columnas: todas las piezas.
+ *   - Etapa con columnas: las piezas que tienen algo en alguna de ellas. Si
+ *     lo pegado no tiene ninguna de esas columnas, ninguna pieza (y avisa).
  * Se puede corregir a mano por renglón.
+ * @param {string} texto
+ * @param {object[]} reglas
  * @returns {{ renglones: object[], errores: { fila: number, motivo: string }[], avisos: string[],
- *   faltaColumnas: string[], encontradas: { canto: boolean, cnc: boolean, especial: boolean } }}
+ *   faltaColumnas: string[], sinColumna: object[] }}
  */
-export function leerPiezas(texto) {
+export function leerPiezas(texto, reglas = []) {
   const filas = filasTsv(texto).map((celdas, i) => ({ celdas, linea: i + 1 })).filter((f) => f.celdas.some((c) => c.trim()));
   const titulos = [];
   while (filas.length && !esFilaDatos(filas[0].celdas) && titulos.length < 6) {
     const { celdas } = filas.shift();
     if (!esFilaColumnaN(celdas)) titulos.push(celdas);
   }
-  const vacio = { renglones: [], errores: [], avisos: [], encontradas: { canto: false, cnc: false, especial: false } };
+  const vacio = { renglones: [], errores: [], avisos: [], sinColumna: [] };
   if (!titulos.length) return { ...vacio, faltaColumnas: ["títulos (copiá también la fila de PANEL, MATERIAL, L1…)"] };
-  const col = buscarColumnas(columnas(titulos));
+  const cols = columnas(titulos);
+  const col = buscarColumnas(cols);
   const faltaColumnas = [];
   if (col.nombre < 0) faltaColumnas.push("PANEL");
   if (col.cantidad < 0) faltaColumnas.push("CANT.");
   if (faltaColumnas.length) return { ...vacio, faltaColumnas };
 
-  const encontradas = { canto: col.canto.length > 0, cnc: col.cnc.length > 0, especial: col.especial.length > 0 };
+  const porRegla = reglas.map((r) => ({ regla: r, indices: r.columnas.length ? columnasDeRegla(cols, r.columnas) : null }));
+  const sinColumna = porRegla.filter((x) => x.indices && !x.indices.length).map((x) => x.regla);
   const algunaCon = (celdas, indices) => indices.some((i) => tieneValor(celdas[i]));
   const renglones = [];
   const errores = [];
@@ -163,10 +203,7 @@ export function leerPiezas(texto) {
       avisos.push(`"${nombre}" está repetido: el renglón de la fila ${linea} queda como "${nuevo}".`);
       nombre = nuevo;
     }
-    const etapas = ["corte"];
-    if (!encontradas.canto || algunaCon(celdas, col.canto)) etapas.push("canto");
-    if (!encontradas.cnc || algunaCon(celdas, col.cnc)) etapas.push("cnc");
-    if (encontradas.especial && algunaCon(celdas, col.especial)) etapas.push("especial");
+    const etapas = porRegla.filter((x) => !x.indices || algunaCon(celdas, x.indices)).map((x) => x.regla.codigo);
     renglones.push({
       nombre,
       modulo: moduloDe(nombre),
@@ -178,7 +215,7 @@ export function leerPiezas(texto) {
     });
     piezas += cantidad;
   }
-  return { renglones, errores, avisos, faltaColumnas, encontradas };
+  return { renglones, errores, avisos, faltaColumnas, sinColumna };
 }
 
 /** Renglones → una pieza por unidad física ("2 de 4"), en el orden de la planilla. */
@@ -239,22 +276,21 @@ export function leerQrPieza(texto) {
 
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
-const nombreEtapa = (id) => ETAPAS_PIEZA.find((e) => e.id === id)?.nombre || id;
 
 /**
  * Página con una etiqueta por pieza, del tamaño del rollo de la impresora de
  * etiquetas (una por página): OT, pieza, "2 de 4", medidas, material, módulo,
  * las etapas que le tocan y el QR.
- * @param {{ empresa?: string, ot: string, piezas: object[], tamano: { ancho: number, alto: number } }} datos
+ * @param {{ empresa?: string, ot: string, piezas: object[], tamano: { ancho: number, alto: number }, nombres?: Record<number, string> }} datos
  */
-export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano }) {
+export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano, nombres = {} }) {
   const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
   const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
   const items = [];
   for (const p of piezas) {
     const qr = await svgQR(textoQrPieza(ot, p.id));
-    const ruta = (p.etapas || []).map(nombreEtapa).join(" › ");
+    const ruta = (p.etapas || []).map((c) => nombres[c] || `Etapa ${c}`).join(" › ");
     items.push(`
   <div class="etiqueta">
     <div class="texto">
@@ -296,115 +332,34 @@ export async function imprimirEtiquetasPiezas(datos) {
 
 // ─── Parte 18: escaneo de cada pieza en cada etapa ─────────────────────────
 
-/** Nombre de la etapa de pieza ("canto" → "Canto"). */
-export const nombreEtapaPieza = nombreEtapa;
-
-/**
- * A qué etapa de pieza corresponde una etapa de la empresa. Manda lo que se
- * eligió en Configuración → Etapas ("Se escanea por pieza como", migración
- * 111). Si no se eligió nada, se adivina por el nombre: "Corte especial" →
- * especial, "Canto"/"Canteado" → canto, "CNC"/"Procesos"/"Perforado" → cnc,
- * "Corte"/"Seccionado" → corte. Las demás (Armado, …) → null.
- */
-export function tipoDeEtapa(etapa) {
-  if (IDS_ETAPAS_PIEZA.includes(etapa?.tipo_pieza)) return etapa.tipo_pieza;
-  return tipoPorNombre(etapa);
-}
-
-function tipoPorNombre(etapa) {
-  const n = norm(etapa?.nombre);
-  if (!n) return null;
-  if (n.includes("especial") || n.includes("diagonal") || n.includes("45")) return "especial";
-  if (n.includes("canto") || n.includes("cante")) return "canto";
-  if (["cnc", "proceso", "perfor", "mecaniz", "router", "ranur", "calad"].some((p) => n.includes(p))) return "cnc";
-  if (n.includes("corte") || n.includes("seccion") || n.includes("escuadr")) return "corte";
-  return null;
-}
-
-/**
- * Las etapas de la empresa (activas) que se escanean pieza por pieza, una por
- * tipo. Si alguna etapa tiene elegido "Se escanea por pieza como", solo
- * cuentan las elegidas; si ninguna, se adivina por el nombre.
- * @returns {Record<string, object|null>} tipo → etapa de la empresa
- */
-export function etapasDePieza(etapas = []) {
-  const activas = (etapas || []).filter((e) => e && e.activa !== false);
-  const elegidas = activas.some((e) => IDS_ETAPAS_PIEZA.includes(e.tipo_pieza));
-  const out = {};
-  for (const tipo of IDS_ETAPAS_PIEZA) {
-    out[tipo] = (elegidas
-      ? activas.find((e) => e.tipo_pieza === tipo)
-      : activas.find((e) => tipoPorNombre(e) === tipo)) || null;
-  }
-  return out;
-}
-
-/** La etapa de la empresa (activa) que corresponde a una etapa de pieza, o null. */
-export function etapaDeTipo(etapas = [], tipo) {
-  return etapasDePieza(etapas)[tipo] || null;
-}
-
-/** Tipo de pieza de una etapa de la empresa, mirando todas las etapas. */
-export function tipoDeEtapaEn(etapas = [], etapa) {
-  if (!etapa) return null;
-  const mapa = etapasDePieza(etapas);
-  const misma = (x) => x === etapa || (etapa.id != null && x.id === etapa.id) || (etapa.codigo != null && x.codigo === etapa.codigo);
-  return IDS_ETAPAS_PIEZA.find((t) => mapa[t] && misma(mapa[t])) || null;
-}
-
-/**
- * Los botones del escaneo: los 4 tipos con el nombre, ícono y color de la
- * etapa de la empresa que les corresponde (si hay).
- */
-export function botonesEtapasPieza(etapas = []) {
-  const mapa = etapasDePieza(etapas);
-  // Si la empresa ya eligió sus etapas, solo se muestran las elegidas
-  const elegidas = (etapas || []).some((e) => e?.activa !== false && IDS_ETAPAS_PIEZA.includes(e?.tipo_pieza));
-  return ETAPAS_PIEZA.filter((e) => !elegidas || mapa[e.id]).map((e) => ({
-    id: e.id,
-    nombre: mapa[e.id]?.nombre || e.nombre,
-    // Etapas viejas guardan el nombre de un dibujo ("Hammer"): no se muestra
-    icon: mapa[e.id]?.icon && !/^[A-Za-z]/.test(mapa[e.id].icon) ? mapa[e.id].icon : null,
-    color: mapa[e.id]?.color || null,
-    etapa: mapa[e.id],
-  }));
-}
-
-/** tipo → nombre que usa la empresa ("canto" → "Canteado"). */
-export function nombresEtapasPieza(etapas = []) {
-  const mapa = etapasDePieza(etapas);
-  return Object.fromEntries(ETAPAS_PIEZA.map((e) => [e.id, mapa[e.id]?.nombre || e.nombre]));
-}
-
-/** Etapas de la pieza anteriores a `etapa` que todavía no tienen escaneo. */
+/** Etapas de la pieza anteriores a `etapa` (en su ruta) que todavía no tienen escaneo. */
 export function etapasSalteadas(pieza, etapa, pasosDeLaPieza = []) {
-  const hechas = new Set(pasosDeLaPieza.map((p) => p.etapa));
-  const orden = IDS_ETAPAS_PIEZA.filter((e) => (pieza?.etapas || []).includes(e));
-  const antes = IDS_ETAPAS_PIEZA.slice(0, IDS_ETAPAS_PIEZA.indexOf(etapa));
-  return orden.filter((e) => antes.includes(e) && !hechas.has(e));
+  const hechas = new Set(pasosDeLaPieza.map((p) => Number(p.etapa)));
+  const ruta = (pieza?.etapas || []).map(Number);
+  const i = ruta.indexOf(Number(etapa));
+  return i <= 0 ? [] : ruta.slice(0, i).filter((e) => !hechas.has(e));
 }
 
 /**
  * Avance de las piezas de una OT por etapa: cuántas piezas llevan esa etapa,
- * cuántas ya pasaron y cuáles faltan.
- * @returns {Record<string, { total: number, pasaron: number, faltan: object[] }>}
+ * cuántas ya pasaron y cuáles faltan. En el orden de `orden` (códigos); las
+ * etapas que no están ahí van al final.
+ * @returns {{ codigo: number, total: number, pasaron: number, faltan: object[] }[]}
  */
-export function avancePiezas(piezas = [], pasos = []) {
-  const hechos = new Set(pasos.map((p) => `${p.pieza_id}|${p.etapa}`));
-  const out = {};
-  for (const e of IDS_ETAPAS_PIEZA) {
-    const llevan = piezas.filter((p) => (p.etapas || []).includes(e));
-    const faltan = llevan.filter((p) => !hechos.has(`${p.id}|${e}`));
-    out[e] = { total: llevan.length, pasaron: llevan.length - faltan.length, faltan };
-  }
-  return out;
+export function avancePiezas(piezas = [], pasos = [], orden = []) {
+  const hechos = new Set(pasos.map((p) => `${p.pieza_id}|${Number(p.etapa)}`));
+  const codigos = [...orden.map(Number)];
+  for (const p of piezas) for (const e of p.etapas || []) if (!codigos.includes(Number(e))) codigos.push(Number(e));
+  return codigos.map((codigo) => {
+    const llevan = piezas.filter((p) => (p.etapas || []).map(Number).includes(codigo));
+    const faltan = llevan.filter((p) => !hechos.has(`${p.id}|${codigo}`));
+    return { codigo, total: llevan.length, pasaron: llevan.length - faltan.length, faltan };
+  }).filter((a) => a.total > 0);
 }
 
-/** "Corte 120 de 218 · Canto 80 de 190" (solo las etapas que alguna pieza lleva). */
-export function textoAvancePiezas(avance) {
-  return IDS_ETAPAS_PIEZA.filter((e) => avance[e]?.total)
-    .map((e) => `${nombreEtapa(e)} ${avance[e].pasaron} de ${avance[e].total}`)
-    .join(" · ");
+/** "Corte 120 de 218 · Canto 80 de 190". */
+export function textoAvancePiezas(avance, nombres = {}) {
+  return avance.map((a) => `${nombres[a.codigo] || `Etapa ${a.codigo}`} ${a.pasaron} de ${a.total}`).join(" · ");
 }
 
 /**
@@ -413,7 +368,7 @@ export function textoAvancePiezas(avance) {
  * @returns {{ tono: "verde"|"amarillo"|"rojo", texto: string, detalle: string|null }}
  */
 export function mensajeEscaneo(r, nombres = {}) {
-  const nombreEtapa = (id) => nombres[id] || nombreEtapaPieza(id);
+  const nombreEtapa = (c) => nombres[c] || (Number(c) === Number(r?.etapa) && r?.etapaNombre) || `Etapa ${c}`;
   if (!r?.ok) return { tono: "rojo", texto: r?.error || "No se pudo anotar la pieza.", detalle: null };
   const p = r.pieza || {};
   const cual = `${p.nombre}${p.de > 1 ? ` (${p.unidad} de ${p.de})` : ""}`;
