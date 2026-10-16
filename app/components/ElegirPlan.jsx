@@ -3,7 +3,7 @@
 // activos y add-ons. Precio en dólares y lo que se cobra en pesos hoy.
 import { useState, useEffect } from "react";
 import { LINEAS, TRAMOS, ADDONS, PLANES, precioUsd, aPesos } from "../lib/plans";
-import { getToken } from "../lib/supabase";
+import { apiFetch } from "../lib/supabase";
 import EnterpriseContactButton from "./EnterpriseContactButton";
 
 const usd = (n) => `USD ${Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
@@ -96,7 +96,7 @@ export default function ElegirPlan({ anual, busy, actual, onElegir }) {
 
   useEffect(() => {
     let vivo = true;
-    fetch("/api/billing/precios", { headers: { Authorization: `Bearer ${getToken()}` } })
+    apiFetch("/api/billing/precios")
       .then((r) => r.json())
       .then((d) => { if (vivo) d.error ? setError(d.error) : setDatos(d); })
       .catch(() => vivo && setError("No pudimos cargar los precios."));

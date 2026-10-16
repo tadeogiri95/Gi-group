@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { sb, getToken } from './lib/supabase';
+import { sb, apiFetch } from './lib/supabase';
 import { setColoresEmpresa } from './lib/theme';
 
 import { Button } from './components/ui';
@@ -11,10 +11,8 @@ import { imprimirTarjetas } from './lib/tarjetasQR';
 const TOTAL_PASOS = 6;
 
 function trackOnboarding(evento, meta = {}) {
-  const token = getToken();
-  fetch('/api/analytics/event', {
+  apiFetch('/api/analytics/event', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({ evento, meta }),
   }).catch(() => {});
 }
@@ -336,11 +334,9 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
 
   const mandarPorEmail = async () => {
     setEnvioEmail({ estado: "enviando", texto: "" });
-    const token = getToken();
     try {
-      const r = await fetch("/api/empleados/tarjetas-email", {
+      const r = await apiFetch("/api/empleados/tarjetas-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ tarjetas: (codigos || []).map(c => ({ legajo: c.legajo, codigo: c.codigo })) }),
       });
       const d = await r.json().catch(() => ({}));
@@ -353,17 +349,14 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
 
   const finalizar = async () => {
     setSaving(true); setError("");
-    const token = getToken();
     try {
       await Promise.all([
-        ...divisiones.map((d, i) => fetch("/api/config-empresa", {
+        ...divisiones.map((d, i) => apiFetch("/api/config-empresa", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ action: "add_division", clave: d.clave, label: d.label, icon: d.icon, color: d.color, orden: i + 1 }),
         })),
-        ...etapas.map((e, i) => fetch("/api/config-empresa", {
+        ...etapas.map((e, i) => apiFetch("/api/config-empresa", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ action: "add_etapa", codigo: e.codigo, nombre: e.nombre, icon: e.icon, color: e.color, orden: i + 1 }),
         })),
       ]);
@@ -382,9 +375,8 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
       if (logoBase64) {
         const fileName = `logos/${eid}_${Date.now()}.${logoBase64.ext}`;
         try {
-          const r = await fetch("/api/upload", {
+          const r = await apiFetch("/api/upload", {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
             body: JSON.stringify({ fileName, fileBase64: logoBase64.base64, fileType: logoBase64.type }),
           });
           const d = await r.json();
@@ -413,9 +405,8 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
         const csvBody = ["legajo,nombre,division,rol", ...filas.map(f => f.map(csvField).join(","))].join("\n");
         const diagrama = usarHorario ? diagramaDesde(horario) : null;
         try {
-          const r = await fetch("/api/empleados/import-csv", {
+          const r = await apiFetch("/api/empleados/import-csv", {
             method: "POST",
-            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
             body: JSON.stringify({ csv: csvBody, ...(diagrama ? { diagrama } : {}) }),
           });
           const d = await r.json().catch(() => ({}));
