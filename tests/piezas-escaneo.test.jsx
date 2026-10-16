@@ -63,8 +63,8 @@ test("migración 112 — etapas por pieza de cada empresa; los tipos viejos pasa
   assert.match(sql, /alter table public\.pasos_pieza add constraint pasos_pieza_pieza_id_etapa_key unique \(pieza_id, etapa\)/);
   assert.match(sql, /alter table public\.etapas drop column if exists tipo_pieza/);
   assert.match(sql, /udt_name = '_text'/, "idempotente: solo convierte si sigue siendo texto");
-  assert.match(sql, /^begin;$/m);
-  assert.match(sql, /^commit;$/m);
+  assert.match(sql, /^do \$mig\$$/m, "todo en un solo bloque: el editor de Supabase no lo puede partir");
+  assert.equal((sql.match(/\$mig\$/g) || []).length, 2);
 });
 
 test("avance — etapas salteadas, piezas que faltan por etapa y texto", () => {
