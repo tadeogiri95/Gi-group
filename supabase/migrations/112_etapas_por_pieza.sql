@@ -31,8 +31,10 @@ alter table public.etapas add constraint etapas_columna_pieza_check
 -- Por si no se corrió la 111
 alter table public.etapas add column if not exists tipo_pieza text;
 
--- Tipo viejo → etapa de cada empresa
-create temp table mapa_pieza on commit drop as
+-- Tipo viejo → etapa de cada empresa. Tabla común (no temporal): el editor
+-- SQL de Supabase no siempre conserva las temporales entre sentencias.
+drop table if exists public.mapa_pieza_112;
+create table public.mapa_pieza_112 as
 with base as (
   select e.empresa_id, e.codigo, e.orden, e.tipo_pieza is not null as elegido,
     coalesce(e.tipo_pieza, case
@@ -63,7 +65,7 @@ set por_pieza = true,
       when 'especial' then 'Corte 45, 45, Diagonal, Diag, Corte especial'
       else null
     end
-from mapa_pieza m
+from public.mapa_pieza_112 m
 where e.empresa_id = m.empresa_id and e.codigo = m.codigo and not e.por_pieza;
 
 do $$
@@ -75,7 +77,7 @@ begin
     alter table public.piezas_ot add column ruta integer[];
     update public.piezas_ot p set ruta = coalesce((
       select array_agg(m.codigo order by m.orden, m.codigo)
-      from mapa_pieza m where m.empresa_id = p.empresa_id and m.tipo = any (p.etapas)
+      from public.mapa_pieza_112 m where m.empresa_id = p.empresa_id and m.tipo = any (p.etapas)
     ), '{}');
     alter table public.piezas_ot drop column etapas;
     alter table public.piezas_ot rename column ruta to etapas;
@@ -89,7 +91,7 @@ begin
                and column_name = 'etapa' and data_type = 'text') then
     alter table public.pasos_pieza add column etapa_cod integer;
     update public.pasos_pieza s set etapa_cod = m.codigo
-      from mapa_pieza m where m.empresa_id = s.empresa_id and m.tipo = s.etapa;
+      from public.mapa_pieza_112 m where m.empresa_id = s.empresa_id and m.tipo = s.etapa;
     delete from public.pasos_pieza where etapa_cod is null;
     alter table public.pasos_pieza drop column etapa;
     alter table public.pasos_pieza rename column etapa_cod to etapa;
@@ -102,5 +104,7 @@ create index if not exists pasos_pieza_empresa_ot on public.pasos_pieza (empresa
 
 drop index if exists public.etapas_empresa_tipo_pieza_uniq;
 alter table public.etapas drop column if exists tipo_pieza;
+
+drop table if exists public.mapa_pieza_112;
 
 commit;
