@@ -8,7 +8,7 @@
 // la lista muestra en verde lo cargado y en amarillo lo que falta.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, sb } from "../lib/supabase";
-import { estadoCarga, imprimirRotulos, linkCarga, TAMANOS_ETIQUETA } from "../lib/carga";
+import { estadoCarga, imprimirRotulos, linkCarga, TAMANOS_ROTULO } from "../lib/carga";
 import { nombreSuelto } from "../lib/sueltos";
 import { normalizarChecklist } from "../lib/avance";
 import { fechaCorta } from "../lib/ot";
@@ -16,7 +16,8 @@ import { fotoBase64, subirImagen } from "../lib/foto";
 import { bultosPegados, cotejarQr } from "../lib/escaneoCarga";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 
-const CLAVE_TAMANO = "gypi_tamano_etiqueta";
+// Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
+const CLAVE_TAMANO = "gypi_tamano_rotulo";
 const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer";
 // Verde lo cargado, amarillo lo que falta
 const FILA = "flex items-center gap-2 rounded-xl p-2.5 border";
@@ -40,7 +41,7 @@ function avisar(ok) {
 }
 
 function leerTamano() {
-  try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
+  try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ROTULO[0].id; } catch { return TAMANOS_ROTULO[0].id; }
 }
 
 function Seccion({ titulo, children }) {
@@ -206,7 +207,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
   const firmar = async (rol) => ponerCarga(await accion({ accion: "firmar", ot: otStr, rol }));
   const desfirmar = async () => { setConfirmar(null); ponerCarga(await accion({ accion: "desfirmar", ot: otStr })); };
   const imprimir = async () => {
-    const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
+    const t = TAMANOS_ROTULO.find((x) => x.id === tamano) || TAMANOS_ROTULO[0];
     try { localStorage.setItem(CLAVE_TAMANO, t.id); } catch { /* sin almacenamiento */ }
     try {
       await imprimirRotulos({
@@ -222,7 +223,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
   };
   // Una etiqueta por renglón de sueltos, con su QR para escanearlo al cargar
   const imprimirSueltos = async () => {
-    const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
+    const t = TAMANOS_ROTULO.find((x) => x.id === tamano) || TAMANOS_ROTULO[0];
     try {
       await imprimirRotulos({
         empresa: empresa?.nombre_corto || empresa?.nombre || "",
@@ -325,7 +326,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
         {bultos.length > 0 && (
           <div className="flex gap-2">
             <select className="g-input flex-1 min-w-0" value={tamano} onChange={(e) => setTamano(e.target.value)} aria-label="Tamaño de la etiqueta">
-              {TAMANOS_ETIQUETA.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              {TAMANOS_ROTULO.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
             </select>
             <button onClick={imprimir} className="g-btn g-btn-secondary">🖨 Imprimir rótulos</button>
           </div>

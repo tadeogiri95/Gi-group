@@ -5,12 +5,13 @@
 // la carga de la OT. Se imprimen todas de una vez en la impresora de
 // etiquetas, del mismo tamaño de rollo que los rótulos de bulto.
 import { useState } from "react";
-import { imprimirRotulos, linkCarga, modulosParaEtiquetas, MAX_ETIQUETAS, TAMANOS_ETIQUETA } from "../lib/carga";
+import { imprimirRotulos, linkCarga, modulosParaEtiquetas, MAX_ETIQUETAS, TAMANOS_ROTULO } from "../lib/carga";
 
-const CLAVE_TAMANO = "gypi_tamano_etiqueta";
+// Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
+const CLAVE_TAMANO = "gypi_tamano_rotulo";
 
 function leerTamano() {
-  try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
+  try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ROTULO[0].id; } catch { return TAMANOS_ROTULO[0].id; }
 }
 
 export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) {
@@ -26,7 +27,7 @@ export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) 
 
   const imprimir = async () => {
     setError(null);
-    const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
+    const t = TAMANOS_ROTULO.find((x) => x.id === tamano) || TAMANOS_ROTULO[0];
     try { localStorage.setItem(CLAVE_TAMANO, t.id); } catch { /* sin almacenamiento */ }
     try {
       await imprimirRotulos({
@@ -64,7 +65,7 @@ export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) 
 
         <label className="g-label" htmlFor="etiq-tamano">Tamaño de la etiqueta</label>
         <select id="etiq-tamano" className="g-input w-full mb-3" value={tamano} onChange={(e) => setTamano(e.target.value)}>
-          {TAMANOS_ETIQUETA.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+          {TAMANOS_ROTULO.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
         </select>
 
         {modulos.length > 0 && (

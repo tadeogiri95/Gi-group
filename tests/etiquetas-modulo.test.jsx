@@ -4,7 +4,7 @@ import "./helpers/domSetup.js";
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { htmlRotulos, modulosParaEtiquetas, TAMANOS_ETIQUETA } from "../app/lib/carga.js";
+import { htmlRotulos, modulosParaEtiquetas, CUARTO_A4, TAMANOS_ETIQUETA, TAMANOS_ROTULO } from "../app/lib/carga.js";
 
 afterEach(() => cleanup());
 
@@ -32,6 +32,22 @@ test("etiqueta — dice Módulo N de T, con el nombre y el QR", async () => {
   assert.match(html, /<svg/);
 });
 
+test("etiqueta en 1/4 de A4 — cuatro por hoja apaisada, la última hoja sin salto de más", async () => {
+  const html = await htmlRotulos({
+    empresa: "GI", proyecto: { ot: "7859" }, bultos: modulosParaEtiquetas(6), link: "https://app/gi?carga=7859", tamano: CUARTO_A4, titulo: "Módulo",
+  });
+  assert.match(html, /@page \{ size: A4 landscape; margin: 0; \}/);
+  assert.equal(html.match(/<div class="hoja">/g).length, 2, "6 etiquetas = 2 hojas");
+  assert.equal(html.match(/class="rotulo"/g).length, 6);
+  assert.match(html, /grid-template-columns: repeat\(2, 148\.5mm\)/);
+  assert.match(html, /Módulo 6 de 6/);
+  assert.equal(TAMANOS_ROTULO[0], CUARTO_A4, "en módulos y bultos, 1/4 de A4 viene primero");
+  assert.ok(!TAMANOS_ETIQUETA.includes(CUARTO_A4), "las etiquetas de pieza y de stock siguen con los rollos");
+  const rollo = await htmlRotulos({ empresa: "GI", proyecto: { ot: "7859" }, bultos: modulosParaEtiquetas(2), link: "x", tamano: TAMANOS_ETIQUETA[0] });
+  assert.doesNotMatch(rollo, /class="hoja"/);
+  assert.match(rollo, /@page \{ size: 100mm 50mm; margin: 0; \}/);
+});
+
 test("pantalla — propone el total de módulos de la OT e imprime todas de una vez", async () => {
   const escrito = [];
   const ventana = { document: { write: (h) => escrito.push(h), close() {} }, focus() {}, print() {} };
@@ -43,6 +59,7 @@ test("pantalla — propone el total de módulos de la OT e imprime todas de una 
     assert.match(screen.getByRole("status").textContent, /^3 etiquetas: Módulo 1 de 3/);
     fireEvent.change(screen.getByLabelText("Nombres de los módulos (opcional)"), { target: { value: "M.izq\nM.central\nBast.TV\nAlacena" } });
     assert.match(screen.getByRole("status").textContent, /^4 etiquetas: Módulo 1 de 4 \(M\.izq\)/);
+    assert.equal(screen.getByLabelText("Tamaño de la etiqueta").value, "a4-cuarto", "por defecto, 1/4 de hoja A4");
     fireEvent.click(screen.getByText("🖨 Imprimir etiquetas"));
     await waitFor(() => assert.equal(escrito.length, 1));
     assert.equal(escrito[0].match(/class="rotulo"/g).length, 4);
