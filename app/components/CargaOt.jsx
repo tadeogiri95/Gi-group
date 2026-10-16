@@ -13,7 +13,7 @@ import { nombreSuelto } from "../lib/sueltos";
 import { normalizarChecklist } from "../lib/avance";
 import { fechaCorta } from "../lib/ot";
 import { fotoBase64, subirImagen } from "../lib/foto";
-import { bultosPegados, cotejarQr } from "../lib/escaneoCarga";
+import { bultosPegados, cotejarQr, leerQr } from "../lib/escaneoCarga";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 
 // Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
@@ -164,7 +164,18 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
     const ahora = Date.now();
     if (ocupado.current || (texto === ultimoQr.current.texto && ahora - ultimoQr.current.at < REPETIDO_MS)) return;
     ultimoQr.current = { texto, at: ahora };
-    const r = cotejarQr(texto, { ot: otStr, bultos, sueltos });
+    // Etiqueta de pieza: se lee esa pieza para saber cómo se llama
+    let piezas = [];
+    const pid = leerQr(texto)?.piezaId;
+    if (pid) {
+      ocupado.current = true;
+      try {
+        piezas = (await sb.get(`piezas_ot?empresa_id=eq.${empresaId}&id=eq.${pid}&ot=eq.${encodeURIComponent(otStr)}&select=id,nombre,modulo&limit=1`).catch(() => [])) || [];
+      } finally {
+        ocupado.current = false;
+      }
+    }
+    const r = cotejarQr(texto, { ot: otStr, bultos, sueltos, piezas });
     if (r.error) { avisar(false); setLectura({ tono: "error", texto: r.error }); return; }
     if (r.tipo === "ot") { setLectura({ tono: "ya", texto: "Es el QR de esta OT. Ahora escaneá los bultos y los sueltos." }); return; }
     if (r.yaCargado) { avisar(true); setLectura({ tono: "ya", texto: `${r.nombre}: ya estaba cargado.` }); return; }

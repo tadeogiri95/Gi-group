@@ -80,6 +80,18 @@ test("cotejarQr — tilda lo que es de la OT y avisa lo que no", () => {
   assert.deepEqual(cotejarQr("M-7495", datos), { tipo: "ot" });
 });
 
+test("cotejarQr — la etiqueta de una pieza tilda el suelto que se llama igual", () => {
+  assert.deepEqual(leerQr("OT M-7495 - PIEZA - 1234"), { ot: "M-7495", piezaId: 1234 });
+  const piezas = [{ id: 50, nombre: "EST-11 (2)", modulo: "EST" }, { id: 51, nombre: "M.izq-11", modulo: "M.izq" }];
+  const datos = { ot: "M-7495", bultos: BULTOS, sueltos: SUELTOS, piezas };
+  const r = cotejarQr("OT M-7495 - PIEZA - 50", datos);
+  assert.equal(r.tipo, "suelto");
+  assert.equal(r.item.id, 7, "sin el (2) de renglón repetido, y primero el que falta");
+  assert.match(cotejarQr("OT M-7495 - PIEZA - 51", datos).error, /escaneá el rótulo del bulto/);
+  assert.match(cotejarQr("OT M-7495 - PIEZA - 99", datos).error, /no está en la lista de piezas/);
+  assert.match(cotejarQr("OT M-7038 - PIEZA - 50", datos).error, /OT M-7038, no de esta/);
+});
+
 test("bultosPegados — la columna ETIQUETA de la planilla, sin título ni vacíos", () => {
   const pegado = "ETIQUETA (pegar en Gypi → 🏷 Módulos)\nM.izq · Módulo inferior izquierdo\t\n\nM.der ·  Módulo derecho\r\n";
   assert.deepEqual(bultosPegados(pegado), ["M.izq · Módulo inferior izquierdo", "M.der · Módulo derecho"]);
@@ -149,6 +161,7 @@ function mockPantalla({ bultos = BULTOS, sueltos = SUELTOS } = {}) {
     const data = path.startsWith("proyectos") ? [{ ot: "M-7495", cliente: "Siciliano" }]
       : path.startsWith("bultos_ot") ? bultos
       : path.startsWith("sueltos_ot") ? sueltos
+      : path.startsWith("piezas_ot") && path.includes("id=eq.60&") ? [{ id: 60, nombre: "EST-11", modulo: "EST" }]
       : [];
     return Response.json({ data });
   };
@@ -176,6 +189,15 @@ test("pantalla — escanear: tilda el bulto y el suelto leídos y avisa lo ajeno
   assert.deepEqual(pedidos.find((p) => p.url === "/api/sueltos"), { url: "/api/sueltos", accion: "tildar", id: 7, columna: "carga", valor: true });
   assert.equal(pedidos.length, 2, "el QR de otra OT no tilda nada");
   await waitFor(() => assert.match(screen.getByText("Bulto 1 de 2").closest("li").className, /gypi-green/));
+});
+
+test("pantalla — escanear la etiqueta de una pieza tilda su suelto", async () => {
+  camaraFalsa(["OT M-7495 - PIEZA - 60"]);
+  const pedidos = mockPantalla();
+  render(<CargaOt ot="M-7495" empresaId={E} onClose={() => {}} />);
+  fireEvent.click(await screen.findByText("📷 Escanear carga"));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.url === "/api/sueltos")), { timeout: 3000 });
+  assert.deepEqual(pedidos.find((p) => p.url === "/api/sueltos"), { url: "/api/sueltos", accion: "tildar", id: 7, columna: "carga", valor: true });
 });
 
 test("pantalla — sin bultos, se pegan los de la planilla", async () => {
