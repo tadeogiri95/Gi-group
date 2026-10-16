@@ -270,7 +270,7 @@ test("PATCH config-empresa — update_etapa acepta íconos largos (🛠️, nomb
   }
 });
 
-test("PATCH config-empresa — update_etapa con tipo_pieza se lo saca a la etapa que lo tenía", async () => {
+test("PATCH config-empresa — update_etapa marca la etapa para escanear por pieza con sus columnas", async () => {
   const token = await tokenConRol("gerencial");
   const patches = [];
   global.fetch = createFetchMock([
@@ -288,21 +288,18 @@ test("PATCH config-empresa — update_etapa con tipo_pieza se lo saca a la etapa
     },
   ]);
 
-  const res = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, tipo_pieza: "canto" }, token));
+  const res = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, por_pieza: true, columna_pieza: " Canto, L1A " }, token));
   assert.equal(res.status, 200);
-  assert.equal(patches.length, 2);
-  assert.match(patches[0].url, /tipo_pieza=eq\.canto/);
-  assert.match(patches[0].url, new RegExp(`id=neq\\.${ETAPA_ID}`));
-  assert.deepEqual(patches[0].body, { tipo_pieza: null });
-  assert.deepEqual(patches[1].body, { tipo_pieza: "canto" });
+  assert.equal(patches.length, 1);
+  assert.deepEqual(patches[0].body, { por_pieza: true, columna_pieza: "Canto, L1A" });
 
-  // "No se escanea por pieza" llega vacío y se guarda null, sin tocar otras
+  // Columnas vacías = pasan todas las piezas: se guarda null
   patches.length = 0;
-  const res2 = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, tipo_pieza: "" }, token));
+  const res2 = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, por_pieza: false, columna_pieza: "" }, token));
   assert.equal(res2.status, 200);
-  assert.deepEqual(patches.map((p) => p.body), [{ tipo_pieza: null }]);
+  assert.deepEqual(patches.map((p) => p.body), [{ por_pieza: false, columna_pieza: null }]);
 
-  const res3 = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, tipo_pieza: "armado" }, token));
+  const res3 = await PATCH(jsonReq("PATCH", { action: "update_etapa", id: ETAPA_ID, por_pieza: "si" }, token));
   assert.equal(res3.status, 400);
 });
 
@@ -402,11 +399,9 @@ test("cambiosEtapa — al editar manda solo lo que cambió", async () => {
   assert.deepEqual(cambiosEtapa(original, form), { nombre: "Canto" });
   assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado" }), {});
   assert.deepEqual(cambiosEtapa(original, { ...form, unidad: "metros" }), { nombre: "Canto", unidad: "metros" });
-  assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado", tipo_pieza: "" }), {}, "sin 111 la etapa no trae tipo_pieza");
-  assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado", tipo_pieza: "canto" }), { tipo_pieza: "canto" });
-  const { soltarTipoPieza } = await import("../app/lib/etapasForm.js");
-  const lista = soltarTipoPieza([{ id: "a", tipo_pieza: "canto" }, { id: "b", tipo_pieza: "canto" }, { id: "c", tipo_pieza: "cnc" }], { id: "b", tipo_pieza: "canto" });
-  assert.deepEqual(lista.map((e) => e.tipo_pieza), [null, "canto", "cnc"]);
+  assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado", por_pieza: false, columna_pieza: "" }), {}, "sin 112 la etapa no trae por_pieza");
+  assert.deepEqual(cambiosEtapa(original, { ...form, nombre: "Canteado", por_pieza: true }), { por_pieza: true });
+  assert.deepEqual(cambiosEtapa({ ...original, por_pieza: true, columna_pieza: null }, { ...form, nombre: "Canteado", por_pieza: true, columna_pieza: "Canto" }), { columna_pieza: "Canto" });
 });
 
 test("Configuración — los cambios van con la sesión de las cookies (sin token en memoria)", async () => {

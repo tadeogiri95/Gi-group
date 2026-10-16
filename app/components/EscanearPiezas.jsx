@@ -1,8 +1,8 @@
 'use client';
 // app/components/EscanearPiezas.jsx — El operario escanea las piezas en su
 // etapa (Órdenes de Producción, parte 18). Elige la etapa (las de la empresa
-// elegidas en Configuración → Etapas como Corte, Canto, CNC o Corte especial;
-// si tiene una tarea en curso de esa etapa, ya viene elegida) y escanea una pieza tras otra sin tocar la pantalla:
+// marcadas en Configuración → Etapas como "Se escanea por pieza"; si tiene
+// una tarea en curso de esa etapa, ya viene elegida) y escanea una pieza tras otra sin tocar la pantalla:
 //   verde    → la pieza pasó por la etapa
 //   amarillo → ya estaba escaneada, se salteó una etapa anterior o no le toca
 //   rojo     → no es una etiqueta de pieza, o la pieza ya no está en la OT
@@ -12,7 +12,7 @@ import { apiFetch } from "../lib/supabase";
 import { enviarOEncolar } from "../lib/colaOffline";
 import Modal from "./ui/Modal";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
-import { botonesEtapasPieza, nombresEtapasPieza, tipoDeEtapaEn, mensajeEscaneo } from "../lib/piezas";
+import { reglasPieza, nombresEtapas, mensajeEscaneo } from "../lib/piezas";
 
 const CLAVE_ETAPA = "gypi_etapa_piezas";
 const REPETIDO_MS = 5000;
@@ -27,17 +27,16 @@ const TONOS = {
 
 function etapaInicial(etapas, botones, tareaActiva) {
   const enCurso = tareaActiva?.etapa ? etapas.find((e) => e.codigo === tareaActiva.etapa || e.id === tareaActiva.etapa) : null;
-  const tipo = tipoDeEtapaEn(etapas, enCurso);
-  if (tipo && botones.some((b) => b.id === tipo)) return tipo;
+  if (enCurso && botones.some((b) => b.codigo === Number(enCurso.codigo))) return Number(enCurso.codigo);
   try {
-    const guardada = localStorage.getItem(CLAVE_ETAPA);
-    return botones.some((e) => e.id === guardada) ? guardada : null;
+    const guardada = Number(localStorage.getItem(CLAVE_ETAPA));
+    return botones.some((b) => b.codigo === guardada) ? guardada : null;
   } catch { return null; }
 }
 
 export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = null, onClose }) {
-  const botones = botonesEtapasPieza(etapas);
-  const nombres = nombresEtapasPieza(etapas);
+  const botones = reglasPieza(etapas);
+  const nombres = nombresEtapas(etapas);
   const [etapa, setEtapa] = useState(() => etapaInicial(etapas, botones, tareaActiva));
   const [resultados, setResultados] = useState([]);
   const [numero, setNumero] = useState("");
@@ -46,7 +45,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
 
   useEffect(() => {
     if (!etapa) return;
-    try { localStorage.setItem(CLAVE_ETAPA, etapa); } catch { /* sin almacenamiento */ }
+    try { localStorage.setItem(CLAVE_ETAPA, String(etapa)); } catch { /* sin almacenamiento */ }
   }, [etapa]);
 
   const agregar = (r) => setResultados((prev) => [{ ...r, key: ++contador.current }, ...prev].slice(0, MAX_RESULTADOS));
@@ -106,14 +105,16 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
         <div className="text-[13px] font-bold text-gypi-dim mb-1.5" id="etapa-piezas">¿En qué etapa estás?</div>
         <div className="grid grid-cols-2 gap-1.5 mb-3" role="group" aria-labelledby="etapa-piezas">
           {botones.map((e) => (
-            <button key={e.id} onClick={() => setEtapa(e.id)} aria-pressed={etapa === e.id}
-              className={`min-h-[48px] rounded-lg border text-[14px] font-bold cursor-pointer ${etapa === e.id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-surface border-gypi-border text-gypi-dim"}`}>
+            <button key={e.codigo} onClick={() => setEtapa(e.codigo)} aria-pressed={etapa === e.codigo}
+              className={`min-h-[48px] rounded-lg border text-[14px] font-bold cursor-pointer ${etapa === e.codigo ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-surface border-gypi-border text-gypi-dim"}`}>
               {e.icon ? `${e.icon} ` : ""}{e.nombre}
             </button>
           ))}
         </div>
 
-        {!etapa ? (
+        {!botones.length ? (
+          <div className="text-[14px] text-gypi-dim">Todavía no hay etapas que se escaneen por pieza. Se marcan en Configuración → Etapas.</div>
+        ) : !etapa ? (
           <div className="text-[14px] text-gypi-dim">Elegí la etapa y escaneá las etiquetas de las piezas.</div>
         ) : (
           <>

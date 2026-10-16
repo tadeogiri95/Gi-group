@@ -16,7 +16,7 @@ import { fechaCorta } from "../lib/ot";
 import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from "../lib/calidad";
 import { costoOp, fmtPesos } from "../lib/costo";
 import { resumenSueltos } from "../lib/sueltos";
-import { avancePiezas, textoAvancePiezas } from "../lib/piezas";
+import { avancePiezas, textoAvancePiezas, reglasPieza, nombresEtapas } from "../lib/piezas";
 import { estadoCarga } from "../lib/carga";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import MaterialOt from "./MaterialOt";
@@ -103,7 +103,9 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const maxEtapa = resumen ? Math.max(1, ...resumen.etapas.map((e) => e.min)) : 1;
   const costo = useMemo(() => costoOp(resumen, costoHora), [resumen, costoHora]);
   const resSueltos = resumenSueltos(sueltos);
-  const textoPiezas = piezas.piezas.length ? textoAvancePiezas(avancePiezas(piezas.piezas, piezas.pasos)) : "";
+  const textoPiezas = piezas.piezas.length
+    ? textoAvancePiezas(avancePiezas(piezas.piezas, piezas.pasos, reglasPieza(etapas).map((r) => r.codigo)), nombresEtapas(etapas))
+    : "";
   const resCarga = estadoCarga({ bultos: carga.bultos, carga: carga.fila });
   const resActa = estadoActa({ acta: acta.fila, pendientes: acta.pendientes });
 

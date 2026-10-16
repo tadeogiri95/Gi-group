@@ -269,8 +269,9 @@ export const sueltosBody = z.discriminatedUnion("accion", [
 ]);
 
 // ── /api/piezas (109): piezas de la OT con etiqueta QR (OP parte 17) ────────
-const etapasPieza = z.array(z.enum(["corte", "canto", "cnc", "especial"])).min(1).max(4)
-  .transform((l) => ["corte", "canto", "cnc", "especial"].filter((e) => l.includes(e as never)));
+// Códigos de las etapas de la empresa por las que pasa la pieza (112), en orden
+const codigoEtapaPieza = z.number().int().min(1).max(9999);
+const etapasPieza = z.array(codigoEtapaPieza).max(40).transform((l) => [...new Set(l)]);
 const nombrePieza = z.string().trim().min(1).max(80);
 const medidaPieza = z.number().positive().max(99999).nullable().optional().transform((v) => v ?? null);
 export const piezasBody = z.discriminatedUnion("accion", [
@@ -294,7 +295,7 @@ export const piezasBody = z.discriminatedUnion("accion", [
 ]);
 
 // ── /api/piezas/paso (110): escaneo de piezas en cada etapa (OP parte 18) ──
-const etapaPieza = z.enum(["corte", "canto", "cnc", "especial"]);
+const etapaPieza = codigoEtapaPieza;
 export const pasoPiezaBody = z.discriminatedUnion("accion", [
   z.object({
     accion: z.literal("escanear"),
@@ -416,8 +417,10 @@ export const chatQueryBody = z.object({
 const unidadEtapa = z.string().trim().max(20).nullable().optional().transform((v) => (v === "" ? null : v));
 // Qué tiene que cumplirse para firmar el cierre de la etapa (100)
 const condicionCierre = z.string().trim().max(300).nullable().optional().transform((v) => (v === "" ? null : v));
-// Como qué etapa de pieza se escanea (111); vacío = no se escanea por pieza
-const tipoPieza = z.enum(["corte", "canto", "cnc", "especial", ""]).nullable().optional().transform((v) => (v === "" ? null : v));
+// Se escanea por pieza (112) y en qué columnas de la planilla se fija Gypi;
+// vacío = pasan todas las piezas
+const porPieza = z.boolean().optional();
+const columnaPieza = z.string().trim().max(300).nullable().optional().transform((v) => (v === "" ? null : v));
 
 export const configPostBody = z.discriminatedUnion("action", [
   z.object({
@@ -438,7 +441,8 @@ export const configPostBody = z.discriminatedUnion("action", [
     orden: z.number().int().min(0).max(999).optional(),
     unidad: unidadEtapa,
     condicion_cierre: condicionCierre,
-    tipo_pieza: tipoPieza,
+    por_pieza: porPieza,
+    columna_pieza: columnaPieza,
   }),
   z.object({
     action: z.literal("save_logo"),
@@ -474,7 +478,8 @@ export const configPatchBody = z.discriminatedUnion("action", [
     activa: z.boolean().optional(),
     unidad: unidadEtapa,
     condicion_cierre: condicionCierre,
-    tipo_pieza: tipoPieza,
+    por_pieza: porPieza,
+    columna_pieza: columnaPieza,
   }),
   z.object({
     // Checklist de liberación de la OT (100); [] = sin checklist
