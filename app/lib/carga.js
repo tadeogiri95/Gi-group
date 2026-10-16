@@ -25,6 +25,12 @@ export const TAMANOS_ETIQUETA = [
   { id: "50x30", ancho: 50, alto: 30, nombre: "50 × 30 mm (chica, para piezas)" },
 ];
 
+/** Etiqueta de un cuarto de hoja A4 (148,5 × 105 mm): cuatro por hoja, en impresora común. */
+export const CUARTO_A4 = { id: "a4-cuarto", ancho: 148.5, alto: 105, hoja: "A4", nombre: "1/4 de hoja A4 (4 por hoja)" };
+
+/** Tamaños para rótulos de bulto y etiquetas de módulo: el rollo o un cuarto de A4. */
+export const TAMANOS_ROTULO = [CUARTO_A4, ...TAMANOS_ETIQUETA];
+
 /**
  * Cómo está la carga de una OT.
  * @param {{ bultos?: object[], sueltos?: object[], carga?: object|null, checklist?: string[] }} datos
@@ -88,7 +94,8 @@ export function modulosParaEtiquetas(total, nombres = "") {
 }
 /**
  * Página con una etiqueta por bulto (o por módulo, con titulo "Módulo"), del
- * tamaño del rollo de la impresora de etiquetas (una etiqueta por página).
+ * tamaño del rollo de la impresora de etiquetas (una etiqueta por página), o
+ * de un cuarto de hoja A4 (tamano.hoja: cuatro por hoja, con línea de corte).
  * Cada bulto puede traer su propio link (b.link) para el QR; si no, va `link`.
  * @param {{ empresa: string, proyecto: object, bultos: object[], link: string, tamano: { ancho: number, alto: number }, titulo?: string }} datos
  */
@@ -96,7 +103,8 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, tit
   const qrs = new Map();
   for (const l of new Set(bultos.map((b) => b.link || link))) qrs.set(l, await svgQR(l));
   const total = bultos.length;
-  const qrMm = Math.min(tamano.alto - 8, tamano.ancho * 0.42);
+  const enHoja = tamano.hoja === "A4";
+  const qrMm = Math.min(tamano.alto - (enHoja ? 16 : 8), tamano.ancho * 0.42);
   const datosObra = [proyecto.cliente || proyecto.proyecto, proyecto.obra].filter(Boolean).join(" · ");
   const entrega = proyecto.fecha_entrega ? `Entrega ${proyecto.fecha_entrega.split("-").reverse().join("/")}` : "";
   const items = bultos.map((b) => `
@@ -110,10 +118,14 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, tit
       ${b.contenido ? `<div class="contenido">${esc(b.contenido)}</div>` : ""}
     </div>
     <div class="qr">${qrs.get(b.link || link)}</div>
-  </div>`).join("");
+  </div>`);
+  // En hoja A4: de a cuatro por hoja (2 × 2, apaisada)
+  const cuerpo = enHoja
+    ? Array.from({ length: Math.ceil(items.length / 4) }, (_, i) => `<div class="hoja">${items.slice(i * 4, i * 4 + 4).join("")}</div>`).join("")
+    : items.join("");
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo === "Bulto" ? "Rótulos" : "Etiquetas"} OT ${esc(proyecto.ot)}</title>
 <style>
-  @page { size: ${tamano.ancho}mm ${tamano.alto}mm; margin: 0; }
+  @page { size: ${enHoja ? "A4 landscape" : `${tamano.ancho}mm ${tamano.alto}mm`}; margin: 0; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; color: #000; }
   .rotulo { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 3mm; display: flex; gap: 3mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page; }
@@ -123,8 +135,16 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, tit
   .bulto { font-size: 14pt; font-weight: 800; margin-top: 1mm; }
   .obra { font-size: 8pt; margin-top: .5mm; }
   .contenido { font-size: 8pt; margin-top: 1mm; border-top: .3mm solid #000; padding-top: 1mm; max-height: 40%; overflow: hidden; }
-  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
-</style></head><body>${items}</body></html>`;
+  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }${enHoja ? `
+  .hoja { width: 297mm; height: 210mm; display: grid; grid-template-columns: repeat(2, ${tamano.ancho}mm); grid-template-rows: repeat(2, ${tamano.alto}mm); overflow: hidden; }
+  .hoja:not(:last-child) { page-break-after: always; break-after: page; }
+  .hoja .rotulo { padding: 8mm; gap: 6mm; outline: .2mm dashed #999; outline-offset: -.1mm; page-break-after: auto; break-after: auto; }
+  .hoja .empresa { font-size: 12pt; }
+  .hoja .ot { font-size: 28pt; }
+  .hoja .bulto { font-size: 24pt; margin-top: 2mm; }
+  .hoja .obra { font-size: 12pt; margin-top: 1mm; }
+  .hoja .contenido { font-size: 13pt; margin-top: 2mm; padding-top: 2mm; }` : ""}
+</style></head><body>${cuerpo}</body></html>`;
 }
 
 /** Abre los rótulos (o las etiquetas de módulo) en una pestaña nueva con el diálogo de impresión. */
