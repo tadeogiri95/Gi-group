@@ -404,6 +404,19 @@ test("cambiosEtapa — al editar manda solo lo que cambió", async () => {
   assert.deepEqual(cambiosEtapa({ ...original, por_pieza: true, columna_pieza: null }, { ...form, nombre: "Canteado", por_pieza: true, columna_pieza: "Canto" }), { columna_pieza: "Canto" });
 });
 
+test("pantallas — ninguna depende del token en memoria (se pierde al reabrir la app)", async () => {
+  const { readFileSync } = await import("node:fs");
+  for (const f of [
+    "app/components/BillingScreen.jsx", "app/components/TrialBanner.jsx", "app/components/ElegirPlan.jsx",
+    "app/components/screens/DocumentosScreen.jsx", "app/components/screens/CambiarPasswordScreen.jsx",
+    "app/onboarding_wizard.jsx", "app/reportes_screen.jsx",
+  ]) {
+    const src = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
+    assert.doesNotMatch(src, /getToken\(/, f);
+    assert.doesNotMatch(src, /Sin sesión/, f);
+  }
+});
+
 test("Configuración — los cambios van con la sesión de las cookies (sin token en memoria)", async () => {
   // Al reabrir la app la sesión se restaura de las cookies y el token en
   // memoria queda vacío: la pantalla decía "Sin sesión" y no guardaba nada.

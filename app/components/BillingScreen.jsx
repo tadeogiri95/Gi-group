@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { PLANES, ADDONS } from "../lib/plans";
-import { sb, getToken } from "../lib/supabase";
+import { sb, apiFetch } from "../lib/supabase";
 import ElegirPlan from "./ElegirPlan";
 import PerfilFiscal from "./PerfilFiscal";
 import { esAppAndroid } from "../lib/appAndroid";
@@ -21,11 +21,8 @@ function BillingWeb({ onClose }) {
     setLoading(true);
     setError("");
     try {
-      const token = getToken();
-      if (!token) throw new Error("Sin sesión");
-
       const [rInfo, rPagos] = await Promise.all([
-        fetch("/api/billing/info", { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+        apiFetch("/api/billing/info").then(r => r.json()),
         sb.get("pagos?order=fecha_pago.desc&limit=20").catch(() => []),
       ]);
 
@@ -46,10 +43,8 @@ function BillingWeb({ onClose }) {
     setBusy(true);
     setError("");
     try {
-      const token = getToken();
-      const r = await fetch("/api/billing/create-subscription", {
+      const r = await apiFetch("/api/billing/create-subscription", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ linea, tramo, addons, periodo }),
       });
       const txt = await r.text();
@@ -73,11 +68,7 @@ function BillingWeb({ onClose }) {
     setBusy(true);
     setError("");
     try {
-      const token = getToken();
-      const r = await fetch("/api/billing/portal", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const r = await apiFetch("/api/billing/portal", { method: "POST" });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(mensajeErrorPago({ status: r.status, error: d.error }));
       setConfirmCancel(false);
@@ -91,8 +82,7 @@ function BillingWeb({ onClose }) {
 
   const abrirPortalMP = async () => {
     try {
-      const token = getToken();
-      const r = await fetch("/api/billing/portal", { headers: { Authorization: `Bearer ${token}` } });
+      const r = await apiFetch("/api/billing/portal");
       const d = await r.json();
       if (d.portal_url) window.open(d.portal_url, "_blank");
       else if (d.error) setError(d.error);

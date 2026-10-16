@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
-import { sb, sbGetAll, getToken } from "./lib/supabase";
+import { sb, sbGetAll, apiFetch } from "./lib/supabase";
 import { Tag, Chip, Button } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
 import FotoViewer from "./components/FotoViewer";
@@ -362,10 +362,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
       setLoading(true);
       setPaywallInfo(null);
       try {
-        const token = getToken();
-        const res = await fetch(`/api/reportes/liquidacion?desde=${fechaDesde}&hasta=${fechaHasta}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiFetch(`/api/reportes/liquidacion?desde=${fechaDesde}&hasta=${fechaHasta}`);
         const json = await res.json().catch(() => ({}));
         if (res.status === 402) { setPaywallInfo({ upgrade_a: json.upgrade_a, mensaje: json.error }); setDatos([]); return; }
         if (!res.ok) { console.error(json.error || `Error ${res.status}`); setDatos([]); return; }

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { apiFetch, getToken } from "../../lib/supabase";
+import { apiFetch } from "../../lib/supabase";
 import { useToast } from "../ui/Toast";
 import EmptyState from "../ui/EmptyState";
 
@@ -41,13 +41,7 @@ export default function DocumentosScreen() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("tipo_documento_id", tipo.id);
-      const token = getToken();
-      const res = await fetch("/api/documentos/upload", {
-        method: "POST",
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
+      const res = await apiFetch("/api/documentos/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Error al subir");
       toast.show("✅ Documento subido", GREEN);

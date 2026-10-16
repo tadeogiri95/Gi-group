@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { getToken } from "../../lib/supabase";
+import { apiFetch } from "../../lib/supabase";
 
 const STRENGTH_COLORS = ["transparent", "var(--color-red)", "var(--color-empresa-primary)", "var(--color-green)"];
 const STRENGTH_LABELS = ["", "Débil", "Regular", "Fuerte"];
@@ -20,11 +20,10 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
     }
     setLoading(true); setError("");
     try {
-      const res = await fetch("/api/login-empresa", {
+      // La sesión viaja en la cookie. El token NO va en el body: el servidor
+      // valida el body en modo estricto y lo rechazaría.
+      const res = await apiFetch("/api/login-empresa", {
         method: "POST",
-        // La sesión viaja en la cookie; el header es respaldo. El token NO va en el
-        // body: el servidor valida el body en modo estricto y lo rechazaría.
-        headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
         body: JSON.stringify({ action: "cambiar_password", userId: usuario.id, nuevaPassword: nueva }),
       });
       const data = await res.json();

@@ -84,3 +84,20 @@ test("BillingScreen — con más operarios que el tramo, los tramos chicos no se
   for (const b of screen.getAllByRole("button", { name: /Hasta 15/ })) assert.equal(b.disabled, true);
   assert.ok(screen.getByText(/Hoy tenés/).textContent.includes("22"));
 });
+
+test("BillingScreen — al reabrir la app (sin token en memoria) carga igual con la sesión de las cookies", async () => {
+  const { clearToken } = await import("../app/lib/supabase.js");
+  clearToken();
+  const pedidos = [];
+  const mock = createFetchMock(handlersBase());
+  global.fetch = (url, opts = {}) => { pedidos.push({ url: String(url), opts }); return mock(url, opts); };
+  try {
+    render(<BillingScreen onClose={() => {}} />);
+    await waitFor(() => assert.ok(screen.queryByText("Plan actual")));
+    assert.equal(screen.queryByText(/Sin sesión/), null);
+    const info = pedidos.find((p) => p.url.includes("/api/billing/info"));
+    assert.equal(info.opts.credentials, "include");
+  } finally {
+    setToken("fake-token-de-test");
+  }
+});

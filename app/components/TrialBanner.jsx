@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { getToken } from "../lib/supabase";
+import { apiFetch } from "../lib/supabase";
 
 export default function TrialBanner({ onUpgrade, reload }) {
   const [info, setInfo] = useState(null);
@@ -9,9 +9,7 @@ export default function TrialBanner({ onUpgrade, reload }) {
   const [errorTrial, setErrorTrial] = useState("");
 
   const cargarInfo = useCallback(() => {
-    const token = getToken();
-    if (!token) return;
-    fetch("/api/billing/info", { headers: { Authorization: `Bearer ${token}` } })
+    apiFetch("/api/billing/info")
       .then(r => r.json())
       .then(d => { if (!d.error) setInfo(d); })
       .catch(() => {});
@@ -22,11 +20,7 @@ export default function TrialBanner({ onUpgrade, reload }) {
   const iniciarTrial = async () => {
     setIniciando(true); setErrorTrial("");
     try {
-      const token = getToken();
-      const res = await fetch("/api/billing/iniciar-trial", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiFetch("/api/billing/iniciar-trial", { method: "POST" });
       const d = await res.json();
       if (!res.ok || d.error) throw new Error(d.error || "No se pudo iniciar la prueba");
       cargarInfo();
