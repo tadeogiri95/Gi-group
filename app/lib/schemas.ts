@@ -382,6 +382,24 @@ export const comprasBody = z.discriminatedUnion("accion", [
   }).strict(),
   z.object({ accion: z.literal("oc_enviar"), id: idCompras }).strict(),
   z.object({ accion: z.literal("oc_anular"), id: idCompras }).strict(),
+  // Recepción con remito y factura (parte 22, migración 115)
+  z.object({
+    accion: z.literal("recepcion_crear"),
+    orden_id: idCompras,
+    remito: z.string().trim().min(1, "Poné el N° de remito").max(60),
+    foto_url: z.string().trim().url().max(500).nullable().optional().transform((v) => v || null),
+    notas: textoSuelto(300),
+    items: z.array(z.object({ item_id: idCompras, cantidad: cantidadOc }).strict()).min(1).max(200),
+  }).strict(),
+  z.object({ accion: z.literal("recepcion_anular"), id: idCompras }).strict(),
+  z.object({
+    accion: z.literal("oc_factura"),
+    id: idCompras,
+    factura_numero: textoSuelto(60),
+    factura_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
+    tipo_cambio: z.number().finite().positive().max(1e7).nullable().optional().transform((v) => v ?? null),
+    precios: z.array(z.object({ item_id: idCompras, precio_unitario: precioOc }).strict()).max(200).optional(),
+  }).strict(),
 ]);
 
 // ── /api/carga (104): acopio y carga de la OT ─────────────────────────────

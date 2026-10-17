@@ -3,7 +3,8 @@
 // ítem 41). Los jefes de taller, gerencia, dueños y Administración piden
 // material (🛒 Pedir material) y ven en qué quedó cada pedido. Administración
 // (sin división asignada) y gerencia ven todos los pedidos y manejan los
-// proveedores; con eso arman las órdenes de compra en la parte 21.
+// proveedores; con eso arman las órdenes de compra (parte 21). Lo que llega
+// lo reciben los jefes o Administración en Recibir (parte 22).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { filtrarArticulos } from "../lib/stock";
@@ -12,9 +13,13 @@ import { ESTADOS_PEDIDO, filtrarPedidos, puedeAnularPedido, textoPedido } from "
 import ProveedoresCompras from "./ProveedoresCompras";
 import AComprar from "./AComprar";
 import OrdenesCompra from "./OrdenesCompra";
+import RecibirCompra from "./RecibirCompra";
 
 const CUANTOS = 300;
 const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad: "", ot: "", para_fecha: "", notas: "" };
+// Los jefes de taller piden y reciben; el comprador además arma las OC y maneja proveedores
+const PESTANAS_JEFE = [["pedidos", "🛒 Pedidos"], ["recibir", "📦 Recibir"]];
+const PESTANAS_COMPRADOR = [["pedidos", "🛒 Pedidos"], ["acomprar", "🧾 A comprar"], ["ordenes", "📄 Órdenes"], ["recibir", "📦 Recibir"], ["proveedores", "🏭 Proveedores"]];
 export const AVISO_MIGRACION_113 = "Para usar Compras falta correr la migración 113 en Supabase.";
 
 function fecha(iso) {
@@ -210,9 +215,9 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
-      {comprador && (
+      {permisos.puede_pedir && (
         <div role="tablist" aria-label="Compras" className="flex gap-1.5 mb-3 flex-wrap">
-          {[["pedidos", "🛒 Pedidos"], ["acomprar", "🧾 A comprar"], ["ordenes", "📄 Órdenes"], ["proveedores", "🏭 Proveedores"]].map(([id, label]) => (
+          {(comprador ? PESTANAS_COMPRADOR : PESTANAS_JEFE).map(([id, label]) => (
             <button key={id} role="tab" aria-selected={vista === id} onClick={() => { setVista(id); setOrdenNueva(null); setCreadas(null); }}
               className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-bold cursor-pointer ${vista === id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
               {label}
@@ -230,7 +235,9 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
           ✅ Armé {creadas.length === 1 ? "la orden" : "las órdenes"} {creadas.map((o) => `N° ${o.numero} (${o.proveedor_nombre})`).join(", ")}. Revisalas y mandalas al proveedor.
         </div>
       )}
-      {vista === "acomprar" && comprador ? (
+      {vista === "recibir" && permisos.puede_pedir ? (
+        <RecibirCompra empresaId={empresaId} comprador={comprador} />
+      ) : vista === "acomprar" && comprador ? (
         <AComprar empresaId={empresaId} onCreadas={(lista) => { setCreadas(lista); setOrdenNueva(lista.length === 1 ? lista[0].id : null); setVista("ordenes"); cargar(); }} />
       ) : vista === "ordenes" && comprador ? (
         <OrdenesCompra empresaId={empresaId} empresa={empresa} abrirId={ordenNueva} />
