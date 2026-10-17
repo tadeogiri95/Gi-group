@@ -221,7 +221,7 @@ test("script de la planilla — anota al final, reconoce al colaborador, no repi
       { movimientos: [mov(13, { hoja: "ingresos", proveedor: "Masisa", cantidad: 5, precio_unitario: 100 }), mov(14, { colaborador: "Nadie Conocido" })], anulados: [], hasta: 14, hayMas: false },
     ],
   });
-  assert.deepEqual(pedidos.map((p) => p.url), ["https://gypi.test/api/stock/planilla?desde=10", "https://gypi.test/api/stock/planilla?desde=12"]);
+  assert.deepEqual(pedidos.map((p) => p.url), ["https://gypi.test/api/stock/planilla?desde=10&ordenes=1", "https://gypi.test/api/stock/planilla?desde=12"]);
   assert.equal(pedidos[0].auth, "Bearer gyp_x");
   assert.equal(props.GYPI_DESDE, "14");
 

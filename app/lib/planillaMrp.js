@@ -8,8 +8,15 @@
 // (fact_consumos_stock H). Por eso un retiro va positivo en consumos, una
 // devolución negativa (y como CONSUMO FÁBRICA, así baja el consumo real de la
 // OT) y un ajuste que suma stock va negativo en consumos.
+//
+// Compras, parte 23: el mismo script trae las órdenes de compra abiertas a
+// fact_ordenes_compra, con lo que falta llegar y ESTADO "PENDIENTE". Así
+// EN TRÁNSITO (INVENTARIO W suma esa hoja por SKU) las tiene en cuenta y el
+// MRP no sugiere comprar dos veces lo mismo. Las filas de Gypi llevan N° OC
+// "GY-OC-<n>" y se rehacen en cada vuelta; las cargadas a mano no se tocan.
 import crypto from "crypto";
 import { CLAVE_PLANILLA_MRP } from "./movimientosStock";
+import { ESTADOS_OC, pendienteItem } from "./ordenesCompra";
 
 export { CLAVE_PLANILLA_MRP };
 
@@ -84,6 +91,39 @@ export function movimientoParaPlanilla(m, timezone) {
 }
 
 /**
+ * Renglones de las OC abiertas como van a fact_ordenes_compra: solo artículos
+ * de la planilla (con SKU) y lo que todavía falta llegar.
+ * @param {object[]} ordenes OC abiertas (borrador, enviada, recibida_parcial)
+ * @param {object[]} items sus renglones
+ */
+export function ordenesParaPlanilla(ordenes, items, timezone) {
+  const porOrden = new Map();
+  for (const it of items || []) {
+    if (!porOrden.has(it.orden_id)) porOrden.set(it.orden_id, []);
+    porOrden.get(it.orden_id).push(it);
+  }
+  const filas = [];
+  for (const oc of ordenes || []) {
+    for (const it of porOrden.get(oc.id) || []) {
+      const sku = String(it.sku ?? "").trim();
+      const falta = pendienteItem(it);
+      if (!sku || !falta) continue;
+      filas.push({
+        sku,
+        nombre: it.descripcion || sku,
+        proveedor: oc.proveedor_nombre || "",
+        cantidad: falta,
+        fecha_oc: fechaEnZona(oc.enviada_at || oc.created_at, timezone),
+        fecha_prometida: oc.fecha_prometida || "",
+        numero: `GY-OC-${oc.numero}`,
+        notas: `GYPI · ${ESTADOS_OC[oc.estado]?.nombre || oc.estado}${oc.estado === "borrador" ? " (sin enviar)" : ""}`,
+      });
+    }
+  }
+  return filas;
+}
+
+/**
  * Código para pegar en Apps Script de la planilla MRP (Extensiones → Apps
  * Script). instalarGypi() se corre una vez: pide permiso, deja la tarea de
  * cada hora y trae lo que haya. Sin template strings adentro, para que el
@@ -92,7 +132,9 @@ export function movimientoParaPlanilla(m, timezone) {
 export function scriptPlanilla({ url, clave }) {
   return `// Gypi → planilla MRP: trae los retiros, devoluciones, ajustes e ingresos
 // cargados en Gypi y los anota al final de fact_consumos_stock y
-// fact_ingresos_stock. Pegalo en un archivo nuevo de Apps Script, guardá y
+// fact_ingresos_stock. También deja en fact_ordenes_compra lo que falta
+// llegar de las órdenes de compra abiertas (N° OC "GY-OC-…"), para que cuente
+// en EN TRÁNSITO. Pegalo en un archivo nuevo de Apps Script, guardá y
 // ejecutá instalarGypi una sola vez. Después corre solo cada hora.
 // La clave es privada: no compartas este código.
 var GYPI_URL = ${JSON.stringify(url)};
@@ -100,6 +142,7 @@ var GYPI_CLAVE = ${JSON.stringify(clave)};
 var GYPI_HOJA_CONSUMOS = "fact_consumos_stock";
 var GYPI_HOJA_INGRESOS = "fact_ingresos_stock";
 var GYPI_HOJA_PERSONAL = "PERSONAL";
+var GYPI_HOJA_ORDENES = "fact_ordenes_compra";
 
 function instalarGypi() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -126,9 +169,11 @@ function traerMovimientosGypi() {
     aMano.forEach(function (k) { manual[k] = (manual[k] || 0) + 1; });
     gypiIds_(cons).concat(gypiIds_(ing)).forEach(function (id) { ya[id] = true; });
     var anulados = null;
+    var ordenes = null;
     for (var vuelta = 0; vuelta < 20; vuelta++) {
-      var r = gypiPedir_(desde);
+      var r = gypiPedir_(desde, vuelta === 0);
       if (anulados === null) anulados = r.anulados || [];
+      if (vuelta === 0 && r.ordenes) ordenes = r.ordenes;
       var filasC = [], filasI = [], dudasC = [], dudasI = [];
       r.movimientos.forEach(function (m) {
         if (m.anulado || ya[m.id]) return;
@@ -157,13 +202,14 @@ function traerMovimientosGypi() {
     }
     gypiBorrarAnulados_(cons, anulados || []);
     gypiBorrarAnulados_(ing, anulados || []);
+    if (ordenes) gypiOrdenes_(ss.getSheetByName(GYPI_HOJA_ORDENES), ordenes);
   } finally {
     lock.releaseLock();
   }
 }
 
-function gypiPedir_(desde) {
-  var res = UrlFetchApp.fetch(GYPI_URL + "?desde=" + desde, {
+function gypiPedir_(desde, conOrdenes) {
+  var res = UrlFetchApp.fetch(GYPI_URL + "?desde=" + desde + (conOrdenes ? "&ordenes=1" : ""), {
     headers: { Authorization: "Bearer " + GYPI_CLAVE },
     muteHttpExceptions: true,
   });
@@ -244,6 +290,38 @@ function gypiBorrarAnulados_(hoja, anulados) {
   for (var i = ids.length - 1; i >= 0; i--) {
     if (borrar[String(ids[i][0])]) hoja.deleteRow(i + 2);
   }
+}
+
+// Las OC abiertas de Gypi en fact_ordenes_compra. Se rehacen todas en cada
+// vuelta: van en un bloque después del último renglón cargado a mano; si
+// quedó alguna de Gypi más arriba, se vacía. No se borran filas, así no se
+// achican los rangos de las fórmulas que leen la hoja.
+function gypiOrdenes_(hoja, ordenes) {
+  if (!hoja) return;
+  var ANCHO = 9;
+  var n = hoja.getLastRow();
+  var valores = n >= 2 ? hoja.getRange(2, 1, n - 1, ANCHO).getValues() : [];
+  var deGypi = function (f) { return String(f[7]).indexOf("GY-OC-") === 0; };
+  var ultimaAMano = 1;
+  valores.forEach(function (f, i) {
+    var vacia = f.every(function (v) { return v === "" || v === null; });
+    if (!vacia && !deGypi(f)) ultimaAMano = i + 2;
+  });
+  var vacia = function () { var f = []; for (var j = 0; j < ANCHO; j++) f.push(""); return f; };
+  valores.forEach(function (f, i) {
+    if (i + 2 < ultimaAMano && deGypi(f)) hoja.getRange(i + 2, 1, 1, ANCHO).setValues([vacia()]);
+  });
+  var filas = ordenes.map(function (o) {
+    return [o.sku, o.nombre, o.proveedor, o.cantidad, o.fecha_oc ? gypiFecha_(o.fecha_oc) : "",
+      o.fecha_prometida ? gypiFecha_(o.fecha_prometida) : "", "PENDIENTE", o.numero, o.notas];
+  });
+  // Lo de Gypi de la vuelta anterior que sobra queda en blanco
+  var hasta = Math.max(n, ultimaAMano + filas.length);
+  while (filas.length < hasta - ultimaAMano) filas.push(vacia());
+  if (!filas.length) return;
+  var falta = ultimaAMano + filas.length - hoja.getMaxRows();
+  if (falta > 0) hoja.insertRowsAfter(hoja.getMaxRows(), falta);
+  hoja.getRange(ultimaAMano + 1, 1, filas.length, ANCHO).setValues(filas);
 }
 
 function gypiNormalizar_(texto) {

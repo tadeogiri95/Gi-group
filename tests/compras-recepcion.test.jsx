@@ -330,6 +330,6 @@ test("Órdenes — la factura con tipo de cambio y precio final", async () => {
 test("accesos — Recibir para jefes y comprador", () => {
   const src = readFileSync(new URL("../app/components/ComprasScreen.jsx", import.meta.url), "utf8");
   assert.match(src, /PESTANAS_JEFE = \[\["pedidos", "🛒 Pedidos"\], \["recibir", "📦 Recibir"\]\]/);
-  assert.match(src, /\["recibir", "📦 Recibir"\], \["proveedores", "🏭 Proveedores"\]\]/);
+  assert.match(src, /\["recibir", "📦 Recibir"\], \["proveedores", "🏭 Proveedores"\], \["reportes", "📊 Reportes"\]\]/);
   assert.match(src, /vista === "recibir" && permisos\.puede_pedir/);
 });
