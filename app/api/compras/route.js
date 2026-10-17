@@ -9,6 +9,12 @@
 //   pedido_crear          → pedido de material (gestión: jefes de taller,
 //                           gerencia, dueños, Administración; operarios no)
 //   pedido_anular         → el comprador, cualquiera pendiente; quien lo pidió, el suyo pendiente
+//   oc_crear              → una OC en borrador por proveedor con los renglones elegidos en
+//                           "A comprar"; los pedidos de los jefes pasan a en_oc (comprador; 114)
+//   oc_guardar            → moneda, fecha prometida, notas, cantidades y precios; quitar
+//                           renglones (en borrador); el pedido quitado vuelve a pendiente
+//   oc_enviar             → borrador → enviada
+//   oc_anular             → la OC queda anulada y sus pedidos vuelven a pendiente
 // Comprador = gerencia o Administración sin división asignada (un supervisor
 // de división pide y recibe, pero no compra). Con RLS_RUTAS=on todo va con el
 // pase del usuario ({ sesion }).
@@ -16,7 +22,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { comprasBody } from "../../lib/schemas";
-import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
+import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
@@ -26,6 +32,11 @@ import { logger } from "../../lib/logger";
 function faltaMigracion(err) {
   const m = String(err?.message);
   return /proveedores|pedidos_compra/.test(m) && /does not exist|42P01|PGRST20[05]|schema cache/.test(m);
+}
+
+function faltaMigracionOc(err) {
+  const m = String(err?.message);
+  return /ordenes_compra|orden_id/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
 }
 
 const soloComprador = () => NextResponse.json({ error: "Los proveedores los maneja Administración" }, { status: 403 });
@@ -152,6 +163,141 @@ async function anularPedido(sesion, id) {
   return NextResponse.json({ ok: true, pedido: fila || null });
 }
 
+/* ─── Órdenes de compra (parte 21) ─────────────────────────────────────── */
+
+const ESTADOS_EDITABLES = ["borrador", "enviada", "recibida_parcial"];
+
+async function leerOrden(sesion, id) {
+  const [oc] = (await sbGet(`ordenes_compra?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=*&limit=1`, { sesion })) || [];
+  return oc || null;
+}
+const noEncontreOc = () => NextResponse.json({ error: "No encontré esa orden de compra" }, { status: 404 });
+
+/** Pedidos de la OC (o los indicados) que vuelven a pendiente. */
+async function liberarPedidos(sesion, filtro) {
+  await sbPatch(`pedidos_compra?empresa_id=eq.${sesion.empresa_id}&${filtro}&estado=eq.en_oc`, { estado: "pendiente", orden_id: null }, { sesion });
+}
+
+async function crearOrdenes(sesion, { moneda, lineas }) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const idsProv = [...new Set(lineas.map((l) => l.proveedor_id))];
+  const proveedores = (await sbGet(`proveedores?empresa_id=eq.${e}&id=in.(${idsProv.join(",")})&select=id,nombre,activo`, opts)) || [];
+  const porId = new Map(proveedores.map((p) => [p.id, p]));
+  const falta = idsProv.find((id) => !porId.get(id)?.activo);
+  if (falta) return NextResponse.json({ error: "Uno de los proveedores no existe o está dado de baja. Actualizá la lista." }, { status: 409 });
+
+  const idsPedidos = [...new Set(lineas.map((l) => l.pedido_id).filter(Boolean))];
+  if (idsPedidos.length) {
+    const pedidos = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${idsPedidos.join(",")})&select=id,estado`, opts)) || [];
+    if (pedidos.length !== idsPedidos.length || pedidos.some((p) => p.estado !== "pendiente")) {
+      return NextResponse.json({ error: "Algún pedido ya no está pendiente (lo anularon o ya está en otra OC). Actualizá la lista." }, { status: 409 });
+    }
+  }
+
+  const [empleado] = sesion.empleado_id
+    ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] })) || []
+    : [];
+  const [ultima] = (await sbGet(`ordenes_compra?empresa_id=eq.${e}&select=numero&order=numero.desc&limit=1`, opts)) || [];
+  let numero = Number(ultima?.numero || 0);
+
+  const creadas = [];
+  for (const proveedorId of idsProv) {
+    const prov = porId.get(proveedorId);
+    let oc = null;
+    // Dos personas armando OC a la vez pueden chocar en el número: se reintenta con el siguiente
+    for (let intento = 0; intento < 5 && !oc; intento++) {
+      numero += 1;
+      try {
+        [oc] = (await sbPost("ordenes_compra", {
+          empresa_id: e, numero, proveedor_id: prov.id, proveedor_nombre: String(prov.nombre).slice(0, 120), moneda, estado: "borrador",
+          creada_por: sesion.empleado_id || null, creada_por_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
+        }, opts)) || [];
+      } catch (err) {
+        if (!String(err?.message).includes("23505")) throw err;
+      }
+    }
+    if (!oc) throw new Error("No se pudo numerar la orden de compra");
+    const mias = lineas.filter((l) => l.proveedor_id === proveedorId);
+    try {
+      await sbPost("ordenes_compra_items", mias.map((l) => ({
+        empresa_id: e, orden_id: oc.id, sku: l.sku, descripcion: l.descripcion, unidad: l.unidad,
+        cantidad: l.cantidad, precio_unitario: l.precio_unitario, ot: l.ot, pedido_id: l.pedido_id,
+      })), opts);
+    } catch (err) {
+      // Sin renglones la OC no sirve: queda anulada (las OC no se borran)
+      await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, { estado: "anulada", anulada_at: new Date().toISOString() }, opts).catch(() => {});
+      throw err;
+    }
+    const pedidos = mias.map((l) => l.pedido_id).filter(Boolean);
+    if (pedidos.length) {
+      await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${pedidos.join(",")})&estado=eq.pendiente`, { estado: "en_oc", orden_id: oc.id }, opts);
+    }
+    creadas.push({ id: oc.id, numero: oc.numero, proveedor_nombre: oc.proveedor_nombre });
+  }
+  broadcastRefresh(e, "ordenes_compra");
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, ordenes: creadas });
+}
+
+async function guardarOrden(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const oc = await leerOrden(sesion, d.id);
+  if (!oc) return noEncontreOc();
+  if (!ESTADOS_EDITABLES.includes(oc.estado)) return NextResponse.json({ error: "Esa orden de compra ya está cerrada" }, { status: 409 });
+  const cambiaRenglones = Boolean(d.items?.length || d.quitar?.length || (d.moneda !== undefined && d.moneda !== oc.moneda));
+  if (cambiaRenglones && oc.estado !== "borrador") {
+    return NextResponse.json({ error: "La OC ya se mandó: los renglones, precios y moneda no se cambian. Anulala y armá otra." }, { status: 409 });
+  }
+  if (d.quitar?.length) {
+    const filtro = `ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&id=in.(${d.quitar.join(",")})`;
+    const quitados = (await sbGet(`${filtro}&select=pedido_id`, opts)) || [];
+    await sbDelete(filtro, opts);
+    const pedidos = quitados.map((it) => it.pedido_id).filter(Boolean);
+    if (pedidos.length) await liberarPedidos(sesion, `orden_id=eq.${oc.id}&id=in.(${pedidos.join(",")})`);
+  }
+  for (const it of d.items || []) {
+    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&orden_id=eq.${oc.id}&empresa_id=eq.${e}`, { cantidad: it.cantidad, precio_unitario: it.precio_unitario }, opts);
+  }
+  const cambios = { updated_at: new Date().toISOString() };
+  if (d.moneda !== undefined) cambios.moneda = d.moneda;
+  if (d.fecha_prometida !== undefined) cambios.fecha_prometida = d.fecha_prometida || null;
+  if (d.notas !== undefined) cambios.notas = d.notas;
+  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, cambios, opts)) || [];
+  broadcastRefresh(e, "ordenes_compra");
+  return NextResponse.json({ ok: true, orden: fila || { ...oc, ...cambios } });
+}
+
+async function enviarOrden(sesion, id) {
+  const e = sesion.empresa_id;
+  const oc = await leerOrden(sesion, id);
+  if (!oc) return noEncontreOc();
+  if (oc.estado !== "borrador") return NextResponse.json({ ok: true, orden: oc });
+  const [hay] = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=id&limit=1`, { sesion })) || [];
+  if (!hay) return NextResponse.json({ error: "La orden de compra no tiene renglones" }, { status: 409 });
+  const ahora = new Date().toISOString();
+  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}&estado=eq.borrador`, { estado: "enviada", enviada_at: ahora, updated_at: ahora }, { sesion })) || [];
+  broadcastRefresh(e, "ordenes_compra");
+  return NextResponse.json({ ok: true, orden: fila || { ...oc, estado: "enviada", enviada_at: ahora } });
+}
+
+async function anularOrden(sesion, id) {
+  const e = sesion.empresa_id;
+  const oc = await leerOrden(sesion, id);
+  if (!oc) return noEncontreOc();
+  if (oc.estado === "anulada") return NextResponse.json({ ok: true, orden: oc });
+  if (!["borrador", "enviada"].includes(oc.estado)) {
+    return NextResponse.json({ error: "Esa orden de compra ya tiene material recibido: no se puede anular" }, { status: 409 });
+  }
+  const ahora = new Date().toISOString();
+  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}&estado=in.(borrador,enviada)`, { estado: "anulada", anulada_at: ahora, updated_at: ahora }, { sesion })) || [];
+  await liberarPedidos(sesion, `orden_id=eq.${oc.id}`);
+  broadcastRefresh(e, "ordenes_compra");
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, orden: fila || { ...oc, estado: "anulada" } });
+}
+
 async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
@@ -186,8 +332,15 @@ export async function POST(request) {
       if (!(await esComprador(sesion))) return soloComprador();
       if (d.accion === "proveedor_guardar") return await guardarProveedor(sesion, d);
       if (d.accion === "proveedor_baja") return await bajaProveedor(sesion, d);
-      return await importarProveedores(sesion, d.nombres);
+      if (d.accion === "proveedores_importar") return await importarProveedores(sesion, d.nombres);
+      if (d.accion === "oc_crear") return await crearOrdenes(sesion, d);
+      if (d.accion === "oc_guardar") return await guardarOrden(sesion, d);
+      if (d.accion === "oc_enviar") return await enviarOrden(sesion, d.id);
+      return await anularOrden(sesion, d.id);
     } catch (err) {
+      if (faltaMigracionOc(err)) {
+        return NextResponse.json({ error: "Para las órdenes de compra falta correr la migración 114 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracion(err)) {
         return NextResponse.json({ error: "Para usar Compras falta correr la migración 113 en Supabase." }, { status: 409 });
       }

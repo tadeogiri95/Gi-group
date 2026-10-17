@@ -6,10 +6,11 @@
 // hojas publicadas como CSV:
 //   - INVENTARIO (obligatoria): SKU, ARTICULO, STOCK TOTAL, NECESIDAD…,
 //     DISPONIBLE, PUNTO DE PEDIDO, PRÓXIMA NECESIDAD, SEMÁFORO MRP, CANTIDAD
-//     SUGERIDA, DIVISIÓN, EN TRÁNSITO.
+//     SUGERIDA, DIVISIÓN, EN TRÁNSITO, MÚLTIPLO, LEAD TIME (d).
 //   - ARTICULOS (opcional): ID_SKU, Nombre normalizado (el nombre que se
 //     muestra; si está vacío, Nombre Articulo), División, Familia, Tipo de
-//     Material, Marca, Color/Acabado, Unidad Medida.
+//     Material, Marca, Color/Acabado, Unidad Medida, ÚLTIMO PRECIO,
+//     PROVEEDOR PRINCIPAL, LOTE MÍNIMO / MÚLTIPLO (los usa Compras, parte 21).
 // Las columnas se buscan por título (sin importar mayúsculas, acentos ni el
 // orden), así una columna nueva en la planilla no rompe nada.
 //
@@ -40,6 +41,9 @@ const CAMPOS_INVENTARIO = {
   sugerido: ["cantidad sug*"],
   proxima_necesidad: ["proxima nece*"],
   semaforo: ["semaforo mrp"],
+  // Compras (parte 21, migración 114)
+  multiplo: ["multiplo"],
+  plazo_dias: ["lead time*"],
 };
 const CAMPOS_ARTICULOS = {
   sku: ["id_sku", "sku"],
@@ -52,12 +56,16 @@ const CAMPOS_ARTICULOS = {
   unidad: ["unidad medida", "unidad*"],
   marca: ["marca"],
   color: ["color*"],
+  // Compras (parte 21, migración 114)
+  ultimo_precio: ["ultimo precio"],
+  proveedor_principal: ["proveedor principal"],
+  multiplo: ["lote minimo*"],
 };
 
 // Largo máximo de cada texto (los mismos que la migración 106)
-const LARGO = { sku: 60, nombre: 200, nombre_original: 200, division: 60, familia: 80, tipo: 60, unidad: 20, marca: 80, color: 80, semaforo: 40 };
+const LARGO = { sku: 60, nombre: 200, nombre_original: 200, division: 60, familia: 80, tipo: 60, unidad: 20, marca: 80, color: 80, semaforo: 40, proveedor_principal: 120 };
 const TEXTOS = ["nombre", "division", "familia", "tipo", "unidad", "marca", "color", "semaforo"];
-const NUMEROS = ["stock", "necesidad", "disponible", "en_transito", "punto_pedido", "sugerido"];
+const NUMEROS = ["stock", "necesidad", "disponible", "en_transito", "punto_pedido", "sugerido", "ultimo_precio", "multiplo", "plazo_dias"];
 const MAX_NUMERO = 1e10;
 
 /**
@@ -106,7 +114,10 @@ function leerHoja(texto, campos) {
     for (const campo of Object.keys(campos)) {
       if (campo === "sku" || col[campo] === undefined) continue;
       const valor = String(f[col[campo]] ?? "").replace(/\s+/g, " ").trim();
-      if (NUMEROS.includes(campo)) fila[campo] = numeroPlanilla(valor);
+      if (campo === "plazo_dias") {
+        const n = numeroPlanilla(valor);
+        fila[campo] = n !== null && n >= 0 && n <= 3650 ? Math.round(n) : null;
+      } else if (NUMEROS.includes(campo)) fila[campo] = numeroPlanilla(valor);
       else if (campo === "proxima_necesidad") fila[campo] = fechaPlanilla(valor);
       else fila[campo] = valor ? valor.slice(0, LARGO[campo]) : null;
     }
@@ -119,6 +130,7 @@ const VACIO = Object.freeze({
   nombre: null, division: null, familia: null, tipo: null, unidad: null, marca: null, color: null,
   stock: null, necesidad: null, disponible: null, en_transito: null, punto_pedido: null, sugerido: null,
   proxima_necesidad: null, semaforo: null,
+  ultimo_precio: null, proveedor_principal: null, multiplo: null, plazo_dias: null,
 });
 
 /**

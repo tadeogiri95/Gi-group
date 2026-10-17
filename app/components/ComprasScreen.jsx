@@ -10,6 +10,8 @@ import { filtrarArticulos } from "../lib/stock";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { ESTADOS_PEDIDO, filtrarPedidos, puedeAnularPedido, textoPedido } from "../lib/compras";
 import ProveedoresCompras from "./ProveedoresCompras";
+import AComprar from "./AComprar";
+import OrdenesCompra from "./OrdenesCompra";
 
 const CUANTOS = 300;
 const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad: "", ot: "", para_fecha: "", notas: "" };
@@ -141,9 +143,11 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
   );
 }
 
-export default function ComprasScreen({ empresaId, usuario = null }) {
+export default function ComprasScreen({ empresaId, empresa = null, usuario = null }) {
   const [permisos, setPermisos] = useState(null);
   const [vista, setVista] = useState("pedidos");
+  const [ordenNueva, setOrdenNueva] = useState(null);
+  const [creadas, setCreadas] = useState(null);
   const [pedidos, setPedidos] = useState(null);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [articulos, setArticulos] = useState([]);
@@ -207,9 +211,9 @@ export default function ComprasScreen({ empresaId, usuario = null }) {
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       {comprador && (
-        <div role="tablist" aria-label="Compras" className="flex gap-1.5 mb-3">
-          {[["pedidos", "🛒 Pedidos"], ["proveedores", "🏭 Proveedores"]].map(([id, label]) => (
-            <button key={id} role="tab" aria-selected={vista === id} onClick={() => setVista(id)}
+        <div role="tablist" aria-label="Compras" className="flex gap-1.5 mb-3 flex-wrap">
+          {[["pedidos", "🛒 Pedidos"], ["acomprar", "🧾 A comprar"], ["ordenes", "📄 Órdenes"], ["proveedores", "🏭 Proveedores"]].map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={vista === id} onClick={() => { setVista(id); setOrdenNueva(null); setCreadas(null); }}
               className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-bold cursor-pointer ${vista === id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
               {label}
             </button>
@@ -221,7 +225,16 @@ export default function ComprasScreen({ empresaId, usuario = null }) {
         <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">{AVISO_MIGRACION_113}</div>
       )}
 
-      {vista === "proveedores" && comprador ? (
+      {creadas?.length > 0 && vista === "ordenes" && (
+        <div role="status" className="p-3 mb-3 rounded-[10px] bg-gypi-green/10 text-[14px]">
+          ✅ Armé {creadas.length === 1 ? "la orden" : "las órdenes"} {creadas.map((o) => `N° ${o.numero} (${o.proveedor_nombre})`).join(", ")}. Revisalas y mandalas al proveedor.
+        </div>
+      )}
+      {vista === "acomprar" && comprador ? (
+        <AComprar empresaId={empresaId} onCreadas={(lista) => { setCreadas(lista); setOrdenNueva(lista.length === 1 ? lista[0].id : null); setVista("ordenes"); cargar(); }} />
+      ) : vista === "ordenes" && comprador ? (
+        <OrdenesCompra empresaId={empresaId} empresa={empresa} abrirId={ordenNueva} />
+      ) : vista === "proveedores" && comprador ? (
         <ProveedoresCompras empresaId={empresaId} />
       ) : (
         <>

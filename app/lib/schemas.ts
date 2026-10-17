@@ -338,6 +338,9 @@ const datosProveedor = {
   condicion_pago: textoSuelto(120),
   notas: textoSuelto(300),
 };
+const monedaOc = z.enum(["ARS", "USD"]);
+const cantidadOc = z.number().finite().positive().max(1e10);
+const precioOc = z.number().finite().min(0).max(1e12).nullable().optional().transform((v) => v ?? null);
 export const comprasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("proveedor_guardar"), id: idCompras.optional(), ...datosProveedor }).strict(),
   z.object({ accion: z.literal("proveedor_baja"), id: idCompras, activo: z.boolean() }).strict(),
@@ -353,6 +356,32 @@ export const comprasBody = z.discriminatedUnion("accion", [
     notas: textoSuelto(300),
   }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
   z.object({ accion: z.literal("pedido_anular"), id: idCompras }).strict(),
+  // Órdenes de compra (parte 21, migración 114)
+  z.object({
+    accion: z.literal("oc_crear"),
+    moneda: monedaOc.optional().default("ARS"),
+    lineas: z.array(z.object({
+      proveedor_id: idCompras,
+      sku: skuMovimiento.nullable().optional().transform((v) => v || null),
+      descripcion: z.string().trim().min(1).max(200),
+      unidad: textoSuelto(20),
+      cantidad: cantidadOc,
+      precio_unitario: precioOc,
+      pedido_id: idCompras.nullable().optional().transform((v) => v ?? null),
+      ot: otSuelto.nullable().optional().transform((v) => v || null),
+    }).strict()).min(1).max(200),
+  }).strict(),
+  z.object({
+    accion: z.literal("oc_guardar"),
+    id: idCompras,
+    moneda: monedaOc.optional(),
+    fecha_prometida: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    notas: z.string().trim().max(500).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
+    items: z.array(z.object({ id: idCompras, cantidad: cantidadOc, precio_unitario: precioOc }).strict()).max(200).optional(),
+    quitar: z.array(idCompras).max(200).optional(),
+  }).strict(),
+  z.object({ accion: z.literal("oc_enviar"), id: idCompras }).strict(),
+  z.object({ accion: z.literal("oc_anular"), id: idCompras }).strict(),
 ]);
 
 // ── /api/carga (104): acopio y carga de la OT ─────────────────────────────
