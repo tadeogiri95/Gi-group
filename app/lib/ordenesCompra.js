@@ -21,6 +21,21 @@ export const ESTADOS_OC_ABIERTA = ["borrador", "enviada", "recibida_parcial"];
 
 export const MONEDAS = { ARS: { id: "ARS", simbolo: "$" }, USD: { id: "USD", simbolo: "US$" } };
 
+/**
+ * Importe como se escribe en Argentina: "$ 1.500", "1.500,50", "1050", "10,5".
+ * Un punto seguido de tres cifras es de miles ("1.050" = mil cincuenta).
+ * Vacío, negativo o texto → null.
+ */
+export function leerImporte(texto) {
+  let t = String(texto ?? "").replace(/[$\s]|US/gi, "");
+  if (!t) return null;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0 || n >= 1e12) return null;
+  return Math.round(n * 10000) / 10000;
+}
+
 /** 7 con múltiplo 5 → 10. Sin múltiplo (o 1) queda igual. */
 export function redondearMultiplo(cantidad, multiplo) {
   const q = Number(cantidad);
@@ -243,4 +258,33 @@ export function imprimirOrdenCompra(datos) {
   ventana.focus();
   // Espera el logo antes de imprimir
   setTimeout(() => ventana.print(), 600);
+}
+
+/* ─── Recepción con remito y factura (parte 22, migración 115) ─────────── */
+
+/** OC en las que se puede anotar lo que llegó. */
+export const ESTADOS_OC_RECIBIBLE = ["borrador", "enviada", "recibida_parcial"];
+
+/** Lo que falta llegar de un renglón (nunca negativo). */
+export function pendienteItem(it) {
+  const p = Number(it?.cantidad) - Number(it?.cantidad_recibida || 0);
+  return p > 0 ? Math.round(p * 1000) / 1000 : 0;
+}
+
+/** Estado de la OC según lo recibido: todo → recibida; algo → recibida_parcial; nada → enviada. */
+export function estadoTrasRecepcion(items) {
+  const lista = items || [];
+  if (lista.length && lista.every((it) => pendienteItem(it) === 0)) return "recibida";
+  if (lista.some((it) => Number(it.cantidad_recibida) > 0)) return "recibida_parcial";
+  return "enviada";
+}
+
+/** Precio del ingreso de stock, en pesos como la planilla: una OC en dólares necesita el tipo de cambio. */
+export function precioEnPesos(precio, moneda, tipoCambio) {
+  if (precio === null || precio === undefined || precio === "") return null;
+  const p = Number(precio);
+  if (!Number.isFinite(p)) return null;
+  if (moneda !== "USD") return Math.round(p * 100) / 100;
+  const tc = Number(tipoCambio);
+  return Number.isFinite(tc) && tc > 0 ? Math.round(p * tc * 100) / 100 : null;
 }

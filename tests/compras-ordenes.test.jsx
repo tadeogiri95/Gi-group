@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
-  redondearMultiplo, importeTexto, totalOrden, ocAtrasada, proveedorSugerido, lineasAComprar, agruparPorProveedor,
+  redondearMultiplo, importeTexto, leerImporte, totalOrden, ocAtrasada, proveedorSugerido, lineasAComprar, agruparPorProveedor,
   textoOrdenCompra, htmlOrdenCompra,
 } from "../app/lib/ordenesCompra.js";
 import { unirArticulos } from "../app/lib/stock.js";
@@ -46,6 +46,12 @@ test("cantidades al múltiplo, importes y total sin IVA", () => {
   assert.equal(redondearMultiplo(2.5, null), 2.5);
   assert.equal(redondearMultiplo(0.3, 0.1), 0.3, "sin errores de coma flotante");
   assert.equal(redondearMultiplo(0, 5), null);
+  assert.equal(leerImporte("1.050"), 1050, "punto de miles");
+  assert.equal(leerImporte("$ 1.500,50"), 1500.5);
+  assert.equal(leerImporte("10,5"), 10.5);
+  assert.equal(leerImporte("US$ 12"), 12);
+  assert.equal(leerImporte("-3"), null);
+  assert.equal(leerImporte("abc"), null);
   assert.equal(importeTexto(1234.5), "$ 1.234,5");
   assert.equal(importeTexto(10, "USD"), "US$ 10");
   assert.equal(importeTexto(null), "—");

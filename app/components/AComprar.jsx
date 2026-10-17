@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { ESTADOS_OC_ABIERTA, MONEDAS, agruparPorProveedor, lineasAComprar } from "../lib/ordenesCompra";
+import { ESTADOS_OC_ABIERTA, MONEDAS, agruparPorProveedor, leerImporte, lineasAComprar } from "../lib/ordenesCompra";
 
 const MOSTRAR = 100;
 const COLUMNAS_ARTICULO = "sku,nombre,unidad,semaforo,sugerido,proxima_necesidad,activo";
@@ -106,7 +106,7 @@ export default function AComprar({ empresaId, onCreadas }) {
       if (!cantidad) { setError(`Poné la cantidad de ${l.descripcion}`); return; }
       let precio = l.precio_unitario;
       if (typeof precio === "string") {
-        precio = precio.trim() ? leerCantidadMovimiento(precio) : null;
+        precio = precio.trim() ? leerImporte(precio) : null;
         if (l.precio_unitario.trim() && precio === null) { setError(`Revisá el precio de ${l.descripcion}`); return; }
       }
       payload.push({

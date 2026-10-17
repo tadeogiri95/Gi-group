@@ -62,6 +62,8 @@ export const POLICY = {
   pedidos_compra:               { GET: "gestion" }, // se escribe por /api/compras (Compras parte 20)
   ordenes_compra:               { GET: "gestion" }, // se escribe por /api/compras (Compras parte 21)
   ordenes_compra_items:         { GET: "gestion" }, // se escribe por /api/compras (Compras parte 21)
+  recepciones_compra:           { GET: "gestion" }, // se escribe por /api/compras (Compras parte 22)
+  recepciones_compra_items:     { GET: "gestion" }, // se escribe por /api/compras (Compras parte 22)
   necesidades_stock:            { GET: "all" },   // la copia la sincronización de la planilla MRP (Stock parte 16)
   bultos_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   cargas_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)

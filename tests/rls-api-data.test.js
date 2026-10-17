@@ -133,7 +133,8 @@ const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"]
 // pasos_pieza → 110 (/api/piezas/paso, igual)
 // proveedores, pedidos_compra → 113 (/api/compras, igual)
 // ordenes_compra, ordenes_compra_items → 114 (/api/compras, igual)
-const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items"];
+// recepciones_compra, recepciones_compra_items → 115 (/api/compras, igual)
+const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items"];
 const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
 
 test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {

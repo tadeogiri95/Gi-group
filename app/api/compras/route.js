@@ -15,6 +15,12 @@
 //                           renglones (en borrador); el pedido quitado vuelve a pendiente
 //   oc_enviar             → borrador → enviada
 //   oc_anular             → la OC queda anulada y sus pedidos vuelven a pendiente
+//   recepcion_crear       → lo que llegó con un remito (gestión: jefes de taller y
+//                           Administración); cada renglón con SKU entra como ingreso de
+//                           stock; la OC pasa a recibida en parte o recibida (115)
+//   recepcion_anular      → la recepción y sus ingresos quedan anulados (comprador)
+//   oc_factura            → N° y fecha de factura, tipo de cambio y precio final; los
+//                           ingresos con otro precio se reemplazan (comprador)
 // Comprador = gerencia o Administración sin división asignada (un supervisor
 // de división pide y recibe, pero no compra). Con RLS_RUTAS=on todo va con el
 // pase del usuario ({ sesion }).
@@ -27,6 +33,7 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
 import { puedePedir, puedeComprar, puedeAnularPedido, formatoCuit } from "../../lib/compras";
+import { ESTADOS_OC_RECIBIBLE, estadoTrasRecepcion, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -37,6 +44,11 @@ function faltaMigracion(err) {
 function faltaMigracionOc(err) {
   const m = String(err?.message);
   return /ordenes_compra|orden_id/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
+}
+
+function faltaMigracionRecepcion(err) {
+  const m = String(err?.message);
+  return /recepciones_compra|factura_numero|factura_fecha|tipo_cambio/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
 }
 
 const soloComprador = () => NextResponse.json({ error: "Los proveedores los maneja Administración" }, { status: 403 });
@@ -298,6 +310,193 @@ async function anularOrden(sesion, id) {
   return NextResponse.json({ ok: true, orden: fila || { ...oc, estado: "anulada" } });
 }
 
+/* ─── Recepción con remito y factura (parte 22) ────────────────────────── */
+
+const redondear3 = (n) => Math.round(Number(n) * 1000) / 1000;
+
+async function nombreEmpleado(sesion) {
+  if (!sesion.empleado_id) return null;
+  const [emp] = (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${sesion.empresa_id}&select=nombre&limit=1`, { sesion, silent: true, fallback: [] })) || [];
+  return emp?.nombre ? String(emp.nombre).slice(0, 120) : null;
+}
+
+/** Deja la OC en el estado que corresponde a lo recibido y marca los pedidos que llegaron completos. */
+async function actualizarEstadoOrden(sesion, oc, items) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const estado = estadoTrasRecepcion(items);
+  const ahora = new Date().toISOString();
+  const cambios = { estado, updated_at: ahora };
+  if (!oc.enviada_at) cambios.enviada_at = ahora;
+  await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, cambios, opts);
+  const completos = items.filter((it) => it.pedido_id && pendienteItem(it) === 0).map((it) => it.pedido_id);
+  const incompletos = items.filter((it) => it.pedido_id && pendienteItem(it) > 0).map((it) => it.pedido_id);
+  if (completos.length) await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${completos.join(",")})&estado=eq.en_oc`, { estado: "recibido" }, opts);
+  if (incompletos.length) await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${incompletos.join(",")})&estado=eq.recibido`, { estado: "en_oc" }, opts);
+  return estado;
+}
+
+/** Ingreso de stock de un renglón de la OC (como los de la parte 14). */
+function filaIngreso(sesion, { oc, item, articulo, cantidad, comprobante, empleadoNombre }) {
+  return {
+    empresa_id: sesion.empresa_id,
+    tipo: "ingreso",
+    sku: item.sku,
+    nombre: (articulo?.nombre || item.descripcion || "").slice(0, 200) || null,
+    unidad: articulo?.unidad ?? item.unidad ?? null,
+    division: articulo?.division ?? null,
+    cantidad,
+    ot: item.ot || null,
+    proveedor: String(oc.proveedor_nombre).slice(0, 120),
+    comprobante: String(comprobante).slice(0, 60),
+    precio_unitario: precioEnPesos(item.precio_unitario, oc.moneda, oc.tipo_cambio),
+    notas: `OC N° ${oc.numero}`,
+    empleado_id: sesion.empleado_id || null,
+    legajo: Number.isInteger(sesion.legajo) ? sesion.legajo : null,
+    empleado_nombre: empleadoNombre,
+  };
+}
+
+async function crearRecepcion(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  if (!puedePedir(sesion.rol)) {
+    return NextResponse.json({ error: "La mercadería la reciben los jefes de taller y la oficina" }, { status: 403 });
+  }
+  const oc = await leerOrden(sesion, d.orden_id);
+  if (!oc) return noEncontreOc();
+  if (!ESTADOS_OC_RECIBIBLE.includes(oc.estado)) {
+    return NextResponse.json({ error: oc.estado === "recibida" ? "Esa orden de compra ya se recibió completa" : "Esa orden de compra está anulada" }, { status: 409 });
+  }
+  const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*&order=id.asc`, opts)) || [];
+  const porId = new Map(items.map((it) => [it.id, it]));
+  const llegan = new Map();
+  for (const l of d.items) {
+    if (!porId.has(l.item_id)) return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
+    llegan.set(l.item_id, redondear3((llegan.get(l.item_id) || 0) + l.cantidad));
+  }
+
+  const empleadoNombre = await nombreEmpleado(sesion);
+  const [recepcion] = (await sbPost("recepciones_compra", {
+    empresa_id: e, orden_id: oc.id, remito: d.remito, foto_url: d.foto_url, notas: d.notas,
+    empleado_id: sesion.empleado_id || null, empleado_nombre: empleadoNombre,
+  }, opts)) || [];
+  if (!recepcion?.id) throw new Error("No se pudo guardar la recepción");
+
+  // Ingresos de stock de los renglones que son artículos de la planilla
+  const conSku = [...llegan.keys()].map((id) => porId.get(id)).filter((it) => it.sku);
+  const skus = [...new Set(conSku.map((it) => it.sku))];
+  const articulos = skus.length
+    ? (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=in.(${skus.map((x) => `"${x}"`).join(",")})&select=sku,nombre,unidad,division`, { ...opts, silent: true, fallback: [] })) || []
+    : [];
+  const artPorSku = new Map(articulos.map((a) => [a.sku, a]));
+  const movs = conSku.length
+    ? (await sbPost("movimientos_stock", conSku.map((item) => filaIngreso(sesion, {
+      oc, item, articulo: artPorSku.get(item.sku), cantidad: llegan.get(item.id), comprobante: oc.factura_numero || d.remito, empleadoNombre,
+    })), opts)) || []
+    : [];
+  const movPorItem = new Map(conSku.map((it, i) => [it.id, movs[i]?.id ?? null]));
+
+  await sbPost("recepciones_compra_items", [...llegan.entries()].map(([itemId, cantidad]) => ({
+    empresa_id: e, recepcion_id: recepcion.id, item_id: itemId, cantidad, movimiento_id: movPorItem.get(itemId) ?? null,
+  })), opts);
+
+  for (const [itemId, cantidad] of llegan) {
+    const it = porId.get(itemId);
+    it.cantidad_recibida = redondear3(Number(it.cantidad_recibida || 0) + cantidad);
+    await sbPatch(`ordenes_compra_items?id=eq.${itemId}&empresa_id=eq.${e}`, { cantidad_recibida: it.cantidad_recibida }, opts);
+  }
+  const estado = await actualizarEstadoOrden(sesion, oc, items);
+  broadcastRefresh(e, "ordenes_compra");
+  broadcastRefresh(e, "pedidos_compra");
+  if (movs.length) broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, recepcion, estado, ingresos: movs.length });
+}
+
+async function anularRecepcion(sesion, id) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const [rec] = (await sbGet(`recepciones_compra?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`, opts)) || [];
+  if (!rec) return NextResponse.json({ error: "No encontré esa recepción" }, { status: 404 });
+  if (rec.anulada) return NextResponse.json({ ok: true, recepcion: rec });
+  const oc = await leerOrden(sesion, rec.orden_id);
+  if (!oc) return noEncontreOc();
+  const ahora = new Date().toISOString();
+  const lineas = (await sbGet(`recepciones_compra_items?recepcion_id=eq.${rec.id}&empresa_id=eq.${e}&select=item_id,cantidad,movimiento_id`, opts)) || [];
+  const movs = lineas.map((l) => l.movimiento_id).filter(Boolean);
+  if (movs.length) {
+    await sbPatch(`movimientos_stock?empresa_id=eq.${e}&id=in.(${movs.join(",")})&anulado=eq.false`, { anulado: true, anulado_por: sesion.empleado_id || null, anulado_at: ahora }, opts);
+  }
+  const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
+  const porId = new Map(items.map((it) => [it.id, it]));
+  for (const l of lineas) {
+    const it = porId.get(l.item_id);
+    if (!it) continue;
+    it.cantidad_recibida = Math.max(0, redondear3(Number(it.cantidad_recibida || 0) - Number(l.cantidad)));
+    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, { cantidad_recibida: it.cantidad_recibida }, opts);
+  }
+  const [fila] = (await sbPatch(`recepciones_compra?id=eq.${rec.id}&empresa_id=eq.${e}`, { anulada: true, anulada_por: sesion.empleado_id || null, anulada_at: ahora }, opts)) || [];
+  const estado = oc.estado === "anulada" ? oc.estado : await actualizarEstadoOrden(sesion, oc, items);
+  broadcastRefresh(e, "ordenes_compra");
+  broadcastRefresh(e, "pedidos_compra");
+  if (movs.length) broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, recepcion: fila || { ...rec, anulada: true }, estado });
+}
+
+async function facturaOrden(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const oc = await leerOrden(sesion, d.id);
+  if (!oc) return noEncontreOc();
+  if (oc.estado === "anulada") return NextResponse.json({ error: "Esa orden de compra está anulada" }, { status: 409 });
+  const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
+  const porId = new Map(items.map((it) => [it.id, it]));
+  for (const pr of d.precios || []) {
+    const it = porId.get(pr.item_id);
+    if (!it) return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
+    const viejo = it.precio_unitario === null || it.precio_unitario === undefined ? null : Number(it.precio_unitario);
+    if (viejo === pr.precio_unitario) continue;
+    it.precio_unitario = pr.precio_unitario;
+    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, { precio_unitario: pr.precio_unitario }, opts);
+  }
+  const ahora = new Date().toISOString();
+  const cambios = { factura_numero: d.factura_numero, factura_fecha: d.factura_fecha, tipo_cambio: oc.moneda === "USD" ? d.tipo_cambio : null, updated_at: ahora };
+  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, cambios, opts)) || [];
+  const ocNueva = { ...oc, ...cambios };
+
+  // Los ingresos ya cargados con otro precio o comprobante se reemplazan: la
+  // planilla trae los nuevos y borra los anulados (parte 15)
+  let reemplazados = 0;
+  const recepciones = (await sbGet(`recepciones_compra?orden_id=eq.${oc.id}&empresa_id=eq.${e}&anulada=eq.false&select=id,remito`, opts)) || [];
+  if (recepciones.length) {
+    const remitoDe = new Map(recepciones.map((r) => [r.id, r.remito]));
+    const lineas = (await sbGet(`recepciones_compra_items?recepcion_id=in.(${recepciones.map((r) => r.id).join(",")})&empresa_id=eq.${e}&movimiento_id=not.is.null&select=id,recepcion_id,item_id,cantidad,movimiento_id`, opts)) || [];
+    const movs = lineas.length
+      ? (await sbGet(`movimientos_stock?empresa_id=eq.${e}&id=in.(${lineas.map((l) => l.movimiento_id).join(",")})&anulado=eq.false&select=*`, opts)) || []
+      : [];
+    const movPorId = new Map(movs.map((m) => [m.id, m]));
+    const empleadoNombre = await nombreEmpleado(sesion);
+    for (const l of lineas) {
+      const mov = movPorId.get(l.movimiento_id);
+      const item = porId.get(l.item_id);
+      if (!mov || !item) continue;
+      const precio = precioEnPesos(item.precio_unitario, ocNueva.moneda, ocNueva.tipo_cambio);
+      const comprobante = (ocNueva.factura_numero || remitoDe.get(l.recepcion_id) || "").slice(0, 60);
+      const precioViejo = mov.precio_unitario === null ? null : Number(mov.precio_unitario);
+      if (precioViejo === precio && mov.comprobante === comprobante) continue;
+      const [nuevo] = (await sbPost("movimientos_stock", {
+        ...filaIngreso(sesion, { oc: ocNueva, item, articulo: { nombre: mov.nombre, unidad: mov.unidad, division: mov.division }, cantidad: Number(l.cantidad), comprobante, empleadoNombre }),
+      }, opts)) || [];
+      await sbPatch(`movimientos_stock?id=eq.${mov.id}&empresa_id=eq.${e}`, { anulado: true, anulado_por: sesion.empleado_id || null, anulado_at: ahora }, opts);
+      if (nuevo?.id) await sbPatch(`recepciones_compra_items?id=eq.${l.id}&empresa_id=eq.${e}`, { movimiento_id: nuevo.id }, opts);
+      reemplazados++;
+    }
+  }
+  broadcastRefresh(e, "ordenes_compra");
+  if (reemplazados) broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, orden: fila || ocNueva, reemplazados });
+}
+
 async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
@@ -329,6 +528,7 @@ export async function POST(request) {
     try {
       if (d.accion === "pedido_crear") return await crearPedido(sesion, d);
       if (d.accion === "pedido_anular") return await anularPedido(sesion, d.id);
+      if (d.accion === "recepcion_crear") return await crearRecepcion(sesion, d);
       if (!(await esComprador(sesion))) return soloComprador();
       if (d.accion === "proveedor_guardar") return await guardarProveedor(sesion, d);
       if (d.accion === "proveedor_baja") return await bajaProveedor(sesion, d);
@@ -336,8 +536,13 @@ export async function POST(request) {
       if (d.accion === "oc_crear") return await crearOrdenes(sesion, d);
       if (d.accion === "oc_guardar") return await guardarOrden(sesion, d);
       if (d.accion === "oc_enviar") return await enviarOrden(sesion, d.id);
-      return await anularOrden(sesion, d.id);
+      if (d.accion === "oc_anular") return await anularOrden(sesion, d.id);
+      if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
+      return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionRecepcion(err)) {
+        return NextResponse.json({ error: "Para recibir con remito falta correr la migración 115 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionOc(err)) {
         return NextResponse.json({ error: "Para las órdenes de compra falta correr la migración 114 en Supabase." }, { status: 409 });
       }

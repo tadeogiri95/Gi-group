@@ -3,13 +3,14 @@
 // parte 21; ítem 41). Las OC armadas en "A comprar": se revisan cantidades,
 // precios sin IVA, moneda y fecha prometida, se mandan al proveedor (PDF +
 // WhatsApp o email) y se marcan enviadas. Una enviada que pasó la fecha
-// prometida aparece atrasada. La recepción con remito es la parte 22.
+// prometida aparece atrasada. Lo que llega se recibe en Compras → Recibir y
+// la factura, que puede llegar después, se carga acá (parte 22).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_OC, ESTADOS_OC_ABIERTA, MONEDAS, importeTexto, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
+  ESTADOS_OC, ESTADOS_OC_ABIERTA, MONEDAS, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
 } from "../lib/ordenesCompra";
 import { AVISO_MIGRACION_114 } from "./AComprar";
 
@@ -21,6 +22,78 @@ async function postCompras(body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar");
   return data;
+}
+
+/** Factura de la OC (parte 22): puede llegar después del material. Si cambia el precio, los ingresos de stock se reemplazan. */
+function FacturaOrden({ oc, items, onGuardada }) {
+  const [numero, setNumero] = useState(oc.factura_numero || "");
+  const [fecha, setFecha] = useState(oc.factura_fecha || "");
+  const [tc, setTc] = useState(numTexto(oc.tipo_cambio));
+  const [precios, setPrecios] = useState(() => Object.fromEntries(items.map((it) => [it.id, numTexto(it.precio_unitario)])));
+  const [error, setError] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const usd = oc.moneda === "USD";
+
+  const guardar = async () => {
+    setError(null);
+    setAviso(null);
+    const cambios = [];
+    for (const it of items) {
+      const t = String(precios[it.id] ?? "").trim();
+      const precio = t ? leerImporte(t) : null;
+      if (t && precio === null) { setError(`Revisá el precio de ${it.descripcion}`); return; }
+      const viejo = it.precio_unitario === null || it.precio_unitario === undefined ? null : Number(it.precio_unitario);
+      if (precio !== viejo) cambios.push({ item_id: it.id, precio_unitario: precio });
+    }
+    const tipoCambio = usd && tc.trim() ? leerImporte(tc) : null;
+    if (usd && tc.trim() && !tipoCambio) { setError("Revisá el tipo de cambio"); return; }
+    setEnviando(true);
+    try {
+      const data = await postCompras({
+        accion: "oc_factura", id: oc.id, factura_numero: numero.trim() || null, factura_fecha: fecha || null,
+        tipo_cambio: tipoCambio, ...(cambios.length ? { precios: cambios } : {}),
+      });
+      setAviso(`Factura guardada${data.reemplazados ? `. Corregí ${data.reemplazados} ingreso${data.reemplazados === 1 ? "" : "s"} de stock con el precio nuevo` : ""}.`);
+      await onGuardada();
+    } catch (e) {
+      setError(e.message);
+    }
+    setEnviando(false);
+  };
+
+  return (
+    <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
+      <div className="text-[14px] font-bold mb-2">🧾 Factura</div>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="g-label" htmlFor="fac-numero">N° de factura</label>
+          <input id="fac-numero" className="g-input w-full mb-2" value={numero} onChange={(e) => setNumero(e.target.value)} maxLength={60} placeholder="Ej: A-0003-00001234" />
+        </div>
+        <div className="flex-1">
+          <label className="g-label" htmlFor="fac-fecha">Fecha de factura</label>
+          <input id="fac-fecha" type="date" className="g-input w-full mb-2" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </div>
+      </div>
+      {usd && (
+        <>
+          <label className="g-label" htmlFor="fac-tc">Tipo de cambio (pesos por dólar)</label>
+          <input id="fac-tc" className="g-input w-full mb-2" inputMode="decimal" value={tc} onChange={(e) => setTc(e.target.value)} placeholder="Ej: 1.050" />
+        </>
+      )}
+      <div className="text-[12px] text-gypi-dim mb-1">Precio final sin IVA{usd ? " en dólares" : ""}. Si cambia, el ingreso de stock se corrige solo.</div>
+      {items.map((it) => (
+        <div key={it.id} className="flex items-center gap-2 mb-1">
+          <label className="flex-1 min-w-0 text-[13px] truncate" htmlFor={`fac-precio-${it.id}`}>{it.descripcion}</label>
+          <input id={`fac-precio-${it.id}`} aria-label={`Precio final de ${it.descripcion}`} className="g-input w-[110px]" inputMode="decimal"
+            value={precios[it.id] ?? ""} onChange={(e) => setPrecios((p) => ({ ...p, [it.id]: e.target.value }))} />
+        </div>
+      ))}
+      <button onClick={guardar} disabled={enviando} className="g-btn g-btn-secondary w-full mt-2">{enviando ? "Guardando…" : "Guardar factura"}</button>
+      {aviso && <div role="status" className="text-[13px] mt-2">✅ {aviso}</div>}
+      {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}
+    </div>
+  );
 }
 
 function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
@@ -62,7 +135,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
       const r = form?.renglones[it.id];
       if (!r) return it;
       const cantidad = leerCantidadMovimiento(r.cantidad) ?? it.cantidad;
-      const precio = r.precio.trim() ? leerCantidadMovimiento(r.precio) : null;
+      const precio = r.precio.trim() ? leerImporte(r.precio) : null;
       return { ...it, cantidad, precio_unitario: r.precio.trim() ? precio ?? it.precio_unitario : null };
     }), [items, form]);
   const ocVista = form ? { ...oc, moneda: form.moneda, fecha_prometida: form.fecha_prometida || null, notas: form.notas.trim() || null } : oc;
@@ -81,7 +154,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
         const r = form.renglones[it.id];
         const cantidad = leerCantidadMovimiento(r.cantidad);
         if (!cantidad) { setError(`Revisá la cantidad de ${it.descripcion}`); return false; }
-        const precio = r.precio.trim() ? leerCantidadMovimiento(r.precio) : null;
+        const precio = r.precio.trim() ? leerImporte(r.precio) : null;
         if (r.precio.trim() && precio === null) { setError(`Revisá el precio de ${it.descripcion}`); return false; }
         if (cantidad !== Number(it.cantidad) || precio !== (it.precio_unitario === null ? null : Number(it.precio_unitario))) {
           renglones.push({ id: it.id, cantidad, precio_unitario: precio });
@@ -188,6 +261,8 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
               <button onClick={() => guardar()} disabled={enviando} className="g-btn g-btn-secondary w-full">Guardar cambios</button>
             </div>
           )}
+
+          {!borrador && oc.estado !== "anulada" && items.length > 0 && <FacturaOrden key={`${oc.id}-${oc.updated_at}`} oc={oc} items={items} onGuardada={async () => { await onCambio(); await cargar(); }} />}
 
           <div className="flex gap-2 flex-wrap mb-2">
             <button onClick={pdf} className="g-btn g-btn-secondary flex-1">📄 PDF</button>
