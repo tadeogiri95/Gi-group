@@ -4,7 +4,8 @@
 // material (🛒 Pedir material) y ven en qué quedó cada pedido. Administración
 // (sin división asignada) y gerencia ven todos los pedidos y manejan los
 // proveedores; con eso arman las órdenes de compra (parte 21). Lo que llega
-// lo reciben los jefes o Administración en Recibir (parte 22).
+// lo reciben los jefes o Administración en Recibir (parte 22). Quien compra
+// tiene además Reportes (parte 23).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { filtrarArticulos } from "../lib/stock";
@@ -14,12 +15,13 @@ import ProveedoresCompras from "./ProveedoresCompras";
 import AComprar from "./AComprar";
 import OrdenesCompra from "./OrdenesCompra";
 import RecibirCompra from "./RecibirCompra";
+import ReportesCompras from "./ReportesCompras";
 
 const CUANTOS = 300;
 const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad: "", ot: "", para_fecha: "", notas: "" };
 // Los jefes de taller piden y reciben; el comprador además arma las OC y maneja proveedores
 const PESTANAS_JEFE = [["pedidos", "🛒 Pedidos"], ["recibir", "📦 Recibir"]];
-const PESTANAS_COMPRADOR = [["pedidos", "🛒 Pedidos"], ["acomprar", "🧾 A comprar"], ["ordenes", "📄 Órdenes"], ["recibir", "📦 Recibir"], ["proveedores", "🏭 Proveedores"]];
+const PESTANAS_COMPRADOR = [["pedidos", "🛒 Pedidos"], ["acomprar", "🧾 A comprar"], ["ordenes", "📄 Órdenes"], ["recibir", "📦 Recibir"], ["proveedores", "🏭 Proveedores"], ["reportes", "📊 Reportes"]];
 export const AVISO_MIGRACION_113 = "Para usar Compras falta correr la migración 113 en Supabase.";
 
 function fecha(iso) {
@@ -243,6 +245,8 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
         <OrdenesCompra empresaId={empresaId} empresa={empresa} abrirId={ordenNueva} />
       ) : vista === "proveedores" && comprador ? (
         <ProveedoresCompras empresaId={empresaId} />
+      ) : vista === "reportes" && comprador ? (
+        <ReportesCompras empresaId={empresaId} />
       ) : (
         <>
           {permisos.puede_pedir && (pidiendo ? (

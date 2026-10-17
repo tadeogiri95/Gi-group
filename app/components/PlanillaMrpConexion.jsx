@@ -66,7 +66,7 @@ export default function PlanillaMrpConexion() {
       {abierto && (
         <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border text-[13px] leading-relaxed">
           <p className="m-0 mb-2 text-gypi-dim">
-            La planilla trae sola, cada hora, los retiros, devoluciones, ajustes e ingresos cargados acá, y los anota al final de fact_consumos_stock y fact_ingresos_stock. Si anulás uno que ya pasó, la planilla borra esa fila.
+            La planilla trae sola, cada hora, los retiros, devoluciones, ajustes e ingresos cargados acá, y los anota al final de fact_consumos_stock y fact_ingresos_stock. Si anulás uno que ya pasó, la planilla borra esa fila. También deja en fact_ordenes_compra lo que falta llegar de las órdenes de compra abiertas, así cuenta en EN TRÁNSITO y el MRP no te sugiere comprarlo de nuevo.
           </p>
           {!script ? (
             <button onClick={generar} disabled={generando} className="g-btn g-btn-primary w-full">
@@ -77,7 +77,7 @@ export default function PlanillaMrpConexion() {
               <ol className="m-0 mb-2 pl-5 flex flex-col gap-1">
                 <li>Copiá el código.</li>
                 <li>En la planilla MRP: Extensiones → Apps Script.</li>
-                <li>Tocá ＋ → Secuencia de comandos, pegá el código y guardá.</li>
+                <li>Tocá ＋ → Secuencia de comandos, pegá el código y guardá. Si ya tenías el de Gypi, borrá el viejo y pegá este en su lugar.</li>
                 <li>Arriba elegí la función <b>instalarGypi</b>, tocá Ejecutar y dale los permisos. Se hace una sola vez.</li>
               </ol>
               <textarea readOnly value={script} aria-label="Código para la planilla" rows={6}
