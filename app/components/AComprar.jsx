@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { ESTADOS_OC_ABIERTA, MONEDAS, agruparPorProveedor, leerImporte, lineasAComprar } from "../lib/ordenesCompra";
+import { faltaTabla } from "../lib/compras";
 
 const MOSTRAR = 100;
 const COLUMNAS_ARTICULO = "sku,nombre,unidad,semaforo,sugerido,proxima_necesidad,activo";
@@ -60,7 +61,7 @@ export default function AComprar({ empresaId, onCreadas }) {
             }
           }
         } catch (e) {
-          if (!String(e?.message).includes("ordenes_compra")) throw e;
+          if (!faltaTabla(e, "ordenes_compra")) throw e;
           sin114 = true;
         }
       }
@@ -71,7 +72,7 @@ export default function AComprar({ empresaId, onCreadas }) {
       setCambios({});
     } catch (e) {
       setLineas([]);
-      setError(String(e?.message).includes("pedidos_compra") || String(e?.message).includes("proveedores")
+      setError(faltaTabla(e, "pedidos_compra") || faltaTabla(e, "proveedores")
         ? "Para usar Compras falta correr la migración 113 en Supabase."
         : "No se pudo armar la lista. Probá de nuevo.");
     }

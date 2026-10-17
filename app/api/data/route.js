@@ -60,13 +60,19 @@ const TABLAS_PERMITIDAS = [
   "pasos_pieza", // OP parte 18 (110): solo lectura acá; se escribe por /api/piezas/paso
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
+  "proveedores", "pedidos_compra", // Compras parte 20 (113): solo lectura acá; se escriben por /api/compras
+  "ordenes_compra", "ordenes_compra_items", // Compras parte 21 (114): ídem
+  "recepciones_compra", "recepciones_compra_items", // Compras parte 22 (115): ídem
 ];
+
+// Tablas de Compras: se leen por acá y se escriben solo por /api/compras.
+const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items"];
 
 // documentos_empleado: solo lectura vía /api/data — los inserts pasan SIEMPRE
 // por /api/documentos/upload (valida tipo/tamaño de archivo server-side antes
 // de escribir la fila). Sin esto, un POST directo podría crear filas con
 // storage_path arbitrario sin que exista el archivo.
-const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza"];
+const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", ...TABLAS_COMPRAS];
 
 // Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
 // base aplica la RLS. Las dos vistas de resumen necesitan además la migración
@@ -293,6 +299,7 @@ function inyectarEmpresaEnBody(body, tabla, empresaId, method) {
 
 // ═══ POST /api/data ═══
 export async function POST(request) {
+  let pathCheck = null;
   try {
     if (!SUPABASE_URL || !SUPABASE_KEY) {
       logger.error("[data] Falta configuración: SUPABASE_URL o SUPABASE_SERVICE_KEY");
@@ -330,7 +337,7 @@ export async function POST(request) {
     }
 
     // ─── VALIDACIONES ───
-    const pathCheck = validarPath(path);
+    pathCheck = validarPath(path);
     if (!pathCheck.valido) {
       return NextResponse.json({ error: pathCheck.error }, { status: 403 });
     }
@@ -484,6 +491,11 @@ export async function POST(request) {
 
     return NextResponse.json({ ok: true, data: filtrarCamposSensibles(data, pathCheck.tabla), nextCursor });
   } catch (err) {
+    // Tabla que todavía no existe en la base: se avisa con su nombre para que
+    // la pantalla pueda decir qué migración falta correr.
+    if (pathCheck?.tabla && /42P01|PGRST205|does not exist|schema cache/.test(String(err?.message))) {
+      return NextResponse.json({ error: `La tabla "${pathCheck.tabla}" no existe todavía en la base` }, { status: 409 });
+    }
     logger.error("[data] Error interno", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }

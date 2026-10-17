@@ -251,3 +251,33 @@ test("POST /api/data — POST a proyectos rechazado con 402 cuando el plan lleg�
   assert.ok(json.error.toLowerCase().includes("plan") || json.error.toLowerCase().includes("proyectos"), "el error debe mencionar el plan o el límite");
   assert.ok(json.upgrade_a, "debe sugerir un plan superior");
 });
+
+const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items"];
+
+test("POST /api/data — las tablas de Compras se leen y no se escriben", async () => {
+  const token = await tokenValido();
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (url) => TABLAS_COMPRAS.some((t) => url.includes(`/rest/v1/${t}?`)), respond: () => ({ status: 200, body: [] }) },
+  ]);
+  for (const t of TABLAS_COMPRAS) {
+    const res = await POST(req({ method: "GET", path: `${t}?order=id.desc&limit=5` }, token));
+    assert.equal(res.status, 200, `GET ${t}`);
+    const resPost = await POST(req({ method: "POST", path: t, body: { notas: "x" } }, token));
+    assert.equal(resPost.status, 403, `POST ${t} va por /api/compras`);
+  }
+});
+
+test("POST /api/data — si la tabla no existe en la base lo dice con su nombre", async () => {
+  const token = await tokenValido();
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url) => url.includes("/rest/v1/pedidos_compra?"),
+      respond: () => ({ status: 404, body: { code: "PGRST205", message: "Could not find the table 'public.pedidos_compra' in the schema cache" } }),
+    },
+  ]);
+  const res = await POST(req({ method: "GET", path: "pedidos_compra?limit=5" }, token));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /"pedidos_compra" no existe/);
+});

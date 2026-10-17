@@ -95,6 +95,15 @@ test("validación — pedido con artículo o descripción y cantidad positiva; e
   assert.equal(ok({ accion: "pedido_anular", id: "3" }), false);
 });
 
+test("faltaTabla — solo si la tabla no existe, no por permisos u otros errores", async () => {
+  const { faltaTabla } = await import("../app/lib/compras.js");
+  assert.equal(faltaTabla(new Error('La tabla "pedidos_compra" no existe todavía en la base'), "pedidos_compra"), true);
+  assert.equal(faltaTabla(new Error("Could not find the table 'public.proveedores' in the schema cache"), "proveedores"), true);
+  assert.equal(faltaTabla(new Error('Tabla "pedidos_compra" no permitida'), "pedidos_compra"), false);
+  assert.equal(faltaTabla(new Error("Error interno del servidor"), "pedidos_compra"), false);
+  assert.equal(faltaTabla(null, "proveedores"), false);
+});
+
 test("migración 113 — por empresa, sin borrar; se lee por /api/data solo gestión", () => {
   const sql = readFileSync(new URL("../supabase/migrations/113_compras_pedidos.sql", import.meta.url), "utf8");
   for (const t of ["proveedores", "pedidos_compra"]) {

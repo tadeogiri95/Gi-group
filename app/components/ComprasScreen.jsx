@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { filtrarArticulos } from "../lib/stock";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { ESTADOS_PEDIDO, filtrarPedidos, puedeAnularPedido, textoPedido } from "../lib/compras";
+import { ESTADOS_PEDIDO, faltaTabla, filtrarPedidos, puedeAnularPedido, textoPedido } from "../lib/compras";
 import ProveedoresCompras from "./ProveedoresCompras";
 import AComprar from "./AComprar";
 import OrdenesCompra from "./OrdenesCompra";
@@ -183,7 +183,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
       setFaltaMigracion(false);
     } catch (e) {
       setPedidos([]);
-      if (String(e?.message).includes("pedidos_compra")) setFaltaMigracion(true);
+      if (faltaTabla(e, "pedidos_compra")) setFaltaMigracion(true);
     }
   }, [empresaId, permisos, usuario?.id]);
   useEffect(() => { cargar(); }, [cargar]);
