@@ -326,6 +326,35 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("anular"), id: z.number().int().positive() }).strict(),
 ]);
 
+// ── /api/compras (113): proveedores y pedidos de material (Compras parte 20) ──
+const idCompras = z.number().int().positive();
+const datosProveedor = {
+  nombre: z.string().trim().min(1).max(120),
+  cuit: textoSuelto(20),
+  contacto: textoSuelto(120),
+  whatsapp: textoSuelto(30),
+  email: z.string().trim().max(160).email("Email inválido").nullable().optional().or(z.literal("")).transform((v) => v || null),
+  plazo_dias: z.number().int().min(0).max(365).nullable().optional().transform((v) => v ?? null),
+  condicion_pago: textoSuelto(120),
+  notas: textoSuelto(300),
+};
+export const comprasBody = z.discriminatedUnion("accion", [
+  z.object({ accion: z.literal("proveedor_guardar"), id: idCompras.optional(), ...datosProveedor }).strict(),
+  z.object({ accion: z.literal("proveedor_baja"), id: idCompras, activo: z.boolean() }).strict(),
+  z.object({ accion: z.literal("proveedores_importar"), nombres: z.array(z.string().trim().min(1).max(120)).min(1).max(500) }).strict(),
+  z.object({
+    accion: z.literal("pedido_crear"),
+    sku: skuMovimiento.nullable().optional().transform((v) => v || null),
+    descripcion: textoSuelto(200),
+    unidad: textoSuelto(20),
+    cantidad: z.number().finite().positive().max(1e10),
+    ot: otSuelto.nullable().optional().transform((v) => v || null),
+    para_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
+    notas: textoSuelto(300),
+  }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
+  z.object({ accion: z.literal("pedido_anular"), id: idCompras }).strict(),
+]);
+
 // ── /api/carga (104): acopio y carga de la OT ─────────────────────────────
 const idCarga = z.number().int().positive();
 export const cargaBody = z.discriminatedUnion("accion", [
