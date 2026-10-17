@@ -10,6 +10,7 @@ import { sb, apiFetch } from "../lib/supabase";
 import { fotoBase64, subirImagen } from "../lib/foto";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { ESTADOS_OC, ESTADOS_OC_RECIBIBLE, ocAtrasada, pendienteItem } from "../lib/ordenesCompra";
+import { faltaTabla } from "../lib/compras";
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 const cantTexto = (n) => Number(n).toLocaleString("es-AR", { maximumFractionDigits: 3 });
@@ -40,7 +41,7 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
       const [its, recs] = await Promise.all([
         sb.get(`ordenes_compra_items?orden_id=eq.${oc.id}&order=id.asc`),
         sb.get(`recepciones_compra?orden_id=eq.${oc.id}&order=created_at.desc`).catch((e) => {
-          if (String(e?.message).includes("recepciones_compra")) setError(AVISO_MIGRACION_115);
+          if (faltaTabla(e, "recepciones_compra")) setError(AVISO_MIGRACION_115);
           return [];
         }),
       ]);
@@ -200,7 +201,7 @@ export default function RecibirCompra({ empresaId, comprador = false }) {
       setFalta(false);
     } catch (e) {
       setOrdenes([]);
-      if (String(e?.message).includes("ordenes_compra")) setFalta(true);
+      if (faltaTabla(e, "ordenes_compra")) setFalta(true);
     }
   }, [empresaId]);
   useEffect(() => { cargar(); }, [cargar]);

@@ -14,6 +14,15 @@ export const ESTADOS_PEDIDO = {
 };
 
 /** ¿Puede pedir material? Todos menos los operarios. */
+/**
+ * Si el error de leer `tabla` es porque la tabla no existe (falta su migración).
+ * Otros errores con el nombre de la tabla (permisos, red) no cuentan.
+ */
+export function faltaTabla(err, tabla) {
+  const m = String(err?.message ?? "");
+  return m.includes(tabla) && /no existe|does not exist|42P01|PGRST20[05]|schema cache/.test(m);
+}
+
 export function puedePedir(rol) {
   return rol === "gerencial" || rol === "administrativo";
 }

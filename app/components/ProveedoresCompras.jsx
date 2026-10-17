@@ -6,7 +6,7 @@
 // planilla MRP. Un proveedor que ya no se usa se da de baja, no se borra.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sbGetAll, apiFetch } from "../lib/supabase";
-import { leerListaProveedores, numeroWhatsapp } from "../lib/compras";
+import { faltaTabla, leerListaProveedores, numeroWhatsapp } from "../lib/compras";
 
 const VACIO = { id: null, nombre: "", cuit: "", contacto: "", whatsapp: "", email: "", plazo_dias: "", condicion_pago: "", notas: "" };
 const MOSTRAR = 100;
@@ -35,7 +35,7 @@ export default function ProveedoresCompras({ empresaId }) {
       setLista(data || []);
     } catch (e) {
       setLista([]);
-      setError(String(e?.message).includes("proveedores") ? "Para usar Compras falta correr la migración 113 en Supabase." : "No se pudieron leer los proveedores");
+      setError(faltaTabla(e, "proveedores") ? "Para usar Compras falta correr la migración 113 en Supabase." : "No se pudieron leer los proveedores");
     }
   }, [empresaId]);
   useEffect(() => { cargar(); }, [cargar]);
