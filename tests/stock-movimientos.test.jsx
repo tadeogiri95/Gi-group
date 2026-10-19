@@ -262,7 +262,7 @@ test("movimientos en Stock — lista, anular y cargar un ingreso", async () => {
 
 test("accesos — botón en el inicio del operario, en la ficha y pestaña en Stock", () => {
   const home = readFileSync(new URL("../app/components/screens/HomeEmp.jsx", import.meta.url), "utf8");
-  assert.match(home, /title="Retirar material"/);
+  assert.match(home, /titulo="Retirar material"/);
   const ficha = readFileSync(new URL("../app/components/FichaArticulo.jsx", import.meta.url), "utf8");
   assert.match(ficha, /📦 Retirar o devolver/);
   const stock = readFileSync(new URL("../app/components/StockScreen.jsx", import.meta.url), "utf8");

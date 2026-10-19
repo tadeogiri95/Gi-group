@@ -91,7 +91,7 @@ test("pantallas de muestra — Pedidos del operario usa el botón de planta", ()
 });
 
 test("R11 — pantallas ya pasadas al diseño nuevo no vuelven a tener estilos sueltos", () => {
-  for (const ruta of ["app/[slug]/unirse/page.js", "app/components/screens/ChatScreen.jsx", "app/geolocalizacion_screen.jsx", "app/reportes_screen.jsx", "app/calendario_screen.jsx", "app/grilla_horario_screen.jsx", "app/gerencia_actividad_screen.jsx", "app/dashboard_gerencia.jsx", "app/page.js", "app/pricing/page.js", "app/components/TablaPrecios.jsx", "app/components/screens/HomeEmp.jsx"]) {
+  for (const ruta of ["app/[slug]/unirse/page.js", "app/components/screens/ChatScreen.jsx", "app/geolocalizacion_screen.jsx", "app/reportes_screen.jsx", "app/calendario_screen.jsx", "app/grilla_horario_screen.jsx", "app/gerencia_actividad_screen.jsx", "app/dashboard_gerencia.jsx", "app/page.js", "app/pricing/page.js", "app/components/TablaPrecios.jsx", "app/components/screens/HomeEmp.jsx", "app/components/screens/MiCuentaScreen.jsx"]) {
     const src = readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
     assert.equal((src.match(/style=\{\{/g) || []).length, 0, ruta);
     assert.doesNotMatch(src, /["'`]#[0-9A-Fa-f]{6}\b/, `${ruta}: colores a mano`);

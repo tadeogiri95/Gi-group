@@ -10,6 +10,7 @@ const Icons = {
   gear: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
   hammer: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 12l-8.5 8.5c-.83.83-2.17.83-3 0 0 0 0 0 0 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15L22 10.64"/><path d="M20.91 11.7l-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/></svg>,
   menu: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>,
+  user: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   history: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
 };
 
@@ -29,19 +30,24 @@ export function getItems(role, pend, modulos, { instalador = false } = {}) {
       { id: 'config',       label: 'Más',       icon: Icons.menu },
     ].filter(Boolean);
   }
-  // Operario: Inicio · Pedidos. "Tareas" (Iniciar Tarea) y "Asistente" salieron
-  // de la barra: el avance se mide escaneando piezas y los pedidos van por
-  // "Pedir permiso o vacaciones" (pedido de la empresa, 2026-10). El
-  // instalador (migración 116) suma "Instalaciones" para el reporte del día.
+  // Operario: Inicio · Pedidos · Mi cuenta. "Tareas" (Iniciar Tarea) y
+  // "Asistente" salieron de la barra: el avance se mide escaneando piezas
+  // (pedido de la empresa, 2026-10). "Mi cuenta" dejó de ser un renglón al
+  // final del Inicio (revisión de la interfaz). El instalador (migración 116)
+  // suma "Instalaciones" para el reporte del día.
   return [
     { id: 'home',       label: 'Inicio',      icon: Icons.home },
     instalador && { id: 'instalaciones', label: 'Instalaciones', icon: Icons.hammer },
     { id: 'mis-sols',   label: 'Pedidos', icon: Icons.history },
+    { id: 'cuenta',     label: 'Mi cuenta', icon: Icons.user },
   ].filter(Boolean);
 }
 
 export default function BottomNav({ active, onChange, role, pend, modulos, instalador = false }) {
   const items = getItems(role, pend, modulos, { instalador });
+  // El operario tiene pocas pestañas: botones y letra más grandes, fáciles de
+  // tocar en la planta (revisión de la interfaz, 2026-10)
+  const grande = role !== 'gerencial' && role !== 'administrativo';
   return (
     <nav
       role="navigation"
@@ -60,20 +66,20 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
             onClick={() => onChange(item.id)}
             aria-label={item.label}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex-1 min-h-[52px] bg-transparent border-none py-1 px-0 flex flex-col items-center gap-0.5 cursor-pointer font-body text-xs transition-colors duration-150 ${
+            className={`flex-1 ${grande ? 'min-h-[60px] text-[14px] gap-1' : 'min-h-[52px] text-xs gap-0.5'} bg-transparent border-none py-1 px-0 flex flex-col items-center cursor-pointer font-body transition-colors duration-150 ${
               isActive ? 'text-gypi-text font-bold' : 'text-gypi-dim font-medium'
             }`}
           >
             <div
-              className="flex items-center justify-center relative h-7 rounded-[14px] transition-all duration-200 ease-out"
+              className={`flex items-center justify-center relative ${grande ? 'h-8 rounded-2xl' : 'h-7 rounded-[14px]'} transition-all duration-200 ease-out`}
               style={{
-                width: isActive ? 56 : 36,
+                width: isActive ? (grande ? 64 : 56) : (grande ? 44 : 36),
                 background: isActive ? 'var(--color-empresa-primary-subtle)' : 'transparent',
               }}
             >
               <span
                 className="flex transition-transform duration-150"
-                style={{ transform: isActive ? 'scale(1.05)' : 'scale(1)' }}
+                style={{ transform: `scale(${(grande ? 1.2 : 1) * (isActive ? 1.05 : 1)})` }}
               >
                 {item.icon}
               </span>

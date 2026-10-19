@@ -31,6 +31,7 @@ test("la interfaz no usa textos de la fábrica piloto", () => {
   const archivos = [
     "app/components/screens/HistorialFichajesScreen.jsx",
     "app/components/screens/HomeEmp.jsx",
+    "app/components/screens/MiCuentaScreen.jsx",
     "app/dashboard_gerencia.jsx",
     "app/reportes_screen.jsx",
     "app/[slug]/HomeContent.jsx",
