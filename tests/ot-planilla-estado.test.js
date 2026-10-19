@@ -89,6 +89,11 @@ test("sync — no manda el estado, así una OT cerrada en la app sigue cerrada",
   assert.ok(activar.url.includes(`empresa_id=eq.${EMPRESA_ID}`));
   assert.ok(activar.url.includes("estado=is.null"));
   assert.deepEqual(activar.body, { estado: "activo" });
+  // Las que la planilla marca TERMINADO = SI se cierran
+  const cerrar = pedidos.find((p) => p.method === "PATCH" && p.body.estado === "cerrado");
+  assert.ok(cerrar.url.includes(`empresa_id=eq.${EMPRESA_ID}`));
+  assert.ok(cerrar.url.includes("terminado_planilla=is.true"));
+  assert.ok(cerrar.url.includes("estado=neq.cerrado"));
 });
 
 test("sync — sin la migración 097 en la base igual sincroniza", async () => {
@@ -104,6 +109,8 @@ test("sync — sin la migración 097 en la base igual sincroniza", async () => {
   const ultimo = pedidos.filter((p) => p.method === "POST").at(-1).body;
   assert.equal(ultimo[0].descripcion, "P1 - PUERTA / P3 - PUERTA");
   for (const c of NUEVAS) assert.ok(!(c in ultimo[0]));
+  // Sin la columna no intenta cerrar por TERMINADO
+  assert.ok(!pedidos.some((p) => p.method === "PATCH" && p.body.estado === "cerrado"));
 });
 
 test("lista de OT — muestra la fecha de entrega como día/mes/año", async () => {
