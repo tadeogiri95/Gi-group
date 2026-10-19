@@ -8,11 +8,19 @@ import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { ESTADOS_OC_ABIERTA, MONEDAS, agruparPorProveedor, leerImporte, lineasAComprar } from "../lib/ordenesCompra";
 import { faltaTabla } from "../lib/compras";
+import { Chip } from "./ui";
 
 const MOSTRAR = 100;
 const COLUMNAS_ARTICULO = "sku,nombre,unidad,semaforo,sugerido,proxima_necesidad,activo";
 const COLUMNAS_114 = ",multiplo,ultimo_precio,proveedor_principal";
 export const AVISO_MIGRACION_114 = "Para las órdenes de compra falta correr la migración 114 en Supabase.";
+
+// Filtro de la lista: todo junto, solo lo que pidió el personal o solo lo que sugiere la planilla
+const FILTROS = [
+  { id: "todo", texto: "Todo" },
+  { id: "pedido", texto: "🛒 Pedidos del personal" },
+  { id: "mrp", texto: "🔴 Según MRP" },
+];
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 
@@ -22,7 +30,7 @@ export default function AComprar({ empresaId, onCreadas }) {
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [elegidas, setElegidas] = useState(() => new Set());
   const [cambios, setCambios] = useState({});
-  const [verMrp, setVerMrp] = useState(true);
+  const [filtro, setFiltro] = useState("todo");
   const [texto, setTexto] = useState("");
   const [moneda, setMoneda] = useState("ARS");
   const [error, setError] = useState(null);
@@ -80,11 +88,12 @@ export default function AComprar({ empresaId, onCreadas }) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const conCambios = useMemo(() => (lineas || []).map((l) => ({ ...l, ...cambios[l.clave] })), [lineas, cambios]);
-  const visibles = useMemo(() => {
+  const conTexto = useMemo(() => {
     const t = texto.trim().toLowerCase();
-    return conCambios.filter((l) => (verMrp || l.origen === "pedido")
-      && (!t || [l.descripcion, l.sku, l.ot, l.detalle].some((v) => String(v ?? "").toLowerCase().includes(t))));
-  }, [conCambios, verMrp, texto]);
+    return conCambios.filter((l) => !t || [l.descripcion, l.sku, l.ot, l.detalle].some((v) => String(v ?? "").toLowerCase().includes(t)));
+  }, [conCambios, texto]);
+  const cuantos = (id) => (id === "todo" ? conTexto.length : conTexto.filter((l) => l.origen === id).length);
+  const visibles = useMemo(() => conTexto.filter((l) => filtro === "todo" || l.origen === filtro), [conTexto, filtro]);
   const elegidasLista = conCambios.filter((l) => elegidas.has(l.clave));
   const grupos = agruparPorProveedor(elegidasLista);
   const nombreProveedor = (id) => proveedores.find((p) => p.id === id)?.nombre || "";
@@ -139,11 +148,13 @@ export default function AComprar({ empresaId, onCreadas }) {
       {!proveedores.length && (
         <div role="alert" className="text-[13px] text-gypi-red mb-2">No hay proveedores cargados. Cargalos en la pestaña Proveedores.</div>
       )}
+      <div role="group" aria-label="Qué mostrar" className="flex gap-1.5 mb-2 flex-wrap">
+        {FILTROS.map((f) => (
+          <Chip key={f.id} type="button" aria-pressed={filtro === f.id} active={filtro === f.id} onClick={() => setFiltro(f.id)}>{f.texto} ({cuantos(f.id)})</Chip>
+        ))}
+      </div>
       <div className="flex gap-2 mb-2 items-center">
         <input aria-label="Buscar en A comprar" className="g-input flex-1 min-w-0" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar material u OT" />
-        <label className="flex items-center gap-1 text-[13px] text-gypi-dim min-h-[44px]">
-          <input type="checkbox" checked={verMrp} onChange={(e) => setVerMrp(e.target.checked)} /> Sugeridos de la planilla
-        </label>
       </div>
 
       {!visibles.length ? (
