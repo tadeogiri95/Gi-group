@@ -21,7 +21,7 @@ const SECCIONES = [
   { id: "reportes", grupo: "dia", icono: "📊", label: "Reportes y liquidación", detalle: "Horas, tardanzas, ausencias y exportar" },
   { id: "proyectos", grupo: "dia", icono: "📋", label: "OT", detalle: "Órdenes de trabajo", soloSinPlanta: true },
   { id: "ubicaciones", grupo: "config", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
-  { id: "asistencia", grupo: "config", icono: "⏱️", label: "Reglas de asistencia y pedidos", detalle: "Tolerancia, bloqueos y tipos de pedido" },
+  { id: "asistencia", grupo: "config", icono: "⏱️", label: "Reglas de asistencia y permisos", detalle: "Tolerancia, bloqueos y tipos de permiso" },
   { id: "reglas", grupo: "config", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
   { id: "documentacion", grupo: "config", icono: "📄", label: "Documentación", detalle: "Papeles que pide la empresa" },
   { id: "admin", grupo: "config", icono: "🏢", label: "Empresa", detalle: "Nombre, logo, colores, divisiones y etapas", sinSupervisor: true },

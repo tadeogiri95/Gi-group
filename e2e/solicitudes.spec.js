@@ -104,9 +104,9 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   await page.getByPlaceholder("Contraseña").fill("Segura123");
   await page.getByText("Ingresar", { exact: true }).click();
 
-  // ─── Ir a Pedidos y ver la solicitud pendiente ───
-  await expect(page.getByRole("navigation").getByRole("button", { name: "Pedidos", exact: true })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("navigation").getByRole("button", { name: "Pedidos", exact: true }).click();
+  // ─── Ir a Permisos y ver la solicitud pendiente ───
+  await expect(page.getByRole("navigation").getByRole("button", { name: "Permisos", exact: true })).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("navigation").getByRole("button", { name: "Permisos", exact: true }).click();
 
   await expect(page.getByText("Permiso médico")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Aprobar solicitud de Juan Pérez" })).toBeVisible();
@@ -117,12 +117,12 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   await expect(page.getByRole("button", { name: "Deshacer" })).toBeVisible();
 
   // ─── Desaparece de "Pendientes" ───
-  // Acotado a la Bandeja de solicitudes (Inbox): DashboardGerencia queda
+  // Acotado a Permisos del personal (Inbox): DashboardGerencia queda
   // montado en segundo plano (oculto con CSS, no desmontado — ver commit
   // 9f21451) y su propia sección "Solicitudes pendientes" en Inicio
   // también puede mostrar el mismo texto, lo que rompe un getByText
   // global en modo estricto (resuelve a 2 elementos).
-  const bandeja = page.getByRole("region", { name: "Bandeja de solicitudes" });
+  const bandeja = page.getByRole("region", { name: "Permisos del personal" });
   await expect(bandeja.getByText("Permiso médico")).not.toBeVisible({ timeout: 15_000 });
   await expect(bandeja.getByText("Todo al día")).toBeVisible();
 });

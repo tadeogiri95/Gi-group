@@ -56,11 +56,11 @@ export default function InboxScreen({ ctx, reload, usuario }) {
     try {
       const r = await apiFetch("/api/solicitudes/resolver", { method: "POST", body: JSON.stringify({ id, estado, nota: nota || null }) });
       const d = await r.json().catch(() => ({}));
-      if (r.status === 409) setErrorMsg("Otra persona ya respondió este pedido.");
+      if (r.status === 409) setErrorMsg("Otra persona ya respondió este permiso.");
       else if (!r.ok || !d.ok) throw new Error(d.error || `Error ${r.status}`);
       else if (d.push) sendPushToLegajo(d.push.legajo, d.push.titulo, d.push.cuerpo, { empresa_id: usuario.empresa_id }).catch(() => {});
       await cargarSolicitudes(); reload();
-    } catch (e) { console.error(e); setErrorMsg("No se pudo responder el pedido. Revisá la conexión e intentá de nuevo."); }
+    } catch (e) { console.error(e); setErrorMsg("No se pudo responder el permiso. Revisá la conexión e intentá de nuevo."); }
   };
 
   // Aprobar/Rechazar espera unos segundos antes de enviarse, para poder deshacer
@@ -104,22 +104,22 @@ export default function InboxScreen({ ctx, reload, usuario }) {
   }, []);
 
   return (
-    <section aria-label="Bandeja de solicitudes" className="px-[18px] pb-[110px] overflow-y-auto flex-1">
+    <section aria-label="Permisos del personal" className="px-[18px] pb-[110px] overflow-y-auto flex-1">
       {errorMsg && (
         <div role="alert" className="p-3 bg-gypi-red/10 text-gypi-red rounded-[10px] text-xs mb-3 flex items-center justify-between">
           <span>{errorMsg}</span>
           <button onClick={() => setErrorMsg(null)} aria-label="Cerrar error" className="bg-transparent border-none text-gypi-red cursor-pointer font-bold text-sm">✕</button>
         </div>
       )}
-      <div role="group" aria-label="Filtros de solicitudes" className="flex gap-1.5 mb-3.5 overflow-x-auto items-center">
+      <div role="group" aria-label="Filtros de permisos" className="flex gap-1.5 mb-3.5 overflow-x-auto items-center">
         <Chip active={f === "pendiente"} onClick={() => setF("pendiente")} color={AMBER}>Pendientes · {pend}</Chip>
         <Chip active={f === "aprobado"} onClick={() => setF("aprobado")} color={GREEN}>Aprobados</Chip>
         <Chip active={f === "rechazado"} onClick={() => setF("rechazado")} color={RED}>Rechazados</Chip>
         <Chip active={f === "todas"} onClick={() => setF("todas")}>Todas</Chip>
-        <Button variant="secondary" size="sm" onClick={() => cargarSolicitudes()} aria-label="Actualizar pedidos" className="shrink-0"><Ic.refresh /></Button>
+        <Button variant="secondary" size="sm" onClick={() => cargarSolicitudes()} aria-label="Actualizar permisos" className="shrink-0"><Ic.refresh /></Button>
       </div>
       {cargando ? (
-        <div role="status" aria-live="polite" className="text-center py-8 text-gypi-dim text-[13px]">Cargando solicitudes...</div>
+        <div role="status" aria-live="polite" className="text-center py-8 text-gypi-dim text-[13px]">Cargando permisos...</div>
       ) : (
         <div className="flex flex-col gap-3">
           {sortedFiltered.length === 0 ? (
@@ -128,7 +128,7 @@ export default function InboxScreen({ ctx, reload, usuario }) {
             </div>
           ) : sortedFiltered.map(s => <SolCard key={s.id} s={s} showActions onResolve={pedirResolver} enEspera={enEspera[s.id]} onDeshacer={deshacer} />)}
           {hayMas && !cargandoMas && (
-            <Button variant="secondary" onClick={() => cargarSolicitudes(cursor)} className="w-full mt-1">Ver más pedidos</Button>
+            <Button variant="secondary" onClick={() => cargarSolicitudes(cursor)} className="w-full mt-1">Ver más permisos</Button>
           )}
           {cargandoMas && <div role="status" aria-live="polite" className="text-center py-3.5 text-gypi-dim text-xs">Cargando...</div>}
         </div>

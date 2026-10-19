@@ -17,9 +17,9 @@ test("roles con nombres que la gente entiende", () => {
   assert.equal(nombreRol(undefined), "Operario");
 });
 
-test("barra de abajo: el operario ve Inicio, Pedidos y Mi cuenta", () => {
-  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Pedidos", "Planta", "Equipo", "Más"]);
-  assert.deepEqual(getItems("operativo", 0).map((i) => i.label), ["Inicio", "Pedidos", "Mi cuenta"]);
+test("barra de abajo: el operario ve Inicio, Permisos y Mi cuenta", () => {
+  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Permisos", "Planta", "Equipo", "Más"]);
+  assert.deepEqual(getItems("operativo", 0).map((i) => i.label), ["Inicio", "Permisos", "Mi cuenta"]);
   assert.equal(VOCABULARIO.entrada, "Entrada");
 });
 
@@ -36,6 +36,8 @@ const PROHIBIDOS = [
   /label: ['"]Inbox['"]/, /"Inbox"/, /Mi Jornada/, /Reglas IA/, /REGLAS DEL BOT/, /Hablale al bot/,
   /Fichar ingreso/, /Ingreso fichado/, /Registrar espera \/ tiempo muerto/, /Nuevo proyecto/,
   /Buscar proyecto/, /label: ['"]Chat['"]/, /label: "Proyectos"/, /label: "Personal"/,
+  // Revisión de la interfaz (2026-10): "Permisos" es lo del personal y "Pedidos de material" lo de Compras
+  /Solicitudes del personal/, /Pedidos de compras/, /label: ['"]Pedidos['"]/, /"Mis pedidos"/,
 ];
 
 test("ninguna pantalla usa los nombres viejos", () => {

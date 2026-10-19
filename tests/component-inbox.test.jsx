@@ -123,11 +123,11 @@ test("Salir de la pantalla durante la espera envía la respuesta igual", async (
 test("Si otra persona ya lo respondió, lo dice y no manda aviso al celular", async () => {
   const restaurar = conEsperaCorta();
   try {
-    const llamadas = servidor({ resolver: () => Response.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este pedido." }, { status: 409 }) });
+    const llamadas = servidor({ resolver: () => Response.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este permiso." }, { status: 409 }) });
     render(<InboxScreen ctx={{ solicitudes: [SOL] }} reload={() => {}} usuario={GERENTE} />);
     fireEvent.click(await screen.findByRole("button", { name: "Aprobar solicitud de Juan Pérez" }));
     fireEvent.click(screen.getByRole("button", { name: "Sí, aprobar" }));
-    assert.ok(await screen.findByText("Otra persona ya respondió este pedido.", {}, { timeout: 2000 }));
+    assert.ok(await screen.findByText("Otra persona ya respondió este permiso.", {}, { timeout: 2000 }));
     assert.equal(llamadas.filter((l) => l.url.includes("/api/send-push")).length, 0);
   } finally {
     restaurar();
@@ -141,7 +141,7 @@ test("Si falla la conexión, avisa que no se pudo", async () => {
     render(<InboxScreen ctx={{ solicitudes: [SOL] }} reload={() => {}} usuario={GERENTE} />);
     fireEvent.click(await screen.findByRole("button", { name: "Aprobar solicitud de Juan Pérez" }));
     fireEvent.click(screen.getByRole("button", { name: "Sí, aprobar" }));
-    assert.ok(await screen.findByText(/No se pudo responder el pedido/, {}, { timeout: 2000 }));
+    assert.ok(await screen.findByText(/No se pudo responder el permiso/, {}, { timeout: 2000 }));
   } finally {
     restaurar();
   }

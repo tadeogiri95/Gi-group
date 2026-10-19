@@ -751,11 +751,11 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         )}
       </section>
 
-      {/* ─── Pedidos de compras pendientes (Planta → Compras) ─── */}
+      {/* ─── Pedidos de material pendientes (Planta → Compras) ─── */}
       {conOt && pedidosCompra && (
-        <section aria-label="Pedidos de compras" className="card-hover g-card mb-4">
+        <section aria-label="Pedidos de material" className="card-hover g-card mb-4">
           <div className="flex justify-between items-center mb-2">
-            <Titulo>Pedidos de compras</Titulo>
+            <Titulo>Pedidos de material</Titulo>
             <Tag color={MARCA}>{pedidosCompra.length} pendiente{pedidosCompra.length !== 1 ? "s" : ""}</Tag>
           </div>
           {pedidosCompra.length === 0 ? (
@@ -819,13 +819,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           </button>
         );
       })()}
-      {/* ─── Solicitudes del personal ─── */}
-      <section aria-label="Solicitudes del personal" className={`g-card mb-4 ${pendientes.length > 0 ? TONO.aviso.borde : ""}`}>
+      {/* ─── Permisos del personal ─── */}
+      <section aria-label="Permisos del personal" className={`g-card mb-4 ${pendientes.length > 0 ? TONO.aviso.borde : ""}`}>
           <div className="flex justify-between items-center mb-3">
-            <Titulo>Solicitudes del personal</Titulo>
+            <Titulo>Permisos del personal</Titulo>
             {pendientes.length > 0 && <Tag color={MARCA}>{pendientes.length} sin responder</Tag>}
           </div>
-          {pendientes.length === 0 && <p className="m-0 text-[13px] text-gypi-dim">No hay solicitudes sin responder.</p>}
+          {pendientes.length === 0 && <p className="m-0 text-[13px] text-gypi-dim">No hay permisos sin responder.</p>}
 
           {pendientes.slice(0, 5).map(s => (
             <div key={s.id} className="flex items-center gap-2.5 py-2 border-b border-gypi-border">
@@ -842,7 +842,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           <button onClick={() => goto?.("solicitudes")}
             className={`w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 border-none ${pendientes.length > 0 ? "bg-gypi-amber text-gypi-on-amber" : "bg-gypi-surf-hi text-gypi-text"}`}
           >
-            <Icon name="clipboard" size={14} /> {pendientes.length > 0 ? "Responder solicitudes" : "Ver solicitudes"} &rarr;
+            <Icon name="clipboard" size={14} /> {pendientes.length > 0 ? "Responder permisos" : "Ver permisos"} &rarr;
           </button>
         </section>
 

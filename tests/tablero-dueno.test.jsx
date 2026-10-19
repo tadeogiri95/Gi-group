@@ -33,11 +33,11 @@ const PENDIENTES = [
 
 test("sin repetidos — sin fila de números arriba: cada dato está en su tarjeta (pedido de Tadeo 19/10)", async () => {
   const destinos = tablero({ modulos: modulosEfectivos({ plan: "planta_15" }), solicitudes: PENDIENTES });
-  const sol = await screen.findByRole("region", { name: "Solicitudes del personal" });
+  const sol = await screen.findByRole("region", { name: "Permisos del personal" });
   assert.equal(screen.queryByRole("region", { name: "Resumen de hoy" }), null);
   assert.ok(within(sol).getByText("2 sin responder"));
   assert.equal(screen.queryByText(/pedidos? sin responder$/), null);
-  fireEvent.click(within(sol).getByText(/Responder solicitudes/));
+  fireEvent.click(within(sol).getByText(/Responder permisos/));
   assert.deepEqual(destinos, ["solicitudes"]);
   const src = readFileSync(new URL("../app/dashboard_gerencia.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(src, /<Stat /);
@@ -133,7 +133,7 @@ test("panel — asistencia del día: solo operarios, por división y total, con 
 
 test("panel — pedidos de compras pendientes con su lista", async () => {
   const destinos = tableroCompleto();
-  const compras = await screen.findByRole("region", { name: "Pedidos de compras" });
+  const compras = await screen.findByRole("region", { name: "Pedidos de material" });
   await within(compras).findByText("Placa melamina blanca 18 mm");
   assert.ok(within(compras).getByText("1 pendiente"));
   assert.ok(within(compras).getByText("Juan · OT 7495"));
@@ -144,8 +144,8 @@ test("panel — pedidos de compras pendientes con su lista", async () => {
 test("panel — el orden que pidió Tadeo", async () => {
   tableroCompleto();
   await screen.findByRole("region", { name: "OT en curso" });
-  await screen.findByRole("region", { name: "Pedidos de compras" });
-  const orden = ["OT en curso", "Asistencia del día", "Asistencia semanal", "Pedidos de compras", "Solicitudes del personal"];
+  await screen.findByRole("region", { name: "Pedidos de material" });
+  const orden = ["OT en curso", "Asistencia del día", "Asistencia semanal", "Pedidos de material", "Permisos del personal"];
   const nodos = orden.map((n) => screen.getByRole("region", { name: n }));
   for (let i = 1; i < nodos.length; i++) {
     assert.ok(nodos[i - 1].compareDocumentPosition(nodos[i]) & Node.DOCUMENT_POSITION_FOLLOWING, `${orden[i - 1]} antes de ${orden[i]}`);

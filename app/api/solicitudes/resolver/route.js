@@ -40,7 +40,7 @@ export async function POST(request) {
     // Un supervisor de división solo responde pedidos de su gente (D2)
     if (!dentroDelAlcance(await alcanceDe(sesion), { id: sol.empleado_id, legajo: sol.legajo })) return respuestaFueraDeAlcance();
     if (sol.estado !== "pendiente") {
-      return NextResponse.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este pedido." }, { status: 409 });
+      return NextResponse.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este permiso." }, { status: 409 });
     }
 
     const [[yo], [empresa]] = await Promise.all([
@@ -74,7 +74,7 @@ export async function POST(request) {
       p_notificacion: plan.notificacion,
     });
     if (resultado === "ya_resuelta") {
-      return NextResponse.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este pedido." }, { status: 409 });
+      return NextResponse.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este permiso." }, { status: 409 });
     }
     if (resultado !== "ok") {
       return NextResponse.json({ ok: false, error: "Ese pedido no existe" }, { status: 404 });

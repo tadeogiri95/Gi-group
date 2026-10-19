@@ -26,13 +26,13 @@ export function mensajeErrorRed(e, porDefecto = "Algo salió mal. Probá de nuev
   return e?.message || porDefecto;
 }
 
-/** Bandeja de pedidos vacía: el mensaje depende del filtro elegido. */
+/** Bandeja de permisos vacía: el mensaje depende del filtro elegido. */
 export function bandejaVacia(filtro) {
   switch (filtro) {
-    case "pendiente": return { titulo: "Todo al día", detalle: "No hay pedidos esperando respuesta." };
-    case "aprobado": return { titulo: "Sin pedidos aprobados", detalle: "Todavía no aprobaste ningún pedido en este período." };
-    case "rechazado": return { titulo: "Sin pedidos rechazados", detalle: "No rechazaste ningún pedido en este período." };
-    default: return { titulo: "Sin pedidos", detalle: "Cuando alguien del equipo pida un permiso, aparece acá." };
+    case "pendiente": return { titulo: "Todo al día", detalle: "No hay permisos esperando respuesta." };
+    case "aprobado": return { titulo: "Sin permisos aprobados", detalle: "Todavía no aprobaste ningún permiso en este período." };
+    case "rechazado": return { titulo: "Sin permisos rechazados", detalle: "No rechazaste ningún permiso en este período." };
+    default: return { titulo: "Sin permisos", detalle: "Cuando alguien del equipo pida un permiso, aparece acá." };
   }
 }
 
@@ -43,7 +43,8 @@ export const VOCABULARIO = {
   tareas: "Tareas",            // no "Actividad", "Mi Jornada", "Registro de actividades"
   ot: "OT",                    // no "Proyecto"; la primera vez, "Orden de trabajo (OT)"
   asistente: "Asistente",      // no "Chat", "bot", "Reglas IA"
-  pedidos: "Pedidos",          // no "Inbox", "Bandeja", "Solicitudes"
+  permisos: "Permisos",        // lo que pide el personal (permisos, vacaciones, avisos); no "Inbox", "Bandeja", "Solicitudes"
+  pedidosMaterial: "Pedidos de material", // lo que se pide a Compras; "Pedidos" a secas solo adentro de Compras
   equipo: "Equipo",            // no "Personal", "Gestión de personal"
   entrada: "Entrada",          // no "Ingreso"
   salida: "Salida",            // no "Egreso"

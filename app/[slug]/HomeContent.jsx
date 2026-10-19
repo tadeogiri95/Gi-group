@@ -279,7 +279,7 @@ export default function HomeContent() {
   };
 
   const getScreenTitle = () => {
-    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Permisos", equipo: "Equipo", "mis-sols": "Mis permisos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
