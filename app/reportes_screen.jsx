@@ -12,6 +12,7 @@ import { exportCSV, exportImagen } from "./lib/exportarReporte";
 import Stat from "./components/ui/Stat";
 import Indicadores from "./components/Indicadores";
 import ReporteDiaTab from "./components/ReporteDiaTab";
+import LeadTimeTab from "./components/LeadTimeTab";
 import { useCostoHora } from "./hooks/useCostoHora";
 
 /* ═══════════════════════════════════════════════════════
@@ -611,6 +612,7 @@ export default function ReportesScreen() {
         {tieneModulo(empresa, "actividad") && !esSupervisor(usuario) && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
         {tieneModulo(empresa, "actividad") && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
         {tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
+        {tieneModulo(empresa, "actividad") && <Chip active={tab === "leadtime"} onClick={() => setTab("leadtime")} color={MARCA}>⏱️ Lead time</Chip>}
         {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
         <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>
         {!esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
@@ -647,6 +649,8 @@ export default function ReportesScreen() {
       ) : tab === "indicadores" ? (
         <Indicadores fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId}
           etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} />
+      ) : tab === "leadtime" ? (
+        <LeadTimeTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} divisiones={divisionesCtx || []} division={division} />
       ) : tab === "obra" ? (
         <ReportesObraTab empresaId={empresaId} />
       ) : tab === "liquidacion" ? (
