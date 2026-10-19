@@ -22,7 +22,7 @@ function inicio({ plan = "planta_15", tareaActiva = null, fichadaHoy = { ingreso
     <HomeEmp goto={(d) => destinos.push(d)} usuario={USUARIO} logout={() => salio++} demo
       empresa={{ modulos: modulosEfectivos({ plan }) }}
       ctx={{ fichadaHoy, misSolicitudes, fichadasSemana: [], notificaciones: [] }}
-      tareaActiva={tareaActiva} etapas={[{ id: 2, codigo: 2, nombre: "Armado" }]} actividadesHoy={[]} />
+      tareaActiva={tareaActiva} etapas={[{ id: 2, codigo: 2, nombre: "Armado" }]} />
   );
   return { destinos, salidas: () => salio };
 }
@@ -33,17 +33,17 @@ test("inicio — sin ícono suelto de salir; lo de todos los días a la vista", 
   assert.ok(screen.getByText("Hola, Ana"));
   assert.ok(screen.getByText(/Entrada 08:00/));
   assert.equal(screen.getByRole("button", { name: /Pedir permiso o vacaciones/ }).style.minHeight, "64px");
-  assert.ok(screen.getByRole("button", { name: /Empezar una tarea/ }), "fichó y no tiene tarea: se ofrece empezar");
+  // El operario ya no inicia tareas ni le escribe al asistente (2026-10)
+  assert.equal(screen.queryByRole("button", { name: /Empezar una tarea/ }), null);
+  assert.equal(screen.queryByText("Escribirle al asistente"), null);
   // Horario, semana y documentos ya no están en el inicio
   assert.equal(screen.queryByText("Mi horario"), null);
   assert.equal(screen.queryByText("Esta semana"), null);
 });
 
-test("inicio — la tarea en curso dice qué está haciendo y lleva a Tareas", () => {
-  const { destinos } = inicio({ tareaActiva: { etapa: 2, codigo_proyecto: "1001", hora_inicio: new Date().toISOString() } });
-  fireEvent.click(screen.getByRole("button", { name: /Tarea en curso: Armado/ }));
-  assert.deepEqual(destinos, ["actividad"]);
-  assert.equal(screen.queryByRole("button", { name: /Empezar una tarea/ }), null);
+test("inicio — una tarea vieja abierta no vuelve a ofrecer Tareas", () => {
+  inicio({ tareaActiva: { etapa: 2, codigo_proyecto: "1001", hora_inicio: new Date().toISOString() } });
+  assert.equal(screen.queryByRole("button", { name: /Tarea en curso/ }), null);
 });
 
 test("Mi cuenta — horario, semana, historial, documentos y salir con confirmación", async () => {

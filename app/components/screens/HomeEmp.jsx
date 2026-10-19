@@ -5,7 +5,6 @@
 import { useState } from "react";
 import { fmtDate } from "../../lib/theme";
 import { hoyArg, ahoraArg } from "../../lib/dates";
-import { duracionMinutos } from "../../lib/calc";
 import { Ic } from "../Icons";
 import SolCard from "../cards/SolCard";
 import EmptyState from "../ui/EmptyState";
@@ -24,13 +23,6 @@ import ElegirOtCarga from "../ElegirOtCarga";
 import RetirarMaterial from "../RetirarMaterial";
 import EscanearPiezas from "../EscanearPiezas";
 
-function fmtMin(m) {
-  const h = Math.floor(m / 60);
-  const min = Math.round(m % 60);
-  return h > 0 ? `${h}h ${min}m` : `${min}m`;
-}
-
-const hora = (ts) => new Date(ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
 const DIAS_G = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
 const DIAS_LABEL = { lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves", vie: "Viernes", sab: "Sábado", dom: "Domingo" };
 const flecha = <span className="text-gypi-dim" aria-hidden="true"><Ic.chevR /></span>;
@@ -112,10 +104,11 @@ function MiCuenta({ usuario, ctx, goto, onVolver, onSalir, onPinCambiado, demo }
   );
 }
 
-export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividadesHoy = [], tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado, onAbrirCarga }) {
+export default function HomeEmp({ goto, usuario, ctx, logout, empresa, tareaActiva = null, etapas = [], reload, demo = false, onPinCambiado, onAbrirCarga }) {
   const misSols = ctx.misSolicitudes || [];
-  // Lo que se muestra según los módulos de la empresa (ítem 36)
-  const conChat = tieneModulo(empresa, "chat");
+  // Lo que se muestra según los módulos de la empresa (ítem 36). El operario
+  // ya no inicia tareas ni usa el asistente (2026-10): el avance sale de los
+  // escaneos de piezas.
   const conTareas = tieneModulo(empresa, "actividad");
   const [formSolicitud, setFormSolicitud] = useState(false);
   const [elegirCarga, setElegirCarga] = useState(false);
@@ -134,14 +127,6 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
   const dH = ahoraArg().diaKey;
   const diagH = usuario.diagrama?.[dH];
 
-  const etapaLabel = (id) => {
-    if (id === 0) return "Parado";
-    const e = etapas.find(e => e.id === id || e.codigo === id);
-    return e?.nombre || `Etapa ${id}`;
-  };
-
-  const minTrabajando = actividadesHoy.filter(r => r.etapa > 0).reduce((s, r) => s + duracionMinutos(r), 0);
-  const minParado = actividadesHoy.filter(r => r.etapa === 0).reduce((s, r) => s + duracionMinutos(r), 0);
   const fichado = !!fichadaHoy?.ingreso;
   const adentro = fichado && !fichadaHoy?.egreso;
 
@@ -206,30 +191,8 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         fichadaHoy={fichadaHoy}
         fichadaAbierta={fichadaAbierta}
         onFichado={reload}
-        irAlChat={conChat ? () => goto("chat") : undefined}
         demo={demo}
       />
-
-      {/* Tarea en curso, o empezar una */}
-      {conTareas && tareaActiva && (
-        <button onClick={() => goto("actividad")} aria-label={`Tarea en curso: ${etapaLabel(tareaActiva.etapa)}. Ver mis tareas`}
-          className={`w-full rounded-2xl px-4 py-3.5 mb-[18px] flex items-center gap-3 cursor-pointer text-left font-body border-[1.5px] ${tareaActiva.etapa === 0 ? "bg-gypi-amber/[0.06] border-gypi-amber/25" : "bg-gypi-green/[0.06] border-gypi-green/25"}`}>
-          <span className={`w-2.5 h-2.5 rounded-full shrink-0 animate-pulse ${tareaActiva.etapa === 0 ? "bg-gypi-amber" : "bg-gypi-green"}`} aria-hidden="true" />
-          <div className="flex-1 min-w-0">
-            <div className={`text-[14px] font-bold ${tareaActiva.etapa === 0 ? "text-gypi-amber-ink" : "text-gypi-green-ink"}`}>{tareaActiva.etapa === 0 ? "Estás parado" : "Trabajando ahora"}</div>
-            <div className="text-[14px] text-gypi-text mt-0.5 truncate">
-              {etapaLabel(tareaActiva.etapa)}{tareaActiva.codigo_proyecto ? ` · OT ${tareaActiva.codigo_proyecto}` : ""} · desde {hora(tareaActiva.hora_inicio)}
-            </div>
-            {(minTrabajando > 0 || minParado > 0) && (
-              <div className="text-[13px] text-gypi-dim mt-0.5">Hoy: {fmtMin(minTrabajando)} trabajando{minParado > 0 ? ` · ${fmtMin(minParado)} parado` : ""}</div>
-            )}
-          </div>
-          {flecha}
-        </button>
-      )}
-      {conTareas && !tareaActiva && adentro && (
-        <Button size="lg" variant="secondary" className="w-full mb-[18px]" onClick={() => goto("actividad")}>▶ Empezar una tarea</Button>
-      )}
 
       {/* Pedidos */}
       <section aria-label="Mis pedidos" className="mb-[18px]">
@@ -259,7 +222,6 @@ export default function HomeEmp({ goto, usuario, ctx, logout, empresa, actividad
         {conTareas && onAbrirCarga && <ListItem icon="🚚" title="Carga de una OT" detail="Armar bultos, imprimir rótulos y cargar el camión" right={flecha} onClick={() => setElegirCarga(true)} />}
         {conTareas && !demo && <ListItem icon="🧩" title="Escanear piezas" detail="Marcá por qué etapa pasó cada pieza de la OT" right={flecha} onClick={() => setEscanearPiezas(true)} />}
         {conStock && <ListItem icon="📦" title="Retirar material" detail="Escaneá el QR del artículo y anotá cuánto sacás" right={flecha} onClick={() => setRetirar(true)} />}
-        {conChat && <ListItem icon="💬" title="Escribirle al asistente" detail="Para avisar algo o hacer una consulta" right={flecha} onClick={() => goto("chat")} />}
         <ListItem icon="👤" title="Mi cuenta" detail="Horario, fichadas, documentos, PIN y salir" right={flecha} onClick={() => setVista("cuenta")} />
       </div>
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}

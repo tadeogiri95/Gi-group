@@ -4,6 +4,10 @@
 // ningún registro_actividades en los últimos 30 minutos, y les envía push notification.
 //
 // Objetivo: alertar al operario si pasó media hora sin registrar tarea ni tiempo muerto.
+//
+// Desde 2026-10 no está en vercel.json: los operarios dejaron de cargar tareas
+// (el avance se mide escaneando piezas). Para volver a usarlo, sumarlo a
+// vercel.json y a CRONS_ESPERADOS (lib/cronMonitor.js).
 
 import { NextResponse } from "next/server";
 import admin from "firebase-admin";

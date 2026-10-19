@@ -106,7 +106,6 @@ Definidos en `vercel.json`:
 | `/api/cron/trial-reminder` | `0 12 * * *` | Email recordatorio antes de fin de trial |
 | `/api/cron/vencer-trials` | `0 4 * * *` | Pasa a Free los trials vencidos (RPC batch, ver `036_vencer_trials_batch.sql`) |
 | `/api/cron/push-ausencias` | `0 15 * * 1-5` | Push a gerencia por empleados sin fichar entrada (días hábiles) |
-| `/api/cron/inactividad-produccion` | `0 17 * * 1-5` | Push a operarios sin registro de actividad en 30min |
 
 Todos los cron jobs validan el header `Authorization: Bearer $CRON_SECRET`.
 

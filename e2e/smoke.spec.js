@@ -67,7 +67,7 @@ async function mockApis(page) {
   });
 }
 
-test("smoke: login → fichar ingreso → ver historial", async ({ page }) => {
+test("smoke: login → fichar entrada → ver historial", async ({ page }) => {
   await mockApis(page);
 
 
@@ -80,18 +80,12 @@ test("smoke: login → fichar ingreso → ver historial", async ({ page }) => {
 
   await expect(page.getByText(`Hola, ${USUARIO.apodo}`)).toBeVisible({ timeout: 10_000 });
 
-  // ─── Ir al chat y fichar ingreso ("Ya llegué" es acción directa, sin IA) ───
-  await page.getByRole("navigation").getByRole("button", { name: "Asistente", exact: true }).click();
-  await page.getByText("Ya llegué", { exact: true }).click();
-  await expect(page.getByText(/Fichado|Ingreso registrado/i)).toBeVisible({ timeout: 10_000 });
+  // ─── Fichar entrada con el botón grande del inicio (el operario ya no tiene el chat) ───
+  await page.getByRole("button", { name: /Fichar entrada/ }).click();
+  await page.getByRole("dialog", { name: "Confirmar: Fichar entrada" }).getByRole("button", { name: "Confirmar" }).click();
+  await expect(page.getByText(/Entrada fichada a las 08:05/)).toBeVisible({ timeout: 20_000 });
 
-  // ─── Fichar egreso ("Me voy" es la otra acción directa, sin IA) ───
-  await page.getByText("Me voy", { exact: true }).click();
-  await expect(page.getByText(/Salida registrada/i)).toBeVisible({ timeout: 10_000 });
-
-  // ─── Volver a inicio (el chat ocupa toda la pantalla, sin nav) y ver historial ───
-  await page.goBack();
-  await expect(page.getByText(`Hola, ${USUARIO.apodo}`)).toBeVisible({ timeout: 10_000 });
+  // ─── Ver historial ───
   // R8: el historial está en "Mi cuenta"
   await page.getByRole("button", { name: /Mi cuenta/ }).click();
   await page.getByText("Historial de fichajes", { exact: true }).click();

@@ -184,6 +184,29 @@ test("/api/empleados PATCH — solo el dueño marca a un supervisor", async () =
   assert.equal(cambios.solo_su_division, undefined, "un administrativo no lo puede cambiar");
 });
 
+test("/api/empleados PATCH — \"Es instalador\" lo marca la gestión de toda la empresa, no el supervisor", async () => {
+  let cambios = null;
+  const handlers = (extra = []) => [
+    ...extra,
+    ...authPassHandlers(),
+    { match: (url, opts) => url.includes(`empleados?id=eq.${DE_SU_DIVISION.id}`) && opts?.method === "PATCH", respond: (url, opts) => { cambios = JSON.parse(opts.body); return { status: 200, body: [{ id: DE_SU_DIVISION.id, ...cambios }] }; } },
+    { match: (url) => url.includes(`empleados?id=eq.${DE_SU_DIVISION.id}`), respond: () => ({ status: 200, body: [{ id: DE_SU_DIVISION.id }] }) },
+  ];
+  global.fetch = createFetchMock(handlers(soy({ supervisor: false })));
+  await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { es_instalador: true } }));
+  assert.equal(cambios.es_instalador, true, "un administrativo de toda la empresa lo marca");
+
+  global.fetch = createFetchMock(handlers(soy({ supervisor: false })));
+  const mal = await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { es_instalador: "si" } }));
+  assert.equal(mal.status, 400);
+
+  cambios = null;
+  _limpiarCacheAlcance();
+  global.fetch = createFetchMock(handlers(soy()));
+  await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { es_instalador: true, nombre: "Ana" } }));
+  assert.equal(cambios.es_instalador, undefined, "el supervisor no lo cambia");
+});
+
 // ── Rutas que todavía no filtran por división: el supervisor no entra ──
 
 test("liquidación — un supervisor recibe 403", async () => {

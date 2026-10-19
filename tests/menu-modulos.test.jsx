@@ -34,11 +34,11 @@ test("tieneModulo — sin la lista (demo, versión vieja) muestra todo; con la l
   assert.equal(comoSumarModulo("planta_15", "obra").upgrade_a, "campo");
 });
 
-test("barra de abajo del operario — sin tareas no aparece Actividad; con solo campo, sí", () => {
+test("barra de abajo del operario — sin Tareas ni Asistente, tenga los módulos que tenga", () => {
   const ids = (modulos) => getItems("operativo", 0, modulos).map((i) => i.id);
-  assert.deepEqual(ids(undefined), ["home", "actividad", "chat", "mis-sols"]);
-  assert.deepEqual(ids(ASISTENCIA), ["home", "chat", "mis-sols"]);
-  assert.deepEqual(ids([...ASISTENCIA, "obra"]), ["home", "actividad", "chat", "mis-sols"]);
+  assert.deepEqual(ids(undefined), ["home", "mis-sols"]);
+  assert.deepEqual(ids(ASISTENCIA), ["home", "mis-sols"]);
+  assert.deepEqual(ids([...ASISTENCIA, "obra"]), ["home", "mis-sols"]);
   assert.deepEqual(ids(["fichaje"]), ["home", "mis-sols"]);
   // La de gestión no cambia (sus secciones se marcan con candado adentro)
   assert.deepEqual(getItems("gerencial", 0, ["fichaje"]).map((i) => i.id), ["home", "solicitudes", "equipo", "config"]);
