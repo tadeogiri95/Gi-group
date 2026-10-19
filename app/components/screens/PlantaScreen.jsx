@@ -1,25 +1,27 @@
 "use client";
 // Pestaña "Planta" de gestión (reforma UX R5): lo que pasa hoy en la planta
-// (quién trabaja en qué, quién está parado) y las OT, en un solo lugar.
+// y las OT, en un solo lugar. "En vivo" (quién trabaja en qué, quién está
+// parado) sale del registro de tareas y no se muestra sin él (2026-10).
 // Producción, Stock y Mantenimiento se suman acá como otra opción. Stock
 // (ítem 40) y Compras (ítem 41) van con las OT hasta que sean módulos que se
 // vendan aparte.
 import { useState } from "react";
-import { tieneModulo } from "../../lib/modulos";
+import { tieneModulo, conRegistroTareas } from "../../lib/modulos";
 import ModuloBloqueado from "../ModuloBloqueado";
 import GerenciaActividadScreen from "../../gerencia_actividad_screen";
 import ProyectosScreen from "../../proyectos_screen.jsx";
 import StockScreen from "../StockScreen";
 import ComprasScreen from "../ComprasScreen";
 
-const OPCIONES = [
-  { id: "vivo", label: "En vivo", modulo: "actividad" },
+const OPCIONES_TODAS = [
+  { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
   { id: "ot", label: "OT", modulo: "proyectos" },
   { id: "stock", label: "Stock", modulo: "proyectos" },
   { id: "compras", label: "Compras", modulo: "proyectos" },
 ];
 
 export default function PlantaScreen({ empresa, usuario, onVerPlanes, seccion = null }) {
+  const OPCIONES = OPCIONES_TODAS.filter((o) => !o.conTareas || conRegistroTareas(empresa));
   const primera = OPCIONES.find((o) => tieneModulo(empresa, o.modulo)) || OPCIONES[0];
   // seccion: la opción con la que abre (el Panel de control manda "ot" o "compras")
   const [opcion, setOpcion] = useState(OPCIONES.some((o) => o.id === seccion) ? seccion : primera.id);

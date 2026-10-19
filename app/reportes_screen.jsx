@@ -38,7 +38,7 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
-import { tieneModulo } from "./lib/modulos";
+import { tieneModulo, conRegistroTareas } from "./lib/modulos";
 import { esSupervisor } from "./lib/menuGestion";
 
 /* ─── Helpers ─── */
@@ -610,7 +610,7 @@ export default function ReportesScreen() {
         <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
         {tieneModulo(empresa, "actividad") && !esSupervisor(usuario) && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
-        {tieneModulo(empresa, "actividad") && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
+        {conRegistroTareas(empresa) && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
         {tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
         {tieneModulo(empresa, "actividad") && <Chip active={tab === "leadtime"} onClick={() => setTab("leadtime")} color={MARCA}>⏱️ Lead time</Chip>}
         {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
@@ -648,7 +648,7 @@ export default function ReportesScreen() {
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
       ) : tab === "indicadores" ? (
         <Indicadores fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId}
-          etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} />
+          etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} conTareas={conRegistroTareas(empresa)} />
       ) : tab === "leadtime" ? (
         <LeadTimeTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} divisiones={divisionesCtx || []} division={division} />
       ) : tab === "obra" ? (

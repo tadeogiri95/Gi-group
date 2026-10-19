@@ -21,7 +21,7 @@ import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
 import ChecklistActivacion from "./components/ChecklistActivacion";
 import BillingScreen from "./components/BillingScreen";
-import { tieneModulo } from "./lib/modulos";
+import { tieneModulo, conRegistroTareas, REGISTRO_TAREAS } from "./lib/modulos";
 import FotoViewer from "./components/FotoViewer";
 /* ═══════════════════════════════════════════════════════
    DASHBOARD GERENCIAL — Vista en tiempo real
@@ -302,7 +302,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       // filas sin avisar y el ranking, el score y las horas del mes salían
       // incompletos (auditoría F3-03). El orden con id desempata las páginas.
       const [prodData, fichadasSem, fichadasMesData, solsApData, repObra, docsExig, docsCarg] = await Promise.all([
-        sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`),
+        // Producción en vivo: sale del registro de tareas (sin él no se pide)
+        REGISTRO_TAREAS ? sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`) : [],
         sbGetAll(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc,id.asc`, { maxFilas: 20000 }),
         sbGetAll(`fichadas?select=empleado_id,legajo,fecha,horas_trabajadas,llegada_tarde,minutos_tarde&fecha=gte.${mesInicio}&order=fecha.asc,id.asc`, { maxFilas: 20000 }),
         sbGetAll(`solicitudes?select=empleado_id,legajo,tipo,estado,created_at&estado=eq.aprobado&created_at=gte.${mesInicio}&order=id.asc`),
@@ -549,7 +550,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   /* ─── Estado expandido de paneles ─── */
   const [panelExpanded, setPanelExpanded] = useState(null); // "taller" | "instalaciones" | null
   // Módulos de la empresa (ítem 36): producción en vivo y trabajo en campo
-  const conTareas = tieneModulo(empresa, "actividad");
+  // "En planta" y "Productividad por división" salen del registro de tareas,
+  // que se dejó de usar (2026-10): sin él quedaban en 0
+  const conTareas = conRegistroTareas(empresa);
   const conObra = tieneModulo(empresa, "obra");
 
   /* ═══ RENDER ═══ */

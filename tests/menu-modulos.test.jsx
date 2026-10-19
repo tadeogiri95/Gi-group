@@ -87,13 +87,13 @@ test("tablero de gestión — Trabajo en campo y el detalle por operario según 
       <DashboardGerencia goto={() => {}} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos }} />
     </AuthContext.Provider>
   );
+  // Sin el registro de tareas (2026-10) el panel "En planta" siempre estaba
+  // vacío, así que no se ofrece aunque la empresa tenga Planta
   tablero(PLANTA);
-  assert.ok(await screen.findByText("En planta"));
+  await screen.findByRole("region", { name: "Asistencia del día" });
+  assert.equal(screen.queryByText("En planta"), null);
   assert.equal(screen.queryByText("Trabajo en campo"), null);
-  fireEvent.click(screen.getByText("En planta"));
-  assert.ok(screen.getByText(/Ver detalle por operario/));
   cleanup();
-  // R11: sin Tareas el panel "En planta" siempre estaba vacío, así que no se ofrece
   tablero(ASISTENCIA);
   await screen.findByRole("region", { name: "Asistencia del día" });
   assert.equal(screen.queryByText("En planta"), null);

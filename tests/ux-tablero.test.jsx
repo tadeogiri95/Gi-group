@@ -26,21 +26,22 @@ function tablero({ plan = "planta_15", fichadasHoy = [], empleados = [] } = {}) 
   return destinos;
 }
 
-test("tablero — sin Tareas no muestra paneles de producción que siempre estarían vacíos", async () => {
-  tablero({ plan: "asistencia_15" });
-  await screen.findByRole("region", { name: "Asistencia del día" });
-  assert.equal(screen.queryByRole("region", { name: "Productividad" }), null);
-  assert.equal(screen.queryByText("En planta"), null);
-  cleanup();
-  tablero({ plan: "planta_15" });
-  await screen.findByRole("region", { name: "Asistencia del día" });
-  assert.ok(screen.getByRole("region", { name: "Productividad" }));
-  assert.ok(screen.getByText(/Del tiempo con tarea cargada/), "explica qué es el porcentaje");
-  const enPlanta = screen.getByRole("button", { name: /En planta/ });
-  assert.equal(enPlanta.getAttribute("aria-expanded"), "false");
-  fireEvent.click(enPlanta);
-  assert.equal(enPlanta.getAttribute("aria-expanded"), "true");
-  assert.ok(screen.getByRole("button", { name: /Ver detalle por operario/ }));
+test("tablero — sin el registro de tareas no muestra paneles de producción que siempre estarían vacíos", async () => {
+  for (const plan of ["asistencia_15", "planta_15"]) {
+    tablero({ plan });
+    await screen.findByRole("region", { name: "Asistencia del día" });
+    assert.equal(screen.queryByRole("region", { name: "Productividad" }), null, plan);
+    assert.equal(screen.queryByText("En planta"), null, plan);
+    cleanup();
+  }
+});
+
+test("registro de tareas — apagado desde 2026-10; con él vuelven En vivo y Producción", async () => {
+  const { conRegistroTareas, REGISTRO_TAREAS } = await import("../app/lib/modulos.js");
+  assert.equal(REGISTRO_TAREAS, false);
+  assert.equal(conRegistroTareas({ modulos: ["actividad"] }), false);
+  const indicadores = readFileSync(new URL("../app/components/Indicadores.jsx", import.meta.url), "utf8");
+  assert.match(indicadores, /conTareas\s*\n?\s*\? sbGetAll\(`registro_actividades/, "sin el registro no se piden las tareas");
 });
 
 test("llegadas — cada persona es un botón que lleva a sus fichajes (reemplaza a las jornadas)", async () => {

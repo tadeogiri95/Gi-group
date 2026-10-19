@@ -4,7 +4,9 @@
 // etapa, horas por módulo, tiempo parado por causa, retrabajo, no
 // conformidades, horas por OT y OT atrasadas. Es lo que pide la revisión
 // semanal del mapa de procesos. Mide el proceso, no a las personas. Desde la
-// parte 8, para el dueño (costoHora), el costo de mano de obra.
+// parte 8, para el dueño (costoHora), el costo de mano de obra. Sin el
+// registro de tareas (conTareas, 2026-10) quedan solo calidad y OT atrasadas:
+// lo demás se calcula con las tareas y saldría vacío.
 import { useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { calcularIndicadores, fmtPorUnidad, singular } from "../lib/indicadores";
@@ -49,7 +51,7 @@ function diaSiguiente(fecha) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empresaId, etapas = [], causas = [], defectos = [], costoHora = null }) {
+export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empresaId, etapas = [], causas = [], defectos = [], costoHora = null, conTareas = true }) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
 
@@ -59,7 +61,9 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
     (async () => {
       try {
         const [tareas, ncs, proyectos] = await Promise.all([
-          sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=etapa,causa,tipo,codigo_proyecto,cantidad,duracion_min,hora_inicio,hora_fin`, { maxFilas: 20000 }),
+          conTareas
+            ? sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=etapa,causa,tipo,codigo_proyecto,cantidad,duracion_min,hora_inicio,hora_fin`, { maxFilas: 20000 })
+            : { data: [] },
           // Sin la migración 101 no hay tabla: los indicadores siguen sin calidad
           sbGetAll(`no_conformidades?empresa_id=eq.${empresaId}&created_at=gte.${fechaDesde}&created_at=lt.${diaSiguiente(fechaHasta)}&select=defecto,cantidad,etapa_origen,decision,minutos_retrabajo`).catch(() => ({ data: [] })),
           sbGetAll(`proyectos?empresa_id=eq.${empresaId}&select=ot,cliente,proyecto,total_modulos,fecha_entrega,estado,terminado_planilla`, { maxFilas: 20000 }),
@@ -73,7 +77,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
       }
     })();
     return () => { vivo = false; };
-  }, [fechaDesde, fechaHasta, empresaId]);
+  }, [fechaDesde, fechaHasta, empresaId, conTareas]);
 
   const ind = useMemo(
     () => (datos ? calcularIndicadores({ ...datos, etapas, causas, defectos, hoy: hoyArg() }) : null),
@@ -81,7 +85,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
   );
 
   // Solo llega con valor para el dueño (useCostoHora)
-  const conCosto = Number(costoHora) > 0;
+  const conCosto = conTareas && Number(costoHora) > 0;
   const pesos = (min) => costoDe(min, costoHora);
   const costoOt = (o) => pesos(o.min + o.paradaMin);
 
@@ -90,13 +94,15 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
 
   const exportar = () => {
     const filas = [["Indicador", "Detalle", "Valor"]];
-    filas.push(["Horas trabajadas", labelPeriodo, fmtHoras(ind.productivoMin)]);
-    filas.push(["Tiempo parado", fmtHoras(ind.paradoMin), fmtPct(ind.paradoPct)]);
-    filas.push(["Retrabajo", fmtHoras(ind.retrabajoMin), fmtPct(ind.retrabajoPct)]);
-    for (const e of ind.etapas) {
-      filas.push([`Etapa ${e.nombre}`, e.unidad ? `${Number(e.cantidad.toFixed(2))} ${e.unidad}` : "sin unidad", e.minPorUnidad != null ? `${fmtPorUnidad(e.minPorUnidad)} por ${singular(e.unidad)}` : fmtHoras(e.min)]);
+    if (conTareas) {
+      filas.push(["Horas trabajadas", labelPeriodo, fmtHoras(ind.productivoMin)]);
+      filas.push(["Tiempo parado", fmtHoras(ind.paradoMin), fmtPct(ind.paradoPct)]);
+      filas.push(["Retrabajo", fmtHoras(ind.retrabajoMin), fmtPct(ind.retrabajoPct)]);
+      for (const e of ind.etapas) {
+        filas.push([`Etapa ${e.nombre}`, e.unidad ? `${Number(e.cantidad.toFixed(2))} ${e.unidad}` : "sin unidad", e.minPorUnidad != null ? `${fmtPorUnidad(e.minPorUnidad)} por ${singular(e.unidad)}` : fmtHoras(e.min)]);
+      }
+      for (const p of ind.paradas) filas.push([`Parada ${p.causa}`, p.nombre, fmtPct(p.pct)]);
     }
-    for (const p of ind.paradas) filas.push([`Parada ${p.causa}`, p.nombre, fmtPct(p.pct)]);
     for (const d of ind.calidad.porDefecto) filas.push([`Defecto ${d.clave}`, d.nombre, d.piezas]);
     if (conCosto) {
       filas.push(["Costo de la hora", "", fmtPesos(costoHora)]);
@@ -105,7 +111,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
       filas.push(["Costo instalación", fmtHoras(ind.instalacionMin), fmtPesos(pesos(ind.instalacionMin))]);
       filas.push(["Costo total", "", fmtPesos(pesos(ind.productivoMin + ind.paradoMin))]);
     }
-    for (const o of ind.ots) filas.push([`OT ${o.ot}`, o.cliente, conCosto ? `${fmtHoras(o.min)} · ${fmtPesos(costoOt(o))}` : fmtHoras(o.min)]);
+    if (conTareas) for (const o of ind.ots) filas.push([`OT ${o.ot}`, o.cliente, conCosto ? `${fmtHoras(o.min)} · ${fmtPesos(costoOt(o))}` : fmtHoras(o.min)]);
     for (const o of ind.atrasadas) filas.push([`Atrasada OT ${o.ot}`, o.cliente, `${o.dias} días`]);
     exportCSV(filas, `indicadores_${fechaDesde}_${fechaHasta}.csv`);
   };
@@ -113,9 +119,11 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
   return (
     <div>
       <section aria-label="Resumen de indicadores" className="grid grid-cols-2 gap-2 mb-3.5">
-        <Stat value={fmtHoras(ind.productivoMin)} label="Horas trabajadas" />
-        <Stat value={fmtPct(ind.paradoPct)} label="Tiempo parado" tone={ind.paradoPct > 15 ? "mal" : ind.paradoPct > 5 ? "atencion" : "bien"} />
-        <Stat value={fmtPct(ind.retrabajoPct)} label="Retrabajo" tone={ind.retrabajoPct > 10 ? "mal" : ind.retrabajoPct > 3 ? "atencion" : "bien"} />
+        {conTareas ? <>
+          <Stat value={fmtHoras(ind.productivoMin)} label="Horas trabajadas" />
+          <Stat value={fmtPct(ind.paradoPct)} label="Tiempo parado" tone={ind.paradoPct > 15 ? "mal" : ind.paradoPct > 5 ? "atencion" : "bien"} />
+          <Stat value={fmtPct(ind.retrabajoPct)} label="Retrabajo" tone={ind.retrabajoPct > 10 ? "mal" : ind.retrabajoPct > 3 ? "atencion" : "bien"} />
+        </> : <Stat value={ind.calidad.piezas} label="Piezas no conformes" tone={ind.calidad.piezas ? "atencion" : "bien"} />}
         <Stat value={ind.atrasadas.length} label="OT atrasadas" tone={ind.atrasadas.length ? "mal" : "bien"} />
       </section>
 
@@ -140,6 +148,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
         </Seccion>
       )}
 
+      {conTareas && <>
       <Seccion titulo="Tiempo por unidad en cada etapa">
         {ind.etapas.length === 0 ? <Vacio>No hay tareas en este período.</Vacio> : (
           <div className="flex flex-col gap-1.5">
@@ -169,9 +178,11 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
         )}
       </Seccion>
 
-      <Seccion titulo="Retrabajo y calidad">
+      </>}
+
+      <Seccion titulo={conTareas ? "Retrabajo y calidad" : "Calidad"}>
         <div className="flex flex-col gap-1.5">
-          {ind.retrabajos.map((r) => (
+          {conTareas && ind.retrabajos.map((r) => (
             <Fila key={r.tipo} izquierda={r.nombre} abajo={r.veces === 1 ? "1 tarea" : `${r.veces} tareas`} derecha={fmtHoras(r.min)} />
           ))}
           {ind.calidad.registros === 0 ? (
@@ -191,6 +202,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
         </div>
       </Seccion>
 
+      {conTareas && (
       <Seccion titulo="Horas por OT en el período">
         {ind.ots.length === 0 ? <Vacio>No hay horas cargadas a OT en este período.</Vacio> : (
           <div className="flex flex-col gap-1.5">
@@ -206,6 +218,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
           </div>
         )}
       </Seccion>
+      )}
 
       <Seccion titulo="OT atrasadas">
         {ind.atrasadas.length === 0 ? <Vacio>Ninguna OT abierta tiene la entrega vencida.</Vacio> : (

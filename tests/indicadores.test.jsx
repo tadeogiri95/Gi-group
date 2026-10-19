@@ -136,3 +136,20 @@ test("pantalla — sin la migración 101 igual muestra el resto", async () => {
   await waitFor(() => assert.ok(screen.getByText("Tiempo parado")));
   assert.ok(screen.getByText(/Sin piezas no conformes/));
 });
+
+test("pantalla — sin el registro de tareas quedan calidad y OT atrasadas, sin pedir tareas", async () => {
+  const pedidos = [];
+  global.fetch = async (_url, opts) => {
+    const { path } = JSON.parse(opts.body);
+    pedidos.push(path);
+    if (path.startsWith("proyectos")) return new Response(JSON.stringify({ data: PROYECTOS }), { status: 200 });
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  };
+  render(<Indicadores fechaDesde="2026-10-06" fechaHasta="2026-10-12" labelPeriodo="Semana" empresaId="e1" etapas={ETAPAS} causas={CAUSAS_FABRICA} conTareas={false} costoHora={5000} />);
+  await waitFor(() => assert.ok(screen.getAllByText("Piezas no conformes").length));
+  assert.ok(screen.getAllByText("OT atrasadas").length);
+  assert.equal(screen.queryByText("Tiempo parado"), null);
+  assert.equal(screen.queryByText("Tiempo por unidad en cada etapa"), null);
+  assert.equal(screen.queryByText(/Costo de mano de obra/), null);
+  assert.equal(pedidos.some((p) => p.startsWith("registro_actividades")), false);
+});
