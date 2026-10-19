@@ -390,7 +390,7 @@ export default function HomeContent() {
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={u?.empresa_id || empresa?.id} />}
           {uIsGer && screen === "ger-actividad" && <GerenciaActividadScreen empresaId={empresa?.id} />}
-          {uIsGer && screen === "planta" && <PlantaScreen empresa={empresa} usuario={u} onVerPlanes={() => setShowBilling(true)} />}
+          {uIsGer && screen === "planta" && <PlantaScreen key={seccionMas || "planta"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "config" && (
             <ConfigScreen
               seccion={seccionMas}

@@ -38,6 +38,8 @@ const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 import { Tag, EmptyState, Stat } from "./components/ui";
 import Icon from "./components/Icon";
 import { nombreSolicitud } from "./lib/tiposSolicitud";
+import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
+import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -260,7 +262,7 @@ function ReportesObraPanel({ reportesObra }) {
    COMPONENTE PRINCIPAL: DashboardGerencia
    ═══════════════════════════════════════════════════════ */
 export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, isDemo = false }) {
-  const { divisiones: divisionesCtx } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx } = useAuth();
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [division, setDivision] = useState("todas");
   const [tab, setTab] = useState("resumen"); // resumen | asistencia | produccion | solicitudes
@@ -278,15 +280,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const [showBilling, setShowBilling] = useState(false);
   const [scoreDetail, setScoreDetail] = useState(null);
   const [showFullRanking, setShowFullRanking] = useState(false);
-  // Ranking entre compañeros: delicado para el clima de trabajo, así que se ve
-  // solo si el dueño lo pide; se recuerda en este dispositivo.
-  const [verRanking, setVerRanking] = useState(() => {
-    try { return localStorage.getItem("gypi_ver_ranking") === "1"; } catch { return false; }
-  });
-  const cambiarVerRanking = (v) => {
-    setVerRanking(v);
-    try { localStorage.setItem("gypi_ver_ranking", v ? "1" : "0"); } catch { /* sin almacenamiento */ }
-  };
+  // OT en curso y pedidos de compra pendientes (null = no se pudieron leer
+  // o la empresa no usa OT / Compras: la tarjeta no se muestra)
+  const [otCurso, setOtCurso] = useState(null);
+  const [pedidosCompra, setPedidosCompra] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const hoy = hoyArg();
@@ -347,6 +344,23 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   }, [hoy, isDemo]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  // OT en curso y pedidos de compra: al abrir y con el botón de actualizar
+  // (no cada minuto: el avance y las horas de 6 meses son muchas filas)
+  const empresaId = empresa?.id;
+  const conOt = tieneModulo(empresa, "proyectos");
+  const cargarOtYCompras = useCallback(async () => {
+    if (isDemo || !empresaId || !conOt) return;
+    const [proy, avHs, peds] = await Promise.all([
+      sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at&order=id.asc`, { maxFilas: 20000 }).catch(() => null),
+      leerAvanceYHoras(empresaId).catch(() => null),
+      // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
+      sbGetAll(`pedidos_compra?estado=eq.pendiente&select=id,descripcion,cantidad,unidad,ot,empleado_nombre,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 }).catch(() => null),
+    ]);
+    setOtCurso(proy && avHs ? otEnCurso(filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() })) : null);
+    setPedidosCompra(peds ? peds.data || [] : null);
+  }, [isDemo, empresaId, conOt, etapasCtx, divisionesCtx]);
+  useEffect(() => { cargarOtYCompras(); }, [cargarOtYCompras]); // eslint-disable-line react-hooks/set-state-in-effect
   // Cada minuto, solo con la pestaña a la vista (F3-04)
   useRefrescoVisible(cargarDatos, { intervaloMs: 60000 });
 
@@ -383,6 +397,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const legajosProgramados = new Set(empProgramados.map(e => e.legajo));
   const presentesProgramados = fichadasHoy.filter(f => legajosProgramados.has(f.legajo)).length;
   const ausentes = Math.max(0, programados - presentesProgramados);
+  // Quiénes faltan: los que tenían que venir hoy y no ficharon
+  const legajosPresentes = new Set(fichadasHoy.map(f => f.legajo));
+  const faltanHoy = empProgramados.filter(e => !legajosPresentes.has(e.legajo));
+  const sinTurnoHoy = Math.max(0, totalEmp - programados);
   // null = no hay nadie programado hoy (domingo/feriado) — la UI muestra "—"
   const pctAsist = programados > 0 ? Math.round((presentesProgramados / programados) * 100) : null;
 
@@ -565,7 +583,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               <span className={`text-[12px] font-bold ${TONO.bien.txt}`}>En vivo</span>
             </div>
             <button
-              onClick={async () => { setRefreshing(true); try { await Promise.all([reload?.(), cargarDatos()]) } finally { setNow(new Date()); setRefreshing(false) } }}
+              onClick={async () => { setRefreshing(true); try { await Promise.all([reload?.(), cargarDatos(), cargarOtYCompras()]) } finally { setNow(new Date()); setRefreshing(false) } }}
               aria-label="Actualizar datos"
               className="w-11 h-11 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm"
             >
@@ -590,7 +608,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         {conTareas
           ? <Stat value={enEspera} label="Parados ahora" tone={enEspera > 0 ? "atencion" : "bien"} onClick={() => goto?.("ger-actividad")} />
           : <Stat value={tardesEstaSemana} label="Tardanzas esta semana" tone={tardesEstaSemana > 0 ? "atencion" : "bien"} />}
-        <Stat value={pendientes.length} label="Pedidos sin responder" tone={pendientes.length > 0 ? "atencion" : "bien"} onClick={() => goto?.("solicitudes")} />
+        <Stat value={pendientes.length} label="Solicitudes sin responder" tone={pendientes.length > 0 ? "atencion" : "bien"} onClick={() => goto?.("solicitudes")} />
       </section>
 
       {/* Modal de billing */}
@@ -617,13 +635,211 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── Solicitudes pendientes ─── */}
-      {pendientes.length > 0 && (
-        <section aria-label="Pedidos sin responder" className={`g-card mb-4 ${TONO.aviso.borde}`}>
-          <div className="flex justify-between items-center mb-3">
-            <Titulo>Pedidos sin responder</Titulo>
-            <Tag color={MARCA}>{pendientes.length} pendiente{pendientes.length !== 1 ? "s" : ""}</Tag>
+      {/* ─── OT en curso: abiertas con alguna etapa empezada ─── */}
+      {otCurso && (
+        <section aria-label="OT en curso" className="card-hover g-card mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <Titulo>OT en curso</Titulo>
+            <Tag color={MARCA}>{otCurso.length}</Tag>
           </div>
+          {otCurso.length === 0 ? (
+            <p className="m-0 text-[13px] text-gypi-dim">Ninguna OT tiene etapas empezadas sin terminar.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {contarPorDivision(otCurso, divisionesCtx || []).map(d => (
+                  <span key={d.nombre} className="px-2.5 py-1 rounded-lg bg-gypi-surf-hi text-[12px] font-semibold text-gypi-text">{d.nombre}: {d.cantidad}</span>
+                ))}
+              </div>
+              <div className="max-h-[240px] overflow-y-auto">
+                {otCurso.map(f => (
+                  <div key={f.proyecto.id ?? f.proyecto.ot} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
+                    <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-gypi-text truncate">{f.proyecto.cliente || f.proyecto.proyecto || f.proyecto.obra || "—"}</div>
+                      <div className="text-[12px] text-gypi-dim truncate">
+                        {nombreDivisionOt(divisionesCtx || [], f.proyecto.division)} &middot; {f.cerradas} de {f.celdas.length} etapas cerradas{f.liberada ? "" : " · sin liberar"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <button onClick={() => goto?.("planta:ot")}
+            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
+          >
+            Ver las OT &rarr;
+          </button>
+        </section>
+      )}
+
+      {/* ─── Presentes hoy: sobre el total del personal y quiénes faltan ─── */}
+      <section aria-label="Presentes hoy" className="card-hover g-card mb-4">
+        <div className="flex justify-between items-center mb-3">
+          <Titulo>Presentes hoy</Titulo>
+          <Tag color="var(--color-green)">{totalEmp > 0 ? `${Math.round((presentes / totalEmp) * 100)}%` : "—"}</Tag>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <Dato grande valor={`${presentes}/${totalEmp}`} etiqueta="Presentes del total del personal" tono="bien" />
+          <Dato grande valor={faltanHoy.length} etiqueta={faltanHoy.length === 1 ? "Falta (tenía que venir)" : "Faltan (tenían que venir)"} tono={faltanHoy.length > 0 ? "mal" : "bien"} />
+        </div>
+        {faltanHoy.length > 0 ? (
+          <>
+            <div className="g-label mb-1.5">Quiénes faltan</div>
+            <div className="max-h-[200px] overflow-y-auto">
+              {faltanHoy.map(e => (
+                <div key={e.id ?? e.legajo} className="flex items-center gap-2.5 py-1.5 border-b border-gypi-border last:border-b-0">
+                  <div className="w-1.5 h-1.5 rounded-full bg-gypi-red shrink-0" aria-hidden="true" />
+                  <span className="flex-1 text-[13px] font-semibold text-gypi-text truncate">{e.nombre}</span>
+                  <span className="text-[12px] text-gypi-dim">{e.diagrama?.[diaKey]?.in ? `entra ${String(e.diagrama[diaKey].in).slice(0, 5)}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="m-0 text-[13px] text-gypi-dim">{programados > 0 ? "Vinieron todos los que tenían que venir hoy." : "Hoy nadie tiene turno."}</p>
+        )}
+        {sinTurnoHoy > 0 && <p className="m-0 mt-2 text-[12px] text-gypi-dim">{sinTurnoHoy} {sinTurnoHoy === 1 ? "persona no tiene" : "personas no tienen"} turno hoy (franco).</p>}
+      </section>
+
+      {/* ─── Asistencia ─── */}
+      <section aria-label="Asistencia" className="card-hover g-card mb-4">
+        <div className="flex justify-between items-center mb-3.5">
+          <Titulo>Asistencia</Titulo>
+          <Tag color="var(--color-green)">{presentes} {presentes === 1 ? "fichó" : "ficharon"} hoy</Tag>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-3.5">
+          <Dato grande valor={pctAsist == null ? "—" : `${pctAsist}%`} etiqueta="Cumplimiento" tono={pctAsist == null ? "neutro" : tonoPct(pctAsist)} />
+          <Dato grande valor={tardesEstaSemana} etiqueta="Tardanzas (semana)" tono={tardesEstaSemana > 0 ? "aviso" : "bien"} />
+        </div>
+
+        <div className="g-label mb-2">Cuántos ficharon cada día de esta semana</div>
+        <div className="flex justify-center">
+          <MiniBarChart
+            data={fichadasPorDia.map(d => d.count)}
+            maxVal={programados || 20}
+            labels={fichadasPorDia.map(d => d.label)}
+          />
+        </div>
+
+        {promedioHorasDia > 0 && (
+          <div className={`mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between ${TONO.info.fondo}`}>
+            <span className="text-[13px] text-gypi-dim font-semibold">Promedio de horas por día</span>
+            <span className={`font-heading text-sm font-bold ${TONO.info.txt}`}>{promedioHorasDia.toFixed(1)} h</span>
+          </div>
+        )}
+      </section>
+
+      {/* ─── Pedidos de compras pendientes (Planta → Compras) ─── */}
+      {conOt && pedidosCompra && (
+        <section aria-label="Pedidos de compras" className="card-hover g-card mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <Titulo>Pedidos de compras</Titulo>
+            <Tag color={MARCA}>{pedidosCompra.length} pendiente{pedidosCompra.length !== 1 ? "s" : ""}</Tag>
+          </div>
+          {pedidosCompra.length === 0 ? (
+            <p className="m-0 text-[13px] text-gypi-dim">No hay pedidos de material pendientes.</p>
+          ) : (
+            <div className="max-h-[240px] overflow-y-auto">
+              {pedidosCompra.map(p => (
+                <div key={p.id} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-gypi-text truncate">{p.descripcion}</div>
+                    <div className="text-[12px] text-gypi-dim truncate">
+                      {[p.empleado_nombre, p.ot && `OT ${p.ot}`, p.created_at && new Date(p.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  <span className="font-mono text-[13px] font-bold text-gypi-text shrink-0">{Number(p.cantidad).toLocaleString("es-AR")}{p.unidad ? ` ${p.unidad}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={() => goto?.("planta:compras")}
+            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
+          >
+            Ir a Compras &rarr;
+          </button>
+        </section>
+      )}
+
+      {/* ─── Ranking de empleados ─── */}
+      {ranking.length > 0 && (() => {
+        const top3 = ranking.slice(0, 3);
+        const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
+        return (
+          <button onClick={() => setShowFullRanking(true)} className={`card-hover g-card mb-4 w-full cursor-pointer text-left block ${TONO.aviso.borde}`}>
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base" aria-hidden="true">&#x1F3C6;</span>
+                <Titulo>Ranking de empleados</Titulo>
+              </div>
+              <Tag color={MARCA}>Este mes</Tag>
+            </div>
+            <div className="flex flex-col gap-2">
+              {top3.map((e, i) => (
+                <div key={e.id} className="flex items-center gap-2.5 px-1 py-1.5 rounded-lg">
+                  <span className="text-base shrink-0" aria-hidden="true">{medals[i]}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-gypi-text truncate">{e.nombre}</div>
+                    <div className="text-xs text-gypi-dim mt-px">
+                      {e.division || "Sin división"} &middot; {e.diasTrabajados} días &middot; {e.horasTrabajadas} h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={`text-sm font-extrabold font-heading ${TONO.bien.txt}`}>{e.score}</div>
+                    <div className="text-[11px] text-gypi-dim font-semibold">puntos</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2.5 text-center text-[13px] text-gypi-amber-ink font-semibold">
+              Ver ranking completo ({ranking.length})
+            </div>
+          </button>
+        );
+      })()}
+      {/* ─── Jornadas hoy ─── */}
+      <section aria-label="Jornadas hoy" className="card-hover g-card mb-4">
+        <div className="flex justify-between items-center mb-1">
+          <Titulo>Jornadas de hoy</Titulo>
+          <span className="text-xs text-gypi-mute font-mono">7:00 ——— 19:00</span>
+        </div>
+        {fichadasHoy.length > 0 && (
+          <p className="m-0 mb-1 text-[12px] text-gypi-dim">
+            <span className={TONO.bien.txt}>■</span> ya salió · <span className={TONO.aviso.txt}>■</span> todavía adentro · tocá a alguien para ver sus fichajes
+          </p>
+        )}
+        {fichadasHoy.length === 0 ? (
+          <EmptyState
+            icon="clock"
+            title="Sin fichadas hoy"
+            description="Los ingresos y egresos del equipo van a aparecer acá a medida que fichen."
+            color="var(--color-cyan)"
+          />
+        ) : (
+          <div className="max-h-[220px] overflow-y-auto">
+            {fichadasHoy.map((f, i) => (
+              <TimelineRow
+                key={f.legajo || i}
+                nombre={f.nombre || `L-${f.legajo}`}
+                ingreso={f.ingreso}
+                egreso={f.egreso}
+                onClick={() => goto?.("historial-fichajes", f.legajo)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ─── Solicitudes del personal ─── */}
+      <section aria-label="Solicitudes del personal" className={`g-card mb-4 ${pendientes.length > 0 ? TONO.aviso.borde : ""}`}>
+          <div className="flex justify-between items-center mb-3">
+            <Titulo>Solicitudes del personal</Titulo>
+            {pendientes.length > 0 && <Tag color={MARCA}>{pendientes.length} sin responder</Tag>}
+          </div>
+          {pendientes.length === 0 && <p className="m-0 text-[13px] text-gypi-dim">No hay solicitudes sin responder.</p>}
 
           {pendientes.slice(0, 5).map(s => (
             <div key={s.id} className="flex items-center gap-2.5 py-2 border-b border-gypi-border">
@@ -636,13 +852,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             </div>
           ))}
 
+          {pendientes.length > 5 && <div className="mt-2 text-[12px] text-gypi-dim">y {pendientes.length - 5} más</div>}
           <button onClick={() => goto?.("solicitudes")}
-            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 border-none bg-gypi-amber text-gypi-on-amber"
+            className={`w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 border-none ${pendientes.length > 0 ? "bg-gypi-amber text-gypi-on-amber" : "bg-gypi-surf-hi text-gypi-text"}`}
           >
-            <Icon name="clipboard" size={14} /> Responder pedidos &rarr;
+            <Icon name="clipboard" size={14} /> {pendientes.length > 0 ? "Responder solicitudes" : "Ver solicitudes"} &rarr;
           </button>
         </section>
-      )}
 
       {/* ─── Botones En planta / Trabajo en campo (solo con esos módulos) ─── */}
       {(conTareas || conObra) && (
@@ -739,82 +955,6 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── Asistencia ─── */}
-      <section aria-label="Asistencia" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-3.5">
-          <Titulo>Asistencia</Titulo>
-          <Tag color="var(--color-green)">{presentes} {presentes === 1 ? "fichó" : "ficharon"} hoy</Tag>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 mb-3.5">
-          <Dato grande valor={pctAsist == null ? "—" : `${pctAsist}%`} etiqueta="Cumplimiento" tono={pctAsist == null ? "neutro" : tonoPct(pctAsist)} />
-          <Dato grande valor={tardesEstaSemana} etiqueta="Tardanzas (semana)" tono={tardesEstaSemana > 0 ? "aviso" : "bien"} />
-        </div>
-
-        <div className="g-label mb-2">Cuántos ficharon cada día de esta semana</div>
-        <div className="flex justify-center">
-          <MiniBarChart
-            data={fichadasPorDia.map(d => d.count)}
-            maxVal={programados || 20}
-            labels={fichadasPorDia.map(d => d.label)}
-          />
-        </div>
-
-        {promedioHorasDia > 0 && (
-          <div className={`mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between ${TONO.info.fondo}`}>
-            <span className="text-[13px] text-gypi-dim font-semibold">Promedio de horas por día</span>
-            <span className={`font-heading text-sm font-bold ${TONO.info.txt}`}>{promedioHorasDia.toFixed(1)} h</span>
-          </div>
-        )}
-      </section>
-
-      {/* ─── Ranking de empleados: opcional y apagado por defecto (R9) ─── */}
-      {ranking.length > 0 && !verRanking && (
-        <button onClick={() => cambiarVerRanking(true)} className="w-full min-h-[48px] mb-4 rounded-xl bg-transparent border border-gypi-border text-[14px] text-gypi-text font-semibold cursor-pointer font-body">
-          🏆 Mostrar el ranking del mes
-        </button>
-      )}
-      {ranking.length > 0 && verRanking && (() => {
-        const top3 = ranking.slice(0, 3);
-        const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
-        return (
-          <button onClick={() => setShowFullRanking(true)} className={`card-hover g-card mb-4 w-full cursor-pointer text-left block ${TONO.aviso.borde}`}>
-            <div className="flex justify-between items-center mb-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-base" aria-hidden="true">&#x1F3C6;</span>
-                <Titulo>Ranking de empleados</Titulo>
-              </div>
-              <Tag color={MARCA}>Este mes</Tag>
-            </div>
-            <div className="flex flex-col gap-2">
-              {top3.map((e, i) => (
-                <div key={e.id} className="flex items-center gap-2.5 px-1 py-1.5 rounded-lg">
-                  <span className="text-base shrink-0" aria-hidden="true">{medals[i]}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-bold text-gypi-text truncate">{e.nombre}</div>
-                    <div className="text-xs text-gypi-dim mt-px">
-                      {e.division || "Sin división"} &middot; {e.diasTrabajados} días &middot; {e.horasTrabajadas} h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className={`text-sm font-extrabold font-heading ${TONO.bien.txt}`}>{e.score}</div>
-                    <div className="text-[11px] text-gypi-dim font-semibold">puntos</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-2.5 text-center text-[13px] text-gypi-amber-ink font-semibold">
-              Ver ranking completo ({ranking.length})
-            </div>
-          </button>
-        );
-      })()}
-      {ranking.length > 0 && verRanking && (
-        <button onClick={() => cambiarVerRanking(false)} className="w-full min-h-[44px] -mt-2 mb-4 bg-transparent border-none text-[13px] text-gypi-dim underline cursor-pointer font-body">
-          Ocultar el ranking
-        </button>
-      )}
-
       {/* ─── Productividad por división (solo con Tareas: sin ellas siempre daba 0%) ─── */}
       {conTareas && (
         <section aria-label="Productividad" className="card-hover g-card mb-4">
@@ -850,39 +990,6 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             );
           })}
         </div>
-      </section>
-
-      {/* ─── Jornadas hoy ─── */}
-      <section aria-label="Jornadas hoy" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-1">
-          <Titulo>Jornadas de hoy</Titulo>
-          <span className="text-xs text-gypi-mute font-mono">7:00 ——— 19:00</span>
-        </div>
-        {fichadasHoy.length > 0 && (
-          <p className="m-0 mb-1 text-[12px] text-gypi-dim">
-            <span className={TONO.bien.txt}>■</span> ya salió · <span className={TONO.aviso.txt}>■</span> todavía adentro · tocá a alguien para ver sus fichajes
-          </p>
-        )}
-        {fichadasHoy.length === 0 ? (
-          <EmptyState
-            icon="clock"
-            title="Sin fichadas hoy"
-            description="Los ingresos y egresos del equipo van a aparecer acá a medida que fichen."
-            color="var(--color-cyan)"
-          />
-        ) : (
-          <div className="max-h-[220px] overflow-y-auto">
-            {fichadasHoy.map((f, i) => (
-              <TimelineRow
-                key={f.legajo || i}
-                nombre={f.nombre || `L-${f.legajo}`}
-                ingreso={f.ingreso}
-                egreso={f.egreso}
-                onClick={() => goto?.("historial-fichajes", f.legajo)}
-              />
-            ))}
-          </div>
-        )}
       </section>
 
       {/* ─── Footer info ─── */}

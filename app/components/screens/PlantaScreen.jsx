@@ -19,9 +19,10 @@ const OPCIONES = [
   { id: "compras", label: "Compras", modulo: "proyectos" },
 ];
 
-export default function PlantaScreen({ empresa, usuario, onVerPlanes }) {
+export default function PlantaScreen({ empresa, usuario, onVerPlanes, seccion = null }) {
   const primera = OPCIONES.find((o) => tieneModulo(empresa, o.modulo)) || OPCIONES[0];
-  const [opcion, setOpcion] = useState(primera.id);
+  // seccion: la opción con la que abre (el Panel de control manda "ot" o "compras")
+  const [opcion, setOpcion] = useState(OPCIONES.some((o) => o.id === seccion) ? seccion : primera.id);
   const actual = OPCIONES.find((o) => o.id === opcion) || primera;
   const bloqueado = !tieneModulo(empresa, actual.modulo);
   const empresaId = usuario?.empresa_id || empresa?.id;
