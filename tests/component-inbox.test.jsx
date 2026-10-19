@@ -101,7 +101,13 @@ test("Confirmar con motivo: pasada la espera, guarda el motivo y se lo avisa al 
     const [p] = patches(llamadas);
     assert.deepEqual(p.body, { id: 42, estado: "rechazado", nota: "Falta el certificado" });
     assert.equal(llamadas.filter((l) => l.body?.method === "PATCH" || l.body?.method === "POST").length, 0, "el celular ya no escribe tablas sueltas");
-    const push = llamadas.find((l) => l.url.includes("/api/send-push"));
+    // El aviso sale sin esperar (sendPushToLegajo importa supabase antes del
+    // fetch), así que puede llegar después de la recarga: se espera aparte
+    const push = await waitFor(() => {
+      const l = llamadas.find((x) => x.url.includes("/api/send-push"));
+      assert.ok(l, "manda el aviso al celular");
+      return l;
+    });
     assert.deepEqual(push.body, { legajo: "7", title: "❌ Permiso rechazado", body: "Tu permiso fue rechazado por Laura", data: { empresa_id: "e-1" } });
   } finally {
     restaurar();
