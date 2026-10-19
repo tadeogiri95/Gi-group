@@ -41,8 +41,14 @@ test("gestión — no carga las tareas propias (son del operario)", () => {
 test("Más — cada sección se descarga recién al abrirla", () => {
   const config = leer("app/components/screens/ConfigScreen.jsx");
   assert.doesNotMatch(config, /^import \w+ from "\.\.\/\.\.\/(reportes|grilla_horario|proyectos|geolocalizacion|calendario|admin_empresa|documentos_empleado)_screen/m);
-  for (const s of ["ReportesScreen", "GrillaHorarioScreen", "GeolocalizacionScreen", "CalendarioScreen", "AdminEmpresaScreen", "ReglasScreen", "AsistenciaReglasScreen"]) {
+  for (const s of ["GeolocalizacionScreen", "AdminEmpresaScreen", "ReglasScreen", "AsistenciaReglasScreen"]) {
     assert.match(config, new RegExp(`const ${s} = perezosa\\(\\(\\) => import\\(`), s);
+  }
+  // Equipo también baja cada pestaña al abrirla
+  const equipo = leer("app/components/screens/EquipoScreen.jsx");
+  assert.doesNotMatch(equipo, /^import \w+ from "\.\.\/\.\.\/\w+_screen/m);
+  for (const s of ["GestionPersonalScreen", "GrillaHorarioScreen", "CalendarioScreen", "ReportesScreen", "DocumentosEmpleadoScreen"]) {
+    assert.match(equipo, new RegExp(`const ${s} = perezosa\\(\\(\\) => import\\(`), s);
   }
 });
 

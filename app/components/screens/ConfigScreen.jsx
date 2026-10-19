@@ -13,14 +13,10 @@ import { Spinner } from "../ui";
 // descargaba el código de las 10 pantallas juntas (~200 KB) para mostrar una lista.
 const cargando = () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
 const perezosa = (importar) => dynamic(importar, { ssr: false, loading: cargando });
-const ReportesScreen = perezosa(() => import("../../reportes_screen"));
-const GrillaHorarioScreen = perezosa(() => import("../../grilla_horario_screen"));
 const ProyectosScreen = perezosa(() => import("../../proyectos_screen.jsx"));
 const GeolocalizacionScreen = perezosa(() => import("../../geolocalizacion_screen"));
-const CalendarioScreen = perezosa(() => import("../../calendario_screen"));
 const ReglasScreen = perezosa(() => import("./ReglasScreen"));
 const AdminEmpresaScreen = perezosa(() => import("../../admin_empresa_screen"));
-const DocumentosEmpleadoScreen = perezosa(() => import("../../documentos_empleado_screen"));
 const AsistenciaReglasScreen = perezosa(() => import("./AsistenciaReglasScreen"));
 import CerrarSesion from "../CerrarSesion";
 
@@ -55,9 +51,9 @@ function PrivacidadPanel({ usuario, empresa }) {
   );
 }
 
-// Pantalla "Más" de gestión (reforma UX R5): una lista simple agrupada en
-// "Día a día" y "Configuración"; cada renglón abre su pantalla con "← Más".
-// Antes eran 3 pestañas, 10 sub-pestañas y chips adentro.
+// Pantalla "Más" de gestión (reforma UX R5): una lista simple de ajustes;
+// cada renglón abre su pantalla con "← Más". Lo del personal está en Equipo
+// y lo de producción en Planta (revisión de la interfaz, 2026-10).
 export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [], onVerPlanes, seccion: seccionInicial = null, onSeccion }) {
   const [seccionLocal, setSeccionLocal] = useState(seccionInicial);
   const seccionId = onSeccion ? seccionInicial : seccionLocal;
@@ -109,12 +105,8 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
       <div role="region" aria-label={seccion.label} className="flex-1 overflow-hidden flex flex-col">
         {seccionBloqueada(id, empresa) && <ModuloBloqueado modulo={MODULO_SECCION_GESTION[id]} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!seccionBloqueada(id, empresa) && <>
-        {id === "reportes"      && <ReportesScreen />}
-        {id === "horarios"      && <GrillaHorarioScreen empresaId={empresaId} />}
         {id === "proyectos"     && <ProyectosScreen empresaId={empresaId} />}
         {id === "ubicaciones"   && <GeolocalizacionScreen empresaId={empresaId} />}
-        {id === "calendario"    && <CalendarioScreen empresaId={empresaId} />}
-        {id === "documentacion" && <DocumentosEmpleadoScreen empresaId={empresaId} />}
         {id === "asistencia"    && <AsistenciaReglasScreen />}
         {id === "reglas"        && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
         {id === "admin"         && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}

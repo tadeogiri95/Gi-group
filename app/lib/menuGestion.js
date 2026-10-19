@@ -15,15 +15,14 @@ export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;
 }
 
+// "Más" es solo para ajustes (revisión de la interfaz, 2026-10): Horarios,
+// Calendario, Reportes y Documentación pasaron a Equipo, y los reportes de
+// producción a Planta. Sin Planta, las OT quedan acá.
 const SECCIONES = [
-  { id: "horarios", grupo: "dia", icono: "🕐", label: "Horarios", detalle: "Turnos de cada persona" },
-  { id: "calendario", grupo: "dia", icono: "📅", label: "Calendario", detalle: "Feriados, notas y turnos del mes" },
-  { id: "reportes", grupo: "dia", icono: "📊", label: "Reportes y liquidación", detalle: "Horas, tardanzas, ausencias y exportar" },
   { id: "proyectos", grupo: "dia", icono: "📋", label: "OT", detalle: "Órdenes de trabajo", soloSinPlanta: true },
   { id: "ubicaciones", grupo: "config", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
   { id: "asistencia", grupo: "config", icono: "⏱️", label: "Reglas de asistencia y permisos", detalle: "Tolerancia, bloqueos y tipos de permiso" },
   { id: "reglas", grupo: "config", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
-  { id: "documentacion", grupo: "config", icono: "📄", label: "Documentación", detalle: "Papeles que pide la empresa" },
   { id: "admin", grupo: "config", icono: "🏢", label: "Empresa", detalle: "Nombre, logo, colores, divisiones y etapas", sinSupervisor: true },
   { id: "facturacion", grupo: "config", icono: "💳", label: "Plan y facturación", detalle: "Tu plan, pagos y comprobantes", soloDueno: true },
   { id: "privacidad", grupo: "config", icono: "👤", label: "Mi cuenta y privacidad", detalle: "Tus datos y cerrar sesión" },

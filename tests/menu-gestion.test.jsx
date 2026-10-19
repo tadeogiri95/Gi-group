@@ -31,10 +31,10 @@ test("barra de gestión — Planta solo si hay Tareas u OT; 'Más' reemplaza a '
   assert.equal(conPlanta(ASISTENCIA), false);
 });
 
-test("Más — el dueño ve todo, con Plan y facturación (antes no estaba en ningún menú)", () => {
+test("Más — solo ajustes: lo del personal está en Equipo y lo de producción en Planta", () => {
   const todo = ids({ empresa: PLANTA, usuario: DUENO });
-  assert.deepEqual(todo, ["horarios", "calendario", "reportes", "ubicaciones", "asistencia", "reglas", "documentacion", "admin", "facturacion", "privacidad"]);
-  assert.ok(!todo.includes("personal"), "Equipo ya está en la barra: no se repite");
+  assert.deepEqual(todo, ["ubicaciones", "asistencia", "reglas", "admin", "facturacion", "privacidad"]);
+  for (const id of ["personal", "horarios", "calendario", "reportes", "documentacion"]) assert.ok(!todo.includes(id), id);
 });
 
 test("Más — sin Planta, las OT aparecen acá (con candado si no están en el plan)", () => {
@@ -66,7 +66,7 @@ test("U-03 — las reglas de asistencia no quedan bloqueadas sin el Asistente", 
 test("U-12 — los primeros pasos abren la sección justa", () => {
   const ir = Object.fromEntries(pasosActivacion().map((p) => [p.id, p.ir]));
   assert.equal(ir.ubicacion, "config:ubicaciones");
-  assert.equal(ir.horario, "config:horarios");
+  assert.equal(ir.horario, "equipo:horarios");
   assert.equal(ir.ot, "config:proyectos");
   assert.deepEqual(partirDestino("config:ubicaciones"), { pantalla: "config", seccion: "ubicaciones" });
   assert.deepEqual(partirDestino("equipo"), { pantalla: "equipo", seccion: null });
@@ -77,12 +77,12 @@ test("U-12 — los primeros pasos abren la sección justa", () => {
 
 test("U-16 — Reportes muestra Producción (solo con el registro de tareas) y Obra con su módulo; la liquidación no al supervisor", () => {
   const src = readFileSync(new URL("../app/reportes_screen.jsx", import.meta.url), "utf8");
-  assert.match(src, /conRegistroTareas\(empresa\) && <Chip active=\{tab === "produccion"\}/);
-  assert.match(src, /tieneModulo\(empresa, "obra"\) && <Chip active=\{tab === "obra"\}/);
-  assert.match(src, /!esSupervisor\(usuario\) && <Chip active=\{tab === "liquidacion"\}/);
+  assert.match(src, /ver\("produccion"\) && conRegistroTareas\(empresa\) && <Chip active=\{tab === "produccion"\}/);
+  assert.match(src, /ver\("produccion"\) && tieneModulo\(empresa, "obra"\) && <Chip active=\{tab === "obra"\}/);
+  assert.match(src, /ver\("personal"\) && !esSupervisor\(usuario\) && <Chip active=\{tab === "liquidacion"\}/);
 });
 
-test("Planta — sin el registro de tareas no hay 'En vivo'; lo que no está en el plan, con candado", async () => {
+test("Planta — sin el registro de tareas no hay 'En vivo'; lo que no está en el plan, con candado; abre en lo que tiene", async () => {
   global.fetch = async () => Response.json([]);
   render(
     <AuthContext.Provider value={{ divisiones: [], usuario: DUENO, empresa: {} }}>
@@ -91,7 +91,34 @@ test("Planta — sin el registro de tareas no hay 'En vivo'; lo que no está en 
   );
   assert.equal(screen.queryByRole("tab", { name: /En vivo/ }), null);
   assert.ok(screen.getByRole("tab", { name: "OT 🔒" }));
-  assert.equal(screen.getByRole("tab", { name: "OT 🔒" }).getAttribute("aria-selected"), "true");
+  // Abre en lo primero que sí tiene: los reportes de producción
+  assert.equal(screen.getByRole("tab", { name: "Reportes" }).getAttribute("aria-selected"), "true");
+});
+
+test("Equipo — Personas, Horarios, Calendario, Reportes y Documentos; abre en la pestaña pedida", async () => {
+  const { default: EquipoScreen } = await import("../app/components/screens/EquipoScreen.jsx");
+  render(<EquipoScreen empresa={{ modulos: ["fichaje"], plan_activo: "asistencia_15" }} usuario={DUENO} seccion="calendario" onVerPlanes={() => {}} />);
+  const pestanas = screen.getAllByRole("tab").map((t) => t.textContent);
+  assert.deepEqual(pestanas, ["Personas", "Horarios", "Calendario 🔒", "Reportes 🔒", "Documentos"]);
+  assert.equal(screen.getByRole("tab", { name: "Calendario 🔒" }).getAttribute("aria-selected"), "true");
+  const home = readFileSync(new URL("../app/[slug]/HomeContent.jsx", import.meta.url), "utf8");
+  assert.match(home, /<EquipoScreen key=\{seccionMas \|\| "equipo"\} empresa=\{empresa\} usuario=\{u\} seccion=\{seccionMas\}/);
+});
+
+test("Reportes — Equipo muestra los del personal y Planta los de producción", async () => {
+  const { default: ReportesScreen } = await import("../app/reportes_screen.jsx");
+  global.fetch = async () => Response.json({ ok: true, data: [] });
+  const empresa = { modulos: ["fichaje", "actividad", "reportes", "obra"] };
+  const chips = () => screen.getAllByRole("button").map((b) => b.textContent).filter((t) => /^(📊|🗓️|⚙️|📈|⏱️|🏗️|📥|💰) /u.test(t));
+  const conAuth = (grupo) => <AuthContext.Provider value={{ divisiones: [], usuario: { ...DUENO, empresa_id: "x" }, empresa }}><ReportesScreen grupo={grupo} /></AuthContext.Provider>;
+  render(conAuth("personal"));
+  assert.deepEqual(chips(), ["📊 Asistencia", "📥 Descargar", "💰 Liquidación"]);
+  cleanup();
+  render(conAuth("produccion"));
+  assert.deepEqual(chips(), ["🗓️ Del día", "📈 Indicadores", "⏱️ Lead time", "🏗️ Obra"]);
+  const planta = readFileSync(new URL("../app/components/screens/PlantaScreen.jsx", import.meta.url), "utf8");
+  assert.match(planta, /\{ id: "reportes", label: "Reportes", modulo: "actividad" \}/);
+  assert.match(planta, /<ReportesScreen grupo="produccion" \/>/);
 });
 
 // ─── Cerrar sesión (desde R9 el tablero no tiene el botón arriba) ───────────

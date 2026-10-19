@@ -467,13 +467,18 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function ReportesScreen() {
+// grupo: "personal" (en Equipo: Asistencia, Descargar, Liquidación) o
+// "produccion" (en Planta: Del día, Producción, Indicadores, Lead time, Obra).
+// Sin grupo se ven todas (revisión de la interfaz, 2026-10).
+export default function ReportesScreen({ grupo = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, defectos, usuario, empresa } = useAuth();
+  const ver = (g) => !grupo || grupo === g;
+  const conDia = tieneModulo(empresa, "actividad") && !esSupervisor(usuario);
   const empresaId = usuario?.empresa_id;
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(usuario?.rol === "gerencial");
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
-  const [tab, setTab] = useState("cumplimiento");
+  const [tab, setTab] = useState(grupo === "produccion" ? (conDia ? "dia" : "indicadores") : "cumplimiento");
   const [periodo, setPeriodo] = useState("semana");
   const [weekOffset, setWeekOffset] = useState(0);
   const [mesYear, setMesYear] = useState(() => Number(hoyArg().slice(0, 4)));
@@ -482,7 +487,7 @@ export default function ReportesScreen() {
   const [expandedEmp, setExpandedEmp] = useState(null);
   const [empleados, setEmpleados] = useState([]);
   const [fichadas, setFichadas] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(grupo !== "produccion");
   const [exporting, setExporting] = useState(null);
   const toast = useToast();
 
@@ -517,7 +522,8 @@ export default function ReportesScreen() {
     finally { setLoading(false); }
   }, [fechaDesde, fechaHasta, empresaId]);
 
-  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+  // Los reportes de producción no usan las fichadas del personal
+  useEffect(() => { if (grupo !== "produccion") cargarDatos(); }, [cargarDatos, grupo]);
 
   const empsFiltrados = division === "todas" ? empleados : empleados.filter(e => e.division === division);
 
@@ -607,15 +613,15 @@ export default function ReportesScreen() {
 
       {/* Tabs */}
       <div className="flex gap-1.5 mb-3.5 overflow-x-auto pb-0.5">
-        <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
-        {tieneModulo(empresa, "actividad") && !esSupervisor(usuario) && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
-        {conRegistroTareas(empresa) && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
-        {tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
-        {tieneModulo(empresa, "actividad") && <Chip active={tab === "leadtime"} onClick={() => setTab("leadtime")} color={MARCA}>⏱️ Lead time</Chip>}
-        {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
-        <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>
-        {!esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
+        {ver("personal") && <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>}
+        {ver("produccion") && conDia && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
+        {ver("produccion") && conRegistroTareas(empresa) && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
+        {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
+        {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "leadtime"} onClick={() => setTab("leadtime")} color={MARCA}>⏱️ Lead time</Chip>}
+        {ver("produccion") && tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
+        {ver("personal") && <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>}
+        {ver("personal") && !esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </div>
 
       {/* Periodo (el reporte del día tiene su propio día) */}
