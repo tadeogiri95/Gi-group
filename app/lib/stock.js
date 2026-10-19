@@ -196,6 +196,22 @@ export function filtrarArticulos(lista, { texto = "", division = "", urgentes = 
       || String(a.nombre || a.sku).localeCompare(String(b.nombre || b.sku), "es"));
 }
 
+/** Cuántos artículos se sugieren al buscar en un formulario. */
+export const MAX_SUGERIDOS = 20;
+
+/**
+ * Sugerencias para el buscador de un formulario (Pedir material, Movimientos):
+ * las primeras MAX_SUGERIDOS y cuántas quedan afuera, para avisar que hay más
+ * y que se escriba otra palabra (con 8 y sin aviso, un artículo nuevo podía
+ * quedar escondido detrás de los urgentes).
+ * @returns {{ lista: object[], resto: number }}
+ */
+export function sugerirArticulos(lista, texto, max = MAX_SUGERIDOS) {
+  if (!String(texto ?? "").trim()) return { lista: [], resto: 0 };
+  const todos = filtrarArticulos(lista, { texto });
+  return { lista: todos.slice(0, max), resto: Math.max(0, todos.length - max) };
+}
+
 /** Divisiones de los artículos, para los filtros. */
 export function divisionesDe(lista) {
   return [...new Set((Array.isArray(lista) ? lista : []).map((a) => a?.division).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));

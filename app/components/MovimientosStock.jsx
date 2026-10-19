@@ -5,7 +5,7 @@
 // anula lo que se cargó mal. La planilla MRP los trae sola (parte 15).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
-import { filtrarArticulos } from "../lib/stock";
+import { sugerirArticulos } from "../lib/stock";
 import PlanillaMrpConexion from "./PlanillaMrpConexion";
 import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
 
@@ -36,7 +36,7 @@ export default function MovimientosStock({ usuario, articulos = [] }) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const sugeridos = useMemo(
-    () => (form && !form.articulo && form.texto.trim() ? filtrarArticulos(articulos, { texto: form.texto }).slice(0, 8) : []),
+    () => (form && !form.articulo && form.texto.trim() ? sugerirArticulos(articulos, form.texto) : { lista: [], resto: 0 }),
     [form, articulos]
   );
   const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
@@ -112,9 +112,9 @@ export default function MovimientosStock({ usuario, articulos = [] }) {
           ) : (
             <>
               <input id="mov-articulo" className="g-input w-full mb-1" value={form.texto} onChange={cambiar("texto")} placeholder="Nombre o código" />
-              {sugeridos.length > 0 && (
+              {sugeridos.lista.length > 0 && (
                 <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mb-2 flex flex-col gap-1">
-                  {sugeridos.map((a) => (
+                  {sugeridos.lista.map((a) => (
                     <li key={a.sku}>
                       <button onClick={() => setForm((f) => ({ ...f, articulo: a }))} className="w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
                         <b>{a.nombre || a.sku}</b> <span className="text-gypi-dim">· {a.sku}</span>
@@ -122,6 +122,9 @@ export default function MovimientosStock({ usuario, articulos = [] }) {
                     </li>
                   ))}
                 </ul>
+              )}
+              {sugeridos.resto > 0 && (
+                <div role="status" className="text-[12px] text-gypi-dim mb-2">Hay {sugeridos.resto} más. Escribí otra palabra del nombre o el código para encontrarlo.</div>
               )}
             </>
           )}
