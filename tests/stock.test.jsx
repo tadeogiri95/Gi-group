@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
-  numeroPlanilla, unirArticulos, nivelSemaforo, filtrarArticulos, divisionesDe, cantidadTexto,
+  numeroPlanilla, unirArticulos, nivelSemaforo, filtrarArticulos, sugerirArticulos, divisionesDe, cantidadTexto,
   linkArticulo, leerQrArticulo, htmlEtiquetasArticulos, CLAVE_STOCK_CSV,
 } from "../app/lib/stock.js";
 import { autorizar } from "../app/lib/dataPolicy.js";
@@ -114,6 +114,12 @@ test("semáforo y búsqueda — urgentes primero, sin acentos, por división", (
   assert.deepEqual(filtrarArticulos(lista, { urgentes: true }).map((a) => a.sku), ["3.3.1.6.109.2"]);
   assert.deepEqual(filtrarArticulos(lista, { division: "MADERA" }).map((a) => a.sku).sort(), ["1.1.1.2.130.1", "9.9.9"]);
   assert.deepEqual(divisionesDe(lista), ["ALUMINIO", "HIERRO", "MADERA"]);
+  // El buscador de los formularios avisa cuántos quedan afuera
+  const zocalos = Array.from({ length: 23 }, (_, i) => ({ sku: `1.3.${i}`, nombre: `ZOCALO ${i}` }));
+  assert.equal(sugerirArticulos(zocalos, "zocalo").lista.length, 20);
+  assert.equal(sugerirArticulos(zocalos, "zocalo").resto, 3);
+  assert.deepEqual(sugerirArticulos(zocalos, "zocalo 22").lista.map((a) => a.sku), ["1.3.22"]);
+  assert.deepEqual(sugerirArticulos(zocalos, "  "), { lista: [], resto: 0 });
   assert.equal(cantidadTexto(1234.5), "1.234,5");
   assert.equal(cantidadTexto(null), "—");
 });

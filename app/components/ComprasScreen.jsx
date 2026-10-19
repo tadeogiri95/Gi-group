@@ -8,7 +8,7 @@
 // tiene además Reportes (parte 23).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
-import { filtrarArticulos } from "../lib/stock";
+import { sugerirArticulos } from "../lib/stock";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { ESTADOS_PEDIDO, faltaTabla, filtrarPedidos, puedeAnularPedido, textoPedido } from "../lib/compras";
 import ProveedoresCompras from "./ProveedoresCompras";
@@ -37,7 +37,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
   const [hecho, setHecho] = useState(null);
   const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
   const sugeridos = useMemo(
-    () => (!form.articulo && form.texto.trim() ? filtrarArticulos(articulos, { texto: form.texto }).slice(0, 8) : []),
+    () => (!form.articulo && form.texto.trim() ? sugerirArticulos(articulos, form.texto) : { lista: [], resto: 0 }),
     [form.articulo, form.texto, articulos]
   );
 
@@ -96,9 +96,9 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
       ) : (
         <>
           <input id="ped-articulo" className="g-input w-full mb-1" value={form.texto} onChange={cambiar("texto")} maxLength={200} placeholder="Buscá por nombre o código, o escribilo si no está" />
-          {sugeridos.length > 0 && (
+          {sugeridos.lista.length > 0 && (
             <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mb-2 flex flex-col gap-1">
-              {sugeridos.map((a) => (
+              {sugeridos.lista.map((a) => (
                 <li key={a.sku}>
                   <button onClick={() => setForm((f) => ({ ...f, articulo: a }))} className="w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
                     <b>{a.nombre || a.sku}</b> <span className="text-gypi-dim">· {a.sku}</span>
@@ -106,6 +106,9 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
                 </li>
               ))}
             </ul>
+          )}
+          {sugeridos.resto > 0 && (
+            <div role="status" className="text-[12px] text-gypi-dim mb-2">Hay {sugeridos.resto} más. Escribí otra palabra del nombre o el código para encontrarlo.</div>
           )}
           {form.texto.trim() && (
             <div className="text-[12px] text-gypi-dim mb-2">Si no está en la lista, se pide así como lo escribiste.</div>
