@@ -62,6 +62,17 @@ export function tieneModulo(empresa, modulo) {
   return !Array.isArray(empresa?.modulos) || empresa.modulos.includes(modulo);
 }
 
+// Registro de tareas ("Iniciar Tarea" del operario). Se sacó en 2026-10: el
+// avance se mide escaneando piezas. Lo que se calculaba con esas tareas
+// (producción en vivo, parados, productividad, horas y costo por etapa y por
+// OT) se oculta porque quedaría vacío. Si vuelve "Iniciar Tarea", poner true.
+export const REGISTRO_TAREAS = false;
+
+/** ¿Se muestran las pantallas que leen el registro de tareas? */
+export function conRegistroTareas(empresa) {
+  return REGISTRO_TAREAS && tieneModulo(empresa, "actividad");
+}
+
 /** Cómo sumar un módulo que falta: { upgrade_a, error } (add-on, Planta o el tramo siguiente). */
 export function comoSumarModulo(plan, modulo) {
   const nombre = MODULOS[modulo]?.nombre || modulo;

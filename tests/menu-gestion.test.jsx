@@ -75,24 +75,23 @@ test("U-12 — los primeros pasos abren la sección justa", () => {
   assert.match(home, /seccion=\{seccionMas\}/);
 });
 
-test("U-16 — Reportes muestra Producción y Obra solo con esos módulos; la liquidación no al supervisor", () => {
+test("U-16 — Reportes muestra Producción (solo con el registro de tareas) y Obra con su módulo; la liquidación no al supervisor", () => {
   const src = readFileSync(new URL("../app/reportes_screen.jsx", import.meta.url), "utf8");
-  assert.match(src, /tieneModulo\(empresa, "actividad"\) && <Chip active=\{tab === "produccion"\}/);
+  assert.match(src, /conRegistroTareas\(empresa\) && <Chip active=\{tab === "produccion"\}/);
   assert.match(src, /tieneModulo\(empresa, "obra"\) && <Chip active=\{tab === "obra"\}/);
   assert.match(src, /!esSupervisor\(usuario\) && <Chip active=\{tab === "liquidacion"\}/);
 });
 
-test("Planta — En vivo y OT; lo que no está en el plan, con candado", async () => {
+test("Planta — sin el registro de tareas no hay 'En vivo'; lo que no está en el plan, con candado", async () => {
   global.fetch = async () => Response.json([]);
   render(
     <AuthContext.Provider value={{ divisiones: [], usuario: DUENO, empresa: {} }}>
-      <PlantaScreen empresa={{ modulos: ["fichaje", "proyectos"], plan_activo: "asistencia_15" }} usuario={DUENO} onVerPlanes={() => {}} />
+      <PlantaScreen empresa={{ modulos: ["fichaje", "actividad"], plan_activo: "asistencia_15" }} usuario={DUENO} onVerPlanes={() => {}} />
     </AuthContext.Provider>
   );
-  assert.ok(screen.getByRole("tab", { name: "En vivo 🔒" }));
-  assert.equal(screen.getByRole("tab", { name: "OT" }).getAttribute("aria-selected"), "true", "abre en lo que sí tiene");
-  fireEvent.click(screen.getByRole("tab", { name: "En vivo 🔒" }));
-  assert.ok(await screen.findByText("Tareas"), "explica el módulo que falta");
+  assert.equal(screen.queryByRole("tab", { name: /En vivo/ }), null);
+  assert.ok(screen.getByRole("tab", { name: "OT 🔒" }));
+  assert.equal(screen.getByRole("tab", { name: "OT 🔒" }).getAttribute("aria-selected"), "true");
 });
 
 // ─── Cerrar sesión (desde R9 el tablero no tiene el botón arriba) ───────────
