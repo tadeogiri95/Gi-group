@@ -40,6 +40,7 @@ const CambiarPasswordScreen = dynamic(() => import("../components/screens/Cambia
 const ResetPasswordScreen = dynamic(() => import("../components/screens/ResetPasswordScreen"), { ssr: false });
 const ChatScreen = dynamic(() => import("../components/screens/ChatScreen"), { ssr: false });
 const HomeEmp = dynamic(() => import("../components/screens/HomeEmp"), { ssr: false });
+const MiCuentaScreen = dynamic(() => import("../components/screens/MiCuentaScreen"), { ssr: false });
 const InboxScreen = dynamic(() => import("../components/screens/InboxScreen"), { ssr: false });
 const HistorialFichajesScreen = dynamic(() => import("../components/screens/HistorialFichajesScreen"), { ssr: false });
 const DocumentosScreen = dynamic(() => import("../components/screens/DocumentosScreen"), { ssr: false });
@@ -65,7 +66,7 @@ const FichaArticulo = dynamic(() => import("../components/FichaArticulo"), { ssr
 const VALID_SCREENS = new Set([
   "home", "chat", "solicitudes", "mis-sols", "actividad",
   "historial-fichajes", "equipo", "config", "ger-actividad", "reglas", "planta",
-  "documentos", "instalaciones",
+  "documentos", "instalaciones", "cuenta",
 ]);
 
 export default function HomeContent() {
@@ -273,12 +274,12 @@ export default function HomeContent() {
       const subtitles = { "ger-actividad": "Tareas del equipo", config: "Todo lo demás", planta: "Hoy en la planta", equipo: "Personas de la empresa", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
-    const subtitles = { instalaciones: "El reporte del día", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
+    const subtitles = { cuenta: "Horario, fichadas y documentos", instalaciones: "El reporte del día", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
     return subtitles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
   const getScreenTitle = () => {
-    const titles = { instalaciones: "Instalaciones", solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -379,8 +380,9 @@ export default function HomeContent() {
           {moduloFaltante ? (
             <ModuloBloqueado modulo={moduloFaltante} empresa={empresa} rol={u?.rol} onVerPlanes={() => setShowBilling(true)} />
           ) : <>
-          {!uIsGer && screen === "home" && <HomeEmp goto={setScreen} usuario={u} ctx={ctx} logout={logout} empresa={empresa} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} reload={loadData} demo={isDemo} onPinCambiado={(t) => actualizarUsuario?.({ tiene_pin: t })} onAbrirCarga={isDemo ? undefined : abrirCarga} />}
-          {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} onBack={() => setScreen("home")} />}
+          {!uIsGer && screen === "home" && <HomeEmp usuario={u} ctx={ctx} empresa={empresa} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} reload={loadData} demo={isDemo} onAbrirCarga={isDemo ? undefined : abrirCarga} />}
+          {!uIsGer && screen === "cuenta" && <MiCuentaScreen usuario={u} ctx={ctx} goto={setScreen} logout={logout} demo={isDemo} onPinCambiado={(t) => actualizarUsuario?.({ tiene_pin: t })} />}
+          {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} onBack={() => setScreen("cuenta")} />}
           {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} divisiones={divisionesEmpresa} causas={causasParada} defectos={defectos} fichadaHoy={ctx.fichadaHoy} onIrAInicio={() => setScreen("home")} />}
           {!uIsGer && screen === "chat" && <ChatScreen usuario={u} ctx={ctx} reload={loadData} empresa={empresa} onBack={() => setScreen("home")} />}
           {!uIsGer && screen === "mis-sols" && (
@@ -412,7 +414,8 @@ export default function HomeContent() {
         </ErrorBoundary>
       </div>
 
-      {!isChat && <Nav active={screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} />}
+      {/* Historial y documentos del operario se abren desde "Mi cuenta": esa pestaña queda marcada */}
+      {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} />}
 
       {paywallInfo && (
         <Paywall

@@ -17,9 +17,9 @@ test("roles con nombres que la gente entiende", () => {
   assert.equal(nombreRol(undefined), "Operario");
 });
 
-test("barra de abajo: el operario ve Inicio y Pedidos", () => {
+test("barra de abajo: el operario ve Inicio, Pedidos y Mi cuenta", () => {
   assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Pedidos", "Planta", "Equipo", "Más"]);
-  assert.deepEqual(getItems("operativo", 0).map((i) => i.label), ["Inicio", "Pedidos"]);
+  assert.deepEqual(getItems("operativo", 0).map((i) => i.label), ["Inicio", "Pedidos", "Mi cuenta"]);
   assert.equal(VOCABULARIO.entrada, "Entrada");
 });
 
