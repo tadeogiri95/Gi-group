@@ -19,18 +19,18 @@ const Icons = {
 const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => modulos.includes(m));
 
 export function getItems(role, pend, modulos, { instalador = false } = {}) {
-  // Gestión (R5): Inicio · Pedidos · Planta · Equipo · Más. "Planta" aparece si
+  // Gestión (R5): Inicio · Permisos · Planta · Equipo · Más. "Planta" aparece si
   // la empresa tiene Tareas u OT; el resto está en "Más", una lista simple.
   if (role === 'gerencial' || role === 'administrativo') {
     return [
       { id: 'home',         label: 'Inicio',    icon: Icons.home },
-      { id: 'solicitudes',  label: 'Pedidos',   icon: Icons.inbox, badge: pend },
+      { id: 'solicitudes',  label: 'Permisos',  icon: Icons.inbox, badge: pend },
       tiene(modulos, 'actividad', 'proyectos') && { id: 'planta', label: 'Planta', icon: Icons.hammer },
       { id: 'equipo',       label: 'Equipo',    icon: Icons.users },
       { id: 'config',       label: 'Más',       icon: Icons.menu },
     ].filter(Boolean);
   }
-  // Operario: Inicio · Pedidos · Mi cuenta. "Tareas" (Iniciar Tarea) y
+  // Operario: Inicio · Permisos · Mi cuenta. "Tareas" (Iniciar Tarea) y
   // "Asistente" salieron de la barra: el avance se mide escaneando piezas
   // (pedido de la empresa, 2026-10). "Mi cuenta" dejó de ser un renglón al
   // final del Inicio (revisión de la interfaz). El instalador (migración 116)
@@ -38,7 +38,7 @@ export function getItems(role, pend, modulos, { instalador = false } = {}) {
   return [
     { id: 'home',       label: 'Inicio',      icon: Icons.home },
     instalador && { id: 'instalaciones', label: 'Instalaciones', icon: Icons.hammer },
-    { id: 'mis-sols',   label: 'Pedidos', icon: Icons.history },
+    { id: 'mis-sols',   label: 'Permisos', icon: Icons.history },
     { id: 'cuenta',     label: 'Mi cuenta', icon: Icons.user },
   ].filter(Boolean);
 }

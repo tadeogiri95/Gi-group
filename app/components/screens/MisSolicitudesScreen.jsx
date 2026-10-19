@@ -1,5 +1,5 @@
 "use client";
-// Pestaña "Solicitudes" del operario (U-04): el botón para pedir arriba, a la
+// Pestaña "Permisos" del operario (U-04): el botón para pedir arriba, a la
 // vista, y un mensaje que explica qué hacer cuando todavía no pidió nada.
 import { useState } from "react";
 import NuevaSolicitud from "../NuevaSolicitud";
@@ -12,7 +12,7 @@ export default function MisSolicitudesScreen({ solicitudes = [], usuario, empres
   const lista = solicitudes || [];
 
   return (
-    <section aria-label="Mis solicitudes" className="px-[18px] pb-[110px] overflow-y-auto flex-1 flex flex-col gap-3">
+    <section aria-label="Mis permisos" className="px-[18px] pb-[110px] overflow-y-auto flex-1 flex flex-col gap-3">
       {pidiendo ? (
         <NuevaSolicitud
           usuario={usuario}

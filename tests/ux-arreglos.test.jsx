@@ -46,9 +46,9 @@ test("U-19 — un error de pago se explica sin códigos técnicos", () => {
 
 test("U-21 — la bandeja vacía dice algo distinto según el filtro", () => {
   assert.equal(bandejaVacia("pendiente").titulo, "Todo al día");
-  assert.equal(bandejaVacia("aprobado").titulo, "Sin pedidos aprobados");
-  assert.equal(bandejaVacia("rechazado").titulo, "Sin pedidos rechazados");
-  assert.equal(bandejaVacia("todas").titulo, "Sin pedidos");
+  assert.equal(bandejaVacia("aprobado").titulo, "Sin permisos aprobados");
+  assert.equal(bandejaVacia("rechazado").titulo, "Sin permisos rechazados");
+  assert.equal(bandejaVacia("todas").titulo, "Sin permisos");
 });
 
 test("tablero — los pedidos se nombran en castellano, nunca con el código interno", () => {

@@ -100,7 +100,7 @@ test("migración 117 — tablas con RLS por empresa y pendientes con módulo", (
 
 test("barra — Instalaciones solo para los instaladores", () => {
   assert.deepEqual(getItems("operativo", 0).map((i) => i.id), ["home", "mis-sols", "cuenta"]);
-  assert.deepEqual(getItems("operativo", 0, undefined, { instalador: true }).map((i) => i.label), ["Inicio", "Instalaciones", "Pedidos", "Mi cuenta"]);
+  assert.deepEqual(getItems("operativo", 0, undefined, { instalador: true }).map((i) => i.label), ["Inicio", "Instalaciones", "Permisos", "Mi cuenta"]);
   assert.equal(getItems("gerencial", 0, undefined, { instalador: true }).some((i) => i.id === "instalaciones"), false);
 });
 

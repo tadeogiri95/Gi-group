@@ -164,7 +164,7 @@ test("Nueva solicitud — vacaciones con rango: manda el primer y el último dí
   fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-10-03" } });
   fireEvent.change(screen.getByLabelText("Hasta (opcional)"), { target: { value: "2026-10-10" } });
   assert.ok(screen.getByText("8 días"));
-  fireEvent.click(screen.getByRole("button", { name: "Enviar solicitud" }));
+  fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
   await waitFor(() => assert.ok(enviada));
   const sol = cuerpos.find((c) => c.body?.path === "solicitudes").body.body;
   assert.equal(sol.tipo, "vacaciones");
@@ -179,7 +179,7 @@ test("Nueva solicitud — tipos de la empresa: un tipo propio de un día guarda 
   render(<NuevaSolicitud usuario={USUARIO} empresa={{ tipos_solicitud: [{ nombre: "Examen", base: "permiso", multiDia: false }] }} onEnviada={() => {}} onCerrar={() => {}} />);
   assert.equal(screen.queryByLabelText("Hasta (opcional)"), null);
   fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2026-10-15" } });
-  fireEvent.click(screen.getByRole("button", { name: "Enviar solicitud" }));
+  fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
   await waitFor(() => assert.ok(cuerpos.some((c) => c.body?.path === "solicitudes")));
   const sol = cuerpos.find((c) => c.body?.path === "solicitudes").body.body;
   assert.equal(sol.tipo, "permiso");
@@ -193,7 +193,7 @@ test("Nueva solicitud — avisa si el rango está al revés y no envía", () => 
   fireEvent.change(screen.getByLabelText("¿Qué necesitás?"), { target: { value: "vacaciones" } });
   fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-10-10" } });
   fireEvent.change(screen.getByLabelText("Hasta (opcional)"), { target: { value: "2026-10-03" } });
-  fireEvent.click(screen.getByRole("button", { name: "Enviar solicitud" }));
+  fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
   assert.match(screen.getByRole("alert").textContent, /anterior/);
   assert.equal(cuerpos.length, 0);
 });

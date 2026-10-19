@@ -1,7 +1,7 @@
 "use client";
 // Inicio del operario (R8): solo lo de todos los días — cómo está, fichar y
 // los botones grandes del trabajo (escanear piezas, retirar material, carga).
-// Pedir permiso está en la pestaña "Pedidos" y horario, fichadas, documentos,
+// Pedir permiso está en la pestaña "Permisos" y horario, fichadas, documentos,
 // PIN y salir en la pestaña "Mi cuenta" (revisión de la interfaz, 2026-10).
 // Sin estilos sueltos (R11).
 import { useState } from "react";
@@ -77,7 +77,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         </div>
       </section>
 
-      {/* Respuesta a un pedido de hoy */}
+      {/* Respuesta a un permiso pedido hoy */}
       {notisResolucion.length > 0 && (
         <div className="mb-[18px]" role="status">
           {notisResolucion.map(n => {

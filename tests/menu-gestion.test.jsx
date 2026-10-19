@@ -25,8 +25,8 @@ const ids = (opciones) => seccionesMas(opciones).map((s) => s.id);
 
 test("barra de gestión — Planta solo si hay Tareas u OT; 'Más' reemplaza a 'Gestión'", () => {
   const labels = (modulos) => getItems("gerencial", 0, modulos).map((i) => i.label);
-  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Pedidos", "Planta", "Equipo", "Más"]);
-  assert.deepEqual(labels(ASISTENCIA.modulos), ["Inicio", "Pedidos", "Equipo", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Permisos", "Planta", "Equipo", "Más"]);
+  assert.deepEqual(labels(ASISTENCIA.modulos), ["Inicio", "Permisos", "Equipo", "Más"]);
   assert.equal(conPlanta(PLANTA), true);
   assert.equal(conPlanta(ASISTENCIA), false);
 });

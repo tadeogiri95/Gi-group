@@ -236,7 +236,7 @@ export default function Landing() {
   const PASOS = [
     { num: "1", title: "Registrá tu empresa", desc: "Creá tu cuenta en un minuto. Sin tarjeta de crédito." },
     { num: "2", title: "Sumá a tu equipo",    desc: "Les mandás un link y entran con un PIN desde el celular." },
-    { num: "3", title: "Mirá tu tablero",      desc: "Quién vino, quién falta, quién está parado y qué pedidos esperan respuesta." },
+    { num: "3", title: "Mirá tu tablero",      desc: "Quién vino, quién falta, quién está parado y qué permisos esperan respuesta." },
   ];
 
   // Datos ciertos (antes decía "14 días" de prueba y un "99%" sin respaldo)
