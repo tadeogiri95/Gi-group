@@ -53,7 +53,7 @@ const ActividadScreen = dynamic(() => import("../actividad_screen"), { ssr: fals
 const GerenciaActividadScreen = dynamic(() => import("../gerencia_actividad_screen"), { ssr: false });
 const PlantaScreen = dynamic(() => import("../components/screens/PlantaScreen"), { ssr: false });
 const DashboardGerencia = dynamic(() => import("../dashboard_gerencia"), { ssr: false });
-const GestionPersonalScreen = dynamic(() => import("../gestion_personal_screen"), { ssr: false });
+const EquipoScreen = dynamic(() => import("../components/screens/EquipoScreen"), { ssr: false });
 const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: false });
 const CargaOt = dynamic(() => import("../components/CargaOt"), { ssr: false });
 const ActaOt = dynamic(() => import("../components/ActaOt"), { ssr: false });
@@ -271,7 +271,7 @@ export default function HomeContent() {
 
   const getScreenSubtitle = () => {
     if (uIsGer) {
-      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Todo lo demás", planta: "Hoy en la planta", equipo: "Personas de la empresa", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
+      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", planta: "Producción, stock y compras", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
     const subtitles = { cuenta: "Horario, fichadas y documentos", instalaciones: "El reporte del día", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
@@ -392,7 +392,7 @@ export default function HomeContent() {
           {!uIsGer && screen === "instalaciones" && <InstalacionesScreen empresaId={u?.empresa_id || empresa?.id} />}
           {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
-          {uIsGer && screen === "equipo" && <GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={u?.empresa_id || empresa?.id} />}
+          {uIsGer && screen === "equipo" && <EquipoScreen key={seccionMas || "equipo"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "ger-actividad" && <GerenciaActividadScreen empresaId={empresa?.id} />}
           {uIsGer && screen === "planta" && <PlantaScreen key={seccionMas || "planta"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "config" && (
