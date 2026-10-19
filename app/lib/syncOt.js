@@ -86,9 +86,9 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     body: JSON.stringify(batch.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !omitidas.has(k))))),
   }, sesion);
   for (let i = 0; i < filas.length; i += BATCH) {
-    // Sin `estado`: la planilla no decide si una OT está abierta o cerrada.
-    // Antes mandaba "activo" en cada sincronización y reabría las OT cerradas
-    // en la app. Las nuevas toman el valor por defecto (abajo se completa).
+    // Sin `estado`: la planilla no reabre OT. Antes mandaba "activo" en cada
+    // sincronización y reabría las OT cerradas en la app. Las nuevas toman el
+    // valor por defecto y las terminadas se cierran abajo.
     const batch = filas.slice(i, i + BATCH).map(r => ({
       empresa_id:         empresaId,
       ot:                 r.ot,
@@ -134,6 +134,20 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     );
   } catch (e) {
     logger.error("[proyectos/sync-csv] No se pudo activar las OT nuevas", e);
+  }
+
+  // TERMINADO = SI en la planilla cierra la OT (deja de figurar como activa).
+  // Solo cierra: una OT que la planilla no marca terminada no se reabre sola.
+  if (!omitidas.has("terminado_planilla")) {
+    try {
+      await sbFetch(
+        `proyectos?empresa_id=eq.${empresaId}&terminado_planilla=is.true&estado=neq.cerrado`,
+        { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ estado: "cerrado" }) },
+        sesion
+      );
+    } catch (e) {
+      logger.error("[proyectos/sync-csv] No se pudo cerrar las OT terminadas", e);
+    }
   }
 
   // Actualizar última sync en config

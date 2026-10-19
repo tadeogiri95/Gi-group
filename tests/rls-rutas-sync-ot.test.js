@@ -66,7 +66,7 @@ test("sync de OT con RLS_RUTAS=on — config y upsert con el pase del usuario", 
   const res = await POST(await pedido("gerencial"));
   assert.equal(res.status, 200);
   assert.equal((await res.json()).procesados, 2);
-  assert.deepEqual(capturas.map((c) => c.method), ["GET", "POST", "PATCH", "PATCH"]);
+  assert.deepEqual(capturas.map((c) => c.method), ["GET", "POST", "PATCH", "PATCH", "PATCH"]);
   for (const c of capturas) assert.equal(await eidDe(c.headers), EMPRESA_ID, `${c.method} ${c.url}`);
   assert.equal(capturas[1].headers.Prefer, "resolution=merge-duplicates,return=minimal");
 });
