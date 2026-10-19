@@ -17,7 +17,7 @@ const Icons = {
 // lista de módulos (demo, versión vieja en caché) se muestran todas.
 const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => modulos.includes(m));
 
-export function getItems(role, pend, modulos) {
+export function getItems(role, pend, modulos, { instalador = false } = {}) {
   // Gestión (R5): Inicio · Pedidos · Planta · Equipo · Más. "Planta" aparece si
   // la empresa tiene Tareas u OT; el resto está en "Más", una lista simple.
   if (role === 'gerencial' || role === 'administrativo') {
@@ -31,15 +31,17 @@ export function getItems(role, pend, modulos) {
   }
   // Operario: Inicio · Pedidos. "Tareas" (Iniciar Tarea) y "Asistente" salieron
   // de la barra: el avance se mide escaneando piezas y los pedidos van por
-  // "Pedir permiso o vacaciones" (pedido de la empresa, 2026-10).
+  // "Pedir permiso o vacaciones" (pedido de la empresa, 2026-10). El
+  // instalador (migración 116) suma "Instalaciones" para el reporte del día.
   return [
     { id: 'home',       label: 'Inicio',      icon: Icons.home },
+    instalador && { id: 'instalaciones', label: 'Instalaciones', icon: Icons.hammer },
     { id: 'mis-sols',   label: 'Pedidos', icon: Icons.history },
-  ];
+  ].filter(Boolean);
 }
 
-export default function BottomNav({ active, onChange, role, pend, modulos }) {
-  const items = getItems(role, pend, modulos);
+export default function BottomNav({ active, onChange, role, pend, modulos, instalador = false }) {
+  const items = getItems(role, pend, modulos, { instalador });
   return (
     <nav
       role="navigation"

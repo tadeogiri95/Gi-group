@@ -442,6 +442,21 @@ export const actaBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("reabrir"), ot: otSuelto }).strict(),
 ]);
 
+// ── /api/instalacion (117): reporte diario del jefe de instalaciones ──────
+const moduloInstalacion = z.string().trim().min(1).max(40);
+export const reporteInstalacionBody = z.object({
+  ot: otSuelto,
+  modulos: z.array(moduloInstalacion).max(300).default([]),
+  pendientes: z.array(z.object({
+    descripcion: z.string().trim().min(1).max(300),
+    modulo: moduloInstalacion.nullable().optional().transform((v) => v || null),
+    piezas: z.array(z.number().int().positive()).max(500).nullable().optional().transform((v) => (v?.length ? v : null)),
+    porcentaje: z.number().min(0).max(100).nullable().optional().transform((v) => (v == null ? null : Math.round(v * 100) / 100)),
+  }).strict()).max(30).default([]),
+  comentario: textoSuelto(1000),
+  fotos: z.array(urlActa).max(4).default([]),
+}).strict();
+
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
 export const costoHoraBody = z.object({
   costo_hora: z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100),

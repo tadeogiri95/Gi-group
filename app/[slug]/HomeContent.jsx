@@ -56,6 +56,7 @@ const GestionPersonalScreen = dynamic(() => import("../gestion_personal_screen")
 const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: false });
 const CargaOt = dynamic(() => import("../components/CargaOt"), { ssr: false });
 const ActaOt = dynamic(() => import("../components/ActaOt"), { ssr: false });
+const InstalacionesScreen = dynamic(() => import("../components/screens/InstalacionesScreen"), { ssr: false });
 const FichaArticulo = dynamic(() => import("../components/FichaArticulo"), { ssr: false });
 
 // Demo data — cargado dinámicamente solo cuando ?demo=true (nunca para usuarios reales)
@@ -64,7 +65,7 @@ const FichaArticulo = dynamic(() => import("../components/FichaArticulo"), { ssr
 const VALID_SCREENS = new Set([
   "home", "chat", "solicitudes", "mis-sols", "actividad",
   "historial-fichajes", "equipo", "config", "ger-actividad", "reglas", "planta",
-  "documentos",
+  "documentos", "instalaciones",
 ]);
 
 export default function HomeContent() {
@@ -272,12 +273,12 @@ export default function HomeContent() {
       const subtitles = { "ger-actividad": "Tareas del equipo", config: "Todo lo demás", planta: "Hoy en la planta", equipo: "Personas de la empresa", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
-    const subtitles = { actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
+    const subtitles = { instalaciones: "El reporte del día", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
     return subtitles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
   const getScreenTitle = () => {
-    const titles = { solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { instalaciones: "Instalaciones", solicitudes: "Pedidos", equipo: "Equipo", "mis-sols": "Mis pedidos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -386,6 +387,7 @@ export default function HomeContent() {
             <MisSolicitudesScreen solicitudes={ctx.misSolicitudes} usuario={u} empresa={empresa} demo={isDemo} reload={loadData} />
           )}
           {!uIsGer && screen === "documentos" && <DocumentosScreen />}
+          {!uIsGer && screen === "instalaciones" && <InstalacionesScreen empresaId={u?.empresa_id || empresa?.id} />}
           {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <GestionPersonalScreen ctx={ctx} reload={loadData} empresaId={u?.empresa_id || empresa?.id} />}
@@ -410,7 +412,7 @@ export default function HomeContent() {
         </ErrorBoundary>
       </div>
 
-      {!isChat && <Nav active={screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} />}
+      {!isChat && <Nav active={screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} />}
 
       {paywallInfo && (
         <Paywall
