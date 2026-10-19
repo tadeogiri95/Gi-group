@@ -306,6 +306,8 @@ export const pasoPiezaBody = z.discriminatedUnion("accion", [
     momento: z.string().datetime({ offset: true }).optional(),
   }).strict(),
   z.object({ accion: z.literal("deshacer"), pieza_id: z.number().int().positive(), etapa: etapaPieza }).strict(),
+  // Deshacer el escaneo de una etiqueta de módulo: todas sus piezas en esa etapa
+  z.object({ accion: z.literal("deshacer_modulo"), ot: z.string().trim().min(1).max(40), modulo: z.string().trim().min(1).max(40), etapa: etapaPieza }).strict(),
 ]);
 
 // ── /api/stock/movimientos (107): retiros, ingresos, ajustes y devoluciones ──

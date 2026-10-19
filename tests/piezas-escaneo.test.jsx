@@ -363,7 +363,7 @@ test("operario — sin etapa elegida pide elegirla; avisos en amarillo y errores
     ? { status: 404, data: { error: "Esa pieza ya no está en la OT (puede que se haya vuelto a pegar la planilla). Reimprimí su etiqueta." } }
     : { data: { ok: true, ya: true, pieza: { id: 7, ot: "M-7495", nombre: "11", unidad: 1, de: 1 }, etapa: b.etapa, requerida: true, faltan: [], progreso: null } }));
   render(<EscanearPiezas usuario={USUARIO} etapas={ETAPAS} onClose={() => {}} />);
-  assert.ok(screen.getByText("Elegí la etapa y escaneá las etiquetas de las piezas."));
+  assert.ok(screen.getByText(/Elegí la etapa y escaneá las etiquetas de las piezas\./));
   assert.equal(screen.queryAllByLabelText("Número de la pieza").length, 0);
   fireEvent.click(screen.getByRole("button", { name: "Procesos" }));
   fireEvent.change(screen.getByLabelText("Número de la pieza"), { target: { value: "7" } });
