@@ -139,6 +139,20 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
           </div>
         )}
 
+        {/* Instalador (parte 24): ve la pestaña Instalaciones. Si la migración 116
+            no se corrió, el dato no viene y la casilla no aparece. */}
+        {mode === "editar" && !divisionBloqueada && initialData.es_instalador !== undefined && (
+          <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={!!form.es_instalador} onChange={e => set("es_instalador", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
+              <div>
+                <div className="text-[13px] font-bold text-gypi-text">Es instalador</div>
+                <div className="text-[11px] text-gypi-dim mt-0.5">Va a ver la pestaña Instalaciones para dejar el reporte del día.</div>
+              </div>
+            </label>
+          </div>
+        )}
+
         {mode === "alta" && (
           <div className="mb-4 p-3 rounded-[10px]" style={{ background: `${CYAN}10`, border: `1px solid ${CYAN}30` }}>
             <label className="flex items-start gap-2.5 cursor-pointer">
@@ -505,6 +519,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           area: form.area || "produccion",
           email: form.email?.trim() || null,
           ...(plantas.length > 1 && form.planta_id && !soySupervisor ? { planta_id: form.planta_id } : {}),
+          ...(form.es_instalador !== undefined && !soySupervisor ? { es_instalador: !!form.es_instalador } : {}),
           ...(sesion?.rol === "gerencial" && form.solo_su_division !== undefined
             ? { solo_su_division: form.rol === "administrativo" && !!form.solo_su_division }
             : {}),
@@ -788,7 +803,7 @@ export default function GestionPersonalScreen({ empresaId }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
                     <div className="text-[11px] text-gypi-dim mt-px truncate">
-                      {divInfo?.label || "Sin división"} · {emp.area || "produccion"} · {nombreRol(emp.rol, { soloSuDivision: emp.solo_su_division })}
+                      {divInfo?.label || "Sin división"} · {emp.area || "produccion"} · {nombreRol(emp.rol, { soloSuDivision: emp.solo_su_division })}{emp.es_instalador ? " · instalador" : ""}
                       {plantas.length > 1 && nombrePlanta(plantas, emp.planta_id) ? ` · 🏭 ${nombrePlanta(plantas, emp.planta_id)}` : ""}
                     </div>
                   </div>

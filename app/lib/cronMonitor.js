@@ -17,7 +17,6 @@ export const CRONS_ESPERADOS = {
   "trial-reminder": 26 * HORA,
   "vencer-trials": 26 * HORA,
   "push-ausencias": 74 * HORA, // lunes a viernes: del viernes al lunes pasan 72 h
-  "inactividad-produccion": 74 * HORA, // lunes a viernes
   "health-check": 26 * HORA,
   "reengagement-onboarding": 26 * HORA,
   "reconciliacion-mp": 26 * HORA,
