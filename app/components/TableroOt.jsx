@@ -11,6 +11,7 @@ import { esEtapaDeModulos, modulosHechos, textoModulos } from "../lib/calidad";
 import { fechaCorta } from "../lib/ot";
 import { hoyArg } from "../lib/dates";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
+import { avancePorOt, clavesEscaneadas, reglasPieza } from "../lib/piezas";
 
 function claseCelda(estado) {
   switch (estado) {
@@ -27,6 +28,13 @@ function claseSemaforo(semaforo) {
   if (semaforo === "amarillo") return "bg-gypi-amber";
   if (semaforo === "verde") return "bg-gypi-green";
   return "bg-gypi-border";
+}
+
+/** " 45%" en la celda de una etapa que se escanea por pieza y no está cerrada. */
+function pctCelda(porEscaneo, ot, celda) {
+  if (["terminada", "aprobada", "no_aplica"].includes(celda.estado)) return "";
+  const e = porEscaneo.get(String(ot))?.etapas.find((x) => x.codigo === celda.codigo);
+  return e ? ` ${e.porcentaje}%` : "";
 }
 
 function nombreEstado(estado) {
@@ -54,6 +62,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
   const [modulos, setModulos] = useState(new Map()); // "OT|etapa" → módulos hechos (101)
   const [ncPendientes, setNcPendientes] = useState(new Map()); // OT → no conformidades sin decidir
   const [instalacion, setInstalacion] = useState(new Map()); // OT → estado del acta (105)
+  const [escaneo, setEscaneo] = useState([]); // filas de v_avance_piezas (118)
   const [cargando, setCargando] = useState(true);
   const [aviso, setAviso] = useState(null);
   const [soloPorFirmar, setSoloPorFirmar] = useState(false);
@@ -69,7 +78,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
     setCargando(true);
     // Horas de los últimos 6 meses: alcanza para marcar las etapas "en curso"
     const desde = hoyArg(new Date(Date.now() - 183 * 86400000));
-    const [av, hs, nc, actas, pendObra] = await Promise.all([
+    const [av, hs, nc, actas, pendObra, pz] = await Promise.all([
       sbGetAll(`avance_etapas?empresa_id=eq.${empresaId}&select=ot,etapa,estado,terminada_at,aprobada_at`).catch(() => null),
       sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&etapa=gt.0&fecha=gte.${desde}&select=codigo_proyecto,etapa,cantidad`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
       // Sin la migración 101 no hay tabla: el tablero sigue sin ese dato
@@ -77,10 +86,14 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
       // Actas de instalación y pendientes abiertos (105); sin migración, sin dato
       sbGetAll(`actas_ot?empresa_id=eq.${empresaId}&firmada_at=not.is.null&select=ot,firmada_at`).catch(() => ({ data: [] })),
       sbGetAll(`pendientes_obra?empresa_id=eq.${empresaId}&resuelto=eq.false&select=ot,resuelto`).catch(() => ({ data: [] })),
+      // Piezas escaneadas por OT y etapa (118); sin migración, sin %
+      sbGetAll(`v_avance_piezas?empresa_id=eq.${empresaId}&select=ot,etapa,total,pasaron`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
     ]);
     setAviso(av ? null : "No se pudo leer el avance (¿falta correr la migración 100?). Se muestran solo las horas.");
     setAvance(av?.data || []);
-    setHoras(new Set((hs?.data || []).map((r) => `${r.codigo_proyecto}|${r.etapa}`)));
+    // Una etapa con piezas escaneadas también está en curso
+    setHoras(new Set([...(hs?.data || []).map((r) => `${r.codigo_proyecto}|${r.etapa}`), ...clavesEscaneadas(pz?.data)]));
+    setEscaneo(pz?.data || []);
     setModulos(modulosHechos(hs?.data));
     const pend = new Map();
     for (const r of nc?.data || []) pend.set(String(r.ot), (pend.get(String(r.ot)) || 0) + 1);
@@ -95,6 +108,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
 
   const hoy = hoyArg();
   const filas = useMemo(() => filasTablero(proyectos, { etapas, divisiones, avance, horas, hoy }), [proyectos, etapas, divisiones, avance, horas, hoy]);
+  const porEscaneo = useMemo(() => avancePorOt(escaneo, reglasPieza(etapas).map((r) => r.codigo)), [escaneo, etapas]);
   const visibles = soloPorFirmar ? filas.filter((f) => f.porFirmar > 0) : filas;
   const porFirmar = filas.reduce((s, f) => s + f.porFirmar, 0);
 
@@ -177,6 +191,9 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
                     </span>
                   )}
                 </button>
+                {porEscaneo.get(String(p.ot))?.porcentaje != null && (
+                  <div className="text-[11px] font-bold text-gypi-dim mb-1">🧩 Producción {porEscaneo.get(String(p.ot)).porcentaje}% por escaneo</div>
+                )}
                 {p.puntos_criticos && <div className="text-[11px] text-gypi-amber-ink truncate mb-1">⚠ {p.puntos_criticos}</div>}
                 {instalacion.has(String(p.ot)) && (
                   <div className={`text-[11px] font-bold mb-1 ${instalacion.get(String(p.ot)) === "instalada" ? "text-gypi-green" : "text-gypi-amber-ink"}`}>{NOMBRE_ESTADO_ACTA[instalacion.get(String(p.ot))]}</div>
@@ -193,7 +210,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
                     <button key={c.codigo} onClick={() => { setCelda({ proyecto: p, codigo: c.codigo }); setError(null); }}
                       aria-label={`${c.etapa.nombre} de la OT ${p.ot}: ${nombreEstado(c.estado)}`}
                       className={`min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${claseCelda(c.estado)}`}>
-                      {c.etapa.icon} {c.etapa.nombre}{esEtapaDeModulos(c.etapa) && (p.total_modulos || modulos.get(`${p.ot}|${c.codigo}`)) ? ` ${textoModulos(modulos.get(`${p.ot}|${c.codigo}`), p.total_modulos)}` : ""}{c.estado === "terminada" ? " ✓" : c.estado === "aprobada" ? " ✓✓" : ""}
+                      {c.etapa.icon} {c.etapa.nombre}{esEtapaDeModulos(c.etapa) && (p.total_modulos || modulos.get(`${p.ot}|${c.codigo}`)) ? ` ${textoModulos(modulos.get(`${p.ot}|${c.codigo}`), p.total_modulos)}` : ""}{pctCelda(porEscaneo, p.ot, c)}{c.estado === "terminada" ? " ✓" : c.estado === "aprobada" ? " ✓✓" : ""}
                     </button>
                   ))}
                   {f.celdas.length === 0 && <span className="text-[11px] text-gypi-dim self-center">Sin ruta ni horas todavía</span>}
@@ -208,6 +225,10 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
       {celda && celdaInfo && (
         <Hoja titulo={`${celdaInfo.etapa.nombre} · OT ${celda.proyecto.ot}`} onClose={() => setCelda(null)}>
           <div className="text-sm mb-2"><b>Estado:</b> {nombreEstado(celdaInfo.estado)}</div>
+          {(() => {
+            const e = porEscaneo.get(String(celda.proyecto.ot))?.etapas.find((x) => x.codigo === celda.codigo);
+            return e ? <div className="text-[12px] text-gypi-dim mb-1">🧩 {e.pasaron} de {e.total} piezas escaneadas ({e.porcentaje}%)</div> : null;
+          })()}
           {celdaInfo.fila?.terminada_at && <div className="text-[12px] text-gypi-dim mb-1">Marcada como terminada el {fechaCorta(celdaInfo.fila.terminada_at.slice(0, 10))}</div>}
           {celdaInfo.fila?.aprobada_at && <div className="text-[12px] text-gypi-dim mb-1">Firmada el {fechaCorta(celdaInfo.fila.aprobada_at.slice(0, 10))}</div>}
           {celdaInfo.etapa.condicion_cierre && (
