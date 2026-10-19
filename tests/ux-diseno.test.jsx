@@ -123,7 +123,7 @@ const cuenta = (re) => archivos().reduce((n, f) => n + (readFileSync(f, "utf8").
 
 // Al migrar una pantalla a components/ui, bajá estos números.
 const MAX_STYLE_SUELTOS = 281;
-const MAX_COLORES_A_MANO = 339;
+const MAX_COLORES_A_MANO = 334;
 
 test("estilos sueltos y colores escritos a mano: no aparecen nuevos", () => {
   const estilos = cuenta(/style=\{\{/g);
