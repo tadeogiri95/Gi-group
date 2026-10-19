@@ -11,6 +11,7 @@ import { duracionMinutos } from "./lib/calc";
 import { exportCSV, exportImagen } from "./lib/exportarReporte";
 import Stat from "./components/ui/Stat";
 import Indicadores from "./components/Indicadores";
+import ReporteDiaTab from "./components/ReporteDiaTab";
 import { useCostoHora } from "./hooks/useCostoHora";
 
 /* ═══════════════════════════════════════════════════════
@@ -607,6 +608,7 @@ export default function ReportesScreen() {
       <div className="flex gap-1.5 mb-3.5 overflow-x-auto pb-0.5">
         <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
+        {tieneModulo(empresa, "actividad") && !esSupervisor(usuario) && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
         {tieneModulo(empresa, "actividad") && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
         {tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
         {tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
@@ -614,7 +616,8 @@ export default function ReportesScreen() {
         {!esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </div>
 
-      {/* Periodo */}
+      {/* Periodo (el reporte del día tiene su propio día) */}
+      {tab !== "dia" && <>
       <div className="flex gap-1.5 mb-2.5">
         <Chip active={periodo === "semana"} onClick={() => setPeriodo("semana")} color={MARCA}>Por semana</Chip>
         <Chip active={periodo === "mes"} onClick={() => setPeriodo("mes")} color={MARCA}>Por mes</Chip>
@@ -633,8 +636,11 @@ export default function ReportesScreen() {
       <div className="flex gap-[5px] mb-3.5 overflow-x-auto pb-1">
         {DIVISIONES.map(d => <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || MARCA}>{d.label}</Chip>)}
       </div>
+      </>}
 
-      {loading ? (
+      {tab === "dia" ? (
+        <ReporteDiaTab />
+      ) : loading ? (
         <Puntos />
       ) : tab === "produccion" ? (
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />

@@ -540,6 +540,11 @@ export async function sendBajaProgramada({ to, empresa, borradoEl, linkReactivar
   });
 }
 
+// Colores de los resúmenes por email (el email no entiende los tokens de la app)
+const COLOR_TEXTO = "#1A1A1A";
+const COLOR_ROJO = "#DC2626";
+const COLOR_VERDE = "#16A34A";
+
 // ─── Resumen semanal para el dueño (D10, ítem 31) ───
 function fmtFecha(f) {
   const [, m, d] = String(f).split("-");
@@ -547,7 +552,7 @@ function fmtFecha(f) {
 }
 
 export function htmlResumenSemanal({ empresa, slug, resumen: r }) {
-  const fila = (izq, der, color = "#1A1A1A") =>
+  const fila = (izq, der, color = COLOR_TEXTO) =>
     `<tr><td style="padding:6px 0;color:#555;font-size:14px">${izq}</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:${color}">${der}</td></tr>`;
   const titulo = (t) => `<p style="margin:24px 0 6px;font-size:13px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.04em">${t}</p>`;
   const tabla = (filas) => `<table style="width:100%;border-collapse:collapse">${filas}</table>`;
@@ -559,11 +564,11 @@ export function htmlResumenSemanal({ empresa, slug, resumen: r }) {
 
   const muerto = r.tiempoMuerto.horas > 0
     ? `<p style="margin:0 0 6px;font-size:14px;color:#444"><strong>${r.tiempoMuerto.horas} h</strong> (${r.tiempoMuerto.porcentaje}% del tiempo cargado)</p>`
-      + tabla(r.tiempoMuerto.causas.map((c) => fila(escapeHtml(c.causa), `${c.horas} h`, "#DC2626")).join(""))
+      + tabla(r.tiempoMuerto.causas.map((c) => fila(escapeHtml(c.causa), `${c.horas} h`, COLOR_ROJO)).join(""))
     : `<p style="margin:0;color:#9B9B9B;font-size:14px">Sin tiempo muerto registrado.</p>`;
 
   const faltas = r.faltasSinAviso.length
-    ? tabla(r.faltasSinAviso.slice(0, 10).map((f) => fila(escapeHtml(f.nombre || `Legajo ${f.legajo}`), `${f.dias} día${f.dias > 1 ? "s" : ""}`, "#DC2626")).join(""))
+    ? tabla(r.faltasSinAviso.slice(0, 10).map((f) => fila(escapeHtml(f.nombre || `Legajo ${f.legajo}`), `${f.dias} día${f.dias > 1 ? "s" : ""}`, COLOR_ROJO)).join(""))
       + (r.faltasSinAviso.length > 10 ? `<p style="margin:4px 0 0;font-size:12px;color:#9B9B9B">Y ${r.faltasSinAviso.length - 10} persona(s) más.</p>` : "")
     : `<p style="margin:0;color:#9B9B9B;font-size:14px">Nadie faltó sin aviso.</p>`;
 
@@ -572,7 +577,7 @@ export function htmlResumenSemanal({ empresa, slug, resumen: r }) {
     ${tabla(
       fila("Horas fichadas", `${r.horasFichadas} h`)
       + fila("Horas cargadas en OT", `${r.horasEnOTs} h`)
-      + fila("Llegadas tarde", String(r.tardanzas), r.tardanzas ? "#DC2626" : "#1A1A1A")
+      + fila("Llegadas tarde", String(r.tardanzas), r.tardanzas ? COLOR_ROJO : COLOR_TEXTO)
       + fila("Días con ausencia justificada", String(r.diasJustificados))
     )}
     ${titulo("Horas por OT")}${ots}
@@ -594,5 +599,66 @@ export async function sendResumenSemanal({ to, empresa, slug, resumen, empresaId
     html: buildHtml("Resumen semanal", `${fmtFecha(resumen.desde)} al ${fmtFecha(resumen.hasta)}`, cuerpo),
     text: stripHtml(cuerpo),
     tags: buildTags("resumen_semanal", empresaId),
+  });
+}
+
+// ─── Reporte del día de producción e instalación (parte 26) ───
+export function htmlReporteDiario({ empresa, slug, reporte: r }) {
+  const fila = (izq, der, color = COLOR_TEXTO) =>
+    `<tr><td style="padding:6px 0;color:#555;font-size:14px">${izq}</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:${color}">${der}</td></tr>`;
+  const titulo = (t) => `<p style="margin:24px 0 6px;font-size:13px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.04em">${t}</p>`;
+  const tabla = (filas) => `<table style="width:100%;border-collapse:collapse">${filas}</table>`;
+  const nada = (t) => `<p style="margin:0;color:#9B9B9B;font-size:14px">${t}</p>`;
+  const ot = (o) => `OT ${escapeHtml(o.ot)}${o.cliente ? ` <span style="color:#9B9B9B">· ${escapeHtml(o.cliente)}</span>` : ""}`;
+  const MAX = 15;
+
+  const produccion = r.produccion.length
+    ? r.produccion.slice(0, MAX).map((o) =>
+      tabla(fila(ot(o), `${o.antes ?? 0}% → ${o.despues ?? 0}%`))
+      + `<p style="margin:0 0 8px;font-size:12px;color:#777">${o.etapas.filter((e) => e.hoy > 0).map((e) => `${escapeHtml(e.nombre)}: ${e.hoy} pieza${e.hoy === 1 ? "" : "s"} (${e.pasaron} de ${e.total})`).join(" · ")}</p>`).join("")
+      + (r.produccion.length > MAX ? nada(`Y ${r.produccion.length - MAX} OT más.`) : "")
+    : nada("No se escanearon piezas.");
+
+  const cerradas = r.etapasCerradas.length
+    ? tabla(r.etapasCerradas.slice(0, MAX).map((x) => fila(`${ot(x)} · ${escapeHtml(x.nombre)}`, x.que === "firmada" ? "Firmada" : "Terminada, falta la firma")).join(""))
+    : nada("Ninguna etapa se marcó ni se firmó.");
+
+  const instalacion = r.instalaciones.length
+    ? r.instalaciones.map((i) =>
+      tabla(fila(ot(i), i.avance != null ? `${i.avance}%` : "—"))
+      + `<p style="margin:0 0 8px;font-size:12px;color:#777">${[i.quien && escapeHtml(i.quien), `${i.modulos} módulo${i.modulos === 1 ? "" : "s"} colocado${i.modulos === 1 ? "" : "s"}`, i.pendientes.length && `Pendientes: ${i.pendientes.map(escapeHtml).join("; ")}`, i.comentario && escapeHtml(i.comentario)].filter(Boolean).join(" · ")}</p>`).join("")
+    : nada("No hubo reportes de instalación.");
+
+  const atrasadas = r.atrasadas.length
+    ? tabla(r.atrasadas.slice(0, MAX).map((a) => fila(ot(a), `${a.dias} día${a.dias === 1 ? "" : "s"}${a.porcentaje != null ? ` · ${a.porcentaje}%` : ""}`, COLOR_ROJO)).join(""))
+      + (r.atrasadas.length > MAX ? nada(`Y ${r.atrasadas.length - MAX} OT más.`) : "")
+    : nada("Ninguna OT atrasada.");
+
+  return `
+    <p style="margin:0 0 16px;color:#444;line-height:1.6">Esto se avanzó hoy en <strong>${escapeHtml(empresa)}</strong>.</p>
+    ${tabla(
+      fila("Piezas escaneadas", String(r.piezasHoy))
+      + fila("OT con producción terminada", String(r.completadas.length), r.completadas.length ? COLOR_VERDE : COLOR_TEXTO)
+      + fila("Reportes de instalación", String(r.instalaciones.length))
+      + fila("OT atrasadas", String(r.atrasadas.length), r.atrasadas.length ? COLOR_ROJO : COLOR_TEXTO)
+    )}
+    ${titulo("Producción (% al empezar → al terminar el día)")}${produccion}
+    ${titulo("Etapas terminadas o firmadas")}${cerradas}
+    ${titulo("Instalación")}${instalacion}
+    ${titulo("Atrasadas contra la fecha de entrega")}${atrasadas}
+    ${btn(`${APP_BASE}/${slug}`, "Ver el reporte en Gypi →")}
+  `;
+}
+
+export async function sendReporteDiario({ to, empresa, slug, reporte, empresaId }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const cuerpo = htmlReporteDiario({ empresa, slug, reporte });
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Reporte del día en ${empresa}: ${reporte.piezasHoy} piezas escaneadas`,
+    html: buildHtml("Reporte del día", fmtFecha(reporte.fecha), cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("reporte_diario", empresaId),
   });
 }
