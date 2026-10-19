@@ -166,6 +166,7 @@ export default function ProyectosScreen({ empresaId }) {
   const [filtro, setFiltro] = useState("activo");
   const [search, setSearch] = useState("");
   const [filtroDiv, setFiltroDiv] = useState("");
+  const [masAcciones, setMasAcciones] = useState(false);
   const [modal, setModal] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [sueltos, setSueltos] = useState(null);
@@ -433,90 +434,103 @@ export default function ProyectosScreen({ empresaId }) {
         </div>
       )}
 
-      {/* Filtros */}
-      <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1">
-        <Chip active={filtro === "activo"} onClick={() => setFiltro("activo")} color={GREEN}>Activos</Chip>
-        <Chip active={filtro === "en_curso"} onClick={() => setFiltro("en_curso")}>En curso</Chip>
-        <Chip active={filtro === "cerrado"} onClick={() => setFiltro("cerrado")} color="var(--color-text-muted)">Cerrados</Chip>
-        <Chip active={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos</Chip>
+      {/* Acciones de todos los días: grandes y con texto (revisión de la interfaz, 2026-10) */}
+      <div className="flex gap-2 mb-3">
+        <button onClick={() => setModal({})} className="flex-1 min-h-[48px] rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[15px] font-bold cursor-pointer">+ Nueva OT</button>
+        <button onClick={cargar} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[15px] font-bold cursor-pointer">🔄 Actualizar</button>
       </div>
 
-      <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1">
-        {divisiones.map(d => <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || AMBER}>{d.label}</Chip>)}
+      {/* Filtros en una sola fila */}
+      <div className="flex gap-2 mb-2.5">
+        <select value={filtro} onChange={e => setFiltro(e.target.value)} aria-label="Estado de las OT" className="g-input flex-1 min-h-[48px] text-[15px]">
+          <option value="activo">Activas</option>
+          <option value="en_curso">En curso</option>
+          <option value="cerrado">Cerradas</option>
+          <option value="todos">Todas</option>
+        </select>
+        <select value={filtroDiv} onChange={e => setFiltroDiv(e.target.value)} aria-label="División" className="g-input flex-1 min-h-[48px] text-[15px]">
+          <option value="">Todas las divisiones</option>
+          {divisiones.filter(d => d.id).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+        </select>
       </div>
 
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar por OT, cliente, obra..." className="g-input mb-3" />
 
-      {/* Acciones */}
-      <div className="flex gap-2 mb-2">
-        <button onClick={() => setModal({})} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[13px] font-bold cursor-pointer">+ Nueva OT</button>
-        <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsv} />
-        <button onClick={() => fileRef.current?.click()} className="flex-1 py-2.5 rounded-xl border-none bg-gypi-cyan/15 text-gypi-cyan text-[13px] font-bold cursor-pointer">📤 CSV</button>
-        <button onClick={cargar} className="w-10 h-10 rounded-xl border-none bg-gypi-surface text-gypi-dim cursor-pointer text-[15px] shrink-0">🔄</button>
-      </div>
-
-      {/* Escáner de OT con la cámara */}
-      <div className="g-card !p-3 mb-3 flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs text-gypi-dim">
-            <b className="text-gypi-text">Escanear OT con la cámara:</b> el operario escanea el código de la orden al iniciar una tarea.
-          </div>
-          <button
-            role="switch"
-            aria-checked={!!empresa?.escaner_ot}
-            aria-label="Escanear OT con la cámara"
-            onClick={cambiarEscaner}
-            disabled={guardandoEscaner}
-            className={`shrink-0 min-h-[40px] px-3 rounded-lg border-none text-xs font-bold cursor-pointer ${empresa?.escaner_ot ? "bg-gypi-green/15 text-gypi-green" : "bg-gypi-surface text-gypi-dim"}`}
-          >
-            {empresa?.escaner_ot ? "Activado" : "Desactivado"}
-          </button>
-        </div>
-        <button onClick={imprimirEtiquetas} disabled={!filtrados.some(p => p.ot)} className="g-btn g-btn-secondary text-xs font-bold disabled:opacity-50">
-          Imprimir etiquetas QR de las OT de la lista
-        </button>
-      </div>
-
-      {/* Panel de URL de sincronización */}
+      {/* Lo que se usa de vez en cuando: CSV, etiquetas, escáner y sincronización */}
       <div className="mb-3.5">
-        <button
-          onClick={() => setShowSyncPanel(p => !p)}
-          className="w-full py-2 px-3 rounded-[10px] border border-gypi-border bg-transparent text-gypi-dim text-xs font-semibold cursor-pointer flex justify-between items-center"
-        >
-          <span>🔗 Sincronización automática {syncCfg.url ? "· configurada" : ""}</span>
-          <span className="text-xs">{showSyncPanel ? "▲" : "▼"}</span>
+        <button onClick={() => setMasAcciones(v => !v)} aria-expanded={masAcciones}
+          className="w-full min-h-[48px] px-3.5 rounded-xl border border-gypi-border bg-transparent text-gypi-text text-[15px] font-semibold cursor-pointer flex justify-between items-center">
+          <span>⋯ Más acciones</span>
+          <span aria-hidden="true" className="text-xs text-gypi-dim">{masAcciones ? "▲" : "▼"}</span>
         </button>
-        {showSyncPanel && (
-          <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
-            <div className="text-[11px] text-gypi-dim mb-2 leading-relaxed">
-              URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: las OT nuevas se crean y las existentes se actualizan.
-            </div>
-            {syncCfg.ultima_sync && (
-              <div className="text-xs text-gypi-green mb-2">
-                Última sync: {new Date(syncCfg.ultima_sync).toLocaleString("es-AR")}
+        {masAcciones && (
+          <div className="mt-2 flex flex-col gap-2">
+            <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsv} />
+            <button onClick={() => fileRef.current?.click()} className="w-full min-h-[48px] rounded-xl border-none bg-gypi-cyan/15 text-gypi-cyan text-[15px] font-bold cursor-pointer">📤 Importar OT desde un CSV</button>
+            {/* Escáner de OT con la cámara */}
+            <div className="g-card !p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs text-gypi-dim">
+                  <b className="text-gypi-text">Escanear OT con la cámara:</b> el operario escanea el código de la orden al iniciar una tarea.
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={!!empresa?.escaner_ot}
+                  aria-label="Escanear OT con la cámara"
+                  onClick={cambiarEscaner}
+                  disabled={guardandoEscaner}
+                  className={`shrink-0 min-h-[40px] px-3 rounded-lg border-none text-xs font-bold cursor-pointer ${empresa?.escaner_ot ? "bg-gypi-green/15 text-gypi-green" : "bg-gypi-surface text-gypi-dim"}`}
+                >
+                  {empresa?.escaner_ot ? "Activado" : "Desactivado"}
+                </button>
               </div>
-            )}
-            <input
-              value={syncCfg.url}
-              onChange={e => setSyncCfg(p => ({ ...p, url: e.target.value }))}
-              placeholder="https://docs.google.com/spreadsheets/d/…/export?format=csv"
-              className="g-input text-xs mb-2"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={guardarSyncUrl}
-                disabled={syncLoading || !syncCfg.url.trim()}
-                className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber-ink cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
-              >
-                Guardar URL
+              <button onClick={imprimirEtiquetas} disabled={!filtrados.some(p => p.ot)} className="g-btn g-btn-secondary text-xs font-bold disabled:opacity-50">
+                Imprimir etiquetas QR de las OT de la lista
               </button>
+            </div>
+            {/* Panel de URL de sincronización */}
+            <div>
               <button
-                onClick={sincronizar}
-                disabled={syncLoading || !syncCfg.url.trim()}
-                className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() && !syncLoading ? "bg-gypi-green/15 text-gypi-green cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
+                onClick={() => setShowSyncPanel(p => !p)}
+                className="w-full py-2 px-3 rounded-[10px] border border-gypi-border bg-transparent text-gypi-dim text-xs font-semibold cursor-pointer flex justify-between items-center"
               >
-                {syncLoading ? "Sincronizando…" : "🔄 Sincronizar ahora"}
+                <span>🔗 Sincronización automática {syncCfg.url ? "· configurada" : ""}</span>
+                <span className="text-xs">{showSyncPanel ? "▲" : "▼"}</span>
               </button>
+              {showSyncPanel && (
+                <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
+                  <div className="text-[11px] text-gypi-dim mb-2 leading-relaxed">
+                    URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: las OT nuevas se crean y las existentes se actualizan.
+                  </div>
+                  {syncCfg.ultima_sync && (
+                    <div className="text-xs text-gypi-green mb-2">
+                      Última sync: {new Date(syncCfg.ultima_sync).toLocaleString("es-AR")}
+                    </div>
+                  )}
+                  <input
+                    value={syncCfg.url}
+                    onChange={e => setSyncCfg(p => ({ ...p, url: e.target.value }))}
+                    placeholder="https://docs.google.com/spreadsheets/d/…/export?format=csv"
+                    className="g-input text-xs mb-2"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={guardarSyncUrl}
+                      disabled={syncLoading || !syncCfg.url.trim()}
+                      className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber-ink cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
+                    >
+                      Guardar URL
+                    </button>
+                    <button
+                      onClick={sincronizar}
+                      disabled={syncLoading || !syncCfg.url.trim()}
+                      className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() && !syncLoading ? "bg-gypi-green/15 text-gypi-green cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
+                    >
+                      {syncLoading ? "Sincronizando…" : "🔄 Sincronizar ahora"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -549,7 +563,7 @@ export default function ProyectosScreen({ empresaId }) {
             {search || filtroDiv ? "Sin resultados" : "Todavía no hay OT"}
           </div>
           <div className="text-xs text-gypi-dim">
-            {search || filtroDiv ? "Probá con otro filtro o búsqueda." : "Creá el primero con el botón o importá un CSV."}
+            {search || filtroDiv ? "Probá con otro filtro o búsqueda." : "Creá la primera con + Nueva OT o importala desde Más acciones."}
           </div>
         </div>
       ) : (

@@ -50,7 +50,9 @@ test("Guardar URL — guarda el enlace de la planilla sin pedir columnas inexist
     </AuthContext.Provider>
   );
 
-  fireEvent.click(await screen.findByText(/Sincronización automática/));
+  // La sincronización está dentro de "Más acciones" (revisión de la interfaz)
+  fireEvent.click(await screen.findByText(/Más acciones/));
+  fireEvent.click(screen.getByText(/Sincronización automática/));
   fireEvent.change(screen.getByPlaceholderText(/docs\.google\.com/), { target: { value: "https://docs.google.com/x/export?format=csv" } });
   fireEvent.click(screen.getByText("Guardar URL"));
 
@@ -87,4 +89,31 @@ test("listado de OT — trae todas las páginas, no se corta en 500", async () =
   await waitFor(() => assert.ok(pedidos.some((p) => p.path.startsWith("proyectos?") && p.path.includes("offset=1000"))));
   assert.ok(pedidos.every((p) => !p.path.includes("limit=500")));
   assert.ok((await screen.findAllByText(/1200/)).length > 0);
+});
+
+test("lista de OT — botones grandes con texto, filtros en una fila y lo de vez en cuando en Más acciones", async () => {
+  global.fetch = mockApi([]);
+  render(
+    <AuthContext.Provider value={{ divisiones: [{ id: "muebles", nombre: "Muebles" }], empresa: { nombre: "Acme" }, updateEmpresa: () => {} }}>
+      <ProyectosScreen empresaId="11111111-1111-1111-1111-111111111111" />
+    </AuthContext.Provider>
+  );
+  for (const nombre of ["+ Nueva OT", "🔄 Actualizar"]) {
+    const b = await screen.findByRole("button", { name: nombre });
+    assert.match(b.className, /min-h-\[48px\]/);
+    assert.match(b.className, /text-\[15px\]/);
+  }
+  const estado = screen.getByRole("combobox", { name: "Estado de las OT" });
+  fireEvent.change(estado, { target: { value: "cerrado" } });
+  assert.equal(estado.value, "cerrado");
+  assert.ok(screen.getByRole("combobox", { name: "División" }));
+  // CSV, etiquetas, escáner y sincronización quedan guardados hasta abrir "Más acciones"
+  assert.equal(screen.queryByText(/Importar OT desde un CSV/), null);
+  assert.equal(screen.queryByText(/Imprimir etiquetas QR/), null);
+  const mas = screen.getByRole("button", { name: /Más acciones/ });
+  assert.equal(mas.getAttribute("aria-expanded"), "false");
+  fireEvent.click(mas);
+  assert.ok(screen.getByText(/Importar OT desde un CSV/));
+  assert.ok(screen.getByText(/Imprimir etiquetas QR/));
+  assert.ok(screen.getByRole("switch", { name: "Escanear OT con la cámara" }));
 });
