@@ -95,7 +95,7 @@ test("tablero de gestión — Trabajo en campo y el detalle por operario según 
   cleanup();
   // R11: sin Tareas el panel "En planta" siempre estaba vacío, así que no se ofrece
   tablero(ASISTENCIA);
-  await screen.findByRole("region", { name: "Resumen de hoy" });
+  await screen.findByRole("region", { name: "Asistencia del día" });
   assert.equal(screen.queryByText("En planta"), null);
   assert.equal(screen.queryByText(/Ver detalle por operario/), null);
   cleanup();

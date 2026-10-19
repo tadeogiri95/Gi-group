@@ -16,6 +16,7 @@ const TONO = {
 
 import { sb, sbGetAll } from "./lib/supabase";
 import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
+import { fechaCorta } from "./lib/ot";
 import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
 import TrialBanner from "./components/TrialBanner";
 import ChecklistActivacion from "./components/ChecklistActivacion";
@@ -35,11 +36,12 @@ import { useAuth } from "./context/AuthContext";
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 
-import { Tag, EmptyState, Stat } from "./components/ui";
+import { Tag, EmptyState } from "./components/ui";
 import Icon from "./components/Icon";
 import { nombreSolicitud } from "./lib/tiposSolicitud";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
+import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -122,26 +124,6 @@ function DonutChart({ value, total, size = 64, strokeWidth = 6, label }) {
 const PulseDot = ({ activo = true, chico = false }) => (
   <span className={`inline-block rounded-full animate-pulse ${chico ? "w-1.5 h-1.5" : "w-2 h-2"} ${activo ? "bg-gypi-green" : "bg-(--color-text-muted)"}`} aria-hidden="true" />
 );
-
-/* ─── Jornada de una persona: barra de 7 a 19 h ─── */
-function TimelineRow({ nombre, ingreso, egreso, onClick }) {
-  const parseH = (t) => { if (!t) return 0; const [h, m] = t.split(":").map(Number); return h + m / 60; };
-  const jStart = 7, jEnd = 19, jLen = jEnd - jStart;
-  const inH = parseH(ingreso);
-  const outH = egreso ? parseH(egreso) : parseH(fmtTime(new Date()));
-  const left = Math.max(0, ((inH - jStart) / jLen) * 100);
-  const width = Math.max(1, Math.min(100 - left, ((outH - inH) / jLen) * 100));
-  return (
-    <button type="button" onClick={onClick} disabled={!onClick} className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-none text-left font-body cursor-pointer disabled:cursor-default"
-      aria-label={`${nombre}: entró ${ingreso?.slice(0, 5)}${egreso ? `, salió ${egreso.slice(0, 5)}` : ", todavía adentro"}. Ver sus fichajes`}>
-      <span className="w-20 truncate text-[12px] font-semibold text-gypi-text">{nombre}</span>
-      <svg className="flex-1 h-3.5 rounded bg-gypi-surf-hi" viewBox="0 0 100 14" preserveAspectRatio="none" aria-hidden="true">
-        <rect x={left} y="1" width={width} height="12" rx="2" className={egreso ? "fill-gypi-green" : "fill-gypi-amber"} fillOpacity="0.7" />
-      </svg>
-      <span className={`w-[46px] text-right font-mono text-[12px] font-bold ${egreso ? TONO.bien.txt : TONO.aviso.txt}`}>{ingreso?.slice(0, 5)}</span>
-    </button>
-  );
-}
 
 
 /* ─── Panel de Reportes de Obra con fotos y detalle expandible ─── */
@@ -386,29 +368,36 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const aprobadas = solicitudes.filter(s => s.estado === "aprobado");
   const rechazadas = solicitudes.filter(s => s.estado === "rechazado");
 
-  // Asistencia: presentes vs programados. El cumplimiento solo cuenta a los
-  // programados que ficharon — alguien trabajando fuera de diagrama (un
-  // sábado, un franco) suma como presente pero no puede llevar el
-  // cumplimiento arriba del 100% (antes un sábado daba "1100%").
-  const presentes = fichadasHoy.length;
-  const diaKey = ahoraArg().diaKey;
-  const empProgramados = empActivos.filter(e => e.diagrama && e.diagrama[diaKey]);
-  const programados = empProgramados.length;
-  const legajosProgramados = new Set(empProgramados.map(e => e.legajo));
-  const presentesProgramados = fichadasHoy.filter(f => legajosProgramados.has(f.legajo)).length;
-  const ausentes = Math.max(0, programados - presentesProgramados);
-  // Quiénes faltan: los que tenían que venir hoy y no ficharon
-  const legajosPresentes = new Set(fichadasHoy.map(f => f.legajo));
-  const faltanHoy = empProgramados.filter(e => !legajosPresentes.has(e.legajo));
-  const sinTurnoHoy = Math.max(0, totalEmp - programados);
-  // null = no hay nadie programado hoy (domingo/feriado) — la UI muestra "—"
-  const pctAsist = programados > 0 ? Math.round((presentesProgramados / programados) * 100) : null;
+  // Asistencia (pedido de Tadeo 19/10): solo operarios con turno; los dueños
+  // y administrativos no tienen jornada fija. Un día de esta semana, hoy por
+  // defecto: los días pasados salen de las fichadas de la semana.
+  const { diaKey, hora: horaActual } = ahoraArg();
+  const [diaVer, setDiaVer] = useState(hoy);
+  const lunes = lunesDeLaSemana(0);
+  const verHoy = diaVer === hoy;
+  const fichadasDelDia = verHoy ? fichadasHoy : fichadasSemana.filter(f => f.fecha === diaVer);
+  const llegadas = llegadasDelDia({
+    empleados: empActivos, fichadas: fichadasDelDia, divisiones: divisionesCtx || [],
+    diaKey: verHoy ? diaKey : diaKeyDeFecha(diaVer), horaActual: verHoy ? horaActual : null,
+  });
+  const asistDia = asistenciaPorDivision(llegadas);
+  const moverDia = (dias) => {
+    const d = new Date(`${diaVer}T12:00:00`);
+    d.setDate(d.getDate() + dias);
+    const f = d.toISOString().slice(0, 10);
+    if (f >= lunes && f <= hoy) setDiaVer(f);
+  };
+
+  // Semana: solo fichadas de operarios
+  const legajosOperarios = new Set(empActivos.filter(esOperario).map(e => e.legajo));
+  const fichadasSemanaOp = fichadasSemana.filter(f => legajosOperarios.has(f.legajo));
+  const operariosConTurnoHoy = empActivos.filter(e => esOperario(e) && e.diagrama?.[diaKey]).length;
 
   // Tardanzas semana
-  const tardesEstaSemana = fichadasSemana.filter(f => f.llegada_tarde).length;
+  const tardesEstaSemana = fichadasSemanaOp.filter(f => f.llegada_tarde).length;
 
   // Promedio horas trabajadas por dia esta semana (solo fichadas con egreso registrado)
-  const fichadasConHoras = fichadasSemana.filter(f => f.horas_trabajadas && parseFloat(f.horas_trabajadas) > 0);
+  const fichadasConHoras = fichadasSemanaOp.filter(f => f.horas_trabajadas && parseFloat(f.horas_trabajadas) > 0);
   const promedioHorasDia = fichadasConHoras.length > 0
     ? (fichadasConHoras.reduce((a, f) => a + parseFloat(f.horas_trabajadas), 0) / fichadasConHoras.length)
     : 0;
@@ -483,17 +472,17 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   }, [empleados, fichadasMes, solsAprobadas, docsExigidos, docsCargados]);
 
   // Fichadas semana — por dia para grafico
-  const fichadasPorDia = useMemo(() => {
+  const fichadasPorDia = (() => {
     const monDate = new Date(lunesDeLaSemana(0) + "T12:00:00");
     const dias = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(monDate); d.setDate(d.getDate() + i);
       const ds = d.toISOString().split("T")[0];
-      const count = fichadasSemana.filter(f => f.fecha === ds).length;
+      const count = fichadasSemanaOp.filter(f => f.fecha === ds).length;
       dias.push({ fecha: ds, count, label: DIAS_LABEL_SHORT[d.getDay()] });
     }
     return dias;
-  }, [fichadasSemana]);
+  })();
 
   // Top empleados productivos
   const topProductivos = useMemo(() => {
@@ -508,7 +497,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const alertas = useMemo(() => {
     const items = [];
     if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} para entrar sin responder`, urgencia: "alta", target: "solicitudes" });
-    // Ausentes, parados y pedidos están en el resumen de arriba (R9): no se repiten acá
+    // Asistencia, parados y solicitudes tienen su tarjeta: no se repiten acá
     const urgentes = notificaciones.filter(n => {
       if (n.urgencia !== "alta") return false;
       // Si la notificacion tiene solicitud_id, verificar que siga pendiente
@@ -526,7 +515,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       items.push({ icon: "\u{1F534}", text: n.asunto, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
     });
     return items;
-  }, [ausentes, enEspera, pendientes, notificaciones, permisosIngreso, solicitudes]);
+  }, [pendientes, notificaciones, permisosIngreso, solicitudes]);
 
   // Productividad por division
   const prodPorDiv = useMemo(() => {
@@ -601,16 +590,6 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           Hay más datos de los que se pueden mostrar juntos: algunos totales del mes pueden estar incompletos.
         </div>
       )}
-      {/* ─── Resumen de hoy (R9): lo que el dueño necesita saber en 30 segundos ─── */}
-      <section aria-label="Resumen de hoy" className="grid grid-cols-2 gap-2.5 mb-4">
-        <Stat value={`${presentesProgramados}/${programados}`} label="Vinieron hoy (de los esperados)" tone={programados > 0 && presentesProgramados >= programados ? "bien" : "normal"} />
-        <Stat value={ausentes} label={ausentes === 1 ? "Falta hoy" : "Faltan hoy"} tone={ausentes > 0 ? "mal" : "bien"} />
-        {conTareas
-          ? <Stat value={enEspera} label="Parados ahora" tone={enEspera > 0 ? "atencion" : "bien"} onClick={() => goto?.("ger-actividad")} />
-          : <Stat value={tardesEstaSemana} label="Tardanzas esta semana" tone={tardesEstaSemana > 0 ? "atencion" : "bien"} />}
-        <Stat value={pendientes.length} label="Solicitudes sin responder" tone={pendientes.length > 0 ? "atencion" : "bien"} onClick={() => goto?.("solicitudes")} />
-      </section>
-
       {/* Modal de billing */}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
 
@@ -674,52 +653,89 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── Presentes hoy: sobre el total del personal y quiénes faltan ─── */}
-      <section aria-label="Presentes hoy" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-3">
-          <Titulo>Presentes hoy</Titulo>
-          <Tag color="var(--color-green)">{totalEmp > 0 ? `${Math.round((presentes / totalEmp) * 100)}%` : "—"}</Tag>
+      {/* ─── Asistencia del día: operarios por división y la llegada de cada uno ─── */}
+      <section aria-label="Asistencia del día" className="card-hover g-card mb-4">
+        <div className="flex justify-between items-center gap-2 mb-3">
+          <Titulo>Asistencia {verHoy ? "de hoy" : `del ${fechaCorta(diaVer)}`}</Titulo>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => moverDia(-1)} disabled={diaVer <= lunes} aria-label="Día anterior"
+              className="w-11 h-11 rounded-[10px] border border-gypi-border bg-gypi-surface text-gypi-text cursor-pointer disabled:opacity-40 disabled:cursor-default">&#x25C0;</button>
+            <button type="button" onClick={() => moverDia(1)} disabled={verHoy} aria-label="Día siguiente"
+              className="w-11 h-11 rounded-[10px] border border-gypi-border bg-gypi-surface text-gypi-text cursor-pointer disabled:opacity-40 disabled:cursor-default">&#x25B6;</button>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <Dato grande valor={`${presentes}/${totalEmp}`} etiqueta="Presentes del total del personal" tono="bien" />
-          <Dato grande valor={faltanHoy.length} etiqueta={faltanHoy.length === 1 ? "Falta (tenía que venir)" : "Faltan (tenían que venir)"} tono={faltanHoy.length > 0 ? "mal" : "bien"} />
-        </div>
-        {faltanHoy.length > 0 ? (
+        <p className="m-0 mb-2.5 text-[12px] text-gypi-dim">Solo operarios con horario ese día. Tarde se cuenta sobre los que vinieron.</p>
+
+        {asistDia.total.esperados === 0 ? (
+          <p className="m-0 mb-1 text-[13px] text-gypi-dim">{verHoy ? "Todavía no se espera a ningún operario hoy." : "Ese día no se esperaba a ningún operario."}</p>
+        ) : (
+          <table className="w-full mb-3 text-[13px] border-collapse">
+            <thead>
+              <tr className="text-left text-[12px] text-gypi-dim">
+                <th className="py-1.5 font-semibold">División</th>
+                <th className="py-1.5 font-semibold text-right">Vinieron</th>
+                <th className="py-1.5 font-semibold text-right">Tarde</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...asistDia.divisiones, { ...asistDia.total, nombre: "Total", esTotal: true }].map(d => {
+                const pv = pct(d.vinieron, d.esperados);
+                const pt = pct(d.tarde, d.vinieron);
+                return (
+                  <tr key={d.nombre} className={`border-t border-gypi-border ${d.esTotal ? "font-bold" : ""}`}>
+                    <td className="py-2 text-gypi-text">{d.nombre}</td>
+                    <td className={`py-2 text-right font-mono ${pv == null ? "text-gypi-dim" : TONO[tonoPct(pv)].txt}`}>{d.vinieron}/{d.esperados} <span className="text-[12px]">({pv ?? 0}%)</span></td>
+                    <td className={`py-2 text-right font-mono ${d.tarde > 0 ? TONO.aviso.txt : "text-gypi-dim"}`}>{d.tarde}/{d.vinieron} <span className="text-[12px]">({pt ?? 0}%)</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+
+        {llegadas.length > 0 && (
           <>
-            <div className="g-label mb-1.5">Quiénes faltan</div>
-            <div className="max-h-[200px] overflow-y-auto">
-              {faltanHoy.map(e => (
-                <div key={e.id ?? e.legajo} className="flex items-center gap-2.5 py-1.5 border-b border-gypi-border last:border-b-0">
-                  <div className="w-1.5 h-1.5 rounded-full bg-gypi-red shrink-0" aria-hidden="true" />
-                  <span className="flex-1 text-[13px] font-semibold text-gypi-text truncate">{e.nombre}</span>
-                  <span className="text-[12px] text-gypi-dim">{e.diagrama?.[diaKey]?.in ? `entra ${String(e.diagrama[diaKey].in).slice(0, 5)}` : ""}</span>
-                </div>
-              ))}
+            <div className="g-label mb-1">Llegada de cada uno</div>
+            <p className="m-0 mb-1 text-[12px] text-gypi-dim">Tocá a alguien para ver sus fichajes.</p>
+            <div className="max-h-[300px] overflow-y-auto">
+              {llegadas.map(l => {
+                const info = {
+                  falta: { tono: "mal", texto: "No vino" },
+                  tarde: { tono: "aviso", texto: `Tarde ${l.minutosTarde} min` },
+                  a_tiempo: { tono: "bien", texto: "A tiempo" },
+                  por_entrar: { tono: "neutro", texto: "Todavía no entra" },
+                  fuera_horario: { tono: "info", texto: "Sin turno ese día" },
+                }[l.estado];
+                const detalle = [l.entra && `entra ${l.entra}`, l.ingreso && `llegó ${l.ingreso}`, l.egreso && `salió ${l.egreso}`].filter(Boolean).join(" · ");
+                return (
+                  <button key={l.id} type="button" onClick={() => goto?.("historial-fichajes", l.legajo)}
+                    aria-label={`${l.nombre}: ${info.texto}${detalle ? `, ${detalle}` : ""}. Ver sus fichajes`}
+                    className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-gypi-text truncate">{l.nombre}</div>
+                      <div className="text-[12px] text-gypi-dim truncate">{l.division}{detalle ? ` · ${detalle}` : ""}</div>
+                    </div>
+                    <span className={`shrink-0 px-2 py-1 rounded-lg text-[12px] font-bold ${TONO[info.tono].fondo} ${TONO[info.tono].txt}`}>{info.texto}</span>
+                  </button>
+                );
+              })}
             </div>
           </>
-        ) : (
-          <p className="m-0 text-[13px] text-gypi-dim">{programados > 0 ? "Vinieron todos los que tenían que venir hoy." : "Hoy nadie tiene turno."}</p>
         )}
-        {sinTurnoHoy > 0 && <p className="m-0 mt-2 text-[12px] text-gypi-dim">{sinTurnoHoy} {sinTurnoHoy === 1 ? "persona no tiene" : "personas no tienen"} turno hoy (franco).</p>}
       </section>
 
-      {/* ─── Asistencia ─── */}
-      <section aria-label="Asistencia" className="card-hover g-card mb-4">
+      {/* ─── Asistencia de la semana (operarios) ─── */}
+      <section aria-label="Asistencia semanal" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
-          <Titulo>Asistencia</Titulo>
-          <Tag color="var(--color-green)">{presentes} {presentes === 1 ? "fichó" : "ficharon"} hoy</Tag>
+          <Titulo>Asistencia semanal</Titulo>
+          <Tag color={tardesEstaSemana > 0 ? MARCA : "var(--color-green)"}>{tardesEstaSemana} {tardesEstaSemana === 1 ? "llegada tarde" : "llegadas tarde"}</Tag>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mb-3.5">
-          <Dato grande valor={pctAsist == null ? "—" : `${pctAsist}%`} etiqueta="Cumplimiento" tono={pctAsist == null ? "neutro" : tonoPct(pctAsist)} />
-          <Dato grande valor={tardesEstaSemana} etiqueta="Tardanzas (semana)" tono={tardesEstaSemana > 0 ? "aviso" : "bien"} />
-        </div>
-
-        <div className="g-label mb-2">Cuántos ficharon cada día de esta semana</div>
+        <div className="g-label mb-2">Cuántos operarios ficharon cada día de esta semana</div>
         <div className="flex justify-center">
           <MiniBarChart
             data={fichadasPorDia.map(d => d.count)}
-            maxVal={programados || 20}
+            maxVal={operariosConTurnoHoy || 20}
             labels={fichadasPorDia.map(d => d.label)}
           />
         </div>
@@ -800,39 +816,6 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           </button>
         );
       })()}
-      {/* ─── Jornadas hoy ─── */}
-      <section aria-label="Jornadas hoy" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-1">
-          <Titulo>Jornadas de hoy</Titulo>
-          <span className="text-xs text-gypi-mute font-mono">7:00 ——— 19:00</span>
-        </div>
-        {fichadasHoy.length > 0 && (
-          <p className="m-0 mb-1 text-[12px] text-gypi-dim">
-            <span className={TONO.bien.txt}>■</span> ya salió · <span className={TONO.aviso.txt}>■</span> todavía adentro · tocá a alguien para ver sus fichajes
-          </p>
-        )}
-        {fichadasHoy.length === 0 ? (
-          <EmptyState
-            icon="clock"
-            title="Sin fichadas hoy"
-            description="Los ingresos y egresos del equipo van a aparecer acá a medida que fichen."
-            color="var(--color-cyan)"
-          />
-        ) : (
-          <div className="max-h-[220px] overflow-y-auto">
-            {fichadasHoy.map((f, i) => (
-              <TimelineRow
-                key={f.legajo || i}
-                nombre={f.nombre || `L-${f.legajo}`}
-                ingreso={f.ingreso}
-                egreso={f.egreso}
-                onClick={() => goto?.("historial-fichajes", f.legajo)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
       {/* ─── Solicitudes del personal ─── */}
       <section aria-label="Solicitudes del personal" className={`g-card mb-4 ${pendientes.length > 0 ? TONO.aviso.borde : ""}`}>
           <div className="flex justify-between items-center mb-3">
