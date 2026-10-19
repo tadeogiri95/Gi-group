@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { estadoEtapa, semaforoEntrega, filasTablero, normalizarChecklist, CHECKLIST_FABRICA } from "../app/lib/avance.js";
+import { estadoEtapa, semaforoEntrega, filasTablero, normalizarChecklist, CHECKLIST_FABRICA, otEnCurso, contarPorDivision, nombreDivisionOt } from "../app/lib/avance.js";
 import { avanceBody, configPatchBody } from "../app/lib/schemas.ts";
 
 before(() => {
@@ -331,4 +331,38 @@ test("config-empresa — guarda el checklist y la condición de cierre de una et
 
   res = await configApi.PATCH(configReq("PATCH", { action: "update_checklist", items: [] }, await token("operativo")));
   assert.equal(res.status, 403);
+});
+
+
+// ── OT en curso (pedido de Tadeo 19/10): alguna etapa empezada y no todas cerradas ──
+test("otEnCurso — empezadas sí; sin empezar o con todo cerrado, no", () => {
+  const etapas = [{ codigo: 1, nombre: "Corte", orden: 1 }, { codigo: 2, nombre: "Canto", orden: 2 }];
+  const divisiones = [{ id: "M", label: "Muebles", ruta_etapas: [1, 2] }, { id: "A", label: "Aluminio", ruta_etapas: [1, 2] }];
+  const proyectos = [
+    { ot: "1", division: "M" }, // con horas en Corte → en curso
+    { ot: "2", division: "A" }, // Corte terminada sin firma → en curso
+    { ot: "3", division: "M" }, // nada → no
+    { ot: "4", division: "M" }, // todo firmado / no aplica → no
+  ];
+  const avance = [
+    { ot: "2", etapa: 1, estado: "terminada" },
+    { ot: "4", etapa: 1, estado: "aprobada" },
+    { ot: "4", etapa: 2, estado: "no_aplica" },
+  ];
+  const filas = filasTablero(proyectos, { etapas, divisiones, avance, horas: new Set(["1|1"]), hoy: "2026-10-19" });
+  const enCurso = otEnCurso(filas);
+  assert.deepEqual(enCurso.map((f) => f.proyecto.ot).sort(), ["1", "2"]);
+  assert.deepEqual(contarPorDivision(enCurso, divisiones), [{ nombre: "Aluminio", cantidad: 1 }, { nombre: "Muebles", cantidad: 1 }]);
+  assert.equal(nombreDivisionOt(divisiones, "muebles"), "Muebles");
+  assert.equal(nombreDivisionOt(divisiones, "H"), "H");
+  assert.equal(nombreDivisionOt(divisiones, null), "Sin división");
+});
+
+test("liberar — avisa al operario pero no lo frena (decisión de Tadeo 19/10)", () => {
+  const src = readFileSync(new URL("../app/actividad_screen.jsx", import.meta.url), "utf8");
+  assert.match(src, /Todavía no está liberada a producción/);
+  assert.match(src, /Esta OT todavía no está liberada a producción\.<\/b> Podés seguir trabajando/);
+  const ot = readFileSync(new URL("../app/proyectos_screen.jsx", import.meta.url), "utf8");
+  assert.match(ot, /filtro === "en_curso"/);
+  assert.match(ot, /En curso por división/);
 });

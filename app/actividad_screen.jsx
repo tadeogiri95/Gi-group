@@ -564,6 +564,7 @@ export default function ActividadScreen({
                             {(p.obra || p.descripcion) && (
                               <div className="text-[11px] text-gypi-dim truncate mt-[1px]">{[p.obra, p.descripcion].filter(Boolean).join(" · ")}</div>
                             )}
+                            {p.liberada_at === null && <div className="text-[11px] font-bold text-gypi-amber-ink mt-[1px]">⚠ Todavía no está liberada a producción</div>}
                             {p.puntos_criticos && <div className="text-[11px] text-gypi-amber-ink truncate mt-[1px]">⚠ {p.puntos_criticos}</div>}
                           </div>
                           {sel && <span className="text-base text-gypi-amber-ink">✓</span>}
@@ -680,6 +681,12 @@ export default function ActividadScreen({
             </div>
             {!isEspera && !tareaActiva?.sinEnviar && (
               <CantidadTarea key={tareaActiva?.id} tareaId={tareaActiva?.id} unidad={etapaActiva?.unidad} valor={tareaActiva?.cantidad} />
+            )}
+            {/* Liberación (OP parte 5): solo avisa, no frena (decisión de Tadeo 19/10) */}
+            {!isEspera && proyectoActivo && proyectoActivo.liberada_at === null && (
+              <div role="status" className="mt-3 px-3 py-2 rounded-[10px] bg-gypi-amber/10 border border-gypi-amber/40 text-[12px] text-gypi-amber-ink">
+                <b>⚠ Esta OT todavía no está liberada a producción.</b> Podés seguir trabajando; avisale a tu responsable.
+              </div>
             )}
             {!isEspera && proyectoActivo?.puntos_criticos && (
               <div className="mt-3 text-[12px] text-gypi-amber-ink whitespace-pre-line"><b>⚠ Puntos críticos:</b> {proyectoActivo.puntos_criticos}</div>

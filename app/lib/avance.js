@@ -106,3 +106,31 @@ export function filasTablero(proyectos, { etapas = [], divisiones = [], avance =
     return fa.localeCompare(fb) || String(a.proyecto.ot).localeCompare(String(b.proyecto.ot), "es", { numeric: true });
   });
 }
+
+/**
+ * OT en curso: de las filas del tablero, las que tienen alguna etapa empezada
+ * (con horas cargadas o marcada) y todavía no tienen todas sus etapas
+ * cerradas (firmadas o "no aplica").
+ */
+export function otEnCurso(filas) {
+  return (filas || []).filter((f) =>
+    f.celdas.some((c) => c.estado !== "pendiente" && c.estado !== "no_aplica") &&
+    f.cerradas < f.celdas.length
+  );
+}
+
+/** Nombre de la división de una OT ("Sin división" si no se reconoce). */
+export function nombreDivisionOt(divisiones, valor) {
+  return buscarDivision(divisiones, valor)?.label || (valor ? String(valor) : "Sin división");
+}
+
+/** Cuántas OT hay por división, de mayor a menor: [{ nombre, cantidad }]. */
+export function contarPorDivision(filas, divisiones) {
+  const cuenta = new Map();
+  for (const f of filas || []) {
+    const n = nombreDivisionOt(divisiones, f.proyecto.division);
+    cuenta.set(n, (cuenta.get(n) || 0) + 1);
+  }
+  return [...cuenta].map(([nombre, cantidad]) => ({ nombre, cantidad }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.nombre.localeCompare(b.nombre, "es"));
+}

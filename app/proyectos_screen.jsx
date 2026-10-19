@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { sb, sbGetAll, apiFetch } from "./lib/supabase";
 import { Tag, Chip } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
@@ -17,6 +17,9 @@ import ActaOt from "./components/ActaOt";
 import EtiquetasModulos from "./components/EtiquetasModulos";
 import PiezasOt from "./components/PiezasOt";
 import { useCostoHora } from "./hooks/useCostoHora";
+import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
+import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
+import { hoyArg } from "./lib/dates";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -204,6 +207,21 @@ export default function ProyectosScreen({ empresaId }) {
 
   useEffect(() => { cargar(); cargarSyncCfg(); }, [cargar, cargarSyncCfg]);
 
+  // OT en curso: abiertas con alguna etapa empezada y no todas cerradas
+  const [avanceHoras, setAvanceHoras] = useState(null);
+  useEffect(() => {
+    if (!empresaId) return;
+    let vivo = true;
+    leerAvanceYHoras(empresaId).then((d) => { if (vivo) setAvanceHoras(d); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [empresaId, proyectos]);
+  const enCurso = useMemo(() => {
+    if (!avanceHoras) return null;
+    const abiertas = proyectos.filter(p => p.estado !== "cerrado");
+    return otEnCurso(filasTablero(abiertas, { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avanceHoras, hoy: hoyArg() }));
+  }, [avanceHoras, proyectos, etapasCtx, divisionesCtx]);
+  const otsEnCurso = useMemo(() => new Set((enCurso || []).map(f => String(f.proyecto.ot))), [enCurso]);
+
   const guardar = async (form) => {
     setSaving(true);
     // Total de módulos (101): solo se manda si cambió, así la OT se puede
@@ -334,7 +352,8 @@ export default function ProyectosScreen({ empresaId }) {
   };
 
   const filtrados = proyectos.filter(p => {
-    if (filtro !== "todos" && p.estado !== filtro) return false;
+    if (filtro === "en_curso") { if (!otsEnCurso.has(String(p.ot))) return false; }
+    else if (filtro !== "todos" && p.estado !== filtro) return false;
     if (filtroDiv && p.division !== filtroDiv) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -385,11 +404,16 @@ export default function ProyectosScreen({ empresaId }) {
       {csvFilas && <ModalCSVPreview filas={csvFilas} onClose={() => { setCsvFilas(null); setCsvRawText(null); }} onConfirm={importarCSV} saving={saving} progreso={csvProgreso} />}
 
       {/* Métricas */}
-      <div className="grid grid-cols-3 gap-2 mb-3.5">
+      <div className="grid grid-cols-4 gap-2 mb-3.5">
         <div className="g-card text-center !p-3">
           <div className="font-heading text-[22px] font-bold text-gypi-green">{activos}</div>
           <div className="g-overline mt-0.5">Activos</div>
         </div>
+        <button type="button" onClick={() => setFiltro("en_curso")} aria-label={`${enCurso ? enCurso.length : "—"} OT en curso: ver la lista`}
+          className={`g-card text-center !p-3 cursor-pointer ${filtro === "en_curso" ? "!border-gypi-amber" : ""}`}>
+          <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{enCurso ? enCurso.length : "—"}</div>
+          <div className="g-overline mt-0.5">En curso</div>
+        </button>
         <div className="g-card text-center !p-3">
           <div className="font-heading text-[22px] font-bold text-gypi-mute">{cerrados}</div>
           <div className="g-overline mt-0.5">Cerrados</div>
@@ -400,9 +424,16 @@ export default function ProyectosScreen({ empresaId }) {
         </div>
       </div>
 
+      {enCurso && enCurso.length > 0 && (
+        <div className="text-xs text-gypi-dim -mt-2 mb-3">
+          En curso por división: {contarPorDivision(enCurso, divisionesCtx || []).map(d => `${d.nombre} ${d.cantidad}`).join(" · ")}
+        </div>
+      )}
+
       {/* Filtros */}
       <div className="flex gap-1.5 mb-2.5 overflow-x-auto pb-1">
         <Chip active={filtro === "activo"} onClick={() => setFiltro("activo")} color={GREEN}>Activos</Chip>
+        <Chip active={filtro === "en_curso"} onClick={() => setFiltro("en_curso")}>En curso</Chip>
         <Chip active={filtro === "cerrado"} onClick={() => setFiltro("cerrado")} color="var(--color-text-muted)">Cerrados</Chip>
         <Chip active={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos</Chip>
       </div>
@@ -529,11 +560,12 @@ export default function ProyectosScreen({ empresaId }) {
                   <div className="min-w-[60px] h-10 rounded-[10px] flex items-center justify-center font-mono text-[13px] font-bold px-2" style={{ background: `${divColor}22`, color: divColor }}>{p.ot}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
-                    <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{[p.obra || p.proyecto, p.descripcion].filter(Boolean).join(" · ")}{p.division ? ` · ${divInfo.label}` : ""}</div>
+                    <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{[p.obra || p.proyecto, p.descripcion].filter(Boolean).join(" · ")}{p.division ? ` · ${nombreDivisionOt(divisionesCtx || [], p.division)}` : ""}</div>
                     {(p.fecha_entrega || p.cantidad != null) && (
                       <div className="text-[11px] text-gypi-dim mt-0.5">{[p.fecha_entrega && `Entrega ${fechaCorta(p.fecha_entrega)}`, p.cantidad != null && `Cantidad ${p.cantidad}`].filter(Boolean).join(" · ")}</div>
                     )}
                   </div>
+                  {p.estado !== "cerrado" && otsEnCurso.has(String(p.ot)) && <Tag color={AMBER}>en curso</Tag>}
                   {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
                   {p.estado !== "cerrado" && p.terminado_planilla && <Tag color="var(--color-text-muted)">terminada en planilla</Tag>}
                 </div>
