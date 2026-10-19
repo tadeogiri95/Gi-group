@@ -1,6 +1,6 @@
 // tests/ux-tablero.test.jsx — Reforma UX R11 (7/8): el tablero del dueño con
-// las piezas de diseño. Sin paneles vacíos según los módulos, jornadas con
-// leyenda y botones de verdad, y gráficos sin estilos sueltos.
+// las piezas de diseño. Sin paneles vacíos según los módulos, llegadas con
+// botones de verdad, y gráficos sin estilos sueltos.
 import "./helpers/domSetup.js";
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -10,13 +10,14 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 const { default: DashboardGerencia } = await import("../app/dashboard_gerencia.jsx");
 const { AuthContext } = await import("../app/context/AuthContext.jsx");
 const { modulosEfectivos } = await import("../app/lib/modulos.js");
+const { ahoraArg } = await import("../app/lib/dates.js");
 
 afterEach(() => cleanup());
 
-function tablero({ plan = "planta_15", fichadasHoy = [] } = {}) {
+function tablero({ plan = "planta_15", fichadasHoy = [], empleados = [] } = {}) {
   global.fetch = async () => Response.json({ ok: true, data: [] });
   const destinos = [];
-  const ctx = { empleados: [], fichadasHoy, solicitudes: [], notificaciones: [] };
+  const ctx = { empleados, fichadasHoy, solicitudes: [], notificaciones: [] };
   render(
     <AuthContext.Provider value={{ divisiones: [], usuario: { rol: "gerencial" } }}>
       <DashboardGerencia goto={(d, l) => destinos.push([d, l])} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos: modulosEfectivos({ plan }) }} />
@@ -27,12 +28,12 @@ function tablero({ plan = "planta_15", fichadasHoy = [] } = {}) {
 
 test("tablero — sin Tareas no muestra paneles de producción que siempre estarían vacíos", async () => {
   tablero({ plan: "asistencia_15" });
-  await screen.findByRole("region", { name: "Resumen de hoy" });
+  await screen.findByRole("region", { name: "Asistencia del día" });
   assert.equal(screen.queryByRole("region", { name: "Productividad" }), null);
   assert.equal(screen.queryByText("En planta"), null);
   cleanup();
   tablero({ plan: "planta_15" });
-  await screen.findByRole("region", { name: "Resumen de hoy" });
+  await screen.findByRole("region", { name: "Asistencia del día" });
   assert.ok(screen.getByRole("region", { name: "Productividad" }));
   assert.ok(screen.getByText(/Del tiempo con tarea cargada/), "explica qué es el porcentaje");
   const enPlanta = screen.getByRole("button", { name: /En planta/ });
@@ -42,16 +43,22 @@ test("tablero — sin Tareas no muestra paneles de producción que siempre estar
   assert.ok(screen.getByRole("button", { name: /Ver detalle por operario/ }));
 });
 
-test("jornadas — leyenda de colores y cada persona es un botón que lleva a sus fichajes", async () => {
-  const destinos = tablero({ fichadasHoy: [
-    { legajo: 7, nombre: "Ana", ingreso: "08:00:00", egreso: "17:00:00" },
-    { legajo: 8, nombre: "Luis", ingreso: "08:30:00", egreso: null },
-  ] });
-  assert.ok(await screen.findByText(/ya salió/));
-  assert.ok(screen.getByText(/todavía adentro · tocá a alguien/));
-  fireEvent.click(screen.getByRole("button", { name: /Luis: entró 08:30, todavía adentro/ }));
+test("llegadas — cada persona es un botón que lleva a sus fichajes (reemplaza a las jornadas)", async () => {
+  const turno = { [ahoraArg().diaKey]: { in: "00:00", out: "23:59" } };
+  const destinos = tablero({
+    empleados: [
+      { id: "7", legajo: 7, nombre: "Ana", rol: "operativo", diagrama: turno },
+      { id: "8", legajo: 8, nombre: "Luis", rol: "operativo", diagrama: turno },
+    ],
+    fichadasHoy: [
+      { legajo: 7, nombre: "Ana", ingreso: "08:00:00", egreso: "17:00:00" },
+      { legajo: 8, nombre: "Luis", ingreso: "08:30:00", egreso: null },
+    ],
+  });
+  assert.ok(await screen.findByText(/Tocá a alguien para ver sus fichajes/));
+  fireEvent.click(screen.getByRole("button", { name: /Luis: A tiempo, entra 00:00 · llegó 08:30\. Ver sus fichajes/ }));
   assert.deepEqual(destinos.at(-1), ["historial-fichajes", 8]);
-  assert.ok(screen.getByRole("button", { name: /Ana: entró 08:00, salió 17:00/ }));
+  assert.ok(screen.getByRole("button", { name: /Ana: A tiempo, entra 00:00 · llegó 08:00 · salió 17:00/ }));
 });
 
 test("tablero — sin estilos sueltos ni colores a mano: barras y gráficos en SVG", () => {

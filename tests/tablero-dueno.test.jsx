@@ -31,33 +31,19 @@ const PENDIENTES = [
   { id: 2, estado: "pendiente", tipo: "permiso", nombre_empleado: "Luis", motivo: "Médico" },
 ];
 
-test("resumen de hoy — 4 números con su nombre completo, y los tocables llevan al detalle", async () => {
+test("sin repetidos — sin fila de números arriba: cada dato está en su tarjeta (pedido de Tadeo 19/10)", async () => {
   const destinos = tablero({ modulos: modulosEfectivos({ plan: "planta_15" }), solicitudes: PENDIENTES });
-  const resumen = await screen.findByRole("region", { name: "Resumen de hoy" });
-  for (const etiqueta of ["Vinieron hoy (de los esperados)", "Faltan hoy", "Parados ahora", "Solicitudes sin responder"]) {
-    assert.ok(within(resumen).getByText(etiqueta), etiqueta);
-  }
-  assert.ok(within(resumen).getByText("2"), "2 solicitudes sin responder");
-  fireEvent.click(within(resumen).getByText("Solicitudes sin responder"));
-  fireEvent.click(within(resumen).getByText("Parados ahora"));
-  assert.deepEqual(destinos, ["solicitudes", "ger-actividad"]);
-});
-
-test("resumen de hoy — sin Tareas, en lugar de 'Parados' muestra las tardanzas de la semana", async () => {
-  tablero({ modulos: modulosEfectivos({ plan: "asistencia_15" }) });
-  const resumen = await screen.findByRole("region", { name: "Resumen de hoy" });
-  assert.ok(within(resumen).getByText("Tardanzas esta semana"));
-  assert.equal(within(resumen).queryByText("Parados ahora"), null);
-});
-
-test("sin repetidos — los avisos no repiten los números del resumen", async () => {
-  tablero({ modulos: modulosEfectivos({ plan: "planta_15" }), solicitudes: PENDIENTES });
-  await screen.findByRole("region", { name: "Resumen de hoy" });
-  assert.equal(screen.queryByText(/pedidos? sin responder$/), null, "el aviso de pedidos se fue: está arriba");
+  const sol = await screen.findByRole("region", { name: "Solicitudes del personal" });
+  assert.equal(screen.queryByRole("region", { name: "Resumen de hoy" }), null);
+  assert.ok(within(sol).getByText("2 sin responder"));
+  assert.equal(screen.queryByText(/pedidos? sin responder$/), null);
+  fireEvent.click(within(sol).getByText(/Responder solicitudes/));
+  assert.deepEqual(destinos, ["solicitudes"]);
   const src = readFileSync(new URL("../app/dashboard_gerencia.jsx", import.meta.url), "utf8");
-  assert.doesNotMatch(src, /ausente\$\{ausentes > 1/);
+  assert.doesNotMatch(src, /<Stat /);
+  assert.doesNotMatch(src, /Jornadas de hoy/, "la llegada de cada uno reemplaza a las jornadas");
+  assert.doesNotMatch(src, /etiqueta="Cumplimiento"/, "el % de hoy está solo en la asistencia del día");
   assert.equal((src.match(/<div className="g-kpi-label">Trabajando<\/div>/g) || []).length, 1, "solo en el detalle de En planta, no repetido en Productividad");
-  assert.doesNotMatch(src, /<div className="g-kpi-label">Presentes<\/div>/);
 });
 
 test("ranking — siempre a la vista, sin botón para mostrarlo", () => {
@@ -66,7 +52,7 @@ test("ranking — siempre a la vista, sin botón para mostrarlo", () => {
   assert.doesNotMatch(src, /Mostrar el ranking del mes/);
 });
 
-const ENTRA = { in: "08:00", out: "17:00" };
+const ENTRA = { in: "00:00", out: "23:59" }; // ya empezó a cualquier hora del día de la prueba
 const DIAG = { lun: ENTRA, mar: ENTRA, mie: ENTRA, jue: ENTRA, vie: ENTRA, sab: ENTRA, dom: ENTRA };
 
 function tableroCompleto() {
@@ -88,11 +74,16 @@ function tableroCompleto() {
   const destinos = [];
   const ctx = {
     empleados: [
-      { id: "a", legajo: 1, nombre: "Ana Presente", activo: true, diagrama: DIAG },
-      { id: "b", legajo: 2, nombre: "Beto Ausente", activo: true, diagrama: DIAG },
-      { id: "c", legajo: 3, nombre: "Ceci Franco", activo: true, diagrama: {} },
+      { id: "a", legajo: 1, nombre: "Ana Presente", rol: "operativo", division: "M", activo: true, diagrama: DIAG },
+      { id: "b", legajo: 2, nombre: "Beto Ausente", rol: "operativo", division: "M", activo: true, diagrama: DIAG },
+      { id: "c", legajo: 3, nombre: "Ceci Franco", rol: "operativo", division: "A", activo: true, diagrama: {} },
+      { id: "d", legajo: 4, nombre: "Dani Tarde", rol: "operativo", division: "A", activo: true, diagrama: DIAG },
+      { id: "e", legajo: 5, nombre: "Dueño Sin Horario", rol: "gerencial", division: "M", activo: true, diagrama: DIAG },
     ],
-    fichadasHoy: [{ legajo: 1, nombre: "Ana Presente", ingreso: "08:00:00" }],
+    fichadasHoy: [
+      { legajo: 1, nombre: "Ana Presente", ingreso: "08:00:00" },
+      { legajo: 4, nombre: "Dani Tarde", ingreso: "08:20:00", llegada_tarde: true, minutos_tarde: 20 },
+    ],
     solicitudes: [], notificaciones: [],
   };
   const divisiones = [
@@ -121,13 +112,23 @@ test("panel — OT en curso con su división, y 'Ver las OT' abre Planta → OT"
   assert.deepEqual(destinos, ["planta:ot"]);
 });
 
-test("panel — presentes hoy: presentes sobre el total y quiénes faltan", async () => {
-  tableroCompleto();
-  const pres = await screen.findByRole("region", { name: "Presentes hoy" });
-  assert.ok(within(pres).getByText("1/3"));
-  assert.ok(within(pres).getByText("Beto Ausente"));
-  assert.equal(within(pres).queryByText("Ceci Franco"), null, "quien no tiene turno no falta");
-  assert.ok(within(pres).getByText(/1 persona no tiene turno hoy/));
+test("panel — asistencia del día: solo operarios, por división y total, con la llegada de cada uno", async () => {
+  const destinos = tableroCompleto();
+  const as = await screen.findByRole("region", { name: "Asistencia del día" });
+  const filas = within(as).getAllByRole("row").map((r) => r.textContent.replace(/\s+/g, " ").trim());
+  assert.deepEqual(filas.slice(1), [
+    "Aluminio1/1 (100%)1/1 (100%)",
+    "Muebles1/2 (50%)0/1 (0%)",
+    "Total2/3 (67%)1/2 (50%)",
+  ]);
+  assert.equal(within(as).queryByText("Dueño Sin Horario"), null, "los dueños no cuentan");
+  assert.equal(within(as).queryByText("Ceci Franco"), null, "de franco no aparece");
+  assert.ok(within(as).getByText("No vino"));
+  assert.ok(within(as).getByText("Tarde 20 min"));
+  assert.ok(within(as).getByText("A tiempo"));
+  fireEvent.click(within(as).getByRole("button", { name: /Beto Ausente: No vino/ }));
+  assert.deepEqual(destinos.at(-1), "historial-fichajes");
+  assert.ok(within(as).getByRole("button", { name: "Día siguiente" }).disabled, "no hay días futuros");
 });
 
 test("panel — pedidos de compras pendientes con su lista", async () => {
@@ -144,7 +145,7 @@ test("panel — el orden que pidió Tadeo", async () => {
   tableroCompleto();
   await screen.findByRole("region", { name: "OT en curso" });
   await screen.findByRole("region", { name: "Pedidos de compras" });
-  const orden = ["OT en curso", "Presentes hoy", "Asistencia", "Pedidos de compras", "Jornadas hoy", "Solicitudes del personal"];
+  const orden = ["OT en curso", "Asistencia del día", "Asistencia semanal", "Pedidos de compras", "Solicitudes del personal"];
   const nodos = orden.map((n) => screen.getByRole("region", { name: n }));
   for (let i = 1; i < nodos.length; i++) {
     assert.ok(nodos[i - 1].compareDocumentPosition(nodos[i]) & Node.DOCUMENT_POSITION_FOLLOWING, `${orden[i - 1]} antes de ${orden[i]}`);
@@ -153,6 +154,24 @@ test("panel — el orden que pidió Tadeo", async () => {
 
 test("el tablero no tiene 'cerrar sesión' suelto (está en Más → Mi cuenta)", async () => {
   tablero({ modulos: modulosEfectivos({ plan: "planta_15" }) });
-  await screen.findByRole("region", { name: "Resumen de hoy" });
+  await screen.findByRole("region", { name: "Asistencia del día" });
   assert.equal(screen.queryByLabelText("Cerrar sesion"), null);
+});
+
+test("llegadasDelDia — hoy, quien todavía no entra no cuenta como falta; sin turno que vino, aparte", async () => {
+  const { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha } = await import("../app/lib/asistenciaDia.js");
+  const turno = (h) => ({ lun: { in: h, out: "22:00" } });
+  const empleados = [
+    { id: 1, legajo: 1, nombre: "Mañana", rol: "operativo", division: "M", diagrama: turno("08:00") },
+    { id: 2, legajo: 2, nombre: "Tarde", rol: "operativo", division: "M", diagrama: turno("14:00") },
+    { id: 3, legajo: 3, nombre: "Franco", rol: "operativo", division: "M", diagrama: {} },
+    { id: 4, legajo: 4, nombre: "Baja", rol: "operativo", division: "M", diagrama: turno("08:00"), activo: false },
+  ];
+  const fichadas = [{ legajo: 3, ingreso: "09:00:00" }];
+  const hoy = llegadasDelDia({ empleados, fichadas, diaKey: "lun", horaActual: "10:00" });
+  assert.deepEqual(hoy.map((l) => [l.nombre, l.estado]), [["Mañana", "falta"], ["Tarde", "por_entrar"], ["Franco", "fuera_horario"]]);
+  assert.deepEqual(asistenciaPorDivision(hoy).total, { esperados: 1, vinieron: 0, tarde: 0 });
+  const pasado = llegadasDelDia({ empleados, fichadas: [], diaKey: "lun" });
+  assert.deepEqual(asistenciaPorDivision(pasado).total, { esperados: 2, vinieron: 0, tarde: 0 }, "un día pasado: todos los que tenían turno");
+  assert.equal(diaKeyDeFecha("2026-10-19"), "lun");
 });

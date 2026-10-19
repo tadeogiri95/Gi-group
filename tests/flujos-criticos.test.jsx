@@ -62,7 +62,7 @@ test("chat — si el servidor bloquea por tardanza, ofrece pedir permiso", async
 test("tablero — presentes, ausentes y cumplimiento de hoy con los programados", async () => {
   servidor();
   const dia = ahoraArg().diaKey;
-  const turno = { [dia]: { in: "08:00", out: "17:00" } };
+  const turno = { [dia]: { in: "00:00", out: "23:59" } };
   const ctx = {
     empleados: [
       { id: "1", legajo: 1, nombre: "Ana", rol: "operativo", activo: true, diagrama: turno, division: "produccion" },
@@ -83,13 +83,12 @@ test("tablero — presentes, ausentes y cumplimiento de hoy con los programados"
       <DashboardGerencia goto={() => {}} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme" }} />
     </AuthContext.Provider>
   );
-  // Resumen de arriba (R9): 2 de los 3 esperados vinieron y falta 1
-  const resumen = await screen.findByRole("region", { name: "Resumen de hoy" });
-  assert.ok(within(resumen).getByText("2/3"));
-  assert.ok(within(resumen).getByText("Falta hoy"));
-  assert.ok(within(resumen).getByText("1"));
-  assert.ok(screen.getByText("3 ficharon hoy"), "también cuenta a quien vino fuera de su horario");
-  assert.ok(screen.getByText("67%"), "cumplimiento: 2 de los 3 programados (Franco no infla el número)");
+  // Asistencia del día: 2 de los 3 operarios esperados vinieron, 1 tarde de 2
+  const asist = await screen.findByRole("region", { name: "Asistencia del día" });
+  const total = within(asist).getAllByRole("row").at(-1).textContent.replace(/\s+/g, " ");
+  assert.match(total, /Total2\/3 \(67%\)1\/2 \(50%\)/, "Franco, fuera de su horario, no infla el número");
+  assert.ok(within(asist).getByText("No vino"), "Eva falta");
+  assert.ok(within(asist).getByText("Sin turno ese día"), "Franco vino sin turno");
 });
 
 // ── Tareas del operario ──
