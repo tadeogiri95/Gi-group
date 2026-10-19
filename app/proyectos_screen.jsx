@@ -19,6 +19,7 @@ import PiezasOt from "./components/PiezasOt";
 import { useCostoHora } from "./hooks/useCostoHora";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
+import { avancePorOt } from "./lib/piezas";
 import { hoyArg } from "./lib/dates";
 
 const GREEN = "#16A34A";
@@ -221,6 +222,8 @@ export default function ProyectosScreen({ empresaId }) {
     return otEnCurso(filasTablero(abiertas, { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avanceHoras, hoy: hoyArg() }));
   }, [avanceHoras, proyectos, etapasCtx, divisionesCtx]);
   const otsEnCurso = useMemo(() => new Set((enCurso || []).map(f => String(f.proyecto.ot))), [enCurso]);
+  // % de producción por escaneo de cada OT (parte 25)
+  const pctEscaneo = useMemo(() => avancePorOt(avanceHoras?.piezas || []), [avanceHoras]);
 
   const guardar = async (form) => {
     setSaving(true);
@@ -565,6 +568,7 @@ export default function ProyectosScreen({ empresaId }) {
                       <div className="text-[11px] text-gypi-dim mt-0.5">{[p.fecha_entrega && `Entrega ${fechaCorta(p.fecha_entrega)}`, p.cantidad != null && `Cantidad ${p.cantidad}`].filter(Boolean).join(" · ")}</div>
                     )}
                   </div>
+                  {p.estado !== "cerrado" && pctEscaneo.get(String(p.ot))?.porcentaje != null && <Tag color={AMBER}>🧩 {pctEscaneo.get(String(p.ot)).porcentaje}%</Tag>}
                   {p.estado !== "cerrado" && otsEnCurso.has(String(p.ot)) && <Tag color={AMBER}>en curso</Tag>}
                   {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
                   {p.estado !== "cerrado" && p.terminado_planilla && <Tag color="var(--color-text-muted)">terminada en planilla</Tag>}

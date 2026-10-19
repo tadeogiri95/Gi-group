@@ -363,6 +363,50 @@ export function textoAvancePiezas(avance, nombres = {}) {
 }
 
 /**
+ * % de avance de producción por escaneo (parte 25): cuenta piezas, no
+ * superficie. Por etapa: piezas escaneadas / piezas que llevan la etapa. De la
+ * OT: todas las escaneadas / todas las que hay que escanear, sumando etapas.
+ * Se redondea para abajo: 100% solo cuando pasaron todas.
+ */
+export const pct = (pasaron, total) => (total > 0 ? Math.floor((Math.min(pasaron, total) / total) * 100) : null);
+
+/** [{ codigo, total, pasaron }] → % de la OT (null si no hay piezas que escanear). */
+export function porcentajeOt(avance = []) {
+  const total = avance.reduce((s, a) => s + (Number(a.total) || 0), 0);
+  const pasaron = avance.reduce((s, a) => s + Math.min(Number(a.pasaron) || 0, Number(a.total) || 0), 0);
+  return pct(pasaron, total);
+}
+
+/**
+ * Filas de la vista v_avance_piezas (migración 118) → por OT:
+ * Map OT → { porcentaje, etapas: [{ codigo, total, pasaron, porcentaje }] },
+ * con las etapas en el orden de la empresa (orden = códigos de reglasPieza).
+ */
+export function avancePorOt(filas = [], orden = []) {
+  const pos = new Map(orden.map((c, i) => [Number(c), i]));
+  const grupos = new Map();
+  for (const f of filas || []) {
+    const total = Number(f.total) || 0;
+    if (total <= 0) continue;
+    const ot = String(f.ot);
+    if (!grupos.has(ot)) grupos.set(ot, []);
+    const pasaron = Math.min(Number(f.pasaron) || 0, total);
+    grupos.get(ot).push({ codigo: Number(f.etapa), total, pasaron, porcentaje: pct(pasaron, total) });
+  }
+  const res = new Map();
+  for (const [ot, etapas] of grupos) {
+    etapas.sort((a, b) => (pos.get(a.codigo) ?? 999) - (pos.get(b.codigo) ?? 999) || a.codigo - b.codigo);
+    res.set(ot, { porcentaje: porcentajeOt(etapas), etapas });
+  }
+  return res;
+}
+
+/** Claves "OT|etapa" de las etapas con algún escaneo: cuentan como trabajo empezado ("en curso"). */
+export function clavesEscaneadas(filas = []) {
+  return (filas || []).filter((f) => Number(f.pasaron) > 0).map((f) => `${f.ot}|${Number(f.etapa)}`);
+}
+
+/**
  * Lo que se le muestra al operario después de escanear, a partir de la
  * respuesta de /api/piezas/paso.
  * @returns {{ tono: "verde"|"amarillo"|"rojo", texto: string, detalle: string|null }}

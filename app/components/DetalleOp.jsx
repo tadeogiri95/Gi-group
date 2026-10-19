@@ -16,7 +16,7 @@ import { fechaCorta } from "../lib/ot";
 import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from "../lib/calidad";
 import { costoOp, fmtPesos } from "../lib/costo";
 import { resumenSueltos } from "../lib/sueltos";
-import { avancePiezas, textoAvancePiezas, reglasPieza, nombresEtapas } from "../lib/piezas";
+import { avancePiezas, reglasPieza, nombresEtapas, pct as pctPiezas, porcentajeOt } from "../lib/piezas";
 import { estadoCarga } from "../lib/carga";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import MaterialOt from "./MaterialOt";
@@ -103,9 +103,12 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const maxEtapa = resumen ? Math.max(1, ...resumen.etapas.map((e) => e.min)) : 1;
   const costo = useMemo(() => costoOp(resumen, costoHora), [resumen, costoHora]);
   const resSueltos = resumenSueltos(sueltos);
-  const textoPiezas = piezas.piezas.length
-    ? textoAvancePiezas(avancePiezas(piezas.piezas, piezas.pasos, reglasPieza(etapas).map((r) => r.codigo)), nombresEtapas(etapas))
-    : "";
+  // % de producción por escaneo (parte 25): piezas escaneadas sobre el total
+  const reglas = reglasPieza(etapas);
+  const avanceEscaneo = piezas.piezas.length ? avancePiezas(piezas.piezas, piezas.pasos, reglas.map((r) => r.codigo)) : [];
+  const pctEscaneo = porcentajeOt(avanceEscaneo);
+  const nombres = nombresEtapas(etapas);
+  const iconos = Object.fromEntries(reglas.map((r) => [r.codigo, r.icon]));
   const resCarga = estadoCarga({ bultos: carga.bultos, carga: carga.fila });
   const resActa = estadoActa({ acta: acta.fila, pendientes: acta.pendientes });
 
@@ -129,8 +132,27 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
 
-        {textoPiezas && (
-          <div className="text-xs text-gypi-dim mb-3">🧩 Piezas escaneadas ({piezas.piezas.length}): {textoPiezas}</div>
+        {pctEscaneo != null && (
+          <section className="mb-4" aria-label="Avance de producción por escaneo">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="g-label flex-1">🧩 Producción por escaneo</div>
+              <div className="font-heading text-lg font-bold text-gypi-amber-ink">{pctEscaneo}%</div>
+            </div>
+            <div className="text-[11px] text-gypi-dim mb-1.5">{piezas.piezas.length === 1 ? "1 pieza" : `${piezas.piezas.length} piezas`} en la OT. Cuenta las piezas escaneadas en cada etapa.</div>
+            <div className="flex flex-col gap-1.5">
+              {avanceEscaneo.map((a) => (
+                <div key={a.codigo} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border">
+                  <div className="flex items-center gap-2">
+                    {iconos[a.codigo] && <span className="text-lg">{iconos[a.codigo]}</span>}
+                    <span className="flex-1 min-w-0 text-[13px] font-bold truncate">{nombres[a.codigo] || `Etapa ${a.codigo}`}</span>
+                    <span className="text-[13px] font-bold">{pctPiezas(a.pasaron, a.total)}%</span>
+                  </div>
+                  <Barra pct={pctPiezas(a.pasaron, a.total)} />
+                  <div className="text-[11px] text-gypi-dim mt-1">{a.pasaron} de {a.total} piezas</div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {resSueltos.total > 0 && (
