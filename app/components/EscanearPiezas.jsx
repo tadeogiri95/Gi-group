@@ -6,6 +6,7 @@
 //   verde    → la pieza pasó por la etapa
 //   amarillo → ya estaba escaneada, se salteó una etapa anterior o no le toca
 //   rojo     → no es una etiqueta de pieza, o la pieza ya no está en la OT
+// La etiqueta de un módulo hace pasar todas sus piezas de una vez (Armado).
 // Sin señal, el escaneo se guarda y se manda solo cuando vuelve la conexión.
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -69,8 +70,11 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
       }
       const data = r.data || {};
       const m = mensajeEscaneo({ ...data, ok: r.status === 200 && data.ok }, nombres);
-      const deshacible = m.tono !== "rojo" && !data.ya && data.pieza?.id;
-      agregar({ ...m, deshacer: deshacible ? { pieza_id: data.pieza.id, etapa: data.etapa } : null });
+      const ok = m.tono !== "rojo" && !data.ya;
+      const deshacer = !ok ? null
+        : data.modulo ? { accion: "deshacer_modulo", ot: data.modulo.ot, modulo: data.modulo.nombre, etapa: data.etapa }
+          : data.pieza?.id ? { accion: "deshacer", pieza_id: data.pieza.id, etapa: data.etapa } : null;
+      agregar({ ...m, deshacer });
     } catch (e) {
       agregar({ tono: "rojo", texto: e?.message || "No se pudo anotar la pieza.", detalle: null });
     }
@@ -78,7 +82,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
 
   const deshacer = async (item) => {
     try {
-      const r = await apiFetch("/api/piezas/paso", { method: "POST", body: JSON.stringify({ accion: "deshacer", ...item.deshacer }) });
+      const r = await apiFetch("/api/piezas/paso", { method: "POST", body: JSON.stringify(item.deshacer) });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "No se pudo deshacer");
       vistos.current.clear();
@@ -115,12 +119,12 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
         {!botones.length ? (
           <div className="text-[14px] text-gypi-dim">Todavía no hay etapas que se escaneen por pieza. Se marcan en Configuración → Etapas.</div>
         ) : !etapa ? (
-          <div className="text-[14px] text-gypi-dim">Elegí la etapa y escaneá las etiquetas de las piezas.</div>
+          <div className="text-[14px] text-gypi-dim">Elegí la etapa y escaneá las etiquetas de las piezas. En Armado escaneá la etiqueta del módulo: pasan todas sus piezas juntas.</div>
         ) : (
           <>
             {escanerDisponible() ? (
               <div className="mb-2">
-                <EscanerCodigo onCodigo={anotar} ayuda={`Apuntá a la etiqueta de cada pieza que pasa por ${nombreEtapa}`} />
+                <EscanerCodigo onCodigo={anotar} ayuda={`Apuntá a la etiqueta de cada pieza (o de cada módulo armado) que pasa por ${nombreEtapa}`} />
               </div>
             ) : (
               <div className="text-[13px] text-gypi-dim mb-2">Para escanear con la cámara usá Chrome en un celular Android. Mientras tanto, escribí el número de la etiqueta (N°).</div>

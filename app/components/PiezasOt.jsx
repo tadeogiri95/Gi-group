@@ -10,6 +10,7 @@ import { apiFetch, sbGetAll } from "../lib/supabase";
 import { TAMANOS_ETIQUETA } from "../lib/carga";
 import {
   reglasPieza, nombresEtapas, leerPiezas, expandirPiezas, agruparRenglones, cambiosAlReemplazar, medidas, imprimirEtiquetasPiezas,
+  imprimirEtiquetasModulos, modulosConPiezas,
   avancePiezas, textoAvancePiezas,
 } from "../lib/piezas";
 
@@ -124,6 +125,17 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
     return [...m.entries()];
   }, [renglones]);
   const paraImprimir = (piezas || []).filter((p) => !modulo || (p.modulo || SIN_MODULO) === modulo);
+
+  const paraModulos = modulosConPiezas(piezas || []).filter((m) => !modulo || m.modulo === modulo);
+  const imprimirModulos = async () => {
+    setError(null);
+    const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
+    try {
+      await imprimirEtiquetasModulos({ empresa: empresa?.nombre_corto || "", ot, modulos: paraModulos, tamano: t });
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
   const imprimir = async (lista) => {
     setError(null);
@@ -245,6 +257,14 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
               <button onClick={() => imprimir(paraImprimir)} disabled={!paraImprimir.length} className="g-btn g-btn-primary w-full mt-2.5">
                 🖨 Imprimir {paraImprimir.length === 1 ? "1 etiqueta" : `${paraImprimir.length} etiquetas`}
               </button>
+              {paraModulos.length > 0 && (
+                <>
+                  <button onClick={imprimirModulos} className="g-btn g-btn-secondary w-full mt-2">
+                    🏷 Imprimir {paraModulos.length === 1 ? "1 etiqueta de módulo" : `${paraModulos.length} etiquetas de módulo`}
+                  </button>
+                  <div className="text-[11px] text-gypi-dim mt-1">Se pegan en el módulo armado. Al escanearla en Armado pasan todas sus piezas juntas.</div>
+                </>
+              )}
             </section>
 
             {pasos.length > 0 && (

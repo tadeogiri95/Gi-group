@@ -274,6 +274,28 @@ export function leerQrPieza(texto) {
   return m ? { ot: m[1], id: Number(m[2]) } : null;
 }
 
+/**
+ * QR de la etiqueta de módulo (para escanear el módulo armado): "OT M-7495 -
+ * MODULO - M.izq". Al escanearlo en una etapa, pasan por ella todas las
+ * piezas de ese módulo.
+ */
+export function textoQrModulo(ot, modulo) {
+  return `OT ${ot} - MODULO - ${modulo}`;
+}
+
+/** QR de módulo → { ot, modulo }, o null si no es de un módulo. */
+export function leerQrModulo(texto) {
+  const m = String(texto ?? "").trim().match(/^OT\s+([\w.-]{1,40})\s+-\s+MODULO\s+-\s+(\S.{0,39})$/i);
+  return m ? { ot: m[1], modulo: m[2].trim() } : null;
+}
+
+/** Módulos de la OT para las etiquetas: [{ modulo, piezas }] (las piezas sin módulo no llevan). */
+export function modulosConPiezas(piezas = []) {
+  const m = new Map();
+  for (const p of piezas) if (p.modulo) m.set(p.modulo, (m.get(p.modulo) || 0) + 1);
+  return [...m].map(([modulo, n]) => ({ modulo, piezas: n })).sort((a, b) => a.modulo.localeCompare(b.modulo, "es", { numeric: true }));
+}
+
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 
@@ -318,6 +340,50 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano, no
   .ruta { font-size: ${pt(7)}; margin-top: .8mm; border-top: .3mm solid #000; padding-top: .5mm; }
   .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
 </style></head><body>${items.join("")}</body></html>`;
+}
+
+/** Página con una etiqueta por módulo, mismo rollo que las de pieza: OT, módulo, cuántas piezas y el QR. */
+export async function htmlEtiquetasModulos({ empresa = "", ot, modulos, tamano }) {
+  const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
+  const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
+  const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
+  const items = [];
+  for (const [i, m] of modulos.entries()) {
+    const qr = await svgQR(textoQrModulo(ot, m.modulo));
+    items.push(`
+  <div class="etiqueta">
+    <div class="texto">
+      <div class="ot">${empresa ? `${esc(empresa)} · ` : ""}OT ${esc(ot)}</div>
+      <div class="titulo">MÓDULO</div>
+      <div class="modulo">${esc(m.modulo)}</div>
+      <div class="chico">${i + 1} de ${modulos.length} · ${m.piezas === 1 ? "1 pieza" : `${m.piezas} piezas`}</div>
+    </div>
+    <div class="qr">${qr}</div>
+  </div>`);
+  }
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Módulos OT ${esc(ot)}</title>
+<style>
+  @page { size: ${tamano.ancho}mm ${tamano.alto}mm; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; color: #000; }
+  .etiqueta { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 2.5mm; display: flex; gap: 2.5mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page; }
+  .texto { flex: 1; min-width: 0; }
+  .ot { font-size: ${pt(8)}; font-weight: 700; text-transform: uppercase; }
+  .titulo { font-size: ${pt(8)}; font-weight: 800; margin-top: .5mm; letter-spacing: .05em; }
+  .modulo { font-size: ${pt(17)}; font-weight: 800; line-height: 1.1; word-break: break-word; }
+  .chico { font-size: ${pt(8)}; margin-top: .8mm; border-top: .3mm solid #000; padding-top: .5mm; }
+  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
+</style></head><body>${items.join("")}</body></html>`;
+}
+
+/** Abre las etiquetas de módulo en una pestaña nueva con el diálogo de impresión. */
+export async function imprimirEtiquetasModulos(datos) {
+  const ventana = window.open("", "_blank");
+  if (!ventana) throw new Error("El navegador bloqueó la ventana. Permití las ventanas emergentes e intentá de nuevo.");
+  ventana.document.write(await htmlEtiquetasModulos(datos));
+  ventana.document.close();
+  ventana.focus();
+  setTimeout(() => ventana.print(), 300);
 }
 
 /** Abre las etiquetas en una pestaña nueva con el diálogo de impresión. */
@@ -414,6 +480,16 @@ export function clavesEscaneadas(filas = []) {
 export function mensajeEscaneo(r, nombres = {}) {
   const nombreEtapa = (c) => nombres[c] || (Number(c) === Number(r?.etapa) && r?.etapaNombre) || `Etapa ${c}`;
   if (!r?.ok) return { tono: "rojo", texto: r?.error || "No se pudo anotar la pieza.", detalle: null };
+  if (r.modulo) {
+    const m = r.modulo;
+    const etapa = nombreEtapa(r.etapa);
+    const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la OT ${m.ot}.` : null;
+    const terminada = r.etapaTerminada ? ` ✅ Pasaron todas: la etapa ${r.etapaTerminada.nombre} quedó terminada, falta la firma.` : "";
+    const detalle = progreso ? `${progreso}${terminada}` : null;
+    if (r.ya) return { tono: "amarillo", texto: `El módulo ${m.nombre} ya estaba escaneado en ${etapa}.`, detalle };
+    if (!m.requeridas) return { tono: "amarillo", texto: `El módulo ${m.nombre} quedó anotado en ${etapa}, pero según la planilla sus piezas no pasan por esa etapa.`, detalle };
+    return { tono: "verde", texto: `Módulo ${m.nombre} listo en ${etapa}: ${m.nuevas === 1 ? "1 pieza" : `${m.nuevas} piezas`}.`, detalle };
+  }
   const p = r.pieza || {};
   const cual = `${p.nombre}${p.de > 1 ? ` (${p.unidad} de ${p.de})` : ""}`;
   const etapa = nombreEtapa(r.etapa);
