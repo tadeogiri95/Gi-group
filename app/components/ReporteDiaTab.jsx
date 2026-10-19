@@ -60,7 +60,7 @@ export default function ReporteDiaTab() {
         <div className="text-sm font-bold text-gypi-text font-heading">{fecha === hoy ? "Hoy" : fechaCorta(fecha)}</div>
         <button onClick={() => setFecha(moverDia(fecha, 1))} disabled={fecha >= hoy} aria-label="Día siguiente" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl disabled:opacity-30">→</button>
       </div>
-      <p className="text-[12px] text-gypi-dim mt-0 mb-3">Todos los días a las 23 h le llega este reporte por email al dueño de la cuenta (si ese día hubo movimiento).</p>
+      <p className="text-[12px] text-gypi-dim mt-0 mb-3">Todos los días a las 23 h, si ese día hubo movimiento, este reporte le llega por email al dueño de la cuenta y como aviso al celular a gerencia y administración.</p>
 
       {estado.cargando ? (
         <div className="gypi-dots" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>

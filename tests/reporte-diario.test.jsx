@@ -210,3 +210,45 @@ test("Reportes → Del día — muestra el reporte y cambia de día", async () =
   await waitFor(() => assert.equal(pedidos.length, 2));
   assert.ok(!pedidos[1].includes(`fecha=${hoyArg()}`));
 });
+
+// ─── Aviso al celular ───
+
+const { enviarPushGerencia } = await import("../app/lib/pushGerencia.js");
+const { textoPushReporte } = await import("../app/lib/reporteDiario.js");
+
+test("textoPushReporte — resume el día en una línea", () => {
+  const r = armarReporteDiario({
+    fecha: FECHA, proyectos: PROYECTOS, etapas: ETAPAS,
+    avancePiezas: [{ ot: "7495", etapa: 1, total: 10, pasaron: 1 }],
+    pasos: [{ ot: "7495", etapa: 1, created_at: en(FECHA, "10:00") }],
+    instalacion: [{ ot: "7495", modulos: [] }, { ot: "7495", modulos: [] }],
+  });
+  assert.equal(textoPushReporte(r), "1 pieza escaneada · 2 reportes de instalación · 1 OT atrasada");
+});
+
+test("enviarPushGerencia — avisa a gerencial y administrativo y borra los tokens que ya no sirven", async () => {
+  const borrados = [];
+  global.fetch = createFetchMock([
+    { match: (u) => u.includes("/rest/v1/empleados"), respond: (u) => ({ status: 200, body: u.includes("offset=0") ? [{ legajo: 1 }, { legajo: 2 }] : [] }) },
+    { match: (u, o) => u.includes("/rest/v1/push_tokens") && o?.method === "DELETE", respond: (u) => { borrados.push(decodeURIComponent(u)); return { status: 204, body: null }; } },
+    { match: (u) => u.includes("/rest/v1/push_tokens"), respond: (u) => ({ status: 200, body: u.includes("offset=0") ? [{ token: "bueno" }, { token: "viejo" }] : [] }) },
+  ]);
+  const mandados = [];
+  const messaging = {
+    send: async (m) => {
+      if (m.token === "viejo") throw Object.assign(new Error("x"), { code: "messaging/registration-token-not-registered" });
+      mandados.push(m);
+    },
+  };
+  const n = await enviarPushGerencia("e1", { title: "Reporte del día", body: "hola", data: { url: "/acme", n: 3 } }, { messaging });
+  assert.equal(n, 1);
+  assert.equal(mandados[0].notification.title, "Reporte del día");
+  assert.deepEqual(mandados[0].data, { empresa_id: "e1", url: "/acme", n: "3" }, "FCM solo acepta textos");
+  assert.ok(borrados.some((u) => u.includes("token=eq.viejo")));
+});
+
+test("enviarPushGerencia — sin Firebase configurado no manda nada ni falla", async () => {
+  delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  delete process.env.FIREBASE_SERVICE_ACCOUNT_B64;
+  assert.equal(await enviarPushGerencia("e1", { title: "t", body: "b" }), 0);
+});

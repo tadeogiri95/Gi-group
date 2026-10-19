@@ -124,3 +124,15 @@ export function armarReporteDiario({ fecha, proyectos = [], etapas = [], avanceP
 export function reporteVacio(r) {
   return !r || (r.piezasHoy === 0 && r.etapasCerradas.length === 0 && r.instalaciones.length === 0);
 }
+
+/** Texto corto del aviso al celular: "120 piezas escaneadas · 2 OT terminadas · …". */
+export function textoPushReporte(r) {
+  const n = (x, uno, varios) => `${x} ${x === 1 ? uno : varios}`;
+  return [
+    n(r.piezasHoy, "pieza escaneada", "piezas escaneadas"),
+    r.completadas.length && n(r.completadas.length, "OT con producción terminada", "OT con producción terminada"),
+    r.etapasCerradas.length && n(r.etapasCerradas.length, "etapa cerrada", "etapas cerradas"),
+    r.instalaciones.length && n(r.instalaciones.length, "reporte de instalación", "reportes de instalación"),
+    r.atrasadas.length && n(r.atrasadas.length, "OT atrasada", "OT atrasadas"),
+  ].filter(Boolean).join(" · ");
+}
