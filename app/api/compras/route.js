@@ -23,7 +23,8 @@
 //                           Administración); cada renglón con SKU entra como ingreso de
 //                           stock; la OC pasa a recibida en parte o recibida (115)
 //   recepcion_anular      → la recepción y sus ingresos quedan anulados (comprador)
-//   oc_factura            → N° y fecha de factura, tipo de cambio y precio final; los
+//   oc_factura            → N° y fecha de factura, tipo de cambio, otros impuestos y
+//                           por renglón cantidad, precio sin IVA e IVA % (122); los
 //                           ingresos con otro precio se reemplazan (comprador)
 // Comprador = gerencia o Administración sin división asignada (un supervisor
 // de división pide y recibe, pero no compra). Con RLS_RUTAS=on todo va con el
@@ -58,6 +59,11 @@ function faltaMigracionOc(err) {
 function faltaMigracionObservacion(err) {
   const m = String(err?.message);
   return /observacion/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+function faltaMigracionFactura(err) {
+  const m = String(err?.message);
+  return /cantidad_facturada|iva_alicuota|factura_otros_impuestos/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
 }
 
 function faltaMigracionRecepcion(err) {
@@ -525,16 +531,23 @@ async function facturaOrden(sesion, d) {
   if (oc.estado === "anulada") return NextResponse.json({ error: "Esa orden de compra está anulada" }, { status: 409 });
   const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   const porId = new Map(items.map((it) => [it.id, it]));
-  for (const pr of d.precios || []) {
-    const it = porId.get(pr.item_id);
+  const numeroO = (v) => (v === null || v === undefined ? null : Number(v));
+  for (const r of d.renglones || []) {
+    const it = porId.get(r.item_id);
     if (!it) return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
-    const viejo = it.precio_unitario === null || it.precio_unitario === undefined ? null : Number(it.precio_unitario);
-    if (viejo === pr.precio_unitario) continue;
-    it.precio_unitario = pr.precio_unitario;
-    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, { precio_unitario: pr.precio_unitario }, opts);
+    const patch = {};
+    for (const campo of ["precio_unitario", "cantidad_facturada", "iva_alicuota"]) {
+      if (r[campo] === undefined || numeroO(it[campo]) === r[campo]) continue;
+      patch[campo] = r[campo];
+    }
+    if (!Object.keys(patch).length) continue;
+    Object.assign(it, patch);
+    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, patch, opts);
   }
   const ahora = new Date().toISOString();
   const cambios = { factura_numero: d.factura_numero, factura_fecha: d.factura_fecha, tipo_cambio: oc.moneda === "USD" ? d.tipo_cambio : null, updated_at: ahora };
+  // Sin la migración 122 la columna no viene: solo se escribe si cambió
+  if (d.otros_impuestos !== undefined && numeroO(oc.factura_otros_impuestos) !== d.otros_impuestos) cambios.factura_otros_impuestos = d.otros_impuestos;
   const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, cambios, opts)) || [];
   const ocNueva = { ...oc, ...cambios };
 
@@ -615,6 +628,9 @@ export async function POST(request) {
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionFactura(err)) {
+        return NextResponse.json({ error: "Para cargar la factura con IVA y otros impuestos falta correr la migración 122 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionEdicion(err)) {
         return NextResponse.json({ error: "Para corregir pedidos falta correr la migración 121 en Supabase." }, { status: 409 });
       }
