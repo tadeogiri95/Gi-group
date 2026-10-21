@@ -12,6 +12,7 @@ import {
   puedePedir, puedeComprar, puedeAnularPedido, leerListaProveedores, formatoCuit, numeroWhatsapp, textoPedido, filtrarPedidos,
   puedeEditarPedido, cambiosPedido, textoCambio,
 } from "../app/lib/compras.js";
+import { leerPedidoPegado } from "../app/lib/pedidoPegado.js";
 import { comprasBody } from "../app/lib/schemas.ts";
 import { autorizar } from "../app/lib/dataPolicy.js";
 import { _limpiarCacheAlcance } from "../app/lib/alcance.js";
@@ -158,7 +159,7 @@ test("migración 113 — por empresa, sin borrar; se lee por /api/data solo gest
 
 // ─── Ruta ───
 
-function mockRuta({ supervisor = null, articulo = PLACA, ot = [{ ot: "M-7495" }], pedido = null, proveedores = [], falla = null, duplicado = false, sin121 = false } = {}) {
+function mockRuta({ supervisor = null, articulo = PLACA, articulos = null, ot = [{ ot: "M-7495" }], pedido = null, proveedores = [], falla = null, duplicado = false, sin121 = false } = {}) {
   const escrito = [];
   const escribir = (tabla) => (u, o) => {
     if (falla) return { status: 404, body: { message: falla } };
@@ -182,7 +183,7 @@ function mockRuta({ supervisor = null, articulo = PLACA, ot = [{ ot: "M-7495" }]
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
-    { match: (u) => u.includes("/rest/v1/articulos_stock"), respond: () => ({ status: 200, body: articulo ? [articulo] : [] }) },
+    { match: (u) => u.includes("/rest/v1/articulos_stock"), respond: () => ({ status: 200, body: articulos || (articulo ? [articulo] : []) }) },
     { match: (u) => u.includes("/rest/v1/proyectos"), respond: () => ({ status: 200, body: ot }) },
     { match: (u) => u.includes("/rest/v1/pedidos_compra_cambios"), respond: escribir("pedidos_compra_cambios") },
     { match: (u) => u.includes("/rest/v1/pedidos_compra"), respond: escribir("pedidos_compra") },
@@ -520,4 +521,118 @@ test("accesos — pestaña Compras en Planta", () => {
   const planta = readFileSync(new URL("../app/components/screens/PlantaScreen.jsx", import.meta.url), "utf8");
   assert.match(planta, /\{ id: "compras", label: "Compras", modulo: "proyectos" \}/);
   assert.match(planta, /<ComprasScreen empresaId=\{empresaId\} empresa=\{empresa\} usuario=\{usuario\} \/>/);
+});
+
+// ─── Pegar desde la planilla (hoja INVENTARIO) ───
+
+const BISAGRA = { sku: "1.3.2.69.155.5.3.53", nombre: "BISAGRA 35 CODO 0-S/Marca-S/COLOR-1 PZ", unidad: "PZ", division: "MADERA" };
+const TABLILLA = { sku: "3.3.1.6.109.2.8.3", nombre: "0277 TABLILLA REGUL POSTIGON-Aluar-NEGRO-6MT", unidad: "MT", division: "ALUMINIO" };
+const CATALOGO = [PLACA, BISAGRA, TABLILLA];
+const TITULOS_INV = ["SKU", "ARTICULO", "STOCK TOTAL", "NECESIDAD BRUTA", "CONSUMO REAL", "NECESIDAD PENDIENTE", "DISPONIBLE", "SEMÁFORO VIEJO", "VALORIZACIÓN TOTAL", "VALORIZACIÓN COMPRAS",
+  "VALORIZACIÓN NECESIDADES", "CONSUMO DIARIO PROM. (u/día)", "LEAD TIME (d)", "STOCK SEGURIDAD", "ORIGEN PARÁMETROS", "PUNTO DE PEDIDO", "PRÓXIMA NECESIDAD", "SEMÁFORO MRP", "MÚLTIPLO", "CANTIDAD SUGERIDA",
+  "PRECIO VALORIZ. (u)", "DIVISIÓN", "EN TRÁNSITO", "DISPONIBLE PROYECTADO"];
+const filaInv = (sku, nombre, sugerida) => [sku, nombre, "0", "24", "0", "24", "-24", "", "", "", "", "0,000", "10", "0", "PROPUESTO", "0", "10/08/2026", "🔴 URGENTE", "1", sugerida, "", "ALUMINIO", "0", "-24"].join("\t");
+
+test("pegar de INVENTARIO con títulos — usa SKU y CANTIDAD SUGERIDA; suma repetidos; separa no encontrados y sin cantidad", () => {
+  const texto = [
+    TITULOS_INV.join("\t"),
+    filaInv(TABLILLA.sku, TABLILLA.nombre, "24"),
+    filaInv(BISAGRA.sku, BISAGRA.nombre, "1.200"),
+    filaInv("9.9.9.9", "ARTICULO NUEVO", "5"),
+    filaInv(PLACA.sku, PLACA.nombre, ""),
+    filaInv(TABLILLA.sku, TABLILLA.nombre, "6"),
+    TITULOS_INV.join("\t"),
+    "",
+  ].join("\n");
+  const r = leerPedidoPegado(texto, CATALOGO);
+  assert.deepEqual(r.reconocidos, [
+    { sku: TABLILLA.sku, nombre: TABLILLA.nombre, unidad: "MT", cantidad: 30 },
+    { sku: BISAGRA.sku, nombre: BISAGRA.nombre, unidad: "PZ", cantidad: 1200 },
+  ]);
+  assert.deepEqual(r.noEncontrados, [{ texto: "9.9.9.9 · ARTICULO NUEVO", cantidad: 5 }]);
+  assert.deepEqual(r.sinCantidad, [{ texto: PLACA.nombre }]);
+  assert.equal(r.demasiados, false);
+});
+
+test("pegar — renglones enteros sin títulos (columna T) y dos columnas con código o nombre", () => {
+  let r = leerPedidoPegado([filaInv(TABLILLA.sku, TABLILLA.nombre, "24"), filaInv(BISAGRA.sku, BISAGRA.nombre, "15,5")].join("\n"), CATALOGO);
+  assert.deepEqual(r.reconocidos.map((a) => [a.sku, a.cantidad]), [[TABLILLA.sku, 24], [BISAGRA.sku, 15.5]]);
+  r = leerPedidoPegado(`${BISAGRA.sku}\t10\nbisagra 35 codo 0-s/marca-s/color-1 pz\t2\nTornillo raro\t3\n${PLACA.sku}\t0`, CATALOGO);
+  assert.deepEqual(r.reconocidos.map((a) => [a.sku, a.cantidad]), [[BISAGRA.sku, 12]], "el nombre sin importar mayúsculas");
+  assert.deepEqual(r.noEncontrados, [{ texto: "Tornillo raro", cantidad: 3 }]);
+  assert.equal(r.sinCantidad.length, 1);
+  r = leerPedidoPegado(Array.from({ length: 205 }, () => `${BISAGRA.sku}\t1`).join("\n"), CATALOGO);
+  assert.equal(r.demasiados, true);
+  assert.equal(r.reconocidos[0].cantidad, 200);
+});
+
+test("pedidos_crear — esquema: solo artículos del catálogo, hasta 200, sin empresa", () => {
+  const ok = (b) => comprasBody.safeParse(b).success;
+  assert.equal(ok({ accion: "pedidos_crear", items: [{ sku: "1.1.2", cantidad: 3 }], ot: "M-7495", para_fecha: "2026-10-25" }), true);
+  assert.equal(ok({ accion: "pedidos_crear", items: [] }), false);
+  assert.equal(ok({ accion: "pedidos_crear", items: [{ sku: "1.1.2", cantidad: 0 }] }), false);
+  assert.equal(ok({ accion: "pedidos_crear", items: [{ sku: "1.1.2&x=1", cantidad: 1 }] }), false);
+  assert.equal(ok({ accion: "pedidos_crear", items: [{ descripcion: "Tornillos", cantidad: 1 }] }), false);
+  assert.equal(ok({ accion: "pedidos_crear", items: Array.from({ length: 201 }, () => ({ sku: "1.1.2", cantidad: 1 })) }), false);
+  assert.equal(ok({ accion: "pedidos_crear", items: [{ sku: "1.1.2", cantidad: 1 }], empresa_id: E }), false);
+});
+
+test("/api/compras pedidos_crear — un pedido pendiente por artículo, con la misma OT y observación", async () => {
+  const escrito = mockRuta({ supervisor: "MUEBLES", articulos: [BISAGRA, TABLILLA] });
+  const res = await api.POST(req(await token("administrativo"), {
+    accion: "pedidos_crear", items: [{ sku: BISAGRA.sku, cantidad: 10 }, { sku: TABLILLA.sku, cantidad: 24 }, { sku: BISAGRA.sku, cantidad: 2 }],
+    ot: "M-7495", para_fecha: "2026-10-25", notas: "Urgente",
+  }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, creados: 2 });
+  assert.equal(escrito.length, 1, "todos en una sola escritura");
+  const filas = escrito[0].body;
+  assert.equal(escrito[0].tabla, "pedidos_compra");
+  assert.deepEqual(filas.map((f) => [f.sku, f.descripcion, f.unidad, f.cantidad, f.division]), [
+    [BISAGRA.sku, BISAGRA.nombre, "PZ", 12, "MADERA"],
+    [TABLILLA.sku, TABLILLA.nombre, "MT", 24, "ALUMINIO"],
+  ]);
+  for (const f of filas) {
+    assert.equal(f.empresa_id, E);
+    assert.equal(f.estado, "pendiente");
+    assert.equal(f.ot, "M-7495");
+    assert.equal(f.para_fecha, "2026-10-25");
+    assert.equal(f.notas, "Urgente");
+    assert.equal(f.empleado_id, EMP);
+    assert.equal(f.empleado_nombre, "Ana Jefa");
+  }
+});
+
+test("/api/compras pedidos_crear — el operario no; artículo que no está o OT que no existe no guarda nada", async () => {
+  let escrito = mockRuta({ articulos: [BISAGRA] });
+  let res = await api.POST(req(await token("operativo"), { accion: "pedidos_crear", items: [{ sku: BISAGRA.sku, cantidad: 1 }] }));
+  assert.equal(res.status, 403);
+  res = await api.POST(req(await token("gerencial"), { accion: "pedidos_crear", items: [{ sku: BISAGRA.sku, cantidad: 1 }, { sku: "9.9.9", cantidad: 1 }] }));
+  assert.equal(res.status, 404);
+  assert.match((await res.json()).error, /9\.9\.9/);
+  assert.equal(escrito.length, 0);
+  escrito = mockRuta({ articulos: [BISAGRA], ot: [] });
+  res = await api.POST(req(await token("gerencial"), { accion: "pedidos_crear", items: [{ sku: BISAGRA.sku, cantidad: 1 }], ot: "X-1" }));
+  assert.equal(res.status, 404);
+  assert.equal(escrito.length, 0);
+});
+
+test("📋 pegar desde la planilla — vista previa, corregir la cantidad y pedir todo junto", async () => {
+  const { enviados } = mockPantalla();
+  render(<ComprasScreen empresaId={E} usuario={JEFE} />);
+  fireEvent.click(await screen.findByText("📋 Pegar desde la planilla"));
+  const texto = [TITULOS_INV.join("\t"), filaInv(PLACA.sku, PLACA.nombre, "24"), filaInv("9.9.9.9", "ARTICULO NUEVO", "5")].join("\n");
+  fireEvent.change(screen.getByLabelText("Renglones copiados"), { target: { value: texto } });
+  // Al abrir se cargan los artículos: se reintenta hasta que estén
+  await waitFor(() => {
+    if (!screen.queryByText("✅ Se piden (1)")) fireEvent.click(screen.getByText("Ver qué se pide"));
+    assert.ok(screen.getByText("✅ Se piden (1)"));
+  });
+  assert.ok(screen.getByText("9.9.9.9 · ARTICULO NUEVO"));
+  fireEvent.change(screen.getByLabelText(`Cantidad de ${PLACA.nombre}`), { target: { value: "20" } });
+  fireEvent.change(screen.getByLabelText("OT (opcional)"), { target: { value: "M-7495" } });
+  fireEvent.click(screen.getByText("Pedir 1 material"));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual(enviados[0], { accion: "pedidos_crear", items: [{ sku: PLACA.sku, cantidad: 20 }], ot: "M-7495", para_fecha: null, notas: null });
+  assert.ok(await screen.findByText(/Cargué 1 pedido/));
 });

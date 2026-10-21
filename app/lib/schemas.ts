@@ -357,6 +357,14 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("proveedor_baja"), id: idCompras, activo: z.boolean() }).strict(),
   z.object({ accion: z.literal("proveedores_importar"), nombres: z.array(z.string().trim().min(1).max(120)).min(1).max(500) }).strict(),
   z.object({ accion: z.literal("pedido_crear"), ...datosPedido }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
+  // Varios pedidos de una vez, pegados de la hoja INVENTARIO: un pedido por artículo
+  z.object({
+    accion: z.literal("pedidos_crear"),
+    items: z.array(z.object({ sku: skuMovimiento, cantidad: z.number().finite().positive().max(1e10) }).strict()).min(1).max(200),
+    ot: datosPedido.ot,
+    para_fecha: datosPedido.para_fecha,
+    notas: datosPedido.notas,
+  }).strict(),
   z.object({ accion: z.literal("pedido_anular"), id: idCompras }).strict(),
   // Corregir un pedido pendiente (121): los mismos datos que al pedir
   z.object({
