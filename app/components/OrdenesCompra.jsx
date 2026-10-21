@@ -11,6 +11,7 @@ import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { numeroWhatsapp } from "../lib/compras";
 import {
   ESTADOS_OC, ESTADOS_OC_ABIERTA, MONEDAS, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
+  ALICUOTAS_IVA, IVA_POR_DEFECTO, cantidadFacturaInicial, renglonFactura, totalesFactura,
 } from "../lib/ordenesCompra";
 import { AVISO_MIGRACION_114 } from "./AComprar";
 
@@ -24,35 +25,58 @@ async function postCompras(body) {
   return data;
 }
 
-/** Factura de la OC (parte 22): puede llegar después del material. Si cambia el precio, los ingresos de stock se reemplazan. */
+/**
+ * Factura de la OC (parte 22; con IVA y otros impuestos, migración 122): puede
+ * llegar después del material. Por renglón se carga cantidad, precio sin IVA e
+ * IVA %; neto, IVA y total los calcula Gypi. Otros impuestos van una sola vez
+ * para toda la factura. Si cambia el precio, los ingresos de stock se reemplazan.
+ */
 function FacturaOrden({ oc, items, onGuardada }) {
   const [numero, setNumero] = useState(oc.factura_numero || "");
   const [fecha, setFecha] = useState(oc.factura_fecha || "");
   const [tc, setTc] = useState(numTexto(oc.tipo_cambio));
-  const [precios, setPrecios] = useState(() => Object.fromEntries(items.map((it) => [it.id, numTexto(it.precio_unitario)])));
+  const [otros, setOtros] = useState(numTexto(oc.factura_otros_impuestos));
+  const [renglones, setRenglones] = useState(() => Object.fromEntries(items.map((it) => [it.id, {
+    cantidad: numTexto(cantidadFacturaInicial(it)),
+    precio: numTexto(it.precio_unitario),
+    iva: String(it.iva_alicuota === null || it.iva_alicuota === undefined ? IVA_POR_DEFECTO : Number(it.iva_alicuota)),
+  }])));
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const usd = oc.moneda === "USD";
+  const plata = (n) => importeTexto(n, oc.moneda);
+  const cambiar = (id, campo, valor) => setRenglones((r) => ({ ...r, [id]: { ...r[id], [campo]: valor } }));
+
+  // Lo que se ve calculado mientras se escribe
+  const leidos = items.map((it) => {
+    const r = renglones[it.id];
+    return { it, cantidad: leerCantidadMovimiento(r.cantidad), precio: r.precio.trim() ? leerImporte(r.precio) : null, iva: Number(r.iva) };
+  });
+  const totales = totalesFactura(leidos, leerImporte(otros) || 0);
 
   const guardar = async () => {
     setError(null);
     setAviso(null);
     const cambios = [];
-    for (const it of items) {
-      const t = String(precios[it.id] ?? "").trim();
-      const precio = t ? leerImporte(t) : null;
-      if (t && precio === null) { setError(`Revisá el precio de ${it.descripcion}`); return; }
-      const viejo = it.precio_unitario === null || it.precio_unitario === undefined ? null : Number(it.precio_unitario);
-      if (precio !== viejo) cambios.push({ item_id: it.id, precio_unitario: precio });
+    const numeroO = (v) => (v === null || v === undefined ? null : Number(v));
+    for (const { it, cantidad, precio, iva } of leidos) {
+      const r = renglones[it.id];
+      if (r.precio.trim() && precio === null) { setError(`Revisá el precio de ${it.descripcion}`); return; }
+      if (r.cantidad.trim() && cantidad === null) { setError(`Revisá la cantidad de ${it.descripcion}`); return; }
+      const nuevo = { precio_unitario: precio, cantidad_facturada: r.cantidad.trim() ? cantidad : null, iva_alicuota: iva };
+      const difiere = Object.keys(nuevo).filter((k) => numeroO(it[k]) !== nuevo[k]);
+      if (difiere.length) cambios.push({ item_id: it.id, ...Object.fromEntries(difiere.map((k) => [k, nuevo[k]])) });
     }
     const tipoCambio = usd && tc.trim() ? leerImporte(tc) : null;
     if (usd && tc.trim() && !tipoCambio) { setError("Revisá el tipo de cambio"); return; }
+    const otrosImp = otros.trim() ? leerImporte(otros) : null;
+    if (otros.trim() && otrosImp === null) { setError("Revisá otros impuestos"); return; }
     setEnviando(true);
     try {
       const data = await postCompras({
         accion: "oc_factura", id: oc.id, factura_numero: numero.trim() || null, factura_fecha: fecha || null,
-        tipo_cambio: tipoCambio, ...(cambios.length ? { precios: cambios } : {}),
+        tipo_cambio: tipoCambio, otros_impuestos: otrosImp, ...(cambios.length ? { renglones: cambios } : {}),
       });
       setAviso(`Factura guardada${data.reemplazados ? `. Corregí ${data.reemplazados} ingreso${data.reemplazados === 1 ? "" : "s"} de stock con el precio nuevo` : ""}.`);
       await onGuardada();
@@ -81,14 +105,49 @@ function FacturaOrden({ oc, items, onGuardada }) {
           <input id="fac-tc" className="g-input w-full mb-2" inputMode="decimal" value={tc} onChange={(e) => setTc(e.target.value)} placeholder="Ej: 1.050" />
         </>
       )}
-      <div className="text-[12px] text-gypi-dim mb-1">Precio final sin IVA{usd ? " en dólares" : ""}. Si cambia, el ingreso de stock se corrige solo.</div>
-      {items.map((it) => (
-        <div key={it.id} className="flex items-center gap-2 mb-1">
-          <label className="flex-1 min-w-0 text-[13px] truncate" htmlFor={`fac-precio-${it.id}`}>{it.descripcion}</label>
-          <input id={`fac-precio-${it.id}`} aria-label={`Precio final de ${it.descripcion}`} className="g-input w-[110px]" inputMode="decimal"
-            value={precios[it.id] ?? ""} onChange={(e) => setPrecios((p) => ({ ...p, [it.id]: e.target.value }))} />
+      <div className="text-[12px] text-gypi-dim mb-2">Precio unitario sin IVA{usd ? " en dólares" : ""}. Si cambia, el ingreso de stock se corrige solo.</div>
+      {leidos.map(({ it, cantidad, precio, iva }) => {
+        const r = renglones[it.id];
+        const calc = renglonFactura({ cantidad, precio, iva });
+        return (
+          <div key={it.id} className="py-2 border-t border-gypi-border">
+            <div className="text-[13px] font-semibold mb-1">{it.descripcion}</div>
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 min-w-0">
+                <label className="g-label" htmlFor={`fac-cant-${it.id}`}>Cantidad{it.unidad ? ` (${it.unidad})` : ""}</label>
+                <input id={`fac-cant-${it.id}`} aria-label={`Cantidad en la factura de ${it.descripcion}`} className="g-input w-full" inputMode="decimal"
+                  value={r.cantidad} onChange={(e) => cambiar(it.id, "cantidad", e.target.value)} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <label className="g-label" htmlFor={`fac-precio-${it.id}`}>Precio s/IVA</label>
+                <input id={`fac-precio-${it.id}`} aria-label={`Precio en la factura de ${it.descripcion}`} className="g-input w-full" inputMode="decimal"
+                  value={r.precio} onChange={(e) => cambiar(it.id, "precio", e.target.value)} />
+              </div>
+              <div className="w-[86px] shrink-0">
+                <label className="g-label" htmlFor={`fac-iva-${it.id}`}>IVA</label>
+                <select id={`fac-iva-${it.id}`} aria-label={`IVA de ${it.descripcion}`} className="g-input w-full" value={r.iva} onChange={(e) => cambiar(it.id, "iva", e.target.value)}>
+                  {ALICUOTAS_IVA.map((a) => <option key={a} value={String(a)}>{numTexto(a)}%</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="text-[12px] text-gypi-dim mt-1">
+              {calc ? `Neto ${plata(calc.neto)} · IVA ${plata(calc.iva)} · Total ${plata(calc.total)}` : "Falta cantidad o precio"}
+            </div>
+          </div>
+        );
+      })}
+      <div className="pt-2 border-t border-gypi-border text-[13px]">
+        <div className="flex justify-between mb-1"><span>Subtotal neto</span><span>{plata(totales.neto)}</span></div>
+        <div className="flex justify-between mb-1"><span>IVA</span><span>{plata(totales.iva)}</span></div>
+        <div className="flex items-center gap-2 mb-1">
+          <label className="flex-1" htmlFor="fac-otros">Otros impuestos (percepciones, internos)</label>
+          <div className="w-[120px] shrink-0">
+            <input id="fac-otros" className="g-input w-full text-right" inputMode="decimal" value={otros} onChange={(e) => setOtros(e.target.value)} placeholder="0" />
+          </div>
         </div>
-      ))}
+        <div className="flex justify-between font-bold text-[14px]"><span>Total de la factura</span><span>{plata(totales.total)}</span></div>
+        <div className="text-[12px] text-gypi-dim mt-1">Comparalo con el total del papel. Al stock entra el precio sin IVA.</div>
+      </div>
       <button onClick={guardar} disabled={enviando} className="g-btn g-btn-secondary w-full mt-2">{enviando ? "Guardando…" : "Guardar factura"}</button>
       {aviso && <div role="status" className="text-[13px] mt-2">✅ {aviso}</div>}
       {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}

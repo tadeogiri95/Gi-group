@@ -410,7 +410,15 @@ export const comprasBody = z.discriminatedUnion("accion", [
     factura_numero: textoSuelto(60),
     factura_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
     tipo_cambio: z.number().finite().positive().max(1e7).nullable().optional().transform((v) => v ?? null),
-    precios: z.array(z.object({ item_id: idCompras, precio_unitario: precioOc }).strict()).max(200).optional(),
+    // Otros impuestos de toda la factura (percepciones, internos); migración 122
+    otros_impuestos: z.number().finite().min(0).max(1e12).nullable().optional(),
+    // Solo los renglones que cambiaron, y en cada uno solo lo que cambió
+    renglones: z.array(z.object({
+      item_id: idCompras,
+      precio_unitario: z.number().finite().min(0).max(1e12).nullable().optional(),
+      cantidad_facturada: z.number().finite().min(0).max(1e10).nullable().optional(),
+      iva_alicuota: z.number().refine((v) => [21, 10.5, 27, 0].includes(v), "IVA 21, 10,5, 27 o 0").optional(),
+    }).strict()).max(200).optional(),
   }).strict(),
 ]);
 

@@ -290,3 +290,42 @@ export function precioEnPesos(precio, moneda, tipoCambio) {
   const tc = Number(tipoCambio);
   return Number.isFinite(tc) && tc > 0 ? Math.round(p * tc * 100) / 100 : null;
 }
+
+// ─── Factura de la OC con IVA y otros impuestos (migración 122) ───
+
+/** Alícuotas de IVA que se eligen por renglón; sin elegir es 21. */
+export const ALICUOTAS_IVA = [21, 10.5, 27, 0];
+export const IVA_POR_DEFECTO = 21;
+
+const centavos = (n) => Math.round(n * 100) / 100;
+
+/** Cantidad facturada que se propone: la guardada, si no lo que llegó, si no lo pedido. */
+export function cantidadFacturaInicial(it) {
+  if (it.cantidad_facturada !== null && it.cantidad_facturada !== undefined) return Number(it.cantidad_facturada);
+  const recibida = Number(it.cantidad_recibida);
+  return Number.isFinite(recibida) && recibida > 0 ? recibida : Number(it.cantidad);
+}
+
+/** Neto, IVA y total de un renglón de factura; null si falta la cantidad o el precio. */
+export function renglonFactura({ cantidad, precio, iva = IVA_POR_DEFECTO }) {
+  const q = Number(cantidad);
+  const p = Number(precio);
+  if (cantidad === null || cantidad === undefined || precio === null || precio === undefined || !Number.isFinite(q) || !Number.isFinite(p)) return null;
+  const neto = centavos(q * p);
+  const montoIva = centavos(neto * (Number(iva) || 0) / 100);
+  return { neto, iva: montoIva, total: centavos(neto + montoIva) };
+}
+
+/** Pie de la factura: subtotal neto e IVA (suma de renglones), otros impuestos y total. */
+export function totalesFactura(renglones, otros = 0) {
+  let neto = 0;
+  let iva = 0;
+  for (const r of renglones || []) {
+    const c = renglonFactura(r);
+    if (!c) continue;
+    neto += c.neto;
+    iva += c.iva;
+  }
+  const extra = Number(otros) || 0;
+  return { neto: centavos(neto), iva: centavos(iva), otros: centavos(extra), total: centavos(neto + iva + extra) };
+}
