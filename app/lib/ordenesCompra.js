@@ -160,7 +160,8 @@ export function textoOrdenCompra({ empresa, oc, items, proveedor = null }) {
   const saludo = proveedor?.contacto ? `Hola ${proveedor.contacto}` : "Hola";
   const renglones = (items || []).map((it) => {
     const precio = it.precio_unitario !== null && it.precio_unitario !== undefined ? ` · ${importeTexto(it.precio_unitario, oc.moneda)} c/u` : "";
-    return `• ${cantTexto(it.cantidad)}${it.unidad ? ` ${it.unidad}` : ""} ${it.descripcion}${it.sku ? ` (${it.sku})` : ""}${precio}`;
+    const obs = it.observacion ? `\n   Obs.: ${it.observacion}` : "";
+    return `• ${cantTexto(it.cantidad)}${it.unidad ? ` ${it.unidad}` : ""} ${it.descripcion}${it.sku ? ` (${it.sku})` : ""}${precio}${obs}`;
   });
   const total = totalOrden(items);
   return [
@@ -198,7 +199,7 @@ export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null
   const filas = items.map((it) => {
     const sub = it.precio_unitario !== null && it.precio_unitario !== undefined ? Number(it.cantidad) * Number(it.precio_unitario) : null;
     return `<tr>
-      <td>${esc(it.descripcion)}${it.sku ? `<div class="sku">${esc(it.sku)}</div>` : ""}${it.ot ? `<div class="sku">OT ${esc(it.ot)}</div>` : ""}</td>
+      <td>${esc(it.descripcion)}${it.sku ? `<div class="sku">${esc(it.sku)}</div>` : ""}${it.ot ? `<div class="sku">OT ${esc(it.ot)}</div>` : ""}${it.observacion ? `<div class="obs">Obs.: ${esc(it.observacion)}</div>` : ""}</td>
       <td class="n">${esc(cantTexto(it.cantidad))}</td>
       <td>${esc(it.unidad || "")}</td>
       <td class="n">${esc(it.precio_unitario !== null && it.precio_unitario !== undefined ? importeTexto(it.precio_unitario, oc.moneda) : "")}</td>
@@ -223,6 +224,7 @@ export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null
   .items td { border-bottom: .2mm solid #999; padding: 1.5mm 1mm; vertical-align: top; }
   .items .n { text-align: right; white-space: nowrap; }
   .sku { font-size: 8pt; color: #444; font-family: ui-monospace, monospace; }
+  .obs { font-size: 9pt; font-style: italic; margin-top: .5mm; }
   .total { margin-top: 3mm; text-align: right; font-size: 12pt; font-weight: 800; }
   .nota { margin-top: 5mm; font-size: 9.5pt; }
 </style></head><body>

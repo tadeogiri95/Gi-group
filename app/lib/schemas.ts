@@ -379,7 +379,11 @@ export const comprasBody = z.discriminatedUnion("accion", [
     moneda: monedaOc.optional(),
     fecha_prometida: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     notas: z.string().trim().max(500).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
-    items: z.array(z.object({ id: idCompras, cantidad: cantidadOc, precio_unitario: precioOc }).strict()).max(200).optional(),
+    items: z.array(z.object({
+      id: idCompras, cantidad: cantidadOc, precio_unitario: precioOc,
+      // Observación del renglón para el proveedor (120); undefined = no se toca
+      observacion: z.string().trim().max(300).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
+    }).strict()).max(200).optional(),
     quitar: z.array(idCompras).max(200).optional(),
   }).strict(),
   z.object({ accion: z.literal("oc_enviar"), id: idCompras }).strict(),

@@ -118,7 +118,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
         moneda: oc.moneda,
         fecha_prometida: oc.fecha_prometida || "",
         notas: oc.notas || "",
-        renglones: Object.fromEntries((its || []).map((it) => [it.id, { cantidad: numTexto(it.cantidad), precio: numTexto(it.precio_unitario) }])),
+        renglones: Object.fromEntries((its || []).map((it) => [it.id, { cantidad: numTexto(it.cantidad), precio: numTexto(it.precio_unitario), obs: it.observacion || "" }])),
         quitar: new Set(),
       });
     } catch {
@@ -136,7 +136,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
       if (!r) return it;
       const cantidad = leerCantidadMovimiento(r.cantidad) ?? it.cantidad;
       const precio = r.precio.trim() ? leerImporte(r.precio) : null;
-      return { ...it, cantidad, precio_unitario: r.precio.trim() ? precio ?? it.precio_unitario : null };
+      return { ...it, cantidad, precio_unitario: r.precio.trim() ? precio ?? it.precio_unitario : null, observacion: r.obs.trim() || null };
     }), [items, form]);
   const ocVista = form ? { ...oc, moneda: form.moneda, fecha_prometida: form.fecha_prometida || null, notas: form.notas.trim() || null } : oc;
   const total = totalOrden(vista);
@@ -156,8 +156,10 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
         if (!cantidad) { setError(`Revisá la cantidad de ${it.descripcion}`); return false; }
         const precio = r.precio.trim() ? leerImporte(r.precio) : null;
         if (r.precio.trim() && precio === null) { setError(`Revisá el precio de ${it.descripcion}`); return false; }
-        if (cantidad !== Number(it.cantidad) || precio !== (it.precio_unitario === null ? null : Number(it.precio_unitario))) {
-          renglones.push({ id: it.id, cantidad, precio_unitario: precio });
+        const observacion = r.obs.trim() || null;
+        const cambioObs = observacion !== (it.observacion || null);
+        if (cambioObs || cantidad !== Number(it.cantidad) || precio !== (it.precio_unitario === null ? null : Number(it.precio_unitario))) {
+          renglones.push({ id: it.id, cantidad, precio_unitario: precio, ...(cambioObs ? { observacion } : {}) });
         }
       }
       if (form.quitar.size >= items.length) { setError("La OC tiene que tener al menos un renglón. Si no va, anulala."); return false; }
@@ -221,20 +223,25 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
               <li key={it.id} className="p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">
                 <div className="text-[14px] font-semibold">{it.descripcion}{it.sku && <span className="text-gypi-dim font-normal"> · {it.sku}</span>}{it.ot && <span className="text-gypi-dim font-normal"> · OT {it.ot}</span>}</div>
                 {borrador ? (
-                  <div className="flex gap-2 mt-1 items-center">
-                    <input aria-label={`Cantidad de ${it.descripcion}`} className="g-input w-[90px]" inputMode="decimal" value={form.renglones[it.id].cantidad}
-                      onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], cantidad: e.target.value } } }))} />
-                    <span className="text-[13px] text-gypi-dim">{it.unidad || ""}</span>
-                    <input aria-label={`Precio sin IVA de ${it.descripcion}`} className="g-input w-[110px]" inputMode="decimal" placeholder="Precio s/IVA" value={form.renglones[it.id].precio}
-                      onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], precio: e.target.value } } }))} />
-                    <button onClick={() => setForm((f) => ({ ...f, quitar: new Set([...f.quitar, it.id]) }))} aria-label={`Quitar ${it.descripcion}`}
-                      className="min-h-[44px] px-2 ml-auto bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
-                  </div>
+                  <>
+                    <div className="flex gap-2 mt-1 items-center">
+                      <input aria-label={`Cantidad de ${it.descripcion}`} className="g-input w-[90px]" inputMode="decimal" value={form.renglones[it.id].cantidad}
+                        onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], cantidad: e.target.value } } }))} />
+                      <span className="text-[13px] text-gypi-dim">{it.unidad || ""}</span>
+                      <input aria-label={`Precio sin IVA de ${it.descripcion}`} className="g-input w-[110px]" inputMode="decimal" placeholder="Precio s/IVA" value={form.renglones[it.id].precio}
+                        onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], precio: e.target.value } } }))} />
+                      <button onClick={() => setForm((f) => ({ ...f, quitar: new Set([...f.quitar, it.id]) }))} aria-label={`Quitar ${it.descripcion}`}
+                        className="min-h-[44px] px-2 ml-auto bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
+                    </div>
+                    <input aria-label={`Observación para el proveedor de ${it.descripcion}`} className="g-input w-full mt-1" maxLength={300} placeholder="Observación para el proveedor (opcional)"
+                      value={form.renglones[it.id].obs} onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], obs: e.target.value } } }))} />
+                  </>
                 ) : (
                   <div className="text-[13px] text-gypi-dim">
                     {Number(it.cantidad).toLocaleString("es-AR", { maximumFractionDigits: 3 })} {it.unidad || ""}
                     {it.precio_unitario !== null ? ` · ${importeTexto(it.precio_unitario, oc.moneda)} c/u` : ""}
                     {Number(it.cantidad_recibida) > 0 ? ` · Recibido ${Number(it.cantidad_recibida).toLocaleString("es-AR")}` : ""}
+                    {it.observacion && <div className="italic">Obs.: {it.observacion}</div>}
                   </div>
                 )}
               </li>
