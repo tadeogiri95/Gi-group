@@ -5,6 +5,7 @@
 // Administración; los operarios no. Administración consolida los pedidos y
 // compra (parte 21): "comprador" es gerencia o Administración sin división
 // asignada (un supervisor de división pide y recibe, pero no compra).
+// Migración 121: un pedido pendiente se corrige y queda registro de quién.
 
 export const ESTADOS_PEDIDO = {
   pendiente: { id: "pendiente", nombre: "Pendiente", icono: "🕓" },
@@ -38,6 +39,53 @@ export function puedeAnularPedido(pedido, { comprador = false, empleadoId = null
   if (!pedido || pedido.estado !== "pendiente") return false;
   if (comprador) return true;
   return Boolean(empleadoId) && pedido.empleado_id === empleadoId;
+}
+
+/** ¿Puede corregir este pedido? Igual que anularlo: mientras siga pendiente (121). */
+export const puedeEditarPedido = puedeAnularPedido;
+
+// Lo que se puede corregir de un pedido, con el nombre que ve la gente
+export const CAMPOS_PEDIDO = {
+  descripcion: "Material",
+  sku: "Código",
+  unidad: "Unidad",
+  cantidad: "Cantidad",
+  ot: "OT",
+  para_fecha: "Para cuándo",
+  notas: "Observación",
+};
+
+const valorCampo = (campo, v) => {
+  if (v === null || v === undefined || v === "") return null;
+  if (campo === "cantidad") return Number(v);
+  return String(v);
+};
+
+/**
+ * Qué cambió entre el pedido guardado y la corrección: [{ campo, antes, despues }],
+ * solo los campos de CAMPOS_PEDIDO que vienen en `nuevo` y son distintos.
+ */
+export function cambiosPedido(actual, nuevo) {
+  const out = [];
+  for (const campo of Object.keys(CAMPOS_PEDIDO)) {
+    if (!nuevo || !(campo in nuevo)) continue;
+    const antes = valorCampo(campo, actual?.[campo]);
+    const despues = valorCampo(campo, nuevo[campo]);
+    if (antes !== despues) out.push({ campo, antes, despues });
+  }
+  return out;
+}
+
+const valorTexto = (campo, v) => {
+  if (v === null || v === undefined) return "—";
+  if (campo === "cantidad") return Number(v).toLocaleString("es-AR", { maximumFractionDigits: 3 });
+  if (campo === "para_fecha" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v.split("-").reverse().join("/");
+  return String(v);
+};
+
+/** "Cantidad: 10 → 12" para el historial de correcciones. */
+export function textoCambio({ campo, antes, despues }) {
+  return `${CAMPOS_PEDIDO[campo] || campo}: ${valorTexto(campo, antes)} → ${valorTexto(campo, despues)}`;
 }
 
 /**

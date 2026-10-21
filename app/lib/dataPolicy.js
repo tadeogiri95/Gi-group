@@ -61,6 +61,7 @@ export const POLICY = {
   movimientos_stock:            { GET: "all" },   // se escribe por /api/stock/movimientos (Stock parte 14)
   proveedores:                  { GET: "gestion" }, // se escribe por /api/compras (Compras parte 20)
   pedidos_compra:               { GET: "gestion" }, // se escribe por /api/compras (Compras parte 20)
+  pedidos_compra_cambios:       { GET: "gestion" }, // correcciones de pedidos (121); se escribe por /api/compras
   ordenes_compra:               { GET: "gestion" }, // se escribe por /api/compras (Compras parte 21)
   ordenes_compra_items:         { GET: "gestion" }, // se escribe por /api/compras (Compras parte 21)
   recepciones_compra:           { GET: "gestion" }, // se escribe por /api/compras (Compras parte 22)

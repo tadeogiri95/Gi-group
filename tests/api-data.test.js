@@ -252,7 +252,7 @@ test("POST /api/data — POST a proyectos rechazado con 402 cuando el plan lleg�
   assert.ok(json.upgrade_a, "debe sugerir un plan superior");
 });
 
-const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items"];
+const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "pedidos_compra_cambios", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items"];
 
 test("POST /api/data — las tablas de Compras se leen y no se escriben", async () => {
   const token = await tokenValido();
