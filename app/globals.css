@@ -290,8 +290,14 @@ input, textarea {
 }
 
 /* ── Inputs ── */
+/* El ancho va en una capa para que un w-[110px] o w-auto de Tailwind le gane:
+   fuera de capa, este 100% pisaba esas clases y el casillero aplastaba el
+   nombre que tiene al lado (factura de la OC, A comprar, Recibir). */
+@layer components {
+  .g-input { width: 100%; }
+}
+
 .g-input {
-  width: 100%;
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-hi);
