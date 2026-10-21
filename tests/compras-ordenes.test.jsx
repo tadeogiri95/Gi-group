@@ -120,6 +120,20 @@ test("texto para WhatsApp y PDF de la OC", () => {
   assert.match(html, /en dólares/);
   assert.match(html, /OT M-7495/);
   assert.doesNotMatch(htmlOrdenCompra({ empresa: { logo_url: "javascript:alert(1)" }, oc, items }), /javascript:/);
+  assert.doesNotMatch(texto, /Obs\./, "sin observación no hay renglón de más");
+});
+
+test("la observación de cada renglón sale en el WhatsApp y en el PDF (120)", () => {
+  const oc = { numero: 12, proveedor_nombre: "Aluar", moneda: "ARS", created_at: "2026-10-17T12:00:00Z" };
+  const items = [
+    { descripcion: "Perfil 0277", sku: "3.3.1.6", cantidad: 12, unidad: "MT", precio_unitario: 1500, observacion: "Anodizado <negro>" },
+    { descripcion: "Tornillos", cantidad: 2, unidad: "cajas", precio_unitario: null },
+  ];
+  const texto = textoOrdenCompra({ empresa: "GI Group", oc, items });
+  assert.match(texto, /• 12 MT Perfil 0277 \(3\.3\.1\.6\) · \$ 1\.500 c\/u\n {3}Obs\.: Anodizado <negro>\n• 2 cajas Tornillos/);
+  const html = htmlOrdenCompra({ empresa: { nombre: "GI" }, oc, items });
+  assert.match(html, /<div class="obs">Obs\.: Anodizado &lt;negro&gt;<\/div>/);
+  assert.equal(html.match(/class="obs"/g).length, 1);
 });
 
 test("planilla — la sincronización trae último precio, proveedor principal, múltiplo y plazo", () => {
@@ -148,6 +162,8 @@ test("validación — armar, guardar, enviar y anular OC", () => {
   assert.equal(ok({ accion: "oc_guardar", id: 3, fecha_prometida: "2026-10-24", notas: "" }), true);
   assert.equal(ok({ accion: "oc_guardar", id: 3, items: [{ id: 1, cantidad: 2, precio_unitario: null }], quitar: [4] }), true);
   assert.equal(ok({ accion: "oc_guardar", id: 3, estado: "recibida" }), false);
+  assert.equal(ok({ accion: "oc_guardar", id: 3, items: [{ id: 1, cantidad: 2, precio_unitario: null, observacion: "Color blanco" }] }), true);
+  assert.equal(ok({ accion: "oc_guardar", id: 3, items: [{ id: 1, cantidad: 2, precio_unitario: null, observacion: "x".repeat(301) }] }), false);
   assert.equal(ok({ accion: "oc_enviar", id: 3 }), true);
   assert.equal(ok({ accion: "oc_anular", id: "3" }), false);
 });
@@ -172,7 +188,7 @@ test("migración 114 — columnas de la planilla, OC por empresa, sin borrar OC"
 
 // ─── Ruta ───
 
-function mockRuta({ supervisor = null, proveedores = [ALUAR, EGGER], pedidos = null, ultima = 7, oc = null, items = [], choques = 0, falla = null } = {}) {
+function mockRuta({ supervisor = null, proveedores = [ALUAR, EGGER], pedidos = null, ultima = 7, oc = null, items = [], choques = 0, falla = null, sin120 = false } = {}) {
   const escrito = [];
   let choquesQuedan = choques;
   const anotar = (tabla, u, o) => {
@@ -204,6 +220,9 @@ function mockRuta({ supervisor = null, proveedores = [ALUAR, EGGER], pedidos = n
       respond: (u, o) => {
         if (falla) return { status: 404, body: { message: falla } };
         if (!o.method || o.method === "GET") return { status: 200, body: items };
+        if (sin120 && String(o.body).includes("observacion")) {
+          return { status: 400, body: { code: "PGRST204", message: "Could not find the 'observacion' column of 'ordenes_compra_items' in the schema cache" } };
+        }
         const body = anotar("ordenes_compra_items", u, o);
         return { status: 201, body: Array.isArray(body) ? body : [] };
       },
@@ -257,6 +276,25 @@ test("/api/compras oc_crear — una OC por proveedor, numeradas, y los pedidos p
   assert.deepEqual(ped.body, { estado: "en_oc", orden_id: 101 });
 });
 
+test("/api/compras oc_crear — la nota del pedido pasa a la observación del renglón (120)", async () => {
+  let escrito = mockRuta({ pedidos: [{ id: 5, estado: "pendiente", notas: "Color blanco, 18 mm" }, { id: 6, estado: "pendiente", notas: null }] });
+  let res = await api.POST(req(await token("gerencial"), { accion: "oc_crear", lineas: LINEAS }));
+  assert.equal(res.status, 200);
+  let its = escrito.filter((x) => x.tabla === "ordenes_compra_items");
+  assert.equal(its[0].body[0].observacion, "Color blanco, 18 mm");
+  assert.equal("observacion" in its[0].body[1], false, "sin nota no manda la columna");
+  assert.equal("observacion" in its[1].body[0], false, "lo de la planilla no tiene nota");
+
+  // Sin la migración 120 la OC se arma igual, sin observación
+  escrito = mockRuta({ pedidos: [{ id: 5, estado: "pendiente", notas: "Color blanco" }, { id: 6, estado: "pendiente" }], sin120: true });
+  res = await api.POST(req(await token("gerencial"), { accion: "oc_crear", lineas: LINEAS }));
+  assert.equal(res.status, 200);
+  its = escrito.filter((x) => x.tabla === "ordenes_compra_items");
+  assert.equal(its.length, 2);
+  assert.equal("observacion" in its[0].body[0], false);
+  assert.equal(escrito.some((x) => x.tabla === "ordenes_compra" && x.body?.estado === "anulada"), false);
+});
+
 test("/api/compras oc_crear — si dos arman a la vez, toma el número siguiente", async () => {
   const escrito = mockRuta({ choques: 1 });
   const res = await api.POST(req(await token("gerencial"), { accion: "oc_crear", lineas: [LINEAS[1]] }));
@@ -301,6 +339,20 @@ test("/api/compras oc_guardar — en borrador cambia renglones; quitar devuelve 
   assert.equal(cab.body.moneda, "USD");
   assert.equal(cab.body.fecha_prometida, "2026-10-24");
   assert.equal(cab.body.notas, "En planta");
+});
+
+test("/api/compras oc_guardar — guarda la observación del renglón; sin la 120 avisa", async () => {
+  const oc = { id: 101, numero: 8, estado: "borrador", moneda: "ARS" };
+  let escrito = mockRuta({ oc });
+  let res = await api.POST(req(await token("gerencial"), { accion: "oc_guardar", id: 101, items: [{ id: 1, cantidad: 10, precio_unitario: null, observacion: " Color blanco " }, { id: 2, cantidad: 1, precio_unitario: null, observacion: "" }] }));
+  assert.equal(res.status, 200);
+  const renglones = escrito.filter((x) => x.tabla === "ordenes_compra_items" && x.metodo === "PATCH");
+  assert.deepEqual(renglones.map((r) => r.body), [{ cantidad: 10, precio_unitario: null, observacion: "Color blanco" }, { cantidad: 1, precio_unitario: null, observacion: null }]);
+
+  escrito = mockRuta({ oc, sin120: true });
+  res = await api.POST(req(await token("gerencial"), { accion: "oc_guardar", id: 101, items: [{ id: 1, cantidad: 10, precio_unitario: null, observacion: "Color blanco" }] }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 120/);
 });
 
 test("/api/compras oc_guardar — enviada: fecha prometida sí, precios no", async () => {
@@ -418,6 +470,28 @@ test("Órdenes — corrige el precio, la marca enviada y arma el WhatsApp", asyn
   await waitFor(() => assert.equal(enviados.length, 2));
   assert.deepEqual(enviados[0], { accion: "oc_guardar", id: 101, fecha_prometida: "2026-10-24", notas: null, moneda: "ARS", items: [{ id: 1, cantidad: 12, precio_unitario: 1500 }] });
   assert.deepEqual(enviados[1], { accion: "oc_enviar", id: 101 });
+});
+
+test("Órdenes — en borrador se corrige la observación de cada renglón y sale en el WhatsApp", async () => {
+  const ordenes = [{ id: 101, numero: 8, proveedor_id: 1, proveedor_nombre: "Aluar", estado: "borrador", moneda: "ARS", created_at: "2026-10-17T12:00:00Z" }];
+  const items = [
+    { id: 1, orden_id: 101, descripcion: "Perfil 0277", unidad: "MT", cantidad: 12, precio_unitario: 1500, cantidad_recibida: 0, observacion: "Anodizado" },
+    { id: 2, orden_id: 101, descripcion: "Tornillos", unidad: "cajas", cantidad: 2, precio_unitario: null, cantidad_recibida: 0, observacion: null },
+  ];
+  const enviados = mockPantalla({ ordenes, items });
+  render(<OrdenesCompra empresaId={E} empresa={{ nombre: "GI Group" }} />);
+  fireEvent.click(await screen.findByText("OC N° 8 · Aluar"));
+  const obs = await screen.findByLabelText("Observación para el proveedor de Perfil 0277");
+  assert.equal(obs.value, "Anodizado");
+  fireEvent.change(obs, { target: { value: "Anodizado negro" } });
+  fireEvent.change(screen.getByLabelText("Observación para el proveedor de Tornillos"), { target: { value: "Cabeza fresada" } });
+  assert.match(decodeURIComponent(screen.getByText("💬 WhatsApp").getAttribute("href")), /Obs\.: Anodizado negro[\s\S]*Obs\.: Cabeza fresada/);
+  fireEvent.click(screen.getByText("Guardar cambios"));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual(enviados[0].items, [
+    { id: 1, cantidad: 12, precio_unitario: 1500, observacion: "Anodizado negro" },
+    { id: 2, cantidad: 2, precio_unitario: null, observacion: "Cabeza fresada" },
+  ]);
 });
 
 test("Órdenes — las atrasadas se ven y una enviada no se edita", async () => {

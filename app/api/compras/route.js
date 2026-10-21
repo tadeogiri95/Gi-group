@@ -11,8 +11,10 @@
 //   pedido_anular         → el comprador, cualquiera pendiente; quien lo pidió, el suyo pendiente
 //   oc_crear              → una OC en borrador por proveedor con los renglones elegidos en
 //                           "A comprar"; los pedidos de los jefes pasan a en_oc (comprador; 114)
-//   oc_guardar            → moneda, fecha prometida, notas, cantidades y precios; quitar
-//                           renglones (en borrador); el pedido quitado vuelve a pendiente
+//                           (la nota de cada pedido pasa a la observación del renglón; 120)
+//   oc_guardar            → moneda, fecha prometida, notas, cantidades, precios y
+//                           observaciones; quitar renglones (en borrador); el pedido
+//                           quitado vuelve a pendiente
 //   oc_enviar             → borrador → enviada
 //   oc_anular             → la OC queda anulada y sus pedidos vuelven a pendiente
 //   recepcion_crear       → lo que llegó con un remito (gestión: jefes de taller y
@@ -44,6 +46,11 @@ function faltaMigracion(err) {
 function faltaMigracionOc(err) {
   const m = String(err?.message);
   return /ordenes_compra|orden_id/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
+}
+
+function faltaMigracionObservacion(err) {
+  const m = String(err?.message);
+  return /observacion/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
 }
 
 function faltaMigracionRecepcion(err) {
@@ -200,11 +207,13 @@ async function crearOrdenes(sesion, { moneda, lineas }) {
   if (falta) return NextResponse.json({ error: "Uno de los proveedores no existe o está dado de baja. Actualizá la lista." }, { status: 409 });
 
   const idsPedidos = [...new Set(lineas.map((l) => l.pedido_id).filter(Boolean))];
+  const notaPedido = new Map();
   if (idsPedidos.length) {
-    const pedidos = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${idsPedidos.join(",")})&select=id,estado`, opts)) || [];
+    const pedidos = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${idsPedidos.join(",")})&select=id,estado,notas`, opts)) || [];
     if (pedidos.length !== idsPedidos.length || pedidos.some((p) => p.estado !== "pendiente")) {
       return NextResponse.json({ error: "Algún pedido ya no está pendiente (lo anularon o ya está en otra OC). Actualizá la lista." }, { status: 409 });
     }
+    for (const p of pedidos) if (p.notas) notaPedido.set(p.id, String(p.notas).slice(0, 300));
   }
 
   const [empleado] = sesion.empleado_id
@@ -231,11 +240,20 @@ async function crearOrdenes(sesion, { moneda, lineas }) {
     }
     if (!oc) throw new Error("No se pudo numerar la orden de compra");
     const mias = lineas.filter((l) => l.proveedor_id === proveedorId);
+    // La nota del pedido sale en la OC como observación del renglón (120)
+    const filas = mias.map((l) => ({
+      empresa_id: e, orden_id: oc.id, sku: l.sku, descripcion: l.descripcion, unidad: l.unidad,
+      cantidad: l.cantidad, precio_unitario: l.precio_unitario, ot: l.ot, pedido_id: l.pedido_id,
+      ...(notaPedido.get(l.pedido_id) ? { observacion: notaPedido.get(l.pedido_id) } : {}),
+    }));
     try {
-      await sbPost("ordenes_compra_items", mias.map((l) => ({
-        empresa_id: e, orden_id: oc.id, sku: l.sku, descripcion: l.descripcion, unidad: l.unidad,
-        cantidad: l.cantidad, precio_unitario: l.precio_unitario, ot: l.ot, pedido_id: l.pedido_id,
-      })), opts);
+      try {
+        await sbPost("ordenes_compra_items", filas, opts);
+      } catch (err) {
+        // Sin la migración 120 la OC se arma igual, sin observaciones
+        if (!faltaMigracionObservacion(err)) throw err;
+        await sbPost("ordenes_compra_items", filas.map(({ observacion, ...f }) => f), opts);
+      }
     } catch (err) {
       // Sin renglones la OC no sirve: queda anulada (las OC no se borran)
       await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, { estado: "anulada", anulada_at: new Date().toISOString() }, opts).catch(() => {});
@@ -270,7 +288,9 @@ async function guardarOrden(sesion, d) {
     if (pedidos.length) await liberarPedidos(sesion, `orden_id=eq.${oc.id}&id=in.(${pedidos.join(",")})`);
   }
   for (const it of d.items || []) {
-    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&orden_id=eq.${oc.id}&empresa_id=eq.${e}`, { cantidad: it.cantidad, precio_unitario: it.precio_unitario }, opts);
+    const cambiosItem = { cantidad: it.cantidad, precio_unitario: it.precio_unitario };
+    if (it.observacion !== undefined) cambiosItem.observacion = it.observacion;
+    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&orden_id=eq.${oc.id}&empresa_id=eq.${e}`, cambiosItem, opts);
   }
   const cambios = { updated_at: new Date().toISOString() };
   if (d.moneda !== undefined) cambios.moneda = d.moneda;
@@ -540,6 +560,9 @@ export async function POST(request) {
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionObservacion(err)) {
+        return NextResponse.json({ error: "Para la observación de cada renglón falta correr la migración 120 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionRecepcion(err)) {
         return NextResponse.json({ error: "Para recibir con remito falta correr la migración 115 en Supabase." }, { status: 409 });
       }

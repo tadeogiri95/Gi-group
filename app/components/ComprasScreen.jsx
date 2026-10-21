@@ -141,7 +141,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
         </div>
       </div>
 
-      <label className="g-label" htmlFor="ped-notas">Notas (opcional)</label>
+      <label className="g-label" htmlFor="ped-notas">Observación para el proveedor (opcional)</label>
       <input id="ped-notas" className="g-input w-full mb-3" value={form.notas} onChange={cambiar("notas")} maxLength={300} placeholder="Medida, color, marca…" />
 
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
