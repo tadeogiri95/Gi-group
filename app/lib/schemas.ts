@@ -394,6 +394,8 @@ export const comprasBody = z.discriminatedUnion("accion", [
   }).strict(),
   z.object({ accion: z.literal("oc_enviar"), id: idCompras }).strict(),
   z.object({ accion: z.literal("oc_anular"), id: idCompras }).strict(),
+  // Cerrar una OC recibida en parte: lo que falta no va a llegar (123)
+  z.object({ accion: z.literal("oc_cerrar_faltantes"), id: idCompras, motivo: z.string().trim().min(1, "Escribí por qué se cierra").max(300) }).strict(),
   // Recepción con remito y factura (parte 22, migración 115)
   z.object({
     accion: z.literal("recepcion_crear"),

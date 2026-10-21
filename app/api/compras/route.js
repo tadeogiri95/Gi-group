@@ -19,6 +19,9 @@
 //                           quitado vuelve a pendiente
 //   oc_enviar             → borrador → enviada
 //   oc_anular             → la OC queda anulada y sus pedidos vuelven a pendiente
+//   oc_cerrar_faltantes   → una OC recibida en parte se cierra con motivo: lo que no llegó
+//                           no va a venir. Sale de las OC abiertas (planilla) y lo que faltó
+//                           de cada pedido vuelve a pendiente en "A comprar" (comprador; 123)
 //   recepcion_crear       → lo que llegó con un remito (gestión: jefes de taller y
 //                           Administración); cada renglón con SKU entra como ingreso de
 //                           stock; la OC pasa a recibida en parte o recibida (115)
@@ -38,7 +41,7 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
 import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
-import { ESTADOS_OC_RECIBIBLE, estadoTrasRecepcion, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
+import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, estadoTrasRecepcion, pedidosAlCerrar, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -59,6 +62,12 @@ function faltaMigracionOc(err) {
 function faltaMigracionObservacion(err) {
   const m = String(err?.message);
   return /observacion/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+function faltaMigracionCierre(err) {
+  const m = String(err?.message);
+  return (/cerrada_motivo|cerrada_por|cerrada_at|faltante_de/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m))
+    || (/ordenes_compra_estado_check/.test(m) && /23514|violates/.test(m));
 }
 
 function faltaMigracionFactura(err) {
@@ -390,6 +399,54 @@ async function anularOrden(sesion, id) {
   return NextResponse.json({ ok: true, orden: fila || { ...oc, estado: "anulada" } });
 }
 
+/**
+ * Cierra una OC recibida en parte: lo que falta no se compró y no va a
+ * llegar (123). Lo que faltó de cada pedido de un jefe vuelve a "A comprar".
+ */
+async function cerrarOrdenConFaltantes(sesion, { id, motivo }) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const oc = await leerOrden(sesion, id);
+  if (!oc) return noEncontreOc();
+  if (oc.estado === "cerrada_faltantes") return NextResponse.json({ ok: true, orden: oc });
+  if (!ESTADOS_OC_CERRABLE.includes(oc.estado)) {
+    const error = ["borrador", "enviada"].includes(oc.estado)
+      ? "Todavía no llegó nada de esa orden: si no se va a comprar, anulala."
+      : oc.estado === "recibida" ? "Esa orden de compra ya se recibió completa" : "Esa orden de compra está anulada";
+    return NextResponse.json({ error }, { status: 409 });
+  }
+  const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
+  const quien = await nombreEmpleado(sesion);
+  const ahora = new Date().toISOString();
+  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}&estado=in.(${ESTADOS_OC_CERRABLE.join(",")})`, {
+    estado: "cerrada_faltantes", cerrada_motivo: motivo, cerrada_por: sesion.empleado_id || null, cerrada_por_nombre: quien, cerrada_at: ahora, updated_at: ahora,
+  }, opts)) || [];
+  if (!fila) return NextResponse.json({ error: "Esa orden de compra cambió mientras la cerrabas. Actualizá la pantalla." }, { status: 409 });
+
+  const { completos, volver, nuevos } = pedidosAlCerrar(items);
+  const faltanteDe = `OC N° ${oc.numero} · ${oc.proveedor_nombre}`.slice(0, 160);
+  if (volver.length) {
+    await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${volver.join(",")})&estado=eq.en_oc`, { estado: "pendiente", orden_id: null, faltante_de: faltanteDe }, opts);
+  }
+  const recibidos = [...completos, ...nuevos.map((n) => n.pedido_id)];
+  if (recibidos.length) await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${recibidos.join(",")})&estado=eq.en_oc`, { estado: "recibido" }, opts);
+  if (nuevos.length) {
+    const originales = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${nuevos.map((n) => n.pedido_id).join(",")})&select=*`, opts)) || [];
+    const porId = new Map(originales.map((p) => [p.id, p]));
+    const filas = nuevos.filter((n) => porId.has(n.pedido_id)).map((n) => {
+      const p = porId.get(n.pedido_id);
+      return {
+        empresa_id: e, sku: p.sku, descripcion: p.descripcion, unidad: p.unidad, cantidad: n.cantidad, ot: p.ot, para_fecha: p.para_fecha,
+        notas: p.notas, division: p.division, estado: "pendiente", empleado_id: p.empleado_id, empleado_nombre: p.empleado_nombre, faltante_de: faltanteDe,
+      };
+    });
+    if (filas.length) await sbPost("pedidos_compra", filas, opts);
+  }
+  broadcastRefresh(e, "ordenes_compra");
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, orden: fila, vuelven: volver.length + nuevos.length });
+}
+
 /* ─── Recepción con remito y factura (parte 22) ────────────────────────── */
 
 const redondear3 = (n) => Math.round(Number(n) * 1000) / 1000;
@@ -516,7 +573,8 @@ async function anularRecepcion(sesion, id) {
     await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, { cantidad_recibida: it.cantidad_recibida }, opts);
   }
   const [fila] = (await sbPatch(`recepciones_compra?id=eq.${rec.id}&empresa_id=eq.${e}`, { anulada: true, anulada_por: sesion.empleado_id || null, anulada_at: ahora }, opts)) || [];
-  const estado = oc.estado === "anulada" ? oc.estado : await actualizarEstadoOrden(sesion, oc, items);
+  // Una OC anulada o cerrada con faltantes no se reabre al anular una recepción
+  const estado = ["anulada", "cerrada_faltantes"].includes(oc.estado) ? oc.estado : await actualizarEstadoOrden(sesion, oc, items);
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "pedidos_compra");
   if (movs.length) broadcastRefresh(e, "movimientos_stock");
@@ -625,9 +683,13 @@ export async function POST(request) {
       if (d.accion === "oc_guardar") return await guardarOrden(sesion, d);
       if (d.accion === "oc_enviar") return await enviarOrden(sesion, d.id);
       if (d.accion === "oc_anular") return await anularOrden(sesion, d.id);
+      if (d.accion === "oc_cerrar_faltantes") return await cerrarOrdenConFaltantes(sesion, d);
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionCierre(err)) {
+        return NextResponse.json({ error: "Para cerrar órdenes con faltantes falta correr la migración 123 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionFactura(err)) {
         return NextResponse.json({ error: "Para cargar la factura con IVA y otros impuestos falta correr la migración 122 en Supabase." }, { status: 409 });
       }
