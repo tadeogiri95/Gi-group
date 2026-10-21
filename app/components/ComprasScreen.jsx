@@ -338,6 +338,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
                           {est.icono} {est.nombre} · {p.empleado_nombre || "—"} · {fecha(p.created_at)}
                           {p.para_fecha ? ` · Para el ${fecha(p.para_fecha)}` : ""}
                           {p.notas ? ` · ${p.notas}` : ""}
+                          {p.faltante_de ? ` · ↩ Faltó de la ${p.faltante_de}` : ""}
                         </div>
                       </div>
                       {puedeEditarPedido(p, { comprador, empleadoId: usuario?.id }) && (

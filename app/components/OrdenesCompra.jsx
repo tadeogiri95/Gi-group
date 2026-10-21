@@ -10,7 +10,7 @@ import { sb, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_OC, ESTADOS_OC_ABIERTA, MONEDAS, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
+  ESTADOS_OC, ESTADOS_OC_ABIERTA, ESTADOS_OC_CERRABLE, MONEDAS, pendienteItem, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
   ALICUOTAS_IVA, IVA_POR_DEFECTO, cantidadFacturaInicial, renglonFactura, totalesFactura,
 } from "../lib/ordenesCompra";
 import { AVISO_MIGRACION_114 } from "./AComprar";
@@ -164,6 +164,9 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
   const [enviando, setEnviando] = useState(false);
   const borrador = oc.estado === "borrador";
   const abierta = ESTADOS_OC_ABIERTA.includes(oc.estado);
+  const cerrada = oc.estado === "cerrada_faltantes";
+  const [cerrando, setCerrando] = useState(false);
+  const [motivo, setMotivo] = useState("");
 
   const cargar = useCallback(async () => {
     try {
@@ -254,6 +257,21 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
     setEnviando(false);
   };
 
+  const cerrarConFaltantes = async () => {
+    setError(null);
+    if (!motivo.trim()) { setError("Escribí por qué se cierra (ej: el proveedor no tenía stock)"); return; }
+    setEnviando(true);
+    try {
+      const r = await postCompras({ accion: "oc_cerrar_faltantes", id: oc.id, motivo: motivo.trim() });
+      setCerrando(false);
+      setAviso(r?.vuelven ? `Orden cerrada. ${r.vuelven === 1 ? "Un pedido volvió" : `${r.vuelven} pedidos volvieron`} a "A comprar" por lo que faltó.` : "Orden cerrada con faltantes.");
+      await onCambio();
+    } catch (e) {
+      setError(e.message);
+    }
+    setEnviando(false);
+  };
+
   const pdf = () => {
     setError(null);
     try {
@@ -272,6 +290,12 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
         {est.icono} {est.nombre}{ocAtrasada(oc) ? " · ⚠️ Atrasada" : ""} · {oc.creada_por_nombre || "—"} · {fechaCorta(oc.created_at)}
         {proveedor?.condicion_pago ? ` · Pago: ${proveedor.condicion_pago}` : ""}
       </div>
+      {cerrada && (
+        <div role="note" className="p-2 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface text-[13px]">
+          🔒 Cerrada con faltantes{oc.cerrada_por_nombre ? ` por ${oc.cerrada_por_nombre}` : ""}{oc.cerrada_at ? ` el ${fechaCorta(oc.cerrada_at)}` : ""}.
+          {oc.cerrada_motivo ? ` Motivo: ${oc.cerrada_motivo}.` : ""} Lo que faltó no va a llegar.
+        </div>
+      )}
 
       {items === null || !form ? (
         <div className="text-[14px] text-gypi-dim" role="status">Cargando…</div>
@@ -300,6 +324,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
                     {Number(it.cantidad).toLocaleString("es-AR", { maximumFractionDigits: 3 })} {it.unidad || ""}
                     {it.precio_unitario !== null ? ` · ${importeTexto(it.precio_unitario, oc.moneda)} c/u` : ""}
                     {Number(it.cantidad_recibida) > 0 ? ` · Recibido ${Number(it.cantidad_recibida).toLocaleString("es-AR")}` : ""}
+                    {cerrada && pendienteItem(it) > 0 ? ` · No llegó ${pendienteItem(it).toLocaleString("es-AR")}` : ""}
                     {it.observacion && <div className="italic">Obs.: {it.observacion}</div>}
                   </div>
                 )}
@@ -343,6 +368,26 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
 
           {borrador && (
             <button onClick={async () => { if (await guardar({ silencioso: true })) await accion("oc_enviar", "Marcada como enviada."); }} disabled={enviando} className="g-btn g-btn-primary w-full mb-2">📤 Marcar como enviada</button>
+          )}
+          {ESTADOS_OC_CERRABLE.includes(oc.estado) && !cerrando && (
+            <button onClick={() => { setCerrando(true); setError(null); setAviso(null); }} disabled={enviando} className="g-btn g-btn-secondary w-full mb-2">🔒 Cerrar con faltantes</button>
+          )}
+          {ESTADOS_OC_CERRABLE.includes(oc.estado) && cerrando && (
+            <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
+              <div className="text-[14px] font-semibold mb-1">Cerrar con faltantes</div>
+              <div className="text-[13px] text-gypi-dim mb-1">Esto no va a llegar. Lo que era de un pedido vuelve a &quot;A comprar&quot; para pedírselo a otro proveedor.</div>
+              <ul aria-label="Lo que no llegó" className="m-0 mb-2 pl-5 text-[13px]">
+                {items.filter((it) => pendienteItem(it) > 0).map((it) => (
+                  <li key={it.id}>{it.descripcion}: faltan {pendienteItem(it).toLocaleString("es-AR", { maximumFractionDigits: 3 })} {it.unidad || ""}</li>
+                ))}
+              </ul>
+              <label className="g-label" htmlFor="oc-motivo-cierre">Motivo</label>
+              <input id="oc-motivo-cierre" className="g-input w-full mb-2" maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: el proveedor no tenía stock" />
+              <div className="flex gap-2">
+                <button onClick={() => setCerrando(false)} disabled={enviando} className="g-btn g-btn-secondary flex-1">Cancelar</button>
+                <button onClick={cerrarConFaltantes} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Cerrando…" : "Cerrar orden"}</button>
+              </div>
+            </div>
           )}
           {["borrador", "enviada"].includes(oc.estado) && (
             <button onClick={() => accion("oc_anular", "Orden anulada. Sus pedidos volvieron a pendientes.")} disabled={enviando}
