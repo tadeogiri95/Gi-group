@@ -6,11 +6,14 @@
 // proveedores; con eso arman las órdenes de compra (parte 21). Lo que llega
 // lo reciben los jefes o Administración en Recibir (parte 22). Quien compra
 // tiene además Reportes (parte 23). Un pedido pendiente se corrige con
-// "Editar" y queda registro de quién lo corrigió (121).
+// "Editar" y queda registro de quién lo corrigió (121). Desde la compu se
+// piden varios materiales de una vez pegando renglones de la hoja INVENTARIO
+// (📋 Pegar desde la planilla).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
+import { leerPedidoPegado, MAX_PEGADO } from "../lib/pedidoPegado";
 import { ESTADOS_PEDIDO, faltaTabla, filtrarPedidos, puedeAnularPedido, puedeEditarPedido, textoCambio, textoPedido } from "../lib/compras";
 import ProveedoresCompras from "./ProveedoresCompras";
 import AComprar from "./AComprar";
@@ -182,6 +185,146 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onC
   );
 }
 
+/** Varios pedidos de una vez, pegando renglones de la hoja INVENTARIO. */
+function PegarPedido({ articulos, ots, onListo, onCancelar }) {
+  const [pegado, setPegado] = useState("");
+  const [lista, setLista] = useState(null);
+  const [leido, setLeido] = useState(null);
+  const [comun, setComun] = useState({ ot: "", para_fecha: "", notas: "" });
+  const [error, setError] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [hecho, setHecho] = useState(null);
+  const cambiar = (campo) => (e) => setComun((c) => ({ ...c, [campo]: e.target.value }));
+
+  const leer = () => {
+    setError(null);
+    if (!articulos.length) { setError("Todavía se están cargando los artículos. Probá de nuevo en un momento."); return; }
+    const r = leerPedidoPegado(pegado, articulos);
+    if (!r.reconocidos.length && !r.noEncontrados.length && !r.sinCantidad.length) { setError("No encontré renglones. Copiá desde la planilla, con la fila de títulos."); return; }
+    setLeido(r);
+    setLista(r.reconocidos.map((a) => ({ ...a, texto: String(a.cantidad).replace(".", ",") })));
+  };
+
+  const listos = (lista || []).map((a) => ({ ...a, cantidad: leerCantidadMovimiento(a.texto) }));
+  const malCantidad = listos.filter((a) => !a.cantidad);
+
+  const pedir = async () => {
+    if (!listos.length) { setError("No queda ningún material para pedir"); return; }
+    if (malCantidad.length) { setError(`Revisá la cantidad de ${malCantidad[0].nombre}`); return; }
+    setEnviando(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/compras", {
+        method: "POST",
+        body: JSON.stringify({
+          accion: "pedidos_crear",
+          items: listos.map((a) => ({ sku: a.sku, cantidad: a.cantidad })),
+          ot: comun.ot.trim() || null,
+          para_fecha: comun.para_fecha || null,
+          notas: comun.notas.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudieron guardar los pedidos");
+      setHecho(data.creados || listos.length);
+      onListo();
+    } catch (e) {
+      setError(e.message);
+    }
+    setEnviando(false);
+  };
+
+  if (hecho) {
+    return (
+      <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
+        <div role="status" className="text-[14px] font-semibold mb-3">✅ {hecho === 1 ? "Cargué 1 pedido" : `Cargué ${hecho} pedidos`}. Administración los ve en Compras.</div>
+        <button onClick={onCancelar} className="g-btn g-btn-secondary w-full">Listo</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
+      <div className="text-[15px] font-bold mb-2">📋 Pegar desde la planilla</div>
+      {!lista ? (
+        <>
+          <div className="text-[13px] text-gypi-dim mb-2">
+            En la hoja INVENTARIO seleccioná los renglones a comprar (desde la columna SKU hasta CANTIDAD SUGERIDA, mejor con la fila de títulos), copialos y pegalos acá.
+            También sirven dos columnas: código o nombre, y cantidad.
+          </div>
+          <label className="g-label" htmlFor="pegar-pedido">Renglones copiados</label>
+          <textarea id="pegar-pedido" className="g-input w-full min-h-[110px] font-mono text-[12px] mb-2" value={pegado} onChange={(e) => setPegado(e.target.value)}
+            placeholder="Pegá acá lo copiado de la planilla" />
+          {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
+          <div className="flex gap-2">
+            <button onClick={onCancelar} className="g-btn g-btn-secondary flex-1">Cancelar</button>
+            <button onClick={leer} disabled={!pegado.trim()} className="g-btn g-btn-primary flex-1">Ver qué se pide</button>
+          </div>
+        </>
+      ) : (
+        <>
+          {leido.demasiados && <div role="status" className="text-[13px] text-gypi-amber-ink mb-2">Leí los primeros {MAX_PEGADO} renglones. El resto pegalo en otra tanda.</div>}
+          <div className="text-[13px] font-bold mb-1">✅ Se piden ({listos.length})</div>
+          {!listos.length ? (
+            <div className="text-[13px] text-gypi-dim mb-2">Ningún artículo reconocido con cantidad.</div>
+          ) : (
+            <ul aria-label="Materiales a pedir" className="list-none p-0 m-0 mb-2 flex flex-col gap-1">
+              {lista.map((a, i) => (
+                <li key={a.sku} className="flex items-center gap-2 bg-gypi-bg rounded-lg px-2 border border-gypi-border">
+                  <div className="flex-1 min-w-0 text-[13px] py-1">
+                    <div className="font-semibold truncate">{a.nombre}</div>
+                    <div className="text-gypi-dim truncate">{a.sku}</div>
+                  </div>
+                  <input aria-label={`Cantidad de ${a.nombre}`} className="g-input w-[90px] text-right" inputMode="decimal" value={a.texto}
+                    onChange={(e) => setLista((l) => l.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} />
+                  <span className="text-[12px] text-gypi-dim w-[44px] truncate">{a.unidad || ""}</span>
+                  <button onClick={() => setLista((l) => l.filter((_, j) => j !== i))} aria-label={`Quitar ${a.nombre}`}
+                    className="min-h-[44px] px-1 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {leido.noEncontrados.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[13px] font-bold">⚠️ No los encontré en el stock ({leido.noEncontrados.length}), no se piden</div>
+              <ul aria-label="No encontrados" className="list-disc pl-5 m-0 text-[12px] text-gypi-dim">
+                {leido.noEncontrados.slice(0, 20).map((x, i) => <li key={i}>{x.texto}</li>)}
+              </ul>
+              {leido.noEncontrados.length > 20 && <div className="text-[12px] text-gypi-dim">Y {leido.noEncontrados.length - 20} más.</div>}
+              <div className="text-[12px] text-gypi-dim">Si son artículos nuevos, sincronizá el stock (Planta → Stock) o pedilos de a uno escribiéndolos.</div>
+            </div>
+          )}
+          {leido.sinCantidad.length > 0 && (
+            <div className="text-[12px] text-gypi-dim mb-2">Sin cantidad, se saltean ({leido.sinCantidad.length}): {leido.sinCantidad.slice(0, 5).map((x) => x.texto).join(", ")}{leido.sinCantidad.length > 5 ? "…" : ""}</div>
+          )}
+
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="g-label" htmlFor="pegar-ot">OT (opcional)</label>
+              <input id="pegar-ot" className="g-input w-full mb-2" list="pegar-ots" value={comun.ot} onChange={cambiar("ot")} maxLength={40} placeholder="Ej: M-7495" />
+              <datalist id="pegar-ots">{ots.map((o) => <option key={o} value={o} />)}</datalist>
+            </div>
+            <div className="flex-1">
+              <label className="g-label" htmlFor="pegar-fecha">Para cuándo</label>
+              <input id="pegar-fecha" type="date" className="g-input w-full mb-2" value={comun.para_fecha} onChange={cambiar("para_fecha")} />
+            </div>
+          </div>
+          <label className="g-label" htmlFor="pegar-notas">Observación para el proveedor (opcional, para todos)</label>
+          <input id="pegar-notas" className="g-input w-full mb-3" value={comun.notas} onChange={cambiar("notas")} maxLength={300} placeholder="Medida, color, marca…" />
+
+          {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
+          <div className="flex gap-2">
+            <button onClick={() => { setLista(null); setLeido(null); setError(null); }} className="g-btn g-btn-secondary flex-1">Volver a pegar</button>
+            <button onClick={pedir} disabled={enviando || !listos.length} className="g-btn g-btn-primary flex-1">
+              {enviando ? "Guardando…" : listos.length === 1 ? "Pedir 1 material" : `Pedir ${listos.length} materiales`}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ComprasScreen({ empresaId, empresa = null, usuario = null }) {
   const [permisos, setPermisos] = useState(null);
   const [vista, setVista] = useState("pedidos");
@@ -192,6 +335,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
   const [articulos, setArticulos] = useState([]);
   const [ots, setOts] = useState([]);
   const [pidiendo, setPidiendo] = useState(false);
+  const [pegando, setPegando] = useState(false);
   const [editando, setEditando] = useState(null);
   const [historial, setHistorial] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -225,14 +369,14 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
 
   // Catálogo y OT para el formulario, solo cuando se abre
   useEffect(() => {
-    if ((!pidiendo && !editando) || articulos.length) return;
+    if ((!pidiendo && !pegando && !editando) || articulos.length) return;
     sbGetAll("articulos_stock?activo=eq.true&select=sku,nombre,unidad,division&order=sku.asc", { maxFilas: 20000 })
       .then(({ data }) => setArticulos(data || []))
       .catch(() => {});
     sb.get("proyectos?select=ot&estado=eq.activo&order=id.desc&limit=300")
       .then((rows) => setOts([...new Set((rows || []).map((p) => p.ot).filter(Boolean))]))
       .catch(() => {});
-  }, [pidiendo, editando, articulos.length]);
+  }, [pidiendo, pegando, editando, articulos.length]);
 
   const visibles = useMemo(() => filtrarPedidos(pedidos, { texto, estado }), [pedidos, texto, estado]);
 
@@ -305,8 +449,13 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
               }} />
           ) : permisos.puede_pedir && (pidiendo ? (
             <PedirMaterial articulos={articulos} ots={ots} onListo={cargar} onCancelar={() => setPidiendo(false)} />
+          ) : pegando ? (
+            <PegarPedido articulos={articulos} ots={ots} onListo={cargar} onCancelar={() => setPegando(false)} />
           ) : (
-            <button onClick={() => { setPidiendo(true); setError(null); }} className="g-btn g-btn-primary w-full mb-3">🛒 Pedir material</button>
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => { setPidiendo(true); setError(null); }} className="g-btn g-btn-primary flex-1">🛒 Pedir material</button>
+              <button onClick={() => { setPegando(true); setError(null); setAviso(null); }} className="g-btn g-btn-secondary flex-1">📋 Pegar desde la planilla</button>
+            </div>
           ))}
 
           <div className="flex gap-2 mb-2">
@@ -342,7 +491,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
                         </div>
                       </div>
                       {puedeEditarPedido(p, { comprador, empleadoId: usuario?.id }) && (
-                        <button onClick={() => { setEditando(p); setPidiendo(false); setError(null); setAviso(null); }} aria-label={`Editar pedido de ${textoPedido(p)}`}
+                        <button onClick={() => { setEditando(p); setPidiendo(false); setPegando(false); setError(null); setAviso(null); }} aria-label={`Editar pedido de ${textoPedido(p)}`}
                           className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Editar</button>
                       )}
                       {puedeAnularPedido(p, { comprador, empleadoId: usuario?.id }) && (

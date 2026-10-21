@@ -8,6 +8,8 @@
 //   proveedores_importar  → nombres pegados de la planilla; agrega los que faltan (comprador)
 //   pedido_crear          → pedido de material (gestión: jefes de taller,
 //                           gerencia, dueños, Administración; operarios no)
+//   pedidos_crear         → varios pedidos de una vez, pegados de la hoja INVENTARIO
+//                           (un pedido por artículo; misma OT, fecha y observación)
 //   pedido_anular         → el comprador, cualquiera pendiente; quien lo pidió, el suyo pendiente
 //   pedido_editar         → corregir un pedido pendiente (mismos permisos que anular); queda
 //                           registro de quién, cuándo y qué cambió (121)
@@ -197,6 +199,54 @@ async function crearPedido(sesion, d) {
   const [creado] = (await sbPost("pedidos_compra", fila, opts)) || [];
   broadcastRefresh(e, "pedidos_compra");
   return NextResponse.json({ ok: true, pedido: creado || fila });
+}
+
+/** Varios pedidos de una vez (pegados de la planilla): todos del catálogo, mismos datos comunes. */
+async function crearPedidos(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  if (!puedePedir(sesion.rol)) {
+    return NextResponse.json({ error: "Los pedidos de material los hacen los jefes de taller y la oficina" }, { status: 403 });
+  }
+  const cantidades = new Map();
+  for (const it of d.items) cantidades.set(it.sku, Math.round(((cantidades.get(it.sku) || 0) + it.cantidad) * 1000) / 1000);
+  const skus = [...cantidades.keys()];
+  const lista = skus.map((s) => `"${s}"`).join(",");
+  const articulos = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=in.(${encodeURIComponent(lista)})&select=sku,nombre,unidad,division`, opts)) || [];
+  const porSku = new Map(articulos.map((a) => [a.sku, a]));
+  const faltan = skus.filter((s) => !porSku.has(s));
+  if (faltan.length) {
+    return NextResponse.json({ error: `No están en el stock: ${faltan.slice(0, 5).join(", ")}${faltan.length > 5 ? "…" : ""}. Puede que falte sincronizar la planilla.` }, { status: 404 });
+  }
+  let ot = null;
+  if (d.ot) {
+    const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(d.ot)}&select=ot&limit=1`, opts)) || [];
+    if (!proyecto) return NextResponse.json({ error: `No encontré la OT ${d.ot}` }, { status: 404 });
+    ot = proyecto.ot;
+  }
+  const [empleado] = sesion.empleado_id
+    ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre,division&limit=1`, { ...opts, silent: true, fallback: [] })) || []
+    : [];
+  const filas = skus.map((sku) => {
+    const a = porSku.get(sku);
+    return {
+      empresa_id: e,
+      sku,
+      descripcion: String(a.nombre || sku).slice(0, 200),
+      unidad: a.unidad || null,
+      cantidad: cantidades.get(sku),
+      ot,
+      para_fecha: d.para_fecha,
+      notas: d.notas,
+      division: (a.division || empleado?.division || null)?.slice?.(0, 60) ?? null,
+      estado: "pendiente",
+      empleado_id: sesion.empleado_id || null,
+      empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
+    };
+  });
+  const creados = (await sbPost("pedidos_compra", filas, opts)) || [];
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, creados: creados.length || filas.length });
 }
 
 async function anularPedido(sesion, id) {
@@ -672,6 +722,7 @@ export async function POST(request) {
     const d = parsed.data;
     try {
       if (d.accion === "pedido_crear") return await crearPedido(sesion, d);
+      if (d.accion === "pedidos_crear") return await crearPedidos(sesion, d);
       if (d.accion === "pedido_anular") return await anularPedido(sesion, d.id);
       if (d.accion === "pedido_editar") return await editarPedido(sesion, d);
       if (d.accion === "recepcion_crear") return await crearRecepcion(sesion, d);
