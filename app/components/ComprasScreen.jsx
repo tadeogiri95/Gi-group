@@ -5,12 +5,13 @@
 // (sin división asignada) y gerencia ven todos los pedidos y manejan los
 // proveedores; con eso arman las órdenes de compra (parte 21). Lo que llega
 // lo reciben los jefes o Administración en Recibir (parte 22). Quien compra
-// tiene además Reportes (parte 23).
+// tiene además Reportes (parte 23). Un pedido pendiente se corrige con
+// "Editar" y queda registro de quién lo corrigió (121).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { ESTADOS_PEDIDO, faltaTabla, filtrarPedidos, puedeAnularPedido, textoPedido } from "../lib/compras";
+import { ESTADOS_PEDIDO, faltaTabla, filtrarPedidos, puedeAnularPedido, puedeEditarPedido, textoCambio, textoPedido } from "../lib/compras";
 import ProveedoresCompras from "./ProveedoresCompras";
 import AComprar from "./AComprar";
 import OrdenesCompra from "./OrdenesCompra";
@@ -30,8 +31,31 @@ function fecha(iso) {
   return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
 }
 
-function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
-  const [form, setForm] = useState({ ...VACIO });
+function fechaHora(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+const numTexto = (n) => (n === null || n === undefined ? "" : String(Number(n)).replace(".", ","));
+
+/** El formulario con los datos de un pedido guardado, para corregirlo. */
+function formDePedido(p, articulos) {
+  const articulo = p.sku ? articulos.find((a) => a.sku === p.sku) || { sku: p.sku, nombre: p.descripcion, unidad: p.unidad } : null;
+  return {
+    texto: articulo ? "" : p.descripcion || "",
+    articulo,
+    descripcion: "",
+    unidad: articulo ? "" : p.unidad || "",
+    cantidad: numTexto(p.cantidad),
+    ot: p.ot || "",
+    para_fecha: p.para_fecha || "",
+    notas: p.notas || "",
+  };
+}
+
+/** Pedir material o, con `pedido`, corregir uno pendiente. */
+function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onCorregido }) {
+  const [form, setForm] = useState(() => (pedido ? formDePedido(pedido, articulos) : { ...VACIO }));
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [hecho, setHecho] = useState(null);
@@ -52,7 +76,8 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
       const res = await apiFetch("/api/compras", {
         method: "POST",
         body: JSON.stringify({
-          accion: "pedido_crear",
+          accion: pedido ? "pedido_editar" : "pedido_crear",
+          ...(pedido ? { id: pedido.id } : {}),
           sku: form.articulo?.sku || null,
           descripcion,
           unidad: form.articulo ? null : form.unidad.trim() || null,
@@ -64,6 +89,10 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar el pedido");
+      if (pedido) {
+        onCorregido?.(data);
+        return;
+      }
       setHecho(data.pedido);
       onListo();
     } catch (e) {
@@ -86,7 +115,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
 
   return (
     <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
-      <div className="text-[15px] font-bold mb-2">🛒 Pedir material</div>
+      <div className="text-[15px] font-bold mb-2">{pedido ? "✏️ Corregir pedido" : "🛒 Pedir material"}</div>
       <label className="g-label" htmlFor="ped-articulo">Material</label>
       {form.articulo ? (
         <div className="flex items-center gap-2 mb-2">
@@ -147,7 +176,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar }) {
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
       <div className="flex gap-2">
         <button onClick={onCancelar} className="g-btn g-btn-secondary flex-1">Cancelar</button>
-        <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : "Pedir"}</button>
+        <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : pedido ? "Guardar corrección" : "Pedir"}</button>
       </div>
     </div>
   );
@@ -163,6 +192,9 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
   const [articulos, setArticulos] = useState([]);
   const [ots, setOts] = useState([]);
   const [pidiendo, setPidiendo] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [historial, setHistorial] = useState(null);
+  const [aviso, setAviso] = useState(null);
   const [texto, setTexto] = useState("");
   const [estado, setEstado] = useState("pendiente");
   const [error, setError] = useState(null);
@@ -193,14 +225,14 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
 
   // Catálogo y OT para el formulario, solo cuando se abre
   useEffect(() => {
-    if (!pidiendo || articulos.length) return;
+    if ((!pidiendo && !editando) || articulos.length) return;
     sbGetAll("articulos_stock?activo=eq.true&select=sku,nombre,unidad,division&order=sku.asc", { maxFilas: 20000 })
       .then(({ data }) => setArticulos(data || []))
       .catch(() => {});
     sb.get("proyectos?select=ot&estado=eq.activo&order=id.desc&limit=300")
       .then((rows) => setOts([...new Set((rows || []).map((p) => p.ot).filter(Boolean))]))
       .catch(() => {});
-  }, [pidiendo, articulos.length]);
+  }, [pidiendo, editando, articulos.length]);
 
   const visibles = useMemo(() => filtrarPedidos(pedidos, { texto, estado }), [pedidos, texto, estado]);
 
@@ -213,6 +245,17 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
       await cargar();
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  const verHistorial = async (p) => {
+    if (historial?.id === p.id) { setHistorial(null); return; }
+    setHistorial({ id: p.id, cambios: null });
+    try {
+      const rows = await sb.get(`pedidos_compra_cambios?pedido_id=eq.${p.id}&order=created_at.desc&limit=50`);
+      setHistorial({ id: p.id, cambios: rows || [] });
+    } catch {
+      setHistorial({ id: p.id, cambios: [], error: true });
     }
   };
 
@@ -252,7 +295,15 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
         <ReportesCompras empresaId={empresaId} />
       ) : (
         <>
-          {permisos.puede_pedir && (pidiendo ? (
+          {editando ? (
+            <PedirMaterial key={editando.id} pedido={editando} articulos={articulos} ots={ots} onListo={cargar} onCancelar={() => setEditando(null)}
+              onCorregido={async (data) => {
+                setEditando(null);
+                setHistorial(null);
+                setAviso(data.cambios?.length ? `Pedido corregido: ${textoPedido(data.pedido)}.` : "No había nada para cambiar.");
+                await cargar();
+              }} />
+          ) : permisos.puede_pedir && (pidiendo ? (
             <PedirMaterial articulos={articulos} ots={ots} onListo={cargar} onCancelar={() => setPidiendo(false)} />
           ) : (
             <button onClick={() => { setPidiendo(true); setError(null); }} className="g-btn g-btn-primary w-full mb-3">🛒 Pedir material</button>
@@ -266,6 +317,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
             </select>
           </div>
           {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
+          {aviso && <div role="status" className="text-[13px] mb-2">✅ {aviso}</div>}
 
           {pedidos === null ? (
             <div className="text-[14px] text-gypi-dim" role="status">Cargando pedidos…</div>
@@ -278,18 +330,43 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
               {visibles.map((p) => {
                 const est = ESTADOS_PEDIDO[p.estado] || ESTADOS_PEDIDO.pendiente;
                 return (
-                  <li key={p.id} className={`flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface ${p.estado === "anulado" ? "opacity-60" : ""}`}>
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold truncate ${p.estado === "anulado" ? "line-through" : ""}`}>{textoPedido(p)}</div>
-                      <div className="text-[12px] text-gypi-dim truncate">
-                        {est.icono} {est.nombre} · {p.empleado_nombre || "—"} · {fecha(p.created_at)}
-                        {p.para_fecha ? ` · Para el ${fecha(p.para_fecha)}` : ""}
-                        {p.notas ? ` · ${p.notas}` : ""}
+                  <li key={p.id} className={`p-2 rounded-[10px] border border-gypi-border bg-gypi-surface ${p.estado === "anulado" ? "opacity-60" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[14px] font-semibold truncate ${p.estado === "anulado" ? "line-through" : ""}`}>{textoPedido(p)}</div>
+                        <div className="text-[12px] text-gypi-dim truncate">
+                          {est.icono} {est.nombre} · {p.empleado_nombre || "—"} · {fecha(p.created_at)}
+                          {p.para_fecha ? ` · Para el ${fecha(p.para_fecha)}` : ""}
+                          {p.notas ? ` · ${p.notas}` : ""}
+                        </div>
                       </div>
+                      {puedeEditarPedido(p, { comprador, empleadoId: usuario?.id }) && (
+                        <button onClick={() => { setEditando(p); setPidiendo(false); setError(null); setAviso(null); }} aria-label={`Editar pedido de ${textoPedido(p)}`}
+                          className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Editar</button>
+                      )}
+                      {puedeAnularPedido(p, { comprador, empleadoId: usuario?.id }) && (
+                        <button onClick={() => anular(p)} aria-label={`Anular pedido de ${textoPedido(p)}`}
+                          className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Anular</button>
+                      )}
                     </div>
-                    {puedeAnularPedido(p, { comprador, empleadoId: usuario?.id }) && (
-                      <button onClick={() => anular(p)} aria-label={`Anular pedido de ${textoPedido(p)}`}
-                        className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Anular</button>
+                    {p.editado_at && (
+                      <button onClick={() => verHistorial(p)} aria-expanded={historial?.id === p.id}
+                        className="min-h-[32px] p-0 bg-transparent border-none text-left text-[12px] font-semibold text-gypi-amber-ink cursor-pointer">
+                        ✏️ Corregido por {p.editado_por_nombre || "—"} el {fecha(p.editado_at)}
+                      </button>
+                    )}
+                    {historial?.id === p.id && (
+                      <ul aria-label={`Correcciones de ${textoPedido(p)}`} className="list-none m-0 mt-1 p-2 rounded-lg bg-gypi-bg text-[12px] flex flex-col gap-1">
+                        {historial.cambios === null ? <li role="status">Cargando…</li>
+                          : historial.error ? <li>No se pudo leer el historial.</li>
+                            : !historial.cambios.length ? <li>Sin correcciones guardadas.</li>
+                              : historial.cambios.map((c) => (
+                                <li key={c.id}>
+                                  <b>{fechaHora(c.created_at)} · {c.empleado_nombre || "—"}</b>
+                                  {(Array.isArray(c.cambios) ? c.cambios : []).map((x) => <div key={x.campo}>{textoCambio(x)}</div>)}
+                                </li>
+                              ))}
+                      </ul>
                     )}
                   </li>
                 );

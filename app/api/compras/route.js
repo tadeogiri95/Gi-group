@@ -9,6 +9,8 @@
 //   pedido_crear          → pedido de material (gestión: jefes de taller,
 //                           gerencia, dueños, Administración; operarios no)
 //   pedido_anular         → el comprador, cualquiera pendiente; quien lo pidió, el suyo pendiente
+//   pedido_editar         → corregir un pedido pendiente (mismos permisos que anular); queda
+//                           registro de quién, cuándo y qué cambió (121)
 //   oc_crear              → una OC en borrador por proveedor con los renglones elegidos en
 //                           "A comprar"; los pedidos de los jefes pasan a en_oc (comprador; 114)
 //                           (la nota de cada pedido pasa a la observación del renglón; 120)
@@ -34,13 +36,18 @@ import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
-import { puedePedir, puedeComprar, puedeAnularPedido, formatoCuit } from "../../lib/compras";
+import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
 import { ESTADOS_OC_RECIBIBLE, estadoTrasRecepcion, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
   return /proveedores|pedidos_compra/.test(m) && /does not exist|42P01|PGRST20[05]|schema cache/.test(m);
+}
+
+function faltaMigracionEdicion(err) {
+  const m = String(err?.message);
+  return /pedidos_compra_cambios|editado_por|editado_at/.test(m) && /does not exist|42P01|42703|PGRST20[45]|schema cache/.test(m);
 }
 
 function faltaMigracionOc(err) {
@@ -124,35 +131,49 @@ async function importarProveedores(sesion, nombres) {
   return NextResponse.json({ ok: true, agregados: nuevos.length, ya_estaban: nombres.length - nuevos.length });
 }
 
+/** Artículo del catálogo y OT de un pedido nuevo o corregido: { articulo, datos } o { error }. */
+async function datosDelPedido(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  let articulo = null;
+  if (d.sku) {
+    [articulo] = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=eq.${encodeURIComponent(d.sku)}&select=sku,nombre,unidad,division&limit=1`, opts)) || [];
+    if (!articulo) return { error: NextResponse.json({ error: "Ese artículo no está en el stock. Puede que falte sincronizar la planilla." }, { status: 404 }) };
+  }
+  let ot = null;
+  if (d.ot) {
+    const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(d.ot)}&select=ot&limit=1`, opts)) || [];
+    if (!proyecto) return { error: NextResponse.json({ error: `No encontré la OT ${d.ot}` }, { status: 404 }) };
+    ot = proyecto.ot;
+  }
+  return {
+    articulo,
+    datos: {
+      sku: articulo?.sku ?? null,
+      descripcion: (d.descripcion || articulo?.nombre || articulo?.sku).slice(0, 200),
+      unidad: d.unidad || articulo?.unidad || null,
+      cantidad: d.cantidad,
+      ot,
+      para_fecha: d.para_fecha,
+      notas: d.notas,
+    },
+  };
+}
+
 async function crearPedido(sesion, d) {
   const e = sesion.empresa_id;
   const opts = { sesion };
   if (!puedePedir(sesion.rol)) {
     return NextResponse.json({ error: "Los pedidos de material los hacen los jefes de taller y la oficina" }, { status: 403 });
   }
-  let articulo = null;
-  if (d.sku) {
-    [articulo] = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=eq.${encodeURIComponent(d.sku)}&select=sku,nombre,unidad,division&limit=1`, opts)) || [];
-    if (!articulo) return NextResponse.json({ error: "Ese artículo no está en el stock. Puede que falte sincronizar la planilla." }, { status: 404 });
-  }
-  let ot = null;
-  if (d.ot) {
-    const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(d.ot)}&select=ot&limit=1`, opts)) || [];
-    if (!proyecto) return NextResponse.json({ error: `No encontré la OT ${d.ot}` }, { status: 404 });
-    ot = proyecto.ot;
-  }
+  const { articulo, datos, error } = await datosDelPedido(sesion, d);
+  if (error) return error;
   const [empleado] = sesion.empleado_id
     ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre,division&limit=1`, { ...opts, silent: true, fallback: [] })) || []
     : [];
   const fila = {
     empresa_id: e,
-    sku: articulo?.sku ?? null,
-    descripcion: (d.descripcion || articulo?.nombre || articulo?.sku).slice(0, 200),
-    unidad: d.unidad || articulo?.unidad || null,
-    cantidad: d.cantidad,
-    ot,
-    para_fecha: d.para_fecha,
-    notas: d.notas,
+    ...datos,
     division: (articulo?.division || empleado?.division || null)?.slice?.(0, 60) ?? null,
     estado: "pendiente",
     empleado_id: sesion.empleado_id || null,
@@ -180,6 +201,39 @@ async function anularPedido(sesion, id) {
   const [fila] = (await sbPatch(`${filtro}&estado=eq.pendiente`, { estado: "anulado", anulado_por: sesion.empleado_id || null, anulado_at: new Date().toISOString() }, opts)) || [];
   broadcastRefresh(e, "pedidos_compra");
   return NextResponse.json({ ok: true, pedido: fila || null });
+}
+
+/** Corrige un pedido pendiente y deja registro de quién, cuándo y qué cambió (121). */
+async function editarPedido(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const filtro = `pedidos_compra?id=eq.${d.id}&empresa_id=eq.${e}`;
+  const [pedido] = (await sbGet(`${filtro}&select=*&limit=1`, opts)) || [];
+  if (!pedido) return NextResponse.json({ error: "No encontré ese pedido" }, { status: 404 });
+  const comprador = await esComprador(sesion);
+  if (!puedeEditarPedido(pedido, { comprador, empleadoId: sesion.empleado_id })) {
+    const motivo = pedido.estado === "en_oc"
+      ? "Ese pedido ya está en una orden de compra: corregilo desde la orden."
+      : pedido.estado !== "pendiente"
+        ? "Ese pedido ya no está pendiente: no se puede corregir."
+        : "Solo podés corregir tus pedidos. Pedíselo a Administración.";
+    return NextResponse.json({ error: motivo }, { status: 403 });
+  }
+  const { datos, error } = await datosDelPedido(sesion, d);
+  if (error) return error;
+  const cambios = cambiosPedido(pedido, datos);
+  if (!cambios.length) return NextResponse.json({ ok: true, pedido, cambios: [] });
+  const quien = await nombreEmpleado(sesion);
+  const ahora = new Date().toISOString();
+  const [fila] = (await sbPatch(`${filtro}&estado=eq.pendiente`, {
+    ...datos, editado_por: sesion.empleado_id || null, editado_por_nombre: quien, editado_at: ahora,
+  }, opts)) || [];
+  if (!fila) return NextResponse.json({ error: "Ese pedido ya no está pendiente (lo anularon o lo pasaron a una orden de compra). Actualizá la lista." }, { status: 409 });
+  await sbPost("pedidos_compra_cambios", {
+    empresa_id: e, pedido_id: pedido.id, cambios, empleado_id: sesion.empleado_id || null, empleado_nombre: quien, created_at: ahora,
+  }, opts);
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, pedido: fila, cambios });
 }
 
 /* ─── Órdenes de compra (parte 21) ─────────────────────────────────────── */
@@ -548,6 +602,7 @@ export async function POST(request) {
     try {
       if (d.accion === "pedido_crear") return await crearPedido(sesion, d);
       if (d.accion === "pedido_anular") return await anularPedido(sesion, d.id);
+      if (d.accion === "pedido_editar") return await editarPedido(sesion, d);
       if (d.accion === "recepcion_crear") return await crearRecepcion(sesion, d);
       if (!(await esComprador(sesion))) return soloComprador();
       if (d.accion === "proveedor_guardar") return await guardarProveedor(sesion, d);
@@ -560,6 +615,9 @@ export async function POST(request) {
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionEdicion(err)) {
+        return NextResponse.json({ error: "Para corregir pedidos falta correr la migración 121 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionObservacion(err)) {
         return NextResponse.json({ error: "Para la observación de cada renglón falta correr la migración 120 en Supabase." }, { status: 409 });
       }

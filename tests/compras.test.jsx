@@ -10,6 +10,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   puedePedir, puedeComprar, puedeAnularPedido, leerListaProveedores, formatoCuit, numeroWhatsapp, textoPedido, filtrarPedidos,
+  puedeEditarPedido, cambiosPedido, textoCambio,
 } from "../app/lib/compras.js";
 import { comprasBody } from "../app/lib/schemas.ts";
 import { autorizar } from "../app/lib/dataPolicy.js";
@@ -52,6 +53,40 @@ test("anular un pedido — el suyo pendiente; el comprador cualquiera pendiente;
   assert.equal(puedeAnularPedido(p, { comprador: true, empleadoId: OTRO }), true);
   assert.equal(puedeAnularPedido({ ...p, estado: "en_oc" }, { comprador: true }), false);
   assert.equal(puedeAnularPedido({ ...p, estado: "anulado" }, { empleadoId: EMP }), false);
+});
+
+test("corregir un pedido (121) — mismos permisos que anular; solo cuenta lo que cambió", () => {
+  const p = { estado: "pendiente", empleado_id: EMP, sku: null, descripcion: "Tornillos", unidad: "cajas", cantidad: "10.000", ot: null, para_fecha: "2026-10-20", notas: null };
+  assert.equal(puedeEditarPedido(p, { empleadoId: EMP }), true);
+  assert.equal(puedeEditarPedido(p, { empleadoId: OTRO }), false);
+  assert.equal(puedeEditarPedido(p, { comprador: true }), true);
+  assert.equal(puedeEditarPedido({ ...p, estado: "en_oc" }, { comprador: true }), false);
+  assert.deepEqual(cambiosPedido(p, { sku: null, descripcion: "Tornillos", unidad: "cajas", cantidad: 10, ot: null, para_fecha: "2026-10-20", notas: "" }), [], "10.000 = 10 y vacío = sin nota");
+  const cambios = cambiosPedido(p, { sku: null, descripcion: "Tornillos", unidad: "cajas", cantidad: 12, ot: "M-7495", para_fecha: "2026-10-22", notas: "Cabeza fresada" });
+  assert.deepEqual(cambios, [
+    { campo: "cantidad", antes: 10, despues: 12 },
+    { campo: "ot", antes: null, despues: "M-7495" },
+    { campo: "para_fecha", antes: "2026-10-20", despues: "2026-10-22" },
+    { campo: "notas", antes: null, despues: "Cabeza fresada" },
+  ]);
+  assert.deepEqual(cambios.map(textoCambio), ["Cantidad: 10 → 12", "OT: — → M-7495", "Para cuándo: 20/10/2026 → 22/10/2026", "Observación: — → Cabeza fresada"]);
+  assert.equal(textoCambio({ campo: "cantidad", antes: 1.5, despues: 1000 }), "Cantidad: 1,5 → 1.000");
+});
+
+test("migración 121 — historial de correcciones por empresa, solo se agrega; se lee por /api/data solo gestión", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/121_pedidos_compra_cambios.sql", import.meta.url), "utf8");
+  assert.match(sql, /^do \$mig\$$/m);
+  assert.match(sql, /add column if not exists editado_por uuid/);
+  assert.match(sql, /add column if not exists editado_por_nombre text/);
+  assert.match(sql, /add column if not exists editado_at timestamptz/);
+  assert.match(sql, /create table if not exists public\.pedidos_compra_cambios/);
+  assert.match(sql, /alter table public\.pedidos_compra_cambios enable row level security/);
+  assert.match(sql, /tenant_isolation_auth_pedidos_compra_cambios/);
+  assert.match(sql, /grant select, insert on public\.pedidos_compra_cambios to authenticated/);
+  assert.doesNotMatch(sql, /grant[^;]*(update|delete)[^;]*pedidos_compra_cambios/i);
+  assert.equal(autorizar("pedidos_compra_cambios", "GET", { rol: "operativo" }).ok, false);
+  assert.equal(autorizar("pedidos_compra_cambios", "GET", { rol: "administrativo" }).ok, true);
+  for (const metodo of ["POST", "PATCH", "DELETE"]) assert.equal(autorizar("pedidos_compra_cambios", metodo, { rol: "gerencial" }).ok, false, metodo);
 });
 
 test("lista de proveedores pegada de TABLAS — sin título, vacíos ni repetidos", () => {
@@ -123,12 +158,13 @@ test("migración 113 — por empresa, sin borrar; se lee por /api/data solo gest
 
 // ─── Ruta ───
 
-function mockRuta({ supervisor = null, articulo = PLACA, ot = [{ ot: "M-7495" }], pedido = null, proveedores = [], falla = null, duplicado = false } = {}) {
+function mockRuta({ supervisor = null, articulo = PLACA, ot = [{ ot: "M-7495" }], pedido = null, proveedores = [], falla = null, duplicado = false, sin121 = false } = {}) {
   const escrito = [];
   const escribir = (tabla) => (u, o) => {
     if (falla) return { status: 404, body: { message: falla } };
     if (!o.method || o.method === "GET") return { status: 200, body: tabla === "pedidos_compra" ? (pedido ? [pedido] : []) : proveedores };
     if (duplicado) return { status: 409, body: { code: "23505", message: "duplicate key value violates unique constraint" } };
+    if (sin121 && String(o.body).includes("editado_at")) return { status: 400, body: { code: "PGRST204", message: "Could not find the 'editado_at' column of 'pedidos_compra' in the schema cache" } };
     const body = JSON.parse(o.body);
     escrito.push({ tabla, metodo: o.method, url: u, body });
     return { status: 201, body: Array.isArray(body) ? body : [{ id: 9, ...body }] };
@@ -148,6 +184,7 @@ function mockRuta({ supervisor = null, articulo = PLACA, ot = [{ ot: "M-7495" }]
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/articulos_stock"), respond: () => ({ status: 200, body: articulo ? [articulo] : [] }) },
     { match: (u) => u.includes("/rest/v1/proyectos"), respond: () => ({ status: 200, body: ot }) },
+    { match: (u) => u.includes("/rest/v1/pedidos_compra_cambios"), respond: escribir("pedidos_compra_cambios") },
     { match: (u) => u.includes("/rest/v1/pedidos_compra"), respond: escribir("pedidos_compra") },
     { match: (u) => u.includes("/rest/v1/proveedores"), respond: escribir("proveedores") },
   ]);
@@ -236,6 +273,63 @@ test("/api/compras — anular: el suyo sí, el de otro no (salvo el comprador), 
   assert.equal(res.status, 404);
 });
 
+const PEDIDO = { id: 5, estado: "pendiente", empleado_id: EMP, sku: null, descripcion: "Tornillos 4x40", unidad: "cajas", cantidad: 10, ot: null, para_fecha: null, notas: null };
+const CORRECCION = { accion: "pedido_editar", id: 5, descripcion: "Tornillos 4x40", unidad: "cajas", cantidad: 12, notas: "Cabeza fresada" };
+
+test("/api/compras — corregir un pedido: guarda quién y qué cambió", async () => {
+  const escrito = mockRuta({ supervisor: "MUEBLES", pedido: PEDIDO });
+  const res = await api.POST(req(await token("administrativo"), CORRECCION));
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.deepEqual(data.cambios, [{ campo: "cantidad", antes: 10, despues: 12 }, { campo: "notas", antes: null, despues: "Cabeza fresada" }]);
+  const [patch, registro] = escrito;
+  assert.equal(patch.tabla, "pedidos_compra");
+  assert.equal(patch.metodo, "PATCH");
+  assert.match(patch.url, /id=eq\.5&empresa_id=eq\..*&estado=eq\.pendiente/);
+  assert.equal(patch.body.cantidad, 12);
+  assert.equal(patch.body.notas, "Cabeza fresada");
+  assert.equal(patch.body.editado_por, EMP);
+  assert.equal(patch.body.editado_por_nombre, "Ana Jefa");
+  assert.ok(patch.body.editado_at);
+  assert.equal("empleado_id" in patch.body, false, "no cambia quién lo pidió");
+  assert.equal(registro.tabla, "pedidos_compra_cambios");
+  assert.equal(registro.metodo, "POST");
+  assert.equal(registro.body.empresa_id, E);
+  assert.equal(registro.body.pedido_id, 5);
+  assert.equal(registro.body.empleado_nombre, "Ana Jefa");
+  assert.deepEqual(registro.body.cambios, data.cambios);
+});
+
+test("/api/compras — corregir: sin cambios no registra; el de otro, en OC o sin la 121 no", async () => {
+  let escrito = mockRuta({ pedido: PEDIDO });
+  let res = await api.POST(req(await token("gerencial"), { ...CORRECCION, cantidad: 10, notas: null }));
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).cambios, []);
+  assert.equal(escrito.length, 0);
+
+  escrito = mockRuta({ supervisor: "MUEBLES", pedido: { ...PEDIDO, empleado_id: OTRO } });
+  res = await api.POST(req(await token("administrativo"), CORRECCION));
+  assert.equal(res.status, 403);
+  assert.match((await res.json()).error, /tus pedidos/);
+  assert.equal(escrito.length, 0);
+  res = await api.POST(req(await token("gerencial"), CORRECCION));
+  assert.equal(res.status, 200, "el comprador corrige el de cualquiera");
+
+  mockRuta({ pedido: { ...PEDIDO, estado: "en_oc" } });
+  res = await api.POST(req(await token("gerencial"), CORRECCION));
+  assert.equal(res.status, 403);
+  assert.match((await res.json()).error, /desde la orden/);
+
+  mockRuta({ pedido: PEDIDO, ot: [] });
+  res = await api.POST(req(await token("gerencial"), { ...CORRECCION, ot: "X-1" }));
+  assert.equal(res.status, 404);
+
+  mockRuta({ pedido: PEDIDO, sin121: true });
+  res = await api.POST(req(await token("gerencial"), CORRECCION));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 121/);
+});
+
 test("/api/compras — proveedores: Administración sí, el supervisor de división no", async () => {
   let escrito = mockRuta({ supervisor: "MUEBLES" });
   let res = await api.POST(req(await token("administrativo"), { accion: "proveedor_guardar", nombre: "Aluar" }));
@@ -281,7 +375,7 @@ test("/api/compras — si falta la migración 113 lo dice", async () => {
 
 // ─── Pantallas ───
 
-function mockPantalla({ comprador = false, puedePedir: pide = true, pedidos = [], proveedores = [] } = {}) {
+function mockPantalla({ comprador = false, puedePedir: pide = true, pedidos = [], proveedores = [], cambios = [] } = {}) {
   const enviados = [];
   const leidos = [];
   global.fetch = async (url, opts = {}) => {
@@ -289,12 +383,14 @@ function mockPantalla({ comprador = false, puedePedir: pide = true, pedidos = []
     if (String(url).includes("/api/compras")) {
       if (!body) return new Response(JSON.stringify({ comprador, puede_pedir: pide }), { status: 200 });
       enviados.push(body);
-      const extra = body.accion === "proveedores_importar" ? { agregados: body.nombres.length, ya_estaban: 0 } : {};
+      const extra = body.accion === "proveedores_importar" ? { agregados: body.nombres.length, ya_estaban: 0 }
+        : body.accion === "pedido_editar" ? { cambios: [{ campo: "cantidad", antes: 4, despues: body.cantidad }] } : {};
       return new Response(JSON.stringify({ ok: true, pedido: { ...body, descripcion: body.descripcion || PLACA.nombre, unidad: body.unidad || PLACA.unidad }, ...extra }), { status: 200 });
     }
     if (body?.path) leidos.push(body.path);
     if (body?.path?.startsWith("articulos_stock")) return new Response(JSON.stringify({ data: [PLACA] }), { status: 200 });
     if (body?.path?.startsWith("proyectos")) return new Response(JSON.stringify({ data: [{ ot: "M-7495" }] }), { status: 200 });
+    if (body?.path?.startsWith("pedidos_compra_cambios")) return new Response(JSON.stringify({ data: cambios }), { status: 200 });
     if (body?.path?.startsWith("pedidos_compra")) return new Response(JSON.stringify({ data: pedidos }), { status: 200 });
     if (body?.path?.startsWith("proveedores")) return new Response(JSON.stringify({ data: proveedores }), { status: 200 });
     return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -359,6 +455,36 @@ test("compras — Administración ve todos los pedidos pendientes y anula", asyn
   fireEvent.change(screen.getByLabelText("Estado"), { target: { value: "" } });
   assert.ok(screen.getByText("Bisagra · 10"));
   assert.ok(screen.getByText("🏭 Proveedores"));
+});
+
+test("compras — el jefe corrige su pedido y ve quién lo corrigió", async () => {
+  const pedidos = [
+    { id: 5, sku: PLACA.sku, descripcion: PLACA.nombre, cantidad: 4, unidad: "placas", ot: "M-7495", para_fecha: "2026-10-20", notas: null, estado: "pendiente", empleado_id: EMP, empleado_nombre: "Ana Jefa", created_at: "2026-10-17T12:00:00Z",
+      editado_at: "2026-10-18T15:30:00Z", editado_por_nombre: "Laura Admin" },
+    { id: 6, descripcion: "Bisagra", cantidad: 10, estado: "pendiente", empleado_id: OTRO, empleado_nombre: "Luis", created_at: "2026-10-16T12:00:00Z" },
+  ];
+  const cambios = [{ id: 1, pedido_id: 5, empleado_nombre: "Laura Admin", created_at: "2026-10-18T15:30:00Z", cambios: [{ campo: "cantidad", antes: 3, despues: 4 }] }];
+  const { enviados, leidos } = mockPantalla({ pedidos, cambios });
+  render(<ComprasScreen empresaId={E} usuario={JEFE} />);
+  const texto = `${PLACA.nombre} · 4 placas · OT M-7495`;
+  await screen.findByText(texto);
+  assert.equal(screen.queryByLabelText("Editar pedido de Bisagra · 10"), null, "el de otro no lo corrige el jefe");
+
+  fireEvent.click(screen.getByText(/Corregido por Laura Admin el 18\/10/));
+  await screen.findByText("Cantidad: 3 → 4");
+  assert.ok(leidos.some((p) => p.startsWith("pedidos_compra_cambios?pedido_id=eq.5")));
+
+  fireEvent.click(screen.getByLabelText(`Editar pedido de ${texto}`));
+  assert.ok(await screen.findByText("✏️ Corregir pedido"));
+  assert.equal(screen.getByLabelText("Cantidad (placas)").value, "4");
+  assert.equal(screen.getByLabelText("OT (opcional)").value, "M-7495");
+  assert.equal(screen.queryByText("🛒 Pedir material"), null);
+  fireEvent.change(screen.getByLabelText("Cantidad (placas)"), { target: { value: "6" } });
+  fireEvent.change(screen.getByLabelText("Observación para el proveedor (opcional)"), { target: { value: "Blanco" } });
+  fireEvent.click(screen.getByText("Guardar corrección"));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual(enviados[0], { accion: "pedido_editar", id: 5, sku: PLACA.sku, descripcion: null, unidad: null, cantidad: 6, ot: "M-7495", para_fecha: "2026-10-20", notas: "Blanco" });
+  assert.ok(await screen.findByText(/Pedido corregido/));
 });
 
 test("proveedores — traer la lista de la planilla, editar y dar de baja", async () => {
