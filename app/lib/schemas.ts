@@ -340,6 +340,15 @@ const datosProveedor = {
   condicion_pago: textoSuelto(120),
   notas: textoSuelto(300),
 };
+const datosPedido = {
+  sku: skuMovimiento.nullable().optional().transform((v) => v || null),
+  descripcion: textoSuelto(200),
+  unidad: textoSuelto(20),
+  cantidad: z.number().finite().positive().max(1e10),
+  ot: otSuelto.nullable().optional().transform((v) => v || null),
+  para_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
+  notas: textoSuelto(300),
+};
 const monedaOc = z.enum(["ARS", "USD"]);
 const cantidadOc = z.number().finite().positive().max(1e10);
 const precioOc = z.number().finite().min(0).max(1e12).nullable().optional().transform((v) => v ?? null);
@@ -347,17 +356,14 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("proveedor_guardar"), id: idCompras.optional(), ...datosProveedor }).strict(),
   z.object({ accion: z.literal("proveedor_baja"), id: idCompras, activo: z.boolean() }).strict(),
   z.object({ accion: z.literal("proveedores_importar"), nombres: z.array(z.string().trim().min(1).max(120)).min(1).max(500) }).strict(),
-  z.object({
-    accion: z.literal("pedido_crear"),
-    sku: skuMovimiento.nullable().optional().transform((v) => v || null),
-    descripcion: textoSuelto(200),
-    unidad: textoSuelto(20),
-    cantidad: z.number().finite().positive().max(1e10),
-    ot: otSuelto.nullable().optional().transform((v) => v || null),
-    para_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
-    notas: textoSuelto(300),
-  }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
+  z.object({ accion: z.literal("pedido_crear"), ...datosPedido }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
   z.object({ accion: z.literal("pedido_anular"), id: idCompras }).strict(),
+  // Corregir un pedido pendiente (121): los mismos datos que al pedir
+  z.object({
+    accion: z.literal("pedido_editar"),
+    id: idCompras,
+    ...datosPedido,
+  }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
   // Órdenes de compra (parte 21, migración 114)
   z.object({
     accion: z.literal("oc_crear"),
