@@ -8,7 +8,8 @@
 // tiene además Reportes (parte 23). Un pedido pendiente se corrige con
 // "Editar" y queda registro de quién lo corrigió (121). Desde la compu se
 // piden varios materiales de una vez pegando renglones de la hoja INVENTARIO
-// (📋 Pegar desde la planilla).
+// (📋 Pegar desde la planilla). Si el material no está en la planilla, los
+// dueños y administradores lo cargan como artículo nuevo (124).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
@@ -20,6 +21,7 @@ import AComprar from "./AComprar";
 import OrdenesCompra from "./OrdenesCompra";
 import RecibirCompra from "./RecibirCompra";
 import ReportesCompras from "./ReportesCompras";
+import ArticuloNuevo from "./ArticuloNuevo";
 
 const CUANTOS = 300;
 const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad: "", ot: "", para_fecha: "", notas: "" };
@@ -57,8 +59,9 @@ function formDePedido(p, articulos) {
 }
 
 /** Pedir material o, con `pedido`, corregir uno pendiente. */
-function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onCorregido }) {
+function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onCorregido, puedeCrearArticulo = false, onArticuloNuevo }) {
   const [form, setForm] = useState(() => (pedido ? formDePedido(pedido, articulos) : { ...VACIO }));
+  const [creando, setCreando] = useState(false);
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [hecho, setHecho] = useState(null);
@@ -145,6 +148,14 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onC
           {form.texto.trim() && (
             <div className="text-[12px] text-gypi-dim mb-2">Si no está en la lista, se pide así como lo escribiste.</div>
           )}
+          {puedeCrearArticulo && form.texto.trim() && (creando ? (
+            <ArticuloNuevo articulos={articulos} nombreInicial={form.texto.trim()} onCancelar={() => setCreando(false)}
+              onCreado={(a) => { setCreando(false); onArticuloNuevo?.(a); setForm((f) => ({ ...f, articulo: a })); }} />
+          ) : (
+            <button onClick={() => setCreando(true)} className="min-h-[44px] mb-2 px-0 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
+              ➕ No está: cargarlo como artículo nuevo
+            </button>
+          ))}
         </>
       )}
 
@@ -449,7 +460,9 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
                 await cargar();
               }} />
           ) : permisos.puede_pedir && (pidiendo ? (
-            <PedirMaterial articulos={articulos} ots={ots} onListo={cargar} onCancelar={() => setPidiendo(false)} />
+            <PedirMaterial articulos={articulos} ots={ots} onListo={cargar} onCancelar={() => setPidiendo(false)}
+              puedeCrearArticulo={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"}
+              onArticuloNuevo={(a) => setArticulos((prev) => [...prev.filter((x) => x.sku !== a.sku), a])} />
           ) : pegando ? (
             <PegarPedido articulos={articulos} ots={ots} onListo={cargar} onCancelar={() => setPegando(false)} />
           ) : (

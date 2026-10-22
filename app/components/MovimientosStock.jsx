@@ -2,11 +2,13 @@
 // app/components/MovimientosStock.jsx — Movimientos de stock en Planta →
 // Stock (Stock, parte 14; ítem 40). La oficina ve lo que se retiró y
 // devolvió desde la app, carga ingresos de compras y ajustes de inventario, y
-// anula lo que se cargó mal. La planilla MRP los trae sola (parte 15).
+// anula lo que se cargó mal. La planilla MRP los trae sola (parte 15). Un
+// artículo que no está en la planilla se carga como nuevo (124).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
 import PlanillaMrpConexion from "./PlanillaMrpConexion";
+import ArticuloNuevo from "./ArticuloNuevo";
 import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
 
 const CUANTOS = 100;
@@ -16,8 +18,10 @@ function fechaHora(iso) {
   return iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "";
 }
 
-export default function MovimientosStock({ usuario, articulos = [] }) {
+export default function MovimientosStock({ usuario, articulos = [], onArticuloNuevo }) {
   const [movs, setMovs] = useState(null);
+  const [creando, setCreando] = useState(false);
+  const puedeCrear = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
@@ -126,6 +130,14 @@ export default function MovimientosStock({ usuario, articulos = [] }) {
               {sugeridos.resto > 0 && (
                 <div role="status" className="text-[12px] text-gypi-dim mb-2">Hay {sugeridos.resto} más. Escribí otra palabra del nombre o el código para encontrarlo.</div>
               )}
+              {puedeCrear && form.texto.trim() && (creando ? (
+                <ArticuloNuevo articulos={articulos} nombreInicial={form.texto.trim()} onCancelar={() => setCreando(false)}
+                  onCreado={(a) => { setCreando(false); onArticuloNuevo?.(a); setForm((f) => ({ ...f, articulo: a })); }} />
+              ) : (
+                <button onClick={() => setCreando(true)} className="min-h-[44px] mb-2 px-0 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
+                  ➕ No está: cargarlo como artículo nuevo
+                </button>
+              ))}
             </>
           )}
 

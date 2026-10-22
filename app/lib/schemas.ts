@@ -328,6 +328,25 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("anular"), id: z.number().int().positive() }).strict(),
 ]);
 
+// ── /api/stock/articulos (124): artículo nuevo con los campos de ARTICULOS ──
+const listaTablas = (max: number) => z.string().trim().min(1, "Falta completar").max(max);
+const numeroOpcional = (min: number, max: number) => z.number().finite().min(min).max(max).nullable().optional().transform((v) => v ?? null);
+export const articuloNuevoBody = z.object({
+  nombre_articulo: z.string().trim().min(2, "Escribí el nombre del artículo").max(150).transform((v) => v.replace(/\s+/g, " ")),
+  division: listaTablas(60),
+  familia: listaTablas(80),
+  tipo: listaTablas(60),
+  marca: listaTablas(80),
+  color: listaTablas(80),
+  unidad: listaTablas(20),
+  pack: listaTablas(40),
+  categoria: z.enum(["A", "B", "C"]).optional().default("C"),
+  stock_seguridad: numeroOpcional(0, 1e9),
+  factor_tiempo: z.number().int().min(0).max(3650).nullable().optional().transform((v) => v ?? null),
+  proveedor_principal: textoSuelto(120),
+  lote_minimo: numeroOpcional(0.001, 1e9),
+}).strict();
+
 // ── /api/compras (113): proveedores y pedidos de material (Compras parte 20) ──
 const idCompras = z.number().int().positive();
 const datosProveedor = {

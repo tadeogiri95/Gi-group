@@ -200,14 +200,15 @@ function mockSync({ urls = { inventario: "https://docs.google.com/inv.csv", arti
 test("sincronizar — sube todo por SKU, apaga lo que ya no está y guarda la fecha", async () => {
   const escrito = mockSync();
   const r = await syncStockEmpresa(E);
-  assert.deepEqual(r, { articulos: 4, desactivados: 1, sinSku: 1, errores: [], necesidades: 0, avisoNecesidades: null });
+  assert.deepEqual(r, { articulos: 4, desactivados: 1, sinSku: 1, errores: [], necesidades: 0, avisoNecesidades: null, avisoTablas: null });
   const [subida, apagar, config] = escrito;
   assert.equal(subida.metodo, "POST");
   assert.match(subida.url, /articulos_stock\?on_conflict=empresa_id,sku/);
   assert.equal(subida.body.length, 4);
-  assert.ok(subida.body.every((f) => f.empresa_id === E && f.activo === true && f.sincronizado_at));
+  assert.ok(subida.body.every((f) => f.empresa_id === E && f.activo === true && f.origen === "planilla" && f.sincronizado_at));
   assert.equal(apagar.metodo, "PATCH");
-  assert.match(apagar.url, new RegExp(`empresa_id=eq\\.${E}&activo=eq\\.true&sincronizado_at=lt\\.`));
+  // Los artículos nuevos de Gypi que la planilla todavía no trae no se apagan (124)
+  assert.match(apagar.url, new RegExp(`empresa_id=eq\\.${E}&activo=eq\\.true&origen=eq\\.planilla&sincronizado_at=lt\\.`));
   assert.deepEqual(apagar.body, { activo: false });
   assert.match(config.url, /config_sistema\?empresa_id=eq\..*&clave=eq\.stock_csv_url/);
   assert.equal(config.body.valor.inventario, "https://docs.google.com/inv.csv", "no pierde los links");

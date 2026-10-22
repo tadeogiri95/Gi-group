@@ -2,7 +2,9 @@
 // app/components/StockScreen.jsx — Pantalla Stock de gestión (Stock, parte
 // 13; ítem 40). Los artículos y el stock vienen de la planilla MRP (la
 // planilla manda): acá se configuran los links, se sincroniza, se busca y se
-// imprimen las etiquetas con QR para pegar en estantes y pilas.
+// imprimen las etiquetas con QR para pegar en estantes y pilas. Los dueños y
+// administradores cargan acá los artículos que no están en la planilla
+// (➕ Artículo nuevo, 124); el script de la planilla los anota en ARTICULOS.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { Chip } from "./ui";
@@ -13,6 +15,7 @@ import {
 } from "../lib/stock";
 import FichaArticulo, { Semaforo } from "./FichaArticulo";
 import MovimientosStock from "./MovimientosStock";
+import ArticuloNuevo from "./ArticuloNuevo";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -29,7 +32,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
   const [articulos, setArticulos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
-  const [cfg, setCfg] = useState({ inventario: "", articulos: "", necesidades: "", ultima_sync: null });
+  const [cfg, setCfg] = useState({ inventario: "", articulos: "", necesidades: "", tablas: "", ultima_sync: null });
+  const [nuevo, setNuevo] = useState(false);
+  const puedeCrear = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
   const [verConfig, setVerConfig] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [texto, setTexto] = useState("");
@@ -59,7 +64,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_STOCK_CSV}&select=valor&limit=1`);
       const v = rows?.[0]?.valor;
       if (v) {
-        setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", necesidades: v.necesidades || "", ultima_sync: v.ultima_sync || null });
+        setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", necesidades: v.necesidades || "", tablas: v.tablas || "", ultima_sync: v.ultima_sync || null });
       } else {
         setVerConfig(true);
       }
@@ -73,7 +78,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
   const urgentesTotal = useMemo(() => filtrarArticulos(articulos, { urgentes: true }).length, [articulos]);
 
   const guardarCfg = async () => {
-    const valor = { inventario: cfg.inventario.trim(), articulos: cfg.articulos.trim() || null, necesidades: cfg.necesidades.trim() || null };
+    const valor = { inventario: cfg.inventario.trim(), articulos: cfg.articulos.trim() || null, necesidades: cfg.necesidades.trim() || null, tablas: cfg.tablas.trim() || null };
     if (!valor.inventario) { toast.show("Pegá el link de la hoja INVENTARIO", AMBER); return; }
     try {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_STOCK_CSV}&select=valor&limit=1`);
@@ -95,7 +100,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo sincronizar");
       if (data.errores?.length) toast.show(`⚠️ ${data.articulos} artículos leídos, pero algunos no se guardaron. Probá de nuevo.`, AMBER);
-      else if (data.avisoNecesidades) toast.show(`⚠️ ${data.articulos} artículos sincronizados. ${data.avisoNecesidades}`, AMBER);
+      else if (data.avisoNecesidades || data.avisoTablas) toast.show(`⚠️ ${data.articulos} artículos sincronizados. ${data.avisoNecesidades || data.avisoTablas}`, AMBER);
       else toast.show(`✅ ${data.articulos} artículos sincronizados${data.desactivados ? ` (${data.desactivados} ya no están en la planilla)` : ""}`, GREEN);
       setCfg((c) => ({ ...c, ultima_sync: new Date().toISOString() }));
       await cargar();
@@ -134,7 +139,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
         <Chip active={vista === "articulos"} onClick={() => setVista("articulos")}>Artículos</Chip>
         <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos</Chip>
       </div>
-      {vista === "movimientos" ? <MovimientosStock usuario={usuario} articulos={articulos} /> : (<>
+      {vista === "movimientos" ? <MovimientosStock usuario={usuario} articulos={articulos} onArticuloNuevo={(n) => setArticulos((prev) => [...prev.filter((x) => x.sku !== n.sku), n])} /> : (<>
       {/* Planilla MRP */}
       <div className="mb-3">
         <button onClick={() => setVerConfig((v) => !v)} aria-expanded={verConfig}
@@ -155,6 +160,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
               placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?gid=…&output=csv" className="g-input w-full text-[13px] mb-2" />
             <label className="g-label" htmlFor="stock-nec">Link de la hoja fact_necesidades_stock (opcional: material de cada OT)</label>
             <input id="stock-nec" value={cfg.necesidades} onChange={(e) => setCfg((c) => ({ ...c, necesidades: e.target.value }))}
+              placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?gid=…&output=csv" className="g-input w-full text-[13px] mb-2" />
+            <label className="g-label" htmlFor="stock-tab">Link de la hoja TABLAS (opcional: listas para cargar artículos nuevos)</label>
+            <input id="stock-tab" value={cfg.tablas} onChange={(e) => setCfg((c) => ({ ...c, tablas: e.target.value }))}
               placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?gid=…&output=csv" className="g-input w-full text-[13px] mb-2" />
             <button onClick={async () => { if (await guardarCfg()) sincronizar(); }} disabled={sincronizando || !cfg.inventario.trim()}
               className="g-btn g-btn-primary w-full">Guardar y sincronizar</button>
@@ -179,6 +187,13 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
       {faltaMigracion && (
         <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">Para ver el stock falta correr la migración 106 en Supabase.</div>
       )}
+
+      {puedeCrear && (nuevo ? (
+        <ArticuloNuevo articulos={articulos} nombreInicial={texto} onCancelar={() => setNuevo(false)}
+          onCreado={(a) => { setNuevo(false); setArticulos((prev) => [...prev.filter((x) => x.sku !== a.sku), a]); setTexto(a.nombre || a.sku); }} />
+      ) : (
+        <button onClick={() => setNuevo(true)} className="g-btn g-btn-secondary w-full mb-3">➕ Artículo nuevo (no está en la planilla)</button>
+      ))}
 
       <input type="search" value={texto} onChange={(e) => setTexto(e.target.value)} aria-label="Buscar artículo"
         placeholder="Buscar por nombre, código o familia" className="g-input w-full mb-2" />
@@ -224,7 +239,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
                   aria-label={`Etiqueta de ${a.nombre || a.sku}`} className="w-6 h-6 shrink-0 cursor-pointer" />
                 <button onClick={() => setFicha(a)} className="flex-1 min-w-0 min-h-[44px] text-left bg-transparent border-none p-0 cursor-pointer text-gypi-text font-body">
                   <div className="text-[14px] font-semibold truncate">{a.nombre || a.sku}</div>
-                  <div className="text-[12px] text-gypi-dim truncate">{a.sku}{a.division ? ` · ${a.division}` : ""}</div>
+                  <div className="text-[12px] text-gypi-dim truncate">{a.origen === "gypi" ? "🆕 Nuevo, falta pasar a la planilla · " : ""}{a.sku}{a.division ? ` · ${a.division}` : ""}</div>
                 </button>
                 <div className="text-right shrink-0">
                   <div className="text-[14px] font-bold">{cantidadTexto(a.disponible ?? a.stock)} <span className="text-[12px] font-semibold text-gypi-dim">{a.unidad || ""}</span></div>

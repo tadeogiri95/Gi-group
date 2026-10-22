@@ -12,6 +12,9 @@
 //   - /api/email/webhook   (Resend, firma Svix; antes no estaba exento y se bloqueaba)
 //   - /api/cron/*          (Vercel Cron, Bearer CRON_SECRET)
 //   - /api/health          (solo GET)
+//   - PATCH /api/stock/planilla (script de la planilla MRP, Bearer con la
+//     clave privada de la empresa; no usa cookies). El POST de esa ruta sí
+//     pasa por acá: lo usa el navegador con la sesión.
 // Login, recupero, alta, superadmin, etc. ya NO están exentos: el navegador
 // siempre manda el header Origin en un POST, así que pasan por la capa 2.
 
@@ -23,6 +26,9 @@ const EXEMPT_PATHS = [
   "/api/cron/",
   "/api/health",
 ];
+
+// Ruta y método exentos de a uno (el resto de los métodos de la ruta, no)
+const EXEMPT_METHOD_PATHS = [["PATCH", "/api/stock/planilla"]];
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
@@ -40,6 +46,7 @@ export function validateCsrf(request) {
 
   const path = request.nextUrl.pathname;
   if (EXEMPT_PATHS.some(p => path.startsWith(p))) return null;
+  if (EXEMPT_METHOD_PATHS.some(([m, p]) => m === request.method && path === p)) return null;
 
   // Layer 1: double-submit cookie
   const cookieToken = request.cookies.get("gypi_csrf")?.value;

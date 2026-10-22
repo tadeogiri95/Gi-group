@@ -7,8 +7,15 @@
 //        se anularon en los últimos días, para que la planilla borre su fila.
 //        Con ?ordenes=1 suma las OC abiertas para fact_ordenes_compra (Compras,
 //        parte 23); si la tabla todavía no está (migraciones 114/115), no van.
+//        Siempre suma los artículos nuevos cargados en Gypi que la planilla
+//        todavía no anotó (articulos, migración 124), para que el script los
+//        agregue a ARTICULOS antes de los movimientos.
 //        Sin sesión de usuario: va con service_role, filtrado por la empresa
 //        de la clave (como los crons).
+// PATCH → el script avisa qué artículos nuevos ya anotó y con qué SKU los
+//        armó la fórmula de ARTICULOS: { articulos: [{ alta, sku }] }. Si el
+//        SKU es otro que el provisorio de Gypi, se cambia en el stock, los
+//        movimientos, los pedidos y las órdenes de compra.
 // POST → gestión genera una clave nueva (la anterior deja de andar) y recibe
 //        el código para pegar en Apps Script. La clave se muestra una sola vez.
 import { NextResponse } from "next/server";
@@ -22,6 +29,9 @@ import {
   CLAVE_PLANILLA_MRP, generarClave, empresaDeClave, claveValida, movimientoParaPlanilla, ordenesParaPlanilla, scriptPlanilla,
 } from "../../../lib/planillaMrp";
 import { ESTADOS_OC_ABIERTA } from "../../../lib/ordenesCompra";
+import { articuloParaPlanilla, TABLAS_CON_SKU } from "../../../lib/articulosNuevos";
+import { SKU_VALIDO } from "../../../lib/stock";
+import { broadcastRefresh } from "../../../lib/broadcast";
 import { logger } from "../../../lib/logger";
 
 const LOTE = 500;
@@ -48,19 +58,34 @@ async function ordenesAbiertas(e, timezone) {
   return ordenesParaPlanilla(ocs, items, timezone);
 }
 
+/** Artículos nuevos de Gypi que la planilla todavía no anotó; [] si falta la migración 124. */
+async function articulosPendientes(e) {
+  const altas = await sbGet(
+    `articulos_alta?empresa_id=eq.${e}&en_planilla_at=is.null&order=id.asc&limit=200&select=*`,
+    { silent: true, fallback: [] }
+  );
+  return (Array.isArray(altas) ? altas : []).map(articuloParaPlanilla).filter(Boolean);
+}
+
 const noAutorizado = () => NextResponse.json({ error: "Clave inválida" }, { status: 401 });
+
+/** Empresa y config de la clave del script, o la respuesta de error. */
+async function autenticar(request) {
+  const auth = request.headers.get("authorization") || "";
+  const clave = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const e = empresaDeClave(clave);
+  if (!e) return { respuesta: noAutorizado() };
+  const rl = checkRateLimit(`stock-planilla:${e}`, 60, 60_000);
+  if (rl.limited) return { respuesta: NextResponse.json({ error: "Demasiados pedidos" }, { status: 429 }) };
+  const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLANILLA_MRP}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  if (!claveValida(clave, cfg?.valor?.hash)) return { respuesta: noAutorizado() };
+  return { e, cfg };
+}
 
 export async function GET(request) {
   try {
-    const auth = request.headers.get("authorization") || "";
-    const clave = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-    const e = empresaDeClave(clave);
-    if (!e) return noAutorizado();
-    const rl = checkRateLimit(`stock-planilla:${e}`, 60, 60_000);
-    if (rl.limited) return NextResponse.json({ error: "Demasiados pedidos" }, { status: 429 });
-
-    const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLANILLA_MRP}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
-    if (!claveValida(clave, cfg?.valor?.hash)) return noAutorizado();
+    const { e, cfg, respuesta } = await autenticar(request);
+    if (respuesta) return respuesta;
 
     const params = new URL(request.url).searchParams;
     const desdeTxt = params.get("desde") || "0";
@@ -78,6 +103,7 @@ export async function GET(request) {
       : [];
 
     const ordenes = params.get("ordenes") === "1" ? await ordenesAbiertas(e, empresa?.timezone) : null;
+    const articulos = await articulosPendientes(e);
 
     sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLANILLA_MRP}`, {
       valor: { ...cfg.valor, ultima_lectura: new Date().toISOString() },
@@ -88,10 +114,56 @@ export async function GET(request) {
       anulados: anulados.map((a) => `GY-${a.id}`),
       hasta: lote.length ? lote[lote.length - 1].id : desde,
       hayMas,
+      articulos,
       ...(ordenes ? { ordenes } : {}),
     });
   } catch (err) {
     logger.error("[stock/planilla] GET error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
+  }
+}
+
+/** Un artículo nuevo ya está en ARTICULOS: se anota y, si la fórmula le dio otro SKU, se cambia en Gypi. */
+async function confirmarArticulo(e, altaId, skuPlanilla) {
+  const [alta] = (await sbGet(`articulos_alta?empresa_id=eq.${e}&id=eq.${altaId}&select=id,sku,en_planilla_at&limit=1`)) || [];
+  if (!alta || alta.en_planilla_at) return null;
+  const sku = SKU_VALIDO.test(skuPlanilla) ? skuPlanilla : null;
+  const cambia = Boolean(sku && sku !== alta.sku);
+  if (cambia) {
+    const viejo = encodeURIComponent(alta.sku);
+    const [yaEsta] = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=eq.${encodeURIComponent(sku)}&select=sku&limit=1`)) || [];
+    if (yaEsta) await sbPatch(`articulos_stock?empresa_id=eq.${e}&sku=eq.${viejo}`, { activo: false });
+    else await sbPatch(`articulos_stock?empresa_id=eq.${e}&sku=eq.${viejo}`, { sku });
+    for (const tabla of TABLAS_CON_SKU) {
+      await sbPatch(`${tabla}?empresa_id=eq.${e}&sku=eq.${viejo}`, { sku }, { silent: true });
+    }
+  }
+  await sbPatch(`articulos_alta?empresa_id=eq.${e}&id=eq.${alta.id}`, {
+    en_planilla_at: new Date().toISOString(),
+    sku_planilla: sku,
+    aviso_planilla: sku ? null : "La fórmula de la planilla no armó el SKU: revisá la fila (quedó en amarillo).",
+  });
+  return { alta: alta.id, antes: alta.sku, sku: sku || alta.sku, cambia };
+}
+
+export async function PATCH(request) {
+  try {
+    const { e, respuesta } = await autenticar(request);
+    if (respuesta) return respuesta;
+    const body = await request.json().catch(() => null);
+    const lista = Array.isArray(body?.articulos) ? body.articulos.slice(0, 200) : null;
+    if (!lista) return NextResponse.json({ error: "Faltan los artículos" }, { status: 400 });
+    const confirmados = [];
+    for (const a of lista) {
+      const id = Number(a?.alta);
+      if (!Number.isInteger(id) || id <= 0) continue;
+      const r = await confirmarArticulo(e, id, String(a?.sku ?? "").trim());
+      if (r) confirmados.push(r);
+    }
+    if (confirmados.some((c) => c.cambia)) broadcastRefresh(e, "articulos_stock");
+    return NextResponse.json({ ok: true, confirmados });
+  } catch (err) {
+    logger.error("[stock/planilla] PATCH error", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

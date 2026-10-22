@@ -30,6 +30,9 @@ export async function POST(request) {
       broadcastRefresh(sesion.empresa_id, "articulos_stock");
       return NextResponse.json({ ok: true, ...resultado });
     } catch (err) {
+      if (/\borigen\b|'pack'|\.pack\b/.test(String(err?.message))) {
+        return NextResponse.json({ error: "Para el stock falta correr la migración 124 en Supabase." }, { status: 409 });
+      }
       if (/ultimo_precio|proveedor_principal|multiplo|plazo_dias/.test(String(err?.message))) {
         return NextResponse.json({ error: "Para el stock falta correr la migración 114 en Supabase." }, { status: 409 });
       }
