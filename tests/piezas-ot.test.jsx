@@ -138,12 +138,12 @@ test("piezas — una por unidad física, agrupar, reemplazar y ayudas", () => {
   assert.equal(medidas({ l1: 1568, l2: 342 }), "1.568 × 342");
 });
 
-test("QR — 'OT M-7495 - PIEZA - 1234' ida y vuelta; la carga no lo confunde con la OT", () => {
+test("QR — 'OT M-7495 - PIEZA - 1234' ida y vuelta; la carga lo lee como pieza, no como la OT", () => {
   assert.equal(textoQrPieza("M-7495", 1234), "OT M-7495 - PIEZA - 1234");
   assert.deepEqual(leerQrPieza(" ot M-7495 - pieza - 1234 "), { ot: "M-7495", id: 1234 });
   assert.equal(leerQrPieza("OT M-7495 - BULTO 1 DE 4 - M.izq"), null);
   assert.equal(leerQrPieza("OT M-7495"), null);
-  assert.equal(leerQr("OT M-7495 - PIEZA - 1234"), null, "en la carga no abre la OT ni marca nada");
+  assert.deepEqual(leerQr("OT M-7495 - PIEZA - 1234"), { ot: "M-7495", piezaId: 1234 }, "en la carga busca el suelto que se llama como la pieza");
 });
 
 test("etiquetas — una página por pieza con OT, nombre, 'n de N', medidas, módulo, etapas y QR", async () => {
