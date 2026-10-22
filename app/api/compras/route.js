@@ -8,18 +8,28 @@
 //   proveedores_importar  → nombres pegados de la planilla; agrega los que faltan (comprador)
 //   pedido_crear          → pedido de material (gestión: jefes de taller,
 //                           gerencia, dueños, Administración; operarios no)
+//   pedidos_crear         → varios pedidos de una vez, pegados de la hoja INVENTARIO
+//                           (un pedido por artículo; misma OT, fecha y observación)
 //   pedido_anular         → el comprador, cualquiera pendiente; quien lo pidió, el suyo pendiente
+//   pedido_editar         → corregir un pedido pendiente (mismos permisos que anular); queda
+//                           registro de quién, cuándo y qué cambió (121)
 //   oc_crear              → una OC en borrador por proveedor con los renglones elegidos en
 //                           "A comprar"; los pedidos de los jefes pasan a en_oc (comprador; 114)
-//   oc_guardar            → moneda, fecha prometida, notas, cantidades y precios; quitar
-//                           renglones (en borrador); el pedido quitado vuelve a pendiente
+//                           (la nota de cada pedido pasa a la observación del renglón; 120)
+//   oc_guardar            → moneda, fecha prometida, notas, cantidades, precios y
+//                           observaciones; quitar renglones (en borrador); el pedido
+//                           quitado vuelve a pendiente
 //   oc_enviar             → borrador → enviada
 //   oc_anular             → la OC queda anulada y sus pedidos vuelven a pendiente
+//   oc_cerrar_faltantes   → una OC recibida en parte se cierra con motivo: lo que no llegó
+//                           no va a venir. Sale de las OC abiertas (planilla) y lo que faltó
+//                           de cada pedido vuelve a pendiente en "A comprar" (comprador; 123)
 //   recepcion_crear       → lo que llegó con un remito (gestión: jefes de taller y
 //                           Administración); cada renglón con SKU entra como ingreso de
 //                           stock; la OC pasa a recibida en parte o recibida (115)
 //   recepcion_anular      → la recepción y sus ingresos quedan anulados (comprador)
-//   oc_factura            → N° y fecha de factura, tipo de cambio y precio final; los
+//   oc_factura            → N° y fecha de factura, tipo de cambio, otros impuestos y
+//                           por renglón cantidad, precio sin IVA e IVA % (122); los
 //                           ingresos con otro precio se reemplazan (comprador)
 // Comprador = gerencia o Administración sin división asignada (un supervisor
 // de división pide y recibe, pero no compra). Con RLS_RUTAS=on todo va con el
@@ -32,8 +42,8 @@ import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
-import { puedePedir, puedeComprar, puedeAnularPedido, formatoCuit } from "../../lib/compras";
-import { ESTADOS_OC_RECIBIBLE, estadoTrasRecepcion, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
+import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
+import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, estadoTrasRecepcion, pedidosAlCerrar, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -41,9 +51,30 @@ function faltaMigracion(err) {
   return /proveedores|pedidos_compra/.test(m) && /does not exist|42P01|PGRST20[05]|schema cache/.test(m);
 }
 
+function faltaMigracionEdicion(err) {
+  const m = String(err?.message);
+  return /pedidos_compra_cambios|editado_por|editado_at/.test(m) && /does not exist|42P01|42703|PGRST20[45]|schema cache/.test(m);
+}
+
 function faltaMigracionOc(err) {
   const m = String(err?.message);
   return /ordenes_compra|orden_id/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
+}
+
+function faltaMigracionObservacion(err) {
+  const m = String(err?.message);
+  return /observacion/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+function faltaMigracionCierre(err) {
+  const m = String(err?.message);
+  return (/cerrada_motivo|cerrada_por|cerrada_at|faltante_de/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m))
+    || (/ordenes_compra_estado_check/.test(m) && /23514|violates/.test(m));
+}
+
+function faltaMigracionFactura(err) {
+  const m = String(err?.message);
+  return /cantidad_facturada|iva_alicuota|factura_otros_impuestos/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
 }
 
 function faltaMigracionRecepcion(err) {
@@ -117,16 +148,75 @@ async function importarProveedores(sesion, nombres) {
   return NextResponse.json({ ok: true, agregados: nuevos.length, ya_estaban: nombres.length - nuevos.length });
 }
 
+/** Artículo del catálogo y OT de un pedido nuevo o corregido: { articulo, datos } o { error }. */
+async function datosDelPedido(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  let articulo = null;
+  if (d.sku) {
+    [articulo] = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=eq.${encodeURIComponent(d.sku)}&select=sku,nombre,unidad,division&limit=1`, opts)) || [];
+    if (!articulo) return { error: NextResponse.json({ error: "Ese artículo no está en el stock. Puede que falte sincronizar la planilla." }, { status: 404 }) };
+  }
+  let ot = null;
+  if (d.ot) {
+    const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(d.ot)}&select=ot&limit=1`, opts)) || [];
+    if (!proyecto) return { error: NextResponse.json({ error: `No encontré la OT ${d.ot}` }, { status: 404 }) };
+    ot = proyecto.ot;
+  }
+  return {
+    articulo,
+    datos: {
+      sku: articulo?.sku ?? null,
+      descripcion: (d.descripcion || articulo?.nombre || articulo?.sku).slice(0, 200),
+      unidad: d.unidad || articulo?.unidad || null,
+      cantidad: d.cantidad,
+      ot,
+      para_fecha: d.para_fecha,
+      notas: d.notas,
+    },
+  };
+}
+
 async function crearPedido(sesion, d) {
   const e = sesion.empresa_id;
   const opts = { sesion };
   if (!puedePedir(sesion.rol)) {
     return NextResponse.json({ error: "Los pedidos de material los hacen los jefes de taller y la oficina" }, { status: 403 });
   }
-  let articulo = null;
-  if (d.sku) {
-    [articulo] = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=eq.${encodeURIComponent(d.sku)}&select=sku,nombre,unidad,division&limit=1`, opts)) || [];
-    if (!articulo) return NextResponse.json({ error: "Ese artículo no está en el stock. Puede que falte sincronizar la planilla." }, { status: 404 });
+  const { articulo, datos, error } = await datosDelPedido(sesion, d);
+  if (error) return error;
+  const [empleado] = sesion.empleado_id
+    ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre,division&limit=1`, { ...opts, silent: true, fallback: [] })) || []
+    : [];
+  const fila = {
+    empresa_id: e,
+    ...datos,
+    division: (articulo?.division || empleado?.division || null)?.slice?.(0, 60) ?? null,
+    estado: "pendiente",
+    empleado_id: sesion.empleado_id || null,
+    empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
+  };
+  const [creado] = (await sbPost("pedidos_compra", fila, opts)) || [];
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, pedido: creado || fila });
+}
+
+/** Varios pedidos de una vez (pegados de la planilla): todos del catálogo, mismos datos comunes. */
+async function crearPedidos(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  if (!puedePedir(sesion.rol)) {
+    return NextResponse.json({ error: "Los pedidos de material los hacen los jefes de taller y la oficina" }, { status: 403 });
+  }
+  const cantidades = new Map();
+  for (const it of d.items) cantidades.set(it.sku, Math.round(((cantidades.get(it.sku) || 0) + it.cantidad) * 1000) / 1000);
+  const skus = [...cantidades.keys()];
+  const lista = skus.map((s) => `"${s}"`).join(",");
+  const articulos = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=in.(${encodeURIComponent(lista)})&select=sku,nombre,unidad,division`, opts)) || [];
+  const porSku = new Map(articulos.map((a) => [a.sku, a]));
+  const faltan = skus.filter((s) => !porSku.has(s));
+  if (faltan.length) {
+    return NextResponse.json({ error: `No están en el stock: ${faltan.slice(0, 5).join(", ")}${faltan.length > 5 ? "…" : ""}. Puede que falte sincronizar la planilla.` }, { status: 404 });
   }
   let ot = null;
   if (d.ot) {
@@ -137,23 +227,26 @@ async function crearPedido(sesion, d) {
   const [empleado] = sesion.empleado_id
     ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre,division&limit=1`, { ...opts, silent: true, fallback: [] })) || []
     : [];
-  const fila = {
-    empresa_id: e,
-    sku: articulo?.sku ?? null,
-    descripcion: (d.descripcion || articulo?.nombre || articulo?.sku).slice(0, 200),
-    unidad: d.unidad || articulo?.unidad || null,
-    cantidad: d.cantidad,
-    ot,
-    para_fecha: d.para_fecha,
-    notas: d.notas,
-    division: (articulo?.division || empleado?.division || null)?.slice?.(0, 60) ?? null,
-    estado: "pendiente",
-    empleado_id: sesion.empleado_id || null,
-    empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
-  };
-  const [creado] = (await sbPost("pedidos_compra", fila, opts)) || [];
+  const filas = skus.map((sku) => {
+    const a = porSku.get(sku);
+    return {
+      empresa_id: e,
+      sku,
+      descripcion: String(a.nombre || sku).slice(0, 200),
+      unidad: a.unidad || null,
+      cantidad: cantidades.get(sku),
+      ot,
+      para_fecha: d.para_fecha,
+      notas: d.notas,
+      division: (a.division || empleado?.division || null)?.slice?.(0, 60) ?? null,
+      estado: "pendiente",
+      empleado_id: sesion.empleado_id || null,
+      empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
+    };
+  });
+  const creados = (await sbPost("pedidos_compra", filas, opts)) || [];
   broadcastRefresh(e, "pedidos_compra");
-  return NextResponse.json({ ok: true, pedido: creado || fila });
+  return NextResponse.json({ ok: true, creados: creados.length || filas.length });
 }
 
 async function anularPedido(sesion, id) {
@@ -173,6 +266,39 @@ async function anularPedido(sesion, id) {
   const [fila] = (await sbPatch(`${filtro}&estado=eq.pendiente`, { estado: "anulado", anulado_por: sesion.empleado_id || null, anulado_at: new Date().toISOString() }, opts)) || [];
   broadcastRefresh(e, "pedidos_compra");
   return NextResponse.json({ ok: true, pedido: fila || null });
+}
+
+/** Corrige un pedido pendiente y deja registro de quién, cuándo y qué cambió (121). */
+async function editarPedido(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const filtro = `pedidos_compra?id=eq.${d.id}&empresa_id=eq.${e}`;
+  const [pedido] = (await sbGet(`${filtro}&select=*&limit=1`, opts)) || [];
+  if (!pedido) return NextResponse.json({ error: "No encontré ese pedido" }, { status: 404 });
+  const comprador = await esComprador(sesion);
+  if (!puedeEditarPedido(pedido, { comprador, empleadoId: sesion.empleado_id })) {
+    const motivo = pedido.estado === "en_oc"
+      ? "Ese pedido ya está en una orden de compra: corregilo desde la orden."
+      : pedido.estado !== "pendiente"
+        ? "Ese pedido ya no está pendiente: no se puede corregir."
+        : "Solo podés corregir tus pedidos. Pedíselo a Administración.";
+    return NextResponse.json({ error: motivo }, { status: 403 });
+  }
+  const { datos, error } = await datosDelPedido(sesion, d);
+  if (error) return error;
+  const cambios = cambiosPedido(pedido, datos);
+  if (!cambios.length) return NextResponse.json({ ok: true, pedido, cambios: [] });
+  const quien = await nombreEmpleado(sesion);
+  const ahora = new Date().toISOString();
+  const [fila] = (await sbPatch(`${filtro}&estado=eq.pendiente`, {
+    ...datos, editado_por: sesion.empleado_id || null, editado_por_nombre: quien, editado_at: ahora,
+  }, opts)) || [];
+  if (!fila) return NextResponse.json({ error: "Ese pedido ya no está pendiente (lo anularon o lo pasaron a una orden de compra). Actualizá la lista." }, { status: 409 });
+  await sbPost("pedidos_compra_cambios", {
+    empresa_id: e, pedido_id: pedido.id, cambios, empleado_id: sesion.empleado_id || null, empleado_nombre: quien, created_at: ahora,
+  }, opts);
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, pedido: fila, cambios });
 }
 
 /* ─── Órdenes de compra (parte 21) ─────────────────────────────────────── */
@@ -200,11 +326,13 @@ async function crearOrdenes(sesion, { moneda, lineas }) {
   if (falta) return NextResponse.json({ error: "Uno de los proveedores no existe o está dado de baja. Actualizá la lista." }, { status: 409 });
 
   const idsPedidos = [...new Set(lineas.map((l) => l.pedido_id).filter(Boolean))];
+  const notaPedido = new Map();
   if (idsPedidos.length) {
-    const pedidos = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${idsPedidos.join(",")})&select=id,estado`, opts)) || [];
+    const pedidos = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${idsPedidos.join(",")})&select=id,estado,notas`, opts)) || [];
     if (pedidos.length !== idsPedidos.length || pedidos.some((p) => p.estado !== "pendiente")) {
       return NextResponse.json({ error: "Algún pedido ya no está pendiente (lo anularon o ya está en otra OC). Actualizá la lista." }, { status: 409 });
     }
+    for (const p of pedidos) if (p.notas) notaPedido.set(p.id, String(p.notas).slice(0, 300));
   }
 
   const [empleado] = sesion.empleado_id
@@ -231,11 +359,20 @@ async function crearOrdenes(sesion, { moneda, lineas }) {
     }
     if (!oc) throw new Error("No se pudo numerar la orden de compra");
     const mias = lineas.filter((l) => l.proveedor_id === proveedorId);
+    // La nota del pedido sale en la OC como observación del renglón (120)
+    const filas = mias.map((l) => ({
+      empresa_id: e, orden_id: oc.id, sku: l.sku, descripcion: l.descripcion, unidad: l.unidad,
+      cantidad: l.cantidad, precio_unitario: l.precio_unitario, ot: l.ot, pedido_id: l.pedido_id,
+      ...(notaPedido.get(l.pedido_id) ? { observacion: notaPedido.get(l.pedido_id) } : {}),
+    }));
     try {
-      await sbPost("ordenes_compra_items", mias.map((l) => ({
-        empresa_id: e, orden_id: oc.id, sku: l.sku, descripcion: l.descripcion, unidad: l.unidad,
-        cantidad: l.cantidad, precio_unitario: l.precio_unitario, ot: l.ot, pedido_id: l.pedido_id,
-      })), opts);
+      try {
+        await sbPost("ordenes_compra_items", filas, opts);
+      } catch (err) {
+        // Sin la migración 120 la OC se arma igual, sin observaciones
+        if (!faltaMigracionObservacion(err)) throw err;
+        await sbPost("ordenes_compra_items", filas.map(({ observacion, ...f }) => f), opts);
+      }
     } catch (err) {
       // Sin renglones la OC no sirve: queda anulada (las OC no se borran)
       await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, { estado: "anulada", anulada_at: new Date().toISOString() }, opts).catch(() => {});
@@ -270,7 +407,9 @@ async function guardarOrden(sesion, d) {
     if (pedidos.length) await liberarPedidos(sesion, `orden_id=eq.${oc.id}&id=in.(${pedidos.join(",")})`);
   }
   for (const it of d.items || []) {
-    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&orden_id=eq.${oc.id}&empresa_id=eq.${e}`, { cantidad: it.cantidad, precio_unitario: it.precio_unitario }, opts);
+    const cambiosItem = { cantidad: it.cantidad, precio_unitario: it.precio_unitario };
+    if (it.observacion !== undefined) cambiosItem.observacion = it.observacion;
+    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&orden_id=eq.${oc.id}&empresa_id=eq.${e}`, cambiosItem, opts);
   }
   const cambios = { updated_at: new Date().toISOString() };
   if (d.moneda !== undefined) cambios.moneda = d.moneda;
@@ -308,6 +447,54 @@ async function anularOrden(sesion, id) {
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "pedidos_compra");
   return NextResponse.json({ ok: true, orden: fila || { ...oc, estado: "anulada" } });
+}
+
+/**
+ * Cierra una OC recibida en parte: lo que falta no se compró y no va a
+ * llegar (123). Lo que faltó de cada pedido de un jefe vuelve a "A comprar".
+ */
+async function cerrarOrdenConFaltantes(sesion, { id, motivo }) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const oc = await leerOrden(sesion, id);
+  if (!oc) return noEncontreOc();
+  if (oc.estado === "cerrada_faltantes") return NextResponse.json({ ok: true, orden: oc });
+  if (!ESTADOS_OC_CERRABLE.includes(oc.estado)) {
+    const error = ["borrador", "enviada"].includes(oc.estado)
+      ? "Todavía no llegó nada de esa orden: si no se va a comprar, anulala."
+      : oc.estado === "recibida" ? "Esa orden de compra ya se recibió completa" : "Esa orden de compra está anulada";
+    return NextResponse.json({ error }, { status: 409 });
+  }
+  const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
+  const quien = await nombreEmpleado(sesion);
+  const ahora = new Date().toISOString();
+  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}&estado=in.(${ESTADOS_OC_CERRABLE.join(",")})`, {
+    estado: "cerrada_faltantes", cerrada_motivo: motivo, cerrada_por: sesion.empleado_id || null, cerrada_por_nombre: quien, cerrada_at: ahora, updated_at: ahora,
+  }, opts)) || [];
+  if (!fila) return NextResponse.json({ error: "Esa orden de compra cambió mientras la cerrabas. Actualizá la pantalla." }, { status: 409 });
+
+  const { completos, volver, nuevos } = pedidosAlCerrar(items);
+  const faltanteDe = `OC N° ${oc.numero} · ${oc.proveedor_nombre}`.slice(0, 160);
+  if (volver.length) {
+    await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${volver.join(",")})&estado=eq.en_oc`, { estado: "pendiente", orden_id: null, faltante_de: faltanteDe }, opts);
+  }
+  const recibidos = [...completos, ...nuevos.map((n) => n.pedido_id)];
+  if (recibidos.length) await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${recibidos.join(",")})&estado=eq.en_oc`, { estado: "recibido" }, opts);
+  if (nuevos.length) {
+    const originales = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${nuevos.map((n) => n.pedido_id).join(",")})&select=*`, opts)) || [];
+    const porId = new Map(originales.map((p) => [p.id, p]));
+    const filas = nuevos.filter((n) => porId.has(n.pedido_id)).map((n) => {
+      const p = porId.get(n.pedido_id);
+      return {
+        empresa_id: e, sku: p.sku, descripcion: p.descripcion, unidad: p.unidad, cantidad: n.cantidad, ot: p.ot, para_fecha: p.para_fecha,
+        notas: p.notas, division: p.division, estado: "pendiente", empleado_id: p.empleado_id, empleado_nombre: p.empleado_nombre, faltante_de: faltanteDe,
+      };
+    });
+    if (filas.length) await sbPost("pedidos_compra", filas, opts);
+  }
+  broadcastRefresh(e, "ordenes_compra");
+  broadcastRefresh(e, "pedidos_compra");
+  return NextResponse.json({ ok: true, orden: fila, vuelven: volver.length + nuevos.length });
 }
 
 /* ─── Recepción con remito y factura (parte 22) ────────────────────────── */
@@ -436,7 +623,8 @@ async function anularRecepcion(sesion, id) {
     await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, { cantidad_recibida: it.cantidad_recibida }, opts);
   }
   const [fila] = (await sbPatch(`recepciones_compra?id=eq.${rec.id}&empresa_id=eq.${e}`, { anulada: true, anulada_por: sesion.empleado_id || null, anulada_at: ahora }, opts)) || [];
-  const estado = oc.estado === "anulada" ? oc.estado : await actualizarEstadoOrden(sesion, oc, items);
+  // Una OC anulada o cerrada con faltantes no se reabre al anular una recepción
+  const estado = ["anulada", "cerrada_faltantes"].includes(oc.estado) ? oc.estado : await actualizarEstadoOrden(sesion, oc, items);
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "pedidos_compra");
   if (movs.length) broadcastRefresh(e, "movimientos_stock");
@@ -451,16 +639,23 @@ async function facturaOrden(sesion, d) {
   if (oc.estado === "anulada") return NextResponse.json({ error: "Esa orden de compra está anulada" }, { status: 409 });
   const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   const porId = new Map(items.map((it) => [it.id, it]));
-  for (const pr of d.precios || []) {
-    const it = porId.get(pr.item_id);
+  const numeroO = (v) => (v === null || v === undefined ? null : Number(v));
+  for (const r of d.renglones || []) {
+    const it = porId.get(r.item_id);
     if (!it) return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
-    const viejo = it.precio_unitario === null || it.precio_unitario === undefined ? null : Number(it.precio_unitario);
-    if (viejo === pr.precio_unitario) continue;
-    it.precio_unitario = pr.precio_unitario;
-    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, { precio_unitario: pr.precio_unitario }, opts);
+    const patch = {};
+    for (const campo of ["precio_unitario", "cantidad_facturada", "iva_alicuota"]) {
+      if (r[campo] === undefined || numeroO(it[campo]) === r[campo]) continue;
+      patch[campo] = r[campo];
+    }
+    if (!Object.keys(patch).length) continue;
+    Object.assign(it, patch);
+    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, patch, opts);
   }
   const ahora = new Date().toISOString();
   const cambios = { factura_numero: d.factura_numero, factura_fecha: d.factura_fecha, tipo_cambio: oc.moneda === "USD" ? d.tipo_cambio : null, updated_at: ahora };
+  // Sin la migración 122 la columna no viene: solo se escribe si cambió
+  if (d.otros_impuestos !== undefined && numeroO(oc.factura_otros_impuestos) !== d.otros_impuestos) cambios.factura_otros_impuestos = d.otros_impuestos;
   const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, cambios, opts)) || [];
   const ocNueva = { ...oc, ...cambios };
 
@@ -527,7 +722,9 @@ export async function POST(request) {
     const d = parsed.data;
     try {
       if (d.accion === "pedido_crear") return await crearPedido(sesion, d);
+      if (d.accion === "pedidos_crear") return await crearPedidos(sesion, d);
       if (d.accion === "pedido_anular") return await anularPedido(sesion, d.id);
+      if (d.accion === "pedido_editar") return await editarPedido(sesion, d);
       if (d.accion === "recepcion_crear") return await crearRecepcion(sesion, d);
       if (!(await esComprador(sesion))) return soloComprador();
       if (d.accion === "proveedor_guardar") return await guardarProveedor(sesion, d);
@@ -537,9 +734,22 @@ export async function POST(request) {
       if (d.accion === "oc_guardar") return await guardarOrden(sesion, d);
       if (d.accion === "oc_enviar") return await enviarOrden(sesion, d.id);
       if (d.accion === "oc_anular") return await anularOrden(sesion, d.id);
+      if (d.accion === "oc_cerrar_faltantes") return await cerrarOrdenConFaltantes(sesion, d);
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionCierre(err)) {
+        return NextResponse.json({ error: "Para cerrar órdenes con faltantes falta correr la migración 123 en Supabase." }, { status: 409 });
+      }
+      if (faltaMigracionFactura(err)) {
+        return NextResponse.json({ error: "Para cargar la factura con IVA y otros impuestos falta correr la migración 122 en Supabase." }, { status: 409 });
+      }
+      if (faltaMigracionEdicion(err)) {
+        return NextResponse.json({ error: "Para corregir pedidos falta correr la migración 121 en Supabase." }, { status: 409 });
+      }
+      if (faltaMigracionObservacion(err)) {
+        return NextResponse.json({ error: "Para la observación de cada renglón falta correr la migración 120 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionRecepcion(err)) {
         return NextResponse.json({ error: "Para recibir con remito falta correr la migración 115 en Supabase." }, { status: 409 });
       }

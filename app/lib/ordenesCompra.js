@@ -14,6 +14,7 @@ export const ESTADOS_OC = {
   enviada:          { id: "enviada",          nombre: "Enviada",           icono: "📤" },
   recibida_parcial: { id: "recibida_parcial", nombre: "Recibida en parte", icono: "📦" },
   recibida:         { id: "recibida",         nombre: "Recibida",          icono: "✅" },
+  cerrada_faltantes: { id: "cerrada_faltantes", nombre: "Cerrada con faltantes", icono: "🔒" },
   anulada:          { id: "anulada",          nombre: "Anulada",           icono: "✖️" },
 };
 /** OC que todavía esperan material (el MRP no tiene que volver a sugerirlo). */
@@ -114,7 +115,7 @@ export function lineasAComprar({ pedidos = [], articulos = [], proveedores = [],
       proveedor_id: proveedorSugerido(a || { sku: p.sku }, proveedores, ultimoPorSku),
       pedido_id: p.id,
       ot: p.ot || null,
-      detalle: [p.empleado_nombre, p.para_fecha ? `para el ${p.para_fecha.split("-").reverse().join("/")}` : null, p.notas].filter(Boolean).join(" · "),
+      detalle: [p.faltante_de ? `↩ faltó de la ${p.faltante_de}` : null, p.empleado_nombre, p.para_fecha ? `para el ${p.para_fecha.split("-").reverse().join("/")}` : null, p.notas].filter(Boolean).join(" · "),
       nivel: null,
     });
   }
@@ -160,7 +161,8 @@ export function textoOrdenCompra({ empresa, oc, items, proveedor = null }) {
   const saludo = proveedor?.contacto ? `Hola ${proveedor.contacto}` : "Hola";
   const renglones = (items || []).map((it) => {
     const precio = it.precio_unitario !== null && it.precio_unitario !== undefined ? ` · ${importeTexto(it.precio_unitario, oc.moneda)} c/u` : "";
-    return `• ${cantTexto(it.cantidad)}${it.unidad ? ` ${it.unidad}` : ""} ${it.descripcion}${it.sku ? ` (${it.sku})` : ""}${precio}`;
+    const obs = it.observacion ? `\n   Obs.: ${it.observacion}` : "";
+    return `• ${cantTexto(it.cantidad)}${it.unidad ? ` ${it.unidad}` : ""} ${it.descripcion}${it.sku ? ` (${it.sku})` : ""}${precio}${obs}`;
   });
   const total = totalOrden(items);
   return [
@@ -198,7 +200,7 @@ export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null
   const filas = items.map((it) => {
     const sub = it.precio_unitario !== null && it.precio_unitario !== undefined ? Number(it.cantidad) * Number(it.precio_unitario) : null;
     return `<tr>
-      <td>${esc(it.descripcion)}${it.sku ? `<div class="sku">${esc(it.sku)}</div>` : ""}${it.ot ? `<div class="sku">OT ${esc(it.ot)}</div>` : ""}</td>
+      <td>${esc(it.descripcion)}${it.sku ? `<div class="sku">${esc(it.sku)}</div>` : ""}${it.ot ? `<div class="sku">OT ${esc(it.ot)}</div>` : ""}${it.observacion ? `<div class="obs">Obs.: ${esc(it.observacion)}</div>` : ""}</td>
       <td class="n">${esc(cantTexto(it.cantidad))}</td>
       <td>${esc(it.unidad || "")}</td>
       <td class="n">${esc(it.precio_unitario !== null && it.precio_unitario !== undefined ? importeTexto(it.precio_unitario, oc.moneda) : "")}</td>
@@ -223,6 +225,7 @@ export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null
   .items td { border-bottom: .2mm solid #999; padding: 1.5mm 1mm; vertical-align: top; }
   .items .n { text-align: right; white-space: nowrap; }
   .sku { font-size: 8pt; color: #444; font-family: ui-monospace, monospace; }
+  .obs { font-size: 9pt; font-style: italic; margin-top: .5mm; }
   .total { margin-top: 3mm; text-align: right; font-size: 12pt; font-weight: 800; }
   .nota { margin-top: 5mm; font-size: 9.5pt; }
 </style></head><body>
@@ -245,6 +248,7 @@ export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null
     <tbody>${filas}</tbody>
   </table>
   ${total !== null ? `<div class="total">Total sin IVA: ${esc(importeTexto(total, oc.moneda))}</div>` : ""}
+  ${oc.estado === "cerrada_faltantes" ? `<div class="nota"><b>Cerrada con faltantes${oc.cerrada_at ? ` el ${esc(fechaCorta(oc.cerrada_at))}` : ""}.</b> Lo no entregado queda sin efecto.${oc.cerrada_motivo ? ` ${esc(oc.cerrada_motivo)}` : ""}</div>` : ""}
   <div class="nota">Precios sin IVA${oc.moneda === "USD" ? ", en dólares estadounidenses" : ", en pesos"}.${oc.notas ? ` ${esc(oc.notas)}` : ""}</div>
 </body></html>`;
 }
@@ -271,6 +275,32 @@ export function pendienteItem(it) {
   return p > 0 ? Math.round(p * 1000) / 1000 : 0;
 }
 
+/** OC que se pueden cerrar con faltantes (123): ya llegó algo y el resto no va a venir. */
+export const ESTADOS_OC_CERRABLE = ["recibida_parcial"];
+
+/**
+ * Qué pasa con los pedidos de los jefes al cerrar una OC con faltantes (123):
+ * - completos: el renglón llegó entero → el pedido queda recibido.
+ * - volver: no llegó nada → el mismo pedido vuelve a pendiente (A comprar).
+ * - nuevos: llegó una parte → el pedido queda recibido y se crea uno
+ *   pendiente por lo que faltó ({ pedido_id, cantidad }).
+ * Los renglones sin pedido (sugeridos del MRP) no hacen nada: la planilla los
+ * vuelve a sugerir si siguen haciendo falta.
+ */
+export function pedidosAlCerrar(items) {
+  const completos = [];
+  const volver = [];
+  const nuevos = [];
+  for (const it of items || []) {
+    if (!it.pedido_id) continue;
+    const falta = pendienteItem(it);
+    if (falta === 0) completos.push(it.pedido_id);
+    else if (Number(it.cantidad_recibida || 0) > 0) nuevos.push({ pedido_id: it.pedido_id, cantidad: falta });
+    else volver.push(it.pedido_id);
+  }
+  return { completos, volver, nuevos };
+}
+
 /** Estado de la OC según lo recibido: todo → recibida; algo → recibida_parcial; nada → enviada. */
 export function estadoTrasRecepcion(items) {
   const lista = items || [];
@@ -287,4 +317,43 @@ export function precioEnPesos(precio, moneda, tipoCambio) {
   if (moneda !== "USD") return Math.round(p * 100) / 100;
   const tc = Number(tipoCambio);
   return Number.isFinite(tc) && tc > 0 ? Math.round(p * tc * 100) / 100 : null;
+}
+
+// ─── Factura de la OC con IVA y otros impuestos (migración 122) ───
+
+/** Alícuotas de IVA que se eligen por renglón; sin elegir es 21. */
+export const ALICUOTAS_IVA = [21, 10.5, 27, 0];
+export const IVA_POR_DEFECTO = 21;
+
+const centavos = (n) => Math.round(n * 100) / 100;
+
+/** Cantidad facturada que se propone: la guardada, si no lo que llegó, si no lo pedido. */
+export function cantidadFacturaInicial(it) {
+  if (it.cantidad_facturada !== null && it.cantidad_facturada !== undefined) return Number(it.cantidad_facturada);
+  const recibida = Number(it.cantidad_recibida);
+  return Number.isFinite(recibida) && recibida > 0 ? recibida : Number(it.cantidad);
+}
+
+/** Neto, IVA y total de un renglón de factura; null si falta la cantidad o el precio. */
+export function renglonFactura({ cantidad, precio, iva = IVA_POR_DEFECTO }) {
+  const q = Number(cantidad);
+  const p = Number(precio);
+  if (cantidad === null || cantidad === undefined || precio === null || precio === undefined || !Number.isFinite(q) || !Number.isFinite(p)) return null;
+  const neto = centavos(q * p);
+  const montoIva = centavos(neto * (Number(iva) || 0) / 100);
+  return { neto, iva: montoIva, total: centavos(neto + montoIva) };
+}
+
+/** Pie de la factura: subtotal neto e IVA (suma de renglones), otros impuestos y total. */
+export function totalesFactura(renglones, otros = 0) {
+  let neto = 0;
+  let iva = 0;
+  for (const r of renglones || []) {
+    const c = renglonFactura(r);
+    if (!c) continue;
+    neto += c.neto;
+    iva += c.iva;
+  }
+  const extra = Number(otros) || 0;
+  return { neto: centavos(neto), iva: centavos(iva), otros: centavos(extra), total: centavos(neto + iva + extra) };
 }

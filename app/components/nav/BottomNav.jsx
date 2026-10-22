@@ -1,6 +1,6 @@
 'use client';
 
-// BottomNav -- Barra de navegacion mobile modernizada
+// BottomNav -- Barra de navegacion al pie de la app
 // Ubicacion: app/components/nav/BottomNav.jsx
 
 const Icons = {
@@ -49,10 +49,13 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
   // tocar en la planta (revisión de la interfaz, 2026-10)
   const grande = role !== 'gerencial' && role !== 'administrativo';
   return (
+    // La barra ocupa su propio lugar al pie del shell (no flota encima): así
+    // ninguna pantalla queda tapada abajo, sobre todo en la computadora, donde
+    // la ventana es más baja y lo último de Compras o Más no se podía tocar.
     <nav
       role="navigation"
       aria-label="Navegación principal"
-      className="safe-bottom fixed bottom-0 left-0 right-0 backdrop-blur-[20px] border-t border-gypi-border z-50 flex justify-around max-w-[480px] mx-auto px-2 pt-1.5 pb-[22px]"
+      className="safe-bottom shrink-0 relative w-full backdrop-blur-[20px] border-t border-gypi-border z-50 flex justify-around px-2 pt-1.5 pb-[22px]"
       style={{
         background: 'var(--color-nav-bg)',
         WebkitBackdropFilter: 'blur(20px)',

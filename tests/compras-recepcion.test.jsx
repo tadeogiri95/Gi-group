@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { pendienteItem, estadoTrasRecepcion, precioEnPesos } from "../app/lib/ordenesCompra.js";
+import { pendienteItem, estadoTrasRecepcion, precioEnPesos, renglonFactura, totalesFactura, cantidadFacturaInicial } from "../app/lib/ordenesCompra.js";
 import { comprasBody } from "../app/lib/schemas.ts";
 import { autorizar } from "../app/lib/dataPolicy.js";
 import { _limpiarCacheAlcance } from "../app/lib/alcance.js";
@@ -57,8 +57,11 @@ test("validación — recepción con remito, factura", () => {
   assert.equal(ok({ ...rec, foto_url: "https://x.test/remito.jpg" }), true);
   assert.equal(ok({ ...rec, foto_url: "no es url" }), false);
   assert.equal(ok({ accion: "recepcion_anular", id: 3 }), true);
-  assert.equal(ok({ accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: "2026-10-20", tipo_cambio: 1050, precios: [{ item_id: 1, precio_unitario: 1600 }] }), true);
+  assert.equal(ok({ accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: "2026-10-20", tipo_cambio: 1050, renglones: [{ item_id: 1, precio_unitario: 1600 }] }), true);
   assert.equal(ok({ accion: "oc_factura", id: 101, tipo_cambio: 0 }), false);
+  assert.equal(ok({ accion: "oc_factura", id: 101, otros_impuestos: 350.5, renglones: [{ item_id: 1, cantidad_facturada: 10, iva_alicuota: 10.5 }] }), true);
+  assert.equal(ok({ accion: "oc_factura", id: 101, renglones: [{ item_id: 1, iva_alicuota: 19 }] }), false, "IVA 21, 10,5, 27 o 0");
+  assert.equal(ok({ accion: "oc_factura", id: 101, otros_impuestos: -1 }), false);
 });
 
 test("migración 115 — recepciones por empresa, sin borrar; factura en la OC", () => {
@@ -80,7 +83,7 @@ test("migración 115 — recepciones por empresa, sin borrar; factura en la OC",
 
 // ─── Ruta ───
 
-function mockRuta({ supervisor = null, oc = OC, items = [PERFIL, TORNILLOS], recepcion = null, lineas = [], movs = [], recepciones = [], falla = null } = {}) {
+function mockRuta({ supervisor = null, oc = OC, items = [PERFIL, TORNILLOS], recepcion = null, lineas = [], movs = [], recepciones = [], falla = null, fallaPatch = null } = {}) {
   const escrito = [];
   let siguienteMov = 500;
   const anotar = (tabla, u, o) => {
@@ -92,6 +95,7 @@ function mockRuta({ supervisor = null, oc = OC, items = [PERFIL, TORNILLOS], rec
     match: (u) => u.includes(`/rest/v1/${nombre}?`) || u.endsWith(`/rest/v1/${nombre}`),
     respond: (u, o) => {
       if (falla && nombre.startsWith("recepciones")) return { status: 404, body: { message: falla } };
+      if (fallaPatch && o.method === "PATCH") return { status: 400, body: { code: "PGRST204", message: fallaPatch } };
       if (!o.method || o.method === "GET") return { status: 200, body: leer(u) };
       const body = anotar(nombre, u, o);
       if (nombre === "movimientos_stock" && o.method === "POST") {
@@ -215,7 +219,7 @@ test("/api/compras oc_factura — precio nuevo: el ingreso se reemplaza con la f
     movs: [{ id: 500, sku: "3.3.1.6", nombre: "Tablilla perfil 0277", unidad: "MT", division: "ALUMINIO", precio_unitario: 1500, comprobante: "R-1", anulado: false }],
   });
   const res = await api.POST(req(await token("gerencial"), {
-    accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: "2026-10-20", precios: [{ item_id: 1, precio_unitario: 1600 }],
+    accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: "2026-10-20", renglones: [{ item_id: 1, precio_unitario: 1600 }],
   }));
   assert.equal(res.status, 200);
   assert.equal((await res.json()).reemplazados, 1);
@@ -313,18 +317,62 @@ test("Recibir — Administración ve las recepciones y anula una; el jefe no", a
   await waitFor(() => assert.deepEqual(enviados[0], { accion: "recepcion_anular", id: 9 }));
 });
 
-test("Órdenes — la factura con tipo de cambio y precio final", async () => {
+test("Órdenes — la factura con tipo de cambio, cantidad, IVA y otros impuestos", async () => {
   const usd = { ...OC, moneda: "USD", estado: "recibida_parcial", updated_at: "x" };
   const enviados = mockPantalla({ ordenes: [usd], items: [{ ...PERFIL, precio_unitario: 10, cantidad_recibida: 4 }] });
   render(<OrdenesCompra empresaId={E} />);
   fireEvent.click(await screen.findByText("OC N° 8 · Aluar"));
   fireEvent.change(await screen.findByLabelText("N° de factura"), { target: { value: "A-0003-00001234" } });
   fireEvent.change(screen.getByLabelText("Tipo de cambio (pesos por dólar)"), { target: { value: "1.050" } });
-  fireEvent.change(screen.getByLabelText("Precio final de Perfil 0277"), { target: { value: "11,5" } });
+  assert.equal(screen.getByLabelText("Cantidad en la factura de Perfil 0277").value, "4", "propone lo que llegó");
+  assert.equal(screen.getByLabelText("IVA de Perfil 0277").value, "21");
+  fireEvent.change(screen.getByLabelText("Precio en la factura de Perfil 0277"), { target: { value: "11,5" } });
+  fireEvent.change(screen.getByLabelText("IVA de Perfil 0277"), { target: { value: "10.5" } });
+  fireEvent.change(screen.getByLabelText(/Otros impuestos/), { target: { value: "2" } });
+  // 4 × 11,5 = 46 neto; IVA 10,5% = 4,83; + 2 otros = 52,83
+  await screen.findByText("Neto US$ 46 · IVA US$ 4,83 · Total US$ 50,83");
+  assert.ok(screen.getByText("US$ 52,83"));
   fireEvent.click(screen.getByText("Guardar factura"));
   await waitFor(() => assert.equal(enviados.length, 1));
-  assert.deepEqual(enviados[0], { accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: null, tipo_cambio: 1050, precios: [{ item_id: 1, precio_unitario: 11.5 }] });
+  assert.deepEqual(enviados[0], {
+    accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: null, tipo_cambio: 1050, otros_impuestos: 2,
+    renglones: [{ item_id: 1, precio_unitario: 11.5, cantidad_facturada: 4, iva_alicuota: 10.5 }],
+  });
   await screen.findByText(/Corregí 1 ingreso de stock con el precio nuevo/);
+});
+
+test("factura — neto, IVA y total por renglón y al pie", () => {
+  assert.deepEqual(renglonFactura({ cantidad: 3, precio: 100 }), { neto: 300, iva: 63, total: 363 }, "sin elegir es 21%");
+  assert.deepEqual(renglonFactura({ cantidad: 2, precio: 50, iva: 0 }), { neto: 100, iva: 0, total: 100 });
+  assert.equal(renglonFactura({ cantidad: 2, precio: null }), null);
+  assert.deepEqual(totalesFactura([{ cantidad: 3, precio: 100, iva: 21 }, { cantidad: 1, precio: 200, iva: 10.5 }, { cantidad: 1, precio: null }], 15), { neto: 500, iva: 84, otros: 15, total: 599 });
+  assert.equal(cantidadFacturaInicial({ cantidad: 12, cantidad_recibida: 5 }), 5, "lo que llegó");
+  assert.equal(cantidadFacturaInicial({ cantidad: 12, cantidad_recibida: 0 }), 12, "nada llegó: lo pedido");
+  assert.equal(cantidadFacturaInicial({ cantidad: 12, cantidad_recibida: 5, cantidad_facturada: 6 }), 6, "lo guardado");
+});
+
+test("/api/compras oc_factura — guarda solo lo que cambió y otros impuestos en la OC", async () => {
+  const escrito = mockRuta({ oc: { ...OC, estado: "recibida", factura_otros_impuestos: null }, items: [{ ...PERFIL, cantidad_recibida: 12, cantidad_facturada: null, iva_alicuota: null }] });
+  const res = await api.POST(req(await token("gerencial"), {
+    accion: "oc_factura", id: 101, factura_numero: "F-2", otros_impuestos: 120, renglones: [{ item_id: 1, precio_unitario: 1500, cantidad_facturada: 12, iva_alicuota: 21 }],
+  }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito.find((x) => x.tabla === "ordenes_compra_items").body, { cantidad_facturada: 12, iva_alicuota: 21 }, "el precio no cambió");
+  assert.equal(escrito.find((x) => x.tabla === "ordenes_compra").body.factura_otros_impuestos, 120);
+});
+
+test("/api/compras — si falta la migración 122 lo dice", async () => {
+  mockRuta({ oc: { ...OC, estado: "recibida" }, items: [PERFIL], fallaPatch: "Could not find the 'iva_alicuota' column of 'ordenes_compra_items' in the schema cache" });
+  const res = await api.POST(req(await token("gerencial"), { accion: "oc_factura", id: 101, renglones: [{ item_id: 1, iva_alicuota: 10.5 }] }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 122/);
+});
+
+test("migración 122 — cantidad facturada, IVA y otros impuestos", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/122_factura_oc_impuestos.sql", import.meta.url), "utf8");
+  for (const col of ["cantidad_facturada", "iva_alicuota", "factura_otros_impuestos"]) assert.match(sql, new RegExp(`add column if not exists ${col}`));
+  assert.match(sql, /iva_alicuota in \(0, 10\.5, 21, 27\)/);
+  assert.match(sql, /^do \$mig\$$/m);
 });
 
 test("accesos — Recibir para jefes y comprador", () => {

@@ -340,6 +340,15 @@ const datosProveedor = {
   condicion_pago: textoSuelto(120),
   notas: textoSuelto(300),
 };
+const datosPedido = {
+  sku: skuMovimiento.nullable().optional().transform((v) => v || null),
+  descripcion: textoSuelto(200),
+  unidad: textoSuelto(20),
+  cantidad: z.number().finite().positive().max(1e10),
+  ot: otSuelto.nullable().optional().transform((v) => v || null),
+  para_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
+  notas: textoSuelto(300),
+};
 const monedaOc = z.enum(["ARS", "USD"]);
 const cantidadOc = z.number().finite().positive().max(1e10);
 const precioOc = z.number().finite().min(0).max(1e12).nullable().optional().transform((v) => v ?? null);
@@ -347,17 +356,22 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("proveedor_guardar"), id: idCompras.optional(), ...datosProveedor }).strict(),
   z.object({ accion: z.literal("proveedor_baja"), id: idCompras, activo: z.boolean() }).strict(),
   z.object({ accion: z.literal("proveedores_importar"), nombres: z.array(z.string().trim().min(1).max(120)).min(1).max(500) }).strict(),
+  z.object({ accion: z.literal("pedido_crear"), ...datosPedido }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
+  // Varios pedidos de una vez, pegados de la hoja INVENTARIO: un pedido por artículo
   z.object({
-    accion: z.literal("pedido_crear"),
-    sku: skuMovimiento.nullable().optional().transform((v) => v || null),
-    descripcion: textoSuelto(200),
-    unidad: textoSuelto(20),
-    cantidad: z.number().finite().positive().max(1e10),
-    ot: otSuelto.nullable().optional().transform((v) => v || null),
-    para_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
-    notas: textoSuelto(300),
-  }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
+    accion: z.literal("pedidos_crear"),
+    items: z.array(z.object({ sku: skuMovimiento, cantidad: z.number().finite().positive().max(1e10) }).strict()).min(1).max(200),
+    ot: datosPedido.ot,
+    para_fecha: datosPedido.para_fecha,
+    notas: datosPedido.notas,
+  }).strict(),
   z.object({ accion: z.literal("pedido_anular"), id: idCompras }).strict(),
+  // Corregir un pedido pendiente (121): los mismos datos que al pedir
+  z.object({
+    accion: z.literal("pedido_editar"),
+    id: idCompras,
+    ...datosPedido,
+  }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
   // Órdenes de compra (parte 21, migración 114)
   z.object({
     accion: z.literal("oc_crear"),
@@ -379,11 +393,17 @@ export const comprasBody = z.discriminatedUnion("accion", [
     moneda: monedaOc.optional(),
     fecha_prometida: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     notas: z.string().trim().max(500).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
-    items: z.array(z.object({ id: idCompras, cantidad: cantidadOc, precio_unitario: precioOc }).strict()).max(200).optional(),
+    items: z.array(z.object({
+      id: idCompras, cantidad: cantidadOc, precio_unitario: precioOc,
+      // Observación del renglón para el proveedor (120); undefined = no se toca
+      observacion: z.string().trim().max(300).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
+    }).strict()).max(200).optional(),
     quitar: z.array(idCompras).max(200).optional(),
   }).strict(),
   z.object({ accion: z.literal("oc_enviar"), id: idCompras }).strict(),
   z.object({ accion: z.literal("oc_anular"), id: idCompras }).strict(),
+  // Cerrar una OC recibida en parte: lo que falta no va a llegar (123)
+  z.object({ accion: z.literal("oc_cerrar_faltantes"), id: idCompras, motivo: z.string().trim().min(1, "Escribí por qué se cierra").max(300) }).strict(),
   // Recepción con remito y factura (parte 22, migración 115)
   z.object({
     accion: z.literal("recepcion_crear"),
@@ -400,7 +420,15 @@ export const comprasBody = z.discriminatedUnion("accion", [
     factura_numero: textoSuelto(60),
     factura_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
     tipo_cambio: z.number().finite().positive().max(1e7).nullable().optional().transform((v) => v ?? null),
-    precios: z.array(z.object({ item_id: idCompras, precio_unitario: precioOc }).strict()).max(200).optional(),
+    // Otros impuestos de toda la factura (percepciones, internos); migración 122
+    otros_impuestos: z.number().finite().min(0).max(1e12).nullable().optional(),
+    // Solo los renglones que cambiaron, y en cada uno solo lo que cambió
+    renglones: z.array(z.object({
+      item_id: idCompras,
+      precio_unitario: z.number().finite().min(0).max(1e12).nullable().optional(),
+      cantidad_facturada: z.number().finite().min(0).max(1e10).nullable().optional(),
+      iva_alicuota: z.number().refine((v) => [21, 10.5, 27, 0].includes(v), "IVA 21, 10,5, 27 o 0").optional(),
+    }).strict()).max(200).optional(),
   }).strict(),
 ]);
 
