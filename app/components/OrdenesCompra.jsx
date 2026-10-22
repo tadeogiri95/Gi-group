@@ -365,6 +365,10 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
     }), [items, form]);
   const ocVista = form ? { ...oc, moneda: form.moneda, fecha_prometida: form.fecha_prometida || null, notas: form.notas.trim() || null } : oc;
   const total = totalOrden(vista);
+  const subtotalRenglon = (id) => {
+    const v = vista.find((x) => x.id === id);
+    return v && v.precio_unitario !== null && v.precio_unitario !== undefined ? Number(v.cantidad) * Number(v.precio_unitario) : null;
+  };
   const nombreEmpresa = empresa?.nombre || empresa?.nombre_corto || "";
   const texto = items ? textoOrdenCompra({ empresa: nombreEmpresa, oc: ocVista, items: vista, proveedor }) : "";
   const wa = numeroWhatsapp(proveedor?.whatsapp);
@@ -470,15 +474,23 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
                 <div className="text-[14px] font-semibold">{it.descripcion}{it.sku && <span className="text-gypi-dim font-normal"> · {it.sku}</span>}{it.ot && <span className="text-gypi-dim font-normal"> · OT {it.ot}</span>}</div>
                 {borrador ? (
                   <>
-                    <div className="flex gap-2 mt-1 items-center">
-                      <input aria-label={`Cantidad de ${it.descripcion}`} className="g-input w-[90px]" inputMode="decimal" value={form.renglones[it.id].cantidad}
-                        onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], cantidad: e.target.value } } }))} />
-                      <span className="text-[13px] text-gypi-dim">{it.unidad || ""}</span>
-                      <input aria-label={`Precio sin IVA de ${it.descripcion}`} className="g-input w-[110px]" inputMode="decimal" placeholder="Precio s/IVA" value={form.renglones[it.id].precio}
-                        onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], precio: e.target.value } } }))} />
+                    <div className="flex gap-2 mt-1 items-end">
+                      <div className="flex-1 min-w-0">
+                        <label className="g-label" htmlFor={`oc-cant-${it.id}`}>Cantidad{it.unidad ? ` (${it.unidad})` : ""}</label>
+                        <input id={`oc-cant-${it.id}`} aria-label={`Cantidad de ${it.descripcion}`} className="g-input" inputMode="decimal" value={form.renglones[it.id].cantidad}
+                          onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], cantidad: e.target.value } } }))} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <label className="g-label" htmlFor={`oc-precio-${it.id}`}>Precio unitario {form.moneda === "USD" ? "US$" : "$"} sin IVA</label>
+                        <input id={`oc-precio-${it.id}`} aria-label={`Precio sin IVA de ${it.descripcion}`} className="g-input" inputMode="decimal" placeholder="Por cada unidad" value={form.renglones[it.id].precio}
+                          onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], precio: e.target.value } } }))} />
+                      </div>
                       <button onClick={() => setForm((f) => ({ ...f, quitar: new Set([...f.quitar, it.id]) }))} aria-label={`Quitar ${it.descripcion}`}
-                        className="min-h-[44px] px-2 ml-auto bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
+                        className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
                     </div>
+                    {subtotalRenglon(it.id) !== null && (
+                      <div className="text-[12px] text-gypi-dim mt-1">Subtotal del renglón: {importeTexto(subtotalRenglon(it.id), form.moneda)} sin IVA</div>
+                    )}
                     <input aria-label={`Observación para el proveedor de ${it.descripcion}`} className="g-input w-full mt-1" maxLength={300} placeholder="Observación para el proveedor (opcional)"
                       value={form.renglones[it.id].obs} onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], obs: e.target.value } } }))} />
                   </>
