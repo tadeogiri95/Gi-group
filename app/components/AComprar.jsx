@@ -196,10 +196,18 @@ export default function AComprar({ empresaId, onCreadas }) {
                     <option value="">Sin proveedor (a cotizar)</option>
                     {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
-                  <input aria-label={`Cantidad de ${l.descripcion}`} className="g-input w-[90px]" inputMode="decimal"
-                    value={typeof l.cantidad === "number" ? numTexto(l.cantidad) : l.cantidad ?? ""} onChange={(e) => cambiar(l.clave, "cantidad", e.target.value)} />
-                  <input aria-label={`Precio sin IVA de ${l.descripcion}`} className="g-input w-[110px]" inputMode="decimal" placeholder="Precio s/IVA"
-                    value={typeof l.precio_unitario === "number" ? numTexto(l.precio_unitario) : l.precio_unitario ?? ""} onChange={(e) => cambiar(l.clave, "precio_unitario", e.target.value)} />
+                  <div className="flex gap-2 w-full">
+                    <div className="flex-1 min-w-0">
+                      <label className="g-label" htmlFor={`ac-cant-${l.clave}`}>Cantidad{l.unidad ? ` (${l.unidad})` : ""}</label>
+                      <input id={`ac-cant-${l.clave}`} aria-label={`Cantidad de ${l.descripcion}`} className="g-input" inputMode="decimal"
+                        value={typeof l.cantidad === "number" ? numTexto(l.cantidad) : l.cantidad ?? ""} onChange={(e) => cambiar(l.clave, "cantidad", e.target.value)} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <label className="g-label" htmlFor={`ac-precio-${l.clave}`}>Precio unitario sin IVA</label>
+                      <input id={`ac-precio-${l.clave}`} aria-label={`Precio sin IVA de ${l.descripcion}`} className="g-input" inputMode="decimal" placeholder="Opcional"
+                        value={typeof l.precio_unitario === "number" ? numTexto(l.precio_unitario) : l.precio_unitario ?? ""} onChange={(e) => cambiar(l.clave, "precio_unitario", e.target.value)} />
+                    </div>
+                  </div>
                 </div>
               )}
             </li>
