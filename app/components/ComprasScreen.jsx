@@ -378,16 +378,17 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
   }, [empresaId, permisos, usuario?.id]);
   useEffect(() => { cargar(); }, [cargar]);
 
-  // Catálogo y OT para el formulario, solo cuando se abre
+  // Catálogo y OT para el formulario, cada vez que se abre: así aparecen los
+  // artículos que trajo una sincronización hecha con Compras abierto
   useEffect(() => {
-    if ((!pidiendo && !pegando && !editando) || articulos.length) return;
+    if (!pidiendo && !pegando && !editando) return;
     sbGetAll("articulos_stock?activo=eq.true&select=sku,nombre,unidad,division&order=sku.asc", { maxFilas: 20000 })
       .then(({ data }) => setArticulos(data || []))
       .catch(() => {});
     sb.get("proyectos?select=ot&estado=eq.activo&order=id.desc&limit=300")
       .then((rows) => setOts([...new Set((rows || []).map((p) => p.ot).filter(Boolean))]))
       .catch(() => {});
-  }, [pidiendo, pegando, editando, articulos.length]);
+  }, [pidiendo, pegando, editando]);
 
   const visibles = useMemo(() => filtrarPedidos(pedidos, { texto, estado }), [pedidos, texto, estado]);
 

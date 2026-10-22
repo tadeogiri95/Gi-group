@@ -45,7 +45,7 @@ function mock(capturas) {
         return { status: 204 };
       },
     },
-    { match: (url) => url === CSV_URL, respond: () => ({ status: 200, body: "OT,CLIENTE,OBRA\nM-1,Acme,Planta\nM-2,Beta,Taller\n" }) },
+    { match: (url) => url.startsWith(CSV_URL), respond: () => ({ status: 200, body: "OT,CLIENTE,OBRA\nM-1,Acme,Planta\nM-2,Beta,Taller\n" }) },
   ]);
 }
 

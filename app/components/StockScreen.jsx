@@ -11,7 +11,7 @@ import { Chip } from "./ui";
 import { useToast } from "./ui/Toast";
 import { TAMANOS_ETIQUETA } from "../lib/carga";
 import {
-  CLAVE_STOCK_CSV, MAX_ETIQUETAS_ARTICULO, cantidadTexto, divisionesDe, filtrarArticulos, imprimirEtiquetasArticulos,
+  AVISO_DEMORA_GOOGLE, CLAVE_STOCK_CSV, MAX_ETIQUETAS_ARTICULO, cantidadTexto, divisionesDe, filtrarArticulos, imprimirEtiquetasArticulos, syncAtrasada,
 } from "../lib/stock";
 import FichaArticulo, { Semaforo } from "./FichaArticulo";
 import MovimientosStock from "./MovimientosStock";
@@ -173,6 +173,10 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
       <div className="flex items-center gap-2 mb-3">
         <div className="flex-1 text-[13px] text-gypi-dim">
           {cfg.ultima_sync ? `Sincronizado el ${new Date(cfg.ultima_sync).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}. Se actualiza solo cada mañana.` : "Todavía no se sincronizó."}
+          {syncAtrasada(cfg.ultima_sync) && (
+            <div className="text-gypi-amber-ink font-bold">⚠️ Hace más de un día que no se sincroniza: tocá Sincronizar.</div>
+          )}
+          <div>{AVISO_DEMORA_GOOGLE}</div>
         </div>
         <button onClick={sincronizar} disabled={sincronizando}
           className="min-h-[44px] px-3 rounded-lg border-none bg-gypi-green/15 text-gypi-green text-[13px] font-bold cursor-pointer">
