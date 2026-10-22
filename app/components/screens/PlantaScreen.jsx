@@ -1,9 +1,9 @@
 "use client";
 // Pestaña "Planta" de gestión (reforma UX R5): todo lo de producción en un
 // solo lugar. "En vivo" (quién trabaja en qué, quién está parado) sale del
-// registro de tareas y no se muestra sin él (2026-10). Stock (ítem 40) y
-// Compras (ítem 41) van con las OT hasta que sean módulos que se vendan
-// aparte. "Reportes" son los de producción (Del día, Indicadores, Lead time,
+// registro de tareas y no se muestra sin él (2026-10). Stock (ítem 40),
+// Compras (ítem 41) y Flota (Mantenimiento, ítem 43) van con las OT hasta que
+// sean módulos que se vendan aparte. "Reportes" son los de producción (Del día, Indicadores, Lead time,
 // Obra); los del personal están en Equipo (revisión de la interfaz, 2026-10).
 import { useState } from "react";
 import dynamic from "next/dynamic";
@@ -15,6 +15,7 @@ import GerenciaActividadScreen from "../../gerencia_actividad_screen";
 import ProyectosScreen from "../../proyectos_screen.jsx";
 import StockScreen from "../StockScreen";
 import ComprasScreen from "../ComprasScreen";
+import FlotaScreen from "../FlotaScreen";
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
@@ -23,6 +24,7 @@ const OPCIONES_TODAS = [
   { id: "ot", label: "OT", modulo: "proyectos" },
   { id: "stock", label: "Stock", modulo: "proyectos" },
   { id: "compras", label: "Compras", modulo: "proyectos" },
+  { id: "flota", label: "Flota", modulo: "proyectos" },
   { id: "reportes", label: "Reportes", modulo: "actividad" },
 ];
 
@@ -44,6 +46,7 @@ export default function PlantaScreen({ empresa, usuario, onVerPlanes, seccion = 
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
+        {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} usuario={usuario} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
       </div>
     </div>

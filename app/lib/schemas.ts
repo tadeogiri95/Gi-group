@@ -775,3 +775,52 @@ export const resolverSolicitudBody = z.object({
   estado: z.enum(["aprobado", "rechazado"]),
   nota: z.string().trim().max(500).optional().nullable(),
 }).strict();
+
+// ── /api/flota (126): vehículos y sus papeles (Mantenimiento parte 28) ──────
+const idFlota = z.number().int().positive();
+const fechaFlota = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null);
+const urlFoto = z.string().trim().url().max(500).refine((u) => u.startsWith("https://"), "La foto tiene que ser https");
+export const flotaBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("vehiculo_guardar"),
+    id: idFlota.optional(),
+    patente: z.string().trim().min(2, "Poné la patente").max(20),
+    tipo: z.enum(["auto", "utilitario", "camioneta", "camion", "acoplado", "autoelevador", "otro"]),
+    marca: textoSuelto(60),
+    modelo: textoSuelto(80),
+    anio: z.number().int().min(1950).max(2100).nullable().optional().transform((v) => v ?? null),
+    color: textoSuelto(40),
+    motor: textoSuelto(40),
+    chasis: textoSuelto(40),
+    km: z.number().int().min(0).max(9999999).nullable().optional().transform((v) => v ?? null),
+    combustible: z.enum(["nafta", "gasoil", "gnc", "electrico", "otro"]).nullable().optional().transform((v) => v ?? null),
+    foto_url: urlFoto.nullable().optional().transform((v) => v || null),
+    division: textoSuelto(60),
+    responsable_id: uuid.nullable().optional().transform((v) => v || null),
+    notas: textoSuelto(500),
+  }).strict(),
+  z.object({ accion: z.literal("vehiculo_baja"), id: idFlota, activo: z.boolean() }).strict(),
+  z.object({
+    accion: z.literal("papel_guardar"),
+    // Con id se corrige; sin id se agrega (renovar = agregar uno nuevo)
+    id: idFlota.optional(),
+    vehiculo_id: idFlota,
+    tipo: z.enum(["seguro", "itv", "cedula", "titulo", "patente", "matafuego", "otro"]),
+    nombre: textoSuelto(80),
+    numero: textoSuelto(60),
+    fecha: fechaFlota,
+    vencimiento: fechaFlota,
+    compania: textoSuelto(80),
+    cobertura: textoSuelto(120),
+    resultado: z.enum(["apto", "condicional", "rechazado"]).nullable().optional().transform((v) => v ?? null),
+    detalle: textoSuelto(300),
+    fotos: z.array(urlFoto).max(4).default([]),
+  }).strict().refine((p) => p.tipo !== "otro" || p.nombre, { message: "Poné el nombre del papel", path: ["nombre"] }),
+  z.object({ accion: z.literal("papel_borrar"), id: idFlota }).strict(),
+  z.object({
+    accion: z.literal("licencia_guardar"),
+    empleado_id: uuid,
+    categoria: textoSuelto(30),
+    vencimiento: fechaFlota,
+  }).strict(),
+]);
