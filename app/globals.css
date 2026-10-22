@@ -147,10 +147,23 @@ button:active { transform: scale(0.97); }
 
 ::-webkit-scrollbar { display: none; }
 
-input, textarea {
+/* Las casillas y los círculos de opción quedan fuera: con appearance: none
+   el navegador no los dibuja y no se ve si están tildados. */
+input:not([type="checkbox"]):not([type="radio"]), textarea {
   -webkit-appearance: none;
   appearance: none;
 }
+
+input[type="checkbox"], input[type="radio"] {
+  -webkit-appearance: auto;
+  appearance: auto;
+  accent-color: var(--color-empresa-primary);
+  min-width: 20px;
+  min-height: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+input[type="checkbox"]:disabled, input[type="radio"]:disabled { cursor: not-allowed; }
 
 @keyframes typing {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }

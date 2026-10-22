@@ -53,6 +53,21 @@ test("tokens: nada de 9 px, botones de 48 px y la letra del primario según cont
   assert.match(css, /--color-text-dim: rgba\(26,26,26,0\.68\)/);
 });
 
+test("casillas: el estilo general de los campos no borra las casillas ni los círculos de opción", () => {
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  // Con appearance: none en todos los input, las 21 casillas de la app eran invisibles
+  for (const [, selector, cuerpo] of css.matchAll(/([^{}]*)\{([^}]*)\}/g)) {
+    if (!/(^|[\s,])appearance:\s*none/.test(cuerpo)) continue;
+    for (const parte of selector.split(",").map((s) => s.trim())) {
+      if (!/^input\b/.test(parte) || /type=/.test(parte)) continue;
+      assert.match(parte, /:not\(\[type="checkbox"\]\)/, `"${parte}" esconde las casillas`);
+      assert.match(parte, /:not\(\[type="radio"\]\)/, `"${parte}" esconde los círculos de opción`);
+    }
+  }
+  assert.match(css, /input\[type="checkbox"\], input\[type="radio"\] \{[^}]*appearance: auto/);
+  assert.match(css, /input\[type="checkbox"\], input\[type="radio"\] \{[^}]*accent-color: var\(--color-empresa-primary\)/);
+});
+
 function archivos(dir) {
   return readdirSync(dir).flatMap((n) => {
     const p = join(dir, n);
