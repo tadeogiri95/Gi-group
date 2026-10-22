@@ -18,7 +18,7 @@
   "license": "ISC",
   "dependencies": {
     "@afipsdk/afip.js": "^1.2.3",
-    "@sentry/nextjs": "^10.57.0",
+    "@sentry/nextjs": "^10.76.2",
     "@supabase/supabase-js": "^2.108.1",
     "bcryptjs": "^3.0.3",
     "fflate": "^0.8.2",
@@ -27,7 +27,7 @@
     "jose": "^6.2.3",
     "leaflet": "^1.9.4",
     "mercadopago": "^3.1.0",
-    "next": "^16.3.8",
+    "next": "^16.4.2",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
