@@ -286,9 +286,10 @@ function PegarPedido({ articulos, ots, onListo, onCancelar }) {
                     <div className="font-semibold truncate">{a.nombre}</div>
                     <div className="text-gypi-dim truncate">{a.sku}</div>
                   </div>
-                  <input aria-label={`Cantidad de ${a.nombre}`} className="g-input w-[90px] text-right" inputMode="decimal" value={a.texto}
-                    onChange={(e) => setLista((l) => l.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} />
-                  <span className="text-[12px] text-gypi-dim w-[44px] truncate">{a.unidad || ""}</span>
+                  <div className="w-[90px] shrink-0">
+                    <input aria-label={`Cantidad de ${a.nombre}`} className="g-input text-right" inputMode="decimal" value={a.texto}
+                      onChange={(e) => setLista((l) => l.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} />
+                  </div>
                   <button onClick={() => setLista((l) => l.filter((_, j) => j !== i))} aria-label={`Quitar ${a.nombre}`}
                     className="min-h-[44px] px-1 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
                 </li>
