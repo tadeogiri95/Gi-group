@@ -46,7 +46,7 @@ export default function PlantaScreen({ empresa, usuario, onVerPlanes, seccion = 
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
-        {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} usuario={usuario} />}
+        {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
       </div>
     </div>

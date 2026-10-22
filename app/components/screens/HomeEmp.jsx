@@ -1,10 +1,11 @@
 "use client";
 // Inicio del operario (R8): solo lo de todos los días — cómo está, fichar y
-// los botones grandes del trabajo (escanear piezas, retirar material, carga).
+// los botones grandes del trabajo (escanear piezas, retirar material, carga y,
+// para el responsable de un vehículo, su checklist de mantenimiento).
 // Pedir permiso está en la pestaña "Permisos" y horario, fichadas, documentos,
 // PIN y salir en la pestaña "Mi cuenta" (revisión de la interfaz, 2026-10).
 // Sin estilos sueltos (R11).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmtDate } from "../../lib/theme";
 import { hoyArg, ahoraArg } from "../../lib/dates";
 import BotonFichar from "../BotonFichar";
@@ -16,6 +17,8 @@ import { tieneModulo } from "../../lib/modulos";
 import ElegirOtCarga from "../ElegirOtCarga";
 import RetirarMaterial from "../RetirarMaterial";
 import EscanearPiezas from "../EscanearPiezas";
+import ChecklistVehiculo from "../ChecklistVehiculo";
+import { sb } from "../../lib/supabase";
 
 // Botón grande de una acción del trabajo: se toca fácil con guantes o apurado.
 function BotonAccion({ icono, titulo, detalle, destacado = false, onClick }) {
@@ -39,8 +42,20 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   const [elegirCarga, setElegirCarga] = useState(false);
   const [retirar, setRetirar] = useState(false);
   const [escanearPiezas, setEscanearPiezas] = useState(false);
+  const [misVehiculos, setMisVehiculos] = useState([]);
+  const [checklist, setChecklist] = useState(false);
   // Stock (ítem 40) va con las OT hasta que sea un módulo que se venda aparte
   const conStock = !demo && tieneModulo(empresa, "proyectos");
+  // Los vehículos de los que es responsable (Mantenimiento, parte 29). Sin la
+  // migración 126 o sin vehículos, no aparece el botón.
+  useEffect(() => {
+    if (!conStock || !usuario?.id) return;
+    let vivo = true;
+    sb.get(`vehiculos?responsable_id=eq.${usuario.id}&activo=eq.true&select=id,patente,marca,modelo,km&order=patente.asc`)
+      .then((v) => { if (vivo) setMisVehiculos(v || []); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [conStock, usuario?.id]);
   // Lo fichado sin señal todavía no está en ctx: se suma para que el botón no ofrezca fichar de nuevo (ítem 21)
   const cola = useColaOffline(demo ? null : usuario.id, { alTerminar: reload });
   const fichadasSinEnviar = cola.pendientes.filter((op) => op.tipo === "fichar");
@@ -109,8 +124,12 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         {conStock && <BotonAccion icono="📦" titulo="Retirar material" detalle="Escaneá el QR del artículo y anotá cuánto sacás" onClick={() => setRetirar(true)} />}
         {/* Acopio y carga: el responsable elige la OT sin depender del QR de un rótulo */}
         {conTareas && onAbrirCarga && <BotonAccion icono="🚚" titulo="Carga de una OT" detalle="Armar bultos, imprimir rótulos y cargar el camión" onClick={() => setElegirCarga(true)} />}
+        {misVehiculos.length > 0 && (
+          <BotonAccion icono="🚚" titulo="Checklist de mi vehículo" detalle={`Revisá ${misVehiculos.map((v) => v.patente).join(", ")}: fluidos, neumáticos, luces y papeles`} onClick={() => setChecklist(true)} />
+        )}
       </section>
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
+      {checklist && <ChecklistVehiculo vehiculos={misVehiculos} empresaNombre={empresa?.nombre || ""} onClose={() => setChecklist(false)} />}
       {retirar && <RetirarMaterial empresaId={usuario.empresa_id || empresa?.id} usuario={usuario} onClose={() => setRetirar(false)} />}
       {elegirCarga && (
         <ElegirOtCarga empresaId={usuario.empresa_id || empresa?.id} onClose={() => setElegirCarga(false)}

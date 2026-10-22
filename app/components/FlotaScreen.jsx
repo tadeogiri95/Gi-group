@@ -3,8 +3,8 @@
 // ítem 43; migración 126). Gerencia y Administración cargan los vehículos,
 // su responsable (el chofer habitual) y sus papeles con vencimiento. Cada
 // vehículo muestra su semáforo: 🔴 vencido, 🟡 vence pronto, ✅ al día. Solo
-// avisa, no bloquea nada. Los checklists, las alertas y los arreglos vienen en
-// las partes 29 a 31.
+// avisa, no bloquea nada. Los checklists hechos y la plantilla del checklist
+// son de la parte 29 (127); las alertas y los arreglos vienen en las 30 y 31.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
@@ -14,11 +14,13 @@ import {
 } from "../lib/flota";
 import { Chip } from "./ui";
 import FichaVehiculo, { FormVehiculo, FormLicencia } from "./FichaVehiculo";
+import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
+import PlantillaChecklist from "./PlantillaChecklist";
 
 const ORDEN_NIVEL = { vencido: 0, pronto: 1, ok: 2 };
 const AVISO_MIGRACION = "Para usar Flota falta correr la migración 126 en Supabase.";
 
-export default function FlotaScreen({ empresaId, usuario = null }) {
+export default function FlotaScreen({ empresaId, empresa = null, usuario = null }) {
   const [vehiculos, setVehiculos] = useState(null);
   const [papeles, setPapeles] = useState([]);
   const [empleados, setEmpleados] = useState([]);
@@ -29,6 +31,8 @@ export default function FlotaScreen({ empresaId, usuario = null }) {
   const [fichaId, setFichaId] = useState(null);
   const [nuevo, setNuevo] = useState(false);
   const [licencia, setLicencia] = useState(null);
+  const [checklists, setChecklists] = useState([]);
+  const [verChecklist, setVerChecklist] = useState(null);
   const editable = puedeEditarFlota(usuario?.rol);
   const hoy = hoyArg();
 
@@ -44,6 +48,9 @@ export default function FlotaScreen({ empresaId, usuario = null }) {
       setPapeles(p.data || []);
       setEmpleados(e.data || []);
       setError(null);
+      // Sin la migración 127 la flota anda igual; el checklist avisa al abrirlo
+      const c = await sbGetAll("vehiculo_checklists?order=created_at.desc,id.desc", { maxFilas: 2000 }).catch(() => ({ data: [] }));
+      setChecklists(c.data || []);
     } catch (err) {
       setVehiculos([]);
       setError(["vehiculos", "vehiculo_papeles", "licencia_"].some((t) => faltaTabla(err, t)) ? AVISO_MIGRACION : "No se pudo leer la flota");
@@ -90,7 +97,16 @@ export default function FlotaScreen({ empresaId, usuario = null }) {
     return (
       <div className="flex-1 overflow-y-auto px-[18px] pb-6">
         <FichaVehiculo vehiculo={ficha} papeles={papeles.filter((p) => p.vehiculo_id === ficha.id)} empleados={empleados} divisiones={divisiones}
+          checklists={checklists.filter((c) => c.vehiculo_id === ficha.id)} empresaNombre={empresa?.nombre || ""}
           editable={editable} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
+      </div>
+    );
+  }
+
+  if (verChecklist) {
+    return (
+      <div className="flex-1 overflow-y-auto px-[18px] pb-6">
+        <VerChecklist checklist={verChecklist} vehiculo={(vehiculos || []).find((v) => v.id === verChecklist.vehiculo_id)} empresaNombre={empresa?.nombre || ""} onVolver={() => setVerChecklist(null)} />
       </div>
     );
   }
@@ -107,7 +123,9 @@ export default function FlotaScreen({ empresaId, usuario = null }) {
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <div className="flex gap-1.5 mb-3 flex-wrap" role="group" aria-label="Ver">
         <Chip active={vista === "vehiculos"} onClick={() => setVista("vehiculos")}>🚚 Vehículos</Chip>
+        <Chip active={vista === "checklists"} onClick={() => setVista("checklists")}>📋 Checklists</Chip>
         <Chip active={vista === "choferes"} onClick={() => setVista("choferes")}>🪪 Choferes</Chip>
+        {editable && <Chip active={vista === "plantilla"} onClick={() => setVista("plantilla")}>⚙ Checklist</Chip>}
       </div>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
 
@@ -155,6 +173,9 @@ export default function FlotaScreen({ empresaId, usuario = null }) {
           )}
         </>
       )}
+
+      {vista === "checklists" && <ListaChecklists checklists={checklists.slice(0, 200)} vehiculos={vehiculos || []} onVer={setVerChecklist} />}
+      {vista === "plantilla" && editable && <PlantillaChecklist />}
 
       {vista === "choferes" && (
         <>

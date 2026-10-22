@@ -4,7 +4,7 @@
 // onCambio(true|false) si hay trazo, y expone png() para sacar la imagen.
 import { forwardRef, useImperativeHandle, useRef } from "react";
 
-const FirmaDedo = forwardRef(function FirmaDedo({ onCambio, disabled = false }, ref) {
+const FirmaDedo = forwardRef(function FirmaDedo({ onCambio, disabled = false, quien = "el cliente" }, ref) {
   const canvas = useRef(null);
   const dibujando = useRef(false);
   const conTrazo = useRef(false);
@@ -65,11 +65,11 @@ const FirmaDedo = forwardRef(function FirmaDedo({ onCambio, disabled = false }, 
 
   return (
     <div>
-      <canvas ref={canvas} width={600} height={250} aria-label="Recuadro para la firma del cliente" role="img"
+      <canvas ref={canvas} width={600} height={250} aria-label={`Recuadro para la firma de ${quien}`} role="img"
         onPointerDown={empezar} onPointerMove={mover} onPointerUp={terminar} onPointerLeave={terminar} onPointerCancel={terminar}
         className="w-full h-[170px] bg-white rounded-xl border border-gypi-border touch-none" />
       <div className="flex items-center mt-1">
-        <div className="flex-1 text-[11px] text-gypi-dim">El cliente firma con el dedo en el recuadro blanco.</div>
+        <div className="flex-1 text-[11px] text-gypi-dim">Firma {quien} con el dedo en el recuadro blanco.</div>
         <button onClick={borrar} disabled={disabled} className="min-h-[44px] px-3 bg-transparent border-none text-gypi-red text-xs cursor-pointer">Borrar</button>
       </div>
     </div>

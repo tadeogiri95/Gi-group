@@ -5,12 +5,14 @@
 // uno nuevo; el anterior queda en el historial.
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
-import { fotoBase64, subirImagen } from "../lib/foto";
 import {
   AVISO_LICENCIA, COMBUSTIBLES, RESULTADOS_ITV, SEMAFORO, TIPOS_PAPEL, TIPOS_VEHICULO,
   avisosVehiculo, estadoVencimiento, nombrePapel, nombreTipoVehiculo, papelesVigentes, peorNivel, textoVencimiento, tipoPapel,
 } from "../lib/flota";
 import { Chip } from "./ui";
+import BotonFoto from "./BotonFoto";
+import ChecklistVehiculo from "./ChecklistVehiculo";
+import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
 
 async function postFlota(body) {
   const res = await apiFetch("/api/flota", { method: "POST", body: JSON.stringify(body) });
@@ -29,31 +31,6 @@ function Campo({ id, label, children }) {
       <label className="g-label" htmlFor={id}>{label}</label>
       {children}
     </div>
-  );
-}
-
-function BotonFoto({ label, onFoto, disabled }) {
-  const [subiendo, setSubiendo] = useState(false);
-  const [error, setError] = useState(null);
-  const elegir = async (file) => {
-    if (!file) return;
-    setSubiendo(true);
-    setError(null);
-    try {
-      onFoto(await subirImagen(await fotoBase64(file)));
-    } catch (e) {
-      setError(e.message);
-    }
-    setSubiendo(false);
-  };
-  return (
-    <>
-      <label className="g-btn g-btn-secondary text-center cursor-pointer">
-        {subiendo ? "Subiendo…" : label}
-        <input type="file" accept="image/*" capture="environment" className="hidden" aria-label={label} disabled={disabled || subiendo} onChange={(e) => elegir(e.target.files?.[0])} />
-      </label>
-      {error && <div role="alert" className="text-[12px] text-gypi-red">{error}</div>}
-    </>
   );
 }
 
@@ -294,11 +271,13 @@ function Semaforo({ nivel, children }) {
   return <span className="text-[12px] font-semibold whitespace-nowrap">{SEMAFORO[nivel]?.emoji} {children}</span>;
 }
 
-export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, editable, hoy, onVolver, onCambio }) {
+export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, checklists = [], empresaNombre = "", editable, hoy, onVolver, onCambio }) {
   const [editando, setEditando] = useState(false);
   const [papelForm, setPapelForm] = useState(null); // { papel } | { renovar } | { tipo }
   const [licencia, setLicencia] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
+  const [haciendo, setHaciendo] = useState(false);
+  const [verChecklist, setVerChecklist] = useState(null);
   const [error, setError] = useState(null);
   const responsable = empleados.find((e) => e.id === vehiculo.responsable_id) || null;
   const avisos = avisosVehiculo(vehiculo, papeles, responsable, hoy);
@@ -322,6 +301,7 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
 
   if (editando) return <FormVehiculo vehiculo={vehiculo} empleados={empleados} divisiones={divisiones} onCancelar={() => setEditando(false)} onGuardado={listo} />;
   if (papelForm) return <FormPapel vehiculo={vehiculo} papel={papelForm.papel} renovar={papelForm.renovar} tipoInicial={papelForm.tipo} onCancelar={() => setPapelForm(null)} onGuardado={listo} />;
+  if (verChecklist) return <VerChecklist checklist={verChecklist} vehiculo={vehiculo} empresaNombre={empresaNombre} onVolver={() => setVerChecklist(null)} />;
   if (licencia && responsable) return <FormLicencia empleado={responsable} onCancelar={() => setLicencia(false)} onGuardado={listo} />;
 
   const datos = [
@@ -348,6 +328,8 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
         </div>
       </div>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
+      {editable && vehiculo.activo && <button onClick={() => setHaciendo(true)} className="g-btn g-btn-primary w-full mb-3">📋 Hacer checklist</button>}
+      {haciendo && <ChecklistVehiculo vehiculos={[vehiculo]} empresaNombre={empresaNombre} onClose={() => setHaciendo(false)} onHecho={onCambio} />}
 
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Papeles</div>
       {faltan.map((a) => (
@@ -420,6 +402,9 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
           <div className="flex-1 text-[14px] text-gypi-dim">Sin responsable. Elegilo en Editar datos.</div>
         )}
       </div>
+
+      <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Últimos checklists</div>
+      <div className="mb-3"><ListaChecklists checklists={checklists.slice(0, 10)} conPatente={false} onVer={setVerChecklist} /></div>
 
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Datos</div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[14px] m-0 mb-3">
