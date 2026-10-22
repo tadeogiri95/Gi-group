@@ -91,8 +91,8 @@ const INVENTARIO = "SKU,ARTICULO,STOCK TOTAL\n1.1.1.2.130.1,MELAMINA,10";
 function mockSync({ necesidades = "https://docs.google.com/nec.csv", falla = null } = {}) {
   const escrito = [];
   global.fetch = createFetchMock([
-    { match: (u) => u === "https://docs.google.com/inv.csv", respond: () => ({ status: 200, body: INVENTARIO }) },
-    { match: (u) => u === "https://docs.google.com/nec.csv", respond: () => ({ status: 200, body: NECESIDADES }) },
+    { match: (u) => u.startsWith("https://docs.google.com/inv.csv"), respond: () => ({ status: 200, body: INVENTARIO }) },
+    { match: (u) => u.startsWith("https://docs.google.com/nec.csv"), respond: () => ({ status: 200, body: NECESIDADES }) },
     {
       match: (u, o) => u.includes("/rest/v1/config_sistema") && (!o?.method || o.method === "GET"),
       respond: () => ({ status: 200, body: [{ valor: { inventario: "https://docs.google.com/inv.csv", necesidades } }] }),

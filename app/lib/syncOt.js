@@ -30,8 +30,24 @@ async function sbFetch(path, opts = {}, sesion) {
 }
 
 /* ─── Descarga de una planilla publicada como CSV ───
- * Solo HTTPS y nunca a la red interna. También la usa la planilla MRP (syncStock.js). */
-export async function descargarCsv(csvUrl) {
+ * Solo HTTPS y nunca a la red interna. También la usa la planilla MRP (syncStock.js).
+ *
+ * Google tarda en armar la hoja de un libro pesado (el MRP), así que se espera
+ * hasta 25 s y, si falla por tiempo, red o un error de Google (5xx), se
+ * reintenta una vez. Un 4xx (link mal, hoja sin publicar) no se reintenta. */
+const ESPERA_CSV_MS = 25000;
+const PAUSA_REINTENTO_MS = 1000;
+
+/** Las hojas publicadas de Google se guardan un rato en caché: un parámetro
+ *  distinto en cada pedido hace que traiga la copia más nueva que tenga. */
+export function urlSinCache(csvUrl, ahora = Date.now()) {
+  const u = new URL(csvUrl);
+  if (u.hostname !== "docs.google.com") return csvUrl;
+  u.searchParams.set("_gypi", String(ahora));
+  return u.toString();
+}
+
+export async function descargarCsv(csvUrl, { reintentos = 1, pausaMs = PAUSA_REINTENTO_MS } = {}) {
   let parsed;
   try { parsed = new URL(csvUrl); } catch { throw new Error("URL de CSV inválida"); }
   if (parsed.protocol !== "https:") throw new Error("Solo se permiten URLs HTTPS");
@@ -40,12 +56,26 @@ export async function descargarCsv(csvUrl) {
     throw new Error("URL apunta a red privada");
   }
 
-  const csvRes = await fetch(csvUrl, {
-    headers: { "User-Agent": "Gypi-CSV-Sync/1.0" },
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!csvRes.ok) throw new Error(`HTTP ${csvRes.status} al descargar CSV`);
-  return csvRes.text();
+  for (let intento = 0; ; intento++) {
+    let reintentable;
+    try {
+      const csvRes = await fetch(urlSinCache(csvUrl), {
+        headers: { "User-Agent": "Gypi-CSV-Sync/1.0", "Cache-Control": "no-cache" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(ESPERA_CSV_MS),
+      });
+      if (csvRes.ok) return csvRes.text();
+      reintentable = csvRes.status >= 500;
+      if (!reintentable || intento >= reintentos) throw new Error(`HTTP ${csvRes.status} al descargar CSV`);
+    } catch (e) {
+      if (reintentable === false || intento >= reintentos) {
+        if (e?.name === "TimeoutError") throw new Error("la planilla tardó demasiado en responder");
+        throw e;
+      }
+    }
+    logger.warn(`[csv] reintento ${intento + 1} de ${host}`);
+    if (pausaMs) await new Promise((r) => setTimeout(r, pausaMs));
+  }
 }
 
 /* ─── Sync de una empresa ─── */

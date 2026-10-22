@@ -20,6 +20,13 @@ import { filasCsv, fechaPlanilla } from "./csvProyectos";
 import { svgQR } from "./tarjetasQR";
 
 export const CLAVE_STOCK_CSV = "stock_csv_url";
+export { AVISO_DEMORA_GOOGLE } from "./csvProyectos";
+
+/** ¿La última sincronización es de hace más de 26 h? (la de la mañana no se hizo) */
+export function syncAtrasada(ultimaSync, ahora = Date.now()) {
+  const t = Date.parse(ultimaSync || "");
+  return Number.isFinite(t) && ahora - t > 26 * 60 * 60 * 1000;
+}
 
 /** SKU que se acepta: el código por niveles de la planilla ("1.3.2.69.155"). */
 export const SKU_VALIDO = /^[\w.-]{1,60}$/;

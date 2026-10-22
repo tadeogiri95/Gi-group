@@ -21,6 +21,7 @@ import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { avancePorOt } from "./lib/piezas";
 import { hoyArg } from "./lib/dates";
+import { AVISO_DEMORA_GOOGLE } from "./lib/csvProyectos";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -314,8 +315,9 @@ export default function ProyectosScreen({ empresaId }) {
     setSyncLoading(true);
     try {
       const res = await apiFetch("/api/proyectos/sync-csv", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Error sync");
+      // Si el servidor se cortó (tardó demasiado) no vuelve JSON
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || "la sincronización no terminó. Esperá un minuto y probá de nuevo");
       if (data.errores?.length) {
         const faltan = (data.total || 0) - (data.procesados || 0);
         showToast(`⚠️ ${data.procesados} OT sincronizadas, ${faltan} no se pudieron guardar. Probá de nuevo.`, AMBER);
@@ -501,6 +503,7 @@ export default function ProyectosScreen({ empresaId }) {
                 <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
                   <div className="text-[11px] text-gypi-dim mb-2 leading-relaxed">
                     URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: las OT nuevas se crean y las existentes se actualizan.
+                    {" "}{AVISO_DEMORA_GOOGLE}
                   </div>
                   {syncCfg.ultima_sync && (
                     <div className="text-xs text-gypi-green mb-2">

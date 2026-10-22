@@ -22,6 +22,9 @@ const CRON_SECRET = process.env.CRON_SECRET;
 const ROLES_OK = new Set(["gerencial", "administrativo"]);
 const INTERVALO_EMPLEADO_MS = 5 * 60 * 1000;
 
+// La planilla de OT es grande: bajarla y guardar cada lote lleva su tiempo
+export const maxDuration = 60;
+
 /* ─── Handler ─── */
 export async function POST(req) {
   try {

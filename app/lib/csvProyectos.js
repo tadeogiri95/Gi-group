@@ -8,6 +8,10 @@
 //   - la misma OT en dos filas → la base rechazaba el lote entero de 100 OT.
 // Las filas vacías (",,,,") se saltean.
 
+/** Lo que se le avisa a quien sincroniza: Google actualiza la copia publicada
+ *  de la planilla con unos minutos de demora. */
+export const AVISO_DEMORA_GOOGLE = "Si cargaste algo recién en la planilla, Google puede tardar unos 5 minutos en mostrarlo.";
+
 /** Divide el texto CSV en filas de celdas, respetando comillas, "" y saltos de línea dentro de comillas. */
 export function filasCsv(text) {
   const filas = [];
