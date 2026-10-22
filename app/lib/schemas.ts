@@ -377,7 +377,8 @@ export const comprasBody = z.discriminatedUnion("accion", [
     accion: z.literal("oc_crear"),
     moneda: monedaOc.optional().default("ARS"),
     lineas: z.array(z.object({
-      proveedor_id: idCompras,
+      // Sin proveedor: el renglón va a la orden "A cotizar" (125)
+      proveedor_id: idCompras.nullable().optional().transform((v) => v ?? null),
       sku: skuMovimiento.nullable().optional().transform((v) => v || null),
       descripcion: z.string().trim().min(1).max(200),
       unidad: textoSuelto(20),
@@ -404,6 +405,17 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("oc_anular"), id: idCompras }).strict(),
   // Cerrar una OC recibida en parte: lo que falta no va a llegar (123)
   z.object({ accion: z.literal("oc_cerrar_faltantes"), id: idCompras, motivo: z.string().trim().min(1, "Escribí por qué se cierra").max(300) }).strict(),
+  // Orden "A cotizar": pedir cotización a proveedores, anotar lo que contestaron y elegir (125)
+  z.object({ accion: z.literal("oc_cotizacion_pedir"), id: idCompras, proveedores: z.array(idCompras).min(1).max(30) }).strict(),
+  z.object({
+    accion: z.literal("oc_cotizacion_guardar"),
+    id: idCompras,
+    total: z.number().finite().min(0).max(1e12).nullable().optional().transform((v) => v ?? null),
+    plazo_dias: z.number().int().min(0).max(3650).nullable().optional().transform((v) => v ?? null),
+    nota: textoSuelto(300),
+  }).strict(),
+  z.object({ accion: z.literal("oc_cotizacion_quitar"), id: idCompras }).strict(),
+  z.object({ accion: z.literal("oc_adjudicar"), id: idCompras }).strict(),
   // Recepción con remito y factura (parte 22, migración 115)
   z.object({
     accion: z.literal("recepcion_crear"),

@@ -96,7 +96,7 @@ test("A comprar — pedidos primero, después sugeridos de la planilla sin repet
   assert.equal(perfil.origen, "mrp");
   assert.equal(perfil.cantidad, 12);
   assert.equal(perfil.nivel, "amarillo");
-  assert.deepEqual(agruparPorProveedor([{ ...placa }, { ...perfil, proveedor_id: 1 }, tornillos]).map((g) => [g.proveedor_id, g.lineas.length]), [[2, 1], [1, 1]]);
+  assert.deepEqual(agruparPorProveedor([{ ...placa }, { ...perfil, proveedor_id: 1 }, tornillos]).map((g) => [g.proveedor_id, g.lineas.length]), [[2, 1], [1, 1], [null, 1]], "sin proveedor va a la orden A cotizar, al final");
 });
 
 test("texto para WhatsApp y PDF de la OC", () => {
@@ -369,7 +369,7 @@ test("/api/compras oc_guardar — enviada: fecha prometida sí, precios no", asy
 });
 
 test("/api/compras oc_enviar y oc_anular", async () => {
-  let escrito = mockRuta({ oc: { id: 101, estado: "borrador" }, items: [{ id: 1 }] });
+  let escrito = mockRuta({ oc: { id: 101, estado: "borrador", proveedor_id: 1 }, items: [{ id: 1 }] });
   let res = await api.POST(req(await token("gerencial"), { accion: "oc_enviar", id: 101 }));
   assert.equal(res.status, 200);
   const env = escrito.find((x) => x.tabla === "ordenes_compra");
@@ -377,7 +377,7 @@ test("/api/compras oc_enviar y oc_anular", async () => {
   assert.equal(env.body.estado, "enviada");
   assert.ok(env.body.enviada_at);
 
-  mockRuta({ oc: { id: 101, estado: "borrador" }, items: [] });
+  mockRuta({ oc: { id: 101, estado: "borrador", proveedor_id: 1 }, items: [] });
   res = await api.POST(req(await token("gerencial"), { accion: "oc_enviar", id: 101 }));
   assert.equal(res.status, 409, "sin renglones no se manda");
 
@@ -436,8 +436,7 @@ test("A comprar — tilda el pedido y el sugerido, elige proveedor y arma las OC
   fireEvent.click(screen.getByLabelText("Comprar Perfil 0277"));
   assert.equal(screen.getByLabelText("Proveedor de Placa melamina blanca").value, "2", "sugiere el principal de la planilla");
   assert.equal(screen.getByLabelText("Cantidad de Placa melamina blanca").value, "5");
-  fireEvent.click(screen.getByText("Armar órdenes de compra"));
-  assert.match(screen.getByRole("alert").textContent, /Elegí el proveedor de: Perfil 0277/);
+  assert.ok(screen.getByText(/2 órdenes de compra: Egger, A cotizar/), "sin proveedor va a la orden A cotizar");
   fireEvent.change(screen.getByLabelText("Proveedor de Perfil 0277"), { target: { value: "1" } });
   fireEvent.change(screen.getByLabelText("Precio sin IVA de Perfil 0277"), { target: { value: "1.500,50" } });
   assert.ok(screen.getByText(/2 órdenes de compra: Egger, Aluar/));
