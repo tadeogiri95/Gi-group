@@ -4,14 +4,17 @@
 // precios sin IVA, moneda y fecha prometida, se mandan al proveedor (PDF +
 // WhatsApp o email) y se marcan enviadas. Una enviada que pasó la fecha
 // prometida aparece atrasada. Lo que llega se recibe en Compras → Recibir y
-// la factura, que puede llegar después, se carga acá (parte 22).
+// la factura, que puede llegar después, se carga acá (parte 22). Una orden
+// "A cotizar" (sin proveedor) se manda a cotizar a varios proveedores, se
+// anota lo que contestó cada uno y se elige al ganador (125).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { sb, apiFetch } from "../lib/supabase";
+import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { numeroWhatsapp } from "../lib/compras";
+import { faltaTabla, numeroWhatsapp } from "../lib/compras";
 import {
   ESTADOS_OC, ESTADOS_OC_ABIERTA, ESTADOS_OC_CERRABLE, MONEDAS, pendienteItem, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
   ALICUOTAS_IVA, IVA_POR_DEFECTO, cantidadFacturaInicial, renglonFactura, totalesFactura,
+  ocACotizar, estadoOcVisible, cotizacionMasBarata, textoCotizacion,
 } from "../lib/ordenesCompra";
 import { AVISO_MIGRACION_114 } from "./AComprar";
 
@@ -155,6 +158,165 @@ function FacturaOrden({ oc, items, onGuardada }) {
   );
 }
 
+const AVISO_MIGRACION_125 = "Para pedir cotizaciones falta correr la migración 125 en Supabase.";
+const formCotizacion = (c) => ({ total: numTexto(c.total), plazo: c.plazo_dias === null || c.plazo_dias === undefined ? "" : String(c.plazo_dias), nota: c.nota || "" });
+
+/**
+ * Orden "A cotizar" (125): se elige a qué proveedores pedirle precio, a cada
+ * uno se le manda el pedido de cotización (PDF, WhatsApp o email, sin
+ * precios), se anota lo que contestó (total sin IVA, plazo y nota) y al
+ * elegir al ganador la orden pasa a ser suya.
+ */
+function CotizacionesOrden({ oc, ocVista, items, empresa, onCambio }) {
+  const [cotizaciones, setCotizaciones] = useState(null);
+  const [proveedores, setProveedores] = useState([]);
+  const [forms, setForms] = useState({});
+  const [elegido, setElegido] = useState("");
+  const [faltaMigracion, setFaltaMigracion] = useState(false);
+  const [error, setError] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const nombreEmpresa = empresa?.nombre || empresa?.nombre_corto || "";
+
+  const cargar = useCallback(async () => {
+    try {
+      const [cots, provs] = await Promise.all([
+        sb.get(`ordenes_compra_cotizaciones?orden_id=eq.${oc.id}&order=id.asc`).catch((e) => {
+          if (faltaTabla(e, "ordenes_compra_cotizaciones")) { setFaltaMigracion(true); return []; }
+          throw e;
+        }),
+        sbGetAll("proveedores?activo=eq.true&select=id,nombre,contacto,whatsapp,email,cuit,condicion_pago&order=nombre.asc", { maxFilas: 5000 }).then((r) => r.data || []),
+      ]);
+      setCotizaciones(cots || []);
+      setProveedores(provs);
+      setForms(Object.fromEntries((cots || []).map((c) => [c.id, formCotizacion(c)])));
+    } catch {
+      setCotizaciones([]);
+      setError("No se pudieron leer las cotizaciones");
+    }
+  }, [oc.id]);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const hacer = async (body, mensaje, { recargarOrden = false } = {}) => {
+    setError(null);
+    setAviso(null);
+    setEnviando(true);
+    try {
+      await postCompras(body);
+      setAviso(mensaje);
+      if (recargarOrden) await onCambio();
+      else await cargar();
+    } catch (e) {
+      setError(e.message);
+    }
+    setEnviando(false);
+  };
+
+  const agregar = () => {
+    if (!elegido) { setError("Elegí el proveedor al que le querés pedir cotización"); return; }
+    setElegido("");
+    hacer({ accion: "oc_cotizacion_pedir", id: oc.id, proveedores: [Number(elegido)] }, "Proveedor agregado. Mandale el pedido por WhatsApp, email o PDF.");
+  };
+
+  const guardar = (c) => {
+    const f = forms[c.id];
+    const total = f.total.trim() ? leerImporte(f.total) : null;
+    if (f.total.trim() && total === null) { setError(`Revisá el total de ${c.proveedor_nombre}`); return; }
+    const plazo = f.plazo.trim() ? Number(f.plazo.trim()) : null;
+    if (f.plazo.trim() && !(Number.isInteger(plazo) && plazo >= 0 && plazo <= 3650)) { setError(`El plazo de ${c.proveedor_nombre} va en días`); return; }
+    hacer({ accion: "oc_cotizacion_guardar", id: c.id, total, plazo_dias: plazo, nota: f.nota.trim() || null }, `Cotización de ${c.proveedor_nombre} guardada.`);
+  };
+
+  const pdf = (prov) => {
+    setError(null);
+    try {
+      imprimirOrdenCompra({ empresa, oc: ocVista, items, proveedor: prov, cotizacion: true });
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const cambiar = (id, campo, valor) => setForms((f) => ({ ...f, [id]: { ...f[id], [campo]: valor } }));
+  const pedidos = new Set((cotizaciones || []).map((c) => c.proveedor_id));
+  const masBarata = cotizacionMasBarata(cotizaciones);
+
+  return (
+    <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
+      <div className="text-[14px] font-bold mb-1">📨 Pedir cotización</div>
+      <div className="text-[13px] text-gypi-dim mb-2">
+        Agregá los proveedores a los que les vas a pedir precio y mandale a cada uno el pedido (sale sin precios).
+        Cuando contesten, anotá el total y el plazo, y elegí con quién comprás.
+      </div>
+      {faltaMigracion ? (
+        <div role="alert" className="text-[13px] text-gypi-red">{AVISO_MIGRACION_125}</div>
+      ) : cotizaciones === null ? (
+        <div className="text-[14px] text-gypi-dim" role="status">Cargando…</div>
+      ) : (
+        <>
+          <div className="flex gap-2 mb-2">
+            <select aria-label="Proveedor para pedir cotización" className="g-input flex-1 min-w-0" value={elegido} onChange={(e) => setElegido(e.target.value)}>
+              <option value="">Elegí proveedor…</option>
+              {proveedores.filter((p) => !pedidos.has(p.id)).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+            <button onClick={agregar} disabled={enviando} className="g-btn g-btn-secondary">Agregar</button>
+          </div>
+          {!cotizaciones.length ? (
+            <div className="text-[13px] text-gypi-dim">Todavía no le pediste cotización a nadie.</div>
+          ) : (
+            <ul aria-label="Cotizaciones" className="list-none m-0 p-0 flex flex-col gap-2">
+              {cotizaciones.map((c) => {
+                const prov = proveedores.find((p) => p.id === c.proveedor_id) || { id: c.proveedor_id, nombre: c.proveedor_nombre };
+                const texto = textoCotizacion({ empresa: nombreEmpresa, oc: ocVista, items, proveedor: prov });
+                const wa = numeroWhatsapp(prov.whatsapp);
+                const f = forms[c.id] || formCotizacion(c);
+                return (
+                  <li key={c.id} className={`p-2 rounded-[10px] border ${c.id === masBarata ? "border-gypi-amber" : "border-gypi-border"}`}>
+                    <div className="text-[14px] font-semibold">
+                      {c.proveedor_nombre}
+                      {c.id === masBarata && <span className="font-normal"> · 💲 Más barato</span>}
+                    </div>
+                    <div className="text-[12px] text-gypi-dim mb-1">
+                      Pedida el {fechaCorta(c.created_at)}{c.pedida_por_nombre ? ` por ${c.pedida_por_nombre}` : ""}
+                      {c.total !== null && c.total !== undefined ? ` · ${importeTexto(c.total, oc.moneda)} sin IVA` : " · Sin respuesta"}
+                      {c.plazo_dias !== null && c.plazo_dias !== undefined ? ` · ${c.plazo_dias} días` : ""}
+                    </div>
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      <button onClick={() => pdf(prov)} className="g-btn g-btn-secondary flex-1">📄 PDF</button>
+                      <a href={wa ? `https://wa.me/${wa}?text=${encodeURIComponent(texto)}` : `https://wa.me/?text=${encodeURIComponent(texto)}`} target="_blank" rel="noopener noreferrer"
+                        aria-label={`WhatsApp a ${c.proveedor_nombre}`} className="g-btn g-btn-secondary flex-1 no-underline text-center">💬 WhatsApp</a>
+                      {prov.email && (
+                        <a href={`mailto:${prov.email}?subject=${encodeURIComponent(`Pedido de cotización N° ${oc.numero}${nombreEmpresa ? ` · ${nombreEmpresa}` : ""}`)}&body=${encodeURIComponent(texto)}`}
+                          aria-label={`Email a ${c.proveedor_nombre}`} className="g-btn g-btn-secondary flex-1 no-underline text-center">✉️ Email</a>
+                      )}
+                    </div>
+                    <div className="flex gap-2 mb-1">
+                      <input aria-label={`Total sin IVA de ${c.proveedor_nombre}`} className="g-input flex-1 min-w-0" inputMode="decimal" placeholder="Total s/IVA"
+                        value={f.total} onChange={(e) => cambiar(c.id, "total", e.target.value)} />
+                      <input aria-label={`Plazo en días de ${c.proveedor_nombre}`} className="g-input w-[90px]" inputMode="numeric" placeholder="Días"
+                        value={f.plazo} onChange={(e) => cambiar(c.id, "plazo", e.target.value)} />
+                    </div>
+                    <input aria-label={`Nota de ${c.proveedor_nombre}`} className="g-input w-full mb-2" maxLength={300} placeholder="Nota (ej: pago a 30 días, sin flete)"
+                      value={f.nota} onChange={(e) => cambiar(c.id, "nota", e.target.value)} />
+                    <div className="flex gap-2 flex-wrap">
+                      <button onClick={() => guardar(c)} disabled={enviando} className="g-btn g-btn-secondary flex-1">Guardar respuesta</button>
+                      <button onClick={() => hacer({ accion: "oc_adjudicar", id: c.id }, `La orden ahora es de ${c.proveedor_nombre}.`, { recargarOrden: true })} disabled={enviando}
+                        className="g-btn g-btn-primary flex-1">✅ Elegir este proveedor</button>
+                    </div>
+                    <button onClick={() => hacer({ accion: "oc_cotizacion_quitar", id: c.id }, `${c.proveedor_nombre} quitado.`)} disabled={enviando} aria-label={`Quitar a ${c.proveedor_nombre}`}
+                      className="min-h-[44px] w-full bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+      {aviso && <div role="status" className="text-[13px] mt-2">✅ {aviso}</div>}
+      {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}
+    </div>
+  );
+}
+
 function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
   const [items, setItems] = useState(null);
   const [proveedor, setProveedor] = useState(null);
@@ -163,6 +325,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
   const [aviso, setAviso] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const borrador = oc.estado === "borrador";
+  const aCotizar = ocACotizar(oc);
   const abierta = ESTADOS_OC_ABIERTA.includes(oc.estado);
   const cerrada = oc.estado === "cerrada_faltantes";
   const [cerrando, setCerrando] = useState(false);
@@ -281,7 +444,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
     }
   };
 
-  const est = ESTADOS_OC[oc.estado] || ESTADOS_OC.borrador;
+  const est = estadoOcVisible(oc);
   return (
     <div>
       <button onClick={onVolver} className="min-h-[44px] px-0 mb-1 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">← Órdenes de compra</button>
@@ -355,6 +518,9 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
 
           {!borrador && oc.estado !== "anulada" && items.length > 0 && <FacturaOrden key={`${oc.id}-${oc.updated_at}`} oc={oc} items={items} onGuardada={async () => { await onCambio(); await cargar(); }} />}
 
+          {aCotizar && <CotizacionesOrden oc={oc} ocVista={ocVista} items={vista} empresa={empresa} onCambio={onCambio} />}
+
+          {!aCotizar && (<>
           <div className="flex gap-2 flex-wrap mb-2">
             <button onClick={pdf} className="g-btn g-btn-secondary flex-1">📄 PDF</button>
             <a href={wa ? `https://wa.me/${wa}?text=${encodeURIComponent(texto)}` : `https://wa.me/?text=${encodeURIComponent(texto)}`} target="_blank" rel="noopener noreferrer"
@@ -365,8 +531,9 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
             )}
           </div>
           <div className="text-[12px] text-gypi-dim mb-3">El PDF se guarda desde la ventana de imprimir (Guardar como PDF) y se adjunta en el WhatsApp o el mail.</div>
+          </>)}
 
-          {borrador && (
+          {borrador && !aCotizar && (
             <button onClick={async () => { if (await guardar({ silencioso: true })) await accion("oc_enviar", "Marcada como enviada."); }} disabled={enviando} className="g-btn g-btn-primary w-full mb-2">📤 Marcar como enviada</button>
           )}
           {ESTADOS_OC_CERRABLE.includes(oc.estado) && !cerrando && (
@@ -424,6 +591,7 @@ export default function OrdenesCompra({ empresaId, empresa = null, abrirId = nul
   const visibles = useMemo(() => (ordenes || []).filter((o) => {
     if (filtro === "abiertas") return ESTADOS_OC_ABIERTA.includes(o.estado);
     if (filtro === "atrasadas") return ocAtrasada(o);
+    if (filtro === "a_cotizar") return ocACotizar(o);
     return !filtro || o.estado === filtro;
   }), [ordenes, filtro]);
   const actual = (ordenes || []).find((o) => o.id === abierta);
@@ -436,6 +604,7 @@ export default function OrdenesCompra({ empresaId, empresa = null, abrirId = nul
       <select aria-label="Qué órdenes ver" className="g-input w-full mb-2" value={filtro} onChange={(e) => setFiltro(e.target.value)}>
         <option value="abiertas">Abiertas</option>
         <option value="atrasadas">⚠️ Atrasadas</option>
+        <option value="a_cotizar">📨 A cotizar</option>
         {Object.values(ESTADOS_OC).map((s) => <option key={s.id} value={s.id}>{s.icono} {s.nombre}</option>)}
         <option value="">Todas</option>
       </select>
@@ -446,7 +615,7 @@ export default function OrdenesCompra({ empresaId, empresa = null, abrirId = nul
       ) : (
         <ul aria-label="Órdenes de compra" className="list-none m-0 p-0 flex flex-col gap-1.5">
           {visibles.map((o) => {
-            const est = ESTADOS_OC[o.estado] || ESTADOS_OC.borrador;
+            const est = estadoOcVisible(o);
             return (
               <li key={o.id}>
                 <button onClick={() => setAbierta(o.id)} className={`w-full text-left p-2 rounded-[10px] border bg-gypi-surface cursor-pointer font-body text-gypi-text ${ocAtrasada(o) ? "border-gypi-red" : "border-gypi-border"} ${o.estado === "anulada" ? "opacity-60" : ""}`}>
