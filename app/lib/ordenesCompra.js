@@ -143,15 +143,65 @@ export function lineasAComprar({ pedidos = [], articulos = [], proveedores = [],
   return out;
 }
 
-/** Junta los renglones elegidos por proveedor: [{ proveedor_id, lineas }]. Los que no tienen proveedor quedan afuera. */
+/**
+ * Junta los renglones elegidos por proveedor: [{ proveedor_id, lineas }]. Los
+ * que no tienen proveedor van juntos al final con proveedor_id null: son la
+ * orden "A cotizar" (125).
+ */
 export function agruparPorProveedor(lineas) {
   const grupos = new Map();
+  const sinProveedor = [];
   for (const l of lineas || []) {
-    if (!l.proveedor_id) continue;
+    if (!l.proveedor_id) { sinProveedor.push(l); continue; }
     if (!grupos.has(l.proveedor_id)) grupos.set(l.proveedor_id, []);
     grupos.get(l.proveedor_id).push(l);
   }
-  return [...grupos.entries()].map(([proveedor_id, ls]) => ({ proveedor_id, lineas: ls }));
+  const out = [...grupos.entries()].map(([proveedor_id, ls]) => ({ proveedor_id, lineas: ls }));
+  if (sinProveedor.length) out.push({ proveedor_id: null, lineas: sinProveedor });
+  return out;
+}
+
+/* ─── Orden "A cotizar" y pedidos de cotización (migración 125) ────────── */
+
+/** Nombre que lleva la orden mientras no tiene proveedor. */
+export const NOMBRE_A_COTIZAR = "A cotizar";
+
+/** ¿La orden está esperando cotizaciones? (borrador sin proveedor) */
+export function ocACotizar(oc) {
+  return Boolean(oc) && oc.estado === "borrador" && !oc.proveedor_id;
+}
+
+/** Estado para mostrar: una orden a cotizar se ve como tal, no como borrador. */
+export function estadoOcVisible(oc) {
+  return ocACotizar(oc) ? { id: "a_cotizar", nombre: "A cotizar", icono: "📨" } : ESTADOS_OC[oc?.estado] || ESTADOS_OC.borrador;
+}
+
+/** Id de la cotización contestada con el menor total; null si ninguna tiene total. */
+export function cotizacionMasBarata(cotizaciones) {
+  let mejor = null;
+  for (const c of cotizaciones || []) {
+    if (c.total === null || c.total === undefined || c.total === "") continue;
+    if (!mejor || Number(c.total) < Number(mejor.total)) mejor = c;
+  }
+  return mejor?.id ?? null;
+}
+
+/** Texto del pedido de cotización para WhatsApp o email: artículos y cantidades, sin precios. */
+export function textoCotizacion({ empresa, oc, items, proveedor = null }) {
+  const saludo = proveedor?.contacto ? `Hola ${proveedor.contacto}` : "Hola";
+  const renglones = (items || []).map((it) => {
+    const obs = it.observacion ? `\n   Obs.: ${it.observacion}` : "";
+    return `• ${cantTexto(it.cantidad)}${it.unidad ? ` ${it.unidad}` : ""} ${it.descripcion}${it.sku ? ` (${it.sku})` : ""}${obs}`;
+  });
+  return [
+    `${saludo}, te pido cotización${empresa ? ` para ${empresa}` : ""} (pedido N° ${oc.numero}):`,
+    "",
+    ...renglones,
+    "",
+    oc.fecha_prometida ? `Lo necesitamos para el ${fechaCorta(oc.fecha_prometida)}.` : null,
+    oc.notas ? `Notas: ${oc.notas}` : null,
+    `Por favor pasame precio sin IVA${oc.moneda === "USD" ? " en dólares" : ""}, plazo de entrega y condición de pago. ¡Gracias!`,
+  ].filter((l) => l !== null).join("\n");
 }
 
 const fechaCorta = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
@@ -186,13 +236,14 @@ const urlSegura = (u) => (typeof u === "string" && /^https:\/\//.test(u) ? u : n
  * La OC lista para imprimir o guardar en PDF (hoja A4).
  * @param {{ empresa: object, oc: object, items: object[], proveedor?: object }} datos
  */
-export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null }) {
+export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null, cotizacion = false }) {
+  const titulo = cotizacion ? "Pedido de cotización" : "Orden de compra";
   const logo = urlSegura(empresa?.logo_url);
   const nombreEmpresa = empresa?.razon_social || empresa?.nombre || empresa?.nombre_corto || "";
   const cuitEmpresa = empresa?.cuit ? String(empresa.cuit).replace(/^(\d{2})(\d{8})(\d)$/, "$1-$2-$3") : "";
-  const total = totalOrden(items);
+  const total = cotizacion ? null : totalOrden(items);
   const datosProveedor = [
-    ["Proveedor", oc.proveedor_nombre],
+    ["Proveedor", cotizacion ? proveedor?.nombre : oc.proveedor_nombre],
     ["CUIT", proveedor?.cuit],
     ["Contacto", [proveedor?.contacto, proveedor?.whatsapp, proveedor?.email].filter(Boolean).join(" · ")],
     ["Condición de pago", proveedor?.condicion_pago],
@@ -203,11 +254,11 @@ export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null
       <td>${esc(it.descripcion)}${it.sku ? `<div class="sku">${esc(it.sku)}</div>` : ""}${it.ot ? `<div class="sku">OT ${esc(it.ot)}</div>` : ""}${it.observacion ? `<div class="obs">Obs.: ${esc(it.observacion)}</div>` : ""}</td>
       <td class="n">${esc(cantTexto(it.cantidad))}</td>
       <td>${esc(it.unidad || "")}</td>
-      <td class="n">${esc(it.precio_unitario !== null && it.precio_unitario !== undefined ? importeTexto(it.precio_unitario, oc.moneda) : "")}</td>
-      <td class="n">${esc(sub !== null ? importeTexto(sub, oc.moneda) : "")}</td>
+      ${cotizacion ? "" : `<td class="n">${esc(it.precio_unitario !== null && it.precio_unitario !== undefined ? importeTexto(it.precio_unitario, oc.moneda) : "")}</td>
+      <td class="n">${esc(sub !== null ? importeTexto(sub, oc.moneda) : "")}</td>`}
     </tr>`;
   }).join("");
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Orden de compra N° ${esc(oc.numero)} · ${esc(oc.proveedor_nombre)}</title>
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${titulo} N° ${esc(oc.numero)} · ${esc(cotizacion ? proveedor?.nombre || "" : oc.proveedor_nombre)}</title>
 <style>
   @page { size: A4; margin: 15mm; }
   * { box-sizing: border-box; }
@@ -237,19 +288,21 @@ export function htmlOrdenCompra({ empresa = {}, oc, items = [], proveedor = null
       ${empresa?.domicilio_fiscal ? `<div class="chico">${esc(empresa.domicilio_fiscal)}</div>` : ""}
     </div>
     <div>
-      <h1>Orden de compra N° ${esc(oc.numero)}</h1>
+      <h1>${titulo} N° ${esc(oc.numero)}</h1>
       <div class="chico" style="text-align:right">Fecha: ${esc(fechaCorta(oc.enviada_at || oc.created_at || new Date().toISOString()))}</div>
-      ${oc.fecha_prometida ? `<div class="chico" style="text-align:right">Entrega: ${esc(fechaCorta(oc.fecha_prometida))}</div>` : ""}
+      ${oc.fecha_prometida ? `<div class="chico" style="text-align:right">${cotizacion ? "Se necesita" : "Entrega"}: ${esc(fechaCorta(oc.fecha_prometida))}</div>` : ""}
     </div>
   </div>
   <table class="datos">${datosProveedor.map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>
   <table class="items">
-    <thead><tr><th>Artículo</th><th class="n">Cantidad</th><th>Unidad</th><th class="n">Precio unit. s/IVA</th><th class="n">Subtotal s/IVA</th></tr></thead>
+    <thead><tr><th>Artículo</th><th class="n">Cantidad</th><th>Unidad</th>${cotizacion ? "" : `<th class="n">Precio unit. s/IVA</th><th class="n">Subtotal s/IVA</th>`}</tr></thead>
     <tbody>${filas}</tbody>
   </table>
   ${total !== null ? `<div class="total">Total sin IVA: ${esc(importeTexto(total, oc.moneda))}</div>` : ""}
   ${oc.estado === "cerrada_faltantes" ? `<div class="nota"><b>Cerrada con faltantes${oc.cerrada_at ? ` el ${esc(fechaCorta(oc.cerrada_at))}` : ""}.</b> Lo no entregado queda sin efecto.${oc.cerrada_motivo ? ` ${esc(oc.cerrada_motivo)}` : ""}</div>` : ""}
-  <div class="nota">Precios sin IVA${oc.moneda === "USD" ? ", en dólares estadounidenses" : ", en pesos"}.${oc.notas ? ` ${esc(oc.notas)}` : ""}</div>
+  ${cotizacion
+    ? `<div class="nota">Por favor cotizar precio unitario sin IVA${oc.moneda === "USD" ? " en dólares estadounidenses" : ""}, plazo de entrega y condición de pago.${oc.notas ? ` ${esc(oc.notas)}` : ""}</div>`
+    : `<div class="nota">Precios sin IVA${oc.moneda === "USD" ? ", en dólares estadounidenses" : ", en pesos"}.${oc.notas ? ` ${esc(oc.notas)}` : ""}</div>`}
 </body></html>`;
 }
 
