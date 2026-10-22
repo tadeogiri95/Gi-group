@@ -4,14 +4,18 @@
 // su responsable (el chofer habitual) y sus papeles con vencimiento. Cada
 // vehículo muestra su semáforo: 🔴 vencido, 🟡 vence pronto, ✅ al día. Solo
 // avisa, no bloquea nada. Los checklists hechos y la plantilla del checklist
-// son de la parte 29 (127); las alertas y los arreglos vienen en las 30 y 31.
+// son de la parte 29 (127). Las alertas (parte 30, 128) suman a los papeles
+// cada cuánto se revisa cada aspecto y el último service; la pestaña 🔔 Alertas
+// junta lo vencido y lo que vence pronto de toda la flota. Los arreglos vienen
+// en la parte 31.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
 import { hoyArg } from "../lib/dates";
 import {
-  AVISO_LICENCIA, SEMAFORO, avisosVehiculo, estadoVencimiento, nombreTipoVehiculo, peorNivel, puedeEditarFlota, textoVencimiento,
+  AVISO_LICENCIA, SEMAFORO, estadoVencimiento, nombreTipoVehiculo, peorNivel, puedeEditarFlota, textoVencimiento,
 } from "../lib/flota";
+import { alertasVehiculo, textoAlerta, urgentes as soloUrgentes } from "../lib/alertasFlota";
 import { Chip } from "./ui";
 import FichaVehiculo, { FormVehiculo, FormLicencia } from "./FichaVehiculo";
 import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
@@ -20,12 +24,12 @@ import PlantillaChecklist from "./PlantillaChecklist";
 const ORDEN_NIVEL = { vencido: 0, pronto: 1, ok: 2 };
 const AVISO_MIGRACION = "Para usar Flota falta correr la migración 126 en Supabase.";
 
-export default function FlotaScreen({ empresaId, empresa = null, usuario = null }) {
+export default function FlotaScreen({ empresaId, empresa = null, usuario = null, vistaInicial = "vehiculos" }) {
   const [vehiculos, setVehiculos] = useState(null);
   const [papeles, setPapeles] = useState([]);
   const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
-  const [vista, setVista] = useState("vehiculos");
+  const [vista, setVista] = useState(vistaInicial);
   const [verBajas, setVerBajas] = useState(false);
   const [texto, setTexto] = useState("");
   const [fichaId, setFichaId] = useState(null);
@@ -59,20 +63,24 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null 
   useEffect(() => { cargar(); }, [cargar]);
 
   const porId = useMemo(() => new Map(empleados.map((e) => [e.id, e])), [empleados]);
+  // Alertas de cada vehículo: papeles, licencia, revisiones y service
+  const alertas = useMemo(() => new Map((vehiculos || []).map((v) => [v.id, alertasVehiculo(v, {
+    papeles: papeles.filter((p) => p.vehiculo_id === v.id), checklists, responsable: porId.get(v.responsable_id), hoy,
+  })])), [vehiculos, papeles, checklists, porId, hoy]);
   const filas = useMemo(() => {
     const t = texto.trim().toLowerCase();
     return (vehiculos || [])
       .filter((v) => (verBajas ? !v.activo : v.activo))
       .filter((v) => !t || [v.patente, v.marca, v.modelo, porId.get(v.responsable_id)?.nombre].some((x) => String(x ?? "").toLowerCase().includes(t)))
       .map((v) => {
-        const avisos = avisosVehiculo(v, papeles, porId.get(v.responsable_id), hoy);
-        const nivel = peorNivel(avisos);
-        const urgentes = avisos.filter((a) => a.nivel === "vencido" || a.nivel === "pronto")
-          .sort((a, b) => (a.nivel === b.nivel ? (a.dias ?? 0) - (b.dias ?? 0) : a.nivel === "vencido" ? -1 : 1));
-        return { v, nivel, urgentes };
+        const avisos = alertas.get(v.id) || [];
+        return { v, nivel: peorNivel(avisos), urgentes: soloUrgentes(avisos) };
       })
       .sort((a, b) => ORDEN_NIVEL[a.nivel] - ORDEN_NIVEL[b.nivel] || a.v.patente.localeCompare(b.v.patente));
-  }, [vehiculos, papeles, porId, texto, verBajas, hoy]);
+  }, [vehiculos, alertas, porId, texto, verBajas]);
+  // Pestaña 🔔 Alertas: una fila por alerta de los vehículos activos, lo más urgente primero
+  const todasUrgentes = useMemo(() => soloUrgentes((vehiculos || []).filter((v) => v.activo)
+    .flatMap((v) => (alertas.get(v.id) || []).map((a) => ({ ...a, vehiculo: v })))), [vehiculos, alertas]);
 
   const choferes = useMemo(() => {
     const responsables = new Set((vehiculos || []).filter((v) => v.activo && v.responsable_id).map((v) => v.responsable_id));
@@ -123,6 +131,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null 
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <div className="flex gap-1.5 mb-3 flex-wrap" role="group" aria-label="Ver">
         <Chip active={vista === "vehiculos"} onClick={() => setVista("vehiculos")}>🚚 Vehículos</Chip>
+        <Chip active={vista === "alertas"} onClick={() => setVista("alertas")}>🔔 Alertas{todasUrgentes.length ? ` (${todasUrgentes.length})` : ""}</Chip>
         <Chip active={vista === "checklists"} onClick={() => setVista("checklists")}>📋 Checklists</Chip>
         <Chip active={vista === "choferes"} onClick={() => setVista("choferes")}>🪪 Choferes</Chip>
         {editable && <Chip active={vista === "plantilla"} onClick={() => setVista("plantilla")}>⚙ Checklist</Chip>}
@@ -159,7 +168,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null 
                         <span className="block text-[12px] text-gypi-dim truncate">{datos.join(" · ")}</span>
                         {urgentes.length > 0 && (
                           <span className="block text-[12px] font-semibold truncate">
-                            {urgentes.slice(0, 2).map((a) => (a.falta ? a.texto : `${a.texto}: ${textoVencimiento(a, a.vencimiento).toLowerCase()}`)).join(" · ")}
+                            {urgentes.slice(0, 2).map((a) => textoAlerta(a, textoVencimiento)).join(" · ")}
                             {urgentes.length > 2 ? ` · y ${urgentes.length - 2} más` : ""}
                           </span>
                         )}
@@ -169,6 +178,32 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null 
                   </li>
                 );
               })}
+            </ul>
+          )}
+        </>
+      )}
+
+      {vista === "alertas" && (
+        <>
+          <div className="text-[13px] text-gypi-dim mb-2">Lo vencido y lo que vence pronto de toda la flota. Gypi avisa una vez por día al celular del responsable y de gerencia cuando aparece algo nuevo. Solo avisa: no bloquea nada.</div>
+          {vehiculos === null ? (
+            <div className="text-[14px] text-gypi-dim" role="status">Cargando la flota…</div>
+          ) : !todasUrgentes.length ? (
+            <div className="text-[14px] text-gypi-dim">✅ Toda la flota está al día.</div>
+          ) : (
+            <ul aria-label="Alertas de la flota" className="list-none m-0 p-0 flex flex-col gap-1.5">
+              {todasUrgentes.map((a) => (
+                <li key={`${a.vehiculo.id}-${a.clave}`}>
+                  <button onClick={() => setFichaId(a.vehiculo.id)} aria-label={`${a.vehiculo.patente}: ${textoAlerta(a, textoVencimiento)}`}
+                    className="w-full flex items-center gap-2.5 p-2.5 min-h-[44px] rounded-[10px] border border-gypi-border bg-gypi-surface text-left cursor-pointer font-body text-gypi-text">
+                    <span className="text-[20px]">{SEMAFORO[a.nivel].emoji}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[14px] font-semibold">{textoAlerta(a, textoVencimiento)}</span>
+                      <span className="block text-[12px] text-gypi-dim truncate">{[a.vehiculo.patente, porId.get(a.vehiculo.responsable_id)?.nombre].filter(Boolean).join(" · ")}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
             </ul>
           )}
         </>

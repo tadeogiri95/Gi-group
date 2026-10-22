@@ -266,7 +266,8 @@ test("Flota — lista con semáforo, lo vencido arriba; ficha con papeles y reno
   assert.match(filas[0].textContent, /🔴AA999ZZ/, "el vencido primero");
   assert.match(filas[0].textContent, /Seguro: venció hace/);
   assert.match(filas[0].textContent, /Falta cargar la ITV/);
-  assert.match(filas[1].textContent, /✅AB123CD.*Juan Pérez/);
+  // Papeles al día, pero sin checklist ni service cargado: 🟡 (parte 30)
+  assert.match(filas[1].textContent, /🟡AB123CD.*Juan Pérez.*Falta el primer checklist/);
 
   fireEvent.click(screen.getByLabelText("Ver AB123CD"));
   const papeles = await screen.findByRole("list", { name: "Papeles vigentes" });

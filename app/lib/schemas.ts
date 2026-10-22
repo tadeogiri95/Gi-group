@@ -780,6 +780,13 @@ export const resolverSolicitudBody = z.object({
 const idFlota = z.number().int().positive();
 const fechaFlota = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null);
 const idPlantilla = z.string().trim().regex(/^[a-z0-9_]{1,40}$/);
+// Parte 30 (128): lo que la empresa cambió de cada cuánto se revisa cada aspecto
+const ASPECTOS_FLOTA = ["limpieza", "fluidos", "neumaticos", "luces", "itv", "documentacion", "service"] as const;
+const frecuenciaFlota = z.object({
+  dias: z.number().int().min(1).max(3650).optional(),
+  km: z.number().int().min(1).max(1000000).optional(),
+}).strict();
+const frecuenciasFlota = z.partialRecord(z.enum(ASPECTOS_FLOTA), frecuenciaFlota);
 const urlFoto = z.string().trim().url().max(500).refine((u) => u.startsWith("https://"), "La foto tiene que ser https");
 export const flotaBody = z.discriminatedUnion("accion", [
   z.object({
@@ -799,6 +806,9 @@ export const flotaBody = z.discriminatedUnion("accion", [
     division: textoSuelto(60),
     responsable_id: uuid.nullable().optional().transform((v) => v || null),
     notas: textoSuelto(500),
+    service_fecha: fechaFlota,
+    service_km: z.number().int().min(0).max(9999999).nullable().optional().transform((v) => v ?? null),
+    frecuencias: frecuenciasFlota.optional(),
   }).strict(),
   z.object({ accion: z.literal("vehiculo_baja"), id: idFlota, activo: z.boolean() }).strict(),
   z.object({

@@ -31,7 +31,8 @@ const OPCIONES_TODAS = [
 export default function PlantaScreen({ empresa, usuario, onVerPlanes, seccion = null }) {
   const OPCIONES = OPCIONES_TODAS.filter((o) => !o.conTareas || conRegistroTareas(empresa));
   const primera = OPCIONES.find((o) => tieneModulo(empresa, o.modulo)) || OPCIONES[0];
-  // seccion: la opción con la que abre (el Panel de control manda "ot" o "compras")
+  // seccion: la opción con la que abre (el Panel de control manda "ot", "compras"
+  // o "flota", que abre en 🔔 Alertas)
   const [opcion, setOpcion] = useState(OPCIONES.some((o) => o.id === seccion) ? seccion : primera.id);
   const actual = OPCIONES.find((o) => o.id === opcion) || primera;
   const bloqueado = !tieneModulo(empresa, actual.modulo);
@@ -46,7 +47,7 @@ export default function PlantaScreen({ empresa, usuario, onVerPlanes, seccion = 
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
-        {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
+        {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
       </div>
     </div>

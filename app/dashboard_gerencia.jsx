@@ -41,6 +41,8 @@ import Icon from "./components/Icon";
 import { nombreSolicitud } from "./lib/tiposSolicitud";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
+import { alertasVehiculo, urgentes as alertasUrgentes, textoAlerta } from "./lib/alertasFlota";
+import { textoVencimiento, SEMAFORO } from "./lib/flota";
 import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
 
 /* ─── Helpers ─── */
@@ -266,6 +268,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   // o la empresa no usa OT / Compras: la tarjeta no se muestra)
   const [otCurso, setOtCurso] = useState(null);
   const [pedidosCompra, setPedidosCompra] = useState(null);
+  // Flota (Mantenimiento parte 30): vehículos con lo que necesitan para sus alertas
+  const [flota, setFlota] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const hoy = hoyArg();
@@ -334,18 +338,33 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const conOt = tieneModulo(empresa, "proyectos");
   const cargarOtYCompras = useCallback(async () => {
     if (isDemo || !empresaId || !conOt) return;
-    const [proy, avHs, peds] = await Promise.all([
+    const [proy, avHs, peds, veh, pap, chk, cho] = await Promise.all([
       sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at&order=id.asc`, { maxFilas: 20000 }).catch(() => null),
       leerAvanceYHoras(empresaId).catch(() => null),
       // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
       sbGetAll(`pedidos_compra?estado=eq.pendiente&select=id,descripcion,cantidad,unidad,ot,empleado_nombre,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 }).catch(() => null),
+      // Sin la migración 126 no hay flota: la tarjeta no aparece
+      sbGetAll(`vehiculos?activo=eq.true&order=patente.asc,id.asc`, { maxFilas: 2000 }).catch(() => null),
+      sbGetAll(`vehiculo_papeles?order=created_at.desc,id.desc`, { maxFilas: 20000 }).catch(() => null),
+      sbGetAll(`vehiculo_checklists?select=id,vehiculo_id,created_at,km,secciones&order=created_at.desc,id.desc`, { maxFilas: 2000 }).catch(() => null),
+      sbGetAll(`empleados?activo=eq.true&select=id,nombre,licencia_categoria,licencia_vencimiento&order=id.asc`, { maxFilas: 5000 }).catch(() => null),
     ]);
+    setFlota(veh ? { vehiculos: veh.data || [], papeles: pap?.data || [], checklists: chk?.data || [], choferes: cho?.data || [] } : null);
     setOtCurso(proy && avHs ? otEnCurso(filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() })) : null);
     setPedidosCompra(peds ? peds.data || [] : null);
   }, [isDemo, empresaId, conOt, etapasCtx, divisionesCtx]);
   useEffect(() => { cargarOtYCompras(); }, [cargarOtYCompras]); // eslint-disable-line react-hooks/set-state-in-effect
   // Cada minuto, solo con la pestaña a la vista (F3-04)
   useRefrescoVisible(cargarDatos, { intervaloMs: 60000 });
+
+  // Alertas de la flota: lo vencido y lo que vence pronto, lo más urgente primero
+  const alertasFlota = useMemo(() => {
+    if (!flota?.vehiculos.length) return null;
+    const porId = new Map(flota.choferes.map(e => [e.id, e]));
+    return alertasUrgentes(flota.vehiculos.flatMap(v => alertasVehiculo(v, {
+      papeles: flota.papeles.filter(p => p.vehiculo_id === v.id), checklists: flota.checklists, responsable: porId.get(v.responsable_id), hoy,
+    }).map(a => ({ ...a, patente: v.patente }))));
+  }, [flota, hoy]);
 
   /* ─── Datos derivados ─── */
   const empActivos = empleados.filter(e => e.activo !== false);
@@ -782,6 +801,42 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           </button>
         </section>
       )}
+
+      {/* ─── Flota: alertas de mantenimiento (Planta → Flota) ─── */}
+      {conOt && alertasFlota && (() => {
+        const vencidas = alertasFlota.filter(a => a.nivel === "vencido").length;
+        const pronto = alertasFlota.length - vencidas;
+        return (
+          <section aria-label="Flota" className="card-hover g-card mb-4">
+            <div className="flex justify-between items-center mb-2 gap-2">
+              <Titulo>🚚 Flota</Titulo>
+              <div className="flex gap-1.5">
+                {vencidas > 0 && <Tag color="var(--color-red)">{vencidas} vencida{vencidas !== 1 ? "s" : ""}</Tag>}
+                {pronto > 0 && <Tag color={MARCA}>{pronto} por vencer</Tag>}
+              </div>
+            </div>
+            {alertasFlota.length === 0 ? (
+              <p className="m-0 text-[13px] text-gypi-dim">✅ Toda la flota está al día.</p>
+            ) : (
+              <div className="max-h-[240px] overflow-y-auto">
+                {alertasFlota.slice(0, 8).map(a => (
+                  <div key={`${a.patente}-${a.clave}`} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
+                    <span aria-hidden="true">{SEMAFORO[a.nivel].emoji}</span>
+                    <div className="flex-1 min-w-0 text-[13px] text-gypi-text truncate">{textoAlerta(a, textoVencimiento)}</div>
+                    <span className="font-mono text-[12px] font-bold text-gypi-dim shrink-0">{a.patente}</span>
+                  </div>
+                ))}
+                {alertasFlota.length > 8 && <p className="m-0 pt-2 text-[12px] text-gypi-dim">Y {alertasFlota.length - 8} más.</p>}
+              </div>
+            )}
+            <button onClick={() => goto?.("planta:flota")}
+              className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
+            >
+              Ir a Flota &rarr;
+            </button>
+          </section>
+        );
+      })()}
 
       {/* ─── Ranking de empleados ─── */}
       {ranking.length > 0 && (() => {

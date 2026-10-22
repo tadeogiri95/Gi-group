@@ -54,6 +54,10 @@
     {
       "path": "/api/cron/reporte-diario",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/flota-alertas",
+      "schedule": "0 10 * * *"
     }
   ]
 }
