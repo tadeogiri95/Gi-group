@@ -14,8 +14,17 @@
 //   o gerencia y Administración, de cualquiera. Revisa que estén todos los
 //   puntos de las secciones elegidas, con nota y foto los que no están bien, y
 //   actualiza los kilómetros del vehículo.
-// La lectura va por /api/data (vehiculos, vehiculo_papeles, vehiculo_checklists
-// y flota_config, solo lectura).
+//   Cada punto en Mal crea un arreglo pendiente (parte 31, 129).
+// POST arreglos y mantenimientos (parte 31, 129; gerencia y Administración):
+//   arreglo_crear      → a mano o desde un ⚠️ Revisar de un checklist
+//   arreglo_editar     → prioridad y responsable
+//   arreglo_descartar  → con el motivo (no se borra)
+//   mantenimiento_crear → service o reparación; con arreglo_id resuelve ese
+//                       arreglo (también lo puede hacer el responsable del
+//                       arreglo). Un service pone al día la alerta de service.
+//   mantenimiento_borrar → uno cargado por error
+// La lectura va por /api/data (vehiculos, vehiculo_papeles, vehiculo_checklists,
+// flota_config, vehiculo_arreglos y vehiculo_mantenimientos, solo lectura).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
@@ -26,11 +35,18 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { normalizarPatente, puedeEditarFlota } from "../../lib/flota";
 import { contarEstados, plantillaDe } from "../../lib/checklistVehiculo";
+import { arreglosDeChecklist, ultimoService } from "../../lib/arreglosFlota";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
   return /vehiculos|vehiculo_papeles|licencia_/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
+}
+
+// Parte 31: arreglos y mantenimientos
+function faltaMigracionArreglos(err) {
+  const m = String(err?.message);
+  return /vehiculo_arreglos|vehiculo_mantenimientos/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
 }
 
 // Parte 30: frecuencias, último service y aviso diario de la flota
@@ -187,8 +203,24 @@ async function crearChecklist(sesion, d) {
   if (veh.km == null || d.km > veh.km) {
     await sbPatch(`vehiculos?id=eq.${veh.id}&empresa_id=eq.${e}`, { km: d.km, km_at: new Date().toISOString() }, opts);
   }
+  // Lo que quedó Mal pasa a arreglos pendientes, con su nota y foto
+  const nuevos = arreglosDeChecklist(items);
+  let arreglos = 0;
+  if (nuevos.length && c?.id) {
+    try {
+      await sbPost("vehiculo_arreglos", nuevos.map((a) => ({
+        ...a, empresa_id: e, vehiculo_id: veh.id, checklist_id: c.id, responsable_id: veh.responsable_id || null, creado_por: sesion.empleado_id || null,
+      })), opts);
+      arreglos = nuevos.length;
+      broadcastRefresh(e, "vehiculo_arreglos");
+    } catch (err) {
+      // El checklist ya quedó guardado: sin la 129 no se corta por los arreglos
+      if (!faltaMigracionArreglos(err)) throw err;
+      logger.warn("[flota] checklist sin arreglos: falta la migración 129");
+    }
+  }
   broadcastRefresh(e, "vehiculo_checklists");
-  return NextResponse.json({ ok: true, checklist: c });
+  return NextResponse.json({ ok: true, checklist: c, arreglos });
 }
 
 async function guardarPlantilla(sesion, { checklist }) {
@@ -214,6 +246,110 @@ async function chequeos(sesion) {
   return requireModulo(sesion.empresa_id, "proyectos");
 }
 
+async function crearArreglo(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=id,responsable_id`, opts)) || [];
+  if (!veh) return noEncontrado("vehículo");
+  if (!(await responsableValido(sesion, d.responsable_id))) return noEncontrado("empleado");
+  if (d.checklist_id) {
+    const [c] = (await sbGet(`vehiculo_checklists?id=eq.${d.checklist_id}&empresa_id=eq.${e}&vehiculo_id=eq.${veh.id}&select=id`, opts)) || [];
+    if (!c) return noEncontrado("checklist");
+  }
+  const [a] = (await sbPost("vehiculo_arreglos", {
+    empresa_id: e, vehiculo_id: veh.id, checklist_id: d.checklist_id, seccion_nombre: d.seccion_nombre, punto_nombre: d.punto_nombre,
+    descripcion: d.descripcion, foto: d.foto, prioridad: d.prioridad, responsable_id: d.responsable_id ?? veh.responsable_id ?? null,
+    creado_por: sesion.empleado_id || null,
+  }, opts)) || [];
+  broadcastRefresh(e, "vehiculo_arreglos");
+  return NextResponse.json({ ok: true, arreglo: a });
+}
+
+async function arregloPendiente(sesion, id) {
+  const [a] = (await sbGet(`vehiculo_arreglos?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=id,vehiculo_id,estado,responsable_id,descripcion`, { sesion })) || [];
+  return a || null;
+}
+
+async function editarArreglo(sesion, d) {
+  const a = await arregloPendiente(sesion, d.id);
+  if (!a) return noEncontrado("arreglo");
+  if (a.estado !== "pendiente") return NextResponse.json({ error: "Ese arreglo ya está cerrado" }, { status: 409 });
+  if (!(await responsableValido(sesion, d.responsable_id))) return noEncontrado("empleado");
+  await sbPatch(`vehiculo_arreglos?id=eq.${a.id}&empresa_id=eq.${sesion.empresa_id}`, { prioridad: d.prioridad, responsable_id: d.responsable_id }, { sesion });
+  broadcastRefresh(sesion.empresa_id, "vehiculo_arreglos");
+  return NextResponse.json({ ok: true });
+}
+
+async function descartarArreglo(sesion, d) {
+  const a = await arregloPendiente(sesion, d.id);
+  if (!a) return noEncontrado("arreglo");
+  if (a.estado !== "pendiente") return NextResponse.json({ error: "Ese arreglo ya está cerrado" }, { status: 409 });
+  await sbPatch(`vehiculo_arreglos?id=eq.${a.id}&empresa_id=eq.${sesion.empresa_id}`, {
+    estado: "descartado", motivo: d.motivo, cerrado_por: sesion.empleado_id || null, cerrado_at: new Date().toISOString(),
+  }, { sesion });
+  broadcastRefresh(sesion.empresa_id, "vehiculo_arreglos");
+  return NextResponse.json({ ok: true });
+}
+
+// Pone al día vehiculos.service_fecha y service_km con el último service cargado
+async function actualizarService(sesion, vehiculoId) {
+  const e = sesion.empresa_id;
+  const services = (await sbGet(`vehiculo_mantenimientos?empresa_id=eq.${e}&vehiculo_id=eq.${vehiculoId}&tipo=eq.service&select=tipo,fecha,km&order=fecha.desc,id.desc&limit=20`, { sesion })) || [];
+  const ult = ultimoService(services);
+  if (ult) await sbPatch(`vehiculos?id=eq.${vehiculoId}&empresa_id=eq.${e}`, { service_fecha: ult.fecha, service_km: ult.km }, { sesion });
+}
+
+async function crearMantenimiento(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=id,km`, opts)) || [];
+  if (!veh) return noEncontrado("vehículo");
+  let arreglo = null;
+  if (d.arreglo_id) {
+    arreglo = await arregloPendiente(sesion, d.arreglo_id);
+    if (!arreglo || arreglo.vehiculo_id !== veh.id) return noEncontrado("arreglo");
+    if (arreglo.estado !== "pendiente") return NextResponse.json({ error: "Ese arreglo ya está cerrado" }, { status: 409 });
+  }
+  // El responsable de un arreglo lo puede resolver; lo demás, la oficina
+  if (!puedeEditarFlota(sesion.rol) && !(arreglo && arreglo.responsable_id && arreglo.responsable_id === sesion.empleado_id)) {
+    return NextResponse.json({ error: "Los services y reparaciones los cargan gerencia y Administración" }, { status: 403 });
+  }
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  if (d.fecha > hoy) return NextResponse.json({ error: "La fecha no puede ser después de hoy" }, { status: 400 });
+  const [emp] = sesion.empleado_id
+    ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] })) || []
+    : [];
+  const [m] = (await sbPost("vehiculo_mantenimientos", {
+    empresa_id: e, vehiculo_id: veh.id, tipo: arreglo ? "arreglo" : d.tipo, fecha: d.fecha, km: d.km, donde: d.donde, taller: d.taller,
+    detalle: d.detalle, repuestos: d.repuestos, costo: d.costo, factura_url: d.factura_url, fotos: d.fotos,
+    cargado_por: sesion.empleado_id || null, cargado_nombre: emp?.nombre || null,
+  }, opts)) || [];
+  if (arreglo) {
+    await sbPatch(`vehiculo_arreglos?id=eq.${arreglo.id}&empresa_id=eq.${e}`, {
+      estado: "resuelto", mantenimiento_id: m?.id ?? null, cerrado_por: sesion.empleado_id || null, cerrado_at: new Date().toISOString(),
+    }, opts);
+    broadcastRefresh(e, "vehiculo_arreglos");
+  }
+  if (d.km != null && (veh.km == null || d.km > veh.km)) {
+    await sbPatch(`vehiculos?id=eq.${veh.id}&empresa_id=eq.${e}`, { km: d.km, km_at: new Date().toISOString() }, opts);
+  }
+  if (!arreglo && d.tipo === "service") await actualizarService(sesion, veh.id);
+  broadcastRefresh(e, "vehiculo_mantenimientos");
+  return NextResponse.json({ ok: true, mantenimiento: m });
+}
+
+async function borrarMantenimiento(sesion, id) {
+  const e = sesion.empresa_id;
+  const [m] = (await sbGet(`vehiculo_mantenimientos?id=eq.${id}&empresa_id=eq.${e}&select=id,vehiculo_id,tipo`, { sesion })) || [];
+  if (!m) return noEncontrado("mantenimiento");
+  // Un arreglo resuelto vuelve a quedar pendiente
+  await sbPatch(`vehiculo_arreglos?mantenimiento_id=eq.${m.id}&empresa_id=eq.${e}`, { estado: "pendiente", mantenimiento_id: null, cerrado_por: null, cerrado_at: null }, { sesion });
+  await sbDelete(`vehiculo_mantenimientos?id=eq.${m.id}&empresa_id=eq.${e}`, { sesion });
+  if (m.tipo === "service") await actualizarService(sesion, m.vehiculo_id);
+  broadcastRefresh(e, "vehiculo_mantenimientos");
+  return NextResponse.json({ ok: true });
+}
+
 export async function POST(request) {
   try {
     const sesion = await validarToken(request);
@@ -221,8 +357,10 @@ export async function POST(request) {
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(flotaBody, raw);
     if (parsed.response) return parsed.response;
-    // El checklist lo hace también el chofer (se controla que sea su vehículo)
-    if (parsed.data.accion !== "checklist_crear" && !puedeEditarFlota(sesion.rol)) {
+    // El checklist lo hace también el chofer (se controla que sea su vehículo),
+    // y un arreglo lo resuelve también su responsable (se controla adentro)
+    const deTodos = parsed.data.accion === "checklist_crear" || (parsed.data.accion === "mantenimiento_crear" && parsed.data.arreglo_id);
+    if (!deTodos && !puedeEditarFlota(sesion.rol)) {
       return NextResponse.json({ error: "La flota la cargan gerencia y Administración" }, { status: 403 });
     }
     const bloqueo = await chequeos(sesion);
@@ -235,8 +373,16 @@ export async function POST(request) {
       if (d.accion === "papel_borrar") return await borrarPapel(sesion, d.id);
       if (d.accion === "checklist_crear") return await crearChecklist(sesion, d);
       if (d.accion === "checklist_plantilla_guardar") return await guardarPlantilla(sesion, d);
+      if (d.accion === "arreglo_crear") return await crearArreglo(sesion, d);
+      if (d.accion === "arreglo_editar") return await editarArreglo(sesion, d);
+      if (d.accion === "arreglo_descartar") return await descartarArreglo(sesion, d);
+      if (d.accion === "mantenimiento_crear") return await crearMantenimiento(sesion, d);
+      if (d.accion === "mantenimiento_borrar") return await borrarMantenimiento(sesion, d.id);
       return await guardarLicencia(sesion, d);
     } catch (err) {
+      if (faltaMigracionArreglos(err)) {
+        return NextResponse.json({ error: "Para los arreglos y services de la flota falta correr la migración 129 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionAlertas(err)) {
         return NextResponse.json({ error: "Para las alertas de la flota falta correr la migración 128 en Supabase." }, { status: 409 });
       }

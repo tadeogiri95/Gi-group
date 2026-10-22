@@ -338,7 +338,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const conOt = tieneModulo(empresa, "proyectos");
   const cargarOtYCompras = useCallback(async () => {
     if (isDemo || !empresaId || !conOt) return;
-    const [proy, avHs, peds, veh, pap, chk, cho] = await Promise.all([
+    const [proy, avHs, peds, veh, pap, chk, cho, arr] = await Promise.all([
       sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at&order=id.asc`, { maxFilas: 20000 }).catch(() => null),
       leerAvanceYHoras(empresaId).catch(() => null),
       // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
@@ -348,8 +348,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       sbGetAll(`vehiculo_papeles?order=created_at.desc,id.desc`, { maxFilas: 20000 }).catch(() => null),
       sbGetAll(`vehiculo_checklists?select=id,vehiculo_id,created_at,km,secciones&order=created_at.desc,id.desc`, { maxFilas: 2000 }).catch(() => null),
       sbGetAll(`empleados?activo=eq.true&select=id,nombre,licencia_categoria,licencia_vencimiento&order=id.asc`, { maxFilas: 5000 }).catch(() => null),
+      sbGetAll(`vehiculo_arreglos?estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`, { maxFilas: 5000 }).catch(() => null),
     ]);
-    setFlota(veh ? { vehiculos: veh.data || [], papeles: pap?.data || [], checklists: chk?.data || [], choferes: cho?.data || [] } : null);
+    setFlota(veh ? { vehiculos: veh.data || [], papeles: pap?.data || [], checklists: chk?.data || [], choferes: cho?.data || [], arreglos: arr?.data || [] } : null);
     setOtCurso(proy && avHs ? otEnCurso(filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() })) : null);
     setPedidosCompra(peds ? peds.data || [] : null);
   }, [isDemo, empresaId, conOt, etapasCtx, divisionesCtx]);
@@ -362,7 +363,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
     if (!flota?.vehiculos.length) return null;
     const porId = new Map(flota.choferes.map(e => [e.id, e]));
     return alertasUrgentes(flota.vehiculos.flatMap(v => alertasVehiculo(v, {
-      papeles: flota.papeles.filter(p => p.vehiculo_id === v.id), checklists: flota.checklists, responsable: porId.get(v.responsable_id), hoy,
+      papeles: flota.papeles.filter(p => p.vehiculo_id === v.id), checklists: flota.checklists, arreglos: flota.arreglos, responsable: porId.get(v.responsable_id), hoy,
     }).map(a => ({ ...a, patente: v.patente }))));
   }, [flota, hoy]);
 

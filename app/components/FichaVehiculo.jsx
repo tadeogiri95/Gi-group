@@ -2,7 +2,8 @@
 // app/components/FichaVehiculo.jsx — Ficha de un vehículo en Planta → Flota
 // (Mantenimiento, parte 28; migración 126): sus datos, su responsable con la
 // licencia, y sus papeles con el semáforo de cada uno. Renovar un papel agrega
-// uno nuevo; el anterior queda en el historial.
+// uno nuevo; el anterior queda en el historial. Parte 31 (129): arreglos
+// pendientes, services y reparaciones, y el historial del vehículo.
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import {
@@ -12,8 +13,10 @@ import {
 import { Chip } from "./ui";
 import BotonFoto from "./BotonFoto";
 import ChecklistVehiculo from "./ChecklistVehiculo";
-import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
+import { VerChecklist } from "./ChecklistsVehiculo";
 import { FRECUENCIAS, alertasVehiculo } from "../lib/alertasFlota";
+import { historialVehiculo, noCircula, pendientes } from "../lib/arreglosFlota";
+import { FormArreglo, FormMantenimiento, Historial, ListaArreglos } from "./ArreglosVehiculo";
 
 async function postFlota(body) {
   const res = await apiFetch("/api/flota", { method: "POST", body: JSON.stringify(body) });
@@ -329,16 +332,21 @@ function Semaforo({ nivel, children }) {
   return <span className="text-[12px] font-semibold whitespace-nowrap">{SEMAFORO[nivel]?.emoji} {children}</span>;
 }
 
-export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, checklists = [], empresaNombre = "", editable, hoy, onVolver, onCambio }) {
+export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, checklists = [], arreglos = [], mantenimientos = [], empresaNombre = "", editable, hoy, onVolver, onCambio }) {
   const [editando, setEditando] = useState(false);
   const [papelForm, setPapelForm] = useState(null); // { papel } | { renovar } | { tipo }
   const [licencia, setLicencia] = useState(false);
   const [verHistorial, setVerHistorial] = useState(false);
   const [haciendo, setHaciendo] = useState(false);
   const [verChecklist, setVerChecklist] = useState(null);
+  const [arregloForm, setArregloForm] = useState(null); // { ...inicial } (parte 31)
+  const [resolver, setResolver] = useState(null);
+  const [mantForm, setMantForm] = useState(null); // "service" | "reparacion"
   const [error, setError] = useState(null);
   const responsable = empleados.find((e) => e.id === vehiculo.responsable_id) || null;
-  const avisos = alertasVehiculo(vehiculo, { papeles, checklists, responsable, hoy });
+  const avisos = alertasVehiculo(vehiculo, { papeles, checklists, arreglos, responsable, hoy });
+  const abiertos = pendientes(arreglos);
+  const sinCircular = noCircula(arreglos);
   const nivel = peorNivel(avisos);
   const revisiones = avisos.filter((a) => a.tipo === "revision");
   const vigentes = papelesVigentes(papeles);
@@ -346,7 +354,7 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
   const historial = papeles.filter((p) => !idsVigentes.has(p.id));
   const faltan = avisos.filter((a) => a.falta);
   const estadoLic = responsable ? estadoVencimiento(responsable.licencia_vencimiento, AVISO_LICENCIA, hoy) : null;
-  const listo = async () => { setPapelForm(null); setLicencia(false); setEditando(false); await onCambio(); };
+  const listo = async () => { setPapelForm(null); setLicencia(false); setEditando(false); setArregloForm(null); setResolver(null); setMantForm(null); await onCambio(); };
 
   const accion = async (body) => {
     setError(null);
@@ -360,7 +368,18 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
 
   if (editando) return <FormVehiculo vehiculo={vehiculo} empleados={empleados} divisiones={divisiones} onCancelar={() => setEditando(false)} onGuardado={listo} />;
   if (papelForm) return <FormPapel vehiculo={vehiculo} papel={papelForm.papel} renovar={papelForm.renovar} tipoInicial={papelForm.tipo} onCancelar={() => setPapelForm(null)} onGuardado={listo} />;
-  if (verChecklist) return <VerChecklist checklist={verChecklist} vehiculo={vehiculo} empresaNombre={empresaNombre} onVolver={() => setVerChecklist(null)} />;
+  if (arregloForm) return <FormArreglo vehiculo={vehiculo} empleados={empleados} inicial={arregloForm} onCancelar={() => setArregloForm(null)} onGuardado={listo} />;
+  if (resolver) return <FormMantenimiento vehiculo={vehiculo} arreglo={resolver} onCancelar={() => setResolver(null)} onGuardado={listo} />;
+  if (mantForm) return <FormMantenimiento vehiculo={vehiculo} tipoInicial={mantForm} onCancelar={() => setMantForm(null)} onGuardado={listo} />;
+  if (verChecklist) {
+    // Desde un ⚠️ Revisar se puede anotar un arreglo (los ❌ Mal ya lo tienen)
+    const conArreglo = new Set(arreglos.filter((a) => a.checklist_id === verChecklist.id).map((a) => a.punto_nombre));
+    return (
+      <VerChecklist checklist={verChecklist} vehiculo={vehiculo} empresaNombre={empresaNombre} onVolver={() => setVerChecklist(null)}
+        conArreglo={conArreglo}
+        onArreglo={editable ? (i) => { setVerChecklist(null); setArregloForm({ checklist_id: verChecklist.id, seccion_nombre: i.seccion_nombre, punto_nombre: i.nombre, descripcion: `${i.nombre}${i.nota ? `: ${i.nota}` : ""}`.slice(0, 300), foto: i.foto }); } : null} />
+    );
+  }
   if (licencia && responsable) return <FormLicencia empleado={responsable} onCancelar={() => setLicencia(false)} onGuardado={listo} />;
 
   const datos = [
@@ -386,9 +405,23 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
           <Semaforo nivel={nivel}>{SEMAFORO[nivel].texto}</Semaforo>
         </div>
       </div>
+      {sinCircular.length > 0 && (
+        <div className="p-2.5 mb-3 rounded-[10px] bg-gypi-red/10 text-[14px] font-semibold text-gypi-red">
+          🔴 No puede circular: {sinCircular.map((a) => a.descripcion).join(" · ")}
+        </div>
+      )}
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
       {editable && vehiculo.activo && <button onClick={() => setHaciendo(true)} className="g-btn g-btn-primary w-full mb-3">📋 Hacer checklist</button>}
       {haciendo && <ChecklistVehiculo vehiculos={[vehiculo]} empresaNombre={empresaNombre} onClose={() => setHaciendo(false)} onHecho={onCambio} />}
+
+      <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Arreglos pendientes{abiertos.length ? ` (${abiertos.length})` : ""}</div>
+      <ListaArreglos arreglos={abiertos} empleados={empleados} editable={editable} onResolver={setResolver} onCambio={onCambio} />
+      {editable && (
+        <div className="flex gap-2 mb-3">
+          <button onClick={() => setArregloForm({})} className="g-btn g-btn-secondary flex-1">＋ Anotar arreglo</button>
+          <button onClick={() => setMantForm("service")} className="g-btn g-btn-secondary flex-1">🔧 Service o reparación</button>
+        </div>
+      )}
 
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Papeles</div>
       {faltan.map((a) => (
@@ -472,8 +505,8 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
         ))}
       </ul>
 
-      <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Últimos checklists</div>
-      <div className="mb-3"><ListaChecklists checklists={checklists.slice(0, 10)} conPatente={false} onVer={setVerChecklist} /></div>
+      <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Historial</div>
+      <Historial eventos={historialVehiculo({ checklists, arreglos, mantenimientos, papeles, nombrePapel })} editable={editable} onVerChecklist={setVerChecklist} onCambio={onCambio} />
 
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Datos</div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[14px] m-0 mb-3">

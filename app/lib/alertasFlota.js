@@ -9,6 +9,7 @@
 // pestaña Alertas, la tarjeta del Panel de control y el aviso diario. Solo
 // avisan: no bloquean nada (Tadeo, 22/10).
 import { avisosVehiculo, estadoVencimiento } from "./flota";
+import { alertasArreglos } from "./arreglosFlota";
 
 // Por aspecto: cada cuánto (dias, km) y con cuánta anticipación se avisa
 // (aviso en días, avisoKm en km). Tabla de la parte 30, aprobada el 22/10.
@@ -82,11 +83,15 @@ export function estadoRevision(f, ultima, kmActual, hoy) {
 }
 
 /**
- * Todas las alertas de un vehículo: papeles, licencia, revisiones por
- * sección y service. Cada una { clave, texto, detalle, nivel, dias }.
+ * Todas las alertas de un vehículo: arreglos pendientes (parte 31), papeles,
+ * licencia, revisiones por sección y service. Cada una { clave, texto,
+ * detalle, nivel, dias }.
  */
-export function alertasVehiculo(vehiculo, { papeles = [], checklists = [], responsable = null, hoy }) {
-  const alertas = avisosVehiculo(vehiculo, papeles, responsable, hoy).map((a) => ({ ...a, tipo: "papel" }));
+export function alertasVehiculo(vehiculo, { papeles = [], checklists = [], arreglos = [], responsable = null, hoy }) {
+  const alertas = [
+    ...alertasArreglos(vehiculo.id, arreglos),
+    ...avisosVehiculo(vehiculo, papeles, responsable, hoy).map((a) => ({ ...a, tipo: "papel" })),
+  ];
   const propios = checklists.filter((c) => c.vehiculo_id === vehiculo.id);
   const ult = ultimasRevisiones(propios);
   if (!propios.length) {
@@ -113,6 +118,7 @@ export function urgentes(alertas = []) {
 /** Texto de una alerta en una línea: "Seguro: venció hace 3 días", "Fluidos: atrasado 2 días". */
 export function textoAlerta(a, textoVencimientoFn) {
   if (a.falta || a.clave === "sin-checklist") return a.texto;
+  if (a.tipo === "arreglo") return `🔧 ${a.texto}${a.nivel === "vencido" ? " (no puede circular)" : ""}`;
   if (a.tipo === "revision") return `${a.texto}: ${String(a.detalle).toLowerCase()}`;
   return `${a.texto}: ${textoVencimientoFn(a, a.vencimiento).toLowerCase()}`;
 }

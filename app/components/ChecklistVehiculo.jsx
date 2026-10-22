@@ -97,7 +97,7 @@ export default function ChecklistVehiculo({ vehiculos, empresaNombre = "", onClo
         <div className="p-4 text-gypi-text">
           <div className="text-[18px] font-bold mb-1" role="status">Checklist guardado</div>
           <div className="text-[15px] mb-4">{resumenChecklist(hecho)}</div>
-          {hecho.mal > 0 && <div className="text-[13px] text-gypi-dim mb-3">La oficina ve lo que quedó mal en la ficha del vehículo.</div>}
+          {hecho.mal > 0 && <div className="text-[13px] text-gypi-dim mb-3">Lo que quedó mal pasó a arreglos pendientes; la oficina lo ve en la ficha del vehículo.</div>}
           <div className="flex gap-2">
             <button onClick={() => { try { imprimirChecklist({ empresa: empresaNombre, vehiculo, checklist: hecho }); } catch (e) { setError(e.message); } }} className="g-btn g-btn-secondary flex-1">📄 PDF</button>
             <button onClick={onClose} className="g-btn g-btn-primary flex-1">Listo</button>
@@ -178,6 +178,12 @@ export default function ChecklistVehiculo({ vehiculos, empresaNombre = "", onClo
                               <BotonFoto label={r.foto ? "📷 Cambiar foto" : "📷 Foto"} disabled={enviando} onFoto={(url) => responder(clave, { foto: url })} />
                               {r.foto && <img src={r.foto} alt={`Foto de ${pt.nombre}`} className="h-10 w-14 object-cover rounded-[6px]" />}
                             </div>
+                            {r.estado === "mal" && (
+                              <label className="flex items-center gap-2 text-[13px] min-h-[44px]">
+                                <input type="checkbox" checked={!!r.no_circula} onChange={(e) => responder(clave, { no_circula: e.target.checked })} />
+                                🔴 Así no puede circular
+                              </label>
+                            )}
                           </div>
                         )}
                       </li>

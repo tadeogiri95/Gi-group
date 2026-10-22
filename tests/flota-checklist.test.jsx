@@ -101,7 +101,7 @@ test("validación, migración 127 y lectura por /api/data", () => {
   assert.equal(autorizar("vehiculo_checklists", "POST", { rol: "gerencial" }).ok, false, "se escribe por /api/flota");
   assert.equal(autorizar("flota_config", "GET", { rol: "operativo" }).ok, true);
   const data = readFileSync(new URL("../app/api/data/route.js", import.meta.url), "utf8");
-  assert.match(data, /TABLAS_FLOTA = \["vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config"\]/);
+  assert.match(data, /TABLAS_FLOTA = \["vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config"/);
 });
 
 // ─── Ruta ───
@@ -126,6 +126,11 @@ function mockRuta({ vehiculo = { id: 7, km: 1000, responsable_id: CHOFER, activo
         if (o.method === "PATCH") return { status: 200, body: configExiste ? [body] : [] };
         return { status: 201, body: [body] };
       },
+    },
+    {
+      // Parte 31 (129): lo que queda Mal pasa a arreglos
+      match: (u) => u.includes("/rest/v1/vehiculo_arreglos"),
+      respond: (u, o) => { anotar("vehiculo_arreglos", u, o); return { status: 201, body: [] }; },
     },
     {
       match: (u) => u.includes("/rest/v1/vehiculo_checklists"),
@@ -167,6 +172,9 @@ test("/api/flota checklist_crear — el chofer de su vehículo; cuenta lo mal y 
   assert.deepEqual([c.empresa_id, c.vehiculo_id, c.empleado_id, c.empleado_nombre, c.km, c.combustible, c.revisar, c.mal], [E, 7, CHOFER, "Juan Pérez", 1500, "1/2", 0, 1]);
   const v = escrito.find((x) => x.tabla === "vehiculos");
   assert.equal(v.body.km, 1500);
+  // Parte 31: lo que quedó Mal pasa a arreglos, a cargo del responsable
+  const arr = escrito.find((x) => x.tabla === "vehiculo_arreglos").body;
+  assert.deepEqual(arr.map((a) => [a.descripcion, a.prioridad, a.checklist_id, a.responsable_id]), [["Altas: Quemada", "pronto", 1, CHOFER]]);
   assert.ok(v.body.km_at);
 
   // La oficina puede hacerlo de cualquier vehículo

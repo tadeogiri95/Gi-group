@@ -2,6 +2,7 @@
 // app/components/ChecklistsVehiculo.jsx — Los checklists hechos (Planta →
 // Flota y ficha de cada vehículo; Mantenimiento, parte 29): la lista con su
 // resultado y el detalle de uno, con lo que no está bien arriba y el PDF.
+// Parte 31: desde un ⚠️ Revisar la oficina puede anotar un arreglo.
 import { useState } from "react";
 import { ESTADOS_PUNTO, imprimirChecklist, resumenChecklist } from "../lib/checklistVehiculo";
 
@@ -34,7 +35,7 @@ export function ListaChecklists({ checklists, vehiculos = [], conPatente = true,
   );
 }
 
-export function VerChecklist({ checklist, vehiculo, empresaNombre = "", onVolver }) {
+export function VerChecklist({ checklist, vehiculo, empresaNombre = "", onVolver, conArreglo = new Set(), onArreglo = null }) {
   const [error, setError] = useState(null);
   const items = [...(checklist.items || [])].sort((a, b) => ORDEN[a.estado] - ORDEN[b.estado]);
   const secciones = [...new Set((checklist.items || []).map((i) => i.seccion_nombre))];
@@ -54,6 +55,10 @@ export function VerChecklist({ checklist, vehiculo, empresaNombre = "", onVolver
             {i.valor && <span> · {i.valor}{i.unidad ? ` ${i.unidad}` : ""}</span>}
             {i.nota && <span className="font-semibold"> · {i.nota}</span>}
             {i.foto && <a href={i.foto} target="_blank" rel="noopener noreferrer" className="ml-1">📷</a>}
+            {(i.estado === "mal" || i.estado === "revisar") && conArreglo.has(i.nombre) && <span className="text-gypi-dim"> · 🔧 en arreglos</span>}
+            {i.estado === "revisar" && !conArreglo.has(i.nombre) && onArreglo && (
+              <button onClick={() => onArreglo(i)} className="ml-1 min-h-[32px] bg-transparent border-none p-0 text-[12px] font-semibold text-gypi-dim cursor-pointer font-body underline">🔧 Anotar arreglo</button>
+            )}
           </li>
         ))}
       </ul>
