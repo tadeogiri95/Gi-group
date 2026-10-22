@@ -71,6 +71,8 @@ export const POLICY = {
   vehiculo_papeles:             { GET: "all" },   // se escribe por /api/flota (Mantenimiento parte 28)
   vehiculo_checklists:          { GET: "all" },   // se escribe por /api/flota (Mantenimiento parte 29)
   flota_config:                 { GET: "all" },   // plantilla del checklist; se escribe por /api/flota (parte 29)
+  vehiculo_arreglos:            { GET: "all" },   // el chofer ve los de su vehículo; se escribe por /api/flota (parte 31)
+  vehiculo_mantenimientos:      { GET: "gestion" }, // con costos; se escribe por /api/flota (parte 31)
   necesidades_stock:            { GET: "all" },   // la copia la sincronización de la planilla MRP (Stock parte 16)
   bultos_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   cargas_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)

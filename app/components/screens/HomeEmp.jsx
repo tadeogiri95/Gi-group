@@ -44,6 +44,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   const [escanearPiezas, setEscanearPiezas] = useState(false);
   const [misVehiculos, setMisVehiculos] = useState([]);
   const [checklist, setChecklist] = useState(false);
+  const [sinCircular, setSinCircular] = useState([]);
   // Stock (ítem 40) va con las OT hasta que sea un módulo que se venda aparte
   const conStock = !demo && tieneModulo(empresa, "proyectos");
   // Los vehículos de los que es responsable (Mantenimiento, parte 29). Sin la
@@ -52,7 +53,14 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
     if (!conStock || !usuario?.id) return;
     let vivo = true;
     sb.get(`vehiculos?responsable_id=eq.${usuario.id}&activo=eq.true&select=id,patente,marca,modelo,km&order=patente.asc`)
-      .then((v) => { if (vivo) setMisVehiculos(v || []); })
+      .then(async (v) => {
+        if (!vivo) return;
+        setMisVehiculos(v || []);
+        // Parte 31 (129): lo que deja su vehículo sin poder circular
+        if (!v?.length) return;
+        const arr = await sb.get(`vehiculo_arreglos?vehiculo_id=in.(${v.map((x) => x.id).join(",")})&estado=eq.pendiente&prioridad=eq.no_circula&select=id,vehiculo_id,descripcion&order=id.asc`).catch(() => []);
+        if (vivo) setSinCircular((arr || []).map((a) => ({ ...a, patente: v.find((x) => x.id === a.vehiculo_id)?.patente })));
+      })
       .catch(() => {});
     return () => { vivo = false; };
   }, [conStock, usuario?.id]);
@@ -126,6 +134,11 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         {conTareas && onAbrirCarga && <BotonAccion icono="🚚" titulo="Carga de una OT" detalle="Armar bultos, imprimir rótulos y cargar el camión" onClick={() => setElegirCarga(true)} />}
         {misVehiculos.length > 0 && (
           <BotonAccion icono="🚚" titulo="Checklist de mi vehículo" detalle={`Revisá ${misVehiculos.map((v) => v.patente).join(", ")}: fluidos, neumáticos, luces y papeles`} onClick={() => setChecklist(true)} />
+        )}
+        {sinCircular.length > 0 && (
+          <div className="p-3 rounded-[14px] bg-gypi-red/10 text-[14px] font-semibold text-gypi-red">
+            {sinCircular.map((a) => <div key={a.id}>🔴 {a.patente} no puede circular: {a.descripcion}</div>)}
+          </div>
         )}
       </section>
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}

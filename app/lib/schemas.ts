@@ -851,6 +851,8 @@ export const flotaBody = z.discriminatedUnion("accion", [
       unidad: textoSuelto(10),
       nota: textoSuelto(300),
       foto: urlFoto.nullable().optional().transform((v) => v || null),
+      // Parte 31 (129): un punto en Mal que deja el vehículo sin poder circular
+      no_circula: z.boolean().optional(),
     }).strict()).min(1).max(400),
     observaciones: textoSuelto(1000),
     fotos: z.array(urlFoto).max(4).default([]),
@@ -871,4 +873,44 @@ export const flotaBody = z.discriminatedUnion("accion", [
       }).strict()).min(1).max(40),
     }).strict()).min(1).max(20).nullable(),
   }).strict(),
+  // Parte 31 (129): arreglos, services y reparaciones
+  z.object({
+    accion: z.literal("arreglo_crear"),
+    vehiculo_id: idFlota,
+    checklist_id: idFlota.nullable().optional().transform((v) => v ?? null),
+    seccion_nombre: textoSuelto(60),
+    punto_nombre: textoSuelto(120),
+    descripcion: z.string().trim().min(1, "Escribí qué hay que arreglar").max(300),
+    foto: urlFoto.nullable().optional().transform((v) => v || null),
+    prioridad: z.enum(["no_circula", "pronto"]),
+    responsable_id: uuid.nullable().optional().transform((v) => v || null),
+  }).strict(),
+  z.object({
+    accion: z.literal("arreglo_editar"),
+    id: idFlota,
+    prioridad: z.enum(["no_circula", "pronto"]),
+    responsable_id: uuid.nullable().optional().transform((v) => v || null),
+  }).strict(),
+  z.object({
+    accion: z.literal("arreglo_descartar"),
+    id: idFlota,
+    motivo: z.string().trim().min(1, "Contá por qué se descarta").max(300),
+  }).strict(),
+  z.object({
+    // Resolver un arreglo (arreglo_id) o cargar un service o reparación
+    accion: z.literal("mantenimiento_crear"),
+    vehiculo_id: idFlota,
+    arreglo_id: idFlota.nullable().optional().transform((v) => v ?? null),
+    tipo: z.enum(["service", "reparacion", "arreglo"]),
+    fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Poné la fecha"),
+    km: z.number().int().min(0).max(9999999).nullable().optional().transform((v) => v ?? null),
+    donde: z.enum(["taller", "interno"]).nullable().optional().transform((v) => v ?? null),
+    taller: textoSuelto(120),
+    detalle: z.string().trim().min(1, "Escribí qué se hizo").max(1000),
+    repuestos: textoSuelto(1000),
+    costo: z.number().finite().min(0).max(999999999).nullable().optional().transform((v) => v ?? null),
+    factura_url: urlFoto.nullable().optional().transform((v) => v || null),
+    fotos: z.array(urlFoto).max(4).default([]),
+  }).strict(),
+  z.object({ accion: z.literal("mantenimiento_borrar"), id: idFlota }).strict(),
 ]);

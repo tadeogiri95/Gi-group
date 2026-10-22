@@ -15,12 +15,14 @@ export async function revisarFlota(empresa, hoy, { messaging } = {}) {
     sbGetAll(`vehiculo_checklists?empresa_id=eq.${e}&select=id,vehiculo_id,created_at,km,secciones&order=id.asc`),
     sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&select=id,nombre,legajo,licencia_categoria,licencia_vencimiento&order=id.asc`),
   ]);
+  // Sin la migración 129 no hay arreglos: se avisa lo demás igual
+  const { data: arreglos } = await sbGetAll(`vehiculo_arreglos?empresa_id=eq.${e}&estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`).catch(() => ({ data: [] }));
   const porId = new Map(empleados.map((x) => [x.id, x]));
   const resumen = [];
   let push = 0;
   for (const v of vehiculos) {
     const responsable = porId.get(v.responsable_id) || null;
-    const alertas = alertasVehiculo(v, { papeles: papeles.filter((p) => p.vehiculo_id === v.id), checklists, responsable, hoy });
+    const alertas = alertasVehiculo(v, { papeles: papeles.filter((p) => p.vehiculo_id === v.id), checklists, arreglos, responsable, hoy });
     const { firma, nuevas, cambio } = avisoDelDia(v, alertas);
     if (nuevas.length) {
       resumen.push({ v, nuevas });

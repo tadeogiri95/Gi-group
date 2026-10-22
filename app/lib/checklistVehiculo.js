@@ -148,6 +148,8 @@ export function itemsChecklist({ plantilla, secciones, respuestas }) {
         seccion: s.id, seccion_nombre: s.nombre, punto: pt.id, nombre: pt.nombre,
         estado: r.estado, valor, unidad: pt.valor || null,
         nota: String(r.nota ?? "").trim() || null, foto: r.foto || null,
+        // Parte 31: un punto en Mal que deja el vehículo sin poder circular
+        ...(r.estado === "mal" && r.no_circula ? { no_circula: true } : {}),
       });
     }
   }

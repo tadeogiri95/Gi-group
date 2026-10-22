@@ -6,8 +6,9 @@
 // avisa, no bloquea nada. Los checklists hechos y la plantilla del checklist
 // son de la parte 29 (127). Las alertas (parte 30, 128) suman a los papeles
 // cada cuánto se revisa cada aspecto y el último service; la pestaña 🔔 Alertas
-// junta lo vencido y lo que vence pronto de toda la flota. Los arreglos vienen
-// en la parte 31.
+// junta lo vencido y lo que vence pronto de toda la flota. La parte 31 (129)
+// suma los arreglos pendientes (🔴 no puede circular), services y
+// reparaciones, el historial de cada vehículo y la pestaña 💲 Costos.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
@@ -16,6 +17,7 @@ import {
   AVISO_LICENCIA, SEMAFORO, estadoVencimiento, nombreTipoVehiculo, peorNivel, puedeEditarFlota, textoVencimiento,
 } from "../lib/flota";
 import { alertasVehiculo, textoAlerta, urgentes as soloUrgentes } from "../lib/alertasFlota";
+import { costosFlota, nombreMes, textoCosto, ultimosMeses } from "../lib/arreglosFlota";
 import { Chip } from "./ui";
 import FichaVehiculo, { FormVehiculo, FormLicencia } from "./FichaVehiculo";
 import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
@@ -37,6 +39,8 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
   const [licencia, setLicencia] = useState(null);
   const [checklists, setChecklists] = useState([]);
   const [verChecklist, setVerChecklist] = useState(null);
+  const [arreglos, setArreglos] = useState([]);
+  const [mantenimientos, setMantenimientos] = useState([]);
   const editable = puedeEditarFlota(usuario?.rol);
   const hoy = hoyArg();
 
@@ -55,6 +59,13 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
       // Sin la migración 127 la flota anda igual; el checklist avisa al abrirlo
       const c = await sbGetAll("vehiculo_checklists?order=created_at.desc,id.desc", { maxFilas: 2000 }).catch(() => ({ data: [] }));
       setChecklists(c.data || []);
+      // Ídem sin la 129: sin arreglos ni services
+      const [a, m] = await Promise.all([
+        sbGetAll("vehiculo_arreglos?order=created_at.desc,id.desc", { maxFilas: 5000 }).catch(() => ({ data: [] })),
+        sbGetAll("vehiculo_mantenimientos?order=fecha.desc,id.desc", { maxFilas: 5000 }).catch(() => ({ data: [] })),
+      ]);
+      setArreglos(a.data || []);
+      setMantenimientos(m.data || []);
     } catch (err) {
       setVehiculos([]);
       setError(["vehiculos", "vehiculo_papeles", "licencia_"].some((t) => faltaTabla(err, t)) ? AVISO_MIGRACION : "No se pudo leer la flota");
@@ -65,8 +76,11 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
   const porId = useMemo(() => new Map(empleados.map((e) => [e.id, e])), [empleados]);
   // Alertas de cada vehículo: papeles, licencia, revisiones y service
   const alertas = useMemo(() => new Map((vehiculos || []).map((v) => [v.id, alertasVehiculo(v, {
-    papeles: papeles.filter((p) => p.vehiculo_id === v.id), checklists, responsable: porId.get(v.responsable_id), hoy,
-  })])), [vehiculos, papeles, checklists, porId, hoy]);
+    papeles: papeles.filter((p) => p.vehiculo_id === v.id), checklists, arreglos, responsable: porId.get(v.responsable_id), hoy,
+  })])), [vehiculos, papeles, checklists, arreglos, porId, hoy]);
+  // Pestaña 💲 Costos: los últimos 6 meses
+  const meses = useMemo(() => ultimosMeses(hoy, 6), [hoy]);
+  const costos = useMemo(() => costosFlota({ vehiculos: (vehiculos || []).filter((v) => v.activo || mantenimientos.some((m) => m.vehiculo_id === v.id)), mantenimientos, checklists, meses }), [vehiculos, mantenimientos, checklists, meses]);
   const filas = useMemo(() => {
     const t = texto.trim().toLowerCase();
     return (vehiculos || [])
@@ -106,6 +120,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
       <div className="flex-1 overflow-y-auto px-[18px] pb-6">
         <FichaVehiculo vehiculo={ficha} papeles={papeles.filter((p) => p.vehiculo_id === ficha.id)} empleados={empleados} divisiones={divisiones}
           checklists={checklists.filter((c) => c.vehiculo_id === ficha.id)} empresaNombre={empresa?.nombre || ""}
+          arreglos={arreglos.filter((a) => a.vehiculo_id === ficha.id)} mantenimientos={mantenimientos.filter((m) => m.vehiculo_id === ficha.id)}
           editable={editable} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
       </div>
     );
@@ -134,6 +149,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
         <Chip active={vista === "alertas"} onClick={() => setVista("alertas")}>🔔 Alertas{todasUrgentes.length ? ` (${todasUrgentes.length})` : ""}</Chip>
         <Chip active={vista === "checklists"} onClick={() => setVista("checklists")}>📋 Checklists</Chip>
         <Chip active={vista === "choferes"} onClick={() => setVista("choferes")}>🪪 Choferes</Chip>
+        {editable && <Chip active={vista === "costos"} onClick={() => setVista("costos")}>💲 Costos</Chip>}
         {editable && <Chip active={vista === "plantilla"} onClick={() => setVista("plantilla")}>⚙ Checklist</Chip>}
       </div>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
@@ -211,6 +227,46 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
 
       {vista === "checklists" && <ListaChecklists checklists={checklists.slice(0, 200)} vehiculos={vehiculos || []} onVer={setVerChecklist} />}
       {vista === "plantilla" && editable && <PlantillaChecklist />}
+
+      {vista === "costos" && editable && (
+        <>
+          <div className="text-[13px] text-gypi-dim mb-2">Lo gastado en services, reparaciones y arreglos de los últimos 6 meses, y los kilómetros recorridos (según los checklists y services).</div>
+          {!costos.filas.length ? (
+            <div className="text-[14px] text-gypi-dim">Todavía no hay vehículos.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table aria-label="Costos de la flota" className="w-full text-[13px] border-collapse">
+                <thead>
+                  <tr className="text-gypi-dim text-left">
+                    <th className="py-1.5 pr-2 font-semibold">Vehículo</th>
+                    {meses.map((m) => <th key={m} className="py-1.5 px-1 font-semibold text-right">{nombreMes(m)}</th>)}
+                    <th className="py-1.5 px-1 font-semibold text-right">Total</th>
+                    <th className="py-1.5 pl-1 font-semibold text-right">Km</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {costos.filas.map((f) => (
+                    <tr key={f.vehiculo.id} className="border-t border-gypi-border">
+                      <td className="py-1.5 pr-2 font-semibold whitespace-nowrap">
+                        <button onClick={() => setFichaId(f.vehiculo.id)} className="p-0 bg-transparent border-none font-semibold text-[13px] text-gypi-text cursor-pointer font-body">{f.vehiculo.patente}</button>
+                      </td>
+                      {meses.map((m) => <td key={m} className="py-1.5 px-1 text-right whitespace-nowrap">{f.porMes[m] ? textoCosto(f.porMes[m]) : "–"}</td>)}
+                      <td className="py-1.5 px-1 text-right font-semibold whitespace-nowrap">{f.total ? textoCosto(f.total) : "–"}</td>
+                      <td className="py-1.5 pl-1 text-right whitespace-nowrap">{f.km != null ? f.km.toLocaleString("es-AR") : "–"}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-gypi-border font-bold">
+                    <td className="py-1.5 pr-2">Total</td>
+                    {meses.map((m) => <td key={m} className="py-1.5 px-1 text-right whitespace-nowrap">{costos.totalMes[m] ? textoCosto(costos.totalMes[m]) : "–"}</td>)}
+                    <td className="py-1.5 px-1 text-right whitespace-nowrap">{textoCosto(costos.total)}</td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
 
       {vista === "choferes" && (
         <>
