@@ -104,6 +104,13 @@ export default function AComprar({ empresaId, onCreadas }) {
     if (n.has(clave)) n.delete(clave); else n.add(clave);
     return n;
   });
+  // Tilda (o destilda) de una vez todo lo que se ve con el filtro y la búsqueda
+  const todasTildadas = visibles.length > 0 && visibles.every((l) => elegidas.has(l.clave));
+  const tildarTodas = () => setElegidas((s) => {
+    const n = new Set(s);
+    for (const l of visibles) { if (todasTildadas) n.delete(l.clave); else n.add(l.clave); }
+    return n;
+  });
 
   const armar = async () => {
     setError(null);
@@ -155,6 +162,11 @@ export default function AComprar({ empresaId, onCreadas }) {
       </div>
       <div className="flex gap-2 mb-2 items-center">
         <input aria-label="Buscar en A comprar" className="g-input flex-1 min-w-0" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar material u OT" />
+        {visibles.length > 0 && (
+          <button type="button" onClick={tildarTodas} className="g-btn g-btn-secondary shrink-0">
+            {todasTildadas ? "Destildar todos" : `Seleccionar todos (${visibles.length})`}
+          </button>
+        )}
       </div>
 
       {!visibles.length ? (

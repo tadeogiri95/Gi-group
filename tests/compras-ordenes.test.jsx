@@ -453,6 +453,24 @@ test("A comprar — tilda el pedido y el sugerido, elige proveedor y arma las OC
   await waitFor(() => assert.equal(creadas?.[0]?.numero, 8));
 });
 
+test("A comprar — Seleccionar todos tilda solo lo que se ve con el filtro", async () => {
+  const pedidos = [{ id: 5, estado: "pendiente", sku: PLACA.sku, descripcion: "Placa melamina blanca", cantidad: 3, ot: "M-7495", empleado_nombre: "Ana" }];
+  mockPantalla({ pedidos });
+  render(<AComprar empresaId={E} />);
+  await screen.findByLabelText("Comprar Placa melamina blanca");
+  fireEvent.click(screen.getByText(/Pedidos del personal/));
+  fireEvent.click(screen.getByText("Seleccionar todos (1)"));
+  assert.ok(screen.getByText(/^1 renglón/));
+  fireEvent.click(screen.getByText(/Según MRP/));
+  assert.equal(screen.getByLabelText("Comprar Perfil 0277").checked, false, "lo del MRP no se tildó");
+  fireEvent.click(screen.getByText("Seleccionar todos (1)"));
+  assert.ok(screen.getByText(/^2 renglones/));
+  fireEvent.click(screen.getByText("Destildar todos"));
+  assert.ok(screen.getByText(/^1 renglón/), "destilda solo lo del filtro");
+  fireEvent.click(screen.getByText(/^Todo/));
+  assert.equal(screen.getByLabelText("Comprar Placa melamina blanca").checked, true);
+});
+
 test("Órdenes — corrige el precio, la marca enviada y arma el WhatsApp", async () => {
   const ordenes = [{ id: 101, numero: 8, proveedor_id: 1, proveedor_nombre: "Aluar", estado: "borrador", moneda: "ARS", created_at: "2026-10-17T12:00:00Z" }];
   const items = [{ id: 1, orden_id: 101, sku: PERFIL.sku, descripcion: "Perfil 0277", unidad: "MT", cantidad: 12, precio_unitario: null, cantidad_recibida: 0 }];
