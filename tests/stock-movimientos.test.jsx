@@ -266,5 +266,5 @@ test("accesos — botón en el inicio del operario, en la ficha y pestaña en St
   const ficha = readFileSync(new URL("../app/components/FichaArticulo.jsx", import.meta.url), "utf8");
   assert.match(ficha, /📦 Retirar o devolver/);
   const stock = readFileSync(new URL("../app/components/StockScreen.jsx", import.meta.url), "utf8");
-  assert.match(stock, /<MovimientosStock usuario=\{usuario\} articulos=\{articulos\} \/>/);
+  assert.match(stock, /<MovimientosStock usuario=\{usuario\} articulos=\{articulos\} /);
 });

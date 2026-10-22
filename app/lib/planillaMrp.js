@@ -134,7 +134,9 @@ export function scriptPlanilla({ url, clave }) {
 // cargados en Gypi y los anota al final de fact_consumos_stock y
 // fact_ingresos_stock. También deja en fact_ordenes_compra lo que falta
 // llegar de las órdenes de compra abiertas (N° OC "GY-OC-…"), para que cuente
-// en EN TRÁNSITO. Pegalo en un archivo nuevo de Apps Script, guardá y
+// en EN TRÁNSITO. Antes que nada anota al final de ARTICULOS los artículos
+// nuevos cargados en Gypi (las columnas con fórmula las copia de la fila de
+// arriba). Pegalo en un archivo nuevo de Apps Script, guardá y
 // ejecutá instalarGypi una sola vez. Después corre solo cada hora.
 // La clave es privada: no compartas este código.
 var GYPI_URL = ${JSON.stringify(url)};
@@ -143,6 +145,7 @@ var GYPI_HOJA_CONSUMOS = "fact_consumos_stock";
 var GYPI_HOJA_INGRESOS = "fact_ingresos_stock";
 var GYPI_HOJA_PERSONAL = "PERSONAL";
 var GYPI_HOJA_ORDENES = "fact_ordenes_compra";
+var GYPI_HOJA_ARTICULOS = "ARTICULOS";
 
 function instalarGypi() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -170,14 +173,17 @@ function traerMovimientosGypi() {
     gypiIds_(cons).concat(gypiIds_(ing)).forEach(function (id) { ya[id] = true; });
     var anulados = null;
     var ordenes = null;
+    var nuevoSku = {};
     for (var vuelta = 0; vuelta < 20; vuelta++) {
       var r = gypiPedir_(desde, vuelta === 0);
+      if (vuelta === 0) nuevoSku = gypiArticulos_(ss.getSheetByName(GYPI_HOJA_ARTICULOS), r.articulos || [], props);
       if (anulados === null) anulados = r.anulados || [];
       if (vuelta === 0 && r.ordenes) ordenes = r.ordenes;
       var filasC = [], filasI = [], dudasC = [], dudasI = [];
       r.movimientos.forEach(function (m) {
         if (m.anulado || ya[m.id]) return;
         ya[m.id] = true;
+        if (nuevoSku[m.sku]) m.sku = nuevoSku[m.sku];
         var fecha = gypiFecha_(m.fecha);
         var clave = gypiClave_(m.sku, m.hoja === "ingresos" ? "" : m.ot, m.fecha, m.cantidad);
         var duda = manual[clave] > 0;
@@ -202,7 +208,10 @@ function traerMovimientosGypi() {
     }
     gypiBorrarAnulados_(cons, anulados || []);
     gypiBorrarAnulados_(ing, anulados || []);
-    if (ordenes) gypiOrdenes_(ss.getSheetByName(GYPI_HOJA_ORDENES), ordenes);
+    if (ordenes) {
+      ordenes.forEach(function (o) { if (nuevoSku[o.sku]) o.sku = nuevoSku[o.sku]; });
+      gypiOrdenes_(ss.getSheetByName(GYPI_HOJA_ORDENES), ordenes);
+    }
   } finally {
     lock.releaseLock();
   }
@@ -215,6 +224,71 @@ function gypiPedir_(desde, conOrdenes) {
   });
   if (res.getResponseCode() !== 200) throw new Error("Gypi respondió " + res.getResponseCode() + ": " + res.getContentText());
   return JSON.parse(res.getContentText());
+}
+
+// Artículos nuevos de Gypi al final de ARTICULOS. Las columnas que son
+// fórmula (en la última fila o arrastrada desde arriba) no se escriben: la
+// fórmula de la fila de arriba se copia, así el SKU, el número y el nombre
+// normalizado salen como siempre. Después se le avisa a Gypi con qué SKU
+// quedó cada uno; si es otro que el provisorio, Gypi lo cambia en todos
+// lados. Devuelve { skuProvisorio: skuDeLaPlanilla } de los que cambiaron.
+function gypiArticulos_(hoja, articulos, props) {
+  var cambios = {};
+  if (!hoja || !articulos.length) return cambios;
+  var hechos = JSON.parse(props.getProperty("GYPI_ARTICULOS") || "{}");
+  var ancho = hoja.getLastColumn();
+  var titulos = hoja.getRange(1, 1, 1, ancho).getValues()[0].map(gypiNormalizar_);
+  var colSku = titulos.indexOf("ID_SKU") + 1;
+  if (colSku < 1) return cambios;
+  var fila = gypiPrimeraLibre_(hoja, colSku);
+  var modelo = fila > 2 ? hoja.getRange(fila - 1, 1, 1, ancho).getFormulasR1C1()[0] : [];
+  var arriba = hoja.getRange(1, 1, Math.min(2, hoja.getMaxRows()), ancho).getFormulas();
+  var calculada = titulos.map(function (_, c) {
+    var f2 = String((arriba[1] || [])[c] || "").toUpperCase();
+    return Boolean(modelo[c]) || Boolean(arriba[0][c]) ||
+      f2.indexOf("ARRAYFORMULA") !== -1 || f2.indexOf("BYROW(") !== -1 || f2.indexOf("MAP(") !== -1;
+  });
+  articulos.forEach(function (a) {
+    if (hechos[a.alta] !== undefined) return;
+    var porTitulo = {};
+    Object.keys(a.columnas).forEach(function (t) { porTitulo[gypiNormalizar_(t)] = a.columnas[t]; });
+    var valores = titulos.map(function (t, c) {
+      if (calculada[c]) return "";
+      var v = porTitulo[t];
+      return v === undefined || v === null ? "" : v;
+    });
+    if (fila > hoja.getMaxRows()) hoja.insertRowsAfter(hoja.getMaxRows(), 1);
+    hoja.getRange(fila, 1, 1, ancho).setValues([valores]);
+    titulos.forEach(function (_, c) {
+      if (modelo[c]) hoja.getRange(fila, c + 1).setFormulaR1C1(modelo[c]);
+    });
+    SpreadsheetApp.flush();
+    var sku = String(hoja.getRange(fila, colSku).getValue() || "").trim();
+    if (!sku || sku.charAt(0) === "#") {
+      sku = "";
+      hoja.getRange(fila, 1, 1, ancho).setBackground("yellow");
+    }
+    hechos[a.alta] = sku;
+    fila++;
+  });
+  var ids = Object.keys(hechos).sort(function (x, y) { return Number(y) - Number(x); });
+  var guardar = {};
+  ids.slice(0, 300).forEach(function (id) { guardar[id] = hechos[id]; });
+  props.setProperty("GYPI_ARTICULOS", JSON.stringify(guardar));
+  var confirmar = articulos.map(function (a) {
+    var sku = hechos[a.alta];
+    if (sku && sku !== a.sku) cambios[a.sku] = sku;
+    return { alta: a.alta, sku: sku };
+  });
+  var res = UrlFetchApp.fetch(GYPI_URL, {
+    method: "patch",
+    contentType: "application/json",
+    payload: JSON.stringify({ articulos: confirmar }),
+    headers: { Authorization: "Bearer " + GYPI_CLAVE },
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) console.warn("Gypi no confirmó los artículos: " + res.getContentText());
+  return cambios;
 }
 
 function gypiFecha_(texto) {

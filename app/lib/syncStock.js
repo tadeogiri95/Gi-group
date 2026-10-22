@@ -3,18 +3,22 @@
 //
 // Los links están en config_sistema, clave stock_csv_url:
 //   { inventario: "https://…output=csv", articulos: "https://…" | null,
-//     necesidades: "https://…" | null, ultima_sync }
+//     necesidades: "https://…" | null, tablas: "https://…" | null, ultima_sync }
 // La hoja de necesidades (fact_necesidades_stock, parte 16) es opcional y va
 // a necesidades_stock (108); si falla, el resto de la sincronización sigue.
 // Lo usan /api/stock/sync (botón Sincronizar) y /api/cron/sync-ot (todas las
 // mañanas, después de las OT). La planilla manda: lo que dejó de estar en
-// ella queda inactivo en la app, no se borra.
+// ella queda inactivo en la app, no se borra; menos los artículos nuevos
+// cargados en Gypi que la planilla todavía no trae (origen 'gypi', 124).
+// La hoja TABLAS (opcional) da las listas del formulario de artículo nuevo y
+// se guarda en config_sistema (CLAVE_TABLAS_MRP).
 
 import { logger } from "./logger";
 import { safeErrorMessage } from "./validate";
 import { sbHeaders } from "./sbHelpers";
 import { descargarCsv } from "./syncOt";
 import { CLAVE_STOCK_CSV, unirArticulos, leerNecesidades } from "./stock";
+import { CLAVE_TABLAS_MRP, leerTablas } from "./articulosNuevos";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -78,7 +82,7 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
   const ahora = new Date().toISOString();
   const errores = [];
   for (let i = 0; i < filas.length; i += BATCH) {
-    const lote = filas.slice(i, i + BATCH).map((f) => ({ empresa_id: empresaId, ...f, activo: true, sincronizado_at: ahora }));
+    const lote = filas.slice(i, i + BATCH).map((f) => ({ empresa_id: empresaId, ...f, activo: true, origen: "planilla", sincronizado_at: ahora }));
     try {
       await sbFetch("articulos_stock?on_conflict=empresa_id,sku", {
         method: "POST",
@@ -97,7 +101,7 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
   let desactivados = 0;
   if (!errores.length) {
     const viejos = await sbFetch(
-      `articulos_stock?empresa_id=eq.${empresaId}&activo=eq.true&sincronizado_at=lt.${encodeURIComponent(ahora)}&select=sku`,
+      `articulos_stock?empresa_id=eq.${empresaId}&activo=eq.true&origen=eq.planilla&sincronizado_at=lt.${encodeURIComponent(ahora)}&select=sku`,
       { method: "PATCH", body: JSON.stringify({ activo: false }) },
       sesion
     );
@@ -105,6 +109,7 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
   }
 
   const nec = urls.necesidades ? await syncNecesidades(empresaId, urls.necesidades, ahora, sesion) : { necesidades: 0, avisoNecesidades: null };
+  const tab = urls.tablas ? await syncTablas(empresaId, urls.tablas, ahora, sesion) : { avisoTablas: null };
 
   try {
     await sbFetch(
@@ -120,7 +125,7 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
     logger.error("[stock/sync] No se pudo guardar la fecha de sincronización", e);
   }
 
-  return { articulos: filas.length, desactivados, sinSku, errores, ...nec };
+  return { articulos: filas.length, desactivados, sinSku, errores, ...nec, ...tab };
 }
 
 /**
@@ -159,6 +164,35 @@ async function syncNecesidades(empresaId, url, ahora, sesion) {
     logger.error("[stock/sync] Error en necesidades", e);
     return { necesidades: 0, avisoNecesidades: "No se pudieron guardar las necesidades por OT. Probá de nuevo." };
   }
+}
+
+/**
+ * Copia las listas de la hoja TABLAS (marca, familia, tipo, medida, color,
+ * pack y centro de costos) para el formulario de artículo nuevo.
+ * @returns {Promise<{ avisoTablas: string|null }>}
+ */
+async function syncTablas(empresaId, url, ahora, sesion) {
+  let texto;
+  try {
+    texto = await descargarCsv(url);
+  } catch (e) {
+    return { avisoTablas: `No pude leer la hoja TABLAS (${e.message}). Revisá que esté publicada como CSV.` };
+  }
+  const { listas, faltan } = leerTablas(texto);
+  if (!Object.keys(listas).length) {
+    return { avisoTablas: "No encontré las listas MARCA, FAMILIA… en la hoja TABLAS. ¿El link es de esa hoja?" };
+  }
+  try {
+    await sbFetch("config_sistema?on_conflict=empresa_id,clave", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ empresa_id: empresaId, clave: CLAVE_TABLAS_MRP, valor: { listas, leidas_at: ahora } }),
+    }, sesion);
+  } catch (e) {
+    logger.error("[stock/sync] Error guardando TABLAS", e);
+    return { avisoTablas: "No se pudieron guardar las listas de TABLAS. Probá de nuevo." };
+  }
+  return { avisoTablas: faltan.length ? `En la hoja TABLAS no encontré: ${faltan.join(", ")}.` : null };
 }
 
 /** Sincroniza todas las empresas con planilla MRP; un error no frena a las demás. */
