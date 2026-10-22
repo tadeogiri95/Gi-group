@@ -7,7 +7,14 @@
 //   papel_guardar     → con id corrige un papel; sin id agrega uno (renovar)
 //   papel_borrar      → un papel cargado por error
 //   licencia_guardar  → categoría y vencimiento de la licencia de un empleado
-// La lectura va por /api/data (vehiculos y vehiculo_papeles, solo lectura).
+//   checklist_plantilla_guardar → secciones y puntos del checklist de la empresa
+//                       (null = volver a la de fábrica; 127)
+// POST checklist_crear (parte 29, 127): el responsable del vehículo (el chofer)
+//   o gerencia y Administración, de cualquiera. Revisa que estén todos los
+//   puntos de las secciones elegidas, con nota y foto los que no están bien, y
+//   actualiza los kilómetros del vehículo.
+// La lectura va por /api/data (vehiculos, vehiculo_papeles, vehiculo_checklists
+// y flota_config, solo lectura).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
@@ -17,11 +24,17 @@ import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { normalizarPatente, puedeEditarFlota } from "../../lib/flota";
+import { contarEstados, plantillaDe } from "../../lib/checklistVehiculo";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
   return /vehiculos|vehiculo_papeles|licencia_/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
+}
+
+function faltaMigracionChecklist(err) {
+  const m = String(err?.message);
+  return /vehiculo_checklists|flota_config/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
 }
 
 const noEncontrado = (que) => NextResponse.json({ error: `No encontré ese ${que}` }, { status: 404 });
@@ -123,6 +136,68 @@ async function guardarLicencia(sesion, d) {
   return NextResponse.json({ ok: true, licencia: { empleado_id: emp.id, categoria: emp.licencia_categoria, vencimiento: emp.licencia_vencimiento } });
 }
 
+async function plantillaEmpresa(sesion) {
+  const [cfg] = (await sbGet(`flota_config?empresa_id=eq.${sesion.empresa_id}&select=checklist`, { sesion })) || [];
+  return plantillaDe(cfg);
+}
+
+async function crearChecklist(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=id,km,responsable_id,activo`, opts)) || [];
+  if (!veh) return noEncontrado("vehículo");
+  if (!puedeEditarFlota(sesion.rol) && veh.responsable_id !== sesion.empleado_id) {
+    return NextResponse.json({ error: "Solo el responsable del vehículo o la oficina pueden hacer su checklist" }, { status: 403 });
+  }
+  if (veh.km != null && d.km < veh.km) {
+    return NextResponse.json({ error: `El vehículo tenía ${veh.km.toLocaleString("es-AR")} km. Revisá el número.` }, { status: 400 });
+  }
+  // Cada punto de cada sección elegida, con su estado; nota y foto si no está bien
+  const plantilla = await plantillaEmpresa(sesion);
+  const secciones = plantilla.filter((s) => d.secciones.includes(s.id));
+  if (secciones.length !== new Set(d.secciones).size) return NextResponse.json({ error: "Hay una sección que ya no está en el checklist. Volvé a abrirlo." }, { status: 409 });
+  const porClave = new Map(d.items.map((i) => [`${i.seccion}.${i.punto}`, i]));
+  for (const s of secciones) {
+    for (const pt of s.puntos) {
+      const it = porClave.get(`${s.id}.${pt.id}`);
+      if (!it) return NextResponse.json({ error: `Falta marcar ${s.nombre}: ${pt.nombre}` }, { status: 400 });
+      if ((it.estado === "revisar" || it.estado === "mal") && (!it.nota || !it.foto)) {
+        return NextResponse.json({ error: `${s.nombre}: ${pt.nombre} necesita nota y foto` }, { status: 400 });
+      }
+    }
+  }
+  const items = d.items.filter((i) => d.secciones.includes(i.seccion));
+  const [emp] = sesion.empleado_id
+    ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] })) || []
+    : [];
+  const [c] = (await sbPost("vehiculo_checklists", {
+    empresa_id: e, vehiculo_id: veh.id, empleado_id: sesion.empleado_id || null, empleado_nombre: emp?.nombre || null,
+    km: d.km, combustible: d.combustible, secciones: d.secciones, items, ...contarEstados(items),
+    observaciones: d.observaciones, fotos: d.fotos, firma_url: d.firma_url,
+  }, opts)) || [];
+  if (veh.km == null || d.km > veh.km) {
+    await sbPatch(`vehiculos?id=eq.${veh.id}&empresa_id=eq.${e}`, { km: d.km, km_at: new Date().toISOString() }, opts);
+  }
+  broadcastRefresh(e, "vehiculo_checklists");
+  return NextResponse.json({ ok: true, checklist: c });
+}
+
+async function guardarPlantilla(sesion, { checklist }) {
+  const e = sesion.empresa_id;
+  if (checklist) {
+    const ids = checklist.map((s) => s.id);
+    if (new Set(ids).size !== ids.length || checklist.some((s) => new Set(s.puntos.map((p) => p.id)).size !== s.puntos.length)) {
+      return NextResponse.json({ error: "Hay dos secciones o dos puntos con el mismo código" }, { status: 400 });
+    }
+  }
+  const fila = { checklist, updated_at: new Date().toISOString() };
+  const opts = { sesion };
+  const actualizadas = (await sbPatch(`flota_config?empresa_id=eq.${e}`, fila, opts)) || [];
+  if (!actualizadas.length) await sbPost("flota_config", { ...fila, empresa_id: e }, opts);
+  broadcastRefresh(e, "flota_config");
+  return NextResponse.json({ ok: true });
+}
+
 async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
@@ -134,12 +209,13 @@ export async function POST(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    if (!puedeEditarFlota(sesion.rol)) {
-      return NextResponse.json({ error: "La flota la cargan gerencia y Administración" }, { status: 403 });
-    }
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(flotaBody, raw);
     if (parsed.response) return parsed.response;
+    // El checklist lo hace también el chofer (se controla que sea su vehículo)
+    if (parsed.data.accion !== "checklist_crear" && !puedeEditarFlota(sesion.rol)) {
+      return NextResponse.json({ error: "La flota la cargan gerencia y Administración" }, { status: 403 });
+    }
     const bloqueo = await chequeos(sesion);
     if (bloqueo) return bloqueo;
     const d = parsed.data;
@@ -148,8 +224,13 @@ export async function POST(request) {
       if (d.accion === "vehiculo_baja") return await bajaVehiculo(sesion, d);
       if (d.accion === "papel_guardar") return await guardarPapel(sesion, d);
       if (d.accion === "papel_borrar") return await borrarPapel(sesion, d.id);
+      if (d.accion === "checklist_crear") return await crearChecklist(sesion, d);
+      if (d.accion === "checklist_plantilla_guardar") return await guardarPlantilla(sesion, d);
       return await guardarLicencia(sesion, d);
     } catch (err) {
+      if (faltaMigracionChecklist(err)) {
+        return NextResponse.json({ error: "Para el checklist de vehículos falta correr la migración 127 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracion(err)) {
         return NextResponse.json({ error: "Para usar Flota falta correr la migración 126 en Supabase." }, { status: 409 });
       }

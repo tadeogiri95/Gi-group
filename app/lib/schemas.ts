@@ -779,6 +779,7 @@ export const resolverSolicitudBody = z.object({
 // ── /api/flota (126): vehículos y sus papeles (Mantenimiento parte 28) ──────
 const idFlota = z.number().int().positive();
 const fechaFlota = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null);
+const idPlantilla = z.string().trim().regex(/^[a-z0-9_]{1,40}$/);
 const urlFoto = z.string().trim().url().max(500).refine((u) => u.startsWith("https://"), "La foto tiene que ser https");
 export const flotaBody = z.discriminatedUnion("accion", [
   z.object({
@@ -822,5 +823,42 @@ export const flotaBody = z.discriminatedUnion("accion", [
     empleado_id: uuid,
     categoria: textoSuelto(30),
     vencimiento: fechaFlota,
+  }).strict(),
+  // Checklist de mantenimiento (parte 29, migración 127)
+  z.object({
+    accion: z.literal("checklist_crear"),
+    vehiculo_id: idFlota,
+    km: z.number().int().min(0).max(9999999),
+    combustible: z.enum(["reserva", "1/4", "1/2", "3/4", "lleno"]).nullable().optional().transform((v) => v ?? null),
+    secciones: z.array(idPlantilla).min(1).max(20),
+    items: z.array(z.object({
+      seccion: idPlantilla,
+      seccion_nombre: z.string().trim().min(1).max(60),
+      punto: idPlantilla,
+      nombre: z.string().trim().min(1).max(120),
+      estado: z.enum(["bien", "revisar", "mal", "na"]),
+      valor: textoSuelto(20),
+      unidad: textoSuelto(10),
+      nota: textoSuelto(300),
+      foto: urlFoto.nullable().optional().transform((v) => v || null),
+    }).strict()).min(1).max(400),
+    observaciones: textoSuelto(1000),
+    fotos: z.array(urlFoto).max(4).default([]),
+    firma_url: urlFoto.nullable().optional().transform((v) => v || null),
+  }).strict(),
+  z.object({
+    accion: z.literal("checklist_plantilla_guardar"),
+    // null = volver a la de fábrica
+    checklist: z.array(z.object({
+      id: idPlantilla,
+      nombre: z.string().trim().min(1).max(60),
+      emoji: z.string().trim().max(8).nullable().optional().transform((v) => v || null),
+      puntos: z.array(z.object({
+        id: idPlantilla,
+        nombre: z.string().trim().min(1).max(120),
+        valor: z.string().trim().max(10).nullable().optional().transform((v) => v || null),
+        minimo: z.number().finite().min(0).max(100000).nullable().optional().transform((v) => v ?? null),
+      }).strict()).min(1).max(40),
+    }).strict()).min(1).max(20).nullable(),
   }).strict(),
 ]);
