@@ -16,6 +16,14 @@
 //   oc_crear              → una OC en borrador por proveedor con los renglones elegidos en
 //                           "A comprar"; los pedidos de los jefes pasan a en_oc (comprador; 114)
 //                           (la nota de cada pedido pasa a la observación del renglón; 120)
+//                           Los renglones sin proveedor van juntos a una orden "A cotizar"
+//                           (borrador sin proveedor; 125)
+//   oc_cotizacion_pedir   → anota a qué proveedores se les pidió cotización de una orden
+//                           "A cotizar" (comprador; 125)
+//   oc_cotizacion_guardar → lo que contestó un proveedor: total sin IVA, plazo y nota
+//   oc_cotizacion_quitar  → saca un proveedor de la lista
+//   oc_adjudicar          → la orden "A cotizar" pasa a ser del proveedor elegido y
+//                           sigue como cualquier borrador
 //   oc_guardar            → moneda, fecha prometida, notas, cantidades, precios y
 //                           observaciones; quitar renglones (en borrador); el pedido
 //                           quitado vuelve a pendiente
@@ -43,7 +51,7 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
 import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
-import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, estadoTrasRecepcion, pedidosAlCerrar, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
+import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, estadoTrasRecepcion, pedidosAlCerrar, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -70,6 +78,11 @@ function faltaMigracionCierre(err) {
   const m = String(err?.message);
   return (/cerrada_motivo|cerrada_por|cerrada_at|faltante_de/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m))
     || (/ordenes_compra_estado_check/.test(m) && /23514|violates/.test(m));
+}
+
+function faltaMigracionCotizaciones(err) {
+  const m = String(err?.message);
+  return /ordenes_compra_cotizaciones/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
 }
 
 function faltaMigracionFactura(err) {
@@ -319,9 +332,14 @@ async function liberarPedidos(sesion, filtro) {
 async function crearOrdenes(sesion, { moneda, lineas }) {
   const e = sesion.empresa_id;
   const opts = { sesion };
-  const idsProv = [...new Set(lineas.map((l) => l.proveedor_id))];
-  const proveedores = (await sbGet(`proveedores?empresa_id=eq.${e}&id=in.(${idsProv.join(",")})&select=id,nombre,activo`, opts)) || [];
+  // null = la orden "A cotizar" con los renglones sin proveedor (125); va última
+  const idsConProv = [...new Set(lineas.map((l) => l.proveedor_id).filter(Boolean))];
+  const idsProv = lineas.some((l) => !l.proveedor_id) ? [...idsConProv, null] : idsConProv;
+  const proveedores = idsConProv.length
+    ? (await sbGet(`proveedores?empresa_id=eq.${e}&id=in.(${idsConProv.join(",")})&select=id,nombre,activo`, opts)) || []
+    : [];
   const porId = new Map(proveedores.map((p) => [p.id, p]));
+  porId.set(null, { id: null, nombre: NOMBRE_A_COTIZAR, activo: true });
   const falta = idsProv.find((id) => !porId.get(id)?.activo);
   if (falta) return NextResponse.json({ error: "Uno de los proveedores no existe o está dado de baja. Actualizá la lista." }, { status: 409 });
 
@@ -358,7 +376,7 @@ async function crearOrdenes(sesion, { moneda, lineas }) {
       }
     }
     if (!oc) throw new Error("No se pudo numerar la orden de compra");
-    const mias = lineas.filter((l) => l.proveedor_id === proveedorId);
+    const mias = lineas.filter((l) => (l.proveedor_id ?? null) === proveedorId);
     // La nota del pedido sale en la OC como observación del renglón (120)
     const filas = mias.map((l) => ({
       empresa_id: e, orden_id: oc.id, sku: l.sku, descripcion: l.descripcion, unidad: l.unidad,
@@ -425,6 +443,7 @@ async function enviarOrden(sesion, id) {
   const oc = await leerOrden(sesion, id);
   if (!oc) return noEncontreOc();
   if (oc.estado !== "borrador") return NextResponse.json({ ok: true, orden: oc });
+  if (ocACotizar(oc)) return NextResponse.json({ error: "Elegí el proveedor antes de mandar la orden de compra" }, { status: 409 });
   const [hay] = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=id&limit=1`, { sesion })) || [];
   if (!hay) return NextResponse.json({ error: "La orden de compra no tiene renglones" }, { status: 409 });
   const ahora = new Date().toISOString();
@@ -555,6 +574,7 @@ async function crearRecepcion(sesion, d) {
   if (!ESTADOS_OC_RECIBIBLE.includes(oc.estado)) {
     return NextResponse.json({ error: oc.estado === "recibida" ? "Esa orden de compra ya se recibió completa" : "Esa orden de compra está anulada" }, { status: 409 });
   }
+  if (ocACotizar(oc)) return NextResponse.json({ error: "Esa orden todavía está a cotizar: elegí el proveedor primero" }, { status: 409 });
   const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*&order=id.asc`, opts)) || [];
   const porId = new Map(items.map((it) => [it.id, it]));
   const llegan = new Map();
@@ -692,6 +712,88 @@ async function facturaOrden(sesion, d) {
   return NextResponse.json({ ok: true, orden: fila || ocNueva, reemplazados });
 }
 
+/* ─── Orden "A cotizar" y pedidos de cotización (125) ──────────────────── */
+
+const noEsACotizar = () => NextResponse.json({ error: "Esa orden ya tiene proveedor: no está a cotizar" }, { status: 409 });
+
+async function leerCotizacion(sesion, id) {
+  const [c] = (await sbGet(`ordenes_compra_cotizaciones?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=*&limit=1`, { sesion })) || [];
+  return c || null;
+}
+const noEncontreCotizacion = () => NextResponse.json({ error: "No encontré esa cotización" }, { status: 404 });
+
+/** Anota a qué proveedores se les pidió cotización; los que ya estaban no se repiten. */
+async function pedirCotizacion(sesion, { id, proveedores: ids }) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const oc = await leerOrden(sesion, id);
+  if (!oc) return noEncontreOc();
+  if (!ocACotizar(oc)) return noEsACotizar();
+  const unicos = [...new Set(ids)];
+  const provs = (await sbGet(`proveedores?empresa_id=eq.${e}&id=in.(${unicos.join(",")})&select=id,nombre,activo`, opts)) || [];
+  if (provs.length !== unicos.length || provs.some((p) => !p.activo)) {
+    return NextResponse.json({ error: "Uno de los proveedores no existe o está dado de baja. Actualizá la lista." }, { status: 409 });
+  }
+  const ya = new Set(((await sbGet(`ordenes_compra_cotizaciones?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=proveedor_id`, opts)) || []).map((c) => c.proveedor_id));
+  const quien = await nombreEmpleado(sesion);
+  const nuevas = provs.filter((p) => !ya.has(p.id)).map((p) => ({
+    empresa_id: e, orden_id: oc.id, proveedor_id: p.id, proveedor_nombre: String(p.nombre).slice(0, 120),
+    pedida_por: sesion.empleado_id || null, pedida_por_nombre: quien,
+  }));
+  const creadas = nuevas.length ? (await sbPost("ordenes_compra_cotizaciones", nuevas, opts)) || [] : [];
+  broadcastRefresh(e, "ordenes_compra");
+  return NextResponse.json({ ok: true, cotizaciones: creadas });
+}
+
+async function guardarCotizacion(sesion, d) {
+  const e = sesion.empresa_id;
+  const c = await leerCotizacion(sesion, d.id);
+  if (!c) return noEncontreCotizacion();
+  const oc = await leerOrden(sesion, c.orden_id);
+  if (!oc) return noEncontreOc();
+  if (!ocACotizar(oc)) return noEsACotizar();
+  const ahora = new Date().toISOString();
+  const respondida = d.total !== null || d.plazo_dias !== null || Boolean(d.nota);
+  const [fila] = (await sbPatch(`ordenes_compra_cotizaciones?id=eq.${c.id}&empresa_id=eq.${e}`, {
+    total: d.total, plazo_dias: d.plazo_dias, nota: d.nota, respondida_at: respondida ? c.respondida_at || ahora : null, updated_at: ahora,
+  }, { sesion })) || [];
+  broadcastRefresh(e, "ordenes_compra");
+  return NextResponse.json({ ok: true, cotizacion: fila || c });
+}
+
+async function quitarCotizacion(sesion, id) {
+  const e = sesion.empresa_id;
+  const c = await leerCotizacion(sesion, id);
+  if (!c) return NextResponse.json({ ok: true });
+  const oc = await leerOrden(sesion, c.orden_id);
+  if (oc && !ocACotizar(oc)) return noEsACotizar();
+  await sbDelete(`ordenes_compra_cotizaciones?id=eq.${c.id}&empresa_id=eq.${e}`, { sesion });
+  broadcastRefresh(e, "ordenes_compra");
+  return NextResponse.json({ ok: true });
+}
+
+/** El proveedor elegido se queda con la orden: deja de estar a cotizar y sigue como borrador. */
+async function adjudicarOrden(sesion, id) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const c = await leerCotizacion(sesion, id);
+  if (!c) return noEncontreCotizacion();
+  const oc = await leerOrden(sesion, c.orden_id);
+  if (!oc) return noEncontreOc();
+  if (!ocACotizar(oc)) return noEsACotizar();
+  const [prov] = (await sbGet(`proveedores?id=eq.${c.proveedor_id}&empresa_id=eq.${e}&select=id,nombre,activo&limit=1`, opts)) || [];
+  if (!prov?.activo) return NextResponse.json({ error: "Ese proveedor está dado de baja" }, { status: 409 });
+  const ahora = new Date().toISOString();
+  // Solo si sigue a cotizar: dos personas eligiendo a la vez no se pisan
+  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}&estado=eq.borrador&proveedor_id=is.null`, {
+    proveedor_id: prov.id, proveedor_nombre: String(prov.nombre).slice(0, 120), updated_at: ahora,
+  }, opts)) || [];
+  if (!fila) return noEsACotizar();
+  await sbPatch(`ordenes_compra_cotizaciones?id=eq.${c.id}&empresa_id=eq.${e}`, { elegida: true, updated_at: ahora }, opts);
+  broadcastRefresh(e, "ordenes_compra");
+  return NextResponse.json({ ok: true, orden: fila });
+}
+
 async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
@@ -735,9 +837,16 @@ export async function POST(request) {
       if (d.accion === "oc_enviar") return await enviarOrden(sesion, d.id);
       if (d.accion === "oc_anular") return await anularOrden(sesion, d.id);
       if (d.accion === "oc_cerrar_faltantes") return await cerrarOrdenConFaltantes(sesion, d);
+      if (d.accion === "oc_cotizacion_pedir") return await pedirCotizacion(sesion, d);
+      if (d.accion === "oc_cotizacion_guardar") return await guardarCotizacion(sesion, d);
+      if (d.accion === "oc_cotizacion_quitar") return await quitarCotizacion(sesion, d.id);
+      if (d.accion === "oc_adjudicar") return await adjudicarOrden(sesion, d.id);
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionCotizaciones(err)) {
+        return NextResponse.json({ error: "Para pedir cotizaciones falta correr la migración 125 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionCierre(err)) {
         return NextResponse.json({ error: "Para cerrar órdenes con faltantes falta correr la migración 123 en Supabase." }, { status: 409 });
       }

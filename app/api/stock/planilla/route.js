@@ -27,10 +27,13 @@ import { logger } from "../../../lib/logger";
 const LOTE = 500;
 const DIAS_ANULADOS = 60;
 
-/** OC abiertas de la empresa como van a la planilla; null si no se pudieron leer (así la planilla no borra las suyas). */
+/**
+ * OC abiertas de la empresa como van a la planilla; null si no se pudieron leer (así la planilla no borra las suyas).
+ * Las que están "A cotizar" (sin proveedor, 125) todavía no son una compra: no van como EN TRÁNSITO.
+ */
 async function ordenesAbiertas(e, timezone) {
   const ocs = await sbGet(
-    `ordenes_compra?empresa_id=eq.${e}&estado=in.(${ESTADOS_OC_ABIERTA.join(",")})` +
+    `ordenes_compra?empresa_id=eq.${e}&estado=in.(${ESTADOS_OC_ABIERTA.join(",")})&proveedor_id=not.is.null` +
     "&select=id,numero,proveedor_nombre,estado,fecha_prometida,enviada_at,created_at&order=numero.asc&limit=1000",
     { silent: true, fallback: null }
   );

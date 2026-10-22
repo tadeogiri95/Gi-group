@@ -2,11 +2,13 @@
 // app/components/AComprar.jsx — Planta → Compras → A comprar (Compras, parte
 // 21; ítem 41). Administración ve juntos los pedidos pendientes de los jefes
 // de taller y lo que la planilla MRP marca para comprar, elige el proveedor
-// de cada renglón y Gypi arma una orden de compra por proveedor.
+// de cada renglón y Gypi arma una orden de compra por proveedor. El proveedor
+// es opcional: lo que va sin proveedor queda en una orden "A cotizar" que se
+// manda a cotizar a varios (125).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { ESTADOS_OC_ABIERTA, MONEDAS, agruparPorProveedor, leerImporte, lineasAComprar } from "../lib/ordenesCompra";
+import { ESTADOS_OC_ABIERTA, MONEDAS, NOMBRE_A_COTIZAR, agruparPorProveedor, leerImporte, lineasAComprar } from "../lib/ordenesCompra";
 import { faltaTabla } from "../lib/compras";
 import { Chip } from "./ui";
 
@@ -96,7 +98,7 @@ export default function AComprar({ empresaId, onCreadas }) {
   const visibles = useMemo(() => conTexto.filter((l) => filtro === "todo" || l.origen === filtro), [conTexto, filtro]);
   const elegidasLista = conCambios.filter((l) => elegidas.has(l.clave));
   const grupos = agruparPorProveedor(elegidasLista);
-  const nombreProveedor = (id) => proveedores.find((p) => p.id === id)?.nombre || "";
+  const nombreProveedor = (id) => (id ? proveedores.find((p) => p.id === id)?.nombre || "" : NOMBRE_A_COTIZAR);
 
   const cambiar = (clave, campo, valor) => setCambios((c) => ({ ...c, [clave]: { ...c[clave], [campo]: valor } }));
   const tildar = (clave) => setElegidas((s) => {
@@ -108,8 +110,6 @@ export default function AComprar({ empresaId, onCreadas }) {
   const armar = async () => {
     setError(null);
     if (!elegidasLista.length) { setError("Tildá lo que querés comprar"); return; }
-    const sinProveedor = elegidasLista.filter((l) => !l.proveedor_id);
-    if (sinProveedor.length) { setError(`Elegí el proveedor de: ${sinProveedor.slice(0, 3).map((l) => l.descripcion).join(", ")}${sinProveedor.length > 3 ? "…" : ""}`); return; }
     const payload = [];
     for (const l of elegidasLista) {
       const cantidad = typeof l.cantidad === "number" ? l.cantidad : leerCantidadMovimiento(l.cantidad);
@@ -120,7 +120,7 @@ export default function AComprar({ empresaId, onCreadas }) {
         if (l.precio_unitario.trim() && precio === null) { setError(`Revisá el precio de ${l.descripcion}`); return; }
       }
       payload.push({
-        proveedor_id: Number(l.proveedor_id), sku: l.sku, descripcion: String(l.descripcion).slice(0, 200), unidad: l.unidad,
+        proveedor_id: l.proveedor_id ? Number(l.proveedor_id) : null, sku: l.sku, descripcion: String(l.descripcion).slice(0, 200), unidad: l.unidad,
         cantidad, precio_unitario: precio ?? null, pedido_id: l.pedido_id, ot: l.ot,
       });
     }
@@ -144,6 +144,7 @@ export default function AComprar({ empresaId, onCreadas }) {
       {faltaMigracion && <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">{AVISO_MIGRACION_114}</div>}
       <div className="text-[13px] text-gypi-dim mb-2">
         Tildá lo que vas a comprar y elegí el proveedor. Se arma una orden de compra por proveedor, con el último precio sin IVA.
+        Lo que dejes sin proveedor va a una orden &quot;A cotizar&quot; para pedirle precio a varios.
       </div>
       {!proveedores.length && (
         <div role="alert" className="text-[13px] text-gypi-red mb-2">No hay proveedores cargados. Cargalos en la pestaña Proveedores.</div>
@@ -180,7 +181,7 @@ export default function AComprar({ empresaId, onCreadas }) {
                 <div className="flex gap-2 mt-2 flex-wrap">
                   <select aria-label={`Proveedor de ${l.descripcion}`} className="g-input flex-1 min-w-[140px]" value={l.proveedor_id || ""}
                     onChange={(e) => cambiar(l.clave, "proveedor_id", e.target.value ? Number(e.target.value) : null)}>
-                    <option value="">Elegí proveedor…</option>
+                    <option value="">Sin proveedor (a cotizar)</option>
                     {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
                   <input aria-label={`Cantidad de ${l.descripcion}`} className="g-input w-[90px]" inputMode="decimal"

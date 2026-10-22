@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { fotoBase64, subirImagen } from "../lib/foto";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { ESTADOS_OC, ESTADOS_OC_RECIBIBLE, ocAtrasada, pendienteItem } from "../lib/ordenesCompra";
+import { ESTADOS_OC, ESTADOS_OC_RECIBIBLE, ocACotizar, ocAtrasada, pendienteItem } from "../lib/ordenesCompra";
 import { faltaTabla } from "../lib/compras";
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
@@ -197,7 +197,8 @@ export default function RecibirCompra({ empresaId, comprador = false }) {
     if (!empresaId) return;
     try {
       const rows = await sb.get(`ordenes_compra?estado=in.(${ESTADOS_OC_RECIBIBLE.join(",")})&order=numero.desc&limit=300`);
-      setOrdenes(rows || []);
+      // Una orden "A cotizar" todavía no tiene a quién comprarle: no se recibe (125)
+      setOrdenes((rows || []).filter((o) => !ocACotizar(o)));
       setFalta(false);
     } catch (e) {
       setOrdenes([]);
