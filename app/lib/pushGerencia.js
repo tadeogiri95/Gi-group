@@ -1,6 +1,6 @@
 // app/lib/pushGerencia.js — Aviso al celular para gerencial y administrativo
 // de una empresa (Firebase Cloud Messaging). Lo usa el cron del reporte del
-// día (parte 26). Sin credenciales de Firebase no manda nada y no falla.
+// día (parte 26) y el de la flota (parte 30). Sin credenciales de Firebase no manda nada y no falla.
 import admin from "firebase-admin";
 import { sbGetAll, sbDelete } from "./sbHelpers";
 import { logger } from "./logger";
@@ -21,27 +21,46 @@ const TOKEN_MUERTO = new Set([
   "messaging/invalid-argument",
 ]);
 
+// Firebase, o null si no está configurado (entonces no se manda nada)
+function obtenerEnvio(messaging) {
+  if (messaging) return messaging;
+  try {
+    const app = appFirebase();
+    return app ? admin.messaging(app) : null;
+  } catch (e) {
+    logger.error("[pushGerencia] Firebase no configurado", e);
+    return null;
+  }
+}
+
 /**
  * @param {string} empresaId
  * @param {{ title: string, body: string, data?: Record<string, string> }} mensaje
  * @param {{ messaging?: { send: Function } }} [opts] para pruebas
  * @returns {Promise<number>} avisos entregados
  */
-export async function enviarPushGerencia(empresaId, { title, body, data = {} }, { messaging } = {}) {
-  let envio = messaging;
-  if (!envio) {
-    try {
-      const app = appFirebase();
-      if (!app) return 0;
-      envio = admin.messaging(app);
-    } catch (e) {
-      logger.error("[pushGerencia] Firebase no configurado", e);
-      return 0;
-    }
-  }
+export async function enviarPushGerencia(empresaId, mensaje, { messaging } = {}) {
+  const envio = obtenerEnvio(messaging);
+  if (!envio) return 0;
   const { data: gerencia } = await sbGetAll(`empleados?empresa_id=eq.${empresaId}&rol=in.(gerencial,administrativo)&activo=eq.true&select=legajo&order=legajo.asc`);
-  if (!gerencia.length) return 0;
-  const { data: tokens } = await sbGetAll(`push_tokens?empresa_id=eq.${empresaId}&legajo=in.(${gerencia.map((e) => e.legajo).join(",")})&select=token&order=token.asc`);
+  return enviarPushLegajos(empresaId, gerencia.map((e) => e.legajo), mensaje, { messaging: envio });
+}
+
+/**
+ * Aviso al celular de ciertos legajos de la empresa (por ejemplo, el
+ * responsable de un vehículo; Flota, parte 30).
+ * @param {string} empresaId
+ * @param {Array<string|number>} legajos
+ * @param {{ title: string, body: string, data?: Record<string, string> }} mensaje
+ * @param {{ messaging?: { send: Function } }} [opts] para pruebas
+ * @returns {Promise<number>} avisos entregados
+ */
+export async function enviarPushLegajos(empresaId, legajos, { title, body, data = {} }, { messaging } = {}) {
+  const lista = [...new Set((legajos || []).filter((l) => l !== null && l !== undefined && l !== ""))];
+  if (!lista.length) return 0;
+  const envio = obtenerEnvio(messaging);
+  if (!envio) return 0;
+  const { data: tokens } = await sbGetAll(`push_tokens?empresa_id=eq.${empresaId}&legajo=in.(${lista.map((l) => encodeURIComponent(String(l))).join(",")})&select=token&order=token.asc`);
   // FCM solo acepta textos en data
   const datos = Object.fromEntries(Object.entries({ empresa_id: empresaId, ...data }).map(([k, v]) => [k, String(v)]));
   let enviados = 0;

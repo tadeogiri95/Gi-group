@@ -2,7 +2,8 @@
 // 28; ítem 43; migración 126).
 //
 // POST { accion, ... } (gerencia y Administración)
-//   vehiculo_guardar  → alta o edición; la patente se guarda sin espacios ni guiones
+//   vehiculo_guardar  → alta o edición; la patente se guarda sin espacios ni guiones;
+//                       con el último service y cada cuánto se revisa cada aspecto (128)
 //   vehiculo_baja     → dar de baja o reactivar (no se borra: tiene historial)
 //   papel_guardar     → con id corrige un papel; sin id agrega uno (renovar)
 //   papel_borrar      → un papel cargado por error
@@ -32,6 +33,12 @@ function faltaMigracion(err) {
   return /vehiculos|vehiculo_papeles|licencia_/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
 }
 
+// Parte 30: frecuencias, último service y aviso diario de la flota
+function faltaMigracionAlertas(err) {
+  const m = String(err?.message);
+  return /frecuencias|service_fecha|service_km|aviso_firma/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
 function faltaMigracionChecklist(err) {
   const m = String(err?.message);
   return /vehiculo_checklists|flota_config/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
@@ -56,7 +63,9 @@ async function guardarVehiculo(sesion, d) {
     patente, tipo: d.tipo, marca: d.marca, modelo: d.modelo, anio: d.anio, color: d.color,
     motor: d.motor, chasis: d.chasis, km: d.km, combustible: d.combustible, foto_url: d.foto_url,
     division: d.division, responsable_id: d.responsable_id, notas: d.notas, updated_at: ahora,
+    service_fecha: d.service_fecha, service_km: d.service_km,
   };
+  if (d.frecuencias) fila.frecuencias = d.frecuencias;
   try {
     if (d.id) {
       const [antes] = (await sbGet(`vehiculos?id=eq.${d.id}&empresa_id=eq.${e}&select=km`, opts)) || [];
@@ -228,6 +237,9 @@ export async function POST(request) {
       if (d.accion === "checklist_plantilla_guardar") return await guardarPlantilla(sesion, d);
       return await guardarLicencia(sesion, d);
     } catch (err) {
+      if (faltaMigracionAlertas(err)) {
+        return NextResponse.json({ error: "Para las alertas de la flota falta correr la migración 128 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionChecklist(err)) {
         return NextResponse.json({ error: "Para el checklist de vehículos falta correr la migración 127 en Supabase." }, { status: 409 });
       }

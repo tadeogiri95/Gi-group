@@ -7,12 +7,13 @@ import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import {
   AVISO_LICENCIA, COMBUSTIBLES, RESULTADOS_ITV, SEMAFORO, TIPOS_PAPEL, TIPOS_VEHICULO,
-  avisosVehiculo, estadoVencimiento, nombrePapel, nombreTipoVehiculo, papelesVigentes, peorNivel, textoVencimiento, tipoPapel,
+  estadoVencimiento, nombrePapel, nombreTipoVehiculo, papelesVigentes, peorNivel, textoVencimiento, tipoPapel,
 } from "../lib/flota";
 import { Chip } from "./ui";
 import BotonFoto from "./BotonFoto";
 import ChecklistVehiculo from "./ChecklistVehiculo";
 import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
+import { FRECUENCIAS, alertasVehiculo } from "../lib/alertasFlota";
 
 async function postFlota(body) {
   const res = await apiFetch("/api/flota", { method: "POST", body: JSON.stringify(body) });
@@ -34,16 +35,44 @@ function Campo({ id, label, children }) {
   );
 }
 
-const VEHICULO_VACIO = { patente: "", tipo: "utilitario", marca: "", modelo: "", anio: "", color: "", motor: "", chasis: "", km: "", combustible: "", foto_url: null, division: "", responsable_id: "", notas: "" };
+const VEHICULO_VACIO = { patente: "", tipo: "utilitario", marca: "", modelo: "", anio: "", color: "", motor: "", chasis: "", km: "", combustible: "", foto_url: null, division: "", responsable_id: "", notas: "", service_fecha: "", service_km: "" };
+
+/** Lo que la empresa cambió de las frecuencias de fábrica, como texto para el formulario. */
+function frecuenciasForm(propias) {
+  const p = propias && typeof propias === "object" ? propias : {};
+  return Object.fromEntries(FRECUENCIAS.map((f) => [f.id, { dias: p[f.id]?.dias ?? "", km: p[f.id]?.km ?? "" }]));
+}
+
+/** Solo lo que difiere de fábrica (vacío = la de fábrica). Devuelve { frecuencias } o { error }. */
+function frecuenciasParaGuardar(form) {
+  const out = {};
+  for (const f of FRECUENCIAS) {
+    const dias = numeroONull(form[f.id]?.dias);
+    const km = numeroONull(form[f.id]?.km);
+    if (dias !== null && !(Number.isInteger(dias) && dias >= 1 && dias <= 3650)) return { error: `${f.nombre}: los días van de 1 a 3650` };
+    if (km !== null && !(Number.isInteger(km) && km >= 1 && km <= 1000000)) return { error: `${f.nombre}: los kilómetros van en números enteros` };
+    const propia = {};
+    if (dias !== null && dias !== f.dias) propia.dias = dias;
+    if (km !== null && km !== f.km) propia.km = km;
+    if (Object.keys(propia).length) out[f.id] = propia;
+  }
+  return { frecuencias: out };
+}
 
 export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancelar, onGuardado }) {
   const [form, setForm] = useState(() => (vehiculo ? { ...VEHICULO_VACIO, ...Object.fromEntries(Object.entries(vehiculo).map(([k, v]) => [k, v ?? ""])) } : { ...VEHICULO_VACIO }));
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+  const [frec, setFrec] = useState(() => frecuenciasForm(vehiculo?.frecuencias));
+  const [verFrec, setVerFrec] = useState(false);
 
   const guardar = async () => {
     if (!form.patente.trim()) { setError("Poné la patente"); return; }
+    const serviceKm = numeroONull(form.service_km);
+    if (serviceKm !== null && !(Number.isInteger(serviceKm) && serviceKm >= 0)) { setError("Los kilómetros del último service van en números enteros"); return; }
+    const fr = frecuenciasParaGuardar(frec);
+    if (fr.error) { setError(fr.error); setVerFrec(true); return; }
     const anio = numeroONull(form.anio);
     if (anio !== null && !(Number.isInteger(anio) && anio >= 1950 && anio <= 2100)) { setError("El año va con 4 números, por ejemplo 2019"); return; }
     const km = numeroONull(form.km);
@@ -68,6 +97,9 @@ export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancela
         division: vacioANull(form.division),
         responsable_id: form.responsable_id || null,
         notas: vacioANull(form.notas),
+        service_fecha: form.service_fecha || null,
+        service_km: serviceKm,
+        frecuencias: fr.frecuencias,
       });
       await onGuardado(data.vehiculo);
     } catch (e) {
@@ -122,8 +154,34 @@ export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancela
           <datalist id="veh-divisiones">{divisiones.map((d) => <option key={d} value={d} />)}</datalist>
         </Campo>
       </div>
+      <div className="flex gap-2">
+        <Campo id="veh-service-fecha" label="Último service (fecha)"><input id="veh-service-fecha" type="date" className="g-input w-full mb-2" value={form.service_fecha} onChange={cambiar("service_fecha")} /></Campo>
+        <Campo id="veh-service-km" label="Último service (km)"><input id="veh-service-km" className="g-input w-full mb-2" inputMode="numeric" value={form.service_km} onChange={cambiar("service_km")} /></Campo>
+      </div>
       <label className="g-label" htmlFor="veh-notas">Notas</label>
       <input id="veh-notas" className="g-input w-full mb-2" value={form.notas} onChange={cambiar("notas")} maxLength={500} />
+      <button type="button" onClick={() => setVerFrec(!verFrec)} aria-expanded={verFrec} className="min-h-[44px] bg-transparent border-none p-0 text-[13px] font-semibold text-gypi-dim cursor-pointer font-body">
+        {verFrec ? "▾" : "▸"} Cada cuánto se revisa
+      </button>
+      {verFrec && (
+        <div className="mb-2">
+          <div className="text-[12px] text-gypi-dim mb-1.5">Lo que pase primero. Vacío = lo de siempre (entre paréntesis).</div>
+          <table className="w-full text-[13px] border-collapse">
+            <thead><tr className="text-gypi-dim text-left"><th className="font-semibold py-1">Qué</th><th className="font-semibold py-1">Días</th><th className="font-semibold py-1">Km</th></tr></thead>
+            <tbody>
+              {FRECUENCIAS.map((f) => (
+                <tr key={f.id}>
+                  <td className="py-1 pr-2">{f.nombre}</td>
+                  <td className="py-1 pr-2"><input className="g-input w-full" inputMode="numeric" aria-label={`${f.nombre}: cada cuántos días`} placeholder={f.dias ? `(${f.dias})` : "—"}
+                    value={frec[f.id].dias} onChange={(e) => setFrec((x) => ({ ...x, [f.id]: { ...x[f.id], dias: e.target.value } }))} /></td>
+                  <td className="py-1"><input className="g-input w-full" inputMode="numeric" aria-label={`${f.nombre}: cada cuántos km`} placeholder={f.km ? `(${f.km.toLocaleString("es-AR")})` : "—"}
+                    value={frec[f.id].km} onChange={(e) => setFrec((x) => ({ ...x, [f.id]: { ...x[f.id], km: e.target.value } }))} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="flex gap-2 items-center mb-3">
         <BotonFoto label={form.foto_url ? "📷 Cambiar foto" : "📷 Foto del vehículo"} disabled={enviando} onFoto={(url) => setForm((f) => ({ ...f, foto_url: url }))} />
         {form.foto_url && <img src={form.foto_url} alt="Foto del vehículo" className="h-12 w-16 object-cover rounded-[6px]" />}
@@ -280,8 +338,9 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
   const [verChecklist, setVerChecklist] = useState(null);
   const [error, setError] = useState(null);
   const responsable = empleados.find((e) => e.id === vehiculo.responsable_id) || null;
-  const avisos = avisosVehiculo(vehiculo, papeles, responsable, hoy);
+  const avisos = alertasVehiculo(vehiculo, { papeles, checklists, responsable, hoy });
   const nivel = peorNivel(avisos);
+  const revisiones = avisos.filter((a) => a.tipo === "revision");
   const vigentes = papelesVigentes(papeles);
   const idsVigentes = new Set(vigentes.map((p) => p.id));
   const historial = papeles.filter((p) => !idsVigentes.has(p.id));
@@ -402,6 +461,16 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
           <div className="flex-1 text-[14px] text-gypi-dim">Sin responsable. Elegilo en Editar datos.</div>
         )}
       </div>
+
+      <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Revisiones</div>
+      <ul aria-label="Revisiones" className="list-none m-0 p-0 flex flex-col gap-1 mb-3">
+        {revisiones.map((a) => (
+          <li key={a.clave} className="flex items-center gap-2 text-[14px]">
+            <span className="flex-1 min-w-0">{a.texto}{a.ultima?.fecha ? <span className="text-[12px] text-gypi-dim"> · última el {fechaCorta(a.ultima.fecha)}{a.ultima.km != null ? ` a los ${a.ultima.km.toLocaleString("es-AR")} km` : ""}</span> : null}</span>
+            {a.detalle ? <Semaforo nivel={a.nivel}>{a.detalle}</Semaforo> : <Semaforo nivel={a.nivel}>Pendiente</Semaforo>}
+          </li>
+        ))}
+      </ul>
 
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Últimos checklists</div>
       <div className="mb-3"><ListaChecklists checklists={checklists.slice(0, 10)} conPatente={false} onVer={setVerChecklist} /></div>
