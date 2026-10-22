@@ -175,8 +175,8 @@ function mockSync({ urls = { inventario: "https://docs.google.com/inv.csv", arti
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
-    { match: (u) => u === "https://docs.google.com/inv.csv", respond: () => ({ status: 200, body: INVENTARIO }) },
-    { match: (u) => u === "https://docs.google.com/art.csv", respond: () => ({ status: 200, body: ARTICULOS }) },
+    { match: (u) => u.startsWith("https://docs.google.com/inv.csv"), respond: () => ({ status: 200, body: INVENTARIO }) },
+    { match: (u) => u.startsWith("https://docs.google.com/art.csv"), respond: () => ({ status: 200, body: ARTICULOS }) },
     {
       match: (u, o) => u.includes(`/rest/v1/config_sistema`) && (!o?.method || o.method === "GET"),
       respond: (u) => {
