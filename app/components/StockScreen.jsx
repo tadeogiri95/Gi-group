@@ -232,7 +232,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
             {filtrados.length === articulos.length ? `${articulos.length} artículos` : `${filtrados.length} de ${articulos.length} artículos`}
             {filtrados.length > MOSTRAR ? `. Se muestran los primeros ${MOSTRAR}: buscá para ver otros.` : ""}
           </div>
-          <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
+          <ul className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
             {filtrados.slice(0, MOSTRAR).map((a) => (
               <li key={a.sku} className="flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">
                 <input type="checkbox" checked={elegidos.has(a.sku)} onChange={() => alternar(a.sku)}

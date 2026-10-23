@@ -337,8 +337,11 @@ export default function HomeContent() {
   );
 
   // ─── App shell ───
+  // En la computadora, Planta y Equipo (trabajo de oficina) usan todo el
+  // ancho; el resto sigue como un celular en el medio (auditoría 22/10)
+  const ancho = uIsGer && (screen === "planta" || screen === "equipo");
   return (
-    <div className="app-shell bg-gypi-bg">
+    <div className={`app-shell bg-gypi-bg ${ancho ? "app-shell--ancho" : ""}`}>
       {!isDemo && <PushManager legajo={u.legajo} empresaId={u.empresa_id || empresa?.id} />}
 
       {/* Dentro de una sección de "Más" el título lo pone la sección, con "← Más" */}

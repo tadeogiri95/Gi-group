@@ -175,7 +175,7 @@ export default function AComprar({ empresaId, onCreadas }) {
           {lineas.length ? "No hay nada con ese filtro." : "No hay pedidos pendientes ni sugeridos de la planilla para comprar."}
         </div>
       ) : (
-        <ul aria-label="A comprar" className="list-none m-0 p-0 flex flex-col gap-1.5 mb-3">
+        <ul aria-label="A comprar" className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5 mb-3">
           {visibles.slice(0, MOSTRAR).map((l) => (
             <li key={l.clave} className={`p-2 rounded-[10px] border bg-gypi-surface ${elegidas.has(l.clave) ? "border-gypi-amber" : "border-gypi-border"}`}>
               <label className="flex items-start gap-2 cursor-pointer">

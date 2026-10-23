@@ -170,7 +170,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
               {vehiculos.length ? "No hay vehículos con ese filtro." : "Todavía no hay vehículos. Agregá el primero con su patente, su responsable y sus papeles."}
             </div>
           ) : (
-            <ul aria-label="Vehículos" className="list-none m-0 p-0 flex flex-col gap-1.5">
+            <ul aria-label="Vehículos" className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
               {filas.map(({ v, nivel, urgentes }) => {
                 const resp = porId.get(v.responsable_id);
                 const datos = [nombreTipoVehiculo(v.tipo), [v.marca, v.modelo].filter(Boolean).join(" "), resp?.nombre].filter(Boolean);
@@ -207,7 +207,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
           ) : !todasUrgentes.length ? (
             <div className="text-[14px] text-gypi-dim">✅ Toda la flota está al día.</div>
           ) : (
-            <ul aria-label="Alertas de la flota" className="list-none m-0 p-0 flex flex-col gap-1.5">
+            <ul aria-label="Alertas de la flota" className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
               {todasUrgentes.map((a) => (
                 <li key={`${a.vehiculo.id}-${a.clave}`}>
                   <button onClick={() => setFichaId(a.vehiculo.id)} aria-label={`${a.vehiculo.patente}: ${textoAlerta(a, textoVencimiento)}`}
@@ -274,7 +274,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
           {!choferes.length ? (
             <div className="text-[14px] text-gypi-dim">Todavía no hay choferes. Elegí el responsable en la ficha de cada vehículo.</div>
           ) : (
-            <ul aria-label="Choferes" className="list-none m-0 p-0 flex flex-col gap-1.5">
+            <ul aria-label="Choferes" className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
               {choferes.map(({ e, estado, patentes }) => {
                 const nivel = estado.nivel === "sin_fecha" ? "pronto" : estado.nivel;
                 return (
