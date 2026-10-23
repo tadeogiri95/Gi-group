@@ -7,7 +7,9 @@
 // la parte 8, el costo de mano de obra (solo el dueño, con costoHora); desde
 // la parte 9, cuántos sueltos hay y cuántos están en acopio y cargados; desde
 // la parte 10, los bultos cargados y si la carga está firmada; desde Stock
-// parte 16, el material necesario contra el retirado.
+// parte 16, el material necesario contra el retirado. Desde la auditoría del
+// 22/10, el estado de cada etapa de la ruta (como en el Tablero), que se ve
+// aunque nadie registre tareas.
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
@@ -19,6 +21,8 @@ import { resumenSueltos } from "../lib/sueltos";
 import { avancePiezas, reglasPieza, nombresEtapas, pct as pctPiezas, porcentajeOt } from "../lib/piezas";
 import { estadoCarga } from "../lib/carga";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
+import { filasTablero, ESTADO_INFO } from "../lib/avance";
+import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
@@ -33,6 +37,16 @@ function Dato({ label, valor }) {
       <div className="text-base font-bold text-gypi-text mt-0.5">{valor}</div>
     </div>
   );
+}
+
+// Mismos colores que las celdas del Tablero
+function claseEstado(estado) {
+  switch (estado) {
+    case "aprobada": return "bg-gypi-green/15 text-gypi-green";
+    case "terminada": return "bg-gypi-amber/15 text-gypi-amber-ink";
+    case "en_curso": return "bg-gypi-amber/15 text-gypi-amber-ink";
+    default: return "bg-gypi-surf-hi text-gypi-dim";
+  }
 }
 
 function Barra({ pct }) {
@@ -53,6 +67,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const [piezas, setPiezas] = useState({ piezas: [], pasos: [] });
   const [carga, setCarga] = useState({ bultos: [], fila: null });
   const [acta, setActa] = useState({ fila: null, pendientes: [] });
+  const [avance, setAvance] = useState([]);
   const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
 
@@ -62,7 +77,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
     (async () => {
       try {
         const ot = encodeURIComponent(proyecto.ot);
-        const [regs, emps, ncs, sts, bultos, cargas, actas, pendientes, pzs, pasos] = await Promise.all([
+        const [regs, emps, ncs, sts, bultos, cargas, actas, pendientes, pzs, pasos, av] = await Promise.all([
           sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&codigo_proyecto=eq.${ot}&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,etapa,tipo,causa,cantidad,duracion_min&order=hora_inicio.asc`),
           sb.get(`empleados?empresa_id=eq.${empresaId}&select=id,legajo,nombre,apodo`).catch(() => []),
           // Sin la migración 101 no hay tabla: el detalle sigue sin ese dato
@@ -78,6 +93,8 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           // Sin las migraciones 109 y 110 (piezas con QR), igual
           sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=id,etapas&order=id.asc`).then((r) => r.data || []).catch(() => []),
           sbGetAll(`pasos_pieza?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=pieza_id,etapa&order=id.asc`).then((r) => r.data || []).catch(() => []),
+          // Sin la migración 100, sin estado de las etapas
+          sb.get(`avance_etapas?empresa_id=eq.${empresaId}&ot=eq.${ot}&select=ot,etapa,estado,terminada_at,aprobada_at`).catch(() => []),
         ]);
         if (!vivo) return;
         setNoConformes(ncs || []);
@@ -85,10 +102,11 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         setPiezas({ piezas: Array.isArray(pzs) ? pzs : [], pasos: Array.isArray(pasos) ? pasos : [] });
         setCarga({ bultos: bultos || [], fila: cargas?.[0] || null });
         setActa({ fila: actas?.[0] || null, pendientes: pendientes || [] });
+        setAvance(Array.isArray(av) ? av : []);
         setTareas(regs.data || []);
         setEmpleados(emps || []);
       } catch (e) {
-        if (vivo) setError("No se pudieron cargar las tareas de esta OT.");
+        if (vivo) setError("No se pudo cargar el detalle de esta OT. Cerralo y volvé a abrirlo.");
         console.error(e);
       }
     })();
@@ -111,6 +129,16 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const iconos = Object.fromEntries(reglas.map((r) => [r.codigo, r.icon]));
   const resCarga = estadoCarga({ bultos: carga.bultos, carga: carga.fila });
   const resActa = estadoActa({ acta: acta.fila, pendientes: acta.pendientes });
+  // Etapas de la ruta con su estado: en curso si tiene horas o piezas escaneadas
+  const etapasOt = useMemo(() => {
+    if (!tareas || !proyecto?.ot) return [];
+    const ot = String(proyecto.ot);
+    const claves = new Set([
+      ...tareas.filter((t) => Number(t.etapa) > 0).map((t) => `${ot}|${t.etapa}`),
+      ...piezas.pasos.map((p) => `${ot}|${p.etapa}`),
+    ]);
+    return filasTablero([proyecto], { etapas, divisiones, avance, horas: claves, hoy: hoyArg() })[0]?.celdas || [];
+  }, [tareas, piezas.pasos, proyecto, etapas, divisiones, avance]);
 
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Detalle de la OT ${proyecto?.ot}`}>
@@ -131,6 +159,24 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
+
+        {etapasOt.length > 0 && (
+          <section className="mb-4" aria-label="Etapas de la OT">
+            <div className="g-label mb-1.5">Etapas{proyecto?.liberada_at ? " · OT liberada" : ""}</div>
+            <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
+              {etapasOt.map((c) => (
+                <li key={c.codigo} className={`flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border ${c.estado === "no_aplica" ? "opacity-60" : ""}`}>
+                  {c.etapa.icon && <span className="text-lg">{c.etapa.icon}</span>}
+                  <span className={`flex-1 min-w-0 text-[14px] font-bold truncate ${c.estado === "no_aplica" ? "line-through" : ""}`}>{c.etapa.nombre}</span>
+                  <span className={`text-[12px] font-bold px-2 py-1 rounded-lg ${claseEstado(c.estado)}`}>
+                    {ESTADO_INFO[c.estado]?.nombre || c.estado}
+                    {c.estado === "aprobada" && c.fila?.aprobada_at ? ` el ${fechaCorta(c.fila.aprobada_at.slice(0, 10))}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {pctEscaneo != null && (
           <section className="mb-4" aria-label="Avance de producción por escaneo">
@@ -174,7 +220,10 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         ) : !resumen ? (
           <div className="gypi-dots py-6"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
         ) : resumen.tareas === 0 ? (
-          <div className="text-sm text-gypi-dim py-4">Todavía nadie registró tareas en esta OT.</div>
+          // Sin tareas registradas (ya no se usa "Iniciar Tarea"): no hay horas ni costo para mostrar
+          etapasOt.length === 0 && pctEscaneo == null && (
+            <div className="text-sm text-gypi-dim py-4">Todavía no hay avance en esta OT: nadie escaneó piezas ni marcó etapas.</div>
+          )
         ) : (<>
           <div className="grid grid-cols-3 gap-2 mb-4">
             <Dato label="Horas trabajadas" valor={fmtHoras(resumen.totalMin)} />

@@ -79,7 +79,7 @@ test("resumirOp — OT sin tareas", () => {
   assert.equal(r.desde, null);
 });
 
-function mockData(tareas) {
+function mockData(tareas, { avance = [], pasos = [] } = {}) {
   const pedidos = [];
   global.fetch = createFetchMock([
     {
@@ -89,6 +89,8 @@ function mockData(tareas) {
         pedidos.push(path);
         if (path.startsWith("registro_actividades")) return { status: 200, body: { data: path.includes("offset=0") ? tareas : [] } };
         if (path.startsWith("empleados")) return { status: 200, body: { data: EMPLEADOS } };
+        if (path.startsWith("avance_etapas")) return { status: 200, body: { data: avance } };
+        if (path.startsWith("pasos_pieza")) return { status: 200, body: { data: path.includes("offset=0") ? pasos : [] } };
         return { status: 200, body: { data: [] } };
       },
     },
@@ -111,7 +113,7 @@ test("DetalleOp — pide solo las tareas de esa OT y muestra horas, personas y r
   assert.match(pedido, /select=.*causa,cantidad/);
   assert.ok(screen.getByText("3 h 45 min"), "total de horas");
   assert.ok(screen.getByText("Entrega 1/11/2026 · Cantidad 1"));
-  assert.ok(screen.getByText("Enchapado"));
+  assert.equal(screen.getAllByText("Enchapado").length, 2, "en Etapas y en Horas por etapa");
   assert.ok(screen.getByText("Retrabajo"));
   assert.ok(screen.getByText("Cambio pedido por el cliente"));
   assert.ok(screen.getByText(/fuera de la ruta/));
@@ -119,8 +121,24 @@ test("DetalleOp — pide solo las tareas de esa OT y muestra horas, personas y r
   assert.equal(cerrado, true);
 });
 
-test("DetalleOp — OT sin tareas avisa que todavía no hay datos", async () => {
-  mockData([]);
+test("DetalleOp — sin tareas muestra las etapas de la ruta con su estado (auditoría 22/10)", async () => {
+  // Ya no se usa "Iniciar Tarea": el detalle no puede decir siempre que nadie registró tareas
+  const pedidos = mockData([], {
+    avance: [{ ot: "7495", etapa: 1, estado: "aprobada", aprobada_at: "2026-10-20T12:00:00Z" }],
+    pasos: [{ pieza_id: 1, etapa: 2 }],
+  });
   render(<DetalleOp proyecto={OT} empresaId="emp-1" etapas={ETAPAS} divisiones={[MUEBLES]} onClose={() => {}} />);
-  assert.ok(await screen.findByText("Todavía nadie registró tareas en esta OT."));
+  const lista = await screen.findByRole("region", { name: "Etapas de la OT" });
+  assert.match(lista.textContent, /Corte.*Firmada el 20\/10\/2026/);
+  assert.match(lista.textContent, /Enchapado.*En curso/, "con piezas escaneadas está en curso");
+  assert.match(lista.textContent, /Armado.*Pendiente/);
+  assert.equal(screen.queryByText(/nadie registró tareas/), null);
+  assert.equal(screen.queryByText("Horas por etapa"), null);
+  assert.match(pedidos.find((p) => p.startsWith("avance_etapas")), /ot=eq\.7495/);
+});
+
+test("DetalleOp — OT sin ruta ni avance avisa que todavía no hay avance", async () => {
+  mockData([]);
+  render(<DetalleOp proyecto={{ ...OT, division: null }} empresaId="emp-1" etapas={ETAPAS} divisiones={[MUEBLES]} onClose={() => {}} />);
+  assert.ok(await screen.findByText("Todavía no hay avance en esta OT: nadie escaneó piezas ni marcó etapas."));
 });

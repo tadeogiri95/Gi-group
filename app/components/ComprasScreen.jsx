@@ -356,14 +356,21 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
   const [error, setError] = useState(null);
   const comprador = Boolean(permisos?.comprador);
 
+  // Si falla (sin señal, servidor caído) no se asume "sin permisos": antes el
+  // comprador quedaba viendo solo Pedidos sin saber por qué. Se avisa y se reintenta.
+  const [sinPermisos, setSinPermisos] = useState(false);
+  const [intento, setIntento] = useState(0);
   useEffect(() => {
     let vivo = true;
     apiFetch("/api/compras")
-      .then((r) => r.json().catch(() => ({})))
-      .then((d) => { if (vivo) setPermisos({ comprador: Boolean(d.comprador), puede_pedir: Boolean(d.puede_pedir) }); })
-      .catch(() => { if (vivo) setPermisos({ comprador: false, puede_pedir: false }); });
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d) => { if (vivo) { setSinPermisos(false); setPermisos({ comprador: Boolean(d.comprador), puede_pedir: Boolean(d.puede_pedir) }); } })
+      .catch(() => { if (vivo) setSinPermisos(true); });
     return () => { vivo = false; };
-  }, []);
+  }, [intento]);
 
   const cargar = useCallback(async () => {
     if (!empresaId || !permisos) return;
@@ -416,6 +423,14 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
     }
   };
 
+  if (!permisos && sinPermisos) {
+    return (
+      <div className="p-[18px] flex flex-col gap-3" role="alert">
+        <div className="text-[15px]">No se pudo abrir Compras. Revisá la conexión.</div>
+        <button onClick={() => { setSinPermisos(false); setIntento((n) => n + 1); }} className="g-btn g-btn-secondary">🔄 Reintentar</button>
+      </div>
+    );
+  }
   if (!permisos) return <div className="p-[18px] text-[14px] text-gypi-dim" role="status">Cargando…</div>;
 
   return (

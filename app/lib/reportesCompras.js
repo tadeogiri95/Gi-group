@@ -3,6 +3,7 @@
 // proveedor, órdenes atrasadas, pedidos de los jefes sin atender y cómo
 // cambió el precio de un artículo. Todo sin IVA; pesos y dólares por separado.
 import { ocAtrasada } from "./ordenesCompra";
+import { hoyArg } from "./dates";
 
 const DIA = 86400e3;
 
@@ -80,7 +81,7 @@ export function comprasPorProveedor(ordenes, items, mes = null) {
 const diasEntre = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DIA);
 
 /** OC que pasaron la fecha prometida, la más atrasada primero, con los días de atraso. */
-export function ordenesAtrasadas(ordenes, hoy = new Date().toISOString().slice(0, 10)) {
+export function ordenesAtrasadas(ordenes, hoy = hoyArg()) {
   return (ordenes || [])
     .filter((oc) => ocAtrasada(oc, hoy))
     .map((oc) => ({ ...oc, dias_atraso: diasEntre(oc.fecha_prometida, hoy) }))
@@ -88,7 +89,7 @@ export function ordenesAtrasadas(ordenes, hoy = new Date().toISOString().slice(0
 }
 
 /** Pedidos de los jefes que nadie pasó a una OC, el más viejo primero, con los días que llevan esperando. */
-export function pedidosSinAtender(pedidos, hoy = new Date().toISOString().slice(0, 10)) {
+export function pedidosSinAtender(pedidos, hoy = hoyArg()) {
   return (pedidos || [])
     .filter((p) => p.estado === "pendiente")
     .map((p) => ({ ...p, dias_espera: Math.max(0, diasEntre(String(p.created_at).slice(0, 10), hoy)) }))

@@ -44,6 +44,11 @@ function Vacio({ children }) {
   return <div className="text-[13px] text-gypi-dim">{children}</div>;
 }
 
+/** Las 0 h de un día en Argentina, para filtrar created_at (sin esto el día cortaba a las 21 h). */
+function inicioDiaArg(fecha) {
+  return encodeURIComponent(`${fecha}T00:00:00-03:00`);
+}
+
 /** Día siguiente a una fecha "AAAA-MM-DD" (para filtrar created_at hasta el final del día). */
 function diaSiguiente(fecha) {
   const d = new Date(`${fecha}T00:00:00Z`);
@@ -65,7 +70,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
             ? sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&select=etapa,causa,tipo,codigo_proyecto,cantidad,duracion_min,hora_inicio,hora_fin`, { maxFilas: 20000 })
             : { data: [] },
           // Sin la migración 101 no hay tabla: los indicadores siguen sin calidad
-          sbGetAll(`no_conformidades?empresa_id=eq.${empresaId}&created_at=gte.${fechaDesde}&created_at=lt.${diaSiguiente(fechaHasta)}&select=defecto,cantidad,etapa_origen,decision,minutos_retrabajo`).catch(() => ({ data: [] })),
+          sbGetAll(`no_conformidades?empresa_id=eq.${empresaId}&created_at=gte.${inicioDiaArg(fechaDesde)}&created_at=lt.${inicioDiaArg(diaSiguiente(fechaHasta))}&select=defecto,cantidad,etapa_origen,decision,minutos_retrabajo`).catch(() => ({ data: [] })),
           sbGetAll(`proyectos?empresa_id=eq.${empresaId}&select=ot,cliente,proyecto,total_modulos,fecha_entrega,estado,terminado_planilla`, { maxFilas: 20000 }),
         ]);
         if (!vivo) return;

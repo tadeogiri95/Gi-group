@@ -122,7 +122,8 @@ test("pantalla — muestra los indicadores del período", async () => {
   const dias = Math.round((Date.parse(hoyArg()) - Date.parse("2026-10-01")) / 86400000);
   assert.ok(screen.getByText(`${dias} días`));
   const nc = pedidos.find((p) => p.startsWith("no_conformidades"));
-  assert.match(nc, /created_at=gte\.2026-10-06&created_at=lt\.2026-10-13/, "incluye todo el último día");
+  // Días de Argentina: de las 0 h del primero a las 0 h del día después del último (antes cortaba a las 21 h)
+  assert.match(decodeURIComponent(nc), /created_at=gte\.2026-10-06T00:00:00-03:00&created_at=lt\.2026-10-13T00:00:00-03:00/, "incluye todo el último día");
 });
 
 test("pantalla — sin la migración 101 igual muestra el resto", async () => {
