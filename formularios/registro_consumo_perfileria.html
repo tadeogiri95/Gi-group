@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <title>Registro de consumo de perfilería</title>
+<style id="pagina">@page { size: A4 portrait; margin: 0; }</style>
 <style>
-  @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { background: #fff; }
   body {
@@ -18,10 +18,20 @@
     display: flex; flex-direction: column;
     margin: 0 auto;
   }
+  body.horizontal .hoja { width: 297mm; height: 210mm; padding: 8mm 10mm 7mm 10mm; }
   @media screen {
     body { background: #e9e9e9; padding: 8mm 0; }
     .hoja { background: #fff; box-shadow: 0 1mm 4mm rgba(0,0,0,.25); }
   }
+
+  /* Selector de orientación (solo en pantalla) */
+  .barra { display: flex; justify-content: center; gap: 2mm; margin-bottom: 5mm;
+           font-size: 10.5pt; align-items: center; }
+  .barra button { font: inherit; padding: 1.5mm 4mm; border: .3mm solid #1f3a5f; background: #fff;
+                  color: #1f3a5f; border-radius: 1mm; cursor: pointer; }
+  .barra button.activo { background: #1f3a5f; color: #fff; }
+  .barra .imprimir { margin-left: 4mm; font-weight: bold; }
+  @media print { .barra { display: none; } }
 
   /* Encabezado */
   .cab { display: flex; justify-content: space-between; align-items: flex-end;
@@ -50,12 +60,13 @@
 
   .box { display: inline-block; width: 4.6mm; height: 4.6mm; border: .4mm solid #111; background: #fff; border-radius: .5mm; }
 
-  .grid { display: grid; gap: 1.6mm 2mm; padding: 0 2mm; }
-  .grid label { display: flex; align-items: center; gap: 1mm; font-size: 8.6pt; font-weight: bold; white-space: nowrap; }
+  .grid { display: grid; gap: 1.6mm 1.2mm; padding: 0 1.2mm; }
+  .grid label { display: flex; align-items: center; gap: .8mm; font-size: 7.6pt; font-weight: bold; white-space: nowrap; }
   .grid .box { width: 3.9mm; height: 3.9mm; flex: none; }
-  .gcolor { grid-template-columns: 1.6fr 1fr 1fr; }
+  .gcolor { grid-template-columns: auto auto auto; justify-content: space-between; }
   .gcolor .otro { grid-column: span 2; }
   .gcolor .otro i { flex: 1; border-bottom: .3mm solid #111; height: 3.9mm; margin-left: .5mm; }
+  body.horizontal .grid label { font-size: 8.6pt; }
 
   /* Pie */
   .pie { margin-top: auto; padding-top: 3mm; display: flex; justify-content: space-between;
@@ -66,6 +77,13 @@
 </style>
 </head>
 <body>
+<div class="barra">
+  Orientación:
+  <button type="button" data-o="vertical">Vertical</button>
+  <button type="button" data-o="horizontal">Horizontal</button>
+  <button type="button" class="imprimir" onclick="window.print()">Imprimir</button>
+</div>
+
 <div class="hoja">
 
   <div class="cab">
@@ -77,26 +95,20 @@
   </div>
 
   <p class="instr">
-    <b>Un renglón por cada retiro de perfilería.</b> Escribí la fecha, tu nombre y la OT o proyecto.
+    <b>Un renglón por cada retiro de perfilería.</b> Escribí la fecha, tu nombre, la OT o proyecto y el nombre del perfil.
     <b>Tildá</b> un color; si no está en la lista, tildá <b>Otro</b> y escribilo en la línea.
     En <b>Cantidad</b> poné la cantidad retirada.
   </p>
 
   <table>
-    <colgroup>
-      <col style="width:6mm">
-      <col style="width:14mm">
-      <col style="width:30mm">
-      <col style="width:26mm">
-      <col style="width:92mm">
-      <col style="width:22mm">
-    </colgroup>
+    <colgroup id="cols"></colgroup>
     <thead>
       <tr>
         <th>N°</th>
         <th>Fecha<small>día / mes</small></th>
         <th>Operario<small>nombre</small></th>
         <th>OT / Proy.<small>n° o nombre</small></th>
+        <th>Nombre perfil<small>como figura en el perfil</small></th>
         <th>Color</th>
         <th>Cantidad</th>
       </tr>
@@ -108,25 +120,48 @@
     <div class="campo">Controló: <i style="width:48mm"></i></div>
     <div class="campo">Cargado al MRP el <i style="width:16mm"></i> por <i style="width:36mm"></i></div>
   </div>
-  <div class="marca">Formulario CONS-PERFILES · v1</div>
+  <div class="marca">Formulario CONS-PERFILES · v2</div>
 </div>
 
 <script>
-  var FILAS = 18;
+  // Anchos de columna en mm (N°, Fecha, Operario, OT, Nombre perfil, Color, Cantidad) y renglones por hoja
+  var FORMATOS = {
+    vertical:   { page: 'A4 portrait',  filas: 18, anchos: [6, 13, 22, 18, 55, 59, 17] },
+    horizontal: { page: 'A4 landscape', filas: 11, anchos: [7, 16, 32, 26, 102, 72, 22] }
+  };
   function op(t){ return '<label><span class="box"></span>' + t + '</label>'; }
   var colores = op('Anodizado natural') + op('Negro') + op('Blanco') + op('Terra') +
     '<label class="otro"><span class="box"></span>Otro:<i></i></label>';
-  var html = '';
-  for (var i = 1; i <= FILAS; i++) {
-    html += '<tr>' +
-      '<td class="n">' + i + '</td>' +
-      '<td class="fecha">/</td>' +
-      '<td></td><td></td>' +
-      '<td><div class="grid gcolor">' + colores + '</div></td>' +
-      '<td></td>' +
-    '</tr>';
+
+  function aplicar(o) {
+    var f = FORMATOS[o] || FORMATOS.vertical;
+    o = FORMATOS[o] ? o : 'vertical';
+    document.body.className = o;
+    document.getElementById('pagina').textContent = '@page { size: ' + f.page + '; margin: 0; }';
+    document.getElementById('cols').innerHTML = f.anchos.map(function (w) {
+      return '<col style="width:' + w + 'mm">';
+    }).join('');
+    var html = '';
+    for (var i = 1; i <= f.filas; i++) {
+      html += '<tr>' +
+        '<td class="n">' + i + '</td>' +
+        '<td class="fecha">/</td>' +
+        '<td></td><td></td><td></td>' +
+        '<td><div class="grid gcolor">' + colores + '</div></td>' +
+        '<td></td>' +
+      '</tr>';
+    }
+    document.getElementById('filas').innerHTML = html;
+    [].forEach.call(document.querySelectorAll('.barra [data-o]'), function (b) {
+      b.classList.toggle('activo', b.getAttribute('data-o') === o);
+    });
   }
-  document.getElementById('filas').innerHTML = html;
+
+  [].forEach.call(document.querySelectorAll('.barra [data-o]'), function (b) {
+    b.addEventListener('click', function () { aplicar(b.getAttribute('data-o')); });
+  });
+  // Permite abrir directo en una orientación: registro_consumo_perfileria.html#horizontal
+  aplicar(location.hash.slice(1));
 </script>
 </body>
 </html>
