@@ -41,17 +41,19 @@
 //                           ingresos con otro precio se reemplazan (comprador)
 // Comprador = gerencia o Administración sin división asignada (un supervisor
 // de división pide y recibe, pero no compra). Con RLS_RUTAS=on todo va con el
-// pase del usuario ({ sesion }).
+// pase del usuario ({ sesion }), salvo recibir, anular una recepción y la
+// factura: van todo o nada en una función de la base (130, service_role)
+// después de chequear permisos y la OC con el pase del usuario.
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { comprasBody } from "../../lib/schemas";
-import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
+import { sbGet, sbPost, sbPatch, sbDelete, sbRpc } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
 import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
-import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, estadoTrasRecepcion, pedidosAlCerrar, pendienteItem, precioEnPesos } from "../../lib/ordenesCompra";
+import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, pedidosAlCerrar, precioEnPesos } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -88,6 +90,11 @@ function faltaMigracionCotizaciones(err) {
 function faltaMigracionFactura(err) {
   const m = String(err?.message);
   return /cantidad_facturada|iva_alicuota|factura_otros_impuestos/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+function faltaMigracionTransacciones(err) {
+  const m = String(err?.message);
+  return /compras_(recibir|anular_recepcion|factura)/.test(m) && /PGRST202|42883|Could not find the function/.test(m);
 }
 
 function faltaMigracionRecepcion(err) {
@@ -526,32 +533,27 @@ async function nombreEmpleado(sesion) {
   return emp?.nombre ? String(emp.nombre).slice(0, 120) : null;
 }
 
-/** Deja la OC en el estado que corresponde a lo recibido y marca los pedidos que llegaron completos. */
-async function actualizarEstadoOrden(sesion, oc, items) {
-  const e = sesion.empresa_id;
-  const opts = { sesion };
-  const estado = estadoTrasRecepcion(items);
-  const ahora = new Date().toISOString();
-  const cambios = { estado, updated_at: ahora };
-  if (!oc.enviada_at) cambios.enviada_at = ahora;
-  await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, cambios, opts);
-  const completos = items.filter((it) => it.pedido_id && pendienteItem(it) === 0).map((it) => it.pedido_id);
-  const incompletos = items.filter((it) => it.pedido_id && pendienteItem(it) > 0).map((it) => it.pedido_id);
-  if (completos.length) await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${completos.join(",")})&estado=eq.en_oc`, { estado: "recibido" }, opts);
-  if (incompletos.length) await sbPatch(`pedidos_compra?empresa_id=eq.${e}&id=in.(${incompletos.join(",")})&estado=eq.recibido`, { estado: "en_oc" }, opts);
-  return estado;
+/**
+ * Lo que devuelven las funciones de la migración 130 cuando no se pudo (otra
+ * persona cambió la OC entre que la pantalla la leyó y se guardó).
+ */
+function rechazoTransaccion(r) {
+  if (r?.tipo === "sin_orden") return noEncontreOc();
+  if (r?.tipo === "sin_recepcion") return NextResponse.json({ error: "No encontré esa recepción" }, { status: 404 });
+  if (r?.tipo === "renglon") return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
+  if (r?.tipo === "a_cotizar") return NextResponse.json({ error: "Esa orden todavía está a cotizar: elegí el proveedor primero" }, { status: 409 });
+  if (r?.estado === "recibida") return NextResponse.json({ error: "Esa orden de compra ya se recibió completa" }, { status: 409 });
+  if (r?.estado === "anulada") return NextResponse.json({ error: "Esa orden de compra está anulada" }, { status: 409 });
+  return NextResponse.json({ error: "Esa orden de compra cambió recién. Actualizá la pantalla." }, { status: 409 });
 }
 
 /** Ingreso de stock de un renglón de la OC (como los de la parte 14). */
-function filaIngreso(sesion, { oc, item, articulo, cantidad, comprobante, empleadoNombre }) {
+function filaIngreso(sesion, { oc, item, articulo, comprobante, empleadoNombre }) {
   return {
-    empresa_id: sesion.empresa_id,
-    tipo: "ingreso",
     sku: item.sku,
     nombre: (articulo?.nombre || item.descripcion || "").slice(0, 200) || null,
     unidad: articulo?.unidad ?? item.unidad ?? null,
     division: articulo?.division ?? null,
-    cantidad,
     ot: item.ot || null,
     proveedor: String(oc.proveedor_nombre).slice(0, 120),
     comprobante: String(comprobante).slice(0, 60),
@@ -583,72 +585,46 @@ async function crearRecepcion(sesion, d) {
     llegan.set(l.item_id, redondear3((llegan.get(l.item_id) || 0) + l.cantidad));
   }
 
+  // Nombre, unidad y división del ingreso de stock salen de la planilla
   const empleadoNombre = await nombreEmpleado(sesion);
-  const [recepcion] = (await sbPost("recepciones_compra", {
-    empresa_id: e, orden_id: oc.id, remito: d.remito, foto_url: d.foto_url, notas: d.notas,
-    empleado_id: sesion.empleado_id || null, empleado_nombre: empleadoNombre,
-  }, opts)) || [];
-  if (!recepcion?.id) throw new Error("No se pudo guardar la recepción");
-
-  // Ingresos de stock de los renglones que son artículos de la planilla
-  const conSku = [...llegan.keys()].map((id) => porId.get(id)).filter((it) => it.sku);
-  const skus = [...new Set(conSku.map((it) => it.sku))];
+  const skus = [...new Set([...llegan.keys()].map((id) => porId.get(id).sku).filter(Boolean))];
   const articulos = skus.length
     ? (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=in.(${skus.map((x) => `"${x}"`).join(",")})&select=sku,nombre,unidad,division`, { ...opts, silent: true, fallback: [] })) || []
     : [];
   const artPorSku = new Map(articulos.map((a) => [a.sku, a]));
-  const movs = conSku.length
-    ? (await sbPost("movimientos_stock", conSku.map((item) => filaIngreso(sesion, {
-      oc, item, articulo: artPorSku.get(item.sku), cantidad: llegan.get(item.id), comprobante: oc.factura_numero || d.remito, empleadoNombre,
-    })), opts)) || []
-    : [];
-  const movPorItem = new Map(conSku.map((it, i) => [it.id, movs[i]?.id ?? null]));
+  const lineas = [...llegan.entries()].map(([itemId, cantidad]) => {
+    const item = porId.get(itemId);
+    return {
+      item_id: itemId,
+      cantidad,
+      // Solo los renglones que son artículos de la planilla entran al stock
+      ingreso: item.sku ? filaIngreso(sesion, { oc, item, articulo: artPorSku.get(item.sku), comprobante: oc.factura_numero || d.remito, empleadoNombre }) : null,
+    };
+  });
 
-  await sbPost("recepciones_compra_items", [...llegan.entries()].map(([itemId, cantidad]) => ({
-    empresa_id: e, recepcion_id: recepcion.id, item_id: itemId, cantidad, movimiento_id: movPorItem.get(itemId) ?? null,
-  })), opts);
-
-  for (const [itemId, cantidad] of llegan) {
-    const it = porId.get(itemId);
-    it.cantidad_recibida = redondear3(Number(it.cantidad_recibida || 0) + cantidad);
-    await sbPatch(`ordenes_compra_items?id=eq.${itemId}&empresa_id=eq.${e}`, { cantidad_recibida: it.cantidad_recibida }, opts);
-  }
-  const estado = await actualizarEstadoOrden(sesion, oc, items);
+  // Recepción, ingresos, renglones, cantidad recibida y estados: todo junto (130)
+  const r = await sbRpc("compras_recibir", {
+    p_empresa: e,
+    p_orden: oc.id,
+    p_recepcion: { remito: d.remito, foto_url: d.foto_url, notas: d.notas, empleado_id: sesion.empleado_id || null, empleado_nombre: empleadoNombre },
+    p_lineas: lineas,
+  });
+  if (!r?.ok) return rechazoTransaccion(r);
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "pedidos_compra");
-  if (movs.length) broadcastRefresh(e, "movimientos_stock");
-  return NextResponse.json({ ok: true, recepcion, estado, ingresos: movs.length });
+  if (r.ingresos) broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, recepcion: r.recepcion, estado: r.estado, ingresos: r.ingresos });
 }
 
 async function anularRecepcion(sesion, id) {
   const e = sesion.empresa_id;
-  const opts = { sesion };
-  const [rec] = (await sbGet(`recepciones_compra?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`, opts)) || [];
-  if (!rec) return NextResponse.json({ error: "No encontré esa recepción" }, { status: 404 });
-  if (rec.anulada) return NextResponse.json({ ok: true, recepcion: rec });
-  const oc = await leerOrden(sesion, rec.orden_id);
-  if (!oc) return noEncontreOc();
-  const ahora = new Date().toISOString();
-  const lineas = (await sbGet(`recepciones_compra_items?recepcion_id=eq.${rec.id}&empresa_id=eq.${e}&select=item_id,cantidad,movimiento_id`, opts)) || [];
-  const movs = lineas.map((l) => l.movimiento_id).filter(Boolean);
-  if (movs.length) {
-    await sbPatch(`movimientos_stock?empresa_id=eq.${e}&id=in.(${movs.join(",")})&anulado=eq.false`, { anulado: true, anulado_por: sesion.empleado_id || null, anulado_at: ahora }, opts);
-  }
-  const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
-  const porId = new Map(items.map((it) => [it.id, it]));
-  for (const l of lineas) {
-    const it = porId.get(l.item_id);
-    if (!it) continue;
-    it.cantidad_recibida = Math.max(0, redondear3(Number(it.cantidad_recibida || 0) - Number(l.cantidad)));
-    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, { cantidad_recibida: it.cantidad_recibida }, opts);
-  }
-  const [fila] = (await sbPatch(`recepciones_compra?id=eq.${rec.id}&empresa_id=eq.${e}`, { anulada: true, anulada_por: sesion.empleado_id || null, anulada_at: ahora }, opts)) || [];
-  // Una OC anulada o cerrada con faltantes no se reabre al anular una recepción
-  const estado = ["anulada", "cerrada_faltantes"].includes(oc.estado) ? oc.estado : await actualizarEstadoOrden(sesion, oc, items);
+  // Ingresos anulados, cantidades y estado de la OC: todo junto (130)
+  const r = await sbRpc("compras_anular_recepcion", { p_empresa: e, p_recepcion: id, p_empleado: sesion.empleado_id || null });
+  if (!r?.ok) return rechazoTransaccion(r);
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "pedidos_compra");
-  if (movs.length) broadcastRefresh(e, "movimientos_stock");
-  return NextResponse.json({ ok: true, recepcion: fila || { ...rec, anulada: true }, estado });
+  if (r.movimientos) broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, recepcion: r.recepcion, estado: r.estado });
 }
 
 async function facturaOrden(sesion, d) {
@@ -660,6 +636,8 @@ async function facturaOrden(sesion, d) {
   const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   const porId = new Map(items.map((it) => [it.id, it]));
   const numeroO = (v) => (v === null || v === undefined ? null : Number(v));
+  // Solo lo que cambió: sin la migración 122 esas columnas no existen
+  const renglones = [];
   for (const r of d.renglones || []) {
     const it = porId.get(r.item_id);
     if (!it) return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
@@ -668,48 +646,24 @@ async function facturaOrden(sesion, d) {
       if (r[campo] === undefined || numeroO(it[campo]) === r[campo]) continue;
       patch[campo] = r[campo];
     }
-    if (!Object.keys(patch).length) continue;
-    Object.assign(it, patch);
-    await sbPatch(`ordenes_compra_items?id=eq.${it.id}&empresa_id=eq.${e}`, patch, opts);
+    if (Object.keys(patch).length) renglones.push({ item_id: it.id, ...patch });
   }
-  const ahora = new Date().toISOString();
-  const cambios = { factura_numero: d.factura_numero, factura_fecha: d.factura_fecha, tipo_cambio: oc.moneda === "USD" ? d.tipo_cambio : null, updated_at: ahora };
-  // Sin la migración 122 la columna no viene: solo se escribe si cambió
-  if (d.otros_impuestos !== undefined && numeroO(oc.factura_otros_impuestos) !== d.otros_impuestos) cambios.factura_otros_impuestos = d.otros_impuestos;
-  const [fila] = (await sbPatch(`ordenes_compra?id=eq.${oc.id}&empresa_id=eq.${e}`, cambios, opts)) || [];
-  const ocNueva = { ...oc, ...cambios };
+  const cabecera = { factura_numero: d.factura_numero, factura_fecha: d.factura_fecha, tipo_cambio: oc.moneda === "USD" ? d.tipo_cambio : null };
+  if (d.otros_impuestos !== undefined && numeroO(oc.factura_otros_impuestos) !== d.otros_impuestos) cabecera.factura_otros_impuestos = d.otros_impuestos;
 
-  // Los ingresos ya cargados con otro precio o comprobante se reemplazan: la
-  // planilla trae los nuevos y borra los anulados (parte 15)
-  let reemplazados = 0;
-  const recepciones = (await sbGet(`recepciones_compra?orden_id=eq.${oc.id}&empresa_id=eq.${e}&anulada=eq.false&select=id,remito`, opts)) || [];
-  if (recepciones.length) {
-    const remitoDe = new Map(recepciones.map((r) => [r.id, r.remito]));
-    const lineas = (await sbGet(`recepciones_compra_items?recepcion_id=in.(${recepciones.map((r) => r.id).join(",")})&empresa_id=eq.${e}&movimiento_id=not.is.null&select=id,recepcion_id,item_id,cantidad,movimiento_id`, opts)) || [];
-    const movs = lineas.length
-      ? (await sbGet(`movimientos_stock?empresa_id=eq.${e}&id=in.(${lineas.map((l) => l.movimiento_id).join(",")})&anulado=eq.false&select=*`, opts)) || []
-      : [];
-    const movPorId = new Map(movs.map((m) => [m.id, m]));
-    const empleadoNombre = await nombreEmpleado(sesion);
-    for (const l of lineas) {
-      const mov = movPorId.get(l.movimiento_id);
-      const item = porId.get(l.item_id);
-      if (!mov || !item) continue;
-      const precio = precioEnPesos(item.precio_unitario, ocNueva.moneda, ocNueva.tipo_cambio);
-      const comprobante = (ocNueva.factura_numero || remitoDe.get(l.recepcion_id) || "").slice(0, 60);
-      const precioViejo = mov.precio_unitario === null ? null : Number(mov.precio_unitario);
-      if (precioViejo === precio && mov.comprobante === comprobante) continue;
-      const [nuevo] = (await sbPost("movimientos_stock", {
-        ...filaIngreso(sesion, { oc: ocNueva, item, articulo: { nombre: mov.nombre, unidad: mov.unidad, division: mov.division }, cantidad: Number(l.cantidad), comprobante, empleadoNombre }),
-      }, opts)) || [];
-      await sbPatch(`movimientos_stock?id=eq.${mov.id}&empresa_id=eq.${e}`, { anulado: true, anulado_por: sesion.empleado_id || null, anulado_at: ahora }, opts);
-      if (nuevo?.id) await sbPatch(`recepciones_compra_items?id=eq.${l.id}&empresa_id=eq.${e}`, { movimiento_id: nuevo.id }, opts);
-      reemplazados++;
-    }
-  }
+  // Renglones, cabecera y reemplazo de los ingresos con otro precio o
+  // comprobante (la planilla trae los nuevos y borra los anulados): todo junto (130)
+  const r = await sbRpc("compras_factura", {
+    p_empresa: e,
+    p_orden: oc.id,
+    p_renglones: renglones,
+    p_cabecera: cabecera,
+    p_quien: { empleado_id: sesion.empleado_id || null, legajo: Number.isInteger(sesion.legajo) ? sesion.legajo : null, empleado_nombre: await nombreEmpleado(sesion) },
+  });
+  if (!r?.ok) return rechazoTransaccion(r);
   broadcastRefresh(e, "ordenes_compra");
-  if (reemplazados) broadcastRefresh(e, "movimientos_stock");
-  return NextResponse.json({ ok: true, orden: fila || ocNueva, reemplazados });
+  if (r.reemplazados) broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, orden: r.orden, reemplazados: r.reemplazados });
 }
 
 /* ─── Orden "A cotizar" y pedidos de cotización (125) ──────────────────── */
@@ -844,6 +798,9 @@ export async function POST(request) {
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionTransacciones(err)) {
+        return NextResponse.json({ error: "Para recibir mercadería y cargar facturas falta correr la migración 130 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionCotizaciones(err)) {
         return NextResponse.json({ error: "Para pedir cotizaciones falta correr la migración 125 en Supabase." }, { status: 409 });
       }

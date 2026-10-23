@@ -83,7 +83,16 @@ test("migración 115 — recepciones por empresa, sin borrar; factura en la OC",
 
 // ─── Ruta ───
 
-function mockRuta({ supervisor = null, oc = OC, items = [PERFIL, TORNILLOS], recepcion = null, lineas = [], movs = [], recepciones = [], falla = null, fallaPatch = null } = {}) {
+// Lo que contestan las funciones de la migración 130 si todo sale bien
+function respuestaRpc(nombre, body) {
+  if (nombre === "compras_recibir") {
+    return { ok: true, recepcion: { id: 77, orden_id: body.p_orden, ...body.p_recepcion }, estado: "recibida", ingresos: body.p_lineas.filter((l) => l.ingreso).length };
+  }
+  if (nombre === "compras_anular_recepcion") return { ok: true, recepcion: { id: body.p_recepcion, anulada: true }, estado: "enviada", movimientos: 1 };
+  return { ok: true, orden: { id: body.p_orden, ...body.p_cabecera }, reemplazados: 1 };
+}
+
+function mockRuta({ supervisor = null, oc = OC, items = [PERFIL, TORNILLOS], recepcion = null, lineas = [], movs = [], recepciones = [], falla = null, fallaPatch = null, rpc = null } = {}) {
   const escrito = [];
   let siguienteMov = 500;
   const anotar = (tabla, u, o) => {
@@ -106,6 +115,15 @@ function mockRuta({ supervisor = null, oc = OC, items = [PERFIL, TORNILLOS], rec
     },
   });
   global.fetch = createFetchMock([
+    {
+      match: (u) => u.includes("/rest/v1/rpc/compras_"),
+      respond: (u, o) => {
+        const nombre = u.split("/rpc/")[1];
+        const body = JSON.parse(o.body);
+        escrito.push({ tabla: `rpc:${nombre}`, metodo: "POST", url: u, body });
+        return rpc ? rpc(nombre, body) : { status: 200, body: respuestaRpc(nombre, body) };
+      },
+    },
     {
       match: (u) => u.includes("/rest/v1/empleados"),
       respond: (u) => u.includes("solo_su_division")
@@ -133,7 +151,7 @@ const req = (t, body) => new Request("http://localhost/api/compras", {
   method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
 });
 
-test("/api/compras recepcion_crear — el jefe recibe todo: ingreso de stock, OC recibida y pedidos recibidos", async () => {
+test("/api/compras recepcion_crear — el jefe recibe todo: un solo pedido a la base con la recepción y el ingreso de stock", async () => {
   const escrito = mockRuta({ supervisor: "ALUMINIO" });
   const res = await api.POST(req(await token("administrativo"), {
     accion: "recepcion_crear", orden_id: 101, remito: "0004-00012345", items: [{ item_id: 1, cantidad: 12 }, { item_id: 2, cantidad: 2 }],
@@ -142,30 +160,43 @@ test("/api/compras recepcion_crear — el jefe recibe todo: ingreso de stock, OC
   const data = await res.json();
   assert.equal(data.estado, "recibida");
   assert.equal(data.ingresos, 1, "los tornillos no son del stock: no generan ingreso");
-  const [rec] = escrito.filter((x) => x.tabla === "recepciones_compra");
-  assert.equal(rec.body.remito, "0004-00012345");
-  assert.equal(rec.body.empleado_nombre, "Pedro Jefe");
-  const [mov] = escrito.filter((x) => x.tabla === "movimientos_stock");
+  // Nada se escribe tabla por tabla: todo va junto a compras_recibir (130)
+  assert.deepEqual(escrito.map((x) => x.tabla), ["rpc:compras_recibir"]);
+  const { body } = escrito[0];
+  assert.equal(body.p_empresa, E);
+  assert.equal(body.p_orden, 101);
+  assert.equal(body.p_recepcion.remito, "0004-00012345");
+  assert.equal(body.p_recepcion.empleado_nombre, "Pedro Jefe");
+  assert.deepEqual(body.p_lineas.map((l) => [l.item_id, l.cantidad, Boolean(l.ingreso)]), [[1, 12, true], [2, 2, false]]);
+  const mov = body.p_lineas[0].ingreso;
   assert.deepEqual(
-    { tipo: mov.body[0].tipo, sku: mov.body[0].sku, nombre: mov.body[0].nombre, cantidad: mov.body[0].cantidad, ot: mov.body[0].ot, proveedor: mov.body[0].proveedor, comprobante: mov.body[0].comprobante, precio: mov.body[0].precio_unitario, notas: mov.body[0].notas },
-    { tipo: "ingreso", sku: "3.3.1.6", nombre: "Tablilla perfil 0277", cantidad: 12, ot: "M-7495", proveedor: "Aluar", comprobante: "0004-00012345", precio: 1500, notas: "OC N° 8" },
+    { sku: mov.sku, nombre: mov.nombre, ot: mov.ot, proveedor: mov.proveedor, comprobante: mov.comprobante, precio: mov.precio_unitario, notas: mov.notas, legajo: mov.legajo },
+    { sku: "3.3.1.6", nombre: "Tablilla perfil 0277", ot: "M-7495", proveedor: "Aluar", comprobante: "0004-00012345", precio: 1500, notas: "OC N° 8", legajo: 7 },
   );
-  const [lin] = escrito.filter((x) => x.tabla === "recepciones_compra_items");
-  assert.deepEqual(lin.body.map((l) => [l.item_id, l.cantidad, l.movimiento_id]), [[1, 12, 500], [2, 2, null]]);
-  const recibidos = escrito.filter((x) => x.tabla === "ordenes_compra_items" && x.metodo === "PATCH").map((x) => x.body.cantidad_recibida);
-  assert.deepEqual(recibidos, [12, 2]);
-  const est = escrito.find((x) => x.tabla === "ordenes_compra" && x.metodo === "PATCH");
-  assert.equal(est.body.estado, "recibida");
-  const ped = escrito.find((x) => x.tabla === "pedidos_compra" && x.body.estado === "recibido");
-  assert.match(ped.url, /id=in\.\(5,6\)&estado=eq\.en_oc/);
 });
 
-test("/api/compras recepcion_crear — llega una parte; en dólares sin tipo de cambio va sin precio", async () => {
+test("/api/compras recepcion_crear — el mismo renglón dos veces se suma; en dólares sin tipo de cambio va sin precio", async () => {
   const escrito = mockRuta({ oc: { ...OC, moneda: "USD" } });
-  const res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-1", items: [{ item_id: 1, cantidad: 5 }] }));
-  assert.equal((await res.json()).estado, "recibida_parcial");
-  assert.equal(escrito.find((x) => x.tabla === "movimientos_stock").body[0].precio_unitario, null);
-  assert.equal(escrito.some((x) => x.tabla === "pedidos_compra" && x.body.estado === "recibido"), false);
+  const res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-1", items: [{ item_id: 1, cantidad: 2.5 }, { item_id: 1, cantidad: 2.5 }] }));
+  assert.equal(res.status, 200);
+  const [linea] = escrito[0].body.p_lineas;
+  assert.equal(escrito[0].body.p_lineas.length, 1);
+  assert.equal(linea.cantidad, 5);
+  assert.equal(linea.ingreso.precio_unitario, null);
+});
+
+test("/api/compras recepcion_crear — si otra persona cambió la OC recién, avisa sin guardar nada", async () => {
+  for (const [rpc, error] of [
+    [{ ok: false, tipo: "estado", estado: "recibida" }, /recibió completa/],
+    [{ ok: false, tipo: "estado", estado: "anulada" }, /anulada/],
+    [{ ok: false, tipo: "renglon" }, /no es de esta orden/],
+    [{ ok: false, tipo: "a_cotizar" }, /a cotizar/],
+  ]) {
+    mockRuta({ rpc: () => ({ status: 200, body: rpc }) });
+    const res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-1", items: [{ item_id: 1, cantidad: 1 }] }));
+    assert.equal(res.status, 409);
+    assert.match((await res.json()).error, error);
+  }
 });
 
 test("/api/compras recepcion_crear — operario no; OC anulada o recibida no; renglón de otra OC no", async () => {
@@ -185,83 +216,97 @@ test("/api/compras recepcion_crear — operario no; OC anulada o recibida no; re
   assert.equal(escrito.length, 0);
 });
 
-test("/api/compras recepcion_anular — Administración anula: ingresos anulados, cantidades y estado vuelven", async () => {
-  const items = [{ ...PERFIL, cantidad_recibida: 12 }, { ...TORNILLOS, cantidad_recibida: 2 }];
+test("/api/compras recepcion_anular — Administración anula todo junto; el jefe de taller no", async () => {
   let escrito = mockRuta({ supervisor: "ALUMINIO", recepcion: { id: 9, orden_id: 101, remito: "R-1", anulada: false } });
   let res = await api.POST(req(await token("administrativo"), { accion: "recepcion_anular", id: 9 }));
   assert.equal(res.status, 403, "el jefe de taller no anula");
   assert.equal(escrito.length, 0);
 
   _limpiarCacheAlcance();
-  escrito = mockRuta({
-    oc: { ...OC, estado: "recibida" }, items, recepcion: { id: 9, orden_id: 101, remito: "R-1", anulada: false },
-    lineas: [{ item_id: 1, cantidad: 12, movimiento_id: 500 }, { item_id: 2, cantidad: 2, movimiento_id: null }],
-  });
+  escrito = mockRuta({ oc: { ...OC, estado: "recibida" } });
   res = await api.POST(req(await token("gerencial"), { accion: "recepcion_anular", id: 9 }));
   assert.equal(res.status, 200);
-  assert.equal((await res.json()).estado, "enviada");
-  const mov = escrito.find((x) => x.tabla === "movimientos_stock");
-  assert.match(mov.url, /id=in\.\(500\)&anulado=eq\.false/);
-  assert.equal(mov.body.anulado, true);
-  assert.deepEqual(escrito.filter((x) => x.tabla === "ordenes_compra_items").map((x) => x.body.cantidad_recibida), [0, 0]);
-  assert.equal(escrito.find((x) => x.tabla === "recepciones_compra").body.anulada, true);
-  const ped = escrito.find((x) => x.tabla === "pedidos_compra");
-  assert.match(ped.url, /estado=eq\.recibido/);
-  assert.deepEqual(ped.body, { estado: "en_oc" });
+  const data = await res.json();
+  assert.equal(data.estado, "enviada");
+  assert.equal(data.recepcion.anulada, true);
+  assert.deepEqual(escrito.map((x) => x.tabla), ["rpc:compras_anular_recepcion"]);
+  assert.deepEqual(escrito[0].body, { p_empresa: E, p_recepcion: 9, p_empleado: EMP });
+
+  mockRuta({ rpc: () => ({ status: 200, body: { ok: false, tipo: "sin_recepcion" } }) });
+  res = await api.POST(req(await token("gerencial"), { accion: "recepcion_anular", id: 999 }));
+  assert.equal(res.status, 404);
 });
 
-test("/api/compras oc_factura — precio nuevo: el ingreso se reemplaza con la factura como comprobante", async () => {
-  const items = [{ ...PERFIL, cantidad_recibida: 12 }];
-  const escrito = mockRuta({
-    oc: { ...OC, estado: "recibida" }, items,
-    recepciones: [{ id: 9, remito: "R-1" }],
-    lineas: [{ id: 30, recepcion_id: 9, item_id: 1, cantidad: 12, movimiento_id: 500 }],
-    movs: [{ id: 500, sku: "3.3.1.6", nombre: "Tablilla perfil 0277", unidad: "MT", division: "ALUMINIO", precio_unitario: 1500, comprobante: "R-1", anulado: false }],
-  });
+test("/api/compras oc_factura — la factura y el reemplazo de ingresos van juntos a la base", async () => {
+  const escrito = mockRuta({ oc: { ...OC, estado: "recibida" }, items: [{ ...PERFIL, cantidad_recibida: 12 }] });
   const res = await api.POST(req(await token("gerencial"), {
-    accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: "2026-10-20", renglones: [{ item_id: 1, precio_unitario: 1600 }],
+    accion: "oc_factura", id: 101, factura_numero: "A-0003-00001234", factura_fecha: "2026-10-20", tipo_cambio: 1050, renglones: [{ item_id: 1, precio_unitario: 1600 }],
   }));
   assert.equal(res.status, 200);
   assert.equal((await res.json()).reemplazados, 1);
-  assert.deepEqual(escrito.find((x) => x.tabla === "ordenes_compra_items").body, { precio_unitario: 1600 });
-  const cab = escrito.find((x) => x.tabla === "ordenes_compra");
-  assert.equal(cab.body.factura_numero, "A-0003-00001234");
-  assert.equal(cab.body.tipo_cambio, null, "en pesos no lleva tipo de cambio");
-  const nuevo = escrito.find((x) => x.tabla === "movimientos_stock" && x.metodo === "POST");
-  assert.equal(nuevo.body.precio_unitario, 1600);
-  assert.equal(nuevo.body.comprobante, "A-0003-00001234");
-  assert.equal(nuevo.body.cantidad, 12);
-  const viejo = escrito.find((x) => x.tabla === "movimientos_stock" && x.metodo === "PATCH");
-  assert.match(viejo.url, /id=eq\.500/);
-  assert.equal(viejo.body.anulado, true);
-  assert.deepEqual(escrito.find((x) => x.tabla === "recepciones_compra_items").body, { movimiento_id: 500 }, "el renglón apunta al ingreso nuevo");
+  assert.deepEqual(escrito.map((x) => x.tabla), ["rpc:compras_factura"]);
+  const { body } = escrito[0];
+  assert.deepEqual(body.p_renglones, [{ item_id: 1, precio_unitario: 1600 }]);
+  assert.deepEqual(body.p_cabecera, { factura_numero: "A-0003-00001234", factura_fecha: "2026-10-20", tipo_cambio: null }, "en pesos no lleva tipo de cambio");
+  assert.deepEqual(body.p_quien, { empleado_id: EMP, legajo: 7, empleado_nombre: "Pedro Jefe" });
 });
 
-test("/api/compras oc_factura — mismo precio y comprobante: no toca los ingresos; OC anulada no", async () => {
-  let escrito = mockRuta({
-    oc: { ...OC, estado: "recibida", factura_numero: "F-1" }, items: [{ ...PERFIL, cantidad_recibida: 12 }],
-    recepciones: [{ id: 9, remito: "R-1" }],
-    lineas: [{ id: 30, recepcion_id: 9, item_id: 1, cantidad: 12, movimiento_id: 500 }],
-    movs: [{ id: 500, precio_unitario: 1500, comprobante: "F-1", anulado: false }],
-  });
-  let res = await api.POST(req(await token("gerencial"), { accion: "oc_factura", id: 101, factura_numero: "F-1" }));
-  assert.equal((await res.json()).reemplazados, 0);
-  assert.equal(escrito.some((x) => x.tabla === "movimientos_stock"), false);
+test("/api/compras oc_factura — sin cambios en los renglones no los manda; OC anulada no; el jefe no", async () => {
+  let escrito = mockRuta({ oc: { ...OC, estado: "recibida", factura_numero: "F-1" }, items: [{ ...PERFIL, cantidad_recibida: 12 }] });
+  let res = await api.POST(req(await token("gerencial"), { accion: "oc_factura", id: 101, factura_numero: "F-1", renglones: [{ item_id: 1, precio_unitario: 1500 }] }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito[0].body.p_renglones, []);
 
   escrito = mockRuta({ oc: { ...OC, estado: "anulada" } });
   res = await api.POST(req(await token("gerencial"), { accion: "oc_factura", id: 101, factura_numero: "F-1" }));
   assert.equal(res.status, 409);
+  assert.equal(escrito.length, 0);
+
+  escrito = mockRuta({ oc: { ...OC, estado: "recibida" } });
+  res = await api.POST(req(await token("gerencial"), { accion: "oc_factura", id: 101, renglones: [{ item_id: 99, precio_unitario: 1 }] }));
+  assert.equal(res.status, 409, "renglón de otra OC");
+  assert.equal(escrito.length, 0);
 
   mockRuta({ supervisor: "ALUMINIO" });
   res = await api.POST(req(await token("administrativo"), { accion: "oc_factura", id: 101, factura_numero: "F-1" }));
   assert.equal(res.status, 403, "la factura la carga Administración");
 });
 
-test("/api/compras — si falta la migración 115 lo dice", async () => {
-  mockRuta({ falla: 'relation "public.recepciones_compra" does not exist' });
-  const res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-1", items: [{ item_id: 1, cantidad: 1 }] }));
+test("/api/compras — si falta la migración 130 o la 115 lo dice", async () => {
+  const sinFuncion = { code: "PGRST202", message: "Could not find the function public.compras_recibir(p_empresa, p_lineas, p_orden, p_recepcion) in the schema cache" };
+  mockRuta({ rpc: () => ({ status: 404, body: sinFuncion }) });
+  let res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-1", items: [{ item_id: 1, cantidad: 1 }] }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 130/);
+
+  mockRuta({ rpc: () => ({ status: 404, body: { ...sinFuncion, message: "Could not find the function public.compras_anular_recepcion(p_empleado, p_empresa, p_recepcion) in the schema cache" } }) });
+  res = await api.POST(req(await token("gerencial"), { accion: "recepcion_anular", id: 9 }));
+  assert.match((await res.json()).error, /migración 130/);
+
+  mockRuta({ rpc: () => ({ status: 400, body: { code: "42P01", message: 'relation "recepciones_compra" does not exist' } }) });
+  res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-1", items: [{ item_id: 1, cantidad: 1 }] }));
   assert.equal(res.status, 409);
   assert.match((await res.json()).error, /migración 115/);
+});
+
+test("migración 130 — recibir, anular y factura todo o nada, de a uno por OC y solo desde el servidor", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/130_compras_transacciones.sql", import.meta.url), "utf8");
+  for (const f of ["compras_recibir", "compras_anular_recepcion", "compras_factura", "compras_estado_orden"]) {
+    assert.match(sql, new RegExp(`create or replace function public\\.${f}\\(`));
+    assert.match(sql, new RegExp(`revoke all on function public\\.${f}\\([^)]*\\) from public`));
+    assert.match(sql, new RegExp(`revoke all on function public\\.${f}\\([^)]*\\) from anon, authenticated`));
+  }
+  for (const f of ["compras_recibir", "compras_anular_recepcion", "compras_factura"]) {
+    assert.match(sql, new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to service_role`));
+  }
+  assert.doesNotMatch(sql, /grant execute on function public\.compras_estado_orden/, "el estado lo usan solo las otras funciones");
+  assert.doesNotMatch(sql, /to (anon|authenticated)\b/);
+  assert.equal((sql.match(/security definer/g) || []).length, 4);
+  assert.equal((sql.match(/pg_advisory_xact_lock\(hashtextextended\('compras_oc:'/g) || []).length, 3, "un candado por OC en las tres");
+  assert.match(sql, /set cantidad_recibida = cantidad_recibida \+ v_cantidad/, "suma sobre lo guardado, no sobre lo que leyó la pantalla");
+  assert.match(sql, /v_oc\.estado in \('anulada', 'cerrada_faltantes'\)/, "anular una recepción no reabre la OC cerrada");
+  assert.match(sql, /^begin;$/m);
+  assert.match(sql, /^commit;$/m);
 });
 
 // ─── Pantallas ───
@@ -351,18 +396,18 @@ test("factura — neto, IVA y total por renglón y al pie", () => {
   assert.equal(cantidadFacturaInicial({ cantidad: 12, cantidad_recibida: 5, cantidad_facturada: 6 }), 6, "lo guardado");
 });
 
-test("/api/compras oc_factura — guarda solo lo que cambió y otros impuestos en la OC", async () => {
+test("/api/compras oc_factura — manda solo lo que cambió y otros impuestos en la OC", async () => {
   const escrito = mockRuta({ oc: { ...OC, estado: "recibida", factura_otros_impuestos: null }, items: [{ ...PERFIL, cantidad_recibida: 12, cantidad_facturada: null, iva_alicuota: null }] });
   const res = await api.POST(req(await token("gerencial"), {
     accion: "oc_factura", id: 101, factura_numero: "F-2", otros_impuestos: 120, renglones: [{ item_id: 1, precio_unitario: 1500, cantidad_facturada: 12, iva_alicuota: 21 }],
   }));
   assert.equal(res.status, 200);
-  assert.deepEqual(escrito.find((x) => x.tabla === "ordenes_compra_items").body, { cantidad_facturada: 12, iva_alicuota: 21 }, "el precio no cambió");
-  assert.equal(escrito.find((x) => x.tabla === "ordenes_compra").body.factura_otros_impuestos, 120);
+  assert.deepEqual(escrito[0].body.p_renglones, [{ item_id: 1, cantidad_facturada: 12, iva_alicuota: 21 }], "el precio no cambió");
+  assert.equal(escrito[0].body.p_cabecera.factura_otros_impuestos, 120);
 });
 
 test("/api/compras — si falta la migración 122 lo dice", async () => {
-  mockRuta({ oc: { ...OC, estado: "recibida" }, items: [PERFIL], fallaPatch: "Could not find the 'iva_alicuota' column of 'ordenes_compra_items' in the schema cache" });
+  mockRuta({ oc: { ...OC, estado: "recibida" }, items: [PERFIL], rpc: () => ({ status: 400, body: { code: "42703", message: 'column "iva_alicuota" of relation "ordenes_compra_items" does not exist' } }) });
   const res = await api.POST(req(await token("gerencial"), { accion: "oc_factura", id: 101, renglones: [{ item_id: 1, iva_alicuota: 10.5 }] }));
   assert.equal(res.status, 409);
   assert.match((await res.json()).error, /migración 122/);
