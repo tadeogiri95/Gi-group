@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Registro de consumo de perfilería</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #fff; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: #111;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .hoja {
+    width: 210mm; height: 297mm;
+    padding: 9mm 10mm 8mm 10mm;
+    display: flex; flex-direction: column;
+    margin: 0 auto;
+  }
+  @media screen {
+    body { background: #e9e9e9; padding: 8mm 0; }
+    .hoja { background: #fff; box-shadow: 0 1mm 4mm rgba(0,0,0,.25); }
+  }
+
+  /* Encabezado */
+  .cab { display: flex; justify-content: space-between; align-items: flex-end;
+         border-bottom: 0.6mm solid #111; padding-bottom: 2mm; }
+  .cab h1 { font-size: 16pt; letter-spacing: .2mm; }
+  .cab .sub { font-size: 9pt; color: #444; margin-top: .8mm; }
+  .cab .hojan { font-size: 10pt; white-space: nowrap; }
+  .linea { display: inline-block; border-bottom: .3mm solid #111; width: 14mm; height: 5mm; vertical-align: bottom; }
+
+  .instr { font-size: 8.5pt; color: #333; margin: 2.2mm 0 2.5mm; line-height: 1.35; }
+  .instr b { color: #111; }
+
+  /* Tabla */
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { border: .3mm solid #555; }
+  thead th {
+    background: #1f3a5f; color: #fff; font-size: 8.5pt; font-weight: bold;
+    padding: 1.4mm .8mm; text-align: center; line-height: 1.2;
+  }
+  thead th small { display: block; font-weight: normal; font-size: 7pt; opacity: .9; }
+  tbody td { height: 12.6mm; vertical-align: middle; }
+  tbody tr:nth-child(even) td { background: #f4f6f9; }
+
+  td.n { text-align: center; font-size: 8pt; color: #777; }
+  td.fecha { text-align: center; font-size: 12pt; color: #b5b5b5; letter-spacing: 1mm; }
+
+  .box { display: inline-block; width: 4.6mm; height: 4.6mm; border: .4mm solid #111; background: #fff; border-radius: .5mm; }
+
+  .grid { display: grid; gap: 1.6mm 2mm; padding: 0 2mm; }
+  .grid label { display: flex; align-items: center; gap: 1mm; font-size: 8.6pt; font-weight: bold; white-space: nowrap; }
+  .grid .box { width: 3.9mm; height: 3.9mm; flex: none; }
+  .gcolor { grid-template-columns: 1.6fr 1fr 1fr; }
+  .gcolor .otro { grid-column: span 2; }
+  .gcolor .otro i { flex: 1; border-bottom: .3mm solid #111; height: 3.9mm; margin-left: .5mm; }
+
+  /* Pie */
+  .pie { margin-top: auto; padding-top: 3mm; display: flex; justify-content: space-between;
+         font-size: 9pt; }
+  .pie .campo { display: flex; align-items: flex-end; gap: 1.5mm; }
+  .pie .campo i { display: inline-block; border-bottom: .3mm solid #111; height: 5mm; }
+  .marca { font-size: 7pt; color: #888; text-align: right; margin-top: 1.5mm; }
+</style>
+</head>
+<body>
+<div class="hoja">
+
+  <div class="cab">
+    <div>
+      <h1>REGISTRO DE CONSUMO DE PERFILERÍA</h1>
+      <div class="sub">GI Amoblamientos · Perfiles de aluminio</div>
+    </div>
+    <div class="hojan">Hoja N° <span class="linea"></span></div>
+  </div>
+
+  <p class="instr">
+    <b>Un renglón por cada retiro de perfilería.</b> Escribí la fecha, tu nombre y la OT o proyecto.
+    <b>Tildá</b> un color; si no está en la lista, tildá <b>Otro</b> y escribilo en la línea.
+    En <b>Cantidad</b> poné la cantidad retirada.
+  </p>
+
+  <table>
+    <colgroup>
+      <col style="width:6mm">
+      <col style="width:14mm">
+      <col style="width:30mm">
+      <col style="width:26mm">
+      <col style="width:92mm">
+      <col style="width:22mm">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>N°</th>
+        <th>Fecha<small>día / mes</small></th>
+        <th>Operario<small>nombre</small></th>
+        <th>OT / Proy.<small>n° o nombre</small></th>
+        <th>Color</th>
+        <th>Cantidad</th>
+      </tr>
+    </thead>
+    <tbody id="filas"></tbody>
+  </table>
+
+  <div class="pie">
+    <div class="campo">Controló: <i style="width:48mm"></i></div>
+    <div class="campo">Cargado al MRP el <i style="width:16mm"></i> por <i style="width:36mm"></i></div>
+  </div>
+  <div class="marca">Formulario CONS-PERFILES · v1</div>
+</div>
+
+<script>
+  var FILAS = 18;
+  function op(t){ return '<label><span class="box"></span>' + t + '</label>'; }
+  var colores = op('Anodizado natural') + op('Negro') + op('Blanco') + op('Terra') +
+    '<label class="otro"><span class="box"></span>Otro:<i></i></label>';
+  var html = '';
+  for (var i = 1; i <= FILAS; i++) {
+    html += '<tr>' +
+      '<td class="n">' + i + '</td>' +
+      '<td class="fecha">/</td>' +
+      '<td></td><td></td>' +
+      '<td><div class="grid gcolor">' + colores + '</div></td>' +
+      '<td></td>' +
+    '</tr>';
+  }
+  document.getElementById('filas').innerHTML = html;
+</script>
+</body>
+</html>
