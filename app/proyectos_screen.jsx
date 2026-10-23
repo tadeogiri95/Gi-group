@@ -582,7 +582,7 @@ export default function ProyectosScreen({ empresaId }) {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="lista-ancha flex flex-col gap-2">
           {filtrados.map(p => {
             const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
             const divColor = divInfo.color || AMBER;

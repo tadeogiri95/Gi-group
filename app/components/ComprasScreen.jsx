@@ -506,7 +506,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
               {pedidos.length ? "No hay pedidos con ese filtro." : comprador ? "Todavía no hay pedidos de material." : "Todavía no hiciste pedidos de material."}
             </div>
           ) : (
-            <ul aria-label="Pedidos de material" className="list-none m-0 p-0 flex flex-col gap-1.5">
+            <ul aria-label="Pedidos de material" className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
               {visibles.map((p) => {
                 const est = ESTADOS_PEDIDO[p.estado] || ESTADOS_PEDIDO.pendiente;
                 return (

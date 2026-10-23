@@ -238,6 +238,24 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { cursor: not-allo
   }
 }
 
+/* Planta y Equipo en la computadora: todo el ancho (hasta 1440 px) y las
+   listas en columnas. En el celular y en tablets no cambia nada. */
+@media (min-width: 1024px) {
+  .app-shell.app-shell--ancho {
+    max-width: 1440px;
+  }
+  /* La barra de abajo no se estira: sus botones quedan juntos en el medio */
+  .app-shell--ancho > nav[aria-label="Navegación principal"] {
+    padding-left: max(8px, calc(50% - 320px));
+    padding-right: max(8px, calc(50% - 320px));
+  }
+  .app-shell--ancho .lista-ancha {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    align-items: start;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════
    UTILITY CLASSES — Design System
    ═══════════════════════════════════════════════════════ */

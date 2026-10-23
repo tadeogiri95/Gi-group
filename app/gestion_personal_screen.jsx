@@ -802,7 +802,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="lista-ancha flex flex-col gap-2">
           {filtrados.map(emp => {
             const divInfo = DIVISIONES.find(d => d.id === emp.division);
             const isInactivo = emp.activo === false;

@@ -225,7 +225,7 @@ export default function RecibirCompra({ empresaId, comprador = false }) {
       ) : !visibles.length ? (
         <div className="text-[14px] text-gypi-dim">{ordenes.length ? "No hay órdenes con esa búsqueda." : "No hay órdenes de compra esperando material."}</div>
       ) : (
-        <ul aria-label="Órdenes para recibir" className="list-none m-0 p-0 flex flex-col gap-1.5">
+        <ul aria-label="Órdenes para recibir" className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
           {visibles.map((o) => {
             const est = ESTADOS_OC[o.estado] || ESTADOS_OC.enviada;
             return (
