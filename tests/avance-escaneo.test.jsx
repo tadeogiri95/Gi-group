@@ -138,6 +138,6 @@ test("DetalleOp — % de producción por escaneo con una barra por etapa", async
 test("DetalleOp — OT sin piezas cargadas no muestra el %", async () => {
   mockData({});
   render(<DetalleOp proyecto={{ ot: "7495" }} empresaId="emp-1" etapas={ETAPAS} divisiones={[]} onClose={() => {}} />);
-  await waitFor(() => screen.getByText("Todavía nadie registró tareas en esta OT."));
+  await waitFor(() => screen.getByText("Todavía no hay avance en esta OT: nadie escaneó piezas ni marcó etapas."));
   assert.equal(screen.queryByRole("region", { name: "Avance de producción por escaneo" }), null);
 });

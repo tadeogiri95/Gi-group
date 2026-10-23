@@ -8,11 +8,29 @@ import {
   registerSW,
 } from "../lib/push";
 
+// Si la persona cierra el aviso, no vuelve a salir por 30 días (antes volvía
+// cada vez que abría la app). Sin almacenamiento, vuelve a salir: no es grave.
+export const CLAVE_AVISO_CERRADO = "gypi_aviso_push_cerrado";
+const DIAS_SIN_AVISO = 30;
+
+export function avisoCerradoHace(ahora = Date.now()) {
+  try {
+    const t = Number(localStorage.getItem(CLAVE_AVISO_CERRADO));
+    return Number.isFinite(t) && t > 0 && ahora - t < DIAS_SIN_AVISO * 86400000;
+  } catch { return false; }
+}
+
+function recordarCierre() {
+  try { localStorage.setItem(CLAVE_AVISO_CERRADO, String(Date.now())); } catch { /* sin almacenamiento */ }
+}
+
 export default function PushManager({ legajo, empresaId, onNotification }) {
   const [status, setStatus] = useState("loading");
   const [toast, setToast] = useState(null);
   const [registering, setRegistering] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  useEffect(() => { if (avisoCerradoHace()) setDismissed(true); }, []); // eslint-disable-line react-hooks/set-state-in-effect
+  const cerrar = () => { recordarCierre(); setDismissed(true); };
 
   useEffect(() => {
     if (!isPushSupported()) { setStatus("unsupported"); return; }
@@ -72,7 +90,7 @@ export default function PushManager({ legajo, empresaId, onNotification }) {
             <button onClick={handleEnable} disabled={registering} className="shrink-0 bg-gypi-amber text-gypi-on-amber border-none rounded-lg py-1.5 px-3.5 text-xs font-bold cursor-pointer font-body">
               {registering ? "..." : "Activar"}
             </button>
-            <button onClick={() => setDismissed(true)} className="shrink-0 bg-transparent border-none text-gypi-dim cursor-pointer text-sm p-1 leading-none">✕</button>
+            <button onClick={cerrar} aria-label="Cerrar aviso de notificaciones" className="shrink-0 min-w-[44px] min-h-[44px] -my-2 -mr-2 bg-transparent border-none text-gypi-dim cursor-pointer text-lg leading-none">✕</button>
           </div>
         </div>
       )}
@@ -83,9 +101,9 @@ export default function PushManager({ legajo, empresaId, onNotification }) {
             <span className="text-xl shrink-0">🔕</span>
             <div className="flex-1 flex flex-col gap-px font-body">
               <strong className="text-gypi-text text-[13px]">Notificaciones bloqueadas</strong>
-              <span className="text-[11px] text-gypi-dim">Desbloqueá desde config del navegador</span>
+              <span className="text-[12px] text-gypi-dim">Para recibir avisos: tocá el candado al lado de la dirección → Notificaciones → Permitir.</span>
             </div>
-            <button onClick={() => setDismissed(true)} className="shrink-0 bg-transparent border-none text-gypi-dim cursor-pointer text-sm p-1 leading-none">✕</button>
+            <button onClick={cerrar} aria-label="Cerrar aviso de notificaciones" className="shrink-0 min-w-[44px] min-h-[44px] -my-2 -mr-2 bg-transparent border-none text-gypi-dim cursor-pointer text-lg leading-none">✕</button>
           </div>
         </div>
       )}

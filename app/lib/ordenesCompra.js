@@ -8,6 +8,7 @@
 // redondeada al múltiplo. La OC se manda en PDF (imprimir → Guardar como
 // PDF) y por WhatsApp o email con el texto armado.
 import { nivelSemaforo } from "./stock";
+import { hoyArg } from "./dates";
 
 export const ESTADOS_OC = {
   borrador:         { id: "borrador",         nombre: "Borrador",          icono: "📝" },
@@ -68,7 +69,8 @@ export function totalOrden(items) {
 }
 
 /** ¿La OC está enviada y ya pasó la fecha que prometió el proveedor? hoy = "YYYY-MM-DD". */
-export function ocAtrasada(oc, hoy = new Date().toISOString().slice(0, 10)) {
+// hoy en Argentina: con la fecha de Londres, desde las 21 h ya marcaba atrasada la que vence hoy
+export function ocAtrasada(oc, hoy = hoyArg()) {
   return ["enviada", "recibida_parcial"].includes(oc?.estado) && Boolean(oc.fecha_prometida) && oc.fecha_prometida < hoy;
 }
 
