@@ -42,10 +42,10 @@ test("botones con el color de la empresa: la letra (negra o blanca) se lee", () 
   assert.equal(textOnColor("#F97316"), "#000000");
 });
 
-test("tokens: nada de 9 px, botones de 48 px y la letra del primario según contraste", () => {
+test("tokens: nada de menos de 12 px, botones de 48 px y la letra del primario según contraste", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   const px = (token) => Number(css.match(new RegExp(`--text-${token}: \\d+ (\\d+)px`))[1]);
-  assert.ok(px("overline") >= 11);
+  assert.ok(px("overline") >= 12, "auditoría 22/10: mínimo 12 px");
   assert.ok(px("micro") >= 12);
   assert.ok(px("label") >= 12);
   assert.match(css, /\.g-btn \{[^}]*min-height: 48px/);
@@ -76,13 +76,13 @@ function archivos(dir) {
   });
 }
 
-test("ninguna pantalla usa texto de menos de 11 px", () => {
+test("ninguna pantalla usa texto de menos de 12 px (auditoría 22/10: había 211 de 11 px)", () => {
   const chicos = [];
   for (const f of archivos(new URL("../app", import.meta.url).pathname)) {
     const src = readFileSync(f, "utf8");
     for (const m of src.matchAll(/text-\[(\d+(?:\.\d+)?)px\]|fontSize: ?['"]?(\d+)(?:px)?['"]?[,} ]/g)) {
       const n = Number(m[1] ?? m[2]);
-      if (n < 11) chicos.push(`${f.split("/app/")[1]}: ${m[0]}`);
+      if (n < 12) chicos.push(`${f.split("/app/")[1]}: ${m[0]}`);
     }
   }
   assert.deepEqual(chicos, []);

@@ -76,7 +76,7 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
               style={{ width: `${(strength / 3) * 100}%`, background: strengthColor }}
             />
           </div>
-          <div className="text-[11px] mt-1 font-semibold" style={{ color: strengthColor }}>
+          <div className="text-xs mt-1 font-semibold" style={{ color: strengthColor }}>
             {STRENGTH_LABELS[strength]}
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function CambiarPasswordScreen({ usuario, onDone }) {
         autoComplete="new-password"
         className={`g-input w-full text-base py-3.5 px-4 rounded-xl mb-1 ${mismatch ? "border-gypi-red" : ""}`}
       />
-      {mismatch && <div className="text-[11px] text-gypi-red mb-2" role="alert">No coinciden</div>}
+      {mismatch && <div className="text-xs text-gypi-red mb-2" role="alert">No coinciden</div>}
 
       {/* Submit */}
       <button

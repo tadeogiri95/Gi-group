@@ -78,7 +78,7 @@ function ModalTipo({ initial, onClose, onSave, saving }) {
             <input type="checkbox" checked={!!form.admite_multiples} onChange={(e) => set("admite_multiples", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" style={{ accentColor: VIOLET }} />
             <div>
               <div className="text-[13px] font-bold text-gypi-text">Admite múltiples archivos</div>
-              <div className="text-[11px] text-gypi-dim mt-0.5">Útil para tickets/facturas. Si está apagado, subir uno nuevo reemplaza al anterior.</div>
+              <div className="text-xs text-gypi-dim mt-0.5">Útil para tickets/facturas. Si está apagado, subir uno nuevo reemplaza al anterior.</div>
             </div>
           </label>
         </div>
@@ -287,16 +287,16 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
                   <div className="flex items-center gap-2.5">
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold text-gypi-text truncate">{t.nombre}</div>
-                      <div className="text-[11px] text-gypi-dim mt-0.5">{(t.formatos_aceptados || []).join(", ")} · {t.tipo_carga}{t.admite_multiples ? " · múltiples" : ""}</div>
+                      <div className="text-xs text-gypi-dim mt-0.5">{(t.formatos_aceptados || []).join(", ")} · {t.tipo_carga}{t.admite_multiples ? " · múltiples" : ""}</div>
                     </div>
                     {t.activo === false && <Tag color="var(--color-text-muted)">inactivo</Tag>}
                   </div>
                   <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
-                    <button onClick={() => setModalTipo(t)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
+                    <button onClick={() => setModalTipo(t)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-xs font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
                     {t.activo === false ? (
-                      <button onClick={() => reactivarTipo(t)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-green/10 text-gypi-green text-[11px] font-bold cursor-pointer min-h-[44px]">Reactivar</button>
+                      <button onClick={() => reactivarTipo(t)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-green/10 text-gypi-green text-xs font-bold cursor-pointer min-h-[44px]">Reactivar</button>
                     ) : (
-                      <button onClick={() => desactivarTipo(t)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">Desactivar</button>
+                      <button onClick={() => desactivarTipo(t)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-xs font-bold cursor-pointer min-h-[44px]">Desactivar</button>
                     )}
                   </div>
                 </div>
@@ -310,7 +310,7 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
       {tab === "asignar" && (
         <>
           <div className="bg-gypi-surface rounded-2xl p-4 mb-3.5" style={{ border: `1px solid ${CYAN}30` }}>
-            <div className="text-[11px] font-bold uppercase tracking-[0.08em] mb-3" style={{ color: CYAN }}>① Elegí el documento</div>
+            <div className="text-xs font-bold uppercase tracking-[0.08em] mb-3" style={{ color: CYAN }}>① Elegí el documento</div>
             <select value={tipoAsignar} onChange={(e) => setTipoAsignar(e.target.value)} className="g-input cursor-pointer">
               <option value="">Seleccionar tipo de documento...</option>
               {tiposActivos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
@@ -319,11 +319,11 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
 
           <div className="bg-gypi-surface rounded-2xl p-4 border border-gypi-border mb-3.5">
             <div className="flex justify-between items-center mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: CYAN }}>② Marcá quiénes lo tienen que subir</div>
+              <div className="text-xs font-bold uppercase tracking-[0.08em]" style={{ color: CYAN }}>② Marcá quiénes lo tienen que subir</div>
               <Tag color={seleccionados.size > 0 ? AMBER : "var(--color-text-dim)"}>{seleccionados.size} seleccionados</Tag>
             </div>
             {tipoAsignar && (
-              <div className="text-[11px] text-gypi-dim mb-2.5">
+              <div className="text-xs text-gypi-dim mb-2.5">
                 Tildados = ya lo tienen asignado o se va a asignar ahora. Destildá para sacarlo.
                 {hayCambios && (
                   <span className="ml-1 font-bold">
@@ -394,7 +394,7 @@ export default function DocumentosEmpleadoScreen({ empresaId }) {
                     {isExp && (
                       <div className="px-3.5 pb-3.5">
                         {detalle.length === 0 ? (
-                          <div className="text-[11px] text-gypi-dim py-2">Sin documentos exigidos.</div>
+                          <div className="text-xs text-gypi-dim py-2">Sin documentos exigidos.</div>
                         ) : (
                           <div className="flex flex-col gap-1.5">
                             {detalle.map(({ tipo, docs }) => (

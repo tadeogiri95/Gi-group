@@ -18,7 +18,7 @@ import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 
 // Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
 const CLAVE_TAMANO = "gypi_tamano_rotulo";
-const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer";
+const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer";
 // Verde lo cargado, amarillo lo que falta
 const FILA = "flex items-center gap-2 rounded-xl p-2.5 border";
 const filaCargada = (cargado) => `${FILA} ${cargado ? "bg-gypi-green/10 border-gypi-green/50" : "bg-yellow-400/10 border-yellow-500/60"}`;
@@ -259,7 +259,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
       <div className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
         <div className="flex-1 min-w-0">
           <div className="text-[13px] font-bold">{texto}</div>
-          <div className="text-[11px] text-gypi-dim">{por ? `Firmado ${horaCorta(at)}${usuario?.id && por === usuario.id ? " (vos)" : ""}` : "Sin firmar"}</div>
+          <div className="text-xs text-gypi-dim">{por ? `Firmado ${horaCorta(at)}${usuario?.id && por === usuario.id ? " (vos)" : ""}` : "Sin firmar"}</div>
         </div>
         {por ? <span className="text-gypi-green font-bold text-sm">✓</span> : (
           <button onClick={() => firmar(rol)} disabled={guardando || !estado.puedeFirmar} className="g-btn g-btn-primary !py-2 text-xs">Firmar</button>
@@ -303,7 +303,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
               <li key={b.id} className={filaCargada(b.cargado)}>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold">Bulto {b.numero} de {bultos.length}</div>
-                  {b.contenido && <div className="text-[11px] text-gypi-dim">{b.contenido}</div>}
+                  {b.contenido && <div className="text-xs text-gypi-dim">{b.contenido}</div>}
                 </div>
                 <Tilde activo={b.cargado} disabled={guardando || cerrada} onClick={() => tildarBulto(b)} label={`Cargado bulto ${b.numero}`} texto="Cargado" />
                 {!cerrada && (confirmar === b.id ? (
@@ -326,7 +326,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
             )}
           </div>
         )}
-        {proyecto?.total_modulos ? <div className="text-[11px] text-gypi-dim mb-2">La OT tiene {proyecto.total_modulos} módulos: revisá que todos estén en algún bulto.</div> : null}
+        {proyecto?.total_modulos ? <div className="text-xs text-gypi-dim mb-2">La OT tiene {proyecto.total_modulos} módulos: revisá que todos estén en algún bulto.</div> : null}
         {!cerrada && (
           <div className="flex gap-2 mb-2">
             <input className="g-input flex-1 min-w-0" value={contenido} maxLength={300} aria-label="Contenido del bulto nuevo"
@@ -349,7 +349,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
           <ul aria-label="Sueltos para cargar" className="list-none p-0 m-0 flex flex-col gap-1.5">
             {sueltos.map((s) => (
               <li key={s.id} className={filaCargada(s.carga)}>
-                <div className="flex-1 min-w-0 text-[13px]">{nombreSuelto(s)} <span className="text-[11px] text-gypi-dim">× {Number(s.cantidad).toLocaleString("es-AR")}</span></div>
+                <div className="flex-1 min-w-0 text-[13px]">{nombreSuelto(s)} <span className="text-xs text-gypi-dim">× {Number(s.cantidad).toLocaleString("es-AR")}</span></div>
                 <Tilde activo={s.carga} disabled={guardando || cerrada} onClick={() => tildarSuelto(s)} label={`Cargado ${nombreSuelto(s)}`} texto="Cargado" />
               </li>
             ))}

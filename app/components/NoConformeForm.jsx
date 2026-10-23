@@ -100,7 +100,7 @@ export default function NoConformeForm({ ot, etapaDetecta = null, etapas = [], d
         <button onClick={guardar} disabled={guardando || !defecto || !cantidadValida} className="g-btn g-btn-primary w-full">
           {guardando ? "Guardando…" : defecto ? "Registrar pieza no conforme" : "Elegí el defecto"}
         </button>
-        <div className="text-[11px] text-gypi-dim mt-2">Llevá la pieza a la zona de no conformes. El encargado decide qué se hace.</div>
+        <div className="text-xs text-gypi-dim mt-2">Llevá la pieza a la zona de no conformes. El encargado decide qué se hace.</div>
       </div>
     </div>
   );

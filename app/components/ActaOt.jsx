@@ -14,7 +14,7 @@ import { fotoBase64, subirImagen } from "../lib/foto";
 import FirmaDedo from "./FirmaDedo";
 import NoConformeForm from "./NoConformeForm";
 
-const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer";
+const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer";
 
 function Seccion({ titulo, children }) {
   return (
@@ -192,14 +192,14 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
               <li key={b.id} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold">Bulto {b.numero} de {bultos.length}</div>
-                  {b.contenido && <div className="text-[11px] text-gypi-dim">{b.contenido}</div>}
+                  {b.contenido && <div className="text-xs text-gypi-dim">{b.contenido}</div>}
                 </div>
                 <Tilde activo={b.descargado} disabled={guardando || cerrada} onClick={() => descargar(b)} label={`Recibido bulto ${b.numero}`} texto="Recibido" />
               </li>
             ))}
           </ul>
           {estado.noRecibidos.length > 0 && estado.descargados > 0 && (
-            <div className="text-[11px] text-gypi-amber-ink mt-1.5">Si un bulto no llegó, queda registrado en el acta.</div>
+            <div className="text-xs text-gypi-amber-ink mt-1.5">Si un bulto no llegó, queda registrado en el acta.</div>
           )}
         </Seccion>
       )}
@@ -224,7 +224,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
               <li key={p.id} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
                 <div className="flex-1 min-w-0">
                   <div className={`text-[13px] ${p.resuelto ? "line-through text-gypi-dim" : ""}`}>{p.descripcion}</div>
-                  <div className="text-[11px] text-gypi-dim">
+                  <div className="text-xs text-gypi-dim">
                     {p.fecha ? `Se resuelve el ${fechaCorta(p.fecha)}` : "Sin fecha"}
                     {p.foto_url && <> · <a href={p.foto_url} target="_blank" rel="noreferrer" className="text-gypi-cyan">📷 foto</a></>}
                   </div>
@@ -268,7 +268,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
           </ul>
         )}
         <button onClick={() => setProblema(true)} className="g-btn g-btn-secondary w-full">🟥 Registrar pieza dañada, medida mal o faltante</button>
-        <div className="text-[11px] text-gypi-dim mt-1">Queda como no conformidad de la OT y entra en los indicadores del mes.</div>
+        <div className="text-xs text-gypi-dim mt-1">Queda como no conformidad de la OT y entra en los indicadores del mes.</div>
       </Seccion>
 
       <Seccion titulo="Observaciones">
@@ -299,7 +299,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
         <Seccion titulo="Firma del cliente">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={acta.firma_url} alt={`Firma de ${acta.cliente_nombre}`} className="w-full max-w-[320px] bg-white rounded-xl border border-gypi-border" />
-          <div className="text-[11px] text-gypi-dim mt-1">{acta.cliente_nombre}{acta.instalador ? ` · Instalador: ${acta.instalador}` : ""}</div>
+          <div className="text-xs text-gypi-dim mt-1">{acta.cliente_nombre}{acta.instalador ? ` · Instalador: ${acta.instalador}` : ""}</div>
         </Seccion>
       )}
 

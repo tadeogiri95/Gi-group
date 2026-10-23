@@ -421,7 +421,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                     }`}
                   >
                     <span className={`text-sm text-gypi-text ${sel ? 'font-bold' : 'font-medium'}`} style={{ fontFamily: f.heading }}>{f.label}</span>
-                    <span className="text-[11px] text-gypi-dim" style={{ fontFamily: f.body }}>Aa Bb Cc 123</span>
+                    <span className="text-xs text-gypi-dim" style={{ fontFamily: f.body }}>Aa Bb Cc 123</span>
                   </button>
                 );
               })}
@@ -492,11 +492,11 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: div.color + "22" }}>{div.icon}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold text-gypi-text truncate">{div.label}</div>
-                  <div className="text-[11px] text-gypi-dim font-mono">{div.clave}</div>
+                  <div className="text-xs text-gypi-dim font-mono">{div.clave}</div>
                 </div>
                 <div className="w-4 h-4 rounded-full" style={{ background: div.color }} />
-                <button onClick={() => handleEditDivision(div)} className="text-[11px] text-gypi-cyan bg-transparent border-none cursor-pointer">Editar</button>
-                <button onClick={() => handleDeleteDivision(div.id)} className="text-[11px] text-gypi-red bg-transparent border-none cursor-pointer">Eliminar</button>
+                <button onClick={() => handleEditDivision(div)} className="text-xs text-gypi-cyan bg-transparent border-none cursor-pointer">Editar</button>
+                <button onClick={() => handleDeleteDivision(div.id)} className="text-xs text-gypi-red bg-transparent border-none cursor-pointer">Eliminar</button>
               </div>
             ))}
           </div>}
@@ -520,10 +520,10 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             <input className="g-input mb-2.5" value={etapaForm.nombre} onChange={(e) => setEtapaForm((f) => ({ ...f, nombre: e.target.value }))} placeholder="Ej: Planificación" />
             <div className="g-label mb-1.5">Unidad (opcional)</div>
             <input className="g-input mb-1" maxLength={20} value={etapaForm.unidad} onChange={(e) => setEtapaForm((f) => ({ ...f, unidad: e.target.value }))} placeholder="Ej: placas, metros, piezas, módulos" />
-            <div className="text-[11px] text-gypi-dim mb-2.5">En qué se mide lo hecho en esta etapa. Si la cargás, el operario puede anotar la cantidad de cada tarea.</div>
+            <div className="text-xs text-gypi-dim mb-2.5">En qué se mide lo hecho en esta etapa. Si la cargás, el operario puede anotar la cantidad de cada tarea.</div>
             <div className="g-label mb-1.5">Condición para firmar el cierre (opcional)</div>
             <input className="g-input mb-1" maxLength={300} value={etapaForm.condicion_cierre} onChange={(e) => setEtapaForm((f) => ({ ...f, condicion_cierre: e.target.value }))} placeholder="Ej: Todas las piezas cortadas y con sticker" />
-            <div className="text-[11px] text-gypi-dim mb-2.5">El responsable la ve en el tablero al firmar la etapa de una OT.</div>
+            <div className="text-xs text-gypi-dim mb-2.5">El responsable la ve en el tablero al firmar la etapa de una OT.</div>
             <label className="flex items-center gap-2 mb-1 text-[13px] font-bold cursor-pointer min-h-[44px]">
               <input type="checkbox" checked={etapaForm.por_pieza} onChange={(e) => setEtapaForm((f) => ({ ...f, por_pieza: e.target.checked }))} className="w-5 h-5" />
               Se escanea por pieza
@@ -531,9 +531,9 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             {etapaForm.por_pieza && <>
               <label className="g-label mb-1.5 block" htmlFor="etapa-columna-pieza">Columnas de la planilla técnica (opcional)</label>
               <input id="etapa-columna-pieza" className="g-input mb-1" maxLength={300} value={etapaForm.columna_pieza} onChange={(e) => setEtapaForm((f) => ({ ...f, columna_pieza: e.target.value }))} placeholder="Ej: Canto, L1A, L1B" />
-              <div className="text-[11px] text-gypi-dim mb-2.5">Vacío: pasan todas las piezas. Si escribís nombres de columnas (separados por coma), pasan solo las piezas que tienen algo en alguna de esas columnas.</div>
+              <div className="text-xs text-gypi-dim mb-2.5">Vacío: pasan todas las piezas. Si escribís nombres de columnas (separados por coma), pasan solo las piezas que tienen algo en alguna de esas columnas.</div>
             </>}
-            <div className="text-[11px] text-gypi-dim mb-2.5">Las etapas que se escanean por pieza aparecen en 🧩 Escanear piezas. Cuando pasan todas las piezas de una OT, la etapa queda terminada.</div>
+            <div className="text-xs text-gypi-dim mb-2.5">Las etapas que se escanean por pieza aparecen en 🧩 Escanear piezas. Cuando pasan todas las piezas de una OT, la etapa queda terminada.</div>
             <div className="g-label mb-1.5">Color</div>
             <div className="flex gap-2.5 mb-3.5">
               <input type="color" value={etapaForm.color} onChange={(e) => setEtapaForm((f) => ({ ...f, color: e.target.value }))} className="w-10 h-10 rounded-[10px] border border-gypi-border cursor-pointer bg-transparent p-0" />
@@ -551,11 +551,11 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style={{ background: etapa.color + "22" }}>{etapa.icon}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold text-gypi-text truncate">{etapa.nombre}</div>
-                  <div className="text-[11px] text-gypi-dim font-mono">{etapa.codigo}{etapa.unidad ? ` · en ${etapa.unidad}` : ""}{etapa.por_pieza ? ` · 🧩 por pieza${etapa.columna_pieza ? ` (${etapa.columna_pieza})` : ""}` : ""}</div>
+                  <div className="text-xs text-gypi-dim font-mono">{etapa.codigo}{etapa.unidad ? ` · en ${etapa.unidad}` : ""}{etapa.por_pieza ? ` · 🧩 por pieza${etapa.columna_pieza ? ` (${etapa.columna_pieza})` : ""}` : ""}</div>
                 </div>
                 <div className="w-4 h-4 rounded-full" style={{ background: etapa.color }} />
-                <button onClick={() => handleEditEtapa(etapa)} className="text-[11px] text-gypi-cyan bg-transparent border-none cursor-pointer">Editar</button>
-                <button onClick={() => handleDeleteEtapa(etapa.id)} className="text-[11px] text-gypi-red bg-transparent border-none cursor-pointer">Eliminar</button>
+                <button onClick={() => handleEditEtapa(etapa)} className="text-xs text-gypi-cyan bg-transparent border-none cursor-pointer">Editar</button>
+                <button onClick={() => handleDeleteEtapa(etapa.id)} className="text-xs text-gypi-red bg-transparent border-none cursor-pointer">Eliminar</button>
               </div>
             ))}
           </div>}

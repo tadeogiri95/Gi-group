@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { sb, sbGetAll, apiFetch } from "./lib/supabase";
-import { Tag, Chip } from "./components/ui";
+import { Tag, Chip, Modal } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
@@ -93,7 +93,7 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
         <div className="mb-3">
           <label className="g-label" htmlFor="ot-modulos">Total de módulos</label>
           <input id="ot-modulos" value={f.total_modulos ?? ""} onChange={e => set("total_modulos", e.target.value)} className="g-input" inputMode="numeric" placeholder="Ej: 12 (si viene en la planilla, se completa solo)" />
-          {!modulosValido && <div className="text-[11px] text-gypi-red mt-1">Un número entero, sin decimales.</div>}
+          {!modulosValido && <div className="text-xs text-gypi-red mt-1">Un número entero, sin decimales.</div>}
         </div>
         <div className="mb-5">
           <label className="g-label">División</label>
@@ -132,10 +132,10 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
                 <span className="flex-1 text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{r.cliente || r.proyecto || "—"}</span>
                 {r.division && <Tag color={CYAN}>{r.division}</Tag>}
               </div>
-              {r.obra && <div className="text-[11px] text-gypi-dim mt-0.5">{r.obra}</div>}
+              {r.obra && <div className="text-xs text-gypi-dim mt-0.5">{r.obra}</div>}
             </div>
           ))}
-          {filas.length > 50 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filas.length - 50} más</div>}
+          {filas.length > 50 && <div className="p-2.5 text-center text-xs text-gypi-mute">+ {filas.length - 50} más</div>}
         </div>
 
         {saving && progreso && <div className="p-2.5 bg-gypi-amber/10 text-gypi-amber-ink rounded-[10px] text-xs mb-2.5 text-center">{progreso}</div>}
@@ -175,6 +175,8 @@ export default function ProyectosScreen({ empresaId }) {
   const [acta, setActa] = useState(null);
   const [etiquetas, setEtiquetas] = useState(null);
   const [piezasOt, setPiezasOt] = useState(null);
+  // OT tocada en la lista: se abre con todos sus botones (auditoría 22/10)
+  const [acciones, setAcciones] = useState(null);
   const [vista, setVista] = useState("lista");
   const [csvFilas, setCsvFilas] = useState(null);
   const [csvRawText, setCsvRawText] = useState(null);
@@ -400,6 +402,16 @@ export default function ProyectosScreen({ empresaId }) {
     }).catch(e => showToast(e.message, RED));
   };
 
+  // Obra, división y entrega en una línea, sin separadores sueltos si falta algo
+  const lineaOt = (p) => [
+    p.obra || p.proyecto,
+    p.division && nombreDivisionOt(divisionesCtx || [], p.division),
+    p.fecha_entrega && `Entrega ${fechaCorta(p.fecha_entrega)}`,
+  ].filter(Boolean).join(" · ");
+
+  // Abre una pantalla de la OT y cierra la ventana de acciones
+  const abrir = (fn) => { const p = acciones; setAcciones(null); fn(p); };
+
   const activos = proyectos.filter(p => p.estado === "activo").length;
   const cerrados = proyectos.filter(p => p.estado === "cerrado").length;
 
@@ -451,12 +463,12 @@ export default function ProyectosScreen({ empresaId }) {
           <option value="todos">Todas</option>
         </select>
         <select value={filtroDiv} onChange={e => setFiltroDiv(e.target.value)} aria-label="División" className="g-input flex-1 min-h-[48px] text-[15px]">
-          <option value="">Todas las divisiones</option>
+          <option value="">Divisiones</option>
           {divisiones.filter(d => d.id).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
         </select>
       </div>
 
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar por OT, cliente, obra..." className="g-input mb-3" />
+      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 OT, cliente u obra" className="g-input mb-3" />
 
       {/* Lo que se usa de vez en cuando: CSV, etiquetas, escáner y sincronización */}
       <div className="mb-3.5">
@@ -501,7 +513,7 @@ export default function ProyectosScreen({ empresaId }) {
               </button>
               {showSyncPanel && (
                 <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
-                  <div className="text-[11px] text-gypi-dim mb-2 leading-relaxed">
+                  <div className="text-xs text-gypi-dim mb-2 leading-relaxed">
                     URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: las OT nuevas se crean y las existentes se actualizan.
                     {" "}{AVISO_DEMORA_GOOGLE}
                   </div>
@@ -575,38 +587,19 @@ export default function ProyectosScreen({ empresaId }) {
             const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
             const divColor = divInfo.color || AMBER;
             return (
-              <div key={p.id} className={`g-card !p-3.5 ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
-                <div className="flex items-center gap-2.5">
-                  <div className="min-w-[60px] h-10 rounded-[10px] flex items-center justify-center font-mono text-[13px] font-bold px-2" style={{ background: `${divColor}22`, color: divColor }}>{p.ot}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
-                    <div className="text-[11px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{[p.obra || p.proyecto, p.descripcion].filter(Boolean).join(" · ")}{p.division ? ` · ${nombreDivisionOt(divisionesCtx || [], p.division)}` : ""}</div>
-                    {(p.fecha_entrega || p.cantidad != null) && (
-                      <div className="text-[11px] text-gypi-dim mt-0.5">{[p.fecha_entrega && `Entrega ${fechaCorta(p.fecha_entrega)}`, p.cantidad != null && `Cantidad ${p.cantidad}`].filter(Boolean).join(" · ")}</div>
-                    )}
-                  </div>
-                  {p.estado !== "cerrado" && pctEscaneo.get(String(p.ot))?.porcentaje != null && <Tag color={AMBER}>🧩 {pctEscaneo.get(String(p.ot)).porcentaje}%</Tag>}
-                  {p.estado !== "cerrado" && otsEnCurso.has(String(p.ot)) && <Tag color={AMBER}>en curso</Tag>}
-                  {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
-                  {p.estado !== "cerrado" && p.terminado_planilla && <Tag color="var(--color-text-muted)">terminada en planilla</Tag>}
+              <button key={p.id} type="button" onClick={() => setAcciones(p)} aria-label={`OT ${p.ot}: ${p.cliente || p.proyecto || "sin cliente"}. Ver acciones`}
+                className={`g-card !p-3 w-full text-left cursor-pointer flex items-center gap-2.5 min-h-[64px] ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
+                <div className="min-w-[60px] h-10 rounded-[10px] flex items-center justify-center font-mono text-sm font-bold px-2" style={{ background: `${divColor}22`, color: divColor }}>{p.ot}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[15px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
+                  <div className="text-[13px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{lineaOt(p)}</div>
                 </div>
-                <div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gypi-border">
-                  <button onClick={() => setDetalle(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">📊 Detalle</button>
-                  <button onClick={() => setPiezasOt(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">🧩 Piezas</button>
-                  <button onClick={() => setModal(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✏️ Editar</button>
-                  {p.estado === "activo" ? (
-                    <button onClick={() => cerrarProyecto(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">Cerrar</button>
-                  ) : (
-                    <button onClick={() => reabrir(p.id)} className="py-2.5 px-3.5 rounded-lg border-none bg-gypi-green/10 text-gypi-green text-[11px] font-bold cursor-pointer min-h-[44px]">Reactivar</button>
-                  )}
-                </div>
-                <div className="flex gap-1.5 mt-1.5">
-                  <button onClick={() => setSueltos(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">📦 Sueltos</button>
-                  <button onClick={() => setCarga(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">🚚 Carga</button>
-                  <button onClick={() => setEtiquetas(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-amber/10 text-gypi-amber-ink text-[11px] font-bold cursor-pointer min-h-[44px]">🏷 Módulos</button>
-                  <button onClick={() => setActa(p)} className="flex-1 py-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-bold cursor-pointer min-h-[44px]">✍️ Acta</button>
-                </div>
-              </div>
+                {p.estado !== "cerrado" && pctEscaneo.get(String(p.ot))?.porcentaje != null && <Tag color={AMBER}>🧩 {pctEscaneo.get(String(p.ot)).porcentaje}%</Tag>}
+                {p.estado !== "cerrado" && otsEnCurso.has(String(p.ot)) && <Tag color={AMBER}>en curso</Tag>}
+                {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
+                {p.estado !== "cerrado" && p.terminado_planilla && <Tag color="var(--color-text-muted)">terminada en planilla</Tag>}
+                <span aria-hidden="true" className="text-gypi-mute text-lg">›</span>
+              </button>
             );
           })}
         </div>
@@ -630,7 +623,46 @@ export default function ProyectosScreen({ empresaId }) {
       {detalle && (
         <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} onClose={() => setDetalle(null)} />
       )}
+      <Modal open={!!acciones} onClose={() => setAcciones(null)} title={acciones ? `OT ${acciones.ot}` : ""}>
+        {acciones && (
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="text-[15px] font-bold text-gypi-text">{acciones.cliente || acciones.proyecto || "—"}</div>
+              {[acciones.obra || acciones.proyecto, acciones.descripcion].filter(Boolean).length > 0 && (
+                <div className="text-[13px] text-gypi-dim mt-0.5">{[acciones.obra || acciones.proyecto, acciones.descripcion].filter(Boolean).join(" · ")}</div>
+              )}
+              <div className="text-[13px] text-gypi-dim mt-0.5">
+                {[acciones.division && nombreDivisionOt(divisionesCtx || [], acciones.division), acciones.fecha_entrega && `Entrega ${fechaCorta(acciones.fecha_entrega)}`, acciones.cantidad != null && `Cantidad ${acciones.cantidad}`].filter(Boolean).join(" · ")}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <BotonOt onClick={() => abrir(setDetalle)}>📊 Detalle</BotonOt>
+              <BotonOt onClick={() => abrir(setPiezasOt)}>🧩 Piezas</BotonOt>
+              <BotonOt onClick={() => abrir(setSueltos)}>📦 Sueltos</BotonOt>
+              <BotonOt onClick={() => abrir(setCarga)}>🚚 Carga</BotonOt>
+              <BotonOt onClick={() => abrir(setEtiquetas)}>🏷 Módulos</BotonOt>
+              <BotonOt onClick={() => abrir(setActa)}>✍️ Acta</BotonOt>
+              <BotonOt tono="cyan" onClick={() => abrir(setModal)}>✏️ Editar</BotonOt>
+              {acciones.estado === "activo" ? (
+                <BotonOt onClick={() => abrir((p) => cerrarProyecto(p.id))}>Cerrar OT</BotonOt>
+              ) : (
+                <BotonOt tono="green" onClick={() => abrir((p) => reabrir(p.id))}>Reactivar</BotonOt>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
       {ConfirmDialog}
     </div>
+  );
+}
+
+/** Botón grande de la ventana de una OT: se toca con guantes y se lee al sol. */
+function BotonOt({ children, onClick, tono = "amber" }) {
+  const colores = { amber: "bg-gypi-amber/10 text-gypi-amber-ink", cyan: "bg-gypi-cyan/10 text-gypi-cyan", green: "bg-gypi-green/10 text-gypi-green" };
+  return (
+    <button type="button" onClick={onClick} className={`min-h-[52px] px-3 rounded-xl border-none text-[15px] font-bold cursor-pointer ${colores[tono]}`}>
+      {children}
+    </button>
   );
 }

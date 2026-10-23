@@ -66,7 +66,7 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
           <div key={t.clave}>
             <Stat value={fmtDias(t.promedio)} label={`${t.nombre} · promedio de ${t.cantidad === 1 ? "1 OT" : `${t.cantidad} OT`}`} />
             {t.porDivision.length > 1 && (
-              <div className="text-[11px] text-gypi-dim mt-1 px-1">
+              <div className="text-xs text-gypi-dim mt-1 px-1">
                 {t.porDivision.map((d) => `${d.nombre}: ${fmtDias(d.promedio)} (${d.cantidad})`).join(" · ")}
               </div>
             )}
@@ -86,7 +86,7 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
                 Producción {fmtDias(o.produccion)} · Instalación {fmtDias(o.instalacion)} · Total {fmtDias(o.total)}
               </div>
               {(o.finProduccion || o.finInstalacion) && (
-                <div className="text-[11px] text-gypi-dim mt-0.5">
+                <div className="text-xs text-gypi-dim mt-0.5">
                   {[o.finProduccion && `Producción terminada ${fechaCorta(hoyArg(new Date(o.finProduccion)))}`, o.finInstalacion && `Acta ${fechaCorta(hoyArg(new Date(o.finInstalacion)))}`].filter(Boolean).join(" · ")}
                 </div>
               )}

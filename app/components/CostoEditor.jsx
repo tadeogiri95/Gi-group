@@ -72,11 +72,11 @@ export default function CostoEditor({ avisar = () => {} }) {
       {aviso && <div role="alert" className="text-[12px] text-gypi-red mb-2.5">{aviso}</div>}
       <label htmlFor="costo-hora" className="g-label mb-1.5 block">Costo de la hora ($)</label>
       <input id="costo-hora" className="g-input w-full mb-1.5" inputMode="decimal" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ej: 9.500" />
-      <div className="text-[11px] text-gypi-dim mb-3.5">
+      <div className="text-xs text-gypi-dim mb-3.5">
         {texto.trim() && !valido ? <span className="text-gypi-red">Escribí solo el número, por ejemplo 9.500.</span>
           : guardado != null ? `Ahora: ${fmtPesos(guardado)} por hora.` : "Todavía no lo cargaste."}
       </div>
-      <div className="text-[11px] text-gypi-dim mb-3.5">
+      <div className="text-xs text-gypi-dim mb-3.5">
         Las horas de instalación salen de la etapa que se llama &quot;Instalación&quot; (Configuración → Etapas).
       </div>
       <button onClick={guardar} disabled={guardando || !valido || valor === guardado} className="g-btn g-btn-primary w-full">

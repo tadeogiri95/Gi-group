@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 const FIELD = { width: "100%", padding: "10px 12px", borderRadius: 10, marginTop: 4, marginBottom: 10, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", background: "var(--color-surface, #1A1714)", border: "1px solid var(--color-border, rgba(255,240,220,0.1))", color: "var(--color-text, #F5F0E8)" };
-const LABEL = { display: "block", fontSize: 11, fontWeight: 700, color: "var(--color-text-dim, #9B8F85)", textTransform: "uppercase", letterSpacing: "0.05em" };
+const LABEL = { display: "block", fontSize: 12, fontWeight: 700, color: "var(--color-text-dim, #9B8F85)", textTransform: "uppercase", letterSpacing: "0.05em" };
 
 /**
  * Botón "Contactanos" para el plan Enterprise que abre un formulario

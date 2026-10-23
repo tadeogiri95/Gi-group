@@ -79,6 +79,9 @@ test("Gestión de personal — monta y ofrece activar el modo kiosco", async () 
       <GestionPersonalScreen empresaId="e-1" />
     </AuthContext.Provider>
   );
-  const boton = await screen.findByRole("button", { name: "Activar acá" });
+  // El kiosco se usa una vez: queda en "Más acciones" para no tapar la lista
+  assert.equal(screen.queryByRole("button", { name: "Activar acá" }), null);
+  fireEvent.click(await screen.findByRole("button", { name: /Más acciones/ }));
+  const boton = screen.getByRole("button", { name: "Activar acá" });
   assert.equal(boton.disabled, false);
 });

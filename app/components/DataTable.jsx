@@ -53,7 +53,7 @@ export default function DataTable({ columns = [], data = [], onRowClick, emptyMe
             {columns.map(col => (
               <th
                 key={col.key}
-                className={`text-left px-3 py-2.5 text-[11px] font-bold text-gypi-dim uppercase tracking-wider font-body ${col.sortable ? "cursor-pointer select-none hover:text-gypi-text" : ""}`}
+                className={`text-left px-3 py-2.5 text-xs font-bold text-gypi-dim uppercase tracking-wider font-body ${col.sortable ? "cursor-pointer select-none hover:text-gypi-text" : ""}`}
                 onClick={() => col.sortable && toggleSort(col.key)}
               >
                 <span className="inline-flex items-center gap-1">

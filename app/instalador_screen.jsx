@@ -140,7 +140,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
       {fase === "ingreso" && (
         <>
           <div className="bg-gypi-surface rounded-2xl border border-gypi-border p-4 mb-3">
-            <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2 font-body">¿Qué se hizo hoy en obra?</div>
+            <div className="text-xs font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2 font-body">¿Qué se hizo hoy en obra?</div>
             {grabando && (
               <div className="flex items-center gap-2 mb-2.5 py-2 px-3 rounded-[10px]" style={{ background: `${RED}15`, border: `1px solid ${RED}33` }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: RED, animation: "pulse 1s ease-in-out infinite" }} />
@@ -180,7 +180,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
           {/* Previews de fotos */}
           {fotos.length > 0 && (
             <div className="bg-gypi-surface rounded-2xl border border-gypi-border p-3 mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2.5 font-body">📷 Fotos adjuntas ({fotos.length})</div>
+              <div className="text-xs font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2.5 font-body">📷 Fotos adjuntas ({fotos.length})</div>
               <div className="grid grid-cols-3 gap-2">
                 {fotos.map((f, i) => (
                   <div key={i} className="relative rounded-[10px] overflow-hidden aspect-square bg-gypi-surf-hi">
@@ -217,13 +217,13 @@ export default function InstaladorScreen({ usuario, empresa }) {
       {fase === "check" && reporte && (
         <>
           <div className="bg-gypi-surface rounded-2xl border border-gypi-border p-4 mb-3">
-            <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2 font-body">✅ Progreso efectivo</div>
+            <div className="text-xs font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2 font-body">✅ Progreso efectivo</div>
             <p className="m-0 text-[15px] leading-relaxed text-gypi-text">{reporte.progreso || "—"}</p>
           </div>
 
           {reporte.faltantes?.length > 0 && (
             <div className="bg-gypi-red-s rounded-2xl p-4 mb-3" style={{ border: `1px solid ${RED}33` }}>
-              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-red mb-2 font-body">🚫 Faltantes</div>
+              <div className="text-xs font-bold uppercase tracking-[0.06em] text-gypi-red mb-2 font-body">🚫 Faltantes</div>
               <div className="flex flex-wrap">
                 {reporte.faltantes.map((f, i) => (
                   <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `${RED}22`, color: RED }}>{f}</span>
@@ -234,7 +234,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
           {reporte.desvios?.length > 0 && (
             <div className="bg-gypi-amber-s rounded-2xl p-4 mb-3" style={{ border: `1px solid color-mix(in srgb, ${AMBER} 20%, transparent)` }}>
-              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-amber-ink mb-2 font-body">⚠️ Desvíos / Imprevistos</div>
+              <div className="text-xs font-bold uppercase tracking-[0.06em] text-gypi-amber-ink mb-2 font-body">⚠️ Desvíos / Imprevistos</div>
               <div className="flex flex-wrap">
                 {reporte.desvios.map((d, i) => (
                   <span key={i} className="inline-block py-[5px] px-3 rounded-[10px] text-[13px] font-semibold font-body mr-1.5 mb-1.5" style={{ background: `color-mix(in srgb, ${AMBER} 13%, transparent)`, color: AMBER }}>{d}</span>
@@ -245,7 +245,7 @@ export default function InstaladorScreen({ usuario, empresa }) {
 
           {fotos.length > 0 && (
             <div className="bg-gypi-surface rounded-2xl border border-gypi-border p-4 mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2 font-body">📷 {fotos.length} foto{fotos.length > 1 ? "s" : ""} adjunta{fotos.length > 1 ? "s" : ""}</div>
+              <div className="text-xs font-bold uppercase tracking-[0.06em] text-gypi-dim mb-2 font-body">📷 {fotos.length} foto{fotos.length > 1 ? "s" : ""} adjunta{fotos.length > 1 ? "s" : ""}</div>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {fotos.map((f, i) => (
                   <img key={i} src={f.preview} alt={f.name} className="w-20 h-20 rounded-[10px] object-cover shrink-0 border border-gypi-border" />

@@ -22,6 +22,7 @@ import OrdenesCompra from "./OrdenesCompra";
 import RecibirCompra from "./RecibirCompra";
 import ReportesCompras from "./ReportesCompras";
 import ArticuloNuevo from "./ArticuloNuevo";
+import FilaDeslizable from "./ui/FilaDeslizable";
 
 const CUANTOS = 300;
 const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad: "", ot: "", para_fecha: "", notas: "" };
@@ -436,14 +437,14 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       {permisos.puede_pedir && (
-        <div role="tablist" aria-label="Compras" className="flex gap-1.5 mb-3 flex-wrap">
+        <FilaDeslizable role="tablist" aria-label="Compras" activa={vista} className="gap-1.5 mb-3">
           {(comprador ? PESTANAS_COMPRADOR : PESTANAS_JEFE).map(([id, label]) => (
             <button key={id} role="tab" aria-selected={vista === id} onClick={() => { setVista(id); setOrdenNueva(null); setCreadas(null); }}
               className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-bold cursor-pointer ${vista === id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
               {label}
             </button>
           ))}
-        </div>
+        </FilaDeslizable>
       )}
 
       {faltaMigracion && (
@@ -489,7 +490,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
           ))}
 
           <div className="flex gap-2 mb-2">
-            <input aria-label="Buscar pedidos" className="g-input flex-1 min-w-0" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar material, OT o quién pidió" />
+            <input aria-label="Buscar pedidos" className="g-input flex-1 min-w-0" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar pedido" />
             <select aria-label="Estado" className="g-input w-auto" value={estado} onChange={(e) => setEstado(e.target.value)}>
               <option value="">Todos</option>
               {Object.values(ESTADOS_PEDIDO).map((s) => <option key={s.id} value={s.id}>{s.icono} {s.nombre}</option>)}

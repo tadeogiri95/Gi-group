@@ -11,7 +11,7 @@ const VACIO = { tipo: "", codigo: "", descripcion: "", medida: "", cantidad: "1"
 function Tilde({ activo, onClick, label, disabled }) {
   return (
     <button onClick={onClick} disabled={disabled} aria-pressed={activo} aria-label={label}
-      className={`min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${activo ? "bg-gypi-green/15 border-gypi-green text-gypi-green" : "bg-transparent border-gypi-border text-gypi-dim"}`}>
+      className={`min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer ${activo ? "bg-gypi-green/15 border-gypi-green text-gypi-green" : "bg-transparent border-gypi-border text-gypi-dim"}`}>
       {activo ? "✓ " : ""}{label.split(" ")[0]}
     </button>
   );
@@ -117,12 +117,12 @@ export default function SueltosOt({ proyecto, empresaId, esGestion = false, onCl
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold">{nombreSuelto(i)}</div>
-                    <div className="text-[11px] text-gypi-dim">
+                    <div className="text-xs text-gypi-dim">
                       {[i.tipo, i.medida, `Cant. ${Number(i.cantidad).toLocaleString("es-AR")}`, i.va_con && `Va con ${i.va_con}`].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                   {esGestion && (confirmar === i.id ? (
-                    <button onClick={() => borrar(i.id)} disabled={guardando} className="min-h-[44px] px-2.5 rounded-lg border border-gypi-red bg-gypi-red/10 text-gypi-red text-[11px] font-bold cursor-pointer">Sí, sacar</button>
+                    <button onClick={() => borrar(i.id)} disabled={guardando} className="min-h-[44px] px-2.5 rounded-lg border border-gypi-red bg-gypi-red/10 text-gypi-red text-xs font-bold cursor-pointer">Sí, sacar</button>
                   ) : (
                     <button onClick={() => setConfirmar(i.id)} aria-label={`Sacar ${nombreSuelto(i)}`} className="min-w-[44px] min-h-[44px] rounded-lg border border-gypi-border bg-transparent text-gypi-red text-sm cursor-pointer">🗑</button>
                   ))}
@@ -140,7 +140,7 @@ export default function SueltosOt({ proyecto, empresaId, esGestion = false, onCl
           modo === "pegar" ? (
             <section aria-label="Pegar desde Excel" className="g-card mb-3">
               <label htmlFor="sueltos-pegar" className="g-label mb-1 block">Pegar desde Excel</label>
-              <div className="text-[11px] text-gypi-dim mb-1.5">Copiá las filas en el Excel (con o sin títulos) y pegalas acá. Columnas: Tipo, Código, Descripción, Medida, Cant., Va con.</div>
+              <div className="text-xs text-gypi-dim mb-1.5">Copiá las filas en el Excel (con o sin títulos) y pegalas acá. Columnas: Tipo, Código, Descripción, Medida, Cant., Va con.</div>
               <textarea id="sueltos-pegar" className="g-input w-full min-h-[110px] font-mono text-[12px]" value={pegado} onChange={(e) => setPegado(e.target.value)} placeholder={"Madera\tAJ.1\tAjuste grafito\t810 × 70\t1\tZona alacenas"} />
               {vista && (
                 <div className="mt-2">
@@ -149,7 +149,7 @@ export default function SueltosOt({ proyecto, empresaId, esGestion = false, onCl
                   </div>
                   {vista.items.length > 0 && (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-[11px] border-collapse">
+                      <table className="w-full text-xs border-collapse">
                         <thead><tr className="text-gypi-dim text-left">{["Tipo", "Código", "Descripción", "Medida", "Cant.", "Va con"].map((t) => <th key={t} className="p-1 font-bold">{t}</th>)}</tr></thead>
                         <tbody>
                           {vista.items.map((i, n) => (
@@ -162,7 +162,7 @@ export default function SueltosOt({ proyecto, empresaId, esGestion = false, onCl
                       </table>
                     </div>
                   )}
-                  {vista.errores.map((e) => <div key={e.fila} className="text-[11px] text-gypi-red">Fila {e.fila}: {e.motivo}. No se agrega.</div>)}
+                  {vista.errores.map((e) => <div key={e.fila} className="text-xs text-gypi-red">Fila {e.fila}: {e.motivo}. No se agrega.</div>)}
                 </div>
               )}
               <div className="flex gap-2 mt-2.5">
@@ -175,22 +175,22 @@ export default function SueltosOt({ proyecto, empresaId, esGestion = false, onCl
           ) : modo === "uno" ? (
             <section aria-label="Agregar un ítem" className="g-card mb-3">
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[11px] text-gypi-dim">Tipo
+                <label className="text-xs text-gypi-dim">Tipo
                   <input className="g-input w-full" list="tipos-suelto" value={nuevo.tipo} maxLength={LIMITES.tipo} onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value })} />
                 </label>
-                <label className="text-[11px] text-gypi-dim">Código
+                <label className="text-xs text-gypi-dim">Código
                   <input className="g-input w-full" value={nuevo.codigo} maxLength={LIMITES.codigo} onChange={(e) => setNuevo({ ...nuevo, codigo: e.target.value })} />
                 </label>
-                <label className="text-[11px] text-gypi-dim col-span-2">Descripción
+                <label className="text-xs text-gypi-dim col-span-2">Descripción
                   <input className="g-input w-full" value={nuevo.descripcion} maxLength={LIMITES.descripcion} onChange={(e) => setNuevo({ ...nuevo, descripcion: e.target.value })} />
                 </label>
-                <label className="text-[11px] text-gypi-dim">Medida
+                <label className="text-xs text-gypi-dim">Medida
                   <input className="g-input w-full" value={nuevo.medida} maxLength={LIMITES.medida} onChange={(e) => setNuevo({ ...nuevo, medida: e.target.value })} />
                 </label>
-                <label className="text-[11px] text-gypi-dim">Cant.
+                <label className="text-xs text-gypi-dim">Cant.
                   <input className="g-input w-full" inputMode="decimal" value={nuevo.cantidad} onChange={(e) => setNuevo({ ...nuevo, cantidad: e.target.value })} />
                 </label>
-                <label className="text-[11px] text-gypi-dim col-span-2">Va con
+                <label className="text-xs text-gypi-dim col-span-2">Va con
                   <input className="g-input w-full" value={nuevo.va_con} maxLength={LIMITES.va_con} onChange={(e) => setNuevo({ ...nuevo, va_con: e.target.value })} placeholder="Ej: Isla, Zona alacenas, 2.GB2P" />
                 </label>
               </div>

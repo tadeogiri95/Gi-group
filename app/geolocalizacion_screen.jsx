@@ -322,7 +322,7 @@ function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
         {/* ── Modo Mapa interactivo ── */}
         {modo === "mapa" && (
           <div className="mb-3">
-            <div className="text-[11px] text-gypi-dim mb-2">Tocá en el mapa para ubicar el punto de fichaje</div>
+            <div className="text-xs text-gypi-dim mb-2">Tocá en el mapa para ubicar el punto de fichaje</div>
             <div className="rounded-xl overflow-hidden border border-gypi-border h-[260px]">
               <LeafletMap lat={hasCoords ? latNum : -34.6037} lng={hasCoords ? lngNum : -58.3816}
                 zoom={hasCoords ? 16 : 12} radio={radio} onMapClick={handleMapClick} />
@@ -460,11 +460,11 @@ function PanelUbicaciones({ ubicaciones, onEdit, onDelete, onNew, deleting, plan
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-[14px] font-bold text-gypi-text truncate">{u.nombre}</div>
-              <div className="text-[11px] text-gypi-dim font-mono mt-0.5">
+              <div className="text-xs text-gypi-dim font-mono mt-0.5">
                 {u.lat?.toFixed(5)}, {u.lng?.toFixed(5)} · {u.radio || 150}m
               </div>
               {plantas.length > 1 && nombrePlanta(plantas, u.planta_id) && (
-                <div className="text-[11px] text-gypi-dim mt-0.5">🏭 {nombrePlanta(plantas, u.planta_id)}</div>
+                <div className="text-xs text-gypi-dim mt-0.5">🏭 {nombrePlanta(plantas, u.planta_id)}</div>
               )}
             </div>
             <div className="flex gap-1.5 shrink-0">
@@ -679,7 +679,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
           className={`text-left py-2 px-3 rounded-lg border cursor-pointer font-body ${valor === m.id ? "border-gypi-cyan bg-gypi-cyan/10" : "border-gypi-border bg-transparent"}`}
         >
           <div className="text-[13px] font-semibold text-gypi-text">{m.label}</div>
-          <div className="text-[11px] text-gypi-dim mt-0.5">{m.detalle}</div>
+          <div className="text-xs text-gypi-dim mt-0.5">{m.detalle}</div>
         </button>
       ))}
     </div>
@@ -935,7 +935,7 @@ export default function GeolocalizacionScreen({ empresaId }) {
                       )}
 
                       {changed && (
-                        <div className="mt-2 text-[11px] text-gypi-dim">
+                        <div className="mt-2 text-xs text-gypi-dim">
                           <Tag color={MARCA}>sin guardar</Tag>
                         </div>
                       )}

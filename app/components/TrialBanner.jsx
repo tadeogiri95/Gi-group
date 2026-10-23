@@ -40,7 +40,7 @@ export default function TrialBanner({ onUpgrade, reload }) {
         <span aria-hidden="true" className="text-[22px] shrink-0">🎁</span>
         <div className="flex-1 font-body">
           <div className="text-[13px] font-bold text-gypi-text">Activá tu prueba gratuita</div>
-          <div className="text-[11px] text-gypi-dim mt-px">30 días con todas las funciones, sin tarjeta. {errorTrial && <span className="text-gypi-red">{errorTrial}</span>}</div>
+          <div className="text-xs text-gypi-dim mt-px">30 días con todas las funciones, sin tarjeta. {errorTrial && <span className="text-gypi-red">{errorTrial}</span>}</div>
         </div>
         <button onClick={iniciarTrial} disabled={iniciando} className="shrink-0 border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body text-black disabled:opacity-60" style={{ background: "var(--color-empresa-primary, #F97316)" }}>
           {iniciando ? "Iniciando..." : "Iniciar prueba"}
@@ -64,7 +64,7 @@ export default function TrialBanner({ onUpgrade, reload }) {
               ? "Te queda 1 día de prueba"
               : `Te quedan ${info.dias_restantes} días de prueba`}
           </div>
-          <div className="text-[11px] text-gypi-dim mt-px">Al terminar, la cuenta queda en pausa hasta que elijas un plan. Tus datos se guardan.</div>
+          <div className="text-xs text-gypi-dim mt-px">Al terminar, la cuenta queda en pausa hasta que elijas un plan. Tus datos se guardan.</div>
         </div>
         <button onClick={onUpgrade} className="shrink-0 border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body text-black" style={{ background: color }}>
           Suscribirme
@@ -82,7 +82,7 @@ export default function TrialBanner({ onUpgrade, reload }) {
         <span aria-hidden="true" className="text-[22px] shrink-0">🔒</span>
         <div className="flex-1 font-body">
           <div className="text-[13px] font-bold text-gypi-text">Tu prueba terminó</div>
-          <div className="text-[11px] text-gypi-dim mt-px">La cuenta está en pausa: elegí un plan para que tu equipo siga fichando.</div>
+          <div className="text-xs text-gypi-dim mt-px">La cuenta está en pausa: elegí un plan para que tu equipo siga fichando.</div>
         </div>
         <button onClick={onUpgrade} className="shrink-0 bg-gypi-red text-white border-none rounded-lg py-2 px-3.5 text-xs font-bold cursor-pointer font-body">
           Ver planes

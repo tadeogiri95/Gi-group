@@ -33,7 +33,7 @@ function fmtPorUnidad(min) {
 function Dato({ label, valor }) {
   return (
     <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border">
-      <div className="text-[11px] text-gypi-dim">{label}</div>
+      <div className="text-xs text-gypi-dim">{label}</div>
       <div className="text-base font-bold text-gypi-text mt-0.5">{valor}</div>
     </div>
   );
@@ -184,7 +184,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               <div className="g-label flex-1">🧩 Producción por escaneo</div>
               <div className="font-heading text-lg font-bold text-gypi-amber-ink">{pctEscaneo}%</div>
             </div>
-            <div className="text-[11px] text-gypi-dim mb-1.5">{piezas.piezas.length === 1 ? "1 pieza" : `${piezas.piezas.length} piezas`} en la OT. Cuenta las piezas escaneadas en cada etapa.</div>
+            <div className="text-xs text-gypi-dim mb-1.5">{piezas.piezas.length === 1 ? "1 pieza" : `${piezas.piezas.length} piezas`} en la OT. Cuenta las piezas escaneadas en cada etapa.</div>
             <div className="flex flex-col gap-1.5">
               {avanceEscaneo.map((a) => (
                 <div key={a.codigo} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border">
@@ -194,7 +194,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                     <span className="text-[13px] font-bold">{pctPiezas(a.pasaron, a.total)}%</span>
                   </div>
                   <Barra pct={pctPiezas(a.pasaron, a.total)} />
-                  <div className="text-[11px] text-gypi-dim mt-1">{a.pasaron} de {a.total} piezas</div>
+                  <div className="text-xs text-gypi-dim mt-1">{a.pasaron} de {a.total} piezas</div>
                 </div>
               ))}
             </div>
@@ -248,7 +248,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                 ].filter(([, min], i) => i === 0 || min > 0).map(([nombre, min, pesos]) => (
                   <div key={nombre} className="flex items-center gap-2 text-[13px] py-0.5">
                     <span className="flex-1">{nombre}</span>
-                    <span className="text-[11px] text-gypi-dim">{fmtHoras(min)}</span>
+                    <span className="text-xs text-gypi-dim">{fmtHoras(min)}</span>
                     <span className="w-24 text-right font-bold">{fmtPesos(pesos)}</span>
                   </div>
                 ))}
@@ -257,7 +257,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                   <span className="w-24 text-right">{fmtPesos(costo.total)}</span>
                 </div>
               </div>
-              <div className="text-[11px] text-gypi-dim mt-1">A {fmtPesos(costoHora)} la hora. Se cambia en Configuración → Costo.</div>
+              <div className="text-xs text-gypi-dim mt-1">A {fmtPesos(costoHora)} la hora. Se cambia en Configuración → Costo.</div>
             </section>
           )}
 
@@ -271,13 +271,13 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                   <span className="text-[13px] font-bold">{fmtHoras(e.min)}</span>
                 </div>
                 <Barra pct={(e.min / maxEtapa) * 100} />
-                <div className="text-[11px] text-gypi-dim mt-1">
+                <div className="text-xs text-gypi-dim mt-1">
                   {e.personas.length ? e.personas.join(", ") : "Sin tareas todavía"}
                   {e.retrabajoMin > 0 && ` · ${fmtHoras(e.retrabajoMin)} de retrabajo`}
                   {resumen.tieneRuta && !e.enRuta && " · fuera de la ruta"}
                 </div>
                 {e.unidad && (e.cantidad > 0 || (esEtapaDeModulos(e) && proyecto?.total_modulos)) && (
-                  <div className="text-[11px] text-gypi-dim mt-0.5">
+                  <div className="text-xs text-gypi-dim mt-0.5">
                     {esEtapaDeModulos(e) && proyecto?.total_modulos
                       ? `${textoModulos(e.cantidad, proyecto.total_modulos)} ${e.unidad}`
                       : `${Number(e.cantidad.toFixed(2))} ${e.unidad}`}
@@ -294,7 +294,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               <div key={p.nombre} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold truncate">{p.nombre}</div>
-                  <div className="text-[11px] text-gypi-dim truncate">{p.etapas.join(", ")}</div>
+                  <div className="text-xs text-gypi-dim truncate">{p.etapas.join(", ")}</div>
                 </div>
                 <span className="text-[13px] font-bold">{fmtHoras(p.min)}</span>
               </div>
@@ -309,7 +309,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               {resumen.retrabajos.map((r) => (
                 <div key={r.tipo} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
                   <span className="flex-1 text-[13px] font-bold">{r.nombre}</span>
-                  <span className="text-[11px] text-gypi-dim">{r.veces === 1 ? "1 vez" : `${r.veces} veces`}</span>
+                  <span className="text-xs text-gypi-dim">{r.veces === 1 ? "1 vez" : `${r.veces} veces`}</span>
                   <span className="text-[13px] font-bold">{fmtHoras(r.min)}</span>
                 </div>
               ))}
@@ -323,13 +323,13 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               {resumen.paradas.map((p) => (
                 <div key={p.causa} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
                   <span className="flex-1 min-w-0 text-[13px] font-bold truncate">{p.nombre}</span>
-                  <span className="text-[11px] text-gypi-dim">{p.veces === 1 ? "1 vez" : `${p.veces} veces`}</span>
+                  <span className="text-xs text-gypi-dim">{p.veces === 1 ? "1 vez" : `${p.veces} veces`}</span>
                   <span className="text-[13px] font-bold">{fmtHoras(p.min)}</span>
                 </div>
               ))}
             </div>
           )}
-          <div className="text-[11px] text-gypi-dim mb-4">Las paradas cuentan desde que se anotan con la OT en la que se estaba; las anteriores no tienen OT.</div>
+          <div className="text-xs text-gypi-dim mb-4">Las paradas cuentan desde que se anotan con la OT en la que se estaba; las anteriores no tienen OT.</div>
 
         </>)}
         {noConformes.length > 0 && (<>
@@ -340,11 +340,11 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                 <span className="w-10 font-mono text-[12px] font-bold text-gypi-red">{nc.defecto}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-bold truncate">{nombreDefecto(defectos, nc.defecto)}</div>
-                  <div className="text-[11px] text-gypi-dim truncate">
+                  <div className="text-xs text-gypi-dim truncate">
                     {[nc.cantidad > 1 ? `${nc.cantidad} piezas` : "1 pieza", nc.pieza, nc.minutos_retrabajo ? `${nc.minutos_retrabajo} min de retrabajo` : null].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                <span className={`text-[11px] font-bold ${nc.decision ? "text-gypi-green" : "text-gypi-red"}`}>{nc.decision ? nombreDecision(nc.decision) : "Sin decidir"}</span>
+                <span className={`text-xs font-bold ${nc.decision ? "text-gypi-green" : "text-gypi-red"}`}>{nc.decision ? nombreDecision(nc.decision) : "Sin decidir"}</span>
               </div>
             ))}
           </div>

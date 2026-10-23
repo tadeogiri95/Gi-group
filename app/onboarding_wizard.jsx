@@ -551,17 +551,17 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
             </div>
           ))}
           {empleados.length === 0 && <div className="py-3.5 text-center text-gypi-dim text-xs">Todavía no cargaste a nadie</div>}
-          {empleados.length > 0 && <p className="text-[11px] text-gypi-dim mt-2 mb-0">Si no ponés legajo, te asignamos uno.</p>}
+          {empleados.length > 0 && <p className="text-xs text-gypi-dim mt-2 mb-0">Si no ponés legajo, te asignamos uno.</p>}
         </div>
 
         <div className="g-card mb-3">
           <div className="g-label">¿Tenés la lista en Excel?</div>
-          <p className="text-[11px] text-gypi-dim mb-2">Guardala como CSV con las columnas nombre, legajo, división y rol (en la primera fila).</p>
+          <p className="text-xs text-gypi-dim mb-2">Guardala como CSV con las columnas nombre, legajo, división y rol (en la primera fila).</p>
           <input ref={fileCsvRef} type="file" accept=".csv,text/csv" hidden onChange={onCsvFile} />
           <Button size="sm" variant="secondary" className="w-full" onClick={() => fileCsvRef.current?.click()}>📤 Subir la lista</Button>
         </div>
 
-        {empleados.length > 0 && <p className="text-[11px] text-gypi-dim mb-3">Al terminar te damos un QR por persona para que entren a la app y creen su contraseña.</p>}
+        {empleados.length > 0 && <p className="text-xs text-gypi-dim mb-3">Al terminar te damos un QR por persona para que entren a la app y creen su contraseña.</p>}
 
         <div className="flex justify-between gap-2">
           <Button variant="secondary" onClick={() => setStep(3)}>← Atrás</Button>
@@ -674,7 +674,7 @@ export default function OnboardingWizard({ empresa, usuario, onComplete }) {
               pie: "Escaneá con la cámara del celular y creá tu contraseña. Sirve una vez.",
             })),
           }).catch(() => setError("No se pudo abrir la impresión. Permití las ventanas emergentes."))}>🖨️ Imprimir tarjetas con QR</Button>
-          <p className="text-[11px] text-gypi-dim mb-3">Si perdés algún código, generás uno nuevo desde Personal.</p>
+          <p className="text-xs text-gypi-dim mb-3">Si perdés algún código, generás uno nuevo desde Personal.</p>
         </>}
         {avisos.length > 0 && (
           <div role="alert" className="p-3 bg-gypi-amber/10 text-gypi-text rounded-[10px] text-xs mb-3">

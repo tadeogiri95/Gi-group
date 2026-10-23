@@ -29,7 +29,7 @@ export function TarjetaLinea({ linea, cotizacion, tramoMinimo, anual, busy, actu
       <p className="text-xs text-gypi-dim mt-1 mb-3 leading-relaxed">{l.descripcion}</p>
 
       <fieldset className="border-none p-0 m-0 mb-3">
-        <legend className="text-[11px] text-gypi-dim font-semibold mb-1.5">OPERARIOS ACTIVOS</legend>
+        <legend className="text-xs text-gypi-dim font-semibold mb-1.5">OPERARIOS ACTIVOS</legend>
         <div className="flex gap-2">
           {TRAMOS.map((t) => (
             <button
@@ -53,13 +53,13 @@ export function TarjetaLinea({ linea, cotizacion, tramoMinimo, anual, busy, actu
       </fieldset>
 
       <fieldset className="border-none p-0 m-0 mb-3">
-        <legend className="text-[11px] text-gypi-dim font-semibold mb-1.5">ADD-ONS</legend>
+        <legend className="text-xs text-gypi-dim font-semibold mb-1.5">ADD-ONS</legend>
         {Object.values(ADDONS).map((a) => (
           <label key={a.id} className="flex items-start gap-2 text-xs text-gypi-text py-1 cursor-pointer">
             <input type="checkbox" checked={addons.includes(a.id)} onChange={() => toggle(a.id)} className="mt-0.5" />
             <span>
               <b>{a.nombre}</b> · {usd(a.usd)}/mes
-              <span className="block text-[11px] text-gypi-dim">{a.descripcion}</span>
+              <span className="block text-xs text-gypi-dim">{a.descripcion}</span>
             </span>
           </label>
         ))}
@@ -67,10 +67,10 @@ export function TarjetaLinea({ linea, cotizacion, tramoMinimo, anual, busy, actu
 
       <div className="flex items-baseline justify-between mb-3">
         <div>
-          <div className="font-heading text-xl font-bold text-gypi-amber-ink">{usd(total)}<span className="text-[11px] text-gypi-dim font-normal">/mes</span></div>
+          <div className="font-heading text-xl font-bold text-gypi-amber-ink">{usd(total)}<span className="text-xs text-gypi-dim font-normal">/mes</span></div>
           {anual && <div className="text-xs text-gypi-green">Con 20% de descuento · se cobran 12 meses juntos</div>}
         </div>
-        <div className="text-right text-[11px] text-gypi-dim">
+        <div className="text-right text-xs text-gypi-dim">
           {enPesos
             ? <>Hoy: <b className="text-gypi-text">{pesos(enPesos)}</b>/mes<br />Dólar oficial {pesos(cotizacion.usd_ars)}</>
             : "Se cobra en pesos al dólar oficial del día"}

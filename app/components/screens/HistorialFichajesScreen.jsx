@@ -104,7 +104,7 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
                   <div>
                     <div className="text-[13px] font-bold text-gypi-text">{new Date(f.fecha + "T12:00:00").toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" })}</div>
                     <div className="text-xs text-gypi-dim mt-1 font-mono">{f.ingreso?.slice(0, 5) || "—"} → {f.egreso?.slice(0, 5) || "sin egreso"}</div>
-                    {f.horas_trabajadas && <div className="text-[11px] text-gypi-dim mt-0.5">{Number(f.horas_trabajadas).toFixed(1)}h trabajadas</div>}
+                    {f.horas_trabajadas && <div className="text-xs text-gypi-dim mt-0.5">{Number(f.horas_trabajadas).toFixed(1)}h trabajadas</div>}
                   </div>
                   <div className="text-right">
                     <span className="inline-flex items-center gap-1 py-[3px] px-2 rounded-md text-xs font-bold" style={{ background: `color-mix(in srgb, ${statusColor} 13%, transparent)`, color: statusColor }}>{statusIcon} {statusLabel}</span>
@@ -122,7 +122,7 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
       </div>
       <button onClick={() => setShowChat(!showChat)} aria-expanded={showChat} className="g-card w-full !py-3.5 text-[13px] font-semibold font-body cursor-pointer flex justify-between items-center">
         <span>{showChat ? "Ocultar" : "Ver"} conversaciones ({chatHistory.length})</span>
-        <span aria-hidden="true" className="text-[11px] text-gypi-dim">{showChat ? "▲" : "▼"}</span>
+        <span aria-hidden="true" className="text-xs text-gypi-dim">{showChat ? "▲" : "▼"}</span>
       </button>
       {showChat && (
         <div role="log" aria-label="Historial de conversaciones" className="mt-2.5 g-card !p-3.5 max-h-[400px] overflow-y-auto">
@@ -132,7 +132,7 @@ export default function HistorialFichajesScreen({ usuario, ctx, legajoVer, onBac
             <div key={i} className={`flex mb-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] py-2 px-3 text-xs text-gypi-text leading-relaxed ${m.role === "user" ? "rounded-[12px_12px_4px_12px] bg-gypi-amber/20" : "rounded-[12px_12px_12px_4px] bg-gypi-surf-hi"}`}>
                 <div className="whitespace-pre-wrap">{m.content}</div>
-                <div className={`text-[11px] text-gypi-mute mt-1 ${m.role === "user" ? "text-right" : "text-left"}`}>{new Date(m.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                <div className={`text-xs text-gypi-mute mt-1 ${m.role === "user" ? "text-right" : "text-left"}`}>{new Date(m.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
               </div>
             </div>
           ))}
