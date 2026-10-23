@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { sb } from "../lib/supabase";
 import { cantidadTexto, nivelSemaforo } from "../lib/stock";
+import { useEscape } from "../hooks/useEscape";
 
 const RetirarMaterial = dynamic(() => import("./RetirarMaterial"), { ssr: false });
 
@@ -38,6 +39,8 @@ export default function FichaArticulo({ sku, articulo: dado = null, usuario = nu
   const [articulo, setArticulo] = useState(dado);
   const [retirando, setRetirando] = useState(false);
   const [estado, setEstado] = useState(dado ? "listo" : "cargando");
+  // Retirando: la pantalla de retiro maneja su propio Escape
+  useEscape(onClose, !retirando);
 
   useEffect(() => {
     if (dado) return;

@@ -13,6 +13,7 @@ import {
   imprimirEtiquetasModulos, modulosConPiezas,
   avancePiezas, textoAvancePiezas,
 } from "../lib/piezas";
+import { useEscape } from "../hooks/useEscape";
 
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
 const SIN_MODULO = "\u0000sin";
@@ -24,6 +25,7 @@ function leerTamano() {
 const piezasTexto = (n) => (n === 1 ? "1 pieza" : `${n.toLocaleString("es-AR")} piezas`);
 
 export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestion = false, onClose }) {
+  useEscape(onClose);
   const [piezas, setPiezas] = useState(null);
   const [pasos, setPasos] = useState([]);
   const [etapas, setEtapas] = useState([]);

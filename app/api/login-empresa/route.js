@@ -179,30 +179,11 @@ export async function POST(req) {
       for (const emp of empleados) {
         if (!emp.password) continue;
 
-        if (emp.password.startsWith("$2")) {
-          const match = await bcrypt.compare(password, emp.password);
-          if (match) { usuario = emp; break; }
-        } else {
-          // Contraseña en texto plano (legacy) — comparar y migrar a bcrypt.
-          // DEPRECATION: soporte para plaintext se elimina el 2026-09-01.
-          const PLAINTEXT_DEADLINE = new Date("2026-09-01T00:00:00Z");
-          if (new Date() >= PLAINTEXT_DEADLINE) {
-            logger.warn("Plaintext password rechazada post-deadline", { empleado_id: emp.id, empresa_id: emp.empresa_id });
-            continue;
-          }
-          if (password === emp.password) {
-            usuario = emp;
-            logger.warn("Login con plaintext password (legacy) — migrando a bcrypt", { empleado_id: emp.id, empresa_id: emp.empresa_id });
-            try {
-              const hashed = await bcrypt.hash(password, 10);
-              await sbPatch(`empleados?id=eq.${emp.id}`, { password: hashed });
-              logger.info("Password migrada a bcrypt exitosamente", { empleado_id: emp.id });
-            } catch (e) {
-              logger.error("Error migrando contraseña a bcrypt", e);
-            }
-            break;
-          }
-        }
+        // Solo hashes bcrypt: el ingreso con contraseñas sin cifrar venció el
+        // 2026-09-01 (auditoría 22/10: se sacó el código que quedaba)
+        if (!emp.password.startsWith("$2")) continue;
+        const match = await bcrypt.compare(password, emp.password);
+        if (match) { usuario = emp; break; }
       }
 
       if (!usuario) {

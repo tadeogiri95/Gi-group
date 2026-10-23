@@ -12,6 +12,7 @@ import { fechaCorta } from "../lib/ot";
 import { hoyArg } from "../lib/dates";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import { avancePorOt, clavesEscaneadas, reglasPieza } from "../lib/piezas";
+import { useEscape } from "../hooks/useEscape";
 
 function claseCelda(estado) {
   switch (estado) {
@@ -42,6 +43,7 @@ function nombreEstado(estado) {
 }
 
 function Hoja({ titulo, onClose, children }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={titulo}>
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />

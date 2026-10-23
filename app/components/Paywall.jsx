@@ -1,5 +1,6 @@
 "use client";
 import { PLANES, ADDONS } from "../lib/plans";
+import { useEscape } from "../hooks/useEscape";
 
 // planRequerido puede ser un plan ("planta_15") o un add-on ("campo", ítem 25)
 function precioDe(p) {
@@ -10,6 +11,7 @@ function precioDe(p) {
 }
 
 export default function Paywall({ planActual = "free", planRequerido = "asistencia_15", feature, mensaje, onClose, onUpgrade }) {
+  useEscape(onClose);
   const addon = ADDONS[planRequerido];
   const target = addon || PLANES[planRequerido] || PLANES.asistencia_15;
   const actual = PLANES[planActual] || PLANES.free;

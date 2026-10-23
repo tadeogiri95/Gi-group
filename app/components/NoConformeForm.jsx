@@ -6,8 +6,10 @@
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { defectosDe } from "../lib/calidad";
+import { useEscape } from "../hooks/useEscape";
 
 export default function NoConformeForm({ ot, etapaDetecta = null, etapas = [], defectos = [], onClose, onCreada }) {
+  useEscape(onClose);
   const lista = defectosDe(defectos);
   const productivas = etapas.filter((e) => e.codigo > 0);
   const [defecto, setDefecto] = useState(null);

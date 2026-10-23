@@ -6,8 +6,10 @@ import { useState } from "react";
 import { tiposDeEmpresa, diasEntre, MAX_DIAS_SOLICITUD } from "../lib/tiposSolicitud";
 import { pedirSolicitud } from "../lib/pedidosOperario";
 import { hoyArg } from "../lib/dates";
+import { useEscape } from "../hooks/useEscape";
 
 export default function NuevaSolicitud({ usuario, empresa, onEnviada, onCerrar, demo = false }) {
+  useEscape(onCerrar);
   const tipos = tiposDeEmpresa(empresa?.tipos_solicitud);
   const [clave, setClave] = useState(tipos[0]?.clave || "");
   const [desde, setDesde] = useState(() => hoyArg());

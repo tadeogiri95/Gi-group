@@ -6,6 +6,7 @@
 // etiquetas, del mismo tamaño de rollo que los rótulos de bulto.
 import { useState } from "react";
 import { imprimirRotulos, linkCarga, modulosParaEtiquetas, MAX_ETIQUETAS, TAMANOS_ROTULO } from "../lib/carga";
+import { useEscape } from "../hooks/useEscape";
 
 // Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
 const CLAVE_TAMANO = "gypi_tamano_rotulo";
@@ -15,6 +16,7 @@ function leerTamano() {
 }
 
 export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) {
+  useEscape(onClose);
   const [cantidad, setCantidad] = useState(proyecto?.total_modulos ? String(proyecto.total_modulos) : "");
   const [nombres, setNombres] = useState("");
   const [tamano, setTamano] = useState(leerTamano);

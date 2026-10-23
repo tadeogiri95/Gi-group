@@ -24,6 +24,7 @@ import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
+import { useEscape } from "../hooks/useEscape";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -61,6 +62,7 @@ function Barra({ pct }) {
 }
 
 export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, onClose }) {
+  useEscape(onClose);
   const [tareas, setTareas] = useState(null);
   const [noConformes, setNoConformes] = useState([]);
   const [sueltos, setSueltos] = useState([]);
