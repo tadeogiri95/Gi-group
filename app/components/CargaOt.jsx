@@ -15,6 +15,7 @@ import { fechaCorta } from "../lib/ot";
 import { fotoBase64, subirImagen } from "../lib/foto";
 import { bultosPegados, cotejarQr, leerQr } from "../lib/escaneoCarga";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
+import { useEscape } from "../hooks/useEscape";
 
 // Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
 const CLAVE_TAMANO = "gypi_tamano_rotulo";
@@ -419,6 +420,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
 }
 
 function Marco({ ot, titulo, detalle, onClose, children }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Carga de la OT ${ot}`}>
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />

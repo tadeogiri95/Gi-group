@@ -23,8 +23,6 @@ export default withSentryConfig(nextConfig, {
   widenClientFileUpload: true,
   // Oculta los source maps del bundle público
   hideSourceMaps: true,
-  // Desactiva el logger de Sentry en runtime (reduce ruido en Vercel logs)
-  disableLogger: true,
   // Tunneling evita que bloqueadores de anuncios corten los eventos
   tunnelRoute: "/monitoring",
 });

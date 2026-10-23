@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { useRefrescoVisible } from "./hooks/useRefrescoVisible";
+import { useEscape } from "./hooks/useEscape";
 import { fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
 
 // R11: colores por token. El color dice si algo está bien, para atender o mal;
@@ -264,6 +265,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const [showBilling, setShowBilling] = useState(false);
   const [scoreDetail, setScoreDetail] = useState(null);
   const [showFullRanking, setShowFullRanking] = useState(false);
+  useEscape(() => setShowFullRanking(false), showFullRanking);
+  useEscape(() => setScoreDetail(null), !!scoreDetail);
   // OT en curso y pedidos de compra pendientes (null = no se pudieron leer
   // o la empresa no usa OT / Compras: la tarjeta no se muestra)
   const [otCurso, setOtCurso] = useState(null);

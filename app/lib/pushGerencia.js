@@ -1,17 +1,19 @@
 // app/lib/pushGerencia.js — Aviso al celular para gerencial y administrativo
 // de una empresa (Firebase Cloud Messaging). Lo usa el cron del reporte del
 // día (parte 26) y el de la flota (parte 30). Sin credenciales de Firebase no manda nada y no falla.
-import admin from "firebase-admin";
+// API modular: firebase-admin 14 sacó el espacio de nombres admin.*
+import { getApps, getApp, initializeApp, cert } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import { sbGetAll, sbDelete } from "./sbHelpers";
 import { logger } from "./logger";
 
 function appFirebase() {
-  if (admin.apps.length > 0) return admin.app();
+  if (getApps().length > 0) return getApp();
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   const rawB64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
   const raw = rawJson || (rawB64 ? Buffer.from(rawB64, "base64").toString("utf-8") : null);
   if (!raw) return null;
-  return admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
+  return initializeApp({ credential: cert(JSON.parse(raw)) });
 }
 
 const TOKEN_MUERTO = new Set([
@@ -26,7 +28,7 @@ function obtenerEnvio(messaging) {
   if (messaging) return messaging;
   try {
     const app = appFirebase();
-    return app ? admin.messaging(app) : null;
+    return app ? getMessaging(app) : null;
   } catch (e) {
     logger.error("[pushGerencia] Firebase no configurado", e);
     return null;

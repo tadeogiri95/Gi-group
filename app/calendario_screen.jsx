@@ -7,6 +7,7 @@ import { Button } from "./components/ui";
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
+import { useEscape } from "./hooks/useEscape";
 
 /* ═══ CONSTANTES ═══ */
 const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
@@ -56,6 +57,7 @@ function getHorario(diagrama, fecha) {
 
 /* ═══ MODAL NOTA ═══ */
 function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
+  useEscape(onClose);
   const [empId, setEmpId] = useState("");
   const [texto, setTexto] = useState("");
   const [color, setColor] = useState("marca");
@@ -123,6 +125,7 @@ function ModalNota({ fecha, empleados, notas, onClose, onSave, saving }) {
 
 /* ═══ MODAL TURNO ═══ */
 function ModalTurno({ fecha, empleados, turnos, onClose, onSave, onDelete, saving }) {
+  useEscape(onClose);
   const [empId, setEmpId] = useState("");
   const [horaInicio, setHoraInicio] = useState("08:00");
   const [horaFin, setHoraFin] = useState("17:00");

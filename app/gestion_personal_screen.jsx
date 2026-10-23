@@ -9,6 +9,7 @@ import { nombreRol } from "./lib/textos";
 import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
+import { useEscape } from "./hooks/useEscape";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
@@ -69,6 +70,7 @@ function legajoProvisorio() {
 
 /* ═══ MODAL EMPLEADO ═══ */
 function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES, puedeMarcarSupervisor = false, divisionBloqueada = false, plantas = [] }) {
+  useEscape(onClose);
   const [form, setForm] = useState(initialData);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const valid = form.nombre?.trim();
@@ -178,6 +180,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
 
 /* ═══ MODAL CSV PREVIEW ═══ */
 function ModalCSVPreview({ filas, divisiones, onClose, onConfirm, saving, progreso }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Vista previa CSV">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
@@ -219,6 +222,7 @@ function ModalCSVPreview({ filas, divisiones, onClose, onConfirm, saving, progre
 
 /* ═══ MODAL CONFIRMAR BAJA ═══ */
 function ModalConfirmarBaja({ empleado, onClose, onConfirm, saving }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Confirmar baja de empleado">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />
@@ -247,6 +251,7 @@ function textoCodigo(c, vigencia) {
 }
 
 function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
+  useEscape(onClose);
   const [copiado, setCopiado] = useState(null);
   const copiar = (clave, texto) => {
     navigator.clipboard?.writeText(texto).then(() => {
@@ -323,6 +328,7 @@ function ModalCodigos({ codigos, vigencia, empresa, onClose }) {
 // Administración le da un PIN al operario: con su legajo y este PIN ficha en el
 // kiosco o entra desde cualquier celular. Se ve una sola vez.
 function ModalPin({ datos, empresa, onClose }) {
+  useEscape(onClose);
   const [errorQR, setErrorQR] = useState("");
   const imprimir = () => {
     setErrorQR("");

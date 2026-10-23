@@ -5,6 +5,7 @@ import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
+import { useEscape } from "./hooks/useEscape";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const GREEN = "#16A34A";
@@ -26,6 +27,7 @@ const TABS = [
 
 /* ═══ MODAL TIPO DE DOCUMENTO ═══ */
 function ModalTipo({ initial, onClose, onSave, saving }) {
+  useEscape(onClose);
   const [form, setForm] = useState(initial || { nombre: "", formatos_aceptados: ["pdf", "image"], admite_multiples: false, tipo_carga: "puntual" });
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
   const toggleFormato = (f) => setForm((p) => {

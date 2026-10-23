@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
+import { useEscape } from '../../hooks/useEscape';
 
 export default function Modal({
   open,
@@ -12,11 +13,12 @@ export default function Modal({
   const dialogRef = useRef(null);
   const contentRef = useRef(null);
 
+  useEscape(onClose, open && closable);
+
   useEffect(() => {
     if (!open) return;
     const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
     const handler = (e) => {
-      if (e.key === 'Escape' && closable) { onClose(); return; }
       if (e.key !== 'Tab' || !contentRef.current) return;
       const focusable = [...contentRef.current.querySelectorAll(FOCUSABLE)];
       if (focusable.length === 0) return;
@@ -30,7 +32,7 @@ export default function Modal({
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, onClose, closable]);
+  }, [open]);
 
   useEffect(() => {
     if (open) {

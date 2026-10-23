@@ -7,7 +7,9 @@
 // revisa el dashboard — la gerencia pierde visibilidad en tiempo real.
 
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+// API modular: firebase-admin 14 sacó el espacio de nombres admin.*
+import { getApps, getApp, initializeApp, cert, type App } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import { logger } from "../../../lib/logger";
 import { ahoraArg } from "../../../lib/dates";
 
@@ -43,12 +45,12 @@ async function sbGetTodo<T = unknown>(path: string): Promise<T[]> {
 }
 
 function getFirebaseApp() {
-  if (admin.apps.length > 0) return admin.app();
+  if (getApps().length > 0) return getApp();
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   const rawB64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
   const raw = rawJson || (rawB64 ? Buffer.from(rawB64, "base64").toString("utf-8") : null);
   if (!raw) throw new Error("Falta FIREBASE_SERVICE_ACCOUNT o FIREBASE_SERVICE_ACCOUNT_B64");
-  return admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
+  return initializeApp({ credential: cert(JSON.parse(raw)) });
 }
 
 async function enviarPushGerencia(
@@ -68,7 +70,7 @@ async function enviarPushGerencia(
   );
   if (!tokens.length) return 0;
 
-  let app: ReturnType<typeof admin.app>;
+  let app: App;
   try {
     app = getFirebaseApp();
   } catch (e) {
@@ -76,7 +78,7 @@ async function enviarPushGerencia(
     return 0;
   }
 
-  const messaging = admin.messaging(app);
+  const messaging = getMessaging(app);
   const title = "Ausencias sin justificar";
   const body =
     totalAusentes === 1

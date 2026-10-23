@@ -16,6 +16,7 @@ import { useConfirm } from "./components/ui/ConfirmDialog";
 import PlantasPanel from "./components/PlantasPanel";
 import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
 import { MODOS_GEO, modoGeo, configParaModo, resumenGeo, avisoGeo } from "./lib/geoConfig";
+import { useEscape } from "./hooks/useEscape";
 
 /* ═══ GOOGLE MAPS PARSER ═══ */
 /**
@@ -121,6 +122,7 @@ async function geocodeAddress(query) {
 
 /* ═══ MODAL UBICACIÓN ═══ */
 function ModalUbicacion({ ubicacion, onClose, onSave, saving, plantas = [] }) {
+  useEscape(onClose);
   const isEdit = !!ubicacion?.id;
   const [nombre, setNombre] = useState(ubicacion?.nombre || "");
   // Con una sola planta no se pregunta: la base asigna la principal

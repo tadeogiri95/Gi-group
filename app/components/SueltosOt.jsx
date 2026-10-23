@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, sb } from "../lib/supabase";
 import { TIPOS_SUELTO, LIMITES, parsearPegado, resumenSueltos, nombreSuelto } from "../lib/sueltos";
+import { useEscape } from "../hooks/useEscape";
 
 const VACIO = { tipo: "", codigo: "", descripcion: "", medida: "", cantidad: "1", va_con: "" };
 
@@ -18,6 +19,7 @@ function Tilde({ activo, onClick, label, disabled }) {
 }
 
 export default function SueltosOt({ proyecto, empresaId, esGestion = false, onClose }) {
+  useEscape(onClose);
   const [items, setItems] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [error, setError] = useState(null);

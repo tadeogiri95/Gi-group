@@ -6,6 +6,7 @@ import ElegirPlan from "./ElegirPlan";
 import PerfilFiscal from "./PerfilFiscal";
 import { esAppAndroid } from "../lib/appAndroid";
 import { mensajeErrorPago, mensajeErrorRed } from "../lib/textos";
+import { useEscape } from "../hooks/useEscape";
 
 function BillingWeb({ onClose }) {
   const [info, setInfo] = useState(null);
@@ -16,6 +17,8 @@ function BillingWeb({ onClose }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [anual, setAnual] = useState(false);
   const [pedirFiscal, setPedirFiscal] = useState(false); // ítem 26: faltan los datos de facturación
+  useEscape(onClose);
+  useEscape(() => setConfirmCancel(false), confirmCancel);
 
   const cargar = async () => {
     setLoading(true);
@@ -319,6 +322,7 @@ function BillingWeb({ onClose }) {
 // reglas de Play obligan a usar su sistema de pagos para vender dentro de una
 // app. La suscripción se gestiona desde la web.
 function BillingEnAndroid({ onClose }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-[18px]">
       <div onClick={onClose} className="absolute inset-0 bg-black/70" />

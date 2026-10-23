@@ -13,6 +13,7 @@ import { fechaCorta } from "../lib/ot";
 import { fotoBase64, subirImagen } from "../lib/foto";
 import FirmaDedo from "./FirmaDedo";
 import NoConformeForm from "./NoConformeForm";
+import { useEscape } from "../hooks/useEscape";
 
 const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer";
 
@@ -319,6 +320,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
 }
 
 function Marco({ ot, titulo, detalle, onClose, children }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Acta de instalación de la OT ${ot}`}>
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />

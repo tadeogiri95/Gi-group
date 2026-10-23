@@ -22,6 +22,7 @@ import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { avancePorOt } from "./lib/piezas";
 import { hoyArg } from "./lib/dates";
 import { AVISO_DEMORA_GOOGLE } from "./lib/csvProyectos";
+import { useEscape } from "./hooks/useEscape";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -60,6 +61,7 @@ function parseProyectosCSV(text) {
 
 /* ═══ MODAL ═══ */
 function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
+  useEscape(onClose);
   const [f, setF] = useState(initial || { ot: "", cliente: "", obra: "", proyecto: "", division: "" });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const modulosTexto = String(f.total_modulos ?? "").trim();
@@ -116,6 +118,7 @@ function ModalProyecto({ initial, divisiones, onClose, onSave, saving }) {
 
 /* ═══ MODAL CSV PREVIEW ═══ */
 function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center">
       <div onClick={onClose} className="absolute inset-0 bg-black/60" />

@@ -8,7 +8,9 @@
 
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
-import admin from "firebase-admin";
+// API modular: firebase-admin 14 sacó el espacio de nombres admin.*
+import { getApps, getApp, initializeApp, cert } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import { sbGet, sbDelete } from "../../lib/sbHelpers";
 import { sendPushBody } from "../../lib/schemas";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
@@ -18,7 +20,7 @@ import { alcanceDe, dentroDelAlcance } from "../../lib/alcance";
 import { sanitizarDataPush } from "../../lib/pushData";
 
 function getAdminApp() {
-  if (admin.apps.length > 0) return admin.app();
+  if (getApps().length > 0) return getApp();
 
   // Acepta la credencial en JSON directo (FIREBASE_SERVICE_ACCOUNT)
   // o en base64 (FIREBASE_SERVICE_ACCOUNT_B64) para compatibilidad con Vercel
@@ -34,8 +36,8 @@ function getAdminApp() {
   } catch {
     throw new Error("Las credenciales de Firebase no son JSON válido");
   }
-  return admin.initializeApp({
-    credential: admin.credential.cert(credentials),
+  return initializeApp({
+    credential: cert(credentials),
   });
 }
 
@@ -103,7 +105,7 @@ export async function POST(request) {
       console.error("[send-push] Error init admin:", err.message);
       return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
     }
-    const messaging = admin.messaging(app);
+    const messaging = getMessaging(app);
 
     const dataPayload = {};
     Object.entries({ ...data, empresa_id: empresaId, title, body, ...(empresaNombre ? { empresa_nombre: empresaNombre } : {}) }).forEach(([k, v]) => {

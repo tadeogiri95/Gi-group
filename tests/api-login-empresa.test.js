@@ -73,6 +73,18 @@ test("login — password incorrecta devuelve 401 y mensaje genérico", async () 
   assert.ok(json.error);
 });
 
+test("login — una contraseña guardada sin cifrar ya no deja entrar", async () => {
+  global.fetch = createFetchMock([
+    {
+      match: (url) => url.includes("/rest/v1/empleados"),
+      respond: () => ({ status: 200, body: [{ id: "emp-1", empresa_id: EMPRESA_ID, legajo: 7, rol: "gerencial", nombre: "Ana Test", password: PASSWORD_OK, activo: true }] }),
+    },
+    ...handlersBase(),
+  ]);
+  const res = await POST(req({ legajo: "7", password: PASSWORD_OK, empresa_id: EMPRESA_ID }));
+  assert.equal(res.status, 401);
+});
+
 test("login — faltan campos devuelve 400", async () => {
   const res = await POST(req({ legajo: "7" }));
   assert.equal(res.status, 400);
