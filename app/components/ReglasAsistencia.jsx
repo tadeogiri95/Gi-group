@@ -88,7 +88,7 @@ export default function ReglasAsistencia() {
         </label>
       </div>
 
-      <div className="text-[11px] text-gypi-dim mt-2 leading-relaxed">
+      <div className="text-xs text-gypi-dim mt-2 leading-relaxed">
         Cuando se bloquea, el empleado pide permiso desde el chat y gerencia lo aprueba. La tolerancia también vale para la salida.
       </div>
 

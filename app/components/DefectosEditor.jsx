@@ -65,7 +65,7 @@ export default function DefectosEditor({ defectos = [], etapas = [], onGuardados
             <span className="w-12 text-center text-xs font-bold font-mono text-gypi-red">{d.cod}</span>
             <span className="flex-1 min-w-0">
               <span className="block text-[13px] font-bold truncate">{d.nombre}</span>
-              {d.origen && nombreEtapa(d.origen) && <span className="block text-[11px] text-gypi-dim">Origen habitual: {nombreEtapa(d.origen)}</span>}
+              {d.origen && nombreEtapa(d.origen) && <span className="block text-xs text-gypi-dim">Origen habitual: {nombreEtapa(d.origen)}</span>}
             </span>
             {borrador.length > 0 && (
               <button className={`${BOTON} text-gypi-red`} aria-label={`Quitar ${d.nombre}`} onClick={() => setBorrador(borrador.filter((x) => x.cod !== d.cod))}>✕</button>
@@ -95,7 +95,7 @@ export default function DefectosEditor({ defectos = [], etapas = [], onGuardados
         <button onClick={agregar} disabled={!codValido || !nombre.trim() || borrador.length >= MAX_DEFECTOS} className="g-btn g-btn-secondary">Agregar</button>
       </div>
       {cod.trim() !== "" && !codValido && (
-        <div className="text-[11px] text-gypi-red -mt-2.5 mb-3">El código va con hasta 4 letras o números, sin repetir.</div>
+        <div className="text-xs text-gypi-red -mt-2.5 mb-3">El código va con hasta 4 letras o números, sin repetir.</div>
       )}
 
       <div className="flex gap-2.5">

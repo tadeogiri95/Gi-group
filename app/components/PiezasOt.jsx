@@ -175,7 +175,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
         {esGestion && piezas && (pegando ? (
           <section aria-label="Pegar la planilla técnica" className="g-card mb-3">
             <label htmlFor="piezas-pegar" className="g-label mb-1 block">Pegar la planilla técnica</label>
-            <div className="text-[11px] text-gypi-dim mb-1.5">
+            <div className="text-xs text-gypi-dim mb-1.5">
               En la hoja PLANILLA, copiá desde la fila de títulos (PANEL, MATERIAL, MEDIDAS…) hasta la última pieza y pegalo acá. También sirve la hoja CUT RITE, pero esa no tiene todas las columnas (por ejemplo, la de CNC).
             </div>
             <textarea id="piezas-pegar" className="g-input w-full min-h-[110px] font-mono text-[12px]" value={pegado} onChange={(e) => setPegado(e.target.value)}
@@ -190,19 +190,19 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                       {piezasTexto(nuevas.length)} en {vista.renglones.length === 1 ? "1 renglón" : `${vista.renglones.length} renglones`}
                     </div>
                     {cambios && (
-                      <div className="text-[11px] text-gypi-dim mb-1">
+                      <div className="text-xs text-gypi-dim mb-1">
                         {cambios.siguen} quedan como estaban (sus etiquetas siguen valiendo) · {cambios.nuevas} nuevas
                         {cambios.salen > 0 && <span className="text-gypi-red"> · se sacan {cambios.salen} que ya no están en la planilla</span>}
                       </div>
                     )}
-                    {!reglas.length && <div className="text-[11px] text-gypi-amber-ink">Ninguna etapa se escanea por pieza todavía: las piezas quedan sin etapas. Se marcan en Configuración → Etapas.</div>}
+                    {!reglas.length && <div className="text-xs text-gypi-amber-ink">Ninguna etapa se escanea por pieza todavía: las piezas quedan sin etapas. Se marcan en Configuración → Etapas.</div>}
                     {vista.sinColumna.map((r) => (
-                      <div key={r.codigo} className="text-[11px] text-gypi-amber-ink">No encontré la columna {r.columnas.join(", ")} para {r.nombre}: ninguna pieza queda con {r.nombre}. La podés marcar en cada renglón.</div>
+                      <div key={r.codigo} className="text-xs text-gypi-amber-ink">No encontré la columna {r.columnas.join(", ")} para {r.nombre}: ninguna pieza queda con {r.nombre}. La podés marcar en cada renglón.</div>
                     ))}
-                    {vista.avisos.map((a) => <div key={a} className="text-[11px] text-gypi-amber-ink">{a}</div>)}
+                    {vista.avisos.map((a) => <div key={a} className="text-xs text-gypi-amber-ink">{a}</div>)}
                     {vista.renglones.length > 0 && (
                       <div className="overflow-x-auto mt-1">
-                        <table className="w-full text-[11px] border-collapse">
+                        <table className="w-full text-xs border-collapse">
                           <thead><tr className="text-gypi-dim text-left">{["Pieza", "Cant.", "Medidas", "Etapas"].map((t) => <th key={t} className="p-1 font-bold">{t}</th>)}</tr></thead>
                           <tbody>
                             {vista.renglones.slice(0, 60).map((r) => (
@@ -213,12 +213,12 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                             ))}
                           </tbody>
                         </table>
-                        {vista.renglones.length > 60 && <div className="text-[11px] text-gypi-dim mt-1">…y {vista.renglones.length - 60} renglones más.</div>}
+                        {vista.renglones.length > 60 && <div className="text-xs text-gypi-dim mt-1">…y {vista.renglones.length - 60} renglones más.</div>}
                       </div>
                     )}
                   </>
                 )}
-                {vista.errores.map((e) => <div key={`${e.fila}-${e.motivo}`} className="text-[11px] text-gypi-red">Fila {e.fila}: {e.motivo}. No se agrega.</div>)}
+                {vista.errores.map((e) => <div key={`${e.fila}-${e.motivo}`} className="text-xs text-gypi-red">Fila {e.fila}: {e.motivo}. No se agrega.</div>)}
               </div>
             )}
             <div className="flex gap-2 mt-2.5">
@@ -242,13 +242,13 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
           <>
             <section aria-label="Imprimir etiquetas" className="g-card mb-3">
               <div className="grid grid-cols-2 gap-2">
-                <label className="text-[11px] text-gypi-dim">Qué piezas
+                <label className="text-xs text-gypi-dim">Qué piezas
                   <select className="g-input w-full" value={modulo} onChange={(e) => setModulo(e.target.value)}>
                     <option value="">Todas ({piezas.length})</option>
                     {modulos.map(([m, n]) => <option key={m} value={m}>{m === SIN_MODULO ? "Sin módulo" : `Módulo ${m}`} ({n})</option>)}
                   </select>
                 </label>
-                <label className="text-[11px] text-gypi-dim">Tamaño de la etiqueta
+                <label className="text-xs text-gypi-dim">Tamaño de la etiqueta
                   <select className="g-input w-full" value={tamano} onChange={(e) => setTamano(e.target.value)}>
                     {TAMANOS_ETIQUETA.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
                   </select>
@@ -262,13 +262,13 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                   <button onClick={imprimirModulos} className="g-btn g-btn-secondary w-full mt-2">
                     🏷 Imprimir {paraModulos.length === 1 ? "1 etiqueta de módulo" : `${paraModulos.length} etiquetas de módulo`}
                   </button>
-                  <div className="text-[11px] text-gypi-dim mt-1">Se pegan en el módulo armado. Al escanearla en Armado pasan todas sus piezas juntas.</div>
+                  <div className="text-xs text-gypi-dim mt-1">Se pegan en el módulo armado. Al escanearla en Armado pasan todas sus piezas juntas.</div>
                 </>
               )}
             </section>
 
             {pasos.length > 0 && (
-              <label className="text-[11px] text-gypi-dim block mb-2">Ver
+              <label className="text-xs text-gypi-dim block mb-2">Ver
                 <select className="g-input w-full" value={faltanEn} onChange={(e) => setFaltanEn(e.target.value ? Number(e.target.value) : "")}>
                   <option value="">Todas las piezas</option>
                   {avance.map((a) => (
@@ -284,7 +284,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                   <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold">{r.nombre} <span className="font-normal text-gypi-dim">× {r.piezas.length}</span></div>
-                      <div className="text-[11px] text-gypi-dim truncate">{[medidas(r), r.material, r.modulo && `Módulo ${r.modulo}`].filter(Boolean).join(" · ")}</div>
+                      <div className="text-xs text-gypi-dim truncate">{[medidas(r), r.material, r.modulo && `Módulo ${r.modulo}`].filter(Boolean).join(" · ")}</div>
                     </div>
                     <button onClick={() => imprimir(r.piezas)} aria-label={`Imprimir las etiquetas de ${r.nombre}`}
                       className="min-w-[44px] min-h-[44px] rounded-lg border border-gypi-border bg-transparent text-sm cursor-pointer">🖨</button>
@@ -295,10 +295,10 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                       const activa = r.etapas.includes(codigo);
                       const n = pasaron(r, codigo);
                       const cuenta = activa && pasos.length > 0 ? ` ${n}/${r.piezas.length}` : "";
-                      if (!esGestion) return activa ? <span key={codigo} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-gypi-green/15 text-gypi-green">{nombre}{cuenta}</span> : null;
+                      if (!esGestion) return activa ? <span key={codigo} className="text-xs font-bold px-2 py-1 rounded-lg bg-gypi-green/15 text-gypi-green">{nombre}{cuenta}</span> : null;
                       return (
                         <button key={codigo} onClick={() => cambiarEtapa(r, codigo)} disabled={guardando} aria-pressed={activa} aria-label={`${nombre} en ${r.nombre}`}
-                          className={`min-h-[36px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${activa ? "bg-gypi-green/15 border-gypi-green text-gypi-green" : "bg-transparent border-gypi-border text-gypi-dim"}`}>
+                          className={`min-h-[36px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer ${activa ? "bg-gypi-green/15 border-gypi-green text-gypi-green" : "bg-transparent border-gypi-border text-gypi-dim"}`}>
                           {activa ? "✓ " : ""}{nombre}{cuenta}
                         </button>
                       );

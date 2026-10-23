@@ -864,7 +864,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                   </div>
                   <div className="text-right shrink-0">
                     <div className={`text-sm font-extrabold font-heading ${TONO.bien.txt}`}>{e.score}</div>
-                    <div className="text-[11px] text-gypi-dim font-semibold">puntos</div>
+                    <div className="text-xs text-gypi-dim font-semibold">puntos</div>
                   </div>
                 </div>
               ))}
@@ -1086,7 +1086,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                       </div>
                       <div className="text-right shrink-0">
                         <div className={`font-heading text-[15px] font-extrabold ${t ? TONO[t].txt : "text-gypi-text"}`}>{e.score}</div>
-                        <div className="text-[11px] text-gypi-dim font-semibold">puntos</div>
+                        <div className="text-xs text-gypi-dim font-semibold">puntos</div>
                       </div>
                     </button>
                   );
@@ -1121,7 +1121,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 </div>
                 <div className={`w-14 h-12 rounded-[14px] flex flex-col items-center justify-center ${TONO.aviso.fondo}`}>
                   <div className={`text-lg font-extrabold font-heading leading-none ${TONO.aviso.txt}`}>{d.score}</div>
-                  <div className="text-[11px] text-gypi-dim font-bold">puntos</div>
+                  <div className="text-xs text-gypi-dim font-bold">puntos</div>
                 </div>
               </div>
 

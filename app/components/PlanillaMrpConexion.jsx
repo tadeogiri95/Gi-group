@@ -81,7 +81,7 @@ export default function PlanillaMrpConexion() {
                 <li>Arriba elegí la función <b>instalarGypi</b>, tocá Ejecutar y dale los permisos. Se hace una sola vez.</li>
               </ol>
               <textarea readOnly value={script} aria-label="Código para la planilla" rows={6}
-                className="g-input w-full font-mono text-[11px] mb-2" onFocus={(e) => e.target.select()} />
+                className="g-input w-full font-mono text-xs mb-2" onFocus={(e) => e.target.select()} />
               <button onClick={copiar} className="g-btn g-btn-primary w-full">{copiado ? "✅ Copiado" : "📋 Copiar el código"}</button>
               <p className="m-0 mt-2 text-[12px] text-gypi-dim">El código tiene una clave privada: no lo compartas. Se muestra una sola vez.</p>
             </>

@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 const FIELD = { width: "100%", padding: "10px 12px", borderRadius: 10, marginTop: 4, marginBottom: 14, fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box", background: "#1A1714", border: "1px solid #2A2520", color: "#F5F0E8" };
-const LABEL = { display: "block", fontSize: 11, fontWeight: 700, color: "#9B8F85", textTransform: "uppercase", letterSpacing: "0.05em" };
+const LABEL = { display: "block", fontSize: 12, fontWeight: 700, color: "#9B8F85", textTransform: "uppercase", letterSpacing: "0.05em" };
 
 export default function ContactoForm() {
   const [form, setForm] = useState({ nombre: "", email: "", telefono: "", mensaje: "", web: "" });

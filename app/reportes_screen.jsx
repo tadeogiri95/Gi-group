@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Image from "next/image";
 import { sb, sbGetAll, apiFetch } from "./lib/supabase";
-import { Tag, Chip, Button } from "./components/ui";
+import { Tag, Chip, Button, FilaDeslizable } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
 import FotoViewer from "./components/FotoViewer";
 import Paywall from "./components/Paywall";
@@ -212,7 +212,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-heading text-sm font-bold text-gypi-amber-ink">{fmtMin(p.totalMin)}</div>
-                  <div className="text-[11px] text-gypi-dim" aria-hidden="true">{isExpanded ? "▲" : "▼"}</div>
+                  <div className="text-xs text-gypi-dim" aria-hidden="true">{isExpanded ? "▲" : "▼"}</div>
                 </div>
               </button>
 
@@ -291,7 +291,7 @@ function ReportesObraTab({ empresaId }) {
                       {tieneFotos && <Tag color="var(--color-cyan)">📷 {r.fotos_urls.length}</Tag>}
                       {r.faltantes?.length > 0 && <Tag color="var(--color-red)">⚠ {r.faltantes.length}</Tag>}
                     </div>
-                    <div className="text-[11px] text-gypi-dim mt-0.5 truncate">{r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}</div>
+                    <div className="text-xs text-gypi-dim mt-0.5 truncate">{r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}</div>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">
                     <span className="text-xs text-gypi-dim">{new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}</span>
@@ -428,19 +428,19 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
       <div className="grid grid-cols-4 gap-2 mb-3.5">
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-text">{fmtHora(totales.minutos)}</div>
-          <div className="text-[11px] text-gypi-dim font-bold">Horas</div>
+          <div className="text-xs text-gypi-dim font-bold">Horas</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-amber-ink">{fmtHora(totales.minutosExtra)}</div>
-          <div className="text-[11px] text-gypi-dim font-bold">Hs. extra</div>
+          <div className="text-xs text-gypi-dim font-bold">Hs. extra</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-red-ink">{totales.tardanzas}</div>
-          <div className="text-[11px] text-gypi-dim font-bold">Tardanzas</div>
+          <div className="text-xs text-gypi-dim font-bold">Tardanzas</div>
         </div>
         <div className="bg-gypi-surface rounded-xl p-2.5 text-center border border-gypi-border">
           <div className="font-heading text-base font-bold text-gypi-cyan-ink">{totales.ausencias}</div>
-          <div className="text-[11px] text-gypi-dim font-bold">Ausencias</div>
+          <div className="text-xs text-gypi-dim font-bold">Ausencias</div>
         </div>
       </div>
 
@@ -449,7 +449,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
       <div className="flex flex-col gap-2">
         {datos.map(d => (
           <div key={d.legajo} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-[11px] font-bold shrink-0 bg-gypi-surf-hi text-gypi-dim">L-{d.legajo}</div>
+            <div className="w-9 h-9 rounded-[10px] flex items-center justify-center font-heading text-xs font-bold shrink-0 bg-gypi-surf-hi text-gypi-dim">L-{d.legajo}</div>
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-bold text-gypi-text truncate">{d.nombre}</div>
               <div className="text-xs text-gypi-dim mt-0.5">
@@ -612,7 +612,7 @@ export default function ReportesScreen({ grupo = null }) {
 
 
       {/* Tabs */}
-      <div className="flex gap-1.5 mb-3.5 overflow-x-auto pb-0.5">
+      <FilaDeslizable role="group" aria-label="Reportes" activa={tab} className="gap-1.5 mb-3.5 pb-0.5">
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
         {ver("personal") && <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>}
         {ver("produccion") && conDia && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
@@ -622,7 +622,7 @@ export default function ReportesScreen({ grupo = null }) {
         {ver("produccion") && tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
         {ver("personal") && <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>}
         {ver("personal") && !esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
-      </div>
+      </FilaDeslizable>
 
       {/* Periodo (el reporte del día tiene su propio día) */}
       {tab !== "dia" && <>
@@ -641,9 +641,9 @@ export default function ReportesScreen({ grupo = null }) {
       </div>
 
       {/* Filtro división */}
-      <div className="flex gap-[5px] mb-3.5 overflow-x-auto pb-1">
+      <FilaDeslizable role="group" aria-label="División" activa={division} className="gap-[5px] mb-3.5 pb-1">
         {DIVISIONES.map(d => <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || MARCA}>{d.label}</Chip>)}
-      </div>
+      </FilaDeslizable>
       </>}
 
       {tab === "dia" ? (
@@ -678,7 +678,7 @@ export default function ReportesScreen({ grupo = null }) {
           {/* Qué significa cada ícono de los días */}
           <ul aria-label="Qué significa cada ícono" className="flex flex-wrap gap-x-3 gap-y-1 m-0 mb-2.5 p-0 list-none text-[12px] text-gypi-dim">
             {LEYENDA_DIAS.map(([icono, tono, texto]) => (
-              <li key={icono} className="flex items-center gap-1"><span className={`w-[18px] h-[18px] rounded text-[11px] font-bold flex items-center justify-center ${TONO[tono].fondo} ${TONO[tono].txt}`} aria-hidden="true">{icono}</span>{texto}</li>
+              <li key={icono} className="flex items-center gap-1"><span className={`w-[18px] h-[18px] rounded text-xs font-bold flex items-center justify-center ${TONO[tono].fondo} ${TONO[tono].txt}`} aria-hidden="true">{icono}</span>{texto}</li>
             ))}
           </ul>
 
@@ -698,7 +698,7 @@ export default function ReportesScreen({ grupo = null }) {
                       <div className={`w-11 h-9 rounded-[10px] flex items-center justify-center font-heading text-[13px] font-bold shrink-0 ${TONO[pctTono(c.pctCumplimiento)].fondo} ${TONO[pctTono(c.pctCumplimiento)].txt}`} title="Asistencia">{c.pctCumplimiento}%</div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[13px] font-bold text-gypi-text truncate">{c.emp.apodo || c.emp.nombre}</div>
-                        <div className="text-[11px] text-gypi-dim mt-[1px]">
+                        <div className="text-xs text-gypi-dim mt-[1px]">
                           L-{c.emp.legajo}
                           {c.ausencias > 0 && <span className={TONO.mal.txt}> · {c.ausencias} falta{c.ausencias > 1 ? "s" : ""}</span>}
                           {c.tardanzas > 0 && <span className={TONO.aviso.txt}> · {c.tardanzas} tardanza{c.tardanzas > 1 ? "s" : ""}</span>}
@@ -708,7 +708,7 @@ export default function ReportesScreen({ grupo = null }) {
                       {periodo === "semana" && (
                         <div className="flex gap-[3px]" aria-hidden="true">
                           {c.diasData.map((d, i) => (
-                            <div key={i} className={`w-[18px] h-[18px] rounded text-[11px] font-bold flex items-center justify-center ${TONO[d.tono].fondo} ${TONO[d.tono].txt}`}>{d.icon}</div>
+                            <div key={i} className={`w-[18px] h-[18px] rounded text-xs font-bold flex items-center justify-center ${TONO[d.tono].fondo} ${TONO[d.tono].txt}`}>{d.icon}</div>
                           ))}
                         </div>
                       )}

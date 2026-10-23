@@ -389,7 +389,7 @@ export default function ActividadScreen({
                     <div>
                       <div className="text-[13px] font-bold">{etapa.nombre}</div>
                       {r.codigo_proyecto && (
-                        <div className="text-[11px] text-gypi-dim font-mono">
+                        <div className="text-xs text-gypi-dim font-mono">
                           OT {r.codigo_proyecto}{proy ? ` · ${proy.cliente}` : ""}
                         </div>
                       )}
@@ -397,10 +397,10 @@ export default function ActividadScreen({
                   </div>
                   <Tag color={TIPOS.find(t => t.cod === r.tipo)?.color}>{r.tipo}</Tag>
                 </div>
-                <div className="flex justify-between text-[11px] text-gypi-dim mt-1">
+                <div className="flex justify-between text-xs text-gypi-dim mt-1">
                   <span className="font-mono">{horaIni} → {horaFin}</span>
                 </div>
-                {r.causa && <div className="mt-1.5 text-[11px] text-gypi-red">Causa: {nombreCausa(causas, r.causa)}</div>}
+                {r.causa && <div className="mt-1.5 text-xs text-gypi-red">Causa: {nombreCausa(causas, r.causa)}</div>}
                 {r.etapa > 0 && r.hora_fin && !r.sinEnviar && (
                   <CantidadTarea key={r.id} tareaId={r.id} unidad={etapa.unidad} valor={r.cantidad} onGuardada={() => recargar?.()} />
                 )}
@@ -532,7 +532,7 @@ export default function ActividadScreen({
                   <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border flex items-center gap-2.5 mb-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: `${etapaSelInfo.color}22` }}>{etapaSelInfo.icon}</div>
                     <div className="flex-1">
-                      <div className="text-[11px] text-gypi-dim">Etapa seleccionada</div>
+                      <div className="text-xs text-gypi-dim">Etapa seleccionada</div>
                       <div className="text-[13px] font-bold">{etapaSelInfo.nombre}</div>
                     </div>
                     <button onClick={() => { setStep(1); setBusqueda(""); setProyectoSeleccionado(null); }} className="bg-transparent border-none cursor-pointer text-xs font-semibold font-body text-gypi-amber-ink">Cambiar</button>
@@ -562,10 +562,10 @@ export default function ActividadScreen({
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-gypi-text truncate">{p.cliente || p.proyecto}</div>
                             {(p.obra || p.descripcion) && (
-                              <div className="text-[11px] text-gypi-dim truncate mt-[1px]">{[p.obra, p.descripcion].filter(Boolean).join(" · ")}</div>
+                              <div className="text-xs text-gypi-dim truncate mt-[1px]">{[p.obra, p.descripcion].filter(Boolean).join(" · ")}</div>
                             )}
-                            {p.liberada_at === null && <div className="text-[11px] font-bold text-gypi-amber-ink mt-[1px]">⚠ Todavía no está liberada a producción</div>}
-                            {p.puntos_criticos && <div className="text-[11px] text-gypi-amber-ink truncate mt-[1px]">⚠ {p.puntos_criticos}</div>}
+                            {p.liberada_at === null && <div className="text-xs font-bold text-gypi-amber-ink mt-[1px]">⚠ Todavía no está liberada a producción</div>}
+                            {p.puntos_criticos && <div className="text-xs text-gypi-amber-ink truncate mt-[1px]">⚠ {p.puntos_criticos}</div>}
                           </div>
                           {sel && <span className="text-base text-gypi-amber-ink">✓</span>}
                         </button>
@@ -599,7 +599,7 @@ export default function ActividadScreen({
                   <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border flex items-center gap-2.5 mb-4">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base" style={{ background: `${etapaSelInfo.color}22` }}>{etapaSelInfo.icon}</div>
                     <div className="flex-1">
-                      <div className="text-[11px] text-gypi-dim">Etapa seleccionada</div>
+                      <div className="text-xs text-gypi-dim">Etapa seleccionada</div>
                       <div className="text-[13px] font-bold">{etapaSelInfo.nombre}</div>
                     </div>
                   </div>
@@ -672,7 +672,7 @@ export default function ActividadScreen({
 
             <div className="text-center mb-5">
               <div className="font-mono text-5xl font-bold leading-none tracking-[4px]" style={{ color: accentColor }}>{fmtElapsed(elapsed)}</div>
-              <div className="text-[11px] text-gypi-dim mt-1.5">Inicio: {horaInicioFmt}</div>
+              <div className="text-xs text-gypi-dim mt-1.5">Inicio: {horaInicioFmt}</div>
             </div>
 
             <div className="flex items-center justify-center gap-2 mb-1">

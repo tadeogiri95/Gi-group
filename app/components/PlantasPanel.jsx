@@ -101,7 +101,7 @@ export default function PlantasPanel() {
             <div className="flex items-center gap-2 min-h-[44px]">
               <span aria-hidden="true" className="text-lg">🏭</span>
               <span className="flex-1 min-w-0 text-[14px] font-bold text-gypi-text truncate">{p.nombre}</span>
-              {p.principal && plantas.length > 1 && <span className="text-[11px] text-gypi-dim">Principal</span>}
+              {p.principal && plantas.length > 1 && <span className="text-xs text-gypi-dim">Principal</span>}
               {puedeEditar && !editando && (
                 <>
                   <button onClick={() => setEditando({ id: p.id, nombre: p.nombre })} className="text-[12px] text-gypi-dim underline bg-transparent border-none cursor-pointer min-h-[44px] px-1.5">

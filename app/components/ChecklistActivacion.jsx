@@ -51,7 +51,7 @@ export default function ChecklistActivacion({ empresa, goto, cargar = estadoActi
       <div className="flex justify-between items-start gap-2 mb-2">
         <div>
           <div className="text-sm font-bold text-gypi-text">Primeros pasos · {hechos} de {pasos.length}</div>
-          <div className="text-[11px] text-gypi-dim">Te quedan {diasRestantes(empresa?.created_at)} días de puesta en marcha.</div>
+          <div className="text-xs text-gypi-dim">Te quedan {diasRestantes(empresa?.created_at)} días de puesta en marcha.</div>
         </div>
         <button onClick={cerrar} aria-label="Ocultar primeros pasos" className="min-w-[36px] min-h-[36px] rounded-lg border-none bg-transparent text-gypi-dim cursor-pointer">✕</button>
       </div>
@@ -64,7 +64,7 @@ export default function ChecklistActivacion({ empresa, goto, cargar = estadoActi
             <span aria-hidden="true" className="w-5 text-center">{p.hecho ? "✅" : "⬜"}</span>
             <div className="flex-1">
               <div className={`text-[13px] ${p.hecho ? "text-gypi-dim line-through" : "text-gypi-text font-semibold"}`}>{p.titulo}</div>
-              {!p.hecho && <div className="text-[11px] text-gypi-dim">{p.detalle}</div>}
+              {!p.hecho && <div className="text-xs text-gypi-dim">{p.detalle}</div>}
             </div>
             {!p.hecho && p.ir && goto && (
               <button onClick={() => goto(p.ir)} className="min-h-[36px] px-3 rounded-lg border border-gypi-border bg-transparent text-gypi-text text-xs font-bold cursor-pointer">Ir</button>

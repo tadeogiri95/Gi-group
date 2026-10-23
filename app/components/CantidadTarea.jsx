@@ -48,7 +48,7 @@ export default function CantidadTarea({ tareaId, unidad, valor, onGuardada }) {
           </button>
         )}
       </div>
-      {error && <div role="alert" className="text-[11px] text-gypi-red mt-1">{error}</div>}
+      {error && <div role="alert" className="text-xs text-gypi-red mt-1">{error}</div>}
     </div>
   );
 }

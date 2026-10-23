@@ -61,7 +61,7 @@ export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) 
         <label className="g-label" htmlFor="etiq-nombres">Nombres de los módulos (opcional)</label>
         <textarea id="etiq-nombres" className="g-input w-full min-h-[90px] mb-1" value={nombres} onChange={(e) => setNombres(e.target.value)}
           placeholder={"Uno por renglón, copiados del Excel de despiece.\nEj:\nM.izq\nM.central\nBast.TV"} />
-        <div className="text-[11px] text-gypi-dim mb-3">Si pegás más nombres que módulos, se imprime una etiqueta por nombre. Los nombres no se guardan.</div>
+        <div className="text-xs text-gypi-dim mb-3">Si pegás más nombres que módulos, se imprime una etiqueta por nombre. Los nombres no se guardan.</div>
 
         <label className="g-label" htmlFor="etiq-tamano">Tamaño de la etiqueta</label>
         <select id="etiq-tamano" className="g-input w-full mb-3" value={tamano} onChange={(e) => setTamano(e.target.value)}>
@@ -77,7 +77,7 @@ export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) 
         <button onClick={imprimir} disabled={!modulos.length} className="g-btn g-btn-primary w-full">
           {modulos.length ? "🖨 Imprimir etiquetas" : "Poné cuántos módulos tiene"}
         </button>
-        <div className="text-[11px] text-gypi-dim mt-2">El QR abre la carga de la OT. Las etiquetas de cada pieza, y las de módulo para escanear el armado, se imprimen en 🧩 Piezas.</div>
+        <div className="text-xs text-gypi-dim mt-2">El QR abre la carga de la OT. Las etiquetas de cada pieza, y las de módulo para escanear el armado, se imprimen en 🧩 Piezas.</div>
       </div>
     </div>
   );

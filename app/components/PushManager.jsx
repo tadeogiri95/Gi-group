@@ -85,7 +85,7 @@ export default function PushManager({ legajo, empresaId, onNotification }) {
             <span className="text-xl shrink-0">🔔</span>
             <div className="flex-1 flex flex-col gap-px font-body">
               <strong className="text-gypi-text text-[13px]">Activá las notificaciones</strong>
-              <span className="text-[11px] text-gypi-dim">Recibí avisos de permisos y novedades</span>
+              <span className="text-xs text-gypi-dim">Recibí avisos de permisos y novedades</span>
             </div>
             <button onClick={handleEnable} disabled={registering} className="shrink-0 bg-gypi-amber text-gypi-on-amber border-none rounded-lg py-1.5 px-3.5 text-xs font-bold cursor-pointer font-body">
               {registering ? "..." : "Activar"}

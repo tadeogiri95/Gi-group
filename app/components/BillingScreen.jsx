@@ -131,13 +131,13 @@ function BillingWeb({ onClose }) {
           <>
             {/* --- Plan actual --- */}
             <div className="g-card mb-[18px] p-[18px]">
-              <div className="text-[11px] text-gypi-dim font-semibold tracking-wide mb-1.5">TU PLAN ACTUAL</div>
+              <div className="text-xs text-gypi-dim font-semibold tracking-wide mb-1.5">TU PLAN ACTUAL</div>
               <div className="flex items-baseline gap-2.5 mb-2">
                 <span className="font-heading text-[28px] font-bold text-gypi-amber-ink">
                   {PLANES[planActual]?.nombre || planActual}
                 </span>
                 <span
-                  className={`text-[11px] font-bold ${estadoLabel.colorClass} py-[3px] px-2 rounded-md`}
+                  className={`text-xs font-bold ${estadoLabel.colorClass} py-[3px] px-2 rounded-md`}
                   style={{ background: `${estadoLabel.bgStyle}20` }}
                 >
                   {estadoLabel.txt}
@@ -251,18 +251,18 @@ function BillingWeb({ onClose }) {
                         <div className="text-[13px] text-gypi-text font-semibold">
                           ${Number(p.monto).toLocaleString("es-AR")} {p.moneda}
                         </div>
-                        <div className="text-[11px] text-gypi-dim mt-0.5">
+                        <div className="text-xs text-gypi-dim mt-0.5">
                           {p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString("es-AR") : "—"}
                           {p.gateway && ` · ${p.gateway}`}
                         </div>
                         {p.cae && (
-                          <a href={`/api/billing/comprobante?id=${encodeURIComponent(p.id)}`} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-gypi-amber-ink">
+                          <a href={`/api/billing/comprobante?id=${encodeURIComponent(p.id)}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-gypi-amber-ink">
                             Ver factura
                           </a>
                         )}
                       </div>
                       <span
-                        className={`text-[11px] font-bold ${estadoCol} py-[3px] px-2 rounded-md`}
+                        className={`text-xs font-bold ${estadoCol} py-[3px] px-2 rounded-md`}
                         style={{ background: `${estadoBgVar}20` }}
                       >
                         {p.estado}

@@ -51,7 +51,7 @@ export default function MaterialOt({ ot, empresaId }) {
           <li key={f.sku} className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-bold truncate">{f.nombre || f.sku}</div>
-              <div className="text-[11px] text-gypi-dim truncate">
+              <div className="text-xs text-gypi-dim truncate">
                 {f.conNecesidad
                   ? `Retirado ${cantidadTexto(f.retirado)} de ${cantidadTexto(f.necesario)}${f.unidad ? ` ${f.unidad}` : ""}`
                   : `Retirado ${cantidadTexto(f.retirado)}${f.unidad ? ` ${f.unidad}` : ""}`}
@@ -72,7 +72,7 @@ export default function MaterialOt({ ot, empresaId }) {
           Ver los {material.filas.length}
         </button>
       )}
-      <div className="text-[11px] text-gypi-dim mt-1">Lo necesario sale de la planilla MRP. Lo retirado es lo cargado en Gypi (retiros menos devoluciones); lo anotado a mano en la planilla no aparece acá.</div>
+      <div className="text-xs text-gypi-dim mt-1">Lo necesario sale de la planilla MRP. Lo retirado es lo cargado en Gypi (retiros menos devoluciones); lo anotado a mano en la planilla no aparece acá.</div>
     </section>
   );
 }

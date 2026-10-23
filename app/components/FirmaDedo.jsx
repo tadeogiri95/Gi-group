@@ -69,7 +69,7 @@ const FirmaDedo = forwardRef(function FirmaDedo({ onCambio, disabled = false, qu
         onPointerDown={empezar} onPointerMove={mover} onPointerUp={terminar} onPointerLeave={terminar} onPointerCancel={terminar}
         className="w-full h-[170px] bg-white rounded-xl border border-gypi-border touch-none" />
       <div className="flex items-center mt-1">
-        <div className="flex-1 text-[11px] text-gypi-dim">Firma {quien} con el dedo en el recuadro blanco.</div>
+        <div className="flex-1 text-xs text-gypi-dim">Firma {quien} con el dedo en el recuadro blanco.</div>
         <button onClick={borrar} disabled={disabled} className="min-h-[44px] px-3 bg-transparent border-none text-gypi-red text-xs cursor-pointer">Borrar</button>
       </div>
     </div>

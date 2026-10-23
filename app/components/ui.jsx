@@ -17,6 +17,7 @@ export { default as Screen } from './ui/Screen';
 export { default as ListItem } from './ui/ListItem';
 export { default as Field } from './ui/Field';
 export { default as Stat } from './ui/Stat';
+export { default as FilaDeslizable } from './ui/FilaDeslizable';
 
 // ============================================
 // BUTTON
@@ -114,7 +115,7 @@ export function Tag({ children, color, className = '', style, ...props }) {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         padding: '2px 8px', borderRadius: 'var(--radius-full)',
-        fontSize: 11, fontWeight: 600, lineHeight: 1.4,
+        fontSize: 12, fontWeight: 600, lineHeight: 1.4,
         whiteSpace: 'nowrap',
         background: bg, color: fg,
         ...style,
@@ -172,7 +173,7 @@ export function Badge({ children, variant = 'default', color, dot = false, class
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         padding: '2px 8px', borderRadius: 'var(--radius-full)',
-        fontSize: 11, fontWeight: 600, lineHeight: 1.4,
+        fontSize: 12, fontWeight: 600, lineHeight: 1.4,
         whiteSpace: 'nowrap',
         background: v.bg, color: v.fg,
         ...style,
@@ -209,6 +210,7 @@ export function Chip({ children, active = false, onClick, color, className = '',
         ...style,
       }}
       className={className}
+      aria-pressed={active}
       {...props}
     >
       {children}

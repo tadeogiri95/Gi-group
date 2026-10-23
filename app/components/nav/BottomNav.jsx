@@ -88,7 +88,7 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
               </span>
               {item.badge > 0 && (
                 <span
-                  className="absolute -top-0.5 flex items-center justify-center min-w-[20px] h-[20px] px-[5px] rounded-full bg-gypi-red text-white text-[11px] font-extrabold font-mono"
+                  className="absolute -top-0.5 flex items-center justify-center min-w-[20px] h-[20px] px-[5px] rounded-full bg-gypi-red text-white text-xs font-extrabold font-mono"
                   style={{
                     right: isActive ? 2 : -2,
                     border: '2px solid var(--color-bg)',

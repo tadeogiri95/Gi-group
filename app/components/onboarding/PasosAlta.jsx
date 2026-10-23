@@ -56,15 +56,15 @@ export function PasoPlanta({ planta, setPlanta }) {
         </div>
         <button onClick={aca} className="w-full py-2.5 mb-2 rounded-[10px] border border-gypi-border bg-transparent text-gypi-text text-xs font-semibold cursor-pointer">📍 Estoy en la planta: usar mi ubicación</button>
         {resultados.map((r, i) => (
-          <button key={i} onClick={() => elegir(r)} className="block w-full text-left p-2 mb-1 rounded-lg border border-gypi-border bg-gypi-surface text-gypi-text text-[11px] cursor-pointer">{r.label}</button>
+          <button key={i} onClick={() => elegir(r)} className="block w-full text-left p-2 mb-1 rounded-lg border border-gypi-border bg-gypi-surface text-gypi-text text-xs cursor-pointer">{r.label}</button>
         ))}
-        {estado && <div role="status" className="text-[11px] text-gypi-dim">{estado}</div>}
+        {estado && <div role="status" className="text-xs text-gypi-dim">{estado}</div>}
         {planta.lat != null && (
-          <div className="mt-2 p-2.5 rounded-lg bg-gypi-green/10 text-[11px] text-gypi-text">
+          <div className="mt-2 p-2.5 rounded-lg bg-gypi-green/10 text-xs text-gypi-text">
             ✅ {planta.direccion}
             <div className="mt-2 flex items-center gap-2">
               <label htmlFor="planta-radio" className="text-gypi-dim">Se puede fichar a menos de</label>
-              <select id="planta-radio" value={planta.radio} onChange={(e) => setPlanta((p) => ({ ...p, radio: Number(e.target.value) }))} className="g-input !py-1 !px-2 text-[11px]">
+              <select id="planta-radio" value={planta.radio} onChange={(e) => setPlanta((p) => ({ ...p, radio: Number(e.target.value) }))} className="g-input !py-1 !px-2 text-xs">
                 {[100, 150, 200, 300, 500].map((m) => <option key={m} value={m}>{m} m</option>)}
               </select>
             </div>
@@ -105,7 +105,7 @@ export function PasoHorario({ horario, setHorario, usarHorario, setUsarHorario }
               <input type="time" value={horario.salida} onChange={(e) => setHorario((h) => ({ ...h, salida: e.target.value }))} className="g-input w-full mt-1" />
             </label>
           </div>
-          <div className="text-[11px] text-gypi-dim mt-2">{textoHorario(horario)}{horario.salida < horario.entrada ? " (turno noche)" : ""}</div>
+          <div className="text-xs text-gypi-dim mt-2">{textoHorario(horario)}{horario.salida < horario.entrada ? " (turno noche)" : ""}</div>
         </>}
       </div>
     </>

@@ -154,7 +154,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                     {activo ? (
                       <div className="flex items-center gap-1.5 flex-1">
                         <TimeInput value={horarioMasivo[d].in} onChange={e => setHorarioMasivoField(d, "in", e.target.value)} />
-                        <span className="text-gypi-dim text-[11px]">→</span>
+                        <span className="text-gypi-dim text-xs">→</span>
                         <TimeInput value={horarioMasivo[d].out} onChange={e => setHorarioMasivoField(d, "out", e.target.value)} />
                       </div>
                     ) : (
@@ -227,7 +227,7 @@ export default function GrillaHorarioScreen({ empresaId }) {
                   {!isExp && (
                     <div className="px-3.5 pb-2.5 flex gap-[3px]" aria-label={`Trabaja: ${DIAS.filter(d => row[d]).map(d => DIAS_L[d]).join(", ") || "ningún día"}`}>
                       {DIAS.map(d => (
-                        <div key={d} className={`flex-1 text-center py-[3px] rounded-[5px] text-[11px] font-bold font-mono uppercase ${row[d] ? "bg-gypi-green/10 text-gypi-green-ink" : "bg-gypi-surf-hi text-gypi-mute line-through"}`}>{DIAS_L[d]}</div>
+                        <div key={d} className={`flex-1 text-center py-[3px] rounded-[5px] text-xs font-bold font-mono uppercase ${row[d] ? "bg-gypi-green/10 text-gypi-green-ink" : "bg-gypi-surf-hi text-gypi-mute line-through"}`}>{DIAS_L[d]}</div>
                       ))}
                     </div>
                   )}

@@ -37,7 +37,7 @@ function Tarjeta({ nc, etapas, defectos, proyecto, onGuardar, onBorrar, guardand
       <div className="flex items-center gap-2">
         <span className="font-mono text-[13px] font-bold text-gypi-red">{nc.defecto}</span>
         <span className="flex-1 min-w-0 text-[13px] font-bold truncate">{nombreDefecto(defectos, nc.defecto)}</span>
-        <span className="text-[11px] text-gypi-dim">{fechaCorta(String(nc.created_at).slice(0, 10))}</span>
+        <span className="text-xs text-gypi-dim">{fechaCorta(String(nc.created_at).slice(0, 10))}</span>
       </div>
       <div className="text-[12px] text-gypi-dim mt-0.5">
         OT {nc.ot}{proyecto?.cliente ? ` · ${proyecto.cliente}` : ""} · {nc.cantidad > 1 ? `${nc.cantidad} piezas` : "1 pieza"}{nc.pieza ? ` · ${nc.pieza}` : ""}
@@ -68,7 +68,7 @@ function Tarjeta({ nc, etapas, defectos, proyecto, onGuardar, onBorrar, guardand
             className="min-w-[44px] min-h-[44px] rounded-lg border border-gypi-border bg-transparent text-gypi-red text-sm cursor-pointer">🗑</button>
         )}
       </div>
-      {!minValido && <div className="text-[11px] text-gypi-red mt-1">Los minutos van en número entero.</div>}
+      {!minValido && <div className="text-xs text-gypi-red mt-1">Los minutos van en número entero.</div>}
     </div>
   );
 }

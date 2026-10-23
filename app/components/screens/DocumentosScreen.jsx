@@ -100,7 +100,7 @@ export default function DocumentosScreen() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text truncate">{tipo.nombre}</div>
-                    <div className="text-[11px] mt-0.5" style={{ color: tieneDoc ? "var(--color-text-dim)" : RED }}>
+                    <div className="text-xs mt-0.5" style={{ color: tieneDoc ? "var(--color-text-dim)" : RED }}>
                       {docRechazado ? "Rechazado — volvé a subirlo" : tieneDoc ? `Cargado${docsCargados.length > 1 ? ` (${docsCargados.length})` : ""}` : "Falta cargar"}
                     </div>
                   </div>
@@ -109,7 +109,7 @@ export default function DocumentosScreen() {
                 {docsCargados.length > 0 && (
                   <div className="flex flex-col gap-1 mb-2.5">
                     {docsCargados.map((d) => (
-                      <button key={d.id} onClick={() => ver(d.id)} className="flex items-center justify-between py-2 px-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-[11px] font-semibold cursor-pointer text-left">
+                      <button key={d.id} onClick={() => ver(d.id)} className="flex items-center justify-between py-2 px-2.5 rounded-lg border-none bg-gypi-cyan/10 text-gypi-cyan text-xs font-semibold cursor-pointer text-left">
                         <span className="truncate">{d.nombre_archivo || "Ver documento"}</span>
                         <span>⬇</span>
                       </button>
@@ -127,7 +127,7 @@ export default function DocumentosScreen() {
                 <button
                   onClick={() => fileRefs.current[tipo.id]?.click()}
                   disabled={subiendo}
-                  className="w-full py-2.5 rounded-lg border-none text-[11px] font-bold cursor-pointer min-h-[40px]"
+                  className="w-full py-2.5 rounded-lg border-none text-xs font-bold cursor-pointer min-h-[40px]"
                   style={{ background: subiendo ? "var(--color-surf-hi)" : `color-mix(in srgb, ${AMBER} 9%, transparent)`, color: subiendo ? "var(--color-text-dim)" : AMBER }}
                 >
                   {labelBoton}

@@ -82,7 +82,7 @@ export default function CausasEditor({ causas = [], onGuardadas, avisar = () => 
         <button onClick={agregar} disabled={!codValido || !nombre.trim() || borrador.length >= MAX_CAUSAS} className="g-btn g-btn-secondary">Agregar</button>
       </div>
       {cod.trim() !== "" && !codValido && (
-        <div className="text-[11px] text-gypi-red -mt-2.5 mb-3">El código va con hasta 4 letras o números, sin repetir.</div>
+        <div className="text-xs text-gypi-red -mt-2.5 mb-3">El código va con hasta 4 letras o números, sin repetir.</div>
       )}
 
       <div className="flex gap-2.5">

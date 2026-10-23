@@ -18,7 +18,7 @@ import {
 } from "../lib/flota";
 import { alertasVehiculo, textoAlerta, urgentes as soloUrgentes } from "../lib/alertasFlota";
 import { costosFlota, nombreMes, textoCosto, ultimosMeses } from "../lib/arreglosFlota";
-import { Chip } from "./ui";
+import { Chip, FilaDeslizable } from "./ui";
 import FichaVehiculo, { FormVehiculo, FormLicencia } from "./FichaVehiculo";
 import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
 import PlantillaChecklist from "./PlantillaChecklist";
@@ -144,14 +144,14 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
-      <div className="flex gap-1.5 mb-3 flex-wrap" role="group" aria-label="Ver">
+      <FilaDeslizable role="group" aria-label="Ver" activa={vista} className="gap-1.5 mb-3">
         <Chip active={vista === "vehiculos"} onClick={() => setVista("vehiculos")}>🚚 Vehículos</Chip>
         <Chip active={vista === "alertas"} onClick={() => setVista("alertas")}>🔔 Alertas{todasUrgentes.length ? ` (${todasUrgentes.length})` : ""}</Chip>
         <Chip active={vista === "checklists"} onClick={() => setVista("checklists")}>📋 Checklists</Chip>
         <Chip active={vista === "choferes"} onClick={() => setVista("choferes")}>🪪 Choferes</Chip>
         {editable && <Chip active={vista === "costos"} onClick={() => setVista("costos")}>💲 Costos</Chip>}
         {editable && <Chip active={vista === "plantilla"} onClick={() => setVista("plantilla")}>⚙ Checklist</Chip>}
-      </div>
+      </FilaDeslizable>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
 
       {vista === "vehiculos" && (

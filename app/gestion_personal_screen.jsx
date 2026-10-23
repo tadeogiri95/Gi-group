@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { sb, apiFetch } from "./lib/supabase";
 import { imprimirTarjetas, linkPersonal } from "./lib/tarjetasQR";
 import { activarKiosco } from "./lib/kioscoCliente";
-import { Tag, Chip } from "./components/ui";
+import { Tag, Chip, FilaDeslizable } from "./components/ui";
 import { getDivisionesConSinAsignar } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { nombreRol } from "./lib/textos";
@@ -12,6 +12,9 @@ import { useConfirm } from "./components/ui/ConfirmDialog";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
+// En la base el área va sin tilde; en pantalla, bien escrita
+const AREA_NOMBRE = { produccion: "producción", administracion: "administración", logistica: "logística" };
+const nombreArea = (a) => AREA_NOMBRE[a] || a;
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 const GREEN = "#16A34A";
@@ -93,9 +96,9 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
 
         <div className="grid grid-cols-2 gap-2.5 mb-3">
           <div>
-            <label className="g-label block mb-1.5">Area</label>
+            <label className="g-label block mb-1.5">Área</label>
             <select value={form.area || "produccion"} onChange={e => set("area", e.target.value)} className="g-input cursor-pointer text-[13px]">
-              {AREAS.map(a => <option key={a} value={a}>{a}</option>)}
+              {AREAS.map(a => <option key={a} value={a}>{nombreArea(a)}</option>)}
             </select>
           </div>
           <div>
@@ -120,7 +123,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
           <label className="g-label block mb-1.5">Rol</label>
           <div className="flex gap-1.5">
             {rolesPermitidos.map(r => (
-              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-[11px] font-bold font-body" style={{ background: form.rol === r ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "var(--color-surface)", color: form.rol === r ? AMBER : "var(--color-text-dim)" }}>{nombreRol(r)}</button>
+              <button key={r} onClick={() => set("rol", r)} className="flex-1 py-[9px] rounded-[10px] border-none cursor-pointer text-xs font-bold font-body" style={{ background: form.rol === r ? `color-mix(in srgb, ${AMBER} 13%, transparent)` : "var(--color-surface)", color: form.rol === r ? AMBER : "var(--color-text-dim)" }}>{nombreRol(r)}</button>
             ))}
           </div>
         </div>
@@ -133,7 +136,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
               <input type="checkbox" checked={!!form.solo_su_division} onChange={e => set("solo_su_division", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
               <div>
                 <div className="text-[13px] font-bold text-gypi-text">Ve solo su división (supervisor)</div>
-                <div className="text-[11px] text-gypi-dim mt-0.5">Solo va a ver y gestionar a los empleados de su división. Sin marcar, ve toda la empresa.</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Solo va a ver y gestionar a los empleados de su división. Sin marcar, ve toda la empresa.</div>
               </div>
             </label>
           </div>
@@ -147,7 +150,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
               <input type="checkbox" checked={!!form.es_instalador} onChange={e => set("es_instalador", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
               <div>
                 <div className="text-[13px] font-bold text-gypi-text">Es instalador</div>
-                <div className="text-[11px] text-gypi-dim mt-0.5">Va a ver la pestaña Instalaciones para dejar el reporte del día.</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Va a ver la pestaña Instalaciones para dejar el reporte del día.</div>
               </div>
             </label>
           </div>
@@ -159,7 +162,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
               <input type="checkbox" checked={!!form.pre_cargado} onChange={e => set("pre_cargado", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" style={{ accentColor: CYAN }} />
               <div>
                 <div className="text-[13px] font-bold text-gypi-text">Pre-cargar (pendiente de activacion)</div>
-                <div className="text-[11px] text-gypi-dim mt-0.5">El empleado activa su cuenta con el link de invitacion.</div>
+                <div className="text-xs text-gypi-dim mt-0.5">El empleado activa su cuenta con el link de invitacion.</div>
               </div>
             </label>
           </div>
@@ -190,7 +193,7 @@ function ModalCSVPreview({ filas, divisiones, onClose, onConfirm, saving, progre
             return (
               <div key={i} className="p-2.5 text-xs" style={{ borderBottom: i < Math.min(filas.length, 100) - 1 ? "1px solid var(--color-border)" : "none" }}>
                 <div className="flex gap-2 items-center">
-                  <span className="font-mono font-bold min-w-[60px] text-[11px]" style={{ color: sinLegajo ? RED : GREEN }}>{r.legajo || "sin legajo"}</span>
+                  <span className="font-mono font-bold min-w-[60px] text-xs" style={{ color: sinLegajo ? RED : GREEN }}>{r.legajo || "sin legajo"}</span>
                   <span className="flex-1 text-gypi-text truncate">{capitalizarNombre(r.nombre)}</span>
                   {divInfo && r.division && <Tag color={divInfo.color || CYAN}>{divInfo.label}</Tag>}
                   {sinLegajo && <Tag color={RED}>sin legajo</Tag>}
@@ -198,7 +201,7 @@ function ModalCSVPreview({ filas, divisiones, onClose, onConfirm, saving, progre
               </div>
             );
           })}
-          {filas.length > 100 && <div className="p-2.5 text-center text-[11px] text-gypi-mute">+ {filas.length - 100} mas</div>}
+          {filas.length > 100 && <div className="p-2.5 text-center text-xs text-gypi-mute">+ {filas.length - 100} mas</div>}
         </div>
 
         {saving && progreso && <div className="p-2.5 rounded-[10px] text-xs mb-2.5 text-center" style={{ background: `color-mix(in srgb, ${AMBER} 8%, transparent)`, color: AMBER }}>{progreso}</div>}
@@ -373,6 +376,9 @@ export default function GestionPersonalScreen({ empresaId }) {
   const [filtroRol, setFiltroRol] = useState("todos");
   const [filtroPlanta, setFiltroPlanta] = useState("todas");
   const [filtroEstado, setFiltroEstado] = useState("activos");
+  // Filtros y acciones de vez en cuando, plegados para que la lista se vea enseguida
+  const [verFiltros, setVerFiltros] = useState(false);
+  const [masAcciones, setMasAcciones] = useState(false);
   const [modalAlta, setModalAlta] = useState(null);
   const [modalEditar, setModalEditar] = useState(null);
   const [modalBaja, setModalBaja] = useState(null);
@@ -405,6 +411,9 @@ export default function GestionPersonalScreen({ empresaId }) {
   useEffect(() => { cargar(); }, [cargar]);
 
   /* ── Filtrado ── */
+  // Cuántos filtros cambiaron del valor de siempre: se ve en el botón Filtrar
+  const filtrosActivos = [filtroPlanta !== "todas", filtroDiv !== "todas", filtroRol !== "todos", filtroEstado !== "activos"].filter(Boolean).length;
+
   const filtrados = empleados.filter(e => {
     if (filtroEstado === "activos" && e.activo === false) return false;
     if (filtroEstado === "inactivos" && e.activo !== false) return false;
@@ -681,92 +690,101 @@ export default function GestionPersonalScreen({ empresaId }) {
         </div>
       </div>
 
-      {/* Filtro planta: solo con más de una (ítem 36) */}
-      {plantas.length > 1 && (
-        <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1" aria-label="Filtrar por planta">
-          <Chip active={filtroPlanta === "todas"} onClick={() => setFiltroPlanta("todas")} color={AMBER}>Todas las plantas</Chip>
-          {plantas.map(p => (
-            <Chip key={p.id} active={filtroPlanta === p.id} onClick={() => setFiltroPlanta(p.id)} color={CYAN}>🏭 {p.nombre}</Chip>
-          ))}
-        </div>
-      )}
-
-      {/* Filtro división */}
-      <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
-        <Chip active={filtroDiv === "todas"} onClick={() => setFiltroDiv("todas")} color={AMBER}>Todas</Chip>
-        {DIVISIONES.map(d => (
-          <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || CYAN}>
-            {d.icon ? `${d.icon} ` : ""}{d.label}
-          </Chip>
-        ))}
-      </div>
-
-      {/* Filtro rol */}
-      <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
-        {[["todos", "Todos", "var(--color-text-dim)"], ...ROLES.map(r => [r, nombreRol(r), AMBER])].map(([key, label, color]) => (
-          <Chip key={`rol-${key}`} active={filtroRol === key} onClick={() => setFiltroRol(key)} color={color}>{label}</Chip>
-        ))}
-      </div>
-
-      {/* Filtro estado */}
-      <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
-        {[["activos", "Activos", GREEN], ["inactivos", "Inactivos", "var(--color-text-muted)"], ["todos", "Todos", "var(--color-text-dim)"]].map(([key, label, color]) => (
-          <Chip key={key} active={filtroEstado === key} onClick={() => setFiltroEstado(key)} color={color}>{label}</Chip>
-        ))}
-      </div>
-
-      {/* Buscador */}
-      <div className="mb-3">
+      {/* Buscador y filtros plegados */}
+      <div className="flex gap-2 mb-3">
         <label htmlFor="search-personal" className="sr-only">Buscar empleado</label>
         <input
           id="search-personal"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por nombre, legajo o apodo..."
-          className="g-input"
+          placeholder="Buscar nombre o legajo"
+          className="g-input flex-1 min-w-0"
         />
+        <button onClick={() => setVerFiltros(v => !v)} aria-expanded={verFiltros}
+          className={`shrink-0 min-h-[48px] px-3.5 rounded-xl border text-[15px] font-semibold cursor-pointer ${filtrosActivos ? "border-gypi-amber bg-gypi-amber/10 text-gypi-amber-ink" : "border-gypi-border bg-transparent text-gypi-text"}`}>
+          Filtrar{filtrosActivos ? ` (${filtrosActivos})` : ""}
+        </button>
       </div>
+      {verFiltros && (
+        <div className="mb-3">
+        {/* Filtro planta: solo con más de una (ítem 36) */}
+        {plantas.length > 1 && (
+          <FilaDeslizable role="group" aria-label="Filtrar por planta" activa={filtroPlanta} className="gap-1.5 mb-2 pb-1">
+            <Chip active={filtroPlanta === "todas"} onClick={() => setFiltroPlanta("todas")} color={AMBER}>Todas las plantas</Chip>
+            {plantas.map(p => (
+              <Chip key={p.id} active={filtroPlanta === p.id} onClick={() => setFiltroPlanta(p.id)} color={CYAN}>🏭 {p.nombre}</Chip>
+            ))}
+          </FilaDeslizable>
+        )}
 
-      {/* Botones de acción */}
-      <div className="flex gap-2 mb-4">
+        {/* Filtro división */}
+        <FilaDeslizable role="group" aria-label="Filtrar por división" activa={filtroDiv} className="gap-1.5 mb-2 pb-1">
+          <Chip active={filtroDiv === "todas"} onClick={() => setFiltroDiv("todas")} color={AMBER}>Todas</Chip>
+          {DIVISIONES.map(d => (
+            <Chip key={d.id} active={filtroDiv === d.id} onClick={() => setFiltroDiv(d.id)} color={d.color || CYAN}>
+              {d.icon ? `${d.icon} ` : ""}{d.label}
+            </Chip>
+          ))}
+        </FilaDeslizable>
+
+        {/* Filtro rol */}
+        <FilaDeslizable role="group" aria-label="Filtrar por rol" activa={filtroRol} className="gap-1.5 mb-2 pb-1">
+          {[["todos", "Todos", "var(--color-text-dim)"], ...ROLES.map(r => [r, nombreRol(r), AMBER])].map(([key, label, color]) => (
+            <Chip key={`rol-${key}`} active={filtroRol === key} onClick={() => setFiltroRol(key)} color={color}>{label}</Chip>
+          ))}
+        </FilaDeslizable>
+
+        {/* Filtro estado */}
+        <FilaDeslizable role="group" aria-label="Filtrar por estado" activa={filtroEstado} className="gap-1.5 pb-1">
+          {[["activos", "Activos", GREEN], ["inactivos", "Inactivos", "var(--color-text-muted)"], ["todos", "Todos", "var(--color-text-dim)"]].map(([key, label, color]) => (
+            <Chip key={key} active={filtroEstado === key} onClick={() => setFiltroEstado(key)} color={color}>{label}</Chip>
+          ))}
+        </FilaDeslizable>
+        </div>
+      )}
+
+      {/* Lo de todos los días a la vista; CSV, tarjetas y kiosco en Más acciones */}
+      <div className="flex gap-2 mb-2">
         <button
           onClick={() => setModalAlta({ nombre: "", legajo: "", apodo: "", email: "", division: "", rol: "operativo", area: "produccion", pre_cargado: false })}
-          className="flex-1 py-2.5 rounded-xl border-none text-xs font-bold font-heading cursor-pointer"
-          style={{ background: GREEN, color: "#000" }}
+          className="flex-1 min-h-[48px] rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[15px] font-bold cursor-pointer"
         >
           + Alta
         </button>
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="g-btn g-btn-secondary flex-1 text-xs font-bold font-heading"
-        >
-          CSV
-        </button>
-        <input ref={fileRef} type="file" accept=".csv" onChange={handleCSVFile} className="hidden" />
-        <button
-          onClick={imprimirQRPersonales}
-          disabled={operariosParaQR.length === 0 || !empresa?.slug}
-          title="Imprimir una tarjeta con QR por operario (los de la lista filtrada)"
-          className="g-btn g-btn-secondary flex-1 text-xs font-bold font-heading disabled:opacity-50"
-        >
-          Tarjetas QR
+        <button onClick={() => setMasAcciones(v => !v)} aria-expanded={masAcciones}
+          className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-transparent text-gypi-text text-[15px] font-semibold cursor-pointer">
+          ⋯ Más acciones {masAcciones ? "▲" : "▼"}
         </button>
       </div>
-
-      {/* Modo kiosco */}
-      <div className="g-card !p-3 mb-3 flex items-center justify-between gap-2">
-        <div className="text-xs text-gypi-dim">
-          <b className="text-gypi-text">Modo kiosco:</b> usá este dispositivo como punto de fichaje en la entrada (tarjeta QR o legajo + PIN).
+      <input ref={fileRef} type="file" accept=".csv" onChange={handleCSVFile} className="hidden" />
+      {masAcciones && (
+        <div className="flex flex-col gap-2 mb-3">
+          <div className="g-card !p-3 flex flex-col gap-2">
+            <button onClick={() => fileRef.current?.click()} className="g-btn g-btn-secondary w-full text-[14px] font-bold">
+              📤 Importar personas desde un CSV
+            </button>
+            <div className="text-xs text-gypi-dim">
+              Columnas <span className="font-mono">legajo, nombre</span> (obligatorias), <span className="font-mono">division, rol, area, email</span> (opcionales).
+            </div>
+          </div>
+          <button
+            onClick={imprimirQRPersonales}
+            disabled={operariosParaQR.length === 0 || !empresa?.slug}
+            title="Imprimir una tarjeta con QR por operario (los de la lista filtrada)"
+            className="g-btn g-btn-secondary w-full text-[14px] font-bold disabled:opacity-50"
+          >
+            Imprimir tarjetas QR
+          </button>
+          <div className="g-card !p-3 flex items-center justify-between gap-2">
+            <div className="text-xs text-gypi-dim">
+              <b className="text-gypi-text">Modo kiosco:</b> usá este dispositivo como punto de fichaje en la entrada (tarjeta QR o legajo + PIN).
+            </div>
+            <button onClick={activarKioscoAqui} disabled={!empresa?.slug} className="g-btn g-btn-secondary text-xs font-bold font-heading shrink-0 disabled:opacity-50">
+              Activar acá
+            </button>
+          </div>
         </div>
-        <button onClick={activarKioscoAqui} disabled={!empresa?.slug} className="g-btn g-btn-secondary text-xs font-bold font-heading shrink-0 disabled:opacity-50">
-          Activar acá
-        </button>
-      </div>
-
-      {/* Tip CSV */}
-      <div className="text-xs text-gypi-mute mb-3 text-center">
-        CSV: columnas <span className="font-mono text-gypi-dim">legajo, nombre</span> (obligatorias), <span className="font-mono text-gypi-dim">division, rol, area, email</span> (opcionales)
-      </div>
+      )}
 
       {/* Lista empleados */}
       {loadError ? (
@@ -802,8 +820,8 @@ export default function GestionPersonalScreen({ empresaId }) {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
-                    <div className="text-[11px] text-gypi-dim mt-px truncate">
-                      {divInfo?.label || "Sin división"} · {emp.area || "produccion"} · {nombreRol(emp.rol, { soloSuDivision: emp.solo_su_division })}{emp.es_instalador ? " · instalador" : ""}
+                    <div className="text-xs text-gypi-dim mt-px truncate">
+                      {divInfo?.label || "Sin división"} · {nombreArea(emp.area || "produccion")} · {nombreRol(emp.rol, { soloSuDivision: emp.solo_su_division })}{emp.es_instalador ? " · instalador" : ""}
                       {plantas.length > 1 && nombrePlanta(plantas, emp.planta_id) ? ` · 🏭 ${nombrePlanta(plantas, emp.planta_id)}` : ""}
                     </div>
                   </div>

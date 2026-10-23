@@ -34,7 +34,7 @@ const S = {
   backLink: { fontSize: 13, color: "#F97316", textDecoration: "none", display: "inline-block", marginBottom: 32 },
   planTag: (p) => {
     const map = { free: "#8A7F75", starter: "#3B82F6", pro: "#F97316", enterprise: "#8B5CF6" };
-    return { display: "inline-block", padding: "2px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: `${map[p]}22`, color: map[p], marginLeft: 6 };
+    return { display: "inline-block", padding: "2px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, background: `${map[p]}22`, color: map[p], marginLeft: 6 };
   },
   table: { width: "100%", borderCollapse: "collapse", marginTop: 4 },
   th: { fontSize: 13, fontWeight: 700, color: "#F5F0E8", textAlign: "left", padding: "10px 14px", borderBottom: "1px solid #2A2520" },

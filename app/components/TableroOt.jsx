@@ -186,41 +186,41 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
                   <span className="font-mono text-[13px] font-bold">{p.ot}</span>
                   <span className="flex-1 min-w-0 text-[12px] text-gypi-dim truncate">{p.cliente || p.proyecto || ""}</span>
                   {p.fecha_entrega && (
-                    <span className={`text-[11px] font-bold ${f.semaforo === "rojo" ? "text-gypi-red" : f.semaforo === "amarillo" ? "text-gypi-amber-ink" : "text-gypi-dim"}`}>
+                    <span className={`text-xs font-bold ${f.semaforo === "rojo" ? "text-gypi-red" : f.semaforo === "amarillo" ? "text-gypi-amber-ink" : "text-gypi-dim"}`}>
                       {f.semaforo === "rojo" ? "Atrasada · " : ""}{fechaCorta(p.fecha_entrega)}
                     </span>
                   )}
                 </button>
                 {porEscaneo.get(String(p.ot))?.porcentaje != null && (
-                  <div className="text-[11px] font-bold text-gypi-dim mb-1">🧩 Producción {porEscaneo.get(String(p.ot)).porcentaje}% por escaneo</div>
+                  <div className="text-xs font-bold text-gypi-dim mb-1">🧩 Producción {porEscaneo.get(String(p.ot)).porcentaje}% por escaneo</div>
                 )}
-                {p.puntos_criticos && <div className="text-[11px] text-gypi-amber-ink truncate mb-1">⚠ {p.puntos_criticos}</div>}
+                {p.puntos_criticos && <div className="text-xs text-gypi-amber-ink truncate mb-1">⚠ {p.puntos_criticos}</div>}
                 {instalacion.has(String(p.ot)) && (
-                  <div className={`text-[11px] font-bold mb-1 ${instalacion.get(String(p.ot)) === "instalada" ? "text-gypi-green" : "text-gypi-amber-ink"}`}>{NOMBRE_ESTADO_ACTA[instalacion.get(String(p.ot))]}</div>
+                  <div className={`text-xs font-bold mb-1 ${instalacion.get(String(p.ot)) === "instalada" ? "text-gypi-green" : "text-gypi-amber-ink"}`}>{NOMBRE_ESTADO_ACTA[instalacion.get(String(p.ot))]}</div>
                 )}
                 {ncPendientes.get(String(p.ot)) > 0 && (
-                  <div className="text-[11px] text-gypi-red font-bold mb-1">🟥 {ncPendientes.get(String(p.ot)) === 1 ? "1 pieza no conforme" : `${ncPendientes.get(String(p.ot))} piezas no conformes`} sin decidir</div>
+                  <div className="text-xs text-gypi-red font-bold mb-1">🟥 {ncPendientes.get(String(p.ot)) === 1 ? "1 pieza no conforme" : `${ncPendientes.get(String(p.ot))} piezas no conformes`} sin decidir</div>
                 )}
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   <button onClick={() => abrirLiberacion(p)} aria-label={`Liberación de la OT ${p.ot}: ${f.liberada ? "liberada" : "sin liberar"}`}
-                    className={`min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${f.liberada ? claseCelda("aprobada") : claseCelda("pendiente")}`}>
+                    className={`min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer ${f.liberada ? claseCelda("aprobada") : claseCelda("pendiente")}`}>
                     {f.liberada ? "✓ Liberada" : "Liberar"}
                   </button>
                   {f.celdas.map((c) => (
                     <button key={c.codigo} onClick={() => { setCelda({ proyecto: p, codigo: c.codigo }); setError(null); }}
                       aria-label={`${c.etapa.nombre} de la OT ${p.ot}: ${nombreEstado(c.estado)}`}
-                      className={`min-h-[44px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${claseCelda(c.estado)}`}>
+                      className={`min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer ${claseCelda(c.estado)}`}>
                       {c.etapa.icon} {c.etapa.nombre}{esEtapaDeModulos(c.etapa) && (p.total_modulos || modulos.get(`${p.ot}|${c.codigo}`)) ? ` ${textoModulos(modulos.get(`${p.ot}|${c.codigo}`), p.total_modulos)}` : ""}{pctCelda(porEscaneo, p.ot, c)}{c.estado === "terminada" ? " ✓" : c.estado === "aprobada" ? " ✓✓" : ""}
                     </button>
                   ))}
-                  {f.celdas.length === 0 && <span className="text-[11px] text-gypi-dim self-center">Sin ruta ni horas todavía</span>}
+                  {f.celdas.length === 0 && <span className="text-xs text-gypi-dim self-center">Sin ruta ni horas todavía</span>}
                 </div>
               </div>
             );
           })}
         </div>
       )}
-      <div className="text-[11px] text-gypi-dim mt-3">Vacío: sin empezar · Amarillo: en curso · ✓: terminada, falta la firma · Verde ✓✓: firmada · Tachada: no aplica.</div>
+      <div className="text-xs text-gypi-dim mt-3">Vacío: sin empezar · Amarillo: en curso · ✓: terminada, falta la firma · Verde ✓✓: firmada · Tachada: no aplica.</div>
 
       {celda && celdaInfo && (
         <Hoja titulo={`${celdaInfo.etapa.nombre} · OT ${celda.proyecto.ot}`} onClose={() => setCelda(null)}>
@@ -268,7 +268,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
           <div className="g-label mb-1.5">Puntos críticos de la OT</div>
           <textarea className="g-input mb-1 min-h-[88px]" maxLength={2000} value={puntos} onChange={(e) => setPuntos(e.target.value)}
             aria-label="Puntos críticos de la OT" placeholder="Ej: piezas VER PLANO, cortes a 45°, madera lustrada" />
-          <div className="text-[11px] text-gypi-dim mb-3">El operario los ve al elegir la OT y mientras trabaja en ella.</div>
+          <div className="text-xs text-gypi-dim mb-3">El operario los ve al elegir la OT y mientras trabaja en ella.</div>
           {error && <div role="alert" className="text-[12px] text-gypi-red mb-2">{error}</div>}
           <div className="flex flex-col gap-2">
             {!liberando.liberada_at && (

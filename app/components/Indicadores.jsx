@@ -33,7 +33,7 @@ function Fila({ izquierda, abajo, derecha }) {
     <div className="flex items-center gap-2 bg-gypi-surface rounded-xl p-3 border border-gypi-border">
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-bold truncate">{izquierda}</div>
-        {abajo && <div className="text-[11px] text-gypi-dim">{abajo}</div>}
+        {abajo && <div className="text-xs text-gypi-dim">{abajo}</div>}
       </div>
       <div className="text-[13px] font-bold text-right shrink-0">{derecha}</div>
     </div>

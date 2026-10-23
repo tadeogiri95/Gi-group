@@ -364,8 +364,8 @@ export default function CalendarioScreen({ empresaId }) {
               return (
                 <button key={dia} onClick={() => setVistaDetalle(vistaDetalle === dia ? null : dia)} aria-label={`${dia} de ${MESES[month]}${isHoy ? " (hoy)" : ""}: ${info.disponibles} trabajan${info.turnos.length ? `, ${info.turnos.length} turno${info.turnos.length > 1 ? "s" : ""}` : ""}${tieneNotas ? `, ${info.notas.length} nota${info.notas.length > 1 ? "s" : ""}` : ""}`} aria-pressed={vistaDetalle === dia} className={`py-1.5 px-0.5 rounded-[10px] cursor-pointer flex flex-col items-center gap-0.5 min-h-[52px] transition-all duration-150 ${isHoy ? "border-2 border-gypi-amber bg-gypi-amber/[0.07]" : vistaDetalle === dia ? "border-2 border-gypi-text bg-gypi-surface" : `border ${tieneNotas ? "border-gypi-border bg-gypi-cyan/[0.05]" : "border-gypi-border bg-gypi-surface"}`}`}>
                   <div className={`font-heading text-[14px] ${isHoy ? "font-extrabold text-gypi-amber-ink" : esFinDeSemana ? "font-semibold text-gypi-mute" : "font-semibold text-gypi-text"}`}>{dia}</div>
-                  {info.disponibles > 0 && <div className="text-[11px] font-bold text-gypi-green-ink">{info.disponibles}👷</div>}
-                  {info.turnos.length > 0 && <div className="text-[11px] font-bold text-gypi-cyan-ink">{info.turnos.length}⏱</div>}
+                  {info.disponibles > 0 && <div className="text-xs font-bold text-gypi-green-ink">{info.disponibles}👷</div>}
+                  {info.turnos.length > 0 && <div className="text-xs font-bold text-gypi-cyan-ink">{info.turnos.length}⏱</div>}
                   {tieneNotas && (
                     <div className="flex gap-0.5" aria-hidden="true">
                       {info.notas.slice(0, 3).map((n, i) => <div key={i} className={`w-[5px] h-[5px] rounded-full ${colorNota(n.color).punto}`} />)}
@@ -426,7 +426,7 @@ export default function CalendarioScreen({ empresaId }) {
                   </div>
                 )}
 
-                <div className="text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-2">Personal del día</div>
+                <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.06em] mb-2">Personal del día</div>
                 <div className="flex flex-wrap gap-1">
                   {empsFiltrados.filter(e => e.rol === "operativo").map(emp => {
                     const franco = isFranco(emp.diagrama, fecha);
@@ -435,7 +435,7 @@ export default function CalendarioScreen({ empresaId }) {
                       <div key={emp.id} className={`py-1 px-2 rounded-md flex items-center gap-1 ${franco ? "bg-gypi-surf-hi" : "bg-gypi-green/10"}`}>
                         <div className={`w-[5px] h-[5px] rounded-full ${franco ? "bg-(--color-text-muted)" : "bg-gypi-green"}`} aria-hidden="true" />
                         <span className={`text-xs font-semibold ${franco ? "text-gypi-mute line-through" : "text-gypi-text"}`}>{emp.apodo || emp.nombre.split(" ")[0]}</span>
-                        {horario && <span className="text-[11px] text-gypi-dim font-mono">{horario.in}</span>}
+                        {horario && <span className="text-xs text-gypi-dim font-mono">{horario.in}</span>}
                       </div>
                     );
                   })}
@@ -446,15 +446,15 @@ export default function CalendarioScreen({ empresaId }) {
 
           {/* Resumen rápido del mes */}
           <div className="bg-gypi-surface rounded-[14px] p-3.5 border border-gypi-border">
-            <div className="text-[11px] font-bold text-gypi-dim uppercase tracking-[0.06em] mb-2">Resumen del mes</div>
+            <div className="text-xs font-bold text-gypi-dim uppercase tracking-[0.06em] mb-2">Resumen del mes</div>
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
                 <div className="font-heading text-xl font-bold text-gypi-green-ink">{empsFiltrados.filter(e => e.rol === "operativo").length}</div>
-                <div className="text-[11px] text-gypi-dim">Operativos</div>
+                <div className="text-xs text-gypi-dim">Operativos</div>
               </div>
               <div className="text-center">
                 <div className="font-heading text-xl font-bold text-gypi-amber-ink">{notas.length}</div>
-                <div className="text-[11px] text-gypi-dim">Notas</div>
+                <div className="text-xs text-gypi-dim">Notas</div>
               </div>
               <div className="text-center">
                 <div className="font-heading text-xl font-bold text-gypi-cyan-ink">
@@ -467,7 +467,7 @@ export default function CalendarioScreen({ empresaId }) {
                     return diasLab;
                   })()}
                 </div>
-                <div className="text-[11px] text-gypi-dim">Días hábiles</div>
+                <div className="text-xs text-gypi-dim">Días hábiles</div>
               </div>
             </div>
           </div>

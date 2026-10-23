@@ -82,7 +82,7 @@ export default function ReporteDiaTab() {
                   <div className="flex-1 min-w-0 truncate"><NombreOt o={o} /></div>
                   <div className="text-[13px] font-bold text-gypi-amber-ink" aria-label={`De ${o.antes ?? 0}% a ${o.despues ?? 0}%`}>{o.antes ?? 0}% → {o.despues ?? 0}%</div>
                 </div>
-                <div className="text-[11px] text-gypi-dim mt-1">
+                <div className="text-xs text-gypi-dim mt-1">
                   {o.etapas.filter((e) => e.hoy > 0).map((e) => `${e.nombre}: ${e.hoy} ${e.hoy === 1 ? "pieza" : "piezas"} (${e.pasaron} de ${e.total})`).join(" · ")}
                 </div>
               </Tarjeta>
@@ -107,10 +107,10 @@ export default function ReporteDiaTab() {
                   <div className="flex-1 min-w-0 truncate"><NombreOt o={i} /></div>
                   {i.avance != null && <div className="text-[13px] font-bold text-gypi-amber-ink">{i.avance}%</div>}
                 </div>
-                <div className="text-[11px] text-gypi-dim mt-1">
+                <div className="text-xs text-gypi-dim mt-1">
                   {[i.quien, `${i.modulos} ${i.modulos === 1 ? "módulo colocado" : "módulos colocados"}`, i.comentario].filter(Boolean).join(" · ")}
                 </div>
-                {i.pendientes.length > 0 && <div className="text-[11px] text-gypi-amber-ink mt-0.5">Pendientes: {i.pendientes.join("; ")}</div>}
+                {i.pendientes.length > 0 && <div className="text-xs text-gypi-amber-ink mt-0.5">Pendientes: {i.pendientes.join("; ")}</div>}
               </Tarjeta>
             ))}
           </Seccion>
@@ -122,7 +122,7 @@ export default function ReporteDiaTab() {
                   <div className="flex-1 min-w-0 truncate"><NombreOt o={a} /></div>
                   <div className="text-[12px] font-bold text-gypi-red">{a.dias === 1 ? "1 día" : `${a.dias} días`}{a.porcentaje != null ? ` · ${a.porcentaje}%` : ""}</div>
                 </div>
-                <div className="text-[11px] text-gypi-dim mt-1">Entrega {fechaCorta(a.entrega)}</div>
+                <div className="text-xs text-gypi-dim mt-1">Entrega {fechaCorta(a.entrega)}</div>
               </Tarjeta>
             ))}
           </Seccion>
