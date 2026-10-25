@@ -338,25 +338,29 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   // OT en curso y pedidos de compra: al abrir y con el botón de actualizar
   // (no cada minuto: el avance y las horas de 6 meses son muchas filas)
   const empresaId = empresa?.id;
+  // OT, Compras y Flota son módulos propios (131): apagado o no contratado, su tarjeta no aparece
   const conOt = tieneModulo(empresa, "proyectos");
+  const conCompras = tieneModulo(empresa, "compras");
+  const conFlota = tieneModulo(empresa, "flota");
   const cargarOtYCompras = useCallback(async () => {
-    if (isDemo || !empresaId || !conOt) return;
+    if (isDemo || !empresaId || !(conOt || conCompras || conFlota)) return;
+    const si = (con, leer) => (con ? leer().catch(() => null) : null);
     const [proy, avHs, peds, veh, pap, chk, cho, arr] = await Promise.all([
-      sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at&order=id.asc`, { maxFilas: 20000 }).catch(() => null),
-      leerAvanceYHoras(empresaId).catch(() => null),
+      si(conOt, () => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at&order=id.asc`, { maxFilas: 20000 })),
+      si(conOt, () => leerAvanceYHoras(empresaId)),
       // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
-      sbGetAll(`pedidos_compra?estado=eq.pendiente&select=id,descripcion,cantidad,unidad,ot,empleado_nombre,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 }).catch(() => null),
+      si(conCompras, () => sbGetAll(`pedidos_compra?estado=eq.pendiente&select=id,descripcion,cantidad,unidad,ot,empleado_nombre,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 })),
       // Sin la migración 126 no hay flota: la tarjeta no aparece
-      sbGetAll(`vehiculos?activo=eq.true&order=patente.asc,id.asc`, { maxFilas: 2000 }).catch(() => null),
-      sbGetAll(`vehiculo_papeles?order=created_at.desc,id.desc`, { maxFilas: 20000 }).catch(() => null),
-      sbGetAll(`vehiculo_checklists?select=id,vehiculo_id,created_at,km,secciones&order=created_at.desc,id.desc`, { maxFilas: 2000 }).catch(() => null),
-      sbGetAll(`empleados?activo=eq.true&select=id,nombre,licencia_categoria,licencia_vencimiento&order=id.asc`, { maxFilas: 5000 }).catch(() => null),
-      sbGetAll(`vehiculo_arreglos?estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`, { maxFilas: 5000 }).catch(() => null),
+      si(conFlota, () => sbGetAll(`vehiculos?activo=eq.true&order=patente.asc,id.asc`, { maxFilas: 2000 })),
+      si(conFlota, () => sbGetAll(`vehiculo_papeles?order=created_at.desc,id.desc`, { maxFilas: 20000 })),
+      si(conFlota, () => sbGetAll(`vehiculo_checklists?select=id,vehiculo_id,created_at,km,secciones&order=created_at.desc,id.desc`, { maxFilas: 2000 })),
+      si(conFlota, () => sbGetAll(`empleados?activo=eq.true&select=id,nombre,licencia_categoria,licencia_vencimiento&order=id.asc`, { maxFilas: 5000 })),
+      si(conFlota, () => sbGetAll(`vehiculo_arreglos?estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`, { maxFilas: 5000 })),
     ]);
     setFlota(veh ? { vehiculos: veh.data || [], papeles: pap?.data || [], checklists: chk?.data || [], choferes: cho?.data || [], arreglos: arr?.data || [] } : null);
     setOtCurso(proy && avHs ? otEnCurso(filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() })) : null);
     setPedidosCompra(peds ? peds.data || [] : null);
-  }, [isDemo, empresaId, conOt, etapasCtx, divisionesCtx]);
+  }, [isDemo, empresaId, conOt, conCompras, conFlota, etapasCtx, divisionesCtx]);
   useEffect(() => { cargarOtYCompras(); }, [cargarOtYCompras]); // eslint-disable-line react-hooks/set-state-in-effect
   // Cada minuto, solo con la pestaña a la vista (F3-04)
   useRefrescoVisible(cargarDatos, { intervaloMs: 60000 });
@@ -775,7 +779,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       </section>
 
       {/* ─── Pedidos de material pendientes (Planta → Compras) ─── */}
-      {conOt && pedidosCompra && (
+      {conCompras && pedidosCompra && (
         <section aria-label="Pedidos de material" className="card-hover g-card mb-4">
           <div className="flex justify-between items-center mb-2">
             <Titulo>Pedidos de material</Titulo>
@@ -807,7 +811,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       )}
 
       {/* ─── Flota: alertas de mantenimiento (Planta → Flota) ─── */}
-      {conOt && alertasFlota && (() => {
+      {conFlota && alertasFlota && (() => {
         const vencidas = alertasFlota.filter(a => a.nivel === "vencido").length;
         const pronto = alertasFlota.length - vencidas;
         return (

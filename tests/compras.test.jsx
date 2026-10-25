@@ -519,7 +519,7 @@ test("proveedores — traer la lista de la planilla, editar y dar de baja", asyn
 
 test("accesos — pestaña Compras en Planta", () => {
   const planta = readFileSync(new URL("../app/components/screens/PlantaScreen.jsx", import.meta.url), "utf8");
-  assert.match(planta, /\{ id: "compras", label: "Compras", modulo: "proyectos" \}/);
+  assert.match(planta, /\{ id: "compras", label: "Compras", modulo: "compras" \}/);
   assert.match(planta, /<ComprasScreen empresaId=\{empresaId\} empresa=\{empresa\} usuario=\{usuario\} \/>/);
 });
 

@@ -89,8 +89,8 @@ export async function POST(request) {
     if (parsed.response) return parsed.response;
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
-    // Stock va con las OT hasta que sea un módulo que se venda aparte
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    // Stock es un módulo propio (viene con las OT y se puede apagar aparte, 131)
+    const sinModulo = await requireModulo(sesion.empresa_id, "stock");
     if (sinModulo) return sinModulo;
     try {
       return parsed.data.accion === "anular" ? await anular(sesion, parsed.data.id) : await registrar(sesion, parsed.data);

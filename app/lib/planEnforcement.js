@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { PLANES, planLimite, planPermite, planVigente, capacidades, planSiguiente } from "./plans";
-import { modulosEfectivos, configModulos, comoSumarModulo } from "./modulos";
+import { modulosEfectivos, modulosContratados, modulosApagados, configModulos, comoSumarModulo } from "./modulos";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -81,10 +81,13 @@ async function getAjustesModulos(empresaId) {
   const cached = cacheAjustes.get(empresaId);
   if (cached && Date.now() - cached.t < TTL) return cached.ajustes;
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/empresa_modulos?empresa_id=eq.${empresaId}&select=modulo,activo,config`,
+    const pedir = (campos) => fetch(
+      `${SUPABASE_URL}/rest/v1/empresa_modulos?empresa_id=eq.${empresaId}&select=${campos}`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
     );
+    // Sin la migración 131 no existe "apagado": se leen los ajustes sin esa columna
+    let res = await pedir("modulo,activo,config,apagado");
+    if (!res.ok) res = await pedir("modulo,activo,config");
     if (!res.ok) return [];
     const data = await res.json();
     const ajustes = Array.isArray(data) ? data : [];
@@ -110,6 +113,8 @@ export async function getModulosEmpresa(empresaId, { plan: planLeido } = {}) {
     plan,
     addons,
     modulos: modulosEfectivos({ plan, addons, ajustes }),
+    contratados: modulosContratados({ plan, addons, ajustes }),
+    apagados: modulosApagados({ plan, addons, ajustes }),
     config: configModulos(ajustes),
     capacidades: capacidades(plan, addons),
   };

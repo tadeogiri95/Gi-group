@@ -26,9 +26,9 @@ async function ejecutar(request) {
   let revisadas = 0, avisados = 0, push = 0, errores = 0;
   for (const empresa of empresas) {
     try {
-      // Flota va con el módulo de OT (proyectos)
+      // Sin el módulo Flota (no contratado o apagado) no hay alertas
       const { modulos } = await getModulosEmpresa(empresa.id);
-      if (!modulos.includes("proyectos")) continue;
+      if (!modulos.includes("flota")) continue;
       const r = await revisarFlota(empresa, hoy);
       if (!r.vehiculos) continue;
       revisadas++;
