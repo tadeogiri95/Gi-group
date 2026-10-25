@@ -13,7 +13,7 @@ import { logEvent, EVT } from "./analytics";
 
 import { ipCliente } from "./ip";
 import { planVigente } from "./plans";
-import { MENSAJE_SIN_PLAN } from "./planEnforcement";
+import { MENSAJE_SIN_PLAN, getModulosEmpresa } from "./planEnforcement";
 import { validarMomento, horaLocal } from "./offline";
 import { zonasDePlanta } from "./plantas";
 import { modoGeo } from "./geoConfig";
@@ -56,6 +56,13 @@ export async function procesarFichaje(sesion, rawBody, request) {
     // Cuenta en pausa (D20): no se ficha. Si no se pudo leer el plan, no se bloquea.
     if (planLeido && !planVigente(plan)) {
       return NextResponse.json({ ok: false, error: MENSAJE_SIN_PLAN, tipo: "sin_plan" }, { status: 402 });
+    }
+    // La empresa apagó el fichaje (usa su propio control de acceso, Más → Módulos)
+    if (planLeido) {
+      const { modulos } = await getModulosEmpresa(sesion.empresa_id, { plan }).catch(() => ({ modulos: null }));
+      if (Array.isArray(modulos) && !modulos.includes("fichaje")) {
+        return NextResponse.json({ ok: false, error: "Tu empresa no usa el fichaje de Gypi.", tipo: "sin_modulo", modulo: "fichaje" }, { status: 402 });
+      }
     }
 
     // Sin conexión (ítem 21): vale la hora en que se fichó, no la del envío

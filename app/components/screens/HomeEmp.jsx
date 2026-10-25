@@ -39,6 +39,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   // ya no inicia tareas ni usa el asistente (2026-10): el avance sale de los
   // escaneos de piezas.
   const conTareas = tieneModulo(empresa, "actividad");
+  const conFichaje = tieneModulo(empresa, "fichaje");
   const [elegirCarga, setElegirCarga] = useState(false);
   const [retirar, setRetirar] = useState(false);
   const [escanearPiezas, setEscanearPiezas] = useState(false);
@@ -118,14 +119,17 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
 
       <EstadoConexion cola={cola} />
 
-      {/* Botón grande de fichar (D6) */}
-      <BotonFichar
-        usuario={usuario}
-        fichadaHoy={fichadaHoy}
-        fichadaAbierta={fichadaAbierta}
-        onFichado={reload}
-        demo={demo}
-      />
+      {/* Botón grande de fichar (D6). Sin él si la empresa apagó el fichaje
+          (usa su propio control de acceso), para que nadie dude si fichar acá */}
+      {conFichaje && (
+        <BotonFichar
+          usuario={usuario}
+          fichadaHoy={fichadaHoy}
+          fichadaAbierta={fichadaAbierta}
+          onFichado={reload}
+          demo={demo}
+        />
+      )}
 
       {/* El trabajo del día: botones grandes, lo más usado primero */}
       <section aria-label="Trabajo" className="flex flex-col gap-2.5 mb-[18px]">

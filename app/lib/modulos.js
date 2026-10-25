@@ -40,8 +40,10 @@ export const MODULOS = {
 // (plan Planta) y cada uno se puede apagar por separado.
 export const INCLUIDOS_CON = { proyectos: ["stock", "compras", "flota"] };
 
-// Lo que la empresa no puede apagar: sin fichaje la app no tiene sentido
-export const SIEMPRE_PRENDIDOS = ["fichaje"];
+// Lo que la empresa no puede apagar. Fichaje sí se apaga (2026-10): hay
+// empresas con su propio control de acceso que no quieren que el personal
+// dude si también tiene que fichar en la app.
+export const SIEMPRE_PRENDIDOS = [];
 
 const ordenCatalogo = (set) => Object.keys(MODULOS).filter((m) => set.has(m));
 

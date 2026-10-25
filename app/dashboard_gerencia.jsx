@@ -342,6 +342,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const conOt = tieneModulo(empresa, "proyectos");
   const conCompras = tieneModulo(empresa, "compras");
   const conFlota = tieneModulo(empresa, "flota");
+  // Sin fichaje (la empresa usa su propio control de acceso) no hay asistencia ni ranking que mostrar
+  const conFichaje = tieneModulo(empresa, "fichaje");
   const cargarOtYCompras = useCallback(async () => {
     if (isDemo || !empresaId || !(conOt || conCompras || conFlota)) return;
     const si = (con, leer) => (con ? leer().catch(() => null) : null);
@@ -684,7 +686,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       )}
 
       {/* ─── Asistencia del día: operarios por división y la llegada de cada uno ─── */}
-      <section aria-label="Asistencia del día" className="card-hover g-card mb-4">
+      {conFichaje && <section aria-label="Asistencia del día" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center gap-2 mb-3">
           <Titulo>Asistencia {verHoy ? "de hoy" : `del ${fechaCorta(diaVer)}`}</Titulo>
           <div className="flex items-center gap-1">
@@ -752,10 +754,10 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             </div>
           </>
         )}
-      </section>
+      </section>}
 
       {/* ─── Asistencia de la semana (operarios) ─── */}
-      <section aria-label="Asistencia semanal" className="card-hover g-card mb-4">
+      {conFichaje && <section aria-label="Asistencia semanal" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
           <Titulo>Asistencia semanal</Titulo>
           <Tag color={tardesEstaSemana > 0 ? MARCA : "var(--color-green)"}>{tardesEstaSemana} {tardesEstaSemana === 1 ? "llegada tarde" : "llegadas tarde"}</Tag>
@@ -776,7 +778,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <span className={`font-heading text-sm font-bold ${TONO.info.txt}`}>{promedioHorasDia.toFixed(1)} h</span>
           </div>
         )}
-      </section>
+      </section>}
 
       {/* ─── Pedidos de material pendientes (Planta → Compras) ─── */}
       {conCompras && pedidosCompra && (
@@ -847,7 +849,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       })()}
 
       {/* ─── Ranking de empleados ─── */}
-      {ranking.length > 0 && (() => {
+      {conFichaje && ranking.length > 0 && (() => {
         const top3 = ranking.slice(0, 3);
         const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
         return (
