@@ -3,7 +3,9 @@
 // Maquinaria (Mantenimiento, parte 33; migración 132): sus datos, su
 // horómetro, su plan (cada tarea con su semáforo, editable) y el historial de
 // lo que se le hizo. Desde acá se registra una tarea hecha. Con la 133
-// (parte 34) también su responsable de mantenimiento y el suplente.
+// (parte 34) también su responsable de mantenimiento y el suplente. Con la
+// 134 (parte 35), sus fallas sin arreglar, avisar una y la etiqueta con el QR
+// para pegar en la máquina (escaneándolo cualquiera avisa una falla).
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { idNuevo, resumenChecklist } from "../lib/checklistVehiculo";
@@ -15,7 +17,12 @@ import { useConfirm } from "./ui/ConfirmDialog";
 import BotonFoto from "./BotonFoto";
 import RegistrarTarea from "./RegistrarTarea";
 import AsignarMantenimiento from "./AsignarMantenimiento";
-import { CAMPOS_MAQUINA, conResponsables } from "../lib/mantenimiento";
+import { CAMPOS_MAQUINA, aCargoDe, conResponsables } from "../lib/mantenimiento";
+import { ListaFallas, HistorialFallas } from "./FallasMaquina";
+import AvisarFalla from "./AvisarFalla";
+import { linkMaquina } from "../lib/fallasMaquinaria";
+import { imprimirEtiquetasArticulos } from "../lib/stock";
+import { TAMANOS_ETIQUETA } from "../lib/carga";
 
 export async function postMaquinaria(body) {
   const res = await apiFetch("/api/maquinaria", { method: "POST", body: JSON.stringify(body) });
@@ -327,13 +334,26 @@ function FormHoras({ maquina, onCancelar, onGuardado }) {
   );
 }
 
-export default function FichaMaquina({ maquina, tareas = [], registros = [], divisiones = [], empleados = [], editable, hoy, onVolver, onCambio }) {
+/** La etiqueta con el QR de la máquina (100 × 50 mm): escaneándolo se avisa una falla. */
+export async function imprimirEtiquetaMaquina(maquina, empresa) {
+  const origen = window.location.origin;
+  const slug = empresa?.slug || "";
+  await imprimirEtiquetasArticulos({
+    empresa: empresa?.nombre_corto || empresa?.nombre || "",
+    articulos: [{ sku: maquina.codigo, nombre: maquina.nombre, unidad: "Escaneá para avisar una falla", division: maquina.ubicacion }],
+    origen, slug, tamano: TAMANOS_ETIQUETA[0], titulo: `Etiqueta ${maquina.codigo}`,
+    linkDe: () => linkMaquina(origen, slug, maquina.codigo),
+  });
+}
+
+export default function FichaMaquina({ maquina, tareas = [], registros = [], fallas = [], divisiones = [], empleados = [], empresa = null, usuario = null, editable, hoy, onVolver, onCambio }) {
   const [editando, setEditando] = useState(false);
   const [tareaForm, setTareaForm] = useState(null); // null | "nueva" | tarea
   const [haciendo, setHaciendo] = useState(null);
   const [cargandoHoras, setCargandoHoras] = useState(false);
   const [error, setError] = useState(null);
   const [confirmar, ConfirmDialog] = useConfirm();
+  const [avisando, setAvisando] = useState(false);
   const estado = estadoMaquina(maquina, tareas, hoy);
   const tipo = tipoMaquina(maquina.tipo);
   const criticidad = CRITICIDADES.find((c) => c.id === maquina.criticidad);
@@ -402,6 +422,12 @@ export default function FichaMaquina({ maquina, tareas = [], registros = [], div
           )
       )}
 
+      <div className="flex gap-2 mb-3">
+        <button onClick={() => setAvisando(true)} className="g-btn g-btn-secondary flex-1">⚠️ Avisar falla</button>
+        {editable && (
+          <button onClick={() => imprimirEtiquetaMaquina(maquina, empresa).catch((e) => setError(e.message))} className="g-btn g-btn-secondary flex-1">🏷 Etiqueta QR</button>
+        )}
+      </div>
       {editable && (
         <div className="flex gap-2 mb-3">
           <button onClick={() => setEditando(true)} className="g-btn g-btn-secondary flex-1">✏ Editar</button>
@@ -411,6 +437,14 @@ export default function FichaMaquina({ maquina, tareas = [], registros = [], div
         </div>
       )}
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
+
+      {fallas.some((f) => f.estado === "pendiente") && (
+        <>
+          <h3 className="m-0 mb-1.5 text-[16px] font-bold">Fallas sin arreglar</h3>
+          <ListaFallas fallas={fallas} maquinas={[maquina]} empleados={empleados} editable={editable} conMaquina={false}
+            puedeArreglar={(f) => editable || aCargoDe(maquina, usuario?.id, CAMPOS_MAQUINA) || f.responsable_id === usuario?.id} onCambio={onCambio} />
+        </>
+      )}
 
       <div className="flex items-center gap-2 mb-1.5">
         <h3 className="flex-1 m-0 text-[16px] font-bold">Plan de mantenimiento</h3>
@@ -452,6 +486,7 @@ export default function FichaMaquina({ maquina, tareas = [], registros = [], div
       )}
 
       <h3 className="m-0 mb-1.5 text-[16px] font-bold">Historial</h3>
+      <HistorialFallas fallas={fallas} />
       {!registros.length ? (
         <div className="text-[14px] text-gypi-dim">Todavía no se registró ninguna tarea.</div>
       ) : (
@@ -470,6 +505,7 @@ export default function FichaMaquina({ maquina, tareas = [], registros = [], div
       )}
 
       {ConfirmDialog}
+      {avisando && <AvisarFalla codigoInicial={maquina.codigo} onClose={async () => { setAvisando(false); await onCambio(); }} />}
       {haciendo && <RegistrarTarea maquina={maquina} tarea={haciendo} onClose={() => setHaciendo(null)} onHecho={onCambio} />}
     </div>
   );

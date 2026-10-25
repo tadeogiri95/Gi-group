@@ -74,7 +74,7 @@ const ORDEN = { vencido: 0, pronto: 1, ok: 2, fuera: 3 };
  *   { tipo: "vehiculo", id, vehiculo, nivel, urgentes, rol }
  *   { tipo: "maquina", id, maquina, nivel, tareas: [{ tarea, nivel, ... }], rol }
  */
-export function miMantenimiento(empleadoId, { vehiculos = [], maquinas = [], tareas = [], papeles = [], checklists = [], arreglos = [], hoy }) {
+export function miMantenimiento(empleadoId, { vehiculos = [], maquinas = [], tareas = [], papeles = [], checklists = [], arreglos = [], fallas = [], hoy }) {
   const out = [];
   for (const v of vehiculos) {
     if (v.activo === false || !aCargoDe(v, empleadoId, CAMPOS_VEHICULO)) continue;
@@ -86,7 +86,10 @@ export function miMantenimiento(empleadoId, { vehiculos = [], maquinas = [], tar
   for (const m of maquinas) {
     if (m.activo === false || !aCargoDe(m, empleadoId, CAMPOS_MAQUINA)) continue;
     const e = estadoMaquina(m, tareas, hoy);
-    out.push({ tipo: "maquina", id: `m-${m.id}`, maquina: m, nivel: e.nivel, tareas: e.tareas, rol: rolEn(m, empleadoId, CAMPOS_MAQUINA) });
+    // Una falla sin arreglar (parte 35) la pone por lo menos en 🟡
+    const susFallas = fallas.filter((f) => f.maquina_id === m.id && f.estado === "pendiente");
+    const nivel = susFallas.length && e.nivel === "ok" ? "pronto" : e.nivel;
+    out.push({ tipo: "maquina", id: `m-${m.id}`, maquina: m, nivel, tareas: e.tareas, fallas: susFallas, rol: rolEn(m, empleadoId, CAMPOS_MAQUINA) });
   }
   const nombre = (x) => (x.tipo === "maquina" ? x.maquina.codigo : x.vehiculo.patente);
   return out.sort((a, b) => (ORDEN[a.nivel] ?? 2) - (ORDEN[b.nivel] ?? 2) || nombre(a).localeCompare(nombre(b)));

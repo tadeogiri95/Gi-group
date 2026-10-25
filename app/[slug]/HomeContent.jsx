@@ -59,6 +59,7 @@ const CargaOt = dynamic(() => import("../components/CargaOt"), { ssr: false });
 const ActaOt = dynamic(() => import("../components/ActaOt"), { ssr: false });
 const InstalacionesScreen = dynamic(() => import("../components/screens/InstalacionesScreen"), { ssr: false });
 const FichaArticulo = dynamic(() => import("../components/FichaArticulo"), { ssr: false });
+const AvisarFalla = dynamic(() => import("../components/AvisarFalla"), { ssr: false });
 
 // Demo data — cargado dinámicamente solo cuando ?demo=true (nunca para usuarios reales)
 
@@ -122,6 +123,10 @@ export default function HomeContent() {
   // (mismo formato que SKU_VALIDO de lib/stock.js, sin cargar esa librería acá)
   const skuArticulo = /^[\w.-]{1,60}$/.test(searchParams.get("articulo") || "") ? searchParams.get("articulo") : null;
   const cerrarArticulo = () => cambiarParams((p) => p.delete("articulo"));
+  // QR pegado en una máquina (Mantenimiento, parte 35): ?maquina=CÓDIGO abre "Avisar una falla"
+  // (mismo formato que CODIGO_VALIDO de lib/fallasMaquinaria.js)
+  const codigoMaquina = /^[A-Za-z0-9][\w.-]{0,19}$/.test(searchParams.get("maquina") || "") ? searchParams.get("maquina").toUpperCase() : null;
+  const cerrarMaquina = () => cambiarParams((p) => p.delete("maquina"));
   const abrirActa = () => cambiarParams((p) => { p.delete("carga"); p.set("acta", otCarga); });
 
   // ─── Impersonation exchange (superadmin → ?imp=code) ───
@@ -449,6 +454,7 @@ export default function HomeContent() {
         <CargaOt ot={otCarga} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} usuario={u} checklist={checklistCarga}
           esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarCarga} onAbrirActa={abrirActa} />
       )}
+      {codigoMaquina && !skuArticulo && !otCarga && !otActa && !isDemo && <AvisarFalla codigoInicial={codigoMaquina} onClose={cerrarMaquina} />}
       {skuArticulo && !otCarga && !otActa && !isDemo && <FichaArticulo sku={skuArticulo} usuario={u} empresaId={u?.empresa_id || empresa?.id} onClose={cerrarArticulo} />}
       {otActa && !isDemo && (
         <ActaOt ot={otActa} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} checklist={checklistInstalacion}

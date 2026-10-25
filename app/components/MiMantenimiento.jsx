@@ -4,7 +4,9 @@
 // mantenimiento (o el suplente) ve los vehículos y máquinas que tiene a cargo
 // con su semáforo, lo vencido y lo de hoy arriba. Tocando un vehículo hace su
 // checklist; tocando una tarea de una máquina, la registra (aviso de
-// seguridad, puntos, horas, fotos y firma). Hacerla la pone al día.
+// seguridad, puntos, horas, fotos y firma). Hacerla la pone al día. Con la
+// 134 (parte 35) también ve las fallas sin arreglar de sus máquinas y carga
+// el arreglo.
 import { useCallback, useEffect, useState } from "react";
 import { sb } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
@@ -15,6 +17,7 @@ import { CAMPOS_MAQUINA, CAMPOS_VEHICULO, aCargoDe, miMantenimiento } from "../l
 import Modal from "./ui/Modal";
 import ChecklistVehiculo from "./ChecklistVehiculo";
 import RegistrarTarea from "./RegistrarTarea";
+import { ListaFallas } from "./FallasMaquina";
 
 const enLista = (ids) => ids.join(",");
 
@@ -37,12 +40,13 @@ export function useMiMantenimiento(empleadoId, { conFlota = false, conMaquinaria
     const misM = (maquinas || []).filter((m) => aCargoDe(m, empleadoId, CAMPOS_MAQUINA));
     const idsV = misV.map((v) => v.id);
     const idsM = misM.map((m) => m.id);
-    const [checklists, arreglos, tareas] = await Promise.all([
+    const [checklists, arreglos, tareas, fallas] = await Promise.all([
       idsV.length ? sb.get(`vehiculo_checklists?vehiculo_id=in.(${enLista(idsV)})&select=id,vehiculo_id,created_at,km,secciones&order=id.asc`).catch(vacio) : [],
       idsV.length ? sb.get(`vehiculo_arreglos?vehiculo_id=in.(${enLista(idsV)})&estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`).catch(vacio) : [],
       idsM.length ? sb.get(`maquina_tareas?maquina_id=in.(${enLista(idsM)})&activa=eq.true&order=orden.asc,id.asc`).catch(vacio) : [],
+      idsM.length ? sb.get(`maquina_fallas?maquina_id=in.(${enLista(idsM)})&estado=eq.pendiente&order=created_at.asc`).catch(vacio) : [],
     ]);
-    setItems(miMantenimiento(empleadoId, { vehiculos: misV, maquinas: misM, tareas: tareas || [], checklists: checklists || [], arreglos: arreglos || [], hoy: hoyArg() }));
+    setItems(miMantenimiento(empleadoId, { vehiculos: misV, maquinas: misM, tareas: tareas || [], checklists: checklists || [], arreglos: arreglos || [], fallas: fallas || [], hoy: hoyArg() }));
     setCargando(false);
   }, [empleadoId, conFlota, conMaquinaria]);
 
@@ -100,6 +104,9 @@ export default function MiMantenimiento({ items, empresaNombre = "", onClose, on
                       {x.maquina.estado === "parada" && <span className="text-[12px] text-gypi-red"> · 🔴 Parada</span>}
                       {x.rol === "suplente" && <span className="text-[12px] font-normal text-gypi-dim"> · como suplente</span>}
                     </div>
+                    {x.fallas?.length > 0 && (
+                      <ListaFallas fallas={x.fallas} maquinas={[x.maquina]} conMaquina={false} puedeArreglar={() => true} onCambio={onCambio} />
+                    )}
                     {!x.tareas.length ? (
                       <div className="text-[13px] text-gypi-dim">{x.nivel === "fuera" ? "Fuera de servicio." : "Sin tareas en el plan."}</div>
                     ) : (
