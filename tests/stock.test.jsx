@@ -312,10 +312,10 @@ test("ficha del QR — busca el artículo por SKU; si no está, lo dice", async 
   await waitFor(() => assert.ok(screen.getByText(/No encontré ese artículo/)));
 });
 
-test("QR del artículo — la app abre la ficha con ?articulo=SKU y Stock está en Planta", () => {
+test("QR del artículo — la app abre la ficha con ?articulo=SKU y Stock está en Inventario", () => {
   const home = readFileSync(new URL("../app/[slug]/HomeContent.jsx", import.meta.url), "utf8");
   assert.match(home, /searchParams\.get\("articulo"\)/);
   assert.match(home, /<FichaArticulo sku=\{skuArticulo\}/);
-  const planta = readFileSync(new URL("../app/components/screens/PlantaScreen.jsx", import.meta.url), "utf8");
-  assert.match(planta, /\{ id: "stock", label: "Stock", modulo: "stock" \}/);
+  const menu = readFileSync(new URL("../app/lib/menuGestion.js", import.meta.url), "utf8");
+  assert.match(menu, /\{ id: "stock", label: "Stock", modulo: "stock" \}/);
 });

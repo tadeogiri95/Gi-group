@@ -1,5 +1,5 @@
 'use client';
-// app/components/ReportesCompras.jsx — Planta → Compras → Reportes (Compras,
+// app/components/ReportesCompras.jsx — Inventario → Compras → Reportes (Compras,
 // parte 23; ítem 41). Para quien compra: cuánto se compró por mes y por
 // proveedor, órdenes atrasadas, pedidos de los jefes sin atender y cómo
 // cambió el precio de un artículo.

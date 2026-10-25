@@ -5,25 +5,65 @@
 // vez; lo que la empresa no contrató se ve con 🔒, lo que apagó en Módulos
 // no se ve y lo que el rol no puede usar no se muestra (el supervisor no ve
 // Empresa ni Facturación).
-import { seccionBloqueada, seccionApagada, tieneModulo } from "./modulos";
+import { seccionBloqueada, seccionApagada, tieneModulo, moduloApagado, conRegistroTareas } from "./modulos";
 
-// Módulos que van en la pestaña "Planta"
-export const MODULOS_PLANTA = ["actividad", "proyectos", "stock", "compras", "flota"];
+// Botones de la barra de gestión que agrupan pantallas en pestañas (menú
+// nuevo, parte 32): Proyectos (OT y reportes de producción), Inventario
+// (Stock y Compras) y Mantenimiento (Flota vehicular). Reemplazan a "Planta".
+// Cada pestaña es de un módulo: lo apagado no se ve y lo no contratado va con
+// 🔒. "En vivo" sale del registro de tareas y no se muestra sin él (2026-10).
+export const BOTONES_GESTION = {
+  proyectos: {
+    label: "Proyectos",
+    detalle: "Órdenes de trabajo y reportes",
+    opciones: [
+      { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
+      { id: "ot", label: "OT", modulo: "proyectos" },
+      { id: "reportes", label: "Reportes", modulo: "actividad" },
+    ],
+  },
+  inventario: {
+    label: "Inventario",
+    detalle: "Stock y compras",
+    opciones: [
+      { id: "stock", label: "Stock", modulo: "stock" },
+      { id: "compras", label: "Compras", modulo: "compras" },
+    ],
+  },
+  mantenimiento: {
+    label: "Mantenimiento",
+    detalle: "Flota vehicular",
+    opciones: [
+      { id: "flota", label: "Flota vehicular", modulo: "flota" },
+    ],
+  },
+};
 
-/** ¿Se muestra la pestaña "Planta" (OT, Stock, Compras, Flota y reportes de producción)? */
-export function conPlanta(empresa) {
-  return MODULOS_PLANTA.some((m) => tieneModulo(empresa, m));
+/** Pestañas de un botón para esta empresa: sin lo apagado ni lo que pide el registro de tareas. */
+export function opcionesBoton(boton, empresa) {
+  return (BOTONES_GESTION[boton]?.opciones || [])
+    .filter((o) => (!o.conTareas || conRegistroTareas(empresa)) && !moduloApagado(empresa, o.modulo));
 }
+
+/** ¿Va el botón en la barra? Solo si la empresa tiene alguno de sus módulos. */
+export function conBoton(boton, empresa) {
+  return opcionesBoton(boton, empresa).some((o) => tieneModulo(empresa, o.modulo));
+}
+
+// Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
+const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento" };
 
 export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;
 }
 
-// "Más" es solo para ajustes (revisión de la interfaz, 2026-10): Horarios,
-// Calendario, Reportes y Documentación pasaron a Equipo, y los reportes de
-// producción a Planta. Sin Planta, las OT quedan acá.
+// "Más" tiene arriba Permisos y Equipo (dejaron la barra en el menú nuevo,
+// parte 32), que abren su propia pantalla (pantalla), y abajo los ajustes.
+// Sin el botón Proyectos, las OT quedan acá.
 const SECCIONES = [
-  { id: "proyectos", grupo: "dia", icono: "📋", label: "OT", detalle: "Órdenes de trabajo", soloSinPlanta: true },
+  { id: "permisos", pantalla: "solicitudes", grupo: "dia", icono: "📨", label: "Permisos", detalle: "Permisos, vacaciones y avisos del personal", conPendientes: true },
+  { id: "equipo", pantalla: "equipo", grupo: "dia", icono: "👥", label: "Equipo", detalle: "Personas, horarios, calendario, reportes y documentos" },
+  { id: "proyectos", grupo: "dia", icono: "📋", label: "OT", detalle: "Órdenes de trabajo", soloSinProyectos: true },
   { id: "ubicaciones", grupo: "config", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
   { id: "asistencia", grupo: "config", icono: "⏱️", label: "Reglas de asistencia y permisos", detalle: "Tolerancia, bloqueos y tipos de permiso" },
   { id: "reglas", grupo: "config", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
@@ -40,9 +80,9 @@ export const GRUPOS = [
 
 /** Secciones visibles para esta empresa y este usuario, con su candado. */
 export function seccionesMas({ empresa, usuario } = {}) {
-  const planta = conPlanta(empresa);
+  const proyectos = conBoton("proyectos", empresa);
   return SECCIONES
-    .filter((s) => !(s.soloSinPlanta && planta))
+    .filter((s) => !(s.soloSinProyectos && proyectos))
     .filter((s) => !(s.sinSupervisor && esSupervisor(usuario)))
     .filter((s) => !(s.soloDueno && usuario?.rol !== "gerencial"))
     .filter((s) => !seccionApagada(s.id, empresa))
@@ -59,5 +99,6 @@ export function seccionPorId(id, opciones) {
  */
 export function partirDestino(destino) {
   const [pantalla, seccion = null] = String(destino || "home").split(":");
+  if (pantalla === "planta") return { pantalla: PLANTA_A_BOTON[seccion] || "proyectos", seccion };
   return { pantalla, seccion };
 }

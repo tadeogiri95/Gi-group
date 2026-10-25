@@ -1,5 +1,5 @@
 'use client';
-// app/components/FichaVehiculo.jsx — Ficha de un vehículo en Planta → Flota
+// app/components/FichaVehiculo.jsx — Ficha de un vehículo en Mantenimiento → Flota
 // (Mantenimiento, parte 28; migración 126): sus datos, su responsable con la
 // licencia, y sus papeles con el semáforo de cada uno. Renovar un papel agrega
 // uno nuevo; el anterior queda en el historial. Parte 31 (129): arreglos

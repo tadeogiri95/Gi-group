@@ -1,5 +1,5 @@
 'use client';
-// app/components/ComprasScreen.jsx — Planta → Compras (Compras, parte 20;
+// app/components/ComprasScreen.jsx — Inventario → Compras (Compras, parte 20;
 // ítem 41). Los jefes de taller, gerencia, dueños y Administración piden
 // material (🛒 Pedir material) y ven en qué quedó cada pedido. Administración
 // (sin división asignada) y gerencia ven todos los pedidos y manejan los
@@ -304,7 +304,7 @@ function PegarPedido({ articulos, ots, onListo, onCancelar }) {
                 {leido.noEncontrados.slice(0, 20).map((x, i) => <li key={i}>{x.texto}</li>)}
               </ul>
               {leido.noEncontrados.length > 20 && <div className="text-[12px] text-gypi-dim">Y {leido.noEncontrados.length - 20} más.</div>}
-              <div className="text-[12px] text-gypi-dim">Si son artículos nuevos, sincronizá el stock (Planta → Stock) o pedilos de a uno escribiéndolos.</div>
+              <div className="text-[12px] text-gypi-dim">Si son artículos nuevos, sincronizá el stock (Inventario → Stock) o pedilos de a uno escribiéndolos.</div>
             </div>
           )}
           {leido.sinCantidad.length > 0 && (

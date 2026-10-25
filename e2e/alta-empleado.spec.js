@@ -109,9 +109,11 @@ test("alta de empleado: gerencia crea un empleado y aparece en la lista", async 
   await page.getByPlaceholder("Contraseña").fill("Segura123");
   await page.getByText("Ingresar", { exact: true }).click();
 
-  // ─── Ir a Equipo ───
-  await expect(page.getByRole("button", { name: "Equipo" })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Equipo" }).click();
+  // ─── Ir a Equipo (está en "Más" desde el menú nuevo, parte 32) ───
+  const mas = page.getByRole("navigation").getByRole("button", { name: "Más", exact: true });
+  await expect(mas).toBeVisible({ timeout: 10_000 });
+  await mas.click();
+  await page.getByRole("button", { name: /^Equipo/ }).click();
 
   // ─── Abrir el modal de alta ───
   await page.getByRole("button", { name: "+ Alta" }).click();

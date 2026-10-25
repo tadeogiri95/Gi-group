@@ -1,5 +1,5 @@
 'use client';
-// app/components/OrdenesCompra.jsx — Planta → Compras → Órdenes (Compras,
+// app/components/OrdenesCompra.jsx — Inventario → Compras → Órdenes (Compras,
 // parte 21; ítem 41). Las OC armadas en "A comprar": se revisan cantidades,
 // precios sin IVA, moneda y fecha prometida, se mandan al proveedor (PDF +
 // WhatsApp o email) y se marcan enviadas. Una enviada que pasó la fecha

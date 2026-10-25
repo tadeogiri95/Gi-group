@@ -52,14 +52,17 @@ function PrivacidadPanel({ usuario, empresa }) {
   );
 }
 
-// Pantalla "Más" de gestión (reforma UX R5): una lista simple de ajustes;
-// cada renglón abre su pantalla con "← Más". Lo del personal está en Equipo
-// y lo de producción en Planta (revisión de la interfaz, 2026-10).
-export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [], onVerPlanes, seccion: seccionInicial = null, onSeccion }) {
+// Pantalla "Más" de gestión (reforma UX R5): arriba Permisos y Equipo, que
+// abren su pantalla (menú nuevo, parte 32), y abajo una lista simple de
+// ajustes; cada renglón abre su pantalla con "← Más". Lo de producción está en
+// Proyectos, Inventario y Mantenimiento.
+export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [], onVerPlanes, seccion: seccionInicial = null, onSeccion, onIr, pendientes = 0 }) {
   const [seccionLocal, setSeccionLocal] = useState(seccionInicial);
   const seccionId = onSeccion ? seccionInicial : seccionLocal;
   const abrir = (id) => {
     if (id === "facturacion") { onVerPlanes?.(); return; }
+    const pantalla = secciones.find((x) => x.id === id)?.pantalla;
+    if (pantalla) { onIr?.(pantalla); return; }
     if (onSeccion) onSeccion(id); else setSeccionLocal(id);
   };
   const empresaId = usuario?.empresa_id || empresa?.id;
@@ -81,8 +84,11 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
                   icon={x.icono}
                   title={x.label}
                   detail={x.bloqueado ? "No está en tu plan" : x.detalle}
-                  right={<span aria-hidden="true" className="text-gypi-dim">{x.bloqueado ? "🔒" : "›"}</span>}
-                  label={x.bloqueado ? `${x.label} (no está en tu plan)` : x.label}
+                  right={<span aria-hidden="true" className="flex items-center gap-2 text-gypi-dim">
+                    {x.conPendientes && pendientes > 0 && <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-gypi-red text-white text-xs font-extrabold font-mono flex items-center justify-center">{pendientes > 99 ? "99+" : pendientes}</span>}
+                    {x.bloqueado ? "🔒" : "›"}
+                  </span>}
+                  label={x.bloqueado ? `${x.label} (no está en tu plan)` : x.conPendientes && pendientes > 0 ? `${x.label} (${pendientes} pendientes)` : x.label}
                   onClick={() => abrir(x.id)}
                 />
               ))}

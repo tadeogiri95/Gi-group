@@ -104,11 +104,14 @@ test("solicitudes: gerencia aprueba una solicitud pendiente desde el Inbox", asy
   await page.getByPlaceholder("Contraseña").fill("Segura123");
   await page.getByText("Ingresar", { exact: true }).click();
 
-  // ─── Ir a Permisos y ver la solicitud pendiente ───
-  await expect(page.getByRole("navigation").getByRole("button", { name: "Permisos", exact: true })).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("navigation").getByRole("button", { name: "Permisos", exact: true }).click();
+  // ─── Ir a Permisos (está en "Más" desde el menú nuevo, parte 32) y ver la solicitud pendiente ───
+  const mas = page.getByRole("navigation").getByRole("button", { name: "Más", exact: true });
+  await expect(mas).toBeVisible({ timeout: 10_000 });
+  await mas.click();
+  await page.getByRole("button", { name: /^Permisos/ }).click();
 
-  await expect(page.getByText("Permiso médico")).toBeVisible({ timeout: 10_000 });
+  // El Panel de control sigue montado (oculto) y también lista el permiso: se busca en la tarjeta de Permisos
+  await expect(page.getByLabel(/Solicitud de Juan Pérez/).getByText("Permiso médico")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Aprobar solicitud de Juan Pérez" })).toBeVisible();
 
   // ─── Aprobarla (pide confirmación y deja 5 s para deshacer, F4-07) ───

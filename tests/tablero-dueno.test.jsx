@@ -99,7 +99,7 @@ function tableroCompleto() {
   return destinos;
 }
 
-test("panel — OT en curso con su división, y 'Ver las OT' abre Planta → OT", async () => {
+test("panel — OT en curso con su división, y 'Ver las OT' abre Proyectos → OT", async () => {
   const destinos = tableroCompleto();
   const ot = await screen.findByRole("region", { name: "OT en curso" });
   await within(ot).findByText("7495");
@@ -109,7 +109,7 @@ test("panel — OT en curso con su división, y 'Ver las OT' abre Planta → OT"
   assert.ok(within(ot).getByText("Aluminio: 1"));
   assert.ok(within(ot).getByText(/Muebles · 0 de 2 etapas cerradas · sin liberar/));
   fireEvent.click(within(ot).getByText(/Ver las OT/));
-  assert.deepEqual(destinos, ["planta:ot"]);
+  assert.deepEqual(destinos, ["proyectos:ot"]);
 });
 
 test("panel — asistencia del día: solo operarios, por división y total, con la llegada de cada uno", async () => {
@@ -138,7 +138,7 @@ test("panel — pedidos de compras pendientes con su lista", async () => {
   assert.ok(within(compras).getByText("1 pendiente"));
   assert.ok(within(compras).getByText("Juan · OT 7495"));
   fireEvent.click(within(compras).getByText(/Ir a Compras/));
-  assert.deepEqual(destinos, ["planta:compras"]);
+  assert.deepEqual(destinos, ["inventario:compras"]);
 });
 
 test("panel — el orden que pidió Tadeo", async () => {
