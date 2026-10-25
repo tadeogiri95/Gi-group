@@ -9,7 +9,8 @@ import { seccionBloqueada, seccionApagada, tieneModulo, moduloApagado, conRegist
 
 // Botones de la barra de gestión que agrupan pantallas en pestañas (menú
 // nuevo, parte 32): Proyectos (OT y reportes de producción), Inventario
-// (Stock y Compras) y Mantenimiento (Flota vehicular). Reemplazan a "Planta".
+// (Stock y Compras) y Mantenimiento (Flota vehicular y Maquinaria, parte 33).
+// Reemplazan a "Planta".
 // Cada pestaña es de un módulo: lo apagado no se ve y lo no contratado va con
 // 🔒. "En vivo" sale del registro de tareas y no se muestra sin él (2026-10).
 export const BOTONES_GESTION = {
@@ -32,9 +33,10 @@ export const BOTONES_GESTION = {
   },
   mantenimiento: {
     label: "Mantenimiento",
-    detalle: "Flota vehicular",
+    detalle: "Flota vehicular y maquinaria",
     opciones: [
       { id: "flota", label: "Flota vehicular", modulo: "flota" },
+      { id: "maquinaria", label: "Maquinaria", modulo: "maquinaria" },
     ],
   },
 };
@@ -51,7 +53,7 @@ export function conBoton(boton, empresa) {
 }
 
 // Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
-const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento" };
+const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
 
 export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;

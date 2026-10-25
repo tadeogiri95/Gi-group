@@ -914,3 +914,82 @@ export const flotaBody = z.discriminatedUnion("accion", [
   }).strict(),
   z.object({ accion: z.literal("mantenimiento_borrar"), id: idFlota }).strict(),
 ]);
+// ── /api/maquinaria (132): máquinas y su plan de mantenimiento (Mantenimiento parte 33) ──
+const horasMaquina = z.number().int().min(0).max(9999999);
+const puntoTarea = z.object({
+  id: idPlantilla,
+  nombre: z.string().trim().min(1).max(120),
+  valor: z.string().trim().max(10).nullable().optional().transform((v) => v || null),
+}).strict();
+const camposTarea = {
+  nombre: z.string().trim().min(1, "Poné el nombre de la tarea").max(80),
+  cada_dias: z.number().int().min(1).max(3650).nullable().optional().transform((v) => v ?? null),
+  cada_horas: z.number().int().min(1).max(100000).nullable().optional().transform((v) => v ?? null),
+  aviso_dias: z.number().int().min(0).max(365).default(0),
+  aviso_horas: z.number().int().min(0).max(100000).default(0),
+  checklist: z.array(puntoTarea).min(1, "La tarea necesita al menos un punto para revisar").max(40),
+  quien: z.enum(["interno", "externo"]).default("interno"),
+  duracion_min: z.number().int().min(1).max(10000).nullable().optional().transform((v) => v ?? null),
+  parar_maquina: z.boolean().default(true),
+  seguridad: textoSuelto(300),
+  insumos: textoSuelto(300),
+};
+const conFrecuencia = (t: { cada_dias: number | null; cada_horas: number | null }) => t.cada_dias != null || t.cada_horas != null;
+const sinFrecuencia = { message: "Poné cada cuántos días o cada cuántas horas", path: ["cada_dias"] };
+export const maquinariaBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("maquina_guardar"),
+    id: idFlota.optional(),
+    codigo: z.string().trim().min(1, "Poné el código").max(20),
+    nombre: z.string().trim().min(1, "Poné el nombre").max(80),
+    tipo: z.string().trim().regex(/^[a-z_]{1,30}$/),
+    marca: textoSuelto(60),
+    modelo: textoSuelto(80),
+    serie: textoSuelto(60),
+    anio: z.number().int().min(1950).max(2100).nullable().optional().transform((v) => v ?? null),
+    ubicacion: textoSuelto(80),
+    division: textoSuelto(60),
+    foto_url: urlFoto.nullable().optional().transform((v) => v || null),
+    manual_url: urlFoto.nullable().optional().transform((v) => v || null),
+    criticidad: z.enum(["A", "B", "C"]),
+    con_horometro: z.boolean().default(false),
+    horas: horasMaquina.nullable().optional().transform((v) => v ?? null),
+    servicio_tecnico: textoSuelto(80),
+    servicio_telefono: textoSuelto(40),
+    estado: z.enum(["en_servicio", "parada", "fuera_de_servicio"]).default("en_servicio"),
+    notas: textoSuelto(500),
+    // Solo en el alta: cargar las tareas de la plantilla de su tipo
+    con_plantilla: z.boolean().optional(),
+  }).strict(),
+  z.object({ accion: z.literal("maquina_baja"), id: idFlota, activo: z.boolean() }).strict(),
+  z.object({ accion: z.literal("horas_guardar"), id: idFlota, horas: horasMaquina }).strict(),
+  z.object({
+    accion: z.literal("tarea_guardar"),
+    id: idFlota.optional(),
+    maquina_id: idFlota,
+    ...camposTarea,
+    // La última vez que se hizo, si se sabe (sin registro se cuenta desde el alta)
+    ultima_fecha: fechaFlota,
+    ultima_horas: horasMaquina.nullable().optional().transform((v) => v ?? null),
+  }).strict().refine(conFrecuencia, sinFrecuencia),
+  z.object({ accion: z.literal("tarea_borrar"), id: idFlota }).strict(),
+  z.object({
+    accion: z.literal("registro_crear"),
+    tarea_id: idFlota,
+    fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    horas: horasMaquina.nullable().optional().transform((v) => v ?? null),
+    seguridad_ok: z.boolean().default(false),
+    items: z.array(z.object({
+      punto: idPlantilla,
+      nombre: z.string().trim().min(1).max(120),
+      estado: z.enum(["bien", "revisar", "mal", "na"]),
+      valor: textoSuelto(20),
+      unidad: textoSuelto(10),
+      nota: textoSuelto(300),
+      foto: urlFoto.nullable().optional().transform((v) => v || null),
+    }).strict()).min(1).max(40),
+    observaciones: textoSuelto(1000),
+    fotos: z.array(urlFoto).max(4).default([]),
+    firma_url: urlFoto.nullable().optional().transform((v) => v || null),
+  }).strict(),
+]);

@@ -69,10 +69,13 @@ const TABLAS_PERMITIDAS = [
   "vehiculos", "vehiculo_papeles", // Flota, Mantenimiento parte 28 (126): solo lectura acá; se escriben por /api/flota
   "vehiculo_checklists", "flota_config", // Checklist de vehículos, parte 29 (127): ídem
   "vehiculo_arreglos", "vehiculo_mantenimientos", // Arreglos y services, parte 31 (129): ídem
+  "maquinas", "maquina_tareas", "maquina_registros", // Maquinaria, parte 33 (132): solo lectura acá; se escriben por /api/maquinaria
 ];
 
 // Flota (126): se leen por acá y se escriben solo por /api/flota.
 const TABLAS_FLOTA = ["vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config", "vehiculo_arreglos", "vehiculo_mantenimientos"];
+// Maquinaria (132): se leen por acá y se escriben solo por /api/maquinaria.
+const TABLAS_MAQUINARIA = ["maquinas", "maquina_tareas", "maquina_registros"];
 // Tablas de Compras: se leen por acá y se escriben solo por /api/compras.
 const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "pedidos_compra_cambios", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items", "ordenes_compra_cotizaciones"];
 
@@ -80,7 +83,7 @@ const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "pedidos_compra_cambios
 // por /api/documentos/upload (valida tipo/tamaño de archivo server-side antes
 // de escribir la fila). Sin esto, un POST directo podría crear filas con
 // storage_path arbitrario sin que exista el archivo.
-const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", ...TABLAS_COMPRAS, ...TABLAS_FLOTA];
+const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", ...TABLAS_COMPRAS, ...TABLAS_FLOTA, ...TABLAS_MAQUINARIA];
 
 // Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
 // base aplica la RLS. Las dos vistas de resumen necesitan además la migración

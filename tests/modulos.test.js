@@ -29,9 +29,9 @@ function empresaCon({ plan = "asistencia_15", addons = [], ajustes = [], ajustes
 
 // ─── Catálogo ───────────────────────────────────────────────────────────────
 
-test("catálogo — el de la app y el de las migraciones 083 y 131 son el mismo (ids y disponibles)", () => {
+test("catálogo — el de la app y el de las migraciones 083, 131 y 132 son el mismo (ids y disponibles)", () => {
   // 131 pisa a 083 (on conflict do update), como en la base
-  const filas = ["083_modulos.sql", "131_modulos_apagados.sql"].flatMap((f) => {
+  const filas = ["083_modulos.sql", "131_modulos_apagados.sql", "132_maquinaria.sql"].flatMap((f) => {
     const sql = readFileSync(new URL(`../supabase/migrations/${f}`, import.meta.url), "utf8");
     return [...sql.matchAll(/\('([a-z]+)',\s*'[^']+',\s*'[^']*',\s*(true|false),/g)].map((m) => [m[1], m[2] === "true"]);
   });
@@ -45,7 +45,7 @@ test("catálogo — el de la app y el de las migraciones 083 y 131 son el mismo 
 
 test("modulosEfectivos — sin ajustes es exactamente lo del plan y sus add-ons (nadie pierde nada)", () => {
   assert.deepEqual(modulosEfectivos({ plan: "asistencia_15" }), ["fichaje", "chat", "reportes", "calendario"]);
-  assert.deepEqual(modulosEfectivos({ plan: "planta_40" }), ["fichaje", "chat", "reportes", "calendario", "actividad", "proyectos", "stock", "compras", "flota"]);
+  assert.deepEqual(modulosEfectivos({ plan: "planta_40" }), ["fichaje", "chat", "reportes", "calendario", "actividad", "proyectos", "stock", "compras", "flota", "maquinaria"]);
   assert.ok(modulosEfectivos({ plan: "asistencia_15", addons: ["campo"] }).includes("obra"));
   // Planes de antes y la empresa piloto, igual que hoy
   assert.ok(modulosEfectivos({ plan: "pro" }).includes("obra"));
@@ -61,7 +61,7 @@ test("modulosEfectivos — ajustes de la empresa: dar un módulo, sacar uno del 
     { modulo: "inventado", activo: true },  // no existe
   ];
   // Las OT dadas a mano traen Stock, Compras y Flota
-  assert.deepEqual(modulosEfectivos({ plan: "asistencia_15", ajustes }), ["fichaje", "reportes", "calendario", "proyectos", "stock", "compras", "flota"]);
+  assert.deepEqual(modulosEfectivos({ plan: "asistencia_15", ajustes }), ["fichaje", "reportes", "calendario", "proyectos", "stock", "compras", "flota", "maquinaria"]);
   // Sacar las OT a mano saca también lo que viene con ellas; sacar Flota sola, solo Flota
   assert.deepEqual(modulosEfectivos({ plan: "planta_15", ajustes: [{ modulo: "proyectos", activo: false }] }), ["fichaje", "chat", "reportes", "calendario", "actividad"]);
   assert.ok(!modulosEfectivos({ plan: "planta_15", ajustes: [{ modulo: "flota", activo: false }] }).includes("flota"));
@@ -97,7 +97,7 @@ test("requireModulo — un módulo dado a mano habilita; uno sacado a mano bloqu
 test("getModulosEmpresa — sin la migración 083 (tabla inexistente) vale lo del plan", async () => {
   empresaCon({ plan: "planta_15", ajustesStatus: 404 });
   const m = await getModulosEmpresa(E);
-  assert.deepEqual(m.modulos, ["fichaje", "chat", "reportes", "calendario", "actividad", "proyectos", "stock", "compras", "flota"]);
+  assert.deepEqual(m.modulos, ["fichaje", "chat", "reportes", "calendario", "actividad", "proyectos", "stock", "compras", "flota", "maquinaria"]);
   assert.equal(m.capacidades.ia_consultas_mes, 200);
 });
 

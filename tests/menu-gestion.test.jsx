@@ -33,7 +33,8 @@ test("barra de gestión — Inicio · Proyectos · Inventario · Mantenimiento �
   // Lo apagado en Más → Módulos saca el botón entero si no le queda nada
   const sinInventario = PLANTA.modulos.filter((m) => m !== "stock" && m !== "compras");
   assert.deepEqual(labels(sinInventario), ["Inicio", "Proyectos", "Mantenimiento", "Más"]);
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Proyectos", "Inventario", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Proyectos", "Inventario", "Mantenimiento", "Más"], "queda Maquinaria");
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota" && m !== "maquinaria")), ["Inicio", "Proyectos", "Inventario", "Más"]);
   // Los permisos pendientes se ven sobre "Más"
   assert.equal(getItems("gerencial", 3, PLANTA.modulos).find((i) => i.id === "config").badge, 3);
 });
@@ -42,7 +43,7 @@ test("botones — Proyectos: OT y Reportes; Inventario: Stock y Compras; Manteni
   const labels = (boton, empresa = PLANTA) => opcionesBoton(boton, empresa).map((o) => o.label);
   assert.deepEqual(labels("proyectos"), ["OT", "Reportes"]);
   assert.deepEqual(labels("inventario"), ["Stock", "Compras"]);
-  assert.deepEqual(labels("mantenimiento"), ["Flota vehicular"]);
+  assert.deepEqual(labels("mantenimiento"), ["Flota vehicular", "Maquinaria"]);
   // Los enlaces viejos a Planta van al botón nuevo
   assert.deepEqual(partirDestino("planta:compras"), { pantalla: "inventario", seccion: "compras" });
   assert.deepEqual(partirDestino("planta:flota"), { pantalla: "mantenimiento", seccion: "flota" });
@@ -180,7 +181,7 @@ test("Más — al final está 'Cerrar sesión' con quién entró, y también en 
 });
 
 test("Módulos — lo que la empresa apagó no aparece (ni con candado); lo no contratado sí, con candado", async () => {
-  const apagada = { ...PLANTA, modulos: (PLANTA.modulos || []).filter((m) => m !== "flota" && m !== "calendario"), modulos_apagados: ["flota", "calendario"] };
+  const apagada = { ...PLANTA, modulos: (PLANTA.modulos || []).filter((m) => !["flota", "maquinaria", "calendario"].includes(m)), modulos_apagados: ["flota", "maquinaria", "calendario"] };
   assert.ok(!opcionesBoton("mantenimiento", apagada).some((o) => o.id === "flota"));
   assert.ok(opcionesBoton("mantenimiento", PLANTA).some((o) => o.id === "flota"));
   assert.equal(conBoton("mantenimiento", apagada), false);

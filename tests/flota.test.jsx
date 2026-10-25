@@ -101,7 +101,7 @@ test("validación, migración 126 y lectura por /api/data", () => {
   assert.equal(autorizar("vehiculos", "GET", { rol: "operativo" }).ok, true, "el chofer va a ver su vehículo (parte 29)");
   assert.equal(autorizar("vehiculo_papeles", "POST", { rol: "gerencial" }).ok, false, "se escribe por /api/flota");
   const data = readFileSync(new URL("../app/api/data/route.js", import.meta.url), "utf8");
-  assert.match(data, /\.\.\.TABLAS_COMPRAS, \.\.\.TABLAS_FLOTA\]/, "solo lectura por /api/data");
+  assert.match(data, /\.\.\.TABLAS_COMPRAS, \.\.\.TABLAS_FLOTA, \.\.\.TABLAS_MAQUINARIA\]/, "solo lectura por /api/data");
   assert.match(data, /"vehiculos", "vehiculo_papeles", \/\/ Flota/);
 });
 
