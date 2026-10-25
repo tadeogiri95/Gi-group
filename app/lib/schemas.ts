@@ -1006,4 +1006,30 @@ export const maquinariaBody = z.discriminatedUnion("accion", [
     responsable_id: uuid.nullable().optional().transform((v) => v || null),
     suplente_id: uuid.nullable().optional().transform((v) => v || null),
   }).strict(),
+  // Parte 35 (134): fallas y arreglos
+  z.object({
+    accion: z.literal("falla_crear"),
+    maquina_id: idFlota,
+    descripcion: z.string().trim().min(1, "Contá qué le pasa").max(300),
+    foto: urlFoto.nullable().optional().transform((v) => v || null),
+    parada: z.boolean().default(false),
+  }).strict(),
+  z.object({
+    accion: z.literal("falla_editar"),
+    id: idFlota,
+    responsable_id: uuid.nullable().optional().transform((v) => v || null),
+    // Una falla que empeoró y dejó la máquina parada (volver atrás es arreglarla)
+    parada: z.literal(true).optional(),
+  }).strict(),
+  z.object({
+    accion: z.literal("falla_resolver"),
+    id: idFlota,
+    detalle: z.string().trim().min(1, "Escribí qué se hizo").max(1000),
+    donde: z.enum(["interno", "externo"]).default("interno"),
+    repuestos: textoSuelto(1000),
+    costo: z.number().finite().min(0).max(999999999).nullable().optional().transform((v) => v ?? null),
+    factura_url: urlFoto.nullable().optional().transform((v) => v || null),
+    fotos: z.array(urlFoto).max(4).default([]),
+  }).strict(),
+  z.object({ accion: z.literal("falla_descartar"), id: idFlota, motivo: z.string().trim().min(1, "Poné el motivo").max(300) }).strict(),
 ]);

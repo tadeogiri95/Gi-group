@@ -45,7 +45,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota" ? "alertas" : "vehiculos"} />}
-        {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} usuario={usuario} vistaInicial={seccion === "maquinaria" ? "alertas" : "maquinas"} />}
+        {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria" ? "alertas" : "maquinas"} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
       </div>
     </div>

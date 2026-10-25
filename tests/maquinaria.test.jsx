@@ -140,7 +140,7 @@ test("validación, migración 132, módulo propio y lectura por /api/data", () =
   assert.equal(autorizar("maquinas", "GET", { rol: "operativo" }).ok, true, "el responsable va a ver sus máquinas (parte 34)");
   assert.equal(autorizar("maquina_tareas", "POST", { rol: "gerencial" }).ok, false, "se escribe por /api/maquinaria");
   const data = readFileSync(new URL("../app/api/data/route.js", import.meta.url), "utf8");
-  assert.match(data, /TABLAS_MAQUINARIA = \["maquinas", "maquina_tareas", "maquina_registros"\]/);
+  assert.match(data, /TABLAS_MAQUINARIA = \["maquinas", "maquina_tareas", "maquina_registros", "maquina_fallas"\]/);
 });
 
 // ─── Ruta ───
@@ -158,6 +158,8 @@ function mockRuta({ maquinas = [{ id: 5, horas: 1000, con_horometro: true }], ta
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    // Parte 35 (134): lo que queda Mal pasa a fallas
+    { match: (u) => u.includes("/rest/v1/maquina_fallas"), respond: (u, o) => { anotar("maquina_fallas", u, o); return { status: 201, body: [] }; } },
     {
       match: (u) => u.includes("/rest/v1/maquina_registros"),
       respond: (u, o) => ({ status: 201, body: [{ id: 70, ...anotar("maquina_registros", u, o) }] }),
@@ -273,6 +275,8 @@ test("/api/maquinaria — horas, tareas y registrar una tarea hecha", async () =
   assert.deepEqual([r.tarea_nombre, r.maquina_id, r.horas, r.mal, r.revisar, r.empleado_nombre], ["Aceite", 5, 1050, 1, 0, "Ana"]);
   assert.deepEqual(escrito.find((x) => x.tabla === "maquina_tareas" && x.metodo === "PATCH").body, { ultima_fecha: "2026-10-20", ultima_horas: 1050 });
   assert.equal(escrito.find((x) => x.tabla === "maquinas" && x.metodo === "PATCH").body.horas, 1050);
+  const falla = escrito.find((x) => x.tabla === "maquina_fallas").body;
+  assert.deepEqual(falla.map((f) => [f.origen, f.descripcion, f.registro_id, f.maquina_id]), [["tarea", "Filtro: Roto", 70, 5]], "lo que quedó Mal pasa a fallas");
 
   // Un registro más viejo que el último no atrasa la tarea
   escrito = mockRuta({ tareas: [{ ...tareas[0], ultima_fecha: "2026-10-22" }] });

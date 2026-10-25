@@ -5,7 +5,9 @@
 // mantenimiento (de una plantilla por tipo o a mano). Cada máquina muestra su
 // semáforo: 🔴 vencida o parada, 🟡 toca pronto, ✅ al día. La pestaña
 // 🔔 Alertas junta lo vencido y lo que toca pronto de todas, primero las A.
-// Solo avisa, no bloquea nada.
+// Solo avisa, no bloquea nada. La parte 35 (134) suma 🔧 Fallas (las
+// pendientes, la máquina parada primero, y su arreglo) y 📊 Indicadores
+// (solo gestión).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
@@ -13,14 +15,18 @@ import { hoyArg } from "../lib/dates";
 import { SEMAFORO_MAQUINA, alertasMaquinaria, estadoMaquina, puedeEditarMaquinaria, textoEstadoTarea, tipoMaquina } from "../lib/maquinaria";
 import { Chip, FilaDeslizable } from "./ui";
 import FichaMaquina, { FormMaquina } from "./FichaMaquina";
+import { ListaFallas } from "./FallasMaquina";
+import IndicadoresMaquinaria from "./IndicadoresMaquinaria";
+import { fallasPendientes } from "../lib/fallasMaquinaria";
 
 const ORDEN_NIVEL = { vencido: 0, pronto: 1, ok: 2, fuera: 3 };
 const AVISO_MIGRACION = "Para usar Maquinaria falta correr la migración 132 en Supabase.";
 
-export default function MaquinariaScreen({ empresaId, usuario = null, vistaInicial = "maquinas" }) {
+export default function MaquinariaScreen({ empresaId, empresa = null, usuario = null, vistaInicial = "maquinas" }) {
   const [maquinas, setMaquinas] = useState(null);
   const [tareas, setTareas] = useState([]);
   const [registros, setRegistros] = useState([]);
+  const [fallas, setFallas] = useState([]);
   const [divisiones, setDivisiones] = useState([]);
   const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
@@ -44,6 +50,9 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
       setTareas(t.data || []);
       setRegistros(r.data || []);
       setError(null);
+      // Sin la 134 no hay fallas: lo demás anda igual
+      const f = await sbGetAll("maquina_fallas?order=created_at.desc,id.desc", { maxFilas: 5000 }).catch(() => ({ data: [] }));
+      setFallas(f.data || []);
       // Con la 133 viene la casilla "Responsable de mantenimiento" (parte 34)
       const lista = "empleados?activo=eq.true&select=id,nombre,division";
       const e = await sbGetAll(`${lista},es_mantenimiento&order=nombre.asc,id.asc`, { maxFilas: 5000 })
@@ -67,6 +76,7 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
       .sort((a, b) => ORDEN_NIVEL[a.nivel] - ORDEN_NIVEL[b.nivel] || a.m.criticidad.localeCompare(b.m.criticidad) || a.m.codigo.localeCompare(b.m.codigo));
   }, [maquinas, tareas, hoy, texto, verBajas]);
   const alertas = useMemo(() => alertasMaquinaria(maquinas || [], tareas, hoy), [maquinas, tareas, hoy]);
+  const pendientes = useMemo(() => fallasPendientes(fallas), [fallas]);
 
   const ficha = fichaId ? (maquinas || []).find((m) => m.id === fichaId) : null;
 
@@ -83,6 +93,7 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
     return (
       <div className="flex-1 overflow-y-auto px-[18px] pb-6">
         <FichaMaquina maquina={ficha} tareas={tareas.filter((t) => t.maquina_id === ficha.id)} registros={registros.filter((r) => r.maquina_id === ficha.id)}
+          fallas={fallas.filter((f) => f.maquina_id === ficha.id)} empresa={empresa} usuario={usuario}
           divisiones={divisiones} empleados={empleados} editable={editable} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
       </div>
     );
@@ -93,6 +104,8 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
       <FilaDeslizable role="group" aria-label="Ver" activa={vista} className="gap-1.5 mb-3">
         <Chip active={vista === "maquinas"} onClick={() => setVista("maquinas")}>⚙️ Máquinas</Chip>
         <Chip active={vista === "alertas"} onClick={() => setVista("alertas")}>🔔 Alertas{alertas.length ? ` (${alertas.length})` : ""}</Chip>
+        <Chip active={vista === "fallas"} onClick={() => setVista("fallas")}>🔧 Fallas{pendientes.length ? ` (${pendientes.length})` : ""}</Chip>
+        {editable && <Chip active={vista === "indicadores"} onClick={() => setVista("indicadores")}>📊 Indicadores</Chip>}
       </FilaDeslizable>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
 
@@ -125,6 +138,9 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
                         <span className="block text-[15px] font-bold">{tipoMaquina(m.tipo).emoji} {m.codigo} · {m.nombre}</span>
                         <span className="block text-[12px] text-gypi-dim truncate">{datos.join(" · ")}</span>
                         {m.estado === "parada" && <span className="block text-[12px] font-semibold">🔴 Parada</span>}
+                        {pendientes.some((f) => f.maquina_id === m.id) && (
+                          <span className="block text-[12px] font-semibold">⚠️ {pendientes.filter((f) => f.maquina_id === m.id).length} falla{pendientes.filter((f) => f.maquina_id === m.id).length === 1 ? "" : "s"} sin arreglar</span>
+                        )}
                         {urgentes.length > 0 && (
                           <span className="block text-[12px] font-semibold truncate">
                             {urgentes.slice(0, 2).map((x) => `${x.tarea.nombre}: ${textoEstadoTarea(x).toLowerCase()}`).join(" · ")}
@@ -140,6 +156,17 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
             </ul>
           )}
         </>
+      )}
+
+      {vista === "fallas" && (
+        <>
+          <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Sin arreglar</div>
+          <ListaFallas fallas={fallas} maquinas={maquinas || []} empleados={empleados} editable={editable} onCambio={cargar} />
+        </>
+      )}
+
+      {vista === "indicadores" && editable && (
+        <IndicadoresMaquinaria maquinas={maquinas || []} tareas={tareas} registros={registros} fallas={fallas} hoy={hoy} />
       )}
 
       {vista === "alertas" && (

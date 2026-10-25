@@ -266,11 +266,13 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 /**
  * Página con una etiqueta por artículo, del tamaño del rollo de la impresora
  * de etiquetas (una por página): nombre, SKU, unidad y división, y el QR.
- * @param {{ empresa: string, articulos: object[], origen: string, slug: string, tamano: { ancho: number, alto: number } }} datos
+ * linkDe y titulo sirven para otras etiquetas con el mismo formato (las de
+ * las máquinas, Mantenimiento parte 35: sku = código, ?maquina=).
+ * @param {{ empresa: string, articulos: object[], origen: string, slug: string, tamano: { ancho: number, alto: number }, linkDe?: (a: object) => string, titulo?: string }} datos
  */
-export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug, tamano }) {
+export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug, tamano, linkDe = (a) => linkArticulo(origen, slug, a.sku), titulo = "Etiquetas de artículos" }) {
   const lista = articulos.slice(0, MAX_ETIQUETAS_ARTICULO);
-  const qrs = await Promise.all(lista.map((a) => svgQR(linkArticulo(origen, slug, a.sku))));
+  const qrs = await Promise.all(lista.map((a) => svgQR(linkDe(a))));
   const qrMm = Math.min(tamano.alto - 8, tamano.ancho * 0.42);
   const items = lista.map((a, i) => {
     const detalle = [a.unidad, a.division].filter(Boolean).join(" · ");
@@ -285,7 +287,7 @@ export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug,
     <div class="qr">${qrs[i]}</div>
   </div>`;
   }).join("");
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Etiquetas de artículos</title>
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
 <style>
   @page { size: ${tamano.ancho}mm ${tamano.alto}mm; margin: 0; }
   * { box-sizing: border-box; }

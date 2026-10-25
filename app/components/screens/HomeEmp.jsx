@@ -20,6 +20,7 @@ import RetirarMaterial from "../RetirarMaterial";
 import EscanearPiezas from "../EscanearPiezas";
 import ChecklistVehiculo from "../ChecklistVehiculo";
 import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
+import AvisarFalla from "../AvisarFalla";
 import { CAMPOS_VEHICULO, conResponsables, detalleMiMantenimiento, resumenMiMantenimiento } from "../../lib/mantenimiento";
 import { sb } from "../../lib/supabase";
 
@@ -56,6 +57,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   // Parte 34 (133): lo que tiene a cargo como responsable de mantenimiento o suplente
   const mant = useMiMantenimiento(demo ? null : usuario?.id, { conFlota, conMaquinaria });
   const [verMant, setVerMant] = useState(false);
+  const [avisarFalla, setAvisarFalla] = useState(false);
   const conMiMant = !mant.cargando && (usuario?.es_mantenimiento || mant.items.length > 0);
   const resumenMant = resumenMiMantenimiento(mant.items);
   // Los vehículos de los que es chofer (Mantenimiento, parte 29). Sin la
@@ -151,6 +153,8 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         {conMiMant && (
           <BotonAccion icono="🔧" titulo="Mi mantenimiento" detalle={detalleMiMantenimiento(mant.items)} destacado={resumenMant.vencidas > 0} onClick={() => setVerMant(true)} />
         )}
+        {/* Parte 35 (134): cualquiera avisa que una máquina tiene un problema */}
+        {conMaquinaria && <BotonAccion icono="⚠️" titulo="Avisar una falla" detalle="Una máquina anda mal o se paró: avisá con foto" onClick={() => setAvisarFalla(true)} />}
         {misVehiculos.length > 0 && (
           <BotonAccion icono="🚚" titulo="Checklist de mi vehículo" detalle={`Revisá ${misVehiculos.map((v) => v.patente).join(", ")}: fluidos, neumáticos, luces y papeles`} onClick={() => setChecklist(true)} />
         )}
@@ -161,6 +165,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         )}
       </section>
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
+      {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}
       {checklist && <ChecklistVehiculo vehiculos={misVehiculos} empresaNombre={empresa?.nombre || ""} onClose={() => setChecklist(false)} />}
       {retirar && <RetirarMaterial empresaId={usuario.empresa_id || empresa?.id} usuario={usuario} onClose={() => setRetirar(false)} />}

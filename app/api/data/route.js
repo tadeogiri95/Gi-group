@@ -70,12 +70,13 @@ const TABLAS_PERMITIDAS = [
   "vehiculo_checklists", "flota_config", // Checklist de vehículos, parte 29 (127): ídem
   "vehiculo_arreglos", "vehiculo_mantenimientos", // Arreglos y services, parte 31 (129): ídem
   "maquinas", "maquina_tareas", "maquina_registros", // Maquinaria, parte 33 (132): solo lectura acá; se escriben por /api/maquinaria
+  "maquina_fallas", // Maquinaria, parte 35 (134): solo lectura acá; se escribe por /api/maquinaria
 ];
 
 // Flota (126): se leen por acá y se escriben solo por /api/flota.
 const TABLAS_FLOTA = ["vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config", "vehiculo_arreglos", "vehiculo_mantenimientos"];
 // Maquinaria (132): se leen por acá y se escriben solo por /api/maquinaria.
-const TABLAS_MAQUINARIA = ["maquinas", "maquina_tareas", "maquina_registros"];
+const TABLAS_MAQUINARIA = ["maquinas", "maquina_tareas", "maquina_registros", "maquina_fallas"];
 // Tablas de Compras: se leen por acá y se escriben solo por /api/compras.
 const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "pedidos_compra_cambios", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items", "ordenes_compra_cotizaciones"];
 

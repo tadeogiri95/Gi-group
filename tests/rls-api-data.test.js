@@ -141,7 +141,8 @@ const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"]
 // vehiculo_checklists, flota_config → 127 (/api/flota, igual)
 // vehiculo_arreglos, vehiculo_mantenimientos → 129 (/api/flota, igual)
 // maquinas, maquina_tareas, maquina_registros → 132 (/api/maquinaria, igual)
-const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", "proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items", "pedidos_compra_cambios", "ordenes_compra_cotizaciones", "vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config", "vehiculo_arreglos", "vehiculo_mantenimientos", "maquinas", "maquina_tareas", "maquina_registros"];
+// maquina_fallas → 134 (/api/maquinaria, igual)
+const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", "proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items", "pedidos_compra_cambios", "ordenes_compra_cotizaciones", "vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config", "vehiculo_arreglos", "vehiculo_mantenimientos", "maquinas", "maquina_tareas", "maquina_registros", "maquina_fallas"];
 const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
 
 test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {
