@@ -17,6 +17,8 @@ import { VerChecklist } from "./ChecklistsVehiculo";
 import { FRECUENCIAS, alertasVehiculo } from "../lib/alertasFlota";
 import { historialVehiculo, noCircula, pendientes } from "../lib/arreglosFlota";
 import { FormArreglo, FormMantenimiento, Historial, ListaArreglos } from "./ArreglosVehiculo";
+import AsignarMantenimiento from "./AsignarMantenimiento";
+import { CAMPOS_VEHICULO, conResponsables } from "../lib/mantenimiento";
 
 async function postFlota(body) {
   const res = await apiFetch("/api/flota", { method: "POST", body: JSON.stringify(body) });
@@ -146,9 +148,9 @@ export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancela
         <Campo id="veh-chasis" label="N° de chasis"><input id="veh-chasis" className="g-input w-full mb-2" value={form.chasis} onChange={cambiar("chasis")} maxLength={40} /></Campo>
       </div>
       <div className="flex gap-2">
-        <Campo id="veh-responsable" label="Responsable (chofer)">
+        <Campo id="veh-responsable" label="Chofer habitual">
           <select id="veh-responsable" className="g-input w-full mb-2" value={form.responsable_id} onChange={cambiar("responsable_id")}>
-            <option value="">Sin responsable</option>
+            <option value="">Sin chofer habitual</option>
             {empleados.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
           </select>
         </Campo>
@@ -477,7 +479,17 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
         </>
       )}
 
-      <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mt-3 mb-1.5">Responsable</div>
+      {/* Parte 34 (133): quién le hace el mantenimiento; el chofer sigue para su licencia */}
+      {conResponsables(vehiculo, CAMPOS_VEHICULO) && (
+        <>
+          <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mt-3 mb-1.5">Mantenimiento a cargo de</div>
+          <AsignarMantenimiento key={`${vehiculo.mant_responsable_id}-${vehiculo.mant_suplente_id}`} responsableId={vehiculo.mant_responsable_id} suplenteId={vehiculo.mant_suplente_id}
+            empleados={empleados} editable={editable}
+            onGuardar={async (r) => { await postFlota({ accion: "mantenimiento_asignar", vehiculo_id: vehiculo.id, ...r }); await onCambio(); }} />
+        </>
+      )}
+
+      <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mt-3 mb-1.5">Chofer habitual</div>
       <div className="p-2.5 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface flex items-center gap-2">
         {responsable ? (
           <>
@@ -491,7 +503,7 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
             {editable && <button onClick={() => setLicencia(true)} className="g-btn g-btn-secondary">Licencia</button>}
           </>
         ) : (
-          <div className="flex-1 text-[14px] text-gypi-dim">Sin responsable. Elegilo en Editar datos.</div>
+          <div className="flex-1 text-[14px] text-gypi-dim">Sin chofer habitual. Elegilo en Editar datos.</div>
         )}
       </div>
 

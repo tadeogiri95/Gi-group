@@ -291,7 +291,7 @@ test("Flota — alta de vehículo, choferes y aviso de migración", async () => 
   fireEvent.click(await screen.findByText("＋ Agregar vehículo"));
   fireEvent.change(screen.getByLabelText("Patente"), { target: { value: "ac 456 dd" } });
   fireEvent.change(screen.getByLabelText("Kilómetros"), { target: { value: "12.500" } });
-  fireEvent.change(screen.getByLabelText("Responsable (chofer)"), { target: { value: CHOFER } });
+  fireEvent.change(screen.getByLabelText("Chofer habitual"), { target: { value: CHOFER } });
   fireEvent.click(screen.getByText("Guardar"));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual([enviados[0].accion, enviados[0].patente, enviados[0].km, enviados[0].responsable_id], ["vehiculo_guardar", "ac 456 dd", 12500, CHOFER]);

@@ -4,6 +4,7 @@ import { sbGetAll, sbPatch } from "./sbHelpers";
 import { enviarPushGerencia, enviarPushLegajos } from "./pushGerencia";
 import { alertasVehiculo, avisoDelDia, textoAvisos } from "./alertasFlota";
 import { textoVencimiento } from "./flota";
+import { CAMPOS_VEHICULO, destinatarios } from "./mantenimiento";
 import { logger } from "./logger";
 
 /** Revisa la flota de una empresa y avisa lo nuevo. Devuelve { vehiculos, avisados, push }. messaging: para pruebas. */
@@ -26,8 +27,10 @@ export async function revisarFlota(empresa, hoy, { messaging } = {}) {
     const { firma, nuevas, cambio } = avisoDelDia(v, alertas);
     if (nuevas.length) {
       resumen.push({ v, nuevas });
-      if (responsable?.legajo != null) {
-        push += await enviarPushLegajos(e, [responsable.legajo], {
+      // Al responsable de mantenimiento y al suplente (parte 34, 133); sin ellos, al chofer
+      const legajos = destinatarios(v, CAMPOS_VEHICULO, { choferId: v.responsable_id }).map((id) => porId.get(id)?.legajo).filter((l) => l != null);
+      if (legajos.length) {
+        push += await enviarPushLegajos(e, legajos, {
           title: `🚚 ${v.patente}: revisá tu vehículo`,
           body: textoAvisos(nuevas, textoVencimiento),
           data: { tipo: "flota_alerta", vehiculo_id: v.id, url: `/${empresa.slug}` },

@@ -4,11 +4,14 @@
 // revisiones por checklist y service. Cuando aparece algo nuevo vencido o por
 // vencer, avisa al celular del responsable del vehículo y manda a gerencia y
 // Administración un resumen. Lo que ya se avisó no se repite (vehiculos.
-// aviso_firma). Solo avisa: no bloquea nada.
+// aviso_firma). Solo avisa: no bloquea nada. Desde la parte 34 (133) avisa
+// también lo de la maquinaria (app/lib/maquinariaAlertasServidor.js) y lo de
+// cada vehículo le llega a su responsable de mantenimiento y al suplente.
 import { NextResponse } from "next/server";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { getModulosEmpresa } from "../../../lib/planEnforcement";
 import { revisarFlota } from "../../../lib/flotaAlertasServidor";
+import { revisarMaquinaria } from "../../../lib/maquinariaAlertasServidor";
 import { hoyArg } from "../../../lib/dates";
 import { logger } from "../../../lib/logger";
 import { conMonitoreoCron } from "../../../lib/cronMonitor";
@@ -26,14 +29,19 @@ async function ejecutar(request) {
   let revisadas = 0, avisados = 0, push = 0, errores = 0;
   for (const empresa of empresas) {
     try {
-      // Sin el módulo Flota (no contratado o apagado) no hay alertas
+      // Sin el módulo (no contratado o apagado) no hay alertas
       const { modulos } = await getModulosEmpresa(empresa.id);
-      if (!modulos.includes("flota")) continue;
-      const r = await revisarFlota(empresa, hoy);
-      if (!r.vehiculos) continue;
-      revisadas++;
-      avisados += r.avisados;
-      push += r.push;
+      let alguna = false;
+      if (modulos.includes("flota")) {
+        const r = await revisarFlota(empresa, hoy);
+        if (r.vehiculos) { alguna = true; avisados += r.avisados; push += r.push; }
+      }
+      if (modulos.includes("maquinaria")) {
+        // Sin la 132 la maquinaria falla sola: la flota ya quedó avisada
+        const r = await revisarMaquinaria(empresa, hoy).catch((err) => { logger.warn(`[flota-alertas] maquinaria empresa ${empresa.id}: ${err?.message}`); return null; });
+        if (r?.maquinas) { alguna = true; avisados += r.avisados; push += r.push; }
+      }
+      if (alguna) revisadas++;
     } catch (e) {
       errores++;
       logger.error(`[flota-alertas] empresa ${empresa.id}`, e);

@@ -913,6 +913,13 @@ export const flotaBody = z.discriminatedUnion("accion", [
     fotos: z.array(urlFoto).max(4).default([]),
   }).strict(),
   z.object({ accion: z.literal("mantenimiento_borrar"), id: idFlota }).strict(),
+  // Parte 34 (133): responsable de mantenimiento y suplente de un vehículo
+  z.object({
+    accion: z.literal("mantenimiento_asignar"),
+    vehiculo_id: idFlota,
+    responsable_id: uuid.nullable().optional().transform((v) => v || null),
+    suplente_id: uuid.nullable().optional().transform((v) => v || null),
+  }).strict(),
 ]);
 // ── /api/maquinaria (132): máquinas y su plan de mantenimiento (Mantenimiento parte 33) ──
 const horasMaquina = z.number().int().min(0).max(9999999);
@@ -991,5 +998,12 @@ export const maquinariaBody = z.discriminatedUnion("accion", [
     observaciones: textoSuelto(1000),
     fotos: z.array(urlFoto).max(4).default([]),
     firma_url: urlFoto.nullable().optional().transform((v) => v || null),
+  }).strict(),
+  // Parte 34 (133): responsable de mantenimiento y suplente de una máquina
+  z.object({
+    accion: z.literal("responsables_guardar"),
+    maquina_id: idFlota,
+    responsable_id: uuid.nullable().optional().transform((v) => v || null),
+    suplente_id: uuid.nullable().optional().transform((v) => v || null),
   }).strict(),
 ]);

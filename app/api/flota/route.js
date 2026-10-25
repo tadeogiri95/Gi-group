@@ -10,8 +10,9 @@
 //   licencia_guardar  → categoría y vencimiento de la licencia de un empleado
 //   checklist_plantilla_guardar → secciones y puntos del checklist de la empresa
 //                       (null = volver a la de fábrica; 127)
-// POST checklist_crear (parte 29, 127): el responsable del vehículo (el chofer)
-//   o gerencia y Administración, de cualquiera. Revisa que estén todos los
+// POST checklist_crear (parte 29, 127): el responsable de mantenimiento del
+//   vehículo o su suplente (parte 34, 133; sin la 133, el chofer), o gerencia
+//   y Administración, de cualquiera. Revisa que estén todos los
 //   puntos de las secciones elegidas, con nota y foto los que no están bien, y
 //   actualiza los kilómetros del vehículo.
 //   Cada punto en Mal crea un arreglo pendiente (parte 31, 129).
@@ -23,6 +24,7 @@
 //                       arreglo (también lo puede hacer el responsable del
 //                       arreglo). Un service pone al día la alerta de service.
 //   mantenimiento_borrar → uno cargado por error
+//   mantenimiento_asignar → responsable de mantenimiento y suplente (parte 34, 133)
 // La lectura va por /api/data (vehiculos, vehiculo_papeles, vehiculo_checklists,
 // flota_config, vehiculo_arreglos y vehiculo_mantenimientos, solo lectura).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
@@ -36,6 +38,7 @@ import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { normalizarPatente, puedeEditarFlota } from "../../lib/flota";
 import { contarEstados, plantillaDe } from "../../lib/checklistVehiculo";
 import { arreglosDeChecklist, ultimoService } from "../../lib/arreglosFlota";
+import { CAMPOS_VEHICULO, puedeChecklistVehiculo } from "../../lib/mantenimiento";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -59,6 +62,16 @@ function faltaMigracionChecklist(err) {
   const m = String(err?.message);
   return /vehiculo_checklists|flota_config/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
 }
+
+// Parte 34: responsables de mantenimiento
+function faltaMigracionResponsables(err) {
+  const m = String(err?.message);
+  return /mant_responsable_id|mant_suplente_id/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+// A cargo de los arreglos que salen de un vehículo: su responsable de
+// mantenimiento (133) o, si no tiene, el chofer
+const aCargoDeArreglos = (veh) => veh[CAMPOS_VEHICULO.responsable] || veh.responsable_id || null;
 
 const noEncontrado = (que) => NextResponse.json({ error: `No encontré ese ${que}` }, { status: 404 });
 
@@ -169,10 +182,11 @@ async function plantillaEmpresa(sesion) {
 async function crearChecklist(sesion, d) {
   const e = sesion.empresa_id;
   const opts = { sesion };
-  const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=id,km,responsable_id,activo`, opts)) || [];
+  // select=*: con la 133 vienen el responsable de mantenimiento y el suplente
+  const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   if (!veh) return noEncontrado("vehículo");
-  if (!puedeEditarFlota(sesion.rol) && veh.responsable_id !== sesion.empleado_id) {
-    return NextResponse.json({ error: "Solo el responsable del vehículo o la oficina pueden hacer su checklist" }, { status: 403 });
+  if (!puedeChecklistVehiculo(veh, { empleadoId: sesion.empleado_id, gestion: puedeEditarFlota(sesion.rol) })) {
+    return NextResponse.json({ error: "El checklist de este vehículo lo hacen su responsable de mantenimiento, el suplente o la oficina" }, { status: 403 });
   }
   if (veh.km != null && d.km < veh.km) {
     return NextResponse.json({ error: `El vehículo tenía ${veh.km.toLocaleString("es-AR")} km. Revisá el número.` }, { status: 400 });
@@ -209,7 +223,7 @@ async function crearChecklist(sesion, d) {
   if (nuevos.length && c?.id) {
     try {
       await sbPost("vehiculo_arreglos", nuevos.map((a) => ({
-        ...a, empresa_id: e, vehiculo_id: veh.id, checklist_id: c.id, responsable_id: veh.responsable_id || null, creado_por: sesion.empleado_id || null,
+        ...a, empresa_id: e, vehiculo_id: veh.id, checklist_id: c.id, responsable_id: aCargoDeArreglos(veh), creado_por: sesion.empleado_id || null,
       })), opts);
       arreglos = nuevos.length;
       broadcastRefresh(e, "vehiculo_arreglos");
@@ -249,7 +263,7 @@ async function chequeos(sesion) {
 async function crearArreglo(sesion, d) {
   const e = sesion.empresa_id;
   const opts = { sesion };
-  const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=id,responsable_id`, opts)) || [];
+  const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   if (!veh) return noEncontrado("vehículo");
   if (!(await responsableValido(sesion, d.responsable_id))) return noEncontrado("empleado");
   if (d.checklist_id) {
@@ -258,7 +272,7 @@ async function crearArreglo(sesion, d) {
   }
   const [a] = (await sbPost("vehiculo_arreglos", {
     empresa_id: e, vehiculo_id: veh.id, checklist_id: d.checklist_id, seccion_nombre: d.seccion_nombre, punto_nombre: d.punto_nombre,
-    descripcion: d.descripcion, foto: d.foto, prioridad: d.prioridad, responsable_id: d.responsable_id ?? veh.responsable_id ?? null,
+    descripcion: d.descripcion, foto: d.foto, prioridad: d.prioridad, responsable_id: d.responsable_id ?? aCargoDeArreglos(veh),
     creado_por: sesion.empleado_id || null,
   }, opts)) || [];
   broadcastRefresh(e, "vehiculo_arreglos");
@@ -350,6 +364,20 @@ async function borrarMantenimiento(sesion, id) {
   return NextResponse.json({ ok: true });
 }
 
+async function asignarMantenimiento(sesion, d) {
+  const e = sesion.empresa_id;
+  if (d.responsable_id && d.responsable_id === d.suplente_id) {
+    return NextResponse.json({ error: "El suplente tiene que ser otra persona" }, { status: 400 });
+  }
+  if (!(await responsableValido(sesion, d.responsable_id)) || !(await responsableValido(sesion, d.suplente_id))) return noEncontrado("empleado");
+  const [v] = (await sbPatch(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}`, {
+    [CAMPOS_VEHICULO.responsable]: d.responsable_id, [CAMPOS_VEHICULO.suplente]: d.responsable_id ? d.suplente_id : null, updated_at: new Date().toISOString(),
+  }, { sesion })) || [];
+  if (!v) return noEncontrado("vehículo");
+  broadcastRefresh(e, "vehiculos");
+  return NextResponse.json({ ok: true, vehiculo: v });
+}
+
 export async function POST(request) {
   try {
     const sesion = await validarToken(request);
@@ -357,7 +385,7 @@ export async function POST(request) {
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(flotaBody, raw);
     if (parsed.response) return parsed.response;
-    // El checklist lo hace también el chofer (se controla que sea su vehículo),
+    // El checklist lo hace también el responsable de mantenimiento (se controla adentro),
     // y un arreglo lo resuelve también su responsable (se controla adentro)
     const deTodos = parsed.data.accion === "checklist_crear" || (parsed.data.accion === "mantenimiento_crear" && parsed.data.arreglo_id);
     if (!deTodos && !puedeEditarFlota(sesion.rol)) {
@@ -378,8 +406,12 @@ export async function POST(request) {
       if (d.accion === "arreglo_descartar") return await descartarArreglo(sesion, d);
       if (d.accion === "mantenimiento_crear") return await crearMantenimiento(sesion, d);
       if (d.accion === "mantenimiento_borrar") return await borrarMantenimiento(sesion, d.id);
+      if (d.accion === "mantenimiento_asignar") return await asignarMantenimiento(sesion, d);
       return await guardarLicencia(sesion, d);
     } catch (err) {
+      if (faltaMigracionResponsables(err)) {
+        return NextResponse.json({ error: "Para los responsables de mantenimiento falta correr la migración 133 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionArreglos(err)) {
         return NextResponse.json({ error: "Para los arreglos y services de la flota falta correr la migración 129 en Supabase." }, { status: 409 });
       }

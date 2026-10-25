@@ -347,3 +347,16 @@ export function itemsRegistro(t, respuestas = {}) {
     };
   });
 }
+
+/**
+ * Qué hay que avisar hoy de una máquina (aviso diario, parte 34; 133): las
+ * alertas vencidas o para pronto que no estaban en el último aviso (o que
+ * pasaron de 🟡 a 🔴). cambio = hay que guardar la firma nueva aunque no se
+ * avise nada (por ejemplo, porque algo se puso al día). Como la flota (128).
+ */
+export function avisoDelDiaMaquina(maquina, alertas = []) {
+  const firma = alertas.map((a) => `${a.clave}:${a.nivel}`).sort().join("|");
+  const antes = new Set(String(maquina?.aviso_firma || "").split("|").filter(Boolean));
+  const nuevas = alertas.filter((a) => !antes.has(`${a.clave}:${a.nivel}`));
+  return { firma, nuevas, cambio: firma !== String(maquina?.aviso_firma || "") };
+}
