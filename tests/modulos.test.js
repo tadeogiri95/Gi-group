@@ -145,7 +145,7 @@ test("/api/actividad — sin el módulo no se empieza una tarea, pero una abiert
 
 // ─── La empresa prende o apaga lo que contrató (migración 131) ──────────────
 
-test("apagado — lo apagado sale de los efectivos pero sigue contratado; fichaje y lo no contratado no se apagan", () => {
+test("apagado — lo apagado sale de los efectivos pero sigue contratado; lo no contratado no se apaga ni se suma", () => {
   const ajustes = [
     { modulo: "flota", activo: null, apagado: true },
     { modulo: "fichaje", activo: null, apagado: true },
@@ -153,9 +153,10 @@ test("apagado — lo apagado sale de los efectivos pero sigue contratado; fichaj
   ];
   const p = { plan: "planta_15", ajustes };
   assert.ok(!modulosEfectivos(p).includes("flota"));
-  assert.ok(modulosEfectivos(p).includes("fichaje"));
+  // El fichaje también se apaga (empresas con su propio control de acceso)
+  assert.ok(!modulosEfectivos(p).includes("fichaje"));
   assert.ok(modulosContratados(p).includes("flota"));
-  assert.deepEqual(modulosApagados(p), ["flota"]);
+  assert.deepEqual(modulosApagados(p), ["fichaje", "flota"]);
   assert.ok(!modulosContratados(p).includes("obra"));
   // Apagar las OT no apaga Stock ni Compras
   const sinOt = modulosEfectivos({ plan: "planta_15", ajustes: [{ modulo: "proyectos", apagado: true }] });
@@ -213,6 +214,7 @@ test("/api/modulos — el dueño apaga Flota; el operario no puede; lo no contra
 
   assert.equal((await pedir("operativo", { modulo: "flota", prendido: false })).status, 403);
   assert.equal((await pedir("gerencial", { modulo: "obra", prendido: true })).status, 403);
-  assert.equal((await pedir("gerencial", { modulo: "fichaje", prendido: false })).status, 400);
+  assert.equal((await pedir("gerencial", { modulo: "fichaje", prendido: false })).status, 200);
+  assert.equal(guardado.modulo, "fichaje");
   assert.equal((await pedir("gerencial", { modulo: "calidad", prendido: true })).status, 400);
 });

@@ -625,3 +625,19 @@ test("fichar — ingreso 10 min tarde se bloquea si es la 3ra llegada tarde del 
     t.mock.timers.reset();
   }
 });
+
+test("fichar — la empresa apagó el fichaje (Más → Módulos): no se ficha", async () => {
+  const token = await tokenValido();
+  let insertada = false;
+  global.fetch = mockFichar([
+    { match: (url) => url.includes("/rest/v1/empresa") && url.includes("select=timezone"), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "planta_15" }] }) },
+    { match: (url) => url.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [{ modulo: "fichaje", activo: null, apagado: true, config: {} }] }) },
+    { match: (url) => url.includes("select=addons"), respond: () => ({ status: 200, body: [{ addons: [] }] }) },
+    { match: (url, opts) => url.includes("/rest/v1/fichadas") && opts.method === "POST", respond: () => { insertada = true; return { status: 201, body: [{}] }; } },
+    ...handlersIngresoBasico(),
+  ]);
+  const res = await POST(req({ accion: "ingreso" }, token));
+  assert.equal(res.status, 402);
+  assert.equal((await res.json()).modulo, "fichaje");
+  assert.equal(insertada, false);
+});

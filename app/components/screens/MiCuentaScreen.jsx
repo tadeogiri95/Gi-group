@@ -10,12 +10,15 @@ import ListItem from "../ui/ListItem";
 import { Button } from "../ui";
 import { useConfirm } from "../ui/ConfirmDialog";
 import PinCard from "../PinCard";
+import { tieneModulo } from "../../lib/modulos";
 
 const DIAS_G = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
 const DIAS_LABEL = { lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves", vie: "Viernes", sab: "Sábado", dom: "Domingo" };
 const flecha = <span className="text-gypi-dim" aria-hidden="true"><Ic.chevR /></span>;
 
-export default function MiCuentaScreen({ usuario, ctx, goto, logout, onPinCambiado, demo = false }) {
+export default function MiCuentaScreen({ usuario, ctx, goto, logout, onPinCambiado, demo = false, empresa = null }) {
+  // Sin fichaje (la empresa usa su propio control de acceso) no hay fichadas que mostrar
+  const conFichaje = tieneModulo(empresa, "fichaje");
   const [confirmar, ConfirmDialog] = useConfirm();
   const diag = usuario.diagrama;
   const diaHoy = ahoraArg().diaKey;
@@ -58,7 +61,7 @@ export default function MiCuentaScreen({ usuario, ctx, goto, logout, onPinCambia
       )}
 
       {/* Esta semana */}
-      <section aria-label="Fichadas de la semana" className="mb-5">
+      {conFichaje && <section aria-label="Fichadas de la semana" className="mb-5">
         <h3 className="m-0 mb-2.5 text-base font-bold text-gypi-text font-heading">Esta semana</h3>
         <div className="bg-gypi-surface rounded-2xl px-3.5 py-1 border border-gypi-border">
           {semana.length === 0
@@ -78,10 +81,10 @@ export default function MiCuentaScreen({ usuario, ctx, goto, logout, onPinCambia
               </div>
             ))}
         </div>
-      </section>
+      </section>}
 
       <div className="flex flex-col gap-2 mb-5">
-        <ListItem icon="🕐" title="Historial de fichajes" detail="Meses anteriores, tardanzas y permisos" right={flecha} onClick={() => goto("historial-fichajes")} />
+        {conFichaje && <ListItem icon="🕐" title="Historial de fichajes" detail="Meses anteriores, tardanzas y permisos" right={flecha} onClick={() => goto("historial-fichajes")} />}
         <ListItem icon="📄" title="Mi documentación" detail="DNI, licencia y otros papeles" right={flecha} onClick={() => goto("documentos")} />
       </div>
 

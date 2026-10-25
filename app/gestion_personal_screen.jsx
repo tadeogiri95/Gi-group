@@ -10,6 +10,7 @@ import { ordenarPlantas, nombrePlanta } from "./lib/plantas";
 import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import { useEscape } from "./hooks/useEscape";
+import { tieneModulo } from "./lib/modulos";
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
@@ -781,14 +782,15 @@ export default function GestionPersonalScreen({ empresaId }) {
           >
             Imprimir tarjetas QR
           </button>
-          <div className="g-card !p-3 flex items-center justify-between gap-2">
+          {/* Sin fichaje (Más → Módulos) no hay kiosco de fichaje */}
+          {tieneModulo(empresa, "fichaje") && <div className="g-card !p-3 flex items-center justify-between gap-2">
             <div className="text-xs text-gypi-dim">
               <b className="text-gypi-text">Modo kiosco:</b> usá este dispositivo como punto de fichaje en la entrada (tarjeta QR o legajo + PIN).
             </div>
             <button onClick={activarKioscoAqui} disabled={!empresa?.slug} className="g-btn g-btn-secondary text-xs font-bold font-heading shrink-0 disabled:opacity-50">
               Activar acá
             </button>
-          </div>
+          </div>}
         </div>
       )}
 

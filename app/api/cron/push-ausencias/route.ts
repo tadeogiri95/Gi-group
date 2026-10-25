@@ -14,6 +14,7 @@ import { logger } from "../../../lib/logger";
 import { ahoraArg } from "../../../lib/dates";
 
 import { conMonitoreoCron } from "../../../lib/cronMonitor";
+import { getModulosEmpresa } from "../../../lib/planEnforcement";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -175,6 +176,9 @@ async function ejecutar(request: NextRequest): Promise<NextResponse> {
 
     for (const [empresaId, empList] of porEmpresa) {
       try {
+        // Empresa que apagó el fichaje (Más → Módulos): nadie ficha, no hay ausencias que avisar
+        const { modulos } = await getModulosEmpresa(empresaId).catch(() => ({ modulos: null as string[] | null }));
+        if (Array.isArray(modulos) && !modulos.includes("fichaje")) continue;
         // Fichadas de hoy para esta empresa
         const fichadasHoy = await sbGetTodo<{ empleado_id: string }>(
           `fichadas?empresa_id=eq.${empresaId}&fecha=eq.${fecha}&ingreso=not.is.null&select=empleado_id&order=id.asc`

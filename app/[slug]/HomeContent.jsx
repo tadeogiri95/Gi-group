@@ -384,7 +384,7 @@ export default function HomeContent() {
             <ModuloBloqueado modulo={moduloFaltante} empresa={empresa} rol={u?.rol} onVerPlanes={() => setShowBilling(true)} />
           ) : <>
           {!uIsGer && screen === "home" && <HomeEmp usuario={u} ctx={ctx} empresa={empresa} tareaActiva={isDemo ? demoActividad.tareaActiva : actividad.tareaActiva} etapas={isDemo ? demoMod.DEMO_ETAPAS : actividad.etapas} reload={loadData} demo={isDemo} onAbrirCarga={isDemo ? undefined : abrirCarga} />}
-          {!uIsGer && screen === "cuenta" && <MiCuentaScreen usuario={u} ctx={ctx} goto={setScreen} logout={logout} demo={isDemo} onPinCambiado={(t) => actualizarUsuario?.({ tiene_pin: t })} />}
+          {!uIsGer && screen === "cuenta" && <MiCuentaScreen usuario={u} ctx={ctx} empresa={isDemo ? null : empresa} goto={setScreen} logout={logout} demo={isDemo} onPinCambiado={(t) => actualizarUsuario?.({ tiene_pin: t })} />}
           {!uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} onBack={() => setScreen("cuenta")} />}
           {!uIsGer && screen === "actividad" && <ActividadScreen {...(isDemo ? { historial: demoActividad.actividadesHoy, tareaActiva: demoActividad.tareaActiva, etapas: demoMod.DEMO_ETAPAS, elapsed: 0, proyectos: [], proyectosLoading: false, loading: false, iniciarTarea: ()=>{}, finalizarTarea: ()=>{}, cargarProyectos: ()=>{} } : actividad)} usuario={u} empresa={empresa} divisiones={divisionesEmpresa} causas={causasParada} defectos={defectos} fichadaHoy={ctx.fichadaHoy} onIrAInicio={() => setScreen("home")} />}
           {!uIsGer && screen === "chat" && <ChatScreen usuario={u} ctx={ctx} reload={loadData} empresa={empresa} onBack={() => setScreen("home")} />}
