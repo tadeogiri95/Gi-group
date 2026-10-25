@@ -277,7 +277,7 @@ export default function HomeContent() {
 
   const getScreenSubtitle = () => {
     if (uIsGer) {
-      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", proyectos: "Órdenes de trabajo y reportes", inventario: "Stock y compras", mantenimiento: "Flota vehicular", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
+      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", proyectos: "Órdenes de trabajo y reportes", inventario: "Stock y compras", mantenimiento: "Flota vehicular y maquinaria", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
     const subtitles = { cuenta: "Horario, fichadas y documentos", instalaciones: "El reporte del día", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };

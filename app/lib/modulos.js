@@ -29,6 +29,7 @@ export const MODULOS = {
   stock:         { id: "stock",         nombre: "Stock",                 disponible: true,  descripcion: "Artículos, etiquetas QR, retiros de material y movimientos." },
   compras:       { id: "compras",       nombre: "Compras",               disponible: true,  descripcion: "Pedidos de material, órdenes de compra, recepción y facturas." },
   flota:         { id: "flota",         nombre: "Flota",                 disponible: true,  descripcion: "Vehículos, papeles, checklist, alertas y arreglos." },
+  maquinaria:    { id: "maquinaria",    nombre: "Maquinaria",            disponible: true,  descripcion: "Máquinas, plan de mantenimiento, checklists y alertas." },
   obra:          { id: "obra",          nombre: "Trabajo en campo",      disponible: true,  descripcion: "Reportes de obra desde el celular." },
   // Próximos (fase 7, horizonte 3): todavía no se pueden activar
   produccion:    { id: "produccion",    nombre: "Órdenes de producción", disponible: false, descripcion: "Rutas, partes de trabajo, avance y costeo." },
@@ -36,9 +37,9 @@ export const MODULOS = {
   mantenimiento: { id: "mantenimiento", nombre: "Mantenimiento",         disponible: false, descripcion: "Activos, preventivo, correctivo y paradas." },
 };
 
-// Módulos que vienen con otro: Stock, Compras y Flota se contratan con las OT
-// (plan Planta) y cada uno se puede apagar por separado.
-export const INCLUIDOS_CON = { proyectos: ["stock", "compras", "flota"] };
+// Módulos que vienen con otro: Stock, Compras, Flota y Maquinaria (132) se
+// contratan con las OT (plan Planta) y cada uno se puede apagar por separado.
+export const INCLUIDOS_CON = { proyectos: ["stock", "compras", "flota", "maquinaria"] };
 
 // Lo que la empresa no puede apagar. Fichaje sí se apaga (2026-10): hay
 // empresas con su propio control de acceso que no quieren que el personal
