@@ -2,6 +2,7 @@
 
 // BottomNav -- Barra de navegacion al pie de la app
 // Ubicacion: app/components/nav/BottomNav.jsx
+import { MODULOS_PLANTA } from '../../lib/menuGestion';
 
 const Icons = {
   home: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
@@ -20,12 +21,12 @@ const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => mo
 
 export function getItems(role, pend, modulos, { instalador = false } = {}) {
   // Gestión (R5): Inicio · Permisos · Planta · Equipo · Más. "Planta" aparece si
-  // la empresa tiene Tareas u OT; el resto está en "Más", una lista simple.
+  // la empresa tiene prendido alguno de sus módulos; el resto está en "Más".
   if (role === 'gerencial' || role === 'administrativo') {
     return [
       { id: 'home',         label: 'Inicio',    icon: Icons.home },
       { id: 'solicitudes',  label: 'Permisos',  icon: Icons.inbox, badge: pend },
-      tiene(modulos, 'actividad', 'proyectos') && { id: 'planta', label: 'Planta', icon: Icons.hammer },
+      tiene(modulos, ...MODULOS_PLANTA) && { id: 'planta', label: 'Planta', icon: Icons.hammer },
       { id: 'equipo',       label: 'Equipo',    icon: Icons.users },
       { id: 'config',       label: 'Más',       icon: Icons.menu },
     ].filter(Boolean);

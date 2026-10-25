@@ -33,7 +33,7 @@ test("barra de gestión — Planta solo si hay Tareas u OT; 'Más' reemplaza a '
 
 test("Más — solo ajustes: lo del personal está en Equipo y lo de producción en Planta", () => {
   const todo = ids({ empresa: PLANTA, usuario: DUENO });
-  assert.deepEqual(todo, ["ubicaciones", "asistencia", "reglas", "admin", "facturacion", "privacidad"]);
+  assert.deepEqual(todo, ["ubicaciones", "asistencia", "reglas", "admin", "modulos", "facturacion", "privacidad"]);
   for (const id of ["personal", "horarios", "calendario", "reportes", "documentacion"]) assert.ok(!todo.includes(id), id);
 });
 
@@ -143,4 +143,13 @@ test("Más — al final está 'Cerrar sesión' con quién entró, y también en 
   const config = readFileSync(new URL("../app/components/screens/ConfigScreen.jsx", import.meta.url), "utf8");
   assert.equal((config.match(/<CerrarSesion usuario=\{usuario\} \/>/g) || []).length, 2);
   assert.match(config, /<CerrarSesion usuario=\{usuario\} \/>\s*<\/nav>/, "al final de la lista de Más");
+});
+
+test("Módulos — lo que la empresa apagó no aparece (ni con candado); lo no contratado sí, con candado", async () => {
+  const { opcionesPlanta } = await import("../app/components/screens/PlantaScreen.jsx");
+  const apagada = { ...PLANTA, modulos: (PLANTA.modulos || []).filter((m) => m !== "flota" && m !== "calendario"), modulos_apagados: ["flota", "calendario"] };
+  assert.ok(!opcionesPlanta(apagada).some((o) => o.id === "flota"));
+  assert.ok(opcionesPlanta(PLANTA).some((o) => o.id === "flota"));
+  assert.ok(ids({ empresa: PLANTA, usuario: DUENO }).includes("modulos"));
+  assert.ok(!ids({ empresa: PLANTA, usuario: SUPERVISOR }).includes("modulos"));
 });

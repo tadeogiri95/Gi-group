@@ -45,12 +45,13 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   const [misVehiculos, setMisVehiculos] = useState([]);
   const [checklist, setChecklist] = useState(false);
   const [sinCircular, setSinCircular] = useState([]);
-  // Stock (ítem 40) va con las OT hasta que sea un módulo que se venda aparte
-  const conStock = !demo && tieneModulo(empresa, "proyectos");
+  // Stock y Flota son módulos propios (131): apagados no aparecen sus botones
+  const conStock = !demo && tieneModulo(empresa, "stock");
+  const conFlota = !demo && tieneModulo(empresa, "flota");
   // Los vehículos de los que es responsable (Mantenimiento, parte 29). Sin la
   // migración 126 o sin vehículos, no aparece el botón.
   useEffect(() => {
-    if (!conStock || !usuario?.id) return;
+    if (!conFlota || !usuario?.id) return;
     let vivo = true;
     sb.get(`vehiculos?responsable_id=eq.${usuario.id}&activo=eq.true&select=id,patente,marca,modelo,km&order=patente.asc`)
       .then(async (v) => {
@@ -63,7 +64,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       })
       .catch(() => {});
     return () => { vivo = false; };
-  }, [conStock, usuario?.id]);
+  }, [conFlota, usuario?.id]);
   // Lo fichado sin señal todavía no está en ctx: se suma para que el botón no ofrezca fichar de nuevo (ítem 21)
   const cola = useColaOffline(demo ? null : usuario.id, { alTerminar: reload });
   const fichadasSinEnviar = cola.pendientes.filter((op) => op.tipo === "fichar");

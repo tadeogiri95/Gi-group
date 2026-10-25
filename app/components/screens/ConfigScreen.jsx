@@ -18,6 +18,7 @@ const GeolocalizacionScreen = perezosa(() => import("../../geolocalizacion_scree
 const ReglasScreen = perezosa(() => import("./ReglasScreen"));
 const AdminEmpresaScreen = perezosa(() => import("../../admin_empresa_screen"));
 const AsistenciaReglasScreen = perezosa(() => import("./AsistenciaReglasScreen"));
+const ModulosScreen = perezosa(() => import("./ModulosScreen"));
 import CerrarSesion from "../CerrarSesion";
 
 // Gypi no muestra publicidad (D20): solo usa lo necesario para la sesión.
@@ -110,6 +111,7 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
         {id === "asistencia"    && <AsistenciaReglasScreen />}
         {id === "reglas"        && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
         {id === "admin"         && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
+        {id === "modulos"       && <ModulosScreen onUpdateEmpresa={onUpdateEmpresa} />}
         {id === "privacidad"    && <PrivacidadPanel usuario={usuario} empresa={empresa} />}
         </>}
       </div>

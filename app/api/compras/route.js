@@ -751,8 +751,8 @@ async function adjudicarOrden(sesion, id) {
 async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
-  // Compras va con las OT, como Stock, hasta que sea un módulo que se venda aparte
-  return requireModulo(sesion.empresa_id, "proyectos");
+  // Compras es un módulo propio (viene con las OT y se puede apagar aparte, 131)
+  return requireModulo(sesion.empresa_id, "compras");
 }
 
 export async function GET(request) {

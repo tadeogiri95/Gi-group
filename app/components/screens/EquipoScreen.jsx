@@ -6,7 +6,7 @@
 // producción están en Planta. Cada pestaña se baja recién al abrirla.
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { MODULO_SECCION_GESTION, seccionBloqueada } from "../../lib/modulos";
+import { MODULO_SECCION_GESTION, seccionBloqueada, seccionApagada } from "../../lib/modulos";
 import ModuloBloqueado from "../ModuloBloqueado";
 import Pestanas from "../ui/Pestanas";
 import { Spinner } from "../ui";
@@ -29,14 +29,16 @@ export const OPCIONES_EQUIPO = [
 
 export default function EquipoScreen({ empresa, usuario, onVerPlanes, seccion = null }) {
   // seccion: la pestaña con la que abre (los primeros pasos mandan "horarios")
-  const [opcion, setOpcion] = useState(OPCIONES_EQUIPO.some((o) => o.id === seccion) ? seccion : "personas");
-  const actual = OPCIONES_EQUIPO.find((o) => o.id === opcion);
+  // Lo que la empresa apagó en Más → Módulos no aparece (Calendario, Reportes)
+  const opciones = OPCIONES_EQUIPO.filter((o) => !seccionApagada(o.id, empresa));
+  const [opcion, setOpcion] = useState(opciones.some((o) => o.id === seccion) ? seccion : "personas");
+  const actual = opciones.find((o) => o.id === opcion) || opciones[0];
   const bloqueado = seccionBloqueada(actual.id, empresa);
   const empresaId = usuario?.empresa_id || empresa?.id;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <Pestanas label="Equipo" opciones={OPCIONES_EQUIPO} actual={actual.id} onElegir={setOpcion} bloqueada={(o) => seccionBloqueada(o.id, empresa)} />
+      <Pestanas label="Equipo" opciones={opciones} actual={actual.id} onElegir={setOpcion} bloqueada={(o) => seccionBloqueada(o.id, empresa)} />
       <div role="tabpanel" aria-label={actual.label} className="flex-1 overflow-hidden flex flex-col">
         {bloqueado && <ModuloBloqueado modulo={MODULO_SECCION_GESTION[actual.id]} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "personas" && <GestionPersonalScreen empresaId={empresaId} />}

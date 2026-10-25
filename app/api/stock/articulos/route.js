@@ -55,7 +55,7 @@ export async function POST(request) {
     if (parsed.response) return parsed.response;
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModulo(sesion.empresa_id, "stock");
     if (sinModulo) return sinModulo;
 
     const e = sesion.empresa_id;

@@ -175,7 +175,7 @@ export async function POST(request) {
     if (!ROLES_GESTION.has(sesion.rol)) {
       return NextResponse.json({ error: "Solo el encargado puede conectar la planilla" }, { status: 403 });
     }
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModulo(sesion.empresa_id, "stock");
     if (sinModulo) return sinModulo;
 
     const e = sesion.empresa_id;

@@ -317,5 +317,5 @@ test("QR del artículo — la app abre la ficha con ?articulo=SKU y Stock está 
   assert.match(home, /searchParams\.get\("articulo"\)/);
   assert.match(home, /<FichaArticulo sku=\{skuArticulo\}/);
   const planta = readFileSync(new URL("../app/components/screens/PlantaScreen.jsx", import.meta.url), "utf8");
-  assert.match(planta, /\{ id: "stock", label: "Stock", modulo: "proyectos" \}/);
+  assert.match(planta, /\{ id: "stock", label: "Stock", modulo: "stock" \}/);
 });

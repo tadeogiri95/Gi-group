@@ -95,11 +95,12 @@ export async function GET(request) {
     if (!Array.isArray(data) || data.length === 0) return NextResponse.json(DEFAULTS);
     // Módulos que tiene la empresa (ítem 36): la app arma el menú con esto.
     // Si no se pueden calcular, no se mandan y la app muestra todo (el servidor bloquea igual).
-    let modulos;
+    // Los que la empresa apagó (Más → Módulos) no se muestran ni con candado.
+    let modulos, apagados;
     try {
-      ({ modulos } = await getModulosEmpresa(sesion.empresa_id, { plan: data[0].plan_activo || "free" }));
+      ({ modulos, apagados } = await getModulosEmpresa(sesion.empresa_id, { plan: data[0].plan_activo || "free" }));
     } catch { /* sin módulos en la respuesta */ }
-    return NextResponse.json(modulos ? { ...data[0], modulos } : data[0], {
+    return NextResponse.json(modulos ? { ...data[0], modulos, modulos_apagados: apagados } : data[0], {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (err) {

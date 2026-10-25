@@ -242,8 +242,8 @@ async function guardarPlantilla(sesion, { checklist }) {
 async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
-  // La flota va con las OT, como Stock y Compras, hasta que Mantenimiento sea un módulo que se venda aparte
-  return requireModulo(sesion.empresa_id, "proyectos");
+  // Flota es un módulo propio (viene con las OT y se puede apagar aparte, 131)
+  return requireModulo(sesion.empresa_id, "flota");
 }
 
 async function crearArreglo(sesion, d) {
