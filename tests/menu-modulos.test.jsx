@@ -41,7 +41,7 @@ test("barra de abajo del operario — sin Tareas ni Asistente, tenga los módulo
   assert.deepEqual(ids([...ASISTENCIA, "obra"]), ["home", "mis-sols", "cuenta"]);
   assert.deepEqual(ids(["fichaje"]), ["home", "mis-sols", "cuenta"]);
   // La de gestión no cambia (sus secciones se marcan con candado adentro)
-  assert.deepEqual(getItems("gerencial", 0, ["fichaje"]).map((i) => i.id), ["home", "solicitudes", "equipo", "config"]);
+  assert.deepEqual(getItems("gerencial", 0, ["fichaje"]).map((i) => i.id), ["home", "config"]);
 });
 
 test("ModuloBloqueado — el dueño va a Facturación; el resto ve a quién pedírselo", () => {

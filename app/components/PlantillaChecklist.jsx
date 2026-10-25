@@ -1,5 +1,5 @@
 'use client';
-// app/components/PlantillaChecklist.jsx — Planta → Flota → ⚙ Checklist
+// app/components/PlantillaChecklist.jsx — Mantenimiento → Flota → ⚙ Checklist
 // (Mantenimiento, parte 29; migración 127). Gerencia y Administración
 // cambian las secciones y los puntos del checklist de vehículos: agregar,
 // sacar, cambiar el nombre y decidir qué puntos piden un valor (mm, psi) y

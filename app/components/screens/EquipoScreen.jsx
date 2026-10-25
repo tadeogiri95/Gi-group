@@ -3,7 +3,7 @@
 // (revisión de la interfaz, 2026-10). Antes Horarios, Calendario, Reportes y
 // Documentación estaban en "Más", mezclados con los ajustes. Los reportes de
 // acá son los del personal (Asistencia, Descargar, Liquidación); los de
-// producción están en Planta. Cada pestaña se baja recién al abrirla.
+// producción están en Proyectos. Cada pestaña se baja recién al abrirla.
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { MODULO_SECCION_GESTION, seccionBloqueada, seccionApagada } from "../../lib/modulos";

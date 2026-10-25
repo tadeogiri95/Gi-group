@@ -1,5 +1,5 @@
 'use client';
-// app/components/MovimientosStock.jsx — Movimientos de stock en Planta →
+// app/components/MovimientosStock.jsx — Movimientos de stock en Inventario →
 // Stock (Stock, parte 14; ítem 40). La oficina ve lo que se retiró y
 // devolvió desde la app, carga ingresos de compras y ajustes de inventario, y
 // anula lo que se cargó mal. La planilla MRP los trae sola (parte 15). Un

@@ -677,7 +677,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               </div>
             </>
           )}
-          <button onClick={() => goto?.("planta:ot")}
+          <button onClick={() => goto?.("proyectos:ot")}
             className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
           >
             Ver las OT &rarr;
@@ -780,7 +780,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         )}
       </section>}
 
-      {/* ─── Pedidos de material pendientes (Planta → Compras) ─── */}
+      {/* ─── Pedidos de material pendientes (Inventario → Compras) ─── */}
       {conCompras && pedidosCompra && (
         <section aria-label="Pedidos de material" className="card-hover g-card mb-4">
           <div className="flex justify-between items-center mb-2">
@@ -804,7 +804,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               ))}
             </div>
           )}
-          <button onClick={() => goto?.("planta:compras")}
+          <button onClick={() => goto?.("inventario:compras")}
             className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
           >
             Ir a Compras &rarr;
@@ -812,7 +812,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── Flota: alertas de mantenimiento (Planta → Flota) ─── */}
+      {/* ─── Flota: alertas de mantenimiento (Mantenimiento → Flota) ─── */}
       {conFlota && alertasFlota && (() => {
         const vencidas = alertasFlota.filter(a => a.nivel === "vencido").length;
         const pronto = alertasFlota.length - vencidas;
@@ -839,7 +839,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                 {alertasFlota.length > 8 && <p className="m-0 pt-2 text-[12px] text-gypi-dim">Y {alertasFlota.length - 8} más.</p>}
               </div>
             )}
-            <button onClick={() => goto?.("planta:flota")}
+            <button onClick={() => goto?.("mantenimiento:flota")}
               className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
             >
               Ir a Flota &rarr;

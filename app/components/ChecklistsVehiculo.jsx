@@ -1,5 +1,5 @@
 'use client';
-// app/components/ChecklistsVehiculo.jsx — Los checklists hechos (Planta →
+// app/components/ChecklistsVehiculo.jsx — Los checklists hechos (Mantenimiento →
 // Flota y ficha de cada vehículo; Mantenimiento, parte 29): la lista con su
 // resultado y el detalle de uno, con lo que no está bien arriba y el PDF.
 // Parte 31: desde un ⚠️ Revisar la oficina puede anotar un arreglo.

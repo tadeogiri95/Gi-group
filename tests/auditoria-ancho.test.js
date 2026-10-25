@@ -1,5 +1,5 @@
 // tests/auditoria-ancho.test.js — PR 4 de la auditoría del 22/10: en la
-// computadora, Planta y Equipo usan todo el ancho y las listas van en
+// computadora, Proyectos, Inventario, Mantenimiento y Equipo usan todo el ancho y las listas van en
 // columnas. El celular y las demás pantallas no cambian.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -7,9 +7,10 @@ import { readFileSync } from "node:fs";
 
 const leer = (f) => readFileSync(new URL(`../app/${f}`, import.meta.url), "utf8");
 
-test("el shell se ensancha solo en Planta y Equipo de gestión", () => {
+test("el shell se ensancha solo en Proyectos, Inventario, Mantenimiento y Equipo de gestión", () => {
   const home = leer("[slug]/HomeContent.jsx");
-  assert.match(home, /const ancho = uIsGer && \(screen === "planta" \|\| screen === "equipo"\);/);
+  assert.match(home, /const ancho = uIsGer && \(BOTONES\.has\(screen\) \|\| screen === "equipo"\);/);
+  assert.match(home, /const BOTONES = new Set\(\["proyectos", "inventario", "mantenimiento"\]\);/);
   assert.match(home, /className=\{`app-shell bg-gypi-bg \$\{ancho \? "app-shell--ancho" : ""\}`\}/);
 });
 

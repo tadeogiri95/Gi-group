@@ -17,8 +17,8 @@ test("roles con nombres que la gente entiende", () => {
   assert.equal(nombreRol(undefined), "Operario");
 });
 
-test("barra de abajo: el operario ve Inicio, Permisos y Mi cuenta", () => {
-  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Permisos", "Planta", "Equipo", "Más"]);
+test("barra de abajo: gestión con sus cinco botones; el operario ve Inicio, Permisos y Mi cuenta", () => {
+  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Proyectos", "Inventario", "Mantenimiento", "Más"]);
   assert.deepEqual(getItems("operativo", 0).map((i) => i.label), ["Inicio", "Permisos", "Mi cuenta"]);
   assert.equal(VOCABULARIO.entrada, "Entrada");
 });
@@ -45,7 +45,10 @@ test("ninguna pantalla usa los nombres viejos", () => {
   for (const f of archivos(new URL("../app", import.meta.url).pathname)) {
     if (f.endsWith("/lib/textos.js")) continue; // ahí se documentan los nombres viejos
     const src = readFileSync(f, "utf8");
-    for (const re of PROHIBIDOS) if (re.test(src)) hallados.push(`${f.split("/app/")[1]}: ${re}`);
+    // "Proyectos" volvió como nombre del botón de la barra que agrupa OT y
+    // Reportes (menú nuevo, parte 32); la lista sigue llamándose "OT"
+    const permitidos = f.endsWith("/lib/menuGestion.js") ? [String(/label: "Proyectos"/)] : [];
+    for (const re of PROHIBIDOS) if (!permitidos.includes(String(re)) && re.test(src)) hallados.push(`${f.split("/app/")[1]}: ${re}`);
   }
   assert.deepEqual(hallados, []);
 });

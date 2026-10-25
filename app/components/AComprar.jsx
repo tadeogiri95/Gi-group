@@ -1,5 +1,5 @@
 'use client';
-// app/components/AComprar.jsx — Planta → Compras → A comprar (Compras, parte
+// app/components/AComprar.jsx — Inventario → Compras → A comprar (Compras, parte
 // 21; ítem 41). Administración ve juntos los pedidos pendientes de los jefes
 // de taller y lo que la planilla MRP marca para comprar, elige el proveedor
 // de cada renglón y Gypi arma una orden de compra por proveedor. El proveedor

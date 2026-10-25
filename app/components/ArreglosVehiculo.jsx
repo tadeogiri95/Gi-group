@@ -1,6 +1,6 @@
 'use client';
 // app/components/ArreglosVehiculo.jsx — Arreglos, services e historial de un
-// vehículo (Planta → Flota → ficha; Mantenimiento, parte 31; migración 129).
+// vehículo (Mantenimiento → Flota → ficha; Mantenimiento, parte 31; migración 129).
 // Los arreglos salen de los puntos en Mal del checklist o se anotan a mano;
 // se resuelven cargando qué se hizo, dónde, costo y factura. Los services y
 // reparaciones se cargan igual, sin checklist.

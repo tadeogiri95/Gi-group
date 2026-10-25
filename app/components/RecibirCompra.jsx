@@ -1,5 +1,5 @@
 'use client';
-// app/components/RecibirCompra.jsx — Planta → Compras → Recibir (Compras,
+// app/components/RecibirCompra.jsx — Inventario → Compras → Recibir (Compras,
 // parte 22; ítem 41). Cuando llega el material, el jefe de taller o
 // Administración abre la orden de compra, pone cuánto llegó de cada renglón y
 // el N° de remito (y si quiere una foto del remito). Cada renglón de un

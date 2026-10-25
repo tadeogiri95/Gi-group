@@ -468,7 +468,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 // grupo: "personal" (en Equipo: Asistencia, Descargar, Liquidación) o
-// "produccion" (en Planta: Del día, Producción, Indicadores, Lead time, Obra).
+// "produccion" (en Proyectos: Del día, Producción, Indicadores, Lead time, Obra).
 // Sin grupo se ven todas (revisión de la interfaz, 2026-10).
 export default function ReportesScreen({ grupo = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, defectos, usuario, empresa } = useAuth();

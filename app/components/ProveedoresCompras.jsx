@@ -1,5 +1,5 @@
 'use client';
-// app/components/ProveedoresCompras.jsx — Planta → Compras → Proveedores
+// app/components/ProveedoresCompras.jsx — Inventario → Compras → Proveedores
 // (Compras, parte 20; ítem 41). Administración y gerencia cargan los datos de
 // cada proveedor (CUIT, contacto, WhatsApp, email, plazo, condición de pago).
 // Para no arrancar de cero se pega la lista de TABLAS → PROVEEDORES de la

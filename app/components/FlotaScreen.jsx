@@ -1,5 +1,5 @@
 'use client';
-// app/components/FlotaScreen.jsx — Planta → Flota (Mantenimiento, parte 28;
+// app/components/FlotaScreen.jsx — Mantenimiento → Flota (Mantenimiento, parte 28;
 // ítem 43; migración 126). Gerencia y Administración cargan los vehículos,
 // su responsable (el chofer habitual) y sus papeles con vencimiento. Cada
 // vehículo muestra su semáforo: 🔴 vencido, 🟡 vence pronto, ✅ al día. Solo

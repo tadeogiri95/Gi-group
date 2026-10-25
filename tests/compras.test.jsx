@@ -517,10 +517,11 @@ test("proveedores — traer la lista de la planilla, editar y dar de baja", asyn
   await waitFor(() => assert.deepEqual(enviados[2], { accion: "proveedor_baja", id: 3, activo: false }));
 });
 
-test("accesos — pestaña Compras en Planta", () => {
-  const planta = readFileSync(new URL("../app/components/screens/PlantaScreen.jsx", import.meta.url), "utf8");
-  assert.match(planta, /\{ id: "compras", label: "Compras", modulo: "compras" \}/);
-  assert.match(planta, /<ComprasScreen empresaId=\{empresaId\} empresa=\{empresa\} usuario=\{usuario\} \/>/);
+test("accesos — pestaña Compras en Inventario", () => {
+  const menu = readFileSync(new URL("../app/lib/menuGestion.js", import.meta.url), "utf8");
+  assert.match(menu, /\{ id: "compras", label: "Compras", modulo: "compras" \}/);
+  const pantalla = readFileSync(new URL("../app/components/screens/BotonGestionScreen.jsx", import.meta.url), "utf8");
+  assert.match(pantalla, /<ComprasScreen empresaId=\{empresaId\} empresa=\{empresa\} usuario=\{usuario\} \/>/);
 });
 
 // ─── Pegar desde la planilla (hoja INVENTARIO) ───

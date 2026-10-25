@@ -51,7 +51,7 @@ const BillingScreen = dynamic(() => import("../components/BillingScreen"), { ssr
 // External screens — lazy-loaded
 const ActividadScreen = dynamic(() => import("../actividad_screen"), { ssr: false });
 const GerenciaActividadScreen = dynamic(() => import("../gerencia_actividad_screen"), { ssr: false });
-const PlantaScreen = dynamic(() => import("../components/screens/PlantaScreen"), { ssr: false });
+const BotonGestionScreen = dynamic(() => import("../components/screens/BotonGestionScreen"), { ssr: false });
 const DashboardGerencia = dynamic(() => import("../dashboard_gerencia"), { ssr: false });
 const EquipoScreen = dynamic(() => import("../components/screens/EquipoScreen"), { ssr: false });
 const OnboardingWizard = dynamic(() => import("../onboarding_wizard"), { ssr: false });
@@ -65,9 +65,14 @@ const FichaArticulo = dynamic(() => import("../components/FichaArticulo"), { ssr
 // ─── Valid screens whitelist ───
 const VALID_SCREENS = new Set([
   "home", "chat", "solicitudes", "mis-sols", "actividad",
-  "historial-fichajes", "equipo", "config", "ger-actividad", "reglas", "planta",
+  "historial-fichajes", "equipo", "config", "ger-actividad", "reglas",
+  "proyectos", "inventario", "mantenimiento",
   "documentos", "instalaciones", "cuenta",
 ]);
+// Botones de la barra de gestión con pestañas (menú nuevo, parte 32)
+const BOTONES = new Set(["proyectos", "inventario", "mantenimiento"]);
+// Permisos y Equipo se abren desde "Más": ahí la barra marca "Más"
+const DESDE_MAS = new Set(["solicitudes", "equipo"]);
 
 export default function HomeContent() {
   const searchParams = useSearchParams();
@@ -83,7 +88,8 @@ export default function HomeContent() {
   } = useAuth();
 
   // ─── Screen desde URL ───
-  const screenFromUrl = searchParams.get("screen") || "home";
+  // ?screen=planta (enlaces de antes del menú nuevo) abre Proyectos
+  const screenFromUrl = searchParams.get("screen") === "planta" ? "proyectos" : (searchParams.get("screen") || "home");
   const screen = VALID_SCREENS.has(screenFromUrl) ? screenFromUrl : "home";
 
   const setScreen = (pantalla) => {
@@ -271,7 +277,7 @@ export default function HomeContent() {
 
   const getScreenSubtitle = () => {
     if (uIsGer) {
-      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", planta: "Producción, stock y compras", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
+      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", proyectos: "Órdenes de trabajo y reportes", inventario: "Stock y compras", mantenimiento: "Flota vehicular", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
     const subtitles = { cuenta: "Horario, fichadas y documentos", instalaciones: "El reporte del día", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
@@ -279,7 +285,7 @@ export default function HomeContent() {
   };
 
   const getScreenTitle = () => {
-    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Permisos", equipo: "Equipo", "mis-sols": "Mis permisos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", planta: "Planta", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Permisos", equipo: "Equipo", "mis-sols": "Mis permisos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", proyectos: "Proyectos", inventario: "Inventario", mantenimiento: "Mantenimiento", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -337,9 +343,10 @@ export default function HomeContent() {
   );
 
   // ─── App shell ───
-  // En la computadora, Planta y Equipo (trabajo de oficina) usan todo el
-  // ancho; el resto sigue como un celular en el medio (auditoría 22/10)
-  const ancho = uIsGer && (screen === "planta" || screen === "equipo");
+  // En la computadora, Proyectos, Inventario, Mantenimiento y Equipo (trabajo
+  // de oficina) usan todo el ancho; el resto sigue como un celular en el medio
+  // (auditoría 22/10)
+  const ancho = uIsGer && (BOTONES.has(screen) || screen === "equipo");
   return (
     <div className={`app-shell bg-gypi-bg ${ancho ? "app-shell--ancho" : ""}`}>
       {!isDemo && <PushManager legajo={u.legajo} empresaId={u.empresa_id || empresa?.id} />}
@@ -347,6 +354,11 @@ export default function HomeContent() {
       {/* Dentro de una sección de "Más" el título lo pone la sección, con "← Más" */}
       {!isChat && screen !== "home" && !(screen === "config" && seccionMas) && (
         <div className="safe-top px-[18px] pt-4 pb-2.5 shrink-0">
+          {uIsGer && DESDE_MAS.has(screen) && (
+            <button onClick={() => setScreen("config")} className="min-h-[44px] -ml-1 mb-1 px-1 bg-transparent border-none cursor-pointer text-[15px] font-semibold text-gypi-text">
+              ← Más
+            </button>
+          )}
           {screen === "ger-actividad" && (
             <button onClick={() => setScreen("home")} className="min-h-[44px] -ml-1 mb-1 px-1 bg-transparent border-none cursor-pointer text-[14px] font-semibold text-gypi-text">
               ← Volver al inicio
@@ -397,11 +409,13 @@ export default function HomeContent() {
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <EquipoScreen key={seccionMas || "equipo"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "ger-actividad" && <GerenciaActividadScreen empresaId={empresa?.id} />}
-          {uIsGer && screen === "planta" && <PlantaScreen key={seccionMas || "planta"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
+          {uIsGer && BOTONES.has(screen) && <BotonGestionScreen key={`${screen}:${seccionMas || ""}`} boton={screen} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "config" && (
             <ConfigScreen
               seccion={seccionMas}
               onSeccion={setSeccionMas}
+              onIr={(pantalla) => { setSeccionMas(null); setScreen(pantalla); }}
+              pendientes={pend}
               ctx={ctx}
               reload={loadData}
               usuario={u}
@@ -418,7 +432,7 @@ export default function HomeContent() {
       </div>
 
       {/* Historial y documentos del operario se abren desde "Mi cuenta": esa pestaña queda marcada */}
-      {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} />}
+      {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : uIsGer && DESDE_MAS.has(screen) ? "config" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} />}
 
       {paywallInfo && (
         <Paywall
