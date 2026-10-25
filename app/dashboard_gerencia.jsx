@@ -42,8 +42,10 @@ import Icon from "./components/Icon";
 import { nombreSolicitud } from "./lib/tiposSolicitud";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
-import { alertasVehiculo, urgentes as alertasUrgentes, textoAlerta } from "./lib/alertasFlota";
+import { alertasVehiculo, urgentes as alertasUrgentes } from "./lib/alertasFlota";
 import { textoVencimiento, SEMAFORO } from "./lib/flota";
+import { avancePorOt } from "./lib/piezas";
+import { alertasMantenimiento, otAtrasadas, textoDias } from "./lib/panelMantenimiento";
 import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
 
 /* ─── Helpers ─── */
@@ -270,9 +272,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   // OT en curso y pedidos de compra pendientes (null = no se pudieron leer
   // o la empresa no usa OT / Compras: la tarjeta no se muestra)
   const [otCurso, setOtCurso] = useState(null);
+  // OT atrasadas (parte 36): pasaron su fecha de entrega y no están terminadas
+  const [otAtrasadasLista, setOtAtrasadasLista] = useState(null);
   const [pedidosCompra, setPedidosCompra] = useState(null);
   // Flota (Mantenimiento parte 30): vehículos con lo que necesitan para sus alertas
   const [flota, setFlota] = useState(null);
+  // Maquinaria (parte 36): máquinas, su plan y las fallas sin arreglar
+  const [maquinaria, setMaquinaria] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const hoy = hoyArg();
@@ -342,12 +348,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const conOt = tieneModulo(empresa, "proyectos");
   const conCompras = tieneModulo(empresa, "compras");
   const conFlota = tieneModulo(empresa, "flota");
+  const conMaquinaria = tieneModulo(empresa, "maquinaria");
   // Sin fichaje (la empresa usa su propio control de acceso) no hay asistencia ni ranking que mostrar
   const conFichaje = tieneModulo(empresa, "fichaje");
   const cargarOtYCompras = useCallback(async () => {
-    if (isDemo || !empresaId || !(conOt || conCompras || conFlota)) return;
+    if (isDemo || !empresaId || !(conOt || conCompras || conFlota || conMaquinaria)) return;
     const si = (con, leer) => (con ? leer().catch(() => null) : null);
-    const [proy, avHs, peds, veh, pap, chk, cho, arr] = await Promise.all([
+    const [proy, avHs, peds, veh, pap, chk, cho, arr, maq, tar, fal] = await Promise.all([
       si(conOt, () => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at&order=id.asc`, { maxFilas: 20000 })),
       si(conOt, () => leerAvanceYHoras(empresaId)),
       // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
@@ -358,11 +365,18 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       si(conFlota, () => sbGetAll(`vehiculo_checklists?select=id,vehiculo_id,created_at,km,secciones&order=created_at.desc,id.desc`, { maxFilas: 2000 })),
       si(conFlota, () => sbGetAll(`empleados?activo=eq.true&select=id,nombre,licencia_categoria,licencia_vencimiento&order=id.asc`, { maxFilas: 5000 })),
       si(conFlota, () => sbGetAll(`vehiculo_arreglos?estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`, { maxFilas: 5000 })),
+      // Sin la migración 132 no hay máquinas; sin la 134, no hay fallas
+      si(conMaquinaria, () => sbGetAll(`maquinas?activo=eq.true&order=codigo.asc,id.asc`, { maxFilas: 2000 })),
+      si(conMaquinaria, () => sbGetAll(`maquina_tareas?activa=eq.true&order=orden.asc,id.asc`, { maxFilas: 20000 })),
+      si(conMaquinaria, () => sbGetAll(`maquina_fallas?estado=eq.pendiente&select=id,maquina_id,descripcion,parada,estado,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 })),
     ]);
     setFlota(veh ? { vehiculos: veh.data || [], papeles: pap?.data || [], checklists: chk?.data || [], choferes: cho?.data || [], arreglos: arr?.data || [] } : null);
-    setOtCurso(proy && avHs ? otEnCurso(filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() })) : null);
+    setMaquinaria(maq ? { maquinas: maq.data || [], tareas: tar?.data || [], fallas: fal?.data || [] } : null);
+    const filasOt = proy && avHs ? filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() }) : null;
+    setOtCurso(filasOt ? otEnCurso(filasOt) : null);
+    setOtAtrasadasLista(filasOt ? otAtrasadas(filasOt, { porEscaneo: avancePorOt(avHs.piezas || []), hoy: hoyArg() }) : null);
     setPedidosCompra(peds ? peds.data || [] : null);
-  }, [isDemo, empresaId, conOt, conCompras, conFlota, etapasCtx, divisionesCtx]);
+  }, [isDemo, empresaId, conOt, conCompras, conFlota, conMaquinaria, etapasCtx, divisionesCtx]);
   useEffect(() => { cargarOtYCompras(); }, [cargarOtYCompras]); // eslint-disable-line react-hooks/set-state-in-effect
   // Cada minuto, solo con la pestaña a la vista (F3-04)
   useRefrescoVisible(cargarDatos, { intervaloMs: 60000 });
@@ -375,6 +389,13 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       papeles: flota.papeles.filter(p => p.vehiculo_id === v.id), checklists: flota.checklists, arreglos: flota.arreglos, responsable: porId.get(v.responsable_id), hoy,
     }).map(a => ({ ...a, patente: v.patente }))));
   }, [flota, hoy]);
+  // La tarjeta 🔧 Mantenimiento junta la flota y las máquinas; sin ninguna de las dos no aparece
+  const alertasMant = useMemo(() => {
+    const conVehiculos = (conFlota && alertasFlota) ? alertasFlota : null;
+    const conMaquinas = conMaquinaria && maquinaria?.maquinas.length ? maquinaria : null;
+    if (!conVehiculos && !conMaquinas) return null;
+    return alertasMantenimiento({ alertasFlota: conVehiculos, ...(conMaquinas || {}), hoy, textoVencimiento });
+  }, [conFlota, alertasFlota, conMaquinaria, maquinaria, hoy]);
 
   /* ─── Datos derivados ─── */
   const empActivos = empleados.filter(e => e.activo !== false);
@@ -685,6 +706,35 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
+      {/* ─── OT atrasadas: pasaron su fecha de entrega y no están terminadas (parte 36) ─── */}
+      {otAtrasadasLista && (
+        <section aria-label="OT atrasadas" className={`card-hover g-card mb-4 ${otAtrasadasLista.length ? TONO.mal.borde : ""}`}>
+          <div className="flex justify-between items-center mb-2">
+            <Titulo>⏰ OT atrasadas</Titulo>
+            <Tag color={otAtrasadasLista.length ? "var(--color-red)" : "var(--color-green)"}>{otAtrasadasLista.length}</Tag>
+          </div>
+          {otAtrasadasLista.length === 0 ? (
+            <p className="m-0 text-[13px] text-gypi-dim">✅ Ninguna OT pasó su fecha de entrega.</p>
+          ) : (
+            <div className="max-h-[240px] overflow-y-auto">
+              {otAtrasadasLista.map(({ fila: f, dias, porcentaje }) => (
+                <button key={f.proyecto.id ?? f.proyecto.ot} type="button" onClick={() => goto?.("proyectos:ot")}
+                  className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer">
+                  <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-gypi-text truncate">{f.proyecto.cliente || f.proyecto.proyecto || f.proyecto.obra || "—"}</div>
+                    <div className="text-[12px] text-gypi-dim truncate">
+                      {nombreDivisionOt(divisionesCtx || [], f.proyecto.division)} &middot; entrega {fechaCorta(f.proyecto.fecha_entrega)}{porcentaje != null ? ` · ${porcentaje}% hecho` : ""}
+                    </div>
+                  </div>
+                  <span className={`shrink-0 px-2 py-1 rounded-lg text-[12px] font-bold ${TONO.mal.fondo} ${TONO.mal.txt}`}>{textoDias(dias)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* ─── Asistencia del día: operarios por división y la llegada de cada uno ─── */}
       {conFichaje && <section aria-label="Asistencia del día" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center gap-2 mb-3">
@@ -812,38 +862,46 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── Flota: alertas de mantenimiento (Mantenimiento → Flota) ─── */}
-      {conFlota && alertasFlota && (() => {
-        const vencidas = alertasFlota.filter(a => a.nivel === "vencido").length;
-        const pronto = alertasFlota.length - vencidas;
+      {/* ─── Mantenimiento: vehículos y máquinas (Mantenimiento → Flota y Maquinaria) ─── */}
+      {alertasMant && (() => {
+        const paradas = alertasMant.filter(a => a.parada).length;
+        const vencidas = alertasMant.filter(a => a.nivel === "vencido" && !a.parada).length;
+        const pronto = alertasMant.length - paradas - vencidas;
+        const destinos = [conFlota && alertasFlota && { id: "mantenimiento:flota", texto: "Ir a Flota" }, conMaquinaria && maquinaria?.maquinas.length && { id: "mantenimiento:maquinaria", texto: "Ir a Maquinaria" }].filter(Boolean);
         return (
-          <section aria-label="Flota" className="card-hover g-card mb-4">
+          <section aria-label="Mantenimiento" className="card-hover g-card mb-4">
             <div className="flex justify-between items-center mb-2 gap-2">
-              <Titulo>🚚 Flota</Titulo>
-              <div className="flex gap-1.5">
+              <Titulo>🔧 Mantenimiento</Titulo>
+              <div className="flex gap-1.5 flex-wrap justify-end">
+                {paradas > 0 && <Tag color="var(--color-red)">{paradas} parada{paradas !== 1 ? "s" : ""}</Tag>}
                 {vencidas > 0 && <Tag color="var(--color-red)">{vencidas} vencida{vencidas !== 1 ? "s" : ""}</Tag>}
-                {pronto > 0 && <Tag color={MARCA}>{pronto} por vencer</Tag>}
+                {pronto > 0 && <Tag color={MARCA}>{pronto} para pronto</Tag>}
               </div>
             </div>
-            {alertasFlota.length === 0 ? (
-              <p className="m-0 text-[13px] text-gypi-dim">✅ Toda la flota está al día.</p>
+            {alertasMant.length === 0 ? (
+              <p className="m-0 text-[13px] text-gypi-dim">✅ Vehículos y máquinas al día.</p>
             ) : (
               <div className="max-h-[240px] overflow-y-auto">
-                {alertasFlota.slice(0, 8).map(a => (
-                  <div key={`${a.patente}-${a.clave}`} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
+                {alertasMant.slice(0, 10).map(a => (
+                  <button key={a.clave} type="button" onClick={() => goto?.(a.destino)}
+                    className={`w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer ${a.parada ? TONO.mal.txt : "text-gypi-text"}`}>
                     <span aria-hidden="true">{SEMAFORO[a.nivel].emoji}</span>
-                    <div className="flex-1 min-w-0 text-[13px] text-gypi-text truncate">{textoAlerta(a, textoVencimiento)}</div>
-                    <span className="font-mono text-[12px] font-bold text-gypi-dim shrink-0">{a.patente}</span>
-                  </div>
+                    <span className={`flex-1 min-w-0 text-[13px] truncate ${a.parada ? "font-bold" : ""}`}>{a.texto}</span>
+                    <span className="font-mono text-[12px] font-bold text-gypi-dim shrink-0">{a.quien}</span>
+                  </button>
                 ))}
-                {alertasFlota.length > 8 && <p className="m-0 pt-2 text-[12px] text-gypi-dim">Y {alertasFlota.length - 8} más.</p>}
+                {alertasMant.length > 10 && <p className="m-0 pt-2 text-[12px] text-gypi-dim">Y {alertasMant.length - 10} más.</p>}
               </div>
             )}
-            <button onClick={() => goto?.("mantenimiento:flota")}
-              className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
-            >
-              Ir a Flota &rarr;
-            </button>
+            <div className="flex gap-2 mt-3">
+              {destinos.map(d => (
+                <button key={d.id} onClick={() => goto?.(d.id)}
+                  className="flex-1 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
+                >
+                  {d.texto} &rarr;
+                </button>
+              ))}
+            </div>
           </section>
         );
       })()}
