@@ -2,7 +2,8 @@
 // app/components/FichaMaquina.jsx — Ficha de una máquina en Mantenimiento →
 // Maquinaria (Mantenimiento, parte 33; migración 132): sus datos, su
 // horómetro, su plan (cada tarea con su semáforo, editable) y el historial de
-// lo que se le hizo. Desde acá se registra una tarea hecha.
+// lo que se le hizo. Desde acá se registra una tarea hecha. Con la 133
+// (parte 34) también su responsable de mantenimiento y el suplente.
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { idNuevo, resumenChecklist } from "../lib/checklistVehiculo";
@@ -13,6 +14,8 @@ import {
 import { useConfirm } from "./ui/ConfirmDialog";
 import BotonFoto from "./BotonFoto";
 import RegistrarTarea from "./RegistrarTarea";
+import AsignarMantenimiento from "./AsignarMantenimiento";
+import { CAMPOS_MAQUINA, conResponsables } from "../lib/mantenimiento";
 
 export async function postMaquinaria(body) {
   const res = await apiFetch("/api/maquinaria", { method: "POST", body: JSON.stringify(body) });
@@ -324,7 +327,7 @@ function FormHoras({ maquina, onCancelar, onGuardado }) {
   );
 }
 
-export default function FichaMaquina({ maquina, tareas = [], registros = [], divisiones = [], editable, hoy, onVolver, onCambio }) {
+export default function FichaMaquina({ maquina, tareas = [], registros = [], divisiones = [], empleados = [], editable, hoy, onVolver, onCambio }) {
   const [editando, setEditando] = useState(false);
   const [tareaForm, setTareaForm] = useState(null); // null | "nueva" | tarea
   const [haciendo, setHaciendo] = useState(null);
@@ -374,6 +377,15 @@ export default function FichaMaquina({ maquina, tareas = [], registros = [], div
           {maquina.manual_url && <a href={maquina.manual_url} target="_blank" rel="noopener noreferrer" className="text-gypi-text font-semibold">📘 Manual</a>}
           {maquina.notas && <div className="text-gypi-dim">{maquina.notas}</div>}
         </div>
+      )}
+
+      {conResponsables(maquina, CAMPOS_MAQUINA) && (
+        <>
+          <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Mantenimiento a cargo de</div>
+          <AsignarMantenimiento key={`${maquina.responsable_id}-${maquina.suplente_id}`} responsableId={maquina.responsable_id} suplenteId={maquina.suplente_id}
+            empleados={empleados} editable={editable}
+            onGuardar={async (r) => { await postMaquinaria({ accion: "responsables_guardar", maquina_id: maquina.id, ...r }); await onCambio(); }} />
+        </>
       )}
 
       {maquina.con_horometro && (

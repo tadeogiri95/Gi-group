@@ -11,6 +11,24 @@ import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import { useEscape } from "./hooks/useEscape";
 import { tieneModulo } from "./lib/modulos";
+import { leToca } from "./lib/mantenimiento";
+
+// "Le toca: SEC-01, CNC-01, AB123CD" (parte 34): lo que tiene a cargo como
+// responsable o suplente. Se asigna desde Mantenimiento.
+function LeToca({ empleadoId }) {
+  const [lista, setLista] = useState(null);
+  useEffect(() => {
+    if (!empleadoId) return;
+    let vivo = true;
+    Promise.all([
+      sb.get("vehiculos?activo=eq.true&select=id,patente,activo,mant_responsable_id,mant_suplente_id").catch(() => []),
+      sb.get("maquinas?activo=eq.true&select=id,codigo,activo,responsable_id,suplente_id").catch(() => []),
+    ]).then(([vehiculos, maquinas]) => { if (vivo) setLista(leToca(empleadoId, { vehiculos: vehiculos || [], maquinas: maquinas || [] })); });
+    return () => { vivo = false; };
+  }, [empleadoId]);
+  if (!lista?.length) return null;
+  return <div className="text-xs text-gypi-text mt-1">Le toca: {lista.join(", ")}</div>;
+}
 
 const ROLES = ["operativo", "gerencial", "administrativo"];
 const AREAS = ["produccion", "administracion", "logistica", "diseño"];
@@ -154,6 +172,21 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
               <div>
                 <div className="text-[13px] font-bold text-gypi-text">Es instalador</div>
                 <div className="text-xs text-gypi-dim mt-0.5">Va a ver la pestaña Instalaciones para dejar el reporte del día.</div>
+              </div>
+            </label>
+          </div>
+        )}
+
+        {/* Responsable de mantenimiento (parte 34): ve "Mi mantenimiento" en su
+            Inicio. Sin la migración 133 el dato no viene y la casilla no aparece. */}
+        {mode === "editar" && !divisionBloqueada && initialData.es_mantenimiento !== undefined && (
+          <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={!!form.es_mantenimiento} onChange={e => set("es_mantenimiento", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
+              <div>
+                <div className="text-[13px] font-bold text-gypi-text">Responsable de mantenimiento</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Se lo puede elegir en Mantenimiento como responsable o suplente de vehículos y máquinas, y ve "Mi mantenimiento" en su Inicio.</div>
+                <LeToca empleadoId={initialData.id} />
               </div>
             </label>
           </div>
@@ -536,6 +569,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           email: form.email?.trim() || null,
           ...(plantas.length > 1 && form.planta_id && !soySupervisor ? { planta_id: form.planta_id } : {}),
           ...(form.es_instalador !== undefined && !soySupervisor ? { es_instalador: !!form.es_instalador } : {}),
+          ...(form.es_mantenimiento !== undefined && !soySupervisor ? { es_mantenimiento: !!form.es_mantenimiento } : {}),
           ...(sesion?.rol === "gerencial" && form.solo_su_division !== undefined
             ? { solo_su_division: form.rol === "administrativo" && !!form.solo_su_division }
             : {}),
@@ -829,7 +863,7 @@ export default function GestionPersonalScreen({ empresaId }) {
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-bold text-gypi-text truncate">{emp.nombre}</div>
                     <div className="text-xs text-gypi-dim mt-px truncate">
-                      {divInfo?.label || "Sin división"} · {nombreArea(emp.area || "produccion")} · {nombreRol(emp.rol, { soloSuDivision: emp.solo_su_division })}{emp.es_instalador ? " · instalador" : ""}
+                      {divInfo?.label || "Sin división"} · {nombreArea(emp.area || "produccion")} · {nombreRol(emp.rol, { soloSuDivision: emp.solo_su_division })}{emp.es_instalador ? " · instalador" : ""}{emp.es_mantenimiento ? " · mantenimiento" : ""}
                       {plantas.length > 1 && nombrePlanta(plantas, emp.planta_id) ? ` · 🏭 ${nombrePlanta(plantas, emp.planta_id)}` : ""}
                     </div>
                   </div>

@@ -226,10 +226,11 @@ export async function PATCH(request) {
   // Campos permitidos — rol y "ve solo su división" (supervisor, D2) solo el dueño;
   // un supervisor tampoco cambia divisiones
   const CAMPOS_EDITABLES = ["nombre", "apodo", "email", "area", "diagrama", "activo"];
-  // "Es instalador" (migración 116) lo marca quien gestiona toda la empresa
-  if (!alcance) CAMPOS_EDITABLES.push("division", "planta_id", "es_instalador");
+  // "Es instalador" (migración 116) y "Responsable de mantenimiento" (133) los
+  // marca quien gestiona toda la empresa
+  if (!alcance) CAMPOS_EDITABLES.push("division", "planta_id", "es_instalador", "es_mantenimiento");
   if (sesion.rol === "gerencial") CAMPOS_EDITABLES.push("rol", "solo_su_division");
-  for (const campo of ["solo_su_division", "es_instalador"]) {
+  for (const campo of ["solo_su_division", "es_instalador", "es_mantenimiento"]) {
     if (body[campo] !== undefined && typeof body[campo] !== "boolean") {
       return NextResponse.json({ error: `${campo} inválido` }, { status: 400 });
     }

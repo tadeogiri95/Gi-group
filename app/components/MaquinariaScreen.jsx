@@ -22,6 +22,7 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
   const [tareas, setTareas] = useState([]);
   const [registros, setRegistros] = useState([]);
   const [divisiones, setDivisiones] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
   const [error, setError] = useState(null);
   const [vista, setVista] = useState(vistaInicial);
   const [verBajas, setVerBajas] = useState(false);
@@ -43,7 +44,12 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
       setTareas(t.data || []);
       setRegistros(r.data || []);
       setError(null);
-      const e = await sbGetAll("empleados?activo=eq.true&select=division&order=division.asc", { maxFilas: 5000 }).catch(() => ({ data: [] }));
+      // Con la 133 viene la casilla "Responsable de mantenimiento" (parte 34)
+      const lista = "empleados?activo=eq.true&select=id,nombre,division";
+      const e = await sbGetAll(`${lista},es_mantenimiento&order=nombre.asc,id.asc`, { maxFilas: 5000 })
+        .catch(() => sbGetAll(`${lista}&order=nombre.asc,id.asc`, { maxFilas: 5000 }))
+        .catch(() => ({ data: [] }));
+      setEmpleados(e.data || []);
       setDivisiones([...new Set((e.data || []).map((x) => x.division).filter(Boolean))].sort());
     } catch (err) {
       setMaquinas([]);
@@ -77,7 +83,7 @@ export default function MaquinariaScreen({ empresaId, usuario = null, vistaInici
     return (
       <div className="flex-1 overflow-y-auto px-[18px] pb-6">
         <FichaMaquina maquina={ficha} tareas={tareas.filter((t) => t.maquina_id === ficha.id)} registros={registros.filter((r) => r.maquina_id === ficha.id)}
-          divisiones={divisiones} editable={editable} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
+          divisiones={divisiones} empleados={empleados} editable={editable} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
       </div>
     );
   }

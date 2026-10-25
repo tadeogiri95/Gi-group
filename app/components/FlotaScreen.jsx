@@ -50,7 +50,9 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
       const [v, p, e] = await Promise.all([
         sbGetAll("vehiculos?order=patente.asc,id.asc", { maxFilas: 2000 }),
         sbGetAll("vehiculo_papeles?order=created_at.desc,id.desc", { maxFilas: 20000 }),
-        sbGetAll("empleados?activo=eq.true&select=id,nombre,division,licencia_categoria,licencia_vencimiento&order=nombre.asc,id.asc", { maxFilas: 5000 }),
+        // Con la 133 viene la casilla "Responsable de mantenimiento" (parte 34)
+        sbGetAll("empleados?activo=eq.true&select=id,nombre,division,licencia_categoria,licencia_vencimiento,es_mantenimiento&order=nombre.asc,id.asc", { maxFilas: 5000 })
+          .catch(() => sbGetAll("empleados?activo=eq.true&select=id,nombre,division,licencia_categoria,licencia_vencimiento&order=nombre.asc,id.asc", { maxFilas: 5000 })),
       ]);
       setVehiculos(v.data || []);
       setPapeles(p.data || []);

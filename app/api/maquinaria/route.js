@@ -12,7 +12,10 @@
 //   registro_crear  → una tarea hecha, con su checklist: revisa que estén
 //                     todos los puntos, nota en los que no están bien y la
 //                     confirmación de seguridad; pone la tarea al día y
-//                     actualiza las horas de la máquina.
+//                     actualiza las horas de la máquina. Lo hace también el
+//                     responsable de mantenimiento de la máquina o su
+//                     suplente (parte 34, 133).
+//   responsables_guardar → responsable de mantenimiento y suplente (parte 34, 133)
 // La lectura va por /api/data (maquinas, maquina_tareas y maquina_registros,
 // solo lectura). Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
@@ -24,11 +27,18 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { normalizarCodigo, puedeEditarMaquinaria, tareasDePlantilla, tipoMaquina } from "../../lib/maquinaria";
 import { contarEstados } from "../../lib/checklistVehiculo";
+import { CAMPOS_MAQUINA, aCargoDe } from "../../lib/mantenimiento";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
   return /maquinas|maquina_tareas|maquina_registros/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
+}
+
+// Parte 34: responsables de mantenimiento
+function faltaMigracionResponsables(err) {
+  const m = String(err?.message);
+  return /responsable_id|suplente_id/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
 }
 
 const noEncontrado = (que) => NextResponse.json({ error: `No encontré esa ${que}` }, { status: 404 });
@@ -146,8 +156,12 @@ async function crearRegistro(sesion, d) {
   const opts = { sesion };
   const [t] = (await sbGet(`maquina_tareas?id=eq.${d.tarea_id}&empresa_id=eq.${e}&select=id,maquina_id,nombre,checklist,seguridad,activa,ultima_fecha,ultima_horas`, opts)) || [];
   if (!t || t.activa === false) return noEncontrado("tarea");
-  const [m] = (await sbGet(`maquinas?id=eq.${t.maquina_id}&empresa_id=eq.${e}&select=id,horas,con_horometro`, opts)) || [];
+  // select=*: con la 133 vienen el responsable y el suplente
+  const [m] = (await sbGet(`maquinas?id=eq.${t.maquina_id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   if (!m) return noEncontrado("máquina");
+  if (!puedeEditarMaquinaria(sesion.rol) && !aCargoDe(m, sesion.empleado_id, CAMPOS_MAQUINA)) {
+    return NextResponse.json({ error: "Las tareas de esta máquina las hacen su responsable de mantenimiento, el suplente o la oficina" }, { status: 403 });
+  }
   if (d.fecha > hoyArg()) return NextResponse.json({ error: "La fecha no puede ser después de hoy" }, { status: 400 });
   if (t.seguridad && !d.seguridad_ok) return NextResponse.json({ error: "Falta confirmar el aviso de seguridad" }, { status: 400 });
   if (m.con_horometro && d.horas == null) return NextResponse.json({ error: "Poné las horas del horómetro" }, { status: 400 });
@@ -180,6 +194,24 @@ async function crearRegistro(sesion, d) {
   return NextResponse.json({ ok: true, registro: r });
 }
 
+async function guardarResponsables(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  if (d.responsable_id && d.responsable_id === d.suplente_id) {
+    return NextResponse.json({ error: "El suplente tiene que ser otra persona" }, { status: 400 });
+  }
+  for (const id of [d.responsable_id, d.suplente_id].filter(Boolean)) {
+    const [emp] = (await sbGet(`empleados?id=eq.${id}&empresa_id=eq.${e}&select=id`, opts)) || [];
+    if (!emp) return NextResponse.json({ error: "No encontré ese empleado" }, { status: 404 });
+  }
+  const [m] = (await sbPatch(`maquinas?id=eq.${d.maquina_id}&empresa_id=eq.${e}`, {
+    [CAMPOS_MAQUINA.responsable]: d.responsable_id, [CAMPOS_MAQUINA.suplente]: d.responsable_id ? d.suplente_id : null, updated_at: new Date().toISOString(),
+  }, opts)) || [];
+  if (!m) return noEncontrado("máquina");
+  broadcastRefresh(e, "maquinas");
+  return NextResponse.json({ ok: true, maquina: m });
+}
+
 export async function POST(request) {
   try {
     const sesion = await validarToken(request);
@@ -187,7 +219,8 @@ export async function POST(request) {
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(maquinariaBody, raw);
     if (parsed.response) return parsed.response;
-    if (!puedeEditarMaquinaria(sesion.rol)) {
+    // Una tarea hecha la carga también su responsable (se controla adentro)
+    if (parsed.data.accion !== "registro_crear" && !puedeEditarMaquinaria(sesion.rol)) {
       return NextResponse.json({ error: "La maquinaria la cargan gerencia y Administración" }, { status: 403 });
     }
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
@@ -202,8 +235,12 @@ export async function POST(request) {
       if (d.accion === "horas_guardar") return await guardarHoras(sesion, d);
       if (d.accion === "tarea_guardar") return await guardarTarea(sesion, d);
       if (d.accion === "tarea_borrar") return await borrarTarea(sesion, d.id);
+      if (d.accion === "responsables_guardar") return await guardarResponsables(sesion, d);
       return await crearRegistro(sesion, d);
     } catch (err) {
+      if (faltaMigracionResponsables(err)) {
+        return NextResponse.json({ error: "Para los responsables de mantenimiento falta correr la migración 133 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracion(err)) {
         return NextResponse.json({ error: "Para usar Maquinaria falta correr la migración 132 en Supabase." }, { status: 409 });
       }

@@ -1,7 +1,8 @@
 "use client";
 // Inicio del operario (R8): solo lo de todos los días — cómo está, fichar y
 // los botones grandes del trabajo (escanear piezas, retirar material, carga y,
-// para el responsable de un vehículo, su checklist de mantenimiento).
+// para el responsable de mantenimiento, 🔧 Mi mantenimiento con sus vehículos y
+// máquinas; parte 34, migración 133).
 // Pedir permiso está en la pestaña "Permisos" y horario, fichadas, documentos,
 // PIN y salir en la pestaña "Mi cuenta" (revisión de la interfaz, 2026-10).
 // Sin estilos sueltos (R11).
@@ -18,6 +19,8 @@ import ElegirOtCarga from "../ElegirOtCarga";
 import RetirarMaterial from "../RetirarMaterial";
 import EscanearPiezas from "../EscanearPiezas";
 import ChecklistVehiculo from "../ChecklistVehiculo";
+import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
+import { CAMPOS_VEHICULO, conResponsables, detalleMiMantenimiento, resumenMiMantenimiento } from "../../lib/mantenimiento";
 import { sb } from "../../lib/supabase";
 
 // Botón grande de una acción del trabajo: se toca fácil con guantes o apurado.
@@ -49,15 +52,23 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   // Stock y Flota son módulos propios (131): apagados no aparecen sus botones
   const conStock = !demo && tieneModulo(empresa, "stock");
   const conFlota = !demo && tieneModulo(empresa, "flota");
-  // Los vehículos de los que es responsable (Mantenimiento, parte 29). Sin la
-  // migración 126 o sin vehículos, no aparece el botón.
+  const conMaquinaria = !demo && tieneModulo(empresa, "maquinaria");
+  // Parte 34 (133): lo que tiene a cargo como responsable de mantenimiento o suplente
+  const mant = useMiMantenimiento(demo ? null : usuario?.id, { conFlota, conMaquinaria });
+  const [verMant, setVerMant] = useState(false);
+  const conMiMant = !mant.cargando && (usuario?.es_mantenimiento || mant.items.length > 0);
+  const resumenMant = resumenMiMantenimiento(mant.items);
+  // Los vehículos de los que es chofer (Mantenimiento, parte 29). Sin la
+  // migración 126 o sin vehículos, no aparece el botón. Con la 133 el
+  // checklist pasa al responsable de mantenimiento: al chofer le queda solo el
+  // aviso de que su vehículo no puede circular.
   useEffect(() => {
     if (!conFlota || !usuario?.id) return;
     let vivo = true;
-    sb.get(`vehiculos?responsable_id=eq.${usuario.id}&activo=eq.true&select=id,patente,marca,modelo,km&order=patente.asc`)
+    sb.get(`vehiculos?responsable_id=eq.${usuario.id}&activo=eq.true&select=*&order=patente.asc`)
       .then(async (v) => {
         if (!vivo) return;
-        setMisVehiculos(v || []);
+        setMisVehiculos((v || []).filter((x) => !conResponsables(x, CAMPOS_VEHICULO)));
         // Parte 31 (129): lo que deja su vehículo sin poder circular
         if (!v?.length) return;
         const arr = await sb.get(`vehiculo_arreglos?vehiculo_id=in.(${v.map((x) => x.id).join(",")})&estado=eq.pendiente&prioridad=eq.no_circula&select=id,vehiculo_id,descripcion&order=id.asc`).catch(() => []);
@@ -137,6 +148,9 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         {conStock && <BotonAccion icono="📦" titulo="Retirar material" detalle="Escaneá el QR del artículo y anotá cuánto sacás" onClick={() => setRetirar(true)} />}
         {/* Acopio y carga: el responsable elige la OT sin depender del QR de un rótulo */}
         {conTareas && onAbrirCarga && <BotonAccion icono="🚚" titulo="Carga de una OT" detalle="Armar bultos, imprimir rótulos y cargar el camión" onClick={() => setElegirCarga(true)} />}
+        {conMiMant && (
+          <BotonAccion icono="🔧" titulo="Mi mantenimiento" detalle={detalleMiMantenimiento(mant.items)} destacado={resumenMant.vencidas > 0} onClick={() => setVerMant(true)} />
+        )}
         {misVehiculos.length > 0 && (
           <BotonAccion icono="🚚" titulo="Checklist de mi vehículo" detalle={`Revisá ${misVehiculos.map((v) => v.patente).join(", ")}: fluidos, neumáticos, luces y papeles`} onClick={() => setChecklist(true)} />
         )}
@@ -147,6 +161,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         )}
       </section>
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
+      {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}
       {checklist && <ChecklistVehiculo vehiculos={misVehiculos} empresaNombre={empresa?.nombre || ""} onClose={() => setChecklist(false)} />}
       {retirar && <RetirarMaterial empresaId={usuario.empresa_id || empresa?.id} usuario={usuario} onClose={() => setRetirar(false)} />}
       {elegirCarga && (
