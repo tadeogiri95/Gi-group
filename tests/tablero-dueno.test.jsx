@@ -175,3 +175,74 @@ test("llegadasDelDia — hoy, quien todavía no entra no cuenta como falta; sin 
   assert.deepEqual(asistenciaPorDivision(pasado).total, { esperados: 2, vinieron: 0, tarde: 0 }, "un día pasado: todos los que tenían turno");
   assert.equal(diaKeyDeFecha("2026-10-19"), "lun");
 });
+
+// ── Mantenimiento, parte 36: 🔧 Mantenimiento (reemplaza a 🚚 Flota) y ⏰ OT atrasadas ──
+const { alertasMantenimiento, otAtrasadas } = await import("../app/lib/panelMantenimiento.js");
+
+test("otAtrasadas — pasaron la entrega y no están terminadas, la más atrasada arriba, con su %", () => {
+  const fila = (ot, fecha_entrega, cerradas, total) => ({ proyecto: { id: ot, ot, fecha_entrega }, cerradas, celdas: Array(total).fill({}) });
+  const filas = [
+    fila("1", "2026-10-20", 1, 2),
+    fila("2", "2026-10-01", 0, 2),
+    fila("3", "2026-10-25", 0, 2), // vence hoy: todavía no está atrasada
+    fila("4", "2026-10-02", 2, 2), // todas las etapas cerradas
+    fila("5", null, 0, 2),
+    fila("6", "2026-10-24", 0, 0), // sin ruta: atrasada sin %
+  ];
+  const r = otAtrasadas(filas, { porEscaneo: new Map([["2", { porcentaje: 37 }]]), hoy: "2026-10-25" });
+  assert.deepEqual(r.map((x) => [x.fila.proyecto.ot, x.dias, x.porcentaje]), [["2", 24, 37], ["1", 5, 50], ["6", 1, null]]);
+});
+
+test("alertasMantenimiento — máquinas paradas arriba, después lo vencido y al final lo de pronto", () => {
+  const maquinas = [
+    { id: "m1", codigo: "CNC-01", estado: "parada", activo: true, criticidad: "A" },
+    { id: "m2", codigo: "SEC-01", estado: "en_servicio", activo: true, criticidad: "B" },
+  ];
+  const fallas = [
+    { id: "f1", maquina_id: "m1", descripcion: "No arranca el husillo", parada: true, estado: "pendiente", created_at: "2026-10-24T10:00:00Z" },
+    { id: "f2", maquina_id: "m2", descripcion: "Ruido en la sierra", parada: false, estado: "pendiente", created_at: "2026-10-24T11:00:00Z" },
+  ];
+  const alertasFlota = [{ patente: "AB123CD", clave: "seguro", nivel: "vencido", texto: "Seguro", falta: true }];
+  const r = alertasMantenimiento({ alertasFlota, maquinas, tareas: [], fallas, hoy: "2026-10-25", textoVencimiento: () => "" });
+  assert.deepEqual(r.map((a) => [a.quien, a.texto, a.nivel]), [
+    ["CNC-01", "Parada: No arranca el husillo", "vencido"],
+    ["AB123CD", "Seguro", "vencido"],
+    ["SEC-01", "Falla: Ruido en la sierra", "pronto"],
+  ]);
+  assert.equal(r[0].destino, "mantenimiento:maquinaria");
+  assert.equal(r[1].destino, "mantenimiento:flota");
+});
+
+test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
+  const respuestas = {
+    proyectos: [
+      { id: 1, ot: "7495", cliente: "CEVT", division: "M", fecha_entrega: "2020-01-10", liberada_at: null },
+      { id: 2, ot: "7500", cliente: "A tiempo", division: "M", fecha_entrega: "2099-01-10", liberada_at: null },
+    ],
+    maquinas: [{ id: "m1", codigo: "CNC-01", nombre: "CNC 1", estado: "parada", activo: true, criticidad: "A" }],
+    maquina_fallas: [{ id: "f1", maquina_id: "m1", descripcion: "No arranca", parada: true, estado: "pendiente", created_at: "2026-10-24T10:00:00Z" }],
+  };
+  global.fetch = async (_url, opts) => {
+    const { path } = JSON.parse(opts?.body || "{}");
+    return Response.json({ ok: true, data: respuestas[String(path || "").split("?")[0]] || [] });
+  };
+  const destinos = [];
+  render(
+    <AuthContext.Provider value={{ divisiones: [{ id: "M", label: "Muebles", ruta_etapas: [1, 2] }], etapas: [{ codigo: 1, nombre: "Corte", orden: 1 }, { codigo: 2, nombre: "Canto", orden: 2 }], usuario: { rol: "gerencial" } }}>
+      <DashboardGerencia goto={(d) => destinos.push(d)} ctx={{ empleados: [], fichadasHoy: [], solicitudes: [], notificaciones: [] }} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos: modulosEfectivos({ plan: "planta_15" }) }} />
+    </AuthContext.Provider>
+  );
+  const atr = await screen.findByRole("region", { name: "OT atrasadas" });
+  await within(atr).findByText("7495");
+  assert.equal(within(atr).queryByText("7500"), null, "la que entrega más adelante no está atrasada");
+  assert.ok(within(atr).getByText(/Muebles · entrega 10\/1\/2020 · 0% hecho/));
+  assert.ok(within(atr).getByText(/^\d+ días$/));
+  const mant = await screen.findByRole("region", { name: "Mantenimiento" });
+  await within(mant).findByText("Parada: No arranca");
+  assert.ok(within(mant).getByText("1 parada"));
+  assert.equal(screen.queryByRole("region", { name: "Flota" }), null, "🔧 Mantenimiento reemplaza a 🚚 Flota");
+  fireEvent.click(within(mant).getByText(/Ir a Maquinaria/));
+  assert.deepEqual(destinos, ["mantenimiento:maquinaria"]);
+  const ot = screen.getByRole("region", { name: "OT en curso" });
+  assert.ok(ot.compareDocumentPosition(atr) & Node.DOCUMENT_POSITION_FOLLOWING, "OT atrasadas va después de OT en curso");
+});
