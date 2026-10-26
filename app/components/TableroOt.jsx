@@ -13,6 +13,7 @@ import { hoyArg } from "../lib/dates";
 import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import { avancePorOt, clavesEscaneadas, reglasPieza } from "../lib/piezas";
 import { useEscape } from "../hooks/useEscape";
+import PlanSemana from "./PlanSemana";
 
 function claseCelda(estado) {
   switch (estado) {
@@ -163,6 +164,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
   return (
     <div>
       {aviso && <div role="alert" className="text-[12px] text-gypi-red mb-2.5">{aviso}</div>}
+      <PlanSemana divisiones={divisiones} />
       <div className="flex items-center gap-2 mb-2.5">
         <div className="flex-1 text-[12px] text-gypi-dim">
           {visibles.length} OT · ordenadas por entrega{porFirmar > 0 ? ` · ${porFirmar === 1 ? "1 etapa" : `${porFirmar} etapas`} por firmar` : ""}

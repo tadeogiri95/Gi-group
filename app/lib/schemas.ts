@@ -57,7 +57,8 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   },
   proyectos: {
     POST: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos"],
-    PATCH: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos"],
+    // prioridad (137): gerencia ordena las OT en Proyectos → Planificación
+    PATCH: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos", "prioridad"],
   },
   push_tokens: {
     POST: ["legajo", "token", "plataforma"],
@@ -516,6 +517,28 @@ export const reporteInstalacionBody = z.object({
   }).strict()).max(30).default([]),
   comentario: textoSuelto(1000),
   fotos: z.array(urlActa).max(4).default([]),
+}).strict();
+
+// ── /api/planificacion (138): plan de producción guardado, solo gerencia ───
+const horasPlan = z.number().min(0).max(100000).transform((n) => Math.round(n * 100) / 100);
+export const planProduccionBody = z.object({
+  tipo: z.enum(["semana", "mes"]),
+  desde: fecha,
+  hasta: fecha,
+  estado: z.enum(["borrador", "confirmado"]),
+  division_id: z.string().trim().max(60).nullable().optional().transform((v) => v || null),
+  horas_necesarias: horasPlan,
+  horas_disponibles: horasPlan,
+  horas_extra: horasPlan,
+  dias_extra: z.array(z.object({ fecha, horas: horasPlan }).strict()).max(62).default([]),
+  pendientes: z.array(z.object({ ot: otSuelto, horas: horasPlan }).strict()).max(500).default([]),
+  items: z.array(z.object({
+    ot: otSuelto,
+    etapa: z.enum(["corte", "canteado", "mecanizado", "armado"]),
+    fecha,
+    horas: horasPlan,
+    orden: z.number().int().min(0).max(100000),
+  }).strict()).max(5000),
 }).strict();
 
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
