@@ -145,6 +145,27 @@ test("📅 Gantt — agrupa por división, muestra los colores y abre el detalle
   assert.deepEqual(vistos, ["7100"]);
 });
 
+test("📅 Gantt — por días con la semana arriba, fila de fechas fija y pantalla completa", () => {
+  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", semana_objetivo: 60, fecha_objetivo: "2027-02-20", estado: "activo" }];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={[{ id: "M", label: "Muebles" }]} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+  // Arranca por días: la cabecera trae "S44 · 25/10" y los números de cada día
+  assert.equal(screen.getByRole("button", { name: "Días" }).getAttribute("aria-pressed"), "true");
+  assert.ok(container.querySelector("svg text")?.textContent.includes("·"), "la semana va arriba de los días");
+  assert.ok(container.querySelector(".sticky.top-0"), "la fila de las fechas queda fija al bajar");
+  assert.ok(container.querySelector(".max-h-\\[70vh\\].overflow-auto"), "el Gantt tiene scroll propio");
+  fireEvent.click(screen.getByRole("button", { name: "Semanas" }));
+  assert.ok(!container.querySelector("svg text")?.textContent.includes("·"));
+  fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
+  assert.ok(screen.getByRole("dialog", { name: "Gantt de OT en pantalla completa" }));
+  fireEvent.click(screen.getByRole("button", { name: "✕ Salir" }));
+  assert.equal(screen.queryByRole("dialog"), null);
+});
+
+test("la app instalada se puede girar (el Gantt se ve mejor apaisado)", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../public/manifest.json", import.meta.url), "utf8"));
+  assert.equal(manifest.orientation, "any");
+});
+
 test("📅 Gantt — sin la migración 135 avisa qué falta", () => {
   render(<GanttOt proyectos={[{ id: 1, ot: "7100", estado: "activo" }]} avanceHoras={null} />);
   assert.ok(screen.getByText(/falta correr la migración 135/));
