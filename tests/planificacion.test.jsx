@@ -319,3 +319,77 @@ test("📊 Carga — sin parámetros avisa qué falta cargar", async () => {
   fireEvent.click(screen.getByText("Cargar parámetros"));
   assert.ok(await screen.findByRole("region", { name: "Parámetros de la planificación" }));
 });
+
+// ─── Parte 40: orden automático y Gantt ─────────────────────────────────────
+const { planAutomatico, celdasGantt, pendientesPorOt } = await import("../app/lib/planAutomatico.js");
+
+// Semana del 25/10 (domingo) al 31/10 (sábado); 1 operario 8 h de lunes a viernes, eficiencia 100 %
+const P100 = normalizarParametros({ ...PARAMS, eficiencia: 100 });
+const UNO = [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "16:00" }, mar: { in: "08:00", out: "16:00" }, mie: { in: "08:00", out: "16:00" }, jue: { in: "08:00", out: "16:00" }, vie: { in: "08:00", out: "16:00" } } }];
+const SEMANA = diasDelPeriodo("2026-10-25", "2026-10-31");
+const trabajo = (id, ot, horas) => ({ id, ot, etapas: Object.fromEntries(["corte", "canteado", "mecanizado", "armado"].map((e) => [e, { gente: horas[e] || 0, maquina: horas[e] || 0 }])) });
+
+test("planAutomatico — etapas en orden, la de más prioridad primero, sin horas extra si entra", () => {
+  const cap = capacidadPlanta(UNO, SEMANA);
+  const plan = planAutomatico({ trabajos: [trabajo(1, "A", { corte: 6, armado: 4 }), trabajo(2, "B", { corte: 4 })], capacidad: cap, params: P100 });
+  assert.deepEqual(plan.pendientes, []);
+  assert.deepEqual(plan.diasExtra, []);
+  // Lunes: A corte 6 h y empieza su armado (2 h). Martes: termina A (2 h) y B corta 4 h
+  const lun = plan.segmentos.filter((s) => s.fecha === "2026-10-26").map((s) => [s.ot, s.etapa, s.gente]);
+  assert.deepEqual(lun, [["A", "corte", 6], ["A", "armado", 2]]);
+  const mar = plan.segmentos.filter((s) => s.fecha === "2026-10-27").map((s) => [s.ot, s.etapa, s.gente]);
+  assert.deepEqual(mar, [["A", "armado", 2], ["B", "corte", 4]]);
+  assert.equal(plan.finPorOt.get(1), "2026-10-27");
+  assert.equal(plan.porDia.find((d) => d.fecha === "2026-10-26").usadas, 8);
+});
+
+test("planAutomatico — la máquina limita aunque sobre gente; con 2 personas la canteadora gasta el doble de gente", () => {
+  const dos = [UNO[0], { ...UNO[0], id: "e2" }];
+  const cap = capacidadPlanta(dos, ["2026-10-26"]); // 16 h de gente, 8 h abierta
+  const plan = planAutomatico({ trabajos: [{ id: 1, ot: "A", etapas: { canteado: { gente: 12, maquina: 6 } } }, trabajo(2, "B", { corte: 10 })], capacidad: cap, params: P100 });
+  const seg = (ot, e) => plan.segmentos.filter((s) => s.ot === ot && s.etapa === e).reduce((t, s) => t + s.gente, 0);
+  assert.equal(seg("A", "canteado"), 12); // 6 h de canteadora × 2 personas
+  assert.equal(seg("B", "corte"), 4);     // la gente que queda
+  assert.deepEqual(pendientesPorOt(plan.pendientes), [{ id: 2, ot: "B", horas: 6, etapas: ["corte"] }]);
+});
+
+test("planAutomatico — si no entra, propone el sábado primero y después el domingo; lo que sobra pasa al período siguiente", () => {
+  const cap = capacidadPlanta(UNO, SEMANA); // 40 h
+  const plan = planAutomatico({ trabajos: [trabajo(1, "A", { armado: 44 })], capacidad: cap, params: P100 });
+  assert.deepEqual(plan.diasExtra, [{ fecha: "2026-10-31", horas: 4 }]);
+  assert.deepEqual(plan.pendientes, []);
+  assert.equal(plan.porDia.find((d) => d.fecha === "2026-10-31").extra, true);
+  const mucho = planAutomatico({ trabajos: [trabajo(1, "A", { armado: 60 })], capacidad: cap, params: P100 });
+  assert.deepEqual(mucho.diasExtra.map((d) => d.fecha), ["2026-10-25", "2026-10-31"]);
+  assert.deepEqual(pendientesPorOt(mucho.pendientes).map((o) => [o.ot, o.horas]), [["A", 4]]);
+  // Las etapas que siguen a una que no entró también pasan
+  const corte = planAutomatico({ trabajos: [trabajo(1, "A", { corte: 60, armado: 2 })], capacidad: cap, params: P100 });
+  assert.deepEqual(pendientesPorOt(corte.pendientes)[0].etapas, ["corte", "armado"]);
+});
+
+test("planAutomatico — horas de reloj con la eficiencia", () => {
+  const cap = capacidadPlanta(UNO, ["2026-10-26"]);
+  const p50 = normalizarParametros({ ...PARAMS, eficiencia: 50 });
+  // 3 h efectivas = 6 h de reloj; el día rinde 4 h efectivas
+  const plan = planAutomatico({ trabajos: [trabajo(1, "A", { armado: 3 })], capacidad: cap, params: p50 });
+  assert.equal(plan.segmentos[0].gente, 6);
+  assert.equal(celdasGantt(plan.segmentos).get(1).get("2026-10-26").armado, 6);
+});
+
+test("📊 Carga — Ordenar automáticamente muestra el Gantt, los días de horas extra y lo que pasa al período siguiente", async () => {
+  mockCarga({
+    proyectos: [OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04" })],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  fireEvent.click(screen.getByText("Ordenar automáticamente"));
+  const plan = await screen.findByLabelText("Plan automático");
+  assert.ok(within(plan).getByLabelText("Gantt de planificación"));
+  assert.match(plan.textContent, /Horas extra propuestas/);
+  assert.ok(within(plan).getAllByLabelText(/^OT M-7473, /).length > 0);
+  assert.ok(within(plan).getAllByLabelText(/^Horas extra el /).length > 0);
+  fireEvent.click(within(plan).getByText("Ocultar"));
+  assert.ok(screen.getByText("Ordenar automáticamente"));
+});

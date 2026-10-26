@@ -5,7 +5,8 @@
 // la planta (parte 39), la prioridad de las OT de Muebles (se ordena
 // arrastrando; migración 137) y los parámetros de la planta (tiempos,
 // eficiencia, relaciones y máquinas; config_sistema clave "planificacion").
-// El orden automático y el Gantt vienen en la parte 40.
+// "Ordenar automáticamente" (parte 40) reparte las OT elegidas día por día y
+// las muestra en un Gantt de planificación.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -17,6 +18,8 @@ import {
   periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo,
   preseleccion, modulosPorOt, fmtH,
 } from "../lib/cargaPlanta";
+import { planAutomatico, pendientesPorOt } from "../lib/planAutomatico";
+import GanttPlan from "./GanttPlan";
 import { materialOt } from "../lib/ot";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
@@ -90,6 +93,7 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const [elegidas, setElegidas] = useState(null);
+  const [ordenado, setOrdenado] = useState(false);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -129,6 +133,10 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   const carga = useMemo(() => cargaPeriodo({
     ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => horas.get(p.id)), params, capacidad,
   }), [ots, elegidas, horas, params, capacidad]);
+  // Plan día por día de las OT elegidas, en el orden de prioridad
+  const plan = useMemo(() => (ordenado ? planAutomatico({
+    trabajos: ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ ...horas.get(p.id), id: p.id })), capacidad, params,
+  }) : null), [ordenado, ots, elegidas, horas, capacidad, params]);
 
   if (error) return <div role="alert" className="text-sm text-gypi-red">{error}</div>;
   if (!datos || !elegidas) return <Cargando />;
@@ -200,6 +208,21 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
         <div className="text-xs text-gypi-dim mt-2">Horas de reloj, con la eficiencia ya aplicada. &quot;Tiene&quot; = horas en que la planta está abierta × cantidad de máquinas.</div>
       </div>
 
+      <div className="g-card mb-3" aria-label="Plan automático">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="g-label flex-1">⚡ Plan día por día</div>
+          {ordenado && <button type="button" onClick={() => setOrdenado(false)} className="g-btn g-btn-secondary">Ocultar</button>}
+        </div>
+        {!ordenado ? (
+          <>
+            <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte las OT elegidas en los días del período, en el orden de prioridad, respetando Corte → Canteado → Mecanizado → Armado y las máquinas. Si no entra, propone días de horas extra.</div>
+            <button type="button" onClick={() => setOrdenado(true)} disabled={!carga.ots.length} className="g-btn g-btn-primary w-full">Ordenar automáticamente</button>
+          </>
+        ) : (
+          <PlanDelPeriodo plan={plan} ots={ots} />
+        )}
+      </div>
+
       <div className="g-label mb-1.5">OT del período ({ots.length})</div>
       <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana hasta el fin del período (también las atrasadas). Destildá o sumá las que quieras.</div>
       <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="OT para planificar">
@@ -222,6 +245,43 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
         })}
       </ul>
     </section>
+  );
+}
+
+function PlanDelPeriodo({ plan, ots }) {
+  const pasan = pendientesPorOt(plan.pendientes);
+  const horasExtra = plan.diasExtra.reduce((t, d) => t + d.horas, 0);
+  const fin = (id) => plan.finPorOt.get(id);
+  return (
+    <>
+      {plan.diasExtra.length > 0 ? (
+        <div className="mb-2 text-[13px]">
+          <div className="font-bold text-gypi-red mb-1">⏱ Horas extra propuestas: {fmtH(horasExtra)}</div>
+          <ul className="list-none m-0 p-0">
+            {plan.diasExtra.map((d) => (
+              <li key={d.fecha}>{new Date(`${d.fecha}T00:00:00Z`).toLocaleDateString("es-AR", { weekday: "long", timeZone: "UTC" })} {fechaCorta(d.fecha)}: {fmtH(d.horas)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : !pasan.length && <div className="mb-2 text-[13px] font-bold text-gypi-green">✅ Entra todo en los días de trabajo, sin horas extra.</div>}
+      {pasan.length > 0 && (
+        <div className="mb-2 text-[13px]" aria-label="Pasa al período siguiente">
+          <div className="font-bold mb-1">➡ Pasa al período siguiente</div>
+          <ul className="list-none m-0 p-0">
+            {pasan.map((o) => <li key={o.id}>{o.ot}: {fmtH(o.horas)}</li>)}
+          </ul>
+          <div className="text-xs text-gypi-dim mt-1">Ni con sábados y domingos entra todo: estas OT se parten y siguen en el período siguiente.</div>
+        </div>
+      )}
+      <GanttPlan plan={plan} ots={ots} hoy={hoyArg()} />
+      <ul className="list-none m-0 p-0 mt-2 text-xs text-gypi-dim">
+        {ots.filter((p) => fin(p.id)).map((p) => (
+          pasan.some((o) => o.id === p.id)
+            ? <li key={p.id}>{p.ot} avanza hasta el {fechaCorta(fin(p.id))} y sigue en el período siguiente</li>
+            : <li key={p.id}>{p.ot} termina el {fechaCorta(fin(p.id))}{p.fecha_objetivo && fin(p.id) > p.fecha_objetivo ? ` · después de su semana (${fechaCorta(p.fecha_objetivo)})` : ""}</li>
+        ))}
+      </ul>
+    </>
   );
 }
 
