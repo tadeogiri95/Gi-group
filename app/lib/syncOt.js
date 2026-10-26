@@ -7,6 +7,8 @@ import { logger } from "./logger";
 import { safeErrorMessage } from "./validate";
 import { parseCsvProyectos } from "./csvProyectos";
 import { sbHeaders } from "./sbHelpers";
+import { CLAVE_FECHA_OBJETIVO, normalizarModo, fechaObjetivo } from "./semanaObjetivo";
+import { hoyArg } from "./dates";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -103,12 +105,24 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   const { filas, repetidas } = parseCsvProyectos(csvText);
   if (!filas.length) throw new Error("CSV sin datos válidos (columna OT requerida)");
 
+  // Fecha objetivo de cada OT (135): según cómo cuenta las semanas la empresa.
+  // La fecha que ya tenía una OT abierta se respeta si es de la misma semana
+  // (no cambia de año sola).
+  const [cfgModo, previas] = await Promise.all([
+    sbFetch(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`, {}, sesion).catch(() => null),
+    sbFetch(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&fecha_objetivo=not.is.null&select=ot,fecha_objetivo`, {}, sesion).catch(() => null),
+  ]);
+  const modo = normalizarModo(cfgModo?.[0]?.valor?.modo);
+  const fechaPrevia = new Map((previas || []).map((p) => [String(p.ot), p.fecha_objetivo]));
+  const hoy = hoyArg();
+
   let procesados = 0;
   const errores = [];
   // Columnas que agregaron migraciones posteriores (091: descripcion; 097:
-  // fecha_entrega, cantidad, terminado_planilla; 101: total_modulos). Si la base todavía no tiene
-  // alguna, se reintenta sin ella para que la sincronización no se corte.
-  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos"];
+  // fecha_entrega, cantidad, terminado_planilla; 101: total_modulos; 135:
+  // semana_objetivo, fecha_objetivo). Si la base todavía no tiene alguna, se
+  // reintenta sin ella para que la sincronización no se corte.
+  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos", "semana_objetivo", "fecha_objetivo"];
   const omitidas = new Set();
   const subir = (batch) => sbFetch("proyectos?on_conflict=empresa_id,ot", {
     method: "POST",
@@ -130,6 +144,8 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       fecha_entrega:      r.fecha_entrega,
       cantidad:           r.cantidad,
       terminado_planilla: r.terminado_planilla,
+      semana_objetivo:    r.semana_objetivo ?? null,
+      fecha_objetivo:     fechaObjetivo(r, { modo, hoy, previa: fechaPrevia.get(String(r.ot)) }),
       // Solo si la planilla tiene la columna (todas las filas la traen o
       // ninguna: PostgREST pide las mismas claves en todo el lote)
       ...("total_modulos" in r ? { total_modulos: r.total_modulos } : {}),

@@ -8,6 +8,8 @@
 //   - la misma OT en dos filas → la base rechazaba el lote entero de 100 OT.
 // Las filas vacías (",,,,") se saltean.
 
+import { semanaPlanilla } from "./semanaObjetivo";
+
 /** Lo que se le avisa a quien sincroniza: Google actualiza la copia publicada
  *  de la planilla con unos minutos de demora. */
 export const AVISO_DEMORA_GOOGLE = "Si cargaste algo recién en la planilla, Google puede tardar unos 5 minutos en mostrarlo.";
@@ -70,11 +72,11 @@ function cantidadPlanilla(texto) {
 const SI = new Set(["si", "sí", "x", "ok", "terminado", "terminada"]);
 
 /**
- * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla}[], repetidas: number }}
+ * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla,semana_objetivo}[], repetidas: number }}
  * filas: una por OT. Si una OT aparece varias veces (un renglón por ítem), vale
  * la última fila, las columnas vacías se completan con las anteriores y las
  * descripciones de todos los ítems se juntan con " / ". De todos sus ítems:
- * la fecha de entrega es la más tardía, la cantidad y los módulos se suman, y la OT está
+ * la fecha de entrega y la SEMANA son las más tardías, la cantidad y los módulos se suman, y la OT está
  * terminada en la planilla solo si todos sus ítems dicen SI en TERMINADO
  * (null si la planilla no tiene esa columna).
  */
@@ -103,6 +105,8 @@ export function parseCsvProyectos(text) {
     ? headers.findIndex((h, i) => i !== iMod && h === "cant")
     : headers.findIndex((h, i) => i !== iMod && h.includes("cant"));
   const iTerminado = idx("terminado");
+  // SEMANA objetivo del Plan de trabajo (135): el título viene con espacio al final
+  const iSemana = idx("semana");
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);
 
@@ -119,6 +123,7 @@ export function parseCsvProyectos(text) {
       // Sin columna de módulos la clave no va: no pisa el total cargado a mano
       ...(iMod >= 0 ? { total_modulos: enteroPlanilla(c[iMod]) } : {}),
       terminado_planilla: iTerminado >= 0 ? SI.has(limpio(c[iTerminado]).toLowerCase()) : null,
+      semana_objetivo: iSemana >= 0 ? semanaPlanilla(c[iSemana]) : null,
     };
     const previa = porOt.get(ot);
     if (previa) {
@@ -129,12 +134,14 @@ export function parseCsvProyectos(text) {
       const cantidad = previa.cantidad == null && fila.cantidad == null ? null : (previa.cantidad || 0) + (fila.cantidad || 0);
       const modulos = previa.total_modulos == null && fila.total_modulos == null ? null : (previa.total_modulos || 0) + (fila.total_modulos || 0);
       const terminado = iTerminado >= 0 ? previa.terminado_planilla && fila.terminado_planilla : null;
+      const semanas = [previa.semana_objetivo, fila.semana_objetivo].filter(Boolean);
       for (const k of Object.keys(fila)) if (fila[k] == null) fila[k] = previa[k];
       fila.descripcion = [...new Set(descs.flatMap(d => d.split(" / ")))].join(" / ").slice(0, MAX_DESCRIPCION) || null;
       fila.fecha_entrega = fechas.at(-1) || null;
       fila.cantidad = cantidad;
       if (iMod >= 0) fila.total_modulos = modulos == null ? null : Math.min(modulos, 9999);
       fila.terminado_planilla = terminado;
+      fila.semana_objetivo = semanas.length ? Math.max(...semanas) : null;
     }
     porOt.set(ot, fila);
   }
