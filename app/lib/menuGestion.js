@@ -21,6 +21,8 @@ export const BOTONES_GESTION = {
       { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
       { id: "ot", label: "OT", modulo: "proyectos" },
       { id: "reportes", label: "Reportes", modulo: "actividad" },
+      // Planificación de la producción (parte 38): solo la arma gerencia
+      { id: "planificacion", label: "Planificación", modulo: "proyectos", soloGerencia: true },
     ],
   },
   inventario: {
@@ -41,10 +43,12 @@ export const BOTONES_GESTION = {
   },
 };
 
-/** Pestañas de un botón para esta empresa: sin lo apagado ni lo que pide el registro de tareas. */
-export function opcionesBoton(boton, empresa) {
+/** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el
+ *  registro de tareas ni lo que es solo de gerencia (si no lo es el usuario). */
+export function opcionesBoton(boton, empresa, usuario = null) {
   return (BOTONES_GESTION[boton]?.opciones || [])
-    .filter((o) => (!o.conTareas || conRegistroTareas(empresa)) && !moduloApagado(empresa, o.modulo));
+    .filter((o) => (!o.conTareas || conRegistroTareas(empresa)) && !moduloApagado(empresa, o.modulo))
+    .filter((o) => !o.soloGerencia || usuario?.rol === "gerencial");
 }
 
 /** ¿Va el botón en la barra? Solo si la empresa tiene alguno de sus módulos. */

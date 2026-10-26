@@ -1,6 +1,6 @@
 "use client";
 // Pantalla de un botón de la barra de gestión (menú nuevo, parte 32):
-// Proyectos (OT y Reportes), Inventario (Stock y Compras) y Mantenimiento
+// Proyectos (OT, Reportes y Planificación, esta solo para gerencia), Inventario (Stock y Compras) y Mantenimiento
 // (Flota vehicular y Maquinaria, parte 33). Reemplaza a la pestaña "Planta".
 // Stock (ítem 40), Compras (ítem 41), Flota y Maquinaria (Mantenimiento, ítem
 // 43) son módulos propios que vienen con las OT (131, 132). Lo que la empresa
@@ -20,11 +20,12 @@ import StockScreen from "../StockScreen";
 import ComprasScreen from "../ComprasScreen";
 import FlotaScreen from "../FlotaScreen";
 import MaquinariaScreen from "../MaquinariaScreen";
+import PlanificacionScreen from "../PlanificacionScreen";
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
 export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlanes, seccion = null }) {
-  const OPCIONES = opcionesBoton(boton, empresa);
+  const OPCIONES = opcionesBoton(boton, empresa, usuario);
   const primera = OPCIONES.find((o) => tieneModulo(empresa, o.modulo)) || OPCIONES[0];
   // seccion: la opción con la que abre (el Panel de control manda "ot", "compras"
   // o "flota", que abre en 🔔 Alertas)
@@ -46,6 +47,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria" ? "alertas" : "maquinas"} />}
+        {!bloqueado && actual.id === "planificacion" && <PlanificacionScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
       </div>
     </div>
