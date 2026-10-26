@@ -115,7 +115,7 @@ test("migración 133, validación y avisos sin repetir", () => {
 
 // ─── API ───
 
-function mockApi({ vehiculo = null, maquina = null, tareas = [], sin133 = false } = {}) {
+function mockApi({ vehiculo = null, maquina = null, tareas = [], sin133 = false, marcados = [] } = {}) {
   const escrito = [];
   const anotar = (tabla, u, o) => {
     const body = o.body ? JSON.parse(o.body) : null;
@@ -125,6 +125,8 @@ function mockApi({ vehiculo = null, maquina = null, tareas = [], sin133 = false 
   const faltaColumna = { status: 400, body: { code: "PGRST204", message: "Could not find the 'mant_responsable_id' column of 'vehiculos' in the schema cache" } };
   const faltaColumnaMaq = { status: 400, body: { code: "PGRST204", message: "Could not find the 'responsable_id' column of 'maquinas' in the schema cache" } };
   global.fetch = createFetchMock([
+    // ¿Responsable de mantenimiento? (pestaña Mantenimiento, 26/10)
+    { match: (u) => u.includes("/rest/v1/empleados?id=eq.") && u.includes("select=es_mantenimiento"), respond: (u) => ({ status: 200, body: [{ es_mantenimiento: marcados.some((id) => u.includes(id)) }] }) },
     { match: (u) => u.includes("/rest/v1/empleados?id=eq.") && u.includes("select=nombre"), respond: () => ({ status: 200, body: [{ nombre: "Mario" }] }) },
     { match: (u) => u.includes("/rest/v1/empleados?id=eq."), respond: (u) => ({ status: 200, body: [MANT, SUP, CHOFER].some((id) => u.includes(id)) ? [{ id: "x" }] : [] }) },
     ...authPassHandlers(),
@@ -336,4 +338,59 @@ test("pantallas — casilla en el empleado, chofer habitual en el vehículo y re
   assert.match(vehiculo, /mantenimiento_asignar/);
   assert.match(fuente("app/components/FichaMaquina.jsx"), /responsables_guardar/);
   assert.match(fuente("app/api/cron/flota-alertas/route.js"), /revisarMaquinaria/);
+});
+
+// ─── Pestaña Mantenimiento del responsable (pedido de Tadeo, 26/10) ───
+const { puedeGestionarMantenimiento } = await import("../app/lib/mantenimiento.js");
+const { getItems } = await import("../app/components/nav/BottomNav.jsx");
+
+test("pestaña Mantenimiento — el responsable la ve en su barra; la oficina y el resto no", () => {
+  assert.deepEqual(getItems("operativo", 0, undefined, { mantenimiento: true }).map((i) => i.label), ["Inicio", "Mantenimiento", "Permisos", "Mi cuenta"]);
+  assert.equal(getItems("operativo", 0, ["fichaje"], { mantenimiento: true }).some((i) => i.id === "mantenimiento"), false, "sin Flota ni Maquinaria no aparece");
+  assert.equal(getItems("operativo", 0).some((i) => i.id === "mantenimiento"), false);
+  assert.ok(puedeGestionarMantenimiento({ rol: "operativo", es_mantenimiento: true }));
+  assert.ok(puedeGestionarMantenimiento({ rol: "administrativo" }));
+  assert.ok(!puedeGestionarMantenimiento({ rol: "operativo" }));
+});
+
+test("/api/flota y /api/maquinaria — el responsable da de alta y queda a cargo; licencias y borrar services siguen de la oficina", async () => {
+  const alta = { accion: "vehiculo_guardar", patente: "AB 123 CD", tipo: "utilitario" };
+  let escrito = mockApi({ marcados: [MANT] });
+  let res = await flota.POST(req("flota", await token(), alta));
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  const v = escrito.find((x) => x.tabla === "vehiculos" && x.metodo === "POST").body;
+  assert.equal(v.mant_responsable_id, MANT, "queda a su cargo");
+
+  mockApi({ marcados: [] });
+  assert.equal((await flota.POST(req("flota", await token(), alta))).status, 403, "un operario sin la casilla no");
+
+  mockApi({ marcados: [MANT] });
+  assert.equal((await flota.POST(req("flota", await token(), { accion: "mantenimiento_borrar", id: 3 }))).status, 403, "borrar un service es de la oficina");
+  mockApi({ marcados: [MANT] });
+  assert.equal((await flota.POST(req("flota", await token(), { accion: "licencia_guardar", empleado_id: CHOFER, categoria: "B1", vencimiento: null }))).status, 403, "la licencia es de la oficina");
+
+  // La oficina da de alta sin quedar a cargo
+  escrito = mockApi({});
+  assert.equal((await flota.POST(req("flota", await token("administrativo", OFI), alta))).status, 200);
+  assert.equal(escrito.find((x) => x.tabla === "vehiculos" && x.metodo === "POST").body.mant_responsable_id, undefined);
+
+  const maq = { accion: "maquina_guardar", codigo: "CNC-03", nombre: "CNC 3", tipo: "cnc", criticidad: "A", con_horometro: false, estado: "en_servicio" };
+  escrito = mockApi({ marcados: [MANT] });
+  res = await maquinaria.POST(req("maquinaria", await token(), maq));
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  assert.equal(escrito.find((x) => x.tabla === "maquinas" && x.metodo === "POST").body.responsable_id, MANT);
+  mockApi({ maquina: { id: 1, codigo: "SEC-01", horas: 5, con_horometro: true }, marcados: [MANT] });
+  assert.equal((await maquinaria.POST(req("maquinaria", await token(), { accion: "horas_guardar", id: 1, horas: 10 }))).status, 200, "también carga horas de cualquier máquina");
+});
+
+test("pantallas — el responsable edita Flota y Maquinaria; 💲 Costos, 📊 Indicadores y licencias quedan para la oficina", () => {
+  const flotaSrc = readFileSync(new URL("../app/components/FlotaScreen.jsx", import.meta.url), "utf8");
+  assert.match(flotaSrc, /const editable = puedeGestionarMantenimiento\(usuario\)/);
+  assert.match(flotaSrc, /\{oficina && <Chip active=\{vista === "costos"\}/);
+  assert.match(flotaSrc, /disabled=\{!oficina\}/);
+  const maqSrc = readFileSync(new URL("../app/components/MaquinariaScreen.jsx", import.meta.url), "utf8");
+  assert.match(maqSrc, /const editable = puedeGestionarMantenimiento\(usuario\)/);
+  assert.match(maqSrc, /\{oficina && <Chip active=\{vista === "indicadores"\}/);
+  const home = readFileSync(new URL("../app/[slug]/HomeContent.jsx", import.meta.url), "utf8");
+  assert.match(home, /!uIsGer && screen === "mantenimiento" && u\?\.es_mantenimiento && <BotonGestionScreen/);
 });

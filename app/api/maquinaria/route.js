@@ -39,7 +39,8 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { normalizarCodigo, puedeEditarMaquinaria, tareasDePlantilla, tipoMaquina } from "../../lib/maquinaria";
 import { contarEstados } from "../../lib/checklistVehiculo";
-import { CAMPOS_MAQUINA, aCargoDe, destinatarios } from "../../lib/mantenimiento";
+import { ACCIONES_RESPONSABLE, CAMPOS_MAQUINA, aCargoDe, destinatarios } from "../../lib/mantenimiento";
+import { esResponsableMantenimiento } from "../../lib/mantenimientoServidor";
 import { fallasDeRegistro, sigueParada } from "../../lib/fallasMaquinaria";
 import { enviarPushGerencia, enviarPushLegajos } from "../../lib/pushGerencia";
 import { logger } from "../../lib/logger";
@@ -64,6 +65,9 @@ function faltaMigracionResponsables(err) {
 const noEncontrado = (que) => NextResponse.json({ error: `No encontré esa ${que}` }, { status: 404 });
 const hoyArg = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 
+// La oficina o un responsable de mantenimiento (es_mantenimiento lo marca el POST)
+const gestiona = (sesion) => puedeEditarMaquinaria(sesion.rol) || sesion.es_mantenimiento === true;
+
 async function guardarMaquina(sesion, d) {
   const e = sesion.empresa_id;
   const opts = { sesion };
@@ -85,6 +89,8 @@ async function guardarMaquina(sesion, d) {
       broadcastRefresh(e, "maquinas");
       return NextResponse.json({ ok: true, maquina: m });
     }
+    // El que la da de alta desde su pestaña Mantenimiento queda a cargo (la oficina lo puede cambiar)
+    if (sesion.es_mantenimiento && !puedeEditarMaquinaria(sesion.rol)) fila[CAMPOS_MAQUINA.responsable] = sesion.empleado_id;
     const [m] = (await sbPost("maquinas", { ...fila, empresa_id: e, horas_at: fila.horas === null ? null : ahora }, opts)) || [];
     let tareas = 0;
     if (d.con_plantilla && m?.id) {
@@ -179,7 +185,7 @@ async function crearRegistro(sesion, d) {
   // select=*: con la 133 vienen el responsable y el suplente
   const [m] = (await sbGet(`maquinas?id=eq.${t.maquina_id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   if (!m) return noEncontrado("máquina");
-  if (!puedeEditarMaquinaria(sesion.rol) && !aCargoDe(m, sesion.empleado_id, CAMPOS_MAQUINA)) {
+  if (!gestiona(sesion) && !aCargoDe(m, sesion.empleado_id, CAMPOS_MAQUINA)) {
     return NextResponse.json({ error: "Las tareas de esta máquina las hacen su responsable de mantenimiento, el suplente o la oficina" }, { status: 403 });
   }
   if (d.fecha > hoyArg()) return NextResponse.json({ error: "La fecha no puede ser después de hoy" }, { status: 400 });
@@ -318,7 +324,7 @@ async function resolverFalla(sesion, d) {
   const e = sesion.empresa_id;
   const { f, m } = await fallaConMaquina(sesion, d.id);
   if (!f) return noEncontrado("falla");
-  const puede = puedeEditarMaquinaria(sesion.rol) || aCargoDe(m, sesion.empleado_id, CAMPOS_MAQUINA) || (f.responsable_id && f.responsable_id === sesion.empleado_id);
+  const puede = gestiona(sesion) || aCargoDe(m, sesion.empleado_id, CAMPOS_MAQUINA) || (f.responsable_id && f.responsable_id === sesion.empleado_id);
   if (!puede) return NextResponse.json({ error: "La arreglan el responsable de mantenimiento de la máquina, el suplente o la oficina" }, { status: 403 });
   if (f.estado !== "pendiente") return NextResponse.json({ error: "Esa falla ya está cerrada" }, { status: 409 });
   await sbPatch(`maquina_fallas?id=eq.${f.id}&empresa_id=eq.${e}`, {
@@ -363,7 +369,7 @@ async function guardarResponsables(sesion, d) {
 
 export async function POST(request) {
   try {
-    const sesion = await validarToken(request);
+    let sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(maquinariaBody, raw);
@@ -371,7 +377,9 @@ export async function POST(request) {
     // Una tarea hecha y un arreglo los carga también su responsable (se
     // controla adentro); una falla la avisa cualquiera de la empresa
     const deTodos = ["registro_crear", "falla_crear", "falla_resolver"].includes(parsed.data.accion);
-    if (!deTodos && !puedeEditarMaquinaria(sesion.rol)) {
+    // El responsable de mantenimiento (133) carga las máquinas igual que la oficina (pedido de Tadeo, 26/10)
+    if (!puedeEditarMaquinaria(sesion.rol) && await esResponsableMantenimiento(sesion)) sesion = { ...sesion, es_mantenimiento: true };
+    if (!deTodos && !puedeEditarMaquinaria(sesion.rol) && !(sesion.es_mantenimiento && ACCIONES_RESPONSABLE.has(parsed.data.accion))) {
       return NextResponse.json({ error: "La maquinaria la cargan gerencia y Administración" }, { status: 403 });
     }
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);

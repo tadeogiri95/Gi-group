@@ -18,6 +18,7 @@ import FichaMaquina, { FormMaquina } from "./FichaMaquina";
 import { ListaFallas } from "./FallasMaquina";
 import IndicadoresMaquinaria from "./IndicadoresMaquinaria";
 import { fallasPendientes } from "../lib/fallasMaquinaria";
+import { puedeGestionarMantenimiento } from "../lib/mantenimiento";
 
 const ORDEN_NIVEL = { vencido: 0, pronto: 1, ok: 2, fuera: 3 };
 const AVISO_MIGRACION = "Para usar Maquinaria falta correr la migración 132 en Supabase.";
@@ -35,7 +36,9 @@ export default function MaquinariaScreen({ empresaId, empresa = null, usuario = 
   const [texto, setTexto] = useState("");
   const [fichaId, setFichaId] = useState(null);
   const [nueva, setNueva] = useState(false);
-  const editable = puedeEditarMaquinaria(usuario?.rol);
+  // Cargar y editar: la oficina y el responsable de mantenimiento; 📊 Indicadores, solo la oficina
+  const editable = puedeGestionarMantenimiento(usuario);
+  const oficina = puedeEditarMaquinaria(usuario?.rol);
   const hoy = hoyArg();
 
   const cargar = useCallback(async () => {
@@ -105,7 +108,7 @@ export default function MaquinariaScreen({ empresaId, empresa = null, usuario = 
         <Chip active={vista === "maquinas"} onClick={() => setVista("maquinas")}>⚙️ Máquinas</Chip>
         <Chip active={vista === "alertas"} onClick={() => setVista("alertas")}>🔔 Alertas{alertas.length ? ` (${alertas.length})` : ""}</Chip>
         <Chip active={vista === "fallas"} onClick={() => setVista("fallas")}>🔧 Fallas{pendientes.length ? ` (${pendientes.length})` : ""}</Chip>
-        {editable && <Chip active={vista === "indicadores"} onClick={() => setVista("indicadores")}>📊 Indicadores</Chip>}
+        {oficina && <Chip active={vista === "indicadores"} onClick={() => setVista("indicadores")}>📊 Indicadores</Chip>}
       </FilaDeslizable>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
 
@@ -165,7 +168,7 @@ export default function MaquinariaScreen({ empresaId, empresa = null, usuario = 
         </>
       )}
 
-      {vista === "indicadores" && editable && (
+      {vista === "indicadores" && oficina && (
         <IndicadoresMaquinaria maquinas={maquinas || []} tareas={tareas} registros={registros} fallas={fallas} hoy={hoy} />
       )}
 
