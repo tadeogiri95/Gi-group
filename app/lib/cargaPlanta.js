@@ -7,15 +7,18 @@
 //   Corte      = (placas + fondos) × min por placa
 //   Canteado   = metros de canto × min por metro (con 2 personas la máquina
 //                tarda menos, pero ocupa a las 2: mismas horas de gente)
-//   Mecanizado = placas mecanizadas × min por placa (MECANIZADOS de la
-//                planilla, o el % configurado de placas + fondos)
+//   Mecanizado = mecanizados × min por mecanizado. Mecanizados = MECANIZADOS
+//                de la planilla, o placas × mecanizados por placa del tipo de
+//                proyecto (con el switch en "%": solo el % de placas que se
+//                mecanizan)
 //   Armado     = gabinetes × min por gabinete (módulos de la OT, o las
-//                etiquetas de módulo, o placas × gabinetes por placa)
+//                etiquetas de módulo, o placas × gabinetes por placa del tipo)
 // Capacidad = horario semanal de los operarios de la división que no son
 // instaladores (sin descontar francos ni licencias). La eficiencia se aplica
 // a las horas de trabajo: con 85 %, una hora de reloj rinde 51 minutos.
 import { buscarDivision } from "./rutas";
-import { ETAPAS_PLAN } from "./planificacion";
+import { ETAPAS_PLAN, relacionesTipo } from "./planificacion";
+import { tipoDeOt } from "./tipoProyecto";
 
 const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIA = 86400000;
@@ -103,16 +106,22 @@ export function pendienteEtapa({ ot, codigo, avance = [], piezas = [] }) {
 
 /**
  * Horas de una OT por etapa (horas de trabajo efectivas, antes de la eficiencia).
- * @returns {{ ot, sinDatos: boolean, placas, metros, mecanizadas, gabinetes, origenGabinetes, etapas: Record<string,{gente:number, maquina:number, pendiente:number}>, total: number }}
+ * @returns {{ ot, tipo: string|null, sinDatos: boolean, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas: Record<string,{gente:number, maquina:number, pendiente:number}>, total: number }}
  */
 export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = [], piezas = [] } = {}) {
   const placas = (num(proyecto.placas) || 0) + (num(proyecto.fondos) || 0);
   const metros = num(proyecto.metros_canto) || 0;
-  const mecanizadas = num(proyecto.placas_mecanizadas) ?? placas * ((params.pct_mecanizado || 0) / 100);
+  const tipo = tipoDeOt(proyecto).id;
+  const rel = relacionesTipo(params, tipo);
+  // La columna MECANIZADOS de la planilla (placas_mecanizadas) es la cantidad de mecanizados
+  const deLaPlanilla = num(proyecto.placas_mecanizadas);
+  const pct = params.modo_mecanizado === "porcentaje" ? (params.pct_mecanizado || 0) / 100 : 1;
+  const mecanizados = deLaPlanilla ?? placas * pct * (rel.mec || 0);
+  const origenMecanizados = deLaPlanilla != null ? "planilla" : "tipo";
   let gabinetes, origenGabinetes;
   if (num(proyecto.total_modulos)) { gabinetes = num(proyecto.total_modulos); origenGabinetes = "modulos"; }
   else if (modulosEtiquetas) { gabinetes = modulosEtiquetas; origenGabinetes = "etiquetas"; }
-  else { gabinetes = placas * (params.gabinetes_por_placa || 0); origenGabinetes = "placas"; }
+  else { gabinetes = placas * (rel.gab || 0); origenGabinetes = "placas"; }
   const sinDatos = num(proyecto.placas) == null && num(proyecto.fondos) == null && num(proyecto.metros_canto) == null;
 
   const pend = (id) => pendienteEtapa({ ot: proyecto.ot, codigo: params.etapas?.[id], avance, piezas });
@@ -123,7 +132,7 @@ export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = []
   const base = {
     corte: placas * (params.min_placa || 0),
     canteado: metros * (params.min_metro_canto || 0),
-    mecanizado: mecanizadas * (params.min_mecanizado_placa || 0),
+    mecanizado: mecanizados * (params.min_mecanizado || 0),
     armado: gabinetes * (params.min_armado_gabinete || 0),
   };
   const etapas = {};
@@ -135,7 +144,7 @@ export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = []
     etapas[id] = { gente: gente / 60, maquina: maquina / 60, pendiente };
   }
   const total = Object.values(etapas).reduce((s, e) => s + e.gente, 0);
-  return { ot: proyecto.ot, sinDatos, placas, metros, mecanizadas, gabinetes, origenGabinetes, etapas, total };
+  return { ot: proyecto.ot, tipo, sinDatos, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas, total };
 }
 
 const MAQUINAS = [

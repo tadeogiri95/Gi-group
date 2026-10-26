@@ -24,6 +24,7 @@ import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
+import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { useEscape } from "../hooks/useEscape";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
@@ -168,6 +169,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
             <div className="g-label mb-1.5">🪵 Material de producción</div>
             <div className="grid grid-cols-2 gap-2">
               {material.map((m) => <Dato key={m.label} label={m.label} valor={m.valor} />)}
+              {tipoDeOt(proyecto).id && <Dato label="Tipo de proyecto" valor={nombreTipo(tipoDeOt(proyecto).id)} />}
             </div>
           </section>
         )}

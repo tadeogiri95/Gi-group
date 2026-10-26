@@ -128,7 +128,7 @@ test("DetalleOp — muestra 🪵 Material de producción", async () => {
   const seccion = await screen.findByRole("region", { name: "Material de producción" });
   assert.match(seccion.textContent, /Placas 1821,8/);
   assert.match(seccion.textContent, /Cantos287 m/);
-  assert.equal(/Mecanizadas/.test(seccion.textContent), false);
+  assert.equal(/Mecanizados/.test(seccion.textContent), false);
 });
 
 test("DetalleOp — OT sin esos datos no muestra la sección", async () => {

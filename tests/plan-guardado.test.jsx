@@ -177,8 +177,8 @@ test("/api/planificacion — la planta ve el confirmado del día (la semana le g
 // ─── Pantallas ───
 
 const P = normalizarParametros({
-  min_placa: 10, min_metro_canto: 1, min_mecanizado_placa: 15, min_armado_gabinete: 60, eficiencia: 80,
-  pct_mecanizado: 50, gabinetes_por_placa: 0.5, etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 },
+  min_placa: 10, min_metro_canto: 1, min_mecanizado: 15, min_armado_gabinete: 60, eficiencia: 80,
+  modo_mecanizado: "porcentaje", pct_mecanizado: 50, por_tipo: { global: { mec: 1, gab: 0.5 } }, etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 },
 });
 
 function mockCarga({ guardado = null } = {}) {

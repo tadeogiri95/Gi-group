@@ -2,8 +2,10 @@
 // (parte 38; diseño en notes/diseno-planificacion-produccion.md).
 // Parámetros de la planta (config_sistema clave "planificacion", uno por
 // empresa) y prioridad manual de las OT (proyectos.prioridad, migración 137),
-// que gerencia arma arrastrando las OT en una lista.
+// que gerencia arma arrastrando las OT en una lista. Los mecanizados y los
+// gabinetes por placa van por tipo de proyecto (app/lib/tipoProyecto.js).
 import { buscarDivision, normalizar, rutaDe } from "./rutas";
+import { TIPOS_PROYECTO, TIPO_GLOBAL } from "./tipoProyecto";
 
 export const CLAVE_PLANIFICACION = "planificacion";
 
@@ -23,16 +25,28 @@ export const ETAPAS_PLAN = [
 export const PARAMETROS = [
   { id: "min_placa", grupo: "tiempos", label: "Tiempo de corte por placa", unidad: "min", ayuda: "Se suman placas y fondos.", min: 0, max: 600 },
   { id: "min_metro_canto", grupo: "tiempos", label: "Tiempo por metro de canto", unidad: "min", ayuda: "Con 1 persona en la canteadora.", min: 0, max: 120 },
-  { id: "min_mecanizado_placa", grupo: "tiempos", label: "Tiempo de mecanizado por placa", unidad: "min", min: 0, max: 600 },
+  { id: "min_mecanizado", grupo: "tiempos", label: "Tiempo promedio por mecanizado", unidad: "min", ayuda: "Cada proceso de CNC de una placa.", min: 0, max: 600 },
   { id: "min_armado_gabinete", grupo: "tiempos", label: "Tiempo de armado por gabinete", unidad: "min", ayuda: "Incluye el embalaje.", min: 0, max: 1440 },
   { id: "eficiencia", grupo: "tiempos", label: "Factor de eficiencia", unidad: "%", ayuda: "Qué parte de la jornada se trabaja de verdad. Uno solo para toda la planta.", min: 1, max: 100 },
-  { id: "pct_mecanizado", grupo: "relaciones", label: "Placas mecanizadas", unidad: "% del total de placas", ayuda: "Se usa cuando la planilla no trae MECANIZADOS.", min: 0, max: 100 },
-  { id: "gabinetes_por_placa", grupo: "relaciones", label: "Gabinetes por placa", unidad: "gabinetes", ayuda: "Ej: 0,5 = un gabinete cada 2 placas. Se usa cuando la OT no tiene módulos cargados.", min: 0, max: 50 },
+  { id: "pct_mecanizado", grupo: "relaciones", label: "Placas que se mecanizan", unidad: "% del total de placas", ayuda: "Solo se usa con el cálculo \"% de placas × mecanizados por placa\".", min: 0, max: 100 },
   { id: "maquinas_corte", grupo: "maquinas", label: "Seccionadoras", unidad: "máquinas", min: 1, max: 20, entero: true, defecto: 1 },
   { id: "maquinas_cnc", grupo: "maquinas", label: "CNC", unidad: "máquinas", min: 1, max: 20, entero: true, defecto: 2 },
   { id: "personas_canteadora", grupo: "maquinas", label: "Personas en la canteadora", unidad: "personas", min: 1, max: 2, entero: true, defecto: 2 },
   { id: "pct_tiempo_canteadora_2", grupo: "maquinas", label: "Tiempo con 2 personas en la canteadora", unidad: "% del tiempo con 1", ayuda: "50 = tarda la mitad.", min: 10, max: 100, defecto: 50 },
 ];
+
+/** Cómo se cuentan los mecanizados de una OT cuando la planilla no trae MECANIZADOS. */
+export const MODOS_MECANIZADO = [
+  { id: "tipo", label: "Placas × mecanizados por placa", ayuda: "Todas las placas de la OT llevan los mecanizados por placa de su tipo." },
+  { id: "porcentaje", label: "% de placas × mecanizados por placa", ayuda: "Solo el % de placas que se mecanizan lleva los mecanizados por placa de su tipo." },
+];
+
+/** Relaciones por tipo de proyecto: mecanizados por placa y gabinetes por placa. */
+export const RELACIONES_TIPO = [
+  { id: "mec", label: "Mecanizados por placa", min: 0, max: 100 },
+  { id: "gab", label: "Gabinetes por placa", min: 0, max: 50 },
+];
+const TIPOS_CON_GLOBAL = [...TIPOS_PROYECTO, TIPO_GLOBAL];
 
 export const GRUPOS_PARAMETROS = [
   { id: "tiempos", titulo: "⏱ Tiempos de trabajo" },
@@ -92,6 +106,13 @@ export function normalizarParametros(valor) {
     const n = typeof v[p.id] === "number" ? v[p.id] : leerNumero(v[p.id]);
     out[p.id] = n != null && !errorParametro(p, n) ? n : (p.defecto ?? null);
   }
+  out.modo_mecanizado = MODOS_MECANIZADO.some((m) => m.id === v.modo_mecanizado) ? v.modo_mecanizado : "tipo";
+  // Sin cargar, cada tipo arranca con los valores del estudio de la planta
+  out.por_tipo = Object.fromEntries(TIPOS_CON_GLOBAL.map((t) => [t.id, Object.fromEntries(RELACIONES_TIPO.map((r) => {
+    const raw = v.por_tipo?.[t.id]?.[r.id];
+    const n = typeof raw === "number" ? raw : leerNumero(raw);
+    return [r.id, n != null && !errorParametro(r, n) ? n : t[r.id]];
+  }))]));
   out.division_id = typeof v.division_id === "string" ? v.division_id : null;
   out.etapas = Object.fromEntries(ETAPAS_PLAN.map((ep) => {
     const c = Number(v.etapas?.[ep.id]);
@@ -102,7 +123,14 @@ export function normalizarParametros(valor) {
 
 /** Parámetros que todavía faltan para poder calcular la carga. */
 export function parametrosFaltantes(params) {
-  return PARAMETROS.filter((p) => params?.[p.id] == null).map((p) => p.label);
+  return PARAMETROS
+    .filter((p) => params?.[p.id] == null && (p.id !== "pct_mecanizado" || params?.modo_mecanizado === "porcentaje"))
+    .map((p) => p.label);
+}
+
+/** Mecanizados y gabinetes por placa del tipo (o del promedio si la OT no tiene tipo). */
+export function relacionesTipo(params, tipoId) {
+  return params?.por_tipo?.[tipoId] || params?.por_tipo?.global || { mec: TIPO_GLOBAL.mec, gab: TIPO_GLOBAL.gab };
 }
 
 // ─── Prioridad ──────────────────────────────────────────────────────────────
