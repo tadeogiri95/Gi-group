@@ -4,7 +4,7 @@
   "description": "Sistema de gestión y productividad industrial",
   "start_url": "/?source=pwa",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#F7F7F5",
   "theme_color": "#F97316",
   "scope": "/",
