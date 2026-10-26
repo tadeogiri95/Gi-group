@@ -93,7 +93,7 @@ test("planilla real — lee cliente, obra y descripción", () => {
   assert.deepEqual(filas, [{
     ot: "M-7495", cliente: "SICILIANO ROMINA", obra: "CASA REMODELACION",
     proyecto: "7495", division: "MUEBLES", descripcion: "MUEBLE DIVISOR",
-    fecha_entrega: "2026-05-01", cantidad: 1, terminado_planilla: null,
+    fecha_entrega: "2026-05-01", cantidad: 1, terminado_planilla: null, semana_objetivo: null,
   }]);
 });
 

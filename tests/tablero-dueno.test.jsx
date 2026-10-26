@@ -179,8 +179,8 @@ test("llegadasDelDia — hoy, quien todavía no entra no cuenta como falta; sin 
 // ── Mantenimiento, parte 36: 🔧 Mantenimiento (reemplaza a 🚚 Flota) y ⏰ OT atrasadas ──
 const { alertasMantenimiento, otAtrasadas } = await import("../app/lib/panelMantenimiento.js");
 
-test("otAtrasadas — pasaron la entrega y no están terminadas, la más atrasada arriba, con su %", () => {
-  const fila = (ot, fecha_entrega, cerradas, total) => ({ proyecto: { id: ot, ot, fecha_entrega }, cerradas, celdas: Array(total).fill({}) });
+test("otAtrasadas — pasó su fecha objetivo y no están terminadas, la más atrasada arriba, con su %", () => {
+  const fila = (ot, fecha_objetivo, cerradas, total, extra = {}) => ({ proyecto: { id: ot, ot, fecha_objetivo, ...extra }, cerradas, celdas: Array(total).fill({}) });
   const filas = [
     fila("1", "2026-10-20", 1, 2),
     fila("2", "2026-10-01", 0, 2),
@@ -188,6 +188,8 @@ test("otAtrasadas — pasaron la entrega y no están terminadas, la más atrasad
     fila("4", "2026-10-02", 2, 2), // todas las etapas cerradas
     fila("5", null, 0, 2),
     fila("6", "2026-10-24", 0, 0), // sin ruta: atrasada sin %
+    fila("7", "2026-10-01", 0, 2, { terminado_planilla: true }), // TERMINADO en la planilla
+    fila("8", null, 0, 2, { fecha_entrega: "2026-10-01" }), // sin semana: no entra aunque tenga entrega
   ];
   const r = otAtrasadas(filas, { porEscaneo: new Map([["2", { porcentaje: 37 }]]), hoy: "2026-10-25" });
   assert.deepEqual(r.map((x) => [x.fila.proyecto.ot, x.dias, x.porcentaje]), [["2", 24, 37], ["1", 5, 50], ["6", 1, null]]);
@@ -216,8 +218,9 @@ test("alertasMantenimiento — máquinas paradas arriba, después lo vencido y a
 test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
   const respuestas = {
     proyectos: [
-      { id: 1, ot: "7495", cliente: "CEVT", division: "M", fecha_entrega: "2020-01-10", liberada_at: null },
-      { id: 2, ot: "7500", cliente: "A tiempo", division: "M", fecha_entrega: "2099-01-10", liberada_at: null },
+      { id: 1, ot: "7495", cliente: "CEVT", division: "M", semana_objetivo: 2, fecha_objetivo: "2020-01-11", liberada_at: null },
+      { id: 2, ot: "7500", cliente: "A tiempo", division: "M", semana_objetivo: 2, fecha_objetivo: "2099-01-10", liberada_at: null },
+      { id: 3, ot: "7600", cliente: "Sin semana", division: "M", fecha_entrega: "2020-01-10", liberada_at: null },
     ],
     maquinas: [{ id: "m1", codigo: "CNC-01", nombre: "CNC 1", estado: "parada", activo: true, criticidad: "A" }],
     maquina_fallas: [{ id: "f1", maquina_id: "m1", descripcion: "No arranca", parada: true, estado: "pendiente", created_at: "2026-10-24T10:00:00Z" }],
@@ -234,8 +237,9 @@ test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
   );
   const atr = await screen.findByRole("region", { name: "OT atrasadas" });
   await within(atr).findByText("7495");
-  assert.equal(within(atr).queryByText("7500"), null, "la que entrega más adelante no está atrasada");
-  assert.ok(within(atr).getByText(/Muebles · entrega 10\/1\/2020 · 0% hecho/));
+  assert.equal(within(atr).queryByText("7500"), null, "la que vence más adelante no está atrasada");
+  assert.equal(within(atr).queryByText("7600"), null, "sin semana no cuenta como atrasada");
+  assert.ok(within(atr).getByText(/Muebles · S2 \(11\/1\) · 0% hecho/));
   assert.ok(within(atr).getByText(/^\d+ días$/));
   const mant = await screen.findByRole("region", { name: "Mantenimiento" });
   await within(mant).findByText("Parada: No arranca");

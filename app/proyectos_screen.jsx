@@ -10,6 +10,7 @@ import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
 import DetalleOp from "./components/DetalleOp";
 import TableroOt from "./components/TableroOt";
+import GanttOt from "./components/GanttOt";
 import NoConformidades from "./components/NoConformidades";
 import SueltosOt from "./components/SueltosOt";
 import CargaOt from "./components/CargaOt";
@@ -22,6 +23,7 @@ import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { avancePorOt } from "./lib/piezas";
 import { hoyArg } from "./lib/dates";
 import { AVISO_DEMORA_GOOGLE } from "./lib/csvProyectos";
+import { CLAVE_FECHA_OBJETIVO, MODOS_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { useEscape } from "./hooks/useEscape";
 
 const GREEN = "#16A34A";
@@ -190,6 +192,8 @@ export default function ProyectosScreen({ empresaId }) {
   const [syncCfg, setSyncCfg] = useState({ url: "", ultima_sync: null });
   const [syncLoading, setSyncLoading] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
+  // Cómo se cuenta la fecha objetivo de las OT (135): semana del año o entrega
+  const [modoObjetivo, setModoObjetivo] = useState(normalizarModo());
 
   const showToast = (msg, color) => toast.show(msg, color);
 
@@ -211,7 +215,25 @@ export default function ProyectosScreen({ empresaId }) {
       const v = rows?.[0]?.valor;
       if (v) setSyncCfg({ url: v.url || "", ultima_sync: v.ultima_sync || null });
     } catch {}
+    try {
+      const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`);
+      setModoObjetivo(normalizarModo(rows?.[0]?.valor?.modo));
+    } catch {}
   }, [empresaId]);
+
+  const guardarModoObjetivo = async (modo) => {
+    const anterior = modoObjetivo;
+    setModoObjetivo(modo);
+    try {
+      const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=clave&limit=1`);
+      if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}`, { valor: { modo } });
+      else await sb.post("config_sistema", { clave: CLAVE_FECHA_OBJETIVO, valor: { modo } });
+      showToast("✅ Guardado. Apretá Sincronizar para que se aplique a las OT.", GREEN);
+    } catch (e) {
+      setModoObjetivo(anterior);
+      showToast(`Error: ${e.message}`, RED);
+    }
+  };
 
   useEffect(() => { cargar(); cargarSyncCfg(); }, [cargar, cargarSyncCfg]);
 
@@ -531,6 +553,10 @@ export default function ProyectosScreen({ empresaId }) {
                     placeholder="https://docs.google.com/spreadsheets/d/…/export?format=csv"
                     className="g-input text-xs mb-2"
                   />
+                  <label className="block text-xs font-semibold text-gypi-text mb-1" htmlFor="modo-objetivo">Fecha objetivo de las OT (Gantt y OT atrasadas)</label>
+                  <select id="modo-objetivo" value={modoObjetivo} onChange={e => guardarModoObjetivo(e.target.value)} className="g-input text-xs mb-2">
+                    {MODOS_FECHA_OBJETIVO.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                  </select>
                   <div className="flex gap-2">
                     <button
                       onClick={guardarSyncUrl}
@@ -557,11 +583,21 @@ export default function ProyectosScreen({ empresaId }) {
       <div className="flex gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
         <Chip active={vista === "lista"} onClick={() => setVista("lista")}>Lista</Chip>
         <Chip active={vista === "tablero"} onClick={() => setVista("tablero")}>Tablero</Chip>
+        <Chip active={vista === "gantt"} onClick={() => setVista("gantt")}>📅 Gantt</Chip>
         <Chip active={vista === "calidad"} onClick={() => setVista("calidad")}>No conformes</Chip>
       </div>
 
       {vista === "calidad" && !loading ? (
         <NoConformidades empresaId={empresaId} proyectos={proyectos} etapas={etapasCtx || []} defectos={defectos || []} />
+      ) : vista === "gantt" && !loading ? (
+        <GanttOt
+          proyectos={filtrados.filter(p => p.estado !== "cerrado")}
+          etapas={etapasCtx || []}
+          divisiones={divisionesCtx || []}
+          avanceHoras={avanceHoras}
+          modo={modoObjetivo}
+          onVerDetalle={setDetalle}
+        />
       ) : vista === "tablero" && !loading ? (
         <TableroOt
           proyectos={filtrados.filter(p => p.estado !== "cerrado")}

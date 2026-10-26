@@ -3,11 +3,13 @@
 // notes/diseno-menu-y-mantenimiento.md):
 // - 🔧 Mantenimiento (reemplaza a 🚚 Flota): lo vencido y lo próximo de los
 //   vehículos y de las máquinas, con las máquinas paradas en rojo arriba.
-// - ⏰ OT atrasadas: las que pasaron su fecha de entrega y no están
-//   terminadas, la más atrasada arriba, con los días y su % de avance.
+// - ⏰ OT atrasadas: las que pasaron su fecha objetivo (el fin de su semana
+//   del Plan de trabajo, o la entrega si la empresa lo eligió; 135) y no
+//   están terminadas, la más atrasada arriba, con los días y su % de avance.
 import { alertasMaquinaria } from "./maquinaria";
 import { fallasPendientes } from "./fallasMaquinaria";
 import { textoAlerta } from "./alertasFlota";
+import { diasEntre } from "./semanaObjetivo";
 
 const NIVEL = { vencido: 0, pronto: 1 };
 
@@ -42,12 +44,11 @@ export function alertasMantenimiento({ alertasFlota = null, maquinas = [], tarea
   return out.sort((a, b) => Number(b.parada) - Number(a.parada) || (NIVEL[a.nivel] ?? 2) - (NIVEL[b.nivel] ?? 2));
 }
 
-/** Días entre dos fechas "AAAA-MM-DD" (b − a). */
-const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
-
 /**
  * OT atrasadas: de las filas del tablero (OT abiertas), las que tienen fecha
- * de entrega anterior a hoy y no tienen todas sus etapas cerradas. La más
+ * objetivo (135) anterior a hoy, no están terminadas en la planilla y no
+ * tienen todas sus etapas cerradas. Sin semana (fecha objetivo vacía) no
+ * entran. Los días se cuentan desde el último día de la semana. La más
  * atrasada primero. El % es el del escaneo de piezas si la OT tiene piezas;
  * si no, etapas cerradas sobre el total de su ruta (null si no tiene ruta).
  * @param {object[]} filas de filasTablero()
@@ -57,16 +58,21 @@ const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 8640000
 export function otAtrasadas(filas = [], { porEscaneo = new Map(), hoy }) {
   const out = [];
   for (const f of filas || []) {
-    const entrega = f.proyecto?.fecha_entrega;
-    if (!entrega) continue;
-    const dias = diasEntre(String(entrega).slice(0, 10), hoy);
+    const objetivo = f.proyecto?.fecha_objetivo;
+    if (!objetivo || f.proyecto.terminado_planilla) continue;
+    const dias = diasEntre(String(objetivo).slice(0, 10), hoy);
     if (!(dias > 0)) continue;
     if (f.celdas.length && f.cerradas >= f.celdas.length) continue;
-    const escaneo = porEscaneo.get(String(f.proyecto.ot))?.porcentaje;
-    const porcentaje = escaneo ?? (f.celdas.length ? Math.floor((f.cerradas / f.celdas.length) * 100) : null);
+    const porcentaje = porcentajeOt(f, porEscaneo);
     out.push({ fila: f, dias, porcentaje });
   }
   return out.sort((a, b) => b.dias - a.dias || String(a.fila.proyecto.ot).localeCompare(String(b.fila.proyecto.ot), "es", { numeric: true }));
+}
+
+/** % de avance de una fila del tablero: el del escaneo de piezas si tiene; si no, etapas cerradas sobre su ruta (null sin ruta). */
+export function porcentajeOt(f, porEscaneo = new Map()) {
+  const escaneo = porEscaneo.get(String(f.proyecto.ot))?.porcentaje;
+  return escaneo ?? (f.celdas.length ? Math.floor((f.cerradas / f.celdas.length) * 100) : null);
 }
 
 /** "1 día" / "12 días". */

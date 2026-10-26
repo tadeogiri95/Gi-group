@@ -46,6 +46,7 @@ import { alertasVehiculo, urgentes as alertasUrgentes } from "./lib/alertasFlota
 import { textoVencimiento, SEMAFORO } from "./lib/flota";
 import { avancePorOt } from "./lib/piezas";
 import { alertasMantenimiento, otAtrasadas, textoDias } from "./lib/panelMantenimiento";
+import { CLAVE_FECHA_OBJETIVO, normalizarModo, textoObjetivo } from "./lib/semanaObjetivo";
 import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
 
 /* ─── Helpers ─── */
@@ -274,6 +275,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const [otCurso, setOtCurso] = useState(null);
   // OT atrasadas (parte 36): pasaron su fecha de entrega y no están terminadas
   const [otAtrasadasLista, setOtAtrasadasLista] = useState(null);
+  const [modoObjetivo, setModoObjetivo] = useState(normalizarModo());
   const [pedidosCompra, setPedidosCompra] = useState(null);
   // Flota (Mantenimiento parte 30): vehículos con lo que necesitan para sus alertas
   const [flota, setFlota] = useState(null);
@@ -354,9 +356,14 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const cargarOtYCompras = useCallback(async () => {
     if (isDemo || !empresaId || !(conOt || conCompras || conFlota || conMaquinaria)) return;
     const si = (con, leer) => (con ? leer().catch(() => null) : null);
-    const [proy, avHs, peds, veh, pap, chk, cho, arr, maq, tar, fal] = await Promise.all([
-      si(conOt, () => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at&order=id.asc`, { maxFilas: 20000 })),
+    const [proy, avHs, cfgObjetivo, peds, veh, pap, chk, cho, arr, maq, tar, fal] = await Promise.all([
+      // Sin la migración 135 no hay fecha objetivo: se lee sin ella y no hay OT atrasadas
+      si(conOt, () => {
+        const leer = (extra) => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at${extra}&order=id.asc`, { maxFilas: 20000 });
+        return leer(",terminado_planilla,semana_objetivo,fecha_objetivo").catch(() => leer(""));
+      }),
       si(conOt, () => leerAvanceYHoras(empresaId)),
+      si(conOt, () => sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`)),
       // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
       si(conCompras, () => sbGetAll(`pedidos_compra?estado=eq.pendiente&select=id,descripcion,cantidad,unidad,ot,empleado_nombre,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 })),
       // Sin la migración 126 no hay flota: la tarjeta no aparece
@@ -374,6 +381,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
     setMaquinaria(maq ? { maquinas: maq.data || [], tareas: tar?.data || [], fallas: fal?.data || [] } : null);
     const filasOt = proy && avHs ? filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() }) : null;
     setOtCurso(filasOt ? otEnCurso(filasOt) : null);
+    setModoObjetivo(normalizarModo(cfgObjetivo?.[0]?.valor?.modo));
     setOtAtrasadasLista(filasOt ? otAtrasadas(filasOt, { porEscaneo: avancePorOt(avHs.piezas || []), hoy: hoyArg() }) : null);
     setPedidosCompra(peds ? peds.data || [] : null);
   }, [isDemo, empresaId, conOt, conCompras, conFlota, conMaquinaria, etapasCtx, divisionesCtx]);
@@ -706,7 +714,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── OT atrasadas: pasaron su fecha de entrega y no están terminadas (parte 36) ─── */}
+      {/* ─── OT atrasadas: pasó su semana objetivo y no están terminadas (parte 36; 135) ─── */}
       {otAtrasadasLista && (
         <section aria-label="OT atrasadas" className={`card-hover g-card mb-4 ${otAtrasadasLista.length ? TONO.mal.borde : ""}`}>
           <div className="flex justify-between items-center mb-2">
@@ -714,7 +722,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <Tag color={otAtrasadasLista.length ? "var(--color-red)" : "var(--color-green)"}>{otAtrasadasLista.length}</Tag>
           </div>
           {otAtrasadasLista.length === 0 ? (
-            <p className="m-0 text-[13px] text-gypi-dim">✅ Ninguna OT pasó su fecha de entrega.</p>
+            <p className="m-0 text-[13px] text-gypi-dim">✅ Ninguna OT pasó su fecha objetivo.</p>
           ) : (
             <div className="max-h-[240px] overflow-y-auto">
               {otAtrasadasLista.map(({ fila: f, dias, porcentaje }) => (
@@ -724,7 +732,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-gypi-text truncate">{f.proyecto.cliente || f.proyecto.proyecto || f.proyecto.obra || "—"}</div>
                     <div className="text-[12px] text-gypi-dim truncate">
-                      {nombreDivisionOt(divisionesCtx || [], f.proyecto.division)} &middot; entrega {fechaCorta(f.proyecto.fecha_entrega)}{porcentaje != null ? ` · ${porcentaje}% hecho` : ""}
+                      {nombreDivisionOt(divisionesCtx || [], f.proyecto.division)} &middot; {textoObjetivo(f.proyecto, modoObjetivo)}{porcentaje != null ? ` · ${porcentaje}% hecho` : ""}
                     </div>
                   </div>
                   <span className={`shrink-0 px-2 py-1 rounded-lg text-[12px] font-bold ${TONO.mal.fondo} ${TONO.mal.txt}`}>{textoDias(dias)}</span>
