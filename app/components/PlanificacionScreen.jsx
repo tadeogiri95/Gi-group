@@ -1,23 +1,32 @@
 "use client";
 // app/components/PlanificacionScreen.jsx — Proyectos → 🗓 Planificación
 // (parte 38; diseño en notes/diseno-planificacion-produccion.md). Solo
-// gerencia. Dos vistas: la prioridad de las OT de Muebles (se ordena
+// gerencia. Tres vistas: la carga de las OT elegidas contra la capacidad de
+// la planta (parte 39), la prioridad de las OT de Muebles (se ordena
 // arrastrando; migración 137) y los parámetros de la planta (tiempos,
 // eficiencia, relaciones y máquinas; config_sistema clave "planificacion").
-// La carga contra la capacidad y el Gantt vienen en las partes 39 y 40.
+// El orden automático y el Gantt vienen en la parte 40.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { textoObjetivo } from "../lib/semanaObjetivo";
+import { textoObjetivo, CLAVE_FECHA_OBJETIVO, normalizarModo } from "../lib/semanaObjetivo";
+import { hoyArg } from "../lib/dates";
+import { fechaCorta } from "../lib/ot";
+import { leerAvanceYHoras } from "../lib/otEnCursoDatos";
+import {
+  periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo,
+  preseleccion, modulosPorOt, fmtH,
+} from "../lib/cargaPlanta";
 import { materialOt } from "../lib/ot";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
   leerNumero, errorParametro, normalizarParametros, divisionPlan, etapasPlanDe,
-  otsPlanificables, ordenarPorPrioridad, moverOt, quitarPrioridad, cambiosPrioridad,
+  otsPlanificables, ordenarPorPrioridad, moverOt, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
 } from "../lib/planificacion";
 import { Chip } from "./ui";
 
 const VISTAS = [
+  { id: "carga", label: "📊 Carga" },
   { id: "prioridad", label: "📌 Prioridad" },
   { id: "parametros", label: "⚙ Parámetros" },
 ];
@@ -30,7 +39,7 @@ function Cargando() {
 
 export default function PlanificacionScreen({ empresaId }) {
   const { divisiones = [], etapas = [] } = useAuth();
-  const [vista, setVista] = useState("prioridad");
+  const [vista, setVista] = useState("carga");
   const [cfg, setCfg] = useState(undefined);
 
   const cargarCfg = useCallback(async () => {
@@ -51,8 +60,176 @@ export default function PlanificacionScreen({ empresaId }) {
         {VISTAS.map((v) => <Chip key={v.id} active={vista === v.id} onClick={() => setVista(v.id)}>{v.label}</Chip>)}
       </div>
       {cfg === undefined ? <Cargando />
+        : vista === "carga" ? <CargaPlan empresaId={empresaId} divisiones={divisiones} division={division} params={cfg} onParametros={() => setVista("parametros")} />
         : vista === "prioridad" ? <PrioridadOt empresaId={empresaId} divisiones={divisiones} division={division} />
           : <ParametrosPlan cfg={cfg} divisiones={divisiones} etapas={etapas} onGuardado={setCfg} />}
+    </div>
+  );
+}
+
+// ─── Carga ──────────────────────────────────────────────────────────────────
+
+const TIPOS = [
+  { id: "semana", label: "Semana" },
+  { id: "mes", label: "Mes" },
+];
+
+function textoPeriodo(p) {
+  if (p.tipo === "mes") {
+    const [a, m] = p.desde.split("-").map(Number);
+    const nombre = new Date(Date.UTC(a, m - 1, 1)).toLocaleDateString("es-AR", { month: "long", timeZone: "UTC" });
+    return `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} ${a}`;
+  }
+  return `Semana del ${fechaCorta(p.desde)} al ${fechaCorta(p.hasta)}`;
+}
+
+function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
+  const [tipo, setTipo] = useState("semana");
+  const [paso, setPaso] = useState(0);
+  const [modo, setModo] = useState("semana_domingo");
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState(null);
+  const [elegidas, setElegidas] = useState(null);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const [proy, emp, av, pz, cfgModo] = await Promise.all([
+          sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&order=id.asc`, { maxFilas: 20000 }),
+          // Sin la migración 116 no hay es_instalador: se leen todos los operarios
+          sbGetAll(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,rol,division,diagrama,activo,es_instalador`)
+            .catch(() => sbGetAll(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,rol,division,diagrama,activo`)),
+          leerAvanceYHoras(empresaId).catch(() => ({ avance: [], piezas: [] })),
+          sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&modulo=not.is.null&select=ot,modulo`, { maxFilas: 50000 }).catch(() => ({ data: [] })),
+          sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`).catch(() => null),
+        ]);
+        if (!vivo) return;
+        // Igual que el Gantt: la semana arranca el domingo, salvo que la empresa cuente de lunes
+        setModo(normalizarModo(cfgModo?.[0]?.valor?.modo) === "semana_domingo" ? "semana_domingo" : "semana_lunes");
+        setDatos({ proyectos: proy.data || [], empleados: emp.data || [], avance: av.avance || [], piezas: av.piezas || [], modulos: modulosPorOt(pz.data) });
+      } catch (e) {
+        if (vivo) setError(e.message || "No se pudieron leer los datos.");
+      }
+    })();
+    return () => { vivo = false; };
+  }, [empresaId]);
+
+  const per = useMemo(() => periodo(tipo, hoyArg(), paso, modo), [tipo, paso, modo]);
+  const ots = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
+  // Al cambiar de período vuelven a venir tildadas las OT de ese período
+  useEffect(() => { if (datos) setElegidas(preseleccion(ots, per.hasta)); }, [datos, ots, per.hasta]);
+
+  const horas = useMemo(() => new Map(ots.map((p) => [p.id, horasOt(p, params, {
+    modulosEtiquetas: datos?.modulos.get(String(p.ot)) || null, avance: datos?.avance, piezas: datos?.piezas,
+  })])), [ots, params, datos]);
+  const operarios = useMemo(() => operariosDePlanta(datos?.empleados, divisiones, division), [datos, divisiones, division]);
+  const capacidad = useMemo(() => capacidadPlanta(operarios, diasDelPeriodo(per.desde, per.hasta)), [operarios, per]);
+  const carga = useMemo(() => cargaPeriodo({
+    ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => horas.get(p.id)), params, capacidad,
+  }), [ots, elegidas, horas, params, capacidad]);
+
+  if (error) return <div role="alert" className="text-sm text-gypi-red">{error}</div>;
+  if (!datos || !elegidas) return <Cargando />;
+
+  const faltan = parametrosFaltantes(params);
+  const tildar = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const sinDatos = carga.ots.filter((o) => o.sinDatos).length;
+
+  return (
+    <section aria-label="Carga de la planta">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        {TIPOS.map((t) => <Chip key={t.id} active={tipo === t.id} onClick={() => { setTipo(t.id); setPaso(0); }}>{t.label}</Chip>)}
+      </div>
+      <div className="flex items-center gap-2 mb-3">
+        <button type="button" aria-label="Período anterior" onClick={() => setPaso(paso - 1)} className="min-w-[44px] min-h-[44px] bg-gypi-surface border border-gypi-border rounded-xl cursor-pointer text-gypi-text">◀</button>
+        <div className="flex-1 text-center font-heading font-bold">{textoPeriodo(per)}</div>
+        <button type="button" aria-label="Período siguiente" onClick={() => setPaso(paso + 1)} className="min-w-[44px] min-h-[44px] bg-gypi-surface border border-gypi-border rounded-xl cursor-pointer text-gypi-text">▶</button>
+      </div>
+
+      {faltan.length > 0 && (
+        <div role="alert" className="g-card mb-3 text-[13px]">
+          <div className="text-gypi-red font-bold mb-1">Faltan parámetros</div>
+          <div className="text-gypi-dim mb-2">Sin estos datos las horas salen en cero: {faltan.join(", ")}.</div>
+          <button type="button" onClick={onParametros} className="g-btn g-btn-secondary">Cargar parámetros</button>
+        </div>
+      )}
+
+      <div className="g-card mb-3" aria-label="Resultado">
+        <div className={`font-heading text-lg font-bold mb-1 ${carga.viable ? "text-gypi-green" : "text-gypi-red"}`}>
+          {!carga.ots.length ? "Elegí las OT que querés planificar" : carga.viable ? "✅ Entra en el período" : "❌ No entra con el horario normal"}
+        </div>
+        <div className="text-[13px] text-gypi-dim mb-2">
+          {carga.ots.length === 1 ? "1 OT elegida" : `${carga.ots.length} OT elegidas`} · {capacidad.personas === 1 ? "1 operario" : `${capacidad.personas} operarios`} de {division?.label || "la planta"} · eficiencia {params.eficiencia ?? "—"} %
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <Dato label="Horas que hacen falta" valor={fmtH(carga.necesarias)} />
+          <Dato label="Horas de la planta" valor={fmtH(carga.disponibles)} />
+        </div>
+        {carga.extra > 0 && <div className="text-[14px] font-bold text-gypi-red mb-1">⏱ Horas extra: {fmtH(carga.extra)}</div>}
+        {carga.cuello && carga.ots.length > 0 && (
+          <div className="text-[13px] mb-1">
+            🔻 Cuello de botella: <b>{carga.cuello.nombre}</b> ({Number.isFinite(carga.cuello.uso) ? `${Math.round(carga.cuello.uso * 100)} % ocupado` : "sin horas disponibles"})
+          </div>
+        )}
+        {carga.maquinas.filter((m) => m.extra > 0).map((m) => (
+          <div key={m.id} className="text-[13px] text-gypi-red">🏭 {m.nombre}: faltan {fmtH(m.extra)} de máquina. Desfasá turnos o hacé horas extra.</div>
+        ))}
+        {sinDatos > 0 && <div className="text-xs text-gypi-dim mt-1">{sinDatos === 1 ? "1 OT elegida no tiene" : `${sinDatos} OT elegidas no tienen`} placas ni cantos en la planilla: no suman horas.</div>}
+      </div>
+
+      <div className="g-card mb-3" aria-label="Horas por etapa">
+        <div className="g-label mb-2">Horas por etapa</div>
+        <table className="w-full text-[13px]">
+          <thead><tr className="text-gypi-dim text-left"><th className="font-normal">Etapa</th><th className="font-normal text-right">Gente</th><th className="font-normal text-right">Máquina</th><th className="font-normal text-right">Tiene</th></tr></thead>
+          <tbody>
+            {Object.values(carga.porEtapa).map((e) => {
+              const m = carga.maquinas.find((x) => x.id === e.id);
+              return (
+                <tr key={e.id} className="border-t border-gypi-border">
+                  <td className="py-1.5">{e.nombre}</td>
+                  <td className="text-right">{fmtH(e.gente)}</td>
+                  <td className="text-right">{m ? fmtH(e.maquina) : "—"}</td>
+                  <td className={`text-right ${m?.extra > 0 ? "text-gypi-red font-bold" : ""}`}>{m ? `${fmtH(m.disponibles)}${m.cantidad > 1 ? ` (${m.cantidad})` : ""}` : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div className="text-xs text-gypi-dim mt-2">Horas de reloj, con la eficiencia ya aplicada. &quot;Tiene&quot; = horas en que la planta está abierta × cantidad de máquinas.</div>
+      </div>
+
+      <div className="g-label mb-1.5">OT del período ({ots.length})</div>
+      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana hasta el fin del período (también las atrasadas). Destildá o sumá las que quieras.</div>
+      <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="OT para planificar">
+        {ots.map((p) => {
+          const h = horas.get(p.id);
+          return (
+            <li key={p.id} className="bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" className="mt-1 w-5 h-5" checked={elegidas.has(p.id)} onChange={() => tildar(p.id)} aria-label={`Planificar OT ${p.ot}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-bold truncate">{p.prioridad ? `${p.prioridad}. ` : ""}{p.ot} · {p.cliente || p.proyecto || "—"}</div>
+                  <div className="text-xs text-gypi-dim truncate">
+                    {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${Math.round(h.gabinetes * 10) / 10} gab.`].join(" · ")}
+                  </div>
+                </div>
+                <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function Dato({ label, valor }) {
+  return (
+    <div className="bg-gypi-surf-hi rounded-xl p-2.5">
+      <div className="text-xs text-gypi-dim">{label}</div>
+      <div className="text-base font-bold">{valor}</div>
     </div>
   );
 }
