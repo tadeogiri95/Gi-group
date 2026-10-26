@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
 import { buscarDivision } from "../lib/rutas";
-import { fechaCorta } from "../lib/ot";
+import { fechaCorta, materialOt } from "../lib/ot";
 import { esEtapaDeModulos, textoModulos, nombreDefecto, nombreDecision } from "../lib/calidad";
 import { costoOp, fmtPesos } from "../lib/costo";
 import { resumenSueltos } from "../lib/sueltos";
@@ -131,6 +131,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   const iconos = Object.fromEntries(reglas.map((r) => [r.codigo, r.icon]));
   const resCarga = estadoCarga({ bultos: carga.bultos, carga: carga.fila });
   const resActa = estadoActa({ acta: acta.fila, pendientes: acta.pendientes });
+  const material = materialOt(proyecto);
   // Etapas de la ruta con su estado: en curso si tiene horas o piezas escaneadas
   const etapasOt = useMemo(() => {
     if (!tareas || !proyecto?.ot) return [];
@@ -161,6 +162,15 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
+
+        {material.length > 0 && (
+          <section className="mb-4" aria-label="Material de producción">
+            <div className="g-label mb-1.5">🪵 Material de producción</div>
+            <div className="grid grid-cols-2 gap-2">
+              {material.map((m) => <Dato key={m.label} label={m.label} valor={m.valor} />)}
+            </div>
+          </section>
+        )}
 
         {etapasOt.length > 0 && (
           <section className="mb-4" aria-label="Etapas de la OT">

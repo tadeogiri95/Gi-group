@@ -55,3 +55,17 @@ export function fechaCorta(iso) {
   const [a, m, d] = String(iso).slice(0, 10).split("-");
   return a && m && d ? `${Number(d)}/${Number(m)}/${a}` : "";
 }
+
+// Material de producción de la OT (136): placas, fondos, cantos y mecanizados
+// del Plan de trabajo. Solo los datos que trae la planilla.
+const MATERIAL_OT = [
+  { campo: "placas", label: "Placas 18", unidad: "" },
+  { campo: "fondos", label: "Fondos", unidad: "" },
+  { campo: "metros_canto", label: "Cantos", unidad: " m" },
+  { campo: "placas_mecanizadas", label: "Mecanizadas", unidad: "" },
+];
+export function materialOt(proyecto) {
+  return MATERIAL_OT
+    .filter((m) => proyecto?.[m.campo] != null && proyecto[m.campo] !== "")
+    .map((m) => ({ label: m.label, valor: `${Number(proyecto[m.campo]).toLocaleString("es-AR")}${m.unidad}` }));
+}

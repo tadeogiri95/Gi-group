@@ -5,7 +5,7 @@
 
 import { logger } from "./logger";
 import { safeErrorMessage } from "./validate";
-import { parseCsvProyectos } from "./csvProyectos";
+import { parseCsvProyectos, CAMPOS_MATERIAL } from "./csvProyectos";
 import { sbHeaders } from "./sbHelpers";
 import { CLAVE_FECHA_OBJETIVO, normalizarModo, fechaObjetivo } from "./semanaObjetivo";
 import { hoyArg } from "./dates";
@@ -120,9 +120,10 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   const errores = [];
   // Columnas que agregaron migraciones posteriores (091: descripcion; 097:
   // fecha_entrega, cantidad, terminado_planilla; 101: total_modulos; 135:
-  // semana_objetivo, fecha_objetivo). Si la base todavía no tiene alguna, se
+  // semana_objetivo, fecha_objetivo; 136: placas, fondos, metros_canto,
+  // placas_mecanizadas). Si la base todavía no tiene alguna, se
   // reintenta sin ella para que la sincronización no se corte.
-  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos", "semana_objetivo", "fecha_objetivo"];
+  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos", "semana_objetivo", "fecha_objetivo", ...CAMPOS_MATERIAL];
   const omitidas = new Set();
   const subir = (batch) => sbFetch("proyectos?on_conflict=empresa_id,ot", {
     method: "POST",
@@ -149,6 +150,7 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       // Solo si la planilla tiene la columna (todas las filas la traen o
       // ninguna: PostgREST pide las mismas claves en todo el lote)
       ...("total_modulos" in r ? { total_modulos: r.total_modulos } : {}),
+      ...Object.fromEntries(CAMPOS_MATERIAL.filter((k) => k in r).map((k) => [k, r[k]])),
     }));
     try {
       // on_conflict explícito: sin esto, PostgREST usa la PK (id, siempre ausente
