@@ -38,7 +38,8 @@ import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { normalizarPatente, puedeEditarFlota } from "../../lib/flota";
 import { contarEstados, plantillaDe } from "../../lib/checklistVehiculo";
 import { arreglosDeChecklist, ultimoService } from "../../lib/arreglosFlota";
-import { CAMPOS_VEHICULO, puedeChecklistVehiculo } from "../../lib/mantenimiento";
+import { ACCIONES_RESPONSABLE, CAMPOS_VEHICULO, puedeChecklistVehiculo } from "../../lib/mantenimiento";
+import { esResponsableMantenimiento } from "../../lib/mantenimientoServidor";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -81,6 +82,9 @@ async function responsableValido(sesion, id) {
   return Boolean(emp);
 }
 
+// La oficina o un responsable de mantenimiento (es_mantenimiento lo marca el POST)
+const gestiona = (sesion) => puedeEditarFlota(sesion.rol) || sesion.es_mantenimiento === true;
+
 async function guardarVehiculo(sesion, d) {
   const e = sesion.empresa_id;
   const opts = { sesion };
@@ -105,6 +109,8 @@ async function guardarVehiculo(sesion, d) {
       broadcastRefresh(e, "vehiculos");
       return NextResponse.json({ ok: true, vehiculo: v });
     }
+    // El que lo da de alta desde su pestaña Mantenimiento queda a cargo (la oficina lo puede cambiar)
+    if (sesion.es_mantenimiento && !puedeEditarFlota(sesion.rol)) fila[CAMPOS_VEHICULO.responsable] = sesion.empleado_id;
     const [v] = (await sbPost("vehiculos", { ...fila, empresa_id: e, km_at: d.km === null ? null : ahora }, opts)) || [];
     broadcastRefresh(e, "vehiculos");
     return NextResponse.json({ ok: true, vehiculo: v || fila });
@@ -185,7 +191,7 @@ async function crearChecklist(sesion, d) {
   // select=*: con la 133 vienen el responsable de mantenimiento y el suplente
   const [veh] = (await sbGet(`vehiculos?id=eq.${d.vehiculo_id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   if (!veh) return noEncontrado("vehículo");
-  if (!puedeChecklistVehiculo(veh, { empleadoId: sesion.empleado_id, gestion: puedeEditarFlota(sesion.rol) })) {
+  if (!puedeChecklistVehiculo(veh, { empleadoId: sesion.empleado_id, gestion: gestiona(sesion) })) {
     return NextResponse.json({ error: "El checklist de este vehículo lo hacen su responsable de mantenimiento, el suplente o la oficina" }, { status: 403 });
   }
   if (veh.km != null && d.km < veh.km) {
@@ -325,7 +331,7 @@ async function crearMantenimiento(sesion, d) {
     if (arreglo.estado !== "pendiente") return NextResponse.json({ error: "Ese arreglo ya está cerrado" }, { status: 409 });
   }
   // El responsable de un arreglo lo puede resolver; lo demás, la oficina
-  if (!puedeEditarFlota(sesion.rol) && !(arreglo && arreglo.responsable_id && arreglo.responsable_id === sesion.empleado_id)) {
+  if (!gestiona(sesion) && !(arreglo && arreglo.responsable_id && arreglo.responsable_id === sesion.empleado_id)) {
     return NextResponse.json({ error: "Los services y reparaciones los cargan gerencia y Administración" }, { status: 403 });
   }
   const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
@@ -380,7 +386,7 @@ async function asignarMantenimiento(sesion, d) {
 
 export async function POST(request) {
   try {
-    const sesion = await validarToken(request);
+    let sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(flotaBody, raw);
@@ -388,8 +394,11 @@ export async function POST(request) {
     // El checklist lo hace también el responsable de mantenimiento (se controla adentro),
     // y un arreglo lo resuelve también su responsable (se controla adentro)
     const deTodos = parsed.data.accion === "checklist_crear" || (parsed.data.accion === "mantenimiento_crear" && parsed.data.arreglo_id);
-    if (!deTodos && !puedeEditarFlota(sesion.rol)) {
-      return NextResponse.json({ error: "La flota la cargan gerencia y Administración" }, { status: 403 });
+    // El responsable de mantenimiento (133) carga la flota igual que la oficina,
+    // menos la licencia de los empleados y borrar services (pedido de Tadeo, 26/10)
+    if (!puedeEditarFlota(sesion.rol) && await esResponsableMantenimiento(sesion)) sesion = { ...sesion, es_mantenimiento: true };
+    if (!deTodos && !puedeEditarFlota(sesion.rol) && !(sesion.es_mantenimiento && ACCIONES_RESPONSABLE.has(parsed.data.accion))) {
+      return NextResponse.json({ error: "Eso lo hacen gerencia y Administración" }, { status: 403 });
     }
     const bloqueo = await chequeos(sesion);
     if (bloqueo) return bloqueo;

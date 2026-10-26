@@ -9,7 +9,8 @@ const leer = (f) => readFileSync(new URL(`../app/${f}`, import.meta.url), "utf8"
 
 test("el shell se ensancha solo en Proyectos, Inventario, Mantenimiento y Equipo de gestión", () => {
   const home = leer("[slug]/HomeContent.jsx");
-  assert.match(home, /const ancho = uIsGer && \(BOTONES\.has\(screen\) \|\| screen === "equipo"\);/);
+  // El responsable de mantenimiento (operario) también tiene su pestaña Mantenimiento ancha (26/10)
+  assert.match(home, /const ancho = \(uIsGer && \(BOTONES\.has\(screen\) \|\| screen === "equipo"\)\) \|\| \(!uIsGer && screen === "mantenimiento"\);/);
   assert.match(home, /const BOTONES = new Set\(\["proyectos", "inventario", "mantenimiento"\]\);/);
   assert.match(home, /className=\{`app-shell bg-gypi-bg \$\{ancho \? "app-shell--ancho" : ""\}`\}/);
 });

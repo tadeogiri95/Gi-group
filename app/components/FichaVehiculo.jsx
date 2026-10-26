@@ -334,7 +334,7 @@ function Semaforo({ nivel, children }) {
   return <span className="text-[12px] font-semibold whitespace-nowrap">{SEMAFORO[nivel]?.emoji} {children}</span>;
 }
 
-export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, checklists = [], arreglos = [], mantenimientos = [], empresaNombre = "", editable, hoy, onVolver, onCambio }) {
+export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, checklists = [], arreglos = [], mantenimientos = [], empresaNombre = "", editable, oficina = editable, hoy, onVolver, onCambio }) {
   const [editando, setEditando] = useState(false);
   const [papelForm, setPapelForm] = useState(null); // { papel } | { renovar } | { tipo }
   const [licencia, setLicencia] = useState(false);
@@ -500,7 +500,7 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
                 {estadoLic.nivel === "sin_fecha" ? "falta cargar el vencimiento" : <Semaforo nivel={estadoLic.nivel}>{textoVencimiento(estadoLic, responsable.licencia_vencimiento).toLowerCase()}</Semaforo>}
               </div>
             </div>
-            {editable && <button onClick={() => setLicencia(true)} className="g-btn g-btn-secondary">Licencia</button>}
+            {oficina && <button onClick={() => setLicencia(true)} className="g-btn g-btn-secondary">Licencia</button>}
           </>
         ) : (
           <div className="flex-1 text-[14px] text-gypi-dim">Sin chofer habitual. Elegilo en Editar datos.</div>
@@ -518,7 +518,7 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
       </ul>
 
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Historial</div>
-      <Historial eventos={historialVehiculo({ checklists, arreglos, mantenimientos, papeles, nombrePapel })} editable={editable} onVerChecklist={setVerChecklist} onCambio={onCambio} />
+      <Historial eventos={historialVehiculo({ checklists, arreglos, mantenimientos, papeles, nombrePapel })} editable={oficina} onVerChecklist={setVerChecklist} onCambio={onCambio} />
 
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Datos</div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[14px] m-0 mb-3">

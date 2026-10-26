@@ -123,3 +123,27 @@ export function destinatarios(fila, campos, { choferId = null } = {}) {
   if (!ids.length && choferId) ids.push(choferId);
   return [...new Set(ids)];
 }
+
+/**
+ * ¿Puede cargar y editar vehículos y máquinas? Gerencia y Administración, y
+ * también los marcados "Responsable de mantenimiento" (pedido de Tadeo,
+ * 26/10): tienen su pestaña Mantenimiento con Flota y Maquinaria, sin 💲
+ * Costos ni 📊 Indicadores (eso sigue siendo de la oficina).
+ */
+export function puedeGestionarMantenimiento(usuario) {
+  const rol = usuario?.rol;
+  return rol === "gerencial" || rol === "administrativo" || usuario?.es_mantenimiento === true;
+}
+
+/**
+ * Lo que un responsable de mantenimiento puede hacer en /api/flota y
+ * /api/maquinaria además de lo que ya hacía (checklists, arreglos, fallas).
+ * Quedan para la oficina: la licencia de los empleados y borrar un service
+ * (los services tienen costos).
+ */
+export const ACCIONES_RESPONSABLE = new Set([
+  "vehiculo_guardar", "vehiculo_baja", "papel_guardar", "papel_borrar", "checklist_plantilla_guardar",
+  "arreglo_crear", "arreglo_editar", "arreglo_descartar", "mantenimiento_crear", "mantenimiento_asignar",
+  "maquina_guardar", "maquina_baja", "horas_guardar", "tarea_guardar", "tarea_borrar", "responsables_guardar",
+  "falla_editar", "falla_descartar",
+]);

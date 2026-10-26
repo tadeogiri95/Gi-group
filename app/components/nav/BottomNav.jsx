@@ -20,7 +20,7 @@ const Icons = {
 // lista de módulos (demo, versión vieja en caché) se muestran todas.
 const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => modulos.includes(m));
 
-export function getItems(role, pend, modulos, { instalador = false } = {}) {
+export function getItems(role, pend, modulos, { instalador = false, mantenimiento = false } = {}) {
   // Gestión (menú nuevo, parte 32): Inicio · Proyectos · Inventario ·
   // Mantenimiento · Más. Cada botón del medio aparece si la empresa tiene
   // alguno de sus módulos. Permisos y Equipo pasaron a "Más", que lleva el
@@ -39,17 +39,19 @@ export function getItems(role, pend, modulos, { instalador = false } = {}) {
   // "Asistente" salieron de la barra: el avance se mide escaneando piezas
   // (pedido de la empresa, 2026-10). "Mi cuenta" dejó de ser un renglón al
   // final del Inicio (revisión de la interfaz). El instalador (migración 116)
-  // suma "Instalaciones" para el reporte del día.
+  // suma "Instalaciones" para el reporte del día. El responsable de
+  // mantenimiento (133) suma "Mantenimiento" con Flota y Maquinaria (26/10).
   return [
     { id: 'home',       label: 'Inicio',      icon: Icons.home },
     instalador && { id: 'instalaciones', label: 'Instalaciones', icon: Icons.hammer },
+    mantenimiento && conBoton('mantenimiento', { modulos }) && { id: 'mantenimiento', label: 'Mantenimiento', icon: Icons.wrench },
     { id: 'mis-sols',   label: 'Permisos', icon: Icons.history },
     { id: 'cuenta',     label: 'Mi cuenta', icon: Icons.user },
   ].filter(Boolean);
 }
 
-export default function BottomNav({ active, onChange, role, pend, modulos, instalador = false }) {
-  const items = getItems(role, pend, modulos, { instalador });
+export default function BottomNav({ active, onChange, role, pend, modulos, instalador = false, mantenimiento = false }) {
+  const items = getItems(role, pend, modulos, { instalador, mantenimiento });
   // El operario tiene pocas pestañas: botones y letra más grandes, fáciles de
   // tocar en la planta (revisión de la interfaz, 2026-10)
   const grande = role !== 'gerencial' && role !== 'administrativo';

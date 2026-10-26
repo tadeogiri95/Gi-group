@@ -18,6 +18,7 @@ import {
 } from "../lib/flota";
 import { alertasVehiculo, textoAlerta, urgentes as soloUrgentes } from "../lib/alertasFlota";
 import { costosFlota, nombreMes, textoCosto, ultimosMeses } from "../lib/arreglosFlota";
+import { puedeGestionarMantenimiento } from "../lib/mantenimiento";
 import { Chip, FilaDeslizable } from "./ui";
 import FichaVehiculo, { FormVehiculo, FormLicencia } from "./FichaVehiculo";
 import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
@@ -41,7 +42,9 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
   const [verChecklist, setVerChecklist] = useState(null);
   const [arreglos, setArreglos] = useState([]);
   const [mantenimientos, setMantenimientos] = useState([]);
-  const editable = puedeEditarFlota(usuario?.rol);
+  // Cargar y editar: la oficina y el responsable de mantenimiento; 💲 Costos y las licencias, solo la oficina
+  const editable = puedeGestionarMantenimiento(usuario);
+  const oficina = puedeEditarFlota(usuario?.rol);
   const hoy = hoyArg();
 
   const cargar = useCallback(async () => {
@@ -123,7 +126,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
         <FichaVehiculo vehiculo={ficha} papeles={papeles.filter((p) => p.vehiculo_id === ficha.id)} empleados={empleados} divisiones={divisiones}
           checklists={checklists.filter((c) => c.vehiculo_id === ficha.id)} empresaNombre={empresa?.nombre || ""}
           arreglos={arreglos.filter((a) => a.vehiculo_id === ficha.id)} mantenimientos={mantenimientos.filter((m) => m.vehiculo_id === ficha.id)}
-          editable={editable} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
+          editable={editable} oficina={oficina} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
       </div>
     );
   }
@@ -151,7 +154,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
         <Chip active={vista === "alertas"} onClick={() => setVista("alertas")}>🔔 Alertas{todasUrgentes.length ? ` (${todasUrgentes.length})` : ""}</Chip>
         <Chip active={vista === "checklists"} onClick={() => setVista("checklists")}>📋 Checklists</Chip>
         <Chip active={vista === "choferes"} onClick={() => setVista("choferes")}>🪪 Choferes</Chip>
-        {editable && <Chip active={vista === "costos"} onClick={() => setVista("costos")}>💲 Costos</Chip>}
+        {oficina && <Chip active={vista === "costos"} onClick={() => setVista("costos")}>💲 Costos</Chip>}
         {editable && <Chip active={vista === "plantilla"} onClick={() => setVista("plantilla")}>⚙ Checklist</Chip>}
       </FilaDeslizable>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
@@ -230,7 +233,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
       {vista === "checklists" && <ListaChecklists checklists={checklists.slice(0, 200)} vehiculos={vehiculos || []} onVer={setVerChecklist} />}
       {vista === "plantilla" && editable && <PlantillaChecklist />}
 
-      {vista === "costos" && editable && (
+      {vista === "costos" && oficina && (
         <>
           <div className="text-[13px] text-gypi-dim mb-2">Lo gastado en services, reparaciones y arreglos de los últimos 6 meses, y los kilómetros recorridos (según los checklists y services).</div>
           {!costos.filas.length ? (
@@ -281,7 +284,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
                 const nivel = estado.nivel === "sin_fecha" ? "pronto" : estado.nivel;
                 return (
                   <li key={e.id}>
-                    <button onClick={() => editable && setLicencia(e)} disabled={!editable} aria-label={`Licencia de ${e.nombre}`}
+                    <button onClick={() => oficina && setLicencia(e)} disabled={!oficina} aria-label={`Licencia de ${e.nombre}`}
                       className="w-full flex items-center gap-2.5 p-2.5 min-h-[44px] rounded-[10px] border border-gypi-border bg-gypi-surface text-left cursor-pointer font-body text-gypi-text disabled:cursor-default">
                       <span className="text-[20px]">{SEMAFORO[nivel].emoji}</span>
                       <span className="flex-1 min-w-0">

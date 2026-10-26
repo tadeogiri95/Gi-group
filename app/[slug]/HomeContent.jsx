@@ -285,7 +285,7 @@ export default function HomeContent() {
       const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", proyectos: "Órdenes de trabajo y reportes", inventario: "Stock y compras", mantenimiento: "Flota vehicular y maquinaria", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
-    const subtitles = { cuenta: "Horario, fichadas y documentos", instalaciones: "El reporte del día", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
+    const subtitles = { cuenta: "Horario, fichadas y documentos", instalaciones: "El reporte del día", mantenimiento: "Flota vehicular y maquinaria", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
     return subtitles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -351,7 +351,7 @@ export default function HomeContent() {
   // En la computadora, Proyectos, Inventario, Mantenimiento y Equipo (trabajo
   // de oficina) usan todo el ancho; el resto sigue como un celular en el medio
   // (auditoría 22/10)
-  const ancho = uIsGer && (BOTONES.has(screen) || screen === "equipo");
+  const ancho = (uIsGer && (BOTONES.has(screen) || screen === "equipo")) || (!uIsGer && screen === "mantenimiento");
   return (
     <div className={`app-shell bg-gypi-bg ${ancho ? "app-shell--ancho" : ""}`}>
       {!isDemo && <PushManager legajo={u.legajo} empresaId={u.empresa_id || empresa?.id} />}
@@ -410,6 +410,7 @@ export default function HomeContent() {
           )}
           {!uIsGer && screen === "documentos" && <DocumentosScreen />}
           {!uIsGer && screen === "instalaciones" && <InstalacionesScreen empresaId={u?.empresa_id || empresa?.id} />}
+          {!uIsGer && screen === "mantenimiento" && u?.es_mantenimiento && <BotonGestionScreen key={`mantenimiento:${seccionMas || ""}`} boton="mantenimiento" empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <EquipoScreen key={seccionMas || "equipo"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
@@ -437,7 +438,7 @@ export default function HomeContent() {
       </div>
 
       {/* Historial y documentos del operario se abren desde "Mi cuenta": esa pestaña queda marcada */}
-      {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : uIsGer && DESDE_MAS.has(screen) ? "config" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} />}
+      {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : uIsGer && DESDE_MAS.has(screen) ? "config" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} mantenimiento={!!u.es_mantenimiento} />}
 
       {paywallInfo && (
         <Paywall
