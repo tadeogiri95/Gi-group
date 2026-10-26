@@ -21,6 +21,7 @@ import EscanearPiezas from "../EscanearPiezas";
 import ChecklistVehiculo from "../ChecklistVehiculo";
 import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
 import AvisarFalla from "../AvisarFalla";
+import PlanSemana from "../PlanSemana";
 import { CAMPOS_VEHICULO, conResponsables, detalleMiMantenimiento, resumenMiMantenimiento } from "../../lib/mantenimiento";
 import { sb } from "../../lib/supabase";
 
@@ -164,6 +165,8 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
           </div>
         )}
       </section>
+      {/* Parte 41 (138): lo que gerencia confirmó para la semana, solo lectura */}
+      {!demo && tieneModulo(empresa, "proyectos") && <PlanSemana divisionUsuario={usuario?.division} />}
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}

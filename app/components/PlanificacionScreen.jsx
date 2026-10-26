@@ -6,9 +6,11 @@
 // arrastrando; migración 137) y los parámetros de la planta (tiempos,
 // eficiencia, relaciones y máquinas; config_sistema clave "planificacion").
 // "Ordenar automáticamente" (parte 40) reparte las OT elegidas día por día y
-// las muestra en un Gantt de planificación.
+// las muestra en un Gantt de planificación. Ese plan se guarda como borrador
+// o se confirma (parte 41, migración 138): confirmado, la planta lo ve en
+// 📅 Plan de la semana.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { sb, sbGetAll } from "../lib/supabase";
+import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { textoObjetivo, CLAVE_FECHA_OBJETIVO, normalizarModo } from "../lib/semanaObjetivo";
 import { hoyArg } from "../lib/dates";
@@ -20,6 +22,7 @@ import {
 } from "../lib/cargaPlanta";
 import { planAutomatico, pendientesPorOt } from "../lib/planAutomatico";
 import GanttPlan from "./GanttPlan";
+import { cuerpoPlan } from "../lib/planGuardado";
 import { materialOt } from "../lib/ot";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
@@ -94,6 +97,9 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   const [error, setError] = useState(null);
   const [elegidas, setElegidas] = useState(null);
   const [ordenado, setOrdenado] = useState(false);
+  // Plan guardado del período: undefined = leyendo, null = no hay
+  const [guardado, setGuardado] = useState(undefined);
+  const [faltaMigracion, setFaltaMigracion] = useState(false);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -121,6 +127,15 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   }, [empresaId]);
 
   const per = useMemo(() => periodo(tipo, hoyArg(), paso, modo), [tipo, paso, modo]);
+  useEffect(() => {
+    let vivo = true;
+    setGuardado(undefined);
+    apiFetch(`/api/planificacion?desde=${per.desde}&hasta=${per.hasta}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!vivo) return; setGuardado(d?.plan || null); setFaltaMigracion(!!d?.falta_migracion); })
+      .catch(() => { if (vivo) setGuardado(null); });
+    return () => { vivo = false; };
+  }, [per.desde, per.hasta]);
   const ots = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
   // Al cambiar de período vuelven a venir tildadas las OT de ese período
   useEffect(() => { if (datos) setElegidas(preseleccion(ots, per.hasta)); }, [datos, ots, per.hasta]);
@@ -213,13 +228,20 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
           <div className="g-label flex-1">⚡ Plan día por día</div>
           {ordenado && <button type="button" onClick={() => setOrdenado(false)} className="g-btn g-btn-secondary">Ocultar</button>}
         </div>
+        <EstadoGuardado guardado={guardado} faltaMigracion={faltaMigracion} empleados={datos.empleados} />
         {!ordenado ? (
           <>
             <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte las OT elegidas en los días del período, en el orden de prioridad, respetando Corte → Canteado → Mecanizado → Armado y las máquinas. Si no entra, propone días de horas extra.</div>
             <button type="button" onClick={() => setOrdenado(true)} disabled={!carga.ots.length} className="g-btn g-btn-primary w-full">Ordenar automáticamente</button>
           </>
         ) : (
-          <PlanDelPeriodo plan={plan} ots={ots} />
+          <>
+            <PlanDelPeriodo plan={plan} ots={ots} />
+            {!faltaMigracion && (
+              <GuardarPlan cuerpo={(estado) => cuerpoPlan({ per, plan, carga, division, ots, estado })}
+                confirmado={guardado?.estado === "confirmado"} onGuardado={setGuardado} onFaltaMigracion={() => setFaltaMigracion(true)} />
+            )}
+          </>
         )}
       </div>
 
@@ -282,6 +304,56 @@ function PlanDelPeriodo({ plan, ots }) {
         ))}
       </ul>
     </>
+  );
+}
+
+const fechaHora = (iso) => new Date(iso).toLocaleString("es-AR", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "America/Argentina/Buenos_Aires" });
+
+function EstadoGuardado({ guardado, faltaMigracion, empleados }) {
+  if (faltaMigracion) return <div role="alert" className="text-[13px] text-gypi-red mb-2">Para guardar el plan falta correr la migración 138 en Supabase.</div>;
+  if (!guardado) return null;
+  const nombre = (id) => (empleados || []).find((e) => e.id === id)?.nombre;
+  if (guardado.estado === "confirmado") {
+    const quien = nombre(guardado.confirmado_por);
+    return (
+      <div role="status" className="text-[13px] font-bold text-gypi-green mb-2">
+        ✅ Plan confirmado{guardado.confirmado_at ? ` el ${fechaHora(guardado.confirmado_at)}` : ""}{quien ? ` por ${quien}` : ""}. La planta lo ve en 📅 Plan de la semana.
+      </div>
+    );
+  }
+  return <div role="status" className="text-[13px] text-gypi-amber-ink font-bold mb-2">📝 Hay un borrador guardado{guardado.updated_at ? ` (${fechaHora(guardado.updated_at)})` : ""}. La planta todavía no lo ve.</div>;
+}
+
+function GuardarPlan({ cuerpo, confirmado, onGuardado, onFaltaMigracion }) {
+  const [enviando, setEnviando] = useState(null);
+  const [error, setError] = useState(null);
+  const guardar = async (estado) => {
+    setEnviando(estado); setError(null);
+    try {
+      const r = await apiFetch("/api/planificacion", { method: "POST", body: JSON.stringify(cuerpo(estado)) });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 409) onFaltaMigracion();
+      if (!r.ok) throw new Error(d.error || "No se pudo guardar el plan.");
+      onGuardado(d.plan);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setEnviando(null);
+    }
+  };
+  return (
+    <div className="mt-3">
+      {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => guardar("borrador")} disabled={!!enviando} className="g-btn g-btn-secondary">
+          {enviando === "borrador" ? "Guardando…" : confirmado ? "Volver a borrador" : "Guardar borrador"}
+        </button>
+        <button type="button" onClick={() => guardar("confirmado")} disabled={!!enviando} className="g-btn g-btn-primary">
+          {enviando === "confirmado" ? "Confirmando…" : confirmado ? "Confirmar de nuevo" : "Confirmar plan"}
+        </button>
+      </div>
+      <div className="text-xs text-gypi-dim mt-1">El borrador lo ve solo gerencia. Al confirmar, la planta ve qué OT y qué etapa toca cada día. Guardar de nuevo reemplaza el plan de este período.</div>
+    </div>
   );
 }
 
