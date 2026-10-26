@@ -69,14 +69,35 @@ function cantidadPlanilla(texto) {
   return t !== "" && Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** Placas, fondos o metros de canto (136): "21,8" → 21.8, "1.200" → 1200,
+ *  "1.200,5" → 1200.5; vacío, "N/A" o texto → null. */
+export function numeroPlanilla(texto) {
+  let t = limpio(texto).replace(/\s/g, "");
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = Number(t);
+  return t !== "" && Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Material de producción del Plan de trabajo (136): columnas X a AA. */
+const MATERIAL = [
+  { campo: "placas", titulos: ["pla 18", "pla18", "placas"] },
+  { campo: "fondos", titulos: ["fondos"] },
+  { campo: "metros_canto", titulos: ["cantos"] },
+  { campo: "placas_mecanizadas", titulos: ["mecanizados", "mecanizadas"] },
+];
+export const CAMPOS_MATERIAL = MATERIAL.map((m) => m.campo);
+const sumar = (a, b) => (a == null && b == null ? null : Math.round(((a || 0) + (b || 0)) * 100) / 100);
+
 const SI = new Set(["si", "sí", "x", "ok", "terminado", "terminada"]);
 
 /**
- * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla,semana_objetivo}[], repetidas: number }}
+ * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla,semana_objetivo,placas,fondos,metros_canto,placas_mecanizadas}[], repetidas: number }}
  * filas: una por OT. Si una OT aparece varias veces (un renglón por ítem), vale
  * la última fila, las columnas vacías se completan con las anteriores y las
  * descripciones de todos los ítems se juntan con " / ". De todos sus ítems:
- * la fecha de entrega y la SEMANA son las más tardías, la cantidad y los módulos se suman, y la OT está
+ * la fecha de entrega y la SEMANA son las más tardías, la cantidad, los módulos,
+ * las placas, los fondos, los cantos y los mecanizados se suman, y la OT está
  * terminada en la planilla solo si todos sus ítems dicen SI en TERMINADO
  * (null si la planilla no tiene esa columna).
  */
@@ -107,6 +128,11 @@ export function parseCsvProyectos(text) {
   const iTerminado = idx("terminado");
   // SEMANA objetivo del Plan de trabajo (135): el título viene con espacio al final
   const iSemana = idx("semana");
+  // Placas, fondos, cantos y mecanizados (136): solo título exacto, así
+  // "CANTOS" no se confunde con "CANT" ni "PLA 18" con otra columna.
+  const iMaterial = MATERIAL
+    .map((m) => ({ ...m, i: headers.findIndex((h) => m.titulos.includes(h)) }))
+    .filter((m) => m.i >= 0);
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);
 
@@ -124,6 +150,8 @@ export function parseCsvProyectos(text) {
       ...(iMod >= 0 ? { total_modulos: enteroPlanilla(c[iMod]) } : {}),
       terminado_planilla: iTerminado >= 0 ? SI.has(limpio(c[iTerminado]).toLowerCase()) : null,
       semana_objetivo: iSemana >= 0 ? semanaPlanilla(c[iSemana]) : null,
+      // Sin la columna, la clave no va (no pisa lo que ya había)
+      ...Object.fromEntries(iMaterial.map((m) => [m.campo, numeroPlanilla(c[m.i])])),
     };
     const previa = porOt.get(ot);
     if (previa) {
@@ -135,6 +163,7 @@ export function parseCsvProyectos(text) {
       const modulos = previa.total_modulos == null && fila.total_modulos == null ? null : (previa.total_modulos || 0) + (fila.total_modulos || 0);
       const terminado = iTerminado >= 0 ? previa.terminado_planilla && fila.terminado_planilla : null;
       const semanas = [previa.semana_objetivo, fila.semana_objetivo].filter(Boolean);
+      const material = Object.fromEntries(iMaterial.map((m) => [m.campo, sumar(previa[m.campo], fila[m.campo])]));
       for (const k of Object.keys(fila)) if (fila[k] == null) fila[k] = previa[k];
       fila.descripcion = [...new Set(descs.flatMap(d => d.split(" / ")))].join(" / ").slice(0, MAX_DESCRIPCION) || null;
       fila.fecha_entrega = fechas.at(-1) || null;
@@ -142,6 +171,7 @@ export function parseCsvProyectos(text) {
       if (iMod >= 0) fila.total_modulos = modulos == null ? null : Math.min(modulos, 9999);
       fila.terminado_planilla = terminado;
       fila.semana_objetivo = semanas.length ? Math.max(...semanas) : null;
+      Object.assign(fila, material);
     }
     porOt.set(ot, fila);
   }
