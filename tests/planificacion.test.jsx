@@ -128,6 +128,7 @@ test("📌 Prioridad — lista ordenada y ▲ guarda la prioridad nueva", async 
     OT(3, "H-800", { division: "HERRERÍA" }),
   ] });
   pantalla();
+  fireEvent.click(await screen.findByText("📌 Prioridad"));
   const lista = await screen.findByRole("region", { name: "Prioridad de las OT" });
   const filas = within(lista).getAllByRole("listitem");
   assert.deepEqual(filas.map((f) => f.getAttribute("aria-label")), ["OT M-7100", "OT M-7200"]);
@@ -144,6 +145,7 @@ test("📌 Prioridad — lista ordenada y ▲ guarda la prioridad nueva", async 
 test("📌 Prioridad — sin la migración 137 avisa qué falta y no deja ordenar", async () => {
   mockData({ proyectos: [{ id: 1, ot: "M-1", division: "Muebles", estado: "activo" }, { id: 2, ot: "M-2", division: "Muebles", estado: "activo" }] });
   pantalla();
+  fireEvent.click(await screen.findByText("📌 Prioridad"));
   assert.ok(await screen.findByText(/falta correr la migración 137/));
   assert.equal(screen.getByLabelText("Bajar OT M-1").disabled, true);
 });
@@ -181,4 +183,139 @@ test("⚙ Parámetros — si ya estaban guardados los actualiza", async () => {
   assert.equal(within(form).getByLabelText(/^Factor de eficiencia/).value, "80");
   fireEvent.click(screen.getByText("Guardar parámetros"));
   await waitFor(() => assert.ok(pedidos.some((p) => p.method === "PATCH" && p.path === "config_sistema?clave=eq.planificacion")));
+});
+
+// ─── Parte 39: carga y capacidad ────────────────────────────────────────────
+const { periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo, pendienteEtapa, preseleccion, modulosPorOt, fmtH } = await import("../app/lib/cargaPlanta.js");
+
+const PARAMS = normalizarParametros({
+  min_placa: 10, min_metro_canto: 1, min_mecanizado_placa: 15, min_armado_gabinete: 60, eficiencia: 80,
+  pct_mecanizado: 50, gabinetes_por_placa: 0.5, etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 },
+});
+const LV = { in: "08:00", out: "17:00" };
+const HORARIO = { lun: LV, mar: LV, mie: LV, jue: LV, vie: LV, sab: null, dom: null };
+const EMPLEADOS = [
+  { id: "e1", rol: "operativo", division: "Muebles", diagrama: HORARIO },
+  { id: "e2", rol: "operativo", division: "MUE", diagrama: HORARIO },
+  { id: "e3", rol: "operativo", division: "Muebles", diagrama: HORARIO, es_instalador: true },
+  { id: "e4", rol: "operativo", division: "Herrería", diagrama: HORARIO },
+  { id: "e5", rol: "gerencial", division: "Muebles", diagrama: HORARIO },
+  { id: "e6", rol: "operativo", division: "Muebles", diagrama: HORARIO, activo: false },
+];
+const OT_A = { id: 1, ot: "M-7473", placas: 10, fondos: 2, metros_canto: 120, placas_mecanizadas: null, total_modulos: 4 };
+
+test("periodo — semana de domingo o de lunes, y mes corrido", () => {
+  assert.deepEqual(periodo("semana", "2026-10-28"), { tipo: "semana", desde: "2026-10-25", hasta: "2026-10-31" });
+  assert.deepEqual(periodo("semana", "2026-10-28", 0, "semana_lunes"), { tipo: "semana", desde: "2026-10-26", hasta: "2026-11-01" });
+  assert.deepEqual(periodo("semana", "2026-10-28", 1), { tipo: "semana", desde: "2026-11-01", hasta: "2026-11-07" });
+  assert.deepEqual(periodo("mes", "2026-12-15", 1), { tipo: "mes", desde: "2027-01-01", hasta: "2027-01-31" });
+  assert.equal(diasDelPeriodo("2026-10-25", "2026-10-31").length, 7);
+});
+
+test("capacidad — horario de los operarios de Muebles que no instalan; la planta abierta limita a las máquinas", () => {
+  const ops = operariosDePlanta(EMPLEADOS, DIVISIONES, DIVISIONES[0]);
+  assert.deepEqual(ops.map((e) => e.id), ["e1", "e2"]);
+  const cap = capacidadPlanta(ops, diasDelPeriodo("2026-10-25", "2026-10-31"));
+  assert.equal(cap.gente, 90);   // 2 personas × 5 días × 9 h
+  assert.equal(cap.maquina, 45); // 5 días × 9 h abiertos
+  // Turno que cruza la medianoche
+  const noche = capacidadPlanta([{ diagrama: { lun: { in: "22:00", out: "06:00" } } }], ["2026-10-26"]);
+  assert.equal(noche.gente, 8);
+});
+
+test("horasOt — placas + fondos, cantos con 2 personas, % mecanizado y módulos de la OT", () => {
+  const h = horasOt(OT_A, PARAMS);
+  assert.equal(h.placas, 12);
+  assert.equal(h.etapas.corte.gente, 2);          // 12 × 10 min
+  assert.equal(h.etapas.canteado.maquina, 1);     // 120 m × 1 min × 50 %
+  assert.equal(h.etapas.canteado.gente, 2);       // ocupa a las 2 personas
+  assert.equal(h.etapas.mecanizado.gente, 1.5);   // 50 % de 12 = 6 × 15 min
+  assert.equal(h.etapas.armado.gente, 4);         // 4 módulos × 60 min
+  assert.equal(h.origenGabinetes, "modulos");
+  assert.equal(h.total, 9.5);
+  // Sin módulos: las etiquetas de módulo, y si no, placas × gabinetes por placa
+  assert.equal(horasOt({ ...OT_A, total_modulos: null }, PARAMS, { modulosEtiquetas: 3 }).gabinetes, 3);
+  assert.equal(horasOt({ ...OT_A, total_modulos: null }, PARAMS).gabinetes, 6);
+  // MECANIZADOS de la planilla gana al %
+  assert.equal(horasOt({ ...OT_A, placas_mecanizadas: 2 }, PARAMS).etapas.mecanizado.gente, 0.5);
+  assert.equal(horasOt({ id: 2, ot: "M-1" }, PARAMS).sinDatos, true);
+});
+
+test("horasOt — solo lo que falta: etapa terminada no suma y la escaneada suma lo que queda", () => {
+  const avance = [{ ot: "M-7473", etapa: 1, estado: "terminada" }];
+  const piezas = [{ ot: "M-7473", etapa: 2, total: 10, pasaron: 5 }];
+  assert.equal(pendienteEtapa({ ot: "M-7473", codigo: 1, avance }), 0);
+  const h = horasOt(OT_A, PARAMS, { avance, piezas });
+  assert.equal(h.etapas.corte.gente, 0);
+  assert.equal(h.etapas.canteado.gente, 1);
+  assert.equal(h.total, 6.5);
+});
+
+test("cargaPeriodo — entra; y si no entra, horas extra, cuello de botella y máquina que falta", () => {
+  const ops = operariosDePlanta(EMPLEADOS, DIVISIONES, DIVISIONES[0]);
+  const cap = capacidadPlanta(ops, diasDelPeriodo("2026-10-25", "2026-10-31"));
+  const ok = cargaPeriodo({ ots: [horasOt(OT_A, PARAMS)], params: PARAMS, capacidad: cap });
+  assert.equal(ok.viable, true);
+  assert.equal(ok.necesarias, 9.5 / 0.8);
+  assert.equal(ok.extra, 0);
+  // 1 operario, 1 día de 2 h
+  const chica = capacidadPlanta([{ diagrama: { lun: { in: "08:00", out: "10:00" } } }], ["2026-10-26"]);
+  const no = cargaPeriodo({ ots: [horasOt(OT_A, PARAMS)], params: PARAMS, capacidad: chica });
+  assert.equal(no.viable, false);
+  assert.equal(no.extra, 9.5 / 0.8 - 2);
+  assert.equal(no.cuello.id, "gente");
+  const sec = no.maquinas.find((m) => m.id === "corte");
+  assert.equal(sec.extra, 0.5);                    // 2,5 h de seccionadora y 2 h abiertas
+  assert.equal(no.maquinas.find((m) => m.id === "mecanizado").extra, 0); // 2 CNC
+});
+
+test("preseleccion, modulosPorOt y fmtH", () => {
+  const ots = [{ id: 1, fecha_objetivo: "2026-10-31" }, { id: 2, fecha_objetivo: "2026-10-10" }, { id: 3, fecha_objetivo: "2026-11-07" }, { id: 4 }];
+  assert.deepEqual([...preseleccion(ots, "2026-10-31")], [1, 2]);
+  assert.equal(modulosPorOt([{ ot: "7", modulo: "M.izq" }, { ot: "7", modulo: "m.izq" }, { ot: "7", modulo: "BAST" }, { ot: "8", modulo: "" }]).get("7"), 2);
+  assert.equal(fmtH(12.46), "12,5 h");
+});
+
+function mockCarga({ proyectos, empleados, cfg }) {
+  global.fetch = async (url, opts) => {
+    const body = opts?.body ? JSON.parse(opts.body) : {};
+    const path = body.path || "";
+    const lista = (data) => new Response(JSON.stringify({ data: path.includes("offset=0") || !path.includes("offset=") ? data : [] }), { status: 200 });
+    if (path.startsWith("proyectos")) return lista(proyectos);
+    if (path.startsWith("empleados")) return lista(empleados);
+    if (path.startsWith("config_sistema") && path.includes("clave=eq.planificacion")) return lista(cfg);
+    return lista([]);
+  };
+}
+
+test("📊 Carga — tildadas las del período; dice si entra, las horas extra y el cuello de botella", async () => {
+  mockCarga({
+    proyectos: [
+      OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
+      OT(2, "M-9000", { division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
+    ],
+    // Un solo operario 2 h el lunes: no alcanza
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  pantalla();
+  const carga = await screen.findByRole("region", { name: "Carga de la planta" });
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, false);
+  assert.match(carga.textContent, /❌ No entra con el horario normal/);
+  assert.match(carga.textContent, /⏱ Horas extra: 9,9 h/);
+  assert.match(carga.textContent, /Cuello de botella: Gente/);
+  assert.match(carga.textContent, /Seccionadora: faltan 0,5 h de máquina/);
+  fireEvent.click(screen.getByLabelText("Planificar OT M-7473"));
+  assert.match(carga.textContent, /Elegí las OT que querés planificar/);
+  fireEvent.click(screen.getByLabelText("Período siguiente"));
+  assert.match(carga.textContent, /Semana del/);
+});
+
+test("📊 Carga — sin parámetros avisa qué falta cargar", async () => {
+  mockCarga({ proyectos: [], empleados: [], cfg: [] });
+  pantalla();
+  assert.ok(await screen.findByText("Faltan parámetros"));
+  fireEvent.click(screen.getByText("Cargar parámetros"));
+  assert.ok(await screen.findByRole("region", { name: "Parámetros de la planificación" }));
 });
