@@ -522,7 +522,7 @@ export const reporteInstalacionBody = z.object({
 // ── /api/planificacion (138): plan de producción guardado, solo gerencia ───
 const horasPlan = z.number().min(0).max(100000).transform((n) => Math.round(n * 100) / 100);
 export const planProduccionBody = z.object({
-  tipo: z.enum(["semana", "mes"]),
+  tipo: z.enum(["semana", "mes", "horizonte"]),
   desde: fecha,
   hasta: fecha,
   estado: z.enum(["borrador", "confirmado"]),
@@ -530,7 +530,7 @@ export const planProduccionBody = z.object({
   horas_necesarias: horasPlan,
   horas_disponibles: horasPlan,
   horas_extra: horasPlan,
-  dias_extra: z.array(z.object({ fecha, horas: horasPlan }).strict()).max(62).default([]),
+  dias_extra: z.array(z.object({ fecha, horas: horasPlan }).strict()).max(400).default([]),
   pendientes: z.array(z.object({ ot: otSuelto, horas: horasPlan }).strict()).max(500).default([]),
   items: z.array(z.object({
     ot: otSuelto,
@@ -538,7 +538,7 @@ export const planProduccionBody = z.object({
     fecha,
     horas: horasPlan,
     orden: z.number().int().min(0).max(100000),
-  }).strict()).max(5000),
+  }).strict()).max(20000),
 }).strict();
 
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─

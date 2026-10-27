@@ -9,6 +9,10 @@
 // las muestra en un Gantt de planificación. Ese plan se guarda como borrador
 // o se confirma (parte 41, migración 138): confirmado, la planta lo ve en
 // 📅 Plan de la semana.
+// Desde el 27/10 el plan no tiene límite de semanas (migración 143): va desde
+// hoy hasta que terminan las OT tildadas, según las fechas objetivo (SEMANA,
+// con horas extra) o según la capacidad de la planta (fechas estimadas). La
+// semana o el mes elegidos solo cambian qué parte del plan muestran las tablas.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -17,7 +21,7 @@ import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { leerAvanceYHoras } from "../lib/otEnCursoDatos";
 import {
-  periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo,
+  periodo, diasDelPeriodo, diasDesde, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo,
   preseleccion, modulosPorOt, fmtH, personalPlanta, PUESTOS_PLANTA,
 } from "../lib/cargaPlanta";
 import { leerOperariosPlanta } from "../lib/ganttPlan";
@@ -25,7 +29,8 @@ import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import AvanceManualOt from "./AvanceManualOt";
 import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
-import { planAutomatico, pendientesPorOt } from "../lib/planAutomatico";
+import { planHorizonte, trabajoDelPeriodo } from "../lib/planAutomatico";
+import { inicioDeSemana } from "../lib/semanaObjetivo";
 import GanttPlan from "./GanttPlan";
 import { cuerpoPlan } from "../lib/planGuardado";
 import { materialOt } from "../lib/ot";
@@ -104,7 +109,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const [error, setError] = useState(null);
   const [elegidas, setElegidas] = useState(null);
   const [ordenado, setOrdenado] = useState(false);
-  // Plan guardado del período: undefined = leyendo, null = no hay
+  // Switch del plan: según las fechas objetivo (SEMANA, con horas extra) o según la capacidad
+  const [base, setBase] = useState("objetivo");
+  // Último plan sin límite de semanas guardado: undefined = leyendo, null = no hay
   const [guardado, setGuardado] = useState(undefined);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [avisoTipo, setAvisoTipo] = useState(null);
@@ -144,26 +151,26 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
     return () => { vivo = false; };
   }, [empresaId]);
 
-  const per = useMemo(() => periodo(tipo, hoyArg(), paso, modo), [tipo, paso, modo]);
+  const hoy = hoyArg();
+  const per = useMemo(() => periodo(tipo, hoy, paso, modo), [tipo, hoy, paso, modo]);
   useEffect(() => {
     let vivo = true;
-    setGuardado(undefined);
-    apiFetch(`/api/planificacion?desde=${per.desde}&hasta=${per.hasta}`)
+    apiFetch("/api/planificacion?horizonte=1")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (!vivo) return; setGuardado(d?.plan || null); setFaltaMigracion(!!d?.falta_migracion); })
       .catch(() => { if (vivo) setGuardado(null); });
     return () => { vivo = false; };
-  }, [per.desde, per.hasta]);
+  }, []);
   const ots = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
-  // Al cambiar de período vuelven a venir tildadas las OT de ese período (no al
-  // cambiar el tipo o el checkeo manual de una OT: lo tildado queda como estaba)
+  // Vienen tildadas las OT con semana; cambiar de período no toca lo tildado
+  // (solo cambia qué parte del plan se ve), cambiar de división sí
   const preseleccionDe = useRef(null);
   useEffect(() => {
-    const clave = `${per.hasta}|${division?.id || ""}`;
+    const clave = division?.id || "";
     if (!datos || preseleccionDe.current === clave) return;
     preseleccionDe.current = clave;
-    setElegidas(preseleccion(ots, per.hasta));
-  }, [datos, ots, per.hasta, division]);
+    setElegidas(preseleccion(ots));
+  }, [datos, ots, division]);
 
   // Escaneo de piezas, con el checkeo manual de cada OT en los procesos sin escaneo (141)
   const piezas = useMemo(() => piezasConManual(datos?.piezasEscaneo || [], datos?.proyectos || []), [datos]);
@@ -171,14 +178,21 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
     modulosEtiquetas: datos?.modulos.get(String(p.ot)) || null, avance: datos?.avance, piezas,
   })])), [ots, params, datos, piezas]);
   const operarios = useMemo(() => operariosDePlanta(datos?.empleados, divisiones, division), [datos, divisiones, division]);
-  const capacidad = useMemo(() => capacidadPlanta(operarios, diasDelPeriodo(per.desde, per.hasta)), [operarios, per]);
-  const carga = useMemo(() => cargaPeriodo({
-    ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => horas.get(p.id)), params, capacidad,
-  }), [ots, elegidas, horas, params, capacidad]);
-  // Plan día por día de las OT elegidas, en el orden de prioridad
-  const plan = useMemo(() => (ordenado ? planAutomatico({
-    trabajos: ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ ...horas.get(p.id), id: p.id })), capacidad, params,
-  }) : null), [ordenado, ots, elegidas, horas, capacidad, params]);
+  // Plan día por día de las OT elegidas, en el orden de prioridad, desde hoy
+  // hasta que terminan (se calcula un año de grilla)
+  const capacidadAnio = useMemo(() => capacidadPlanta(operarios, diasDesde(hoy, 366)), [operarios, hoy]);
+  const plan = useMemo(() => (elegidas?.size ? planHorizonte({
+    trabajos: ots.filter((p) => elegidas.has(p.id)).map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: p.fecha_objetivo || null })),
+    dias: capacidadAnio.porDia, params, base, modo,
+  }) : null), [ots, elegidas, horas, capacidadAnio, params, base, modo]);
+  // Las tablas muestran lo que el plan pone en el período elegido (de hoy en adelante)
+  const desdeVisible = per.desde > hoy ? per.desde : hoy;
+  const yaPaso = per.hasta < hoy;
+  const capacidad = useMemo(() => capacidadPlanta(operarios, yaPaso ? [] : diasDelPeriodo(desdeVisible, per.hasta)), [operarios, yaPaso, desdeVisible, per.hasta]);
+  const carga = useMemo(() => ({
+    ...cargaPeriodo({ ots: plan ? [trabajoDelPeriodo(plan.segmentos, desdeVisible, per.hasta, params.eficiencia)] : [], params, capacidad }),
+    ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => horas.get(p.id)),
+  }), [plan, desdeVisible, per.hasta, params, capacidad, ots, elegidas, horas]);
   const valor = useMemo(() => (verPrecios ? valorizarPlan({
     ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ id: p.id, ot: p.ot, completo: horas.get(p.id).completo })),
     segmentos: plan?.segmentos, pendientes: plan?.pendientes, precios, eficiencia: params.eficiencia, modo,
@@ -223,9 +237,12 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       )}
 
       <div className="g-card mb-3" aria-label="Resultado">
-        <div className={`font-heading text-lg font-bold mb-1 ${carga.viable ? "text-gypi-green" : "text-gypi-red"}`}>
-          {!carga.ots.length ? "Elegí las OT que querés planificar" : carga.viable ? "✅ Entra en el período" : "❌ No entra con el horario normal"}
+        <div className={`font-heading text-lg font-bold mb-1 ${carga.viable && !yaPaso ? "text-gypi-green" : "text-gypi-red"}`}>
+          {!carga.ots.length ? "Elegí las OT que querés planificar" : yaPaso ? "Ese período ya pasó" : carga.viable ? "✅ Entra en el período" : "❌ No entra con el horario normal"}
         </div>
+        {!yaPaso && carga.ots.length > 0 && (
+          <div className="text-xs text-gypi-dim mb-1">Lo que el plan pone del {fechaCorta(desdeVisible)} al {fechaCorta(per.hasta)}. El plan sigue hasta que terminan todas las OT; la semana o el mes de arriba solo eligen qué parte se ve acá.</div>
+        )}
         <div className="text-[13px] text-gypi-dim mb-2">
           {carga.ots.length === 1 ? "1 OT elegida" : `${carga.ots.length} OT elegidas`} · {capacidad.personas === 1 ? "1 operario" : `${capacidad.personas} operarios`} de {division?.label || "la planta"} · eficiencia {params.eficiencia ?? "—"} %
         </div>
@@ -304,16 +321,25 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
           {ordenado && <button type="button" onClick={() => setOrdenado(false)} className="g-btn g-btn-secondary">Ocultar</button>}
         </div>
         <EstadoGuardado guardado={guardado} faltaMigracion={faltaMigracion} empleados={datos.empleados} />
+        <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte las OT tildadas desde hoy hasta que terminan, en el orden de prioridad, respetando Corte → Canteado → Mecanizado → Armado y las máquinas.</div>
+        <div className="flex gap-2 flex-wrap mb-1" role="group" aria-label="Armar el plan según">
+          <Chip active={base === "objetivo"} onClick={() => setBase("objetivo")}>📅 Según fechas objetivo (SEMANA)</Chip>
+          <Chip active={base === "capacidad"} onClick={() => setBase("capacidad")}>🏭 Según capacidad de la planta</Chip>
+        </div>
+        <div className="text-xs text-gypi-dim mb-2">
+          {base === "objetivo"
+            ? "Cada OT tiene que terminar en su semana: si no llega, Gypi suma horas extra antes (primero sábados, después domingos) y te dice cuántas hacen falta por semana."
+            : "Solo el horario normal: cada OT sale con la fecha en que terminaría, y se marcan las que terminan después de su semana."}
+        </div>
+        {plan && plan.desde && <ResumenHorizonte plan={plan} base={base} modo={modo} />}
         {!ordenado ? (
+          <button type="button" onClick={() => setOrdenado(true)} disabled={!carga.ots.length} className="g-btn g-btn-primary w-full">Ordenar automáticamente</button>
+        ) : plan && (
           <>
-            <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte las OT elegidas en los días del período, en el orden de prioridad, respetando Corte → Canteado → Mecanizado → Armado y las máquinas. Si no entra, propone días de horas extra.</div>
-            <button type="button" onClick={() => setOrdenado(true)} disabled={!carga.ots.length} className="g-btn g-btn-primary w-full">Ordenar automáticamente</button>
-          </>
-        ) : (
-          <>
-            <PlanDelPeriodo plan={plan} ots={ots} />
-            {!faltaMigracion && (
-              <GuardarPlan cuerpo={(estado) => cuerpoPlan({ per, plan, carga, division, ots, estado })}
+            <GanttPlan plan={plan} ots={ots} hoy={hoy} marcarObjetivo={base === "objetivo"} />
+            <FinDeCadaOt plan={plan} ots={ots} />
+            {!faltaMigracion && plan.segmentos.length > 0 && (
+              <GuardarPlan cuerpo={(estado) => cuerpoPlan({ per: { tipo: "horizonte", desde: plan.desde, hasta: plan.hasta }, plan, division, ots, estado })}
                 confirmado={guardado?.estado === "confirmado"} onGuardado={setGuardado} onFaltaMigracion={() => setFaltaMigracion(true)} />
             )}
           </>
@@ -322,8 +348,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
 
       {valor && <Valorizacion valor={valor} conPlan={!!plan} />}
 
-      <div className="g-label mb-1.5">OT del período ({ots.length})</div>
-      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana hasta el fin del período (también las atrasadas). Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
+      <div className="g-label mb-1.5">OT para planificar ({ots.length})</div>
+      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana (también las atrasadas). Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
       {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
       <div className="flex gap-2 mb-2 items-center">
         <input type="search" className="g-input flex-1 min-w-0" value={busca} onChange={(e) => setBusca(e.target.value)}
@@ -378,7 +404,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
 }
 
 // 💲 Valorización (142): precio de las OT tildadas y, con el plan día por día,
-// lo que se fabrica en cada semana y mes (según las horas de cada una).
+// lo que se fabrica en cada semana y mes de todo el plan (según las horas de cada una).
 function Valorizacion({ valor, conPlan }) {
   const fila = (label, v, fuerte = false) => (
     <tr key={label} className="border-t border-gypi-border first:border-t-0">
@@ -395,7 +421,7 @@ function Valorizacion({ valor, conPlan }) {
       </div>
       {valor.sinPrecio > 0 && <div className="text-xs text-gypi-dim mb-1">{valor.sinPrecio === 1 ? "1 OT tildada no tiene" : `${valor.sinPrecio} OT tildadas no tienen`} PRECIO en el Plan de trabajo.</div>}
       {!conPlan ? (
-        <div className="text-xs text-gypi-dim">Tocá Ordenar automáticamente para ver cuánto se fabrica cada semana y cada mes.</div>
+        <div className="text-xs text-gypi-dim">Tildá OT para ver cuánto se fabrica cada semana y cada mes.</div>
       ) : (
         <>
           <div className="text-xs text-gypi-dim mb-1">Cada OT reparte su precio según las horas que el plan pone en cada semana.</div>
@@ -407,8 +433,8 @@ function Valorizacion({ valor, conPlan }) {
           </table>
           <table className="w-full text-[13px]">
             <tbody>
-              {fila("Se fabrica en el período", valor.enPlan, true)}
-              {valor.pasa > 0.5 && fila("Pasa al período siguiente", valor.pasa)}
+              {fila("Se fabrica en el plan", valor.enPlan, true)}
+              {valor.pasa > 0.5 && fila("No entra en el próximo año", valor.pasa)}
               {valor.hecho > 0.5 && fila("Ya fabricado antes", valor.hecho)}
               {valor.sinHoras > 0.5 && fila("Sin horas para repartir (faltan datos de la planilla)", valor.sinHoras)}
             </tbody>
@@ -434,40 +460,69 @@ function TipoOt({ proyecto, onCambiar }) {
   );
 }
 
-function PlanDelPeriodo({ plan, ots }) {
-  const pasan = pendientesPorOt(plan.pendientes);
+const nombreDia = (f) => new Date(`${f}T00:00:00Z`).toLocaleDateString("es-AR", { weekday: "short", timeZone: "UTC" });
+
+function textoTarde(t) {
+  const semana = t.objetivo ? `su semana terminó el ${fechaCorta(t.objetivo)}` : "";
+  if (t.motivo === "sin_capacidad") return "no entra en el próximo año con la gente cargada";
+  if (t.motivo === "atrasada") return `${semana}${t.fin ? `; termina el ${fechaCorta(t.fin)}` : ""}`;
+  const hasta = `semana hasta el ${fechaCorta(t.objetivo)}`;
+  if (t.motivo === "no_llega") return `${hasta}; ni con sábados y domingos llega: termina el ${fechaCorta(t.fin)}`;
+  return `${hasta}; termina el ${fechaCorta(t.fin)}`;
+}
+
+// Resumen de todo el plan: hasta cuándo va, horas extra por semana (según
+// fechas objetivo) y las OT que no llegan a su semana.
+function ResumenHorizonte({ plan, base, modo }) {
   const horasExtra = plan.diasExtra.reduce((t, d) => t + d.horas, 0);
-  const fin = (id) => plan.finPorOt.get(id);
+  const dias = (Date.parse(`${plan.hasta}T00:00:00Z`) - Date.parse(`${plan.desde}T00:00:00Z`)) / 86400000 + 1;
+  const semanas = Math.ceil(dias / 7);
   return (
-    <>
-      {plan.diasExtra.length > 0 ? (
-        <div className="mb-2 text-[13px]">
-          <div className="font-bold text-gypi-red mb-1">⏱ Horas extra propuestas: {fmtH(horasExtra)}</div>
+    <div className="mb-2 text-[13px]" aria-label="Resumen del plan">
+      {plan.segmentos.length > 0 && (
+        <div className="mb-2">🗓 El plan va del <b>{fechaCorta(plan.desde)}</b> al <b>{fechaCorta(plan.hasta)}</b> ({semanas === 1 ? "1 semana" : `${semanas} semanas`}).</div>
+      )}
+      {base === "objetivo" && plan.diasExtra.length > 0 && (
+        <div className="mb-2" aria-label="Horas extra por semana">
+          <div className="font-bold text-gypi-red mb-1">⏱ Horas extra para llegar a las semanas: {fmtH(horasExtra)}</div>
           <ul className="list-none m-0 p-0">
-            {plan.diasExtra.map((d) => (
-              <li key={d.fecha}>{new Date(`${d.fecha}T00:00:00Z`).toLocaleDateString("es-AR", { weekday: "long", timeZone: "UTC" })} {fechaCorta(d.fecha)}: {fmtH(d.horas)}</li>
+            {plan.extraPorSemana.map((s) => (
+              <li key={s.desde}>
+                Semana del {fechaCorta(s.desde)}: <b>{fmtH(s.horas)}</b>
+                <span className="text-gypi-dim"> ({plan.diasExtra.filter((d) => inicioDeSemana(d.fecha, modo) === s.desde).map((d) => `${nombreDia(d.fecha)} ${fechaCorta(d.fecha)}`).join(", ")})</span>
+              </li>
             ))}
           </ul>
         </div>
-      ) : !pasan.length && <div className="mb-2 text-[13px] font-bold text-gypi-green">✅ Entra todo en los días de trabajo, sin horas extra.</div>}
-      {pasan.length > 0 && (
-        <div className="mb-2 text-[13px]" aria-label="Pasa al período siguiente">
-          <div className="font-bold mb-1">➡ Pasa al período siguiente</div>
-          <ul className="list-none m-0 p-0">
-            {pasan.map((o) => <li key={o.id}>{o.ot}: {fmtH(o.horas)}</li>)}
-          </ul>
-          <div className="text-xs text-gypi-dim mt-1">Ni con sábados y domingos entra todo: estas OT se parten y siguen en el período siguiente.</div>
+      )}
+      {!plan.tarde.length && plan.segmentos.length > 0 && (
+        <div className="font-bold text-gypi-green mb-2">
+          {base === "capacidad" ? "✅ Con el horario normal todas las OT llegan a su semana." : plan.diasExtra.length ? "✅ Con esas horas extra todas las OT llegan a su semana." : "✅ Todas las OT llegan a su semana sin horas extra."}
         </div>
       )}
-      <GanttPlan plan={plan} ots={ots} hoy={hoyArg()} />
-      <ul className="list-none m-0 p-0 mt-2 text-xs text-gypi-dim">
-        {ots.filter((p) => fin(p.id)).map((p) => (
-          pasan.some((o) => o.id === p.id)
-            ? <li key={p.id}>{p.ot} avanza hasta el {fechaCorta(fin(p.id))} y sigue en el período siguiente</li>
-            : <li key={p.id}>{p.ot} termina el {fechaCorta(fin(p.id))}{p.fecha_objetivo && fin(p.id) > p.fecha_objetivo ? ` · después de su semana (${fechaCorta(p.fecha_objetivo)})` : ""}</li>
-        ))}
-      </ul>
-    </>
+      {plan.tarde.length > 0 && (
+        <div className="mb-2" aria-label="OT que no llegan a su semana">
+          <div className="font-bold text-gypi-red mb-1">{base === "capacidad" ? "🔴 Terminan después de su semana" : "🔴 No llegan a su semana"}</div>
+          <ul className="list-none m-0 p-0">
+            {plan.tarde.map((t) => <li key={t.id} className="text-gypi-red-ink">{t.ot}: {textoTarde(t)}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FinDeCadaOt({ plan, ots }) {
+  const fin = (id) => plan.finPorOt.get(id);
+  const pendiente = new Set(plan.pendientes.map((p) => p.id));
+  return (
+    <ul className="list-none m-0 p-0 mt-2 text-xs text-gypi-dim" aria-label="Fin de cada OT">
+      {ots.filter((p) => fin(p.id)).map((p) => (
+        pendiente.has(p.id)
+          ? <li key={p.id}>{p.ot} avanza hasta el {fechaCorta(fin(p.id))} y no termina en el próximo año</li>
+          : <li key={p.id}>{p.ot} termina el {fechaCorta(fin(p.id))}{p.fecha_objetivo && fin(p.id) > p.fecha_objetivo ? ` · después de su semana (${fechaCorta(p.fecha_objetivo)})` : ""}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -516,7 +571,7 @@ function GuardarPlan({ cuerpo, confirmado, onGuardado, onFaltaMigracion }) {
           {enviando === "confirmado" ? "Confirmando…" : confirmado ? "Confirmar de nuevo" : "Confirmar plan"}
         </button>
       </div>
-      <div className="text-xs text-gypi-dim mt-1">El borrador lo ve solo gerencia. Al confirmar, la planta ve qué OT y qué etapa toca cada día. Guardar de nuevo reemplaza el plan de este período.</div>
+      <div className="text-xs text-gypi-dim mt-1">El borrador lo ve solo gerencia. Al confirmar, la planta ve qué OT y qué etapa toca cada día. Confirmar reemplaza, desde hoy, el plan confirmado anterior.</div>
     </div>
   );
 }

@@ -8,8 +8,13 @@ import { buscarDivision } from "./rutas";
 
 const r1 = (h) => Math.round((Number(h) || 0) * 10) / 10;
 
-/** Cuerpo del POST a /api/planificacion con el plan automático del período. */
+/**
+ * Cuerpo del POST a /api/planificacion con el plan automático. Sin `carga`
+ * (plan sin límite de semanas, tipo 'horizonte'), las horas salen del plan.
+ */
 export function cuerpoPlan({ per, plan, carga, division, ots, estado }) {
+  const necesarias = carga ? carga.necesarias : plan.segmentos.reduce((t, s) => t + s.gente, 0);
+  const disponibles = carga ? carga.disponibles : plan.porDia.reduce((t, d) => t + (d.extra ? 0 : d.disponibles), 0);
   const orden = new Map(ots.map((p, i) => [p.id, i]));
   // Un renglón por OT, etapa y día (el reparto puede dejar dos tramos el mismo día)
   const juntos = new Map();
@@ -24,8 +29,8 @@ export function cuerpoPlan({ per, plan, carga, division, ots, estado }) {
     hasta: per.hasta,
     estado,
     division_id: division?.id || null,
-    horas_necesarias: r1(carga.necesarias),
-    horas_disponibles: r1(carga.disponibles),
+    horas_necesarias: r1(necesarias),
+    horas_disponibles: r1(disponibles),
     horas_extra: r1(plan.diasExtra.reduce((t, d) => t + d.horas, 0)),
     dias_extra: plan.diasExtra.map((d) => ({ fecha: d.fecha, horas: r1(d.horas) })),
     pendientes: pendientesPorOt(plan.pendientes).map((o) => ({ ot: String(o.ot), horas: r1(o.horas) })),

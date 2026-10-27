@@ -45,7 +45,7 @@ export default function PlanSemana({ divisiones, divisionUsuario = null }) {
   return (
     <section aria-label="Plan de la semana" className="g-card mb-[18px]">
       <div className="flex items-center gap-2 mb-2">
-        <div className="flex-1 font-heading font-bold text-base">📅 Plan {plan.tipo === "mes" ? "del mes" : "de la semana"}</div>
+        <div className="flex-1 font-heading font-bold text-base">📅 Plan {plan.tipo === "mes" ? "del mes" : plan.tipo === "horizonte" ? "de producción" : "de la semana"}</div>
         <div className="text-xs text-gypi-dim">{fechaCorta(plan.desde)} al {fechaCorta(plan.hasta)}</div>
       </div>
       {!mostrar.length && <div className="text-[14px] text-gypi-dim">No queda nada planificado para estos días.</div>}
