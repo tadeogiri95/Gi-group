@@ -128,26 +128,49 @@ test("filasGantt — solo sin terminar y con semana; la barra arranca con la lib
   assert.equal(semanas.find((s) => s.actual).numero, 44);
 });
 
-test("📅 Gantt — agrupa por división, muestra los colores y abre el detalle", () => {
+// Desde el 27/10 el Gantt muestra el plan de producción confirmado (138): solo
+// OT planificadas, una línea por proceso y los atrasados marcados adentro.
+const { hoyArg } = await import("../app/lib/dates.js");
+const hoyReal = hoyArg(); // el Gantt cuenta los días con la hora de Argentina
+const dia = (n) => new Date(Date.parse(`${hoyReal}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const PLANES = [{
+  id: 1, tipo: "semana", desde: dia(-20), hasta: dia(20), items: [
+    { ot: "7100", etapa: "corte", fecha: dia(-10), horas: 6, orden: 0 },
+    { ot: "7100", etapa: "corte", fecha: dia(-9), horas: 6, orden: 0 },
+    { ot: "7100", etapa: "armado", fecha: dia(5), horas: 6, orden: 0 },
+    { ot: "7200", etapa: "canteado", fecha: dia(-3), horas: 4, orden: 1 },
+    { ot: "7200", etapa: "mecanizado", fecha: dia(2), horas: 4, orden: 1 },
+  ],
+}];
+const ETAPAS_M = [{ codigo: 1, nombre: "Corte" }, { codigo: 2, nombre: "Canteado" }, { codigo: 3, nombre: "Mecanizado CNC" }, { codigo: 4, nombre: "Armado" }];
+const DIV_M = [{ id: "M", label: "Muebles", ruta_etapas: [1, 2, 3, 4] }];
+
+test("📅 Gantt — solo OT planificadas, una línea por proceso y los atrasados marcados", () => {
   const vistos = [];
   const proyectos = [
-    { id: 1, ot: "7100", cliente: "BCG", division: "M", semana_objetivo: 30, fecha_objetivo: "2026-07-25", estado: "activo" },
-    { id: 2, ot: "7200", cliente: "Ana", division: "A", semana_objetivo: 60, fecha_objetivo: "2027-02-20", estado: "activo" },
-    { id: 3, ot: "7300", cliente: "Sin semana", division: "M", semana_objetivo: null, fecha_objetivo: null, estado: "activo" },
+    { id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" },
+    { id: 2, ot: "7200", cliente: "Ana", division: "M", estado: "activo" },
+    { id: 3, ot: "7300", cliente: "Sin plan", division: "M", semana_objetivo: 44, fecha_objetivo: dia(3), estado: "activo" },
   ];
-  render(<GanttOt proyectos={proyectos} divisiones={[{ id: "M", label: "Muebles" }, { id: "A", label: "Aluminio" }]} etapas={[]} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} onVerDetalle={(p) => vistos.push(p.ot)} />);
-  assert.ok(screen.getByText(/Atrasadas 1/));
-  assert.ok(screen.getByText(/A tiempo 1/));
-  assert.ok(screen.getByText("Muebles · 1"));
-  assert.ok(screen.getByText("Aluminio · 1"));
-  assert.equal(screen.queryByText("7300"), null, "sin semana no aparece");
-  fireEvent.click(screen.getByRole("button", { name: /OT 7100, S30 \(25\/7\), atrasada/ }));
+  // 7200: Canteado completo por escaneo (todas las piezas pasaron)
+  const piezas = [{ ot: "7200", etapa: 2, total: 10, pasaron: 10 }];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} cfgValor={null}
+    avanceHoras={{ avance: [], horas: new Set(), piezas }} onVerDetalle={(p) => vistos.push(p.ot)} />);
+  assert.ok(screen.getByText("Muebles · 2"));
+  assert.equal(screen.queryByText("7300"), null, "sin plan no aparece");
+  assert.ok(screen.getByText("⚠ Atrasados 1"));
+  const lista = screen.getByRole("region", { name: "Procesos atrasados" });
+  assert.match(lista.textContent, /7100 · Corte: tenía que terminar el .* \(9 días de atraso\) · 0% hecho/);
+  assert.equal(container.querySelector('[data-proceso="corte"]').getAttribute("data-estado"), "atrasado");
+  assert.equal(container.querySelector('[data-proceso="canteado"]').getAttribute("data-estado"), "completo");
+  assert.equal(container.querySelectorAll('[data-proceso="armado"][data-estado="pendiente"]').length, 1);
+  fireEvent.click(screen.getByRole("button", { name: /^OT 7100: Corte del .*atrasado 9 días; Armado/ }));
   assert.deepEqual(vistos, ["7100"]);
 });
 
 test("📅 Gantt — por días con la semana arriba, fila de fechas fija y pantalla completa", () => {
-  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", semana_objetivo: 60, fecha_objetivo: "2027-02-20", estado: "activo" }];
-  const { container } = render(<GanttOt proyectos={proyectos} divisiones={[{ id: "M", label: "Muebles" }]} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
   // Arranca por días: la cabecera trae "S44 · 25/10" y los números de cada día
   assert.equal(screen.getByRole("button", { name: "Días" }).getAttribute("aria-pressed"), "true");
   assert.ok(container.querySelector("svg text")?.textContent.includes("·"), "la semana va arriba de los días");
@@ -166,9 +189,10 @@ test("la app instalada se puede girar (el Gantt se ve mejor apaisado)", () => {
   assert.equal(manifest.orientation, "any");
 });
 
-test("📅 Gantt — sin la migración 135 avisa qué falta", () => {
-  render(<GanttOt proyectos={[{ id: 1, ot: "7100", estado: "activo" }]} avanceHoras={null} />);
-  assert.ok(screen.getByText(/falta correr la migración 135/));
+test("📅 Gantt — sin plan confirmado explica cómo armarlo", () => {
+  render(<GanttOt proyectos={[{ id: 1, ot: "7100", estado: "activo", fecha_objetivo: dia(3) }]} planes={[]} avanceHoras={null} />);
+  assert.ok(screen.getByText("No hay OT planificadas"));
+  assert.ok(screen.getByText(/Confirmar plan/));
 });
 
 test("Proyectos → OT tiene el chip 📅 Gantt y la opción de cómo contar la semana", () => {
@@ -179,4 +203,22 @@ test("Proyectos → OT tiene el chip 📅 Gantt y la opción de cómo contar la 
   assert.match(sql, /semana_objetivo smallint/);
   assert.match(sql, /fecha_objetivo date/);
   assert.match(sql, /do \$mig\$/);
+});
+
+test("itemsVigentes y otAtrasadasPlan — la semana le gana al mes; atrasada la OT con un proceso vencido", async () => {
+  const { itemsVigentes, procesosPlan, otAtrasadasPlan } = await import("../app/lib/ganttPlan.js");
+  const planes = [
+    { id: 1, desde: "2026-10-01", hasta: "2026-10-31", items: [{ ot: "A", etapa: "corte", fecha: "2026-10-05" }, { ot: "A", etapa: "armado", fecha: "2026-10-27" }] },
+    { id: 2, desde: "2026-10-25", hasta: "2026-10-31", items: [{ ot: "A", etapa: "armado", fecha: "2026-10-29" }] },
+  ];
+  const items = itemsVigentes(planes);
+  assert.deepEqual(items.map((i) => i.fecha).sort(), ["2026-10-05", "2026-10-29"], "el 27 lo pisa la semana confirmada");
+  const procesos = procesosPlan(items, { etapasCodigo: { corte: 1, armado: 4 }, avance: [{ ot: "A", etapa: 4, estado: "terminada" }], hoy: "2026-10-30" });
+  const a = procesos.get("A");
+  assert.deepEqual(a.procesos.map((p) => [p.etapa, p.completo, p.diasAtraso]), [["corte", false, 25], ["armado", true, 0]]);
+  const filas = [{ proyecto: { ot: "A" }, cerradas: 1, celdas: [{}, {}] }, { proyecto: { ot: "B" }, cerradas: 0, celdas: [{}] }];
+  const r = otAtrasadasPlan(filas, procesos);
+  assert.deepEqual(r.map((x) => [x.fila.proyecto.ot, x.dias, x.porcentaje]), [["A", 25, 50]]);
+  // Terminada en la planilla: nada atrasado
+  assert.equal(procesosPlan(items, { terminadas: new Set(["A"]), hoy: "2026-10-30" }).get("A").atrasados.length, 0);
 });

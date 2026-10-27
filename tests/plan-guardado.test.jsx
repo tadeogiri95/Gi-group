@@ -257,3 +257,14 @@ test("📅 Plan de la semana — la planta ve qué OT y etapa toca hoy; otra div
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(screen.queryByRole("region", { name: "Plan de la semana" }), null);
 });
+
+test("/api/planificacion — ?confirmados=1 trae los planes confirmados con sus días, para cualquiera", async () => {
+  const { leido } = mockRuta({ planes: [{ id: 2, tipo: "semana", desde: "2026-10-25", hasta: "2026-10-31", estado: "confirmado" }], items: [{ ...CUERPO.items[0], plan_id: 2 }] });
+  const d = await (await api.GET(req(await token("administrativo"), { query: "?confirmados=1" }))).json();
+  assert.equal(d.planes.length, 1);
+  assert.equal(d.planes[0].items.length, 1);
+  assert.ok(leido.some((u) => u.includes("plan_id=in.(2)")));
+  mockRuta({ sin138: true });
+  const sin = await (await api.GET(req(await token("operativo"), { query: "?confirmados=1" }))).json();
+  assert.equal(sin.falta_migracion, true);
+});

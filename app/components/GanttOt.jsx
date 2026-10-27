@@ -1,26 +1,31 @@
 'use client';
-// app/components/GanttOt.jsx — 📅 Gantt de OT (Proyectos → OT; migración 135;
-// diseño en notes/diseno-gantt-ot.md). Un renglón por OT abierta, sin
-// TERMINADO y con semana objetivo, agrupadas por división. La barra va desde
-// que la OT arrancó hasta el fin de su semana, rellena con el % de avance:
-// roja si la semana ya pasó, amarilla si vence esta semana, verde a tiempo.
-// El dibujo es SVG: así cada barra se ubica sin estilos sueltos.
+// app/components/GanttOt.jsx — 📅 Gantt de OT (Proyectos → OT). Muestra el
+// plan de producción confirmado en Proyectos → Planificación (migración 138):
+// un renglón por OT planificada y, adentro, una línea por proceso (Corte,
+// Canteado, Mecanizado, Armado), cada uno con su color, desde el primer hasta
+// el último día que el plan le asigna. Un proceso cuya fecha límite ya pasó y
+// no está completo (por el escaneo de piezas, o la etapa terminada) se pinta
+// de rojo con ⚠ y va en la lista de atrasados debajo del Gantt; uno completo
+// queda más claro. El dibujo es SVG: así cada barra se ubica sin estilos sueltos.
 // Se ve por días (con la semana arriba) o por semanas; la fila de las fechas
 // queda fija arriba al bajar, y "Pantalla completa" lo abre en toda la
 // pantalla para girar el celular.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
-import { filasTablero, nombreDivisionOt } from "../lib/avance";
-import { avancePorOt } from "../lib/piezas";
-import { filasGantt, escalaGantt, primerEscaneoPorOt, diasDesde } from "../lib/gantt";
-import { textoObjetivo, MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
+import { nombreDivisionOt } from "../lib/avance";
+import { escalaGantt, diasDesde } from "../lib/gantt";
+import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados } from "../lib/ganttPlan";
+import { ETAPAS_PLAN } from "../lib/planificacion";
+import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
 import { hoyArg } from "../lib/dates";
+import { fechaCorta } from "../lib/ot";
 
 const PX_DIA = { dias: 22, semanas: 40 / 7 }; // ancho de un día según cómo se ve
 const ALTO = 44;
-const COLOR = { atrasada: "fill-gypi-red", esta_semana: "fill-gypi-amber", a_tiempo: "fill-gypi-green" };
-const NOMBRE = { atrasada: "atrasada", esta_semana: "vence esta semana", a_tiempo: "a tiempo" };
+const CARRIL = 9; // alto de la línea de cada proceso dentro del renglón
+const COLOR = { corte: "fill-gypi-amber", canteado: "fill-gypi-cyan", mecanizado: "fill-gypi-violet", armado: "fill-gypi-green" };
+const MUESTRA = { corte: "bg-gypi-amber", canteado: "bg-gypi-cyan", mecanizado: "bg-gypi-violet", armado: "bg-gypi-green" };
 
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
@@ -38,13 +43,34 @@ function salirPantallaCompleta() {
 
 const diaMes = (iso) => { const [, m, d] = String(iso).split("-"); return `${Number(d)}/${Number(m)}`; };
 
-export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, onVerDetalle }) {
+/**
+ * @param {object} props
+ * @param {object[]} [props.planes]  planes confirmados con sus días; si no viene, se leen
+ * @param {object} [props.cfgValor]  parámetros de la planificación (qué etapa es cada proceso)
+ */
+export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, onVerDetalle }) {
   const hoy = hoyArg();
-  const { renglones, escala, grupos, faltaMigracion } = useMemo(() => {
-    const abiertas = proyectos.filter((p) => p.estado !== "cerrado");
-    const filas = filasTablero(abiertas, { etapas, divisiones, avance: avanceHoras?.avance || [], horas: avanceHoras?.horas || new Set(), hoy });
-    const piezas = avanceHoras?.piezas || [];
-    const renglones = filasGantt(filas, { porEscaneo: avancePorOt(piezas), primerEscaneo: primerEscaneoPorOt(piezas), hoy, modo });
+  const [leido, setLeido] = useState(null);
+  useEffect(() => {
+    if (planesProp !== undefined) return;
+    let vivo = true;
+    leerPlanesConfirmados().then((d) => { if (vivo) setLeido(d); });
+    return () => { vivo = false; };
+  }, [planesProp]);
+  const planes = planesProp !== undefined ? planesProp : leido?.planes;
+  const cfgValor = planesProp !== undefined ? cfgProp : leido?.cfgValor;
+
+  const { renglones, escala, grupos, atrasados } = useMemo(() => {
+    if (!planes) return { renglones: null };
+    const abiertas = new Map(proyectos.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p]));
+    const procesos = procesosPlan(itemsVigentes(planes), {
+      etapasCodigo: etapasDelPlan(cfgValor, etapas, divisiones),
+      avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
+      terminadas: new Set(proyectos.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
+    });
+    const renglones = [...procesos.values()].filter((r) => abiertas.has(r.ot))
+      .map((r) => ({ ...r, proyecto: abiertas.get(r.ot) }))
+      .sort((a, b) => a.inicio.localeCompare(b.inicio) || a.ot.localeCompare(b.ot, "es", { numeric: true }));
     const grupos = new Map();
     for (const r of renglones) {
       const n = nombreDivisionOt(divisiones, r.proyecto.division);
@@ -55,9 +81,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       renglones,
       escala: escalaGantt(renglones, { hoy, modo }),
       grupos: [...grupos].sort((a, b) => a[0].localeCompare(b[0], "es")),
-      faltaMigracion: abiertas.length > 0 && abiertas.every((p) => !("fecha_objetivo" in p)),
+      atrasados: renglones.flatMap((r) => r.atrasados.map((p) => ({ ...p, ot: r.ot, proyecto: r.proyecto })))
+        .sort((a, b) => b.diasAtraso - a.diasAtraso),
     };
-  }, [proyectos, etapas, divisiones, avanceHoras, hoy, modo]);
+  }, [planes, cfgValor, proyectos, etapas, divisiones, avanceHoras, hoy, modo]);
 
   const [vista, setVista] = useState("dias");
   const [grande, setGrande] = useState(false);
@@ -67,31 +94,29 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
 
   const px = PX_DIA[vista];
   const COL = 7 * px; // ancho de una semana
-  const cuenta = (e) => renglones.filter((r) => r.estado === e).length;
-  const ancho = escala.semanas.length * COL + 64; // lugar para el % de la última barra
-  const x = (fecha) => Math.max(0, diasDesde(escala.desde, fecha) * px);
+  const semanas = escala?.semanas || [];
+  const ancho = semanas.length * COL + 64; // lugar para el ⚠ de la última barra
+  const x = (fecha) => Math.max(0, diasDesde(escala?.desde || hoy, fecha) * px);
   const xHoy = x(hoy);
   // Se abre mostrando la semana actual (con dos semanas antes), no la más vieja
   const scrollRef = useRef(null);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, xHoy - 2 * COL);
   }, [xHoy, COL, grande]);
-  const separadores = escala.semanas.map((s, i) => <rect key={s.inicio} x={i * COL} y={0} width={1} height={ALTO} className="fill-gypi-border" />);
+  const separadores = semanas.map((s, i) => <rect key={s.inicio} x={i * COL} y={0} width={1} height={ALTO} className="fill-gypi-border" />);
 
-  if (faltaMigracion) {
-    return <div className="g-card text-[13px] text-gypi-dim">Para ver el Gantt falta correr la migración 135 en Supabase y después apretar Sincronizar.</div>;
-  }
+  if (!renglones) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
   if (!renglones.length) {
     return (
       <div className="g-card py-8 px-6 text-center">
         <div className="text-[28px] mb-2">📅</div>
-        <div className="text-sm font-bold text-gypi-text mb-1">No hay OT para mostrar</div>
-        <div className="text-xs text-gypi-dim">Se ven las OT sin terminar que tienen cargada la semana en la planilla. Si la cargaste recién, apretá Sincronizar.</div>
+        <div className="text-sm font-bold text-gypi-text mb-1">No hay OT planificadas</div>
+        <div className="text-xs text-gypi-dim">Acá se ve el plan confirmado en Proyectos → Planificación: armalo en 📊 Carga con &quot;Ordenar automáticamente&quot; y tocá &quot;Confirmar plan&quot;.</div>
       </div>
     );
   }
 
-  const cabeceraSemanas = escala.semanas.map((s, i) => (
+  const cabeceraSemanas = semanas.map((s, i) => (
     <g key={s.inicio}>
       {s.actual && <rect x={i * COL} y={0} width={COL} height={36} className="fill-gypi-amber" fillOpacity={0.15} />}
       <text x={i * COL + COL / 2} y={15} textAnchor="middle" className={`text-[12px] font-bold ${s.actual ? "fill-gypi-text" : "fill-gypi-dim"}`}>{s.numero != null ? `S${s.numero}` : diaMes(s.inicio)}</text>
@@ -99,7 +124,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     </g>
   ));
   // Por días: arriba la semana, abajo el número de cada día (sábado y domingo más claros)
-  const cabeceraDias = escala.semanas.map((s, i) => (
+  const cabeceraDias = semanas.map((s, i) => (
     <g key={s.inicio}>
       {s.actual && <rect x={i * COL} y={0} width={COL} height={18} className="fill-gypi-amber" fillOpacity={0.15} />}
       <rect x={i * COL} y={0} width={1} height={36} className="fill-gypi-border" />
@@ -131,10 +156,11 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           {grande ? "✕ Salir" : "⛶ Pantalla completa"}
         </button>
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-gypi-dim mb-2">
-        <span>🔴 Atrasadas {cuenta("atrasada")}</span>
-        <span>🟡 Vencen esta semana {cuenta("esta_semana")}</span>
-        <span>🟢 A tiempo {cuenta("a_tiempo")}</span>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-gypi-dim mb-2" aria-label="Colores del Gantt">
+        {ETAPAS_PLAN.map((e) => (
+          <span key={e.id} className="flex items-center gap-1"><span aria-hidden="true" className={`inline-block w-3 h-3 rounded-sm ${MUESTRA[e.id]}`} />{e.nombre}</span>
+        ))}
+        <span className={atrasados.length ? "text-gypi-red font-bold" : ""}>⚠ Atrasados {atrasados.length}</span>
       </div>
       {/* Con scroll propio para que la fila de las fechas quede fija arriba al bajar */}
       <div ref={scrollRef} className={`overflow-auto rounded-xl border border-gypi-border ${grande ? "flex-1 min-h-0" : "max-h-[70vh]"}`}>
@@ -149,26 +175,31 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
             <div key={division}>
               <div className="sticky left-0 w-[136px] px-2 pt-2 pb-1 text-[12px] font-bold text-gypi-text bg-gypi-bg">{division} · {filas.length}</div>
               {filas.map((r) => {
-                const desde = x(r.inicio);
-                const largo = Math.max(6, x(r.fin) + px - desde);
-                const hecho = r.porcentaje != null ? (largo * Math.min(100, r.porcentaje)) / 100 : 0;
                 const p = r.proyecto;
+                const finX = x(r.fin) + px;
+                const texto = r.procesos.map((q) => `${q.nombre} del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.completo ? ", completo" : ""}`).join("; ");
                 return (
                   <div key={p.id ?? p.ot} className="flex border-t border-gypi-border">
                     <button type="button" onClick={() => { if (grande) cerrarGrande(); onVerDetalle?.(p); }}
-                      aria-label={`OT ${p.ot}, ${textoObjetivo(p, modo)}, ${NOMBRE[r.estado]}${r.porcentaje != null ? `, ${r.porcentaje}% hecho` : ""}. Ver detalle`}
+                      aria-label={`OT ${p.ot}: ${texto}. Ver detalle`}
                       className="sticky left-0 z-10 w-[136px] shrink-0 bg-gypi-bg px-2 py-1 text-left border-0 border-r border-gypi-border cursor-pointer min-h-11">
-                      <div className="font-mono text-[13px] font-bold text-gypi-text truncate">{p.ot}</div>
+                      <div className={`font-mono text-[13px] font-bold truncate ${r.atrasados.length ? "text-gypi-red" : "text-gypi-text"}`}>{r.atrasados.length ? "⚠ " : ""}{p.ot}</div>
                       <div className="text-[12px] text-gypi-dim truncate">{p.cliente || p.obra || p.proyecto || "—"}</div>
                     </button>
                     <svg width={ancho} height={ALTO} aria-hidden="true" className="block">
                       {separadores}
                       <rect x={xHoy} y={0} width={2} height={ALTO} className="fill-gypi-amber" fillOpacity={0.6} />
-                      <rect x={desde} y={12} width={largo} height={20} rx={5} className={COLOR[r.estado]} fillOpacity={0.25} />
-                      {hecho > 0 && <rect x={desde} y={12} width={hecho} height={20} rx={5} className={COLOR[r.estado]} />}
-                      <text x={desde + largo + 4} y={26} className="text-[12px] font-bold fill-gypi-text">
-                        {r.porcentaje != null ? `${r.porcentaje}%` : ""}{p.semana_objetivo && modo !== "entrega" ? ` S${p.semana_objetivo}` : ""}
-                      </text>
+                      {ETAPAS_PLAN.map((e, i) => {
+                        const q = r.procesos.find((z) => z.etapa === e.id);
+                        if (!q) return null;
+                        const desde = x(q.desde);
+                        return (
+                          <rect key={e.id} data-proceso={e.id} data-estado={q.atrasado ? "atrasado" : q.completo ? "completo" : "pendiente"}
+                            x={desde} y={4 + i * CARRIL} width={Math.max(4, x(q.hasta) + px - desde)} height={CARRIL - 2} rx={2}
+                            className={q.atrasado ? "fill-gypi-red" : COLOR[e.id]} fillOpacity={q.completo ? 0.35 : 1} />
+                        );
+                      })}
+                      {r.atrasados.length > 0 && <text x={finX + 4} y={27} className="text-[12px] font-bold fill-gypi-red">⚠</text>}
                     </svg>
                   </div>
                 );
@@ -177,7 +208,22 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           ))}
         </div>
       </div>
-      <p className="text-[12px] text-gypi-mute mt-2 mb-0">La barra empieza cuando la OT se liberó o se escaneó la primera pieza, y termina el último día de su semana objetivo. Tocá una OT para ver su detalle.</p>
+      {atrasados.length > 0 && (
+        <section aria-label="Procesos atrasados" className="mt-3 rounded-xl border border-gypi-red/40 bg-gypi-red/5 p-3">
+          <div className="text-[13px] font-bold text-gypi-red mb-1">⚠ Procesos atrasados ({atrasados.length})</div>
+          <ul className="list-none m-0 p-0 flex flex-col gap-1">
+            {atrasados.map((q) => (
+              <li key={`${q.ot}-${q.etapa}`}>
+                <button type="button" onClick={() => { if (grande) cerrarGrande(); onVerDetalle?.(q.proyecto); }}
+                  className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[13px] text-gypi-text">
+                  <span className="font-mono font-bold">{q.ot}</span> · {q.nombre}: tenía que terminar el {fechaCorta(q.hasta)} ({q.diasAtraso} {q.diasAtraso === 1 ? "día" : "días"} de atraso) · {q.hecho}% hecho
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <p className="text-[12px] text-gypi-mute mt-2 mb-0">Cada línea es un proceso del plan confirmado, del primer al último día que le toca. Más clara = completa (todas las piezas escaneadas o la etapa terminada); roja = pasó su último día y no está completa. Tocá una OT para ver su detalle.</p>
     </div>
   );
 }
