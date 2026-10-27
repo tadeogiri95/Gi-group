@@ -18,7 +18,7 @@ before(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.SUPABASE_SERVICE_KEY = "test-service-key";
 });
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); localStorage.clear(); });
 
 const { AuthContext } = await import("../app/context/AuthContext.jsx");
 const { default: PlanificacionScreen } = await import("../app/components/PlanificacionScreen.jsx");
@@ -220,7 +220,7 @@ test("📊 Carga — guardar borrador y confirmar el plan del período", async (
   const enviados = mockCarga();
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  fireEvent.click(screen.getByText("Ordenar automáticamente"));
+  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
   fireEvent.click(await screen.findByText("Guardar borrador"));
   assert.ok(await screen.findByText(/Hay un borrador guardado/));
   assert.equal(enviados[0].estado, "borrador");
@@ -240,7 +240,7 @@ test("📊 Carga — sin la migración 138 avisa y no ofrece guardar", async () 
     : orig(url, opts)))(global.fetch);
   pantalla();
   assert.ok(await screen.findByText(/falta correr la migración 138/));
-  fireEvent.click(screen.getByText("Ordenar automáticamente"));
+  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
   assert.equal(screen.queryByText("Guardar borrador"), null);
 });
 
@@ -322,7 +322,7 @@ test("📊 Carga — el plan se guarda entero, desde hoy hasta el último día",
   const enviados = mockCarga();
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  fireEvent.click(screen.getByText("Ordenar automáticamente"));
+  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
   fireEvent.click(await screen.findByText("Guardar borrador"));
   await screen.findByText(/Hay un borrador guardado/);
   const b = enviados[0];

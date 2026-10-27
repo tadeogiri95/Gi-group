@@ -5,7 +5,7 @@
 // la planta (parte 39), la prioridad de las OT de Muebles (se ordena
 // arrastrando; migración 137) y los parámetros de la planta (tiempos,
 // eficiencia, relaciones y máquinas; config_sistema clave "planificacion").
-// "Ordenar automáticamente" (parte 40) reparte las OT elegidas día por día y
+// "Ver el plan de las OT tildadas" (parte 40) reparte las OT tildadas día por día y
 // las muestra en un Gantt de planificación. Ese plan se guarda como borrador
 // o se confirma (parte 41, migración 138): confirmado, la planta lo ve en
 // 📅 Plan de la semana.
@@ -29,7 +29,7 @@ import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import AvanceManualOt from "./AvanceManualOt";
 import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
-import { planHorizonte, trabajoDelPeriodo } from "../lib/planAutomatico";
+import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAutomatico";
 import { inicioDeSemana } from "../lib/semanaObjetivo";
 import GanttPlan from "./GanttPlan";
 import { cuerpoPlan } from "../lib/planGuardado";
@@ -101,6 +101,17 @@ function textoPeriodo(p) {
   return `Semana del ${fechaCorta(p.desde)} al ${fechaCorta(p.hasta)}`;
 }
 
+// Lo que elige gerencia en Carga queda guardado en el navegador (Tadeo, 27/10:
+// al volver del Gantt no tiene que cambiar nada): las OT tildadas, el switch
+// del plan y la forma de ordenar.
+const clavePlan = (empresaId, divisionId, que) => `gypi_plan_${que}_${empresaId}_${divisionId || "todas"}`;
+function leerLocal(clave) {
+  try { return JSON.parse(localStorage.getItem(clave) || "null"); } catch { return null; }
+}
+function guardarLocal(clave, valor) {
+  try { localStorage.setItem(clave, JSON.stringify(valor)); } catch { /* sin almacenamiento */ }
+}
+
 function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametros }) {
   const [tipo, setTipo] = useState("semana");
   const [paso, setPaso] = useState(0);
@@ -109,8 +120,12 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const [error, setError] = useState(null);
   const [elegidas, setElegidas] = useState(null);
   const [ordenado, setOrdenado] = useState(false);
-  // Switch del plan: según las fechas objetivo (SEMANA, con horas extra) o según la capacidad
-  const [base, setBase] = useState("objetivo");
+  // Switch del plan: según la capacidad (por defecto) o según las fechas objetivo (SEMANA, con horas extra)
+  const [base, setBaseEstado] = useState(() => (leerLocal(clavePlan(empresaId, division?.id, "base")) === "objetivo" ? "objetivo" : "capacidad"));
+  const setBase = (b) => { setBaseEstado(b); guardarLocal(clavePlan(empresaId, division?.id, "base"), b); };
+  // Forma de ordenar: solo las tildadas en el orden de prioridad, o el orden más eficiente
+  const [forma, setFormaEstado] = useState(() => (leerLocal(clavePlan(empresaId, division?.id, "forma")) === "eficiente" ? "eficiente" : "prioridad"));
+  const setForma = (f) => { setFormaEstado(f); guardarLocal(clavePlan(empresaId, division?.id, "forma"), f); };
   // Último plan sin límite de semanas guardado: undefined = leyendo, null = no hay
   const [guardado, setGuardado] = useState(undefined);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
@@ -162,15 +177,26 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
     return () => { vivo = false; };
   }, []);
   const ots = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
-  // Vienen tildadas las OT con semana; cambiar de período no toca lo tildado
-  // (solo cambia qué parte del plan se ve), cambiar de división sí
+  // Lo tildado se recuerda: primero lo último que tildó en este navegador,
+  // si no las OT del plan guardado, y si no hay nada, las que tienen semana.
+  // Cambiar de período no toca lo tildado; cambiar de división sí.
   const preseleccionDe = useRef(null);
   useEffect(() => {
     const clave = division?.id || "";
-    if (!datos || preseleccionDe.current === clave) return;
+    if (!datos || guardado === undefined || preseleccionDe.current === clave) return;
     preseleccionDe.current = clave;
+    const existen = new Set(ots.map((p) => p.id));
+    const local = leerLocal(clavePlan(empresaId, division?.id, "ots"));
+    if (Array.isArray(local)) { setElegidas(new Set(local.filter((id) => existen.has(id)))); return; }
+    const delPlan = new Set([...(guardado?.items || []), ...(guardado?.pendientes || [])].map((i) => String(i.ot)));
+    if (delPlan.size) { setElegidas(new Set(ots.filter((p) => delPlan.has(String(p.ot))).map((p) => p.id))); return; }
     setElegidas(preseleccion(ots));
-  }, [datos, ots, division]);
+  }, [datos, ots, division, guardado, empresaId]);
+  const cambiarElegidas = (f) => setElegidas((s) => {
+    const n = f(s);
+    guardarLocal(clavePlan(empresaId, division?.id, "ots"), [...n]);
+    return n;
+  });
 
   // Escaneo de piezas, con el checkeo manual de cada OT en los procesos sin escaneo (141)
   const piezas = useMemo(() => piezasConManual(datos?.piezasEscaneo || [], datos?.proyectos || []), [datos]);
@@ -181,10 +207,17 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   // Plan día por día de las OT elegidas, en el orden de prioridad, desde hoy
   // hasta que terminan (se calcula un año de grilla)
   const capacidadAnio = useMemo(() => capacidadPlanta(operarios, diasDesde(hoy, 366)), [operarios, hoy]);
-  const plan = useMemo(() => (elegidas?.size ? planHorizonte({
-    trabajos: ots.filter((p) => elegidas.has(p.id)).map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: p.fecha_objetivo || null })),
-    dias: capacidadAnio.porDia, params, base, modo,
-  }) : null), [ots, elegidas, horas, capacidadAnio, params, base, modo]);
+  // Solo las OT tildadas: en el orden de prioridad, o en el más eficiente
+  const trabajos = useMemo(() => {
+    const t = ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: p.fecha_objetivo || null }));
+    return forma === "eficiente" ? ordenEficiente({ trabajos: t, dias: capacidadAnio.porDia, params }) : t;
+  }, [ots, elegidas, horas, forma, capacidadAnio, params]);
+  const otsPlan = useMemo(() => {
+    const porId = new Map(ots.map((p) => [p.id, p]));
+    return trabajos.map((t) => porId.get(t.id));
+  }, [ots, trabajos]);
+  const plan = useMemo(() => (trabajos.length ? planHorizonte({ trabajos, dias: capacidadAnio.porDia, params, base, modo }) : null),
+    [trabajos, capacidadAnio, params, base, modo]);
   // Las tablas muestran lo que el plan pone en el período elegido (de hoy en adelante)
   const desdeVisible = per.desde > hoy ? per.desde : hoy;
   const yaPaso = per.hasta < hoy;
@@ -212,7 +245,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       setAvisoTipo(/tipo_proyecto/.test(String(e.message)) ? "Para cambiar el tipo a mano falta correr la migración 139 en Supabase." : `No se pudo cambiar el tipo: ${e.message}`);
     }
   };
-  const tildar = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const tildar = (id) => cambiarElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const visibles = buscarOts(ots, busca);
   const todasTildadas = visibles.length > 0 && visibles.every((p) => elegidas.has(p.id));
   // Avisos (Tadeo, 27/10): OT tildadas sin precio y sin placas, fondos ni canto
@@ -325,10 +358,19 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
           {ordenado && <button type="button" onClick={() => setOrdenado(false)} className="g-btn g-btn-secondary">Ocultar</button>}
         </div>
         <EstadoGuardado guardado={guardado} faltaMigracion={faltaMigracion} empleados={datos.empleados} />
-        <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte las OT tildadas desde hoy hasta que terminan, en el orden de prioridad, respetando Corte → Canteado → Mecanizado → Armado y las máquinas.</div>
+        <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte solo las OT tildadas, desde hoy hasta que terminan, respetando Corte → Canteado → Mecanizado → Armado y las máquinas.</div>
+        <div className="flex gap-2 flex-wrap mb-1" role="group" aria-label="Orden de las OT">
+          <Chip active={forma === "prioridad"} onClick={() => setForma("prioridad")}>📌 Las tildadas, en mi orden de prioridad</Chip>
+          <Chip active={forma === "eficiente"} onClick={() => setForma("eficiente")}>⚡ La forma más eficiente</Chip>
+        </div>
+        <div className="text-xs text-gypi-dim mb-2">
+          {forma === "prioridad"
+            ? "Las OT van en el orden de la pestaña Prioridad (y después por semana)."
+            : `Gypi elige el orden para que lleguen a su semana la mayor cantidad posible y terminen antes: ${otsPlan.map((p) => p.ot).join(", ") || "—"}.`}
+        </div>
         <div className="flex gap-2 flex-wrap mb-1" role="group" aria-label="Armar el plan según">
-          <Chip active={base === "objetivo"} onClick={() => setBase("objetivo")}>📅 Según fechas objetivo (SEMANA)</Chip>
           <Chip active={base === "capacidad"} onClick={() => setBase("capacidad")}>🏭 Según capacidad de la planta</Chip>
+          <Chip active={base === "objetivo"} onClick={() => setBase("objetivo")}>📅 Según fechas objetivo (SEMANA)</Chip>
         </div>
         <div className="text-xs text-gypi-dim mb-2">
           {base === "objetivo"
@@ -337,13 +379,13 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         </div>
         {plan && plan.desde && <ResumenHorizonte plan={plan} base={base} modo={modo} />}
         {!ordenado ? (
-          <button type="button" onClick={() => setOrdenado(true)} disabled={!carga.ots.length} className="g-btn g-btn-primary w-full">Ordenar automáticamente</button>
+          <button type="button" onClick={() => setOrdenado(true)} disabled={!carga.ots.length} className="g-btn g-btn-primary w-full">Ver el plan de las OT tildadas</button>
         ) : plan && (
           <>
-            <GanttPlan plan={plan} ots={ots} hoy={hoy} marcarObjetivo={base === "objetivo"} />
-            <FinDeCadaOt plan={plan} ots={ots} />
+            <GanttPlan plan={plan} ots={otsPlan} hoy={hoy} marcarObjetivo={base === "objetivo"} />
+            <FinDeCadaOt plan={plan} ots={otsPlan} />
             {!faltaMigracion && plan.segmentos.length > 0 && (
-              <GuardarPlan cuerpo={(estado) => cuerpoPlan({ per: { tipo: "horizonte", desde: plan.desde, hasta: plan.hasta }, plan, division, ots, estado })}
+              <GuardarPlan cuerpo={(estado) => cuerpoPlan({ per: { tipo: "horizonte", desde: plan.desde, hasta: plan.hasta }, plan, division, ots: otsPlan, estado })}
                 confirmado={guardado?.estado === "confirmado"} onGuardado={setGuardado} onFaltaMigracion={() => setFaltaMigracion(true)} />
             )}
           </>
@@ -359,7 +401,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         <input type="search" className="g-input flex-1 min-w-0" value={busca} onChange={(e) => setBusca(e.target.value)}
           placeholder="Buscar OT, cliente o proyecto" aria-label="Buscar OT" />
         <button type="button" className="g-btn g-btn-secondary whitespace-nowrap" disabled={!visibles.length}
-          onClick={() => setElegidas((s) => tildarTodas(s, visibles))}>
+          onClick={() => cambiarElegidas((s) => tildarTodas(s, visibles))}>
           {todasTildadas ? "Destildar todas" : "Tildar todas"}
         </button>
       </div>
