@@ -235,8 +235,8 @@ test("itemsVigentes y otAtrasadasPlan — la semana le gana al mes; atrasada la 
 
 // 27/10 (Tadeo): en cada OT un proceso arranca cuando termina el anterior; por
 // cada proceso pasa una OT a la vez; 8 horas productivas por día.
-test("procesosPlan — secuencia en la OT, una OT a la vez por proceso y 8 horas por día", async () => {
-  const { procesosPlan, diasExtraDe } = await import("../app/lib/ganttPlan.js");
+test("procesosPlan — secuencia en la OT, una OT a la vez por proceso y las horas de la grilla", async () => {
+  const { procesosPlan, horasSemanaDeGrilla } = await import("../app/lib/ganttPlan.js");
   const lun = "2026-10-26";
   const items = [
     { ot: "A", etapa: "corte", fecha: lun, horas: 4, orden: 0 },
@@ -257,9 +257,26 @@ test("procesosPlan — secuencia en la OT, una OT a la vez por proceso y 8 horas
   assert.deepEqual(tramos("C"), [["corte", "2026-10-30", 0, "2026-11-02", 0.5]], "sábado y domingo no se trabaja");
   assert.equal(r.get("A").horas, 16, "la OT dura la suma de sus procesos");
   assert.equal(r.get("B").horas, 8);
-  // Con el sábado de horas extra del plan, C termina el sábado
-  const extra = diasExtraDe([{ dias_extra: [{ fecha: "2026-10-31", horas: 8 }] }]);
-  assert.deepEqual(procesosPlan(items, { hoy: "2026-10-20", diasExtra: extra }).get("C").procesos[0].hasta, "2026-10-31");
+  // Las horas de cada día salen de la grilla de horarios del personal operativo
+  // (no instaladores): de lunes a jueves de 7 a 16 (9 h), viernes de 7 a 13 (6 h), sábado y domingo nadie
+  const diagrama = { lun: { in: "07:00", out: "16:00" }, mar: { in: "07:00", out: "16:00" }, mie: { in: "07:00", out: "16:00" }, jue: { in: "07:00", out: "16:00" }, vie: { in: "07:00", out: "13:00" } };
+  const empleados = [
+    { id: 1, rol: "operativo", division: "M", diagrama },
+    { id: 2, rol: "operativo", division: "M", es_instalador: true, diagrama: { ...diagrama, sab: { in: "08:00", out: "12:00" } } },
+    { id: 3, rol: "administrativo", division: "M", diagrama: { ...diagrama, dom: { in: "08:00", out: "12:00" } } },
+  ];
+  const horasSemana = horasSemanaDeGrilla(empleados, DIV_M, null);
+  assert.deepEqual(horasSemana, [0, 9, 9, 9, 9, 6, 0]);
+  assert.deepEqual(horasSemanaDeGrilla([], DIV_M, null), [0, 8, 8, 8, 8, 8, 0], "sin grilla: 8 h de lunes a viernes");
+  // C: 6 h el viernes y las otras 6 h el lunes; nada el sábado ni el domingo
+  const conGrilla = procesosPlan(items, { hoy: "2026-10-20", horasSemana });
+  assert.deepEqual(conGrilla.get("C").procesos.map((p) => [p.desde, p.ini, p.hasta, p.fin]), [["2026-10-30", 0, "2026-11-02", 6 / 9]]);
+  // A con días de 9 h: Corte 4 h + Canteado 4 h + 1 h de Armado el lunes
+  assert.deepEqual(conGrilla.get("A").procesos.map((p) => [p.etapa, p.hasta]), [["corte", lun], ["canteado", lun], ["armado", "2026-10-27"]]);
+  assert.equal(conGrilla.get("A").procesos[2].desde, lun);
+  // Aunque el plan haya puesto horas extra un sábado, el Gantt no trabaja el fin de semana
+  const sabado = procesosPlan([{ ot: "D", etapa: "corte", fecha: "2026-10-31", horas: 4 }], { hoy: "2026-10-20", horasSemana });
+  assert.equal(sabado.get("D").procesos[0].desde, "2026-11-02");
   // Canteadora con 2 personas: el plan guarda horas de gente, la máquina tarda la mitad
   assert.equal(procesosPlan(items, { hoy: "2026-10-20", params: { personas_canteadora: 2 } }).get("A").procesos[1].horas, 2);
 });

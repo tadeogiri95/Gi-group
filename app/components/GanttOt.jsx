@@ -4,9 +4,10 @@
 // pensado para verse en un televisor. Cada OT tiene 4 renglones, uno por
 // proceso (Corte, Canteado, Mecanizado, Armado), cada uno con su color fijo:
 // azul, naranja, violeta y marrón claro. En la OT un proceso arranca cuando
-// termina el anterior, y por cada proceso pasa una sola OT a la vez, con 8
-// horas productivas por día (procesosPlan). Al lado de cada barra van sus
-// horas y al lado de la OT las horas totales (la suma de sus procesos).
+// termina el anterior, y por cada proceso pasa una sola OT a la vez, con las
+// horas de la grilla de horarios del personal operativo (procesosPlan). Al
+// lado de cada barra van sus horas y al lado de la OT las horas totales (la
+// suma de sus procesos).
 // Un proceso con poco margen lleva un contorno amarillo y uno atrasado (pasó
 // su último día y no está completo por el escaneo de piezas) contorno rojo y
 // ⚠; el color del proceso se sigue viendo. Uno completo queda más claro.
@@ -17,7 +18,7 @@ import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde } from "../lib/gantt";
-import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, diasExtraDe } from "../lib/ganttPlan";
+import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros } from "../lib/planificacion";
 import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
 import { hoyArg } from "../lib/dates";
@@ -32,6 +33,7 @@ const COLOR = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecani
 const MUESTRA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
+const SIN_EMPLEADOS = [];
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
 const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
@@ -54,8 +56,9 @@ const CONTORNO = { atrasado: "stroke-gypi-red", margen: "stroke-proc-margen" };
  * @param {object} props
  * @param {object[]} [props.planes]  planes confirmados con sus días; si no viene, se leen
  * @param {object} [props.cfgValor]  parámetros de la planificación (qué etapa es cada proceso)
+ * @param {object[]} [props.empleados]  personal operativo con su grilla de horarios (junto con planes)
  */
-export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, onVerDetalle }) {
+export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle }) {
   const hoy = hoyArg();
   const [leido, setLeido] = useState(null);
   useEffect(() => {
@@ -66,6 +69,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   }, [planesProp]);
   const planes = planesProp !== undefined ? planesProp : leido?.planes;
   const cfgValor = planesProp !== undefined ? cfgProp : leido?.cfgValor;
+  const empleados = planesProp !== undefined ? empleadosProp : leido?.empleados;
 
   const { renglones, escala, grupos, atrasados, pocoMargen } = useMemo(() => {
     if (!planes) return { renglones: null };
@@ -74,7 +78,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       etapasCodigo: etapasDelPlan(cfgValor, etapas, divisiones),
       avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
       terminadas: new Set(proyectos.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
-      params: normalizarParametros(cfgValor), diasExtra: diasExtraDe(planes),
+      params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
     });
     // En el orden del plan: la que arranca primero arriba
     const renglones = [...procesos.values()].filter((r) => abiertas.has(r.ot)).map((r) => ({ ...r, proyecto: abiertas.get(r.ot) }));
@@ -92,7 +96,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         .sort((a, b) => b.diasAtraso - a.diasAtraso),
       pocoMargen: renglones.flatMap((r) => r.pocoMargen),
     };
-  }, [planes, cfgValor, proyectos, etapas, divisiones, avanceHoras, hoy, modo]);
+  }, [planes, cfgValor, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, modo]);
 
   const [vista, setVista] = useState("dias");
   const [grande, setGrande] = useState(false);
@@ -285,7 +289,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           </ul>
         </section>
       )}
-      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan confirmado con 8 horas productivas por día: en cada OT un proceso arranca cuando termina el anterior y por cada proceso pasa una OT a la vez. Tocá una OT para ver su detalle.</p>
+      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan confirmado con las horas de la grilla de horarios del personal operativo (los días sin nadie puesto no se trabajan): en cada OT un proceso arranca cuando termina el anterior y por cada proceso pasa una OT a la vez. Tocá una OT para ver su detalle.</p>
     </div>
   );
 }
