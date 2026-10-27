@@ -22,7 +22,7 @@ before(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.SUPABASE_SERVICE_KEY = "test-service-key";
 });
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); try { localStorage.clear(); } catch { /* sin almacenamiento */ } });
 
 test("semana del año como NUM.DE.SEMANA de Google: la planilla dice SEMANA 44 el domingo 25/10/2026", () => {
   assert.deepEqual(rangoSemana(44, 2026, "semana_domingo"), { inicio: "2026-10-25", fin: "2026-10-31" });
@@ -414,4 +414,38 @@ test("📅 Gantt — a la izquierda, además de la OT y el cliente, el nombre de
   assert.equal(fila.querySelector("[data-cliente]").textContent, "BCG");
   assert.equal(fila.querySelector("[data-obra]").textContent, "Torre Norte");
   assert.doesNotMatch(fila.textContent, /7100-02/);
+});
+
+test("📅 Gantt — OT por proceso: un bloque por proceso, las OT una debajo de otra en el orden en que pasan", () => {
+  const planes = [{
+    id: 1, tipo: "semana", desde: dia(-20), hasta: dia(20), items: [
+      { ot: "7200", etapa: "corte", fecha: dia(3), horas: 8, orden: 1 },
+      { ot: "7100", etapa: "corte", fecha: dia(1), horas: 8, orden: 0 },
+      { ot: "7100", etapa: "armado", fecha: dia(6), horas: 6, orden: 0 },
+    ],
+  }];
+  const proyectos = [
+    { id: 1, ot: "7100", cliente: "BCG", obra: "Torre", descripcion: "Cocina", division: "M", estado: "activo" },
+    { id: 2, ot: "7200", cliente: "Ana", descripcion: "Vanitory", division: "M", estado: "activo" },
+  ];
+  const vistos = [];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes}
+    avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} onVerDetalle={(p) => vistos.push(p.ot)} />);
+  assert.equal(screen.getByRole("button", { name: "Procesos por OT" }).getAttribute("aria-pressed"), "true", "arranca como estaba");
+  fireEvent.click(screen.getByRole("button", { name: "OT por proceso" }));
+  assert.deepEqual([...container.querySelectorAll("[data-bloque]")].map((b) => b.getAttribute("data-bloque")), ["corte", "armado"], "solo los procesos con trabajo");
+  const corte = screen.getByRole("region", { name: "Corte: 2 OT" });
+  assert.deepEqual([...corte.querySelectorAll("[data-ot]")].map((f) => f.getAttribute("data-ot")), ["7100", "7200"], "primero la que pasa antes");
+  assert.equal(corte.querySelectorAll('[data-proceso="corte"]').length, 2);
+  assert.match(corte.querySelector('[data-ot="7100"]').textContent, /7100 · BCGTorre · Cocina/);
+  const armado = screen.getByRole("region", { name: "Armado: 1 OT" });
+  assert.equal(armado.querySelectorAll("[data-ot]").length, 1);
+  fireEvent.click(within(corte).getByRole("button", { name: /^OT 7200, Corte: 8 h/ }));
+  assert.deepEqual(vistos, ["7200"]);
+  assert.equal(localStorage.getItem("gypi_gantt_forma"), "ots", "la elección queda guardada");
+  cleanup();
+  render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+  assert.equal(screen.getByRole("button", { name: "OT por proceso" }).getAttribute("aria-pressed"), "true");
+  fireEvent.click(screen.getByRole("button", { name: "Procesos por OT" }));
+  assert.equal(document.querySelectorAll("[data-bloque]").length, 0);
 });
