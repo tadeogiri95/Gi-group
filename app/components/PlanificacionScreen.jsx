@@ -346,7 +346,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         )}
       </div>
 
-      {valor && <Valorizacion valor={valor} conPlan={!!plan} />}
+      {valor && <Valorizacion valor={valor} conPlan={!!plan} per={per} />}
 
       <div className="g-label mb-1.5">OT para planificar ({ots.length})</div>
       <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana (también las atrasadas). Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
@@ -403,15 +403,22 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   );
 }
 
-// 💲 Valorización (142): precio de las OT tildadas y, con el plan día por día,
-// lo que se fabrica en cada semana y mes de todo el plan (según las horas de cada una).
-function Valorizacion({ valor, conPlan }) {
-  const fila = (label, v, fuerte = false) => (
-    <tr key={label} className="border-t border-gypi-border first:border-t-0">
-      <td className={`py-1 pr-2 ${fuerte ? "font-bold" : ""}`}>{label}</td>
-      <td className={`py-1 pl-2 text-right whitespace-nowrap ${fuerte ? "font-bold" : ""}`}>{fmtPesos(v)}</td>
+// 💲 Valorización (142): precio de las OT tildadas y lo que el plan fabrica,
+// por semana o por mes según cómo se ve la planificación (Tadeo, 27/10): el
+// valor del período que se está viendo, el de cada semana o mes, y el total.
+function Valorizacion({ valor, conPlan, per }) {
+  const fila = (key, label, v, { fuerte = false, actual = false } = {}) => (
+    <tr key={key} aria-current={actual ? "true" : undefined}
+      className={`border-t border-gypi-border first:border-t-0 ${actual ? "bg-gypi-amber/15" : ""}`}>
+      <td className={`py-1 pr-2 ${fuerte || actual ? "font-bold" : ""}`}>{label}</td>
+      <td className={`py-1 pl-2 text-right whitespace-nowrap ${fuerte || actual ? "font-bold" : ""}`}>{fmtPesos(v)}</td>
     </tr>
   );
+  const porMes = per.tipo === "mes";
+  const filas = porMes
+    ? valor.porMes.map((m) => ({ key: m.mes, label: nombreMes(m.mes), valor: m.valor, actual: m.mes === per.desde.slice(0, 7) }))
+    : valor.porSemana.map((s) => ({ key: s.desde, label: `Semana del ${fechaCorta(s.desde)}`, valor: s.valor, actual: s.desde === per.desde }));
+  const delPeriodo = filas.find((f) => f.actual)?.valor || 0;
   return (
     <div className="g-card mb-3" aria-label="Valorización">
       <div className="g-label mb-1">💲 Valorización</div>
@@ -421,24 +428,35 @@ function Valorizacion({ valor, conPlan }) {
       </div>
       {valor.sinPrecio > 0 && <div className="text-xs text-gypi-dim mb-1">{valor.sinPrecio === 1 ? "1 OT tildada no tiene" : `${valor.sinPrecio} OT tildadas no tienen`} PRECIO en el Plan de trabajo.</div>}
       {!conPlan ? (
-        <div className="text-xs text-gypi-dim">Tildá OT para ver cuánto se fabrica cada semana y cada mes.</div>
+        <div className="text-xs text-gypi-dim">Tildá OT para ver cuánto se fabrica cada {porMes ? "mes" : "semana"}.</div>
       ) : (
         <>
-          <div className="text-xs text-gypi-dim mb-1">Cada OT reparte su precio según las horas que el plan pone en cada semana.</div>
-          <table className="w-full text-[13px] mb-2" aria-label="Valorización por semana">
-            <tbody>{valor.porSemana.map((s) => fila(`Semana del ${fechaCorta(s.desde)}`, s.valor))}</tbody>
-          </table>
-          <table className="w-full text-[13px] mb-2" aria-label="Valorización por mes">
-            <tbody>{valor.porMes.map((m) => fila(nombreMes(m.mes), m.valor, true))}</tbody>
-          </table>
-          <table className="w-full text-[13px]">
+          <div className="grid grid-cols-2 gap-2 my-2">
+            <div className="bg-gypi-surf-hi rounded-xl p-2.5" aria-label="Valor del período">
+              <div className="text-xs text-gypi-dim">{textoPeriodo(per)}</div>
+              <div className="text-base font-bold">{fmtPesos(delPeriodo)}</div>
+            </div>
+            <div className="bg-gypi-surf-hi rounded-xl p-2.5" aria-label="Total del plan">
+              <div className="text-xs text-gypi-dim">Total del plan</div>
+              <div className="text-base font-bold">{fmtPesos(valor.enPlan)}</div>
+            </div>
+          </div>
+          <div className="text-xs text-gypi-dim mb-1">Cada OT reparte su precio según las horas que el plan pone en cada {porMes ? "mes" : "semana"}. Con ◀ ▶ arriba cambiás {porMes ? "el mes" : "la semana"} que se ve.</div>
+          <table className="w-full text-[13px] mb-2" aria-label={porMes ? "Valorización por mes" : "Valorización por semana"}>
             <tbody>
-              {fila("Se fabrica en el plan", valor.enPlan, true)}
-              {valor.pasa > 0.5 && fila("No entra en el próximo año", valor.pasa)}
-              {valor.hecho > 0.5 && fila("Ya fabricado antes", valor.hecho)}
-              {valor.sinHoras > 0.5 && fila("Sin horas para repartir (faltan datos de la planilla)", valor.sinHoras)}
+              {filas.map((f) => fila(f.key, f.label, f.valor, { actual: f.actual }))}
+              {fila("total", "Total del plan", valor.enPlan, { fuerte: true })}
             </tbody>
           </table>
+          {(valor.pasa > 0.5 || valor.hecho > 0.5 || valor.sinHoras > 0.5) && (
+            <table className="w-full text-[13px]">
+              <tbody>
+                {valor.pasa > 0.5 && fila("pasa", "No entra en el próximo año", valor.pasa)}
+                {valor.hecho > 0.5 && fila("hecho", "Ya fabricado antes", valor.hecho)}
+                {valor.sinHoras > 0.5 && fila("sin", "Sin horas para repartir (faltan datos de la planilla)", valor.sinHoras)}
+              </tbody>
+            </table>
+          )}
         </>
       )}
     </div>
