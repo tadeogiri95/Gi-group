@@ -395,6 +395,10 @@ test("📊 Carga — Ordenar automáticamente muestra el Gantt, los días de hor
   assert.ok(within(plan).getByLabelText("Gantt de planificación"));
   assert.match(plan.textContent, /Horas extra propuestas/);
   assert.ok(within(plan).getAllByLabelText(/^OT M-7473, /).length > 0);
+  // En cada día las etapas van una al lado de la otra (en secuencia), no apiladas
+  const dia1 = within(plan).getAllByLabelText(/^OT M-7473, /)[0];
+  const ys = [...dia1.querySelectorAll("rect[data-etapa]")].map((r) => r.getAttribute("y"));
+  assert.ok(ys.length > 0 && ys.every((y) => y === "0"));
   assert.ok(within(plan).getAllByLabelText(/^Horas extra el /).length > 0);
   fireEvent.click(within(plan).getByText("Ocultar"));
   assert.ok(screen.getByText("Ordenar automáticamente"));

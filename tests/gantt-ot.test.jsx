@@ -145,7 +145,7 @@ const PLANES = [{
 const ETAPAS_M = [{ codigo: 1, nombre: "Corte" }, { codigo: 2, nombre: "Canteado" }, { codigo: 3, nombre: "Mecanizado CNC" }, { codigo: 4, nombre: "Armado" }];
 const DIV_M = [{ id: "M", label: "Muebles", ruta_etapas: [1, 2, 3, 4] }];
 
-test("📅 Gantt — solo OT planificadas, una línea por proceso y los atrasados marcados", () => {
+test("📅 Gantt — solo OT planificadas, los procesos de cada OT y los atrasados marcados", () => {
   const vistos = [];
   const proyectos = [
     { id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" },
@@ -164,7 +164,7 @@ test("📅 Gantt — solo OT planificadas, una línea por proceso y los atrasado
   assert.equal(container.querySelector('[data-proceso="corte"]').getAttribute("data-estado"), "atrasado");
   assert.equal(container.querySelector('[data-proceso="canteado"]').getAttribute("data-estado"), "completo");
   assert.equal(container.querySelectorAll('[data-proceso="armado"][data-estado="pendiente"]').length, 1);
-  fireEvent.click(screen.getByRole("button", { name: /^OT 7100: Corte del .*atrasado 9 días; Armado/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^OT 7100: 18 h en total; Corte del .*atrasado 9 días; Armado/ }));
   assert.deepEqual(vistos, ["7100"]);
 });
 
@@ -281,4 +281,37 @@ test("📅 Gantt — colores fijos por proceso y amarillo con la lista de poco m
   const lista = screen.getByRole("region", { name: "Procesos con poco margen" });
   assert.match(lista.textContent, /7100 · Corte .*va 0% y el plan tenía 50% hasta ayer/);
   assert.ok(screen.getByText("🟡 7100"));
+});
+
+// 27/10: los procesos van en secuencia en una sola línea por OT; el día en que
+// uno termina y arranca el siguiente se reparte según las horas.
+test("📅 Gantt — una sola línea por OT con los procesos en secuencia y las horas totales", async () => {
+  const { procesosPlan } = await import("../app/lib/ganttPlan.js");
+  const items = [
+    { ot: "A", etapa: "corte", fecha: "2026-10-26", horas: 8 },
+    { ot: "A", etapa: "corte", fecha: "2026-10-27", horas: 2 },
+    { ot: "A", etapa: "canteado", fecha: "2026-10-27", horas: 6 },
+    { ot: "A", etapa: "armado", fecha: "2026-10-28", horas: 4 },
+  ];
+  const a = procesosPlan(items, { hoy: "2026-10-20" }).get("A");
+  assert.equal(a.horas, 20, "la OT dura la suma de sus procesos");
+  assert.deepEqual(a.procesos.map((p) => [p.etapa, p.ini, p.fin]), [["corte", 0, 0.25], ["canteado", 0.25, 1], ["armado", 0, 1]]);
+
+  const planes = [{ id: 1, tipo: "semana", desde: dia(1), hasta: dia(10), items: [
+    { ot: "7100", etapa: "corte", fecha: dia(2), horas: 8 },
+    { ot: "7100", etapa: "corte", fecha: dia(3), horas: 2 },
+    { ot: "7100", etapa: "canteado", fecha: dia(3), horas: 6 },
+    { ot: "7100", etapa: "mecanizado", fecha: dia(4), horas: 3 },
+    { ot: "7100", etapa: "armado", fecha: dia(5), horas: 5 },
+  ] }];
+  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+  const barras = ["corte", "canteado", "mecanizado", "armado"].map((id) => container.querySelector(`[data-proceso="${id}"]`));
+  assert.equal(new Set(barras.map((b) => b.getAttribute("y"))).size, 1, "todas en la misma línea");
+  for (let i = 1; i < barras.length; i++) {
+    const finAnterior = Number(barras[i - 1].getAttribute("x")) + Number(barras[i - 1].getAttribute("width"));
+    assert.ok(Number(barras[i].getAttribute("x")) >= finAnterior - 0.01, "cada proceso arranca cuando termina el anterior");
+  }
+  assert.ok([...container.querySelectorAll("svg text")].some((t) => t.textContent === "24 h"), "horas totales de la OT al final");
+  assert.match(screen.getByRole("button", { name: /^OT 7100: 24 h en total; Corte/ }).getAttribute("aria-label"), /Armado/);
 });
