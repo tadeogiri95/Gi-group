@@ -8,9 +8,13 @@
 //                                OT y ⏰ OT atrasadas del Panel)
 //   GET ?desde=…&hasta=…       → el plan de ese período, borrador o
 //                                confirmado (solo gerencia)
+//   GET ?horizonte=1           → el último plan sin límite de semanas que
+//                                sigue vigente (solo gerencia; migración 143)
 //   POST                       → guarda el plan del período (borrador o
 //                                confirmado) y reemplaza lo que toca cada día.
-//                                Solo gerencia.
+//                                Solo gerencia. Un plan 'horizonte' (143)
+//                                confirmado reemplaza, desde su primer día, a
+//                                los confirmados anteriores de la división.
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
@@ -20,11 +24,17 @@ import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { logger } from "../../lib/logger";
+import { hoyArg } from "../../lib/dates";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const SIN_MIGRACION = "Para guardar el plan falta correr la migración 138 en Supabase.";
-const faltaMigracion = (err) => /planes_produccion|plan_produccion_items/.test(String(err?.message));
+const SIN_MIGRACION_143 = "Para guardar el plan sin límite de semanas falta correr la migración 143 en Supabase.";
+// Sin la 143, el control viejo rechaza el tipo 'horizonte' o un plan de más de 62 días
+const falta143 = (err) => /planes_produccion_(tipo_)?check/.test(String(err?.message));
+const faltaMigracion = (err) => !falta143(err) && /planes_produccion|plan_produccion_items/.test(String(err?.message));
+const DIA_MS = 86400000;
+const diaAntes = (f) => new Date(Date.parse(`${f}T00:00:00Z`) - DIA_MS).toISOString().slice(0, 10);
 const esGerencia = (sesion) => sesion?.rol === "gerencial";
 
 async function entrar(request) {
@@ -56,6 +66,12 @@ export async function GET(request) {
         const items = (await sbGet(`plan_produccion_items?empresa_id=eq.${e}&plan_id=in.(${planes.map((p) => p.id).join(",")})&select=plan_id,ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc&limit=20000`, { sesion })) || [];
         return json({ ok: true, planes: planes.map((p) => ({ ...p, items: items.filter((i) => i.plan_id === p.id) })) });
       }
+      if (q.get("horizonte")) {
+        if (!esGerencia(sesion)) return json({ error: "La planificación la arma gerencia" }, 403);
+        const hoy = hoyArg();
+        const [plan] = (await sbGet(`planes_produccion?empresa_id=eq.${e}&tipo=eq.horizonte&hasta=gte.${hoy}&select=*&order=updated_at.desc&limit=1`, { sesion })) || [];
+        return json({ ok: true, plan: await conItems(sesion, plan) });
+      }
       if (desde || hasta) {
         if (!esGerencia(sesion)) return json({ error: "La planificación la arma gerencia" }, 403);
         if (!FECHA.test(desde || "") || !FECHA.test(hasta || "")) return json({ error: "Fechas inválidas" }, 400);
@@ -77,6 +93,24 @@ export async function GET(request) {
   }
 }
 
+/**
+ * Al confirmar un plan sin límite de semanas, los confirmados anteriores de la
+ * misma división dejan de valer desde su primer día: los que arrancan después
+ * se borran y los que vienen de antes se cortan el día anterior.
+ */
+async function reemplazarAnteriores(e, plan, opts) {
+  const otros = ((await sbGet(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${plan.desde}&id=neq.${plan.id}&select=id,desde,hasta,division_id`, opts)) || [])
+    .filter((p) => (p.division_id || null) === (plan.division_id || null));
+  for (const p of otros) {
+    if (p.desde >= plan.desde) {
+      await sbDelete(`planes_produccion?id=eq.${p.id}&empresa_id=eq.${e}`, opts);
+    } else {
+      await sbDelete(`plan_produccion_items?empresa_id=eq.${e}&plan_id=eq.${p.id}&fecha=gte.${plan.desde}`, opts);
+      await sbPatch(`planes_produccion?id=eq.${p.id}&empresa_id=eq.${e}`, { hasta: diaAntes(plan.desde) }, opts);
+    }
+  }
+}
+
 export async function POST(request) {
   try {
     const { sesion, response } = await entrar(request);
@@ -93,7 +127,11 @@ export async function POST(request) {
     const opts = { sesion };
     const ahora = new Date().toISOString();
     try {
-      const [previo] = (await sbGet(`planes_produccion?empresa_id=eq.${e}&desde=eq.${d.desde}&hasta=eq.${d.hasta}&select=id,estado,confirmado_por,confirmado_at&limit=1`, opts)) || [];
+      const horizonte = d.tipo === "horizonte";
+      // Un plan sin límite de semanas armado el mismo día reemplaza al anterior aunque termine otro día
+      const [previo] = (await sbGet(horizonte
+        ? `planes_produccion?empresa_id=eq.${e}&tipo=eq.horizonte&desde=eq.${d.desde}&select=id,estado,confirmado_por,confirmado_at&order=updated_at.desc&limit=1`
+        : `planes_produccion?empresa_id=eq.${e}&desde=eq.${d.desde}&hasta=eq.${d.hasta}&select=id,estado,confirmado_por,confirmado_at&limit=1`, opts)) || [];
       const confirmar = d.estado === "confirmado";
       const fila = {
         empresa_id: e, division_id: d.division_id, tipo: d.tipo, desde: d.desde, hasta: d.hasta, estado: d.estado,
@@ -107,6 +145,7 @@ export async function POST(request) {
         ? await sbPatch(`planes_produccion?id=eq.${previo.id}&empresa_id=eq.${e}`, fila, opts)
         : await sbPost("planes_produccion", fila, opts)) || [];
       if (!plan?.id) throw new Error("No se pudo guardar el plan");
+      if (horizonte && confirmar) await reemplazarAnteriores(e, plan, opts);
       await sbDelete(`plan_produccion_items?empresa_id=eq.${e}&plan_id=eq.${plan.id}`, opts);
       if (d.items.length) {
         await sbPost("plan_produccion_items", d.items.map((i) => ({ ...i, plan_id: plan.id, empresa_id: e })), opts);
@@ -114,6 +153,7 @@ export async function POST(request) {
       broadcastRefresh(e, "planes_produccion");
       return json({ ok: true, plan: { ...plan, items: d.items } });
     } catch (err) {
+      if (falta143(err)) return json({ error: SIN_MIGRACION_143 }, 409);
       if (faltaMigracion(err)) return json({ error: SIN_MIGRACION }, 409);
       throw err;
     }

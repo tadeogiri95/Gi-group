@@ -3,7 +3,8 @@
 // Planificación → 📊 Carga → Ordenar automáticamente; parte 40). Una fila por
 // OT y una columna por día: en cada día, las etapas que se trabajan una
 // después de la otra (de izquierda a derecha), cada una del ancho de sus horas. Arriba, las horas que se usan cada día; los días de horas extra
-// van marcados con ⏱. Sin estilos sueltos: anchos fijos con clases.
+// van marcados con ⏱. Con marcarObjetivo, el último día de la semana de cada
+// OT (columna SEMANA) lleva una línea roja. Sin estilos sueltos: anchos fijos con clases.
 import { ETAPAS_PLAN } from "../lib/planificacion";
 import { celdasGantt } from "../lib/planAutomatico";
 import { fmtH } from "../lib/cargaPlanta";
@@ -33,7 +34,7 @@ function DiaEtapas({ c }) {
   );
 }
 
-export default function GanttPlan({ plan, ots, hoy }) {
+export default function GanttPlan({ plan, ots, hoy, marcarObjetivo = false }) {
   const celdas = celdasGantt(plan.segmentos);
   const filas = ots.filter((p) => celdas.has(p.id));
   const dias = plan.porDia;
@@ -45,6 +46,7 @@ export default function GanttPlan({ plan, ots, hoy }) {
           <span key={e.id} className="flex items-center gap-1"><span className={`inline-block w-3 h-3 rounded-sm ${COLOR_ETAPA[e.id]}`} />{e.nombre}</span>
         ))}
         <span>⏱ = día de horas extra</span>
+        {marcarObjetivo && <span className="flex items-center gap-1"><span className="inline-block w-[3px] h-3 bg-gypi-red" />fin de la semana de la OT</span>}
       </div>
       <div className="overflow-x-auto border border-gypi-border rounded-xl">
         <table className="border-collapse text-xs">
@@ -82,7 +84,8 @@ export default function GanttPlan({ plan, ots, hoy }) {
                     const c = porDia.get(d.fecha);
                     const texto = c ? ETAPAS_PLAN.filter((e) => c[e.id]).map((e) => `${e.nombre} ${fmtH(c[e.id])}`).join(", ") : "";
                     return (
-                      <td key={d.fecha} className={`p-[2px] h-[34px] ${d.extra ? "bg-gypi-red/5" : ""}`}
+                      <td key={d.fecha} className={`p-[2px] h-[34px] ${d.extra ? "bg-gypi-red/5" : ""} ${marcarObjetivo && d.fecha === p.fecha_objetivo ? "border-r-[3px] border-r-gypi-red" : ""}`}
+                        data-objetivo={marcarObjetivo && d.fecha === p.fecha_objetivo ? "si" : undefined}
                         aria-label={c ? `OT ${p.ot}, ${corto(d.fecha)}: ${texto}` : undefined} title={texto || undefined}>
                         {c && <DiaEtapas c={c} />}
                       </td>

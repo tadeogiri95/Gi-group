@@ -3,7 +3,7 @@
 // parámetros de la planta y prioridad manual de las OT, que gerencia ordena
 // arrastrándolas en una lista.
 import "./helpers/domSetup.js";
-import { test, afterEach } from "node:test";
+import { test, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
@@ -290,34 +290,64 @@ function mockCarga({ proyectos, empleados, cfg }) {
   };
 }
 
-test("📊 Carga — tildadas las del período; dice si entra, las horas extra y el cuello de botella", async () => {
+// Hoy fijo: lunes 26/10/2026 a las 12 (Argentina). Solo se finge la fecha.
+function lunes26() {
+  mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-26T15:00:00Z") });
+}
+afterEach(() => mock.timers.reset());
+
+test("📊 Carga — vienen tildadas las OT con semana; la semana elegida muestra su parte del plan", async () => {
+  lunes26();
   mockCarga({
     proyectos: [
       OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
-      OT(2, "M-9000", { division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
+      OT(2, "M-9000", { division: "Muebles", placas: 1 }),
     ],
-    // Un solo operario 2 h el lunes: no alcanza
+    // Un solo operario 2 h los lunes: la OT tarda varias semanas
     empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
     cfg: [{ valor: { ...PARAMS } }],
   });
   pantalla();
   const carga = await screen.findByRole("region", { name: "Carga de la planta" });
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, false);
-  assert.match(carga.textContent, /❌ No entra con el horario normal/);
-  assert.match(carga.textContent, /⏱ Horas extra: 9,9 h/);
-  assert.match(carga.textContent, /Cuello de botella: Gente/);
-  assert.match(carga.textContent, /Seccionadora: faltan 0,5 h de máquina/);
-  // Tablas claras: por máquina necesita / disponible / resultado, y la gente en total
-  const maquinas = within(carga).getByLabelText("Horas de máquina");
-  const fila = within(maquinas).getByText("Seccionadora").closest("tr");
-  assert.match(fila.textContent, /Faltan 0,5 h/);
-  assert.match(within(maquinas).getByText(/^CNC/).closest("tr").textContent, /Sobran/);
-  assert.match(within(carga).getByLabelText("Horas de gente").textContent, /Disponible2 hResultadoFaltan 9,9 h/);
+  assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, false, "sin semana no viene tildada");
+  // La semana muestra solo lo que el plan pone en ella: las 2 h del lunes
+  assert.match(carga.textContent, /Lo que el plan pone del 26\/10\/2026 al 31\/10\/2026/);
+  assert.match(carga.textContent, /✅ Entra en el período/);
+  assert.match(within(carga).getByLabelText("Horas de gente").textContent, /Necesita2 hDisponible2 h/);
+  assert.ok(within(within(carga).getByLabelText("Horas de máquina")).getByText("Seccionadora"));
+  // El plan sigue semanas hacia adelante y marca la OT atrasada
+  const plan = within(carga).getByLabelText("Resumen del plan");
+  assert.match(plan.textContent, /El plan va del 26\/10\/2026 al/);
+  assert.match(plan.textContent, /🔴 No llegan a su semanaM-7473: su semana terminó el 4\/1\/2020; termina el/);
+  // Cambiar de semana no destilda: muestra la parte del plan de esa semana
+  fireEvent.click(screen.getByLabelText("Período siguiente"));
+  assert.match(carga.textContent, /Lo que el plan pone del 1\/11\/2026 al 7\/11\/2026/);
+  assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true);
+  fireEvent.click(screen.getByLabelText("Período anterior"));
+  fireEvent.click(screen.getByLabelText("Período anterior"));
+  assert.match(carga.textContent, /Ese período ya pasó/);
   fireEvent.click(screen.getByLabelText("Planificar OT M-7473"));
   assert.match(carga.textContent, /Elegí las OT que querés planificar/);
-  fireEvent.click(screen.getByLabelText("Período siguiente"));
-  assert.match(carga.textContent, /Semana del/);
+});
+
+test("📊 Carga — switch: según fechas objetivo pide horas extra por semana; según capacidad da la fecha estimada", async () => {
+  lunes26();
+  mockCarga({
+    // 11,9 h de reloj que tienen que estar el sábado 31/10
+    proyectos: [OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2026-10-31", semana_objetivo: 44 })],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" }, mar: { in: "08:00", out: "10:00" }, mie: { in: "08:00", out: "10:00" }, jue: { in: "08:00", out: "10:00" }, vie: { in: "08:00", out: "10:00" } } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  const resumen = () => screen.getByLabelText("Resumen del plan");
+  assert.match(within(resumen()).getByLabelText("Horas extra por semana").textContent, /Semana del 25\/10\/2026: .* h \(sáb\.? 31\/10\/2026\)/);
+  assert.match(screen.getByLabelText("Carga de la planta").textContent, /❌ No entra con el horario normal/);
+  fireEvent.click(screen.getByText("🏭 Según capacidad de la planta"));
+  assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
+  assert.match(resumen().textContent, /🔴 Terminan después de su semanaM-7473: semana hasta el 31\/10\/2026; termina el \d+\/11\/2026/);
+  assert.match(screen.getByLabelText("Carga de la planta").textContent, /✅ Entra en el período/);
 });
 
 test("buscarOts y tildarTodas — busca sin tildes por número, cliente o proyecto; tilda o destilda solo las de la lista", () => {
@@ -336,8 +366,8 @@ test("📊 Carga — buscador de OT y botón para tildar o destildar todas", asy
   mockCarga({
     proyectos: [
       OT(1, "M-7473", { ...OT_A, cliente: "Riofrío", division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
-      OT(2, "M-9000", { cliente: "CEVT", division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
-      OT(3, "M-9100", { cliente: "CEVT", division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
+      OT(2, "M-9000", { cliente: "CEVT", division: "Muebles", placas: 1 }),
+      OT(3, "M-9100", { cliente: "CEVT", division: "Muebles", placas: 1 }),
     ],
     empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
     cfg: [{ valor: { ...PARAMS } }],
@@ -428,24 +458,94 @@ test("planAutomatico — horas de reloj con la eficiencia", () => {
   assert.equal(celdasGantt(plan.segmentos).get(1).get("2026-10-26").armado, 6);
 });
 
-test("📊 Carga — Ordenar automáticamente muestra el Gantt, los días de horas extra y lo que pasa al período siguiente", async () => {
+// ─── Plan sin límite de semanas (Tadeo, 27/10; migración 143) ───
+const { planHorizonte, trabajoDelPeriodo } = await import("../app/lib/planAutomatico.js");
+const { diasDesde } = await import("../app/lib/cargaPlanta.js");
+// Desde el lunes 26/10, 1 operario 8 h de lunes a viernes
+const ANIO = capacidadPlanta(UNO, diasDesde("2026-10-26", 366)).porDia;
+const conObjetivo = (t, objetivo) => ({ ...t, objetivo });
+
+test("planHorizonte — según capacidad: sigue hasta que termina y marca la que pasa su semana", () => {
+  const plan = planHorizonte({ trabajos: [conObjetivo(trabajo(1, "A", { armado: 44 }), "2026-10-31")], dias: ANIO, params: P100, base: "capacidad" });
+  assert.equal(plan.desde, "2026-10-26");
+  assert.equal(plan.hasta, "2026-11-02");
+  assert.equal(plan.porDia.at(-1).fecha, "2026-11-02", "el Gantt llega hasta el último día con trabajo");
+  assert.deepEqual(plan.diasExtra, []);
+  assert.deepEqual(plan.tarde, [{ id: 1, ot: "A", objetivo: "2026-10-31", fin: "2026-11-02", motivo: "tarde" }]);
+  // Más de 2 meses: no corta en 62 días
+  const largo = planHorizonte({ trabajos: [trabajo(1, "A", { armado: 8 * 5 * 12 })], dias: ANIO, params: P100, base: "capacidad" });
+  assert.equal(largo.pendientes.length, 0);
+  assert.equal(largo.hasta, "2027-01-15");
+  assert.deepEqual(largo.tarde, []);
+});
+
+test("planHorizonte — según fechas objetivo: horas extra antes de la semana (sábado, después domingo) y por semana", () => {
+  const plan = planHorizonte({ trabajos: [conObjetivo(trabajo(1, "A", { armado: 44 }), "2026-10-31")], dias: ANIO, params: P100, base: "objetivo", modo: "semana_domingo" });
+  assert.deepEqual(plan.diasExtra, [{ fecha: "2026-10-31", horas: 4 }]);
+  assert.deepEqual(plan.extraPorSemana, [{ desde: "2026-10-25", horas: 4 }]);
+  assert.deepEqual(plan.tarde, []);
+  assert.equal(plan.finPorOt.get(1), "2026-10-31");
+  // Para el domingo 8/11: 80 h normales + 12 h → los dos sábados antes que cualquier domingo
+  const dos = planHorizonte({ trabajos: [conObjetivo(trabajo(1, "A", { armado: 92 }), "2026-11-08")], dias: ANIO, params: P100, base: "objetivo", modo: "semana_domingo" });
+  assert.deepEqual(dos.diasExtra.map((d) => d.fecha), ["2026-10-31", "2026-11-07"]);
+  assert.deepEqual(dos.tarde, []);
+  // La que no llega ni con sábados y domingos queda marcada, sin horas extra que no sirven
+  const mucho = planHorizonte({ trabajos: [conObjetivo(trabajo(1, "A", { armado: 70 }), "2026-10-31")], dias: ANIO, params: P100, base: "objetivo" });
+  assert.deepEqual(mucho.diasExtra, []);
+  assert.equal(mucho.tarde[0].motivo, "no_llega");
+  // La semana ya pasada: atrasada, sin horas extra
+  const vieja = planHorizonte({ trabajos: [conObjetivo(trabajo(1, "A", { armado: 4 }), "2026-10-03")], dias: ANIO, params: P100, base: "objetivo" });
+  assert.deepEqual(vieja.diasExtra, []);
+  assert.deepEqual(vieja.tarde, [{ id: 1, ot: "A", objetivo: "2026-10-03", fin: "2026-10-26", motivo: "atrasada" }]);
+});
+
+test("planHorizonte — la de más prioridad sin semana va primero; la siguiente con semana pide las horas extra", () => {
+  const plan = planHorizonte({
+    trabajos: [trabajo(1, "A", { armado: 40 }), conObjetivo(trabajo(2, "B", { armado: 8 }), "2026-10-31")],
+    dias: ANIO, params: P100, base: "objetivo", modo: "semana_domingo",
+  });
+  assert.deepEqual(plan.diasExtra, [{ fecha: "2026-10-31", horas: 8 }]);
+  assert.equal(plan.finPorOt.get(1), "2026-10-30");
+  assert.equal(plan.finPorOt.get(2), "2026-10-31");
+  // Sin gente cargada no entra nada
+  const sinGente = planHorizonte({ trabajos: [trabajo(1, "A", { armado: 4 })], dias: capacidadPlanta([], diasDesde("2026-10-26", 30)).porDia, params: P100 });
+  assert.deepEqual(sinGente.tarde.map((t) => t.motivo), ["sin_capacidad"]);
+});
+
+test("trabajoDelPeriodo y preseleccion sin fecha — la parte del plan de la semana elegida; tildadas todas las que tienen semana", () => {
+  const plan = planHorizonte({ trabajos: [{ id: 1, ot: "A", etapas: { canteado: { gente: 12, maquina: 6 }, armado: { gente: 10, maquina: 10 } } }], dias: ANIO, params: P100, base: "capacidad" });
+  const semana = trabajoDelPeriodo(plan.segmentos, "2026-10-25", "2026-10-31", 100);
+  assert.equal(semana.etapas.canteado.gente, 12);
+  assert.equal(semana.etapas.canteado.maquina, 6, "la canteadora con 2 personas: la mitad de horas de máquina");
+  assert.equal(semana.etapas.armado.gente, 10);
+  assert.equal(trabajoDelPeriodo(plan.segmentos, "2026-11-01", "2026-11-07").etapas.armado.gente, 0);
+  assert.deepEqual([...preseleccion([{ id: 1, fecha_objetivo: "2020-01-04" }, { id: 2, fecha_objetivo: "2099-12-31" }, { id: 3 }])], [1, 2]);
+});
+
+test("📊 Carga — Ordenar automáticamente muestra el Gantt de todas las semanas, los días de horas extra y la semana de cada OT", async () => {
+  lunes26();
   mockCarga({
-    proyectos: [OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04" })],
-    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
+    proyectos: [OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2026-10-31" })],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" }, mar: { in: "08:00", out: "10:00" }, mie: { in: "08:00", out: "10:00" }, jue: { in: "08:00", out: "10:00" }, vie: { in: "08:00", out: "10:00" } } }],
     cfg: [{ valor: { ...PARAMS } }],
   });
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
   fireEvent.click(screen.getByText("Ordenar automáticamente"));
   const plan = await screen.findByLabelText("Plan automático");
-  assert.ok(within(plan).getByLabelText("Gantt de planificación"));
-  assert.match(plan.textContent, /Horas extra propuestas/);
+  const gantt = within(plan).getByLabelText("Gantt de planificación");
   assert.ok(within(plan).getAllByLabelText(/^OT M-7473, /).length > 0);
   // En cada día las etapas van una al lado de la otra (en secuencia), no apiladas
   const dia1 = within(plan).getAllByLabelText(/^OT M-7473, /)[0];
   const ys = [...dia1.querySelectorAll("rect[data-etapa]")].map((r) => r.getAttribute("y"));
   assert.ok(ys.length > 0 && ys.every((y) => y === "0"));
-  assert.ok(within(plan).getAllByLabelText(/^Horas extra el /).length > 0);
+  assert.ok(within(plan).getAllByLabelText(/^Horas extra el 31\/10/).length > 0);
+  assert.equal(gantt.querySelectorAll('td[data-objetivo="si"]').length, 1, "línea roja en el fin de su semana");
+  assert.match(within(plan).getByLabelText("Fin de cada OT").textContent, /M-7473 termina el 31\/10\/2026/);
+  // Según capacidad: el Gantt sigue a la semana siguiente
+  fireEvent.click(screen.getByText("🏭 Según capacidad de la planta"));
+  assert.ok(within(plan).getAllByLabelText(/^OT M-7473, \d+\/11/).length > 0);
+  assert.equal(within(plan).queryAllByLabelText(/^Horas extra el /).length, 0);
   fireEvent.click(within(plan).getByText("Ocultar"));
   assert.ok(screen.getByText("Ordenar automáticamente"));
 });
@@ -627,7 +727,7 @@ test("📊 Carga — el checkeo manual baja las horas que faltan de la OT y no d
   mockCarga({
     proyectos: [
       OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
-      OT(2, "M-9000", { division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
+      OT(2, "M-9000", { division: "Muebles", placas: 1 }),
     ],
     empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
     cfg: [{ valor: { ...PARAMS } }],
@@ -723,14 +823,12 @@ test("📊 Carga — 💲 precio de cada OT y valorización por semana y mes", a
   await waitFor(() => assert.match(fila.textContent, /\$ 2\.500\.000/));
   const valor = screen.getByLabelText("Valorización");
   assert.match(valor.textContent, /OT tildadas con precio: 2\$ 3\.500\.000/);
-  assert.match(valor.textContent, /Ordenar automáticamente para ver/);
   fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
   assert.match(valor.textContent, /\$ 2\.500\.000/);
-  fireEvent.click(screen.getByText("Ordenar automáticamente"));
   const semanas = within(valor).getByLabelText("Valorización por semana");
   assert.match(semanas.textContent, /Semana del/);
   assert.ok(within(valor).getByLabelText("Valorización por mes").textContent.length > 0);
-  assert.match(valor.textContent, /Se fabrica en el período/);
+  assert.match(valor.textContent, /Se fabrica en el plan\$ 2\.500\.000/);
 });
 
 test("📊 Carga — el supervisor de división no ve precios ni los pide", async () => {

@@ -4,6 +4,7 @@
 import "./helpers/domSetup.js";
 import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { cuerpoPlan, planPorDia, planEsDeMiDivision } from "../app/lib/planGuardado.js";
@@ -88,7 +89,7 @@ function req(t, { body, query = "" } = {}) {
   });
 }
 
-function mockRuta({ previo = null, planes = [], items = [], sin138 = false } = {}) {
+function mockRuta({ previo = null, planes = [], items = [], sin138 = false, sin143 = false } = {}) {
   const escrito = [];
   const leido = [];
   const falta = { status: 404, body: { message: 'relation "public.planes_produccion" does not exist' } };
@@ -109,6 +110,9 @@ function mockRuta({ previo = null, planes = [], items = [], sin138 = false } = {
         }
         const body = o.body ? JSON.parse(o.body) : null;
         escrito.push({ metodo, url: u, body });
+        if (sin143 && metodo === "POST" && u.includes("planes_produccion")) {
+          return { status: 400, body: { message: 'new row for relation "planes_produccion" violates check constraint "planes_produccion_tipo_check"' } };
+        }
         if (metodo === "DELETE") return { status: 204, body: null };
         return { status: 201, body: Array.isArray(body) ? body : [{ id: previo?.id || 9, ...body }] };
       },
@@ -267,4 +271,70 @@ test("/api/planificacion — ?confirmados=1 trae los planes confirmados con sus 
   mockRuta({ sin138: true });
   const sin = await (await api.GET(req(await token("operativo"), { query: "?confirmados=1" }))).json();
   assert.equal(sin.falta_migracion, true);
+});
+
+// ─── Plan sin límite de semanas (Tadeo, 27/10; migración 143) ───
+const HORIZONTE = {
+  ...CUERPO, tipo: "horizonte", desde: "2026-10-27", hasta: "2027-01-20",
+  items: [{ ot: "7473", etapa: "corte", fecha: "2026-10-27", horas: 6, orden: 0 }, { ot: "7473", etapa: "armado", fecha: "2027-01-20", horas: 2, orden: 0 }],
+};
+
+test("/api/planificacion — plan sin límite de semanas: pasa la validación y al confirmarlo reemplaza a los anteriores desde su primer día", async () => {
+  assert.equal(planProduccionBody.safeParse(HORIZONTE).success, true);
+  const { escrito, leido } = mockRuta({
+    planes: [
+      { id: 5, desde: "2026-10-25", hasta: "2026-10-31", division_id: "d-m" },
+      { id: 6, desde: "2026-11-01", hasta: "2026-11-30", division_id: "d-m" },
+      { id: 7, desde: "2026-10-25", hasta: "2026-10-31", division_id: "d-h" },
+    ],
+  });
+  const res = await api.POST(req(await token("gerencial"), { body: HORIZONTE }));
+  assert.equal(res.status, 200);
+  assert.ok(leido.some((u) => u.includes("tipo=eq.horizonte") && u.includes("desde=eq.2026-10-27")), "el del mismo día se reemplaza");
+  // El que arrancó antes se corta el día anterior y pierde los días de adelante
+  assert.ok(escrito.some((x) => x.metodo === "DELETE" && x.url.includes("plan_id=eq.5") && x.url.includes("fecha=gte.2026-10-27")));
+  assert.ok(escrito.some((x) => x.metodo === "PATCH" && x.url.includes("id=eq.5") && x.body.hasta === "2026-10-26"));
+  // El que arranca después se borra; el de otra división no se toca
+  assert.ok(escrito.some((x) => x.metodo === "DELETE" && /planes_produccion\?id=eq\.6/.test(x.url)));
+  assert.ok(!escrito.some((x) => /id=eq\.7/.test(x.url)));
+});
+
+test("/api/planificacion — el borrador sin límite no toca otros planes; sin la migración 143 avisa", async () => {
+  const { escrito } = mockRuta({ planes: [{ id: 5, desde: "2026-10-25", hasta: "2026-10-31", division_id: "d-m" }] });
+  assert.equal((await api.POST(req(await token("gerencial"), { body: { ...HORIZONTE, estado: "borrador" } }))).status, 200);
+  assert.ok(!escrito.some((x) => /id=eq\.5/.test(x.url)));
+  mockRuta({ sin143: true });
+  const res = await api.POST(req(await token("gerencial"), { body: HORIZONTE }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 143/);
+});
+
+test("/api/planificacion — ?horizonte=1 trae el último plan sin límite vigente (solo gerencia)", async () => {
+  const { leido } = mockRuta({ previo: { id: 8, tipo: "horizonte", desde: "2026-10-27", hasta: "2027-01-20", estado: "borrador" }, items: HORIZONTE.items });
+  const d = await (await api.GET(req(await token("gerencial"), { query: "?horizonte=1" }))).json();
+  assert.equal(d.plan.id, 8);
+  assert.equal(d.plan.items.length, 2);
+  assert.ok(leido.some((u) => u.includes("tipo=eq.horizonte") && u.includes(`hasta=gte.${hoyArg()}`)));
+  assert.equal((await api.GET(req(await token("operativo"), { query: "?horizonte=1" }))).status, 403);
+});
+
+test("📊 Carga — el plan se guarda entero, desde hoy hasta el último día", async () => {
+  const enviados = mockCarga();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  fireEvent.click(screen.getByText("Ordenar automáticamente"));
+  fireEvent.click(await screen.findByText("Guardar borrador"));
+  await screen.findByText(/Hay un borrador guardado/);
+  const b = enviados[0];
+  assert.equal(b.tipo, "horizonte");
+  assert.equal(b.desde, hoyArg());
+  assert.equal(b.hasta, b.items.map((i) => i.fecha).sort().at(-1));
+  assert.equal(planProduccionBody.safeParse(b).success, true);
+});
+
+test("migración 143 — tipo horizonte y planes de hasta 400 días", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/143_plan_horizonte.sql", import.meta.url), "utf8");
+  assert.match(sql, /check \(tipo in \('semana', 'mes', 'horizonte'\)\)/);
+  assert.match(sql, /hasta - desde <= 400/);
+  assert.match(sql, /do \$mig\$/);
 });

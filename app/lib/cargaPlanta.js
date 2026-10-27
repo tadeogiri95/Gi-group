@@ -34,6 +34,13 @@ export function diasDelPeriodo(desde, hasta) {
   return out;
 }
 
+/** Los próximos `n` días desde una fecha, incluida (plan sin límite de semanas). */
+export function diasDesde(desde, n) {
+  const out = [];
+  for (let i = 0, t = ms(desde); i < n; i++, t += DIA) out.push(iso(t));
+  return out;
+}
+
 /** Semana (desde el primer día que cuenta la empresa) o mes que contiene la fecha, corrido `paso` lugares. */
 export function periodo(tipo, fecha, paso = 0, modo = "semana_domingo") {
   if (tipo === "mes") {
@@ -237,9 +244,9 @@ export function cargaPeriodo({ ots, params, capacidad }) {
   return { necesarias, disponibles, extra, viable, porEtapa, maquinas, cuello: cuello.uso > 0 ? cuello : null, ots };
 }
 
-/** OT que vienen tildadas: las que tienen fecha objetivo hasta el fin del período (incluye las atrasadas). */
-export function preseleccion(ots, hasta) {
-  return new Set(ots.filter((p) => p.fecha_objetivo && p.fecha_objetivo <= hasta).map((p) => p.id));
+/** OT que vienen tildadas: las que tienen fecha objetivo hasta el fin del período (incluye las atrasadas); sin `hasta`, todas las que tienen. */
+export function preseleccion(ots, hasta = null) {
+  return new Set(ots.filter((p) => p.fecha_objetivo && (!hasta || p.fecha_objetivo <= hasta)).map((p) => p.id));
 }
 
 /** Gabinetes por OT según las etiquetas de módulo (módulos distintos de sus piezas). */
