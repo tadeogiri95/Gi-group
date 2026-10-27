@@ -28,7 +28,7 @@ import { materialOt } from "../lib/ot";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
   leerNumero, errorParametro, normalizarParametros, divisionPlan, etapasPlanDe,
-  otsPlanificables, ordenarPorPrioridad, moverOt, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
+  otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, moverOt, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
   MODOS_MECANIZADO, RELACIONES_TIPO,
 } from "../lib/planificacion";
 import { TIPOS_PROYECTO, TIPO_GLOBAL, tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
@@ -104,6 +104,7 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   const [guardado, setGuardado] = useState(undefined);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [avisoTipo, setAvisoTipo] = useState(null);
+  const [busca, setBusca] = useState("");
 
   useEffect(() => {
     if (!empresaId) return;
@@ -170,6 +171,8 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
     }
   };
   const tildar = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const visibles = buscarOts(ots, busca);
+  const todasTildadas = visibles.length > 0 && visibles.every((p) => elegidas.has(p.id));
   const sinDatos = carga.ots.filter((o) => o.sinDatos).length;
 
   return (
@@ -292,8 +295,21 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
       <div className="g-label mb-1.5">OT del período ({ots.length})</div>
       <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana hasta el fin del período (también las atrasadas). Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
       {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
+      <div className="flex gap-2 mb-2 items-center">
+        <input type="search" className="g-input flex-1 min-w-0" value={busca} onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar OT, cliente o proyecto" aria-label="Buscar OT" />
+        <button type="button" className="g-btn g-btn-secondary whitespace-nowrap" disabled={!visibles.length}
+          onClick={() => setElegidas((s) => tildarTodas(s, visibles))}>
+          {todasTildadas ? "Destildar todas" : "Tildar todas"}
+        </button>
+      </div>
+      <div className="text-xs text-gypi-dim mb-2" role="status">
+        {elegidas.size === 1 ? "1 OT tildada" : `${elegidas.size} OT tildadas`} de {ots.length}
+        {busca.trim() ? ` · ${visibles.length === 1 ? "1 coincide" : `${visibles.length} coinciden`} con la búsqueda${visibles.length ? " (el botón tilda o destilda solo esas)" : ""}` : ""}
+      </div>
+      {busca.trim() && !visibles.length && <div className="text-[13px] text-gypi-dim mb-2">Ninguna OT coincide con “{busca.trim()}”.</div>}
       <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="OT para planificar">
-        {ots.map((p) => {
+        {visibles.map((p) => {
           const h = horas.get(p.id);
           return (
             <li key={p.id} className="bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
