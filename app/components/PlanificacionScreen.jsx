@@ -215,25 +215,57 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
         {sinDatos > 0 && <div className="text-xs text-gypi-dim mt-1">{sinDatos === 1 ? "1 OT elegida no tiene" : `${sinDatos} OT elegidas no tienen`} placas ni cantos en la planilla: no suman horas.</div>}
       </div>
 
-      <div className="g-card mb-3" aria-label="Horas por etapa">
-        <div className="g-label mb-2">Horas por etapa</div>
+      <div className="g-card mb-3" aria-label="Horas de máquina">
+        <div className="g-label mb-1">🏭 Máquinas</div>
+        <div className="text-xs text-gypi-dim mb-2">
+          Cada máquina puede trabajar las horas en que la planta está abierta ({fmtH(capacidad.maquina)} en el período, del primero que entra al último que sale) × la cantidad de máquinas.
+        </div>
         <table className="w-full text-[13px]">
-          <thead><tr className="text-gypi-dim text-left"><th className="font-normal">Etapa</th><th className="font-normal text-right">Gente</th><th className="font-normal text-right">Máquina</th><th className="font-normal text-right">Tiene</th></tr></thead>
+          <thead><tr className="text-gypi-dim text-left"><th className="font-normal">Máquina</th><th className="font-normal text-right">Necesita</th><th className="font-normal text-right">Disponible</th><th className="font-normal text-right">Resultado</th></tr></thead>
           <tbody>
-            {Object.values(carga.porEtapa).map((e) => {
-              const m = carga.maquinas.find((x) => x.id === e.id);
+            {carga.maquinas.map((m) => {
+              const dif = m.disponibles - m.necesarias;
               return (
-                <tr key={e.id} className="border-t border-gypi-border">
-                  <td className="py-1.5">{e.nombre}</td>
-                  <td className="text-right">{fmtH(e.gente)}</td>
-                  <td className="text-right">{m ? fmtH(e.maquina) : "—"}</td>
-                  <td className={`text-right ${m?.extra > 0 ? "text-gypi-red font-bold" : ""}`}>{m ? `${fmtH(m.disponibles)}${m.cantidad > 1 ? ` (${m.cantidad})` : ""}` : "—"}</td>
+                <tr key={m.id} className="border-t border-gypi-border">
+                  <td className="py-1.5">{m.nombre}{m.cantidad > 1 ? ` (${m.cantidad})` : ""}</td>
+                  <td className="text-right">{fmtH(m.necesarias)}</td>
+                  <td className="text-right">{fmtH(m.disponibles)}</td>
+                  <td className={`text-right font-bold ${dif < -0.05 ? "text-gypi-red" : "text-gypi-green"}`}>{dif < -0.05 ? `Faltan ${fmtH(-dif)}` : `Sobran ${fmtH(dif)}`}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        <div className="text-xs text-gypi-dim mt-2">Horas de reloj, con la eficiencia ya aplicada. &quot;Tiene&quot; = horas en que la planta está abierta × cantidad de máquinas.</div>
+      </div>
+
+      <div className="g-card mb-3" aria-label="Horas de gente">
+        <div className="g-label mb-1">👷 Gente</div>
+        <div className="text-xs text-gypi-dim mb-2">
+          Cualquier operario hace cualquier etapa, así que se suma todo y se compara con las horas de los turnos de {capacidad.personas === 1 ? "1 operario" : `${capacidad.personas} operarios`}. En la canteadora con 2 personas cuenta el doble de horas que la máquina.
+        </div>
+        <table className="w-full text-[13px]">
+          <tbody>
+            {Object.values(carga.porEtapa).map((e) => (
+              <tr key={e.id} className="border-t border-gypi-border first:border-t-0">
+                <td className="py-1.5">{e.nombre}</td>
+                <td className="text-right">{fmtH(e.gente)}</td>
+              </tr>
+            ))}
+            <tr className="border-t-2 border-gypi-border font-bold">
+              <td className="py-1.5">Necesita</td>
+              <td className="text-right">{fmtH(carga.necesarias)}</td>
+            </tr>
+            <tr>
+              <td className="py-1.5">Disponible</td>
+              <td className="text-right">{fmtH(carga.disponibles)}</td>
+            </tr>
+            <tr className={`font-bold ${carga.extra > 0 ? "text-gypi-red" : "text-gypi-green"}`}>
+              <td className="py-1.5">Resultado</td>
+              <td className="text-right">{carga.extra > 0 ? `Faltan ${fmtH(carga.extra)}` : `Sobran ${fmtH(carga.disponibles - carga.necesarias)}`}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="text-xs text-gypi-dim mt-2">Horas de reloj, con la eficiencia ya aplicada.</div>
       </div>
 
       <div className="g-card mb-3" aria-label="Plan automático">
