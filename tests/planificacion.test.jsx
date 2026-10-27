@@ -16,7 +16,7 @@ import { opcionesBoton } from "../app/lib/menuGestion.js";
 const { AuthContext } = await import("../app/context/AuthContext.jsx");
 const { default: PlanificacionScreen } = await import("../app/components/PlanificacionScreen.jsx");
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); localStorage.clear(); });
 
 const DIVISIONES = [
   { id: "d-m", clave: "MUE", label: "Muebles", ruta_etapas: [1, 2, 3, 4, 5] },
@@ -319,7 +319,7 @@ test("📊 Carga — vienen tildadas las OT con semana; la semana elegida muestr
   // El plan sigue semanas hacia adelante y marca la OT atrasada
   const plan = within(carga).getByLabelText("Resumen del plan");
   assert.match(plan.textContent, /El plan va del 26\/10\/2026 al/);
-  assert.match(plan.textContent, /🔴 No llegan a su semanaM-7473: su semana terminó el 4\/1\/2020; termina el/);
+  assert.match(plan.textContent, /🔴 Terminan después de su semanaM-7473: su semana terminó el 4\/1\/2020; termina el/);
   // Cambiar de semana no destilda: muestra la parte del plan de esa semana
   fireEvent.click(screen.getByLabelText("Período siguiente"));
   assert.match(carga.textContent, /Lo que el plan pone del 1\/11\/2026 al 7\/11\/2026/);
@@ -342,6 +342,9 @@ test("📊 Carga — switch: según fechas objetivo pide horas extra por semana;
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
   const resumen = () => screen.getByLabelText("Resumen del plan");
+  // Por defecto, según capacidad; las fechas objetivo hay que elegirlas
+  assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
+  fireEvent.click(screen.getByText("📅 Según fechas objetivo (SEMANA)"));
   assert.match(within(resumen()).getByLabelText("Horas extra por semana").textContent, /Semana del 25\/10\/2026: .* h \(sáb\.? 31\/10\/2026\)/);
   assert.match(screen.getByLabelText("Carga de la planta").textContent, /❌ No entra con el horario normal/);
   fireEvent.click(screen.getByText("🏭 Según capacidad de la planta"));
@@ -522,7 +525,7 @@ test("trabajoDelPeriodo y preseleccion sin fecha — la parte del plan de la sem
   assert.deepEqual([...preseleccion([{ id: 1, fecha_objetivo: "2020-01-04" }, { id: 2, fecha_objetivo: "2099-12-31" }, { id: 3 }])], [1, 2]);
 });
 
-test("📊 Carga — Ordenar automáticamente muestra el Gantt de todas las semanas, los días de horas extra y la semana de cada OT", async () => {
+test("📊 Carga — el plan muestra el Gantt de todas las semanas, los días de horas extra y la semana de cada OT", async () => {
   lunes26();
   mockCarga({
     proyectos: [OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2026-10-31" })],
@@ -531,7 +534,8 @@ test("📊 Carga — Ordenar automáticamente muestra el Gantt de todas las sema
   });
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  fireEvent.click(screen.getByText("Ordenar automáticamente"));
+  fireEvent.click(screen.getByText("📅 Según fechas objetivo (SEMANA)"));
+  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
   const plan = await screen.findByLabelText("Plan automático");
   const gantt = within(plan).getByLabelText("Gantt de planificación");
   assert.ok(within(plan).getAllByLabelText(/^OT M-7473, /).length > 0);
@@ -547,7 +551,7 @@ test("📊 Carga — Ordenar automáticamente muestra el Gantt de todas las sema
   assert.ok(within(plan).getAllByLabelText(/^OT M-7473, \d+\/11/).length > 0);
   assert.equal(within(plan).queryAllByLabelText(/^Horas extra el /).length, 0);
   fireEvent.click(within(plan).getByText("Ocultar"));
-  assert.ok(screen.getByText("Ordenar automáticamente"));
+  assert.ok(screen.getByText("Ver el plan de las OT tildadas"));
 });
 
 // ─── Operarios por puesto y armadores (Tadeo, 27/10) ────────────────────────
@@ -886,4 +890,74 @@ test("📊 Carga — el supervisor de división ve el aviso de datos pero no el 
   assert.ok(avisos.querySelector('[data-aviso="tiempos"]'));
   assert.equal(avisos.querySelector('[data-aviso="precio"]'), null);
   assert.doesNotMatch(screen.getByLabelText("Planificar OT M-7473").closest("li").textContent, /sin precio/);
+});
+
+// ─── Arreglos de Planificación (Tadeo, 27/10) ───
+const { ordenEficiente } = await import("../app/lib/planAutomatico.js");
+
+test("ordenEficiente — pone primero la que tiene que llegar a su semana", () => {
+  const a = trabajo(1, "A", { armado: 40 });
+  const b = conObjetivo(trabajo(2, "B", { armado: 8 }), "2026-10-27");
+  const c = conObjetivo(trabajo(3, "C", { armado: 8 }), "2026-11-20");
+  const orden = ordenEficiente({ trabajos: [a, c, b], dias: ANIO, params: P100 });
+  assert.deepEqual(orden.map((t) => t.ot), ["B", "C", "A"]);
+  const plan = planHorizonte({ trabajos: orden, dias: ANIO, params: P100, base: "capacidad" });
+  assert.deepEqual(plan.tarde, []);
+  // En el orden de prioridad, B no llega
+  assert.equal(planHorizonte({ trabajos: [a, c, b], dias: ANIO, params: P100, base: "capacidad" }).tarde[0].ot, "B");
+});
+
+function mockDosOt({ guardado = null } = {}) {
+  mockCarga({
+    proyectos: [
+      OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2099-01-03", semana_objetivo: 1 }),
+      OT(2, "M-9000", { ...OT_A, id: 2, ot: "M-9000", division: "Muebles", estado: "activo", fecha_objetivo: "2099-01-03", semana_objetivo: 1 }),
+    ],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: LV, mar: LV, mie: LV, jue: LV, vie: LV } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  const base = global.fetch;
+  global.fetch = async (url, opts) => (String(url).startsWith("/api/planificacion")
+    ? new Response(JSON.stringify({ ok: true, plan: guardado }), { status: 200 })
+    : base(url, opts));
+}
+
+test("📊 Carga — lo tildado y el switch se recuerdan al volver; por defecto, según capacidad", async () => {
+  mockDosOt();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  assert.match(screen.getByLabelText("Plan automático").textContent, /Solo el horario normal/, "por defecto, según capacidad");
+  fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
+  fireEvent.click(screen.getByText("📅 Según fechas objetivo (SEMANA)"));
+  // Se va (por ejemplo al Gantt) y vuelve
+  cleanup();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, false, "no se vuelve a tildar sola");
+  assert.match(screen.getByLabelText("Plan automático").textContent, /Cada OT tiene que terminar en su semana/, "queda según fechas objetivo");
+  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
+  assert.match(within(screen.getByLabelText("Plan automático")).getByLabelText("Fin de cada OT").textContent, /^M-7473 termina/);
+  assert.doesNotMatch(within(screen.getByLabelText("Plan automático")).getByLabelText("Fin de cada OT").textContent, /M-9000/, "solo las tildadas");
+  cleanup();
+  localStorage.clear();
+  mockDosOt();
+  pantalla();
+  await screen.findByLabelText("Plan automático");
+  assert.match(screen.getByLabelText("Plan automático").textContent, /Solo el horario normal/, "sin nada guardado: según capacidad");
+});
+
+test("📊 Carga — sin nada en este navegador, vienen tildadas las OT del plan guardado", async () => {
+  mockDosOt({ guardado: { id: 3, tipo: "horizonte", estado: "confirmado", items: [{ ot: "M-9000", etapa: "corte", fecha: "2026-10-27", horas: 2, orden: 0 }], pendientes: [] } });
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, false);
+});
+
+test("📊 Carga — ⚡ la forma más eficiente muestra el orden que eligió Gypi", async () => {
+  mockDosOt();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  assert.match(screen.getByLabelText("Plan automático").textContent, /orden de la pestaña Prioridad/);
+  fireEvent.click(screen.getByText("⚡ La forma más eficiente"));
+  assert.match(screen.getByLabelText("Plan automático").textContent, /Gypi elige el orden .*: M-7473, M-9000\./);
 });

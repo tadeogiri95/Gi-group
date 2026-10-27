@@ -234,6 +234,47 @@ export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo 
 }
 
 /**
+ * Orden más eficiente de las OT tildadas ("⚡ La forma más eficiente", Tadeo
+ * 27/10). Arranca por la fecha objetivo más cercana (las sin semana al final)
+ * y prueba cambiar de lugar OT vecinas mientras mejore, con la capacidad
+ * normal: primero menos OT fuera de su semana, después menos días de atraso
+ * y después que terminen antes en total.
+ * @returns el mismo arreglo de trabajos, en el orden nuevo
+ */
+export function ordenEficiente({ trabajos, dias, params }) {
+  if (trabajos.length < 2) return [...trabajos];
+  const dia = (f) => Date.parse(`${f}T00:00:00Z`) / 86400000;
+  const ultimo = dias.at(-1)?.fecha;
+  const costo = (orden) => {
+    const r = repartir(orden, dias, params);
+    const fin = finDeCadaOt(r.segmentos);
+    const pend = new Set(r.pendientes.map((x) => x.id));
+    let tarde = 0, atraso = 0, total = 0;
+    for (const t of orden) {
+      const f = pend.has(t.id) || !fin.has(t.id) ? ultimo : fin.get(t.id);
+      if (!f) continue;
+      total += dia(f);
+      if (t.objetivo && f > t.objetivo) { tarde++; atraso += dia(f) - dia(t.objetivo); }
+    }
+    return [tarde, atraso, total];
+  };
+  const mejor = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  let orden = [...trabajos].sort((a, b) => (a.objetivo || "9999").localeCompare(b.objetivo || "9999"));
+  let actual = costo(orden);
+  for (let pasada = 0; pasada < 3; pasada++) {
+    let cambio = false;
+    for (let i = 0; i < orden.length - 1; i++) {
+      const prueba = [...orden];
+      [prueba[i], prueba[i + 1]] = [prueba[i + 1], prueba[i]];
+      const c = costo(prueba);
+      if (mejor(c, actual) < 0) { orden = prueba; actual = c; cambio = true; }
+    }
+    if (!cambio) break;
+  }
+  return orden;
+}
+
+/**
  * Lo que el plan pone en un período (la semana o el mes elegidos), como una
  * OT más para cargaPeriodo: horas efectivas de gente y de máquina por etapa.
  */
