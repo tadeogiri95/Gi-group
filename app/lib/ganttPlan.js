@@ -13,9 +13,9 @@
 //  - ya empezó y va más atrasado que lo que tenía que estar hecho hasta ayer,
 //    o hoy es su último día;
 //  - el anterior está atrasado y este arranca en 2 días o menos (o ya arrancó).
-import { apiFetch, sb } from "./supabase";
+import { apiFetch, sb, sbGetAll } from "./supabase";
 import { CLAVE_PLANIFICACION, ETAPAS_PLAN, divisionPlan, etapasPlanDe, normalizarParametros } from "./planificacion";
-import { pendienteEtapa } from "./cargaPlanta";
+import { pendienteEtapa, capacidadPlanta, operariosDePlanta } from "./cargaPlanta";
 import { diasEntre } from "./semanaObjetivo";
 import { porcentajeOt } from "./panelMantenimiento";
 
@@ -42,50 +42,63 @@ export function itemsVigentes(planes = []) {
   return out;
 }
 
-/** Horas productivas de cada proceso por día (pedido de Tadeo, 27/10). */
-export const HORAS_DIA = 8;
+/** Sin grilla de horarios cargada: 8 horas de lunes a viernes. Índice = día de la semana (0 = domingo). */
+export const HORAS_SEMANA_POR_DEFECTO = [0, 8, 8, 8, 8, 8, 0];
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
-const esFinde = (iso) => [0, 6].includes(new Date(`${iso}T00:00:00Z`).getUTCDay());
+const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 
-/** Días de horas extra de los planes confirmados (sábados o domingos que se trabajan). */
-export function diasExtraDe(planes = []) {
-  return new Set((planes || []).flatMap((p) => (p.dias_extra || []).map((d) => d.fecha)));
+/**
+ * Horas de trabajo de cada día de la semana según la grilla de horarios del
+ * personal operativo de la planta (los que suman capacidad en la
+ * planificación): del primero que entra al último que sale. Un día sin nadie
+ * puesto vale 0 y no se planifica. Sin grilla, HORAS_SEMANA_POR_DEFECTO.
+ */
+export function horasSemanaDeGrilla(empleados, divisiones, cfgValor) {
+  const cfg = normalizarParametros(cfgValor);
+  const operarios = operariosDePlanta(empleados, divisiones, divisionPlan(divisiones, cfg.division_id));
+  // Una semana cualquiera: del domingo 4 al sábado 10 de enero de 2026
+  const { porDia } = capacidadPlanta(operarios, Array.from({ length: 7 }, (_, i) => sumarDias("2026-01-04", i)));
+  const horas = porDia.map((d) => Math.round(d.maquina * 100) / 100);
+  return horas.some((h) => h > 0) ? horas : HORAS_SEMANA_POR_DEFECTO;
 }
 
 /**
- * Calendario de trabajo desde `base`: de lunes a viernes más los días extra,
- * HORAS_DIA horas por día. t = horas productivas desde el comienzo de `base`.
+ * Calendario de trabajo desde `base` con las horas de cada día de la semana.
+ * t = horas de trabajo desde el comienzo de `base`.
  */
-function calendario(base, extra) {
-  const dias = [];
-  const laborable = (f) => !esFinde(f) || extra.has(f);
-  let f = base;
-  while (!laborable(f)) f = sumarDias(f, 1);
-  dias.push(f);
+function calendario(base, horasSemana) {
+  const hs = (horasSemana || []).some((h) => h > 0) ? horasSemana : HORAS_SEMANA_POR_DEFECTO;
+  const dias = []; // { fecha, horas, desde (t al empezar el día) }
+  const siguiente = (desde) => {
+    let f = desde;
+    while (!(hs[diaSemana(f)] > 0)) f = sumarDias(f, 1);
+    return f;
+  };
+  const f0 = siguiente(base);
+  dias.push({ fecha: f0, horas: hs[diaSemana(f0)], desde: 0 });
   const dia = (i) => {
     while (dias.length <= i) {
-      let g = sumarDias(dias[dias.length - 1], 1);
-      while (!laborable(g)) g = sumarDias(g, 1);
-      dias.push(g);
+      const u = dias[dias.length - 1];
+      const f = siguiente(sumarDias(u.fecha, 1));
+      dias.push({ fecha: f, horas: hs[diaSemana(f)], desde: u.desde + u.horas });
     }
     return dias[i];
   };
-  /** Primer índice de día laborable en o después de la fecha. */
-  const indice = (fecha) => {
-    if (fecha <= dias[0]) return 0;
+  /** t al empezar el primer día de trabajo en o después de la fecha. */
+  const inicio = (fecha) => {
     let i = 0;
-    while (dia(i) < fecha) i++;
-    return i;
+    while (dia(i).fecha < fecha) i++;
+    return dia(i).desde;
   };
   /** { fecha, frac } del momento t; si termina justo al final de un día, queda en ese día. */
   const punto = (t, esFin) => {
-    let i = Math.floor(t / HORAS_DIA + 1e-9);
-    let h = t - i * HORAS_DIA;
-    if (esFin && i > 0 && h < 1e-9) { i -= 1; h = HORAS_DIA; }
-    return { fecha: dia(i), frac: Math.min(1, Math.max(0, h / HORAS_DIA)) };
+    let i = 0;
+    while (t > dia(i).desde + dia(i).horas - 1e-9 && !(esFin && t <= dia(i).desde + dia(i).horas + 1e-9)) i++;
+    const d = dia(i);
+    return { fecha: d.fecha, frac: Math.min(1, Math.max(0, (t - d.desde) / d.horas)) };
   };
-  return { indice, punto };
+  return { inicio, punto };
 }
 
 /** Horas de reloj que el proceso ocupa su línea (el plan guarda horas de gente). */
@@ -103,14 +116,14 @@ function duracion(etapa, horas, params) {
  *  - por cada proceso pasa una sola OT a la vez: si dos OT tienen que cortarse
  *    el mismo día, el corte de la segunda arranca cuando termina el de la primera;
  *  - ningún proceso arranca antes del primer día que le dio el plan.
- * Cada proceso tiene HORAS_DIA horas por día (de lunes a viernes y los días
- * extra del plan). Las OT van en el orden del plan (su primer día y la prioridad).
+ * Cada proceso tiene por día las horas de la grilla de horarios del personal
+ * operativo (horasSemana); sábado y domingo, si no hay nadie puesto, no se trabaja. Las OT van en el orden del plan (su primer día y la prioridad).
  * proceso = { etapa, nombre, desde, hasta, ini, fin (qué parte del primer y del
  * último día ocupa, 0-1), horas (de reloj), hecho (0-100), esperado, completo,
  * atrasado, diasAtraso, margen, motivoMargen }.
- * @param {{ etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], terminadas?: Set<string>, hoy: string, params?: object, diasExtra?: Set<string> }} opciones
+ * @param {{ etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[] }} opciones
  */
-export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], piezas = [], terminadas = new Set(), hoy, params = null, diasExtra = new Set() }) {
+export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], piezas = [], terminadas = new Set(), hoy, params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO }) {
   const porOt = new Map();
   for (const i of items || []) {
     const ot = String(i.ot);
@@ -124,8 +137,8 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
   const out = new Map();
   if (!porOt.size) return out;
   const ots = [...porOt.values()].sort((a, b) => a.primero.localeCompare(b.primero) || a.orden - b.orden || a.ot.localeCompare(b.ot, "es", { numeric: true }));
-  const cal = calendario(ots[0].primero, diasExtra);
-  const tHoy = hoy < ots[0].primero ? 0 : cal.indice(hoy) * HORAS_DIA;
+  const cal = calendario(ots[0].primero, horasSemana);
+  const tHoy = hoy < ots[0].primero ? 0 : cal.inicio(hoy);
   const libre = {}; // hasta cuándo está ocupada la línea de cada proceso
   for (const o of ots) {
     let t = 0;
@@ -134,7 +147,7 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
       const h = duracion(ep.id, o.horas[ep.id] || 0, params);
       if (h <= 0) continue;
       // No antes del día que le dio el plan, ni de que termine el anterior de la OT, ni de que se libere el proceso
-      const t0 = Math.max(t, libre[ep.id] || 0, cal.indice(o.desde[ep.id]) * HORAS_DIA);
+      const t0 = Math.max(t, libre[ep.id] || 0, cal.inicio(o.desde[ep.id]));
       const t1 = t0 + h;
       libre[ep.id] = t1;
       t = t1;
@@ -198,11 +211,14 @@ export function etapasDelPlan(cfgValor, etapas, divisiones) {
   return etapasPlanDe(etapas, divisionPlan(divisiones, cfg.division_id), cfg.etapas);
 }
 
-/** Lee los planes confirmados y los parámetros (navegador). Sin la migración 138, planes vacío. */
+/** Lee los planes confirmados, los parámetros y la grilla de horarios del personal operativo (navegador). Sin la migración 138, planes vacío. */
 export async function leerPlanesConfirmados() {
-  const [r, cfg] = await Promise.all([
+  const leerEmpleados = (extra) => sbGetAll(`empleados?activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo${extra}`, { maxFilas: 5000 });
+  const [r, cfg, emp] = await Promise.all([
     apiFetch("/api/planificacion?confirmados=1").then((x) => (x.ok ? x.json() : null)).catch(() => null),
     sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`).catch(() => null),
+    // Sin la migración 116 no hay es_instalador
+    leerEmpleados(",es_instalador").catch(() => leerEmpleados("")).catch(() => null),
   ]);
-  return { planes: r?.planes || [], cfgValor: cfg?.[0]?.valor || null, faltaMigracion: !!r?.falta_migracion };
+  return { planes: r?.planes || [], cfgValor: cfg?.[0]?.valor || null, empleados: emp?.data || [], faltaMigracion: !!r?.falta_migracion };
 }
