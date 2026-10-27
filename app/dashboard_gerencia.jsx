@@ -46,7 +46,8 @@ import { alertasVehiculo, urgentes as alertasUrgentes } from "./lib/alertasFlota
 import { textoVencimiento, SEMAFORO } from "./lib/flota";
 import { avancePorOt } from "./lib/piezas";
 import { alertasMantenimiento, textoDias } from "./lib/panelMantenimiento";
-import { itemsVigentes, procesosPlan, otAtrasadasPlan, etapasDelPlan, leerPlanesConfirmados } from "./lib/ganttPlan";
+import { normalizarParametros } from "./lib/planificacion";
+import { itemsVigentes, procesosPlan, otAtrasadasPlan, etapasDelPlan, leerPlanesConfirmados, diasExtraDe } from "./lib/ganttPlan";
 import { CLAVE_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
 
@@ -389,6 +390,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       etapasCodigo: etapasDelPlan(plan.cfgValor, etapasCtx || [], divisionesCtx || []),
       avance: avHs.avance || [], piezas: avHs.piezas || [],
       terminadas: new Set((proy.data || []).filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy: hoyArg(),
+      params: normalizarParametros(plan.cfgValor), diasExtra: diasExtraDe(plan.planes),
     }) : null;
     setOtAtrasadasLista(procesos ? otAtrasadasPlan(filasOt, procesos, { porEscaneo: avancePorOt(avHs.piezas || []) }) : null);
     setPedidosCompra(peds ? peds.data || [] : null);
