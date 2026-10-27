@@ -21,6 +21,8 @@ import {
   preseleccion, modulosPorOt, fmtH, personalPlanta, PUESTOS_PLANTA,
 } from "../lib/cargaPlanta";
 import { leerOperariosPlanta } from "../lib/ganttPlan";
+import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
+import AvanceManualOt from "./AvanceManualOt";
 import { planAutomatico, pendientesPorOt } from "../lib/planAutomatico";
 import GanttPlan from "./GanttPlan";
 import { cuerpoPlan } from "../lib/planGuardado";
@@ -69,7 +71,7 @@ export default function PlanificacionScreen({ empresaId }) {
         {VISTAS.map((v) => <Chip key={v.id} active={vista === v.id} onClick={() => setVista(v.id)}>{v.label}</Chip>)}
       </div>
       {cfg === undefined ? <Cargando />
-        : vista === "carga" ? <CargaPlan empresaId={empresaId} divisiones={divisiones} division={division} params={cfg} onParametros={() => setVista("parametros")} />
+        : vista === "carga" ? <CargaPlan empresaId={empresaId} divisiones={divisiones} etapas={etapas} division={division} params={cfg} onParametros={() => setVista("parametros")} />
         : vista === "prioridad" ? <PrioridadOt empresaId={empresaId} divisiones={divisiones} division={division} />
           : <ParametrosPlan empresaId={empresaId} cfg={cfg} divisiones={divisiones} etapas={etapas} onGuardado={setCfg} />}
     </div>
@@ -92,7 +94,7 @@ function textoPeriodo(p) {
   return `Semana del ${fechaCorta(p.desde)} al ${fechaCorta(p.hasta)}`;
 }
 
-function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
+function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametros }) {
   const [tipo, setTipo] = useState("semana");
   const [paso, setPaso] = useState(0);
   const [modo, setModo] = useState("semana_domingo");
@@ -105,6 +107,7 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [avisoTipo, setAvisoTipo] = useState(null);
   const [busca, setBusca] = useState("");
+  const [manualAbierto, setManualAbierto] = useState(null);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -121,7 +124,7 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
         if (!vivo) return;
         // Igual que el Gantt: la semana arranca el domingo, salvo que la empresa cuente de lunes
         setModo(normalizarModo(cfgModo?.[0]?.valor?.modo) === "semana_domingo" ? "semana_domingo" : "semana_lunes");
-        setDatos({ proyectos: proy.data || [], empleados: emp.data || [], avance: av.avance || [], piezas: av.piezas || [], modulos: modulosPorOt(pz.data) });
+        setDatos({ proyectos: proy.data || [], empleados: emp.data || [], avance: av.avance || [], piezasEscaneo: av.piezasEscaneo || av.piezas || [], modulos: modulosPorOt(pz.data) });
       } catch (e) {
         if (vivo) setError(e.message || "No se pudieron leer los datos.");
       }
@@ -140,12 +143,21 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
     return () => { vivo = false; };
   }, [per.desde, per.hasta]);
   const ots = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
-  // Al cambiar de período vuelven a venir tildadas las OT de ese período
-  useEffect(() => { if (datos) setElegidas(preseleccion(ots, per.hasta)); }, [datos, ots, per.hasta]);
+  // Al cambiar de período vuelven a venir tildadas las OT de ese período (no al
+  // cambiar el tipo o el checkeo manual de una OT: lo tildado queda como estaba)
+  const preseleccionDe = useRef(null);
+  useEffect(() => {
+    const clave = `${per.hasta}|${division?.id || ""}`;
+    if (!datos || preseleccionDe.current === clave) return;
+    preseleccionDe.current = clave;
+    setElegidas(preseleccion(ots, per.hasta));
+  }, [datos, ots, per.hasta, division]);
 
+  // Escaneo de piezas, con el checkeo manual de cada OT en los procesos sin escaneo (141)
+  const piezas = useMemo(() => piezasConManual(datos?.piezasEscaneo || [], datos?.proyectos || []), [datos]);
   const horas = useMemo(() => new Map(ots.map((p) => [p.id, horasOt(p, params, {
-    modulosEtiquetas: datos?.modulos.get(String(p.ot)) || null, avance: datos?.avance, piezas: datos?.piezas,
-  })])), [ots, params, datos]);
+    modulosEtiquetas: datos?.modulos.get(String(p.ot)) || null, avance: datos?.avance, piezas,
+  })])), [ots, params, datos, piezas]);
   const operarios = useMemo(() => operariosDePlanta(datos?.empleados, divisiones, division), [datos, divisiones, division]);
   const capacidad = useMemo(() => capacidadPlanta(operarios, diasDelPeriodo(per.desde, per.hasta)), [operarios, per]);
   const carga = useMemo(() => cargaPeriodo({
@@ -324,6 +336,18 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
                 <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
               </label>
               <TipoOt proyecto={p} onCambiar={(v) => cambiarTipo(p, v)} />
+              <div className="pl-[30px] mt-1.5">
+                <button type="button" className="bg-transparent border-none p-0 text-xs font-bold text-gypi-amber-ink cursor-pointer min-h-[32px]"
+                  aria-expanded={manualAbierto === p.id} onClick={() => setManualAbierto(manualAbierto === p.id ? null : p.id)}>
+                  ✍ Checkeo manual{normalizarAvanceManual(p.avance_manual).activo ? " (activo)" : ""} {manualAbierto === p.id ? "▲" : "▼"}
+                </button>
+                {manualAbierto === p.id && (
+                  <div className="mt-1.5">
+                    <AvanceManualOt proyecto={p} etapas={etapas} divisiones={divisiones} piezas={datos.piezasEscaneo}
+                      onGuardado={(v) => setDatos((d) => ({ ...d, proyectos: d.proyectos.map((x) => (x.id === p.id ? { ...x, avance_manual: v } : x)) }))} />
+                  </div>
+                )}
+              </div>
             </li>
           );
         })}

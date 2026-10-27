@@ -207,6 +207,15 @@ export function validarPatch(tabla, body, sesion) {
     const n = body.total_modulos;
     if (!Number.isInteger(n) || n < 0 || n > 9999) return { status: 400, error: "Total de módulos inválido" };
   }
+  // Checkeo manual de OT (141): { activo, etapas: { código: 0-100 }, por, at }, o null
+  if (tabla === "proyectos" && body && body.avance_manual !== undefined && body.avance_manual !== null) {
+    const v = body.avance_manual;
+    const etapas = v && typeof v === "object" && !Array.isArray(v) ? v.etapas : null;
+    const ok = etapas && typeof etapas === "object" && !Array.isArray(etapas) && typeof v.activo === "boolean"
+      && Object.entries(etapas).length <= 50
+      && Object.entries(etapas).every(([c, n]) => /^\d{1,4}$/.test(c) && typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100);
+    if (!ok) return { status: 400, error: "Avance manual inválido" };
+  }
   if (tabla === "empresa" && sesion?.rol !== "gerencial") {
     const prohibido = CAMPOS_EMPRESA_SOLO_DUENO.find((c) => body && body[c] !== undefined);
     if (prohibido) return { status: 403, error: "Solo el dueño de la cuenta puede cambiar las instrucciones de la IA" };

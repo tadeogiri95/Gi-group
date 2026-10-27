@@ -660,7 +660,8 @@ export default function ProyectosScreen({ empresaId }) {
         <SueltosOt proyecto={sueltos} empresaId={empresaId} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setSueltos(null)} />
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} onClose={() => setDetalle(null)} />
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} onClose={() => setDetalle(null)}
+          onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))} />
       )}
       <Modal open={!!acciones} onClose={() => setAcciones(null)} title={acciones ? `OT ${acciones.ot}` : ""}>
         {acciones && (

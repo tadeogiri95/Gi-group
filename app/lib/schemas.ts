@@ -58,7 +58,7 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   proyectos: {
     POST: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos"],
     // prioridad (137): gerencia ordena las OT en Proyectos → Planificación
-    PATCH: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos", "prioridad", "tipo_proyecto"],
+    PATCH: ["estado", "ot", "cliente", "obra", "proyecto", "division", "total_modulos", "prioridad", "tipo_proyecto", "avance_manual"],
   },
   push_tokens: {
     POST: ["legajo", "token", "plataforma"],

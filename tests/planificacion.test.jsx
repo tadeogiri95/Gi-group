@@ -516,3 +516,136 @@ test("ficha del operario — elige el puesto y lo manda al guardar", () => {
   assert.match(ficha, /PUESTOS_PLANTA\.map/);
   assert.match(ficha, /puesto_planta: form\.puesto_planta \|\| null/);
 });
+
+// ─── Checkeo manual de OT (Tadeo, 27/10; migración 141) ─────────────────────
+const { normalizarAvanceManual, etapasDeOt, piezasConManual, tieneEscaneo } = await import("../app/lib/avanceManual.js");
+const { default: AvanceManualOt } = await import("../app/components/AvanceManualOt.jsx");
+const { validarPatch } = await import("../app/lib/dataPolicy.js");
+const { leerAvanceYHoras } = await import("../app/lib/otEnCursoDatos.js");
+
+test("piezasConManual — manda el escaneo; el % manual cuenta solo en los procesos sin escaneo", () => {
+  assert.deepEqual(normalizarAvanceManual({ activo: true, etapas: { 1: 120, 2: "40", x: 5, 0: 10 } }).etapas, { 1: 100, 2: 40 });
+  assert.deepEqual(normalizarAvanceManual(null), { activo: false, etapas: {}, por: null, at: null });
+  const escaneo = [{ ot: "7100", etapa: 1, total: 40, pasaron: 10 }, { ot: "7100", etapa: 2, total: 40, pasaron: 0 }];
+  const proyectos = [
+    { ot: "7100", avance_manual: { activo: true, etapas: { 1: 100, 2: 50, 4: 25 } } },
+    { ot: "7200", avance_manual: { activo: true, etapas: { 1: 30 } } },
+    { ot: "7300", avance_manual: { activo: false, etapas: { 1: 90 } } },
+  ];
+  const filas = piezasConManual(escaneo, proyectos);
+  const de = (ot, etapa) => filas.filter((f) => f.ot === ot && f.etapa === etapa).map((f) => [f.total, f.pasaron, !!f.manual]);
+  assert.deepEqual(de("7100", 1), [[40, 10, false]], "Corte tiene escaneo: no cambia aunque diga 100% a mano");
+  assert.deepEqual(de("7100", 2), [[40, 20, true]], "Canteado sin escaneo: 50% con el total de piezas de la OT");
+  assert.deepEqual(de("7100", 4), [[40, 10, true]]);
+  assert.deepEqual(de("7200", 1), [[100, 30, true]], "OT sin piezas: sobre 100");
+  assert.deepEqual(de("7300", 1), [], "apagado no cuenta");
+  assert.equal(piezasConManual(escaneo, []), escaneo);
+  assert.ok(tieneEscaneo(escaneo, "7100", 1));
+  assert.ok(!tieneEscaneo(filas, "7100", 2));
+  // La carga de la planta toma lo que falta: Canteado 50% → falta la mitad
+  assert.equal(pendienteEtapa({ ot: "7100", codigo: 2, piezas: filas }), 0.5);
+  assert.equal(pendienteEtapa({ ot: "7200", codigo: 1, piezas: filas }), 0.7);
+  // Procesos de la OT: la ruta de su división
+  assert.deepEqual(etapasDeOt({ division: "MUEBLES" }, ETAPAS, DIVISIONES).map((e) => e.codigo), [1, 2, 3, 4, 5]);
+  assert.deepEqual(etapasDeOt({ division: "Herrería" }, ETAPAS, DIVISIONES).map((e) => e.codigo), [1, 2, 3, 4, 5], "sin ruta, todas las productivas");
+});
+
+test("avance_manual — solo se guarda con la forma correcta; migración 141", () => {
+  assert.equal(validarPatch("proyectos", { avance_manual: { activo: true, etapas: { 1: 40 }, por: "Tadeo" } }, { rol: "gerencial" }), null);
+  assert.equal(validarPatch("proyectos", { avance_manual: null }, { rol: "gerencial" }), null);
+  for (const mal of [{ activo: true, etapas: { 1: 140 } }, { activo: "si", etapas: {} }, { activo: true, etapas: { corte: 10 } }, { activo: true }, []]) {
+    assert.equal(validarPatch("proyectos", { avance_manual: mal }, { rol: "gerencial" })?.status, 400, JSON.stringify(mal));
+  }
+  const esquemas = readFileSync(new URL("../app/lib/schemas.ts", import.meta.url), "utf8");
+  assert.match(esquemas, /"tipo_proyecto", "avance_manual"\]/);
+  const sql = readFileSync(new URL("../supabase/migrations/141_proyectos_avance_manual.sql", import.meta.url), "utf8");
+  assert.match(sql, /add column if not exists avance_manual jsonb/i);
+});
+
+test("leerAvanceYHoras — suma el checkeo manual y deja aparte el escaneo", async () => {
+  global.fetch = async (url, opts) => {
+    const path = JSON.parse(opts.body).path || "";
+    const lista = (data) => new Response(JSON.stringify({ data: path.includes("offset=0") ? data : [] }), { status: 200 });
+    if (path.startsWith("v_avance_piezas")) return lista([{ ot: "7100", etapa: 1, total: 10, pasaron: 5 }]);
+    if (path.startsWith("proyectos") && path.includes("avance_manual=not.is.null")) return lista([{ ot: "7100", avance_manual: { activo: true, etapas: { 2: 60 } } }]);
+    return lista([]);
+  };
+  const d = await leerAvanceYHoras("emp-1");
+  assert.equal(d.piezasEscaneo.length, 1);
+  assert.deepEqual(d.piezas.map((f) => [f.etapa, f.pasaron]), [[1, 5], [2, 6]]);
+  assert.ok(d.horas.has("7100|2"), "con avance manual el proceso ya empezó");
+});
+
+const conSesion = (rol, ui) => render(<AuthContext.Provider value={{ usuario: { rol, nombre: "Tadeo" } }}>{ui}</AuthContext.Provider>);
+
+test("✍ Checkeo manual — se activa, carga el % de los procesos sin escaneo y guarda en la OT", async () => {
+  const pedidos = mockData();
+  const guardados = [];
+  const proyecto = { id: 7, ot: "7100", division: "MUEBLES" };
+  conSesion("gerencial", <AvanceManualOt proyecto={proyecto} etapas={ETAPAS} divisiones={DIVISIONES}
+    piezas={[{ ot: "7100", etapa: 1, total: 40, pasaron: 30 }]} onGuardado={(v) => guardados.push(v)} />);
+  const sec = screen.getByRole("region", { name: "Checkeo manual de la OT 7100" });
+  assert.equal(within(sec).queryByLabelText(/^Avance de Canteado/), null, "apagado no muestra los procesos");
+  fireEvent.click(within(sec).getByLabelText("Usar checkeo manual en esta OT"));
+  assert.match(within(sec).getByText(/75% por escaneo/).textContent, /manda el escaneo/, "Corte tiene escaneo");
+  assert.equal(within(sec).queryByLabelText(/^Avance de Corte/), null);
+  fireEvent.change(within(sec).getByLabelText("Avance de Canteado en la OT 7100, en %"), { target: { value: "150" } });
+  assert.ok(within(sec).getByText("Entre 0 y 100"));
+  assert.equal(within(sec).getByText("Guardar avance").disabled, true);
+  fireEvent.change(within(sec).getByLabelText("Avance de Canteado en la OT 7100, en %"), { target: { value: "60" } });
+  fireEvent.change(within(sec).getByLabelText("Avance de Mecanizado CNC en la OT 7100, en %"), { target: { value: "12,4" } });
+  fireEvent.click(within(sec).getByText("Guardar avance"));
+  await within(sec).findByText("✅ Avance guardado");
+  const patch = pedidos.find((p) => p.method === "PATCH");
+  assert.equal(patch.path, "proyectos?id=eq.7");
+  assert.deepEqual(patch.body.avance_manual.etapas, { 2: 60, 3: 12 });
+  assert.equal(patch.body.avance_manual.activo, true);
+  assert.equal(patch.body.avance_manual.por, "Tadeo");
+  assert.equal(guardados.length, 1);
+});
+
+test("✍ Checkeo manual — sin la migración 141 avisa; quien no es gestión solo lo ve", async () => {
+  global.fetch = async () => new Response(JSON.stringify({ error: 'column "avance_manual" of relation "proyectos" does not exist' }), { status: 400 });
+  conSesion("gerencial", <AvanceManualOt proyecto={{ id: 7, ot: "7100", division: "MUEBLES" }} etapas={ETAPAS} divisiones={DIVISIONES} />);
+  fireEvent.click(screen.getByLabelText("Usar checkeo manual en esta OT"));
+  fireEvent.click(screen.getByText("Guardar avance"));
+  assert.ok(await screen.findByText("Para el checkeo manual falta correr la migración 141 en Supabase."));
+  cleanup();
+  const activo = { id: 8, ot: "7200", division: "MUEBLES", avance_manual: { activo: true, etapas: { 1: 80 }, por: "Tadeo", at: "2026-10-27T10:00:00Z" } };
+  conSesion("supervisor", <AvanceManualOt proyecto={activo} etapas={ETAPAS} divisiones={DIVISIONES} />);
+  const sec = screen.getByRole("region", { name: "Checkeo manual de la OT 7200" });
+  assert.equal(within(sec).queryByLabelText("Usar checkeo manual en esta OT"), null);
+  assert.equal(within(sec).queryByText("Guardar avance"), null);
+  assert.match(sec.textContent, /80%/);
+  assert.match(sec.textContent, /Cargado por Tadeo el 27\/10\/2026/);
+  cleanup();
+  conSesion("supervisor", <AvanceManualOt proyecto={{ id: 9, ot: "7300", division: "MUEBLES" }} etapas={ETAPAS} divisiones={DIVISIONES} />);
+  assert.equal(screen.queryByRole("region", { name: /Checkeo manual/ }), null, "apagado y sin poder editar no se muestra");
+});
+
+test("📊 Carga — el checkeo manual baja las horas que faltan de la OT y no destilda las OT", async () => {
+  mockCarga({
+    proyectos: [
+      OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
+      OT(2, "M-9000", { division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
+    ],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
+  const fila = screen.getByLabelText("Planificar OT M-7473").closest("li");
+  const antes = fila.querySelector("label > div.whitespace-nowrap").textContent;
+  fireEvent.click(within(fila).getByRole("button", { name: /✍ Checkeo manual/ }));
+  fireEvent.click(within(fila).getByLabelText("Usar checkeo manual en esta OT"));
+  for (const e of ["Corte / Seccionado", "Canteado", "Mecanizado CNC", "Armado y embalaje"]) {
+    fireEvent.change(within(fila).getByLabelText(`Avance de ${e} en la OT M-7473, en %`), { target: { value: "100" } });
+  }
+  fireEvent.click(within(fila).getByText("Guardar avance"));
+  await within(fila).findByText("✅ Avance guardado");
+  assert.match(within(fila).getByRole("button", { name: /✍ Checkeo manual/ }).textContent, /\(activo\)/);
+  await waitFor(() => assert.notEqual(fila.querySelector("label > div.whitespace-nowrap").textContent, antes));
+  assert.equal(fila.querySelector("label > div.whitespace-nowrap").textContent, "0 h", "todo hecho: no falta nada");
+  assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true, "lo tildado a mano queda");
+});
