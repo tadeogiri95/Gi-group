@@ -14,6 +14,7 @@ import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import { avancePorOt, clavesEscaneadas, reglasPieza } from "../lib/piezas";
 import { useEscape } from "../hooks/useEscape";
 import PlanSemana from "./PlanSemana";
+import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 
 function claseCelda(estado) {
   switch (estado) {
@@ -111,7 +112,8 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
 
   const hoy = hoyArg();
   const filas = useMemo(() => filasTablero(proyectos, { etapas, divisiones, avance, horas, hoy }), [proyectos, etapas, divisiones, avance, horas, hoy]);
-  const porEscaneo = useMemo(() => avancePorOt(escaneo, reglasPieza(etapas).map((r) => r.codigo)), [escaneo, etapas]);
+  // Con el checkeo manual de OT (141) en los procesos sin escaneo
+  const porEscaneo = useMemo(() => avancePorOt(piezasConManual(escaneo, proyectos), reglasPieza(etapas).map((r) => r.codigo)), [escaneo, proyectos, etapas]);
   const visibles = soloPorFirmar ? filas.filter((f) => f.porFirmar > 0) : filas;
   const porFirmar = filas.reduce((s, f) => s + f.porFirmar, 0);
 
@@ -196,7 +198,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
                   )}
                 </button>
                 {porEscaneo.get(String(p.ot))?.porcentaje != null && (
-                  <div className="text-xs font-bold text-gypi-dim mb-1">🧩 Producción {porEscaneo.get(String(p.ot)).porcentaje}% por escaneo</div>
+                  <div className="text-xs font-bold text-gypi-dim mb-1">🧩 Producción {porEscaneo.get(String(p.ot)).porcentaje}% {normalizarAvanceManual(p.avance_manual).activo ? "(escaneo y checkeo manual)" : "por escaneo"}</div>
                 )}
                 {p.puntos_criticos && <div className="text-xs text-gypi-amber-ink truncate mb-1">⚠ {p.puntos_criticos}</div>}
                 {instalacion.has(String(p.ot)) && (

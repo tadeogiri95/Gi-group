@@ -24,6 +24,7 @@ import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
+import AvanceManualOt from "./AvanceManualOt";
 import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { useEscape } from "../hooks/useEscape";
 
@@ -62,8 +63,10 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, onClose }) {
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, onClose, onProyectoActualizado }) {
   useEscape(onClose);
+  // Checkeo manual (141): lo guardado acá se ve sin volver a abrir el detalle
+  const [avanceManual, setAvanceManual] = useState(undefined);
   const [tareas, setTareas] = useState(null);
   const [noConformes, setNoConformes] = useState([]);
   const [sueltos, setSueltos] = useState([]);
@@ -214,6 +217,10 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
             </div>
           </section>
         )}
+
+        <AvanceManualOt proyecto={avanceManual === undefined ? proyecto : { ...proyecto, avance_manual: avanceManual }} etapas={etapas} divisiones={divisiones}
+          piezas={avanceEscaneo.map((a) => ({ ot: proyecto?.ot, etapa: a.codigo, total: a.total, pasaron: a.pasaron }))}
+          onGuardado={(v) => { setAvanceManual(v); onProyectoActualizado?.({ id: proyecto.id, avance_manual: v }); }} />
 
         {resSueltos.total > 0 && (
           <div className="text-xs text-gypi-dim mb-3">📦 Sueltos: {resSueltos.total === 1 ? "1 ítem" : `${resSueltos.total} ítems`} · Acopio {resSueltos.acopio} de {resSueltos.total} · Carga {resSueltos.carga} de {resSueltos.total}</div>
