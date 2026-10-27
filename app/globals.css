@@ -26,6 +26,14 @@
   --color-gypi-cyan-ink: color-mix(in srgb, var(--color-cyan) 65%, var(--color-text));
   --color-gypi-red-ink: color-mix(in srgb, var(--color-red) 65%, var(--color-text));
   --color-gypi-violet: var(--color-empresa-secondary);
+  /* Procesos del plan de producción (Gantt de OT, 📊 Carga, 📅 Plan de la
+     semana): colores fijos, no los de la empresa, para que no se confundan
+     entre sí. Amarillo = poco margen; rojo (gypi-red) = atrasado. */
+  --color-proc-corte: #2563EB;
+  --color-proc-canteado: #F97316;
+  --color-proc-mecanizado: #7C3AED;
+  --color-proc-armado: #B08968;
+  --color-proc-margen: #FACC15;
 
   --font-heading: "Bricolage Grotesque", system-ui, sans-serif;
   --font-body: "Geist", system-ui, sans-serif;

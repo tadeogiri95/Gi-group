@@ -8,7 +8,7 @@ import { ETAPAS_PLAN } from "../lib/planificacion";
 import { celdasGantt } from "../lib/planAutomatico";
 import { fmtH } from "../lib/cargaPlanta";
 
-export const COLOR_ETAPA = { corte: "bg-gypi-amber", canteado: "bg-gypi-cyan", mecanizado: "bg-gypi-violet", armado: "bg-gypi-green" };
+export const COLOR_ETAPA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
 const INICIAL = ["D", "L", "M", "M", "J", "V", "S"];
 const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const diaMes = (iso) => Number(String(iso).slice(8, 10));
