@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { rangoSemana, numeroSemana, inicioDeSemana, semanaPlanilla, fechaObjetivo, textoObjetivo, normalizarModo } from "../app/lib/semanaObjetivo.js";
-import { filasGantt, escalaGantt, primerEscaneoPorOt } from "../app/lib/gantt.js";
+import { filasGantt, escalaGantt, primerEscaneoPorOt, ventanaGantt, enVentana } from "../app/lib/gantt.js";
 import { parseCsvProyectos } from "../app/lib/csvProyectos.js";
 
 const { default: GanttOt } = await import("../app/components/GanttOt.jsx");
@@ -448,4 +448,39 @@ test("📅 Gantt — OT por proceso: un bloque por proceso, las OT una debajo de
   assert.equal(screen.getByRole("button", { name: "OT por proceso" }).getAttribute("aria-pressed"), "true");
   fireEvent.click(screen.getByRole("button", { name: "Procesos por OT" }));
   assert.equal(document.querySelectorAll("[data-bloque]").length, 0);
+});
+
+test("📅 Gantt — elegir ver 1 a 4 semanas desde la actual, o todo el plan", () => {
+  const escala = { desde: "2026-10-18", semanas: ["2026-10-18", "2026-10-25", "2026-11-01", "2026-11-08", "2026-11-15", "2026-11-22"].map((inicio) => ({ inicio, actual: inicio === "2026-10-25" })) };
+  assert.deepEqual(ventanaGantt(escala, 1), { semanas: [escala.semanas[1]], desde: "2026-10-25", hasta: "2026-11-01" });
+  assert.equal(ventanaGantt(escala, 2).hasta, "2026-11-08");
+  assert.equal(ventanaGantt(escala, 0).semanas.length, 6, "todo el plan, también la semana anterior");
+  assert.equal(ventanaGantt(escala, 4).semanas.length, 4);
+  const v = ventanaGantt(escala, 1);
+  assert.ok(enVentana({ desde: "2026-10-20", hasta: "2026-10-26" }, v), "empezó antes y sigue esta semana");
+  assert.ok(enVentana({ desde: "2026-10-31", hasta: "2026-11-03" }, v));
+  assert.ok(!enVentana({ desde: "2026-11-01", hasta: "2026-11-03" }, v), "la semana que viene no");
+  assert.ok(!enVentana({ desde: "2026-10-19", hasta: "2026-10-24" }, v), "la semana pasada no");
+
+  const planes = [{
+    id: 1, tipo: "semana", desde: dia(-20), hasta: dia(40), items: [
+      { ot: "7100", etapa: "corte", fecha: dia(1), horas: 8, orden: 0 },
+      { ot: "7200", etapa: "corte", fecha: dia(25), horas: 8, orden: 1 },
+    ],
+  }];
+  const proyectos = [
+    { id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" },
+    { id: 2, ot: "7200", cliente: "Ana", division: "M", estado: "activo" },
+  ];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+  assert.equal(screen.getByRole("button", { name: "Todo" }).getAttribute("aria-pressed"), "true", "arranca con todo el plan");
+  assert.ok(container.querySelector('[data-ot="7200"]'));
+  fireEvent.click(screen.getByRole("button", { name: "2 sem." }));
+  assert.ok(container.querySelector('[data-ot="7100"]'), "la de esta semana se ve");
+  assert.equal(container.querySelector('[data-ot="7200"]'), null, "la de dentro de 3 semanas no");
+  fireEvent.click(screen.getByRole("button", { name: "OT por proceso" }));
+  assert.equal(screen.getByRole("region", { name: "Corte: 1 OT" }).querySelectorAll("[data-ot]").length, 1);
+  assert.equal(localStorage.getItem("gypi_gantt_semanas"), "2", "queda guardado");
+  fireEvent.click(screen.getByRole("button", { name: "Todo" }));
+  assert.ok(screen.getByRole("region", { name: "Corte: 2 OT" }));
 });
