@@ -100,6 +100,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
 
   const [vista, setVista] = useState("dias");
   const [grande, setGrande] = useState(false);
+  const [verAtrasados, setVerAtrasados] = useState(true);
   const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
   useEscape(cerrarGrande, grande);
   useEffect(() => () => { salirPantallaCompleta(); }, []);
@@ -275,21 +276,28 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         </div>
       </div>
       {atrasados.length > 0 && (
-        <section aria-label="Procesos atrasados" className="mt-3 rounded-xl border border-gypi-red/40 bg-gypi-red/5 p-3">
-          <div className="text-[15px] font-bold text-gypi-red mb-1">⚠ Procesos atrasados ({atrasados.length})</div>
-          <ul className="list-none m-0 p-0 flex flex-col gap-1">
-            {atrasados.map((q) => (
-              <li key={`${q.ot}-${q.etapa}`}>
-                <button type="button" onClick={() => verDetalle(q.proyecto)}
-                  className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
-                  <span className="font-mono font-bold">{q.ot}</span> · {q.nombre}: tenía que terminar el {fechaCorta(q.hasta)} ({q.diasAtraso} {q.diasAtraso === 1 ? "día" : "días"} de atraso) · {q.hecho}% hecho
-                </button>
-              </li>
-            ))}
-          </ul>
+        <section aria-label="Procesos atrasados" className="mt-3 rounded-xl border border-gypi-red/40 bg-gypi-red/5 p-3 shrink-0">
+          {/* Se puede minimizar para ver el Gantt entero (en el celular, en pantalla completa) */}
+          <button type="button" onClick={() => setVerAtrasados((v) => !v)} aria-expanded={verAtrasados}
+            className="w-full flex items-center gap-2 bg-transparent border-0 p-0 min-h-11 cursor-pointer text-left text-[15px] font-bold text-gypi-red">
+            <span className="flex-1">⚠ Procesos atrasados ({atrasados.length})</span>
+            <span className="text-[14px] text-gypi-dim">{verAtrasados ? "▾ Minimizar" : "▸ Ver detalle"}</span>
+          </button>
+          {verAtrasados && (
+            <ul className={`list-none m-0 p-0 flex flex-col gap-1 overflow-auto ${grande ? "max-h-[30vh]" : ""}`}>
+              {atrasados.map((q) => (
+                <li key={`${q.ot}-${q.etapa}`}>
+                  <button type="button" onClick={() => verDetalle(q.proyecto)}
+                    className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
+                    <span className="font-mono font-bold">{q.ot}</span> · {q.nombre}: tenía que terminar el {fechaCorta(q.hasta)} ({q.diasAtraso} {q.diasAtraso === 1 ? "día" : "días"} de atraso) · {q.hecho}% hecho
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
-      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan confirmado con las horas de la grilla de horarios del personal operativo (los días sin nadie puesto no se trabajan): en cada OT un proceso arranca cuando termina el anterior y por cada proceso pasa una OT a la vez. Tocá una OT para ver su detalle.</p>
+      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan confirmado con las horas de la grilla de horarios del personal operativo (los días sin nadie puesto no se trabajan): en cada OT un proceso arranca cuando termina el anterior y por cada proceso pasa una OT a la vez. Tocá una OT para ver su detalle.</p>}
     </div>
   );
 }
