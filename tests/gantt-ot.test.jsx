@@ -222,3 +222,63 @@ test("itemsVigentes y otAtrasadasPlan — la semana le gana al mes; atrasada la 
   // Terminada en la planilla: nada atrasado
   assert.equal(procesosPlan(items, { terminadas: new Set(["A"]), hoy: "2026-10-30" }).get("A").atrasados.length, 0);
 });
+
+// 27/10: cada proceso con su color fijo (azul, naranja, violeta, marrón claro)
+// y amarillo cuando queda poco margen; los procesos van uno detrás del otro.
+test("procesosPlan — poco margen: va atrasado contra el plan, último día, o el anterior viene atrasado o justo", async () => {
+  const { procesosPlan } = await import("../app/lib/ganttPlan.js");
+  const hoy = "2026-10-28";
+  const items = [
+    // A: Corte del 26 al 29, 4 h por día; hasta ayer tenía que ir 50%
+    ...["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29"].map((fecha) => ({ ot: "A", etapa: "corte", fecha, horas: 4 })),
+    // Canteado arranca el 30: el Corte justo lo deja sin días libres
+    { ot: "A", etapa: "canteado", fecha: "2026-10-30", horas: 4 },
+    { ot: "A", etapa: "armado", fecha: "2026-11-20", horas: 4 },
+    // B: Corte atrasado 3 días; Canteado arranca en 2 días (sin margen), Armado lejos
+    { ot: "B", etapa: "corte", fecha: "2026-10-25", horas: 4 },
+    { ot: "B", etapa: "canteado", fecha: "2026-10-30", horas: 4 },
+    { ot: "B", etapa: "armado", fecha: "2026-11-20", horas: 4 },
+    // C: hoy es el último día de Mecanizado
+    { ot: "C", etapa: "mecanizado", fecha: "2026-10-28", horas: 4 },
+  ];
+  const piezas = [{ ot: "A", etapa: 1, total: 10, pasaron: 3 }];
+  const r = procesosPlan(items, { etapasCodigo: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 }, piezas, hoy });
+  const estado = (ot) => r.get(ot).procesos.map((p) => [p.etapa, p.atrasado ? "atrasado" : p.margen ? "margen" : "ok"]);
+  assert.deepEqual(estado("A"), [["corte", "margen"], ["canteado", "margen"], ["armado", "ok"]]);
+  assert.match(r.get("A").procesos[0].motivoMargen, /va 30% y el plan tenía 50% hasta ayer/);
+  assert.match(r.get("A").procesos[1].motivoMargen, /Corte viene justo/);
+  assert.deepEqual(estado("B"), [["corte", "atrasado"], ["canteado", "margen"], ["armado", "ok"]]);
+  assert.match(r.get("B").procesos[1].motivoMargen, /Corte viene 3 días atrasado/);
+  assert.deepEqual(estado("C"), [["mecanizado", "margen"]]);
+  assert.equal(r.get("C").pocoMargen.length, 1);
+  // Con el Corte de A al día (5 de 10 piezas = 50%) ya no hay aviso
+  const alDia = procesosPlan(items, { etapasCodigo: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 }, piezas: [{ ot: "A", etapa: 1, total: 10, pasaron: 5 }], hoy });
+  assert.equal(alDia.get("A").pocoMargen.length, 0);
+});
+
+test("📅 Gantt — colores fijos por proceso y amarillo con la lista de poco margen", () => {
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  for (const t of ["proc-corte: #2563EB", "proc-canteado: #F97316", "proc-mecanizado: #7C3AED", "proc-armado: #B08968", "proc-margen: #FACC15"]) assert.ok(css.includes(`--color-${t}`), t);
+  const planes = [{ id: 1, tipo: "semana", desde: dia(-5), hasta: dia(10), items: [
+    { ot: "7100", etapa: "corte", fecha: dia(-3), horas: 4 },
+    { ot: "7100", etapa: "corte", fecha: dia(1), horas: 4 },
+    { ot: "7100", etapa: "canteado", fecha: dia(2), horas: 4 },
+    { ot: "7100", etapa: "mecanizado", fecha: dia(6), horas: 4 },
+    { ot: "7100", etapa: "armado", fecha: dia(9), horas: 4 },
+  ] }];
+  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+  const barra = (id) => container.querySelector(`[data-proceso="${id}"]`);
+  assert.equal(barra("corte").getAttribute("data-estado"), "margen");
+  assert.match(barra("corte").getAttribute("class"), /fill-proc-margen/);
+  assert.equal(barra("canteado").getAttribute("data-estado"), "margen", "va después de un Corte justo y arranca enseguida");
+  assert.equal(barra("mecanizado").getAttribute("data-estado"), "pendiente");
+  assert.match(barra("mecanizado").getAttribute("class"), /fill-proc-mecanizado/);
+  assert.match(barra("armado").getAttribute("class"), /fill-proc-armado/);
+  const leyenda = screen.getByLabelText("Colores del Gantt");
+  assert.match(leyenda.textContent, /🟡 Poco margen 2/);
+  assert.ok(leyenda.querySelector(".bg-proc-corte") && leyenda.querySelector(".bg-proc-canteado"));
+  const lista = screen.getByRole("region", { name: "Procesos con poco margen" });
+  assert.match(lista.textContent, /7100 · Corte .*va 0% y el plan tenía 50% hasta ayer/);
+  assert.ok(screen.getByText("🟡 7100"));
+});

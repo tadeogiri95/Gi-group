@@ -6,6 +6,14 @@
 // límite de un proceso es ese último día: si ya pasó y el proceso no está
 // completo (todas sus piezas escaneadas en esa etapa, o la etapa terminada si
 // no se escanea por pieza), el proceso está atrasado.
+//
+// Poco margen (amarillo): un proceso sin completar y todavía en fecha, pero
+// justo. Los procesos van uno detrás del otro, así que cuenta lo propio y lo
+// del anterior:
+//  - ya empezó y va más atrasado que lo que el plan tenía hecho hasta ayer, o
+//    hoy es su último día del plan;
+//  - el anterior está atrasado y este arranca en 2 días o menos (o ya
+//    arrancó), o el anterior tiene poco margen y este arranca enseguida.
 import { apiFetch, sb } from "./supabase";
 import { CLAVE_PLANIFICACION, ETAPAS_PLAN, divisionPlan, etapasPlanDe, normalizarParametros } from "./planificacion";
 import { pendienteEtapa } from "./cargaPlanta";
@@ -14,6 +22,7 @@ import { porcentajeOt } from "./panelMantenimiento";
 
 const nombreEtapa = Object.fromEntries(ETAPAS_PLAN.map((e) => [e.id, e.nombre]));
 const largo = (p) => diasEntre(p.desde, p.hasta);
+const DIAS_JUSTO = 2; // con el anterior atrasado, si este arranca en 2 días o menos ya no hay margen
 
 /**
  * Lo que toca cada día según los planes confirmados. Si dos planes se pisan
@@ -35,8 +44,9 @@ export function itemsVigentes(planes = []) {
 }
 
 /**
- * Procesos de cada OT planificada: Map<ot, { ot, inicio, fin, procesos, atrasados }>.
- * proceso = { etapa, nombre, desde, hasta, horas, hecho (0-100), completo, atrasado, diasAtraso }.
+ * Procesos de cada OT planificada: Map<ot, { ot, inicio, fin, procesos, atrasados, pocoMargen }>.
+ * proceso = { etapa, nombre, desde, hasta, horas, hecho (0-100), completo, atrasado, diasAtraso, margen, motivoMargen }.
+ * margen = true si está en fecha pero con poco margen (ver arriba).
  * @param {{ etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], terminadas?: Set<string>, hoy: string }} opciones
  */
 export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], piezas = [], terminadas = new Set(), hoy }) {
@@ -45,20 +55,41 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
     const ot = String(i.ot);
     if (!porOt.has(ot)) porOt.set(ot, new Map());
     const etapas = porOt.get(ot);
-    const e = etapas.get(i.etapa) || { desde: i.fecha, hasta: i.fecha, horas: 0 };
+    const e = etapas.get(i.etapa) || { desde: i.fecha, hasta: i.fecha, horas: 0, porDia: new Map() };
     if (i.fecha < e.desde) e.desde = i.fecha;
     if (i.fecha > e.hasta) e.hasta = i.fecha;
-    e.horas += Number(i.horas) || 0;
+    const h = Number(i.horas) || 0;
+    e.horas += h;
+    e.porDia.set(i.fecha, (e.porDia.get(i.fecha) || 0) + h);
     etapas.set(i.etapa, e);
   }
   const out = new Map();
   for (const [ot, etapas] of porOt) {
     const procesos = ETAPAS_PLAN.filter((ep) => etapas.has(ep.id)).map((ep) => {
-      const e = etapas.get(ep.id);
+      const { porDia, ...e } = etapas.get(ep.id);
       const falta = terminadas.has(ot) ? 0 : pendienteEtapa({ ot, codigo: etapasCodigo?.[ep.id], avance, piezas });
       const completo = falta <= 0;
       const diasAtraso = completo ? 0 : Math.max(0, diasEntre(e.hasta, hoy));
-      return { etapa: ep.id, nombre: nombreEtapa[ep.id], ...e, hecho: Math.round((1 - falta) * 100), completo, atrasado: diasAtraso > 0, diasAtraso };
+      const hecho = Math.round((1 - falta) * 100);
+      // Lo que el plan tenía hecho antes de hoy, en % de las horas del proceso
+      const antes = [...porDia].reduce((s, [f, h]) => (f < hoy ? s + h : s), 0);
+      const esperado = e.horas > 0 ? Math.round((antes / e.horas) * 100) : 0;
+      return { etapa: ep.id, nombre: nombreEtapa[ep.id], ...e, hecho, esperado, completo, atrasado: diasAtraso > 0, diasAtraso, margen: false, motivoMargen: null };
+    });
+    procesos.forEach((q, i) => {
+      if (q.completo || q.atrasado) return;
+      const prev = procesos.slice(0, i).reverse().find((z) => !z.completo);
+      const libres = prev ? Math.max(0, diasEntre(prev.hasta, q.desde) - 1) : 0; // días entre que termina el anterior y arranca este
+      if (prev?.atrasado && diasEntre(hoy, q.desde) <= DIAS_JUSTO) {
+        q.motivoMargen = `${prev.nombre} viene ${prev.diasAtraso} ${prev.diasAtraso === 1 ? "día" : "días"} atrasado y ${q.nombre} va después`;
+      } else if (prev?.margen && libres <= 1) {
+        q.motivoMargen = `${prev.nombre} viene justo y ${q.nombre} arranca enseguida`;
+      } else if (q.desde <= hoy && q.hecho < q.esperado) {
+        q.motivoMargen = `va ${q.hecho}% y el plan tenía ${q.esperado}% hasta ayer`;
+      } else if (q.hasta === hoy) {
+        q.motivoMargen = `hoy es su último día y va ${q.hecho}%`;
+      }
+      q.margen = !!q.motivoMargen;
     });
     out.set(ot, {
       ot,
@@ -66,6 +97,7 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
       fin: procesos.reduce((m, p) => (p.hasta > m ? p.hasta : m), procesos[0].hasta),
       procesos,
       atrasados: procesos.filter((p) => p.atrasado),
+      pocoMargen: procesos.filter((p) => p.margen),
     });
   }
   return out;
