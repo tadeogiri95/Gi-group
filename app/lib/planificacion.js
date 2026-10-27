@@ -151,6 +151,24 @@ export function otsPlanificables(proyectos, divisiones, division) {
 
 const numeroOt = (ot) => Number(String(ot).replace(/\D/g, "")) || 0;
 
+/** OT que coinciden con lo buscado (número, cliente, proyecto o descripción; sin importar tildes ni mayúsculas). Vacío = todas. */
+export function buscarOts(ots, texto) {
+  const palabras = normalizar(texto).split(/\s+/).filter(Boolean);
+  if (!palabras.length) return ots || [];
+  return (ots || []).filter((p) => {
+    const t = normalizar([p.ot, p.cliente, p.proyecto, p.descripcion].filter(Boolean).join(" "));
+    return palabras.every((w) => t.includes(w));
+  });
+}
+
+/** Tilda todas las OT de la lista, o las destilda si ya estaban todas tildadas. El resto queda como estaba. */
+export function tildarTodas(elegidas, lista) {
+  const n = new Set(elegidas);
+  const todas = lista.length > 0 && lista.every((p) => n.has(p.id));
+  for (const p of lista) { if (todas) n.delete(p.id); else n.add(p.id); }
+  return n;
+}
+
 /** Primero las que tienen prioridad manual (1 arriba), después por semana objetivo y número de OT. */
 export function ordenarPorPrioridad(ots) {
   return [...(ots || [])].sort((a, b) => {

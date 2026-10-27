@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import {
   normalizarParametros, leerNumero, errorParametro, PARAMETROS, parametrosFaltantes,
-  divisionPlan, etapasPlanDe, otsPlanificables, ordenarPorPrioridad, moverOt, quitarPrioridad, cambiosPrioridad,
+  divisionPlan, etapasPlanDe, otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, moverOt, quitarPrioridad, cambiosPrioridad,
 } from "../app/lib/planificacion.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 
@@ -318,6 +318,50 @@ test("📊 Carga — tildadas las del período; dice si entra, las horas extra y
   assert.match(carga.textContent, /Elegí las OT que querés planificar/);
   fireEvent.click(screen.getByLabelText("Período siguiente"));
   assert.match(carga.textContent, /Semana del/);
+});
+
+test("buscarOts y tildarTodas — busca sin tildes por número, cliente o proyecto; tilda o destilda solo las de la lista", () => {
+  const ots = [OT(1, "M-7473", { cliente: "Riofrío" }), OT(2, "M-7858", { cliente: "CEVT", proyecto: "Oficinas Córdoba" }), OT(3, "M-9000")];
+  assert.deepEqual(buscarOts(ots, "  ").map((p) => p.id), [1, 2, 3]);
+  assert.deepEqual(buscarOts(ots, "riofrio").map((p) => p.id), [1]);
+  assert.deepEqual(buscarOts(ots, "cordoba cevt").map((p) => p.id), [2]);
+  assert.deepEqual(buscarOts(ots, "78").map((p) => p.id), [2]);
+  // Con una tildada fuera de la lista: tildar todas suma las de la lista y no toca la otra
+  const una = tildarTodas(new Set([3]), ots.slice(0, 2));
+  assert.deepEqual([...una].sort(), [1, 2, 3]);
+  assert.deepEqual([...tildarTodas(una, ots.slice(0, 2))], [3], "si ya estaban todas, las destilda");
+});
+
+test("📊 Carga — buscador de OT y botón para tildar o destildar todas", async () => {
+  mockCarga({
+    proyectos: [
+      OT(1, "M-7473", { ...OT_A, cliente: "Riofrío", division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
+      OT(2, "M-9000", { cliente: "CEVT", division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
+      OT(3, "M-9100", { cliente: "CEVT", division: "Muebles", fecha_objetivo: "2099-12-31", placas: 1 }),
+    ],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  assert.match(screen.getByText(/OT tildadas? de 3/).textContent, /1 OT tildada de 3/);
+  fireEvent.change(screen.getByLabelText("Buscar OT"), { target: { value: "cevt" } });
+  assert.equal(screen.queryByLabelText("Planificar OT M-7473"), null, "la que no coincide no se ve");
+  assert.match(screen.getByText(/coinciden con la búsqueda/).textContent, /2 coinciden/);
+  fireEvent.click(screen.getByText("Tildar todas"));
+  assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true);
+  assert.equal(screen.getByLabelText("Planificar OT M-9100").checked, true);
+  assert.match(screen.getByText(/OT tildadas de 3/).textContent, /3 OT tildadas de 3/);
+  fireEvent.click(screen.getByText("Destildar todas"));
+  assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, false);
+  // Sin búsqueda: la M-7473 siguió tildada
+  fireEvent.change(screen.getByLabelText("Buscar OT"), { target: { value: "" } });
+  assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true);
+  fireEvent.click(screen.getByText("Tildar todas"));
+  fireEvent.click(screen.getByText("Destildar todas"));
+  assert.ok(["M-7473", "M-9000", "M-9100"].every((ot) => !screen.getByLabelText(`Planificar OT ${ot}`).checked));
+  fireEvent.change(screen.getByLabelText("Buscar OT"), { target: { value: "zzz" } });
+  assert.ok(screen.getByText("Ninguna OT coincide con “zzz”."));
 });
 
 test("📊 Carga — sin parámetros avisa qué falta cargar", async () => {
