@@ -15,7 +15,7 @@ import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
 import { alcanceDe, filtroAlcance, dentroDelAlcance, COLUMNA_PERSONA } from "../../lib/alcance";
 import { diasEntre, MAX_DIAS_SOLICITUD } from "../../lib/tiposSolicitud";
-import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
+import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD, TABLAS_SIN_SUPERVISOR } from "../../lib/dataPolicy";
 import { rlsActivo, rlsRutasActivo, configRlsFaltante, headersUsuario } from "../../lib/supabaseUsuario";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -61,6 +61,7 @@ const TABLAS_PERMITIDAS = [
   "v_avance_piezas", // Avance por escaneo, parte 25 (118): vista de solo lectura
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
+  "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión sin supervisores; lo escribe la sincronización
   "proveedores", "pedidos_compra", // Compras parte 20 (113): solo lectura acá; se escriben por /api/compras
   "ordenes_compra", "ordenes_compra_items", // Compras parte 21 (114): ídem
   "recepciones_compra", "recepciones_compra_items", // Compras parte 22 (115): ídem
@@ -84,7 +85,7 @@ const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "pedidos_compra_cambios
 // por /api/documentos/upload (valida tipo/tamaño de archivo server-side antes
 // de escribir la fila). Sin esto, un POST directo podría crear filas con
 // storage_path arbitrario sin que exista el archivo.
-const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", ...TABLAS_COMPRAS, ...TABLAS_FLOTA, ...TABLAS_MAQUINARIA];
+const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", "precios_ot", ...TABLAS_COMPRAS, ...TABLAS_FLOTA, ...TABLAS_MAQUINARIA];
 
 // Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
 // base aplica la RLS. Las dos vistas de resumen necesitan además la migración
@@ -146,6 +147,7 @@ const TABLAS_CON_EMPRESA = [
   "v_avance_piezas", // Avance por escaneo, parte 25 (118): vista de solo lectura
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
+  "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión sin supervisores; lo escribe la sincronización
 ];
 
 function validarPath(path) {
@@ -375,6 +377,9 @@ export async function POST(request) {
     }
     // ─── ALCANCE: un supervisor de división solo ve y toca a su gente (D2) ───
     const alcance = await alcanceDe(sesion);
+    if (alcance && TABLAS_SIN_SUPERVISOR.has(pathCheck.tabla)) {
+      return NextResponse.json({ error: "Tu rol no tiene permiso para esta acción" }, { status: 403 });
+    }
     if (alcance && method && method !== "GET") {
       if (method === "PATCH" && pathCheck.tabla === "empleados" && body && body.division !== undefined) {
         return NextResponse.json({ error: "Un supervisor no puede cambiar la división de un empleado" }, { status: 403 });

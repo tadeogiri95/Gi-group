@@ -20,6 +20,11 @@
 
 export const ROLES_GESTION = new Set(["gerencial", "administrativo"]);
 
+// Tablas que un supervisor de división (administrativo con solo_su_division)
+// no ve aunque sea gestión: el precio de las OT solo lo ven Dueño y
+// Administración (Tadeo, 27/10).
+export const TABLAS_SIN_SUPERVISOR = new Set(["precios_ot"]);
+
 // Tipos de solicitud que acepta /api/data. hora_extra (F1-06) y
 // salida_anticipada (D22) los crea el chat y antes se rechazaban con 400.
 export const TIPOS_SOLICITUD = ["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "cambio_horario", "hora_extra", "salida_anticipada", "otro"];
@@ -55,6 +60,7 @@ export const POLICY = {
   no_conformidades:             { GET: "all" },   // se escribe por /api/no-conformidades (OP parte 6)
   pasos_pieza:                  { GET: "all" },   // se escribe por /api/piezas/paso (OP parte 18)
   piezas_ot:                    { GET: "all" },   // se escribe por /api/piezas (OP parte 17)
+  precios_ot:                   { GET: "gestion" }, // precio de cada OT (142); sin supervisores (TABLAS_SIN_SUPERVISOR); lo escribe la sincronización
   v_avance_piezas:              { GET: "all" },   // vista: % de avance por escaneo (parte 25, migración 118)
   sueltos_ot:                   { GET: "all" },   // se escribe por /api/sueltos (OP parte 9)
   articulos_stock:              { GET: "all" },   // lo escribe la sincronización con la planilla MRP (Stock parte 13)

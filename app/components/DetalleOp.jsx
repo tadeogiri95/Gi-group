@@ -63,7 +63,7 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, onClose, onProyectoActualizado }) {
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, precio, onClose, onProyectoActualizado }) {
   useEscape(onClose);
   // Checkeo manual (141): lo guardado acá se ve sin volver a abrir el detalle
   const [avanceManual, setAvanceManual] = useState(undefined);
@@ -163,6 +163,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                 {[proyecto?.fecha_entrega && `Entrega ${fechaCorta(proyecto.fecha_entrega)}`, proyecto?.cantidad != null && `Cantidad ${proyecto.cantidad}`, proyecto?.total_modulos && `${proyecto.total_modulos} módulos`].filter(Boolean).join(" · ")}
               </div>
             )}
+            {precio != null && <div className="text-[13px] font-bold text-gypi-text mt-1">💲 Precio {fmtPesos(precio)}</div>}
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>

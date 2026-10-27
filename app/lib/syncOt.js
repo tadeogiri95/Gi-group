@@ -198,6 +198,25 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     }
   }
 
+  // PRECIO de cada OT (142, columna AE del Plan de trabajo): va a precios_ot,
+  // que solo leen Dueño y Administración. Se escribe con service_role a
+  // propósito: el botón Sincronizar también lo aprieta un operario que busca
+  // su OT, y la RLS de precios_ot no le deja ver (ni pisar) esas filas.
+  // Sin la columna en la planilla no se toca nada; sin la migración, se sigue.
+  const conPrecio = filas.filter((r) => "precio" in r);
+  for (let i = 0; i < conPrecio.length; i += BATCH) {
+    try {
+      await sbFetch("precios_ot?on_conflict=empresa_id,ot", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(conPrecio.slice(i, i + BATCH).map((r) => ({ empresa_id: empresaId, ot: r.ot, precio: r.precio, updated_at: new Date().toISOString() }))),
+      });
+    } catch (e) {
+      logger.error("[proyectos/sync-csv] No se pudieron guardar los precios (¿falta la migración 142?)", e);
+      break;
+    }
+  }
+
   // Actualizar última sync en config
   try {
     await sbFetch(

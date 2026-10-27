@@ -9,6 +9,8 @@ import { useConfirm } from "./components/ui/ConfirmDialog";
 import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
 import DetalleOp from "./components/DetalleOp";
+import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
+import { fmtPesos } from "./lib/costo";
 import TableroOt from "./components/TableroOt";
 import GanttOt from "./components/GanttOt";
 import NoConformidades from "./components/NoConformidades";
@@ -165,6 +167,15 @@ export default function ProyectosScreen({ empresaId }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, checklistInstalacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(usuario?.rol === "gerencial");
+  // Precio de cada OT (142): solo Dueño y Administración
+  const verPrecios = puedeVerPrecios(usuario);
+  const [precios, setPrecios] = useState(() => new Map());
+  useEffect(() => {
+    if (!verPrecios || !empresaId) return;
+    let vivo = true;
+    leerPrecios().then((m) => { if (vivo) setPrecios(m); });
+    return () => { vivo = false; };
+  }, [verPrecios, empresaId]);
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -633,6 +644,7 @@ export default function ProyectosScreen({ empresaId }) {
                   <div className="text-[15px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
                   <div className="text-[13px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{lineaOt(p)}</div>
                 </div>
+                {verPrecios && precios.has(String(p.ot)) && <span className="text-xs font-bold text-gypi-dim whitespace-nowrap" aria-label={`Precio ${fmtPesos(precios.get(String(p.ot)))}`}>{fmtPesos(precios.get(String(p.ot)))}</span>}
                 {p.estado !== "cerrado" && pctEscaneo.get(String(p.ot))?.porcentaje != null && <Tag color={AMBER}>🧩 {pctEscaneo.get(String(p.ot)).porcentaje}%</Tag>}
                 {p.estado !== "cerrado" && otsEnCurso.has(String(p.ot)) && <Tag color={AMBER}>en curso</Tag>}
                 {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
@@ -660,7 +672,7 @@ export default function ProyectosScreen({ empresaId }) {
         <SueltosOt proyecto={sueltos} empresaId={empresaId} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setSueltos(null)} />
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} onClose={() => setDetalle(null)}
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined} onClose={() => setDetalle(null)}
           onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))} />
       )}
       <Modal open={!!acciones} onClose={() => setAcciones(null)} title={acciones ? `OT ${acciones.ot}` : ""}>
