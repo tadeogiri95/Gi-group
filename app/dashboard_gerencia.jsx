@@ -45,8 +45,9 @@ import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { alertasVehiculo, urgentes as alertasUrgentes } from "./lib/alertasFlota";
 import { textoVencimiento, SEMAFORO } from "./lib/flota";
 import { avancePorOt } from "./lib/piezas";
-import { alertasMantenimiento, otAtrasadas, textoDias } from "./lib/panelMantenimiento";
-import { CLAVE_FECHA_OBJETIVO, normalizarModo, textoObjetivo } from "./lib/semanaObjetivo";
+import { alertasMantenimiento, textoDias } from "./lib/panelMantenimiento";
+import { itemsVigentes, procesosPlan, otAtrasadasPlan, etapasDelPlan, leerPlanesConfirmados } from "./lib/ganttPlan";
+import { CLAVE_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
 
 /* ─── Helpers ─── */
@@ -356,7 +357,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const cargarOtYCompras = useCallback(async () => {
     if (isDemo || !empresaId || !(conOt || conCompras || conFlota || conMaquinaria)) return;
     const si = (con, leer) => (con ? leer().catch(() => null) : null);
-    const [proy, avHs, cfgObjetivo, peds, veh, pap, chk, cho, arr, maq, tar, fal] = await Promise.all([
+    const [proy, avHs, cfgObjetivo, plan, peds, veh, pap, chk, cho, arr, maq, tar, fal] = await Promise.all([
       // Sin la migración 135 no hay fecha objetivo: se lee sin ella y no hay OT atrasadas
       si(conOt, () => {
         const leer = (extra) => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=id,ot,cliente,obra,proyecto,division,fecha_entrega,liberada_at${extra}&order=id.asc`, { maxFilas: 20000 });
@@ -364,6 +365,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       }),
       si(conOt, () => leerAvanceYHoras(empresaId)),
       si(conOt, () => sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`)),
+      // ⏰ OT atrasadas sale del plan de producción confirmado (138)
+      si(conOt, () => leerPlanesConfirmados()),
       // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
       si(conCompras, () => sbGetAll(`pedidos_compra?estado=eq.pendiente&select=id,descripcion,cantidad,unidad,ot,empleado_nombre,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 })),
       // Sin la migración 126 no hay flota: la tarjeta no aparece
@@ -382,7 +385,12 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
     const filasOt = proy && avHs ? filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() }) : null;
     setOtCurso(filasOt ? otEnCurso(filasOt) : null);
     setModoObjetivo(normalizarModo(cfgObjetivo?.[0]?.valor?.modo));
-    setOtAtrasadasLista(filasOt ? otAtrasadas(filasOt, { porEscaneo: avancePorOt(avHs.piezas || []), hoy: hoyArg() }) : null);
+    const procesos = filasOt && plan ? procesosPlan(itemsVigentes(plan.planes), {
+      etapasCodigo: etapasDelPlan(plan.cfgValor, etapasCtx || [], divisionesCtx || []),
+      avance: avHs.avance || [], piezas: avHs.piezas || [],
+      terminadas: new Set((proy.data || []).filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy: hoyArg(),
+    }) : null;
+    setOtAtrasadasLista(procesos ? otAtrasadasPlan(filasOt, procesos, { porEscaneo: avancePorOt(avHs.piezas || []) }) : null);
     setPedidosCompra(peds ? peds.data || [] : null);
   }, [isDemo, empresaId, conOt, conCompras, conFlota, conMaquinaria, etapasCtx, divisionesCtx]);
   useEffect(() => { cargarOtYCompras(); }, [cargarOtYCompras]); // eslint-disable-line react-hooks/set-state-in-effect
@@ -714,7 +722,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </section>
       )}
 
-      {/* ─── OT atrasadas: pasó su semana objetivo y no están terminadas (parte 36; 135) ─── */}
+      {/* ─── OT atrasadas: algún proceso del plan confirmado pasó su último día sin completarse (138) ─── */}
       {otAtrasadasLista && (
         <section aria-label="OT atrasadas" className={`card-hover g-card mb-4 ${otAtrasadasLista.length ? TONO.mal.borde : ""}`}>
           <div className="flex justify-between items-center mb-2">
@@ -722,17 +730,17 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <Tag color={otAtrasadasLista.length ? "var(--color-red)" : "var(--color-green)"}>{otAtrasadasLista.length}</Tag>
           </div>
           {otAtrasadasLista.length === 0 ? (
-            <p className="m-0 text-[13px] text-gypi-dim">✅ Ninguna OT pasó su fecha objetivo.</p>
+            <p className="m-0 text-[13px] text-gypi-dim">✅ Ningún proceso del plan confirmado está atrasado.</p>
           ) : (
             <div className="max-h-[240px] overflow-y-auto">
-              {otAtrasadasLista.map(({ fila: f, dias, porcentaje }) => (
+              {otAtrasadasLista.map(({ fila: f, dias, porcentaje, procesos }) => (
                 <button key={f.proyecto.id ?? f.proyecto.ot} type="button" onClick={() => goto?.("proyectos:ot")}
                   className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer">
                   <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-gypi-text truncate">{f.proyecto.cliente || f.proyecto.proyecto || f.proyecto.obra || "—"}</div>
                     <div className="text-[12px] text-gypi-dim truncate">
-                      {nombreDivisionOt(divisionesCtx || [], f.proyecto.division)} &middot; {textoObjetivo(f.proyecto, modoObjetivo)}{porcentaje != null ? ` · ${porcentaje}% hecho` : ""}
+                      ⚠ {procesos.map((q) => `${q.nombre} (hasta el ${fechaCorta(q.hasta)})`).join(", ")}{porcentaje != null ? ` · ${porcentaje}% hecho` : ""}
                     </div>
                   </div>
                   <span className={`shrink-0 px-2 py-1 rounded-lg text-[12px] font-bold ${TONO.mal.fondo} ${TONO.mal.txt}`}>{textoDias(dias)}</span>

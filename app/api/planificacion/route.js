@@ -3,6 +3,9 @@
 //
 //   GET ?fecha=AAAA-MM-DD      → el plan confirmado que incluye ese día, con
 //                                lo que toca cada día (lo ve toda la planta)
+//   GET ?confirmados=1         → los planes confirmados de los últimos 6
+//                                meses en adelante, con sus días (Gantt de
+//                                OT y ⏰ OT atrasadas del Panel)
 //   GET ?desde=…&hasta=…       → el plan de ese período, borrador o
 //                                confirmado (solo gerencia)
 //   POST                       → guarda el plan del período (borrador o
@@ -46,6 +49,13 @@ export async function GET(request) {
     const q = new URL(request.url).searchParams;
     const fecha = q.get("fecha"), desde = q.get("desde"), hasta = q.get("hasta");
     try {
+      if (q.get("confirmados")) {
+        const limite = new Date(Date.now() - 183 * 86400000).toISOString().slice(0, 10);
+        const planes = (await sbGet(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,confirmado_at&order=desde.asc&limit=60`, { sesion })) || [];
+        if (!planes.length) return json({ ok: true, planes: [] });
+        const items = (await sbGet(`plan_produccion_items?empresa_id=eq.${e}&plan_id=in.(${planes.map((p) => p.id).join(",")})&select=plan_id,ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc&limit=20000`, { sesion })) || [];
+        return json({ ok: true, planes: planes.map((p) => ({ ...p, items: items.filter((i) => i.plan_id === p.id) })) });
+      }
       if (desde || hasta) {
         if (!esGerencia(sesion)) return json({ error: "La planificación la arma gerencia" }, 403);
         if (!FECHA.test(desde || "") || !FECHA.test(hasta || "")) return json({ error: "Fechas inválidas" }, 400);
