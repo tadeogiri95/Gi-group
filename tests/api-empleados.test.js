@@ -346,6 +346,33 @@ test("PATCH empleados — actualiza campos válidos", async () => {
   assert.equal(json.password, undefined, "no debe devolver password");
 });
 
+test("PATCH empleados — puesto en la planta: uno de la lista o vacío", async () => {
+  const token = await tokenConRol("gerencial");
+  let patchedData = null;
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (url, opts) => url.includes("/rest/v1/empleados") && url.includes(`id=eq.${OTRO_EMPLEADO_ID}`) && (!opts?.method || opts.method === "GET"),
+      respond: () => ({ status: 200, body: [{ id: OTRO_EMPLEADO_ID }] }),
+    },
+    {
+      match: (url, opts) => url.includes("/rest/v1/empleados") && opts?.method === "PATCH",
+      respond: (url, opts) => {
+        patchedData = JSON.parse(opts.body);
+        return { status: 200, body: [{ id: OTRO_EMPLEADO_ID, ...patchedData }] };
+      },
+    },
+  ]);
+  const ok = await PATCH(jsonReq("PATCH", { puesto_planta: "otra_linea" }, token, { id: OTRO_EMPLEADO_ID }));
+  assert.equal(ok.status, 200);
+  assert.equal(patchedData.puesto_planta, "otra_linea");
+  const vacio = await PATCH(jsonReq("PATCH", { puesto_planta: null }, token, { id: OTRO_EMPLEADO_ID }));
+  assert.equal(vacio.status, 200);
+  assert.equal(patchedData.puesto_planta, null);
+  const mal = await PATCH(jsonReq("PATCH", { puesto_planta: "pintura" }, token, { id: OTRO_EMPLEADO_ID }));
+  assert.equal(mal.status, 400);
+});
+
 // ─── DELETE ───
 
 test("DELETE empleados — no puede desactivarse a sí mismo", async () => {

@@ -15,7 +15,7 @@
 //  - el anterior está atrasado y este arranca en 2 días o menos (o ya arrancó).
 import { apiFetch, sb, sbGetAll } from "./supabase";
 import { CLAVE_PLANIFICACION, ETAPAS_PLAN, divisionPlan, etapasPlanDe, normalizarParametros } from "./planificacion";
-import { pendienteEtapa, capacidadPlanta, operariosDePlanta } from "./cargaPlanta";
+import { pendienteEtapa, capacidadPlanta, operariosDePlanta, personalPlanta } from "./cargaPlanta";
 import { diasEntre } from "./semanaObjetivo";
 import { porcentajeOt } from "./panelMantenimiento";
 
@@ -109,21 +109,59 @@ function duracion(etapa, horas, params) {
   return horas;
 }
 
+const MAQUINAS_PLAN = ["corte", "canteado", "mecanizado"];
+
+/**
+ * Armado con varios armadores a la vez (Tadeo, 27/10). Cada OT, en el orden
+ * del plan, arranca apenas está lista (terminó su Mecanizado y llegó su día
+ * del plan) y hay armadores libres: toma hasta maxPorOt; los que sobran
+ * arman la OT siguiente en paralelo. Con k armadores, G horas de gente
+ * tardan G / k. Los operarios de una máquina que ya no tiene más trabajo
+ * pasan a Armado (ayudantes[máquina], desde que se libera).
+ */
+function crearArmado({ armadores, maxPorOt, ayudantes }) {
+  const tomados = []; // { t0, t1, k }
+  const pool = (t) => armadores + ayudantes.reduce((s, a) => s + (a.desde <= t + 1e-9 ? a.n : 0), 0);
+  const usados = (t) => tomados.reduce((s, x) => s + (x.t0 <= t + 1e-9 && t < x.t1 - 1e-9 ? x.k : 0), 0);
+  const libres = (t0, t1) => {
+    // Lo mínimo libre en el tramo: se mira al empezar y cada vez que arranca otra OT adentro
+    const puntos = [t0, ...tomados.map((x) => x.t0).filter((t) => t > t0 && t < t1)];
+    return Math.min(...puntos.map((t) => pool(t) - usados(t)));
+  };
+  return (listo, G) => {
+    const candidatos = [...new Set([listo, ...tomados.map((x) => x.t1), ...ayudantes.map((a) => a.desde)].filter((t) => t >= listo))].sort((a, b) => a - b);
+    for (const t0 of candidatos) {
+      for (let k = Math.min(maxPorOt, pool(t0) - usados(t0)); k >= 1; k--) {
+        const t1 = t0 + G / k;
+        if (libres(t0, t1) >= k) { tomados.push({ t0, t1, k }); return { t0, t1, k }; }
+      }
+    }
+    // No debería pasar: cuando todo lo anterior termina, queda alguien libre
+    const t0 = Math.max(listo, ...tomados.map((x) => x.t1));
+    const k = Math.max(1, Math.min(maxPorOt, pool(t0)));
+    tomados.push({ t0, t1: t0 + G / k, k });
+    return { t0, t1: t0 + G / k, k };
+  };
+}
+
 /**
  * Procesos de cada OT planificada, en secuencia: Map<ot, { ot, inicio, fin, horas, procesos, atrasados, pocoMargen }>.
- * Sale del plan confirmado con dos reglas más (Tadeo, 27/10):
+ * Sale del plan confirmado con estas reglas (Tadeo, 27/10):
  *  - en cada OT un proceso arranca cuando termina el anterior;
- *  - por cada proceso pasa una sola OT a la vez: si dos OT tienen que cortarse
+ *  - por cada máquina pasa una sola OT a la vez: si dos OT tienen que cortarse
  *    el mismo día, el corte de la segunda arranca cuando termina el de la primera;
+ *  - Armado se reparte entre los armadores (personal: crearArmado);
  *  - ningún proceso arranca antes del primer día que le dio el plan.
  * Cada proceso tiene por día las horas de la grilla de horarios del personal
- * operativo (horasSemana); sábado y domingo, si no hay nadie puesto, no se trabaja. Las OT van en el orden del plan (su primer día y la prioridad).
+ * operativo (horasSemana): un día sin nadie puesto no se trabaja. Las OT van
+ * en el orden del plan (su primer día y la prioridad).
  * proceso = { etapa, nombre, desde, hasta, ini, fin (qué parte del primer y del
- * último día ocupa, 0-1), horas (de reloj), hecho (0-100), esperado, completo,
- * atrasado, diasAtraso, margen, motivoMargen }.
- * @param {{ etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[] }} opciones
+ * último día ocupa, 0-1), horas (de reloj), personas (armadores, en Armado),
+ * hecho (0-100), esperado, completo, atrasado, diasAtraso, margen, motivoMargen }.
+ * Sin `personal`, Armado lo hace una persona por vez (como una máquina).
+ * @param {{ etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: { armadores: number, maxPorOt: number, ayudantes?: Record<string, number> } }} opciones
  */
-export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], piezas = [], terminadas = new Set(), hoy, params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO }) {
+export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], piezas = [], terminadas = new Set(), hoy, params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null }) {
   const porOt = new Map();
   for (const i of items || []) {
     const ot = String(i.ot);
@@ -139,31 +177,56 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
   const ots = [...porOt.values()].sort((a, b) => a.primero.localeCompare(b.primero) || a.orden - b.orden || a.ot.localeCompare(b.ot, "es", { numeric: true }));
   const cal = calendario(ots[0].primero, horasSemana);
   const tHoy = hoy < ots[0].primero ? 0 : cal.inicio(hoy);
-  const libre = {}; // hasta cuándo está ocupada la línea de cada proceso
+
+  // 1) Máquinas: una OT a la vez por máquina, en secuencia dentro de cada OT
+  const libre = {}; // hasta cuándo está ocupada cada máquina
+  const tramos = new Map(); // ot → [{ etapa, t0, t1, horas, personas }]
   for (const o of ots) {
     let t = 0;
-    const procesos = [];
-    for (const ep of ETAPAS_PLAN) {
-      const h = duracion(ep.id, o.horas[ep.id] || 0, params);
+    const lista = [];
+    for (const id of MAQUINAS_PLAN) {
+      const h = duracion(id, o.horas[id] || 0, params);
       if (h <= 0) continue;
-      // No antes del día que le dio el plan, ni de que termine el anterior de la OT, ni de que se libere el proceso
-      const t0 = Math.max(t, libre[ep.id] || 0, cal.inicio(o.desde[ep.id]));
-      const t1 = t0 + h;
-      libre[ep.id] = t1;
-      t = t1;
+      // No antes del día que le dio el plan, ni de que termine el anterior de la OT, ni de que se libere la máquina
+      const t0 = Math.max(t, libre[id] || 0, cal.inicio(o.desde[id]));
+      libre[id] = t0 + h;
+      t = t0 + h;
+      lista.push({ etapa: id, t0, t1: t0 + h, horas: h, personas: null });
+    }
+    tramos.set(o.ot, lista);
+  }
+  // 2) Armado: con los armadores, y los de cada máquina cuando se queda sin trabajo
+  const ayudantes = Object.entries(personal?.ayudantes || {}).map(([id, n]) => ({ desde: libre[id] || 0, n: Number(n) || 0 })).filter((a) => a.n > 0);
+  const armadores = personal ? Math.max(0, Number(personal.armadores) || 0) : 1;
+  const armar = crearArmado({
+    armadores: armadores || (ayudantes.length ? 0 : 1),
+    maxPorOt: personal ? Math.max(1, Number(personal.maxPorOt) || 1) : 1,
+    ayudantes,
+  });
+  for (const o of ots) {
+    const G = o.horas.armado || 0;
+    if (G <= 0) continue;
+    const lista = tramos.get(o.ot);
+    const listo = Math.max(lista.length ? lista[lista.length - 1].t1 : 0, cal.inicio(o.desde.armado));
+    const { t0, t1, k } = armar(listo, G);
+    lista.push({ etapa: "armado", t0, t1, horas: t1 - t0, personas: personal ? k : null });
+  }
+
+  for (const o of ots) {
+    const procesos = tramos.get(o.ot).map(({ etapa, t0, t1, horas: h, personas }) => {
       const a = cal.punto(t0, false);
       const b = cal.punto(t1, true);
-      const falta = terminadas.has(o.ot) ? 0 : pendienteEtapa({ ot: o.ot, codigo: etapasCodigo?.[ep.id], avance, piezas });
+      const falta = terminadas.has(o.ot) ? 0 : pendienteEtapa({ ot: o.ot, codigo: etapasCodigo?.[etapa], avance, piezas });
       const completo = falta <= 0;
       const diasAtraso = completo ? 0 : Math.max(0, diasEntre(b.fecha, hoy));
-      procesos.push({
-        etapa: ep.id, nombre: nombreEtapa[ep.id], desde: a.fecha, hasta: b.fecha, ini: a.frac, fin: b.frac, t0, t1, horas: h,
+      return {
+        etapa, nombre: nombreEtapa[etapa], desde: a.fecha, hasta: b.fecha, ini: a.frac, fin: b.frac, t0, t1, horas: h, personas,
         hecho: Math.round((1 - falta) * 100),
         // Lo que tenía que estar hecho al empezar hoy, en % del proceso
         esperado: Math.round(Math.min(1, Math.max(0, (tHoy - t0) / h)) * 100),
         completo, atrasado: diasAtraso > 0, diasAtraso, margen: false, motivoMargen: null,
-      });
-    }
+      };
+    });
     if (!procesos.length) continue;
     procesos.forEach((q, i) => {
       if (q.completo || q.atrasado) return;
@@ -191,6 +254,24 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
 }
 
 /**
+ * Armadores para el Gantt según los puestos de los operarios de la planta y
+ * ⚙ Parámetros: los de Armado (y los sin puesto), hasta "máximo de armadores
+ * por OT" en cada una, y los de cada máquina cuando se queda sin trabajo.
+ */
+export function personalGantt(empleados, divisiones, cfgValor) {
+  const params = normalizarParametros(cfgValor);
+  const operarios = operariosDePlanta(empleados, divisiones, divisionPlan(divisiones, params.division_id));
+  // Sin operarios en la grilla, armado en una sola línea como antes
+  if (!operarios.length) return null;
+  const p = personalPlanta(operarios, params);
+  return {
+    armadores: p.armadores,
+    maxPorOt: params.max_armadores_ot || 1,
+    ayudantes: Object.fromEntries(MAQUINAS_PLAN.map((m) => [m, p.categorizados ? p.porPuesto[m] : p.necesarios[m]])),
+  };
+}
+
+/**
  * ⏰ OT atrasadas según el plan: las OT abiertas con algún proceso atrasado,
  * la más atrasada arriba. dias = el atraso del proceso más atrasado.
  * @returns {{ fila: object, dias: number, porcentaje: number|null, procesos: object[] }[]}
@@ -211,14 +292,23 @@ export function etapasDelPlan(cfgValor, etapas, divisiones) {
   return etapasPlanDe(etapas, divisionPlan(divisiones, cfg.division_id), cfg.etapas);
 }
 
+/**
+ * Operarios activos con su grilla y su puesto (navegador). filtro: el inicio
+ * de la consulta, p. ej. "empresa_id=eq.1&". Sin la migración 116 no hay
+ * es_instalador; sin la 140, no hay puesto_planta.
+ */
+export function leerOperariosPlanta(filtro = "", campos = "id,rol,division,diagrama,activo") {
+  const leer = (extra) => sbGetAll(`empleados?${filtro}activo=eq.true&rol=eq.operativo&select=${campos}${extra}`, { maxFilas: 5000 });
+  return leer(",es_instalador,puesto_planta").catch(() => leer(",es_instalador")).catch(() => leer(""));
+}
+
 /** Lee los planes confirmados, los parámetros y la grilla de horarios del personal operativo (navegador). Sin la migración 138, planes vacío. */
 export async function leerPlanesConfirmados() {
-  const leerEmpleados = (extra) => sbGetAll(`empleados?activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo${extra}`, { maxFilas: 5000 });
+  const empleados = () => leerOperariosPlanta();
   const [r, cfg, emp] = await Promise.all([
     apiFetch("/api/planificacion?confirmados=1").then((x) => (x.ok ? x.json() : null)).catch(() => null),
     sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`).catch(() => null),
-    // Sin la migración 116 no hay es_instalador
-    leerEmpleados(",es_instalador").catch(() => leerEmpleados("")).catch(() => null),
+    empleados().catch(() => null),
   ]);
   return { planes: r?.planes || [], cfgValor: cfg?.[0]?.valor || null, empleados: emp?.data || [], faltaMigracion: !!r?.falta_migracion };
 }

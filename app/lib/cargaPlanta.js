@@ -62,11 +62,61 @@ function turno(empleado, fecha) {
   return { in: a, out: b > a ? b : b + 24 * 60 };
 }
 
-/** Operarios que suman capacidad: activos, rol operativo, no instaladores, de la división. */
+/**
+ * Puesto de cada operario en la planta (empleados.puesto_planta, migración
+ * 140). Los de "otra línea" (por ejemplo Puertas) no cuentan para esta
+ * planificación. Vacío = sin puesto (hace cualquier cosa).
+ */
+export const PUESTOS_PLANTA = [
+  { id: "corte", nombre: "Corte (seccionadora)" },
+  { id: "canteado", nombre: "Canteado" },
+  { id: "mecanizado", nombre: "Mecanizado (CNC)" },
+  { id: "armado", nombre: "Armado" },
+  { id: "otra_linea", nombre: "Otra línea (no se planifica)" },
+];
+export const esPuestoPlanta = (id) => PUESTOS_PLANTA.some((p) => p.id === id);
+
+/** Operarios que suman capacidad: activos, rol operativo, no instaladores, de la división y no de otra línea. */
 export function operariosDePlanta(empleados, divisiones, division) {
   return (empleados || []).filter((e) =>
-    e?.rol === "operativo" && e?.activo !== false && !e?.es_instalador
+    e?.rol === "operativo" && e?.activo !== false && !e?.es_instalador && e?.puesto_planta !== "otra_linea"
     && (!division || buscarDivision(divisiones, e.division)?.id === division.id));
+}
+
+/** Personas que necesita cada máquina: 1 por seccionadora, las de la canteadora y 1 por CNC. */
+export function personasMaquinas(params) {
+  return { corte: params?.maquinas_corte || 1, canteado: params?.personas_canteadora || 1, mecanizado: params?.maquinas_cnc || 1 };
+}
+
+/**
+ * Operarios por puesto contra lo que necesitan las máquinas y los armadores.
+ * Si nadie tiene puesto, los armadores son los que sobran de las máquinas
+ * (todos hacen de todo). Los que no tienen puesto, cuando otros sí, arman.
+ * avisos: textos para mostrar si algo no cierra.
+ */
+export function personalPlanta(operarios, params) {
+  const total = (operarios || []).length;
+  const porPuesto = Object.fromEntries(PUESTOS_PLANTA.filter((p) => p.id !== "otra_linea").map((p) => [p.id, 0]));
+  let sinPuesto = 0;
+  for (const e of operarios || []) {
+    if (esPuestoPlanta(e.puesto_planta) && e.puesto_planta !== "otra_linea") porPuesto[e.puesto_planta] += 1;
+    else sinPuesto += 1;
+  }
+  const necesarios = personasMaquinas(params);
+  const enMaquinas = necesarios.corte + necesarios.canteado + necesarios.mecanizado;
+  const categorizados = total - sinPuesto > 0;
+  const armadores = categorizados ? porPuesto.armado + sinPuesto : Math.max(0, total - enMaquinas);
+  const avisos = [];
+  if (categorizados) {
+    for (const m of ["corte", "canteado", "mecanizado"]) {
+      if (porPuesto[m] < necesarios[m]) avisos.push(`${PUESTOS_PLANTA.find((p) => p.id === m).nombre}: hacen falta ${necesarios[m]} y hay ${porPuesto[m]}`);
+    }
+  }
+  if (enMaquinas + (categorizados ? porPuesto.armado : 0) > total) {
+    avisos.push(`Las máquinas (${enMaquinas})${categorizados ? ` más los armadores (${porPuesto.armado})` : ""} suman más que los ${total} operarios de la grilla de horarios`);
+  }
+  if (!armadores) avisos.push("No queda nadie para Armado");
+  return { total, porPuesto, sinPuesto, necesarios, enMaquinas, armadores, categorizados, avisos };
 }
 
 /**

@@ -7,7 +7,7 @@
 // termina el anterior, y por cada proceso pasa una sola OT a la vez, con las
 // horas de la grilla de horarios del personal operativo (procesosPlan). Al
 // lado de cada barra van sus horas y al lado de la OT las horas totales (la
-// suma de sus procesos).
+// suma de sus procesos); en Armado, cuántos armadores trabajan en la OT.
 // Un proceso con poco margen lleva un contorno amarillo y uno atrasado (pasó
 // su último día y no está completo por el escaneo de piezas) contorno rojo y
 // ⚠; el color del proceso se sigue viendo. Uno completo queda más claro.
@@ -18,7 +18,7 @@ import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde } from "../lib/gantt";
-import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla } from "../lib/ganttPlan";
+import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros } from "../lib/planificacion";
 import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
 import { hoyArg } from "../lib/dates";
@@ -79,6 +79,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
       terminadas: new Set(proyectos.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
       params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
+      personal: personalGantt(empleados, divisiones, cfgValor),
     });
     // En el orden del plan: la que arranca primero arriba
     const renglones = [...procesos.values()].filter((r) => abiertas.has(r.ot)).map((r) => ({ ...r, proyecto: abiertas.get(r.ot) }));
@@ -229,7 +230,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
               <div className="sticky left-0 w-[260px] px-2 pt-2 pb-1 text-[15px] font-bold text-gypi-text bg-gypi-bg">{division} · {filas.length}</div>
               {filas.map((r) => {
                 const p = r.proyecto;
-                const texto = `${fmtH(r.horas)} en total; ` + r.procesos.map((q) => `${q.nombre} ${fmtH(q.horas)}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}`).join("; ");
+                const texto = `${fmtH(r.horas)} en total; ` + r.procesos.map((q) => `${q.nombre} ${fmtH(q.horas)}${q.personas ? ` con ${q.personas} ${q.personas === 1 ? "armador" : "armadores"}` : ""}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}`).join("; ");
                 return (
                   <div key={p.id ?? p.ot} className="flex border-t-2 border-gypi-border" data-ot={p.ot}>
                     <button type="button" onClick={() => verDetalle(p)} aria-label={`OT ${p.ot}: ${texto}. Ver detalle`}
@@ -260,7 +261,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                                 <rect data-proceso={e.id} data-estado={estado} x={x0} y={BARRA.y} width={Math.max(3, x1 - x0)} height={BARRA.alto} rx={3}
                                   className={`${COLOR[e.id]} ${CONTORNO[estado] || ""}`} strokeWidth={CONTORNO[estado] ? 3 : 0} fillOpacity={q.completo ? 0.35 : 1} />
                                 <text x={Math.max(x0, x1) + 6} y={23} className={`text-[15px] font-bold ${q.atrasado ? "fill-gypi-red" : "fill-gypi-text"}`}>
-                                  {fmtH(q.horas)}{q.atrasado ? " ⚠" : ""}
+                                  {fmtH(q.horas)}{q.personas ? ` · 👷 ${q.personas}` : ""}{q.atrasado ? " ⚠" : ""}
                                 </text>
                               </>
                             )}
@@ -297,7 +298,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           )}
         </section>
       )}
-      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan confirmado con las horas de la grilla de horarios del personal operativo (los días sin nadie puesto no se trabajan): en cada OT un proceso arranca cuando termina el anterior y por cada proceso pasa una OT a la vez. Tocá una OT para ver su detalle.</p>}
+      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan confirmado con las horas de la grilla de horarios del personal operativo (los días sin nadie puesto no se trabajan): en cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT (los que sobran arman otra en paralelo). Tocá una OT para ver su detalle.</p>}
     </div>
   );
 }

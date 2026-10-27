@@ -5,6 +5,7 @@
 import "./helpers/domSetup.js";
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import {
   normalizarParametros, leerNumero, errorParametro, PARAMETROS, parametrosFaltantes,
@@ -102,7 +103,7 @@ test("menú — Planificación está en Proyectos solo para gerencia", () => {
   assert.ok(!opcionesBoton("proyectos", empresa).some((o) => o.id === "planificacion"));
 });
 
-function mockData({ proyectos = [], cfg = [] } = {}) {
+function mockData({ proyectos = [], cfg = [], empleados = [] } = {}) {
   const pedidos = [];
   global.fetch = async (url, opts) => {
     const body = opts?.body ? JSON.parse(opts.body) : {};
@@ -110,6 +111,7 @@ function mockData({ proyectos = [], cfg = [] } = {}) {
     const path = body.path || "";
     if (body.method === "GET" && path.startsWith("proyectos")) return new Response(JSON.stringify({ data: path.includes("offset=0") ? proyectos : [] }), { status: 200 });
     if (body.method === "GET" && path.startsWith("config_sistema")) return new Response(JSON.stringify({ data: cfg }), { status: 200 });
+    if (body.method === "GET" && path.startsWith("empleados")) return new Response(JSON.stringify({ data: path.includes("offset=0") ? empleados : [] }), { status: 200 });
     return new Response(JSON.stringify({ data: null }), { status: 200 });
   };
   return pedidos;
@@ -402,4 +404,71 @@ test("📊 Carga — Ordenar automáticamente muestra el Gantt, los días de hor
   assert.ok(within(plan).getAllByLabelText(/^Horas extra el /).length > 0);
   fireEvent.click(within(plan).getByText("Ocultar"));
   assert.ok(screen.getByText("Ordenar automáticamente"));
+});
+
+// ─── Operarios por puesto y armadores (Tadeo, 27/10) ────────────────────────
+const { personalPlanta, PUESTOS_PLANTA } = await import("../app/lib/cargaPlanta.js");
+const OP = (id, puesto_planta, extra = {}) => ({ id, nombre: `Op ${id}`, rol: "operativo", division: "MUEBLES", activo: true, puesto_planta, ...extra });
+
+test("personalPlanta — puestos contra lo que piden las máquinas; Otra línea no se planifica", () => {
+  assert.deepEqual(PUESTOS_PLANTA.map((p) => p.id), ["corte", "canteado", "mecanizado", "armado", "otra_linea"]);
+  assert.equal(normalizarParametros(null).max_armadores_ot, 4, "hasta 4 armadores por OT por defecto");
+  const params = normalizarParametros(null); // 1 seccionadora, canteadora con 2, 2 CNC
+  // Nadie con puesto: todos hacen de todo y arman los que sobran de las máquinas
+  const todos = personalPlanta([1, 2, 3, 4, 5, 6, 7, 8].map((i) => OP(i, null)), params);
+  assert.equal(todos.categorizados, false);
+  assert.equal(todos.enMaquinas, 5);
+  assert.equal(todos.armadores, 3);
+  assert.deepEqual(todos.avisos, []);
+  // Con puesto: falta uno en la CNC y los que no tienen puesto arman
+  const conPuesto = personalPlanta([OP(1, "corte"), OP(2, "canteado"), OP(3, "canteado"), OP(4, "mecanizado"), OP(5, "armado"), OP(6, null)], params);
+  assert.deepEqual(conPuesto.porPuesto, { corte: 1, canteado: 2, mecanizado: 1, armado: 1 });
+  assert.equal(conPuesto.armadores, 2);
+  assert.deepEqual(conPuesto.avisos, ["Mecanizado (CNC): hacen falta 2 y hay 1"]);
+  // Máquinas + armadores no pueden superar a los operarios de la grilla
+  const pocos = personalPlanta([OP(1, "armado"), OP(2, "armado"), OP(3, "corte")], params);
+  assert.ok(pocos.avisos.some((a) => /Las máquinas \(5\) más los armadores \(2\) suman más que los 3 operarios/.test(a)));
+  assert.ok(personalPlanta([OP(1, null)], params).avisos.includes("No queda nadie para Armado"));
+  // Los de Otra línea (Puertas) quedan afuera de la planta que se planifica
+  assert.deepEqual(operariosDePlanta([OP(1, "corte"), OP(2, "otra_linea")], DIVISIONES, DIVISIONES[0]).map((e) => e.id), [1]);
+});
+
+test("⚙ Parámetros — máximo de armadores por OT y operarios por puesto con avisos", async () => {
+  const pedidos = mockData({ empleados: [
+    OP(1, "corte"), OP(2, "canteado"), OP(3, "mecanizado"), OP(4, "armado"), OP(5, null),
+    OP(6, "otra_linea"), OP(7, "armado", { division: "HERRERÍA" }),
+  ] });
+  pantalla();
+  fireEvent.click(await screen.findByText("⚙ Parámetros"));
+  const form = await screen.findByRole("region", { name: "Parámetros de la planificación" });
+  assert.equal(within(form).getByLabelText(/^Máximo de armadores por OT/).value, "4");
+  const resumen = await within(form).findByLabelText("Operarios por puesto");
+  assert.match(resumen.textContent, /Operarios de la grilla de horarios \(5\)/);
+  const fila = (nombre) => within(resumen).getByText(nombre).closest("tr").textContent;
+  assert.match(fila("Canteado"), /Canteado12/);
+  assert.match(fila("Armado"), /Armado2/, "el de armado y el que no tiene puesto");
+  assert.match(fila("Otra línea (no se planifica)"), /1/);
+  assert.ok(within(resumen).getByText("⚠ Canteado: hacen falta 2 y hay 1"));
+  assert.ok(within(resumen).getByText("⚠ Mecanizado (CNC): hacen falta 2 y hay 1"));
+  // Con la canteadora de 1 persona y 1 CNC ya no falta nadie
+  fireEvent.change(within(form).getByLabelText(/^Personas en la canteadora/), { target: { value: "1" } });
+  fireEvent.change(within(form).getByLabelText(/^CNC/), { target: { value: "1" } });
+  assert.equal(within(resumen).queryByRole("alert"), null);
+  fireEvent.change(within(form).getByLabelText(/^Máximo de armadores por OT/), { target: { value: "3" } });
+  fireEvent.click(screen.getByText("Guardar parámetros"));
+  await screen.findByText("✅ Parámetros guardados");
+  assert.equal(pedidos.find((p) => p.method === "POST").body.valor.max_armadores_ot, 3);
+});
+
+test("migración 140 — puesto en la planta de cada operario", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/140_empleados_puesto_planta.sql", import.meta.url), "utf8");
+  assert.match(sql, /add column if not exists puesto_planta text/i);
+  for (const p of ["corte", "canteado", "mecanizado", "armado", "otra_linea"]) assert.ok(sql.includes(`'${p}'`), p);
+});
+
+test("ficha del operario — elige el puesto y lo manda al guardar", () => {
+  const ficha = readFileSync(new URL("../app/gestion_personal_screen.jsx", import.meta.url), "utf8");
+  assert.match(ficha, /id="emp-puesto-planta"/);
+  assert.match(ficha, /PUESTOS_PLANTA\.map/);
+  assert.match(ficha, /puesto_planta: form\.puesto_planta \|\| null/);
 });

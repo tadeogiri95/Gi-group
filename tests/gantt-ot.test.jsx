@@ -340,3 +340,63 @@ test("📅 Gantt — colores fijos, contorno amarillo de poco margen y horas de 
   for (const h of ["16 h", "2 h", "1,5 h", "5 h"]) assert.ok(textos.includes(h), `horas al lado de la barra: ${h}`);
   assert.match(container.querySelector('[data-ot="7100"] button').textContent, /7100 · 24,5 h/, "total planificado al lado del nombre");
 });
+
+// Armado con varios armadores (Tadeo, 27/10): hasta el máximo por OT; los que
+// sobran arman otra OT en paralelo, y los de una máquina sin trabajo se suman.
+test("procesosPlan — armado en paralelo, todos a una OT o con los de las máquinas que se liberan", async () => {
+  const { procesosPlan } = await import("../app/lib/ganttPlan.js");
+  const lun = "2026-10-26";
+  const items = [
+    { ot: "A", etapa: "armado", fecha: lun, horas: 32, orden: 0 },
+    { ot: "B", etapa: "armado", fecha: lun, horas: 32, orden: 1 },
+  ];
+  const armado = (r, ot) => r.get(ot).procesos.map((p) => [p.personas, p.desde, p.hasta, p.horas]);
+  // 6 armadores y hasta 4 por OT: A con 4 (32 h de gente = 8 h, el lunes) y B en paralelo con 2 (lunes y martes)
+  const par = procesosPlan(items, { hoy: "2026-10-20", personal: { armadores: 6, maxPorOt: 4, ayudantes: {} } });
+  assert.deepEqual(armado(par, "A"), [[4, lun, lun, 8]]);
+  assert.deepEqual(armado(par, "B"), [[2, lun, "2026-10-27", 16]]);
+  // 4 armadores: van todos a A y después todos a B
+  const juntos = procesosPlan(items, { hoy: "2026-10-20", personal: { armadores: 4, maxPorOt: 4, ayudantes: {} } });
+  assert.deepEqual(armado(juntos, "A"), [[4, lun, lun, 8]]);
+  assert.deepEqual(armado(juntos, "B"), [[4, "2026-10-27", "2026-10-27", 8]]);
+  // El máximo por OT se respeta aunque haya más gente
+  const tope = procesosPlan(items, { hoy: "2026-10-20", personal: { armadores: 10, maxPorOt: 2, ayudantes: {} } });
+  assert.deepEqual([armado(tope, "A")[0][0], armado(tope, "B")[0][0]], [2, 2]);
+  // 1 armador; el de la seccionadora se suma cuando termina de cortar (lunes): el martes arman 2
+  const ayuda = procesosPlan([
+    { ot: "A", etapa: "corte", fecha: lun, horas: 8, orden: 0 },
+    { ot: "A", etapa: "armado", fecha: lun, horas: 8, orden: 0 },
+  ], { hoy: "2026-10-20", personal: { armadores: 1, maxPorOt: 4, ayudantes: { corte: 1 } } });
+  assert.deepEqual(ayuda.get("A").procesos.map((p) => [p.etapa, p.personas, p.desde, p.horas]), [["corte", null, lun, 8], ["armado", 2, "2026-10-27", 4]]);
+  // Sin datos del personal, una sola línea de armado como antes
+  const solo = procesosPlan(items, { hoy: "2026-10-20" });
+  assert.deepEqual(armado(solo, "B").map((x) => x[0]), [null]);
+  assert.equal(solo.get("B").procesos[0].desde, "2026-10-30", "B espera que A termine el jueves");
+});
+
+test("personalGantt — armadores y ayudantes según el puesto de cada operario", async () => {
+  const { personalGantt } = await import("../app/lib/ganttPlan.js");
+  const op = (id, puesto_planta, extra = {}) => ({ id, rol: "operativo", division: "M", puesto_planta, ...extra });
+  assert.equal(personalGantt([], DIV_M, null), null, "sin operarios no cambia nada");
+  // Nadie con puesto: las máquinas se llevan 1 + 2 + 2 y arman los que sobran
+  const sinPuesto = personalGantt([1, 2, 3, 4, 5, 6, 7].map((i) => op(i, null)), DIV_M, null);
+  assert.deepEqual(sinPuesto, { armadores: 2, maxPorOt: 4, ayudantes: { corte: 1, canteado: 2, mecanizado: 2 } });
+  // Con puesto: los de Otra línea (Puertas) e instaladores no cuentan
+  const conPuesto = personalGantt([
+    op(1, "corte"), op(2, "canteado"), op(3, "canteado"), op(4, "mecanizado"), op(5, "armado"), op(6, "armado"),
+    op(7, "otra_linea"), op(8, "armado", { es_instalador: true }),
+  ], DIV_M, { max_armadores_ot: 3 });
+  assert.deepEqual(conPuesto, { armadores: 2, maxPorOt: 3, ayudantes: { corte: 1, canteado: 2, mecanizado: 1 } });
+});
+
+test("📅 Gantt — al lado de la barra de Armado van cuántos arman", () => {
+  const diagrama = { lun: { in: "07:00", out: "15:00" }, mar: { in: "07:00", out: "15:00" }, mie: { in: "07:00", out: "15:00" }, jue: { in: "07:00", out: "15:00" }, vie: { in: "07:00", out: "15:00" } };
+  const empleados = [1, 2, 3].map((id) => ({ id, rol: "operativo", division: "M", diagrama, puesto_planta: "armado" }));
+  const planes = [{ id: 1, tipo: "semana", desde: dia(-5), hasta: dia(30), items: [{ ot: "7100", etapa: "armado", fecha: dia(10), horas: 12 }] }];
+  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} empleados={empleados}
+    avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+  const textos = [...container.querySelectorAll("svg text")].map((t) => t.textContent);
+  assert.ok(textos.includes("4 h · 👷 3"), textos.join(" | "));
+  assert.ok(screen.getByRole("button", { name: /Armado 4 h con 3 armadores, del / }));
+});

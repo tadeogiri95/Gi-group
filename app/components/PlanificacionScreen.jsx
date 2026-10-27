@@ -18,8 +18,9 @@ import { fechaCorta } from "../lib/ot";
 import { leerAvanceYHoras } from "../lib/otEnCursoDatos";
 import {
   periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo,
-  preseleccion, modulosPorOt, fmtH,
+  preseleccion, modulosPorOt, fmtH, personalPlanta, PUESTOS_PLANTA,
 } from "../lib/cargaPlanta";
+import { leerOperariosPlanta } from "../lib/ganttPlan";
 import { planAutomatico, pendientesPorOt } from "../lib/planAutomatico";
 import GanttPlan from "./GanttPlan";
 import { cuerpoPlan } from "../lib/planGuardado";
@@ -70,7 +71,7 @@ export default function PlanificacionScreen({ empresaId }) {
       {cfg === undefined ? <Cargando />
         : vista === "carga" ? <CargaPlan empresaId={empresaId} divisiones={divisiones} division={division} params={cfg} onParametros={() => setVista("parametros")} />
         : vista === "prioridad" ? <PrioridadOt empresaId={empresaId} divisiones={divisiones} division={division} />
-          : <ParametrosPlan cfg={cfg} divisiones={divisiones} etapas={etapas} onGuardado={setCfg} />}
+          : <ParametrosPlan empresaId={empresaId} cfg={cfg} divisiones={divisiones} etapas={etapas} onGuardado={setCfg} />}
     </div>
   );
 }
@@ -111,9 +112,7 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
       try {
         const [proy, emp, av, pz, cfgModo] = await Promise.all([
           sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&order=id.asc`, { maxFilas: 20000 }),
-          // Sin la migración 116 no hay es_instalador: se leen todos los operarios
-          sbGetAll(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,rol,division,diagrama,activo,es_instalador`)
-            .catch(() => sbGetAll(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre,rol,division,diagrama,activo`)),
+          leerOperariosPlanta(`empresa_id=eq.${empresaId}&`, "id,nombre,rol,division,diagrama,activo"),
           leerAvanceYHoras(empresaId).catch(() => ({ avance: [], piezas: [] })),
           sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&modulo=not.is.null&select=ot,modulo`, { maxFilas: 50000 }).catch(() => ({ data: [] })),
           sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`).catch(() => null),
@@ -241,7 +240,7 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
       <div className="g-card mb-3" aria-label="Horas de gente">
         <div className="g-label mb-1">👷 Gente</div>
         <div className="text-xs text-gypi-dim mb-2">
-          Cualquier operario hace cualquier etapa, así que se suma todo y se compara con las horas de los turnos de {capacidad.personas === 1 ? "1 operario" : `${capacidad.personas} operarios`}. En la canteadora con 2 personas cuenta el doble de horas que la máquina.
+          Los operarios de producción se reparten entre etapas (el que no tiene trabajo en su máquina pasa a Armado; los de Otra línea no cuentan), así que se suma todo y se compara con las horas de los turnos de {capacidad.personas === 1 ? "1 operario" : `${capacidad.personas} operarios`}. En la canteadora con 2 personas cuenta el doble de horas que la máquina.
         </div>
         <table className="w-full text-[13px]">
           <tbody>
@@ -571,7 +570,7 @@ function RelacionesPorTipo({ textos, errores, onChange }) {
   );
 }
 
-function ParametrosPlan({ cfg, divisiones, etapas, onGuardado }) {
+function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
   const [textos, setTextos] = useState(() => Object.fromEntries(PARAMETROS.map((p) => [p.id, conComa(cfg[p.id])])));
   const [divisionId, setDivisionId] = useState(cfg.division_id || divisionPlan(divisiones, null)?.id || "");
   const division = divisionPlan(divisiones, divisionId);
@@ -660,6 +659,7 @@ function ParametrosPlan({ cfg, divisiones, etapas, onGuardado }) {
             </div>
           ))}
           {g.id === "relaciones" && <RelacionesPorTipo textos={textosTipo} errores={erroresTipo} onChange={setTextosTipo} />}
+          {g.id === "personal" && <PersonalPorPuesto empresaId={empresaId} divisiones={divisiones} division={division} valores={valores} />}
         </div>
       ))}
 
@@ -668,5 +668,58 @@ function ParametrosPlan({ cfg, divisiones, etapas, onGuardado }) {
         {guardando ? "Guardando…" : "Guardar parámetros"}
       </button>
     </section>
+  );
+}
+
+// Operarios de la grilla por puesto (ficha de cada uno) contra lo que piden
+// las máquinas. Los de "Otra línea" no cuentan para la planificación.
+function PersonalPorPuesto({ empresaId, divisiones, division, valores }) {
+  const [empleados, setEmpleados] = useState(null);
+  useEffect(() => {
+    if (!empresaId) return;
+    let vivo = true;
+    leerOperariosPlanta(`empresa_id=eq.${empresaId}&`).then((r) => { if (vivo) setEmpleados(r.data || []); }).catch(() => { if (vivo) setEmpleados([]); });
+    return () => { vivo = false; };
+  }, [empresaId]);
+  if (empleados === null) return <Cargando />;
+  const otraLinea = operariosDePlanta(empleados.filter((e) => e.puesto_planta === "otra_linea")
+    .map((e) => ({ ...e, puesto_planta: null })), divisiones, division).length;
+  const p = personalPlanta(operariosDePlanta(empleados, divisiones, division), valores);
+  const sinMigracion = empleados.length > 0 && empleados.every((e) => e.puesto_planta === undefined);
+  const fila = (nombre, hay, hacen) => (
+    <tr key={nombre} className="border-t border-gypi-border">
+      <td className="py-1 pr-2">{nombre}</td>
+      <td className="py-1 px-2 text-right font-bold">{hay}</td>
+      <td className="py-1 pl-2 text-right text-gypi-dim">{hacen ?? "—"}</td>
+    </tr>
+  );
+  return (
+    <div className="mt-1" aria-label="Operarios por puesto">
+      <div className="text-[13px] font-bold mb-1">Operarios de la grilla de horarios ({p.total})</div>
+      {sinMigracion ? (
+        <div className="text-xs text-gypi-dim mb-2">Falta correr la migración 140 para cargar el puesto de cada operario.</div>
+      ) : (
+        <div className="text-xs text-gypi-dim mb-2">El puesto se elige en la ficha de cada operario (Personal → editar). Los de Otra línea, como Puertas, no se planifican.</div>
+      )}
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="text-xs text-gypi-dim text-left">
+            <th className="font-normal pr-2">Puesto</th>
+            <th className="font-normal px-2 text-right">Hay</th>
+            <th className="font-normal pl-2 text-right">Hacen falta</th>
+          </tr>
+        </thead>
+        <tbody>
+          {PUESTOS_PLANTA.filter((x) => x.id !== "otra_linea" && x.id !== "armado").map((x) => fila(x.nombre, p.categorizados ? p.porPuesto[x.id] : "—", p.necesarios[x.id]))}
+          {fila("Armado", p.armadores, null)}
+          {p.categorizados && p.sinPuesto > 0 && fila("Sin puesto (arman)", p.sinPuesto, null)}
+          {otraLinea > 0 && fila("Otra línea (no se planifica)", otraLinea, null)}
+        </tbody>
+      </table>
+      {!p.categorizados && p.total > 0 && (
+        <div className="text-xs text-gypi-dim mt-2">Nadie tiene puesto todavía: arman los que sobran de las máquinas.</div>
+      )}
+      {p.avisos.map((a) => <div key={a} role="alert" className="text-xs text-gypi-red mt-1">⚠ {a}</div>)}
+    </div>
   );
 }
