@@ -86,3 +86,13 @@ export function escalaGantt(renglones = [], { hoy, modo = MODO_POR_DEFECTO }) {
 
 /** Días desde el comienzo del Gantt (para ubicar una fecha en el dibujo). */
 export const diasDesde = (desde, fecha) => diasEntre(desde, fecha);
+
+/**
+ * Nombre del proyecto de una OT para los Gantt (Tadeo, 27/10: "Cama",
+ * "Cocina", "Vanitory"…): la columna PROYECTO, o la descripción si no hay.
+ * Vacío si repite el cliente.
+ */
+export function nombreProyecto(p) {
+  const n = String(p?.proyecto || p?.descripcion || "").trim();
+  return n && n.toLowerCase() !== String(p?.cliente || "").trim().toLowerCase() ? n : "";
+}
