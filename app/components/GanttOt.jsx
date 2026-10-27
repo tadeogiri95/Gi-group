@@ -13,6 +13,10 @@
 // ⚠; el color del proceso se sigue viendo. Uno completo queda más claro.
 // Se ve por días, semanas o mes; la fila de las fechas queda fija arriba al
 // bajar y "Pantalla completa" lo abre en toda la pantalla.
+// Dos formas de verlo (Tadeo, 27/10): "Procesos por OT" (4 renglones por OT)
+// u "OT por proceso": un bloque por proceso con un renglón por OT, en el
+// orden en que pasan por esa máquina (una barra termina y abajo empieza la
+// siguiente). La elección queda guardada en el navegador.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
@@ -27,6 +31,8 @@ import { fmtH } from "../lib/cargaPlanta";
 
 const PX_DIA = { dias: 44, semanas: 14, mes: 5 }; // ancho de un día según cómo se ve
 const FILA = 34; // alto del renglón de cada proceso
+const FILA_OT = 44; // alto del renglón de cada OT en "OT por proceso"
+const CLAVE_FORMA = "gypi_gantt_forma";
 const BARRA = { y: 6, alto: 22 };
 const CAB = 44; // alto de la fila de las fechas
 const COLOR = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecanizado: "fill-proc-mecanizado", armado: "fill-proc-armado" };
@@ -100,6 +106,9 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   }, [planes, cfgValor, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, modo]);
 
   const [vista, setVista] = useState("dias");
+  // "procesos" = procesos por OT; "ots" = OT por proceso
+  const [forma, setForma] = useState(() => { try { return localStorage.getItem(CLAVE_FORMA) === "ots" ? "ots" : "procesos"; } catch { return "procesos"; } });
+  const cambiarForma = (f) => { setForma(f); try { localStorage.setItem(CLAVE_FORMA, f); } catch { /* sin almacenamiento */ } };
   const [grande, setGrande] = useState(false);
   const [verAtrasados, setVerAtrasados] = useState(true);
   const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
@@ -132,16 +141,39 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
 
   const totalDias = semanas.length * 7;
   // Fondo de cada renglón: fines de semana más oscuros (por días), separadores de semana y la línea de hoy
-  const fondo = (
+  const fondoDe = (alto) => (
     <g>
       {vista === "dias" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => [0, 6].includes(diaSemana(f)))
-        .map((f) => <rect key={f} x={x(f)} y={0} width={px} height={FILA} className="fill-gypi-surf-hi" />)}
-      {vista !== "mes" && semanas.map((s, i) => <rect key={s.inicio} x={i * COL} y={0} width={1} height={FILA} className="fill-gypi-border" />)}
+        .map((f) => <rect key={f} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
+      {vista !== "mes" && semanas.map((s, i) => <rect key={s.inicio} x={i * COL} y={0} width={1} height={alto} className="fill-gypi-border" />)}
       {vista === "mes" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => f.endsWith("-01"))
-        .map((f) => <rect key={f} x={x(f)} y={0} width={1} height={FILA} className="fill-gypi-border" />)}
-      <rect x={xHoy} y={0} width={2} height={FILA} className="fill-gypi-amber" fillOpacity={0.7} />
+        .map((f) => <rect key={f} x={x(f)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
+      <rect x={xHoy} y={0} width={2} height={alto} className="fill-gypi-amber" fillOpacity={0.7} />
     </g>
   );
+  const fondo = fondoDe(FILA);
+  const fondoOt = fondoDe(FILA_OT);
+  // Barra de un proceso con sus horas al lado (la misma en las dos formas)
+  const barra = (q, etapa, dy = 0) => {
+    const x0 = x(q.desde) + q.ini * px;
+    const x1 = x(q.hasta) + q.fin * px;
+    const estado = estadoDe(q);
+    return (
+      <>
+        <rect data-proceso={etapa} data-estado={estado} x={x0} y={BARRA.y + dy} width={Math.max(3, x1 - x0)} height={BARRA.alto} rx={3}
+          className={`${COLOR[etapa]} ${CONTORNO[estado] || ""}`} strokeWidth={CONTORNO[estado] ? 3 : 0} fillOpacity={q.completo ? 0.35 : 1} />
+        <text x={Math.max(x0, x1) + 6} y={23 + dy} className={`text-[15px] font-bold ${q.atrasado ? "fill-gypi-red" : "fill-gypi-text"}`}>
+          {fmtH(q.horas)}{q.personas ? ` · 👷 ${q.personas}` : ""}{q.atrasado ? " ⚠" : ""}
+        </text>
+      </>
+    );
+  };
+  // OT por proceso: en cada proceso, las OT en el orden en que pasan por la máquina
+  const porProceso = (filas) => ETAPAS_PLAN.map((e) => ({
+    etapa: e,
+    filas: filas.map((r) => ({ r, q: r.procesos.find((z) => z.etapa === e.id) })).filter((f) => f.q)
+      .sort((a, b) => a.q.desde.localeCompare(b.q.desde) || a.q.ini - b.q.ini),
+  })).filter((g) => g.filas.length);
 
   const cabeceraSemanas = semanas.map((s, i) => (
     <g key={s.inicio}>
@@ -199,6 +231,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   return (
     <div className={grande ? "fixed inset-0 z-[300] bg-gypi-bg p-3 flex flex-col" : ""} role={grande ? "dialog" : undefined} aria-label={grande ? "Gantt de OT en pantalla completa" : undefined}>
       <div className="flex flex-wrap items-center gap-2 mb-2">
+        <div className="flex gap-1.5" role="group" aria-label="Forma del Gantt">
+          <Chip active={forma === "procesos"} onClick={() => cambiarForma("procesos")}>Procesos por OT</Chip>
+          <Chip active={forma === "ots"} onClick={() => cambiarForma("ots")}>OT por proceso</Chip>
+        </div>
         <div className="flex gap-1.5" role="group" aria-label="Escala del Gantt">
           <Chip active={vista === "dias"} onClick={() => setVista("dias")}>Días</Chip>
           <Chip active={vista === "semanas"} onClick={() => setVista("semanas")}>Semanas</Chip>
@@ -228,7 +264,35 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           {grupos.map(([division, filas]) => (
             <div key={division}>
               <div className="sticky left-0 w-[260px] px-2 pt-2 pb-1 text-[15px] font-bold text-gypi-text bg-gypi-bg">{division} · {filas.length}</div>
-              {filas.map((r) => {
+              {forma === "ots" && porProceso(filas).map(({ etapa: e, filas: enProceso }) => (
+                <section key={e.id} aria-label={`${e.nombre}: ${enProceso.length} OT`} data-bloque={e.id}>
+                  <div className="sticky left-0 w-[260px] px-2 pt-2 pb-1 flex items-center gap-1.5 text-[15px] font-bold text-gypi-text bg-gypi-bg">
+                    <span aria-hidden="true" className={`inline-block w-4 h-4 rounded-sm shrink-0 ${MUESTRA[e.id]}`} />{e.nombre} · {enProceso.length} OT
+                  </div>
+                  {enProceso.map(({ r, q }) => {
+                    const p = r.proyecto;
+                    return (
+                      <div key={p.id ?? p.ot} className="flex border-t border-gypi-border" data-ot={p.ot}>
+                        <button type="button" onClick={() => verDetalle(p)}
+                          aria-label={`OT ${p.ot}, ${e.nombre}: ${fmtH(q.horas)}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}. Ver detalle`}
+                          className="sticky left-0 z-10 w-[260px] shrink-0 bg-gypi-bg px-2 text-left border-0 border-r border-gypi-border cursor-pointer h-[44px] flex flex-col justify-center">
+                          <div className={`text-[15px] font-bold leading-tight truncate ${q.atrasado ? "text-gypi-red" : "text-gypi-text"}`}>
+                            <span className="font-mono">{q.atrasado ? "⚠ " : ""}{p.ot}</span> · <span className="font-normal" data-cliente>{p.cliente || "—"}</span>
+                          </div>
+                          <div className="text-[13px] text-gypi-dim leading-tight truncate">
+                            {[p.obra, nombreProyecto(p)].filter(Boolean).join(" · ")}
+                          </div>
+                        </button>
+                        <svg width={ancho} height={FILA_OT} aria-hidden="true" className="block">
+                          {fondoOt}
+                          {barra(q, e.id, (FILA_OT - FILA) / 2)}
+                        </svg>
+                      </div>
+                    );
+                  })}
+                </section>
+              ))}
+              {forma === "procesos" && filas.map((r) => {
                 const p = r.proyecto;
                 const texto = `${fmtH(r.horas)} en total; ` + r.procesos.map((q) => `${q.nombre} ${fmtH(q.horas)}${q.personas ? ` con ${q.personas} ${q.personas === 1 ? "armador" : "armadores"}` : ""}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}`).join("; ");
                 return (
@@ -253,21 +317,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                     <div>
                       {ETAPAS_PLAN.map((e) => {
                         const q = r.procesos.find((z) => z.etapa === e.id);
-                        const x0 = q ? x(q.desde) + q.ini * px : 0;
-                        const x1 = q ? x(q.hasta) + q.fin * px : 0;
-                        const estado = q ? estadoDe(q) : null;
                         return (
                           <svg key={e.id} width={ancho} height={FILA} aria-hidden="true" className="block">
                             {fondo}
-                            {q && (
-                              <>
-                                <rect data-proceso={e.id} data-estado={estado} x={x0} y={BARRA.y} width={Math.max(3, x1 - x0)} height={BARRA.alto} rx={3}
-                                  className={`${COLOR[e.id]} ${CONTORNO[estado] || ""}`} strokeWidth={CONTORNO[estado] ? 3 : 0} fillOpacity={q.completo ? 0.35 : 1} />
-                                <text x={Math.max(x0, x1) + 6} y={23} className={`text-[15px] font-bold ${q.atrasado ? "fill-gypi-red" : "fill-gypi-text"}`}>
-                                  {fmtH(q.horas)}{q.personas ? ` · 👷 ${q.personas}` : ""}{q.atrasado ? " ⚠" : ""}
-                                </text>
-                              </>
-                            )}
+                            {q && barra(q, e.id)}
                           </svg>
                         );
                       })}
