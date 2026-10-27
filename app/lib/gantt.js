@@ -89,10 +89,11 @@ export const diasDesde = (desde, fecha) => diasEntre(desde, fecha);
 
 /**
  * Nombre del proyecto de una OT para los Gantt (Tadeo, 27/10: "Cama",
- * "Cocina", "Vanitory"…): la columna PROYECTO, o la descripción si no hay.
- * Vacío si repite el cliente.
+ * "Cocina", "Vanitory"…): la DESCRIPCIÓN, columna F del Plan de trabajo.
+ * Nunca el código de la columna PROYECTO (C), que no le sirve. Vacío si
+ * repite el cliente.
  */
 export function nombreProyecto(p) {
-  const n = String(p?.proyecto || p?.descripcion || "").trim();
+  const n = String(p?.descripcion || "").trim();
   return n && n.toLowerCase() !== String(p?.cliente || "").trim().toLowerCase() ? n : "";
 }

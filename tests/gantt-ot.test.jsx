@@ -403,13 +403,14 @@ test("📅 Gantt — al lado de la barra de Armado van cuántos arman", () => {
 
 test("📅 Gantt — a la izquierda, además de la OT y el cliente, el nombre del proyecto", async () => {
   const { nombreProyecto } = await import("../app/lib/gantt.js");
-  assert.equal(nombreProyecto({ proyecto: "Cocina", cliente: "BCG" }), "Cocina");
-  assert.equal(nombreProyecto({ proyecto: "", descripcion: "Vanitory", cliente: "BCG" }), "Vanitory");
-  assert.equal(nombreProyecto({ proyecto: "bcg", cliente: "BCG" }), "", "no repite el cliente");
-  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", proyecto: "Cama", division: "M", estado: "activo" }];
+  assert.equal(nombreProyecto({ proyecto: "7751-01", descripcion: "Cocina", cliente: "BCG" }), "Cocina");
+  assert.equal(nombreProyecto({ proyecto: "7751-01", descripcion: "", cliente: "BCG" }), "", "el código de la columna C no se muestra");
+  assert.equal(nombreProyecto({ descripcion: "bcg", cliente: "BCG" }), "", "no repite el cliente");
+  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", proyecto: "7100-02", descripcion: "Cama", division: "M", estado: "activo" }];
   const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} cfgValor={null}
     avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} onVerDetalle={() => {}} />);
   const fila = container.querySelector('[data-ot="7100"]');
   assert.equal(fila.querySelector("[data-proyecto]").textContent, "Cama");
   assert.match(fila.textContent, /BCG/);
+  assert.doesNotMatch(fila.textContent, /7100-02/);
 });
