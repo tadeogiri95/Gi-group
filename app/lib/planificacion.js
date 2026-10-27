@@ -161,6 +161,12 @@ export function buscarOts(ots, texto) {
   });
 }
 
+/** Las OT tildadas arriba (Tadeo, 27/10: "para poder verlas rápidamente"); dentro de cada grupo, el orden de antes. */
+export function tildadasPrimero(ots, elegidas) {
+  const lista = ots || [];
+  return [...lista.filter((p) => elegidas.has(p.id)), ...lista.filter((p) => !elegidas.has(p.id))];
+}
+
 /** Tilda todas las OT de la lista, o las destilda si ya estaban todas tildadas. El resto queda como estaba. */
 export function tildarTodas(elegidas, lista) {
   const n = new Set(elegidas);

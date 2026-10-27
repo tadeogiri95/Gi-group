@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import {
   normalizarParametros, leerNumero, errorParametro, PARAMETROS, parametrosFaltantes,
-  divisionPlan, etapasPlanDe, otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, moverOt, quitarPrioridad, cambiosPrioridad,
+  divisionPlan, etapasPlanDe, otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, tildadasPrimero, moverOt, quitarPrioridad, cambiosPrioridad,
 } from "../app/lib/planificacion.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 
@@ -363,6 +363,29 @@ test("buscarOts y tildarTodas — busca sin tildes por número, cliente o proyec
   const una = tildarTodas(new Set([3]), ots.slice(0, 2));
   assert.deepEqual([...una].sort(), [1, 2, 3]);
   assert.deepEqual([...tildarTodas(una, ots.slice(0, 2))], [3], "si ya estaban todas, las destilda");
+  assert.deepEqual(tildadasPrimero(ots, new Set([3, 1])).map((p) => p.id), [1, 3, 2], "tildadas arriba, cada grupo en su orden");
+  assert.deepEqual(tildadasPrimero(ots, new Set()).map((p) => p.id), [1, 2, 3]);
+});
+
+test("📊 Carga — las OT tildadas se ven primero en la lista", async () => {
+  mockCarga({
+    proyectos: [
+      OT(5, "M-7000", { cliente: "CEVT", division: "Muebles", placas: 1 }),
+      OT(1, "M-7473", { ...OT_A, cliente: "Riofrío", division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
+      OT(3, "M-9100", { cliente: "CEVT", division: "Muebles", placas: 1 }),
+    ],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: { in: "08:00", out: "10:00" } } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  pantalla();
+  const orden = () => within(screen.getByRole("list", { name: "OT para planificar" })).getAllByRole("checkbox", { name: /^Planificar OT / })
+    .map((c) => c.getAttribute("aria-label").replace("Planificar OT ", ""));
+  const tildada = (ot) => screen.getByLabelText(`Planificar OT ${ot}`).checked;
+  await waitFor(() => assert.equal(tildada("M-7473"), true));
+  if (tildada("M-7000")) fireEvent.click(screen.getByLabelText("Planificar OT M-7000"));
+  assert.deepEqual(orden(), ["M-7473", "M-7000", "M-9100"], "sin tildar, cada una en su orden");
+  fireEvent.click(screen.getByLabelText("Planificar OT M-9100"));
+  assert.deepEqual(orden(), ["M-7473", "M-9100", "M-7000"], "la recién tildada sube con las tildadas");
 });
 
 test("📊 Carga — buscador de OT y botón para tildar o destildar todas", async () => {
