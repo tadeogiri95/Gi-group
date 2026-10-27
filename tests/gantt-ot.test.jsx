@@ -166,6 +166,12 @@ test("📅 Gantt — solo OT planificadas, 4 renglones por OT y los atrasados ma
   assert.match(screen.getByText("⚠ Atrasados 1").textContent, /1/);
   const lista = screen.getByRole("region", { name: "Procesos atrasados" });
   assert.match(lista.textContent, /7100 · Corte: tenía que terminar el .* \(\d+ días? de atraso\) · 0% hecho/);
+  // El cuadro se minimiza para ver el Gantt entero, y se vuelve a abrir
+  fireEvent.click(within(lista).getByRole("button", { name: /Minimizar/ }));
+  assert.doesNotMatch(lista.textContent, /tenía que terminar/);
+  assert.equal(within(lista).getByRole("button", { name: /Ver detalle/ }).getAttribute("aria-expanded"), "false");
+  fireEvent.click(within(lista).getByRole("button", { name: /Ver detalle/ }));
+  assert.match(lista.textContent, /tenía que terminar/);
   const corte = ot.querySelector('[data-proceso="corte"]');
   assert.equal(corte.getAttribute("data-estado"), "atrasado");
   assert.match(corte.getAttribute("class"), /fill-proc-corte stroke-gypi-red/, "contorno rojo y el color del proceso igual");
