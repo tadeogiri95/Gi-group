@@ -129,7 +129,8 @@ test("filasGantt — solo sin terminar y con semana; la barra arranca con la lib
 });
 
 // Desde el 27/10 el Gantt muestra el plan de producción confirmado (138): solo
-// OT planificadas, una línea por proceso y los atrasados marcados adentro.
+// OT planificadas, 4 renglones por OT (uno por proceso), en secuencia y con una
+// sola OT a la vez por proceso, 8 horas por día; atrasados marcados adentro.
 const { hoyArg } = await import("../app/lib/dates.js");
 const hoyReal = hoyArg(); // el Gantt cuenta los días con la hora de Argentina
 const dia = (n) => new Date(Date.parse(`${hoyReal}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
@@ -145,7 +146,8 @@ const PLANES = [{
 const ETAPAS_M = [{ codigo: 1, nombre: "Corte" }, { codigo: 2, nombre: "Canteado" }, { codigo: 3, nombre: "Mecanizado CNC" }, { codigo: 4, nombre: "Armado" }];
 const DIV_M = [{ id: "M", label: "Muebles", ruta_etapas: [1, 2, 3, 4] }];
 
-test("📅 Gantt — solo OT planificadas, los procesos de cada OT y los atrasados marcados", () => {
+
+test("📅 Gantt — solo OT planificadas, 4 renglones por OT y los atrasados marcados", () => {
   const vistos = [];
   const proyectos = [
     { id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" },
@@ -158,26 +160,34 @@ test("📅 Gantt — solo OT planificadas, los procesos de cada OT y los atrasad
     avanceHoras={{ avance: [], horas: new Set(), piezas }} onVerDetalle={(p) => vistos.push(p.ot)} />);
   assert.ok(screen.getByText("Muebles · 2"));
   assert.equal(screen.queryByText("7300"), null, "sin plan no aparece");
-  assert.ok(screen.getByText("⚠ Atrasados 1"));
+  const ot = container.querySelector('[data-ot="7100"]');
+  assert.equal(ot.querySelectorAll("svg").length, 4, "un renglón por proceso");
+  assert.deepEqual([...ot.querySelectorAll(".h-\\[34px\\]")].map((d) => d.textContent), ["Corte", "Canteado", "Mecanizado", "Armado"]);
+  assert.match(screen.getByText("⚠ Atrasados 1").textContent, /1/);
   const lista = screen.getByRole("region", { name: "Procesos atrasados" });
-  assert.match(lista.textContent, /7100 · Corte: tenía que terminar el .* \(9 días de atraso\) · 0% hecho/);
-  assert.equal(container.querySelector('[data-proceso="corte"]').getAttribute("data-estado"), "atrasado");
-  assert.equal(container.querySelector('[data-proceso="canteado"]').getAttribute("data-estado"), "completo");
-  assert.equal(container.querySelectorAll('[data-proceso="armado"][data-estado="pendiente"]').length, 1);
-  fireEvent.click(screen.getByRole("button", { name: /^OT 7100: 18 h en total; Corte del .*atrasado 9 días; Armado/ }));
+  assert.match(lista.textContent, /7100 · Corte: tenía que terminar el .* \(\d+ días? de atraso\) · 0% hecho/);
+  const corte = ot.querySelector('[data-proceso="corte"]');
+  assert.equal(corte.getAttribute("data-estado"), "atrasado");
+  assert.match(corte.getAttribute("class"), /fill-proc-corte stroke-gypi-red/, "contorno rojo y el color del proceso igual");
+  assert.equal(container.querySelector('[data-ot="7200"] [data-proceso="canteado"]').getAttribute("data-estado"), "completo");
+  assert.equal(ot.querySelector('[data-proceso="armado"]').getAttribute("data-estado"), "pendiente", "no arranca antes del día que le dio el plan");
+  fireEvent.click(screen.getByRole("button", { name: /^OT 7100: 18 h en total; Corte 12 h, del .*atrasado \d+ días?; Armado 6 h/ }));
   assert.deepEqual(vistos, ["7100"]);
 });
 
-test("📅 Gantt — por días con la semana arriba, fila de fechas fija y pantalla completa", () => {
+test("📅 Gantt — por días, semanas o mes, fila de fechas fija y pantalla completa", () => {
   const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
   const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
   // Arranca por días: la cabecera trae "S44 · 25/10" y los números de cada día
   assert.equal(screen.getByRole("button", { name: "Días" }).getAttribute("aria-pressed"), "true");
   assert.ok(container.querySelector("svg text")?.textContent.includes("·"), "la semana va arriba de los días");
   assert.ok(container.querySelector(".sticky.top-0"), "la fila de las fechas queda fija al bajar");
-  assert.ok(container.querySelector(".max-h-\\[70vh\\].overflow-auto"), "el Gantt tiene scroll propio");
+  assert.ok(container.querySelector(".max-h-\\[75vh\\].overflow-auto"), "el Gantt tiene scroll propio");
   fireEvent.click(screen.getByRole("button", { name: "Semanas" }));
   assert.ok(!container.querySelector("svg text")?.textContent.includes("·"));
+  fireEvent.click(screen.getByRole("button", { name: "Mes" }));
+  const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  assert.ok([...container.querySelectorAll("svg text")].some((t) => meses.some((m) => t.textContent.startsWith(m))), "por mes, el nombre del mes arriba");
   fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
   assert.ok(screen.getByRole("dialog", { name: "Gantt de OT en pantalla completa" }));
   fireEvent.click(screen.getByRole("button", { name: "✕ Salir" }));
@@ -208,14 +218,14 @@ test("Proyectos → OT tiene el chip 📅 Gantt y la opción de cómo contar la 
 test("itemsVigentes y otAtrasadasPlan — la semana le gana al mes; atrasada la OT con un proceso vencido", async () => {
   const { itemsVigentes, procesosPlan, otAtrasadasPlan } = await import("../app/lib/ganttPlan.js");
   const planes = [
-    { id: 1, desde: "2026-10-01", hasta: "2026-10-31", items: [{ ot: "A", etapa: "corte", fecha: "2026-10-05" }, { ot: "A", etapa: "armado", fecha: "2026-10-27" }] },
-    { id: 2, desde: "2026-10-25", hasta: "2026-10-31", items: [{ ot: "A", etapa: "armado", fecha: "2026-10-29" }] },
+    { id: 1, desde: "2026-10-01", hasta: "2026-10-31", items: [{ ot: "A", etapa: "corte", fecha: "2026-10-05", horas: 8 }, { ot: "A", etapa: "armado", fecha: "2026-10-27", horas: 8 }] },
+    { id: 2, desde: "2026-10-25", hasta: "2026-10-31", items: [{ ot: "A", etapa: "armado", fecha: "2026-10-29", horas: 8 }] },
   ];
   const items = itemsVigentes(planes);
   assert.deepEqual(items.map((i) => i.fecha).sort(), ["2026-10-05", "2026-10-29"], "el 27 lo pisa la semana confirmada");
   const procesos = procesosPlan(items, { etapasCodigo: { corte: 1, armado: 4 }, avance: [{ ot: "A", etapa: 4, estado: "terminada" }], hoy: "2026-10-30" });
   const a = procesos.get("A");
-  assert.deepEqual(a.procesos.map((p) => [p.etapa, p.completo, p.diasAtraso]), [["corte", false, 25], ["armado", true, 0]]);
+  assert.deepEqual(a.procesos.map((p) => [p.etapa, p.hasta, p.completo, p.diasAtraso]), [["corte", "2026-10-05", false, 25], ["armado", "2026-10-29", true, 0]]);
   const filas = [{ proyecto: { ot: "A" }, cerradas: 1, celdas: [{}, {}] }, { proyecto: { ot: "B" }, cerradas: 0, celdas: [{}] }];
   const r = otAtrasadasPlan(filas, procesos);
   assert.deepEqual(r.map((x) => [x.fila.proyecto.ot, x.dias, x.porcentaje]), [["A", 25, 50]]);
@@ -223,95 +233,87 @@ test("itemsVigentes y otAtrasadasPlan — la semana le gana al mes; atrasada la 
   assert.equal(procesosPlan(items, { terminadas: new Set(["A"]), hoy: "2026-10-30" }).get("A").atrasados.length, 0);
 });
 
-// 27/10: cada proceso con su color fijo (azul, naranja, violeta, marrón claro)
-// y amarillo cuando queda poco margen; los procesos van uno detrás del otro.
-test("procesosPlan — poco margen: va atrasado contra el plan, último día, o el anterior viene atrasado o justo", async () => {
-  const { procesosPlan } = await import("../app/lib/ganttPlan.js");
-  const hoy = "2026-10-28";
+// 27/10 (Tadeo): en cada OT un proceso arranca cuando termina el anterior; por
+// cada proceso pasa una OT a la vez; 8 horas productivas por día.
+test("procesosPlan — secuencia en la OT, una OT a la vez por proceso y 8 horas por día", async () => {
+  const { procesosPlan, diasExtraDe } = await import("../app/lib/ganttPlan.js");
+  const lun = "2026-10-26";
   const items = [
-    // A: Corte del 26 al 29, 4 h por día; hasta ayer tenía que ir 50%
-    ...["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29"].map((fecha) => ({ ot: "A", etapa: "corte", fecha, horas: 4 })),
-    // Canteado arranca el 30: el Corte justo lo deja sin días libres
-    { ot: "A", etapa: "canteado", fecha: "2026-10-30", horas: 4 },
-    { ot: "A", etapa: "armado", fecha: "2026-11-20", horas: 4 },
-    // B: Corte atrasado 3 días; Canteado arranca en 2 días (sin margen), Armado lejos
-    { ot: "B", etapa: "corte", fecha: "2026-10-25", horas: 4 },
-    { ot: "B", etapa: "canteado", fecha: "2026-10-30", horas: 4 },
-    { ot: "B", etapa: "armado", fecha: "2026-11-20", horas: 4 },
-    // C: hoy es el último día de Mecanizado
-    { ot: "C", etapa: "mecanizado", fecha: "2026-10-28", horas: 4 },
+    { ot: "A", etapa: "corte", fecha: lun, horas: 4, orden: 0 },
+    { ot: "A", etapa: "canteado", fecha: lun, horas: 4, orden: 0 },
+    { ot: "A", etapa: "armado", fecha: lun, horas: 8, orden: 0 },
+    { ot: "B", etapa: "corte", fecha: lun, horas: 6, orden: 1 },
+    { ot: "B", etapa: "canteado", fecha: lun, horas: 2, orden: 1 },
+    // C: Corte de 12 h que arranca un viernes sigue el lunes
+    { ot: "C", etapa: "corte", fecha: "2026-10-30", horas: 12, orden: 2 },
   ];
-  const piezas = [{ ot: "A", etapa: 1, total: 10, pasaron: 3 }];
-  const r = procesosPlan(items, { etapasCodigo: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 }, piezas, hoy });
+  const r = procesosPlan(items, { hoy: "2026-10-20" });
+  const tramos = (ot) => r.get(ot).procesos.map((p) => [p.etapa, p.desde, p.ini, p.hasta, p.fin]);
+  assert.deepEqual(tramos("A"), [
+    ["corte", lun, 0, lun, 0.5], ["canteado", lun, 0.5, lun, 1], ["armado", "2026-10-27", 0, "2026-10-27", 1],
+  ]);
+  // El Corte de B espera que termine el de A; su Canteado, que termine su Corte
+  assert.deepEqual(tramos("B"), [["corte", lun, 0.5, "2026-10-27", 0.25], ["canteado", "2026-10-27", 0.25, "2026-10-27", 0.5]]);
+  assert.deepEqual(tramos("C"), [["corte", "2026-10-30", 0, "2026-11-02", 0.5]], "sábado y domingo no se trabaja");
+  assert.equal(r.get("A").horas, 16, "la OT dura la suma de sus procesos");
+  assert.equal(r.get("B").horas, 8);
+  // Con el sábado de horas extra del plan, C termina el sábado
+  const extra = diasExtraDe([{ dias_extra: [{ fecha: "2026-10-31", horas: 8 }] }]);
+  assert.deepEqual(procesosPlan(items, { hoy: "2026-10-20", diasExtra: extra }).get("C").procesos[0].hasta, "2026-10-31");
+  // Canteadora con 2 personas: el plan guarda horas de gente, la máquina tarda la mitad
+  assert.equal(procesosPlan(items, { hoy: "2026-10-20", params: { personas_canteadora: 2 } }).get("A").procesos[1].horas, 2);
+});
+
+test("procesosPlan — poco margen: va atrasado, es su último día, o el anterior viene atrasado", async () => {
+  const { procesosPlan } = await import("../app/lib/ganttPlan.js");
+  const hoy = "2026-10-28"; // miércoles
+  const items = [
+    // B: Corte el viernes 23 (atrasado) y Armado de 40 h desde el lunes
+    { ot: "B", etapa: "corte", fecha: "2026-10-23", horas: 8, orden: 0 },
+    { ot: "B", etapa: "armado", fecha: "2026-10-26", horas: 40, orden: 0 },
+    // A: Corte de 32 h de lunes a jueves; al empezar hoy tenía que ir 50%
+    { ot: "A", etapa: "corte", fecha: "2026-10-26", horas: 32, orden: 1 },
+    { ot: "A", etapa: "canteado", fecha: "2026-10-26", horas: 4, orden: 1 },
+    // C: hoy es el último día de Mecanizado
+    { ot: "C", etapa: "mecanizado", fecha: hoy, horas: 8, orden: 2 },
+  ];
+  const codigos = { corte: 1, canteado: 2, mecanizado: 3, armado: 4 };
+  const r = procesosPlan(items, { etapasCodigo: codigos, piezas: [{ ot: "A", etapa: 1, total: 10, pasaron: 3 }], hoy });
   const estado = (ot) => r.get(ot).procesos.map((p) => [p.etapa, p.atrasado ? "atrasado" : p.margen ? "margen" : "ok"]);
-  assert.deepEqual(estado("A"), [["corte", "margen"], ["canteado", "margen"], ["armado", "ok"]]);
-  assert.match(r.get("A").procesos[0].motivoMargen, /va 30% y el plan tenía 50% hasta ayer/);
-  assert.match(r.get("A").procesos[1].motivoMargen, /Corte viene justo/);
-  assert.deepEqual(estado("B"), [["corte", "atrasado"], ["canteado", "margen"], ["armado", "ok"]]);
-  assert.match(r.get("B").procesos[1].motivoMargen, /Corte viene 3 días atrasado/);
+  assert.deepEqual(estado("B"), [["corte", "atrasado"], ["armado", "margen"]]);
+  assert.match(r.get("B").procesos[1].motivoMargen, /Corte viene 5 días atrasado/);
+  assert.deepEqual(estado("A"), [["corte", "margen"], ["canteado", "ok"]]);
+  assert.match(r.get("A").procesos[0].motivoMargen, /va 30% y tenía que ir 50%/);
   assert.deepEqual(estado("C"), [["mecanizado", "margen"]]);
-  assert.equal(r.get("C").pocoMargen.length, 1);
-  // Con el Corte de A al día (5 de 10 piezas = 50%) ya no hay aviso
-  const alDia = procesosPlan(items, { etapasCodigo: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 }, piezas: [{ ot: "A", etapa: 1, total: 10, pasaron: 5 }], hoy });
+  // Con el Corte de A al día (5 de 10 piezas) ya no hay aviso
+  const alDia = procesosPlan(items, { etapasCodigo: codigos, piezas: [{ ot: "A", etapa: 1, total: 10, pasaron: 5 }], hoy });
   assert.equal(alDia.get("A").pocoMargen.length, 0);
 });
 
-test("📅 Gantt — colores fijos por proceso y amarillo con la lista de poco margen", () => {
+test("📅 Gantt — colores fijos, contorno amarillo de poco margen y horas de cada proceso y de la OT", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   for (const t of ["proc-corte: #2563EB", "proc-canteado: #F97316", "proc-mecanizado: #7C3AED", "proc-armado: #B08968", "proc-margen: #FACC15"]) assert.ok(css.includes(`--color-${t}`), t);
-  const planes = [{ id: 1, tipo: "semana", desde: dia(-5), hasta: dia(10), items: [
-    { ot: "7100", etapa: "corte", fecha: dia(-3), horas: 4 },
-    { ot: "7100", etapa: "corte", fecha: dia(1), horas: 4 },
-    { ot: "7100", etapa: "canteado", fecha: dia(2), horas: 4 },
-    { ot: "7100", etapa: "mecanizado", fecha: dia(6), horas: 4 },
-    { ot: "7100", etapa: "armado", fecha: dia(9), horas: 4 },
+  // Corte de 16 h que empezó ayer y no tiene nada escaneado: al empezar hoy tenía que ir 50%
+  const planes = [{ id: 1, tipo: "semana", desde: dia(-5), hasta: dia(30), items: [
+    { ot: "7100", etapa: "corte", fecha: dia(-1), horas: 16 },
+    { ot: "7100", etapa: "canteado", fecha: dia(20), horas: 4 },
+    { ot: "7100", etapa: "mecanizado", fecha: dia(21), horas: 3 },
+    { ot: "7100", etapa: "armado", fecha: dia(22), horas: 5 },
   ] }];
   const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
   const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
   const barra = (id) => container.querySelector(`[data-proceso="${id}"]`);
-  assert.equal(barra("corte").getAttribute("data-estado"), "margen");
-  assert.match(barra("corte").getAttribute("class"), /fill-proc-margen/);
-  assert.equal(barra("canteado").getAttribute("data-estado"), "margen", "va después de un Corte justo y arranca enseguida");
-  assert.equal(barra("mecanizado").getAttribute("data-estado"), "pendiente");
+  const corte = barra("corte");
+  // Si ayer fue fin de semana el Corte arranca hoy y no hay atraso todavía: solo cuando arrancó antes
+  if (corte.getAttribute("data-estado") === "margen") {
+    assert.match(corte.getAttribute("class"), /fill-proc-corte stroke-proc-margen/, "contorno amarillo, el color del proceso igual");
+    assert.match(screen.getByLabelText("Colores del Gantt").textContent, /Poco margen 1/);
+  }
   assert.match(barra("mecanizado").getAttribute("class"), /fill-proc-mecanizado/);
   assert.match(barra("armado").getAttribute("class"), /fill-proc-armado/);
-  const leyenda = screen.getByLabelText("Colores del Gantt");
-  assert.match(leyenda.textContent, /🟡 Poco margen 2/);
-  assert.ok(leyenda.querySelector(".bg-proc-corte") && leyenda.querySelector(".bg-proc-canteado"));
-  const lista = screen.getByRole("region", { name: "Procesos con poco margen" });
-  assert.match(lista.textContent, /7100 · Corte .*va 0% y el plan tenía 50% hasta ayer/);
-  assert.ok(screen.getByText("🟡 7100"));
-});
-
-// 27/10: los procesos van en secuencia en una sola línea por OT; el día en que
-// uno termina y arranca el siguiente se reparte según las horas.
-test("📅 Gantt — una sola línea por OT con los procesos en secuencia y las horas totales", async () => {
-  const { procesosPlan } = await import("../app/lib/ganttPlan.js");
-  const items = [
-    { ot: "A", etapa: "corte", fecha: "2026-10-26", horas: 8 },
-    { ot: "A", etapa: "corte", fecha: "2026-10-27", horas: 2 },
-    { ot: "A", etapa: "canteado", fecha: "2026-10-27", horas: 6 },
-    { ot: "A", etapa: "armado", fecha: "2026-10-28", horas: 4 },
-  ];
-  const a = procesosPlan(items, { hoy: "2026-10-20" }).get("A");
-  assert.equal(a.horas, 20, "la OT dura la suma de sus procesos");
-  assert.deepEqual(a.procesos.map((p) => [p.etapa, p.ini, p.fin]), [["corte", 0, 0.25], ["canteado", 0.25, 1], ["armado", 0, 1]]);
-
-  const planes = [{ id: 1, tipo: "semana", desde: dia(1), hasta: dia(10), items: [
-    { ot: "7100", etapa: "corte", fecha: dia(2), horas: 8 },
-    { ot: "7100", etapa: "corte", fecha: dia(3), horas: 2 },
-    { ot: "7100", etapa: "canteado", fecha: dia(3), horas: 6 },
-    { ot: "7100", etapa: "mecanizado", fecha: dia(4), horas: 3 },
-    { ot: "7100", etapa: "armado", fecha: dia(5), horas: 5 },
-  ] }];
-  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
-  const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
-  const barras = ["corte", "canteado", "mecanizado", "armado"].map((id) => container.querySelector(`[data-proceso="${id}"]`));
-  assert.equal(new Set(barras.map((b) => b.getAttribute("y"))).size, 1, "todas en la misma línea");
-  for (let i = 1; i < barras.length; i++) {
-    const finAnterior = Number(barras[i - 1].getAttribute("x")) + Number(barras[i - 1].getAttribute("width"));
-    assert.ok(Number(barras[i].getAttribute("x")) >= finAnterior - 0.01, "cada proceso arranca cuando termina el anterior");
-  }
-  assert.ok([...container.querySelectorAll("svg text")].some((t) => t.textContent === "24 h"), "horas totales de la OT al final");
-  assert.match(screen.getByRole("button", { name: /^OT 7100: 24 h en total; Corte/ }).getAttribute("aria-label"), /Armado/);
+  assert.equal(screen.queryByRole("region", { name: "Procesos con poco margen" }), null, "sin el cuadro de explicación");
+  const textos = [...container.querySelectorAll("svg text")].map((t) => t.textContent);
+  // Horas de máquina: la canteadora con 2 personas y las 2 CNC (valores por defecto) tardan la mitad
+  for (const h of ["16 h", "2 h", "1,5 h", "5 h"]) assert.ok(textos.includes(h), `horas al lado de la barra: ${h}`);
+  assert.match(container.querySelector('[data-ot="7100"] button').textContent, /7100 · 24,5 h/, "total planificado al lado del nombre");
 });

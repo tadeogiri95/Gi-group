@@ -51,7 +51,7 @@ export async function GET(request) {
     try {
       if (q.get("confirmados")) {
         const limite = new Date(Date.now() - 183 * 86400000).toISOString().slice(0, 10);
-        const planes = (await sbGet(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,confirmado_at&order=desde.asc&limit=60`, { sesion })) || [];
+        const planes = (await sbGet(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,dias_extra,confirmado_at&order=desde.asc&limit=60`, { sesion })) || [];
         if (!planes.length) return json({ ok: true, planes: [] });
         const items = (await sbGet(`plan_produccion_items?empresa_id=eq.${e}&plan_id=in.(${planes.map((p) => p.id).join(",")})&select=plan_id,ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc&limit=20000`, { sesion })) || [];
         return json({ ok: true, planes: planes.map((p) => ({ ...p, items: items.filter((i) => i.plan_id === p.id) })) });
