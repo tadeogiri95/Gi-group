@@ -33,6 +33,7 @@ export const PARAMETROS = [
   { id: "maquinas_cnc", grupo: "maquinas", label: "CNC", unidad: "máquinas", min: 1, max: 20, entero: true, defecto: 2 },
   { id: "personas_canteadora", grupo: "maquinas", label: "Personas en la canteadora", unidad: "personas", min: 1, max: 2, entero: true, defecto: 2 },
   { id: "pct_tiempo_canteadora_2", grupo: "maquinas", label: "Tiempo con 2 personas en la canteadora", unidad: "% del tiempo con 1", ayuda: "50 = tarda la mitad.", min: 10, max: 100, defecto: 50 },
+  { id: "max_armadores_ot", grupo: "personal", label: "Máximo de armadores por OT", unidad: "personas", ayuda: "Más que esto en una misma OT se estorban: los que sobran arman otra OT en paralelo.", min: 1, max: 20, entero: true, defecto: 4 },
 ];
 
 /** Cómo se cuentan los mecanizados de una OT cuando la planilla no trae MECANIZADOS. */
@@ -52,6 +53,7 @@ export const GRUPOS_PARAMETROS = [
   { id: "tiempos", titulo: "⏱ Tiempos de trabajo" },
   { id: "relaciones", titulo: "🔗 Relaciones" },
   { id: "maquinas", titulo: "🏭 Máquinas" },
+  { id: "personal", titulo: "👷 Operarios por puesto" },
 ];
 
 /** "0,5" → 0.5; "1.200" → 1200; vacío o texto → null. */

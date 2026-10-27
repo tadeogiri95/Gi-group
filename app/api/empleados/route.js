@@ -17,6 +17,7 @@ import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../lib/activa
 
 import { ipCliente } from "../../lib/ip";
 import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance, filtroAlcance } from "../../lib/alcance";
+import { esPuestoPlanta } from "../../lib/cargaPlanta";
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
 // Una planta indicada a mano tiene que ser de la empresa y estar activa (ítem 36).
@@ -228,12 +229,17 @@ export async function PATCH(request) {
   const CAMPOS_EDITABLES = ["nombre", "apodo", "email", "area", "diagrama", "activo"];
   // "Es instalador" (migración 116) y "Responsable de mantenimiento" (133) los
   // marca quien gestiona toda la empresa
-  if (!alcance) CAMPOS_EDITABLES.push("division", "planta_id", "es_instalador", "es_mantenimiento");
+  if (!alcance) CAMPOS_EDITABLES.push("division", "planta_id", "es_instalador", "es_mantenimiento", "puesto_planta");
   if (sesion.rol === "gerencial") CAMPOS_EDITABLES.push("rol", "solo_su_division");
   for (const campo of ["solo_su_division", "es_instalador", "es_mantenimiento"]) {
     if (body[campo] !== undefined && typeof body[campo] !== "boolean") {
       return NextResponse.json({ error: `${campo} inválido` }, { status: 400 });
     }
+  }
+
+  // Puesto en la planta (migración 140): uno de PUESTOS_PLANTA o vacío
+  if (body.puesto_planta !== undefined && body.puesto_planta !== null && !esPuestoPlanta(body.puesto_planta)) {
+    return NextResponse.json({ error: "puesto_planta inválido" }, { status: 400 });
   }
 
   const updates = {};

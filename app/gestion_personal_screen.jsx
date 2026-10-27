@@ -12,6 +12,7 @@ import { useConfirm } from "./components/ui/ConfirmDialog";
 import { useEscape } from "./hooks/useEscape";
 import { tieneModulo } from "./lib/modulos";
 import { leToca } from "./lib/mantenimiento";
+import { PUESTOS_PLANTA } from "./lib/cargaPlanta";
 
 // "Le toca: SEC-01, CNC-01, AB123CD" (parte 34): lo que tiene a cargo como
 // responsable o suplente. Se asigna desde Mantenimiento.
@@ -174,6 +175,20 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
                 <div className="text-xs text-gypi-dim mt-0.5">Va a ver la pestaña Instalaciones para dejar el reporte del día.</div>
               </div>
             </label>
+          </div>
+        )}
+
+        {/* Puesto en la planta (migración 140): para planificar Armado con varios
+            armadores. "Otra línea" (por ejemplo Puertas) no cuenta en la
+            planificación. Sin la migración el dato no viene y no aparece. */}
+        {mode === "editar" && !divisionBloqueada && initialData.puesto_planta !== undefined && (form.rol || "operativo") === "operativo" && (
+          <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
+            <label htmlFor="emp-puesto-planta" className="text-[13px] font-bold text-gypi-text block mb-1">Puesto en la planta</label>
+            <select id="emp-puesto-planta" className="g-input w-full" value={form.puesto_planta || ""} onChange={e => set("puesto_planta", e.target.value || null)}>
+              <option value="">Sin puesto (hace de todo)</option>
+              {PUESTOS_PLANTA.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+            <div className="text-xs text-gypi-dim mt-1">Se usa en Proyectos → Planificación para saber cuántos armadores hay. Los de otra línea no cuentan.</div>
           </div>
         )}
 
@@ -570,6 +585,7 @@ export default function GestionPersonalScreen({ empresaId }) {
           ...(plantas.length > 1 && form.planta_id && !soySupervisor ? { planta_id: form.planta_id } : {}),
           ...(form.es_instalador !== undefined && !soySupervisor ? { es_instalador: !!form.es_instalador } : {}),
           ...(form.es_mantenimiento !== undefined && !soySupervisor ? { es_mantenimiento: !!form.es_mantenimiento } : {}),
+          ...(form.puesto_planta !== undefined && !soySupervisor ? { puesto_planta: form.puesto_planta || null } : {}),
           ...(sesion?.rol === "gerencial" && form.solo_su_division !== undefined
             ? { solo_su_division: form.rol === "administrativo" && !!form.solo_su_division }
             : {}),
