@@ -1,9 +1,10 @@
 'use client';
 // app/components/GanttOt.jsx — 📅 Gantt de OT (Proyectos → OT). Muestra el
 // plan de producción confirmado en Proyectos → Planificación (migración 138):
-// un renglón por OT planificada y, adentro, una línea por proceso (Corte,
-// Canteado, Mecanizado, Armado), cada uno con su color, desde el primer hasta
-// el último día que el plan le asigna. Un proceso cuya fecha límite ya pasó y
+// un renglón por OT planificada con sus procesos en secuencia en una sola
+// línea (Corte → Canteado → Mecanizado → Armado): cada uno arranca donde
+// termina el anterior y la OT dura la suma de sus procesos. El día en que un
+// proceso termina y arranca el siguiente se reparte según las horas de cada uno. Un proceso cuya fecha límite ya pasó y
 // no está completo (por el escaneo de piezas, o la etapa terminada) se pinta
 // de rojo con ⚠ y va en la lista de atrasados debajo del Gantt; uno en fecha
 // pero con poco margen (va justo, o el proceso anterior viene atrasado: van
@@ -23,10 +24,11 @@ import { ETAPAS_PLAN } from "../lib/planificacion";
 import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
+import { fmtH } from "../lib/cargaPlanta";
 
 const PX_DIA = { dias: 22, semanas: 40 / 7 }; // ancho de un día según cómo se ve
 const ALTO = 44;
-const CARRIL = 9; // alto de la línea de cada proceso dentro del renglón
+const BARRA = { y: 12, alto: 20 }; // la línea de procesos dentro del renglón
 const COLOR = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecanizado: "fill-proc-mecanizado", armado: "fill-proc-armado" };
 const MUESTRA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
 
@@ -100,7 +102,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   const px = PX_DIA[vista];
   const COL = 7 * px; // ancho de una semana
   const semanas = escala?.semanas || [];
-  const ancho = semanas.length * COL + 64; // lugar para el ⚠ de la última barra
+  const ancho = semanas.length * COL + 96; // lugar para las horas y el ⚠ de la última barra
   const x = (fecha) => Math.max(0, diasDesde(escala?.desde || hoy, fecha) * px);
   const xHoy = x(hoy);
   // Se abre mostrando la semana actual (con dos semanas antes), no la más vieja
@@ -182,8 +184,9 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
               <div className="sticky left-0 w-[136px] px-2 pt-2 pb-1 text-[12px] font-bold text-gypi-text bg-gypi-bg">{division} · {filas.length}</div>
               {filas.map((r) => {
                 const p = r.proyecto;
-                const finX = x(r.fin) + px;
-                const texto = r.procesos.map((q) => `${q.nombre} del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}`).join("; ");
+                const ultimo = r.procesos.reduce((m, q) => (q.hasta > m.hasta || (q.hasta === m.hasta && q.fin >= m.fin) ? q : m), r.procesos[0]);
+                const finX = x(ultimo.hasta) + ultimo.fin * px;
+                const texto = `${fmtH(r.horas)} en total; ` + r.procesos.map((q) => `${q.nombre} del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}`).join("; ");
                 return (
                   <div key={p.id ?? p.ot} className="flex border-t border-gypi-border">
                     <button type="button" onClick={() => { if (grande) cerrarGrande(); onVerDetalle?.(p); }}
@@ -195,18 +198,17 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                     <svg width={ancho} height={ALTO} aria-hidden="true" className="block">
                       {separadores}
                       <rect x={xHoy} y={0} width={2} height={ALTO} className="fill-gypi-amber" fillOpacity={0.6} />
-                      {ETAPAS_PLAN.map((e, i) => {
-                        const q = r.procesos.find((z) => z.etapa === e.id);
-                        if (!q) return null;
-                        const desde = x(q.desde);
+                      {r.procesos.map((q) => {
+                        const desde = x(q.desde) + q.ini * px;
                         return (
-                          <rect key={e.id} data-proceso={e.id} data-estado={q.atrasado ? "atrasado" : q.margen ? "margen" : q.completo ? "completo" : "pendiente"}
-                            x={desde} y={4 + i * CARRIL} width={Math.max(4, x(q.hasta) + px - desde)} height={CARRIL - 2} rx={2}
-                            className={q.atrasado ? "fill-gypi-red" : q.margen ? "fill-proc-margen" : COLOR[e.id]} fillOpacity={q.completo ? 0.35 : 1} />
+                          <rect key={q.etapa} data-proceso={q.etapa} data-estado={q.atrasado ? "atrasado" : q.margen ? "margen" : q.completo ? "completo" : "pendiente"}
+                            x={desde} y={BARRA.y} width={Math.max(3, x(q.hasta) + q.fin * px - desde)} height={BARRA.alto}
+                            className={`${q.atrasado ? "fill-gypi-red" : q.margen ? "fill-proc-margen" : COLOR[q.etapa]} stroke-gypi-bg`} strokeWidth={1} fillOpacity={q.completo ? 0.35 : 1} />
                         );
                       })}
-                      {r.atrasados.length > 0 ? <text x={finX + 4} y={27} className="text-[12px] font-bold fill-gypi-red">⚠</text>
-                        : r.pocoMargen.length > 0 && <text x={finX + 4} y={27} className="text-[12px]">🟡</text>}
+                      <text x={finX + 4} y={27} className="text-[12px] font-bold fill-gypi-dim">{fmtH(r.horas)}</text>
+                      {r.atrasados.length > 0 ? <text x={finX + 56} y={27} className="text-[12px] font-bold fill-gypi-red">⚠</text>
+                        : r.pocoMargen.length > 0 && <text x={finX + 56} y={27} className="text-[12px]">🟡</text>}
                     </svg>
                   </div>
                 );
@@ -245,7 +247,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           </ul>
         </section>
       )}
-      <p className="text-[12px] text-gypi-mute mt-2 mb-0">Cada línea es un proceso del plan confirmado, del primer al último día que le toca: Corte azul, Canteado naranja, Mecanizado violeta y Armado marrón claro. Más clara = completa (todas las piezas escaneadas o la etapa terminada); amarilla = en fecha pero con poco margen (va justo o el proceso anterior viene atrasado); roja = pasó su último día y no está completa. Tocá una OT para ver su detalle.</p>
+      <p className="text-[12px] text-gypi-mute mt-2 mb-0">Cada OT es una sola línea con sus procesos en secuencia, según el plan confirmado: cada uno arranca cuando termina el anterior y al final van las horas totales de la OT (la suma de sus procesos). Corte azul, Canteado naranja, Mecanizado violeta y Armado marrón claro. Más clara = completa (todas las piezas escaneadas o la etapa terminada); amarilla = en fecha pero con poco margen (va justo o el proceso anterior viene atrasado); roja = pasó su último día y no está completa. Tocá una OT para ver su detalle.</p>
     </div>
   );
 }

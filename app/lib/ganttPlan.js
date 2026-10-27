@@ -44,8 +44,8 @@ export function itemsVigentes(planes = []) {
 }
 
 /**
- * Procesos de cada OT planificada: Map<ot, { ot, inicio, fin, procesos, atrasados, pocoMargen }>.
- * proceso = { etapa, nombre, desde, hasta, horas, hecho (0-100), completo, atrasado, diasAtraso, margen, motivoMargen }.
+ * Procesos de cada OT planificada: Map<ot, { ot, inicio, fin, horas, procesos, atrasados, pocoMargen }>.
+ * proceso = { etapa, nombre, desde, hasta, ini, fin (qué parte del primer y del último día ocupa, 0-1), horas, hecho (0-100), completo, atrasado, diasAtraso, margen, motivoMargen }.
  * margen = true si está en fecha pero con poco margen (ver arriba).
  * @param {{ etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], terminadas?: Set<string>, hoy: string }} opciones
  */
@@ -65,8 +65,16 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
   }
   const out = new Map();
   for (const [ot, etapas] of porOt) {
-    const procesos = ETAPAS_PLAN.filter((ep) => etapas.has(ep.id)).map((ep) => {
+    const orden = ETAPAS_PLAN.filter((ep) => etapas.has(ep.id));
+    // Parte del día que ocupa cada proceso: el día en que uno termina y el
+    // siguiente arranca se reparte según las horas, en el orden de los procesos
+    const totalDia = (f) => orden.reduce((s, ep) => s + (etapas.get(ep.id).porDia.get(f) || 0), 0);
+    const antesEnDia = (f, k) => orden.slice(0, k).reduce((s, ep) => s + (etapas.get(ep.id).porDia.get(f) || 0), 0);
+    const fraccion = (f, h) => { const t = totalDia(f); return t > 0 ? Math.min(1, h / t) : 0; };
+    const procesos = orden.map((ep, k) => {
       const { porDia, ...e } = etapas.get(ep.id);
+      const ini = fraccion(e.desde, antesEnDia(e.desde, k));
+      const fin = totalDia(e.hasta) > 0 ? fraccion(e.hasta, antesEnDia(e.hasta, k) + (porDia.get(e.hasta) || 0)) : 1;
       const falta = terminadas.has(ot) ? 0 : pendienteEtapa({ ot, codigo: etapasCodigo?.[ep.id], avance, piezas });
       const completo = falta <= 0;
       const diasAtraso = completo ? 0 : Math.max(0, diasEntre(e.hasta, hoy));
@@ -74,7 +82,7 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
       // Lo que el plan tenía hecho antes de hoy, en % de las horas del proceso
       const antes = [...porDia].reduce((s, [f, h]) => (f < hoy ? s + h : s), 0);
       const esperado = e.horas > 0 ? Math.round((antes / e.horas) * 100) : 0;
-      return { etapa: ep.id, nombre: nombreEtapa[ep.id], ...e, hecho, esperado, completo, atrasado: diasAtraso > 0, diasAtraso, margen: false, motivoMargen: null };
+      return { etapa: ep.id, nombre: nombreEtapa[ep.id], ...e, ini, fin, hecho, esperado, completo, atrasado: diasAtraso > 0, diasAtraso, margen: false, motivoMargen: null };
     });
     procesos.forEach((q, i) => {
       if (q.completo || q.atrasado) return;
@@ -95,6 +103,7 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
       ot,
       inicio: procesos.reduce((m, p) => (p.desde < m ? p.desde : m), procesos[0].desde),
       fin: procesos.reduce((m, p) => (p.hasta > m ? p.hasta : m), procesos[0].hasta),
+      horas: procesos.reduce((s, p) => s + p.horas, 0), // la OT dura la suma de sus procesos
       procesos,
       atrasados: procesos.filter((p) => p.atrasado),
       pocoMargen: procesos.filter((p) => p.margen),

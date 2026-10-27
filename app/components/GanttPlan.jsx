@@ -1,19 +1,37 @@
 'use client';
 // app/components/GanttPlan.jsx — Gantt de planificación (Proyectos →
 // Planificación → 📊 Carga → Ordenar automáticamente; parte 40). Una fila por
-// OT y una columna por día: en cada día, un bloque de color por etapa que se
-// trabaja. Arriba, las horas que se usan cada día; los días de horas extra
+// OT y una columna por día: en cada día, las etapas que se trabajan una
+// después de la otra (de izquierda a derecha), cada una del ancho de sus horas. Arriba, las horas que se usan cada día; los días de horas extra
 // van marcados con ⏱. Sin estilos sueltos: anchos fijos con clases.
 import { ETAPAS_PLAN } from "../lib/planificacion";
 import { celdasGantt } from "../lib/planAutomatico";
 import { fmtH } from "../lib/cargaPlanta";
 
 export const COLOR_ETAPA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
+const FILL_ETAPA = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecanizado: "fill-proc-mecanizado", armado: "fill-proc-armado" };
 const INICIAL = ["D", "L", "M", "M", "J", "V", "S"];
 const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 const diaMes = (iso) => Number(String(iso).slice(8, 10));
 const corto = (iso) => { const [, m, d] = String(iso).split("-"); return `${Number(d)}/${Number(m)}`; };
 const nombreEtapa = Object.fromEntries(ETAPAS_PLAN.map((e) => [e.id, e.nombre]));
+
+/** Un día de una OT: las etapas una después de la otra, cada una del ancho de sus horas. */
+function DiaEtapas({ c }) {
+  const etapas = ETAPAS_PLAN.filter((e) => c[e.id] > 0);
+  const total = etapas.reduce((s, e) => s + c[e.id], 0) || 1;
+  let x = 0;
+  return (
+    <svg width={28} height={30} aria-hidden="true" className="block">
+      {etapas.map((e) => {
+        const w = (c[e.id] / total) * 28;
+        const r = <rect key={e.id} data-etapa={e.id} x={x} y={0} width={w} height={30} className={`${FILL_ETAPA[e.id]} stroke-gypi-surface`} strokeWidth={1} />;
+        x += w;
+        return r;
+      })}
+    </svg>
+  );
+}
 
 export default function GanttPlan({ plan, ots, hoy }) {
   const celdas = celdasGantt(plan.segmentos);
@@ -66,11 +84,7 @@ export default function GanttPlan({ plan, ots, hoy }) {
                     return (
                       <td key={d.fecha} className={`p-[2px] h-[34px] ${d.extra ? "bg-gypi-red/5" : ""}`}
                         aria-label={c ? `OT ${p.ot}, ${corto(d.fecha)}: ${texto}` : undefined} title={texto || undefined}>
-                        {c && (
-                          <div className="flex flex-col gap-[1px] h-full">
-                            {ETAPAS_PLAN.filter((e) => c[e.id]).map((e) => <div key={e.id} className={`flex-1 rounded-sm ${COLOR_ETAPA[e.id]}`} />)}
-                          </div>
-                        )}
+                        {c && <DiaEtapas c={c} />}
                       </td>
                     );
                   })}
