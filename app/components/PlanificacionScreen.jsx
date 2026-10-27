@@ -37,7 +37,7 @@ import { materialOt } from "../lib/ot";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
   leerNumero, errorParametro, normalizarParametros, divisionPlan, etapasPlanDe,
-  otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, moverOt, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
+  otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, tildadasPrimero, moverOt, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
   MODOS_MECANIZADO, RELACIONES_TIPO,
 } from "../lib/planificacion";
 import { TIPOS_PROYECTO, TIPO_GLOBAL, tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
@@ -246,7 +246,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
     }
   };
   const tildar = (id) => cambiarElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const visibles = buscarOts(ots, busca);
+  const visibles = tildadasPrimero(buscarOts(ots, busca), elegidas);
   const todasTildadas = visibles.length > 0 && visibles.every((p) => elegidas.has(p.id));
   // Avisos (Tadeo, 27/10): OT tildadas sin precio y sin placas, fondos ni canto
   const tildadas = ots.filter((p) => elegidas.has(p.id));
@@ -395,7 +395,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       {valor && <Valorizacion valor={valor} conPlan={!!plan} per={per} />}
 
       <div className="g-label mb-1.5">OT para planificar ({ots.length})</div>
-      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana (también las atrasadas). Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
+      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana (también las atrasadas) y las tildadas se ven arriba. Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
       {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
       <div className="flex gap-2 mb-2 items-center">
         <input type="search" className="g-input flex-1 min-w-0" value={busca} onChange={(e) => setBusca(e.target.value)}
