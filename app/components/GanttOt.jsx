@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
-import { escalaGantt, diasDesde } from "../lib/gantt";
+import { escalaGantt, diasDesde, nombreProyecto } from "../lib/gantt";
 import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros } from "../lib/planificacion";
 import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
@@ -238,7 +238,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                       <div className={`font-mono text-[18px] font-bold leading-tight ${r.atrasados.length ? "text-gypi-red" : "text-gypi-text"}`}>
                         {r.atrasados.length ? "⚠ " : ""}{p.ot} <span className="text-[16px]">· {fmtH(r.horas)}</span>
                       </div>
-                      <div className="text-[14px] text-gypi-dim truncate">{p.cliente || p.obra || p.proyecto || "—"}</div>
+                      <div className="text-[14px] text-gypi-dim truncate">{p.cliente || p.obra || "—"}</div>
+                      {nombreProyecto(p) && <div className="text-[14px] text-gypi-text font-bold truncate" data-proyecto>{nombreProyecto(p)}</div>}
                     </button>
                     <div className="sticky left-[150px] z-10 w-[110px] shrink-0 bg-gypi-bg border-r border-gypi-border">
                       {ETAPAS_PLAN.map((e) => (
