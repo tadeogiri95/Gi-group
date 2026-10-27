@@ -238,8 +238,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                       <div className={`font-mono text-[18px] font-bold leading-tight ${r.atrasados.length ? "text-gypi-red" : "text-gypi-text"}`}>
                         {r.atrasados.length ? "⚠ " : ""}{p.ot} <span className="text-[16px]">· {fmtH(r.horas)}</span>
                       </div>
-                      <div className="text-[14px] text-gypi-dim truncate">{p.cliente || p.obra || "—"}</div>
-                      {nombreProyecto(p) && <div className="text-[14px] text-gypi-text font-bold truncate" data-proyecto>{nombreProyecto(p)}</div>}
+                      {/* Columnas A, D, E y F del Plan de trabajo: OT, cliente, obra y descripción (Tadeo, 27/10) */}
+                      <div className="text-[14px] text-gypi-dim truncate" data-cliente>{p.cliente || "—"}</div>
+                      {p.obra && <div className="text-[14px] text-gypi-dim truncate" data-obra>{p.obra}</div>}
+                      {nombreProyecto(p) && <div className="text-[14px] text-gypi-text font-bold leading-tight line-clamp-2" data-proyecto title={nombreProyecto(p)}>{nombreProyecto(p)}</div>}
                     </button>
                     <div className="sticky left-[150px] z-10 w-[110px] shrink-0 bg-gypi-bg border-r border-gypi-border">
                       {ETAPAS_PLAN.map((e) => (

@@ -79,8 +79,9 @@ export default function GanttPlan({ plan, ots, hoy, marcarObjetivo = false }) {
                 <tr key={p.id} className="border-t border-gypi-border">
                   <th scope="row" className="sticky left-0 z-10 bg-gypi-surface text-left px-2 py-1 font-normal max-w-[110px]">
                     <div className="font-bold truncate">{p.prioridad ? `${p.prioridad}. ` : ""}{p.ot}</div>
-                    <div className="text-gypi-dim truncate">{p.cliente || ""}</div>
-                    {nombreProyecto(p) && <div className="truncate font-bold" data-proyecto>{nombreProyecto(p)}</div>}
+                    <div className="text-gypi-dim truncate" data-cliente>{p.cliente || ""}</div>
+                    {p.obra && <div className="text-gypi-dim truncate" data-obra>{p.obra}</div>}
+                    {nombreProyecto(p) && <div className="font-bold leading-tight line-clamp-2" data-proyecto title={nombreProyecto(p)}>{nombreProyecto(p)}</div>}
                   </th>
                   {dias.map((d) => {
                     const c = porDia.get(d.fecha);
