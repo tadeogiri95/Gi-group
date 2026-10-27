@@ -306,6 +306,12 @@ test("📊 Carga — tildadas las del período; dice si entra, las horas extra y
   assert.match(carga.textContent, /⏱ Horas extra: 9,9 h/);
   assert.match(carga.textContent, /Cuello de botella: Gente/);
   assert.match(carga.textContent, /Seccionadora: faltan 0,5 h de máquina/);
+  // Tablas claras: por máquina necesita / disponible / resultado, y la gente en total
+  const maquinas = within(carga).getByLabelText("Horas de máquina");
+  const fila = within(maquinas).getByText("Seccionadora").closest("tr");
+  assert.match(fila.textContent, /Faltan 0,5 h/);
+  assert.match(within(maquinas).getByText(/^CNC/).closest("tr").textContent, /Sobran/);
+  assert.match(within(carga).getByLabelText("Horas de gente").textContent, /Disponible2 hResultadoFaltan 9,9 h/);
   fireEvent.click(screen.getByLabelText("Planificar OT M-7473"));
   assert.match(carga.textContent, /Elegí las OT que querés planificar/);
   fireEvent.click(screen.getByLabelText("Período siguiente"));
