@@ -857,3 +857,33 @@ test("📊 Carga — el supervisor de división no ve precios ni los pide", asyn
   assert.doesNotMatch(screen.getByLabelText("Planificar OT M-7473").closest("li").textContent, /\$/);
   assert.ok(!pedidos.some((p) => p.startsWith("precios_ot")));
 });
+
+test("📊 Carga — avisa cuántas OT tildadas no tienen precio y cuántas no tienen placas, fondos ni canto", async () => {
+  mockConPrecios([{ ot: "M-7473", precio: 2500000 }]);
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  const avisos = await screen.findByLabelText("Avisos de la planificación");
+  await waitFor(() => assert.ok(avisos.querySelector('[data-aviso="precio"]')));
+  const tiempos = avisos.querySelector('[data-aviso="tiempos"]');
+  assert.match(tiempos.textContent, /1 OT tildada no tiene placas, fondos ni canto/);
+  fireEvent.click(within(tiempos).getByText("Ver cuáles ▼"));
+  assert.match(tiempos.textContent, /M-9000 · Cliente 2/);
+  assert.match(avisos.querySelector('[data-aviso="precio"]').textContent, /1 OT tildada no tiene PRECIO/);
+  assert.match(screen.getByLabelText("Planificar OT M-9000").closest("li").textContent, /sin precio/);
+  // Destildada, ya no avisa
+  fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
+  assert.equal(screen.queryByLabelText("Avisos de la planificación"), null);
+});
+
+test("📊 Carga — el supervisor de división ve el aviso de datos pero no el de precio", async () => {
+  mockConPrecios([]);
+  render(
+    <AuthContext.Provider value={{ divisiones: DIVISIONES, etapas: ETAPAS, usuario: { rol: "administrativo", solo_su_division: true } }}>
+      <PlanificacionScreen empresaId="emp-1" />
+    </AuthContext.Provider>
+  );
+  const avisos = await screen.findByLabelText("Avisos de la planificación");
+  assert.ok(avisos.querySelector('[data-aviso="tiempos"]'));
+  assert.equal(avisos.querySelector('[data-aviso="precio"]'), null);
+  assert.doesNotMatch(screen.getByLabelText("Planificar OT M-7473").closest("li").textContent, /sin precio/);
+});
