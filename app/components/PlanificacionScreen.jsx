@@ -215,7 +215,10 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const tildar = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const visibles = buscarOts(ots, busca);
   const todasTildadas = visibles.length > 0 && visibles.every((p) => elegidas.has(p.id));
-  const sinDatos = carga.ots.filter((o) => o.sinDatos).length;
+  // Avisos (Tadeo, 27/10): OT tildadas sin precio y sin placas, fondos ni canto
+  const tildadas = ots.filter((p) => elegidas.has(p.id));
+  const sinPrecio = verPrecios ? tildadas.filter((p) => !precios.has(String(p.ot))) : [];
+  const sinTiempos = tildadas.filter((p) => !(horas.get(p.id).completo > 0));
 
   return (
     <section aria-label="Carga de la planta">
@@ -227,6 +230,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         <div className="flex-1 text-center font-heading font-bold">{textoPeriodo(per)}</div>
         <button type="button" aria-label="Período siguiente" onClick={() => setPaso(paso + 1)} className="min-w-[44px] min-h-[44px] bg-gypi-surface border border-gypi-border rounded-xl cursor-pointer text-gypi-text">▶</button>
       </div>
+
+      <AvisosOt sinTiempos={sinTiempos} sinPrecio={sinPrecio} />
 
       {faltan.length > 0 && (
         <div role="alert" className="g-card mb-3 text-[13px]">
@@ -259,7 +264,6 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         {carga.maquinas.filter((m) => m.extra > 0).map((m) => (
           <div key={m.id} className="text-[13px] text-gypi-red">🏭 {m.nombre}: faltan {fmtH(m.extra)} de máquina. Desfasá turnos o hacé horas extra.</div>
         ))}
-        {sinDatos > 0 && <div className="text-xs text-gypi-dim mt-1">{sinDatos === 1 ? "1 OT elegida no tiene" : `${sinDatos} OT elegidas no tienen`} placas ni cantos en la planilla: no suman horas.</div>}
       </div>
 
       <div className="g-card mb-3" aria-label="Horas de máquina">
@@ -379,7 +383,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
                 </div>
                 <div className="text-right">
                   <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
-                  {verPrecios && precios.has(String(p.ot)) && <div className="text-xs text-gypi-dim whitespace-nowrap">{fmtPesos(precios.get(String(p.ot)))}</div>}
+                  {verPrecios && (precios.has(String(p.ot))
+                    ? <div className="text-xs text-gypi-dim whitespace-nowrap">{fmtPesos(precios.get(String(p.ot)))}</div>
+                    : <div className="text-xs text-gypi-amber-ink font-bold whitespace-nowrap">sin precio</div>)}
                 </div>
               </label>
               <TipoOt proyecto={p} onCambiar={(v) => cambiarTipo(p, v)} />
@@ -459,6 +465,39 @@ function Valorizacion({ valor, conPlan, per }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// ⚠ Avisos de la planificación: cuántas OT tildadas no tienen PRECIO (solo
+// para quien ve precios) y cuántas no tienen placas, fondos ni canto en la
+// planilla (sin eso no se calculan sus tiempos). Cada aviso abre la lista.
+function AvisosOt({ sinTiempos, sinPrecio }) {
+  const [abierto, setAbierto] = useState(null);
+  const avisos = [
+    { id: "tiempos", lista: sinTiempos, texto: (n) => `${n === 1 ? "1 OT tildada no tiene" : `${n} OT tildadas no tienen`} placas, fondos ni canto: sin eso no se calculan sus tiempos y no entran en el plan.` },
+    { id: "precio", lista: sinPrecio, texto: (n) => `${n === 1 ? "1 OT tildada no tiene" : `${n} OT tildadas no tienen`} PRECIO en el Plan de trabajo: no suman a la valorización.` },
+  ].filter((a) => a.lista.length);
+  if (!avisos.length) return null;
+  return (
+    <div role="alert" aria-label="Avisos de la planificación" className="g-card mb-3 border-gypi-amber/60 bg-gypi-amber/10">
+      {avisos.map((a) => (
+        <div key={a.id} className="text-[13px] mb-1.5 last:mb-0" data-aviso={a.id}>
+          <div className="flex items-start gap-2">
+            <span aria-hidden="true">⚠️</span>
+            <div className="flex-1"><b>{a.texto(a.lista.length)}</b></div>
+            <button type="button" className="bg-transparent border-none p-0 text-xs font-bold text-gypi-amber-ink cursor-pointer min-h-[32px] whitespace-nowrap"
+              aria-expanded={abierto === a.id} onClick={() => setAbierto(abierto === a.id ? null : a.id)}>
+              {abierto === a.id ? "Ocultar ▲" : "Ver cuáles ▼"}
+            </button>
+          </div>
+          {abierto === a.id && (
+            <ul className="list-none m-0 mt-1 pl-6 p-0 text-xs">
+              {a.lista.map((p) => <li key={p.id}>{p.ot} · {p.cliente || p.proyecto || "—"}</li>)}
+            </ul>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
