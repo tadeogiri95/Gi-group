@@ -17,11 +17,13 @@
 // u "OT por proceso": un bloque por proceso con un renglón por OT, en el
 // orden en que pasan por esa máquina (una barra termina y abajo empieza la
 // siguiente). La elección queda guardada en el navegador.
+// Se puede elegir ver 1, 2, 3 o 4 semanas desde la actual, o todo el plan:
+// solo se muestran las OT y los procesos que caen en esas semanas.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
-import { escalaGantt, diasDesde, nombreProyecto } from "../lib/gantt";
+import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana } from "../lib/gantt";
 import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros } from "../lib/planificacion";
 import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
@@ -33,6 +35,8 @@ const PX_DIA = { dias: 44, semanas: 14, mes: 5 }; // ancho de un día según có
 const FILA = 34; // alto del renglón de cada proceso
 const FILA_OT = 44; // alto del renglón de cada OT en "OT por proceso"
 const CLAVE_FORMA = "gypi_gantt_forma";
+const CLAVE_SEMANAS = "gypi_gantt_semanas";
+const HORIZONTES = [1, 2, 3, 4, 0]; // 0 = todo el plan
 const BARRA = { y: 6, alto: 22 };
 const CAB = 44; // alto de la fila de las fechas
 const COLOR = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecanizado: "fill-proc-mecanizado", armado: "fill-proc-armado" };
@@ -109,6 +113,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   // "procesos" = procesos por OT; "ots" = OT por proceso
   const [forma, setForma] = useState(() => { try { return localStorage.getItem(CLAVE_FORMA) === "ots" ? "ots" : "procesos"; } catch { return "procesos"; } });
   const cambiarForma = (f) => { setForma(f); try { localStorage.setItem(CLAVE_FORMA, f); } catch { /* sin almacenamiento */ } };
+  const [horizonte, setHorizonte] = useState(() => { try { const n = Number(localStorage.getItem(CLAVE_SEMANAS)); return HORIZONTES.includes(n) ? n : 0; } catch { return 0; } });
+  const cambiarHorizonte = (n) => { setHorizonte(n); try { localStorage.setItem(CLAVE_SEMANAS, String(n)); } catch { /* sin almacenamiento */ } };
   const [grande, setGrande] = useState(false);
   const [verAtrasados, setVerAtrasados] = useState(true);
   const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
@@ -117,10 +123,12 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
 
   const px = PX_DIA[vista];
   const COL = 7 * px; // ancho de una semana
-  const semanas = escala?.semanas || [];
+  const ventana = ventanaGantt(escala, horizonte);
+  const semanas = ventana.semanas;
   const ancho = semanas.length * COL + 120; // lugar para las horas de la última barra
-  const desde = escala?.desde || hoy;
-  const x = (fecha) => Math.max(0, diasDesde(desde, fecha) * px);
+  const desde = ventana.desde || hoy;
+  const finVentana = horizonte ? semanas.length * COL : Infinity; // con horizonte, las barras se cortan al final
+  const x = (fecha) => Math.min(finVentana, Math.max(0, diasDesde(desde, fecha) * px));
   const xHoy = x(hoy);
   // Se abre mostrando la semana actual (con una semana antes), no la más vieja
   const scrollRef = useRef(null);
@@ -155,8 +163,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   const fondoOt = fondoDe(FILA_OT);
   // Barra de un proceso con sus horas al lado (la misma en las dos formas)
   const barra = (q, etapa, dy = 0) => {
-    const x0 = x(q.desde) + q.ini * px;
-    const x1 = x(q.hasta) + q.fin * px;
+    const x0 = q.desde < desde ? 0 : Math.min(finVentana, x(q.desde) + q.ini * px);
+    const x1 = Math.min(finVentana, x(q.hasta) + q.fin * px);
     const estado = estadoDe(q);
     return (
       <>
@@ -171,7 +179,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   // OT por proceso: en cada proceso, las OT en el orden en que pasan por la máquina
   const porProceso = (filas) => ETAPAS_PLAN.map((e) => ({
     etapa: e,
-    filas: filas.map((r) => ({ r, q: r.procesos.find((z) => z.etapa === e.id) })).filter((f) => f.q)
+    filas: filas.map((r) => ({ r, q: r.procesos.find((z) => z.etapa === e.id) })).filter((f) => f.q && (!horizonte || enVentana(f.q, ventana)))
       .sort((a, b) => a.q.desde.localeCompare(b.q.desde) || a.q.ini - b.q.ini),
   })).filter((g) => g.filas.length);
 
@@ -227,6 +235,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   );
 
   const verDetalle = (p) => { if (grande) cerrarGrande(); onVerDetalle?.(p); };
+  // Con un horizonte elegido, solo las OT con algún proceso en esas semanas
+  const gruposVistos = grupos
+    .map(([division, filas]) => [division, horizonte ? filas.filter((r) => r.procesos.some((q) => enVentana(q, ventana))) : filas])
+    .filter(([, filas]) => filas.length);
 
   return (
     <div className={grande ? "fixed inset-0 z-[300] bg-gypi-bg p-3 flex flex-col" : ""} role={grande ? "dialog" : undefined} aria-label={grande ? "Gantt de OT en pantalla completa" : undefined}>
@@ -234,6 +246,12 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         <div className="flex gap-1.5" role="group" aria-label="Forma del Gantt">
           <Chip active={forma === "procesos"} onClick={() => cambiarForma("procesos")}>Procesos por OT</Chip>
           <Chip active={forma === "ots"} onClick={() => cambiarForma("ots")}>OT por proceso</Chip>
+        </div>
+        <div className="flex gap-1.5 items-center" role="group" aria-label="Semanas que se ven">
+          <span className="text-[14px] text-gypi-dim">Ver:</span>
+          {HORIZONTES.map((n) => (
+            <Chip key={n} active={horizonte === n} onClick={() => cambiarHorizonte(n)}>{n ? `${n} sem.` : "Todo"}</Chip>
+          ))}
         </div>
         <div className="flex gap-1.5" role="group" aria-label="Escala del Gantt">
           <Chip active={vista === "dias"} onClick={() => setVista("dias")}>Días</Chip>
@@ -261,7 +279,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
               {vista === "dias" ? cabeceraDias : vista === "semanas" ? cabeceraSemanas : cabeceraMes}
             </svg>
           </div>
-          {grupos.map(([division, filas]) => (
+          {!gruposVistos.length && <div className="px-3 py-6 text-[15px] text-gypi-dim">No hay procesos planificados en {horizonte === 1 ? "esta semana" : `las próximas ${horizonte} semanas`}.</div>}
+          {gruposVistos.map(([division, filas]) => (
             <div key={division}>
               <div className="sticky left-0 w-[260px] px-2 pt-2 pb-1 text-[15px] font-bold text-gypi-text bg-gypi-bg">{division} · {filas.length}</div>
               {forma === "ots" && porProceso(filas).map(({ etapa: e, filas: enProceso }) => (

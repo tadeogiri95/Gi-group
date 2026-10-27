@@ -84,6 +84,22 @@ export function escalaGantt(renglones = [], { hoy, modo = MODO_POR_DEFECTO }) {
   return { desde, semanas };
 }
 
+/**
+ * Semanas que se ven en el Gantt (Tadeo, 27/10): 1 a 4 desde la semana actual,
+ * o todas (0). El plan sigue entero; solo cambia lo que se muestra.
+ * Devuelve las semanas, el primer día y el día siguiente al último.
+ */
+export function ventanaGantt(escala, cuantas = 0) {
+  const todas = escala?.semanas || [];
+  if (!todas.length) return { semanas: [], desde: escala?.desde, hasta: escala?.desde };
+  const i = Math.max(0, todas.findIndex((s) => s.actual));
+  const semanas = cuantas > 0 ? todas.slice(i, i + cuantas) : todas;
+  return { semanas, desde: semanas[0].inicio, hasta: sumarDias(semanas[semanas.length - 1].inicio, 7) };
+}
+
+/** Un proceso (desde/hasta, días inclusive) cae dentro de la ventana. */
+export const enVentana = (q, v) => !!q && q.desde < v.hasta && q.hasta >= v.desde;
+
 /** Días desde el comienzo del Gantt (para ubicar una fecha en el dibujo). */
 export const diasDesde = (desde, fecha) => diasEntre(desde, fecha);
 
