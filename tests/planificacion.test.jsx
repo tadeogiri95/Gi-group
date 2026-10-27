@@ -816,6 +816,7 @@ function mockConPrecios(precios) {
 }
 
 test("📊 Carga — 💲 precio de cada OT y valorización por semana y mes", async () => {
+  lunes26();
   mockConPrecios([{ ot: "M-7473", precio: 2500000 }, { ot: "M-9000", precio: 1000000 }]);
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
@@ -825,10 +826,23 @@ test("📊 Carga — 💲 precio de cada OT y valorización por semana y mes", a
   assert.match(valor.textContent, /OT tildadas con precio: 2\$ 3\.500\.000/);
   fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
   assert.match(valor.textContent, /\$ 2\.500\.000/);
+  // Con Semana: la semana que se ve, cada semana del plan y el total
   const semanas = within(valor).getByLabelText("Valorización por semana");
-  assert.match(semanas.textContent, /Semana del/);
-  assert.ok(within(valor).getByLabelText("Valorización por mes").textContent.length > 0);
-  assert.match(valor.textContent, /Se fabrica en el plan\$ 2\.500\.000/);
+  assert.match(semanas.textContent, /Semana del 25\/10\/2026/);
+  assert.match(semanas.textContent, /Total del plan\$ 2\.500\.000$/);
+  assert.equal(semanas.querySelector('tr[aria-current="true"]').textContent.startsWith("Semana del 25/10/2026"), true);
+  assert.match(within(valor).getByLabelText("Valor del período").textContent, /^Semana del 25\/10\/2026 al 31\/10\/2026\$/);
+  assert.match(within(valor).getByLabelText("Total del plan").textContent, /\$ 2\.500\.000/);
+  assert.equal(within(valor).queryByLabelText("Valorización por mes"), null);
+  // ▶ cambia la semana que se ve; una semana sin trabajo vale 0
+  fireEvent.click(screen.getByLabelText("Período siguiente"));
+  assert.match(within(valor).getByLabelText("Valor del período").textContent, /^Semana del 1\/11\/2026/);
+  // Con Mes: por mes
+  fireEvent.click(screen.getByText("Mes"));
+  const meses = within(valor).getByLabelText("Valorización por mes");
+  assert.match(meses.querySelector('tr[aria-current="true"]').textContent, /^Octubre 2026/);
+  assert.match(within(valor).getByLabelText("Valor del período").textContent, /^Octubre 2026/);
+  assert.equal(within(valor).queryByLabelText("Valorización por semana"), null);
 });
 
 test("📊 Carga — el supervisor de división no ve precios ni los pide", async () => {
