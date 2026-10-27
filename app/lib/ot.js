@@ -62,7 +62,7 @@ const MATERIAL_OT = [
   { campo: "placas", label: "Placas 18", unidad: "" },
   { campo: "fondos", label: "Fondos", unidad: "" },
   { campo: "metros_canto", label: "Cantos", unidad: " m" },
-  { campo: "placas_mecanizadas", label: "Mecanizadas", unidad: "" },
+  { campo: "placas_mecanizadas", label: "Mecanizados", unidad: "" },
 ];
 export function materialOt(proyecto) {
   return MATERIAL_OT

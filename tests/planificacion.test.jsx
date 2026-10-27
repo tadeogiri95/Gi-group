@@ -189,8 +189,8 @@ test("⚙ Parámetros — si ya estaban guardados los actualiza", async () => {
 const { periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo, pendienteEtapa, preseleccion, modulosPorOt, fmtH } = await import("../app/lib/cargaPlanta.js");
 
 const PARAMS = normalizarParametros({
-  min_placa: 10, min_metro_canto: 1, min_mecanizado_placa: 15, min_armado_gabinete: 60, eficiencia: 80,
-  pct_mecanizado: 50, gabinetes_por_placa: 0.5, etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 },
+  min_placa: 10, min_metro_canto: 1, min_mecanizado: 15, min_armado_gabinete: 60, eficiencia: 80,
+  modo_mecanizado: "porcentaje", pct_mecanizado: 50, por_tipo: { global: { mec: 1, gab: 0.5 } }, etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 },
 });
 const LV = { in: "08:00", out: "17:00" };
 const HORARIO = { lun: LV, mar: LV, mie: LV, jue: LV, vie: LV, sab: null, dom: null };

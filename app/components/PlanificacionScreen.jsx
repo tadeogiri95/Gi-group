@@ -28,7 +28,9 @@ import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
   leerNumero, errorParametro, normalizarParametros, divisionPlan, etapasPlanDe,
   otsPlanificables, ordenarPorPrioridad, moverOt, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
+  MODOS_MECANIZADO, RELACIONES_TIPO,
 } from "../lib/planificacion";
+import { TIPOS_PROYECTO, TIPO_GLOBAL, tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { Chip } from "./ui";
 
 const VISTAS = [
@@ -100,6 +102,7 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   // Plan guardado del período: undefined = leyendo, null = no hay
   const [guardado, setGuardado] = useState(undefined);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
+  const [avisoTipo, setAvisoTipo] = useState(null);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -157,6 +160,16 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
   if (!datos || !elegidas) return <Cargando />;
 
   const faltan = parametrosFaltantes(params);
+  // Tipo de proyecto a mano (139); vacío = vuelve al que sale de la descripción
+  const cambiarTipo = async (p, valor) => {
+    setAvisoTipo(null);
+    try {
+      await sb.patch(`proyectos?id=eq.${p.id}`, { tipo_proyecto: valor || null });
+      setDatos((d) => ({ ...d, proyectos: d.proyectos.map((x) => (x.id === p.id ? { ...x, tipo_proyecto: valor || null } : x)) }));
+    } catch (e) {
+      setAvisoTipo(/tipo_proyecto/.test(String(e.message)) ? "Para cambiar el tipo a mano falta correr la migración 139 en Supabase." : `No se pudo cambiar el tipo: ${e.message}`);
+    }
+  };
   const tildar = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const sinDatos = carga.ots.filter((o) => o.sinDatos).length;
 
@@ -246,7 +259,8 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
       </div>
 
       <div className="g-label mb-1.5">OT del período ({ots.length})</div>
-      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana hasta el fin del período (también las atrasadas). Destildá o sumá las que quieras.</div>
+      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana hasta el fin del período (también las atrasadas). Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
+      {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
       <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="OT para planificar">
         {ots.map((p) => {
           const h = horas.get(p.id);
@@ -257,16 +271,32 @@ function CargaPlan({ empresaId, divisiones, division, params, onParametros }) {
                 <div className="flex-1 min-w-0">
                   <div className="text-[14px] font-bold truncate">{p.prioridad ? `${p.prioridad}. ` : ""}{p.ot} · {p.cliente || p.proyecto || "—"}</div>
                   <div className="text-xs text-gypi-dim truncate">
-                    {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${Math.round(h.gabinetes * 10) / 10} gab.`].join(" · ")}
+                    {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`].join(" · ")}
                   </div>
                 </div>
                 <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
               </label>
+              <TipoOt proyecto={p} onCambiar={(v) => cambiarTipo(p, v)} />
             </li>
           );
         })}
       </ul>
     </section>
+  );
+}
+
+function TipoOt({ proyecto, onCambiar }) {
+  const { id, manual } = tipoDeOt(proyecto);
+  const automatico = manual ? tipoDeOt({ descripcion: proyecto.descripcion }).id : id;
+  return (
+    <div className="flex items-center gap-2 mt-1.5 pl-[30px]">
+      <label htmlFor={`tipo-${proyecto.id}`} className="text-xs text-gypi-dim whitespace-nowrap">Tipo</label>
+      <select id={`tipo-${proyecto.id}`} aria-label={`Tipo de proyecto de la OT ${proyecto.ot}`} className="g-input flex-1 min-w-0"
+        value={manual ? id : ""} onChange={(e) => onCambiar(e.target.value)}>
+        <option value="">{automatico ? `${nombreTipo(automatico)} (automático)` : "Sin tipo (sin descripción)"}</option>
+        {TIPOS_PROYECTO.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+      </select>
+    </div>
   );
 }
 
@@ -478,25 +508,66 @@ function PrioridadOt({ empresaId, divisiones, division }) {
 
 // ─── Parámetros ─────────────────────────────────────────────────────────────
 
+const TIPOS_TABLA = [...TIPOS_PROYECTO, TIPO_GLOBAL];
+
+function RelacionesPorTipo({ textos, errores, onChange }) {
+  const cambiar = (tipo, rel, valor) => onChange((t) => ({ ...t, [tipo]: { ...t[tipo], [rel]: valor } }));
+  return (
+    <div aria-label="Relaciones por tipo de proyecto">
+      <div className="text-[13px] font-bold mb-1">Por tipo de proyecto</div>
+      <div className="text-xs text-gypi-dim mb-2">Vienen cargados con el estudio de la planta (mecanizados de las OT con mecanizado). Gabinetes por placa se usa cuando la OT no tiene módulos ni etiquetas de módulo. &quot;Sin tipo&quot; es para las OT sin descripción.</div>
+      <table className="w-full text-[13px]">
+        <thead><tr className="text-gypi-dim text-left"><th className="font-normal">Tipo</th>{RELACIONES_TIPO.map((r) => <th key={r.id} className="font-normal">{r.label}</th>)}</tr></thead>
+        <tbody>
+          {TIPOS_TABLA.map((t) => (
+            <tr key={t.id} className="border-t border-gypi-border align-top">
+              <td className="py-1.5 pr-2">
+                {t.nombre}
+                {errores[t.id] && <div className="text-xs text-gypi-red">{errores[t.id]}</div>}
+              </td>
+              {RELACIONES_TIPO.map((r) => (
+                <td key={r.id} className="py-1 pr-1">
+                  <input className="g-input w-full" inputMode="decimal" aria-label={`${r.label} de ${t.nombre}`}
+                    value={textos[t.id][r.id]} onChange={(e) => cambiar(t.id, r.id, e.target.value)} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ParametrosPlan({ cfg, divisiones, etapas, onGuardado }) {
   const [textos, setTextos] = useState(() => Object.fromEntries(PARAMETROS.map((p) => [p.id, conComa(cfg[p.id])])));
   const [divisionId, setDivisionId] = useState(cfg.division_id || divisionPlan(divisiones, null)?.id || "");
   const division = divisionPlan(divisiones, divisionId);
   const [elegidas, setElegidas] = useState(() => etapasPlanDe(etapas, division, cfg.etapas));
+  const [modoMec, setModoMec] = useState(cfg.modo_mecanizado || "tipo");
+  const [textosTipo, setTextosTipo] = useState(() => Object.fromEntries(TIPOS_TABLA.map((t) => [t.id,
+    Object.fromEntries(RELACIONES_TIPO.map((r) => [r.id, conComa(cfg.por_tipo?.[t.id]?.[r.id])]))])));
   const [estado, setEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
   const valores = Object.fromEntries(PARAMETROS.map((p) => [p.id, leerNumero(textos[p.id])]));
   const errores = Object.fromEntries(PARAMETROS.map((p) => [p.id,
     textos[p.id].trim() && valores[p.id] == null ? "Escribí solo el número" : errorParametro(p, valores[p.id])]));
-  const hayError = Object.values(errores).some(Boolean);
+  const valoresTipo = Object.fromEntries(TIPOS_TABLA.map((t) => [t.id,
+    Object.fromEntries(RELACIONES_TIPO.map((r) => [r.id, leerNumero(textosTipo[t.id][r.id])]))]));
+  const erroresTipo = Object.fromEntries(TIPOS_TABLA.map((t) => [t.id, RELACIONES_TIPO.map((r) => {
+    const txt = textosTipo[t.id][r.id].trim(), v = valoresTipo[t.id][r.id];
+    if (!txt) return `${r.label}: falta el número`;
+    return v == null ? `${r.label}: escribí solo el número` : (errorParametro(r, v) ? `${r.label}: ${errorParametro(r, v)}` : null);
+  }).filter(Boolean).join(" · ")]));
+  const hayError = Object.values(errores).some(Boolean) || Object.values(erroresTipo).some(Boolean);
   const productivas = (etapas || []).filter((e) => e.codigo > 0);
 
   const guardar = async () => {
     if (hayError) return;
     setGuardando(true);
     setEstado(null);
-    const valor = { ...valores, division_id: division?.id || null, etapas: elegidas };
+    const valor = { ...valores, modo_mecanizado: modoMec, por_tipo: valoresTipo, division_id: division?.id || null, etapas: elegidas };
     try {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=clave&limit=1`);
       if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}`, { valor });
@@ -538,7 +609,16 @@ function ParametrosPlan({ cfg, divisiones, etapas, onGuardado }) {
       {GRUPOS_PARAMETROS.map((g) => (
         <div key={g.id} className="g-card mb-3.5">
           <div className="g-label mb-2">{g.titulo}</div>
-          {PARAMETROS.filter((p) => p.grupo === g.id).map((p) => (
+          {g.id === "relaciones" && (
+            <div className="mb-3">
+              <div className="text-[13px] font-bold mb-1">Cómo se calculan los mecanizados</div>
+              <div className="flex gap-2 flex-wrap" role="group" aria-label="Cálculo de los mecanizados">
+                {MODOS_MECANIZADO.map((m) => <Chip key={m.id} active={modoMec === m.id} onClick={() => setModoMec(m.id)}>{m.label}</Chip>)}
+              </div>
+              <div className="text-xs text-gypi-dim mt-1">{MODOS_MECANIZADO.find((m) => m.id === modoMec)?.ayuda} Si la planilla trae MECANIZADOS, se usa ese número.</div>
+            </div>
+          )}
+          {PARAMETROS.filter((p) => p.grupo === g.id && (p.id !== "pct_mecanizado" || modoMec === "porcentaje")).map((p) => (
             <div key={p.id} className="mb-3">
               <label htmlFor={`plan-${p.id}`} className="text-[13px] font-bold block mb-1">{p.label} <span className="font-normal text-gypi-dim">({p.unidad})</span></label>
               <input id={`plan-${p.id}`} className="g-input w-full" inputMode="decimal" value={textos[p.id]}
@@ -547,6 +627,7 @@ function ParametrosPlan({ cfg, divisiones, etapas, onGuardado }) {
                 : p.ayuda && <div className="text-xs text-gypi-dim mt-1">{p.ayuda}</div>}
             </div>
           ))}
+          {g.id === "relaciones" && <RelacionesPorTipo textos={textosTipo} errores={erroresTipo} onChange={setTextosTipo} />}
         </div>
       ))}
 
