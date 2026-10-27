@@ -5,6 +5,7 @@
 import "./helpers/domSetup.js";
 import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { parseCsvProyectos, numeroPlanilla } from "../app/lib/csvProyectos.js";
@@ -136,4 +137,70 @@ test("DetalleOp — OT sin esos datos no muestra la sección", async () => {
   render(<DetalleOp proyecto={{ ot: "7474" }} empresaId="emp-1" etapas={[]} divisiones={[]} onClose={() => {}} />);
   await screen.findByText(/Orden 7474/);
   assert.equal(screen.queryByRole("region", { name: "Material de producción" }), null);
+});
+
+// ─── PRECIO de cada OT (Tadeo, 27/10; migración 142) ────────────────────────
+const { precioPlanilla } = await import("../app/lib/csvProyectos.js");
+const TITULOS_PRECIO = `${TITULOS},COSTO MAT, MAT U$S,PRECIO,U$S`;
+const conPrecio = (fila, precio) => `${fila},,,${precio},`;
+
+test("precioPlanilla y planilla — PRECIO en pesos, sumado entre los renglones de la OT", () => {
+  assert.equal(precioPlanilla("$38.352.296,68"), 38352296.68);
+  assert.equal(precioPlanilla("$ 1.200"), 1200);
+  assert.equal(precioPlanilla(""), null);
+  assert.equal(precioPlanilla("A CONFIRMAR"), null);
+  const { filas } = parseCsvProyectos([
+    TITULOS_PRECIO,
+    conPrecio(renglon("M-7473", "COCINA", 1, 5, 1, 80, ""), '"$1.000.000,50"'),
+    conPrecio(renglon("M-7473", "ALACENA", 1, 1, "", 10, ""), '"$500.000"'),
+    conPrecio(renglon("M-7474", "VANITORY", 1, "", "", "", ""), ""),
+  ].join("\n"));
+  const ot = (n) => filas.find((f) => f.ot === n);
+  assert.equal(ot("M-7473").precio, 1500000.5);
+  assert.equal(ot("M-7474").precio, null);
+  assert.equal("precio" in parseCsvProyectos("OT,CLIENTE\nM-1,Ana\n").filas[0], false, "sin la columna no va");
+});
+
+test("sync — el precio va a precios_ot con service_role, no a proyectos", async () => {
+  const pedidos = mockSync([TITULOS_PRECIO, conPrecio(renglon("M-7473", "COCINA", 1, 5, 1, 80, ""), '"$2.500.000"')].join("\n"));
+  const precios = [];
+  const previo = global.fetch;
+  global.fetch = async (url, opts) => {
+    if (String(url).includes("/rest/v1/precios_ot")) {
+      precios.push({ url: String(url), headers: opts.headers, body: JSON.parse(opts.body) });
+      return new Response(null, { status: 201 });
+    }
+    return previo(url, opts);
+  };
+  assert.equal((await sincronizar()).procesados, 1);
+  const subida = pedidos.filter((p) => p.method === "POST").flatMap((p) => p.body).find((r) => r.ot === "M-7473");
+  assert.equal("precio" in subida, false, "proyectos no guarda el precio");
+  assert.equal(precios.length, 1);
+  assert.match(precios[0].url, /on_conflict=empresa_id,ot/);
+  assert.deepEqual(precios[0].body.map((r) => [r.empresa_id, r.ot, r.precio]), [[EMPRESA_ID, "M-7473", 2500000]]);
+  const auth = precios[0].headers.Authorization || precios[0].headers.authorization;
+  assert.equal(auth, "Bearer test-service-key", "con service_role");
+});
+
+test("sync — sin la migración 142 igual sincroniza las OT", async () => {
+  mockSync([TITULOS_PRECIO, conPrecio(renglon("M-7473", "COCINA", 1, 5, 1, 80, ""), "1000")].join("\n"));
+  const previo = global.fetch;
+  global.fetch = async (url, opts) => (String(url).includes("/rest/v1/precios_ot")
+    ? new Response(JSON.stringify({ message: 'relation "public.precios_ot" does not exist' }), { status: 404 })
+    : previo(url, opts));
+  const r = await sincronizar();
+  assert.equal(r.procesados, 1);
+  assert.deepEqual(r.errores, []);
+});
+
+test("DetalleOp — 💲 precio solo si se lo pasan (Dueño y Administración)", async () => {
+  global.fetch = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+  render(<DetalleOp proyecto={{ ot: "7473", cliente: "GI" }} precio={38352296.68} empresaId="emp-1" etapas={[]} divisiones={[]} onClose={() => {}} />);
+  assert.ok(await screen.findByText("💲 Precio $ 38.352.297"));
+  cleanup();
+  render(<DetalleOp proyecto={{ ot: "7473", cliente: "GI" }} empresaId="emp-1" etapas={[]} divisiones={[]} onClose={() => {}} />);
+  await screen.findByText(/Orden 7473/);
+  assert.equal(screen.queryByText(/💲 Precio/), null);
+  const lista = readFileSync(new URL("../app/proyectos_screen.jsx", import.meta.url), "utf8");
+  assert.match(lista, /precio=\{verPrecios \? precios\.get\(String\(detalle\.ot\)\) : undefined\}/);
 });

@@ -156,7 +156,7 @@ export function pendienteEtapa({ ot, codigo, avance = [], piezas = [] }) {
 
 /**
  * Horas de una OT por etapa (horas de trabajo efectivas, antes de la eficiencia).
- * @returns {{ ot, tipo: string|null, sinDatos: boolean, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas: Record<string,{gente:number, maquina:number, pendiente:number}>, total: number }}
+ * @returns {{ ot, tipo: string|null, sinDatos: boolean, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas: Record<string,{gente:number, maquina:number, pendiente:number}>, total: number, completo: number }}
  */
 export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = [], piezas = [] } = {}) {
   const placas = (num(proyecto.placas) || 0) + (num(proyecto.fondos) || 0);
@@ -186,15 +186,17 @@ export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = []
     armado: gabinetes * (params.min_armado_gabinete || 0),
   };
   const etapas = {};
+  let completo = 0; // horas de gente de toda la OT, lo hecho y lo que falta (valorización, 142)
   for (const { id } of ETAPAS_PLAN) {
     const pendiente = pend(id);
+    completo += (id === "canteado" ? base[id] * factorCanteadora * personasCanteadora : base[id]) / 60;
     // Minutos de máquina (o de puesto, en Armado) y de gente
     const maquina = id === "canteado" ? base[id] * factorCanteadora * pendiente : base[id] * pendiente;
     const gente = id === "canteado" ? maquina * personasCanteadora : maquina;
     etapas[id] = { gente: gente / 60, maquina: maquina / 60, pendiente };
   }
   const total = Object.values(etapas).reduce((s, e) => s + e.gente, 0);
-  return { ot: proyecto.ot, tipo, sinDatos, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas, total };
+  return { ot: proyecto.ot, tipo, sinDatos, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas, total, completo };
 }
 
 const MAQUINAS = [

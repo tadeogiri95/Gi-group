@@ -636,7 +636,7 @@ test("📊 Carga — el checkeo manual baja las horas que faltan de la OT y no d
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
   fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
   const fila = screen.getByLabelText("Planificar OT M-7473").closest("li");
-  const antes = fila.querySelector("label > div.whitespace-nowrap").textContent;
+  const antes = fila.querySelector("label > div.text-right > div").textContent;
   fireEvent.click(within(fila).getByRole("button", { name: /✍ Checkeo manual/ }));
   fireEvent.click(within(fila).getByLabelText("Usar checkeo manual en esta OT"));
   for (const e of ["Corte / Seccionado", "Canteado", "Mecanizado CNC", "Armado y embalaje"]) {
@@ -645,7 +645,103 @@ test("📊 Carga — el checkeo manual baja las horas que faltan de la OT y no d
   fireEvent.click(within(fila).getByText("Guardar avance"));
   await within(fila).findByText("✅ Avance guardado");
   assert.match(within(fila).getByRole("button", { name: /✍ Checkeo manual/ }).textContent, /\(activo\)/);
-  await waitFor(() => assert.notEqual(fila.querySelector("label > div.whitespace-nowrap").textContent, antes));
-  assert.equal(fila.querySelector("label > div.whitespace-nowrap").textContent, "0 h", "todo hecho: no falta nada");
+  await waitFor(() => assert.notEqual(fila.querySelector("label > div.text-right > div").textContent, antes));
+  assert.equal(fila.querySelector("label > div.text-right > div").textContent, "0 h", "todo hecho: no falta nada");
   assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true, "lo tildado a mano queda");
+});
+
+// ─── Valorización con el PRECIO del Plan de trabajo (Tadeo, 27/10; migración 142) ───
+const { puedeVerPrecios, valorizarPlan, nombreMes } = await import("../app/lib/valorizacion.js");
+const { autorizar, TABLAS_SIN_SUPERVISOR } = await import("../app/lib/dataPolicy.js");
+
+test("valorizarPlan — reparte el precio según las horas de cada semana y mes", () => {
+  // OT de 10 h en total: 3 h ya hechas, 4 h el viernes 30/10, 2 h el lunes 2/11 y 1 h pasa al período siguiente
+  const v = valorizarPlan({
+    ots: [{ id: 1, ot: "A", completo: 10 }, { id: 2, ot: "B", completo: 0 }, { id: 3, ot: "C", completo: 5 }],
+    segmentos: [{ id: 1, fecha: "2026-10-30", gente: 4 }, { id: 1, fecha: "2026-11-02", gente: 2 }, { id: 3, fecha: "2026-11-02", gente: 5 }],
+    pendientes: [{ id: 1, gente: 1 }],
+    precios: new Map([["A", 1000], ["B", 500]]), eficiencia: 100, modo: "semana_domingo",
+  });
+  assert.equal(v.total, 1500);
+  assert.equal(v.conPrecio, 2);
+  assert.equal(v.sinPrecio, 1, "C no tiene precio");
+  assert.deepEqual(v.porSemana, [{ desde: "2026-10-25", valor: 400 }, { desde: "2026-11-01", valor: 200 }]);
+  assert.deepEqual(v.porMes, [{ mes: "2026-10", valor: 400 }, { mes: "2026-11", valor: 200 }]);
+  assert.equal(v.enPlan, 600);
+  assert.equal(v.pasa, 100);
+  assert.equal(v.hecho, 300);
+  assert.equal(v.sinHoras, 500, "B no tiene horas para repartir");
+  // Con eficiencia: las horas del plan son de reloj
+  const ef = valorizarPlan({ ots: [{ id: 1, ot: "A", completo: 8 }], segmentos: [{ id: 1, fecha: "2026-10-30", gente: 10 }], precios: new Map([["A", 800]]), eficiencia: 80 });
+  assert.equal(ef.enPlan, 800);
+  assert.equal(nombreMes("2026-11"), "Noviembre 2026");
+});
+
+test("precios — solo Dueño y Administración; el supervisor de división no", () => {
+  assert.equal(puedeVerPrecios({ rol: "gerencial" }), true);
+  assert.equal(puedeVerPrecios({ rol: "administrativo" }), true);
+  assert.equal(puedeVerPrecios({ rol: "administrativo", solo_su_division: true }), false);
+  assert.equal(puedeVerPrecios({ rol: "operativo" }), false);
+  assert.equal(autorizar("precios_ot", "GET", { rol: "operativo" }).ok, false);
+  assert.equal(autorizar("precios_ot", "GET", { rol: "administrativo" }).ok, true);
+  assert.equal(autorizar("precios_ot", "POST", { rol: "gerencial" }).ok, false, "lo escribe solo la sincronización");
+  assert.ok(TABLAS_SIN_SUPERVISOR.has("precios_ot"));
+  const route = readFileSync(new URL("../app/api/data/route.js", import.meta.url), "utf8");
+  assert.match(route, /alcance && TABLAS_SIN_SUPERVISOR\.has\(pathCheck\.tabla\)/);
+  assert.match(route, /TABLAS_SOLO_LECTURA = \[[^\]]*"precios_ot"/);
+  const sql = readFileSync(new URL("../supabase/migrations/142_precios_ot.sql", import.meta.url), "utf8");
+  assert.match(sql, /create table if not exists public\.precios_ot/);
+  assert.match(sql, /->>'rol'\) in \('gerencial', 'administrativo'\)/);
+  assert.match(sql, /grant select on public\.precios_ot to authenticated;/);
+});
+
+function mockConPrecios(precios) {
+  const pedidos = [];
+  mockCarga({
+    proyectos: [
+      OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
+      OT(2, "M-9000", { division: "Muebles", fecha_objetivo: "2020-01-04", semana_objetivo: 1 }),
+    ],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: LV, mar: LV, mie: LV, jue: LV, vie: LV } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  const base = global.fetch;
+  global.fetch = async (url, opts) => {
+    const path = JSON.parse(opts.body).path || "";
+    pedidos.push(path);
+    if (path.startsWith("precios_ot")) return new Response(JSON.stringify({ data: path.includes("offset=0") ? precios : [] }), { status: 200 });
+    return base(url, opts);
+  };
+  return pedidos;
+}
+
+test("📊 Carga — 💲 precio de cada OT y valorización por semana y mes", async () => {
+  mockConPrecios([{ ot: "M-7473", precio: 2500000 }, { ot: "M-9000", precio: 1000000 }]);
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  const fila = screen.getByLabelText("Planificar OT M-7473").closest("li");
+  await waitFor(() => assert.match(fila.textContent, /\$ 2\.500\.000/));
+  const valor = screen.getByLabelText("Valorización");
+  assert.match(valor.textContent, /OT tildadas con precio: 2\$ 3\.500\.000/);
+  assert.match(valor.textContent, /Ordenar automáticamente para ver/);
+  fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
+  assert.match(valor.textContent, /\$ 2\.500\.000/);
+  fireEvent.click(screen.getByText("Ordenar automáticamente"));
+  const semanas = within(valor).getByLabelText("Valorización por semana");
+  assert.match(semanas.textContent, /Semana del/);
+  assert.ok(within(valor).getByLabelText("Valorización por mes").textContent.length > 0);
+  assert.match(valor.textContent, /Se fabrica en el período/);
+});
+
+test("📊 Carga — el supervisor de división no ve precios ni los pide", async () => {
+  const pedidos = mockConPrecios([{ ot: "M-7473", precio: 2500000 }]);
+  render(
+    <AuthContext.Provider value={{ divisiones: DIVISIONES, etapas: ETAPAS, usuario: { rol: "administrativo", solo_su_division: true } }}>
+      <PlanificacionScreen empresaId="emp-1" />
+    </AuthContext.Provider>
+  );
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  assert.equal(screen.queryByLabelText("Valorización"), null);
+  assert.doesNotMatch(screen.getByLabelText("Planificar OT M-7473").closest("li").textContent, /\$/);
+  assert.ok(!pedidos.some((p) => p.startsWith("precios_ot")));
 });

@@ -79,6 +79,11 @@ export function numeroPlanilla(texto) {
   return t !== "" && Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** PRECIO del Plan de trabajo (142, columna AE): "$38.352.296,68" → 38352296.68; vacío o texto → null. */
+export function precioPlanilla(texto) {
+  return numeroPlanilla(limpio(texto).replace(/^(ars|\$)\s*/i, "").replace(/\$/g, ""));
+}
+
 /** Material de producción del Plan de trabajo (136): columnas X a AA. */
 const MATERIAL = [
   { campo: "placas", titulos: ["pla 18", "pla18", "placas"] },
@@ -92,12 +97,12 @@ const sumar = (a, b) => (a == null && b == null ? null : Math.round(((a || 0) + 
 const SI = new Set(["si", "sí", "x", "ok", "terminado", "terminada"]);
 
 /**
- * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla,semana_objetivo,placas,fondos,metros_canto,placas_mecanizadas}[], repetidas: number }}
+ * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla,semana_objetivo,placas,fondos,metros_canto,placas_mecanizadas,precio}[], repetidas: number }}
  * filas: una por OT. Si una OT aparece varias veces (un renglón por ítem), vale
  * la última fila, las columnas vacías se completan con las anteriores y las
  * descripciones de todos los ítems se juntan con " / ". De todos sus ítems:
  * la fecha de entrega y la SEMANA son las más tardías, la cantidad, los módulos,
- * las placas, los fondos, los cantos y los mecanizados se suman, y la OT está
+ * las placas, los fondos, los cantos, los mecanizados y el PRECIO se suman, y la OT está
  * terminada en la planilla solo si todos sus ítems dicen SI en TERMINADO
  * (null si la planilla no tiene esa columna).
  */
@@ -133,6 +138,8 @@ export function parseCsvProyectos(text) {
   const iMaterial = MATERIAL
     .map((m) => ({ ...m, i: headers.findIndex((h) => m.titulos.includes(h)) }))
     .filter((m) => m.i >= 0);
+  // PRECIO en pesos (142): título exacto; no va a proyectos sino a precios_ot
+  const iPrecio = headers.findIndex((h) => h.trim() === "precio");
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);
 
@@ -152,6 +159,7 @@ export function parseCsvProyectos(text) {
       semana_objetivo: iSemana >= 0 ? semanaPlanilla(c[iSemana]) : null,
       // Sin la columna, la clave no va (no pisa lo que ya había)
       ...Object.fromEntries(iMaterial.map((m) => [m.campo, numeroPlanilla(c[m.i])])),
+      ...(iPrecio >= 0 ? { precio: precioPlanilla(c[iPrecio]) } : {}),
     };
     const previa = porOt.get(ot);
     if (previa) {
@@ -164,6 +172,7 @@ export function parseCsvProyectos(text) {
       const terminado = iTerminado >= 0 ? previa.terminado_planilla && fila.terminado_planilla : null;
       const semanas = [previa.semana_objetivo, fila.semana_objetivo].filter(Boolean);
       const material = Object.fromEntries(iMaterial.map((m) => [m.campo, sumar(previa[m.campo], fila[m.campo])]));
+      const precio = iPrecio >= 0 ? sumar(previa.precio, fila.precio) : undefined;
       for (const k of Object.keys(fila)) if (fila[k] == null) fila[k] = previa[k];
       fila.descripcion = [...new Set(descs.flatMap(d => d.split(" / ")))].join(" / ").slice(0, MAX_DESCRIPCION) || null;
       fila.fecha_entrega = fechas.at(-1) || null;
@@ -172,6 +181,7 @@ export function parseCsvProyectos(text) {
       fila.terminado_planilla = terminado;
       fila.semana_objetivo = semanas.length ? Math.max(...semanas) : null;
       Object.assign(fila, material);
+      if (iPrecio >= 0) fila.precio = precio;
     }
     porOt.set(ot, fila);
   }

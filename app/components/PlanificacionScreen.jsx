@@ -23,6 +23,8 @@ import {
 import { leerOperariosPlanta } from "../lib/ganttPlan";
 import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import AvanceManualOt from "./AvanceManualOt";
+import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
+import { fmtPesos } from "../lib/costo";
 import { planAutomatico, pendientesPorOt } from "../lib/planAutomatico";
 import GanttPlan from "./GanttPlan";
 import { cuerpoPlan } from "../lib/planGuardado";
@@ -107,6 +109,16 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [avisoTipo, setAvisoTipo] = useState(null);
   const [busca, setBusca] = useState("");
+  // Precio de cada OT (142): solo Dueño y Administración
+  const { usuario } = useAuth();
+  const verPrecios = puedeVerPrecios(usuario);
+  const [precios, setPrecios] = useState(() => new Map());
+  useEffect(() => {
+    if (!verPrecios) return;
+    let vivo = true;
+    leerPrecios().then((m) => { if (vivo) setPrecios(m); });
+    return () => { vivo = false; };
+  }, [verPrecios, empresaId]);
   const [manualAbierto, setManualAbierto] = useState(null);
 
   useEffect(() => {
@@ -167,6 +179,10 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const plan = useMemo(() => (ordenado ? planAutomatico({
     trabajos: ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ ...horas.get(p.id), id: p.id })), capacidad, params,
   }) : null), [ordenado, ots, elegidas, horas, capacidad, params]);
+  const valor = useMemo(() => (verPrecios ? valorizarPlan({
+    ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ id: p.id, ot: p.ot, completo: horas.get(p.id).completo })),
+    segmentos: plan?.segmentos, pendientes: plan?.pendientes, precios, eficiencia: params.eficiencia, modo,
+  }) : null), [verPrecios, ots, elegidas, horas, plan, precios, params.eficiencia, modo]);
 
   if (error) return <div role="alert" className="text-sm text-gypi-red">{error}</div>;
   if (!datos || !elegidas) return <Cargando />;
@@ -304,6 +320,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         )}
       </div>
 
+      {valor && <Valorizacion valor={valor} conPlan={!!plan} />}
+
       <div className="g-label mb-1.5">OT del período ({ots.length})</div>
       <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana hasta el fin del período (también las atrasadas). Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
       {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
@@ -333,7 +351,10 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
                     {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`].join(" · ")}
                   </div>
                 </div>
-                <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
+                <div className="text-right">
+                  <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
+                  {verPrecios && precios.has(String(p.ot)) && <div className="text-xs text-gypi-dim whitespace-nowrap">{fmtPesos(precios.get(String(p.ot)))}</div>}
+                </div>
               </label>
               <TipoOt proyecto={p} onCambiar={(v) => cambiarTipo(p, v)} />
               <div className="pl-[30px] mt-1.5">
@@ -353,6 +374,48 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         })}
       </ul>
     </section>
+  );
+}
+
+// 💲 Valorización (142): precio de las OT tildadas y, con el plan día por día,
+// lo que se fabrica en cada semana y mes (según las horas de cada una).
+function Valorizacion({ valor, conPlan }) {
+  const fila = (label, v, fuerte = false) => (
+    <tr key={label} className="border-t border-gypi-border first:border-t-0">
+      <td className={`py-1 pr-2 ${fuerte ? "font-bold" : ""}`}>{label}</td>
+      <td className={`py-1 pl-2 text-right whitespace-nowrap ${fuerte ? "font-bold" : ""}`}>{fmtPesos(v)}</td>
+    </tr>
+  );
+  return (
+    <div className="g-card mb-3" aria-label="Valorización">
+      <div className="g-label mb-1">💲 Valorización</div>
+      <div className="flex items-baseline gap-2 mb-1">
+        <div className="text-[13px] flex-1">OT tildadas con precio: {valor.conPrecio}</div>
+        <div className="font-heading text-lg font-bold">{fmtPesos(valor.total)}</div>
+      </div>
+      {valor.sinPrecio > 0 && <div className="text-xs text-gypi-dim mb-1">{valor.sinPrecio === 1 ? "1 OT tildada no tiene" : `${valor.sinPrecio} OT tildadas no tienen`} PRECIO en el Plan de trabajo.</div>}
+      {!conPlan ? (
+        <div className="text-xs text-gypi-dim">Tocá Ordenar automáticamente para ver cuánto se fabrica cada semana y cada mes.</div>
+      ) : (
+        <>
+          <div className="text-xs text-gypi-dim mb-1">Cada OT reparte su precio según las horas que el plan pone en cada semana.</div>
+          <table className="w-full text-[13px] mb-2" aria-label="Valorización por semana">
+            <tbody>{valor.porSemana.map((s) => fila(`Semana del ${fechaCorta(s.desde)}`, s.valor))}</tbody>
+          </table>
+          <table className="w-full text-[13px] mb-2" aria-label="Valorización por mes">
+            <tbody>{valor.porMes.map((m) => fila(nombreMes(m.mes), m.valor, true))}</tbody>
+          </table>
+          <table className="w-full text-[13px]">
+            <tbody>
+              {fila("Se fabrica en el período", valor.enPlan, true)}
+              {valor.pasa > 0.5 && fila("Pasa al período siguiente", valor.pasa)}
+              {valor.hecho > 0.5 && fila("Ya fabricado antes", valor.hecho)}
+              {valor.sinHoras > 0.5 && fila("Sin horas para repartir (faltan datos de la planilla)", valor.sinHoras)}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
   );
 }
 
