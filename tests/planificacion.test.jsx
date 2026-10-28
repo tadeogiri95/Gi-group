@@ -968,6 +968,31 @@ test("ordenEficiente — pone primero la que tiene que llegar a su semana", () =
   assert.equal(planHorizonte({ trabajos: [a, c, b], dias: ANIO, params: P100, base: "capacidad" }).tarde[0].ot, "B");
 });
 
+test("selectores — el orden elegido llega igual al plan guardado y al Gantt (las 4 combinaciones)", async () => {
+  const { cuerpoPlan } = await import("../app/lib/planGuardado.js");
+  const { procesosPlan } = await import("../app/lib/ganttPlan.js");
+  const a = trabajo(1, "A", { corte: 30, armado: 10 });
+  const b = conObjetivo(trabajo(2, "B", { corte: 6, armado: 4 }), "2026-10-30");
+  const c = conObjetivo(trabajo(3, "C", { corte: 6, armado: 4 }), "2026-11-13");
+  const enMiOrden = [a, c, b];
+  for (const forma of ["prioridad", "eficiente"]) {
+    const trabajos = forma === "eficiente" ? ordenEficiente({ trabajos: enMiOrden, dias: ANIO, params: P100 }) : enMiOrden;
+    for (const base of ["capacidad", "objetivo"]) {
+      const plan = planHorizonte({ trabajos, dias: ANIO, params: P100, base });
+      const cuerpo = cuerpoPlan({ per: { tipo: "horizonte", desde: plan.desde, hasta: plan.hasta }, plan, division: null, ots: trabajos, estado: "confirmado" });
+      const gantt = procesosPlan(cuerpo.items, { etapasCodigo: {}, hoy: "2026-10-26", params: P100 });
+      const ordenCorte = [...gantt.values()].sort((x, y) => x.procesos.find((q) => q.etapa === "corte").t0 - y.procesos.find((q) => q.etapa === "corte").t0).map((r) => r.ot);
+      assert.deepEqual(ordenCorte, trabajos.map((t) => t.ot), `${forma} + ${base}: el Gantt corta en el mismo orden que el plan`);
+      // En mi orden, B (entrega el viernes) queda detrás de 50 h: ni con el sábado llega, y se avisa
+      if (forma === "prioridad") assert.deepEqual(plan.tarde.map((t) => t.ot), ["B"], `${forma} + ${base}`);
+      else assert.deepEqual(plan.tarde, [], `${forma} + ${base}: en el orden más eficiente todas llegan`);
+    }
+  }
+  // Mi orden respeta lo que puse (A primero aunque B tenga que entregar antes); el más eficiente pone B y C antes
+  assert.deepEqual(ordenEficiente({ trabajos: enMiOrden, dias: ANIO, params: P100 }).map((t) => t.ot), ["B", "C", "A"]);
+  assert.equal(planHorizonte({ trabajos: enMiOrden, dias: ANIO, params: P100, base: "capacidad" }).tarde[0].ot, "B", "en mi orden y con capacidad, B no llega y se avisa");
+});
+
 function mockDosOt({ guardado = null } = {}) {
   mockCarga({
     proyectos: [

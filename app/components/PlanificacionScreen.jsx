@@ -366,7 +366,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         <div className="text-xs text-gypi-dim mb-2">
           {forma === "prioridad"
             ? "Las OT van en el orden de la pestaña Prioridad (y después por semana)."
-            : `Gypi elige el orden para que lleguen a su semana la mayor cantidad posible y terminen antes: ${otsPlan.map((p) => p.ot).join(", ") || "—"}.`}
+            : `Gypi elige el orden así: arranca por la semana de entrega más cercana (las sin semana van al final) y prueba cambiar de lugar las OT vecinas. Se queda con el cambio si, con el horario normal, 1) llegan más OT a su semana; si empatan, 2) suman menos días de atraso; si empatan, 3) terminan todas antes. Orden elegido: ${otsPlan.map((p) => p.ot).join(", ") || "—"}.`}
         </div>
         <div className="flex gap-2 flex-wrap mb-1" role="group" aria-label="Armar el plan según">
           <Chip active={base === "capacidad"} onClick={() => setBase("capacidad")}>🏭 Según capacidad de la planta</Chip>
