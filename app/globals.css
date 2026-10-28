@@ -153,7 +153,31 @@ html, body {
 button { transition: transform 0.1s, background 0.2s; }
 button:active { transform: scale(0.97); }
 
-::-webkit-scrollbar { display: none; }
+/* Barras de desplazamiento: en el celular (dedo) quedan ocultas; en la
+   computadora (mouse) se ve una barra fina para agarrarla y bajar rápido.
+   Las filas que se deslizan de costado las siguen ocultando (.fila-desliza,
+   .g-scroll-hidden). */
+@media (hover: none), (pointer: coarse) {
+  ::-webkit-scrollbar { display: none; }
+}
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--color-text-secondary) 45%, transparent);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--color-text-secondary) 75%, transparent);
+  }
+  /* Firefox no tiene ::-webkit-scrollbar: usa la barra estándar con el mismo color. */
+  @supports not selector(::-webkit-scrollbar) {
+    :root { scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 55%, transparent) transparent; }
+  }
+}
 
 /* Las casillas y los círculos de opción quedan fuera: con appearance: none
    el navegador no los dibuja y no se ve si están tildados. */
