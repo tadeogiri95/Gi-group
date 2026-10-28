@@ -53,12 +53,13 @@ test("Guardar URL — guarda el enlace de la planilla sin pedir columnas inexist
   // La sincronización está dentro de "Más acciones" (revisión de la interfaz)
   fireEvent.click(await screen.findByText(/Más acciones/));
   fireEvent.click(screen.getByText(/Sincronización automática/));
-  fireEvent.change(screen.getByPlaceholderText(/docs\.google\.com/), { target: { value: "https://docs.google.com/x/export?format=csv" } });
-  fireEvent.click(screen.getByText("Guardar URL"));
+  // Un link por renglón: la hoja PLAN y la hoja de una obra (OCAMPOURB)
+  fireEvent.change(screen.getByPlaceholderText(/docs\.google\.com/), { target: { value: "https://docs.google.com/x/export?format=csv\nhttps://docs.google.com/y/export?format=csv\n" } });
+  fireEvent.click(screen.getByText("Guardar links"));
 
   await waitFor(() => assert.ok(pedidos.some((p) => p.method === "POST" && p.path === "config_sistema")));
   const post = pedidos.find((p) => p.method === "POST" && p.path === "config_sistema");
-  assert.deepEqual(post.body, { clave: "proyectos_csv_url", valor: { url: "https://docs.google.com/x/export?format=csv" } });
+  assert.deepEqual(post.body, { clave: "proyectos_csv_url", valor: { url: "https://docs.google.com/x/export?format=csv", urls: ["https://docs.google.com/y/export?format=csv"] } });
 });
 
 test("090 — la clave primaria pasa a (empresa_id, clave), solo si todavía es la vieja", () => {

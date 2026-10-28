@@ -5,7 +5,7 @@
 
 import { logger } from "./logger";
 import { safeErrorMessage } from "./validate";
-import { parseCsvProyectos, CAMPOS_MATERIAL } from "./csvProyectos";
+import { parseCsvProyectos, CAMPOS_MATERIAL, linksPlanilla } from "./csvProyectos";
 import { sbHeaders } from "./sbHelpers";
 import { CLAVE_FECHA_OBJETIVO, normalizarModo, fechaObjetivo } from "./semanaObjetivo";
 import { hoyArg } from "./dates";
@@ -80,6 +80,28 @@ export async function descargarCsv(csvUrl, { reintentos = 1, pausaMs = PAUSA_REI
   }
 }
 
+/* ─── Varias hojas ───
+ * Las obras grandes tienen su hoja propia en el Plan de trabajo (OCAMPOURB,
+ * MALMÖ…) y en la hoja PLAN queda un solo renglón resumen ("M-7751"). Cada
+ * hoja se publica por separado (linksPlanilla). */
+
+/** Junta las OT de varias hojas (ya leídas, en el orden de los links). Si una
+ *  OT está en más de una hoja vale la primera, para no sumar dos veces su
+ *  cantidad ni su material. */
+export function juntarHojas(hojas) {
+  const porOt = new Map();
+  let repetidas = 0;
+  let enVariasHojas = 0;
+  for (const hoja of hojas) {
+    repetidas += hoja.repetidas || 0;
+    for (const fila of hoja.filas) {
+      if (porOt.has(fila.ot)) { enVariasHojas++; continue; }
+      porOt.set(fila.ot, fila);
+    }
+  }
+  return { filas: [...porOt.values()], repetidas, enVariasHojas };
+}
+
 /* ─── Sync de una empresa ─── */
 /**
  * @param {string} empresaId
@@ -93,17 +115,28 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     {},
     sesion
   );
-  const csvUrl = cfg?.[0]?.valor?.url;
-  if (!csvUrl) throw new Error("No hay URL de CSV configurada");
-  const ultima = Date.parse(cfg?.[0]?.valor?.ultima_sync || "");
+  const valorCfg = cfg?.[0]?.valor;
+  const links = linksPlanilla(valorCfg);
+  if (!links.length) throw new Error("No hay URL de CSV configurada");
+  const ultima = Date.parse(valorCfg?.ultima_sync || "");
   if (minIntervaloMs > 0 && Number.isFinite(ultima) && Date.now() - ultima < minIntervaloMs) {
     return { omitido: true, procesados: 0, total: 0, repetidas: 0, errores: [] };
   }
 
-  const csvText = await descargarCsv(csvUrl);
-
-  const { filas, repetidas } = parseCsvProyectos(csvText);
-  if (!filas.length) throw new Error("CSV sin datos válidos (columna OT requerida)");
+  // Todas las hojas a la vez. Si falla la principal se corta como siempre; si
+  // falla otra, se sincroniza lo demás y se avisa cuál no se pudo leer.
+  const errores = [];
+  const descargas = await Promise.allSettled(links.map((u) => descargarCsv(u)));
+  if (descargas[0].status === "rejected") throw descargas[0].reason;
+  const hojas = [];
+  descargas.forEach((d, i) => {
+    if (d.status === "rejected") { errores.push(`Hoja ${i + 1}: ${safeErrorMessage(d.reason)}`); return; }
+    const hoja = parseCsvProyectos(d.value);
+    if (i > 0 && !hoja.filas.length) errores.push(`Hoja ${i + 1}: sin OT (falta la columna OT)`);
+    hojas.push(hoja);
+  });
+  const { filas, repetidas, enVariasHojas } = juntarHojas(hojas);
+  if (!hojas[0].filas.length) throw new Error("CSV sin datos válidos (columna OT requerida)");
 
   // Fecha objetivo de cada OT (135): según cómo cuenta las semanas la empresa.
   // La fecha que ya tenía una OT abierta se respeta si es de la misma semana
@@ -117,7 +150,6 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   const hoy = hoyArg();
 
   let procesados = 0;
-  const errores = [];
   // Columnas que agregaron migraciones posteriores (091: descripcion; 097:
   // fecha_entrega, cantidad, terminado_planilla; 101: total_modulos; 135:
   // semana_objetivo, fecha_objetivo; 136: placas, fondos, metros_canto,
@@ -225,14 +257,14 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
         method: "PATCH",
         headers: { Prefer: "return=minimal" },
         body: JSON.stringify({
-          valor: { url: csvUrl, ultima_sync: new Date().toISOString() },
+          valor: { ...valorCfg, ultima_sync: new Date().toISOString() },
         }),
       },
       sesion
     );
   } catch {}
 
-  return { procesados, total: filas.length, repetidas, errores };
+  return { procesados, total: filas.length, repetidas, enVariasHojas, hojas: links.length, errores };
 }
 
 /** Sincroniza todas las empresas con planilla configurada; un error no frena a las demás. */
@@ -240,7 +272,7 @@ export async function syncTodas() {
   const rows = await sbFetch("config_sistema?clave=eq.proyectos_csv_url&select=empresa_id,valor&limit=500");
   const results = [];
   for (const row of rows || []) {
-    if (!row.valor?.url) continue;
+    if (!linksPlanilla(row.valor).length) continue;
     try {
       const r = await syncEmpresa(row.empresa_id);
       results.push({ empresa_id: row.empresa_id, ...r });

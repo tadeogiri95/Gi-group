@@ -14,6 +14,22 @@ import { semanaPlanilla } from "./semanaObjetivo";
  *  de la planilla con unos minutos de demora. */
 export const AVISO_DEMORA_GOOGLE = "Si cargaste algo recién en la planilla, Google puede tardar unos 5 minutos en mostrarlo.";
 
+/* Las obras grandes tienen su hoja propia en el Plan de trabajo y cada hoja se
+ * publica por separado: config_sistema (proyectos_csv_url) guarda el link
+ * principal en `url` y los de las otras hojas en `urls`. */
+
+/** Los links de la planilla, el principal primero y sin repetir. */
+export function linksPlanilla(valor) {
+  const todos = [valor?.url, ...(Array.isArray(valor?.urls) ? valor.urls : [])];
+  return [...new Set(todos.map((u) => String(u || "").trim()).filter(Boolean))];
+}
+
+/** Lo que se escribe en la configuración (un link por renglón) → { url, urls }. */
+export function valorLinks(texto) {
+  const [url = "", ...urls] = linksPlanilla({ urls: String(texto || "").split(/\s+/) });
+  return { url, urls };
+}
+
 /** Divide el texto CSV en filas de celdas, respetando comillas, "" y saltos de línea dentro de comillas. */
 export function filasCsv(text) {
   const filas = [];
@@ -94,6 +110,8 @@ const MATERIAL = [
 export const CAMPOS_MATERIAL = MATERIAL.map((m) => m.campo);
 const sumar = (a, b) => (a == null && b == null ? null : Math.round(((a || 0) + (b || 0)) * 100) / 100);
 
+const FILAS_ANTES_DE_TITULOS = 10;
+
 const SI = new Set(["si", "sí", "x", "ok", "terminado", "terminada"]);
 
 /**
@@ -107,7 +125,12 @@ const SI = new Set(["si", "sí", "x", "ok", "terminado", "terminada"]);
  * (null si la planilla no tiene esa columna).
  */
 export function parseCsvProyectos(text) {
-  const todas = filasCsv(text);
+  // Las hojas del Plan de trabajo tienen los títulos en la fila 3 (arriba van
+  // contadores como "NUMERO SIGUIENTE"): los títulos son la primera fila con
+  // una celda que dice exactamente OT, entre las primeras; si no hay, la primera.
+  const leidas = filasCsv(text);
+  const iTitulos = leidas.slice(0, FILAS_ANTES_DE_TITULOS).findIndex(f => f.some(c => c.toLowerCase() === "ot"));
+  const todas = iTitulos > 0 ? leidas.slice(iTitulos) : leidas;
   if (todas.length < 2) return { filas: [], repetidas: 0 };
   const headers = todas[0].map(h => h.toLowerCase());
   // Primero el título exacto ("OBRA"), después uno que lo contenga: si no,

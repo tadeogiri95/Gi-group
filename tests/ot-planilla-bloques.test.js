@@ -158,3 +158,108 @@ test("DB PROYECTOS — saltea renglones sin número ('M-', '-') y junta los íte
   assert.equal(repetidas, 2);
   assert.equal(filas[0].descripcion, "P1 - PUERTA DE INGRESO + REV / P3 - PUERTA CERRADURA SIMPLE");
 });
+
+// ─── Hojas de cada obra (OCAMPOURB, MALMÖ…) ─────────────────────────────────
+// Caso real: la M-7751-29 no aparecía. En la hoja PLAN la obra tiene un solo
+// renglón ("M-7751") y sus OT están en la hoja OCAMPOURB, con los títulos en
+// la fila 3 como PLAN. Cada hoja se publica aparte y se pegan varios links.
+const HOJA_PLAN = [
+  " ,N° SIGUIENTE,7967,SEMANA,44",
+  "M,A,H,27/10/2026,205",
+  "OT,DIVISIÓN,PROYECTO / OBRA,CLIENTE,OBRA,DESCRIPCION,CANT,TERMINADO",
+  "M-7751,MUEBLES ,7751,URBACONS,OCAMPO,,,NO",
+  "M-7100,MUEBLES ,7100,BCG,HOTEL AMANCAY,P1 - PUERTA DE INGRESO,107,SI",
+].join("\n");
+const HOJA_OCAMPO = [
+  "I,#NUM!,NUMERO SIGUIENTE,SEMANA,0",
+  "27/10/2026,0,3,3,0",
+  "OT,DIVISIÓN,PROYECTO / OBRA,CLIENTE,OBRA,DESCRIPCION,CANT,TERMINADO",
+  "M-7751-28,MUEBLES ,7751-28,URBACONS,OCAMPO,PLACARES DORMITORIOS,20,SI",
+  "M-7751-29,MUEBLES ,7751-29,URBACONS,OCAMPO,MUEBLE CALDERA,10,NO",
+  "M-7100,MUEBLES ,7100,BCG,HOTEL AMANCAY,P1 - PUERTA DE INGRESO,107,SI",
+].join("\n");
+
+test("hoja de obra — los títulos en la fila 3 (arriba van contadores)", () => {
+  const { filas } = parseCsvProyectos(HOJA_OCAMPO);
+  assert.deepEqual(filas.map(f => f.ot), ["M-7751-28", "M-7751-29", "M-7100"]);
+  const f29 = filas.find(f => f.ot === "M-7751-29");
+  assert.equal(f29.descripcion, "MUEBLE CALDERA");
+  assert.equal(f29.cantidad, 10);
+  assert.equal(f29.terminado_planilla, false);
+});
+
+test("links de la planilla — uno por renglón, el principal primero y sin repetir", async () => {
+  const { linksPlanilla, valorLinks } = await import("../app/lib/csvProyectos.js");
+  assert.deepEqual(linksPlanilla({ url: "https://a" }), ["https://a"]);
+  assert.deepEqual(linksPlanilla({ url: "https://a", urls: ["https://b", " https://a ", ""] }), ["https://a", "https://b"]);
+  assert.deepEqual(linksPlanilla(null), []);
+  assert.deepEqual(valorLinks("https://a\n\n  https://b \nhttps://a\n"), { url: "https://a", urls: ["https://b"] });
+  assert.deepEqual(valorLinks(""), { url: "", urls: [] });
+});
+
+function mockVariasHojas({ valor, hojas, lotes, configs }) {
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u, o) => u.includes("/rest/v1/config_sistema") && (!o?.method || o.method === "GET"), respond: (u) => ({ status: 200, body: u.includes("proyectos_csv_url") ? [{ valor }] : [] }) },
+    { match: (u) => u in hojas, respond: (u) => hojas[u] },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?on_conflict=") && o?.method === "POST", respond: (u, o) => { lotes.push(JSON.parse(o.body)); return { status: 200, body: null }; } },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?") && (!o?.method || o.method === "GET"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?empresa_id=") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
+    { match: (u, o) => u.includes("/rest/v1/config_sistema") && o?.method === "PATCH", respond: (u, o) => { configs.push(JSON.parse(o.body)); return { status: 200, body: null }; } },
+  ]);
+}
+
+test("sync-csv — junta la hoja PLAN y las hojas de cada obra", async () => {
+  const PLAN = "https://files.example.com/plan.csv";
+  const OCAMPO = "https://files.example.com/ocampo.csv";
+  const lotes = [];
+  const configs = [];
+  mockVariasHojas({
+    valor: { url: PLAN, urls: [OCAMPO] },
+    hojas: { [PLAN]: { status: 200, body: HOJA_PLAN }, [OCAMPO]: { status: 200, body: HOJA_OCAMPO } },
+    lotes, configs,
+  });
+  const { syncEmpresa } = await import("../app/lib/syncOt.js");
+  const r = await syncEmpresa("11111111-1111-1111-1111-111111111111");
+  assert.deepEqual(r.errores, []);
+  assert.equal(r.hojas, 2);
+  const ots = lotes.flat().map(f => f.ot).sort();
+  assert.deepEqual(ots, ["M-7100", "M-7751", "M-7751-28", "M-7751-29"]);
+  // La OT que está en las dos hojas va una sola vez y no suma su cantidad dos veces
+  assert.equal(r.enVariasHojas, 1);
+  assert.equal(lotes.flat().find(f => f.ot === "M-7100").cantidad, 107);
+  // Guardar la fecha de la sync no borra los links de las otras hojas
+  assert.deepEqual(configs[0].valor.urls, [OCAMPO]);
+  assert.equal(configs[0].valor.url, PLAN);
+});
+
+test("sync-csv — si una hoja de obra no se puede leer, sincroniza las demás y avisa", async () => {
+  const PLAN = "https://files.example.com/plan.csv";
+  const MAL = "https://files.example.com/sin-publicar.csv";
+  const lotes = [];
+  mockVariasHojas({
+    valor: { url: PLAN, urls: [MAL] },
+    hojas: { [PLAN]: { status: 200, body: HOJA_PLAN }, [MAL]: { status: 404, body: "no" } },
+    lotes, configs: [],
+  });
+  const { syncEmpresa } = await import("../app/lib/syncOt.js");
+  const r = await syncEmpresa("11111111-1111-1111-1111-111111111111");
+  assert.deepEqual(lotes.flat().map(f => f.ot).sort(), ["M-7100", "M-7751"]);
+  assert.equal(r.procesados, 2);
+  assert.equal(r.errores.length, 1);
+  assert.match(r.errores[0], /^Hoja 2: /);
+});
+
+test("sync-csv — si la hoja principal no se puede leer, no sincroniza", async () => {
+  const PLAN = "https://files.example.com/plan.csv";
+  const OCAMPO = "https://files.example.com/ocampo.csv";
+  const lotes = [];
+  mockVariasHojas({
+    valor: { url: PLAN, urls: [OCAMPO] },
+    hojas: { [PLAN]: { status: 404, body: "no" }, [OCAMPO]: { status: 200, body: HOJA_OCAMPO } },
+    lotes, configs: [],
+  });
+  const { syncEmpresa } = await import("../app/lib/syncOt.js");
+  await assert.rejects(syncEmpresa("11111111-1111-1111-1111-111111111111"), /HTTP 404/);
+  assert.equal(lotes.length, 0);
+});
