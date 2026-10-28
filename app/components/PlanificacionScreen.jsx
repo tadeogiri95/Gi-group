@@ -686,6 +686,28 @@ function Dato({ label, valor }) {
 
 // ─── Prioridad ──────────────────────────────────────────────────────────────
 
+/**
+ * Número de prioridad que se escribe a mano (Tadeo, 28/10): al salir de la
+ * casilla o con Enter, la OT pasa a ese lugar; vacía, se le quita la prioridad.
+ */
+function NumeroPrioridad({ p, i, total, disabled, onMover, onQuitar }) {
+  const [texto, setTexto] = useState(p.prioridad ? String(p.prioridad) : "");
+  const confirmar = () => {
+    const n = Number(texto);
+    if (!texto.trim()) { if (p.prioridad) onQuitar(); return; }
+    if (!Number.isInteger(n) || n < 1) { setTexto(p.prioridad ? String(p.prioridad) : ""); return; }
+    const destino = Math.min(n, total) - 1;
+    if (destino !== i || !p.prioridad) onMover(destino);
+  };
+  return (
+    <input type="number" inputMode="numeric" min={1} max={total} value={texto} disabled={disabled}
+      onChange={(e) => setTexto(e.target.value)} onBlur={confirmar}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+      aria-label={`Prioridad de la OT ${p.ot}`} placeholder="—"
+      className={`g-input w-[64px] shrink-0 text-center text-[14px] font-bold ${p.prioridad ? "text-gypi-amber-ink" : "text-gypi-dim"}`} />
+  );
+}
+
 function PrioridadOt({ empresaId, divisiones, division }) {
   const [lista, setLista] = useState(null);
   const [error, setError] = useState(null);
@@ -751,7 +773,7 @@ function PrioridadOt({ empresaId, divisiones, division }) {
   return (
     <section aria-label="Prioridad de las OT">
       <div className="text-[13px] text-gypi-dim mb-3 leading-normal">
-        Arrastrá las OT desde ⠿ para ordenarlas: la de arriba es la más urgente. Las que no ordenes van después, por semana de entrega.
+        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Las que no ordenes van después, por semana de entrega.
         {division ? ` Son las OT abiertas de ${division.label}.` : ""}
       </div>
       {faltaMigracion && <div role="alert" className="text-[13px] text-gypi-red mb-3">Para ordenar las OT falta correr la migración 137 en Supabase.</div>}
@@ -769,7 +791,8 @@ function PrioridadOt({ empresaId, divisiones, division }) {
                 <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={faltaMigracion}
                   onPointerDown={(e) => empezar(e, i)} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
                   className="touch-none select-none min-w-[36px] min-h-[44px] bg-transparent border-none text-xl text-gypi-dim cursor-grab">⠿</button>
-                <span className={`min-w-[28px] text-center text-[13px] font-bold ${p.prioridad ? "text-gypi-amber-ink" : "text-gypi-dim"}`}>{p.prioridad || "—"}</span>
+                <NumeroPrioridad key={`${p.id}-${p.prioridad || 0}`} p={p} i={i} total={ots.length} disabled={faltaMigracion}
+                  onMover={(destino) => aplicar(moverOt(ots, i, destino))} onQuitar={() => aplicar(quitarPrioridad(ots, p.id))} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
                   <div className="text-xs text-gypi-dim truncate">{[p.obra, textoObjetivo(p) || "sin semana", material].filter(Boolean).join(" · ")}</div>
