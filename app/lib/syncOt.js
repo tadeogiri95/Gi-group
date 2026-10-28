@@ -163,9 +163,8 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     body: JSON.stringify(batch.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !omitidas.has(k))))),
   }, sesion);
   for (let i = 0; i < filas.length; i += BATCH) {
-    // Sin `estado`: la planilla no reabre OT. Antes mandaba "activo" en cada
-    // sincronización y reabría las OT cerradas en la app. Las nuevas toman el
-    // valor por defecto y las terminadas se cierran abajo.
+    // Sin `estado`: las nuevas toman el valor por defecto y abajo la columna
+    // TERMINADO cierra o reabre las que están en la planilla.
     const batch = filas.slice(i, i + BATCH).map(r => ({
       empresa_id:         empresaId,
       ot:                 r.ot,
@@ -216,8 +215,10 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     logger.error("[proyectos/sync-csv] No se pudo activar las OT nuevas", e);
   }
 
-  // TERMINADO = SI en la planilla cierra la OT (deja de figurar como activa).
-  // Solo cierra: una OT que la planilla no marca terminada no se reabre sola.
+  // La planilla manda en el estado: TERMINADO = SI cierra la OT y NO (o vacío)
+  // la vuelve a abrir. Solo se reabren las OT que están en esta planilla: una
+  // OT cargada a mano en la app, o que ya no figura en la planilla, queda como
+  // esté. Sin la columna TERMINADO no se toca nada.
   if (!omitidas.has("terminado_planilla")) {
     try {
       await sbFetch(
@@ -227,6 +228,20 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       );
     } catch (e) {
       logger.error("[proyectos/sync-csv] No se pudo cerrar las OT terminadas", e);
+    }
+    const abiertas = filas.filter((r) => r.terminado_planilla === false).map((r) => r.ot);
+    for (let i = 0; i < abiertas.length; i += BATCH) {
+      const lista = abiertas.slice(i, i + BATCH).map((ot) => encodeURIComponent(`"${String(ot).replace(/"/g, '\\"')}"`)).join(",");
+      try {
+        await sbFetch(
+          `proyectos?empresa_id=eq.${empresaId}&estado=eq.cerrado&terminado_planilla=is.false&ot=in.(${lista})`,
+          { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ estado: "activo" }) },
+          sesion
+        );
+      } catch (e) {
+        logger.error("[proyectos/sync-csv] No se pudo reabrir las OT no terminadas", e);
+        break;
+      }
     }
   }
 

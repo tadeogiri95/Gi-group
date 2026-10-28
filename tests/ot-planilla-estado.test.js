@@ -1,6 +1,6 @@
 // tests/ot-planilla-estado.test.js — Órdenes de Producción, parte 1 (ítem 39)
-// La planilla no reabre las OT cerradas en la app, y trae fecha de entrega,
-// cantidad y TERMINADO.
+// La planilla manda en el estado (TERMINADO = SI cierra, NO reabre), y trae
+// fecha de entrega, cantidad y TERMINADO.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
@@ -74,7 +74,7 @@ async function sincronizar(handlerUpsert) {
   return { json: await res.json(), pedidos };
 }
 
-test("sync — no manda el estado, así una OT cerrada en la app sigue cerrada", async () => {
+test("sync — el upsert no manda el estado; TERMINADO cierra con SI y reabre con NO", async () => {
   const { json, pedidos } = await sincronizar();
   assert.equal(json.procesados, 3);
   assert.deepEqual(json.errores, []);
@@ -94,6 +94,14 @@ test("sync — no manda el estado, así una OT cerrada en la app sigue cerrada",
   assert.ok(cerrar.url.includes(`empresa_id=eq.${EMPRESA_ID}`));
   assert.ok(cerrar.url.includes("terminado_planilla=is.true"));
   assert.ok(cerrar.url.includes("estado=neq.cerrado"));
+  // Las que dicen NO (o nada) y están cerradas se reabren, solo si están en la planilla
+  const reabrir = pedidos.find((p) => p.method === "PATCH" && p.body.estado === "activo" && p.url.includes("ot=in."));
+  assert.ok(reabrir, "reabre las OT no terminadas");
+  assert.ok(reabrir.url.includes(`empresa_id=eq.${EMPRESA_ID}`));
+  assert.ok(reabrir.url.includes("estado=eq.cerrado"));
+  assert.ok(reabrir.url.includes("terminado_planilla=is.false"));
+  const ots = decodeURIComponent(reabrir.url.match(/ot=in\.\(([^)]*)\)/)[1]);
+  assert.deepEqual(ots.split(",").sort(), ['"A-200"', '"M-7100"']);
 });
 
 test("sync — sin la migración 097 en la base igual sincroniza", async () => {
@@ -109,8 +117,9 @@ test("sync — sin la migración 097 en la base igual sincroniza", async () => {
   const ultimo = pedidos.filter((p) => p.method === "POST").at(-1).body;
   assert.equal(ultimo[0].descripcion, "P1 - PUERTA / P3 - PUERTA");
   for (const c of NUEVAS) assert.ok(!(c in ultimo[0]));
-  // Sin la columna no intenta cerrar por TERMINADO
+  // Sin la columna no intenta cerrar ni reabrir por TERMINADO
   assert.ok(!pedidos.some((p) => p.method === "PATCH" && p.body.estado === "cerrado"));
+  assert.ok(!pedidos.some((p) => p.method === "PATCH" && p.url.includes("ot=in.")));
 });
 
 test("lista de OT — muestra la fecha de entrega como día/mes/año", async () => {
