@@ -24,7 +24,7 @@ import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { avancePorOt } from "./lib/piezas";
 import { hoyArg } from "./lib/dates";
-import { AVISO_DEMORA_GOOGLE } from "./lib/csvProyectos";
+import { AVISO_DEMORA_GOOGLE, linksPlanilla, valorLinks } from "./lib/csvProyectos";
 import { CLAVE_FECHA_OBJETIVO, MODOS_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { useEscape } from "./hooks/useEscape";
 
@@ -224,7 +224,8 @@ export default function ProyectosScreen({ empresaId }) {
     try {
       const rows = await sb.get("config_sistema?clave=eq.proyectos_csv_url&select=valor&limit=1");
       const v = rows?.[0]?.valor;
-      if (v) setSyncCfg({ url: v.url || "", ultima_sync: v.ultima_sync || null });
+      // Un link por renglón: el de la hoja PLAN y los de las hojas de cada obra
+      if (v) setSyncCfg({ url: linksPlanilla(v).join("\n"), ultima_sync: v.ultima_sync || null });
     } catch {}
     try {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`);
@@ -337,13 +338,15 @@ export default function ProyectosScreen({ empresaId }) {
     if (!syncCfg.url.trim()) return;
     setSyncLoading(true);
     try {
+      const valor = valorLinks(syncCfg.url);
       const rows = await sb.get("config_sistema?clave=eq.proyectos_csv_url&select=clave&limit=1");
       if (rows?.length) {
-        await sb.patch("config_sistema?clave=eq.proyectos_csv_url", { valor: { url: syncCfg.url.trim() } });
+        await sb.patch("config_sistema?clave=eq.proyectos_csv_url", { valor });
       } else {
-        await sb.post("config_sistema", { clave: "proyectos_csv_url", valor: { url: syncCfg.url.trim() } });
+        await sb.post("config_sistema", { clave: "proyectos_csv_url", valor });
       }
-      showToast("✅ URL guardada", GREEN);
+      const cuantos = 1 + valor.urls.length;
+      showToast(cuantos > 1 ? `✅ ${cuantos} links guardados` : "✅ URL guardada", GREEN);
     } catch (e) { showToast(`Error: ${e.message}`, RED); }
     setSyncLoading(false);
   };
@@ -356,10 +359,14 @@ export default function ProyectosScreen({ empresaId }) {
       // Si el servidor se cortó (tardó demasiado) no vuelve JSON
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || "la sincronización no terminó. Esperá un minuto y probá de nuevo");
-      if (data.errores?.length) {
-        const faltan = (data.total || 0) - (data.procesados || 0);
+      const faltan = (data.total || 0) - (data.procesados || 0);
+      const hojasMal = (data.errores || []).filter(e => e.startsWith("Hoja "));
+      if (faltan > 0) {
         showToast(`⚠️ ${data.procesados} OT sincronizadas, ${faltan} no se pudieron guardar. Probá de nuevo.`, AMBER);
         console.warn("Errores sync OT:", data.errores);
+      } else if (hojasMal.length) {
+        // Una hoja de obra que no se pudo leer (link mal o sin publicar)
+        showToast(`⚠️ ${data.procesados} OT sincronizadas. No se pudo leer: ${hojasMal.join("; ")}. Revisá ese link.`, AMBER);
       } else {
         const rep = data.repetidas ? ` (${data.repetidas} repetida${data.repetidas > 1 ? "s" : ""} en la planilla)` : "";
         showToast(`✅ ${data.procesados} OT sincronizadas${rep}`, GREEN);
@@ -558,10 +565,16 @@ export default function ProyectosScreen({ empresaId }) {
                       Última sync: {new Date(syncCfg.ultima_sync).toLocaleString("es-AR")}
                     </div>
                   )}
-                  <input
+                  <label className="block text-xs font-semibold text-gypi-text mb-1" htmlFor="links-planilla">Links de la planilla, uno por renglón</label>
+                  <div className="text-xs text-gypi-dim mb-1 leading-relaxed">
+                    Primero el de la hoja PLAN. Si una obra tiene su hoja propia (OCAMPOURB, MALMÖ…), publicá esa hoja también como CSV y pegá su link en otro renglón.
+                  </div>
+                  <textarea
+                    id="links-planilla"
                     value={syncCfg.url}
                     onChange={e => setSyncCfg(p => ({ ...p, url: e.target.value }))}
                     placeholder="https://docs.google.com/spreadsheets/d/…/export?format=csv"
+                    rows={4}
                     className="g-input text-xs mb-2"
                   />
                   <label className="block text-xs font-semibold text-gypi-text mb-1" htmlFor="modo-objetivo">Fecha objetivo de las OT (Gantt y OT atrasadas)</label>
@@ -574,7 +587,7 @@ export default function ProyectosScreen({ empresaId }) {
                       disabled={syncLoading || !syncCfg.url.trim()}
                       className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber-ink cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
                     >
-                      Guardar URL
+                      Guardar links
                     </button>
                     <button
                       onClick={sincronizar}
