@@ -24,6 +24,7 @@ import { tieneModulo } from "../lib/modulos";
 import ModuloBloqueado from "../components/ModuloBloqueado";
 import { guardarInstantanea, leerInstantanea } from "../lib/instantanea";
 import { registrarServiceWorker } from "../lib/registrarSW";
+import { TarjetaInstalar } from "../components/InstalarApp";
 
 // LoginScreen es la primera pantalla para usuarios no logueados — se mantiene
 // estática para no agregar un salto de carga al camino crítico de entrada.
@@ -326,6 +327,7 @@ export default function HomeContent() {
       <div className="flex-1 overflow-hidden">
         <LoginScreen onLogin={login} empresa={empresa} />
       </div>
+      <TarjetaInstalar />
     </div>
   );
   if (usuario?.debe_cambiar_password) return (
@@ -438,6 +440,8 @@ export default function HomeContent() {
       </div>
 
       {/* Historial y documentos del operario se abren desde "Mi cuenta": esa pestaña queda marcada */}
+      {/* Ofrecer instalar Gypi en el celular */}
+      {!isDemo && !isChat && <TarjetaInstalar />}
       {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : uIsGer && DESDE_MAS.has(screen) ? "config" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} mantenimiento={!!u.es_mantenimiento} />}
 
       {paywallInfo && (
