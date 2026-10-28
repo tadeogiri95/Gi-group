@@ -144,6 +144,44 @@ test("📌 Prioridad — lista ordenada y ▲ guarda la prioridad nueva", async 
   assert.ok(screen.getByLabelText("Quitar prioridad de la OT M-7200"));
 });
 
+test("📌 Prioridad — también se ordena escribiendo el número de cada OT", async () => {
+  const pedidos = mockData({ proyectos: [
+    OT(1, "M-7100", { fecha_objetivo: "2026-10-31", semana_objetivo: 44 }),
+    OT(2, "M-7200", { fecha_objetivo: "2026-11-07", semana_objetivo: 45 }),
+    OT(4, "M-7300", { fecha_objetivo: "2026-11-14", semana_objetivo: 46 }),
+  ] });
+  pantalla();
+  fireEvent.click(await screen.findByText("📌 Prioridad"));
+  const lista = await screen.findByRole("region", { name: "Prioridad de las OT" });
+  const orden = () => within(lista).getAllByRole("listitem").map((f) => f.getAttribute("aria-label").replace("OT ", ""));
+  // La M-7300 pasa a ser la 1
+  const n = screen.getByLabelText("Prioridad de la OT M-7300");
+  fireEvent.change(n, { target: { value: "1" } });
+  fireEvent.blur(n);
+  await screen.findByText("✅ Prioridad guardada");
+  assert.deepEqual(orden(), ["M-7300", "M-7100", "M-7200"]);
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7300").value, "1");
+  assert.deepEqual(pedidos.filter((p) => p.method === "PATCH").map((p) => [p.path, p.body]), [["proyectos?id=eq.4", { prioridad: 1 }]]);
+  // Un número más grande que la lista la manda al último lugar con número; Enter confirma
+  const otra = screen.getByLabelText("Prioridad de la OT M-7100");
+  fireEvent.change(otra, { target: { value: "9" } });
+  fireEvent.keyDown(otra, { key: "Enter" });
+  fireEvent.blur(otra);
+  await waitFor(() => assert.deepEqual(orden(), ["M-7300", "M-7200", "M-7100"]));
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7100").value, "3");
+  // Vacía: se le quita la prioridad
+  const sacar = screen.getByLabelText("Prioridad de la OT M-7300");
+  fireEvent.change(sacar, { target: { value: "" } });
+  fireEvent.blur(sacar);
+  await waitFor(() => assert.equal(screen.getByLabelText("Prioridad de la OT M-7300").value, ""));
+  // Un valor que no sirve vuelve al que tenía
+  const mal = screen.getByLabelText("Prioridad de la OT M-7200");
+  const antes = mal.value;
+  fireEvent.change(mal, { target: { value: "0" } });
+  fireEvent.blur(mal);
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7200").value, antes);
+});
+
 test("📌 Prioridad — sin la migración 137 avisa qué falta y no deja ordenar", async () => {
   mockData({ proyectos: [{ id: 1, ot: "M-1", division: "Muebles", estado: "activo" }, { id: 2, ot: "M-2", division: "Muebles", estado: "activo" }] });
   pantalla();
