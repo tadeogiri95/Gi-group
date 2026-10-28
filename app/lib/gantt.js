@@ -97,6 +97,17 @@ export function ventanaGantt(escala, cuantas = 0) {
   return { semanas, desde: semanas[0].inicio, hasta: sumarDias(semanas[semanas.length - 1].inicio, 7) };
 }
 
+/**
+ * Ancho de un día para que las semanas elegidas ocupen todo el ancho visible
+ * (Tadeo, 28/10), y con eso cómo se rotula arriba: por días si entran los
+ * números, por semanas o por mes. `visible` = ancho de la zona de las barras
+ * en píxeles (0 si todavía no se midió: se usa el ancho de "por días").
+ */
+export function escalaAncho(visible, dias) {
+  const px = visible > 0 && dias > 0 ? Math.min(120, Math.max(2, visible / dias)) : 44;
+  return { px, vista: px >= 24 ? "dias" : px >= 8 ? "semanas" : "mes" };
+}
+
 /** Un proceso (desde/hasta, días inclusive) cae dentro de la ventana. */
 export const enVentana = (q, v) => !!q && q.desde < v.hasta && q.hasta >= v.desde;
 

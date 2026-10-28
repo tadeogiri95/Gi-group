@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { rangoSemana, numeroSemana, inicioDeSemana, semanaPlanilla, fechaObjetivo, textoObjetivo, normalizarModo } from "../app/lib/semanaObjetivo.js";
-import { filasGantt, escalaGantt, primerEscaneoPorOt, ventanaGantt, enVentana } from "../app/lib/gantt.js";
+import { filasGantt, escalaGantt, primerEscaneoPorOt, ventanaGantt, enVentana, escalaAncho } from "../app/lib/gantt.js";
 import { parseCsvProyectos } from "../app/lib/csvProyectos.js";
 
 const { default: GanttOt } = await import("../app/components/GanttOt.jsx");
@@ -181,19 +181,20 @@ test("📅 Gantt — solo OT planificadas, 4 renglones por OT y los atrasados ma
   assert.deepEqual(vistos, ["7100"]);
 });
 
-test("📅 Gantt — por días, semanas o mes, fila de fechas fija y pantalla completa", () => {
+test("📅 Gantt — lo elegido ocupa todo el ancho, fila de fechas fija y pantalla completa", () => {
+  // 1 semana en 1050 px de barras: 150 px por día, tope 120; 4 semanas: 37,5 px por día
+  assert.deepEqual(escalaAncho(1050, 7), { px: 120, vista: "dias" });
+  assert.deepEqual(escalaAncho(1050, 28), { px: 37.5, vista: "dias" });
+  assert.equal(escalaAncho(1050, 70).vista, "semanas", "10 semanas: no entran los números de cada día");
+  assert.equal(escalaAncho(1050, 300).vista, "mes");
+  assert.equal(escalaAncho(1050, 2000).px, 2, "nunca menos de 2 px por día");
+  assert.deepEqual(escalaAncho(0, 28), { px: 44, vista: "dias" }, "sin medir todavía, por días");
   const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
   const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
-  // Arranca por días: la cabecera trae "S44 · 25/10" y los números de cada día
-  assert.equal(screen.getByRole("button", { name: "Días" }).getAttribute("aria-pressed"), "true");
-  assert.ok(container.querySelector("svg text")?.textContent.includes("·"), "la semana va arriba de los días");
+  assert.equal(screen.queryByRole("button", { name: "Días" }), null, "la escala sale sola de las semanas elegidas");
+  assert.ok(container.querySelector("svg text")?.textContent.includes("·"), "por días, la semana va arriba de los días");
   assert.ok(container.querySelector(".sticky.top-0"), "la fila de las fechas queda fija al bajar");
   assert.ok(container.querySelector(".max-h-\\[75vh\\].overflow-auto"), "el Gantt tiene scroll propio");
-  fireEvent.click(screen.getByRole("button", { name: "Semanas" }));
-  assert.ok(!container.querySelector("svg text")?.textContent.includes("·"));
-  fireEvent.click(screen.getByRole("button", { name: "Mes" }));
-  const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-  assert.ok([...container.querySelectorAll("svg text")].some((t) => meses.some((m) => t.textContent.startsWith(m))), "por mes, el nombre del mes arriba");
   fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
   assert.ok(screen.getByRole("dialog", { name: "Gantt de OT en pantalla completa" }));
   fireEvent.click(screen.getByRole("button", { name: "✕ Salir" }));
@@ -483,4 +484,22 @@ test("📅 Gantt — elegir ver 1 a 4 semanas desde la actual, o todo el plan", 
   assert.equal(localStorage.getItem("gypi_gantt_semanas"), "2", "queda guardado");
   fireEvent.click(screen.getByRole("button", { name: "Todo" }));
   assert.ok(screen.getByRole("region", { name: "Corte: 2 OT" }));
+});
+
+test("📅 Gantt — con 1 semana elegida, esa semana llena el ancho visible", () => {
+  const original = globalThis.ResizeObserver;
+  const ancho = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+  globalThis.ResizeObserver = class { constructor(cb) { this.cb = cb; } observe() { this.cb([]); } disconnect() {} };
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1000 });
+  try {
+    localStorage.setItem("gypi_gantt_semanas", "1");
+    const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+    const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+    // 1000 px − 260 de las columnas fijas − 56 para las horas − 2 de bordes = 682 px para 7 días
+    const svg = container.querySelector(".sticky.top-0 svg");
+    assert.equal(Number(svg.getAttribute("width")), 682 + 56);
+  } finally {
+    globalThis.ResizeObserver = original;
+    if (ancho) Object.defineProperty(HTMLElement.prototype, "clientWidth", ancho);
+  }
 });
