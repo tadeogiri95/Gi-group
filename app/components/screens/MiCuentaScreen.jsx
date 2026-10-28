@@ -10,6 +10,7 @@ import ListItem from "../ui/ListItem";
 import { Button } from "../ui";
 import { useConfirm } from "../ui/ConfirmDialog";
 import PinCard from "../PinCard";
+import { BotonInstalar } from "../InstalarApp";
 import { tieneModulo } from "../../lib/modulos";
 
 const DIAS_G = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
@@ -90,6 +91,8 @@ export default function MiCuentaScreen({ usuario, ctx, goto, logout, onPinCambia
 
       {/* PIN para entrar rápido (F4-06) */}
       {usuario.rol === "operativo" && <PinCard tienePin={!!usuario.tiene_pin} onCambio={onPinCambiado} demo={demo} />}
+
+      {!demo && <div className="mb-2"><BotonInstalar /></div>}
 
       {/* Salir, con confirmación (U-13) */}
       <Button size="lg" variant="outline" className="w-full mt-2" onClick={salir}>🚪 Cerrar sesión</Button>
