@@ -20,6 +20,7 @@ const AdminEmpresaScreen = perezosa(() => import("../../admin_empresa_screen"));
 const AsistenciaReglasScreen = perezosa(() => import("./AsistenciaReglasScreen"));
 const ModulosScreen = perezosa(() => import("./ModulosScreen"));
 import CerrarSesion from "../CerrarSesion";
+import { BotonInstalar } from "../InstalarApp";
 
 // Gypi no muestra publicidad (D20): solo usa lo necesario para la sesión.
 function PrivacidadPanel({ usuario, empresa }) {
@@ -95,6 +96,7 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
             </div>
           );
         })}
+        <BotonInstalar />
         <CerrarSesion usuario={usuario} />
       </nav>
     );
