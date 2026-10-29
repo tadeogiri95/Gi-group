@@ -101,12 +101,17 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
   const porOt = new Map();
   for (const i of items || []) {
     const ot = String(i.ot);
-    if (!porOt.has(ot)) porOt.set(ot, { ot, primero: i.fecha, orden: Number(i.orden) || 0, horas: {}, desde: {} });
+    if (!porOt.has(ot)) porOt.set(ot, { ot, primero: i.fecha, orden: Number(i.orden) || 0, horas: {}, desde: {}, enEtapa: {} });
     const o = porOt.get(ot);
     if (i.fecha < o.primero) o.primero = i.fecha;
-    o.orden = Math.min(o.orden, Number(i.orden) || 0);
+    o.enEtapa[i.etapa] = Math.min(o.enEtapa[i.etapa] ?? Infinity, Number(i.orden) || 0);
     o.horas[i.etapa] = (o.horas[i.etapa] || 0) + (Number(i.horas) || 0);
     if (!o.desde[i.etapa] || i.fecha < o.desde[i.etapa]) o.desde[i.etapa] = i.fecha;
+  }
+  // El lugar de la OT es el de su primer proceso (con un orden propio por proceso, cada uno tiene el suyo)
+  for (const o of porOt.values()) {
+    const primera = ETAPAS_PLAN.find(({ id }) => id in o.enEtapa);
+    if (primera) o.orden = o.enEtapa[primera.id];
   }
   const out = new Map();
   if (!porOt.size) return out;
@@ -114,9 +119,13 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
   const base = ots.reduce((m, o) => (o.primero < m ? o.primero : m), ots[0].primero);
   const cal = calendario(base, horasSemana, diasExtra);
   const tHoy = hoy < base ? 0 : cal.inicio(hoy);
+  // Cada proceso en su orden (el de "OT por proceso"; si no se tocó, el de la OT)
+  const lugar = new Map(ots.map((o, i) => [o.ot, i]));
+  const ordenEtapa = Object.fromEntries(ETAPAS_PLAN.map(({ id }) => [id, ots.filter((o) => id in o.enEtapa)
+    .sort((a, b) => a.enEtapa[id] - b.enEtapa[id] || lugar.get(a.ot) - lugar.get(b.ot)).map((o) => o.ot)]));
   // Ningún proceso antes del primer día que le dio el plan
   const tramos = secuenciar(ots.map((o) => ({ ...o, clave: o.ot })), {
-    params, personal, inicio: (o, etapa) => (o.desde[etapa] ? cal.inicio(o.desde[etapa]) : 0),
+    params, personal, ordenEtapa, inicio: (o, etapa) => (o.desde[etapa] ? cal.inicio(o.desde[etapa]) : 0),
   });
 
   for (const o of ots) {
