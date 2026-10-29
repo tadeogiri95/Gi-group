@@ -130,7 +130,8 @@ export async function POST(request) {
       const horizonte = d.tipo === "horizonte";
       // Un plan sin límite de semanas armado el mismo día reemplaza al anterior aunque termine otro día
       const [previo] = (await sbGet(horizonte
-        ? `planes_produccion?empresa_id=eq.${e}&tipo=eq.horizonte&desde=eq.${d.desde}&select=id,estado,confirmado_por,confirmado_at&order=updated_at.desc&limit=1`
+        // de la misma división: el de otra división armado el mismo día es otro plan
+        ? `planes_produccion?empresa_id=eq.${e}&tipo=eq.horizonte&desde=eq.${d.desde}&division_id=${d.division_id ? `eq.${d.division_id}` : "is.null"}&select=id,estado,confirmado_por,confirmado_at&order=updated_at.desc&limit=1`
         : `planes_produccion?empresa_id=eq.${e}&desde=eq.${d.desde}&hasta=eq.${d.hasta}&select=id,estado,confirmado_por,confirmado_at&limit=1`, opts)) || [];
       const confirmar = d.estado === "confirmado";
       const fila = {

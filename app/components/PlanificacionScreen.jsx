@@ -33,6 +33,7 @@ import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import AvanceManualOt from "./AvanceManualOt";
 import { useConfirm } from "./ui/ConfirmDialog";
 import SelectorSemana from "./SelectorSemana";
+import { clavePlan } from "../lib/reordenarPlan";
 import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
 import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAutomatico";
@@ -107,7 +108,6 @@ function textoPeriodo(p) {
 // Lo que elige gerencia en Carga queda guardado en el navegador (Tadeo, 27/10:
 // al volver del Gantt no tiene que cambiar nada): las OT tildadas, el switch
 // del plan y si la lista de OT está abierta.
-const clavePlan = (empresaId, divisionId, que) => `gypi_plan_${que}_${empresaId}_${divisionId || "todas"}`;
 function leerLocal(clave) {
   try { return JSON.parse(localStorage.getItem(clave) || "null"); } catch { return null; }
 }

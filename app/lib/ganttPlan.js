@@ -33,6 +33,13 @@ const DIAS_JUSTO = 2; // con el anterior atrasado, si este arranca en 2 días o 
  * confirmado, el Gantt seguía mostrando las OT de los días ya pasados de los
  * planes anteriores).
  */
+/** El último plan confirmado de una división (null = toda la planta), o null. */
+export function planVigente(planes = [], divisionId = null) {
+  const clave = (x) => `${x.confirmado_at || ""}|${x.desde || ""}`;
+  return (planes || []).filter((p) => (p.division_id || null) === (divisionId || null))
+    .reduce((a, p) => (!a || clave(p) > clave(a) ? p : a), null);
+}
+
 export function itemsVigentes(planes = []) {
   const ultimo = new Map();
   for (const p of planes || []) {
