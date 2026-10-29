@@ -72,6 +72,7 @@ const TABLAS_PERMITIDAS = [
   "vehiculo_arreglos", "vehiculo_mantenimientos", // Arreglos y services, parte 31 (129): ídem
   "maquinas", "maquina_tareas", "maquina_registros", // Maquinaria, parte 33 (132): solo lectura acá; se escriben por /api/maquinaria
   "maquina_fallas", // Maquinaria, parte 35 (134): solo lectura acá; se escribe por /api/maquinaria
+  "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145): gestión lee y agrega (no se editan)
 ];
 
 // Flota (126): se leen por acá y se escriben solo por /api/flota.
@@ -148,6 +149,7 @@ const TABLAS_CON_EMPRESA = [
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
   "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión sin supervisores; lo escribe la sincronización
+  "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145)
 ];
 
 function validarPath(path) {

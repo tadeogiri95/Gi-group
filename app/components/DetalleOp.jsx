@@ -25,6 +25,7 @@ import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
 import AvanceManualOt from "./AvanceManualOt";
+import { CambiosTiempoOt } from "./AjusteTiempo";
 import SelectorSemana from "./SelectorSemana";
 import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { useEscape } from "../hooks/useEscape";
@@ -230,6 +231,8 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         <AvanceManualOt proyecto={avanceManual === undefined ? proyecto : { ...proyecto, avance_manual: avanceManual }} etapas={etapas} divisiones={divisiones}
           piezas={avanceEscaneo.map((a) => ({ ot: proyecto?.ot, etapa: a.codigo, total: a.total, pasaron: a.pasaron }))}
           onGuardado={(v) => { setAvanceManual(v); onProyectoActualizado?.({ id: proyecto.id, avance_manual: v }); }} />
+
+        {puedeCambiarSemana && <CambiosTiempoOt ot={proyecto?.ot} />}
 
         {resSueltos.total > 0 && (
           <div className="text-xs text-gypi-dim mb-3">📦 Sueltos: {resSueltos.total === 1 ? "1 ítem" : `${resSueltos.total} ítems`} · Acopio {resSueltos.acopio} de {resSueltos.total} · Carga {resSueltos.carga} de {resSueltos.total}</div>

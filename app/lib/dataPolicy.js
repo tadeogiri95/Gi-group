@@ -18,6 +18,8 @@
 // legibles por cualquier rol).
 // ═══════════════════════════════════════════════════════════
 
+import { validarAjuste } from "./ajustesTiempo";
+
 export const ROLES_GESTION = new Set(["gerencial", "administrativo"]);
 
 // Tablas que un supervisor de división (administrativo con solo_su_division)
@@ -89,6 +91,9 @@ export const POLICY = {
   actas_ot:                     { GET: "all" },   // se escribe por /api/acta (OP parte 11)
   pendientes_obra:              { GET: "all" },   // se escribe por /api/acta (OP parte 11)
   empresa:                      { GET: "all",     PATCH: "gestion" },
+  // Cambios de tiempo de los procesos de una OT, con motivo (145): los cargan
+  // gerencia, supervisores y administración; no se editan ni se borran.
+  ajustes_tiempo_ot:            { GET: "gestion", POST: "gestion" },
 
   // Solo gestión.
   config_sistema:               { GET: "gestion", POST: "gestion", PATCH: "gestion" },
@@ -159,6 +164,12 @@ export function aplicarFiltroPropio(path, ownFilter) {
  */
 export function prepararBodyPost(tabla, body, sesion, ownFilter) {
   const out = { ...body };
+  if (tabla === "ajustes_tiempo_ot") {
+    const err = validarAjuste(out);
+    if (err) return { status: 400, error: err };
+    out.creado_por = sesion?.empleado_id || null; // quién lo cargó sale de la sesión
+    out.detalle = typeof out.detalle === "string" && out.detalle.trim() ? out.detalle.trim() : null;
+  }
   if (ownFilter) {
     if (tabla === "registro_actividades" || tabla === "mensajes_chat") {
       out.empleado_id = sesion.empleado_id;

@@ -118,6 +118,10 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   },
   // documentos_empleado no tiene entrada: es TABLAS_SOLO_LECTURA en /api/data,
   // los inserts pasan siempre por /api/documentos/upload.
+  // Cambios de tiempo con motivo (145); creado_por sale de la sesión
+  ajustes_tiempo_ot: {
+    POST: ["ot", "etapa", "tipo", "horas", "pendiente", "dias", "motivo", "detalle", "creado_nombre"],
+  },
 };
 
 // ── Schemas Zod por endpoint ────────────────────────────────────────────────
