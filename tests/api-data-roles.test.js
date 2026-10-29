@@ -317,3 +317,22 @@ test("todos los tipos de solicitud que crea la app (chat y botón de fichar) est
   assert.ok(usados.length >= 5, `se esperaban varios tipos, se encontraron: ${usados}`);
   for (const t of usados) assert.ok(TIPOS_SOLICITUD.includes(t), `el chat crea "${t}" pero /api/data no lo acepta`);
 });
+
+// ─── Cambios de tiempo con motivo (145): por el gateway de punta a punta ───
+
+test("ajustes_tiempo_ot: administración lo guarda con su empresa y su id; el operativo no", async () => {
+  const fila = { ot: "7100", etapa: "corte", tipo: "faltan", horas: 3, pendiente: 1, dias: 2, motivo: "falla_maquina", detalle: null, creado_nombre: "Ana", creado_por: "otro", empresa_id: "otra" };
+  const { handlers, llamadas } = capturar("ajustes_tiempo_ot");
+  global.fetch = createFetchMock(handlers);
+  const res = await POST(req({ method: "POST", path: "ajustes_tiempo_ot", body: fila }, await token("administrativo")));
+  assert.equal(res.status, 200);
+  const enviado = llamadas.find((l) => l.method === "POST").body;
+  assert.equal(enviado.empresa_id, EMPRESA_ID);
+  assert.equal(enviado.creado_por, EMPLEADO_ID);
+  assert.equal(enviado.motivo, "falla_maquina");
+  assert.equal(enviado.horas, 3);
+  const sinMotivo = await POST(req({ method: "POST", path: "ajustes_tiempo_ot", body: { ...fila, motivo: "otros" } }, await token("gerencial")));
+  assert.equal(sinMotivo.status, 400);
+  const operario = await POST(req({ method: "POST", path: "ajustes_tiempo_ot", body: fila }, await token("operativo")));
+  assert.equal(operario.status, 403);
+});

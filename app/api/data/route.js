@@ -149,6 +149,7 @@ const TABLAS_CON_EMPRESA = [
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
   "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión sin supervisores; lo escribe la sincronización
+  "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145)
 ];
 
 function validarPath(path) {
