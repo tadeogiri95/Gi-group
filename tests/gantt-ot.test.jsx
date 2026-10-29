@@ -222,14 +222,28 @@ test("Proyectos → OT tiene el chip 📅 Gantt y la opción de cómo contar la 
   assert.match(sql, /do \$mig\$/);
 });
 
-test("itemsVigentes y otAtrasadasPlan — la semana le gana al mes; atrasada la OT con un proceso vencido", async () => {
+// 29/10 (Tadeo): confirmó un plan de 1 OT y el Gantt seguía con 13 OT de los
+// días ya pasados de los planes anteriores. Manda solo el último confirmado.
+test("itemsVigentes — de cada división manda solo el último plan confirmado, entero", async () => {
+  const { itemsVigentes } = await import("../app/lib/ganttPlan.js");
+  const viejo = { id: 1, desde: "2026-10-26", hasta: "2026-10-28", confirmado_at: "2026-10-26T10:00:00Z", division_id: 1,
+    items: [{ ot: "V1", etapa: "corte", fecha: "2026-10-26", horas: 8 }, { ot: "V2", etapa: "corte", fecha: "2026-10-27", horas: 8 }] };
+  const nuevo = { id: 2, desde: "2026-10-29", hasta: "2026-11-05", confirmado_at: "2026-10-29T01:00:00Z", division_id: 1,
+    items: [{ ot: "N", etapa: "corte", fecha: "2026-10-29", horas: 8 }] };
+  const otraDivision = { id: 3, desde: "2026-10-20", hasta: "2026-11-30", confirmado_at: "2026-10-20T10:00:00Z", division_id: 2,
+    items: [{ ot: "P", etapa: "armado", fecha: "2026-10-30", horas: 8 }] };
+  assert.deepEqual(itemsVigentes([viejo, nuevo]).map((i) => i.ot), ["N"], "sin las OT de los días pasados del plan viejo");
+  assert.deepEqual(itemsVigentes([nuevo, viejo]).map((i) => i.ot), ["N"], "no importa el orden en que llegan");
+  assert.deepEqual(itemsVigentes([viejo, nuevo, otraDivision]).map((i) => i.ot).sort(), ["N", "P"], "cada división con el suyo");
+  assert.deepEqual(itemsVigentes([]), []);
+});
+
+test("otAtrasadasPlan — atrasada la OT con un proceso vencido", async () => {
   const { itemsVigentes, procesosPlan, otAtrasadasPlan } = await import("../app/lib/ganttPlan.js");
   const planes = [
-    { id: 1, desde: "2026-10-01", hasta: "2026-10-31", items: [{ ot: "A", etapa: "corte", fecha: "2026-10-05", horas: 8 }, { ot: "A", etapa: "armado", fecha: "2026-10-27", horas: 8 }] },
-    { id: 2, desde: "2026-10-25", hasta: "2026-10-31", items: [{ ot: "A", etapa: "armado", fecha: "2026-10-29", horas: 8 }] },
+    { id: 2, desde: "2026-10-01", hasta: "2026-10-31", items: [{ ot: "A", etapa: "corte", fecha: "2026-10-05", horas: 8 }, { ot: "A", etapa: "armado", fecha: "2026-10-29", horas: 8 }] },
   ];
   const items = itemsVigentes(planes);
-  assert.deepEqual(items.map((i) => i.fecha).sort(), ["2026-10-05", "2026-10-29"], "el 27 lo pisa la semana confirmada");
   const procesos = procesosPlan(items, { etapasCodigo: { corte: 1, armado: 4 }, avance: [{ ot: "A", etapa: 4, estado: "terminada" }], hoy: "2026-10-30" });
   const a = procesos.get("A");
   assert.deepEqual(a.procesos.map((p) => [p.etapa, p.hasta, p.completo, p.diasAtraso]), [["corte", "2026-10-05", false, 25], ["armado", "2026-10-29", true, 0]]);

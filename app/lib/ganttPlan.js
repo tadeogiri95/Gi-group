@@ -20,26 +20,23 @@ import { diasEntre } from "./semanaObjetivo";
 import { porcentajeOt } from "./panelMantenimiento";
 
 const nombreEtapa = Object.fromEntries(ETAPAS_PLAN.map((e) => [e.id, e.nombre]));
-const largo = (p) => diasEntre(p.desde, p.hasta);
 const DIAS_JUSTO = 2; // con el anterior atrasado, si este arranca en 2 días o menos ya no hay margen
 
 /**
- * Lo que toca cada día según los planes confirmados. Si dos planes se pisan
- * (una semana dentro de un mes confirmado), cada día lo manda el más corto,
- * igual que en 📅 Plan de la semana.
+ * Lo que toca cada día según los planes confirmados: de cada división manda
+ * solo el último que se confirmó, entero (Tadeo, 29/10: con un plan de 1 OT
+ * confirmado, el Gantt seguía mostrando las OT de los días ya pasados de los
+ * planes anteriores).
  */
 export function itemsVigentes(planes = []) {
-  const ordenados = [...(planes || [])].sort((a, b) => largo(a) - largo(b) || String(b.confirmado_at || "").localeCompare(String(a.confirmado_at || "")));
-  const tomados = [];
-  const out = [];
-  for (const p of ordenados) {
-    for (const i of p.items || []) {
-      if (tomados.some((t) => i.fecha >= t.desde && i.fecha <= t.hasta)) continue;
-      out.push(i);
-    }
-    tomados.push({ desde: p.desde, hasta: p.hasta });
+  const ultimo = new Map();
+  for (const p of planes || []) {
+    const k = p.division_id || "";
+    const otro = ultimo.get(k);
+    const clave = (x) => `${x.confirmado_at || ""}|${x.desde || ""}`;
+    if (!otro || clave(p) > clave(otro)) ultimo.set(k, p);
   }
-  return out;
+  return [...ultimo.values()].flatMap((p) => p.items || []);
 }
 
 /** Sin grilla de horarios cargada: 8 horas de lunes a viernes. Índice = día de la semana (0 = domingo). */
