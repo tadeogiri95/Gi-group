@@ -97,3 +97,100 @@ test("sync — sin la migración 144 sincroniza igual, sin las columnas nuevas",
   assert.equal(lotes[0][0].semana_objetivo, 44);
   assert.equal("semana_app" in lotes[0][0], false);
 });
+
+// ─── Script del Plan de trabajo y su ruta ───
+const { scriptPlanPlanilla, semanasParaPlanilla, CLAVE_PLANILLA_PLAN, generarClave } = await import("../app/lib/planillaPlan.js");
+
+/** Hoja falsa de Apps Script: filas de texto; setValue anota en la celda. */
+function hojaFalsa(filas, formulas = {}) {
+  const ancho = Math.max(...filas.map((f) => f.length));
+  const celda = (r, c) => String(filas[r - 1]?.[c - 1] ?? "");
+  return {
+    filas,
+    getLastRow: () => filas.length,
+    getLastColumn: () => ancho,
+    getRange: (r, c, n = 1, m = 1) => ({
+      getDisplayValues: () => Array.from({ length: n }, (_, i) => Array.from({ length: m }, (_, j) => celda(r + i, c + j))),
+      getFormulas: () => Array.from({ length: n }, (_, i) => Array.from({ length: m }, (_, j) => formulas[`${r + i},${c + j}`] || "")),
+      setValue: (v) => { filas[r - 1][c - 1] = v; },
+    }),
+  };
+}
+
+function correrScript(hojas, semanas) {
+  const pedidos = [];
+  const entorno = {
+    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheets: () => hojas }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
+    ScriptApp: { getProjectTriggers: () => [] },
+    UrlFetchApp: { fetch: (url, o) => {
+      pedidos.push({ url, metodo: o.method, cuerpo: o.payload ? JSON.parse(o.payload) : null, auth: o.headers.Authorization });
+      return { getResponseCode: () => 200, getContentText: () => JSON.stringify(o.method === "get" ? { semanas } : { ok: true }) };
+    } },
+  };
+  const script = scriptPlanPlanilla({ url: "https://gypi.test/api/proyectos/semanas-planilla", clave: "gyp_x" });
+  new Function(...Object.keys(entorno), `${script}\npasarSemanasGypi();`)(...Object.values(entorno));
+  return pedidos;
+}
+
+test("script del Plan — anota la SEMANA en todos los renglones de la OT y en todas las hojas; no pisa lo cambiado en la planilla", () => {
+  const plan = hojaFalsa([
+    ["NUMERO SIGUIENTE", "", ""],
+    ["", "", ""],
+    ["OT", "CLIENTE", "SEMANA "],
+    ["M-1", "A", "44"],
+    ["M-1", "A", "43"],
+    ["M-2", "B", "50"],
+    ["M-3", "C", "44"],
+  ]);
+  const obra = hojaFalsa([["OT", "SEMANA"], ["M-1", "44"], ["M-4", "44"]], { "2,2": "" });
+  const personas = hojaFalsa([["NOMBRE", "DNI"], ["Juan", "1"]]);
+  const pedidos = correrScript([plan, obra, personas], [
+    { ot: "M-1", semana: 46, antes: 44 },
+    { ot: "M-2", semana: 47, antes: 44 }, // en la planilla ya dice 50: alguien la cambió
+    { ot: "M-3", semana: 44, antes: 40 }, // ya está
+    { ot: "M-9", semana: 45, antes: 44 }, // no está en la planilla
+  ]);
+  assert.deepEqual(plan.filas.slice(3).map((f) => f[2]), [46, 46, "50", "44"]);
+  assert.equal(obra.filas[1][1], 46);
+  assert.equal(obra.filas[2][1], "44");
+  assert.equal(pedidos[0].metodo, "get");
+  assert.equal(pedidos[0].auth, "Bearer gyp_x");
+  assert.deepEqual(pedidos[1], { url: "https://gypi.test/api/proyectos/semanas-planilla", metodo: "patch", cuerpo: { escritas: [{ ot: "M-1", semana: 46 }, { ot: "M-3", semana: 44 }] }, auth: "Bearer gyp_x" });
+});
+
+test("script del Plan — no toca celdas con fórmula; sin semanas pendientes no hace nada más", () => {
+  const plan = hojaFalsa([["OT", "SEMANA"], ["M-1", "44"]], { "2,2": "=A1" });
+  const pedidos = correrScript([plan], [{ ot: "M-1", semana: 46, antes: 44 }]);
+  assert.equal(plan.filas[1][1], "44");
+  assert.equal(pedidos.length, 1);
+  assert.equal(correrScript([plan], []).length, 1);
+});
+
+test("semanasParaPlanilla — solo las pendientes", () => {
+  assert.deepEqual(semanasParaPlanilla([{ ot: "M-1", semana_app: 46, semana_planilla: 44 }, { ot: "M-2", semana_app: null }, { ot: "M-3", semana_app: 47, semana_planilla: null }]),
+    [{ ot: "M-1", semana: 46, antes: 44 }, { ot: "M-3", semana: 47, antes: null }]);
+});
+
+test("/api/proyectos/semanas-planilla — GET y PATCH con la clave; sin clave válida, 401", async () => {
+  const { GET, PATCH } = await import("../app/api/proyectos/semanas-planilla/route.js");
+  const E = "11111111-1111-1111-1111-111111111111";
+  const { clave, hash } = generarClave(E);
+  const patches = [];
+  global.fetch = createFetchMock([
+    { match: (u) => u.includes("/rest/v1/config_sistema") && u.includes(`clave=eq.${CLAVE_PLANILLA_PLAN}`) && u.includes("select=valor"), respond: () => ({ status: 200, body: [{ valor: { hash } }] }) },
+    { match: (u, o) => u.includes("/rest/v1/config_sistema") && o?.method === "PATCH", respond: () => ({ status: 200, body: null }) },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?") && u.includes("semana_app=not.is.null") && (!o?.method || o.method === "GET"), respond: () => ({ status: 200, body: [{ ot: "M-1", semana_app: 46, semana_planilla: 44 }] }) },
+    { match: (u, o) => u.includes("/rest/v1/proyectos?") && o?.method === "PATCH", respond: (u, o) => { patches.push([decodeURIComponent(u), JSON.parse(o.body)]); return { status: 200, body: null }; } },
+  ]);
+  const req = (metodo, auth, body) => new Request("http://localhost/api/proyectos/semanas-planilla", { method: metodo, headers: { Authorization: `Bearer ${auth}`, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  assert.equal((await GET(req("GET", "gyp_mala"))).status, 401);
+  assert.equal((await GET(req("GET", generarClave(E).clave))).status, 401, "otra clave de la misma empresa");
+  const data = await (await GET(req("GET", clave))).json();
+  assert.deepEqual(data, { semanas: [{ ot: "M-1", semana: 46, antes: 44 }] });
+  const r = await (await PATCH(req("PATCH", clave, { escritas: [{ ot: "M-1", semana: 46 }, { ot: "", semana: 3 }] }))).json();
+  assert.equal(r.listas, 1);
+  assert.equal(patches.length, 1);
+  assert.match(patches[0][0], /empresa_id=eq\.11111111-1111-1111-1111-111111111111&ot=eq\.M-1&semana_app=eq\.46/);
+  assert.deepEqual(patches[0][1], { semana_app: null, semana_app_at: null, semana_planilla: 46 });
+});

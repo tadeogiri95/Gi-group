@@ -5,6 +5,9 @@
 // El número de prioridad sigue mandando sobre la semana (planificacion.js).
 import { fechaObjetivo, numeroSemana, rangoSemana } from "./semanaObjetivo";
 
+/** config_sistema del script del Plan de trabajo que anota la SEMANA (planillaPlan.js). */
+export const CLAVE_PLANILLA_PLAN = "planilla_plan_script";
+
 /** Semanas para elegir: de 8 antes de la actual a 30 después, y la que ya tiene la OT. */
 export function opcionesSemana(hoy, modo, actual = null) {
   const anio = Number(String(hoy).slice(0, 4));

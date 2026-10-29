@@ -8,6 +8,8 @@ import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
+import { ConexionScript } from "./components/PlanillaMrpConexion";
+import { CLAVE_PLANILLA_PLAN } from "./lib/semanaEditable";
 import DetalleOp from "./components/DetalleOp";
 import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
 import { fmtPesos } from "./lib/costo";
@@ -595,6 +597,12 @@ export default function ProyectosScreen({ empresaId }) {
                     >
                       Guardar links
                     </button>
+                  </div>
+                  {/* SEMANA cambiada en Gypi → columna SEMANA del Plan de trabajo (144) */}
+                  <div className="mt-3">
+                    <ConexionScript claveConfig={CLAVE_PLANILLA_PLAN} api="/api/proyectos/semanas-planilla" planilla="el Plan de trabajo" funcion="instalarSemanasGypi"
+                      titulo="📅 Pasar la SEMANA al Plan de trabajo" leyo="pidió las semanas" cada="cada 15 minutos"
+                      texto="Cuando cambiás la semana de una OT en Planificación o en el detalle de la OT, el Plan de trabajo la anota solo en la columna SEMANA, en todas las hojas donde está esa OT. Si alguien la cambió en la planilla después, gana la planilla (el cambio más reciente)." />
                   </div>
                 </div>
               )}
