@@ -1172,3 +1172,72 @@ test("📊 Carga — ⚡ ordenar de la forma más eficiente pone los números de
   assert.equal(screen.getByLabelText("Prioridad de la OT M-7473").value, "1");
   assert.equal(screen.getByLabelText("Prioridad de la OT M-9000").value, "2");
 });
+
+// ─── Reordenar arrastrando en el Gantt de Proyectos (Tadeo, 29/10) ───
+const { default: GanttOt } = await import("../app/components/GanttOt.jsx");
+const { planReordenado, mover } = await import("../app/lib/reordenarPlan.js");
+
+function ganttReordenable() {
+  const proyectos = [
+    OT(1, "M-1", { ...OT_A, id: 1, ot: "M-1", division: "Muebles" }),
+    OT(2, "M-2", { ...OT_A, id: 2, ot: "M-2", division: "Muebles", placas: 4 }),
+  ];
+  const empleados = [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: HORARIO }];
+  const base = { params: PARAMS, empleados, divisiones: DIVISIONES, division: DIVISIONES[0], hoy: "2026-10-26", modo: "semana_domingo" };
+  const cuerpo = planReordenado({ ...base, orden: proyectos });
+  const planes = [{ ...cuerpo, id: 9, confirmado_at: "2026-10-26T10:00:00Z" }];
+  const enviados = { posts: [], patches: [] };
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith("/api/planificacion")) {
+      const b = JSON.parse(opts.body);
+      enviados.posts.push(b);
+      return new Response(JSON.stringify({ ok: true, plan: { ...b, id: 10, confirmado_at: "2026-10-26T16:00:00Z" } }), { status: 200 });
+    }
+    const body = opts?.body ? JSON.parse(opts.body) : {};
+    if (body.method === "PATCH") enviados.patches.push([body.path, body.body]);
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  };
+  render(<GanttOt proyectos={proyectos} divisiones={DIVISIONES} etapas={ETAPAS} planes={planes} cfgValor={PARAMS} empleados={empleados}
+    avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} puedeReordenar empresaId="emp" />);
+  return { enviados, base, proyectos };
+}
+const ordenFilas = () => [...document.querySelectorAll("[data-reordenable]")].map((f) => f.getAttribute("data-ot"));
+
+test("mover — cambia un elemento de lugar", () => {
+  assert.deepEqual(mover(["a", "b", "c"], 0, 2), ["b", "c", "a"]);
+  assert.deepEqual(mover(["a", "b", "c"], 2, 0), ["c", "a", "b"]);
+});
+
+test("📅 Gantt — gerencia reordena: vista previa con el mismo cálculo de Planificación y ✅ Confirmar guarda el plan y las prioridades", async () => {
+  lunes26();
+  const { enviados, base, proyectos } = ganttReordenable();
+  await waitFor(() => assert.ok(screen.getByLabelText("Bajar OT M-1")));
+  assert.deepEqual(ordenFilas(), ["M-1", "M-2"]);
+  assert.match(document.body.textContent, /Para cambiar el orden, arrastrá una OT desde ⠿/);
+  fireEvent.click(screen.getByLabelText("Bajar OT M-1"));
+  await screen.findByText("Vista previa del orden nuevo");
+  await waitFor(() => assert.deepEqual(ordenFilas(), ["M-2", "M-1"]));
+  assert.equal(enviados.posts.length, 0, "la vista previa no guarda nada");
+  fireEvent.click(screen.getByRole("button", { name: "✅ Confirmar nuevo orden" }));
+  await screen.findByText(/Plan confirmado con el orden nuevo/);
+  // Lo mismo que confirmaría Planificación con ese orden
+  const esperado = planReordenado({ ...base, orden: [proyectos[1], proyectos[0]] });
+  assert.deepEqual(enviados.posts, [esperado]);
+  assert.deepEqual(enviados.patches.sort(), [["proyectos?id=eq.1", { prioridad: 2 }], ["proyectos?id=eq.2", { prioridad: 1 }]]);
+  assert.equal(screen.queryByText("Vista previa del orden nuevo"), null);
+  assert.deepEqual(ordenFilas(), ["M-2", "M-1"], "queda el plan confirmado nuevo");
+});
+
+test("📅 Gantt — ↩ Deshacer vuelve al plan confirmado; sin permiso no hay ⠿", async () => {
+  lunes26();
+  const { enviados } = ganttReordenable();
+  await waitFor(() => assert.ok(screen.getByLabelText("Subir OT M-2")));
+  fireEvent.click(screen.getByLabelText("Subir OT M-2"));
+  await waitFor(() => assert.deepEqual(ordenFilas(), ["M-2", "M-1"]));
+  fireEvent.click(screen.getByRole("button", { name: "↩ Deshacer" }));
+  assert.deepEqual(ordenFilas(), ["M-1", "M-2"]);
+  assert.equal(enviados.posts.length, 0);
+  cleanup();
+  render(<GanttOt proyectos={[OT(1, "M-1", { ...OT_A, division: "Muebles" })]} divisiones={DIVISIONES} etapas={ETAPAS} planes={[]} cfgValor={PARAMS} />);
+  assert.equal(screen.queryByLabelText(/Arrastrar OT/), null);
+});

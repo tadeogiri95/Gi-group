@@ -22,14 +22,22 @@
 // y lo elegido ocupa todo el ancho de la pantalla (los rótulos de arriba pasan
 // solos de días a semanas o meses según lo que entre). Filas bajas para que
 // entren más OT.
+// Gerencia puede reordenar las OT en "Procesos por OT" arrastrándolas desde ⠿
+// o con ▲▼ (Tadeo, 29/10): al soltar, el plan se vuelve a armar en el momento
+// (vista previa, reordenarPlan.js) y con "✅ Confirmar nuevo orden" se guarda
+// como el plan confirmado y las prioridades de Planificación; "↩ Deshacer"
+// vuelve al plan confirmado.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
-import { itemsVigentes, diasExtraVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
-import { ETAPAS_PLAN, normalizarParametros } from "../lib/planificacion";
-import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
+import { itemsVigentes, diasExtraVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente } from "../lib/ganttPlan";
+import { ETAPAS_PLAN, normalizarParametros, divisionPlan } from "../lib/planificacion";
+import { MODO_POR_DEFECTO, normalizarModo } from "../lib/semanaObjetivo";
+import { planReordenado, baseGuardada, mover } from "../lib/reordenarPlan";
+import { modulosPorOt } from "../lib/cargaPlanta";
+import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { fmtH } from "../lib/cargaPlanta";
@@ -72,7 +80,7 @@ const CONTORNO = { atrasado: "stroke-gypi-red", margen: "stroke-proc-margen" };
  * @param {object} [props.cfgValor]  parámetros de la planificación (qué etapa es cada proceso)
  * @param {object[]} [props.empleados]  personal operativo con su grilla de horarios (junto con planes)
  */
-export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle }) {
+export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false }) {
   const hoy = hoyArg();
   const [leido, setLeido] = useState(null);
   useEffect(() => {
@@ -81,9 +89,45 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     leerPlanesConfirmados().then((d) => { if (vivo) setLeido(d); });
     return () => { vivo = false; };
   }, [planesProp]);
-  const planes = planesProp !== undefined ? planesProp : leido?.planes;
+  // El plan que se acaba de confirmar desde acá reemplaza al leído
+  const [confirmadoAca, setConfirmadoAca] = useState(null);
+  const planesLeidos = planesProp !== undefined ? planesProp : leido?.planes;
   const cfgValor = planesProp !== undefined ? cfgProp : leido?.cfgValor;
   const empleados = planesProp !== undefined ? empleadosProp : leido?.empleados;
+
+  // Reordenar (gerencia): la división de la planificación y su plan confirmado
+  const params = useMemo(() => normalizarParametros(cfgValor), [cfgValor]);
+  const division = divisionPlan(divisiones, params.division_id);
+  const divId = division?.id || null;
+  const planesConfirmados = useMemo(() => (planesLeidos && confirmadoAca
+    ? [...planesLeidos.filter((p) => (p.division_id || null) !== (confirmadoAca.division_id || null)), confirmadoAca]
+    : planesLeidos), [planesLeidos, confirmadoAca]);
+  const [ordenNuevo, setOrdenNuevo] = useState(null); // OT en el orden nuevo (vista previa)
+  const [modulos, setModulos] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
+  useEffect(() => {
+    if (!puedeReordenar) return;
+    let vivo = true;
+    sbGetAll(`piezas_ot?${empresaId ? `empresa_id=eq.${empresaId}&` : ""}modulo=not.is.null&select=ot,modulo`, { maxFilas: 50000 })
+      .then((r) => { if (vivo) setModulos(modulosPorOt(r.data)); })
+      .catch(() => { if (vivo) setModulos(new Map()); });
+    return () => { vivo = false; };
+  }, [puedeReordenar, empresaId]);
+  const abiertasPorOt = useMemo(() => new Map(proyectos.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p])), [proyectos]);
+  const previa = useMemo(() => {
+    if (!ordenNuevo || !modulos) return null;
+    return planReordenado({
+      orden: ordenNuevo.map((ot) => abiertasPorOt.get(ot)).filter(Boolean),
+      params, empleados: empleados || [], divisiones, division, avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
+      modulos, hoy, base: baseGuardada(empresaId, divId), modo: normalizarModo(modo) === "semana_domingo" ? "semana_domingo" : "semana_lunes",
+    });
+  }, [ordenNuevo, modulos, abiertasPorOt, params, empleados, divisiones, division, avanceHoras, hoy, empresaId, divId, modo]);
+  const planes = useMemo(() => (previa && planesConfirmados
+    ? [...planesConfirmados.filter((p) => (p.division_id || null) !== divId), { division_id: divId, confirmado_at: "9999", desde: previa.desde, items: previa.items, dias_extra: previa.dias_extra }]
+    : planesConfirmados), [previa, planesConfirmados, divId]);
+  // Las OT que se pueden mover: las del plan confirmado de la división
+  const delPlan = useMemo(() => new Set((planVigente(planesConfirmados, divId)?.items || []).map((i) => String(i.ot))), [planesConfirmados, divId]);
 
   const { renglones, escala, grupos, atrasados, pocoMargen } = useMemo(() => {
     if (!planes) return { renglones: null };
@@ -92,7 +136,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       etapasCodigo: etapasDelPlan(cfgValor, etapas, divisiones),
       avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
       terminadas: new Set(proyectos.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
-      params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
+      params, horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
       personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes),
     });
     // En el orden del plan: la que arranca primero arriba
@@ -111,7 +155,57 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         .sort((a, b) => b.diasAtraso - a.diasAtraso),
       pocoMargen: renglones.flatMap((r) => r.pocoMargen),
     };
-  }, [planes, cfgValor, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, modo]);
+  }, [planes, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, modo]);
+
+  // Orden de las OT que se pueden mover, como se ven ahora
+  const ordenVisto = useMemo(() => (renglones || []).filter((r) => delPlan.has(r.ot)).map((r) => r.ot), [renglones, delPlan]);
+  const reordenar = puedeReordenar && ordenVisto.length > 1;
+  const moverA = (ot, destino) => {
+    const base = ordenNuevo || ordenVisto;
+    const i = base.indexOf(ot);
+    if (i < 0 || destino < 0 || destino >= base.length || destino === i) return;
+    setAviso(null);
+    setOrdenNuevo(mover(base, i, destino));
+  };
+  const [arrastre, setArrastre] = useState(null); // { ot, sobre }
+  const empezarArrastre = (e, ot) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setArrastre({ ot, sobre: ot });
+  };
+  const moverArrastre = (e) => {
+    if (!arrastre || typeof document === "undefined" || !document.elementFromPoint) return;
+    const ot = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-reordenable]")?.getAttribute("data-ot");
+    if (ot && ot !== arrastre.sobre) setArrastre({ ...arrastre, sobre: ot });
+  };
+  const soltarArrastre = () => {
+    if (!arrastre) return;
+    const { ot, sobre } = arrastre;
+    setArrastre(null);
+    if (sobre !== ot) moverA(ot, (ordenNuevo || ordenVisto).indexOf(sobre));
+  };
+  const deshacer = () => { setOrdenNuevo(null); setAviso(null); };
+  const confirmarOrden = async () => {
+    if (!previa || confirmando) return;
+    setConfirmando(true);
+    setAviso(null);
+    try {
+      const r = await apiFetch("/api/planificacion", { method: "POST", body: JSON.stringify(previa) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "No se pudo confirmar el plan.");
+      // Las mismas prioridades en Planificación (paso ②)
+      const conId = (ordenNuevo || []).map((ot) => abiertasPorOt.get(ot)).filter((p) => p?.id != null);
+      const prioridades = await Promise.allSettled(conId.map((p, i) => sb.patch(`proyectos?id=eq.${p.id}`, { prioridad: i + 1 })));
+      setConfirmadoAca({ ...(d.plan || {}), items: d.plan?.items || previa.items, dias_extra: d.plan?.dias_extra || previa.dias_extra });
+      setOrdenNuevo(null);
+      setAviso(prioridades.some((x) => x.status === "rejected")
+        ? "✅ Plan confirmado con el orden nuevo. No se pudieron guardar las prioridades en Planificación: revisalas ahí."
+        : "✅ Plan confirmado con el orden nuevo. La planta ya lo ve.");
+    } catch (e) {
+      setAviso(e.message);
+    } finally {
+      setConfirmando(false);
+    }
+  };
 
   // Ancho visible del Gantt, para estirar las semanas elegidas a toda la pantalla
   const [anchoVisible, setAnchoVisible] = useState(0);
@@ -286,6 +380,23 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-proc-margen" />Poco margen {pocoMargen.length}</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={atrasados.length ? "text-gypi-red font-bold" : ""}>⚠ Atrasados {atrasados.length}</span></span>
       </div>
+      {reordenar && (ordenNuevo ? (
+        <div role="status" aria-label="Orden nuevo sin confirmar" className="mb-2 rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3 shrink-0">
+          <div className="text-[15px] font-bold text-gypi-text mb-1">Vista previa del orden nuevo</div>
+          <div className="text-[14px] text-gypi-dim mb-2">
+            {!modulos ? "Calculando…" : previa ? "Así quedaría el plan, con el mismo cálculo de Planificación. La planta sigue viendo el plan confirmado hasta que confirmes." : "Con este orden no queda nada para planificar (no hay horas pendientes o nadie en la grilla de horarios)."}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={confirmarOrden} disabled={!previa || confirmando} className="g-btn g-btn-primary">{confirmando ? "Confirmando…" : "✅ Confirmar nuevo orden"}</button>
+            <button type="button" onClick={deshacer} disabled={confirmando} className="g-btn g-btn-secondary">↩ Deshacer</button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-[14px] text-gypi-dim mb-2">
+          {forma === "procesos" ? "Para cambiar el orden, arrastrá una OT desde ⠿ o usá ▲▼: antes de confirmar ves cómo queda." : "Para cambiar el orden de las OT, pasá a Procesos por OT."}
+        </div>
+      ))}
+      {aviso && <div role="status" className="text-[14px] font-bold text-gypi-text mb-2">{aviso}</div>}
       {/* Con scroll propio para que la fila de las fechas quede fija arriba al bajar */}
       <div ref={medir} className={`overflow-auto rounded-xl border border-gypi-border ${grande ? "flex-1 min-h-0" : "max-h-[75vh]"}`}>
         <div className="min-w-max">
@@ -330,10 +441,25 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
               {forma === "procesos" && filas.map((r) => {
                 const p = r.proyecto;
                 const texto = `${fmtH(r.horas)} en total; ` + r.procesos.map((q) => `${q.nombre} ${fmtH(q.horas)}${q.personas ? ` con ${q.personas} ${q.personas === 1 ? "armador" : "armadores"}` : ""}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}`).join("; ");
+                const movible = reordenar && delPlan.has(r.ot);
+                const lugar = movible ? (ordenNuevo || ordenVisto).indexOf(r.ot) : -1;
+                const total = (ordenNuevo || ordenVisto).length;
+                const sobre = arrastre && arrastre.sobre === r.ot && arrastre.ot !== r.ot;
                 return (
-                  <div key={p.id ?? p.ot} className="flex border-t-2 border-gypi-border" data-ot={p.ot}>
+                  <div key={p.id ?? p.ot} className={`flex border-t-2 ${sobre ? "border-gypi-amber" : "border-gypi-border"} ${arrastre?.ot === r.ot ? "opacity-60" : ""}`} data-ot={p.ot} {...(movible ? { "data-reordenable": "" } : {})}>
+                    {movible && (
+                      <div className="sticky left-0 z-20 w-[28px] shrink-0 bg-gypi-bg flex flex-col items-center justify-between border-r border-gypi-border">
+                        <button type="button" aria-label={`Subir OT ${p.ot}`} disabled={lugar <= 0 || confirmando} onClick={() => moverA(r.ot, lugar - 1)}
+                          className="w-full min-h-[30px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▲</button>
+                        <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={confirmando}
+                          onPointerDown={(e) => empezarArrastre(e, r.ot)} onPointerMove={moverArrastre} onPointerUp={soltarArrastre} onPointerCancel={() => setArrastre(null)}
+                          className="touch-none select-none w-full min-h-[36px] bg-transparent border-none text-xl text-gypi-dim cursor-grab">⠿</button>
+                        <button type="button" aria-label={`Bajar OT ${p.ot}`} disabled={lugar < 0 || lugar >= total - 1 || confirmando} onClick={() => moverA(r.ot, lugar + 1)}
+                          className="w-full min-h-[30px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▼</button>
+                      </div>
+                    )}
                     <button type="button" onClick={() => verDetalle(p)} aria-label={`OT ${p.ot}: ${texto}. Ver detalle`}
-                      className="sticky left-0 z-10 w-[150px] shrink-0 bg-gypi-bg px-2 py-1 text-left border-0 border-r border-gypi-border cursor-pointer flex flex-col justify-center">
+                      className={`sticky ${movible ? "left-[28px] w-[122px]" : "left-0 w-[150px]"} z-10 shrink-0 bg-gypi-bg px-2 py-1 text-left border-0 border-r border-gypi-border cursor-pointer flex flex-col justify-center`}>
                       <div className={`font-mono text-[16px] font-bold leading-tight ${r.atrasados.length ? "text-gypi-red" : "text-gypi-text"}`}>
                         {r.atrasados.length ? "⚠ " : ""}{p.ot} <span className="text-[14px]">· {fmtH(r.horas)}</span>
                       </div>

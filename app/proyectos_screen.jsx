@@ -627,6 +627,8 @@ export default function ProyectosScreen({ empresaId }) {
           divisiones={divisionesCtx || []}
           avanceHoras={avanceHoras}
           modo={modoObjetivo}
+          empresaId={empresaId}
+          puedeReordenar={usuario?.rol === "gerencial"}
           onVerDetalle={setDetalle}
         />
       ) : vista === "tablero" && !loading ? (
