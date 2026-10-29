@@ -1241,3 +1241,44 @@ test("📅 Gantt — ↩ Deshacer vuelve al plan confirmado; sin permiso no hay 
   render(<GanttOt proyectos={[OT(1, "M-1", { ...OT_A, division: "Muebles" })]} divisiones={DIVISIONES} etapas={ETAPAS} planes={[]} cfgValor={PARAMS} />);
   assert.equal(screen.queryByLabelText(/Arrastrar OT/), null);
 });
+
+// ─── Reordenar cada proceso por separado en "OT por proceso" (Tadeo, 29/10) ───
+const { secuenciar } = await import("../app/lib/secuencia.js");
+
+test("secuenciar — un proceso con orden propio: cantear primero la segunda OT", () => {
+  const ots = [{ clave: "A", horas: { corte: 2, canteado: 2 } }, { clave: "B", horas: { corte: 2, canteado: 2 } }];
+  const tramo = (r, ot, etapa) => r.get(ot).find((x) => x.etapa === etapa);
+  const igual = secuenciar(ots);
+  assert.deepEqual([tramo(igual, "A", "canteado").t0, tramo(igual, "B", "canteado").t0], [2, 4]);
+  const propio = secuenciar(ots, { ordenEtapa: { canteado: ["B", "A"] } });
+  assert.deepEqual([tramo(propio, "A", "corte").t0, tramo(propio, "B", "corte").t0], [0, 2], "el corte sigue igual");
+  // B se cantea apenas termina su corte y A espera a que se libere la canteadora
+  assert.deepEqual([tramo(propio, "B", "canteado").t0, tramo(propio, "A", "canteado").t0], [4, 6]);
+});
+
+test("📅 Gantt — en OT por proceso se reordena un solo proceso y ✅ Confirmar lo guarda en el plan", async () => {
+  lunes26();
+  try { localStorage.setItem("gypi_gantt_forma", "ots"); } catch { /* sin almacenamiento */ }
+  try {
+    const { enviados } = ganttReordenable();
+    const filas = (etapa) => [...document.querySelectorAll(`[data-reordenable][data-etapa="${etapa}"]`)].map((f) => f.getAttribute("data-ot"));
+    await waitFor(() => assert.ok(screen.getByLabelText("Bajar OT M-1 en Canteado")));
+    assert.match(document.body.textContent, /Para cambiar el orden de un solo proceso/);
+    assert.deepEqual(filas("canteado"), ["M-1", "M-2"]);
+    fireEvent.click(screen.getByLabelText("Bajar OT M-1 en Canteado"));
+    await screen.findByText("Vista previa del orden nuevo");
+    await waitFor(() => assert.deepEqual(filas("canteado"), ["M-2", "M-1"]));
+    assert.deepEqual(filas("corte"), ["M-1", "M-2"], "los demás procesos no cambian");
+    fireEvent.click(screen.getByRole("button", { name: "✅ Confirmar nuevo orden" }));
+    await screen.findByText(/Plan confirmado con el orden nuevo/);
+    const [plan] = enviados.posts;
+    const lugar = (ot, etapa) => plan.items.find((i) => i.ot === ot && i.etapa === etapa).orden;
+    assert.deepEqual([lugar("M-2", "canteado"), lugar("M-1", "canteado")], [0, 1]);
+    assert.deepEqual([lugar("M-1", "corte"), lugar("M-2", "corte")], [0, 1]);
+    assert.deepEqual(enviados.patches.sort(), [["proyectos?id=eq.1", { prioridad: 1 }], ["proyectos?id=eq.2", { prioridad: 2 }]], "la prioridad de las OT sigue igual");
+    assert.deepEqual(filas("canteado"), ["M-2", "M-1"], "el plan confirmado nuevo mantiene el orden del proceso");
+    assert.deepEqual(filas("corte"), ["M-1", "M-2"]);
+  } finally {
+    try { localStorage.removeItem("gypi_gantt_forma"); } catch { /* sin almacenamiento */ }
+  }
+});

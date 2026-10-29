@@ -14,16 +14,20 @@ const r2 = (h) => Math.round((Number(h) || 0) * 100) / 100;
 /**
  * Cuerpo del POST a /api/planificacion con el plan automático. Sin `carga`
  * (plan sin límite de semanas, tipo 'horizonte'), las horas salen del plan.
+ * El `orden` de cada renglón es el lugar de la OT en ese proceso: el de
+ * `ordenEtapa` (ids de OT, armado en "OT por proceso" del Gantt) o el de `ots`.
  */
-export function cuerpoPlan({ per, plan, carga, division, ots, estado }) {
+export function cuerpoPlan({ per, plan, carga, division, ots, estado, ordenEtapa = null }) {
   const necesarias = carga ? carga.necesarias : plan.segmentos.reduce((t, s) => t + s.gente, 0);
   const disponibles = carga ? carga.disponibles : plan.porDia.reduce((t, d) => t + (d.extra ? 0 : d.disponibles), 0);
   const orden = new Map(ots.map((p, i) => [p.id, i]));
+  const enEtapa = Object.fromEntries(Object.entries(ordenEtapa || {}).map(([etapa, ids]) => [etapa, new Map((ids || []).map((id, i) => [id, i]))]));
+  const lugar = (id, etapa) => enEtapa[etapa]?.get(id) ?? orden.get(id) ?? 0;
   // Un renglón por OT, etapa y día (el reparto puede dejar dos tramos el mismo día)
   const juntos = new Map();
   for (const s of plan.segmentos) {
     const k = `${s.id}|${s.etapa}|${s.fecha}`;
-    if (!juntos.has(k)) juntos.set(k, { ot: String(s.ot), etapa: s.etapa, fecha: s.fecha, horas: 0, orden: orden.get(s.id) ?? 0 });
+    if (!juntos.has(k)) juntos.set(k, { ot: String(s.ot), etapa: s.etapa, fecha: s.fecha, horas: 0, orden: lugar(s.id, s.etapa) });
     juntos.get(k).horas += s.gente;
   }
   return {

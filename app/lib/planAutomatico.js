@@ -35,11 +35,11 @@ export function horasSemanaDeDias(dias = []) {
  * horas de reloj (maquina = horas de máquina; en la canteadora con 2
  * personas, la mitad de las de gente).
  */
-function programar(trabajos, { desde, params, horasSemana, personal, extras }) {
+function programar(trabajos, { desde, params, horasSemana, personal, extras, ordenEtapa = null }) {
   const ef = (params.eficiencia || 100) / 100;
   const cal = calendario(desde, horasSemana, extras);
   const ots = trabajos.map((t) => ({ clave: t.id, horas: Object.fromEntries(ETAPAS_PLAN.map(({ id }) => [id, (t.etapas?.[id]?.gente || 0) / ef])) }));
-  const tramos = secuenciar(ots, { params, personal });
+  const tramos = secuenciar(ots, { params, personal, ordenEtapa });
   const segmentos = [];
   for (const t of trabajos) {
     for (const tr of tramos.get(t.id) || []) {
@@ -90,14 +90,15 @@ const finDeCadaOt = (segmentos) => {
  * - "capacidad": solo el horario normal. Cada OT sale con su fecha estimada
  *   de fin; las que terminan después de su semana quedan marcadas.
  *
- * @param {{ trabajos: object[], dias: {fecha,gente,maquina}[], params: object, base?: "objetivo"|"capacidad", modo?: string, horasSemana?: number[], personal?: object|null }} p
+ * @param {{ trabajos: object[], dias: {fecha,gente,maquina}[], params: object, base?: "objetivo"|"capacidad", modo?: string, horasSemana?: number[], personal?: object|null, ordenEtapa?: Record<string, any[]>|null }} p
  *   trabajos: en orden de prioridad, con `objetivo` ("AAAA-MM-DD" o null)
+ *   ordenEtapa: orden propio de algún proceso, por id de trabajo (ver secuenciar)
  * @returns {{ desde, hasta, segmentos, pendientes, diasExtra, extraPorSemana: {desde, horas}[], porDia, finPorOt: Map, tarde: {id, ot, objetivo, fin, motivo}[] }}
  *   motivo: "atrasada" (la semana ya pasó), "no_llega" (ni con horas extra),
  *   "tarde" (con la capacidad normal termina después de su semana) o
  *   "sin_capacidad" (no entra en los días calculados)
  */
-export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo, horasSemana = null, personal = null }) {
+export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo, horasSemana = null, personal = null, ordenEtapa = null }) {
   const desde = dias[0]?.fecha || null;
   const mejor = dias.reduce((a, d) => (d.gente > a.gente ? d : a), { gente: 0, maquina: 0 });
   const hs = horasSemana || horasSemanaDeDias(dias);
@@ -106,7 +107,7 @@ export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo,
   const domingos = libres.filter((d) => diaSemana(d.fecha) === 0).map((d) => d.fecha);
 
   let extras = new Set();
-  const correr = () => (mejor.gente > EPS ? programar(trabajos, { desde, params, horasSemana: hs, personal, extras }) : sinCapacidad(trabajos, params));
+  const correr = () => (mejor.gente > EPS ? programar(trabajos, { desde, params, horasSemana: hs, personal, extras, ordenEtapa }) : sinCapacidad(trabajos, params));
   // OT con semana que no llegan (o no terminan en los días calculados)
   const tardias = (r) => {
     const fin = finDeCadaOt(r.segmentos);

@@ -121,24 +121,33 @@ function crearArmado({ armadores, maxPorOt, ayudantes }) {
  * @param {{ params?: object, personal?: { armadores: number, maxPorOt: number, ayudantes?: Record<string, number> }|null, inicio?: (o: object, etapa: string) => number }} opciones
  *   inicio: lo más temprano que puede arrancar cada proceso (t); por defecto 0.
  *   Sin `personal`, Armado lo hace una persona por vez (como una máquina).
+ *   ordenEtapa: orden propio de algún proceso ({ canteado: [clave, …] }), el
+ *   que se arma en "OT por proceso" del Gantt (Tadeo, 29/10); en los demás,
+ *   el orden recibido.
  */
-export function secuenciar(ots, { params = null, personal = null, inicio = () => 0 } = {}) {
+export function secuenciar(ots, { params = null, personal = null, inicio = () => 0, ordenEtapa = null } = {}) {
+  const lugar = new Map(ots.map((o, i) => [o.clave, i]));
+  const enOrden = (etapa) => {
+    const propio = ordenEtapa?.[etapa];
+    if (!propio?.length) return ots;
+    const pos = new Map(propio.map((c, i) => [c, i]));
+    const en = (o) => (pos.has(o.clave) ? pos.get(o.clave) : propio.length + lugar.get(o.clave));
+    return [...ots].sort((a, b) => en(a) - en(b));
+  };
   // 1) Máquinas: una OT a la vez por máquina, en secuencia dentro de cada OT
   const libre = {}; // hasta cuándo está ocupada cada máquina
-  const tramos = new Map();
-  for (const o of ots) {
-    let t = 0;
-    const lista = [];
-    for (const id of MAQUINAS_PLAN) {
+  const tramos = new Map(ots.map((o) => [o.clave, []]));
+  const listoOt = new Map(); // cuándo terminó cada OT su último proceso
+  for (const id of MAQUINAS_PLAN) {
+    for (const o of enOrden(id)) {
       const h = duracion(id, o.horas[id] || 0, params);
       if (h <= 0) continue;
       // No antes de lo que diga `inicio`, ni de que termine el anterior de la OT, ni de que se libere la máquina
-      const t0 = Math.max(t, libre[id] || 0, inicio(o, id));
+      const t0 = Math.max(listoOt.get(o.clave) || 0, libre[id] || 0, inicio(o, id));
       libre[id] = t0 + h;
-      t = t0 + h;
-      lista.push({ etapa: id, t0, t1: t0 + h, horas: h, personas: null });
+      listoOt.set(o.clave, t0 + h);
+      tramos.get(o.clave).push({ etapa: id, t0, t1: t0 + h, horas: h, personas: null });
     }
-    tramos.set(o.clave, lista);
   }
   // 2) Armado: con los armadores, y los de cada máquina cuando se queda sin trabajo
   const ayudantes = Object.entries(personal?.ayudantes || {}).map(([id, n]) => ({ desde: libre[id] || 0, n: Number(n) || 0 })).filter((a) => a.n > 0);
@@ -148,7 +157,7 @@ export function secuenciar(ots, { params = null, personal = null, inicio = () =>
     maxPorOt: personal ? Math.max(1, Number(personal.maxPorOt) || 1) : 1,
     ayudantes,
   });
-  for (const o of ots) {
+  for (const o of enOrden("armado")) {
     const G = o.horas.armado || 0;
     if (G <= 0) continue;
     const lista = tramos.get(o.clave);

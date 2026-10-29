@@ -26,7 +26,11 @@
 // o con ▲▼ (Tadeo, 29/10): al soltar, el plan se vuelve a armar en el momento
 // (vista previa, reordenarPlan.js) y con "✅ Confirmar nuevo orden" se guarda
 // como el plan confirmado y las prioridades de Planificación; "↩ Deshacer"
-// vuelve al plan confirmado.
+// vuelve al plan confirmado. En "OT por proceso" se reordena cada proceso por
+// separado (Tadeo, 29/10): por ejemplo, cortar primero una OT y cantear
+// primero otra. Ese orden queda solo en el plan confirmado; si después se
+// reordena por OT o se confirma desde Planificación, todos los procesos
+// vuelven al orden de la OT.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
@@ -102,7 +106,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   const planesConfirmados = useMemo(() => (planesLeidos && confirmadoAca
     ? [...planesLeidos.filter((p) => (p.division_id || null) !== (confirmadoAca.division_id || null)), confirmadoAca]
     : planesLeidos), [planesLeidos, confirmadoAca]);
-  const [ordenNuevo, setOrdenNuevo] = useState(null); // OT en el orden nuevo (vista previa)
+  // Vista previa: { ots: OT en el orden nuevo, etapas: orden propio de cada proceso (o null = el de las OT) }
+  const [cambio, setCambio] = useState(null);
   const [modulos, setModulos] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -116,13 +121,13 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   }, [puedeReordenar, empresaId]);
   const abiertasPorOt = useMemo(() => new Map(proyectos.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p])), [proyectos]);
   const previa = useMemo(() => {
-    if (!ordenNuevo || !modulos) return null;
+    if (!cambio || !modulos) return null;
     return planReordenado({
-      orden: ordenNuevo.map((ot) => abiertasPorOt.get(ot)).filter(Boolean),
+      orden: cambio.ots.map((ot) => abiertasPorOt.get(ot)).filter(Boolean), ordenEtapa: cambio.etapas,
       params, empleados: empleados || [], divisiones, division, avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
       modulos, hoy, base: baseGuardada(empresaId, divId), modo: normalizarModo(modo) === "semana_domingo" ? "semana_domingo" : "semana_lunes",
     });
-  }, [ordenNuevo, modulos, abiertasPorOt, params, empleados, divisiones, division, avanceHoras, hoy, empresaId, divId, modo]);
+  }, [cambio, modulos, abiertasPorOt, params, empleados, divisiones, division, avanceHoras, hoy, empresaId, divId, modo]);
   const planes = useMemo(() => (previa && planesConfirmados
     ? [...planesConfirmados.filter((p) => (p.division_id || null) !== divId), { division_id: divId, confirmado_at: "9999", desde: previa.desde, items: previa.items, dias_extra: previa.dias_extra }]
     : planesConfirmados), [previa, planesConfirmados, divId]);
@@ -159,31 +164,60 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
 
   // Orden de las OT que se pueden mover, como se ven ahora
   const ordenVisto = useMemo(() => (renglones || []).filter((r) => delPlan.has(r.ot)).map((r) => r.ot), [renglones, delPlan]);
+  // Orden en que pasan por cada proceso, como se ven ahora
+  const ordenVistoEtapa = useMemo(() => Object.fromEntries(ETAPAS_PLAN.map(({ id }) => [id, (renglones || [])
+    .filter((r) => delPlan.has(r.ot)).map((r) => ({ ot: r.ot, q: r.procesos.find((z) => z.etapa === id) })).filter((x) => x.q)
+    .sort((a, b) => a.q.t0 - b.q.t0).map((x) => x.ot)])), [renglones, delPlan]);
   const reordenar = puedeReordenar && ordenVisto.length > 1;
-  const moverA = (ot, destino) => {
-    const base = ordenNuevo || ordenVisto;
+  const ordenOts = cambio?.ots || ordenVisto;
+  const ordenDe = (etapa) => (etapa ? (cambio?.etapas || ordenVistoEtapa)[etapa] || [] : ordenOts);
+  // Mover por OT pone todos los procesos en ese orden; mover en un proceso cambia solo ese
+  const moverA = (ot, destino, etapa = null) => {
+    const base = ordenDe(etapa);
     const i = base.indexOf(ot);
     if (i < 0 || destino < 0 || destino >= base.length || destino === i) return;
     setAviso(null);
-    setOrdenNuevo(mover(base, i, destino));
+    setCambio(etapa
+      ? { ots: ordenOts, etapas: { ...(cambio?.etapas || ordenVistoEtapa), [etapa]: mover(base, i, destino) } }
+      : { ots: mover(base, i, destino), etapas: null });
   };
-  const [arrastre, setArrastre] = useState(null); // { ot, sobre }
-  const empezarArrastre = (e, ot) => {
+  const [arrastre, setArrastre] = useState(null); // { ot, sobre, etapa }
+  const empezarArrastre = (e, ot, etapa = null) => {
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    setArrastre({ ot, sobre: ot });
+    setArrastre({ ot, sobre: ot, etapa });
   };
   const moverArrastre = (e) => {
     if (!arrastre || typeof document === "undefined" || !document.elementFromPoint) return;
-    const ot = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-reordenable]")?.getAttribute("data-ot");
+    const fila = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-reordenable]");
+    if ((fila?.getAttribute("data-etapa") || null) !== arrastre.etapa) return; // solo dentro del mismo proceso
+    const ot = fila?.getAttribute("data-ot");
     if (ot && ot !== arrastre.sobre) setArrastre({ ...arrastre, sobre: ot });
   };
   const soltarArrastre = () => {
     if (!arrastre) return;
-    const { ot, sobre } = arrastre;
+    const { ot, sobre, etapa } = arrastre;
     setArrastre(null);
-    if (sobre !== ot) moverA(ot, (ordenNuevo || ordenVisto).indexOf(sobre));
+    if (sobre !== ot) moverA(ot, ordenDe(etapa).indexOf(sobre), etapa);
   };
-  const deshacer = () => { setOrdenNuevo(null); setAviso(null); };
+  const deshacer = () => { setCambio(null); setAviso(null); };
+  // ▲ ⠿ ▼ de una OT (en un proceso, si viene `etapa`)
+  const controles = (ot, etapa = null) => {
+    const lista = ordenDe(etapa);
+    const lugar = lista.indexOf(ot);
+    const de = etapa ? ` en ${ETAPAS_PLAN.find((e) => e.id === etapa)?.nombre}` : "";
+    const boton = "bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30";
+    return (
+      <>
+        <button type="button" aria-label={`Subir OT ${ot}${de}`} disabled={lugar <= 0 || confirmando} onClick={() => moverA(ot, lugar - 1, etapa)}
+          className={`${boton} ${etapa ? "min-w-[28px] h-full" : "w-full min-h-[30px]"}`}>▲</button>
+        <button type="button" aria-label={`Arrastrar OT ${ot}${de}`} disabled={confirmando}
+          onPointerDown={(e) => empezarArrastre(e, ot, etapa)} onPointerMove={moverArrastre} onPointerUp={soltarArrastre} onPointerCancel={() => setArrastre(null)}
+          className={`touch-none select-none bg-transparent border-none text-xl text-gypi-dim cursor-grab ${etapa ? "min-w-[28px] h-full" : "w-full min-h-[36px]"}`}>⠿</button>
+        <button type="button" aria-label={`Bajar OT ${ot}${de}`} disabled={lugar < 0 || lugar >= lista.length - 1 || confirmando} onClick={() => moverA(ot, lugar + 1, etapa)}
+          className={`${boton} ${etapa ? "min-w-[28px] h-full" : "w-full min-h-[30px]"}`}>▼</button>
+      </>
+    );
+  };
   const confirmarOrden = async () => {
     if (!previa || confirmando) return;
     setConfirmando(true);
@@ -193,10 +227,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "No se pudo confirmar el plan.");
       // Las mismas prioridades en Planificación (paso ②)
-      const conId = (ordenNuevo || []).map((ot) => abiertasPorOt.get(ot)).filter((p) => p?.id != null);
+      const conId = (cambio?.ots || []).map((ot) => abiertasPorOt.get(ot)).filter((p) => p?.id != null);
       const prioridades = await Promise.allSettled(conId.map((p, i) => sb.patch(`proyectos?id=eq.${p.id}`, { prioridad: i + 1 })));
       setConfirmadoAca({ ...(d.plan || {}), items: d.plan?.items || previa.items, dias_extra: d.plan?.dias_extra || previa.dias_extra });
-      setOrdenNuevo(null);
+      setCambio(null);
       setAviso(prioridades.some((x) => x.status === "rejected")
         ? "✅ Plan confirmado con el orden nuevo. No se pudieron guardar las prioridades en Planificación: revisalas ahí."
         : "✅ Plan confirmado con el orden nuevo. La planta ya lo ve.");
@@ -380,7 +414,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-proc-margen" />Poco margen {pocoMargen.length}</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={atrasados.length ? "text-gypi-red font-bold" : ""}>⚠ Atrasados {atrasados.length}</span></span>
       </div>
-      {reordenar && (ordenNuevo ? (
+      {reordenar && (cambio ? (
         <div role="status" aria-label="Orden nuevo sin confirmar" className="mb-2 rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3 shrink-0">
           <div className="text-[15px] font-bold text-gypi-text mb-1">Vista previa del orden nuevo</div>
           <div className="text-[14px] text-gypi-dim mb-2">
@@ -393,7 +427,9 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         </div>
       ) : (
         <div className="text-[14px] text-gypi-dim mb-2">
-          {forma === "procesos" ? "Para cambiar el orden, arrastrá una OT desde ⠿ o usá ▲▼: antes de confirmar ves cómo queda." : "Para cambiar el orden de las OT, pasá a Procesos por OT."}
+          {forma === "procesos"
+            ? "Para cambiar el orden, arrastrá una OT desde ⠿ o usá ▲▼ (todos los procesos quedan en ese orden): antes de confirmar ves cómo queda."
+            : "Para cambiar el orden de un solo proceso, arrastrá una OT desde ⠿ o usá ▲▼ dentro de ese proceso: antes de confirmar ves cómo queda."}
         </div>
       ))}
       {aviso && <div role="status" className="text-[14px] font-bold text-gypi-text mb-2">{aviso}</div>}
@@ -417,11 +453,19 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                   </div>
                   {enProceso.map(({ r, q }) => {
                     const p = r.proyecto;
+                    const movible = reordenar && delPlan.has(r.ot);
+                    const sobre = arrastre && arrastre.etapa === e.id && arrastre.sobre === r.ot && arrastre.ot !== r.ot;
                     return (
-                      <div key={p.id ?? p.ot} className="flex border-t border-gypi-border" data-ot={p.ot}>
+                      <div key={p.id ?? p.ot} className={`flex border-t ${sobre ? "border-t-2 border-gypi-amber" : "border-gypi-border"} ${arrastre?.etapa === e.id && arrastre.ot === r.ot ? "opacity-60" : ""}`}
+                        data-ot={p.ot} {...(movible ? { "data-reordenable": "", "data-etapa": e.id } : {})}>
+                        {movible && (
+                          <div className="sticky left-0 z-20 w-[84px] h-[34px] shrink-0 bg-gypi-bg flex items-stretch border-r border-gypi-border">
+                            {controles(r.ot, e.id)}
+                          </div>
+                        )}
                         <button type="button" onClick={() => verDetalle(p)}
                           aria-label={`OT ${p.ot}, ${e.nombre}: ${fmtH(q.horas)}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}. Ver detalle`}
-                          className="sticky left-0 z-10 w-[260px] shrink-0 bg-gypi-bg px-2 text-left border-0 border-r border-gypi-border cursor-pointer h-[34px] flex flex-col justify-center">
+                          className={`sticky ${movible ? "left-[84px] w-[176px]" : "left-0 w-[260px]"} z-10 shrink-0 bg-gypi-bg px-2 text-left border-0 border-r border-gypi-border cursor-pointer h-[34px] flex flex-col justify-center`}>
                           <div className={`text-[14px] font-bold leading-tight truncate ${q.atrasado ? "text-gypi-red" : "text-gypi-text"}`}>
                             <span className="font-mono">{q.atrasado ? "⚠ " : ""}{p.ot}</span> · <span className="font-normal" data-cliente>{p.cliente || "—"}</span>
                           </div>
@@ -442,20 +486,12 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                 const p = r.proyecto;
                 const texto = `${fmtH(r.horas)} en total; ` + r.procesos.map((q) => `${q.nombre} ${fmtH(q.horas)}${q.personas ? ` con ${q.personas} ${q.personas === 1 ? "armador" : "armadores"}` : ""}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}`).join("; ");
                 const movible = reordenar && delPlan.has(r.ot);
-                const lugar = movible ? (ordenNuevo || ordenVisto).indexOf(r.ot) : -1;
-                const total = (ordenNuevo || ordenVisto).length;
-                const sobre = arrastre && arrastre.sobre === r.ot && arrastre.ot !== r.ot;
+                const sobre = arrastre && !arrastre.etapa && arrastre.sobre === r.ot && arrastre.ot !== r.ot;
                 return (
-                  <div key={p.id ?? p.ot} className={`flex border-t-2 ${sobre ? "border-gypi-amber" : "border-gypi-border"} ${arrastre?.ot === r.ot ? "opacity-60" : ""}`} data-ot={p.ot} {...(movible ? { "data-reordenable": "" } : {})}>
+                  <div key={p.id ?? p.ot} className={`flex border-t-2 ${sobre ? "border-gypi-amber" : "border-gypi-border"} ${!arrastre?.etapa && arrastre?.ot === r.ot ? "opacity-60" : ""}`} data-ot={p.ot} {...(movible ? { "data-reordenable": "" } : {})}>
                     {movible && (
                       <div className="sticky left-0 z-20 w-[28px] shrink-0 bg-gypi-bg flex flex-col items-center justify-between border-r border-gypi-border">
-                        <button type="button" aria-label={`Subir OT ${p.ot}`} disabled={lugar <= 0 || confirmando} onClick={() => moverA(r.ot, lugar - 1)}
-                          className="w-full min-h-[30px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▲</button>
-                        <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={confirmando}
-                          onPointerDown={(e) => empezarArrastre(e, r.ot)} onPointerMove={moverArrastre} onPointerUp={soltarArrastre} onPointerCancel={() => setArrastre(null)}
-                          className="touch-none select-none w-full min-h-[36px] bg-transparent border-none text-xl text-gypi-dim cursor-grab">⠿</button>
-                        <button type="button" aria-label={`Bajar OT ${p.ot}`} disabled={lugar < 0 || lugar >= total - 1 || confirmando} onClick={() => moverA(r.ot, lugar + 1)}
-                          className="w-full min-h-[30px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▼</button>
+                        {controles(r.ot)}
                       </div>
                     )}
                     <button type="button" onClick={() => verDetalle(p)} aria-label={`OT ${p.ot}: ${texto}. Ver detalle`}
