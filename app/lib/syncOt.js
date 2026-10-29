@@ -8,6 +8,7 @@ import { safeErrorMessage } from "./validate";
 import { parseCsvProyectos, CAMPOS_MATERIAL, linksPlanilla } from "./csvProyectos";
 import { sbHeaders } from "./sbHelpers";
 import { CLAVE_FECHA_OBJETIVO, normalizarModo, fechaObjetivo } from "./semanaObjetivo";
+import { resolverSemana } from "./semanaEditable";
 import { hoyArg } from "./dates";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -147,6 +148,12 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   ]);
   const modo = normalizarModo(cfgModo?.[0]?.valor?.modo);
   const fechaPrevia = new Map((previas || []).map((p) => [String(p.ot), p.fecha_objetivo]));
+  // SEMANA cambiada en Gypi (144): sigue la de Gypi hasta que llega a la
+  // planilla, salvo que la planilla haya cambiado después (gana la más reciente)
+  const cambiadas = await sbFetch(`proyectos?empresa_id=eq.${empresaId}&semana_app=not.is.null&select=ot,semana_app,semana_app_at,semana_planilla`, {}, sesion).catch(() => null);
+  const conSemana144 = Array.isArray(cambiadas);
+  const semanaApp = new Map((cambiadas || []).map((p) => [String(p.ot), p]));
+  const ultimaSync = valorCfg?.ultima_sync || null;
   const hoy = hoyArg();
 
   let procesados = 0;
@@ -155,8 +162,9 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   // semana_objetivo, fecha_objetivo; 136: placas, fondos, metros_canto,
   // placas_mecanizadas). Si la base todavía no tiene alguna, se
   // reintenta sin ella para que la sincronización no se corte.
-  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos", "semana_objetivo", "fecha_objetivo", ...CAMPOS_MATERIAL];
   const omitidas = new Set();
+  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos", "semana_objetivo", "fecha_objetivo", "semana_app_at", "semana_app", "semana_planilla", ...CAMPOS_MATERIAL];
+  if (!conSemana144) ["semana_app", "semana_app_at", "semana_planilla"].forEach((c) => omitidas.add(c));
   const subir = (batch) => sbFetch("proyectos?on_conflict=empresa_id,ot", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -165,7 +173,9 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   for (let i = 0; i < filas.length; i += BATCH) {
     // Sin `estado`: las nuevas toman el valor por defecto y abajo la columna
     // TERMINADO cierra o reabre las que están en la planilla.
-    const batch = filas.slice(i, i + BATCH).map(r => ({
+    const batch = filas.slice(i, i + BATCH).map(r => {
+      const sem = resolverSemana(semanaApp.get(String(r.ot)), r.semana_objetivo ?? null, ultimaSync);
+      return {
       empresa_id:         empresaId,
       ot:                 r.ot,
       cliente:            r.cliente,
@@ -176,13 +186,17 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       fecha_entrega:      r.fecha_entrega,
       cantidad:           r.cantidad,
       terminado_planilla: r.terminado_planilla,
-      semana_objetivo:    r.semana_objetivo ?? null,
-      fecha_objetivo:     fechaObjetivo(r, { modo, hoy, previa: fechaPrevia.get(String(r.ot)) }),
+      semana_objetivo:    sem.semana,
+      fecha_objetivo:     fechaObjetivo({ ...r, semana_objetivo: sem.semana }, { modo, hoy, previa: fechaPrevia.get(String(r.ot)) }),
+      semana_app:         sem.semana_app,
+      semana_app_at:      sem.semana_app_at,
+      semana_planilla:    sem.semana_planilla,
       // Solo si la planilla tiene la columna (todas las filas la traen o
       // ninguna: PostgREST pide las mismas claves en todo el lote)
       ...("total_modulos" in r ? { total_modulos: r.total_modulos } : {}),
       ...Object.fromEntries(CAMPOS_MATERIAL.filter((k) => k in r).map((k) => [k, r[k]])),
-    }));
+      };
+    });
     try {
       // on_conflict explícito: sin esto, PostgREST usa la PK (id, siempre ausente
       // en este insert) como target de conflicto y el upsert por OT nunca matchea.

@@ -32,6 +32,7 @@ import { leerOperariosPlanta, horasSemanaDeGrilla, personalGantt } from "../lib/
 import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import AvanceManualOt from "./AvanceManualOt";
 import { useConfirm } from "./ui/ConfirmDialog";
+import SelectorSemana from "./SelectorSemana";
 import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
 import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAutomatico";
@@ -118,6 +119,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const [tipo, setTipo] = useState("semana");
   const [paso, setPaso] = useState(0);
   const [modo, setModo] = useState("semana_domingo");
+  const [modoEmpresa, setModoEmpresa] = useState("semana_domingo"); // para cambiar la semana de una OT (144)
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const [elegidas, setElegidas] = useState(null);
@@ -162,6 +164,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         if (!vivo) return;
         // Igual que el Gantt: la semana arranca el domingo, salvo que la empresa cuente de lunes
         setModo(normalizarModo(cfgModo?.[0]?.valor?.modo) === "semana_domingo" ? "semana_domingo" : "semana_lunes");
+        setModoEmpresa(normalizarModo(cfgModo?.[0]?.valor?.modo));
         setDatos({ proyectos: proy.data || [], empleados: emp.data || [], avance: av.avance || [], piezasEscaneo: av.piezasEscaneo || av.piezas || [], modulos: modulosPorOt(pz.data) });
       } catch (e) {
         if (vivo) setError(e.message || "No se pudieron leer los datos.");
@@ -370,7 +373,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
 
       <PrioridadTildadas ots={otsPlan} sinColumna={sinColumnaPrioridad} aviso={avisoPrioridad}
         onAplicar={(nueva) => aplicarPrioridad(otsPlan, nueva)} onEficiente={ordenarEficiente}
-        onBorrar={borrarPrioridades} conNumeroDivision={conNumeroDivision} />
+        onBorrar={borrarPrioridades} conNumeroDivision={conNumeroDivision}
+        modo={modoEmpresa} hoy={hoy} onSemana={(c) => setDatos((d) => ({ ...d, proyectos: d.proyectos.map((p) => (p.id === c.id ? { ...p, ...c } : p)) }))} />
       {ConfirmDialog}
 
       <div className="g-label mb-1.5">③ Carga de la planta</div>
@@ -758,7 +762,7 @@ function NumeroPrioridad({ p, i, total, disabled, onMover, onQuitar }) {
  * otros números; al cambiar algo se guardan así. Las sin número van después
  * por fecha objetivo. ⚡ propone los números del orden más eficiente.
  */
-function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onBorrar, conNumeroDivision = 0 }) {
+function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onBorrar, conNumeroDivision = 0, modo, hoy, onSemana }) {
   const [arrastre, setArrastre] = useState(null);
   const lista = useMemo(() => {
     let n = 0;
@@ -790,7 +794,7 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
     <section aria-label="Prioridad de las OT" className="g-card mb-3">
       <div className="g-label mb-1">② Prioridad de las tildadas</div>
       <div className="text-[13px] text-gypi-dim mb-2 leading-normal">
-        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Sin número, van por semana de entrega (la SEMANA del Plan de trabajo); el número manda sobre la semana. Es el único orden que usa el plan. 🧹 Borrar prioridades saca los números de todas las OT de la división.
+        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Sin número, van por semana de entrega (la SEMANA del Plan de trabajo, que podés cambiar acá y pasa a la planilla); el número manda sobre la semana. Es el único orden que usa el plan. 🧹 Borrar prioridades saca los números de todas las OT de la división.
       </div>
       {sinColumna && <div role="alert" className="text-[13px] text-gypi-red mb-2">Para ordenar las OT falta correr la migración 137 en Supabase.</div>}
       {aviso && <div role="status" className="text-[13px] text-gypi-dim mb-2">{aviso}</div>}
@@ -819,7 +823,8 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
                     onMover={(destino) => aplicar(moverOt(lista, i, destino))} onQuitar={() => aplicar(quitarPrioridad(lista, p.id))} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
-                    <div className="text-xs text-gypi-dim truncate">{[p.obra, textoObjetivo(p) || "sin semana", material].filter(Boolean).join(" · ")}</div>
+                    <div className="text-xs text-gypi-dim truncate">{[p.obra, modo === "entrega" ? textoObjetivo(p, modo) || "sin entrega" : null, material].filter(Boolean).join(" · ")}</div>
+                    <SelectorSemana proyecto={p} modo={modo} hoy={hoy} onCambio={onSemana} compacto />
                   </div>
                   <div className="flex flex-col">
                     <button type="button" aria-label={`Subir OT ${p.ot}`} disabled={sinColumna || i === 0} onClick={() => aplicar(moverOt(lista, i, i - 1))}

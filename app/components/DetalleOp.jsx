@@ -25,6 +25,7 @@ import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
 import AvanceManualOt from "./AvanceManualOt";
+import SelectorSemana from "./SelectorSemana";
 import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { useEscape } from "../hooks/useEscape";
 
@@ -63,10 +64,11 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, precio, onClose, onProyectoActualizado }) {
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, precio, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado }) {
   useEscape(onClose);
   // Checkeo manual (141): lo guardado acá se ve sin volver a abrir el detalle
   const [avanceManual, setAvanceManual] = useState(undefined);
+  const [semana, setSemana] = useState(null); // SEMANA cambiada acá (144)
   const [tareas, setTareas] = useState(null);
   const [noConformes, setNoConformes] = useState([]);
   const [sueltos, setSueltos] = useState([]);
@@ -164,6 +166,12 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               </div>
             )}
             {precio != null && <div className="text-[13px] font-bold text-gypi-text mt-1">💲 Precio {fmtPesos(precio)}</div>}
+            {puedeCambiarSemana && modoObjetivo && (
+              <div className="mt-1.5">
+                <SelectorSemana proyecto={{ ...proyecto, ...semana }} modo={modoObjetivo} hoy={hoyArg()} compacto
+                  onCambio={(c) => { setSemana(c); onProyectoActualizado?.(c); }} />
+              </div>
+            )}
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
