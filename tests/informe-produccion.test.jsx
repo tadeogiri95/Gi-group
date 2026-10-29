@@ -8,7 +8,7 @@ import { render, screen, cleanup, fireEvent, within, act } from "@testing-librar
 import { periodoDe, notaInforme, calcularInforme, explicacionNota, textoPushInforme, informeVacio } from "../app/lib/informeProduccion.js";
 import { autorizar, prepararBodyPost } from "../app/lib/dataPolicy.js";
 
-const { default: InformeProduccionTab } = await import("../app/components/InformeProduccionTab.jsx");
+const { default: InformeProduccionTab, VistaInforme } = await import("../app/components/InformeProduccionTab.jsx");
 const { htmlInformeProduccion } = await import("../app/lib/email.js");
 
 afterEach(() => cleanup());
@@ -87,6 +87,48 @@ test("calcularInforme — planificado, hecho y desvío por proceso y por OT; cum
   assert.equal(informeVacio(calcularInforme({ ...DATOS, periodo: periodoDe("dia", "2026-10-20") })), true);
 });
 
+// Tadeo, 29/10: "hoy se registraron avances a mano pero el informe dice que no se hizo nada"
+test("calcularInforme — avance a mano con piezas sin escanear, sin historial, etapa firmada y OT fuera del plan", () => {
+  const r = calcularInforme({
+    ...DATOS,
+    piezas: [...DATOS.piezas, { ot: "7300", etapa: 1, total: 20, pasaron: 0 }, { ot: "7400", etapa: 2, total: 8, pasaron: 0 }],
+    proyectos: new Map([...DATOS.proyectos,
+      // Checkeo de hoy sin historial (antes de la 146): cuenta lo cargado
+      ["7300", { ot: "7300", cliente: "Luis", avance_manual: { activo: true, etapas: { 1: 40 }, at: "2026-10-28T19:00:00Z" } }],
+      // Checkeo viejo: no cuenta como hecho hoy
+      ["7500", { ot: "7500", avance_manual: { activo: true, etapas: { 1: 90 }, at: "2026-10-20T19:00:00Z" } }],
+    ]),
+    avance: [
+      { ot: "7400", etapa: 2, estado: "terminada", terminada_at: "2026-10-28T16:00:00Z" },
+      { ot: "7200", etapa: 4, estado: "aprobada", aprobada_at: "2026-10-28T21:00:00Z" },
+      { ot: "7100", etapa: 2, estado: "no_aplica" },
+    ],
+  });
+  const o73 = r.ots.find((o) => o.ot === "7300");
+  assert.equal(o73.procesos[0].hecho, 40, "las piezas sin escanear no tapan el checkeo manual");
+  assert.equal(o73.procesos[0].fuente, "manual");
+  assert.equal(o73.fueraDelPlan, true);
+  assert.equal(o73.enOtroPlan, false);
+  const o74 = r.ots.find((o) => o.ot === "7400");
+  assert.equal(o74.procesos[0].hecho, 100, "la etapa firmada como terminada llega al 100 %");
+  assert.equal(o74.fueraDelPlan, true);
+  assert.ok(!r.ots.find((o) => o.ot === "7500"));
+  const armado = r.ots.find((o) => o.ot === "7200").procesos[0];
+  assert.equal(armado.hecho, 80, "de 20 a 100 con la aprobación");
+  assert.equal(armado.fueraDelPlan, false);
+  assert.equal(r.ots.find((o) => o.ot === "7100").fueraDelPlan, false);
+  assert.equal(r.resumen.otsFueraDelPlan, 2);
+  // Lo de fuera del plan no cambia el cumplimiento: 7100 8 de 8 h y 7200 10 de 10 h
+  assert.equal(r.resumen.cumplimiento, 100);
+  assert.match(explicacionNota(r), /fuera del plan no cuenta en el cumplimiento/);
+  assert.match(textoPushInforme(r), /4 OT trabajadas · 2 fuera del plan$/);
+  const html = htmlInformeProduccion({ empresa: "GI", slug: "gi", informe: r, explicacion: explicacionNota(r) });
+  assert.match(html, /OT con producción fuera del plan.*2: 7300, 7400/s);
+  render(<VistaInforme informe={r} />);
+  assert.match(document.querySelector("[data-fuera-plan]").textContent, /2 OT tuvieron producción sin estar planificada en el período: 7300, 7400/);
+  assert.match(document.querySelector('[data-ot="7300"]').textContent, /🆕 fuera del plan/);
+});
+
 test("email — nota, cómo se calcula y gráficos por OT en barras", () => {
   const r = calcularInforme(DATOS);
   const html = htmlInformeProduccion({ empresa: "GI", slug: "gi", informe: r, explicacion: explicacionNota(r) });
@@ -134,7 +176,7 @@ test("🏭 Producción — guardados, informe parcial de la semana con la nota y
   assert.equal(within(nota).getAllByRole("meter").length, 3);
   const ot = document.querySelector('[data-ot="7200"]');
   fireEvent.click(within(ot).getByRole("button"));
-  assert.match(ot.querySelector("table").textContent, /Armado100 %60 %-4060 %/);
+  assert.match(ot.querySelector("table").textContent, /Armado · ✋ a mano100 %60 %-4060 %/);
   // Uno guardado
   fireEvent.click(within(guardados).getByRole("button"));
   await esperar();
@@ -169,6 +211,10 @@ test("PDF — nota en medio círculo, partes, gráficos por OT, por proceso y de
   assert.match(html, /6 piezas \(6 de 10\)/);
   assert.match(html, /Terminada, falta la firma/);
   assert.doesNotMatch(html, /<script/i);
+  assert.doesNotMatch(html, /Producción fuera del plan/, "sin OT fuera del plan no va la sección");
+  const fuera = htmlInformePdf({ informe: calcularInforme({ ...DATOS, avance: [{ ot: "7400", etapa: 2, estado: "terminada", terminada_at: "2026-10-28T16:00:00Z" }] }) });
+  assert.match(fuera, /<h2>🆕 Producción fuera del plan · 1<\/h2>/);
+  assert.match(fuera, /OT 7400.*Canteado \+100 %/s);
   assert.deepEqual(horasPorProceso(r.ots).map((p) => [p.nombre, p.plan, Math.round(p.hecho * 10) / 10]), [["Corte", 8, 9.6], ["Armado", 10, 8]]);
   // Guardado de la noche, de una semana: sin reporte del día
   const semana = htmlInformePdf({ informe: calcularInforme({ ...DATOS, periodo: periodoDe("semana", "2026-10-28") }), guardado: "2026-10-29T02:00:00Z" });
