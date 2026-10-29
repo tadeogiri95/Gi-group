@@ -351,14 +351,18 @@ export default function ProyectosScreen({ empresaId }) {
     setSyncLoading(false);
   };
 
+  // Un solo botón a la vista: trae lo nuevo de la planilla (si hay links
+  // guardados) y vuelve a cargar la lista. Sin planilla, solo actualiza.
   const sincronizar = async () => {
-    if (!syncCfg.url.trim()) { showToast("Guardá la URL primero", AMBER); return; }
+    if (!syncCfg.url.trim()) { await cargar(); return; }
     setSyncLoading(true);
     try {
       const res = await apiFetch("/api/proyectos/sync-csv", { method: "POST" });
       // Si el servidor se cortó (tardó demasiado) no vuelve JSON
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || "la sincronización no terminó. Esperá un minuto y probá de nuevo");
+      // Recién sincronizada por otra persona (menos de 5 minutos): solo actualiza
+      if (data.omitido) { await cargar(); setSyncLoading(false); return; }
       const faltan = (data.total || 0) - (data.procesados || 0);
       const hojasMal = (data.errores || []).filter(e => e.startsWith("Hoja "));
       if (faltan > 0) {
@@ -372,7 +376,7 @@ export default function ProyectosScreen({ empresaId }) {
         showToast(`✅ ${data.procesados} OT sincronizadas${rep}`, GREEN);
       }
       await cargar(); await cargarSyncCfg();
-    } catch (e) { showToast(`Error: ${e.message}`, RED); }
+    } catch (e) { showToast(`Error: ${e.message}`, RED); await cargar(); }
     setSyncLoading(false);
   };
 
@@ -494,7 +498,9 @@ export default function ProyectosScreen({ empresaId }) {
       {/* Acciones de todos los días: grandes y con texto (revisión de la interfaz, 2026-10) */}
       <div className="flex gap-2 mb-3">
         <button onClick={() => setModal({})} className="flex-1 min-h-[48px] rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[15px] font-bold cursor-pointer">+ Nueva OT</button>
-        <button onClick={cargar} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[15px] font-bold cursor-pointer">🔄 Actualizar</button>
+        <button onClick={sincronizar} disabled={syncLoading} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[15px] font-bold cursor-pointer disabled:opacity-60">
+          {syncLoading ? "Sincronizando…" : "🔄 Actualizar y sincronizar"}
+        </button>
       </div>
 
       {/* Filtros en una sola fila */}
@@ -558,7 +564,7 @@ export default function ProyectosScreen({ empresaId }) {
                 <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
                   <div className="text-xs text-gypi-dim mb-2 leading-relaxed">
                     URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: las OT nuevas se crean y las existentes se actualizan.
-                    {" "}{AVISO_DEMORA_GOOGLE}
+                    {" "}Para traer lo nuevo usá <b>🔄 Actualizar y sincronizar</b>, arriba de la lista. {AVISO_DEMORA_GOOGLE}
                   </div>
                   {syncCfg.ultima_sync && (
                     <div className="text-xs text-gypi-green mb-2">
@@ -588,13 +594,6 @@ export default function ProyectosScreen({ empresaId }) {
                       className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber-ink cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
                     >
                       Guardar links
-                    </button>
-                    <button
-                      onClick={sincronizar}
-                      disabled={syncLoading || !syncCfg.url.trim()}
-                      className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() && !syncLoading ? "bg-gypi-green/15 text-gypi-green cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
-                    >
-                      {syncLoading ? "Sincronizando…" : "🔄 Sincronizar ahora"}
                     </button>
                   </div>
                 </div>

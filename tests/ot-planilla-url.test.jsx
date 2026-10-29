@@ -99,7 +99,7 @@ test("lista de OT — botones grandes con texto, filtros en una fila y lo de vez
       <ProyectosScreen empresaId="11111111-1111-1111-1111-111111111111" />
     </AuthContext.Provider>
   );
-  for (const nombre of ["+ Nueva OT", "🔄 Actualizar"]) {
+  for (const nombre of ["+ Nueva OT", "🔄 Actualizar y sincronizar"]) {
     const b = await screen.findByRole("button", { name: nombre });
     assert.match(b.className, /min-h-\[48px\]/);
     assert.match(b.className, /text-\[15px\]/);
@@ -117,4 +117,34 @@ test("lista de OT — botones grandes con texto, filtros en una fila y lo de vez
   assert.ok(screen.getByText(/Importar OT desde un CSV/));
   assert.ok(screen.getByText(/Imprimir etiquetas QR/));
   assert.ok(screen.getByRole("switch", { name: "Escanear OT con la cámara" }));
+});
+
+test("lista de OT — un solo botón a la vista actualiza y sincroniza con la planilla", async () => {
+  const llamadas = [];
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.includes("/api/proyectos/sync-csv")) {
+      llamadas.push("sync");
+      return new Response(JSON.stringify({ ok: true, procesados: 3, total: 3, repetidas: 0, errores: [] }), { status: 200 });
+    }
+    const { path = "" } = JSON.parse(opts.body || "{}");
+    if (path.startsWith("proyectos?")) llamadas.push("lista");
+    const data = path.includes("clave=eq.proyectos_csv_url") ? [{ valor: { url: "https://docs.google.com/x/export?format=csv" } }] : [];
+    return new Response(JSON.stringify({ ok: true, data }), { status: 200 });
+  };
+  render(
+    <AuthContext.Provider value={{ divisiones: [], empresa: { nombre: "Acme" }, updateEmpresa: () => {} }}>
+      <ProyectosScreen empresaId="11111111-1111-1111-1111-111111111111" />
+    </AuthContext.Provider>
+  );
+  const boton = await screen.findByRole("button", { name: "🔄 Actualizar y sincronizar" });
+  // Espera a que cargue los links guardados
+  await waitFor(() => assert.ok(llamadas.includes("lista")));
+  await new Promise((r) => setTimeout(r, 20));
+  llamadas.length = 0;
+  fireEvent.click(boton);
+  await waitFor(() => assert.ok(llamadas.includes("sync")));
+  await waitFor(() => assert.ok(llamadas.indexOf("lista") > llamadas.indexOf("sync"), "después de sincronizar vuelve a cargar la lista"));
+  // El "Sincronizar ahora" del panel ya no existe: queda un solo botón
+  assert.equal(screen.queryByText(/Sincronizar ahora/), null);
 });
