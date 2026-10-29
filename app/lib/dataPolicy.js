@@ -94,6 +94,9 @@ export const POLICY = {
   // Cambios de tiempo de los procesos de una OT, con motivo (145): los cargan
   // gerencia, supervisores y administración; no se editan ni se borran.
   ajustes_tiempo_ot:            { GET: "gestion", POST: "gestion" },
+  // Informe de producción (146): los guarda el cron; historial del checkeo manual
+  informes_produccion:          { GET: "gestion" },
+  avance_manual_historial:      { GET: "gestion", POST: "gestion" },
 
   // Solo gestión.
   config_sistema:               { GET: "gestion", POST: "gestion", PATCH: "gestion" },
@@ -164,6 +167,12 @@ export function aplicarFiltroPropio(path, ownFilter) {
  */
 export function prepararBodyPost(tabla, body, sesion, ownFilter) {
   const out = { ...body };
+  if (tabla === "avance_manual_historial") {
+    const ok = typeof out.ot === "string" && out.ot.trim() && out.ot.length <= 40
+      && Number.isInteger(out.etapa) && out.etapa > 0 && Number.isInteger(out.pct) && out.pct >= 0 && out.pct <= 100;
+    if (!ok) return { status: 400, error: "Historial de avance inválido" };
+    out.creado_por = sesion?.empleado_id || null; // quién lo cargó sale de la sesión
+  }
   if (tabla === "ajustes_tiempo_ot") {
     const err = validarAjuste(out);
     if (err) return { status: 400, error: err };
