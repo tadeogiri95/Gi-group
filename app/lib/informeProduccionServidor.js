@@ -42,7 +42,7 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     operarios(",es_instalador,puesto_planta").catch(() => operarios(",es_instalador")).catch(() => operarios("")).catch(vacio),
     sbGetAll(`v_avance_piezas?empresa_id=eq.${e}&select=ot,etapa,total,pasaron,primer_paso,ultimo_paso`, { ...opts, maxFilas: 20000 }).catch(vacio),
     sbGetAll(`pasos_pieza?empresa_id=eq.${e}&requerida=eq.true&created_at=gte.${desdeTs}&select=ot,etapa,created_at&order=id.asc`, { ...opts, maxFilas: 100000 }).catch(vacio),
-    sbGetAll(`avance_etapas?empresa_id=eq.${e}&select=ot,etapa,estado`, opts).catch(vacio),
+    sbGetAll(`avance_etapas?empresa_id=eq.${e}&select=ot,etapa,estado,terminada_at,aprobada_at`, opts).catch(vacio),
     sbGetAll(`piezas_ot?empresa_id=eq.${e}&modulo=not.is.null&select=ot,modulo`, { ...opts, maxFilas: 50000 }).catch(vacio),
     // Sin la 145 no hay "Faltan X h"; sin la 146 no hay historial del checkeo manual
     sbGetAll(`ajustes_tiempo_ot?empresa_id=eq.${e}&tipo=eq.faltan&select=ot,etapa,tipo,horas,pendiente,created_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
@@ -70,7 +70,7 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
   for (const [ot] of vivo) if (!abiertas.has(ot)) vivo.delete(ot);
   return calcularInforme({
     periodo, items: vigentes, etapasCodigo,
-    piezas: piezas.data, pasos: pasos.data, manual: manual.data,
+    piezas: piezas.data, pasos: pasos.data, manual: manual.data, avance: avance.data,
     proyectos: todas, vivo,
   });
 }

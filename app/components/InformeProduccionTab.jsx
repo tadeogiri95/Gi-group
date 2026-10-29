@@ -92,6 +92,11 @@ export function VistaInforme({ informe: r, guardado = null }) {
           <span className="inline-block w-3 h-2 rounded-sm bg-gypi-amber ml-3 mr-1" aria-hidden="true" />hecho · primero las más atrasadas
         </div>
         {!r.ots.length && <div className="text-[13px] text-gypi-dim">No hubo nada planificado ni hecho en el período.</div>}
+        {s.otsFueraDelPlan > 0 && (
+          <div className="text-[13px] text-gypi-amber-ink font-bold mb-2" data-fuera-plan>
+            🆕 {s.otsFueraDelPlan === 1 ? "1 OT tuvo producción" : `${s.otsFueraDelPlan} OT tuvieron producción`} sin estar planificada en el período: {r.ots.filter((o) => o.fueraDelPlan).map((o) => o.ot).join(", ")}
+          </div>
+        )}
         <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
           {r.ots.map((o) => (
             <li key={o.ot} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border" data-ot={o.ot}>
@@ -107,6 +112,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
                   Planificado {coma(o.planificado)} % · hecho {coma(o.hecho)} % · va {coma(o.alFinal)} % de la OT
                   {o.tarde && <span className="text-gypi-red font-bold"> · ⚠ {o.diasTarde} d después de su semana</span>}
                   {o.diasCorrido > 0 && <span className="text-gypi-amber-ink font-bold"> · ↪ se corrió {o.diasCorrido} d</span>}
+                  {o.fueraDelPlan && <span className="text-gypi-amber-ink font-bold"> · 🆕 fuera del plan{o.enOtroPlan ? " (planificada otro día)" : ""}</span>}
                 </div>
               </button>
               {abierta === o.ot && (
@@ -117,7 +123,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
                   <tbody>
                     {o.procesos.map((q) => (
                       <tr key={q.etapa}>
-                        <td>{q.nombre}</td>
+                        <td>{q.nombre}{q.fueraDelPlan && <span className="text-gypi-amber-ink"> · 🆕 fuera del plan</span>}{q.fuente === "manual" && <span className="text-gypi-dim"> · ✋ a mano</span>}</td>
                         <td className="text-right">{coma(q.planificado)} %</td>
                         <td className="text-right">{coma(q.hecho)} %</td>
                         <td className={`text-right font-bold ${q.desvio < 0 ? "text-gypi-red" : "text-gypi-green"}`}>{q.desvio > 0 ? "+" : ""}{coma(q.desvio)}</td>

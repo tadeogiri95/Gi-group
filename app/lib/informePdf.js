@@ -117,13 +117,29 @@ function tablaOts(ots) {
   return `<table class="tabla">
     <thead><tr><th>OT</th><th>Proceso</th><th class="n">Planificado</th><th class="n">Hecho</th><th class="n">Desvío</th><th class="n">Va</th></tr></thead>
     <tbody>${ots.map((o) => o.procesos.map((q, i) => `<tr${i === 0 ? ' class="primera"' : ""}>
-      <td>${i === 0 ? `<b>OT ${esc(o.ot)}</b>${o.cliente ? `<div class="chico">${esc(o.cliente)}</div>` : ""}${o.tarde ? `<div class="chico mal">⚠ ${o.diasTarde} d después de su semana</div>` : ""}${o.diasCorrido > 0 ? `<div class="chico medio">↪ se corrió ${o.diasCorrido} d</div>` : ""}` : ""}</td>
-      <td>${esc(q.nombre)}</td>
+      <td>${i === 0 ? `<b>OT ${esc(o.ot)}</b>${o.cliente ? `<div class="chico">${esc(o.cliente)}</div>` : ""}${o.tarde ? `<div class="chico mal">⚠ ${o.diasTarde} d después de su semana</div>` : ""}${o.diasCorrido > 0 ? `<div class="chico medio">↪ se corrió ${o.diasCorrido} d</div>` : ""}${o.fueraDelPlan ? `<div class="chico medio">🆕 fuera del plan</div>` : ""}` : ""}</td>
+      <td>${esc(q.nombre)}${q.fueraDelPlan ? ` <span class="chico medio">· fuera del plan</span>` : ""}${q.fuente === "manual" ? ` <span class="chico">· a mano</span>` : ""}</td>
       <td class="n">${coma(q.planificado)} %</td>
       <td class="n">${coma(q.hecho)} %</td>
       <td class="n ${q.desvio < 0 ? "mal" : "bien"}">${q.desvio > 0 ? "+" : ""}${coma(q.desvio)}</td>
       <td class="n">${coma(q.alFinal)} %</td>
     </tr>`).join("")).join("")}</tbody>
+  </table>`;
+}
+
+/** OT que avanzaron sin estar planificadas en el período (Tadeo, 29/10). */
+function seccionFueraDelPlan(ots) {
+  const fuera = ots.filter((o) => o.fueraDelPlan);
+  if (!fuera.length) return "";
+  return `<h2>🆕 Producción fuera del plan · ${fuera.length}</h2>
+  <div class="leyenda">OT que avanzaron sin nada planificado en el período; no cuentan en el cumplimiento</div>
+  <table class="tabla">
+    <thead><tr><th>OT</th><th>Procesos que avanzaron</th><th class="n">Va</th></tr></thead>
+    <tbody>${fuera.map((o) => `<tr>
+      <td><b>OT ${esc(o.ot)}</b>${o.cliente ? `<div class="chico">${esc(o.cliente)}</div>` : ""}${o.enOtroPlan ? `<div class="chico">planificada otro día</div>` : ""}</td>
+      <td>${o.procesos.filter((q) => q.hecho > 0).map((q) => `${esc(q.nombre)} +${coma(q.hecho)} %`).join(" · ")}</td>
+      <td class="n">${coma(o.alFinal)} %</td>
+    </tr>`).join("")}</tbody>
   </table>`;
 }
 
@@ -244,7 +260,8 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
     <div class="mitad"><h3>Desvío por OT</h3><div class="leyenda">rojo: atrasada contra lo planificado · verde: adelantada</div>${svgDesvios(r.ots)}</div>
   </div>
   <h2>Detalle por OT y proceso</h2>
-  ${tablaOts(r.ots)}` : `<p>No hubo nada planificado ni hecho en el período.</p>`}
+  ${tablaOts(r.ots)}
+  ${seccionFueraDelPlan(r.ots)}` : `<p>No hubo nada planificado ni hecho en el período.</p>`}
 
   ${seccionesDia(reporteDia)}
 
