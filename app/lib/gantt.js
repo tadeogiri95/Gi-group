@@ -108,6 +108,19 @@ const sumarMes = (fecha) => {
   return d.toISOString().slice(0, 10);
 };
 
+/** La misma fecha n meses después (o antes, con n negativo). */
+function restarOSumarMeses(fecha, n) {
+  let f = fecha;
+  if (n >= 0) { for (let i = 0; i < n; i++) f = sumarMes(f); return f; }
+  const d = new Date(`${fecha}T00:00:00Z`);
+  const dia = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + n);
+  const ultimo = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(dia, ultimo));
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Días que se ven en el Gantt: desde hoy hasta el horizonte elegido, o todo
  * el plan. Devuelve el primer día, el día siguiente al último, cuántos días
@@ -115,13 +128,14 @@ const sumarMes = (fecha) => {
  * semanas que la escala no trae siguen la numeración de la planilla).
  * @returns {{ desde: string, hasta: string, dias: number, semanas: { inicio: string, numero: number|null, actual: boolean, desde: string, hasta: string }[] }}
  */
-export function ventanaGantt(escala, horizonte = "todo", hoy) {
+export function ventanaGantt(escala, horizonte = "todo", hoy, corrimiento = 0) {
   const todas = escala?.semanas || [];
   const h = HORIZONTES_GANTT.find((x) => x.id === horizonte && x.id !== "todo");
   let desde, hasta;
   if (h && hoy) {
-    desde = hoy;
-    hasta = h.meses ? sumarMes(hoy) : sumarDias(hoy, h.dias);
+    // ◀ ▶ (Tadeo, 29/10): `corrimiento` ventanas para atrás o para adelante
+    desde = h.meses ? restarOSumarMeses(hoy, corrimiento) : sumarDias(hoy, corrimiento * h.dias);
+    hasta = h.meses ? sumarMes(desde) : sumarDias(desde, h.dias);
   } else {
     if (!todas.length) return { semanas: [], desde: escala?.desde, hasta: escala?.desde, dias: 0 };
     desde = todas[0].inicio;
@@ -129,6 +143,11 @@ export function ventanaGantt(escala, horizonte = "todo", hoy) {
   }
   // Semanas que tocan la ventana; si la escala no llega, se siguen contando
   const lista = [...todas];
+  while (lista.length && lista[0].inicio > desde) {
+    const p = lista[0];
+    const inicio = sumarDias(p.inicio, -7);
+    lista.unshift({ inicio, numero: p.numero != null ? p.numero - 1 : null, actual: !!hoy && inicio <= hoy && hoy < sumarDias(inicio, 7) });
+  }
   while (lista.length && sumarDias(lista[lista.length - 1].inicio, 7) < hasta) {
     const u = lista[lista.length - 1];
     const inicio = sumarDias(u.inicio, 7);

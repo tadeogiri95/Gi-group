@@ -225,7 +225,7 @@ test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
     maquinas: [{ id: "m1", codigo: "CNC-01", nombre: "CNC 1", estado: "parada", activo: true, criticidad: "A" }],
     maquina_fallas: [{ id: "f1", maquina_id: "m1", descripcion: "No arranca", parada: true, estado: "pendiente", created_at: "2026-10-24T10:00:00Z" }],
   };
-  // ⏰ OT atrasadas sale del plan confirmado: 7495 tenía que terminar el Corte en 2020
+  // ⏰ OT atrasadas sale del plan vivo: 7495 va a terminar el Corte mucho después de su semana (2020)
   const planes = [{ id: 1, tipo: "semana", desde: "2020-01-05", hasta: "2099-01-31", items: [
     { ot: "7495", etapa: "corte", fecha: "2020-01-10", horas: 4, orden: 0 },
     { ot: "7500", etapa: "corte", fecha: "2099-01-10", horas: 4, orden: 1 },
@@ -246,7 +246,7 @@ test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
   assert.equal(within(atr).queryByText("7500"), null, "la que vence más adelante no está atrasada");
   assert.equal(within(atr).queryByText("7600"), null, "sin plan no cuenta como atrasada");
   assert.ok(within(atr).getByText(/⚠ Corte \(hasta el .*\) · 0% hecho/));
-  assert.ok(within(atr).getByText(/^\d+ días$/));
+  assert.ok(within(atr).getByText(/^⚠ \d+ días$/), "días después de su semana");
   const mant = await screen.findByRole("region", { name: "Mantenimiento" });
   await within(mant).findByText("Parada: No arranca");
   assert.ok(within(mant).getByText("1 parada"));
