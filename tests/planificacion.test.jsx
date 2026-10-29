@@ -249,7 +249,7 @@ test("⚙ Parámetros — si ya estaban guardados los actualiza", async () => {
 });
 
 // ─── Parte 39: carga y capacidad ────────────────────────────────────────────
-const { periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo, pendienteEtapa, preseleccion, modulosPorOt, fmtH } = await import("../app/lib/cargaPlanta.js");
+const { periodo, diasDelPeriodo, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo, pendienteEtapa, preseleccion, modulosPorOt, fmtH, conHorasExtra } = await import("../app/lib/cargaPlanta.js");
 
 const PARAMS = normalizarParametros({
   min_placa: 10, min_metro_canto: 1, min_mecanizado: 15, min_armado_gabinete: 60, eficiencia: 80,
@@ -407,8 +407,13 @@ test("📊 Carga — switch: según fechas objetivo pide horas extra por semana;
   assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
   fireEvent.click(screen.getByText("📅 Según fechas objetivo (SEMANA)"));
   assert.match(within(resumen()).getByLabelText("Horas extra por semana").textContent, /Semana del 25\/10\/2026: .* h \(sáb\.? 31\/10\/2026\)/);
-  assert.match(screen.getByLabelText("Carga de la planta").textContent, /❌ No entra con el horario normal/);
+  // El paso ③ suma a las horas de la planta el sábado de horas extra (Tadeo, 29/10)
+  assert.match(screen.getByLabelText("Carga de la planta").textContent, /Las horas de la planta incluyen .* h de horas extra \(1 día\)/);
+  const horasPlanta = () => screen.getByText("Horas de la planta").parentElement.textContent;
+  const conExtra = horasPlanta();
   fireEvent.click(screen.getByText("🏭 Según capacidad de la planta"));
+  assert.notEqual(horasPlanta(), conExtra, "sin horas extra, la planta tiene menos horas");
+  assert.doesNotMatch(screen.getByLabelText("Carga de la planta").textContent, /incluyen .* de horas extra/);
   assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
   assert.match(resumen().textContent, /🔴 Terminan después de su semanaM-7473: semana hasta el 31\/10\/2026; termina el \d+\/11\/2026/);
   assert.match(screen.getByLabelText("Carga de la planta").textContent, /✅ Entra en el período/);
@@ -1073,6 +1078,41 @@ test("📊 Carga — sin nada en este navegador, vienen tildadas las OT del plan
 });
 
 // 29/10 (Tadeo): un solo criterio. ⚡ ya no es otro orden: pone los números de prioridad
+test("📊 Carga — 🧹 borrar prioridades saca el número de todas las OT, con un ¿seguro? antes", async () => {
+  mockDosOt();
+  const patches = [];
+  const base = global.fetch;
+  global.fetch = async (url, opts) => {
+    const body = opts?.body ? JSON.parse(opts.body) : {};
+    if (body.method === "PATCH") patches.push([body.path, body.body]);
+    return base(url, opts);
+  };
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  const borrar = screen.getByRole("button", { name: "🧹 Borrar prioridades" });
+  assert.equal(borrar.disabled, true, "sin números no hay nada que borrar");
+  fireEvent.click(screen.getByRole("button", { name: "⚡ Ordenar de la forma más eficiente" }));
+  await screen.findByText("✅ Prioridad guardada");
+  patches.length = 0;
+  fireEvent.click(borrar);
+  assert.match(await screen.findByText(/Se borra el número de prioridad de las 2 OT/).then((n) => n.textContent), /¿Seguro\?/);
+  fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+  assert.deepEqual(patches, [], "al cancelar no se toca nada");
+  fireEvent.click(borrar);
+  fireEvent.click(await screen.findByRole("button", { name: "Borrar" }));
+  await waitFor(() => assert.equal(patches.length, 2));
+  assert.deepEqual(patches.sort(), [["proyectos?id=eq.1", { prioridad: null }], ["proyectos?id=eq.2", { prioridad: null }]]);
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7473").value, "");
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-9000").value, "");
+});
+
+test("conHorasExtra — cada día extra rinde como el día más largo de la grilla", () => {
+  const cap = { gente: 10, maquina: 5, personas: 1 };
+  const dias = [{ gente: 2, maquina: 2 }, { gente: 8, maquina: 9 }, { gente: 0, maquina: 0 }];
+  assert.deepEqual(conHorasExtra(cap, 0, dias), { ...cap, horasExtra: 0, diasExtra: 0 });
+  assert.deepEqual(conHorasExtra(cap, 2, dias), { gente: 26, maquina: 23, personas: 1, horasExtra: 16, diasExtra: 2 });
+});
+
 test("📊 Carga — ⚡ ordenar de la forma más eficiente pone los números de prioridad", async () => {
   mockDosOt();
   const patches = [];

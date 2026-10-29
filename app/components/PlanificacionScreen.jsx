@@ -26,11 +26,12 @@ import { fechaCorta } from "../lib/ot";
 import { leerAvanceYHoras } from "../lib/otEnCursoDatos";
 import {
   periodo, diasDelPeriodo, diasDesde, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo,
-  preseleccion, modulosPorOt, fmtH, personalPlanta, PUESTOS_PLANTA,
+  preseleccion, modulosPorOt, fmtH, personalPlanta, PUESTOS_PLANTA, conHorasExtra,
 } from "../lib/cargaPlanta";
 import { leerOperariosPlanta, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
 import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import AvanceManualOt from "./AvanceManualOt";
+import { useConfirm } from "./ui/ConfirmDialog";
 import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
 import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAutomatico";
@@ -124,6 +125,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const [base, setBaseEstado] = useState(() => (leerLocal(clavePlan(empresaId, division?.id, "base")) === "objetivo" ? "objetivo" : "capacidad"));
   const setBase = (b) => { setBaseEstado(b); guardarLocal(clavePlan(empresaId, division?.id, "base"), b); };
   // ① La lista de OT para tildar se puede cerrar para ver lo demás
+  const [confirmar, ConfirmDialog] = useConfirm();
   const [listaAbierta, setListaAbiertaEstado] = useState(() => leerLocal(clavePlan(empresaId, division?.id, "lista")) !== false);
   const setListaAbierta = (v) => { setListaAbiertaEstado(v); guardarLocal(clavePlan(empresaId, division?.id, "lista"), v); };
   const [avisoPrioridad, setAvisoPrioridad] = useState(null);
@@ -221,7 +223,10 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   // Las tablas muestran lo que el plan pone en el período elegido (de hoy en adelante)
   const desdeVisible = per.desde > hoy ? per.desde : hoy;
   const yaPaso = per.hasta < hoy;
-  const capacidad = useMemo(() => capacidadPlanta(operarios, yaPaso ? [] : diasDelPeriodo(desdeVisible, per.hasta)), [operarios, yaPaso, desdeVisible, per.hasta]);
+  // Con "Según fechas objetivo" se suman los días de horas extra que el plan pone en el período
+  const diasExtraPeriodo = base === "objetivo" && plan && !yaPaso ? plan.diasExtra.filter((d) => d.fecha >= desdeVisible && d.fecha <= per.hasta).length : 0;
+  const capacidad = useMemo(() => conHorasExtra(capacidadPlanta(operarios, yaPaso ? [] : diasDelPeriodo(desdeVisible, per.hasta)), diasExtraPeriodo, capacidadAnio.porDia),
+    [operarios, yaPaso, desdeVisible, per.hasta, diasExtraPeriodo, capacidadAnio]);
   const carga = useMemo(() => ({
     ...cargaPeriodo({ ots: plan ? [trabajoDelPeriodo(plan.segmentos, desdeVisible, per.hasta, params.eficiencia)] : [], params, capacidad }),
     ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => horas.get(p.id)),
@@ -271,6 +276,13 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
     const orden = ordenEficiente({ trabajos, dias: capacidadAnio.porDia, params, horasSemana, personal });
     const porId = new Map(otsPlan.map((p) => [p.id, p]));
     aplicarPrioridad(otsPlan, orden.map((t, i) => ({ ...porId.get(t.id), prioridad: i + 1 })));
+  };
+  // Borrar prioridades (Tadeo, 29/10): todas las OT de la división quedan sin número y van por semana
+  const conNumeroDivision = ots.filter((p) => Number.isInteger(p.prioridad) && p.prioridad > 0).length;
+  const borrarPrioridades = async () => {
+    const ok = await confirmar(`Se borra el número de prioridad de ${conNumeroDivision === 1 ? "1 OT" : `las ${conNumeroDivision} OT`} de ${division?.label || "la planta"}. Van a quedar ordenadas por semana de entrega. ¿Seguro?`,
+      { title: "Borrar prioridades", confirmLabel: "Borrar", destructive: true });
+    if (ok) aplicarPrioridad(ots, ots.map((p) => ({ ...p, prioridad: null })));
   };
   const tildar = (id) => cambiarElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const visibles = tildadasPrimero(buscarOts(ots, busca), elegidas);
@@ -357,7 +369,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       </div>
 
       <PrioridadTildadas ots={otsPlan} sinColumna={sinColumnaPrioridad} aviso={avisoPrioridad}
-        onAplicar={(nueva) => aplicarPrioridad(otsPlan, nueva)} onEficiente={ordenarEficiente} />
+        onAplicar={(nueva) => aplicarPrioridad(otsPlan, nueva)} onEficiente={ordenarEficiente}
+        onBorrar={borrarPrioridades} conNumeroDivision={conNumeroDivision} />
+      {ConfirmDialog}
 
       <div className="g-label mb-1.5">③ Carga de la planta</div>
       <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -371,7 +385,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
 
       <div className="g-card mb-3" aria-label="Resultado">
         <div className={`font-heading text-lg font-bold mb-1 ${carga.viable && !yaPaso ? "text-gypi-green" : "text-gypi-red"}`}>
-          {!carga.ots.length ? "Elegí las OT que querés planificar" : yaPaso ? "Ese período ya pasó" : carga.viable ? "✅ Entra en el período" : "❌ No entra con el horario normal"}
+          {!carga.ots.length ? "Elegí las OT que querés planificar" : yaPaso ? "Ese período ya pasó" : carga.viable ? (capacidad.horasExtra > 0 ? "✅ Entra en el período con horas extra" : "✅ Entra en el período") : "❌ No entra con el horario normal"}
         </div>
         {!yaPaso && carga.ots.length > 0 && (
           <div className="text-xs text-gypi-dim mb-1">Lo que el plan pone del {fechaCorta(desdeVisible)} al {fechaCorta(per.hasta)}. El plan sigue hasta que terminan todas las OT; la semana o el mes de arriba solo eligen qué parte se ve acá.</div>
@@ -383,6 +397,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
           <Dato label="Horas que hacen falta" valor={fmtH(carga.necesarias)} />
           <Dato label="Horas de la planta" valor={fmtH(carga.disponibles)} />
         </div>
+        {capacidad.horasExtra > 0 && (
+          <div className="text-[13px] text-gypi-amber-ink mb-1">Las horas de la planta incluyen {fmtH(capacidad.horasExtra)} de horas extra ({capacidad.diasExtra === 1 ? "1 día" : `${capacidad.diasExtra} días`}) que el plan suma para llegar a las semanas.</div>
+        )}
         {carga.extra > 0 && <div className="text-[14px] font-bold text-gypi-red mb-1">⏱ Horas extra: {fmtH(carga.extra)}</div>}
         {carga.cuello && carga.ots.length > 0 && (
           <div className="text-[13px] mb-1">
@@ -741,7 +758,7 @@ function NumeroPrioridad({ p, i, total, disabled, onMover, onQuitar }) {
  * otros números; al cambiar algo se guardan así. Las sin número van después
  * por fecha objetivo. ⚡ propone los números del orden más eficiente.
  */
-function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente }) {
+function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onBorrar, conNumeroDivision = 0 }) {
   const [arrastre, setArrastre] = useState(null);
   const lista = useMemo(() => {
     let n = 0;
@@ -773,7 +790,7 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente }) {
     <section aria-label="Prioridad de las OT" className="g-card mb-3">
       <div className="g-label mb-1">② Prioridad de las tildadas</div>
       <div className="text-[13px] text-gypi-dim mb-2 leading-normal">
-        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Las que no tengan número van después, por semana de entrega. Es el único orden que usa el plan.
+        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Sin número, van por semana de entrega (la SEMANA del Plan de trabajo); el número manda sobre la semana. Es el único orden que usa el plan. 🧹 Borrar prioridades saca los números de todas las OT de la división.
       </div>
       {sinColumna && <div role="alert" className="text-[13px] text-gypi-red mb-2">Para ordenar las OT falta correr la migración 137 en Supabase.</div>}
       {aviso && <div role="status" className="text-[13px] text-gypi-dim mb-2">{aviso}</div>}
@@ -781,7 +798,10 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente }) {
         <div className="text-sm text-gypi-dim py-3 text-center">Tildá en ① las OT que querés planificar.</div>
       ) : (
         <>
-          <button type="button" onClick={onEficiente} disabled={sinColumna || lista.length < 2} className="g-btn g-btn-secondary w-full mb-1">⚡ Ordenar de la forma más eficiente</button>
+          <div className="flex gap-2 mb-1">
+            <button type="button" onClick={onEficiente} disabled={sinColumna || lista.length < 2} className="g-btn g-btn-secondary flex-1">⚡ Ordenar de la forma más eficiente</button>
+            <button type="button" onClick={onBorrar} disabled={sinColumna || !conNumeroDivision} className="g-btn g-btn-secondary flex-1">🧹 Borrar prioridades</button>
+          </div>
           <div className="text-xs text-gypi-dim mb-2">
             Pone los números por vos (después los podés cambiar): arranca por la semana de entrega más cercana (las sin semana van al final) y prueba cambiar de lugar las OT vecinas. Se queda con el cambio si, con el horario normal, 1) llegan más OT a su semana; si empatan, 2) suman menos días de atraso; si empatan, 3) terminan todas antes.
           </div>

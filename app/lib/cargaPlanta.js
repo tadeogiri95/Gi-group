@@ -151,6 +151,26 @@ export function capacidadPlanta(operarios, dias) {
   return { gente: gente / 60, maquina: maquina / 60, porDia, personas: operarios.length };
 }
 
+/**
+ * Capacidad con los días de horas extra del plan "Según fechas objetivo"
+ * (Tadeo, 29/10: que el paso ③ las sume). Cada día extra rinde como el día de
+ * más horas de la grilla, igual que en el plan (planHorizonte).
+ * @param {{gente:number, maquina:number}} capacidad  la del período, con el horario normal
+ * @param {number} diasExtra  días de horas extra que caen en el período
+ * @param {{gente:number, maquina:number}[]} porDia  días de la grilla, para buscar el más largo
+ */
+export function conHorasExtra(capacidad, diasExtra, porDia) {
+  if (!(diasExtra > 0)) return { ...capacidad, horasExtra: 0, diasExtra: 0 };
+  const mejor = (porDia || []).reduce((a, d) => (d.gente > a.gente ? d : a), { gente: 0, maquina: 0 });
+  return {
+    ...capacidad,
+    gente: capacidad.gente + diasExtra * mejor.gente,
+    maquina: capacidad.maquina + diasExtra * mejor.maquina,
+    horasExtra: diasExtra * mejor.gente,
+    diasExtra,
+  };
+}
+
 /** Qué parte de la etapa falta: 0 si está terminada, lo que falta escanear si se escanea por pieza, si no 1. */
 export function pendienteEtapa({ ot, codigo, avance = [], piezas = [] }) {
   if (codigo == null) return 1;
