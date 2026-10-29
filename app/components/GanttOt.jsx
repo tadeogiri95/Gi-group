@@ -25,7 +25,7 @@
 // Gerencia puede reordenar las OT en "Procesos por OT" arrastrándolas desde ⠿
 // o con ▲▼ (Tadeo, 29/10): al soltar, el plan se vuelve a armar en el momento
 // (vista previa, reordenarPlan.js) y con "✅ Confirmar nuevo orden" se guarda
-// como el plan confirmado y las prioridades de Planificación; "↩ Deshacer"
+// como el plan confirmado (Planificación toma ese orden, sin poner números); "↩ Deshacer"
 // vuelve al plan confirmado. En "OT por proceso" se reordena cada proceso por
 // separado (Tadeo, 29/10): por ejemplo, cortar primero una OT y cantear
 // primero otra. Ese orden queda solo en el plan confirmado; si después se
@@ -41,7 +41,7 @@ import { ETAPAS_PLAN, normalizarParametros, divisionPlan } from "../lib/planific
 import { MODO_POR_DEFECTO, normalizarModo } from "../lib/semanaObjetivo";
 import { planReordenado, baseGuardada, mover } from "../lib/reordenarPlan";
 import { modulosPorOt } from "../lib/cargaPlanta";
-import { sb, sbGetAll, apiFetch } from "../lib/supabase";
+import { sbGetAll, apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { fmtH } from "../lib/cargaPlanta";
@@ -226,14 +226,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       const r = await apiFetch("/api/planificacion", { method: "POST", body: JSON.stringify(previa) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "No se pudo confirmar el plan.");
-      // Las mismas prioridades en Planificación (paso ②)
-      const conId = (cambio?.ots || []).map((ot) => abiertasPorOt.get(ot)).filter((p) => p?.id != null);
-      const prioridades = await Promise.allSettled(conId.map((p, i) => sb.patch(`proyectos?id=eq.${p.id}`, { prioridad: i + 1 })));
+      // Sin números de prioridad (Tadeo, 29/10): Planificación toma el orden del plan confirmado
       setConfirmadoAca({ ...(d.plan || {}), items: d.plan?.items || previa.items, dias_extra: d.plan?.dias_extra || previa.dias_extra });
       setCambio(null);
-      setAviso(prioridades.some((x) => x.status === "rejected")
-        ? "✅ Plan confirmado con el orden nuevo. No se pudieron guardar las prioridades en Planificación: revisalas ahí."
-        : "✅ Plan confirmado con el orden nuevo. La planta ya lo ve.");
+      setAviso("✅ Plan confirmado con el orden nuevo. La planta ya lo ve.");
     } catch (e) {
       setAviso(e.message);
     } finally {
