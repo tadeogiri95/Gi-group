@@ -1,10 +1,14 @@
 "use client";
 // app/components/PlanificacionScreen.jsx — Proyectos → 🗓 Planificación
 // (parte 38; diseño en notes/diseno-planificacion-produccion.md). Solo
-// gerencia. Tres vistas: la carga de las OT elegidas contra la capacidad de
-// la planta (parte 39), la prioridad de las OT de Muebles (se ordena
-// arrastrando; migración 137) y los parámetros de la planta (tiempos,
-// eficiencia, relaciones y máquinas; config_sistema clave "planificacion").
+// gerencia. Dos vistas: la carga de las OT elegidas contra la capacidad de
+// la planta (parte 39) y los parámetros de la planta (tiempos, eficiencia,
+// relaciones y máquinas; config_sistema clave "planificacion").
+// Desde el 29/10 (Tadeo) 📊 Carga va en pasos: ① tildar las OT, ② ordenarlas
+// (prioridad de las tildadas; migración 137), ③ ver la carga y ④ el plan para
+// confirmar. Un solo criterio de orden: manda el número de prioridad y las sin
+// número van después por fecha objetivo; "⚡ Ordenar de la forma más
+// eficiente" solo propone esos números.
 // "Ver el plan de las OT tildadas" (parte 40) reparte las OT tildadas día por día y
 // las muestra en un Gantt de planificación. Ese plan se guarda como borrador
 // o se confirma (parte 41, migración 138): confirmado, la planta lo ve en
@@ -45,7 +49,6 @@ import { Chip } from "./ui";
 
 const VISTAS = [
   { id: "carga", label: "📊 Carga" },
-  { id: "prioridad", label: "📌 Prioridad" },
   { id: "parametros", label: "⚙ Parámetros" },
 ];
 
@@ -79,8 +82,7 @@ export default function PlanificacionScreen({ empresaId }) {
       </div>
       {cfg === undefined ? <Cargando />
         : vista === "carga" ? <CargaPlan empresaId={empresaId} divisiones={divisiones} etapas={etapas} division={division} params={cfg} onParametros={() => setVista("parametros")} />
-        : vista === "prioridad" ? <PrioridadOt empresaId={empresaId} divisiones={divisiones} division={division} />
-          : <ParametrosPlan empresaId={empresaId} cfg={cfg} divisiones={divisiones} etapas={etapas} onGuardado={setCfg} />}
+        : <ParametrosPlan empresaId={empresaId} cfg={cfg} divisiones={divisiones} etapas={etapas} onGuardado={setCfg} />}
     </div>
   );
 }
@@ -103,7 +105,7 @@ function textoPeriodo(p) {
 
 // Lo que elige gerencia en Carga queda guardado en el navegador (Tadeo, 27/10:
 // al volver del Gantt no tiene que cambiar nada): las OT tildadas, el switch
-// del plan y la forma de ordenar.
+// del plan y si la lista de OT está abierta.
 const clavePlan = (empresaId, divisionId, que) => `gypi_plan_${que}_${empresaId}_${divisionId || "todas"}`;
 function leerLocal(clave) {
   try { return JSON.parse(localStorage.getItem(clave) || "null"); } catch { return null; }
@@ -123,9 +125,11 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   // Switch del plan: según la capacidad (por defecto) o según las fechas objetivo (SEMANA, con horas extra)
   const [base, setBaseEstado] = useState(() => (leerLocal(clavePlan(empresaId, division?.id, "base")) === "objetivo" ? "objetivo" : "capacidad"));
   const setBase = (b) => { setBaseEstado(b); guardarLocal(clavePlan(empresaId, division?.id, "base"), b); };
-  // Forma de ordenar: solo las tildadas en el orden de prioridad, o el orden más eficiente
-  const [forma, setFormaEstado] = useState(() => (leerLocal(clavePlan(empresaId, division?.id, "forma")) === "eficiente" ? "eficiente" : "prioridad"));
-  const setForma = (f) => { setFormaEstado(f); guardarLocal(clavePlan(empresaId, division?.id, "forma"), f); };
+  // ① La lista de OT para tildar se puede cerrar para ver lo demás
+  const [listaAbierta, setListaAbiertaEstado] = useState(() => leerLocal(clavePlan(empresaId, division?.id, "lista")) !== false);
+  const setListaAbierta = (v) => { setListaAbiertaEstado(v); guardarLocal(clavePlan(empresaId, division?.id, "lista"), v); };
+  const [avisoPrioridad, setAvisoPrioridad] = useState(null);
+  const guardandoPrioridad = useRef(false);
   // Último plan sin límite de semanas guardado: undefined = leyendo, null = no hay
   const [guardado, setGuardado] = useState(undefined);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
@@ -207,15 +211,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   // Plan día por día de las OT elegidas, en el orden de prioridad, desde hoy
   // hasta que terminan (se calcula un año de grilla)
   const capacidadAnio = useMemo(() => capacidadPlanta(operarios, diasDesde(hoy, 366)), [operarios, hoy]);
-  // Solo las OT tildadas: en el orden de prioridad, o en el más eficiente
-  const trabajos = useMemo(() => {
-    const t = ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: p.fecha_objetivo || null }));
-    return forma === "eficiente" ? ordenEficiente({ trabajos: t, dias: capacidadAnio.porDia, params }) : t;
-  }, [ots, elegidas, horas, forma, capacidadAnio, params]);
-  const otsPlan = useMemo(() => {
-    const porId = new Map(ots.map((p) => [p.id, p]));
-    return trabajos.map((t) => porId.get(t.id));
-  }, [ots, trabajos]);
+  // Solo las OT tildadas, en el orden de prioridad (un solo criterio, 29/10)
+  const otsPlan = useMemo(() => ots.filter((p) => elegidas?.has(p.id)), [ots, elegidas]);
+  const trabajos = useMemo(() => otsPlan.map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: p.fecha_objetivo || null })), [otsPlan, horas]);
   const plan = useMemo(() => (trabajos.length ? planHorizonte({ trabajos, dias: capacidadAnio.porDia, params, base, modo }) : null),
     [trabajos, capacidadAnio, params, base, modo]);
   // Las tablas muestran lo que el plan pone en el período elegido (de hoy en adelante)
@@ -245,6 +243,33 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       setAvisoTipo(/tipo_proyecto/.test(String(e.message)) ? "Para cambiar el tipo a mano falta correr la migración 139 en Supabase." : `No se pudo cambiar el tipo: ${e.message}`);
     }
   };
+  // ② Prioridad: se guarda en cada OT (137); si falla, vuelve a como estaba
+  const sinColumnaPrioridad = datos.proyectos.length > 0 && !datos.proyectos.some((p) => "prioridad" in p);
+  const aplicarPrioridad = async (antes, nueva) => {
+    if (guardandoPrioridad.current) return;
+    const cambios = cambiosPrioridad(antes, nueva);
+    if (!cambios.length) return;
+    const anterior = datos.proyectos;
+    const porId = new Map(cambios.map((c) => [c.id, c.prioridad]));
+    setDatos((d) => ({ ...d, proyectos: d.proyectos.map((p) => (porId.has(p.id) ? { ...p, prioridad: porId.get(p.id) } : p)) }));
+    guardandoPrioridad.current = true;
+    setAvisoPrioridad(null);
+    try {
+      await Promise.all(cambios.map((c) => sb.patch(`proyectos?id=eq.${c.id}`, { prioridad: c.prioridad })));
+      setAvisoPrioridad("✅ Prioridad guardada");
+    } catch (e) {
+      setDatos((d) => ({ ...d, proyectos: anterior }));
+      setAvisoPrioridad(`No se pudo guardar: ${e.message}`);
+    } finally {
+      guardandoPrioridad.current = false;
+    }
+  };
+  // ⚡ Propone los números: el orden más eficiente de las tildadas, del 1 en adelante
+  const ordenarEficiente = () => {
+    const orden = ordenEficiente({ trabajos, dias: capacidadAnio.porDia, params });
+    const porId = new Map(otsPlan.map((p) => [p.id, p]));
+    aplicarPrioridad(otsPlan, orden.map((t, i) => ({ ...porId.get(t.id), prioridad: i + 1 })));
+  };
   const tildar = (id) => cambiarElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const visibles = tildadasPrimero(buscarOts(ots, busca), elegidas);
   const todasTildadas = visibles.length > 0 && visibles.every((p) => elegidas.has(p.id));
@@ -255,15 +280,6 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
 
   return (
     <section aria-label="Carga de la planta">
-      <div className="flex items-center gap-2 mb-2 flex-wrap">
-        {TIPOS.map((t) => <Chip key={t.id} active={tipo === t.id} onClick={() => { setTipo(t.id); setPaso(0); }}>{t.label}</Chip>)}
-      </div>
-      <div className="flex items-center gap-2 mb-3">
-        <button type="button" aria-label="Período anterior" onClick={() => setPaso(paso - 1)} className="min-w-[44px] min-h-[44px] bg-gypi-surface border border-gypi-border rounded-xl cursor-pointer text-gypi-text">◀</button>
-        <div className="flex-1 text-center font-heading font-bold">{textoPeriodo(per)}</div>
-        <button type="button" aria-label="Período siguiente" onClick={() => setPaso(paso + 1)} className="min-w-[44px] min-h-[44px] bg-gypi-surface border border-gypi-border rounded-xl cursor-pointer text-gypi-text">▶</button>
-      </div>
-
       <AvisosOt sinTiempos={sinTiempos} sinPrecio={sinPrecio} />
 
       {faltan.length > 0 && (
@@ -273,6 +289,83 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
           <button type="button" onClick={onParametros} className="g-btn g-btn-secondary">Cargar parámetros</button>
         </div>
       )}
+
+      <div className="g-card mb-3" aria-label="Elegir OT">
+        <button type="button" onClick={() => setListaAbierta(!listaAbierta)} aria-expanded={listaAbierta}
+          className="w-full flex items-center gap-2 bg-transparent border-0 p-0 min-h-11 cursor-pointer text-left text-gypi-text">
+          <span className="g-label flex-1">① OT para planificar · {elegidas.size === 1 ? "1 tildada" : `${elegidas.size} tildadas`} de {ots.length}</span>
+          <span className="text-xs font-bold text-gypi-amber-ink">{listaAbierta ? "Cerrar ▲" : "Abrir ▼"}</span>
+        </button>
+        {listaAbierta && (
+          <div className="mt-2">
+        <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana (también las atrasadas) y las tildadas se ven arriba. Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
+        {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
+        <div className="flex gap-2 mb-2 items-center">
+          <input type="search" className="g-input flex-1 min-w-0" value={busca} onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar OT, cliente o proyecto" aria-label="Buscar OT" />
+          <button type="button" className="g-btn g-btn-secondary whitespace-nowrap" disabled={!visibles.length}
+            onClick={() => cambiarElegidas((s) => tildarTodas(s, visibles))}>
+            {todasTildadas ? "Destildar todas" : "Tildar todas"}
+          </button>
+        </div>
+        <div className="text-xs text-gypi-dim mb-2" role="status">
+          {elegidas.size === 1 ? "1 OT tildada" : `${elegidas.size} OT tildadas`} de {ots.length}
+          {busca.trim() ? ` · ${visibles.length === 1 ? "1 coincide" : `${visibles.length} coinciden`} con la búsqueda${visibles.length ? " (el botón tilda o destilda solo esas)" : ""}` : ""}
+        </div>
+        {busca.trim() && !visibles.length && <div className="text-[13px] text-gypi-dim mb-2">Ninguna OT coincide con “{busca.trim()}”.</div>}
+        <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="OT para planificar">
+          {visibles.map((p) => {
+            const h = horas.get(p.id);
+            return (
+              <li key={p.id} className="bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input type="checkbox" className="mt-1 w-5 h-5" checked={elegidas.has(p.id)} onChange={() => tildar(p.id)} aria-label={`Planificar OT ${p.ot}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
+                    <div className="text-xs text-gypi-dim truncate">
+                      {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`].join(" · ")}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
+                    {verPrecios && (precios.has(String(p.ot))
+                      ? <div className="text-xs text-gypi-dim whitespace-nowrap">{fmtPesos(precios.get(String(p.ot)))}</div>
+                      : <div className="text-xs text-gypi-amber-ink font-bold whitespace-nowrap">sin precio</div>)}
+                  </div>
+                </label>
+                <TipoOt proyecto={p} onCambiar={(v) => cambiarTipo(p, v)} />
+                <div className="pl-[30px] mt-1.5">
+                  <button type="button" className="bg-transparent border-none p-0 text-xs font-bold text-gypi-amber-ink cursor-pointer min-h-[32px]"
+                    aria-expanded={manualAbierto === p.id} onClick={() => setManualAbierto(manualAbierto === p.id ? null : p.id)}>
+                    ✍ Checkeo manual{normalizarAvanceManual(p.avance_manual).activo ? " (activo)" : ""} {manualAbierto === p.id ? "▲" : "▼"}
+                  </button>
+                  {manualAbierto === p.id && (
+                    <div className="mt-1.5">
+                      <AvanceManualOt proyecto={p} etapas={etapas} divisiones={divisiones} piezas={datos.piezasEscaneo}
+                        onGuardado={(v) => setDatos((d) => ({ ...d, proyectos: d.proyectos.map((x) => (x.id === p.id ? { ...x, avance_manual: v } : x)) }))} />
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+          </div>
+        )}
+      </div>
+
+      <PrioridadTildadas ots={otsPlan} sinColumna={sinColumnaPrioridad} aviso={avisoPrioridad}
+        onAplicar={(nueva) => aplicarPrioridad(otsPlan, nueva)} onEficiente={ordenarEficiente} />
+
+      <div className="g-label mb-1.5">③ Carga de la planta</div>
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        {TIPOS.map((t) => <Chip key={t.id} active={tipo === t.id} onClick={() => { setTipo(t.id); setPaso(0); }}>{t.label}</Chip>)}
+      </div>
+      <div className="flex items-center gap-2 mb-3">
+        <button type="button" aria-label="Período anterior" onClick={() => setPaso(paso - 1)} className="min-w-[44px] min-h-[44px] bg-gypi-surface border border-gypi-border rounded-xl cursor-pointer text-gypi-text">◀</button>
+        <div className="flex-1 text-center font-heading font-bold">{textoPeriodo(per)}</div>
+        <button type="button" aria-label="Período siguiente" onClick={() => setPaso(paso + 1)} className="min-w-[44px] min-h-[44px] bg-gypi-surface border border-gypi-border rounded-xl cursor-pointer text-gypi-text">▶</button>
+      </div>
 
       <div className="g-card mb-3" aria-label="Resultado">
         <div className={`font-heading text-lg font-bold mb-1 ${carga.viable && !yaPaso ? "text-gypi-green" : "text-gypi-red"}`}>
@@ -354,28 +447,19 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
 
       <div className="g-card mb-3" aria-label="Plan automático">
         <div className="flex items-center gap-2 mb-2">
-          <div className="g-label flex-1">⚡ Plan día por día</div>
+          <div className="g-label flex-1">④ Plan día por día y confirmar</div>
           {ordenado && <button type="button" onClick={() => setOrdenado(false)} className="g-btn g-btn-secondary">Ocultar</button>}
         </div>
         <EstadoGuardado guardado={guardado} faltaMigracion={faltaMigracion} empleados={datos.empleados} />
-        <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte solo las OT tildadas, desde hoy hasta que terminan, respetando Corte → Canteado → Mecanizado → Armado y las máquinas.</div>
-        <div className="flex gap-2 flex-wrap mb-1" role="group" aria-label="Orden de las OT">
-          <Chip active={forma === "prioridad"} onClick={() => setForma("prioridad")}>📌 Las tildadas, en mi orden de prioridad</Chip>
-          <Chip active={forma === "eficiente"} onClick={() => setForma("eficiente")}>⚡ La forma más eficiente</Chip>
-        </div>
-        <div className="text-xs text-gypi-dim mb-2">
-          {forma === "prioridad"
-            ? "Las OT van en el orden de la pestaña Prioridad (y después por semana)."
-            : `Gypi elige el orden así: arranca por la semana de entrega más cercana (las sin semana van al final) y prueba cambiar de lugar las OT vecinas. Se queda con el cambio si, con el horario normal, 1) llegan más OT a su semana; si empatan, 2) suman menos días de atraso; si empatan, 3) terminan todas antes. Orden elegido: ${otsPlan.map((p) => p.ot).join(", ") || "—"}.`}
-        </div>
+        <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte solo las OT tildadas, en el orden del paso ②, desde hoy hasta que terminan, respetando Corte → Canteado → Mecanizado → Armado y las máquinas.</div>
         <div className="flex gap-2 flex-wrap mb-1" role="group" aria-label="Armar el plan según">
           <Chip active={base === "capacidad"} onClick={() => setBase("capacidad")}>🏭 Según capacidad de la planta</Chip>
           <Chip active={base === "objetivo"} onClick={() => setBase("objetivo")}>📅 Según fechas objetivo (SEMANA)</Chip>
         </div>
         <div className="text-xs text-gypi-dim mb-2">
           {base === "objetivo"
-            ? "Cada OT tiene que terminar en su semana: si no llega, Gypi suma horas extra antes (primero sábados, después domingos) y te dice cuántas hacen falta por semana."
-            : "Solo el horario normal: cada OT sale con la fecha en que terminaría, y se marcan las que terminan después de su semana."}
+            ? "Cada OT tiene que terminar en su semana: si no llega, Gypi suma horas extra antes (primero sábados, después domingos) y te dice cuántas hacen falta por semana. El orden de las OT no cambia."
+            : "Solo el horario normal: cada OT sale con la fecha en que terminaría, y se marcan las que terminan después de su semana. El orden de las OT no cambia."}
         </div>
         {plan && plan.desde && <ResumenHorizonte plan={plan} base={base} modo={modo} />}
         {!ordenado ? (
@@ -394,59 +478,6 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
 
       {valor && <Valorizacion valor={valor} conPlan={!!plan} per={per} />}
 
-      <div className="g-label mb-1.5">OT para planificar ({ots.length})</div>
-      <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana (también las atrasadas) y las tildadas se ven arriba. Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
-      {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
-      <div className="flex gap-2 mb-2 items-center">
-        <input type="search" className="g-input flex-1 min-w-0" value={busca} onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar OT, cliente o proyecto" aria-label="Buscar OT" />
-        <button type="button" className="g-btn g-btn-secondary whitespace-nowrap" disabled={!visibles.length}
-          onClick={() => cambiarElegidas((s) => tildarTodas(s, visibles))}>
-          {todasTildadas ? "Destildar todas" : "Tildar todas"}
-        </button>
-      </div>
-      <div className="text-xs text-gypi-dim mb-2" role="status">
-        {elegidas.size === 1 ? "1 OT tildada" : `${elegidas.size} OT tildadas`} de {ots.length}
-        {busca.trim() ? ` · ${visibles.length === 1 ? "1 coincide" : `${visibles.length} coinciden`} con la búsqueda${visibles.length ? " (el botón tilda o destilda solo esas)" : ""}` : ""}
-      </div>
-      {busca.trim() && !visibles.length && <div className="text-[13px] text-gypi-dim mb-2">Ninguna OT coincide con “{busca.trim()}”.</div>}
-      <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="OT para planificar">
-        {visibles.map((p) => {
-          const h = horas.get(p.id);
-          return (
-            <li key={p.id} className="bg-gypi-surface rounded-xl p-2.5 border border-gypi-border">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input type="checkbox" className="mt-1 w-5 h-5" checked={elegidas.has(p.id)} onChange={() => tildar(p.id)} aria-label={`Planificar OT ${p.ot}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-bold truncate">{p.prioridad ? `${p.prioridad}. ` : ""}{p.ot} · {p.cliente || p.proyecto || "—"}</div>
-                  <div className="text-xs text-gypi-dim truncate">
-                    {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`].join(" · ")}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
-                  {verPrecios && (precios.has(String(p.ot))
-                    ? <div className="text-xs text-gypi-dim whitespace-nowrap">{fmtPesos(precios.get(String(p.ot)))}</div>
-                    : <div className="text-xs text-gypi-amber-ink font-bold whitespace-nowrap">sin precio</div>)}
-                </div>
-              </label>
-              <TipoOt proyecto={p} onCambiar={(v) => cambiarTipo(p, v)} />
-              <div className="pl-[30px] mt-1.5">
-                <button type="button" className="bg-transparent border-none p-0 text-xs font-bold text-gypi-amber-ink cursor-pointer min-h-[32px]"
-                  aria-expanded={manualAbierto === p.id} onClick={() => setManualAbierto(manualAbierto === p.id ? null : p.id)}>
-                  ✍ Checkeo manual{normalizarAvanceManual(p.avance_manual).activo ? " (activo)" : ""} {manualAbierto === p.id ? "▲" : "▼"}
-                </button>
-                {manualAbierto === p.id && (
-                  <div className="mt-1.5">
-                    <AvanceManualOt proyecto={p} etapas={etapas} divisiones={divisiones} piezas={datos.piezasEscaneo}
-                      onGuardado={(v) => setDatos((d) => ({ ...d, proyectos: d.proyectos.map((x) => (x.id === p.id ? { ...x, avance_manual: v } : x)) }))} />
-                  </div>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }
@@ -708,48 +739,23 @@ function NumeroPrioridad({ p, i, total, disabled, onMover, onQuitar }) {
   );
 }
 
-function PrioridadOt({ empresaId, divisiones, division }) {
-  const [lista, setLista] = useState(null);
-  const [error, setError] = useState(null);
-  const [aviso, setAviso] = useState(null);
+/**
+ * ② Prioridad de las OT tildadas (Tadeo, 29/10: solo las tildadas). Se ve el
+ * lugar de cada una entre las tildadas (1, 2, 3…) aunque guardadas tengan
+ * otros números; al cambiar algo se guardan así. Las sin número van después
+ * por fecha objetivo. ⚡ propone los números del orden más eficiente.
+ */
+function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente }) {
   const [arrastre, setArrastre] = useState(null);
-  const guardando = useRef(false);
-
-  useEffect(() => {
-    if (!empresaId) return;
-    let vivo = true;
-    sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&order=id.asc`, { maxFilas: 20000 })
-      .then(({ data }) => { if (vivo) setLista(data || []); })
-      .catch((e) => { if (vivo) setError(e.message || "No se pudieron leer las OT."); });
-    return () => { vivo = false; };
-  }, [empresaId]);
-
-  const ots = useMemo(() => ordenarPorPrioridad(otsPlanificables(lista || [], divisiones, division)), [lista, divisiones, division]);
-  const faltaMigracion = !!lista?.length && !lista.some((p) => "prioridad" in p);
-
-  const aplicar = async (nueva) => {
-    if (guardando.current) return;
-    const cambios = cambiosPrioridad(ots, nueva);
-    if (!cambios.length) return;
-    const anterior = lista;
-    const porId = new Map(cambios.map((c) => [c.id, c.prioridad]));
-    setLista((l) => l.map((p) => (porId.has(p.id) ? { ...p, prioridad: porId.get(p.id) } : p)));
-    guardando.current = true;
-    setAviso(null);
-    try {
-      await Promise.all(cambios.map((c) => sb.patch(`proyectos?id=eq.${c.id}`, { prioridad: c.prioridad })));
-      setAviso("✅ Prioridad guardada");
-    } catch (e) {
-      setLista(anterior);
-      setAviso(`No se pudo guardar: ${e.message}`);
-    } finally {
-      guardando.current = false;
-    }
-  };
+  const lista = useMemo(() => {
+    let n = 0;
+    return ots.map((p) => (Number.isInteger(p.prioridad) && p.prioridad > 0 ? { ...p, prioridad: ++n } : { ...p, prioridad: null }));
+  }, [ots]);
+  const aplicar = (nueva) => onAplicar(nueva);
 
   // Arrastrar con el dedo o el mouse desde la manija ⠿
   const empezar = (e, i) => {
-    if (faltaMigracion) return;
+    if (sinColumna) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     setArrastre({ desde: i, sobre: i });
   };
@@ -763,56 +769,59 @@ function PrioridadOt({ empresaId, divisiones, division }) {
     if (!arrastre) return;
     const { desde, sobre } = arrastre;
     setArrastre(null);
-    if (desde !== sobre) aplicar(moverOt(ots, desde, sobre));
+    if (desde !== sobre) aplicar(moverOt(lista, desde, sobre));
   };
 
-  if (error) return <div role="alert" className="text-sm text-gypi-red">{error}</div>;
-  if (!lista) return <Cargando />;
-
-  const conNumero = ots.filter((p) => p.prioridad > 0).length;
+  const conNumero = lista.filter((p) => p.prioridad > 0).length;
   return (
-    <section aria-label="Prioridad de las OT">
-      <div className="text-[13px] text-gypi-dim mb-3 leading-normal">
-        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Las que no ordenes van después, por semana de entrega.
-        {division ? ` Son las OT abiertas de ${division.label}.` : ""}
+    <section aria-label="Prioridad de las OT" className="g-card mb-3">
+      <div className="g-label mb-1">② Prioridad de las tildadas</div>
+      <div className="text-[13px] text-gypi-dim mb-2 leading-normal">
+        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Las que no tengan número van después, por semana de entrega. Es el único orden que usa el plan.
       </div>
-      {faltaMigracion && <div role="alert" className="text-[13px] text-gypi-red mb-3">Para ordenar las OT falta correr la migración 137 en Supabase.</div>}
+      {sinColumna && <div role="alert" className="text-[13px] text-gypi-red mb-2">Para ordenar las OT falta correr la migración 137 en Supabase.</div>}
       {aviso && <div role="status" className="text-[13px] text-gypi-dim mb-2">{aviso}</div>}
-      {!ots.length ? (
-        <div className="text-sm text-gypi-dim py-6 text-center">No hay OT abiertas para planificar.</div>
+      {!lista.length ? (
+        <div className="text-sm text-gypi-dim py-3 text-center">Tildá en ① las OT que querés planificar.</div>
       ) : (
-        <ol className="list-none m-0 p-0 flex flex-col gap-1.5">
-          {ots.map((p, i) => {
-            const destino = arrastre && arrastre.sobre === i && arrastre.desde !== i;
-            const material = materialOt(p).map((m) => `${m.label} ${m.valor}`).join(" · ");
-            return (
-              <li key={p.id} data-fila={i} aria-label={`OT ${p.ot}`}
-                className={`flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border ${destino ? "border-gypi-amber" : "border-gypi-border"} ${arrastre?.desde === i ? "opacity-60" : ""}`}>
-                <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={faltaMigracion}
-                  onPointerDown={(e) => empezar(e, i)} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
-                  className="touch-none select-none min-w-[36px] min-h-[44px] bg-transparent border-none text-xl text-gypi-dim cursor-grab">⠿</button>
-                <NumeroPrioridad key={`${p.id}-${p.prioridad || 0}`} p={p} i={i} total={ots.length} disabled={faltaMigracion}
-                  onMover={(destino) => aplicar(moverOt(ots, i, destino))} onQuitar={() => aplicar(quitarPrioridad(ots, p.id))} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
-                  <div className="text-xs text-gypi-dim truncate">{[p.obra, textoObjetivo(p) || "sin semana", material].filter(Boolean).join(" · ")}</div>
-                </div>
-                <div className="flex flex-col">
-                  <button type="button" aria-label={`Subir OT ${p.ot}`} disabled={faltaMigracion || i === 0} onClick={() => aplicar(moverOt(ots, i, i - 1))}
-                    className="min-w-[36px] min-h-[22px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▲</button>
-                  <button type="button" aria-label={`Bajar OT ${p.ot}`} disabled={faltaMigracion || i === ots.length - 1} onClick={() => aplicar(moverOt(ots, i, i + 1))}
-                    className="min-w-[36px] min-h-[22px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▼</button>
-                </div>
-                {p.prioridad > 0 && (
-                  <button type="button" aria-label={`Quitar prioridad de la OT ${p.ot}`} onClick={() => aplicar(quitarPrioridad(ots, p.id))}
-                    className="min-w-[36px] min-h-[44px] bg-transparent border-none text-gypi-dim cursor-pointer">✕</button>
-                )}
-              </li>
-            );
-          })}
-        </ol>
+        <>
+          <button type="button" onClick={onEficiente} disabled={sinColumna || lista.length < 2} className="g-btn g-btn-secondary w-full mb-1">⚡ Ordenar de la forma más eficiente</button>
+          <div className="text-xs text-gypi-dim mb-2">
+            Pone los números por vos (después los podés cambiar): arranca por la semana de entrega más cercana (las sin semana van al final) y prueba cambiar de lugar las OT vecinas. Se queda con el cambio si, con el horario normal, 1) llegan más OT a su semana; si empatan, 2) suman menos días de atraso; si empatan, 3) terminan todas antes.
+          </div>
+          <ol className="list-none m-0 p-0 flex flex-col gap-1.5">
+            {lista.map((p, i) => {
+              const destino = arrastre && arrastre.sobre === i && arrastre.desde !== i;
+              const material = materialOt(p).map((m) => `${m.label} ${m.valor}`).join(" · ");
+              return (
+                <li key={p.id} data-fila={i} aria-label={`OT ${p.ot}`}
+                  className={`flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border ${destino ? "border-gypi-amber" : "border-gypi-border"} ${arrastre?.desde === i ? "opacity-60" : ""}`}>
+                  <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={sinColumna}
+                    onPointerDown={(e) => empezar(e, i)} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
+                    className="touch-none select-none min-w-[36px] min-h-[44px] bg-transparent border-none text-xl text-gypi-dim cursor-grab">⠿</button>
+                  <NumeroPrioridad key={`${p.id}-${p.prioridad || 0}`} p={p} i={i} total={lista.length} disabled={sinColumna}
+                    onMover={(destino) => aplicar(moverOt(lista, i, destino))} onQuitar={() => aplicar(quitarPrioridad(lista, p.id))} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
+                    <div className="text-xs text-gypi-dim truncate">{[p.obra, textoObjetivo(p) || "sin semana", material].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <div className="flex flex-col">
+                    <button type="button" aria-label={`Subir OT ${p.ot}`} disabled={sinColumna || i === 0} onClick={() => aplicar(moverOt(lista, i, i - 1))}
+                      className="min-w-[36px] min-h-[22px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▲</button>
+                    <button type="button" aria-label={`Bajar OT ${p.ot}`} disabled={sinColumna || i === lista.length - 1} onClick={() => aplicar(moverOt(lista, i, i + 1))}
+                      className="min-w-[36px] min-h-[22px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▼</button>
+                  </div>
+                  {p.prioridad > 0 && (
+                    <button type="button" aria-label={`Quitar prioridad de la OT ${p.ot}`} onClick={() => aplicar(quitarPrioridad(lista, p.id))}
+                      className="min-w-[36px] min-h-[44px] bg-transparent border-none text-gypi-dim cursor-pointer">✕</button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+          {conNumero > 0 && <div className="text-xs text-gypi-dim mt-2">{conNumero === 1 ? "1 OT ordenada a mano" : `${conNumero} OT ordenadas a mano`}.</div>}
+        </>
       )}
-      {conNumero > 0 && <div className="text-xs text-gypi-dim mt-2">{conNumero === 1 ? "1 OT ordenada a mano" : `${conNumero} OT ordenadas a mano`}.</div>}
     </section>
   );
 }
