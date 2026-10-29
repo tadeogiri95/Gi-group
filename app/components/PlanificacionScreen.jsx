@@ -764,6 +764,8 @@ function NumeroPrioridad({ p, i, total, disabled, onMover, onQuitar }) {
  */
 function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onBorrar, conNumeroDivision = 0, modo, hoy, onSemana }) {
   const [arrastre, setArrastre] = useState(null);
+  // Buscador (Tadeo, 29/10): filtra lo que se ve; los lugares siguen siendo los de toda la lista
+  const [busca, setBusca] = useState("");
   const lista = useMemo(() => {
     let n = 0;
     return ots.map((p) => (Number.isInteger(p.prioridad) && p.prioridad > 0 ? { ...p, prioridad: ++n } : { ...p, prioridad: null }));
@@ -771,8 +773,10 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
   const aplicar = (nueva) => onAplicar(nueva);
 
   // Arrastrar con el dedo o el mouse desde la manija ⠿
+  const filtrando = busca.trim() !== "";
+  const visibles = new Set(buscarOts(lista, busca).map((p) => p.id));
   const empezar = (e, i) => {
-    if (sinColumna) return;
+    if (sinColumna || filtrando) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     setArrastre({ desde: i, sobre: i });
   };
@@ -809,14 +813,22 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
           <div className="text-xs text-gypi-dim mb-2">
             Pone los números por vos (después los podés cambiar): arranca por la semana de entrega más cercana (las sin semana van al final) y prueba cambiar de lugar las OT vecinas. Se queda con el cambio si, con el horario normal, 1) llegan más OT a su semana; si empatan, 2) suman menos días de atraso; si empatan, 3) terminan todas antes.
           </div>
+          <input type="search" className="g-input w-full mb-1" value={busca} onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar OT, cliente u obra" aria-label="Buscar en la prioridad" />
+          {filtrando && (
+            <div className="text-xs text-gypi-dim mb-2">
+              {!visibles.size ? `Ninguna OT coincide con “${busca.trim()}”.` : `${visibles.size === 1 ? "1 OT" : `${visibles.size} OT`} de ${lista.length}. Mientras buscás, movelas con ▲▼ o escribiendo su número (arrastrar se apaga).`}
+            </div>
+          )}
           <ol className="list-none m-0 p-0 flex flex-col gap-1.5">
             {lista.map((p, i) => {
+              if (!visibles.has(p.id)) return null;
               const destino = arrastre && arrastre.sobre === i && arrastre.desde !== i;
               const material = materialOt(p).map((m) => `${m.label} ${m.valor}`).join(" · ");
               return (
                 <li key={p.id} data-fila={i} aria-label={`OT ${p.ot}`}
                   className={`flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border ${destino ? "border-gypi-amber" : "border-gypi-border"} ${arrastre?.desde === i ? "opacity-60" : ""}`}>
-                  <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={sinColumna}
+                  <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={sinColumna || filtrando}
                     onPointerDown={(e) => empezar(e, i)} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
                     className="touch-none select-none min-w-[36px] min-h-[44px] bg-transparent border-none text-xl text-gypi-dim cursor-grab">⠿</button>
                   <NumeroPrioridad key={`${p.id}-${p.prioridad || 0}`} p={p} i={i} total={lista.length} disabled={sinColumna}

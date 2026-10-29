@@ -156,7 +156,7 @@ export function buscarOts(ots, texto) {
   const palabras = normalizar(texto).split(/\s+/).filter(Boolean);
   if (!palabras.length) return ots || [];
   return (ots || []).filter((p) => {
-    const t = normalizar([p.ot, p.cliente, p.proyecto, p.descripcion].filter(Boolean).join(" "));
+    const t = normalizar([p.ot, p.cliente, p.proyecto, p.obra, p.descripcion].filter(Boolean).join(" "));
     return palabras.every((w) => t.includes(w));
   });
 }
