@@ -21,7 +21,7 @@ export async function leerAvanceYHoras(empresaId) {
     sbGetAll(`avance_etapas?empresa_id=eq.${empresaId}&select=ot,etapa,estado`).catch(() => ({ data: [] })),
     sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&etapa=gt.0&fecha=gte.${desde}&select=codigo_proyecto,etapa`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
     // Sin la migración 118 no hay vista: sin % por escaneo
-    sbGetAll(`v_avance_piezas?empresa_id=eq.${empresaId}&select=ot,etapa,total,pasaron,primer_paso`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
+    sbGetAll(`v_avance_piezas?empresa_id=eq.${empresaId}&select=ot,etapa,total,pasaron,primer_paso,ultimo_paso`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
     // Checkeo manual de OT (141): sin la migración, solo el escaneo
     sbGetAll(`proyectos?empresa_id=eq.${empresaId}&avance_manual=not.is.null&select=ot,avance_manual`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
   ]);
