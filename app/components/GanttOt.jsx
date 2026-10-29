@@ -17,15 +17,16 @@
 // u "OT por proceso": un bloque por proceso con un renglón por OT, en el
 // orden en que pasan por esa máquina (una barra termina y abajo empieza la
 // siguiente). La elección queda guardada en el navegador.
-// Se puede elegir ver 1, 2, 3 o 4 semanas desde la actual, o todo el plan:
-// solo se muestran las OT y los procesos que caen en esas semanas, y lo
-// elegido ocupa todo el ancho de la pantalla (los rótulos de arriba pasan
-// solos de días a semanas o meses según lo que entre).
+// Se puede elegir ver 1, 2 o 3 días, 1 o 2 semanas o 1 mes desde hoy, o todo
+// el plan (Tadeo, 29/10): solo se muestran las OT y los procesos que caen ahí,
+// y lo elegido ocupa todo el ancho de la pantalla (los rótulos de arriba pasan
+// solos de días a semanas o meses según lo que entre). Filas bajas para que
+// entren más OT.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
-import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho } from "../lib/gantt";
+import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
 import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros } from "../lib/planificacion";
 import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
@@ -33,14 +34,14 @@ import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { fmtH } from "../lib/cargaPlanta";
 
-const FILA = 34; // alto del renglón de cada proceso
-const FILA_OT = 44; // alto del renglón de cada OT en "OT por proceso"
+const FILA = 26; // alto del renglón de cada proceso
+const FILA_OT = 34; // alto del renglón de cada OT en "OT por proceso"
 const CLAVE_FORMA = "gypi_gantt_forma";
 const ETIQUETAS = 260; // ancho de las columnas fijas de la izquierda
 const MARGEN_FIN = 56; // lugar para las horas de la última barra
-const CLAVE_SEMANAS = "gypi_gantt_semanas";
-const HORIZONTES = [1, 2, 3, 4, 0]; // 0 = todo el plan
-const BARRA = { y: 6, alto: 22 };
+const CLAVE_HORIZONTE = "gypi_gantt_horizonte";
+const BARRA = { y: 4, alto: 18 };
+const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const CAB = 44; // alto de la fila de las fechas
 const COLOR = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecanizado: "fill-proc-mecanizado", armado: "fill-proc-armado" };
 const MUESTRA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
@@ -127,27 +128,30 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   // "procesos" = procesos por OT; "ots" = OT por proceso
   const [forma, setForma] = useState(() => { try { return localStorage.getItem(CLAVE_FORMA) === "ots" ? "ots" : "procesos"; } catch { return "procesos"; } });
   const cambiarForma = (f) => { setForma(f); try { localStorage.setItem(CLAVE_FORMA, f); } catch { /* sin almacenamiento */ } };
-  const [horizonte, setHorizonte] = useState(() => { try { const n = Number(localStorage.getItem(CLAVE_SEMANAS)); return HORIZONTES.includes(n) ? n : 0; } catch { return 0; } });
-  const cambiarHorizonte = (n) => { setHorizonte(n); try { localStorage.setItem(CLAVE_SEMANAS, String(n)); } catch { /* sin almacenamiento */ } };
+  const [horizonte, setHorizonte] = useState(() => { try { const h = localStorage.getItem(CLAVE_HORIZONTE); return HORIZONTES_GANTT.some((x) => x.id === h) ? h : "todo"; } catch { return "todo"; } });
+  const cambiarHorizonte = (h) => { setHorizonte(h); try { localStorage.setItem(CLAVE_HORIZONTE, h); } catch { /* sin almacenamiento */ } };
+  const recortado = horizonte !== "todo";
   const [grande, setGrande] = useState(false);
   const [verAtrasados, setVerAtrasados] = useState(true);
   const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
   useEscape(cerrarGrande, grande);
   useEffect(() => () => { salirPantallaCompleta(); }, []);
 
-  const ventana = ventanaGantt(escala, horizonte);
+  const ventana = ventanaGantt(escala, horizonte, hoy);
   const semanas = ventana.semanas;
-  const { px, vista } = escalaAncho(anchoVisible - ETIQUETAS - MARGEN_FIN - 2, semanas.length * 7);
-  const COL = 7 * px; // ancho de una semana
-  const ancho = semanas.length * COL + MARGEN_FIN;
+  const totalDias = ventana.dias;
+  const { px, vista } = escalaAncho(anchoVisible - ETIQUETAS - MARGEN_FIN - 2, totalDias);
+  const ancho = totalDias * px + MARGEN_FIN;
   const desde = ventana.desde || hoy;
-  const finVentana = horizonte ? semanas.length * COL : Infinity; // con horizonte, las barras se cortan al final
+  const finVentana = recortado ? totalDias * px : Infinity; // con horizonte, las barras se cortan al final
   const x = (fecha) => Math.min(finVentana, Math.max(0, diasDesde(desde, fecha) * px));
   const xHoy = x(hoy);
+  const xSem = (s) => x(s.desde);
+  const anchoSem = (s) => diasDesde(s.desde, s.hasta) * px;
   // Se abre mostrando la semana actual (con una semana antes), no la más vieja
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, xHoy - COL);
-  }, [xHoy, COL, grande]);
+    if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, xHoy - 7 * px);
+  }, [xHoy, px, grande]);
 
   if (!renglones) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
   if (!renglones.length) {
@@ -160,13 +164,12 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     );
   }
 
-  const totalDias = semanas.length * 7;
   // Fondo de cada renglón: fines de semana más oscuros (por días), separadores de semana y la línea de hoy
   const fondoDe = (alto) => (
     <g>
       {vista === "dias" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => [0, 6].includes(diaSemana(f)))
         .map((f) => <rect key={f} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
-      {vista !== "mes" && semanas.map((s, i) => <rect key={s.inicio} x={i * COL} y={0} width={1} height={alto} className="fill-gypi-border" />)}
+      {vista !== "mes" && semanas.map((s) => <rect key={s.inicio} x={xSem(s)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
       {vista === "mes" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => f.endsWith("-01"))
         .map((f) => <rect key={f} x={x(f)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
       <rect x={xHoy} y={0} width={2} height={alto} className="fill-gypi-amber" fillOpacity={0.7} />
@@ -183,7 +186,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       <>
         <rect data-proceso={etapa} data-estado={estado} x={x0} y={BARRA.y + dy} width={Math.max(3, x1 - x0)} height={BARRA.alto} rx={3}
           className={`${COLOR[etapa]} ${CONTORNO[estado] || ""}`} strokeWidth={CONTORNO[estado] ? 3 : 0} fillOpacity={q.completo ? 0.35 : 1} />
-        <text x={Math.max(x0, x1) + 6} y={23 + dy} className={`text-[15px] font-bold ${q.atrasado ? "fill-gypi-red" : "fill-gypi-text"}`}>
+        <text x={Math.max(x0, x1) + 6} y={18 + dy} className={`text-[13px] font-bold ${q.atrasado ? "fill-gypi-red" : "fill-gypi-text"}`}>
           {fmtH(q.horas)}{q.personas ? ` · 👷 ${q.personas}` : ""}{q.atrasado ? " ⚠" : ""}
         </text>
       </>
@@ -192,33 +195,38 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   // OT por proceso: en cada proceso, las OT en el orden en que pasan por la máquina
   const porProceso = (filas) => ETAPAS_PLAN.map((e) => ({
     etapa: e,
-    filas: filas.map((r) => ({ r, q: r.procesos.find((z) => z.etapa === e.id) })).filter((f) => f.q && (!horizonte || enVentana(f.q, ventana)))
+    filas: filas.map((r) => ({ r, q: r.procesos.find((z) => z.etapa === e.id) })).filter((f) => f.q && (!recortado || enVentana(f.q, ventana)))
       .sort((a, b) => a.q.desde.localeCompare(b.q.desde) || a.q.ini - b.q.ini),
   })).filter((g) => g.filas.length);
 
-  const cabeceraSemanas = semanas.map((s, i) => (
+  const cabeceraSemanas = semanas.map((s) => (
     <g key={s.inicio}>
-      {s.actual && <rect x={i * COL} y={0} width={COL} height={CAB} className="fill-gypi-amber" fillOpacity={0.15} />}
-      <rect x={i * COL} y={0} width={1} height={CAB} className="fill-gypi-border" />
-      <text x={i * COL + COL / 2} y={19} textAnchor="middle" className={`text-[14px] font-bold ${s.actual ? "fill-gypi-text" : "fill-gypi-dim"}`}>{s.numero != null ? `S${s.numero}` : diaMes(s.inicio)}</text>
-      {s.numero != null && <text x={i * COL + COL / 2} y={37} textAnchor="middle" className="text-[13px] fill-gypi-mute">{diaMes(s.inicio)}</text>}
+      {s.actual && <rect x={xSem(s)} y={0} width={anchoSem(s)} height={CAB} className="fill-gypi-amber" fillOpacity={0.15} />}
+      <rect x={xSem(s)} y={0} width={1} height={CAB} className="fill-gypi-border" />
+      <text x={xSem(s) + anchoSem(s) / 2} y={19} textAnchor="middle" className={`text-[14px] font-bold ${s.actual ? "fill-gypi-text" : "fill-gypi-dim"}`}>{s.numero != null ? `S${s.numero}` : diaMes(s.inicio)}</text>
+      {s.numero != null && <text x={xSem(s) + anchoSem(s) / 2} y={37} textAnchor="middle" className="text-[13px] fill-gypi-mute">{diaMes(s.inicio)}</text>}
     </g>
   ));
-  // Por días: arriba la semana, abajo el número de cada día (sábado y domingo más claros)
-  const cabeceraDias = semanas.map((s, i) => (
+  // Por días: arriba la semana, abajo cada día (sábado y domingo más claros;
+  // con lugar, el nombre del día y la fecha)
+  const conNombre = px >= 80;
+  const cabeceraDias = semanas.map((s) => (
     <g key={s.inicio}>
-      {s.actual && <rect x={i * COL} y={0} width={COL} height={20} className="fill-gypi-amber" fillOpacity={0.15} />}
-      <rect x={i * COL} y={0} width={1} height={CAB} className="fill-gypi-border" />
-      <text x={i * COL + 6} y={16} className={`text-[14px] font-bold ${s.actual ? "fill-gypi-text" : "fill-gypi-dim"}`}>
+      {s.actual && <rect x={xSem(s)} y={0} width={anchoSem(s)} height={20} className="fill-gypi-amber" fillOpacity={0.15} />}
+      <rect x={xSem(s)} y={0} width={1} height={CAB} className="fill-gypi-border" />
+      <text x={xSem(s) + 6} y={16} className={`text-[14px] font-bold ${s.actual ? "fill-gypi-text" : "fill-gypi-dim"}`}>
         {s.numero != null ? `S${s.numero} · ${diaMes(s.inicio)}` : diaMes(s.inicio)}
       </text>
-      {Array.from({ length: 7 }, (_, d) => {
-        const dia = sumarDias(s.inicio, d);
+      {Array.from({ length: diasDesde(s.desde, s.hasta) }, (_, d) => {
+        const dia = sumarDias(s.desde, d);
         const finde = [0, 6].includes(diaSemana(dia));
         return (
           <g key={dia}>
-            {dia === hoy && <rect x={i * COL + d * px} y={21} width={px} height={CAB - 21} className="fill-gypi-amber" fillOpacity={0.35} />}
-            <text x={i * COL + d * px + px / 2} y={39} textAnchor="middle" className={`text-[14px] ${finde ? "fill-gypi-mute" : "fill-gypi-text font-bold"}`}>{Number(dia.slice(8))}</text>
+            {dia === hoy && <rect x={x(dia)} y={21} width={px} height={CAB - 21} className="fill-gypi-amber" fillOpacity={0.35} />}
+            {conNombre && d > 0 && <rect x={x(dia)} y={21} width={1} height={CAB - 21} className="fill-gypi-border" />}
+            <text x={x(dia) + px / 2} y={39} textAnchor="middle" className={`text-[14px] ${finde ? "fill-gypi-mute" : "fill-gypi-text font-bold"}`}>
+              {conNombre ? `${DIAS[diaSemana(dia)]} ${diaMes(dia)}` : Number(dia.slice(8))}
+            </text>
           </g>
         );
       })}
@@ -243,14 +251,14 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           </g>
         );
       })}
-      {semanas.map((s, i) => s.numero != null && <text key={s.inicio} x={i * COL + COL / 2} y={38} textAnchor="middle" className="text-[13px] fill-gypi-mute">S{s.numero}</text>)}
+      {semanas.map((s) => s.numero != null && <text key={s.inicio} x={xSem(s) + anchoSem(s) / 2} y={38} textAnchor="middle" className="text-[13px] fill-gypi-mute">S{s.numero}</text>)}
     </g>
   );
 
   const verDetalle = (p) => { if (grande) cerrarGrande(); onVerDetalle?.(p); };
   // Con un horizonte elegido, solo las OT con algún proceso en esas semanas
   const gruposVistos = grupos
-    .map(([division, filas]) => [division, horizonte ? filas.filter((r) => r.procesos.some((q) => enVentana(q, ventana))) : filas])
+    .map(([division, filas]) => [division, recortado ? filas.filter((r) => r.procesos.some((q) => enVentana(q, ventana))) : filas])
     .filter(([, filas]) => filas.length);
 
   return (
@@ -260,10 +268,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           <Chip active={forma === "procesos"} onClick={() => cambiarForma("procesos")}>Procesos por OT</Chip>
           <Chip active={forma === "ots"} onClick={() => cambiarForma("ots")}>OT por proceso</Chip>
         </div>
-        <div className="flex gap-1.5 items-center" role="group" aria-label="Semanas que se ven">
+        <div className="flex flex-wrap gap-1.5 items-center" role="group" aria-label="Qué se ve">
           <span className="text-[14px] text-gypi-dim">Ver:</span>
-          {HORIZONTES.map((n) => (
-            <Chip key={n} active={horizonte === n} onClick={() => cambiarHorizonte(n)}>{n ? `${n} sem.` : "Todo"}</Chip>
+          {HORIZONTES_GANTT.map((h) => (
+            <Chip key={h.id} active={horizonte === h.id} onClick={() => cambiarHorizonte(h.id)}>{h.label}</Chip>
           ))}
         </div>
         <button type="button" onClick={grande ? cerrarGrande : () => { setGrande(true); pedirPantallaCompleta(); }}
@@ -287,7 +295,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
               {vista === "dias" ? cabeceraDias : vista === "semanas" ? cabeceraSemanas : cabeceraMes}
             </svg>
           </div>
-          {!gruposVistos.length && <div className="px-3 py-6 text-[15px] text-gypi-dim">No hay procesos planificados en {horizonte === 1 ? "esta semana" : `las próximas ${horizonte} semanas`}.</div>}
+          {!gruposVistos.length && <div className="px-3 py-6 text-[15px] text-gypi-dim">No hay procesos planificados {horizonte === "1d" ? "para hoy" : `en lo elegido (${HORIZONTES_GANTT.find((h) => h.id === horizonte)?.label} desde hoy)`}.</div>}
           {gruposVistos.map(([division, filas]) => (
             <div key={division}>
               <div className="sticky left-0 w-[260px] px-2 pt-2 pb-1 text-[15px] font-bold text-gypi-text bg-gypi-bg">{division} · {filas.length}</div>
@@ -302,11 +310,11 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                       <div key={p.id ?? p.ot} className="flex border-t border-gypi-border" data-ot={p.ot}>
                         <button type="button" onClick={() => verDetalle(p)}
                           aria-label={`OT ${p.ot}, ${e.nombre}: ${fmtH(q.horas)}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${q.atrasado ? `, atrasado ${q.diasAtraso} ${q.diasAtraso === 1 ? "día" : "días"}` : q.margen ? ", poco margen" : q.completo ? ", completo" : ""}. Ver detalle`}
-                          className="sticky left-0 z-10 w-[260px] shrink-0 bg-gypi-bg px-2 text-left border-0 border-r border-gypi-border cursor-pointer h-[44px] flex flex-col justify-center">
-                          <div className={`text-[15px] font-bold leading-tight truncate ${q.atrasado ? "text-gypi-red" : "text-gypi-text"}`}>
+                          className="sticky left-0 z-10 w-[260px] shrink-0 bg-gypi-bg px-2 text-left border-0 border-r border-gypi-border cursor-pointer h-[34px] flex flex-col justify-center">
+                          <div className={`text-[14px] font-bold leading-tight truncate ${q.atrasado ? "text-gypi-red" : "text-gypi-text"}`}>
                             <span className="font-mono">{q.atrasado ? "⚠ " : ""}{p.ot}</span> · <span className="font-normal" data-cliente>{p.cliente || "—"}</span>
                           </div>
-                          <div className="text-[13px] text-gypi-dim leading-tight truncate">
+                          <div className="text-[12px] text-gypi-dim leading-tight truncate">
                             {[p.obra, nombreProyecto(p)].filter(Boolean).join(" · ")}
                           </div>
                         </button>
@@ -326,17 +334,17 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                   <div key={p.id ?? p.ot} className="flex border-t-2 border-gypi-border" data-ot={p.ot}>
                     <button type="button" onClick={() => verDetalle(p)} aria-label={`OT ${p.ot}: ${texto}. Ver detalle`}
                       className="sticky left-0 z-10 w-[150px] shrink-0 bg-gypi-bg px-2 py-1 text-left border-0 border-r border-gypi-border cursor-pointer flex flex-col justify-center">
-                      <div className={`font-mono text-[18px] font-bold leading-tight ${r.atrasados.length ? "text-gypi-red" : "text-gypi-text"}`}>
-                        {r.atrasados.length ? "⚠ " : ""}{p.ot} <span className="text-[16px]">· {fmtH(r.horas)}</span>
+                      <div className={`font-mono text-[16px] font-bold leading-tight ${r.atrasados.length ? "text-gypi-red" : "text-gypi-text"}`}>
+                        {r.atrasados.length ? "⚠ " : ""}{p.ot} <span className="text-[14px]">· {fmtH(r.horas)}</span>
                       </div>
                       {/* Columnas A, D, E y F del Plan de trabajo: OT, cliente, obra y descripción (Tadeo, 27/10) */}
-                      <div className="text-[14px] text-gypi-dim truncate" data-cliente>{p.cliente || "—"}</div>
-                      {p.obra && <div className="text-[14px] text-gypi-dim truncate" data-obra>{p.obra}</div>}
-                      {nombreProyecto(p) && <div className="text-[14px] text-gypi-text font-bold leading-tight line-clamp-2" data-proyecto title={nombreProyecto(p)}>{nombreProyecto(p)}</div>}
+                      <div className="text-[13px] leading-tight text-gypi-dim truncate" data-cliente>{p.cliente || "—"}</div>
+                      {p.obra && <div className="text-[13px] leading-tight text-gypi-dim truncate" data-obra>{p.obra}</div>}
+                      {nombreProyecto(p) && <div className="text-[13px] text-gypi-text font-bold leading-tight line-clamp-2" data-proyecto title={nombreProyecto(p)}>{nombreProyecto(p)}</div>}
                     </button>
                     <div className="sticky left-[150px] z-10 w-[110px] shrink-0 bg-gypi-bg border-r border-gypi-border">
                       {ETAPAS_PLAN.map((e) => (
-                        <div key={e.id} className="h-[34px] px-2 flex items-center gap-1.5 text-[14px] text-gypi-text">
+                        <div key={e.id} className="h-[26px] px-2 flex items-center gap-1.5 text-[13px] text-gypi-text">
                           <span aria-hidden="true" className={`inline-block w-3 h-3 rounded-sm shrink-0 ${MUESTRA[e.id]}`} />{e.nombre}
                         </div>
                       ))}

@@ -85,26 +85,72 @@ export function escalaGantt(renglones = [], { hoy, modo = MODO_POR_DEFECTO }) {
 }
 
 /**
- * Semanas que se ven en el Gantt (Tadeo, 27/10): 1 a 4 desde la semana actual,
- * o todas (0). El plan sigue entero; solo cambia lo que se muestra.
- * Devuelve las semanas, el primer día y el día siguiente al último.
+ * Lo que se puede elegir ver en el Gantt (Tadeo, 29/10), siempre desde hoy;
+ * "Todo" es el plan entero. El plan sigue entero: solo cambia lo que se muestra.
  */
-export function ventanaGantt(escala, cuantas = 0) {
+export const HORIZONTES_GANTT = [
+  { id: "1d", dias: 1, label: "1 día" },
+  { id: "2d", dias: 2, label: "2 días" },
+  { id: "3d", dias: 3, label: "3 días" },
+  { id: "1s", dias: 7, label: "1 semana" },
+  { id: "2s", dias: 14, label: "2 semanas" },
+  { id: "1m", meses: 1, label: "1 mes" },
+  { id: "todo", label: "Todo" },
+];
+
+const sumarMes = (fecha) => {
+  const d = new Date(`${fecha}T00:00:00Z`);
+  const dia = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  const ultimo = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(dia, ultimo));
+  return d.toISOString().slice(0, 10);
+};
+
+/**
+ * Días que se ven en el Gantt: desde hoy hasta el horizonte elegido, o todo
+ * el plan. Devuelve el primer día, el día siguiente al último, cuántos días
+ * son y el tramo de cada semana que cae adentro (para rotular arriba; las
+ * semanas que la escala no trae siguen la numeración de la planilla).
+ * @returns {{ desde: string, hasta: string, dias: number, semanas: { inicio: string, numero: number|null, actual: boolean, desde: string, hasta: string }[] }}
+ */
+export function ventanaGantt(escala, horizonte = "todo", hoy) {
   const todas = escala?.semanas || [];
-  if (!todas.length) return { semanas: [], desde: escala?.desde, hasta: escala?.desde };
-  const i = Math.max(0, todas.findIndex((s) => s.actual));
-  const semanas = cuantas > 0 ? todas.slice(i, i + cuantas) : todas;
-  return { semanas, desde: semanas[0].inicio, hasta: sumarDias(semanas[semanas.length - 1].inicio, 7) };
+  const h = HORIZONTES_GANTT.find((x) => x.id === horizonte && x.id !== "todo");
+  let desde, hasta;
+  if (h && hoy) {
+    desde = hoy;
+    hasta = h.meses ? sumarMes(hoy) : sumarDias(hoy, h.dias);
+  } else {
+    if (!todas.length) return { semanas: [], desde: escala?.desde, hasta: escala?.desde, dias: 0 };
+    desde = todas[0].inicio;
+    hasta = sumarDias(todas[todas.length - 1].inicio, 7);
+  }
+  // Semanas que tocan la ventana; si la escala no llega, se siguen contando
+  const lista = [...todas];
+  while (lista.length && sumarDias(lista[lista.length - 1].inicio, 7) < hasta) {
+    const u = lista[lista.length - 1];
+    const inicio = sumarDias(u.inicio, 7);
+    lista.push({ inicio, numero: u.numero != null ? u.numero + 1 : null, actual: !!hoy && inicio <= hoy && hoy < sumarDias(inicio, 7) });
+  }
+  const semanas = lista.filter((s) => sumarDias(s.inicio, 7) > desde && s.inicio < hasta).map((s) => ({
+    ...s,
+    desde: s.inicio < desde ? desde : s.inicio,
+    hasta: sumarDias(s.inicio, 7) > hasta ? hasta : sumarDias(s.inicio, 7),
+  }));
+  return { semanas, desde, hasta, dias: diasEntre(desde, hasta) };
 }
 
 /**
- * Ancho de un día para que las semanas elegidas ocupen todo el ancho visible
- * (Tadeo, 28/10), y con eso cómo se rotula arriba: por días si entran los
- * números, por semanas o por mes. `visible` = ancho de la zona de las barras
- * en píxeles (0 si todavía no se midió: se usa el ancho de "por días").
+ * Ancho de un día para que lo elegido ocupe todo el ancho visible (Tadeo,
+ * 28/10 y 29/10: también con 1 día), y con eso cómo se rotula arriba: por
+ * días si entran los números, por semanas o por mes. `visible` = ancho de la
+ * zona de las barras en píxeles (0 si todavía no se midió: se usa el ancho de
+ * "por días").
  */
 export function escalaAncho(visible, dias) {
-  const px = visible > 0 && dias > 0 ? Math.min(120, Math.max(2, visible / dias)) : 44;
+  const px = visible > 0 && dias > 0 ? Math.max(2, visible / dias) : 44;
   return { px, vista: px >= 24 ? "dias" : px >= 8 ? "semanas" : "mes" };
 }
 

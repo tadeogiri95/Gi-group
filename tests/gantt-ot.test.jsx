@@ -161,8 +161,9 @@ test("📅 Gantt — solo OT planificadas, 4 renglones por OT y los atrasados ma
   assert.ok(screen.getByText("Muebles · 2"));
   assert.equal(screen.queryByText("7300"), null, "sin plan no aparece");
   const ot = container.querySelector('[data-ot="7100"]');
+  assert.equal(ot.querySelector("svg").getAttribute("height"), "26", "filas bajas para que entren más OT (29/10)");
   assert.equal(ot.querySelectorAll("svg").length, 4, "un renglón por proceso");
-  assert.deepEqual([...ot.querySelectorAll(".h-\\[34px\\]")].map((d) => d.textContent), ["Corte", "Canteado", "Mecanizado", "Armado"]);
+  assert.deepEqual([...ot.querySelectorAll(".h-\\[26px\\]")].map((d) => d.textContent), ["Corte", "Canteado", "Mecanizado", "Armado"]);
   assert.match(screen.getByText("⚠ Atrasados 1").textContent, /1/);
   const lista = screen.getByRole("region", { name: "Procesos atrasados" });
   assert.match(lista.textContent, /7100 · Corte: tenía que terminar el .* \(\d+ días? de atraso\) · 0% hecho/);
@@ -182,8 +183,9 @@ test("📅 Gantt — solo OT planificadas, 4 renglones por OT y los atrasados ma
 });
 
 test("📅 Gantt — lo elegido ocupa todo el ancho, fila de fechas fija y pantalla completa", () => {
-  // 1 semana en 1050 px de barras: 150 px por día, tope 120; 4 semanas: 37,5 px por día
-  assert.deepEqual(escalaAncho(1050, 7), { px: 120, vista: "dias" });
+  // 1 semana en 1050 px de barras: 150 px por día (sin tope, 29/10); 4 semanas: 37,5 px por día
+  assert.deepEqual(escalaAncho(1050, 7), { px: 150, vista: "dias" });
+  assert.deepEqual(escalaAncho(1050, 1), { px: 1050, vista: "dias" }, "1 día ocupa todo el ancho");
   assert.deepEqual(escalaAncho(1050, 28), { px: 37.5, vista: "dias" });
   assert.equal(escalaAncho(1050, 70).vista, "semanas", "10 semanas: no entran los números de cada día");
   assert.equal(escalaAncho(1050, 300).vista, "mes");
@@ -465,17 +467,28 @@ test("📅 Gantt — OT por proceso: un bloque por proceso, las OT una debajo de
   assert.equal(document.querySelectorAll("[data-bloque]").length, 0);
 });
 
-test("📅 Gantt — elegir ver 1 a 4 semanas desde la actual, o todo el plan", () => {
-  const escala = { desde: "2026-10-18", semanas: ["2026-10-18", "2026-10-25", "2026-11-01", "2026-11-08", "2026-11-15", "2026-11-22"].map((inicio) => ({ inicio, actual: inicio === "2026-10-25" })) };
-  assert.deepEqual(ventanaGantt(escala, 1), { semanas: [escala.semanas[1]], desde: "2026-10-25", hasta: "2026-11-01" });
-  assert.equal(ventanaGantt(escala, 2).hasta, "2026-11-08");
-  assert.equal(ventanaGantt(escala, 0).semanas.length, 6, "todo el plan, también la semana anterior");
-  assert.equal(ventanaGantt(escala, 4).semanas.length, 4);
-  const v = ventanaGantt(escala, 1);
-  assert.ok(enVentana({ desde: "2026-10-20", hasta: "2026-10-26" }, v), "empezó antes y sigue esta semana");
-  assert.ok(enVentana({ desde: "2026-10-31", hasta: "2026-11-03" }, v));
-  assert.ok(!enVentana({ desde: "2026-11-01", hasta: "2026-11-03" }, v), "la semana que viene no");
-  assert.ok(!enVentana({ desde: "2026-10-19", hasta: "2026-10-24" }, v), "la semana pasada no");
+// 29/10 (Tadeo): ver 1, 2 o 3 días, 1 o 2 semanas o 1 mes desde hoy, o todo
+test("📅 Gantt — elegir ver 1, 2 o 3 días, 1 o 2 semanas o 1 mes desde hoy, o todo el plan", () => {
+  const escala = { desde: "2026-10-18", semanas: [["2026-10-18", 43], ["2026-10-25", 44], ["2026-11-01", 45]].map(([inicio, numero]) => ({ inicio, numero, actual: inicio === "2026-10-25" })) };
+  const hoy = "2026-10-29";
+  const un = ventanaGantt(escala, "1d", hoy);
+  assert.deepEqual([un.desde, un.hasta, un.dias], [hoy, "2026-10-30", 1]);
+  assert.deepEqual(un.semanas.map((s) => [s.numero, s.desde, s.hasta]), [[44, hoy, "2026-10-30"]]);
+  assert.equal(ventanaGantt(escala, "3d", hoy).dias, 3);
+  const sem = ventanaGantt(escala, "1s", hoy);
+  assert.deepEqual(sem.semanas.map((s) => [s.numero, s.desde, s.hasta]), [[44, hoy, "2026-11-01"], [45, "2026-11-01", "2026-11-05"]], "de hoy a 7 días, partido en sus semanas");
+  assert.equal(ventanaGantt(escala, "2s", hoy).dias, 14);
+  const mes = ventanaGantt(escala, "1m", hoy);
+  assert.deepEqual([mes.hasta, mes.dias], ["2026-11-29", 31]);
+  assert.deepEqual(mes.semanas.map((s) => s.numero), [44, 45, 46, 47, 48], "las semanas que la escala no trae se siguen contando");
+  assert.equal(ventanaGantt(escala, "1m", "2027-01-31").hasta, "2027-02-28", "31/1 + 1 mes = fin de febrero");
+  const todo = ventanaGantt(escala, "todo", hoy);
+  assert.deepEqual([todo.desde, todo.hasta, todo.semanas.length], ["2026-10-18", "2026-11-08", 3], "todo el plan, también la semana anterior");
+  const v = ventanaGantt(escala, "1s", hoy);
+  assert.ok(enVentana({ desde: "2026-10-27", hasta: "2026-10-29" }, v), "empezó antes y sigue hoy");
+  assert.ok(enVentana({ desde: "2026-11-04", hasta: "2026-11-09" }, v));
+  assert.ok(!enVentana({ desde: "2026-11-05", hasta: "2026-11-09" }, v), "después de los 7 días no");
+  assert.ok(!enVentana({ desde: "2026-10-19", hasta: "2026-10-28" }, v), "lo que terminó ayer no");
 
   const planes = [{
     id: 1, tipo: "semana", desde: dia(-20), hasta: dia(40), items: [
@@ -490,28 +503,33 @@ test("📅 Gantt — elegir ver 1 a 4 semanas desde la actual, o todo el plan", 
   const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
   assert.equal(screen.getByRole("button", { name: "Todo" }).getAttribute("aria-pressed"), "true", "arranca con todo el plan");
   assert.ok(container.querySelector('[data-ot="7200"]'));
-  fireEvent.click(screen.getByRole("button", { name: "2 sem." }));
+  assert.deepEqual(within(screen.getByRole("group", { name: "Qué se ve" })).getAllByRole("button").map((b) => b.textContent),
+    ["1 día", "2 días", "3 días", "1 semana", "2 semanas", "1 mes", "Todo"]);
+  fireEvent.click(screen.getByRole("button", { name: "2 semanas" }));
   assert.ok(container.querySelector('[data-ot="7100"]'), "la de esta semana se ve");
   assert.equal(container.querySelector('[data-ot="7200"]'), null, "la de dentro de 3 semanas no");
   fireEvent.click(screen.getByRole("button", { name: "OT por proceso" }));
   assert.equal(screen.getByRole("region", { name: "Corte: 1 OT" }).querySelectorAll("[data-ot]").length, 1);
-  assert.equal(localStorage.getItem("gypi_gantt_semanas"), "2", "queda guardado");
+  assert.equal(localStorage.getItem("gypi_gantt_horizonte"), "2s", "queda guardado");
   fireEvent.click(screen.getByRole("button", { name: "Todo" }));
   assert.ok(screen.getByRole("region", { name: "Corte: 2 OT" }));
 });
 
-test("📅 Gantt — con 1 semana elegida, esa semana llena el ancho visible", () => {
+test("📅 Gantt — con 1 semana o 1 día elegido, eso llena el ancho visible", () => {
   const original = globalThis.ResizeObserver;
   const ancho = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
   globalThis.ResizeObserver = class { constructor(cb) { this.cb = cb; } observe() { this.cb([]); } disconnect() {} };
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1000 });
   try {
-    localStorage.setItem("gypi_gantt_semanas", "1");
+    localStorage.setItem("gypi_gantt_horizonte", "1s");
     const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
     const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
     // 1000 px − 260 de las columnas fijas − 56 para las horas − 2 de bordes = 682 px para 7 días
-    const svg = container.querySelector(".sticky.top-0 svg");
-    assert.equal(Number(svg.getAttribute("width")), 682 + 56);
+    const svg = () => container.querySelector(".sticky.top-0 svg");
+    assert.ok(Math.abs(Number(svg().getAttribute("width")) - (682 + 56)) < 0.001);
+    fireEvent.click(screen.getByRole("button", { name: "1 día" }));
+    assert.ok(Math.abs(Number(svg().getAttribute("width")) - (682 + 56)) < 0.001, "1 día también llena el ancho");
+    assert.match(svg().textContent, /(Dom|Lun|Mar|Mié|Jue|Vie|Sáb) \d+\/\d+/, "con lugar, el nombre del día y la fecha");
   } finally {
     globalThis.ResizeObserver = original;
     if (ancho) Object.defineProperty(HTMLElement.prototype, "clientWidth", ancho);
