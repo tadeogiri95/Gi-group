@@ -1,127 +1,72 @@
-// app/lib/planAutomatico.js — Orden automático de las OT día por día
+// app/lib/planAutomatico.js — Plan día por día de las OT tildadas
 // (planificación de la producción, parte 40; diseño en
 // notes/diseno-planificacion-produccion.md).
 //
-// Reglas:
-// - Las OT van en el orden de prioridad (la manual primero, después la semana):
-//   la primera toma la capacidad antes que la segunda.
-// - Cada OT sigue Corte → Canteado → Mecanizado → Armado. Una etapa puede
-//   arrancar el mismo día en que termina la anterior, nunca antes.
-// - Cada día hay horas de gente (los turnos de los operarios) y horas de cada
-//   máquina (las horas en que la planta está abierta × cantidad de máquinas).
-//   La canteadora con 2 personas gasta el doble de horas de gente que de máquina.
-// - Lo que no entra en los días de trabajo se pasa a días de horas extra
-//   (primero los sábados, después los domingos), con todo el equipo. Lo que
-//   tampoco entra queda para el período siguiente (la OT se parte).
-// Todas las horas internas son efectivas (con la eficiencia ya descontada);
-// lo que se muestra se pasa a horas de reloj.
+// Desde el 29/10 (Tadeo: "usa un solo cálculo") el plan sale del mismo
+// cálculo que el Gantt de Proyectos (secuencia.js):
+// - Las OT van en el orden de prioridad: la primera pasa antes por cada máquina.
+// - Cada OT sigue Corte → Canteado → Mecanizado → Armado; por cada máquina pasa
+//   una OT a la vez y Armado se reparte entre los armadores.
+// - Cada día tiene las horas de la grilla de horarios del personal operativo;
+//   los días de horas extra (sábados, después domingos) rinden como el día
+//   más largo.
+// Las horas de las OT (horasOt) son efectivas; el plan las pasa a horas de
+// reloj con la eficiencia.
 import { ETAPAS_PLAN } from "./planificacion";
 import { inicioDeSemana } from "./semanaObjetivo";
+import { calendario, secuenciar } from "./secuencia";
 
 const EPS = 1e-6;
 const diaSemana = (fecha) => new Date(`${fecha}T00:00:00Z`).getUTCDay();
 
-const MAQUINA = {
-  corte: (p) => p.maquinas_corte || 1,
-  canteado: () => 1,
-  mecanizado: (p) => p.maquinas_cnc || 1,
-};
-
 /**
- * Reparte el trabajo en los días habilitados.
- * @param {{ ot, id }[]} trabajos  en orden de prioridad, con `etapas[id].gente/maquina` (horas efectivas)
- * @param {{ fecha, gente, maquina }[]} dias  capacidad de reloj de cada día (gente y planta abierta)
+ * Horas de cada día de la semana sacadas de la capacidad de los días (las
+ * horas en que la planta está abierta). Índice = día de la semana.
  */
-function repartir(trabajos, dias, params) {
-  const ef = (params.eficiencia || 100) / 100;
-  const libre = dias.map((d) => ({
-    fecha: d.fecha,
-    gente: d.gente * ef,
-    maq: Object.fromEntries(Object.entries(MAQUINA).map(([k, n]) => [k, d.maquina * ef * n(params)])),
-  }));
-  const segmentos = [];
-  const pendientes = [];
-  for (const t of trabajos) {
-    let desde = 0;
-    for (const { id } of ETAPAS_PLAN) {
-      const e = t.etapas[id];
-      if (!e || e.gente <= EPS) continue;
-      // Horas de gente por hora de máquina (2 en la canteadora con 2 personas)
-      const porMaq = e.maquina > EPS ? e.gente / e.maquina : 1;
-      let resta = e.gente;
-      let ultimo = desde;
-      for (let i = desde; i < libre.length && resta > EPS; i++) {
-        const dia = libre[i];
-        let puede = Math.min(resta, dia.gente);
-        if (MAQUINA[id]) puede = Math.min(puede, dia.maq[id] * porMaq);
-        if (puede <= EPS) continue;
-        dia.gente -= puede;
-        if (MAQUINA[id]) dia.maq[id] -= puede / porMaq;
-        resta -= puede;
-        ultimo = i;
-        segmentos.push({ id: t.id, ot: t.ot, etapa: id, fecha: dia.fecha, gente: puede / ef, maquina: puede / porMaq / ef });
-      }
-      if (resta > EPS) pendientes.push({ id: t.id, ot: t.ot, etapa: id, gente: resta / ef });
-      desde = ultimo;
-      // Si una etapa quedó sin terminar, las siguientes de esta OT tampoco entran
-      if (resta > EPS) {
-        for (const sig of ETAPAS_PLAN.slice(ETAPAS_PLAN.findIndex((x) => x.id === id) + 1)) {
-          const s = t.etapas[sig.id];
-          if (s && s.gente > EPS) pendientes.push({ id: t.id, ot: t.ot, etapa: sig.id, gente: s.gente / ef });
-        }
-        break;
-      }
-    }
-  }
-  return { segmentos, pendientes };
+export function horasSemanaDeDias(dias = []) {
+  const hs = [0, 0, 0, 0, 0, 0, 0];
+  for (const d of dias.slice(0, 14)) hs[diaSemana(d.fecha)] = Math.max(hs[diaSemana(d.fecha)], Number(d.maquina) || 0);
+  return hs;
 }
 
 /**
- * Plan automático del período.
- * @param {{ trabajos: object[], capacidad: { porDia: {fecha,gente,maquina}[] }, params: object }} p
- * @returns {{ segmentos, pendientes, diasExtra: {fecha, horas}[], porDia: {fecha, usadas, disponibles, extra}[], finPorOt: Map }}
+ * Programa las OT (en orden de prioridad) desde `desde` y reparte cada
+ * proceso en los días: segmentos { id, ot, etapa, fecha, gente, maquina } en
+ * horas de reloj (maquina = horas de máquina; en la canteadora con 2
+ * personas, la mitad de las de gente).
  */
-export function planAutomatico({ trabajos, capacidad, params }) {
-  const porDia = capacidad.porDia || [];
-  const normales = porDia.map((d) => ({ ...d }));
-  // Un día de horas extra rinde como el mejor día normal (todo el equipo)
-  const mejor = porDia.reduce((a, d) => (d.gente > a.gente ? d : a), { gente: 0, maquina: 0 });
-  const candidatos = [
-    ...porDia.filter((d) => d.gente <= EPS && diaSemana(d.fecha) === 6),
-    ...porDia.filter((d) => d.gente <= EPS && diaSemana(d.fecha) === 0),
-  ].map((d) => d.fecha);
-
-  let extras = new Set();
-  const conExtras = () => normales.map((d) => (extras.has(d.fecha) ? { ...d, gente: mejor.gente, maquina: mejor.maquina } : d));
-  let r = repartir(trabajos, conExtras(), params);
-  // Se suman días extra de a uno hasta que entre todo (o no queden)
-  for (const fecha of candidatos) {
-    if (!r.pendientes.length || mejor.gente <= EPS) break;
-    extras = new Set([...extras, fecha]);
-    r = repartir(trabajos, conExtras(), params);
+function programar(trabajos, { desde, params, horasSemana, personal, extras }) {
+  const ef = (params.eficiencia || 100) / 100;
+  const cal = calendario(desde, horasSemana, extras);
+  const ots = trabajos.map((t) => ({ clave: t.id, horas: Object.fromEntries(ETAPAS_PLAN.map(({ id }) => [id, (t.etapas?.[id]?.gente || 0) / ef])) }));
+  const tramos = secuenciar(ots, { params, personal });
+  const segmentos = [];
+  for (const t of trabajos) {
+    for (const tr of tramos.get(t.id) || []) {
+      const e = t.etapas[tr.etapa];
+      const total = e.gente / ef;
+      const porMaq = e.maquina > EPS ? e.gente / e.maquina : 1;
+      const largo = tr.t1 - tr.t0;
+      for (const d of cal.reparto(tr.t0, tr.t1)) {
+        const gente = (total * d.horas) / largo;
+        segmentos.push({ id: t.id, ot: t.ot, etapa: tr.etapa, fecha: d.fecha, gente, maquina: gente / porMaq });
+      }
+    }
   }
+  return { segmentos, pendientes: [] };
+}
 
-  const usadasPorDia = new Map();
-  for (const s of r.segmentos) usadasPorDia.set(s.fecha, (usadasPorDia.get(s.fecha) || 0) + s.gente);
-  // Los días extra que al final no hicieron falta se descartan
-  const diasExtra = [...extras].filter((f) => (usadasPorDia.get(f) || 0) > EPS)
-    .sort().map((fecha) => ({ fecha, horas: usadasPorDia.get(fecha) }));
-  const esExtra = new Set(diasExtra.map((d) => d.fecha));
-  const finPorOt = new Map();
-  for (const s of r.segmentos) if (!finPorOt.has(s.id) || s.fecha > finPorOt.get(s.id)) finPorOt.set(s.id, s.fecha);
-
-  return {
-    segmentos: r.segmentos,
-    pendientes: r.pendientes,
-    diasExtra,
-    porDia: porDia.map((d) => ({
-      fecha: d.fecha,
-      usadas: usadasPorDia.get(d.fecha) || 0,
-      disponibles: esExtra.has(d.fecha) ? mejor.gente : d.gente,
-      extra: esExtra.has(d.fecha),
-    })),
-    finPorOt,
-  };
+/** Sin nadie en la grilla de horarios no hay plan: todo queda pendiente. */
+function sinCapacidad(trabajos, params) {
+  const ef = (params.eficiencia || 100) / 100;
+  const pendientes = [];
+  for (const t of trabajos) {
+    for (const { id } of ETAPAS_PLAN) {
+      const e = t.etapas?.[id];
+      if (e && e.gente > EPS) pendientes.push({ id: t.id, ot: t.ot, etapa: id, gente: e.gente / ef });
+    }
+  }
+  return { segmentos: [], pendientes };
 }
 
 const finDeCadaOt = (segmentos) => {
@@ -133,7 +78,9 @@ const finDeCadaOt = (segmentos) => {
 /**
  * Plan hacia adelante, sin límite de semanas (Tadeo, 27/10): las OT elegidas
  * se reparten desde hoy hasta que terminan, con la capacidad de cada día
- * (`dias`: la grilla de horarios, ya calculada para un año o lo que haga falta).
+ * (`dias`: la grilla de horarios, ya calculada para un año o lo que haga falta)
+ * y el mismo cálculo que el Gantt de Proyectos (horasSemana y personal: los
+ * de ganttPlan; sin horasSemana se sacan de `dias`).
  *
  * Dos formas (switch en 📊 Carga):
  * - "objetivo": cada OT tiene que terminar en su semana (fecha_objetivo). Si
@@ -143,22 +90,23 @@ const finDeCadaOt = (segmentos) => {
  * - "capacidad": solo el horario normal. Cada OT sale con su fecha estimada
  *   de fin; las que terminan después de su semana quedan marcadas.
  *
- * @param {{ trabajos: object[], dias: {fecha,gente,maquina}[], params: object, base?: "objetivo"|"capacidad", modo?: string }} p
+ * @param {{ trabajos: object[], dias: {fecha,gente,maquina}[], params: object, base?: "objetivo"|"capacidad", modo?: string, horasSemana?: number[], personal?: object|null }} p
  *   trabajos: en orden de prioridad, con `objetivo` ("AAAA-MM-DD" o null)
  * @returns {{ desde, hasta, segmentos, pendientes, diasExtra, extraPorSemana: {desde, horas}[], porDia, finPorOt: Map, tarde: {id, ot, objetivo, fin, motivo}[] }}
  *   motivo: "atrasada" (la semana ya pasó), "no_llega" (ni con horas extra),
  *   "tarde" (con la capacidad normal termina después de su semana) o
  *   "sin_capacidad" (no entra en los días calculados)
  */
-export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo }) {
+export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo, horasSemana = null, personal = null }) {
   const desde = dias[0]?.fecha || null;
   const mejor = dias.reduce((a, d) => (d.gente > a.gente ? d : a), { gente: 0, maquina: 0 });
-  const libres = dias.filter((d) => d.gente <= EPS);
+  const hs = horasSemana || horasSemanaDeDias(dias);
+  const libres = dias.filter((d) => !(hs[diaSemana(d.fecha)] > 0));
   const sabados = libres.filter((d) => diaSemana(d.fecha) === 6).map((d) => d.fecha);
   const domingos = libres.filter((d) => diaSemana(d.fecha) === 0).map((d) => d.fecha);
 
   let extras = new Set();
-  const correr = () => repartir(trabajos, dias.map((d) => (extras.has(d.fecha) ? { ...d, gente: mejor.gente, maquina: mejor.maquina } : d)), params);
+  const correr = () => (mejor.gente > EPS ? programar(trabajos, { desde, params, horasSemana: hs, personal, extras }) : sinCapacidad(trabajos, params));
   // OT con semana que no llegan (o no terminan en los días calculados)
   const tardias = (r) => {
     const fin = finDeCadaOt(r.segmentos);
@@ -234,19 +182,21 @@ export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo 
 }
 
 /**
- * Orden más eficiente de las OT tildadas ("⚡ La forma más eficiente", Tadeo
+ * Orden más eficiente de las OT tildadas ("⚡ Ordenar de la forma más eficiente", Tadeo
  * 27/10). Arranca por la fecha objetivo más cercana (las sin semana al final)
  * y prueba cambiar de lugar OT vecinas mientras mejore, con la capacidad
  * normal: primero menos OT fuera de su semana, después menos días de atraso
  * y después que terminen antes en total.
  * @returns el mismo arreglo de trabajos, en el orden nuevo
  */
-export function ordenEficiente({ trabajos, dias, params }) {
+export function ordenEficiente({ trabajos, dias, params, horasSemana = null, personal = null }) {
   if (trabajos.length < 2) return [...trabajos];
   const dia = (f) => Date.parse(`${f}T00:00:00Z`) / 86400000;
   const ultimo = dias.at(-1)?.fecha;
+  const hs = horasSemana || horasSemanaDeDias(dias);
+  const conGente = dias.some((d) => d.gente > EPS);
   const costo = (orden) => {
-    const r = repartir(orden, dias, params);
+    const r = conGente ? programar(orden, { desde: dias[0]?.fecha, params, horasSemana: hs, personal }) : sinCapacidad(orden, params);
     const fin = finDeCadaOt(r.segmentos);
     const pend = new Set(r.pendientes.map((x) => x.id));
     let tarde = 0, atraso = 0, total = 0;
@@ -287,19 +237,6 @@ export function trabajoDelPeriodo(segmentos, desde, hasta, eficiencia = 100) {
     etapas[s.etapa].maquina += (s.maquina ?? s.gente) * ef;
   }
   return { etapas };
-}
-
-/** Celdas del Gantt: por OT, por día, las etapas que se trabajan y sus horas. */
-export function celdasGantt(segmentos) {
-  const porOt = new Map();
-  for (const s of segmentos) {
-    if (!porOt.has(s.id)) porOt.set(s.id, new Map());
-    const dias = porOt.get(s.id);
-    if (!dias.has(s.fecha)) dias.set(s.fecha, {});
-    const c = dias.get(s.fecha);
-    c[s.etapa] = (c[s.etapa] || 0) + s.gente;
-  }
-  return porOt;
 }
 
 /** Horas que pasan al período siguiente, por OT: [{ id, ot, horas, etapas: [] }]. */

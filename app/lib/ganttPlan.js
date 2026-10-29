@@ -18,6 +18,11 @@ import { CLAVE_PLANIFICACION, ETAPAS_PLAN, divisionPlan, etapasPlanDe, normaliza
 import { pendienteEtapa, capacidadPlanta, operariosDePlanta, personalPlanta } from "./cargaPlanta";
 import { diasEntre } from "./semanaObjetivo";
 import { porcentajeOt } from "./panelMantenimiento";
+import { HORAS_SEMANA_POR_DEFECTO, MAQUINAS_PLAN, calendario, secuenciar } from "./secuencia";
+
+export { HORAS_SEMANA_POR_DEFECTO };
+const DIA_MS = 86400000;
+const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
 
 const nombreEtapa = Object.fromEntries(ETAPAS_PLAN.map((e) => [e.id, e.nombre]));
 const DIAS_JUSTO = 2; // con el anterior atrasado, si este arranca en 2 días o menos ya no hay margen
@@ -39,11 +44,17 @@ export function itemsVigentes(planes = []) {
   return [...ultimo.values()].flatMap((p) => p.items || []);
 }
 
-/** Sin grilla de horarios cargada: 8 horas de lunes a viernes. Índice = día de la semana (0 = domingo). */
-export const HORAS_SEMANA_POR_DEFECTO = [0, 8, 8, 8, 8, 8, 0];
-const DIA_MS = 86400000;
-const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
-const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
+/** Días de horas extra de esos mismos planes (los que confirmó gerencia según fechas objetivo). */
+export function diasExtraVigentes(planes = []) {
+  const ultimo = new Map();
+  for (const p of planes || []) {
+    const k = p.division_id || "";
+    const otro = ultimo.get(k);
+    const clave = (x) => `${x.confirmado_at || ""}|${x.desde || ""}`;
+    if (!otro || clave(p) > clave(otro)) ultimo.set(k, p);
+  }
+  return new Set([...ultimo.values()].flatMap((p) => (p.dias_extra || []).map((d) => d.fecha)));
+}
 
 /**
  * Horas de trabajo de cada día de la semana según la grilla de horarios del
@@ -61,87 +72,6 @@ export function horasSemanaDeGrilla(empleados, divisiones, cfgValor) {
 }
 
 /**
- * Calendario de trabajo desde `base` con las horas de cada día de la semana.
- * t = horas de trabajo desde el comienzo de `base`.
- */
-function calendario(base, horasSemana) {
-  const hs = (horasSemana || []).some((h) => h > 0) ? horasSemana : HORAS_SEMANA_POR_DEFECTO;
-  const dias = []; // { fecha, horas, desde (t al empezar el día) }
-  const siguiente = (desde) => {
-    let f = desde;
-    while (!(hs[diaSemana(f)] > 0)) f = sumarDias(f, 1);
-    return f;
-  };
-  const f0 = siguiente(base);
-  dias.push({ fecha: f0, horas: hs[diaSemana(f0)], desde: 0 });
-  const dia = (i) => {
-    while (dias.length <= i) {
-      const u = dias[dias.length - 1];
-      const f = siguiente(sumarDias(u.fecha, 1));
-      dias.push({ fecha: f, horas: hs[diaSemana(f)], desde: u.desde + u.horas });
-    }
-    return dias[i];
-  };
-  /** t al empezar el primer día de trabajo en o después de la fecha. */
-  const inicio = (fecha) => {
-    let i = 0;
-    while (dia(i).fecha < fecha) i++;
-    return dia(i).desde;
-  };
-  /** { fecha, frac } del momento t; si termina justo al final de un día, queda en ese día. */
-  const punto = (t, esFin) => {
-    let i = 0;
-    while (t > dia(i).desde + dia(i).horas - 1e-9 && !(esFin && t <= dia(i).desde + dia(i).horas + 1e-9)) i++;
-    const d = dia(i);
-    return { fecha: d.fecha, frac: Math.min(1, Math.max(0, (t - d.desde) / d.horas)) };
-  };
-  return { inicio, punto };
-}
-
-/** Horas de reloj que el proceso ocupa su línea (el plan guarda horas de gente). */
-function duracion(etapa, horas, params) {
-  if (etapa === "canteado") return horas / (params?.personas_canteadora === 2 ? 2 : 1);
-  if (etapa === "mecanizado") return horas / (params?.maquinas_cnc || 1);
-  if (etapa === "corte") return horas / (params?.maquinas_corte || 1);
-  return horas;
-}
-
-const MAQUINAS_PLAN = ["corte", "canteado", "mecanizado"];
-
-/**
- * Armado con varios armadores a la vez (Tadeo, 27/10). Cada OT, en el orden
- * del plan, arranca apenas está lista (terminó su Mecanizado y llegó su día
- * del plan) y hay armadores libres: toma hasta maxPorOt; los que sobran
- * arman la OT siguiente en paralelo. Con k armadores, G horas de gente
- * tardan G / k. Los operarios de una máquina que ya no tiene más trabajo
- * pasan a Armado (ayudantes[máquina], desde que se libera).
- */
-function crearArmado({ armadores, maxPorOt, ayudantes }) {
-  const tomados = []; // { t0, t1, k }
-  const pool = (t) => armadores + ayudantes.reduce((s, a) => s + (a.desde <= t + 1e-9 ? a.n : 0), 0);
-  const usados = (t) => tomados.reduce((s, x) => s + (x.t0 <= t + 1e-9 && t < x.t1 - 1e-9 ? x.k : 0), 0);
-  const libres = (t0, t1) => {
-    // Lo mínimo libre en el tramo: se mira al empezar y cada vez que arranca otra OT adentro
-    const puntos = [t0, ...tomados.map((x) => x.t0).filter((t) => t > t0 && t < t1)];
-    return Math.min(...puntos.map((t) => pool(t) - usados(t)));
-  };
-  return (listo, G) => {
-    const candidatos = [...new Set([listo, ...tomados.map((x) => x.t1), ...ayudantes.map((a) => a.desde)].filter((t) => t >= listo))].sort((a, b) => a - b);
-    for (const t0 of candidatos) {
-      for (let k = Math.min(maxPorOt, pool(t0) - usados(t0)); k >= 1; k--) {
-        const t1 = t0 + G / k;
-        if (libres(t0, t1) >= k) { tomados.push({ t0, t1, k }); return { t0, t1, k }; }
-      }
-    }
-    // No debería pasar: cuando todo lo anterior termina, queda alguien libre
-    const t0 = Math.max(listo, ...tomados.map((x) => x.t1));
-    const k = Math.max(1, Math.min(maxPorOt, pool(t0)));
-    tomados.push({ t0, t1: t0 + G / k, k });
-    return { t0, t1: t0 + G / k, k };
-  };
-}
-
-/**
  * Procesos de cada OT planificada, en secuencia: Map<ot, { ot, inicio, fin, horas, procesos, atrasados, pocoMargen }>.
  * Sale del plan confirmado con estas reglas (Tadeo, 27/10):
  *  - en cada OT un proceso arranca cuando termina el anterior;
@@ -150,15 +80,17 @@ function crearArmado({ armadores, maxPorOt, ayudantes }) {
  *  - Armado se reparte entre los armadores (personal: crearArmado);
  *  - ningún proceso arranca antes del primer día que le dio el plan.
  * Cada proceso tiene por día las horas de la grilla de horarios del personal
- * operativo (horasSemana): un día sin nadie puesto no se trabaja. Las OT van
- * en el orden del plan (su primer día y la prioridad).
+ * operativo (horasSemana): un día sin nadie puesto no se trabaja, salvo los
+ * días de horas extra del plan (diasExtra). Las OT van en el orden del plan
+ * (la prioridad con que se planificó). Es el mismo cálculo que arma el plan en
+ * 📊 Carga (secuencia.js), así que el Gantt muestra lo mismo que se confirmó.
  * proceso = { etapa, nombre, desde, hasta, ini, fin (qué parte del primer y del
  * último día ocupa, 0-1), horas (de reloj), personas (armadores, en Armado),
  * hecho (0-100), esperado, completo, atrasado, diasAtraso, margen, motivoMargen }.
  * Sin `personal`, Armado lo hace una persona por vez (como una máquina).
  * @param {{ etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: { armadores: number, maxPorOt: number, ayudantes?: Record<string, number> } }} opciones
  */
-export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], piezas = [], terminadas = new Set(), hoy, params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null }) {
+export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], piezas = [], terminadas = new Set(), hoy, params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null }) {
   const porOt = new Map();
   for (const i of items || []) {
     const ot = String(i.ot);
@@ -171,43 +103,14 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
   }
   const out = new Map();
   if (!porOt.size) return out;
-  const ots = [...porOt.values()].sort((a, b) => a.primero.localeCompare(b.primero) || a.orden - b.orden || a.ot.localeCompare(b.ot, "es", { numeric: true }));
-  const cal = calendario(ots[0].primero, horasSemana);
-  const tHoy = hoy < ots[0].primero ? 0 : cal.inicio(hoy);
-
-  // 1) Máquinas: una OT a la vez por máquina, en secuencia dentro de cada OT
-  const libre = {}; // hasta cuándo está ocupada cada máquina
-  const tramos = new Map(); // ot → [{ etapa, t0, t1, horas, personas }]
-  for (const o of ots) {
-    let t = 0;
-    const lista = [];
-    for (const id of MAQUINAS_PLAN) {
-      const h = duracion(id, o.horas[id] || 0, params);
-      if (h <= 0) continue;
-      // No antes del día que le dio el plan, ni de que termine el anterior de la OT, ni de que se libere la máquina
-      const t0 = Math.max(t, libre[id] || 0, cal.inicio(o.desde[id]));
-      libre[id] = t0 + h;
-      t = t0 + h;
-      lista.push({ etapa: id, t0, t1: t0 + h, horas: h, personas: null });
-    }
-    tramos.set(o.ot, lista);
-  }
-  // 2) Armado: con los armadores, y los de cada máquina cuando se queda sin trabajo
-  const ayudantes = Object.entries(personal?.ayudantes || {}).map(([id, n]) => ({ desde: libre[id] || 0, n: Number(n) || 0 })).filter((a) => a.n > 0);
-  const armadores = personal ? Math.max(0, Number(personal.armadores) || 0) : 1;
-  const armar = crearArmado({
-    armadores: armadores || (ayudantes.length ? 0 : 1),
-    maxPorOt: personal ? Math.max(1, Number(personal.maxPorOt) || 1) : 1,
-    ayudantes,
+  const ots = [...porOt.values()].sort((a, b) => a.orden - b.orden || a.primero.localeCompare(b.primero) || a.ot.localeCompare(b.ot, "es", { numeric: true }));
+  const base = ots.reduce((m, o) => (o.primero < m ? o.primero : m), ots[0].primero);
+  const cal = calendario(base, horasSemana, diasExtra);
+  const tHoy = hoy < base ? 0 : cal.inicio(hoy);
+  // Ningún proceso antes del primer día que le dio el plan
+  const tramos = secuenciar(ots.map((o) => ({ ...o, clave: o.ot })), {
+    params, personal, inicio: (o, etapa) => (o.desde[etapa] ? cal.inicio(o.desde[etapa]) : 0),
   });
-  for (const o of ots) {
-    const G = o.horas.armado || 0;
-    if (G <= 0) continue;
-    const lista = tramos.get(o.ot);
-    const listo = Math.max(lista.length ? lista[lista.length - 1].t1 : 0, cal.inicio(o.desde.armado));
-    const { t0, t1, k } = armar(listo, G);
-    lista.push({ etapa: "armado", t0, t1, horas: t1 - t0, personas: personal ? k : null });
-  }
 
   for (const o of ots) {
     const procesos = tramos.get(o.ot).map(({ etapa, t0, t1, horas: h, personas }) => {
@@ -261,10 +164,18 @@ export function personalGantt(empleados, divisiones, cfgValor) {
   // Sin operarios en la grilla, armado en una sola línea como antes
   if (!operarios.length) return null;
   const p = personalPlanta(operarios, params);
+  // Sin puestos, los que pasan de cada máquina a Armado no pueden ser más que
+  // los operarios que hay (29/10: con 1 operario no arman 4)
+  let quedan = p.total;
+  const deMaquina = (m) => {
+    const n = p.categorizados ? p.porPuesto[m] : Math.min(p.necesarios[m], quedan);
+    quedan -= n;
+    return n;
+  };
   return {
     armadores: p.armadores,
     maxPorOt: params.max_armadores_ot || 1,
-    ayudantes: Object.fromEntries(MAQUINAS_PLAN.map((m) => [m, p.categorizados ? p.porPuesto[m] : p.necesarios[m]])),
+    ayudantes: Object.fromEntries(MAQUINAS_PLAN.map((m) => [m, deMaquina(m)])),
   };
 }
 

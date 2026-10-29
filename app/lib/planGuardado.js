@@ -7,6 +7,9 @@ import { pendientesPorOt } from "./planAutomatico";
 import { buscarDivision } from "./rutas";
 
 const r1 = (h) => Math.round((Number(h) || 0) * 10) / 10;
+// Las horas de cada día van con 2 decimales (la columna es numeric(8, 2)):
+// el Gantt de Proyectos vuelve a armar el plan con ellas y tiene que dar igual
+const r2 = (h) => Math.round((Number(h) || 0) * 100) / 100;
 
 /**
  * Cuerpo del POST a /api/planificacion con el plan automático. Sin `carga`
@@ -34,7 +37,7 @@ export function cuerpoPlan({ per, plan, carga, division, ots, estado }) {
     horas_extra: r1(plan.diasExtra.reduce((t, d) => t + d.horas, 0)),
     dias_extra: plan.diasExtra.map((d) => ({ fecha: d.fecha, horas: r1(d.horas) })),
     pendientes: pendientesPorOt(plan.pendientes).map((o) => ({ ot: String(o.ot), horas: r1(o.horas) })),
-    items: [...juntos.values()].map((i) => ({ ...i, horas: r1(i.horas) })).filter((i) => i.horas > 0),
+    items: [...juntos.values()].map((i) => ({ ...i, horas: r2(i.horas) })).filter((i) => i.horas > 0),
   };
 }
 

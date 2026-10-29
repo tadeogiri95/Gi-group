@@ -53,7 +53,7 @@ test("cuerpoPlan — junta tramos del mismo día, redondea y pasa la validación
   const ots = [{ id: 2 }, { id: 1 }];
   const c = cuerpoPlan({ per: { tipo: "semana", desde: "2026-10-25", hasta: "2026-10-31" }, plan, carga: { necesarias: 8.04, disponibles: 40 }, division: DIVISIONES[0], ots, estado: "borrador" });
   assert.deepEqual(c.items, [
-    { ot: "7473", etapa: "corte", fecha: "2026-10-26", horas: 3, orden: 1 },
+    { ot: "7473", etapa: "corte", fecha: "2026-10-26", horas: 3.04, orden: 1 }, // 2 decimales: el Gantt rearma el plan con estas horas
     { ot: "7500", etapa: "armado", fecha: "2026-10-27", horas: 4, orden: 0 },
   ]);
   assert.equal(c.horas_extra, 3.3);
@@ -220,7 +220,6 @@ test("📊 Carga — guardar borrador y confirmar el plan del período", async (
   const enviados = mockCarga();
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
   fireEvent.click(await screen.findByText("Guardar borrador"));
   assert.ok(await screen.findByText(/Hay un borrador guardado/));
   assert.equal(enviados[0].estado, "borrador");
@@ -240,7 +239,6 @@ test("📊 Carga — sin la migración 138 avisa y no ofrece guardar", async () 
     : orig(url, opts)))(global.fetch);
   pantalla();
   assert.ok(await screen.findByText(/falta correr la migración 138/));
-  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
   assert.equal(screen.queryByText("Guardar borrador"), null);
 });
 
@@ -322,7 +320,6 @@ test("📊 Carga — el plan se guarda entero, desde hoy hasta el último día",
   const enviados = mockCarga();
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  fireEvent.click(screen.getByText("Ver el plan de las OT tildadas"));
   fireEvent.click(await screen.findByText("Guardar borrador"));
   await screen.findByText(/Hay un borrador guardado/);
   const b = enviados[0];
