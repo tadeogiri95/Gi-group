@@ -43,7 +43,8 @@ import { materialOt } from "../lib/ot";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
   leerNumero, errorParametro, normalizarParametros, divisionPlan, etapasPlanDe,
-  otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, tildadasPrimero, moverOt, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
+  otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, tildadasPrimero, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
+  numerarOt, conOrdenManual, ordenDelPlan, semanaVencida,
   MODOS_MECANIZADO, RELACIONES_TIPO,
 } from "../lib/planificacion";
 import { TIPOS_PROYECTO, TIPO_GLOBAL, tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
@@ -183,22 +184,43 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       .catch(() => { if (vivo) setGuardado(null); });
     return () => { vivo = false; };
   }, []);
-  const ots = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
+  const otsBase = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
+  // Orden armado a mano, sin números (Tadeo, 29/10): arrastrando en ② o
+  // confirmando un orden nuevo en el Gantt. Vale el más reciente de los dos.
+  const [ordenManual, setOrdenManual] = useState(null); // ids en orden, o null = prioridad y semana
+  const ots = useMemo(() => conOrdenManual(otsBase, ordenManual), [otsBase, ordenManual]);
+  const guardarOrden = (ids) => {
+    setOrdenManual(ids);
+    guardarLocal(clavePlan(empresaId, division?.id, "orden"), ids ? { ids, at: new Date().toISOString() } : null);
+  };
   // Lo tildado se recuerda: primero lo último que tildó en este navegador,
   // si no las OT del plan guardado, y si no hay nada, las que tienen semana.
+  // Siempre se suman las de semana vencida y las OT nuevas con semana (Tadeo,
+  // 29/10: una OT atrasada no puede quedar afuera sin que se vea).
   // Cambiar de período no toca lo tildado; cambiar de división sí.
   const preseleccionDe = useRef(null);
   useEffect(() => {
     const clave = division?.id || "";
     if (!datos || guardado === undefined || preseleccionDe.current === clave) return;
     preseleccionDe.current = clave;
-    const existen = new Set(ots.map((p) => p.id));
+    const existen = new Set(otsBase.map((p) => p.id));
+    const vistas = leerLocal(clavePlan(empresaId, division?.id, "vistas"));
+    const conSemana = otsBase.filter((p) => semanaVencida(p, hoy) || (Array.isArray(vistas) && p.fecha_objetivo && !vistas.includes(p.id))).map((p) => p.id);
     const local = leerLocal(clavePlan(empresaId, division?.id, "ots"));
-    if (Array.isArray(local)) { setElegidas(new Set(local.filter((id) => existen.has(id)))); return; }
     const delPlan = new Set([...(guardado?.items || []), ...(guardado?.pendientes || [])].map((i) => String(i.ot)));
-    if (delPlan.size) { setElegidas(new Set(ots.filter((p) => delPlan.has(String(p.ot))).map((p) => p.id))); return; }
-    setElegidas(preseleccion(ots));
-  }, [datos, ots, division, guardado, empresaId]);
+    const elegidas = Array.isArray(local) ? new Set([...local.filter((id) => existen.has(id)), ...conSemana])
+      : delPlan.size ? new Set([...otsBase.filter((p) => delPlan.has(String(p.ot))).map((p) => p.id), ...conSemana])
+        : preseleccion(otsBase);
+    setElegidas(elegidas);
+    if (Array.isArray(local)) guardarLocal(clavePlan(empresaId, division?.id, "ots"), [...elegidas]);
+    guardarLocal(clavePlan(empresaId, division?.id, "vistas"), [...existen]);
+    // El orden a mano: el de este navegador, salvo que el plan guardado sea más nuevo
+    const orden = leerLocal(clavePlan(empresaId, division?.id, "orden"));
+    const idDeOt = new Map(otsBase.map((p) => [String(p.ot), p.id]));
+    const delGuardado = ordenDelPlan(guardado?.items).map((ot) => idDeOt.get(ot)).filter((id) => id != null);
+    const planEsMasNuevo = delGuardado.length && (!orden?.at || String(guardado?.updated_at || guardado?.confirmado_at || "") > orden.at);
+    setOrdenManual(planEsMasNuevo ? delGuardado : Array.isArray(orden?.ids) ? orden.ids : null);
+  }, [datos, otsBase, division, guardado, empresaId, hoy]);
   const cambiarElegidas = (f) => setElegidas((s) => {
     const n = f(s);
     guardarLocal(clavePlan(empresaId, division?.id, "ots"), [...n]);
@@ -278,17 +300,27 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const ordenarEficiente = () => {
     const orden = ordenEficiente({ trabajos, dias: capacidadAnio.porDia, params, horasSemana, personal });
     const porId = new Map(otsPlan.map((p) => [p.id, p]));
+    guardarOrden(null);
     aplicarPrioridad(otsPlan, orden.map((t, i) => ({ ...porId.get(t.id), prioridad: i + 1 })));
+  };
+  // Arrastrar o ▲▼ en ②: cambia el orden sin poner números
+  const ordenarTildadas = (ids) => guardarOrden(conOrdenManual(ots, ids).map((p) => p.id));
+  // Escribir un número: la OT va a ese lugar entre las numeradas y la lista vuelve a ordenarse por número y semana
+  const numerar = (id, n) => {
+    guardarOrden(null);
+    aplicarPrioridad(otsPlan, numerarOt(otsPlan, id, n));
   };
   // Borrar prioridades (Tadeo, 29/10): todas las OT de la división quedan sin número y van por semana
   const conNumeroDivision = ots.filter((p) => Number.isInteger(p.prioridad) && p.prioridad > 0).length;
   const borrarPrioridades = async () => {
     const ok = await confirmar(`Se borra el número de prioridad de ${conNumeroDivision === 1 ? "1 OT" : `las ${conNumeroDivision} OT`} de ${division?.label || "la planta"}. Van a quedar ordenadas por semana de entrega. ¿Seguro?`,
       { title: "Borrar prioridades", confirmLabel: "Borrar", destructive: true });
-    if (ok) aplicarPrioridad(ots, ots.map((p) => ({ ...p, prioridad: null })));
+    if (ok) { guardarOrden(null); aplicarPrioridad(ots, ots.map((p) => ({ ...p, prioridad: null }))); }
   };
   const tildar = (id) => cambiarElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const visibles = tildadasPrimero(buscarOts(ots, busca), elegidas);
+  // Arriba de todo las de semana vencida, después las tildadas
+  const vencidasPrimero = (l) => [...l.filter((p) => semanaVencida(p, hoy)), ...l.filter((p) => !semanaVencida(p, hoy))];
+  const visibles = vencidasPrimero(tildadasPrimero(buscarOts(ots, busca), elegidas));
   const todasTildadas = visibles.length > 0 && visibles.every((p) => elegidas.has(p.id));
   // Avisos (Tadeo, 27/10): OT tildadas sin precio y sin placas, fondos ni canto
   const tildadas = ots.filter((p) => elegidas.has(p.id));
@@ -315,7 +347,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         </button>
         {listaAbierta && (
           <div className="mt-2">
-        <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana (también las atrasadas) y las tildadas se ven arriba. Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
+        <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana y las de semana vencida siempre (arriba de todo, en rojo); después se ven las tildadas. Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
         {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
         <div className="flex gap-2 mb-2 items-center">
           <input type="search" className="g-input flex-1 min-w-0" value={busca} onChange={(e) => setBusca(e.target.value)}
@@ -339,6 +371,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
                   <input type="checkbox" className="mt-1 w-5 h-5" checked={elegidas.has(p.id)} onChange={() => tildar(p.id)} aria-label={`Planificar OT ${p.ot}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
+                    {semanaVencida(p, hoy) && <div className="text-xs font-bold text-gypi-red" data-vencida>🔴 Semana vencida · {textoObjetivo(p)}</div>}
                     <div className="text-xs text-gypi-dim truncate">
                       {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`].join(" · ")}
                     </div>
@@ -372,7 +405,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       </div>
 
       <PrioridadTildadas ots={otsPlan} sinColumna={sinColumnaPrioridad} aviso={avisoPrioridad}
-        onAplicar={(nueva) => aplicarPrioridad(otsPlan, nueva)} onEficiente={ordenarEficiente}
+        onAplicar={(nueva) => aplicarPrioridad(otsPlan, nueva)} onOrdenar={ordenarTildadas} onNumero={numerar} onEficiente={ordenarEficiente}
         onBorrar={borrarPrioridades} conNumeroDivision={conNumeroDivision}
         modo={modoEmpresa} hoy={hoy} onSemana={(c) => setDatos((d) => ({ ...d, proyectos: d.proyectos.map((p) => (p.id === c.id ? { ...p, ...c } : p)) }))} />
       {ConfirmDialog}
@@ -738,14 +771,13 @@ function Dato({ label, valor }) {
  * Número de prioridad que se escribe a mano (Tadeo, 28/10): al salir de la
  * casilla o con Enter, la OT pasa a ese lugar; vacía, se le quita la prioridad.
  */
-function NumeroPrioridad({ p, i, total, disabled, onMover, onQuitar }) {
+function NumeroPrioridad({ p, total, disabled, onNumero, onQuitar }) {
   const [texto, setTexto] = useState(p.prioridad ? String(p.prioridad) : "");
   const confirmar = () => {
     const n = Number(texto);
     if (!texto.trim()) { if (p.prioridad) onQuitar(); return; }
     if (!Number.isInteger(n) || n < 1) { setTexto(p.prioridad ? String(p.prioridad) : ""); return; }
-    const destino = Math.min(n, total) - 1;
-    if (destino !== i || !p.prioridad) onMover(destino);
+    if (n !== p.prioridad) onNumero(Math.min(n, total));
   };
   return (
     <input type="number" inputMode="numeric" min={1} max={total} value={texto} disabled={disabled}
@@ -757,12 +789,12 @@ function NumeroPrioridad({ p, i, total, disabled, onMover, onQuitar }) {
 }
 
 /**
- * ② Prioridad de las OT tildadas (Tadeo, 29/10: solo las tildadas). Se ve el
- * lugar de cada una entre las tildadas (1, 2, 3…) aunque guardadas tengan
- * otros números; al cambiar algo se guardan así. Las sin número van después
- * por fecha objetivo. ⚡ propone los números del orden más eficiente.
+ * ② Prioridad de las OT tildadas (Tadeo, 29/10: solo las tildadas). Arrastrar
+ * o ▲▼ cambia el orden sin poner números (onOrdenar); el número lo pone solo
+ * quien lo escribe (onNumero) o ⚡, que propone los del orden más eficiente.
+ * Sin número ni orden a mano, van por fecha objetivo.
  */
-function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onBorrar, conNumeroDivision = 0, modo, hoy, onSemana }) {
+function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onOrdenar, onNumero, onEficiente, onBorrar, conNumeroDivision = 0, modo, hoy, onSemana }) {
   const [arrastre, setArrastre] = useState(null);
   // Buscador (Tadeo, 29/10): filtra lo que se ve; los lugares siguen siendo los de toda la lista
   const [busca, setBusca] = useState("");
@@ -771,6 +803,12 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
     return ots.map((p) => (Number.isInteger(p.prioridad) && p.prioridad > 0 ? { ...p, prioridad: ++n } : { ...p, prioridad: null }));
   }, [ots]);
   const aplicar = (nueva) => onAplicar(nueva);
+  const mover = (desde, hasta) => {
+    const ids = lista.map((p) => p.id);
+    const [x] = ids.splice(desde, 1);
+    ids.splice(hasta, 0, x);
+    onOrdenar(ids);
+  };
 
   // Arrastrar con el dedo o el mouse desde la manija ⠿
   const filtrando = busca.trim() !== "";
@@ -780,7 +818,7 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
     e.currentTarget.setPointerCapture?.(e.pointerId);
     setArrastre({ desde: i, sobre: i });
   };
-  const mover = (e) => {
+  const moverPuntero = (e) => {
     if (!arrastre || typeof document === "undefined" || !document.elementFromPoint) return;
     const fila = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-fila]");
     const i = fila ? Number(fila.getAttribute("data-fila")) : null;
@@ -790,7 +828,7 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
     if (!arrastre) return;
     const { desde, sobre } = arrastre;
     setArrastre(null);
-    if (desde !== sobre) aplicar(moverOt(lista, desde, sobre));
+    if (desde !== sobre) mover(desde, sobre);
   };
 
   const conNumero = lista.filter((p) => p.prioridad > 0).length;
@@ -798,7 +836,7 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
     <section aria-label="Prioridad de las OT" className="g-card mb-3">
       <div className="g-label mb-1">② Prioridad de las tildadas</div>
       <div className="text-[13px] text-gypi-dim mb-2 leading-normal">
-        Arrastrá las OT desde ⠿ o escribí su número para ordenarlas: la 1 es la más urgente. Sin número, van por semana de entrega (la SEMANA del Plan de trabajo, que podés cambiar acá y pasa a la planilla); el número manda sobre la semana. Es el único orden que usa el plan. 🧹 Borrar prioridades saca los números de todas las OT de la división.
+        Arrastrá las OT desde ⠿ o usá ▲▼ para cambiar el orden: no les pone número. El número lo ponés vos escribiéndolo (la 1 es la más urgente) o ⚡; al escribir uno, la lista vuelve a ordenarse por número y, sin número, por semana de entrega (la SEMANA del Plan de trabajo, que podés cambiar acá y pasa a la planilla). Es el único orden que usa el plan. 🧹 Borrar prioridades saca los números de todas las OT de la división.
       </div>
       {sinColumna && <div role="alert" className="text-[13px] text-gypi-red mb-2">Para ordenar las OT falta correr la migración 137 en Supabase.</div>}
       {aviso && <div role="status" className="text-[13px] text-gypi-dim mb-2">{aviso}</div>}
@@ -829,19 +867,20 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onEficiente, onB
                 <li key={p.id} data-fila={i} aria-label={`OT ${p.ot}`}
                   className={`flex items-center gap-2 bg-gypi-surface rounded-xl p-2.5 border ${destino ? "border-gypi-amber" : "border-gypi-border"} ${arrastre?.desde === i ? "opacity-60" : ""}`}>
                   <button type="button" aria-label={`Arrastrar OT ${p.ot}`} disabled={sinColumna || filtrando}
-                    onPointerDown={(e) => empezar(e, i)} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
+                    onPointerDown={(e) => empezar(e, i)} onPointerMove={moverPuntero} onPointerUp={soltar} onPointerCancel={() => setArrastre(null)}
                     className="touch-none select-none min-w-[36px] min-h-[44px] bg-transparent border-none text-xl text-gypi-dim cursor-grab">⠿</button>
-                  <NumeroPrioridad key={`${p.id}-${p.prioridad || 0}`} p={p} i={i} total={lista.length} disabled={sinColumna}
-                    onMover={(destino) => aplicar(moverOt(lista, i, destino))} onQuitar={() => aplicar(quitarPrioridad(lista, p.id))} />
+                  <NumeroPrioridad key={`${p.id}-${p.prioridad || 0}`} p={p} total={lista.length} disabled={sinColumna}
+                    onNumero={(n) => onNumero(p.id, n)} onQuitar={() => aplicar(quitarPrioridad(lista, p.id))} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
+                    {semanaVencida(p, hoy) && <div className="text-xs font-bold text-gypi-red" data-vencida>🔴 Semana vencida · {textoObjetivo(p)}</div>}
                     <div className="text-xs text-gypi-dim truncate">{[p.obra, modo === "entrega" ? textoObjetivo(p, modo) || "sin entrega" : null, material].filter(Boolean).join(" · ")}</div>
                     <SelectorSemana proyecto={p} modo={modo} hoy={hoy} onCambio={onSemana} compacto />
                   </div>
                   <div className="flex flex-col">
-                    <button type="button" aria-label={`Subir OT ${p.ot}`} disabled={sinColumna || i === 0} onClick={() => aplicar(moverOt(lista, i, i - 1))}
+                    <button type="button" aria-label={`Subir OT ${p.ot}`} disabled={sinColumna || i === 0} onClick={() => mover(i, i - 1)}
                       className="min-w-[36px] min-h-[22px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▲</button>
-                    <button type="button" aria-label={`Bajar OT ${p.ot}`} disabled={sinColumna || i === lista.length - 1} onClick={() => aplicar(moverOt(lista, i, i + 1))}
+                    <button type="button" aria-label={`Bajar OT ${p.ot}`} disabled={sinColumna || i === lista.length - 1} onClick={() => mover(i, i + 1)}
                       className="min-w-[36px] min-h-[22px] bg-transparent border-none text-gypi-dim cursor-pointer disabled:opacity-30">▼</button>
                   </div>
                   {p.prioridad > 0 && (

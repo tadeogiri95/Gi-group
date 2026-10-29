@@ -124,7 +124,7 @@ const pantalla = () => render(
 );
 
 // 29/10 (Tadeo): la prioridad está dentro de 📊 Carga (paso ②) y solo con las OT tildadas
-test("📌 Prioridad — en Carga, solo las tildadas, ordenadas, y ▲ guarda la prioridad nueva", async () => {
+test("📌 Prioridad — en Carga, solo las tildadas, ordenadas, y ▲ cambia el orden sin poner números", async () => {
   const pedidos = mockData({ proyectos: [
     OT(1, "M-7100", { fecha_objetivo: "2026-10-31", semana_objetivo: 44, placas: 21.8 }),
     OT(2, "M-7200", { fecha_objetivo: "2026-11-07", semana_objetivo: 45 }),
@@ -141,11 +141,11 @@ test("📌 Prioridad — en Carga, solo las tildadas, ordenadas, y ▲ guarda la
   assert.equal(within(filas[0]).getByLabelText("Semana de la OT M-7100").value, "44", "la semana se ve (y se cambia) en el selector");
   assert.match(filas[0].textContent, /Placas 18 21,8/);
   fireEvent.click(screen.getByLabelText("Subir OT M-7200"));
-  await screen.findByText("✅ Prioridad guardada");
-  const patch = pedidos.filter((p) => p.method === "PATCH");
-  assert.deepEqual(patch.map((p) => [p.path, p.body]), [["proyectos?id=eq.2", { prioridad: 1 }]]);
-  assert.deepEqual(within(lista).getAllByRole("listitem").map((f) => f.getAttribute("aria-label")), ["OT M-7200", "OT M-7100"]);
-  assert.ok(screen.getByLabelText("Quitar prioridad de la OT M-7200"));
+  await waitFor(() => assert.deepEqual(within(lista).getAllByRole("listitem").map((f) => f.getAttribute("aria-label")), ["OT M-7200", "OT M-7100"]));
+  // Tadeo, 29/10: los números los pone solo quien los escribe o ⚡
+  assert.deepEqual(pedidos.filter((p) => p.method === "PATCH"), []);
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7200").value, "");
+  assert.equal(screen.queryByLabelText("Quitar prioridad de la OT M-7200"), null);
 });
 
 test("📌 Prioridad — también se ordena escribiendo el número de cada OT", async () => {
@@ -166,18 +166,20 @@ test("📌 Prioridad — también se ordena escribiendo el número de cada OT", 
   assert.deepEqual(orden(), ["M-7300", "M-7100", "M-7200"]);
   assert.equal(screen.getByLabelText("Prioridad de la OT M-7300").value, "1");
   assert.deepEqual(pedidos.filter((p) => p.method === "PATCH").map((p) => [p.path, p.body]), [["proyectos?id=eq.4", { prioridad: 1 }]]);
-  // Un número más grande que la lista la manda al último lugar con número; Enter confirma
+  // Un número más grande la manda detrás de las que ya tienen número, sin numerar a las demás; Enter confirma
   const otra = screen.getByLabelText("Prioridad de la OT M-7100");
   fireEvent.change(otra, { target: { value: "9" } });
   fireEvent.keyDown(otra, { key: "Enter" });
   fireEvent.blur(otra);
-  await waitFor(() => assert.deepEqual(orden(), ["M-7300", "M-7200", "M-7100"]));
-  assert.equal(screen.getByLabelText("Prioridad de la OT M-7100").value, "3");
+  await waitFor(() => assert.equal(screen.getByLabelText("Prioridad de la OT M-7100").value, "2"));
+  assert.deepEqual(orden(), ["M-7300", "M-7100", "M-7200"]);
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7200").value, "", "la que no se tocó sigue sin número");
   // Vacía: se le quita la prioridad
   const sacar = screen.getByLabelText("Prioridad de la OT M-7300");
   fireEvent.change(sacar, { target: { value: "" } });
   fireEvent.blur(sacar);
   await waitFor(() => assert.equal(screen.getByLabelText("Prioridad de la OT M-7300").value, ""));
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7100").value, "1");
   // Un valor que no sirve vuelve al que tenía
   const mal = screen.getByLabelText("Prioridad de la OT M-7200");
   const antes = mal.value;
@@ -186,7 +188,7 @@ test("📌 Prioridad — también se ordena escribiendo el número de cada OT", 
   assert.equal(screen.getByLabelText("Prioridad de la OT M-7200").value, antes);
 });
 
-test("📌 Prioridad — cada tildada muestra su lugar entre las tildadas y al cambiar se guarda así", async () => {
+test("📌 Prioridad — cada tildada muestra su lugar entre las tildadas; arrastrar no cambia los números guardados", async () => {
   const pedidos = mockData({ proyectos: [
     OT(1, "M-7100", { fecha_objetivo: "2026-10-31", semana_objetivo: 44, prioridad: 4 }),
     OT(2, "M-7200", { fecha_objetivo: "2026-11-07", semana_objetivo: 45, prioridad: 9 }),
@@ -198,9 +200,8 @@ test("📌 Prioridad — cada tildada muestra su lugar entre las tildadas y al c
   assert.equal(screen.getByLabelText("Prioridad de la OT M-7100").value, "1", "la 4 es la primera de las tildadas");
   assert.equal(screen.getByLabelText("Prioridad de la OT M-7200").value, "2");
   fireEvent.click(screen.getByLabelText("Bajar OT M-7100"));
-  await screen.findByText("✅ Prioridad guardada");
-  assert.deepEqual(pedidos.filter((p) => p.method === "PATCH").map((p) => [p.path, p.body]).sort(),
-    [["proyectos?id=eq.1", { prioridad: 2 }], ["proyectos?id=eq.2", { prioridad: 1 }]]);
+  await waitFor(() => assert.deepEqual(within(lista).getAllByRole("listitem").map((f) => f.getAttribute("aria-label")), ["OT M-7200", "OT M-7100"]));
+  assert.deepEqual(pedidos.filter((p) => p.method === "PATCH"), []);
 });
 
 test("📌 Prioridad — sin la migración 137 avisa qué falta y no deja ordenar", async () => {
@@ -1208,7 +1209,7 @@ test("mover — cambia un elemento de lugar", () => {
   assert.deepEqual(mover(["a", "b", "c"], 2, 0), ["c", "a", "b"]);
 });
 
-test("📅 Gantt — gerencia reordena: vista previa con el mismo cálculo de Planificación y ✅ Confirmar guarda el plan y las prioridades", async () => {
+test("📅 Gantt — gerencia reordena: vista previa con el mismo cálculo de Planificación y ✅ Confirmar guarda el plan, sin números", async () => {
   lunes26();
   const { enviados, base, proyectos } = ganttReordenable();
   await waitFor(() => assert.ok(screen.getByLabelText("Bajar OT M-1")));
@@ -1223,7 +1224,7 @@ test("📅 Gantt — gerencia reordena: vista previa con el mismo cálculo de Pl
   // Lo mismo que confirmaría Planificación con ese orden
   const esperado = planReordenado({ ...base, orden: [proyectos[1], proyectos[0]] });
   assert.deepEqual(enviados.posts, [esperado]);
-  assert.deepEqual(enviados.patches.sort(), [["proyectos?id=eq.1", { prioridad: 2 }], ["proyectos?id=eq.2", { prioridad: 1 }]]);
+  assert.deepEqual(enviados.patches, [], "no pone números de prioridad (Tadeo, 29/10): Planificación toma el orden del plan");
   assert.equal(screen.queryByText("Vista previa del orden nuevo"), null);
   assert.deepEqual(ordenFilas(), ["M-2", "M-1"], "queda el plan confirmado nuevo");
 });
@@ -1275,10 +1276,81 @@ test("📅 Gantt — en OT por proceso se reordena un solo proceso y ✅ Confirm
     const lugar = (ot, etapa) => plan.items.find((i) => i.ot === ot && i.etapa === etapa).orden;
     assert.deepEqual([lugar("M-2", "canteado"), lugar("M-1", "canteado")], [0, 1]);
     assert.deepEqual([lugar("M-1", "corte"), lugar("M-2", "corte")], [0, 1]);
-    assert.deepEqual(enviados.patches.sort(), [["proyectos?id=eq.1", { prioridad: 1 }], ["proyectos?id=eq.2", { prioridad: 2 }]], "la prioridad de las OT sigue igual");
+    assert.deepEqual(enviados.patches, [], "no pone números de prioridad");
     assert.deepEqual(filas("canteado"), ["M-2", "M-1"], "el plan confirmado nuevo mantiene el orden del proceso");
     assert.deepEqual(filas("corte"), ["M-1", "M-2"]);
   } finally {
     try { localStorage.removeItem("gypi_gantt_forma"); } catch { /* sin almacenamiento */ }
   }
+});
+
+// ─── OT vencidas y prioridades sin números automáticos (Tadeo, 29/10) ───
+const { numerarOt, conOrdenManual, ordenDelPlan, semanaVencida } = await import("../app/lib/planificacion.js");
+
+test("numerarOt, conOrdenManual, ordenDelPlan y semanaVencida", () => {
+  const l = [{ id: 1, prioridad: 1 }, { id: 2, prioridad: 2 }, { id: 3, prioridad: null }, { id: 4, prioridad: null }];
+  // La 4 pasa a ser la 1: las numeradas se corren, la 3 sigue sin número
+  assert.deepEqual(numerarOt(l, 4, 1).map((p) => [p.id, p.prioridad]), [[4, 1], [1, 2], [2, 3], [3, null]]);
+  assert.deepEqual(numerarOt(l, 3, 9).map((p) => [p.id, p.prioridad]), [[1, 1], [2, 2], [3, 3], [4, null]]);
+  // El orden a mano reparte sus OT en los lugares que tenían; las demás no se mueven
+  const lista = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+  assert.deepEqual(conOrdenManual(lista, ["c", "a"]).map((p) => p.id), ["c", "b", "a", "d"]);
+  assert.deepEqual(conOrdenManual(lista, null).map((p) => p.id), ["a", "b", "c", "d"]);
+  assert.deepEqual(ordenDelPlan([{ ot: "B", orden: 1, fecha: "2026-10-27" }, { ot: "A", orden: 0, fecha: "2026-10-28" }, { ot: "B", orden: 1, fecha: "2026-10-26" }]), ["A", "B"]);
+  assert.equal(semanaVencida({ fecha_objetivo: "2026-10-24" }, "2026-10-29"), true);
+  assert.equal(semanaVencida({ fecha_objetivo: "2026-10-31" }, "2026-10-29"), false);
+  assert.equal(semanaVencida({}, "2026-10-29"), false);
+});
+
+function mockVencida({ guardado = null } = {}) {
+  mockCarga({
+    proyectos: [
+      OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2099-01-03", semana_objetivo: 1 }),
+      OT(2, "M-9000", { ...OT_A, id: 2, ot: "M-9000", division: "Muebles", estado: "activo", fecha_objetivo: "2026-10-03", semana_objetivo: 40 }),
+    ],
+    empleados: [{ id: "e1", rol: "operativo", division: "Muebles", diagrama: { lun: LV, mar: LV, mie: LV, jue: LV, vie: LV } }],
+    cfg: [{ valor: { ...PARAMS } }],
+  });
+  const base = global.fetch;
+  global.fetch = async (url, opts) => (String(url).startsWith("/api/planificacion")
+    ? new Response(JSON.stringify({ ok: true, plan: guardado }), { status: 200 })
+    : base(url, opts));
+}
+
+test("📊 Carga — la OT de semana vencida viene tildada, arriba de todo y en rojo, aunque se hubiera destildado antes", async () => {
+  localStorage.clear();
+  localStorage.setItem("gypi_plan_ots_emp-1_d-m", JSON.stringify([]));
+  localStorage.setItem("gypi_plan_vistas_emp-1_d-m", JSON.stringify([1, 2]));
+  mockVencida();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, false, "lo destildado sigue destildado");
+  const lista = screen.getByRole("list", { name: "OT para planificar" });
+  const primera = within(lista).getAllByRole("listitem")[0];
+  assert.ok(within(primera).getByLabelText("Planificar OT M-9000"), "arriba de todo");
+  assert.match(primera.textContent, /🔴 Semana vencida/);
+  assert.match(within(screen.getByRole("region", { name: "Prioridad de las OT" })).getByLabelText("OT M-9000").textContent, /Semana vencida/);
+  localStorage.clear();
+});
+
+test("📊 Carga — sin orden a mano en el navegador, ② toma el orden del plan confirmado (también el del Gantt)", async () => {
+  localStorage.clear();
+  mockVencida({ guardado: { id: 3, tipo: "horizonte", estado: "confirmado", updated_at: "2026-10-29T12:00:00Z", pendientes: [],
+    items: [{ ot: "M-7473", etapa: "corte", fecha: "2026-10-27", horas: 2, orden: 0 }, { ot: "M-9000", etapa: "corte", fecha: "2026-10-28", horas: 2, orden: 1 }] } });
+  pantalla();
+  const region = await screen.findByRole("region", { name: "Prioridad de las OT" });
+  await waitFor(() => assert.deepEqual(within(region).getAllByRole("listitem").map((f) => f.getAttribute("aria-label")), ["OT M-7473", "OT M-9000"]),
+    "por semana iría primero la vencida; manda el orden del plan");
+  localStorage.clear();
+});
+
+test("📊 Carga — una OT nueva con semana se tilda sola aunque haya tildadas guardadas", async () => {
+  localStorage.clear();
+  localStorage.setItem("gypi_plan_ots_emp-1_d-m", JSON.stringify([]));
+  localStorage.setItem("gypi_plan_vistas_emp-1_d-m", JSON.stringify([1]));
+  mockDosOt();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, false, "la que ya se conocía sigue destildada");
+  localStorage.clear();
 });

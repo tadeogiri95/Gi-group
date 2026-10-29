@@ -219,3 +219,44 @@ export function cambiosPrioridad(antes, despues) {
     .map((p) => ({ id: p.id, prioridad: conPrioridad(p) ? p.prioridad : null }))
     .filter((c) => previa.get(c.id) !== c.prioridad);
 }
+
+/**
+ * Número escrito a mano en una OT (Tadeo, 29/10: los números los pone solo
+ * quien los escribe o ⚡). La OT queda en ese lugar entre las que ya tenían
+ * número, que se renumeran seguidas; las sin número siguen sin número.
+ */
+export function numerarOt(lista, id, n) {
+  const numeradas = (lista || []).filter((p) => conPrioridad(p) && p.id !== id);
+  const movida = (lista || []).find((p) => p.id === id);
+  if (!movida) return lista;
+  numeradas.splice(Math.max(0, Math.min(numeradas.length, n - 1)), 0, movida);
+  const nuevo = new Map(numeradas.map((p, i) => [p.id, i + 1]));
+  return ordenarPorPrioridad(lista.map((p) => ({ ...p, prioridad: nuevo.get(p.id) ?? null })));
+}
+
+/**
+ * La lista con el orden armado a mano (arrastrando en ② o en el Gantt), sin
+ * números: las OT de `ids` toman, en ese orden, los lugares que ocupaban en la
+ * lista; las demás (OT nuevas) se quedan donde las pone la prioridad y la semana.
+ */
+export function conOrdenManual(lista, ids) {
+  if (!ids?.length) return lista || [];
+  const pos = new Map(ids.map((id, i) => [String(id), i]));
+  const enManual = (lista || []).filter((p) => pos.has(String(p.id))).sort((a, b) => pos.get(String(a.id)) - pos.get(String(b.id)));
+  let k = 0;
+  return (lista || []).map((p) => (pos.has(String(p.id)) ? enManual[k++] : p));
+}
+
+/** Números de OT en el orden de un plan guardado (el lugar de su primer renglón). */
+export function ordenDelPlan(items) {
+  const lugar = new Map();
+  for (const i of items || []) {
+    const ot = String(i.ot), o = Number(i.orden) || 0;
+    const previo = lugar.get(ot);
+    if (!previo || o < previo.o || (o === previo.o && i.fecha < previo.f)) lugar.set(ot, { o, f: i.fecha });
+  }
+  return [...lugar].sort((a, b) => a[1].o - b[1].o || a[1].f.localeCompare(b[1].f)).map(([ot]) => ot);
+}
+
+/** La semana objetivo ya terminó (su último día es anterior a hoy). */
+export const semanaVencida = (p, hoy) => !!p?.fecha_objetivo && p.fecha_objetivo < hoy;
