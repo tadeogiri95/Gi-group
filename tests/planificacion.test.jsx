@@ -123,17 +123,21 @@ const pantalla = () => render(
   </AuthContext.Provider>
 );
 
-test("📌 Prioridad — lista ordenada y ▲ guarda la prioridad nueva", async () => {
+// 29/10 (Tadeo): la prioridad está dentro de 📊 Carga (paso ②) y solo con las OT tildadas
+test("📌 Prioridad — en Carga, solo las tildadas, ordenadas, y ▲ guarda la prioridad nueva", async () => {
   const pedidos = mockData({ proyectos: [
     OT(1, "M-7100", { fecha_objetivo: "2026-10-31", semana_objetivo: 44, placas: 21.8 }),
     OT(2, "M-7200", { fecha_objetivo: "2026-11-07", semana_objetivo: 45 }),
     OT(3, "H-800", { division: "HERRERÍA" }),
+    OT(4, "M-7300", { fecha_objetivo: "2026-11-14", semana_objetivo: 46 }),
   ] });
   pantalla();
-  fireEvent.click(await screen.findByText("📌 Prioridad"));
+  assert.equal(screen.queryByText("📌 Prioridad"), null, "ya no es una pestaña aparte");
   const lista = await screen.findByRole("region", { name: "Prioridad de las OT" });
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7300").checked, true));
+  fireEvent.click(screen.getByLabelText("Planificar OT M-7300"));
   const filas = within(lista).getAllByRole("listitem");
-  assert.deepEqual(filas.map((f) => f.getAttribute("aria-label")), ["OT M-7100", "OT M-7200"]);
+  assert.deepEqual(filas.map((f) => f.getAttribute("aria-label")), ["OT M-7100", "OT M-7200"], "la destildada no está");
   assert.match(filas[0].textContent, /S44 \(31\/10\)/);
   assert.match(filas[0].textContent, /Placas 18 21,8/);
   fireEvent.click(screen.getByLabelText("Subir OT M-7200"));
@@ -151,8 +155,8 @@ test("📌 Prioridad — también se ordena escribiendo el número de cada OT", 
     OT(4, "M-7300", { fecha_objetivo: "2026-11-14", semana_objetivo: 46 }),
   ] });
   pantalla();
-  fireEvent.click(await screen.findByText("📌 Prioridad"));
   const lista = await screen.findByRole("region", { name: "Prioridad de las OT" });
+  await waitFor(() => assert.equal(within(lista).getAllByRole("listitem").length, 3));
   const orden = () => within(lista).getAllByRole("listitem").map((f) => f.getAttribute("aria-label").replace("OT ", ""));
   // La M-7300 pasa a ser la 1
   const n = screen.getByLabelText("Prioridad de la OT M-7300");
@@ -182,10 +186,29 @@ test("📌 Prioridad — también se ordena escribiendo el número de cada OT", 
   assert.equal(screen.getByLabelText("Prioridad de la OT M-7200").value, antes);
 });
 
+test("📌 Prioridad — cada tildada muestra su lugar entre las tildadas y al cambiar se guarda así", async () => {
+  const pedidos = mockData({ proyectos: [
+    OT(1, "M-7100", { fecha_objetivo: "2026-10-31", semana_objetivo: 44, prioridad: 4 }),
+    OT(2, "M-7200", { fecha_objetivo: "2026-11-07", semana_objetivo: 45, prioridad: 9 }),
+    OT(3, "M-7300", { prioridad: 1 }), // sin semana: no viene tildada
+  ] });
+  pantalla();
+  const lista = await screen.findByRole("region", { name: "Prioridad de las OT" });
+  await waitFor(() => assert.equal(within(lista).getAllByRole("listitem").length, 2));
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7100").value, "1", "la 4 es la primera de las tildadas");
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7200").value, "2");
+  fireEvent.click(screen.getByLabelText("Bajar OT M-7100"));
+  await screen.findByText("✅ Prioridad guardada");
+  assert.deepEqual(pedidos.filter((p) => p.method === "PATCH").map((p) => [p.path, p.body]).sort(),
+    [["proyectos?id=eq.1", { prioridad: 2 }], ["proyectos?id=eq.2", { prioridad: 1 }]]);
+});
+
 test("📌 Prioridad — sin la migración 137 avisa qué falta y no deja ordenar", async () => {
   mockData({ proyectos: [{ id: 1, ot: "M-1", division: "Muebles", estado: "activo" }, { id: 2, ot: "M-2", division: "Muebles", estado: "activo" }] });
   pantalla();
-  fireEvent.click(await screen.findByText("📌 Prioridad"));
+  assert.ok(await screen.findByText(/Tildá en ① las OT/), "sin tildadas no hay nada que ordenar");
+  fireEvent.click(screen.getByLabelText("Planificar OT M-1"));
+  fireEvent.click(screen.getByLabelText("Planificar OT M-2"));
   assert.ok(await screen.findByText(/falta correr la migración 137/));
   assert.equal(screen.getByLabelText("Bajar OT M-1").disabled, true);
 });
@@ -1039,11 +1062,23 @@ test("📊 Carga — sin nada en este navegador, vienen tildadas las OT del plan
   assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, false);
 });
 
-test("📊 Carga — ⚡ la forma más eficiente muestra el orden que eligió Gypi", async () => {
+// 29/10 (Tadeo): un solo criterio. ⚡ ya no es otro orden: pone los números de prioridad
+test("📊 Carga — ⚡ ordenar de la forma más eficiente pone los números de prioridad", async () => {
   mockDosOt();
+  const patches = [];
+  const base = global.fetch;
+  global.fetch = async (url, opts) => {
+    const body = opts?.body ? JSON.parse(opts.body) : {};
+    if (body.method === "PATCH") patches.push([body.path, body.body]);
+    return base(url, opts);
+  };
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
-  assert.match(screen.getByLabelText("Plan automático").textContent, /orden de la pestaña Prioridad/);
-  fireEvent.click(screen.getByText("⚡ La forma más eficiente"));
-  assert.match(screen.getByLabelText("Plan automático").textContent, /Gypi elige el orden .*: M-7473, M-9000\./);
+  assert.equal(screen.queryByText("⚡ La forma más eficiente"), null, "ya no hay dos formas de ordenar");
+  assert.match(screen.getByLabelText("Plan automático").textContent, /en el orden del paso ②/);
+  fireEvent.click(screen.getByRole("button", { name: "⚡ Ordenar de la forma más eficiente" }));
+  await screen.findByText("✅ Prioridad guardada");
+  assert.deepEqual(patches.sort(), [["proyectos?id=eq.1", { prioridad: 1 }], ["proyectos?id=eq.2", { prioridad: 2 }]]);
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-7473").value, "1");
+  assert.equal(screen.getByLabelText("Prioridad de la OT M-9000").value, "2");
 });
