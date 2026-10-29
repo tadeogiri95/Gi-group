@@ -1129,6 +1129,23 @@ test("📊 Carga — ② cambiar la semana de una OT la guarda pendiente para la
   await screen.findByText("⏳ Cambiada en Gypi, falta pasar a la planilla");
 });
 
+test("📊 Carga — ② el buscador filtra las tildadas sin cambiar su lugar; mientras busca, arrastrar se apaga", async () => {
+  mockDosOt();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  const prioridad = () => screen.getByLabelText("Prioridad de las OT");
+  fireEvent.change(within(prioridad()).getByLabelText("Buscar en la prioridad"), { target: { value: "9000" } });
+  assert.equal(within(prioridad()).queryByLabelText("OT M-7473"), null);
+  assert.ok(within(prioridad()).getByLabelText("OT M-9000"));
+  assert.match(prioridad().textContent, /1 OT de 2/);
+  assert.equal(within(prioridad()).getByLabelText("Arrastrar OT M-9000").disabled, true);
+  assert.equal(within(prioridad()).getByLabelText("Subir OT M-9000").disabled, false, "▲ sigue andando: es la 2 de la lista completa");
+  fireEvent.change(within(prioridad()).getByLabelText("Buscar en la prioridad"), { target: { value: "nada" } });
+  assert.match(prioridad().textContent, /Ninguna OT coincide con “nada”/);
+  fireEvent.change(within(prioridad()).getByLabelText("Buscar en la prioridad"), { target: { value: "" } });
+  assert.equal(within(prioridad()).getByLabelText("Arrastrar OT M-9000").disabled, false);
+});
+
 test("conHorasExtra — cada día extra rinde como el día más largo de la grilla", () => {
   const cap = { gente: 10, maquina: 5, personas: 1 };
   const dias = [{ gente: 2, maquina: 2 }, { gente: 8, maquina: 9 }, { gente: 0, maquina: 0 }];
