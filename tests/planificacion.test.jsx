@@ -138,7 +138,7 @@ test("📌 Prioridad — en Carga, solo las tildadas, ordenadas, y ▲ guarda la
   fireEvent.click(screen.getByLabelText("Planificar OT M-7300"));
   const filas = within(lista).getAllByRole("listitem");
   assert.deepEqual(filas.map((f) => f.getAttribute("aria-label")), ["OT M-7100", "OT M-7200"], "la destildada no está");
-  assert.match(filas[0].textContent, /S44 \(31\/10\)/);
+  assert.equal(within(filas[0]).getByLabelText("Semana de la OT M-7100").value, "44", "la semana se ve (y se cambia) en el selector");
   assert.match(filas[0].textContent, /Placas 18 21,8/);
   fireEvent.click(screen.getByLabelText("Subir OT M-7200"));
   await screen.findByText("✅ Prioridad guardada");
@@ -1104,6 +1104,29 @@ test("📊 Carga — 🧹 borrar prioridades saca el número de todas las OT, co
   assert.deepEqual(patches.sort(), [["proyectos?id=eq.1", { prioridad: null }], ["proyectos?id=eq.2", { prioridad: null }]]);
   assert.equal(screen.getByLabelText("Prioridad de la OT M-7473").value, "");
   assert.equal(screen.getByLabelText("Prioridad de la OT M-9000").value, "");
+});
+
+test("📊 Carga — ② cambiar la semana de una OT la guarda pendiente para la planilla", async () => {
+  mockDosOt();
+  const patches = [];
+  const base = global.fetch;
+  global.fetch = async (url, opts) => {
+    const body = opts?.body ? JSON.parse(opts.body) : {};
+    if (body.method === "PATCH") patches.push([body.path, body.body]);
+    return base(url, opts);
+  };
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  const sel = screen.getByLabelText("Semana de la OT M-7473");
+  const nueva = sel.options[3].value;
+  assert.notEqual(nueva, "1");
+  fireEvent.change(sel, { target: { value: nueva } });
+  await waitFor(() => assert.equal(patches.length, 1));
+  assert.equal(patches[0][0], "proyectos?id=eq.1");
+  assert.equal(patches[0][1].semana_objetivo, Number(nueva));
+  assert.equal(patches[0][1].semana_app, Number(nueva));
+  assert.match(patches[0][1].fecha_objetivo, /^\d{4}-\d{2}-\d{2}$/);
+  await screen.findByText("⏳ Cambiada en Gypi, falta pasar a la planilla");
 });
 
 test("conHorasExtra — cada día extra rinde como el día más largo de la grilla", () => {
