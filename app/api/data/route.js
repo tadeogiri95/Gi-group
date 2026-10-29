@@ -72,6 +72,7 @@ const TABLAS_PERMITIDAS = [
   "vehiculo_arreglos", "vehiculo_mantenimientos", // Arreglos y services, parte 31 (129): ídem
   "maquinas", "maquina_tareas", "maquina_registros", // Maquinaria, parte 33 (132): solo lectura acá; se escriben por /api/maquinaria
   "maquina_fallas", // Maquinaria, parte 35 (134): solo lectura acá; se escribe por /api/maquinaria
+  "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145): gestión lee y agrega (no se editan)
 ];
 
 // Flota (126): se leen por acá y se escriben solo por /api/flota.

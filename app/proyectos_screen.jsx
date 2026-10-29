@@ -629,6 +629,8 @@ export default function ProyectosScreen({ empresaId }) {
           modo={modoObjetivo}
           empresaId={empresaId}
           puedeReordenar={usuario?.rol === "gerencial"}
+          puedeAjustar={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"}
+          usuarioNombre={usuario?.nombre || null}
           onVerDetalle={setDetalle}
         />
       ) : vista === "tablero" && !loading ? (

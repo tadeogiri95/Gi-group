@@ -19,7 +19,8 @@ import { pendienteEtapa, capacidadPlanta, operariosDePlanta, personalPlanta, hor
 import { hoyArg } from "./dates";
 import { diasEntre } from "./semanaObjetivo";
 import { porcentajeOt } from "./panelMantenimiento";
-import { HORAS_SEMANA_POR_DEFECTO, MAQUINAS_PLAN, calendario, secuenciar } from "./secuencia";
+import { HORAS_SEMANA_POR_DEFECTO, MAQUINAS_PLAN, calendario, duracion, secuenciar } from "./secuencia";
+import { horasManuales } from "./ajustesTiempo";
 
 export { HORAS_SEMANA_POR_DEFECTO };
 const DIA_MS = 86400000;
@@ -196,13 +197,14 @@ const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
  *  - corrido: termina después de lo que decía el plan confirmado.
  * Devuelve lo mismo que procesosPlan, con además, por OT: tarde, diasTarde,
  * diasCorrido, finConfirmado, objetivo; y por proceso: tarde, diasTarde,
- * corrido, diasCorrido, hastaConfirmado, empezo.
- * @param {{ proyectos?: Map<string, object>, etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], modulos?: Map<string, number>, terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: object|null, diasExtra?: Set<string>|null }} opciones
+ * corrido, diasCorrido, hastaConfirmado, empezo, manual (lo manda un
+ * "⏱ Faltan X h", migración 145).
+ * @param {{ manual?: Map<string, { horas: number, pendiente: number|null }>, proyectos?: Map<string, object>, etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], modulos?: Map<string, number>, terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: object|null, diasExtra?: Set<string>|null }} opciones
  *   proyectos: las OT por número (fecha objetivo y datos para las horas)
  */
 export function planVivo(items = [], opciones) {
   const { proyectos = new Map(), etapasCodigo = {}, avance = [], piezas = [], modulos = new Map(), terminadas = new Set(), hoy,
-    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null } = opciones;
+    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null } = opciones;
   const confirmado = procesosPlan(items, { etapasCodigo, avance, piezas, terminadas, hoy, params, horasSemana, personal, diasExtra });
   const out = new Map();
   if (!confirmado.size) return out;
@@ -227,6 +229,22 @@ export function planVivo(items = [], opciones) {
   });
   const extras = diasExtra ? new Set([...diasExtra].filter((f) => f >= hoy)) : null;
   const cal = calendario(hoy, horasSemana, extras);
+  // "⏱ Faltan X h" (145): X son horas como las muestra el Gantt (de máquina,
+  // o de Armado con los armadores que le tocan); se pasan a horas de gente
+  const manuales = [];
+  for (const r of restantes) {
+    for (const { id } of ETAPAS_PLAN) {
+      const m = manual?.get(`${r.clave}|${id}`);
+      const resta = m && !terminadas.has(r.clave) ? falta(r.clave, id) : 0;
+      if (m && resta > 0) manuales.push({ r, id, horas: horasManuales(m, resta) });
+    }
+  }
+  const armadores = manuales.some((m) => m.id === "armado") ? secuenciar(restantes, { params, personal, ordenEtapa }) : null;
+  for (const { r, id, horas } of manuales) {
+    const k = id === "armado" ? (armadores.get(r.clave) || []).find((t) => t.etapa === "armado")?.personas || 1 : 1 / duracion(id, 1, params);
+    r.horas = { ...r.horas, [id]: horas * k };
+  }
+  const conManual = new Set(manuales.map((m) => `${m.r.clave}|${m.id}`));
   const tramos = secuenciar(restantes, { params, personal, ordenEtapa });
 
   for (const o of ots) {
@@ -253,6 +271,8 @@ export function planVivo(items = [], opciones) {
         const desde = empezo && empezo <= hasta ? empezo : qc.desde <= hasta ? qc.desde : hasta;
         q = { etapa: id, nombre, desde, hasta, ini: desde === qc.desde ? qc.ini : 0, fin: hasta === qc.hasta ? qc.fin : 1, t0: -1, horas: qc.horas, personas: qc.personas, completo: resta <= 0 };
       }
+      q.manual = conManual.has(`${o.ot}|${id}`);
+      q.pendiente = resta;
       q.hecho = Math.round((1 - resta) * 100);
       q.empezo = empezo;
       q.hastaConfirmado = qc?.hasta || null;
@@ -360,4 +380,12 @@ export async function leerPlanesConfirmados() {
     empleados().catch(() => null),
   ]);
   return { planes: r?.planes || [], cfgValor: cfg?.[0]?.valor || null, empleados: emp?.data || [], faltaMigracion: !!r?.falta_migracion };
+}
+
+/**
+ * Cuándo se confirmó el plan más nuevo (ISO), sin contar la vista previa del
+ * reordenar: los motivos anotados antes no cubren lo que se corrió después.
+ */
+export function ultimaConfirmacion(planes = []) {
+  return (planes || []).map((p) => String(p?.confirmado_at || "")).filter((f) => f && !f.startsWith("9999")).sort().pop() || null;
 }
