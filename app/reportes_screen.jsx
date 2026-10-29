@@ -653,7 +653,7 @@ export default function ReportesScreen({ grupo = null }) {
       {tab === "dia" ? (
         <ReporteDiaTab />
       ) : tab === "informe" ? (
-        <InformeProduccionTab />
+        <InformeProduccionTab empresa={empresa} />
       ) : loading ? (
         <Puntos />
       ) : tab === "produccion" ? (
