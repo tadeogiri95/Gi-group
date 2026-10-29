@@ -15,6 +15,7 @@
 //   - PATCH /api/stock/planilla (script de la planilla MRP, Bearer con la
 //     clave privada de la empresa; no usa cookies). El POST de esa ruta sí
 //     pasa por acá: lo usa el navegador con la sesión.
+//   - PATCH /api/proyectos/semanas-planilla (script del Plan de trabajo, igual).
 // Login, recupero, alta, superadmin, etc. ya NO están exentos: el navegador
 // siempre manda el header Origin en un POST, así que pasan por la capa 2.
 
@@ -28,7 +29,7 @@ const EXEMPT_PATHS = [
 ];
 
 // Ruta y método exentos de a uno (el resto de los métodos de la ruta, no)
-const EXEMPT_METHOD_PATHS = [["PATCH", "/api/stock/planilla"]];
+const EXEMPT_METHOD_PATHS = [["PATCH", "/api/stock/planilla"], ["PATCH", "/api/proyectos/semanas-planilla"]];
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
