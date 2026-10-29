@@ -73,6 +73,8 @@ const TABLAS_PERMITIDAS = [
   "maquinas", "maquina_tareas", "maquina_registros", // Maquinaria, parte 33 (132): solo lectura acá; se escriben por /api/maquinaria
   "maquina_fallas", // Maquinaria, parte 35 (134): solo lectura acá; se escribe por /api/maquinaria
   "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145): gestión lee y agrega (no se editan)
+  "informes_produccion", // Informe de producción (146): solo lectura acá; lo guarda el cron
+  "avance_manual_historial", // Historial del checkeo manual (146): gestión lee y agrega
 ];
 
 // Flota (126): se leen por acá y se escriben solo por /api/flota.
@@ -86,7 +88,7 @@ const TABLAS_COMPRAS = ["proveedores", "pedidos_compra", "pedidos_compra_cambios
 // por /api/documentos/upload (valida tipo/tamaño de archivo server-side antes
 // de escribir la fila). Sin esto, un POST directo podría crear filas con
 // storage_path arbitrario sin que exista el archivo.
-const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", "precios_ot", ...TABLAS_COMPRAS, ...TABLAS_FLOTA, ...TABLAS_MAQUINARIA];
+const TABLAS_SOLO_LECTURA = ["v_resumen_diario", "v_scores_empleados", "documentos_empleado", "avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", "precios_ot", "informes_produccion", ...TABLAS_COMPRAS, ...TABLAS_FLOTA, ...TABLAS_MAQUINARIA];
 
 // Con RLS_API_DATA=on la consulta principal va con el pase del usuario y la
 // base aplica la RLS. Las dos vistas de resumen necesitan además la migración
@@ -150,6 +152,7 @@ const TABLAS_CON_EMPRESA = [
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
   "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión sin supervisores; lo escribe la sincronización
   "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145)
+  "informes_produccion", "avance_manual_historial", // Informe de producción (146)
 ];
 
 function validarPath(path) {

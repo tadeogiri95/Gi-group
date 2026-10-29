@@ -650,6 +650,51 @@ export function htmlReporteDiario({ empresa, slug, reporte: r }) {
   `;
 }
 
+// Informe de producción del día (migración 146; app/lib/informeProduccion.js).
+// Gráficos con barras de tabla (los emails no muestran SVG en todos lados).
+export function htmlInformeProduccion({ empresa, slug, informe: r, explicacion }) {
+  const s = r.resumen;
+  const coma = (n) => String(n ?? "—").replace(".", ",");
+  const titulo = (t) => `<p style="margin:24px 0 6px;font-size:13px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.04em">${t}</p>`;
+  const fila = (izq, der, color = COLOR_TEXTO) =>
+    `<tr><td style="padding:6px 0;color:#555;font-size:14px">${izq}</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:${color}">${der}</td></tr>`;
+  const barra = (pct, hecho) => `<table style="width:100%;border-collapse:collapse;height:8px"><tr><td style="width:${Math.max(0, Math.min(100, pct))}%;background:${hecho ? "orange" : "silver"};height:8px;padding:0"></td><td style="background:#EEE;height:8px;padding:0"></td></tr></table>`;
+  const MAX = 20;
+  const ots = r.ots.slice(0, MAX).map((o) => `
+    <p style="margin:12px 0 2px;font-size:14px;font-weight:700">OT ${escapeHtml(o.ot)}${o.cliente ? ` <span style="color:#9B9B9B;font-weight:400">· ${escapeHtml(o.cliente)}</span>` : ""}
+      <span style="float:right;color:${o.desvio < 0 ? COLOR_ROJO : COLOR_VERDE}">${o.desvio > 0 ? "+" : ""}${coma(o.desvio)} pts</span></p>
+    <p style="margin:0;font-size:12px;color:#777">Planificado ${coma(o.planificado)} % · hecho ${coma(o.hecho)} % · total ${coma(o.alFinal)} %${o.diasCorrido > 0 ? ` · se corrió ${o.diasCorrido} d` : ""}${o.tarde ? ` · ${o.diasTarde} d después de su semana` : ""}</p>
+    ${barra(o.planificado, false)}${barra(o.hecho, true)}
+    <p style="margin:2px 0 0;font-size:12px;color:#777">${o.procesos.map((q) => `${escapeHtml(q.nombre)}: ${coma(q.hecho)} de ${coma(q.planificado)} % (va ${coma(q.alFinal)} %)`).join(" · ")}</p>`).join("")
+    + (r.ots.length > MAX ? `<p style="margin:8px 0 0;color:#9B9B9B;font-size:14px">Y ${r.ots.length - MAX} OT más.</p>` : "");
+  return `
+    <p style="margin:0 0 8px;color:#444;line-height:1.6">Informe de producción de <strong>${escapeHtml(empresa)}</strong>.</p>
+    <p style="margin:0 0 16px;font-size:40px;font-weight:800;color:${r.nota == null ? COLOR_TEXTO : r.nota >= 7 ? COLOR_VERDE : r.nota >= 5 ? COLOR_TEXTO : COLOR_ROJO}">${r.nota == null ? "Sin nota" : `${coma(r.nota)} / 10`}</p>
+    <table style="width:100%;border-collapse:collapse">
+      ${fila("Cumplimiento de lo planificado", s.cumplimiento == null ? "—" : `${coma(s.cumplimiento)} %`)}
+      ${fila("OT que llegan a su semana", `${coma(s.enSemana)} %`)}
+      ${fila("Procesos sin correrse del plan", `${coma(s.sinCorrimiento)} %`)}
+      ${fila("OT trabajadas", String(s.ots))}
+    </table>
+    <p style="margin:8px 0 0;font-size:12px;color:#777;line-height:1.5">${escapeHtml(explicacion)}</p>
+    ${titulo("Por OT (gris: planificado · naranja: hecho)")}${ots || `<p style="margin:0;color:#9B9B9B;font-size:14px">No hubo nada planificado ni hecho.</p>`}
+    ${btn(`${APP_BASE}/${slug}`, "Ver el informe en Gypi →")}
+  `;
+}
+
+export async function sendInformeProduccion({ to, empresa, slug, informe, explicacion, empresaId }) {
+  if (!process.env.RESEND_API_KEY) return;
+  const cuerpo = htmlInformeProduccion({ empresa, slug, informe, explicacion });
+  return resend.emails.send({
+    from: FROM,
+    to,
+    subject: `Informe de producción en ${empresa}: ${informe.nota == null ? "sin nota" : `nota ${String(informe.nota).replace(".", ",")}`}`,
+    html: buildHtml("Informe de producción", fmtFecha(informe.periodo.desde), cuerpo),
+    text: stripHtml(cuerpo),
+    tags: buildTags("informe_produccion", empresaId),
+  });
+}
+
 export async function sendReporteDiario({ to, empresa, slug, reporte, empresaId }) {
   if (!process.env.RESEND_API_KEY) return;
   const cuerpo = htmlReporteDiario({ empresa, slug, reporte });

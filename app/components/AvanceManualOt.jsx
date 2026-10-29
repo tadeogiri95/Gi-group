@@ -54,6 +54,13 @@ export default function AvanceManualOt({ proyecto, etapas = [], divisiones = [],
     const valor = { activo, etapas: etapasValor, por: usuario?.apodo || usuario?.nombre || null, at: new Date().toISOString() };
     try {
       await sb.patch(`proyectos?id=eq.${proyecto.id}`, { avance_manual: valor });
+      // Historial (146) para saber cuánto se avanzó en cada período (informe de producción).
+      // Solo lo que cambió; sin la migración, el checkeo se guarda igual.
+      if (activo) {
+        const cambios = Object.entries(etapasValor).filter(([c, n]) => guardado.etapas[c] !== n || !guardado.activo)
+          .map(([c, n]) => ({ ot: String(ot), etapa: Number(c), pct: n }));
+        for (const c of cambios) await sb.post("avance_manual_historial", c).catch(() => null);
+      }
       onGuardado?.(valor);
       setEstado(activo ? "✅ Avance guardado" : "✅ Checkeo manual apagado: queda solo el escaneo");
     } catch (e) {

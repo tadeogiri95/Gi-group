@@ -122,6 +122,10 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   ajustes_tiempo_ot: {
     POST: ["ot", "etapa", "tipo", "horas", "pendiente", "dias", "motivo", "detalle", "creado_nombre"],
   },
+  // Historial del checkeo manual (146); creado_por sale de la sesión
+  avance_manual_historial: {
+    POST: ["ot", "etapa", "pct"],
+  },
 };
 
 // ── Schemas Zod por endpoint ────────────────────────────────────────────────

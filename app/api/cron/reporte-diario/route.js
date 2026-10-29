@@ -4,6 +4,9 @@
 // y un aviso al celular a gerencial y administrativo que lo lleva a la app.
 // Si ese día no hubo escaneos, etapas cerradas ni reportes de instalación,
 // no manda nada. El mismo reporte se ve en Reportes → Del día.
+// También el informe de producción del día (migración 146): después del
+// último turno, se guarda en Reportes → 🏭 Producción, va por email a
+// administración y al celular de gerencia (app/lib/informeProduccionServidor.js).
 import { NextResponse } from "next/server";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { sendReporteDiario } from "../../../lib/email";
@@ -13,6 +16,7 @@ import { reporteDiarioDeEmpresa } from "../../../lib/reporteDiarioServidor";
 import { getModulosEmpresa } from "../../../lib/planEnforcement";
 import { logger } from "../../../lib/logger";
 import { conMonitoreoCron } from "../../../lib/cronMonitor";
+import { enviarInformeDelDia } from "../../../lib/informeProduccionServidor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,8 +28,18 @@ async function ejecutar(request) {
   }
   const fecha = fechaDelReporte();
   const { data: empresas } = await sbGetAll("empresa?activa=eq.true&plan_activo=neq.free&select=id,nombre,nombre_corto,slug,admin_email&order=id.asc");
-  let enviados = 0, avisos = 0, vacios = 0, errores = 0;
+  let enviados = 0, avisos = 0, vacios = 0, errores = 0, informes = 0;
   for (const empresa of empresas) {
+    // Informe de producción: con Proyectos (plan de producción), aparte del reporte
+    try {
+      const { modulos } = await getModulosEmpresa(empresa.id);
+      if (modulos.includes("proyectos")) {
+        const inf = await enviarInformeDelDia(empresa, fecha);
+        if (!inf.vacio) informes++;
+      }
+    } catch (e) {
+      logger.error(`[reporte-diario] informe de producción empresa ${empresa.id}`, e);
+    }
     try {
       // Sin Producción en el plan no hay escaneos ni instalación que reportar
       const { modulos } = await getModulosEmpresa(empresa.id);
@@ -60,7 +74,7 @@ async function ejecutar(request) {
   if (errores > 0 && enviados === 0 && empresas.length > 0) {
     throw new Error(`reporte-diario: fallaron las ${errores} empresas`);
   }
-  return NextResponse.json({ ok: true, fecha, empresas: empresas.length, enviados, avisos, vacios, errores });
+  return NextResponse.json({ ok: true, fecha, empresas: empresas.length, enviados, avisos, vacios, errores, informes });
 }
 
 export const GET = conMonitoreoCron("reporte-diario", ejecutar);

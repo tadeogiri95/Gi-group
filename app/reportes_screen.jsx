@@ -12,6 +12,7 @@ import { exportCSV, exportImagen } from "./lib/exportarReporte";
 import Stat from "./components/ui/Stat";
 import Indicadores from "./components/Indicadores";
 import ReporteDiaTab from "./components/ReporteDiaTab";
+import InformeProduccionTab from "./components/InformeProduccionTab";
 import LeadTimeTab from "./components/LeadTimeTab";
 import { useCostoHora } from "./hooks/useCostoHora";
 
@@ -474,6 +475,8 @@ export default function ReportesScreen({ grupo = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, defectos, usuario, empresa } = useAuth();
   const ver = (g) => !grupo || grupo === g;
   const conDia = tieneModulo(empresa, "actividad") && !esSupervisor(usuario);
+  // Informe de producción (146): gerencia, supervisores y administración, con el plan de producción
+  const conInforme = tieneModulo(empresa, "proyectos") && (usuario?.rol === "gerencial" || usuario?.rol === "administrativo");
   const empresaId = usuario?.empresa_id;
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(usuario?.rol === "gerencial");
@@ -616,6 +619,7 @@ export default function ReportesScreen({ grupo = null }) {
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
         {ver("personal") && <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>}
         {ver("produccion") && conDia && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
+        {ver("produccion") && conInforme && <Chip active={tab === "informe"} onClick={() => setTab("informe")} color={MARCA}>🏭 Producción</Chip>}
         {ver("produccion") && conRegistroTareas(empresa) && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
         {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
         {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "leadtime"} onClick={() => setTab("leadtime")} color={MARCA}>⏱️ Lead time</Chip>}
@@ -624,8 +628,8 @@ export default function ReportesScreen({ grupo = null }) {
         {ver("personal") && !esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </FilaDeslizable>
 
-      {/* Periodo (el reporte del día tiene su propio día) */}
-      {tab !== "dia" && <>
+      {/* Periodo (el reporte del día y el informe de producción tienen el suyo) */}
+      {tab !== "dia" && tab !== "informe" && <>
       <div className="flex gap-1.5 mb-2.5">
         <Chip active={periodo === "semana"} onClick={() => setPeriodo("semana")} color={MARCA}>Por semana</Chip>
         <Chip active={periodo === "mes"} onClick={() => setPeriodo("mes")} color={MARCA}>Por mes</Chip>
@@ -648,6 +652,8 @@ export default function ReportesScreen({ grupo = null }) {
 
       {tab === "dia" ? (
         <ReporteDiaTab />
+      ) : tab === "informe" ? (
+        <InformeProduccionTab />
       ) : loading ? (
         <Puntos />
       ) : tab === "produccion" ? (
