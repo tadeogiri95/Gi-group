@@ -11,7 +11,8 @@ import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { fmtH } from "../lib/cargaPlanta";
 import { planPorDia, planEsDeMiDivision } from "../lib/planGuardado";
-import { COLOR_ETAPA } from "./GanttPlan";
+
+const COLOR_ETAPA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
 
 const nombreDia = (iso) => {
   const d = new Date(`${iso}T00:00:00Z`).toLocaleDateString("es-AR", { weekday: "long", timeZone: "UTC" });

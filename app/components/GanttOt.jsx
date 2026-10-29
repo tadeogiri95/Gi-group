@@ -27,7 +27,7 @@ import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
-import { itemsVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
+import { itemsVigentes, diasExtraVigentes, procesosPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros } from "../lib/planificacion";
 import { MODO_POR_DEFECTO } from "../lib/semanaObjetivo";
 import { hoyArg } from "../lib/dates";
@@ -93,7 +93,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
       terminadas: new Set(proyectos.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
       params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
-      personal: personalGantt(empleados, divisiones, cfgValor),
+      personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes),
     });
     // En el orden del plan: la que arranca primero arriba
     const renglones = [...procesos.values()].filter((r) => abiertas.has(r.ot)).map((r) => ({ ...r, proyecto: abiertas.get(r.ot) }));

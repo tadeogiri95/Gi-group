@@ -9,10 +9,10 @@
 // confirmar. Un solo criterio de orden: manda el número de prioridad y las sin
 // número van después por fecha objetivo; "⚡ Ordenar de la forma más
 // eficiente" solo propone esos números.
-// "Ver el plan de las OT tildadas" (parte 40) reparte las OT tildadas día por día y
-// las muestra en un Gantt de planificación. Ese plan se guarda como borrador
-// o se confirma (parte 41, migración 138): confirmado, la planta lo ve en
-// 📅 Plan de la semana.
+// El plan (parte 40) programa las OT tildadas con el mismo cálculo que el
+// Gantt de Proyectos (secuencia.js) y se guarda como borrador o se confirma
+// (parte 41, migración 138): confirmado, la planta lo ve en 📅 Plan de la
+// semana y en el Gantt de Proyectos (Tadeo, 29/10: no hace falta otro Gantt acá).
 // Desde el 27/10 el plan no tiene límite de semanas (migración 143): va desde
 // hoy hasta que terminan las OT tildadas, según las fechas objetivo (SEMANA,
 // con horas extra) o según la capacidad de la planta (fechas estimadas). La
@@ -28,14 +28,13 @@ import {
   periodo, diasDelPeriodo, diasDesde, operariosDePlanta, capacidadPlanta, horasOt, cargaPeriodo,
   preseleccion, modulosPorOt, fmtH, personalPlanta, PUESTOS_PLANTA,
 } from "../lib/cargaPlanta";
-import { leerOperariosPlanta } from "../lib/ganttPlan";
+import { leerOperariosPlanta, horasSemanaDeGrilla, personalGantt } from "../lib/ganttPlan";
 import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import AvanceManualOt from "./AvanceManualOt";
 import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
 import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAutomatico";
 import { inicioDeSemana } from "../lib/semanaObjetivo";
-import GanttPlan from "./GanttPlan";
 import { cuerpoPlan } from "../lib/planGuardado";
 import { materialOt } from "../lib/ot";
 import {
@@ -121,7 +120,6 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const [elegidas, setElegidas] = useState(null);
-  const [ordenado, setOrdenado] = useState(false);
   // Switch del plan: según la capacidad (por defecto) o según las fechas objetivo (SEMANA, con horas extra)
   const [base, setBaseEstado] = useState(() => (leerLocal(clavePlan(empresaId, division?.id, "base")) === "objetivo" ? "objetivo" : "capacidad"));
   const setBase = (b) => { setBaseEstado(b); guardarLocal(clavePlan(empresaId, division?.id, "base"), b); };
@@ -214,8 +212,12 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   // Solo las OT tildadas, en el orden de prioridad (un solo criterio, 29/10)
   const otsPlan = useMemo(() => ots.filter((p) => elegidas?.has(p.id)), [ots, elegidas]);
   const trabajos = useMemo(() => otsPlan.map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: p.fecha_objetivo || null })), [otsPlan, horas]);
-  const plan = useMemo(() => (trabajos.length ? planHorizonte({ trabajos, dias: capacidadAnio.porDia, params, base, modo }) : null),
-    [trabajos, capacidadAnio, params, base, modo]);
+  // El mismo cálculo que el Gantt de Proyectos (Tadeo, 29/10): horas de cada
+  // día de la grilla de horarios y los armadores según los puestos
+  const horasSemana = useMemo(() => horasSemanaDeGrilla(datos?.empleados, divisiones, params), [datos, divisiones, params]);
+  const personal = useMemo(() => personalGantt(datos?.empleados, divisiones, params), [datos, divisiones, params]);
+  const plan = useMemo(() => (trabajos.length ? planHorizonte({ trabajos, dias: capacidadAnio.porDia, params, base, modo, horasSemana, personal }) : null),
+    [trabajos, capacidadAnio, params, base, modo, horasSemana, personal]);
   // Las tablas muestran lo que el plan pone en el período elegido (de hoy en adelante)
   const desdeVisible = per.desde > hoy ? per.desde : hoy;
   const yaPaso = per.hasta < hoy;
@@ -266,7 +268,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   };
   // ⚡ Propone los números: el orden más eficiente de las tildadas, del 1 en adelante
   const ordenarEficiente = () => {
-    const orden = ordenEficiente({ trabajos, dias: capacidadAnio.porDia, params });
+    const orden = ordenEficiente({ trabajos, dias: capacidadAnio.porDia, params, horasSemana, personal });
     const porId = new Map(otsPlan.map((p) => [p.id, p]));
     aplicarPrioridad(otsPlan, orden.map((t, i) => ({ ...porId.get(t.id), prioridad: i + 1 })));
   };
@@ -446,12 +448,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       </div>
 
       <div className="g-card mb-3" aria-label="Plan automático">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="g-label flex-1">④ Plan día por día y confirmar</div>
-          {ordenado && <button type="button" onClick={() => setOrdenado(false)} className="g-btn g-btn-secondary">Ocultar</button>}
-        </div>
+        <div className="g-label mb-2">④ Plan y confirmar</div>
         <EstadoGuardado guardado={guardado} faltaMigracion={faltaMigracion} empleados={datos.empleados} />
-        <div className="text-[13px] text-gypi-dim mb-2">Gypi reparte solo las OT tildadas, en el orden del paso ②, desde hoy hasta que terminan, respetando Corte → Canteado → Mecanizado → Armado y las máquinas.</div>
+        <div className="text-[13px] text-gypi-dim mb-2">Gypi programa solo las OT tildadas, en el orden del paso ②, desde hoy hasta que terminan: en cada OT Corte → Canteado → Mecanizado → Armado, por cada máquina una OT a la vez y Armado con los armadores. Es el mismo cálculo del Gantt de Proyectos: al confirmar, ahí ves cómo quedó.</div>
         <div className="flex gap-2 flex-wrap mb-1" role="group" aria-label="Armar el plan según">
           <Chip active={base === "capacidad"} onClick={() => setBase("capacidad")}>🏭 Según capacidad de la planta</Chip>
           <Chip active={base === "objetivo"} onClick={() => setBase("objetivo")}>📅 Según fechas objetivo (SEMANA)</Chip>
@@ -462,11 +461,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
             : "Solo el horario normal: cada OT sale con la fecha en que terminaría, y se marcan las que terminan después de su semana. El orden de las OT no cambia."}
         </div>
         {plan && plan.desde && <ResumenHorizonte plan={plan} base={base} modo={modo} />}
-        {!ordenado ? (
-          <button type="button" onClick={() => setOrdenado(true)} disabled={!carga.ots.length} className="g-btn g-btn-primary w-full">Ver el plan de las OT tildadas</button>
-        ) : plan && (
+        {plan && (
           <>
-            <GanttPlan plan={plan} ots={otsPlan} hoy={hoy} marcarObjetivo={base === "objetivo"} />
             <FinDeCadaOt plan={plan} ots={otsPlan} />
             {!faltaMigracion && plan.segmentos.length > 0 && (
               <GuardarPlan cuerpo={(estado) => cuerpoPlan({ per: { tipo: "horizonte", desde: plan.desde, hasta: plan.hasta }, plan, division, ots: otsPlan, estado })}
