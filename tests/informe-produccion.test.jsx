@@ -141,3 +141,65 @@ test("🏭 Producción — guardados, informe parcial de la semana con la nota y
   assert.ok(pedidos.some((u) => u.endsWith("?id=3")));
   assert.match(screen.getByRole("region", { name: "Nota del período" }).textContent, /guardado/);
 });
+
+// ─── PDF (Tadeo, 29/10): lo mismo que el informe de la noche, hasta el momento, con gráficos ───
+
+const REPORTE_DIA = {
+  fecha: "2026-10-28", piezasHoy: 6,
+  produccion: [{ ot: "7100", cliente: "BCG", antes: 0, despues: 30, piezasHoy: 6, etapas: [{ nombre: "Corte", hoy: 6, pasaron: 6, total: 10 }] }],
+  completadas: [], etapasCerradas: [{ ot: "7200", cliente: "Ana", nombre: "Armado", que: "terminada" }],
+  instalaciones: [], atrasadas: [{ ot: "7100", cliente: "BCG", dias: 2, porcentaje: 30 }],
+};
+
+test("PDF — nota en medio círculo, partes, gráficos por OT, por proceso y desvíos, detalle y el reporte del día", async () => {
+  const { htmlInformePdf, horasPorProceso } = await import("../app/lib/informePdf.js");
+  const r = calcularInforme(DATOS);
+  const html = htmlInformePdf({ empresa: { nombre: "GI Group" }, informe: r, reporteDia: REPORTE_DIA, ahora: new Date("2026-10-28T18:30:00Z") });
+  assert.match(html, /@page \{ size: A4/);
+  assert.match(html, /Parcial: con lo que hay hasta el 28\/10\/2026 a las 15:30/);
+  assert.match(html, /aria-label="Nota 7,5 sobre 10"/);
+  assert.match(html, /stroke-dasharray="75 100"/);
+  assert.match(html, /aria-label="Partes de la nota"/);
+  assert.match(html, /aria-label="Planificado y hecho por OT"/);
+  assert.match(html, /aria-label="Horas por proceso"/);
+  assert.match(html, /aria-label="Desvío por OT"/);
+  assert.match(html, /Nota = 70 % del cumplimiento/, "cómo se calcula");
+  assert.match(html, /<h2>Detalle por OT y proceso<\/h2>/);
+  assert.match(html, /<h2>Reporte del día<\/h2>/);
+  assert.match(html, /6 piezas \(6 de 10\)/);
+  assert.match(html, /Terminada, falta la firma/);
+  assert.doesNotMatch(html, /<script/i);
+  assert.deepEqual(horasPorProceso(r.ots).map((p) => [p.nombre, p.plan, Math.round(p.hecho * 10) / 10]), [["Corte", 8, 9.6], ["Armado", 10, 8]]);
+  // Guardado de la noche, de una semana: sin reporte del día
+  const semana = htmlInformePdf({ informe: calcularInforme({ ...DATOS, periodo: periodoDe("semana", "2026-10-28") }), guardado: "2026-10-29T02:00:00Z" });
+  assert.match(semana, /Informe guardado al cerrar el día/);
+  assert.match(semana, /de la semana del 26\/10\/2026 al 1\/11\/2026/);
+  assert.doesNotMatch(semana, /Reporte del día/);
+});
+
+test("🏭 Producción — 📄 Exportar PDF abre la hoja con el reporte del día", async () => {
+  const r = calcularInforme(DATOS);
+  global.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("guardados=1")) return Response.json({ ok: true, informes: [] });
+    if (u.includes("/api/reportes/dia")) return Response.json({ ok: true, reporte: REPORTE_DIA });
+    return Response.json({ ok: true, informe: r });
+  };
+  const escrito = [];
+  const original = window.open;
+  window.open = () => ({ document: { write: (h) => escrito.push(h), close() {} }, focus() {}, print() {} });
+  try {
+    render(<InformeProduccionTab empresa={{ nombre: "GI Group" }} />);
+    await esperar();
+    assert.equal(screen.queryByRole("button", { name: "📄 Exportar PDF" }), null, "primero hay que armar el informe");
+    fireEvent.click(screen.getByRole("button", { name: /Armar informe del día/ }));
+    await esperar();
+    fireEvent.click(screen.getByRole("button", { name: "📄 Exportar PDF" }));
+    assert.equal(escrito.length, 1);
+    assert.match(escrito[0], /GI Group/);
+    assert.match(escrito[0], /Reporte del día/);
+    assert.match(escrito[0], /Planificado y hecho por OT/);
+  } finally {
+    window.open = original;
+  }
+});

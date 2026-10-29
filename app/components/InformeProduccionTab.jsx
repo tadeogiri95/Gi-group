@@ -8,6 +8,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { TIPOS_INFORME, periodoDe, explicacionNota } from "../lib/informeProduccion";
+import { imprimirInforme } from "../lib/informePdf";
 import { Chip } from "./ui";
 
 const DIA = 86400000;
@@ -134,7 +135,11 @@ export function VistaInforme({ informe: r, guardado = null }) {
   );
 }
 
-export default function InformeProduccionTab() {
+// El reporte del día (piezas, etapas, instalación, atrasadas) va en el PDF del día; si falla, el PDF sale sin esa parte
+const leerReporteDia = (fecha) => apiFetch(`/api/reportes/dia?fecha=${fecha}`)
+  .then((r) => (r.ok ? r.json() : null)).then((d) => d?.reporte || null).catch(() => null);
+
+export default function InformeProduccionTab({ empresa = null }) {
   const hoy = hoyArg();
   const [tipo, setTipo] = useState("dia");
   const [fecha, setFecha] = useState(hoy);
@@ -157,8 +162,16 @@ export default function InformeProduccionTab() {
       const r = await apiFetch(url);
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.informe) throw new Error(d.error || "No se pudo armar el informe");
-      setVer({ informe: d.informe, guardado: guardado || d.guardado || null });
+      const reporteDia = d.informe.periodo?.tipo === "dia" ? await leerReporteDia(d.informe.periodo.desde) : null;
+      setVer({ informe: d.informe, guardado: guardado || d.guardado || null, reporteDia });
       setEstado({ cargando: false, error: null });
+    } catch (e) {
+      setEstado({ cargando: false, error: e.message });
+    }
+  };
+  const exportar = () => {
+    try {
+      imprimirInforme({ empresa: empresa || {}, informe: ver.informe, reporteDia: ver.reporteDia, guardado: ver.guardado });
     } catch (e) {
       setEstado({ cargando: false, error: e.message });
     }
@@ -183,7 +196,13 @@ export default function InformeProduccionTab() {
       <div className="text-[12px] text-gypi-dim mb-3">Cada noche sale solo el del día: se guarda acá, le llega por email a administración y al celular de gerencia. La parte de las OT que llegan a su semana y los corrimientos es la de ahora.</div>
       {estado.error && <div role="alert" className="text-[13px] text-gypi-red mb-3">{estado.error}</div>}
 
-      {ver && <VistaInforme informe={ver.informe} guardado={ver.guardado} />}
+      {ver && (
+        <>
+          <button type="button" onClick={exportar} className="g-btn g-btn-secondary w-full mb-1">📄 Exportar PDF</button>
+          <div className="text-[12px] text-gypi-dim mb-3">Se abre la hoja con los gráficos: elegí "Guardar como PDF" en la ventana de imprimir.</div>
+          <VistaInforme informe={ver.informe} guardado={ver.guardado} />
+        </>
+      )}
 
       <section aria-label="Informes guardados" className="mt-4">
         <h3 className="m-0 mb-2 text-[14px] font-bold font-heading">🗂 Guardados</h3>
