@@ -8,6 +8,9 @@
 // marca "✓ Retrabajo terminado", y el Gantt las dibuja en rojo al final de la
 // barra. Las horas son como las muestra el Gantt (de máquina, o de Armado con
 // los armadores que le tocan), igual que "⏱ Faltan X h".
+// Ya terminado, sigue en rojo en la barra desde que se cargó hasta que se dio
+// por terminado; uno mal cargado se elimina (queda anulado con quién lo hizo,
+// migración 148) y no cuenta en ningún lado (Tadeo, 30/10).
 
 export const MOTIVOS_RETRABAJO = [
   { id: "pieza_mal_cortada", label: "Pieza mal cortada" },
@@ -22,6 +25,8 @@ export const MOTIVOS_RETRABAJO = [
 const IDS = new Set(MOTIVOS_RETRABAJO.map((m) => m.id));
 const ETAPAS = new Set(["corte", "canteado", "mecanizado", "armado"]);
 export const AVISO_MIGRACION_147 = "Para guardar el retrabajo falta correr la migración 147 en Supabase.";
+export const AVISO_MIGRACION_148 = "Para eliminar un retrabajo falta correr la migración 148 en Supabase.";
+const vigente = (r) => !r?.anulado_at;
 
 /** "Pieza mal cortada", o "Otros: …" con lo que se escribió. */
 export function textoMotivoRetrabajo(r) {
@@ -43,9 +48,12 @@ export function validarRetrabajo(r) {
   return null;
 }
 
-/** Al marcarlo terminado solo se puede mandar cuándo y quién. null si está bien. */
+/** Solo se marca terminado o eliminado (anulado), con cuándo y quién. null si está bien. */
 export function validarFinRetrabajo(r) {
-  if (!r || typeof r !== "object" || !r.terminado_at || Number.isNaN(Date.parse(r.terminado_at))) return "Falta cuándo se terminó";
+  if (!r || typeof r !== "object") return "Falta cuándo se terminó";
+  const fecha = (t) => typeof t === "string" && !Number.isNaN(Date.parse(t));
+  if (r.anulado_at !== undefined) return fecha(r.anulado_at) ? null : "Falta cuándo se eliminó";
+  if (!fecha(r.terminado_at)) return "Falta cuándo se terminó";
   return null;
 }
 
@@ -53,15 +61,34 @@ export function validarFinRetrabajo(r) {
 export function retrabajoPendiente(retrabajos = []) {
   const m = new Map();
   for (const r of retrabajos || []) {
-    if (r.terminado_at) continue;
+    if (r.terminado_at || !vigente(r)) continue;
     const k = `${r.ot}|${r.etapa}`;
     m.set(k, (m.get(k) || 0) + (Number(r.horas) || 0));
   }
   return m;
 }
 
+/** Retrabajos de un proceso sin eliminar (primero los sin terminar), el más viejo primero. */
+export function retrabajosDe(retrabajos = [], ot, etapa) {
+  return (retrabajos || []).filter((r) => String(r.ot) === String(ot) && r.etapa === etapa && vigente(r))
+    .sort((a, b) => !!a.terminado_at - !!b.terminado_at || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+}
+
 /** Retrabajos de un proceso sin terminar, el más viejo primero. */
 export function pendientesDe(retrabajos = [], ot, etapa) {
-  return (retrabajos || []).filter((r) => String(r.ot) === String(ot) && r.etapa === etapa && !r.terminado_at)
-    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  return retrabajosDe(retrabajos, ot, etapa).filter((r) => !r.terminado_at);
 }
+
+/** Retrabajos terminados de cada proceso: Map "OT|etapa" → [{ desde, hasta, horas }] (para la parte roja de la barra). */
+export function retrabajosHechos(retrabajos = []) {
+  const m = new Map();
+  for (const r of retrabajos || []) {
+    if (!r.terminado_at || !r.created_at || !vigente(r)) continue;
+    const k = `${r.ot}|${r.etapa}`;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push({ desde: r.created_at, hasta: r.terminado_at, horas: Number(r.horas) || 0 });
+  }
+  return m;
+}
+
+export const esVigente = vigente;

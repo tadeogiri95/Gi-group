@@ -6,7 +6,7 @@ import { test, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
-import { MOTIVOS_RETRABAJO, validarRetrabajo, retrabajoPendiente, pendientesDe, textoMotivoRetrabajo } from "../app/lib/retrabajo.js";
+import { MOTIVOS_RETRABAJO, validarRetrabajo, validarFinRetrabajo, retrabajoPendiente, pendientesDe, retrabajosDe, retrabajosHechos, textoMotivoRetrabajo } from "../app/lib/retrabajo.js";
 import { planVivo } from "../app/lib/ganttPlan.js";
 import { autorizar, prepararBodyPost, validarPatch } from "../app/lib/dataPolicy.js";
 import { calcularInforme, textoPushInforme, explicacionNota, informeVacio } from "../app/lib/informeProduccion.js";
@@ -43,13 +43,21 @@ test("retrabajoPendiente — suma lo sin terminar por OT y proceso", () => {
   const l = [
     { id: 1, ...RT, created_at: "2026-10-26T12:00:00Z" },
     { id: 2, ...RT, horas: 1.5, created_at: "2026-10-26T11:00:00Z" },
-    { id: 3, ...RT, horas: 9, terminado_at: "2026-10-26T15:00:00Z" },
+    { id: 3, ...RT, horas: 9, created_at: "2026-10-26T09:00:00Z", terminado_at: "2026-10-26T15:00:00Z" },
     { id: 4, ...RT, etapa: "armado", horas: 2 },
   ];
   const m = retrabajoPendiente(l);
   assert.equal(m.get("7100|corte"), 4.5);
   assert.equal(m.get("7100|armado"), 2);
   assert.deepEqual(pendientesDe(l, "7100", "corte").map((r) => r.id), [2, 1], "el más viejo primero, sin los terminados");
+  // Eliminado (148): no cuenta en ningún lado
+  const conAnulado = [...l, { id: 5, ...RT, horas: 50, created_at: "2026-10-26T10:00:00Z", anulado_at: "2026-10-26T13:00:00Z" },
+    { id: 6, ...RT, horas: 8, created_at: "2026-10-26T10:00:00Z", terminado_at: "2026-10-26T14:00:00Z", anulado_at: "2026-10-26T15:00:00Z" }];
+  assert.equal(retrabajoPendiente(conAnulado).get("7100|corte"), 4.5);
+  assert.deepEqual(retrabajosDe(conAnulado, "7100", "corte").map((r) => r.id), [2, 1, 3], "los terminados al final, sin los eliminados");
+  assert.deepEqual(retrabajosHechos(conAnulado).get("7100|corte").map((h) => h.horas), [9], "terminados, para la parte roja");
+  assert.equal(validarFinRetrabajo({ anulado_at: "2026-10-26T15:00:00Z" }), null);
+  assert.equal(validarFinRetrabajo({ anulado_at: "x" }), "Falta cuándo se eliminó");
 });
 
 test("planVivo — el retrabajo suma horas a un proceso completo, va al final y corre lo que sigue", () => {
@@ -128,12 +136,50 @@ test("📅 Gantt — 🔁 Retrabajo en un proceso completo: barra roja y ✓ Ter
   // Se marca terminado y la parte roja se va
   fireEvent.click(screen.getByRole("button", { name: "🔁 Corte de la OT 7100: retrabajo" }));
   dialogo = screen.getByRole("dialog", { name: "⏱ Corte de la OT 7100" });
-  assert.match(within(dialogo).getByRole("region", { name: "Retrabajo sin terminar" }).textContent, /Canto mal pegado/);
+  assert.match(within(dialogo).getByRole("region", { name: "Retrabajos del proceso" }).textContent, /Canto mal pegado/);
   fireEvent.click(within(dialogo).getByRole("button", { name: "✓ Terminado" }));
   await esperar();
   assert.equal(patches[0].path, "retrabajos_ot?id=eq.55");
   assert.ok(patches[0].body.terminado_at);
   assert.ok(!container.querySelector("[data-retrabajo]"), "ya no hay retrabajo pendiente");
+  assert.ok(container.querySelector('[data-retrabajo-hecho="corte"]'), "terminado: sigue en rojo hasta cuándo se terminó");
+  // Mal cargado: se elimina (pide confirmar) y desaparece del todo
+  fireEvent.click(screen.getByRole("button", { name: "🔁 Corte de la OT 7100: retrabajo" }));
+  dialogo = screen.getByRole("dialog", { name: "⏱ Corte de la OT 7100" });
+  assert.match(within(dialogo).getByRole("region", { name: "Retrabajos del proceso" }).textContent, /✓ terminado/);
+  assert.ok(!within(dialogo).queryByRole("button", { name: "✓ Terminado" }));
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Eliminar retrabajo de 2,5 h" }));
+  assert.match(dialogo.textContent, /¿Eliminar este retrabajo\?/);
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Sí, eliminar" }));
+  await esperar();
+  assert.equal(patches[1].path, "retrabajos_ot?id=eq.55");
+  assert.ok(patches[1].body.anulado_at);
+  assert.equal(patches[1].body.anulado_nombre, "Tadeo");
+  assert.ok(!container.querySelector("[data-retrabajo-hecho]"), "eliminado: no se dibuja");
+});
+
+test("planVivo — el retrabajo terminado queda en rojo y la barra llega hasta cuándo se terminó", () => {
+  const items = [{ ot: "A", etapa: "corte", fecha: "2026-10-26", horas: 8, orden: 0 }];
+  const base = { proyectos: new Map([["A", { ot: "A" }]]), etapasCodigo: { corte: 1 }, hoy: "2026-10-30",
+    piezas: [{ ot: "A", etapa: 1, total: 10, pasaron: 10, primer_paso: "2026-10-23T12:00:00Z", ultimo_paso: "2026-10-26T15:00:00Z" }] };
+  const sin = planVivo(items, base).get("A").procesos[0];
+  assert.equal(sin.hasta, "2026-10-26");
+  // Cargado el martes 27 a las 10 y terminado el miércoles 28 a las 12 (Argentina)
+  const q = planVivo(items, { ...base, retrabajoHecho: new Map([["A|corte", [{ desde: "2026-10-27T13:00:00Z", hasta: "2026-10-28T15:00:00Z", horas: 6 }]]]) }).get("A").procesos[0];
+  assert.equal(q.completo, true);
+  assert.equal(q.hasta, "2026-10-28", "la barra se extiende");
+  assert.equal(q.fin, 0.5);
+  assert.deepEqual(q.hechos.map((h) => [h.fecha, h.frac, h.hastaFecha, h.hastaFrac]), [["2026-10-27", 0.25, "2026-10-28", 0.5]]);
+});
+
+test("informe — un retrabajo eliminado no cuenta", () => {
+  const r = calcularInforme({ periodo: { tipo: "dia", desde: "2026-10-26", hasta: "2026-10-26" }, etapasCodigo: { corte: 1 },
+    retrabajos: [{ ...RT, created_at: "2026-10-26T15:00:00Z", anulado_at: "2026-10-26T16:00:00Z" }] });
+  assert.equal(r.retrabajos.length, 0);
+  assert.equal(r.resumen.horasRetrabajo, 0);
+  const sql = readFileSync(new URL("../supabase/migrations/148_retrabajos_anular.sql", import.meta.url), "utf8");
+  assert.match(sql, /do \$mig\$/);
+  assert.match(sql, /anulado_at/);
 });
 
 test("informe — horas de retrabajo del período por OT y proceso, sin cambiar la nota; PDF, email y aviso", () => {

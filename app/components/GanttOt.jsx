@@ -38,7 +38,8 @@
 // Retrabajo (Tadeo, 30/10; migración 147): las horas de retrabajo sin
 // terminar se suman al final del proceso y esa parte de la barra va en rojo;
 // se cargan y se marcan terminadas tocando la barra (también en un proceso
-// completo).
+// completo). Ya terminado sigue en rojo, de cuándo se cargó a cuándo se
+// terminó; uno mal cargado se elimina (148).
 // "🔄 Refrescar" (Tadeo, 30/10) vuelve a leer las OT, el avance, el plan y los
 // ajustes sin salir de la pantalla completa.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -56,7 +57,7 @@ import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { fmtH } from "../lib/cargaPlanta";
 import { faltanManual, atrasosSinMotivo } from "../lib/ajustesTiempo";
-import { retrabajoPendiente, pendientesDe } from "../lib/retrabajo";
+import { retrabajoPendiente, retrabajosDe, retrabajosHechos } from "../lib/retrabajo";
 import AjusteTiempo from "./AjusteTiempo";
 
 const FILA = 26; // alto del renglón de cada proceso
@@ -160,12 +161,15 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   const [retrabajos, setRetrabajos] = useState([]);
   useEffect(() => {
     let vivo = true;
-    sbGetAll("retrabajos_ot?select=id,ot,etapa,horas,motivo,detalle,creado_nombre,created_at,terminado_at&order=created_at.asc", { maxFilas: 20000 })
+    // Sin la 148 no hay anulado_at: se lee sin esa columna
+    const leer = (extra) => sbGetAll(`retrabajos_ot?select=id,ot,etapa,horas,motivo,detalle,creado_nombre,created_at,terminado_at${extra}&order=created_at.asc`, { maxFilas: 20000 });
+    leer(",anulado_at").catch(() => leer(""))
       .then((r) => { if (vivo) setRetrabajos(r.data || []); })
       .catch(() => { if (vivo) setRetrabajos([]); });
     return () => { vivo = false; };
   }, [vuelta]);
   const retrabajo = useMemo(() => retrabajoPendiente(retrabajos), [retrabajos]);
+  const retrabajoHecho = useMemo(() => retrabajosHechos(retrabajos), [retrabajos]);
   const [editar, setEditar] = useState(null);
   const abiertasPorOt = useMemo(() => new Map(proyectos.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p])), [proyectos]);
   const previa = useMemo(() => {
@@ -194,8 +198,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       params, horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
       personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes),
     };
-    return (m) => planVivo(items, { ...opciones, manual: m, retrabajo });
-  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo]);
+    return (m) => planVivo(items, { ...opciones, manual: m, retrabajo, retrabajoHecho });
+  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho]);
 
   const { renglones, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
     if (!vivoCon) return { renglones: null };
@@ -224,7 +228,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     if (grande) cerrarGrande();
     // Un proceso completo solo puede tener retrabajo
     setEditar({ ot: r.ot, etapa: q.etapa, nombre: q.nombre, horas: q.horas, pendiente: q.pendiente ?? null, diasCorrido: q.diasCorrido || 0, soloMotivo,
-      completo: !!q.completo || (q.pendiente ?? 1) <= 0, retrabajos: pendientesDe(retrabajos, r.ot, q.etapa) });
+      completo: !!q.completo || (q.pendiente ?? 1) <= 0, retrabajos: retrabajosDe(retrabajos, r.ot, q.etapa) });
   };
   // Cuántos días queda corrido el proceso con esas horas
   const diasCon = (ot, etapa) => (horas) => {
@@ -403,6 +407,12 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       <>
         {corte > x0 && <rect data-pasado={etapa} x={x0} y={BARRA.y + dy} width={corte - x0} height={BARRA.alto} rx={3} className={COLOR[etapa]} fillOpacity={0.4} />}
         {x1 > corte && <rect x={corte} y={BARRA.y + dy} width={Math.max(3, x1 - corte)} height={BARRA.alto} rx={3} className={COLOR[etapa]} />}
+        {(q.hechos || []).map((h, i) => {
+          // Retrabajo terminado: de cuándo se cargó a cuándo se terminó
+          const a = h.fecha < desde ? 0 : Math.min(finVentana, x(h.fecha) + h.frac * px);
+          const b = h.hastaFecha < desde ? 0 : Math.min(finVentana, x(h.hastaFecha) + h.hastaFrac * px);
+          return b >= a ? <rect key={i} data-retrabajo-hecho={etapa} x={a} y={BARRA.y + dy} width={Math.max(3, b - a)} height={BARRA.alto} rx={3} className="fill-gypi-red" fillOpacity={0.6} /> : null;
+        })}
         {q.retrabajo > 0 && q.retrabajoDesde && (() => {
           // Retrabajo (147): la parte final de la barra, en rojo
           const xr = q.retrabajoDesde < desde ? 0 : Math.min(finVentana, x(q.retrabajoDesde) + (q.retrabajoIni || 0) * px);

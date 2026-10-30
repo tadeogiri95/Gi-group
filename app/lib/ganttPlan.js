@@ -181,6 +181,11 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
 }
 
 const diaArg = (ts) => hoyArg(new Date(ts));
+// Día en Argentina y qué parte de la jornada de 8 a 16 había pasado (para dibujar dentro del día)
+const puntoDia = (ts) => {
+  const h = (Date.parse(ts) - 3 * 3600000) % 86400000 / 3600000;
+  return { fecha: diaArg(ts), frac: Math.max(0, Math.min(1, (h - 8) / 8)) };
+};
 const maxFecha = (fs) => fs.reduce((m, f) => (f > m ? f : m), fs[0]);
 const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
 
@@ -199,14 +204,16 @@ const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
  * diasCorrido, finConfirmado, objetivo; y por proceso: tarde, diasTarde,
  * corrido, diasCorrido, hastaConfirmado, empezo, manual (lo manda un
  * "⏱ Faltan X h", migración 145), retrabajo (horas de retrabajo sin terminar,
- * migración 147: van al final del proceso, aunque estuviera completo) y
- * retrabajoDesde/retrabajoIni (dónde empieza la parte roja de la barra).
+ * migración 147: van al final del proceso, aunque estuviera completo),
+ * retrabajoDesde/retrabajoIni (dónde empieza la parte roja de la barra) y
+ * hechos (retrabajos terminados: de cuándo se cargó a cuándo se terminó,
+ * siguen en rojo; la barra llega hasta ahí).
  * @param {{ manual?: Map<string, { horas: number, pendiente: number|null }>, proyectos?: Map<string, object>, etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], modulos?: Map<string, number>, terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: object|null, diasExtra?: Set<string>|null }} opciones
  *   proyectos: las OT por número (fecha objetivo y datos para las horas)
  */
 export function planVivo(items = [], opciones) {
   const { proyectos = new Map(), etapasCodigo = {}, avance = [], piezas = [], modulos = new Map(), terminadas = new Set(), hoy,
-    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null, retrabajo = null } = opciones;
+    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null, retrabajo = null, retrabajoHecho = null } = opciones;
   const confirmado = procesosPlan(items, { etapasCodigo, avance, piezas, terminadas, hoy, params, horasSemana, personal, diasExtra });
   const out = new Map();
   if (!confirmado.size) return out;
@@ -291,6 +298,12 @@ export function planVivo(items = [], opciones) {
         const r0 = cal.punto(Math.max(tr.t0, tr.t1 - Math.min(rt, tr.t1 - tr.t0)), false);
         q.retrabajoDesde = r0.fecha;
         q.retrabajoIni = r0.frac;
+      }
+      // Retrabajos terminados: en rojo desde que se cargaron hasta que se terminaron
+      q.hechos = (retrabajoHecho?.get(`${o.ot}|${id}`) || []).map((h) => ({ ...puntoDia(h.desde), hastaFecha: diaArg(h.hasta), hastaFrac: puntoDia(h.hasta).frac, horas: h.horas }));
+      if (!tr && q.hechos.length) {
+        const ult = q.hechos.reduce((a, h) => (h.hastaFecha > a.hastaFecha || (h.hastaFecha === a.hastaFecha && h.hastaFrac > a.hastaFrac) ? h : a));
+        if (ult.hastaFecha > q.hasta || (ult.hastaFecha === q.hasta && ult.hastaFrac > q.fin)) { q.hasta = ult.hastaFecha; q.fin = ult.hastaFrac; }
       }
       q.pendiente = resta;
       q.hecho = Math.round((1 - resta) * 100);
