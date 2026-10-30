@@ -3,7 +3,8 @@
 // producción, parte 41; migración 138). Lo que gerencia confirmó en
 // Proyectos → Planificación: qué OT y qué etapa toca cada día. Solo lectura;
 // lo ven el Tablero y el Inicio de los operarios de la división del plan.
-// Sin plan confirmado (o sin la migración) no muestra nada.
+// Sin plan confirmado (o sin la migración) no muestra nada. En el Tablero
+// (con las OT) cada OT lleva su cliente y descripción (Tadeo, 30/10).
 import { useContext, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { AuthContext } from "../context/AuthContext";
@@ -19,12 +20,13 @@ const nombreDia = (iso) => {
   return `${d.charAt(0).toUpperCase()}${d.slice(1)} ${fechaCorta(iso)}`;
 };
 
-export default function PlanSemana({ divisiones, divisionUsuario = null }) {
+export default function PlanSemana({ divisiones, divisionUsuario = null, proyectos = null }) {
   const auth = useContext(AuthContext);
   const divs = divisiones || auth?.divisiones || [];
   const [plan, setPlan] = useState(null);
   const [verTodo, setVerTodo] = useState(false);
   const hoy = hoyArg();
+  const porOt = new Map((proyectos || []).map((p) => [String(p.ot), p]));
 
   useEffect(() => {
     let vivo = true;
@@ -61,6 +63,11 @@ export default function PlanSemana({ divisiones, divisionUsuario = null }) {
               {d.ots.map((o) => (
                 <li key={o.ot} className="text-[14px]">
                   <span className="font-mono font-bold">{o.ot}</span>{" "}
+                  {(() => {
+                    const p = porOt.get(String(o.ot));
+                    const texto = [p?.cliente, p?.descripcion].filter(Boolean).join(" · ");
+                    return texto ? <span className="text-gypi-text mr-2" data-proyecto>{texto}</span> : null;
+                  })()}
                   {o.etapas.map((e) => (
                     <span key={e.id} className="inline-flex items-center gap-1 mr-2 text-gypi-dim">
                       <span aria-hidden="true" className={`inline-block w-2.5 h-2.5 rounded-sm ${COLOR_ETAPA[e.id]}`} />{e.nombre} {fmtH(e.horas)}

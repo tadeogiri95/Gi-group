@@ -35,6 +35,8 @@
 // primero otra. Ese orden queda solo en el plan confirmado; si después se
 // reordena por OT o se confirma desde Planificación, todos los procesos
 // vuelven al orden de la OT.
+// "🔄 Refrescar" (Tadeo, 30/10) vuelve a leer las OT, el avance, el plan y los
+// ajustes sin salir de la pantalla completa.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
@@ -94,15 +96,24 @@ const alertasTexto = (q) => [q.tarde ? `termina ${dias(q.diasTarde)} después de
  * @param {object} [props.cfgValor]  parámetros de la planificación (qué etapa es cada proceso)
  * @param {object[]} [props.empleados]  personal operativo con su grilla de horarios (junto con planes)
  */
-export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null }) {
+export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null, onRefrescar = null }) {
   const hoy = hoyArg();
+  // Cada "🔄 Refrescar" suma una vuelta y se vuelve a leer todo
+  const [vuelta, setVuelta] = useState(0);
+  const [refrescando, setRefrescando] = useState(false);
+  const refrescar = async () => {
+    setRefrescando(true);
+    try { await onRefrescar?.(); } catch { /* queda lo que había */ }
+    setVuelta((v) => v + 1);
+    setRefrescando(false);
+  };
   const [leido, setLeido] = useState(null);
   useEffect(() => {
     if (planesProp !== undefined) return;
     let vivo = true;
     leerPlanesConfirmados().then((d) => { if (vivo) setLeido(d); });
     return () => { vivo = false; };
-  }, [planesProp]);
+  }, [planesProp, vuelta]);
   // El plan que se acaba de confirmar desde acá reemplaza al leído
   const [confirmadoAca, setConfirmadoAca] = useState(null);
   const planesLeidos = planesProp !== undefined ? planesProp : leido?.planes;
@@ -128,7 +139,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       .then((r) => { if (vivo) setModulos(modulosPorOt(r.data)); })
       .catch(() => { if (vivo) setModulos(new Map()); });
     return () => { vivo = false; };
-  }, [empresaId]);
+  }, [empresaId, vuelta]);
   // "⏱ Faltan X h" y motivos de los corrimientos (145): gerencia, supervisores y administración
   const [ajustes, setAjustes] = useState(null);
   useEffect(() => {
@@ -138,7 +149,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       .then((r) => { if (vivo) setAjustes(r.data); })
       .catch(() => { if (vivo) setAjustes([]); }); // sin la migración 145, como si no hubiera
     return () => { vivo = false; };
-  }, [puedeAjustar]);
+  }, [puedeAjustar, vuelta]);
   const manual = useMemo(() => faltanManual(ajustes || []), [ajustes]);
   const [editar, setEditar] = useState(null);
   const abiertasPorOt = useMemo(() => new Map(proyectos.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p])), [proyectos]);
@@ -465,8 +476,12 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
             <Chip key={h.id} active={horizonte === h.id} onClick={() => cambiarHorizonte(h.id)}>{h.label}</Chip>
           ))}
         </div>
+        <button type="button" onClick={refrescar} disabled={refrescando}
+          className="ml-auto min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer disabled:opacity-60">
+          {refrescando ? "Refrescando…" : "🔄 Refrescar"}
+        </button>
         <button type="button" onClick={grande ? cerrarGrande : () => { setGrande(true); pedirPantallaCompleta(); }}
-          className="ml-auto min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer">
+          className="min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer">
           {grande ? "✕ Salir" : "⛶ Pantalla completa"}
         </button>
       </div>
