@@ -10,14 +10,15 @@
 //                subió el checkeo manual (historial de la 146) o la etapa
 //                firmada como terminada (avance_etapas, cuenta como 100 %)
 //   al final     % del proceso al terminar el período
-//   desvío       hecho − planificado (puntos)
+//   desvío       hecho − planificado (en % del proceso)
 // Lo que se hizo sin estar en el plan del período va marcado fuera del plan
 // (Tadeo, 29/10) y no entra en el cumplimiento.
-// Nota del 1 al 10, de a 0,5 (Tadeo, 29/10):
-//   70 % cumplimiento: lo hecho de lo planificado, en horas, sin pasarse de lo
-//        planificado en cada proceso (adelantar otro no compensa)
-//   20 % OT que llegan a su semana (plan vivo a la hora del informe)
-//   10 % procesos sin corrimiento del plan confirmado (ídem)
+// Nota: parte de 0 y suma puntos, de a 0,1 (Tadeo, 29/10 y 30/10):
+//   hasta 7 cumplimiento: lo hecho de lo planificado, en horas, sin pasarse de
+//          lo planificado en cada proceso (adelantar otro no compensa)
+//   hasta 2 OT que llegan a su semana (plan vivo a la hora del informe)
+//   hasta 1 procesos sin corrimiento del plan confirmado (ídem)
+// Nunca menos de 1 (la columna nota de la 146 va de 1 a 10).
 import { ETAPAS_PLAN } from "./planificacion";
 import { hoyArg } from "./dates";
 
@@ -26,7 +27,7 @@ export const TIPOS_INFORME = [
   { id: "semana", label: "Semana" },
   { id: "mes", label: "Mes" },
 ];
-export const PESOS_NOTA = { cumplimiento: 0.7, enSemana: 0.2, sinCorrimiento: 0.1 };
+export const PUNTOS_NOTA = { cumplimiento: 7, enSemana: 2, sinCorrimiento: 1 };
 export const AVISO_MIGRACION_146 = "Para guardar los informes falta correr la migración 146 en Supabase.";
 
 const DIA = 86400000;
@@ -49,11 +50,20 @@ export function periodoDe(tipo, fecha) {
   return { tipo: "dia", desde: fecha, hasta: fecha };
 }
 
-/** Nota del 1 al 10, de a 0,5, con los tres números de 0 a 100. null si no había nada planificado. */
-export function notaInforme({ cumplimiento, enSemana, sinCorrimiento }) {
-  if (cumplimiento == null) return null;
-  const x = PESOS_NOTA.cumplimiento * cumplimiento + PESOS_NOTA.enSemana * (enSemana ?? 100) + PESOS_NOTA.sinCorrimiento * (sinCorrimiento ?? 100);
-  return Math.max(1, Math.min(10, Math.round((x / 10) * 2) / 2));
+/** Los puntos de cada parte de la nota (de a 0,1), con su % y su máximo. */
+export function partesNota({ cumplimiento, enSemana, sinCorrimiento } = {}) {
+  return [
+    { id: "cumplimiento", label: "Cumplimiento de lo planificado", pct: cumplimiento ?? null },
+    { id: "enSemana", label: "OT que llegan a su semana", pct: enSemana ?? 100 },
+    { id: "sinCorrimiento", label: "Procesos sin correrse del plan", pct: sinCorrimiento ?? 100 },
+  ].map((p) => ({ ...p, max: PUNTOS_NOTA[p.id], puntos: p.pct == null ? null : redondear((Math.max(0, Math.min(100, p.pct)) / 100) * PUNTOS_NOTA[p.id]) }));
+}
+
+/** Nota: la suma de los puntos de las tres partes (de 0 a 100 cada una), de a 0,1. null si no había nada planificado. */
+export function notaInforme(s) {
+  if (s?.cumplimiento == null) return null;
+  const suma = partesNota(s).reduce((t, p) => t + p.puntos, 0);
+  return Math.max(1, Math.min(10, redondear(suma)));
 }
 
 /**
@@ -204,10 +214,10 @@ export function explicacionNota(r) {
   const s = r?.resumen || {};
   if (r?.nota == null) return "No había nada planificado en el período: no hay nota.";
   const fmt = (n) => String(redondear(n)).replace(".", ",");
-  return `Nota = 70 % del cumplimiento (${fmt(s.cumplimiento)} %: horas hechas de las planificadas, sin contar lo que se adelantó de más en cada proceso) `
-    + `+ 20 % de las OT que llegan a su semana (${fmt(s.enSemana)} %) `
-    + `+ 10 % de los procesos que no se corrieron del plan confirmado (${fmt(s.sinCorrimiento)} %). `
-    + `Da ${fmt((PESOS_NOTA.cumplimiento * s.cumplimiento + PESOS_NOTA.enSemana * s.enSemana + PESOS_NOTA.sinCorrimiento * s.sinCorrimiento) / 10)} sobre 10 y se redondea de a 0,5: ${fmt(r.nota)}.`
+  const [c, e, n] = partesNota(s);
+  return `La nota parte de 0 y suma puntos: cumplimiento ${fmt(c.pct)} % (horas hechas de las planificadas) da ${fmt(c.puntos)} de ${c.max}; `
+    + `OT que llegan a su semana ${fmt(e.pct)} % da ${fmt(e.puntos)} de ${e.max}; `
+    + `procesos sin correrse del plan ${fmt(n.pct)} % da ${fmt(n.puntos)} de ${n.max}. Total: ${fmt(r.nota)} de 10.`
     + (s.procesosFueraDelPlan ? " Lo que se hizo fuera del plan no cuenta en el cumplimiento." : "");
 }
 
