@@ -19,8 +19,11 @@
 //   hasta 2 OT que llegan a su semana (plan vivo a la hora del informe)
 //   hasta 1 procesos sin corrimiento del plan confirmado (ídem)
 // Nunca menos de 1 (la columna nota de la 146 va de 1 a 10).
+// Retrabajo (Tadeo, 30/10; migración 147): las horas cargadas en el período,
+// por OT y proceso con su motivo. No cambia el % ni la nota.
 import { ETAPAS_PLAN } from "./planificacion";
 import { hoyArg } from "./dates";
+import { textoMotivoRetrabajo } from "./retrabajo";
 
 export const TIPOS_INFORME = [
   { id: "dia", label: "Día" },
@@ -77,8 +80,9 @@ export function notaInforme(s) {
  *   avance: avance_etapas (ot, etapa = código, estado, terminada_at, aprobada_at)
  *   proyectos: por OT; su avance_manual cubre a las OT sin historial (antes de la 146)
  *   vivo: planVivo de ahora (para las OT que llegan a su semana y los corrimientos)
+ *   retrabajos: retrabajos_ot (migración 147); cuentan los cargados en el período
  */
-export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas = [], pasos = [], manual = [], avance = [], proyectos = new Map(), vivo = new Map() }) {
+export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas = [], pasos = [], manual = [], avance = [], proyectos = new Map(), vivo = new Map(), retrabajos = [] }) {
   const { desde, hasta } = periodo;
   const k = (ot, etapa) => `${ot}|${etapa}`;
   // Horas del plan por proceso: todas y las del período
@@ -190,9 +194,19 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
   const enSemana = abiertas.length ? redondear((abiertas.filter((r) => !r.tarde).length / abiertas.length) * 100) : 100;
   const sinCorrimiento = procesosAbiertos.length ? redondear((procesosAbiertos.filter((q) => !(q.diasCorrido > 0)).length / procesosAbiertos.length) * 100) : 100;
   const nota = notaInforme({ cumplimiento, enSemana, sinCorrimiento });
+  // Retrabajo (147): las horas cargadas en el período, por proceso; no cambia la nota
+  const rt = (retrabajos || []).filter((x) => { const d = diaDe(x.created_at); return d >= desde && d <= hasta && Number(x.horas) > 0; })
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    .map((x) => ({ ot: String(x.ot), etapa: x.etapa, nombre: ETAPAS_PLAN.find((e) => e.id === x.etapa)?.nombre || x.etapa,
+      horas: redondear(Number(x.horas)), motivo: textoMotivoRetrabajo(x), terminado: !!x.terminado_at, cliente: proyectos?.get?.(String(x.ot))?.cliente || null }));
+  for (const o of ots) {
+    const h = rt.filter((x) => x.ot === o.ot).reduce((t, x) => t + x.horas, 0);
+    if (h > 0) o.retrabajo = redondear(h);
+  }
   return {
     periodo: { tipo: periodo.tipo, desde, hasta },
     ots,
+    retrabajos: rt,
     resumen: {
       ots: ots.length, procesosPlanificados: todos.filter((q) => q.planificado > 0).length,
       procesosCumplidos: todos.filter((q) => q.planificado > 0 && q.hecho >= q.planificado).length,
@@ -201,6 +215,7 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
       otsFueraDelPlan: ots.filter((o) => o.fueraDelPlan).length,
       procesosFueraDelPlan: todos.filter((q) => q.fueraDelPlan).length,
       procesosAbiertos: procesosAbiertos.length, procesosCorridos: procesosAbiertos.filter((q) => q.diasCorrido > 0).length,
+      horasRetrabajo: redondear(rt.reduce((t, x) => t + x.horas, 0)), otsConRetrabajo: new Set(rt.map((x) => x.ot)).size,
     },
     nota,
   };
@@ -215,17 +230,19 @@ export function explicacionNota(r) {
   return `La nota parte de 0 y suma puntos: cumplimiento ${fmt(c.pct)} % (avance hecho de lo planificado) da ${fmt(c.puntos)} de ${c.max}; `
     + `OT que llegan a su semana ${fmt(e.pct)} % da ${fmt(e.puntos)} de ${e.max}; `
     + `procesos sin correrse del plan ${fmt(n.pct)} % da ${fmt(n.puntos)} de ${n.max}. Total: ${fmt(r.nota)} de 10.`
-    + (s.procesosFueraDelPlan ? " Lo que se hizo fuera del plan no cuenta en el cumplimiento." : "");
+    + (s.procesosFueraDelPlan ? " Lo que se hizo fuera del plan no cuenta en el cumplimiento." : "")
+    + (s.horasRetrabajo ? " El retrabajo no cambia la nota." : "");
 }
 
 /** Texto corto para el aviso al celular. */
 export function textoPushInforme(r) {
   const s = r.resumen;
-  const fuera = s.otsFueraDelPlan ? ` · ${s.otsFueraDelPlan} fuera del plan` : "";
+  const fuera = (s.otsFueraDelPlan ? ` · ${s.otsFueraDelPlan} fuera del plan` : "")
+    + (s.horasRetrabajo ? ` · 🔁 ${String(s.horasRetrabajo).replace(".", ",")} h de retrabajo` : "");
   return r.nota == null
     ? `${s.ots} OT trabajadas${fuera}. No había nada planificado.`
     : `Nota ${String(r.nota).replace(".", ",")} · cumplimiento ${String(s.cumplimiento).replace(".", ",")} % · ${s.ots} OT trabajadas${fuera}`;
 }
 
 /** El informe no tiene nada que contar (ni planificado ni hecho). */
-export const informeVacio = (r) => !r?.ots?.length;
+export const informeVacio = (r) => !r?.ots?.length && !r?.retrabajos?.length;

@@ -55,7 +55,8 @@ export function svgPorOt(ots) {
   const lista = otsDeLaHoja(ots);
   if (!lista.length) return "";
   const alto = 16, x0 = 92, ancho = 170;
-  const marcas = (o) => (o.fueraDelPlan ? "🆕 fuera del plan" : [o.tarde && (o.diasTarde > 0 ? `⚠ ${o.diasTarde} d tarde` : "⚠ tarde"), o.diasCorrido > 0 && `↪ ${o.diasCorrido} d`].filter(Boolean).join(" "));
+  const marcas = (o) => [o.fueraDelPlan ? "🆕 fuera del plan" : [o.tarde && (o.diasTarde > 0 ? `⚠ ${o.diasTarde} d tarde` : "⚠ tarde"), o.diasCorrido > 0 && `↪ ${o.diasCorrido} d`].filter(Boolean).join(" "),
+    o.retrabajo > 0 && `🔁 ${coma(o.retrabajo)} h`].filter(Boolean).join(" ");
   return `<svg class="porot" viewBox="0 0 400 ${lista.length * alto + 12}" role="img" aria-label="Planificado y hecho por OT">
     ${[0, 50, 100].map((p) => `<line x1="${x0 + (ancho * p) / 100}" x2="${x0 + (ancho * p) / 100}" y1="0" y2="${lista.length * alto}" class="grilla" />
       <text x="${x0 + (ancho * p) / 100}" y="${lista.length * alto + 9}" text-anchor="middle" class="t-eje">${p} %</text>`).join("")}
@@ -108,6 +109,20 @@ export function puntosClave(r, reporteDia = null) {
   if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
   const tarde = r.ots.filter((o) => o.tarde);
   if (s.otsTarde) puntos.push({ tono: "mal", texto: `${s.otsTarde} de ${s.otsAbiertas} OT terminan después de su semana${tarde.length ? `: ${lista(tarde)}` : ""}.` });
+  const rt = r.retrabajos || [];
+  if (rt.length) {
+    // Retrabajo (147): por OT y proceso, con el motivo
+    const grupos = new Map();
+    for (const x of rt) {
+      const k = `${x.ot}|${x.etapa}`;
+      const g = grupos.get(k) || { ot: x.ot, nombre: x.nombre, horas: 0, motivos: new Set() };
+      g.horas += x.horas;
+      g.motivos.add(x.motivo);
+      grupos.set(k, g);
+    }
+    const gs = [...grupos.values()].sort((a, b) => b.horas - a.horas);
+    puntos.push({ tono: "mal", texto: `🔁 Retrabajo: ${coma(s.horasRetrabajo)} h. ${gs.slice(0, 3).map((g) => `OT ${g.ot} ${g.nombre} ${coma(g.horas)} h (${[...g.motivos].join(", ")})`).join("; ")}${gs.length > 3 ? ` y ${gs.length - 3} más` : ""}.` });
+  }
   if (s.procesosCorridos) puntos.push({ tono: "medio", texto: `${s.procesosCorridos} de ${s.procesosAbiertos} procesos se corrieron del plan confirmado.` });
   if (reporteDia) {
     const d = reporteDia;

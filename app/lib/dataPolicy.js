@@ -19,6 +19,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { validarAjuste } from "./ajustesTiempo";
+import { validarRetrabajo, validarFinRetrabajo } from "./retrabajo";
 
 export const ROLES_GESTION = new Set(["gerencial", "administrativo"]);
 
@@ -94,6 +95,8 @@ export const POLICY = {
   // Cambios de tiempo de los procesos de una OT, con motivo (145): los cargan
   // gerencia, supervisores y administración; no se editan ni se borran.
   ajustes_tiempo_ot:            { GET: "gestion", POST: "gestion" },
+  // Retrabajo de un proceso (147): lo cargan los mismos; solo se marca terminado
+  retrabajos_ot:                { GET: "gestion", POST: "gestion", PATCH: "gestion" },
   // Informe de producción (146): los guarda el cron; historial del checkeo manual
   informes_produccion:          { GET: "gestion" },
   avance_manual_historial:      { GET: "gestion", POST: "gestion" },
@@ -173,6 +176,12 @@ export function prepararBodyPost(tabla, body, sesion, ownFilter) {
     if (!ok) return { status: 400, error: "Historial de avance inválido" };
     out.creado_por = sesion?.empleado_id || null; // quién lo cargó sale de la sesión
   }
+  if (tabla === "retrabajos_ot") {
+    const err = validarRetrabajo(out);
+    if (err) return { status: 400, error: err };
+    out.creado_por = sesion?.empleado_id || null; // quién lo cargó sale de la sesión
+    out.detalle = typeof out.detalle === "string" && out.detalle.trim() ? out.detalle.trim() : null;
+  }
   if (tabla === "ajustes_tiempo_ot") {
     const err = validarAjuste(out);
     if (err) return { status: 400, error: err };
@@ -241,6 +250,11 @@ export function validarPatch(tabla, body, sesion) {
       && Object.entries(etapas).length <= 50
       && Object.entries(etapas).every(([c, n]) => /^\d{1,4}$/.test(c) && typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100);
     if (!ok) return { status: 400, error: "Avance manual inválido" };
+  }
+  // Retrabajo (147): solo se marca terminado
+  if (tabla === "retrabajos_ot") {
+    const err = validarFinRetrabajo(body);
+    if (err) return { status: 400, error: err };
   }
   if (tabla === "empresa" && sesion?.rol !== "gerencial") {
     const prohibido = CAMPOS_EMPRESA_SOLO_DUENO.find((c) => body && body[c] !== undefined);

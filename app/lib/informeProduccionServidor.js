@@ -11,6 +11,7 @@ import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, horasSemanaD
 import { modulosPorOt } from "./cargaPlanta";
 import { piezasConManual } from "./avanceManual";
 import { faltanManual } from "./ajustesTiempo";
+import { retrabajoPendiente } from "./retrabajo";
 import { hoyArg } from "./dates";
 
 const vacio = () => ({ data: [] });
@@ -31,7 +32,7 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
   const desdeTs = encodeURIComponent(new Date(Date.parse(`${periodo.desde}T00:00:00-03:00`)).toISOString());
   const limite = hoyArg(new Date(Date.now() - 183 * DIA));
   const operarios = (extra) => sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo${extra}`, { ...opts, maxFilas: 5000 });
-  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, pasos, avance, mods, ajustes, manual] = await Promise.all([
+  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, pasos, avance, mods, ajustes, manual, retrabajos] = await Promise.all([
     // También las cerradas: una OT que se terminó en el período cuenta
     sbGetAll(`proyectos?empresa_id=eq.${e}&select=*&order=id.asc`, { ...opts, maxFilas: 20000 }),
     sbGetAll(`etapas?empresa_id=eq.${e}&activa=eq.true&order=orden.asc`, opts).catch(vacio),
@@ -47,6 +48,8 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     // Sin la 145 no hay "Faltan X h"; sin la 146 no hay historial del checkeo manual
     sbGetAll(`ajustes_tiempo_ot?empresa_id=eq.${e}&tipo=eq.faltan&select=ot,etapa,tipo,horas,pendiente,created_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
     sbGetAll(`avance_manual_historial?empresa_id=eq.${e}&select=ot,etapa,pct,created_at&order=created_at.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
+    // Sin la 147 no hay retrabajo
+    sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
   ]);
   const ids = planes.data.map((p) => p.id);
   const items = ids.length
@@ -65,13 +68,13 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     terminadas: new Set(proyectos.data.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
     params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(emp.data, divisiones.data, cfgValor),
     personal: personalGantt(emp.data, divisiones.data, cfgValor), diasExtra: diasExtraVigentes(conItems),
-    manual: faltanManual(ajustes.data),
+    manual: faltanManual(ajustes.data), retrabajo: retrabajoPendiente(retrabajos.data),
   });
   for (const [ot] of vivo) if (!abiertas.has(ot)) vivo.delete(ot);
   return calcularInforme({
     periodo, items: vigentes, etapasCodigo,
     piezas: piezas.data, pasos: pasos.data, manual: manual.data, avance: avance.data,
-    proyectos: todas, vivo,
+    proyectos: todas, vivo, retrabajos: retrabajos.data,
   });
 }
 
