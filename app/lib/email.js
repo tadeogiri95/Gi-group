@@ -663,7 +663,7 @@ export function htmlInformeProduccion({ empresa, slug, informe: r, explicacion }
   const MAX = 20;
   const ots = r.ots.slice(0, MAX).map((o) => `
     <p style="margin:12px 0 2px;font-size:14px;font-weight:700">OT ${escapeHtml(o.ot)}${o.cliente ? ` <span style="color:#9B9B9B;font-weight:400">· ${escapeHtml(o.cliente)}</span>` : ""}
-      <span style="float:right;color:${o.desvio < 0 ? COLOR_ROJO : COLOR_VERDE}">${o.desvio > 0 ? "+" : ""}${coma(o.desvio)} %</span></p>
+      <span style="float:right;color:${!o.fueraDelPlan && o.hecho < o.planificado ? COLOR_ROJO : COLOR_VERDE}">${o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</span></p>
     <p style="margin:0;font-size:12px;color:#777">Planificado ${coma(o.planificado)} % · hecho ${coma(o.hecho)} % · total ${coma(o.alFinal)} %${o.diasCorrido > 0 ? ` · se corrió ${o.diasCorrido} d` : ""}${o.tarde ? ` · ${o.diasTarde} d después de su semana` : ""}${o.fueraDelPlan ? " · 🆕 fuera del plan" : ""}</p>
     ${barra(o.planificado, false)}${barra(o.hecho, true)}
     <p style="margin:2px 0 0;font-size:12px;color:#777">${o.procesos.map((q) => `${escapeHtml(q.nombre)}: ${coma(q.hecho)} de ${coma(q.planificado)} % (va ${coma(q.alFinal)} %)`).join(" · ")}</p>`).join("")

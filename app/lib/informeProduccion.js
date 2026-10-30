@@ -5,17 +5,17 @@
 //
 // Por cada OT trabajada o planificada en el período, y por cada proceso:
 //   planificado  % del proceso que el plan confirmado ponía en el período
-//                (horas del plan en esos días / horas del proceso en el plan)
+//                (la parte del proceso que el plan repartió en esos días)
 //   hecho        % que se avanzó en el período: piezas escaneadas, o lo que
 //                subió el checkeo manual (historial de la 146) o la etapa
 //                firmada como terminada (avance_etapas, cuenta como 100 %)
 //   al final     % del proceso al terminar el período
-//   desvío       hecho − planificado (en % del proceso)
+// Todo en % de avance, sin horas (Tadeo, 30/10).
 // Lo que se hizo sin estar en el plan del período va marcado fuera del plan
 // (Tadeo, 29/10) y no entra en el cumplimiento.
 // Nota: parte de 0 y suma puntos, de a 0,1 (Tadeo, 29/10 y 30/10):
-//   hasta 7 cumplimiento: lo hecho de lo planificado, en horas, sin pasarse de
-//          lo planificado en cada proceso (adelantar otro no compensa)
+//   hasta 7 cumplimiento: % avanzado de lo planificado, sumando los procesos,
+//          sin pasarse de lo planificado en cada uno (adelantar otro no compensa)
 //   hasta 2 OT que llegan a su semana (plan vivo a la hora del informe)
 //   hasta 1 procesos sin corrimiento del plan confirmado (ídem)
 // Nunca menos de 1 (la columna nota de la 146 va de 1 a 10).
@@ -155,9 +155,9 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
       if (m) { hecho = Math.max(0, m.fin - m.antes); alFinal = m.fin; fuente = "manual"; }
     }
     hecho = Math.min(100, hecho);
-    const q = { etapa, nombre: ETAPAS_PLAN.find((x) => x.id === etapa)?.nombre || etapa, horas: redondear(h.total), horasPlan: redondear(h.periodo),
+    const q = { etapa, nombre: ETAPAS_PLAN.find((x) => x.id === etapa)?.nombre || etapa,
       planificado: redondear(planificado), hecho: redondear(hecho), alFinal: redondear(Math.min(100, alFinal)), desvio: redondear(hecho - planificado),
-      fuente, fueraDelPlan: h.periodo <= 0 && hecho > 0, horasHechas: (hecho / 100) * h.total };
+      fuente, enPlan: h.total > 0, fueraDelPlan: !(planificado > 0) && hecho > 0 };
     if (!porOt.has(ot)) porOt.set(ot, []);
     porOt.get(ot).push(q);
   }
@@ -165,40 +165,37 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
   const orden = new Map(ETAPAS_PLAN.map((e, i) => [e.id, i]));
   const ots = [...porOt].map(([ot, procesos]) => {
     procesos.sort((a, b) => orden.get(a.etapa) - orden.get(b.etapa));
-    // De toda la OT: pesado por las horas de cada proceso (o parejo si el plan no tiene horas)
-    const pesos = procesos.map((q) => q.horas || 0);
-    const total = pesos.reduce((t, x) => t + x, 0);
-    const prom = (campo) => redondear(total > 0 ? procesos.reduce((t, q, i) => t + q[campo] * pesos[i], 0) / total : procesos.reduce((t, q) => t + q[campo], 0) / procesos.length);
+    // De toda la OT: el promedio de sus procesos
+    const prom = (campo) => redondear(procesos.reduce((t, q) => t + q[campo], 0) / procesos.length);
     const v = vivo?.get?.(ot);
     const p = proyectos?.get?.(ot);
     // Fuera del plan: se avanzó sin nada planificado para la OT en el período
-    const sinPlan = procesos.every((q) => !(q.horasPlan > 0));
+    const sinPlan = procesos.every((q) => !(q.planificado > 0));
     return {
       ot, cliente: p?.cliente || null, descripcion: p?.descripcion || null, procesos,
       planificado: prom("planificado"), hecho: prom("hecho"), alFinal: prom("alFinal"), desvio: redondear(prom("hecho") - prom("planificado")),
       diasCorrido: v?.diasCorrido || 0, diasTarde: v?.diasTarde || 0, tarde: !!v?.tarde,
-      fueraDelPlan: sinPlan && procesos.some((q) => q.hecho > 0), enOtroPlan: sinPlan && procesos.some((q) => q.horas > 0),
+      fueraDelPlan: sinPlan && procesos.some((q) => q.hecho > 0), enOtroPlan: sinPlan && procesos.some((q) => q.enPlan),
     };
   }).sort((a, b) => a.desvio - b.desvio || a.ot.localeCompare(b.ot, "es", { numeric: true }));
 
-  // Cumplimiento: horas hechas de las planificadas, sin pasarse en cada proceso
+  // Cumplimiento: % avanzado de lo planificado, sumando los procesos, sin pasarse en cada uno
   const todos = ots.flatMap((o) => o.procesos);
-  const horasPlan = todos.reduce((t, q) => t + q.horasPlan, 0);
-  const horasCumplidas = todos.reduce((t, q) => t + Math.min(q.horasHechas, q.horasPlan), 0);
-  const horasHechas = todos.reduce((t, q) => t + q.horasHechas, 0);
-  const cumplimiento = horasPlan > 0 ? redondear(Math.min(100, (horasCumplidas / horasPlan) * 100)) : null;
+  const plan = todos.reduce((t, q) => t + q.planificado, 0);
+  const cumplido = todos.reduce((t, q) => t + Math.min(q.hecho, q.planificado), 0);
+  const cumplimiento = plan > 0 ? redondear(Math.min(100, (cumplido / plan) * 100)) : null;
   // Plan vivo de ahora: OT que llegan a su semana y procesos sin correrse
   const abiertas = [...(vivo?.values?.() || [])].filter((r) => (r.procesos || []).some((q) => !q.completo));
   const procesosAbiertos = abiertas.flatMap((r) => r.procesos.filter((q) => !q.completo));
   const enSemana = abiertas.length ? redondear((abiertas.filter((r) => !r.tarde).length / abiertas.length) * 100) : 100;
   const sinCorrimiento = procesosAbiertos.length ? redondear((procesosAbiertos.filter((q) => !(q.diasCorrido > 0)).length / procesosAbiertos.length) * 100) : 100;
   const nota = notaInforme({ cumplimiento, enSemana, sinCorrimiento });
-  for (const q of todos) delete q.horasHechas;
   return {
     periodo: { tipo: periodo.tipo, desde, hasta },
     ots,
     resumen: {
-      ots: ots.length, horasPlan: redondear(horasPlan), horasHechas: redondear(horasHechas),
+      ots: ots.length, procesosPlanificados: todos.filter((q) => q.planificado > 0).length,
+      procesosCumplidos: todos.filter((q) => q.planificado > 0 && q.hecho >= q.planificado).length,
       cumplimiento, enSemana, sinCorrimiento,
       otsAbiertas: abiertas.length, otsTarde: abiertas.filter((r) => r.tarde).length,
       otsFueraDelPlan: ots.filter((o) => o.fueraDelPlan).length,
@@ -215,7 +212,7 @@ export function explicacionNota(r) {
   if (r?.nota == null) return "No había nada planificado en el período: no hay nota.";
   const fmt = (n) => String(redondear(n)).replace(".", ",");
   const [c, e, n] = partesNota(s);
-  return `La nota parte de 0 y suma puntos: cumplimiento ${fmt(c.pct)} % (horas hechas de las planificadas) da ${fmt(c.puntos)} de ${c.max}; `
+  return `La nota parte de 0 y suma puntos: cumplimiento ${fmt(c.pct)} % (avance hecho de lo planificado) da ${fmt(c.puntos)} de ${c.max}; `
     + `OT que llegan a su semana ${fmt(e.pct)} % da ${fmt(e.puntos)} de ${e.max}; `
     + `procesos sin correrse del plan ${fmt(n.pct)} % da ${fmt(n.puntos)} de ${n.max}. Total: ${fmt(r.nota)} de 10.`
     + (s.procesosFueraDelPlan ? " Lo que se hizo fuera del plan no cuenta en el cumplimiento." : "");

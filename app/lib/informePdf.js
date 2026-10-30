@@ -50,11 +50,11 @@ export function otsDeLaHoja(ots) {
   return [...plan, ...ots.filter((o) => o.fueraDelPlan).slice(0, MAX_OT - plan.length)];
 }
 
-/** Planificado (gris) y hecho (naranja) por OT, con el desvío y las marcas a la derecha. */
+/** Planificado (gris) y hecho (naranja) por OT, con "hecho de planificado" y las marcas a la derecha. */
 export function svgPorOt(ots) {
   const lista = otsDeLaHoja(ots);
   if (!lista.length) return "";
-  const alto = 16, x0 = 92, ancho = 190;
+  const alto = 16, x0 = 92, ancho = 170;
   const marcas = (o) => (o.fueraDelPlan ? "🆕 fuera del plan" : [o.tarde && (o.diasTarde > 0 ? `⚠ ${o.diasTarde} d tarde` : "⚠ tarde"), o.diasCorrido > 0 && `↪ ${o.diasCorrido} d`].filter(Boolean).join(" "));
   return `<svg class="porot" viewBox="0 0 400 ${lista.length * alto + 12}" role="img" aria-label="Planificado y hecho por OT">
     ${[0, 50, 100].map((p) => `<line x1="${x0 + (ancho * p) / 100}" x2="${x0 + (ancho * p) / 100}" y1="0" y2="${lista.length * alto}" class="grilla" />
@@ -64,35 +64,32 @@ export function svgPorOt(ots) {
       <text x="0" y="${i * alto + 14}" class="t-cli">${esc(String(o.cliente || "").slice(0, 24))}</text>
       <rect x="${x0}" y="${i * alto + 1}" width="${(ancho * lim(o.planificado)) / 100}" height="5.5" rx="2" class="b-plan" />
       <rect x="${x0}" y="${i * alto + 7.5}" width="${(ancho * lim(o.hecho)) / 100}" height="5.5" rx="2" class="b-hecho" />
-      <text x="${x0 + ancho + 34}" y="${i * alto + 10}" text-anchor="end" class="t-num ${o.fueraDelPlan ? "" : o.desvio < 0 ? "mal" : "bien"}">${o.fueraDelPlan ? `+${coma(o.hecho)} %` : `${o.desvio > 0 ? "+" : ""}${coma(o.desvio)}`}</text>
-      <text x="${x0 + ancho + 40}" y="${i * alto + 10}" class="t-marca">${esc(marcas(o))}</text>`).join("")}
+      <text x="${x0 + ancho + 54}" y="${i * alto + 10}" text-anchor="end" class="t-num ${o.fueraDelPlan ? "" : o.hecho < o.planificado ? "mal" : "bien"}">${o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</text>
+      <text x="${x0 + ancho + 60}" y="${i * alto + 10}" class="t-marca">${esc(marcas(o))}</text>`).join("")}
   </svg>`;
 }
 
-/** Horas planificadas y hechas de cada proceso, sumando las OT. */
-export function horasPorProceso(ots) {
+/** Avance de cada proceso: promedio de lo planificado y de lo hecho en las OT que lo tienen. */
+export function avancePorProceso(ots) {
   return ETAPAS_PLAN.map(({ id, nombre }) => {
     const qs = ots.flatMap((o) => o.procesos.filter((q) => q.etapa === id));
-    return {
-      id, nombre,
-      plan: qs.reduce((t, q) => t + (Number(q.horasPlan) || 0), 0),
-      hecho: qs.reduce((t, q) => t + ((Number(q.hecho) || 0) / 100) * (Number(q.horas) || 0), 0),
-    };
-  }).filter((p) => p.plan > 0 || p.hecho > 0);
+    const prom = (campo) => (qs.length ? qs.reduce((t, q) => t + (Number(q[campo]) || 0), 0) / qs.length : 0);
+    return { id, nombre, ots: qs.length, plan: prom("planificado"), hecho: prom("hecho") };
+  }).filter((p) => p.ots > 0);
 }
 
-/** Barras por proceso: horas planificadas y hechas. */
+/** Barras por proceso: % de avance planificado y hecho (promedio de sus OT). */
 function svgPorProceso(ots) {
-  const procs = horasPorProceso(ots);
+  const procs = avancePorProceso(ots);
   if (!procs.length) return "";
-  const max = Math.max(1, ...procs.flatMap((p) => [p.plan, p.hecho]));
   const alto = 22, x0 = 58, ancho = 82;
-  return `<svg class="porproc" viewBox="0 0 200 ${procs.length * alto}" role="img" aria-label="Horas por proceso">
+  return `<svg class="porproc" viewBox="0 0 200 ${procs.length * alto}" role="img" aria-label="Avance por proceso">
     ${procs.map((p, i) => `
-      <text x="0" y="${i * alto + 13}" class="t-label">${esc(p.nombre)}</text>
-      <rect x="${x0}" y="${i * alto + 3}" width="${(ancho * p.plan) / max}" height="7" rx="2" class="b-plan" />
-      <rect x="${x0}" y="${i * alto + 11}" width="${(ancho * p.hecho) / max}" height="7" rx="2" class="b-hecho" />
-      <text x="200" y="${i * alto + 14}" text-anchor="end" class="t-num">${coma(p.hecho)} / ${coma(p.plan)} h</text>`).join("")}
+      <text x="0" y="${i * alto + 9}" class="t-label">${esc(p.nombre)}</text>
+      <text x="0" y="${i * alto + 17}" class="t-cli">${p.ots} OT</text>
+      <rect x="${x0}" y="${i * alto + 3}" width="${(ancho * lim(p.plan)) / 100}" height="7" rx="2" class="b-plan" />
+      <rect x="${x0}" y="${i * alto + 11}" width="${(ancho * lim(p.hecho)) / 100}" height="7" rx="2" class="b-hecho" />
+      <text x="200" y="${i * alto + 14}" text-anchor="end" class="t-num ${p.hecho < p.plan ? "mal" : "bien"}">${coma(p.hecho)} de ${coma(p.plan)} %</text>`).join("")}
   </svg>`;
 }
 
@@ -102,15 +99,11 @@ const lista = (ots, n = 3) => ots.slice(0, n).map((o) => `OT ${o.ot}`).join(", "
 export function puntosClave(r, reporteDia = null) {
   const s = r.resumen;
   const puntos = [];
-  if (s.horasPlan > 0) {
-    // Lo cumplido no cuenta lo adelantado de más en cada proceso; eso va aparte
-    const cumplidas = (s.cumplimiento / 100) * s.horasPlan;
-    const extra = s.horasHechas - cumplidas >= 0.5 ? ` En total se hicieron ${coma(s.horasHechas)} h.` : "";
-    puntos.push({ tono: tono(r.nota), texto: `Cumplimiento ${coma(s.cumplimiento)} %: se cumplieron ${coma(cumplidas)} h de las ${coma(s.horasPlan)} h planificadas.${extra}` });
-  }
+  const hayPlan = s.cumplimiento != null;
+  if (hayPlan) puntos.push({ tono: tono(r.nota), texto: `Cumplimiento ${coma(s.cumplimiento)} %: se hizo ese % del avance planificado. ${s.procesosCumplidos} de ${s.procesosPlanificados} procesos planificados llegaron a lo previsto.` });
   else puntos.push({ tono: "neutro", texto: "No había nada planificado en el período." });
   const atrasadas = r.ots.filter((o) => !o.fueraDelPlan && o.desvio <= -10);
-  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `OT ${o.ot} (${coma(o.desvio)} %)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
+  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Más atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `OT ${o.ot} (hizo ${coma(o.hecho)} % de ${coma(o.planificado)} %)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
   const fuera = r.ots.filter((o) => o.fueraDelPlan);
   if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
   const tarde = r.ots.filter((o) => o.tarde);
@@ -120,7 +113,7 @@ export function puntosClave(r, reporteDia = null) {
     const d = reporteDia;
     puntos.push({ tono: "neutro", texto: `Hoy: ${d.piezasHoy} pieza${d.piezasHoy === 1 ? "" : "s"} escaneada${d.piezasHoy === 1 ? "" : "s"}, ${d.etapasCerradas.length} etapa${d.etapasCerradas.length === 1 ? "" : "s"} terminada${d.etapasCerradas.length === 1 ? "" : "s"} o firmada${d.etapasCerradas.length === 1 ? "" : "s"}, ${d.instalaciones.length} reporte${d.instalaciones.length === 1 ? "" : "s"} de instalación${d.atrasadas.length ? `, ${d.atrasadas.length} OT atrasada${d.atrasadas.length === 1 ? "" : "s"} contra la entrega` : ""}.` });
   }
-  if (puntos.length === 1 && s.horasPlan > 0 && !atrasadas.length) puntos.push({ tono: "bien", texto: "Ninguna OT atrasada contra el plan." });
+  if (puntos.length === 1 && hayPlan && !atrasadas.length) puntos.push({ tono: "bien", texto: "Ninguna OT atrasada contra el plan." });
   return puntos;
 }
 
@@ -197,15 +190,15 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
   <div class="dos">
     <div><h2>Lo importante</h2>
       <ul class="puntos">${puntosClave(r, reporteDia).map((x) => `<li class="${x.tono}">${esc(x.texto)}</li>`).join("")}</ul></div>
-    ${r.ots.length ? `<div><h2>Horas por proceso</h2><div class="leyenda"><i class="l-plan"></i>planificadas <i class="l-hecho"></i>hechas</div>${svgPorProceso(r.ots)}</div>` : ""}
+    ${r.ots.length ? `<div><h2>Avance por proceso</h2><div class="leyenda"><i class="l-plan"></i>planificado <i class="l-hecho"></i>hecho · promedio de sus OT</div>${svgPorProceso(r.ots)}</div>` : ""}
   </div>
 
   ${r.ots.length ? `
   <h2>Por OT · ${r.ots.length}</h2>
-  <div class="leyenda"><i class="l-plan"></i>planificado <i class="l-hecho"></i>hecho · número: hecho − planificado, en % · primero las más atrasadas${resto > 0 ? ` · las otras ${resto} están en Gypi` : ""}</div>
+  <div class="leyenda"><i class="l-plan"></i>planificado <i class="l-hecho"></i>hecho · a la derecha: % hecho de lo planificado · primero las más atrasadas${resto > 0 ? ` · las otras ${resto} están en Gypi` : ""}</div>
   ${svgPorOt(r.ots)}` : ""}
 
-  <div class="pie">Planificado: horas del plan confirmado en el período. Hecho: piezas escaneadas, checkeo manual o etapa firmada. El detalle por proceso de cada OT está en Gypi, en Reportes → Producción.</div>
+  <div class="pie">Planificado: % de avance de cada proceso que el plan confirmado ponía en el período. Hecho: piezas escaneadas, checkeo manual o etapa firmada. El detalle por proceso de cada OT está en Gypi, en Reportes → Producción.</div>
 </div></body></html>`;
 }
 
