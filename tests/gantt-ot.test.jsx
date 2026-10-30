@@ -6,7 +6,7 @@ import "./helpers/domSetup.js";
 import { test, before, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { rangoSemana, numeroSemana, inicioDeSemana, semanaPlanilla, fechaObjetivo, textoObjetivo, normalizarModo } from "../app/lib/semanaObjetivo.js";
 import { filasGantt, escalaGantt, primerEscaneoPorOt, ventanaGantt, enVentana, escalaAncho } from "../app/lib/gantt.js";
@@ -250,6 +250,20 @@ test("📅 Gantt — lo elegido ocupa todo el ancho, fila de fechas fija y panta
   assert.ok(screen.getByRole("dialog", { name: "Gantt de OT en pantalla completa" }));
   fireEvent.click(screen.getByRole("button", { name: "✕ Salir" }));
   assert.equal(screen.queryByRole("dialog"), null);
+});
+
+test("📅 Gantt — 🔄 Refrescar vuelve a leer todo sin salir de la pantalla completa", async () => {
+  const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+  let veces = 0;
+  render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }}
+    onRefrescar={async () => { veces++; }} />);
+  fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "🔄 Refrescar" })); for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r)); });
+  assert.equal(veces, 1);
+  assert.ok(screen.getByRole("dialog", { name: "Gantt de OT en pantalla completa" }), "sigue en pantalla completa");
+  assert.ok(screen.getByRole("button", { name: "🔄 Refrescar" }), "listo para otra vez");
+  const pantalla = readFileSync(new URL("../app/proyectos_screen.jsx", import.meta.url), "utf8");
+  assert.match(pantalla, /onRefrescar=\{refrescarOts\}/);
 });
 
 test("la app instalada se puede girar (el Gantt se ve mejor apaisado)", () => {

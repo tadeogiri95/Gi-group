@@ -221,6 +221,14 @@ export default function ProyectosScreen({ empresaId }) {
     setLoading(false);
   }, [empresaId]);
 
+  // 🔄 Refrescar del Gantt: vuelve a leer las OT sin el cartel de "cargando"
+  // (así no se cierra la pantalla completa); el avance se relee solo
+  const refrescarOts = useCallback(async () => {
+    if (!empresaId) return;
+    const { data } = await sbGetAll(`proyectos?empresa_id=eq.${empresaId}&order=created_at.desc,id.desc`, { maxFilas: 20000 });
+    setProyectos(data || []);
+  }, [empresaId]);
+
   const cargarSyncCfg = useCallback(async () => {
     if (!empresaId) return;
     try {
@@ -632,6 +640,7 @@ export default function ProyectosScreen({ empresaId }) {
           puedeAjustar={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"}
           usuarioNombre={usuario?.nombre || null}
           onVerDetalle={setDetalle}
+          onRefrescar={refrescarOts}
         />
       ) : vista === "tablero" && !loading ? (
         <TableroOt
