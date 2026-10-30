@@ -5,7 +5,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
-import { periodoDe, notaInforme, calcularInforme, explicacionNota, textoPushInforme, informeVacio } from "../app/lib/informeProduccion.js";
+import { periodoDe, notaInforme, partesNota, calcularInforme, explicacionNota, textoPushInforme, informeVacio } from "../app/lib/informeProduccion.js";
 import { autorizar, prepararBodyPost } from "../app/lib/dataPolicy.js";
 
 const { default: InformeProduccionTab, VistaInforme } = await import("../app/components/InformeProduccionTab.jsx");
@@ -21,12 +21,13 @@ test("periodoDe — el día, su semana de lunes a domingo y su mes", () => {
   assert.deepEqual(periodoDe("mes", "2026-02-10"), { tipo: "mes", desde: "2026-02-01", hasta: "2026-02-28" });
 });
 
-test("nota — 70 % cumplimiento + 20 % OT en su semana + 10 % sin corrimiento, de a 0,5", () => {
+test("nota — parte de 0 y suma hasta 7 por cumplimiento, 2 por OT en su semana y 1 sin corrimiento, de a 0,1", () => {
   assert.equal(notaInforme({ cumplimiento: 100, enSemana: 100, sinCorrimiento: 100 }), 10);
-  // 0,7·80 + 0,2·50 + 0,1·100 = 76 → 7,6 → 7,5
-  assert.equal(notaInforme({ cumplimiento: 80, enSemana: 50, sinCorrimiento: 100 }), 7.5);
-  // 0,7·85 + 0,2·100 + 0,1·80 = 87,5 → 8,75 → 9
-  assert.equal(notaInforme({ cumplimiento: 85, enSemana: 100, sinCorrimiento: 80 }), 9);
+  // 5,6 + 1 + 1 = 7,6
+  assert.equal(notaInforme({ cumplimiento: 80, enSemana: 50, sinCorrimiento: 100 }), 7.6);
+  // 6 (5,95) + 2 + 0,8 = 8,8
+  assert.equal(notaInforme({ cumplimiento: 85, enSemana: 100, sinCorrimiento: 80 }), 8.8);
+  assert.deepEqual(partesNota({ cumplimiento: 85, enSemana: 100, sinCorrimiento: 80 }).map((p) => [p.puntos, p.max]), [[6, 7], [2, 2], [0.8, 1]]);
   assert.equal(notaInforme({ cumplimiento: 0, enSemana: 0, sinCorrimiento: 0 }), 1, "nunca menos de 1");
   assert.equal(notaInforme({ cumplimiento: null, enSemana: 100, sinCorrimiento: 100 }), null, "sin nada planificado no hay nota");
 });
@@ -79,10 +80,10 @@ test("calcularInforme — planificado, hecho y desvío por proceso y por OT; cum
   assert.equal(r.resumen.cumplimiento, 88.9);
   assert.equal(r.resumen.enSemana, 50);
   assert.equal(r.resumen.sinCorrimiento, 50);
-  // 0,7·88,9 + 0,2·50 + 0,1·50 = 77,2 → 7,72 → 7,5
-  assert.equal(r.nota, 7.5);
-  assert.match(explicacionNota(r), /70 % del cumplimiento \(88,9 %.*20 % de las OT que llegan a su semana \(50 %\).*10 % de los procesos que no se corrieron del plan confirmado \(50 %\).*Da 7,7 sobre 10 y se redondea de a 0,5: 7,5/);
-  assert.equal(textoPushInforme(r), "Nota 7,5 · cumplimiento 88,9 % · 2 OT trabajadas");
+  // 6,2 (de 7) + 1 (de 2) + 0,5 (de 1) = 7,7
+  assert.equal(r.nota, 7.7);
+  assert.match(explicacionNota(r), /parte de 0 y suma puntos: cumplimiento 88,9 % .* da 6,2 de 7; OT que llegan a su semana 50 % da 1 de 2; procesos sin correrse del plan 50 % da 0,5 de 1\. Total: 7,7 de 10\./);
+  assert.equal(textoPushInforme(r), "Nota 7,7 · cumplimiento 88,9 % · 2 OT trabajadas");
   assert.equal(informeVacio(r), false);
   assert.equal(informeVacio(calcularInforme({ ...DATOS, periodo: periodoDe("dia", "2026-10-20") })), true);
 });
@@ -132,9 +133,10 @@ test("calcularInforme — avance a mano con piezas sin escanear, sin historial, 
 test("email — nota, cómo se calcula y gráficos por OT en barras", () => {
   const r = calcularInforme(DATOS);
   const html = htmlInformeProduccion({ empresa: "GI", slug: "gi", informe: r, explicacion: explicacionNota(r) });
-  assert.match(html, /7,5 \/ 10/);
+  assert.match(html, /7,7 \/ 10/);
+  assert.match(html, /Cumplimiento de lo planificado \(88,9 %\).*\+6,2 de 7/s);
   assert.match(html, /OT 7200/);
-  assert.match(html, /Nota = 70 %/);
+  assert.match(html, /La nota parte de 0 y suma puntos/);
   assert.match(html, /gris: planificado · naranja: hecho/);
 });
 
@@ -171,8 +173,9 @@ test("🏭 Producción — guardados, informe parcial de la semana con la nota y
   await esperar();
   assert.ok(pedidos.some((u) => /tipo=semana&fecha=\d{4}-\d{2}-\d{2}/.test(u)));
   const nota = screen.getByRole("region", { name: "Nota del período" });
-  assert.match(nota.textContent, /6,5sobre 10/, "en la semana había más planificado");
-  assert.match(nota.textContent, /Nota = 70 %/, "explica cómo se calcula");
+  assert.match(nota.textContent, /6,3sobre 10/, "en la semana había más planificado");
+  assert.match(nota.textContent, /La nota parte de 0 y suma puntos/, "explica cómo se calcula");
+  assert.match(nota.textContent, /Cumplimiento de lo planificado · [\d,]+ %\+[\d,]+ de 7/);
   assert.equal(within(nota).getAllByRole("meter").length, 3);
   const ot = document.querySelector('[data-ot="7200"]');
   fireEvent.click(within(ot).getByRole("button"));
@@ -199,15 +202,16 @@ test("PDF — una hoja: nota en medio círculo, partes, lo importante, por proce
   const html = htmlInformePdf({ empresa: { nombre: "GI Group" }, informe: r, reporteDia: REPORTE_DIA, ahora: new Date("2026-10-28T18:30:00Z") });
   assert.match(html, /@page \{ size: A4/);
   assert.match(html, /Parcial: con lo que hay hasta el 28\/10\/2026 a las 15:30/);
-  assert.match(html, /aria-label="Nota 7,5 sobre 10"/);
-  assert.match(html, /stroke-dasharray="75 100"/);
+  assert.match(html, /aria-label="Nota 7,7 sobre 10"/);
+  assert.match(html, /stroke-dasharray="77 100"/);
   assert.match(html, /aria-label="Partes de la nota"/);
   assert.match(html, /aria-label="Planificado y hecho por OT"/);
   assert.match(html, /aria-label="Horas por proceso"/);
-  assert.match(html, /Nota = 70 % cumplimiento \+ 20 % OT en su semana/, "cómo se calcula, en una línea");
+  assert.match(html, /La nota parte de 0 y suma: hasta 7 puntos por cumplimiento, hasta 2 por OT en su semana y hasta 1/, "cómo se calcula, en una línea");
+  assert.match(html, /\+6,2 de 7/);
   assert.match(html, /<h2>Lo importante<\/h2>/);
   assert.match(html, /Cumplimiento 88,9 %: se cumplieron 16 h de las 18 h planificadas\. En total se hicieron 17,6 h\./);
-  assert.match(html, /Atrasadas contra el plan: OT 7200 \(-10 pts\)\./);
+  assert.match(html, /Atrasadas contra el plan: OT 7200 \(-10 %\)\./);
   assert.match(html, /1 de 2 OT terminan después de su semana: OT 7100\./);
   assert.match(html, /Hoy: 6 piezas escaneadas, 1 etapa terminada o firmada, 0 reportes de instalación, 1 OT atrasada contra la entrega\./);
   assert.doesNotMatch(html, /Detalle por OT y proceso/, "el detalle queda en Gypi");

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
-import { TIPOS_INFORME, periodoDe, explicacionNota } from "../lib/informeProduccion";
+import { TIPOS_INFORME, periodoDe, explicacionNota, partesNota } from "../lib/informeProduccion";
 import { imprimirInforme } from "../lib/informePdf";
 import { Chip } from "./ui";
 
@@ -44,16 +44,15 @@ function Tira({ pct, color = "fill-gypi-amber" }) {
 
 const tonoNota = (n) => (n == null ? "text-gypi-text" : n >= 7 ? "text-gypi-green" : n >= 5 ? "text-gypi-amber-ink" : "text-gypi-red");
 
-/** Barra de 0 a 100 con su número (un medidor por cada parte de la nota). */
-function Medidor({ label, valor, peso }) {
-  const v = valor == null ? 0 : Math.max(0, Math.min(100, valor));
+/** Los puntos que suma una parte de la nota (de 0 a su máximo), con su %. */
+function Medidor({ parte: p }) {
   return (
     <div className="mb-2">
       <div className="flex items-baseline gap-2 text-[13px]">
-        <span className="flex-1 min-w-0">{label} <span className="text-gypi-dim">· pesa {peso}</span></span>
-        <span className="font-bold">{valor == null ? "—" : `${coma(valor)} %`}</span>
+        <span className="flex-1 min-w-0">{p.label} <span className="text-gypi-dim">· {p.pct == null ? "—" : `${coma(p.pct)} %`}</span></span>
+        <span className="font-bold">+{p.puntos == null ? "—" : coma(p.puntos)} de {p.max}</span>
       </div>
-      <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={v}><Tira pct={v} /></div>
+      <div role="meter" aria-label={p.label} aria-valuemin={0} aria-valuemax={p.max} aria-valuenow={p.puntos || 0}><Tira pct={((p.puntos || 0) / p.max) * 100} /></div>
     </div>
   );
 }
@@ -79,9 +78,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
           {r.nota != null && <div className="text-[15px] text-gypi-dim">sobre 10</div>}
           <div className="flex-1 text-right text-[13px] text-gypi-dim">{textoPeriodo(r.periodo)}{guardado ? " · guardado" : " · parcial"}</div>
         </div>
-        <Medidor label="Cumplimiento de lo planificado" valor={s.cumplimiento} peso="70 %" />
-        <Medidor label="OT que llegan a su semana" valor={s.enSemana} peso="20 %" />
-        <Medidor label="Procesos sin correrse del plan" valor={s.sinCorrimiento} peso="10 %" />
+        {partesNota(s).map((p) => <Medidor key={p.id} parte={p} />)}
         <p className="text-[12px] text-gypi-dim m-0 mt-2" data-explicacion>{explicacionNota(r)}</p>
       </section>
 
@@ -105,7 +102,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
                 <div className="flex items-baseline gap-2">
                   <span className="font-mono text-[14px] font-bold">OT {o.ot}</span>
                   <span className="flex-1 min-w-0 text-[12px] text-gypi-dim truncate">{[o.cliente, o.descripcion].filter(Boolean).join(" · ")}</span>
-                  <span className={`text-[13px] font-bold ${o.desvio < 0 ? "text-gypi-red" : "text-gypi-green"}`} data-desvio>{o.desvio > 0 ? "+" : ""}{coma(o.desvio)} pts</span>
+                  <span className={`text-[13px] font-bold ${o.desvio < 0 ? "text-gypi-red" : "text-gypi-green"}`} data-desvio>{o.desvio > 0 ? "+" : ""}{coma(o.desvio)} %</span>
                 </div>
                 <BarrasOt o={o} />
                 <div className="text-[12px] text-gypi-dim">

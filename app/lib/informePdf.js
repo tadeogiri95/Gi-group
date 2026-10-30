@@ -6,7 +6,7 @@
 // día (piezas escaneadas, etapas terminadas o firmadas, instalación y OT
 // atrasadas).
 import { ETAPAS_PLAN } from "./planificacion";
-import { PESOS_NOTA } from "./informeProduccion";
+import { partesNota } from "./informeProduccion";
 import { fechaCorta } from "./ot";
 
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
@@ -30,20 +30,16 @@ export function svgNota(nota) {
   </svg>`;
 }
 
-/** Barras horizontales de las tres partes de la nota. */
+/** Barras de los puntos que suma cada parte de la nota (hasta 7, 2 y 1). */
 function svgPartes(s) {
-  const filas = [
-    ["Cumplimiento de lo planificado", s.cumplimiento, PESOS_NOTA.cumplimiento],
-    ["OT que llegan a su semana", s.enSemana, PESOS_NOTA.enSemana],
-    ["Procesos sin correrse del plan", s.sinCorrimiento, PESOS_NOTA.sinCorrimiento],
-  ];
-  const alto = 22;
+  const filas = partesNota(s);
+  const alto = 22, ancho = 330;
   return `<svg class="partes" viewBox="0 0 400 ${filas.length * alto}" role="img" aria-label="Partes de la nota">
-    ${filas.map(([label, v, peso], i) => `
-      <text x="0" y="${i * alto + 9}" class="t-label">${esc(label)} · pesa ${Math.round(peso * 100)} %</text>
-      <rect x="0" y="${i * alto + 12}" width="340" height="7" rx="3.5" class="b-fondo" />
-      <rect x="0" y="${i * alto + 12}" width="${3.4 * lim(v)}" height="7" rx="3.5" class="b-hecho" />
-      <text x="400" y="${i * alto + 19}" text-anchor="end" class="t-num">${v == null ? "—" : `${coma(v)} %`}</text>`).join("")}
+    ${filas.map((p, i) => `
+      <text x="0" y="${i * alto + 9}" class="t-label">${esc(p.label)}: ${p.pct == null ? "—" : `${coma(p.pct)} %`}</text>
+      <rect x="0" y="${i * alto + 12}" width="${(ancho * p.max) / 7}" height="7" rx="3.5" class="b-fondo" />
+      <rect x="0" y="${i * alto + 12}" width="${(ancho * (p.puntos || 0)) / 7}" height="7" rx="3.5" class="b-hecho" />
+      <text x="400" y="${i * alto + 19}" text-anchor="end" class="t-num">+${p.puntos == null ? "—" : coma(p.puntos)} de ${p.max}</text>`).join("")}
   </svg>`;
 }
 
@@ -114,7 +110,7 @@ export function puntosClave(r, reporteDia = null) {
   }
   else puntos.push({ tono: "neutro", texto: "No había nada planificado en el período." });
   const atrasadas = r.ots.filter((o) => !o.fueraDelPlan && o.desvio <= -10);
-  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `OT ${o.ot} (${coma(o.desvio)} pts)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
+  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `OT ${o.ot} (${coma(o.desvio)} %)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
   const fuera = r.ots.filter((o) => o.fueraDelPlan);
   if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
   const tarde = r.ots.filter((o) => o.tarde);
@@ -194,7 +190,7 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
     ${svgNota(r.nota)}
     <div>
       ${svgPartes(s)}
-      <div class="formula">Nota = 70 % cumplimiento + 20 % OT en su semana + 10 % procesos sin correrse, redondeada de a 0,5.</div>
+      <div class="formula">La nota parte de 0 y suma: hasta 7 puntos por cumplimiento, hasta 2 por OT en su semana y hasta 1 por procesos sin correrse.</div>
     </div>
   </div>
 
@@ -206,7 +202,7 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
 
   ${r.ots.length ? `
   <h2>Por OT · ${r.ots.length}</h2>
-  <div class="leyenda"><i class="l-plan"></i>planificado <i class="l-hecho"></i>hecho · número: desvío en puntos · primero las más atrasadas${resto > 0 ? ` · las otras ${resto} están en Gypi` : ""}</div>
+  <div class="leyenda"><i class="l-plan"></i>planificado <i class="l-hecho"></i>hecho · número: hecho − planificado, en % · primero las más atrasadas${resto > 0 ? ` · las otras ${resto} están en Gypi` : ""}</div>
   ${svgPorOt(r.ots)}` : ""}
 
   <div class="pie">Planificado: horas del plan confirmado en el período. Hecho: piezas escaneadas, checkeo manual o etapa firmada. El detalle por proceso de cada OT está en Gypi, en Reportes → Producción.</div>
