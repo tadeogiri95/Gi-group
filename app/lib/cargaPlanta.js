@@ -70,6 +70,25 @@ function turno(empleado, fecha) {
 }
 
 /**
+ * Horario de la planta en cada día de la semana (0 = domingo): desde que entra
+ * el primero hasta que sale el último, en minutos desde las 0; null si nadie
+ * trabaja ese día. Para el lead time en horas de trabajo (Tadeo, 30/10).
+ */
+export function ventanasSemana(operarios) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const fecha = `2026-01-${String(4 + i).padStart(2, "0")}`; // del domingo 4 al sábado 10 de enero de 2026
+    let ini = null, fin = null;
+    for (const e of operarios || []) {
+      const t = turno(e, fecha);
+      if (!t) continue;
+      ini = ini == null ? t.in : Math.min(ini, t.in);
+      fin = fin == null ? t.out : Math.max(fin, t.out);
+    }
+    return ini == null ? null : { ini, fin };
+  });
+}
+
+/**
  * Puesto de cada operario en la planta (empleados.puesto_planta, migración
  * 140). Los de "otra línea" (por ejemplo Puertas) no cuentan para esta
  * planificación. Vacío = sin puesto (hace cualquier cosa).

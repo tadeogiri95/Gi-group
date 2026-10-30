@@ -123,6 +123,13 @@ export function puntosClave(r, reporteDia = null) {
     const gs = [...grupos.values()].sort((a, b) => b.horas - a.horas);
     puntos.push({ tono: "mal", texto: `🔁 Retrabajo: ${coma(s.horasRetrabajo)} h. ${gs.slice(0, 3).map((g) => `OT ${g.ot} ${g.nombre} ${coma(g.horas)} h (${[...g.motivos].join(", ")})`).join("; ")}${gs.length > 3 ? ` y ${gs.length - 3} más` : ""}.` });
   }
+  const lt = r.leadTime;
+  if (lt?.promedios?.length) {
+    // Lead time en horas de trabajo de lo que terminó en el período
+    const terminadas = lt.ots.filter((o) => o.horas != null);
+    const procs = lt.promedios.filter((x) => x.etapa !== "ot").map((x) => `${x.nombre} ${coma(x.promedio)} h${x.cantidad > 1 ? ` (promedio de ${x.cantidad})` : ""}`);
+    puntos.push({ tono: "neutro", texto: `⏱ Lead time en horas de trabajo: ${procs.join(", ")}.${terminadas.length ? ` OT terminadas: ${terminadas.slice(0, 3).map((o) => `OT ${o.ot} en ${coma(o.horas)} h`).join(", ")}${terminadas.length > 3 ? ` y ${terminadas.length - 3} más` : ""}.` : ""}` });
+  }
   if (s.procesosCorridos) puntos.push({ tono: "medio", texto: `${s.procesosCorridos} de ${s.procesosAbiertos} procesos se corrieron del plan confirmado.` });
   if (reporteDia) {
     const d = reporteDia;
