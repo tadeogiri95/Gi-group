@@ -193,8 +193,8 @@ const REPORTE_DIA = {
   instalaciones: [], atrasadas: [{ ot: "7100", cliente: "BCG", dias: 2, porcentaje: 30 }],
 };
 
-test("PDF — nota en medio círculo, partes, gráficos por OT, por proceso y desvíos, detalle y el reporte del día", async () => {
-  const { htmlInformePdf, horasPorProceso } = await import("../app/lib/informePdf.js");
+test("PDF — una hoja: nota en medio círculo, partes, lo importante, por proceso, por OT y el reporte del día en una línea", async () => {
+  const { htmlInformePdf, horasPorProceso, otsDeLaHoja } = await import("../app/lib/informePdf.js");
   const r = calcularInforme(DATOS);
   const html = htmlInformePdf({ empresa: { nombre: "GI Group" }, informe: r, reporteDia: REPORTE_DIA, ahora: new Date("2026-10-28T18:30:00Z") });
   assert.match(html, /@page \{ size: A4/);
@@ -204,17 +204,22 @@ test("PDF — nota en medio círculo, partes, gráficos por OT, por proceso y de
   assert.match(html, /aria-label="Partes de la nota"/);
   assert.match(html, /aria-label="Planificado y hecho por OT"/);
   assert.match(html, /aria-label="Horas por proceso"/);
-  assert.match(html, /aria-label="Desvío por OT"/);
-  assert.match(html, /Nota = 70 % del cumplimiento/, "cómo se calcula");
-  assert.match(html, /<h2>Detalle por OT y proceso<\/h2>/);
-  assert.match(html, /<h2>Reporte del día<\/h2>/);
-  assert.match(html, /6 piezas \(6 de 10\)/);
-  assert.match(html, /Terminada, falta la firma/);
+  assert.match(html, /Nota = 70 % cumplimiento \+ 20 % OT en su semana/, "cómo se calcula, en una línea");
+  assert.match(html, /<h2>Lo importante<\/h2>/);
+  assert.match(html, /Cumplimiento 88,9 %: se cumplieron 16 h de las 18 h planificadas\. En total se hicieron 17,6 h\./);
+  assert.match(html, /Atrasadas contra el plan: OT 7200 \(-10 pts\)\./);
+  assert.match(html, /1 de 2 OT terminan después de su semana: OT 7100\./);
+  assert.match(html, /Hoy: 6 piezas escaneadas, 1 etapa terminada o firmada, 0 reportes de instalación, 1 OT atrasada contra la entrega\./);
+  assert.doesNotMatch(html, /Detalle por OT y proceso/, "el detalle queda en Gypi");
+  assert.match(html, /\.hoja \{ max-height: 276mm; overflow: hidden; \}/, "nunca pasa de una hoja");
   assert.doesNotMatch(html, /<script/i);
-  assert.doesNotMatch(html, /Producción fuera del plan/, "sin OT fuera del plan no va la sección");
+  assert.doesNotMatch(html, /Producción fuera del plan/, "sin OT fuera del plan no va el punto");
   const fuera = htmlInformePdf({ informe: calcularInforme({ ...DATOS, avance: [{ ot: "7400", etapa: 2, estado: "terminada", terminada_at: "2026-10-28T16:00:00Z" }] }) });
-  assert.match(fuera, /<h2>🆕 Producción fuera del plan · 1<\/h2>/);
-  assert.match(fuera, /OT 7400.*Canteado \+100 %/s);
+  assert.match(fuera, /Producción fuera del plan: OT 7400 \(no cuenta en el cumplimiento\)\./);
+  assert.match(fuera, /OT 7400<\/text>[\s\S]*\+100 %[\s\S]*🆕 fuera del plan/);
+  // Muchas OT: las 14 que entran, con las de fuera del plan al final aunque no estén atrasadas
+  const muchas = [...Array.from({ length: 20 }, (_, i) => ({ ot: String(i), desvio: -i })), { ot: "F1", fueraDelPlan: true }, { ot: "F2", fueraDelPlan: true }];
+  assert.deepEqual(otsDeLaHoja(muchas).map((o) => o.ot), [...Array.from({ length: 12 }, (_, i) => String(i)), "F1", "F2"]);
   assert.deepEqual(horasPorProceso(r.ots).map((p) => [p.nombre, p.plan, Math.round(p.hecho * 10) / 10]), [["Corte", 8, 9.6], ["Armado", 10, 8]]);
   // Guardado de la noche, de una semana: sin reporte del día
   const semana = htmlInformePdf({ informe: calcularInforme({ ...DATOS, periodo: periodoDe("semana", "2026-10-28") }), guardado: "2026-10-29T02:00:00Z" });
@@ -243,7 +248,7 @@ test("🏭 Producción — 📄 Exportar PDF abre la hoja con el reporte del dí
     fireEvent.click(screen.getByRole("button", { name: "📄 Exportar PDF" }));
     assert.equal(escrito.length, 1);
     assert.match(escrito[0], /GI Group/);
-    assert.match(escrito[0], /Reporte del día/);
+    assert.match(escrito[0], /Hoy: 6 piezas escaneadas/, "con el reporte del día");
     assert.match(escrito[0], /Planificado y hecho por OT/);
   } finally {
     window.open = original;

@@ -1,11 +1,12 @@
 // app/lib/informePdf.js — Informe de producción en PDF (Tadeo, 29/10): el
 // mismo informe que sale solo cada noche, con lo que hay hasta el momento,
-// en una hoja A4 con gráficos. Se abre en una pestaña con la ventana de
-// imprimir ("Guardar como PDF"), como las órdenes de compra.
-// Con el informe del día van también las secciones del reporte del día
-// (piezas escaneadas, etapas terminadas o firmadas, instalación y OT atrasadas).
+// en una sola hoja A4 con gráficos (Tadeo, 30/10: claro y conciso). Se abre
+// en una pestaña con la ventana de imprimir ("Guardar como PDF"), como las
+// órdenes de compra. Con el informe del día va una línea con el reporte del
+// día (piezas escaneadas, etapas terminadas o firmadas, instalación y OT
+// atrasadas).
 import { ETAPAS_PLAN } from "./planificacion";
-import { explicacionNota, PESOS_NOTA } from "./informeProduccion";
+import { PESOS_NOTA } from "./informeProduccion";
 import { fechaCorta } from "./ot";
 
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
@@ -13,7 +14,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 const coma = (n) => (n == null ? "—" : String(Math.round(Number(n) * 10) / 10).replace(".", ","));
 const urlSegura = (u) => (typeof u === "string" && /^https:\/\//.test(u) ? u : null);
 const lim = (x) => Math.max(0, Math.min(100, Number(x) || 0));
-const MAX_OT = 25;
+const MAX_OT = 14;
 
 const NOMBRE_PERIODO = { dia: "del día", semana: "de la semana", mes: "del mes" };
 const tono = (n) => (n == null ? "neutro" : n >= 7 ? "bien" : n >= 5 ? "medio" : "mal");
@@ -46,20 +47,29 @@ function svgPartes(s) {
   </svg>`;
 }
 
-/** Planificado (gris) y hecho (naranja) por OT, con el desvío a la derecha. */
+/** Las OT que entran en la hoja: las más atrasadas y, al final, las de fuera del plan (hasta 4). */
+export function otsDeLaHoja(ots) {
+  const fuera = ots.filter((o) => o.fueraDelPlan).slice(0, 4);
+  const plan = ots.filter((o) => !o.fueraDelPlan).slice(0, MAX_OT - fuera.length);
+  return [...plan, ...ots.filter((o) => o.fueraDelPlan).slice(0, MAX_OT - plan.length)];
+}
+
+/** Planificado (gris) y hecho (naranja) por OT, con el desvío y las marcas a la derecha. */
 export function svgPorOt(ots) {
-  const lista = ots.slice(0, MAX_OT);
+  const lista = otsDeLaHoja(ots);
   if (!lista.length) return "";
-  const alto = 24, x0 = 110, ancho = 230;
-  return `<svg class="porot" viewBox="0 0 400 ${lista.length * alto + 14}" role="img" aria-label="Planificado y hecho por OT">
-    ${[0, 25, 50, 75, 100].map((p) => `<line x1="${x0 + (ancho * p) / 100}" x2="${x0 + (ancho * p) / 100}" y1="0" y2="${lista.length * alto}" class="grilla" />
-      <text x="${x0 + (ancho * p) / 100}" y="${lista.length * alto + 11}" text-anchor="middle" class="t-eje">${p} %</text>`).join("")}
+  const alto = 16, x0 = 92, ancho = 190;
+  const marcas = (o) => (o.fueraDelPlan ? "🆕 fuera del plan" : [o.tarde && (o.diasTarde > 0 ? `⚠ ${o.diasTarde} d tarde` : "⚠ tarde"), o.diasCorrido > 0 && `↪ ${o.diasCorrido} d`].filter(Boolean).join(" "));
+  return `<svg class="porot" viewBox="0 0 400 ${lista.length * alto + 12}" role="img" aria-label="Planificado y hecho por OT">
+    ${[0, 50, 100].map((p) => `<line x1="${x0 + (ancho * p) / 100}" x2="${x0 + (ancho * p) / 100}" y1="0" y2="${lista.length * alto}" class="grilla" />
+      <text x="${x0 + (ancho * p) / 100}" y="${lista.length * alto + 9}" text-anchor="middle" class="t-eje">${p} %</text>`).join("")}
     ${lista.map((o, i) => `
-      <text x="0" y="${i * alto + 10}" class="t-ot">OT ${esc(o.ot)}</text>
-      <text x="0" y="${i * alto + 20}" class="t-cli">${esc(String(o.cliente || "").slice(0, 22))}</text>
-      <rect x="${x0}" y="${i * alto + 3}" width="${(ancho * lim(o.planificado)) / 100}" height="7" rx="2" class="b-plan" />
-      <rect x="${x0}" y="${i * alto + 12}" width="${(ancho * lim(o.hecho)) / 100}" height="7" rx="2" class="b-hecho" />
-      <text x="400" y="${i * alto + 15}" text-anchor="end" class="t-num ${o.desvio < 0 ? "mal" : "bien"}">${o.desvio > 0 ? "+" : ""}${coma(o.desvio)} pts</text>`).join("")}
+      <text x="0" y="${i * alto + 7}" class="t-ot">OT ${esc(o.ot)}</text>
+      <text x="0" y="${i * alto + 14}" class="t-cli">${esc(String(o.cliente || "").slice(0, 24))}</text>
+      <rect x="${x0}" y="${i * alto + 1}" width="${(ancho * lim(o.planificado)) / 100}" height="5.5" rx="2" class="b-plan" />
+      <rect x="${x0}" y="${i * alto + 7.5}" width="${(ancho * lim(o.hecho)) / 100}" height="5.5" rx="2" class="b-hecho" />
+      <text x="${x0 + ancho + 34}" y="${i * alto + 10}" text-anchor="end" class="t-num ${o.fueraDelPlan ? "" : o.desvio < 0 ? "mal" : "bien"}">${o.fueraDelPlan ? `+${coma(o.hecho)} %` : `${o.desvio > 0 ? "+" : ""}${coma(o.desvio)}`}</text>
+      <text x="${x0 + ancho + 40}" y="${i * alto + 10}" class="t-marca">${esc(marcas(o))}</text>`).join("")}
   </svg>`;
 }
 
@@ -75,99 +85,51 @@ export function horasPorProceso(ots) {
   }).filter((p) => p.plan > 0 || p.hecho > 0);
 }
 
-/** Columnas por proceso: horas planificadas y hechas. */
+/** Barras por proceso: horas planificadas y hechas. */
 function svgPorProceso(ots) {
   const procs = horasPorProceso(ots);
   if (!procs.length) return "";
   const max = Math.max(1, ...procs.flatMap((p) => [p.plan, p.hecho]));
-  const alto = 150, col = 400 / procs.length;
-  return `<svg class="porproc" viewBox="0 0 400 ${alto + 42}" role="img" aria-label="Horas por proceso">
-    <line x1="0" x2="400" y1="${alto}" y2="${alto}" class="grilla" />
-    ${procs.map((p, i) => {
-      const cx = i * col + col / 2;
-      const hp = (alto - 14) * (p.plan / max), hh = (alto - 14) * (p.hecho / max);
-      return `
-      <rect x="${cx - 32}" y="${alto - hp}" width="30" height="${hp}" rx="2" class="b-plan" />
-      <rect x="${cx + 2}" y="${alto - hh}" width="30" height="${hh}" rx="2" class="b-hecho" />
-      <text x="${cx - 17}" y="${alto - hp - 4}" text-anchor="middle" class="t-eje">${coma(p.plan)}</text>
-      <text x="${cx + 17}" y="${alto - hh - 4}" text-anchor="middle" class="t-eje">${coma(p.hecho)}</text>
-      <text x="${cx}" y="${alto + 17}" text-anchor="middle" class="t-label">${esc(p.nombre)}</text>`;
-    }).join("")}
-    <text x="0" y="${alto + 36}" class="t-eje">Horas · gris: planificadas · naranja: hechas</text>
+  const alto = 22, x0 = 58, ancho = 82;
+  return `<svg class="porproc" viewBox="0 0 200 ${procs.length * alto}" role="img" aria-label="Horas por proceso">
+    ${procs.map((p, i) => `
+      <text x="0" y="${i * alto + 13}" class="t-label">${esc(p.nombre)}</text>
+      <rect x="${x0}" y="${i * alto + 3}" width="${(ancho * p.plan) / max}" height="7" rx="2" class="b-plan" />
+      <rect x="${x0}" y="${i * alto + 11}" width="${(ancho * p.hecho) / max}" height="7" rx="2" class="b-hecho" />
+      <text x="200" y="${i * alto + 14}" text-anchor="end" class="t-num">${coma(p.hecho)} / ${coma(p.plan)} h</text>`).join("")}
   </svg>`;
 }
 
-/** Desvío de cada OT: a la izquierda lo atrasado, a la derecha lo adelantado. */
-function svgDesvios(ots) {
-  const lista = ots.slice(0, MAX_OT);
-  if (!lista.length) return "";
-  const alto = 24, medio = 230, escala = 160 / Math.max(10, ...lista.map((o) => Math.abs(o.desvio)));
-  return `<svg class="desvios" viewBox="0 0 400 ${lista.length * alto + 4}" role="img" aria-label="Desvío por OT">
-    <line x1="${medio}" x2="${medio}" y1="0" y2="${lista.length * alto}" class="eje" />
-    ${lista.map((o, i) => {
-      const w = Math.abs(o.desvio) * escala;
-      return `<text x="0" y="${i * alto + 15}" class="t-cli">OT ${esc(o.ot)}</text>
-      <rect x="${o.desvio < 0 ? medio - w : medio}" y="${i * alto + 4}" width="${w}" height="14" rx="2" class="${o.desvio < 0 ? "b-mal" : "b-bien"}" />
-      <text x="${o.desvio < 0 ? medio + 4 : medio - 4}" y="${i * alto + 15}" text-anchor="${o.desvio < 0 ? "start" : "end"}" class="t-eje">${o.desvio > 0 ? "+" : ""}${coma(o.desvio)}</text>`;
-    }).join("")}
-  </svg>`;
-}
+const lista = (ots, n = 3) => ots.slice(0, n).map((o) => `OT ${o.ot}`).join(", ") + (ots.length > n ? ` y ${ots.length - n} más` : "");
 
-function tablaOts(ots) {
-  return `<table class="tabla">
-    <thead><tr><th>OT</th><th>Proceso</th><th class="n">Planificado</th><th class="n">Hecho</th><th class="n">Desvío</th><th class="n">Va</th></tr></thead>
-    <tbody>${ots.map((o) => o.procesos.map((q, i) => `<tr${i === 0 ? ' class="primera"' : ""}>
-      <td>${i === 0 ? `<b>OT ${esc(o.ot)}</b>${o.cliente ? `<div class="chico">${esc(o.cliente)}</div>` : ""}${o.tarde ? `<div class="chico mal">⚠ ${o.diasTarde} d después de su semana</div>` : ""}${o.diasCorrido > 0 ? `<div class="chico medio">↪ se corrió ${o.diasCorrido} d</div>` : ""}${o.fueraDelPlan ? `<div class="chico medio">🆕 fuera del plan</div>` : ""}` : ""}</td>
-      <td>${esc(q.nombre)}${q.fueraDelPlan ? ` <span class="chico medio">· fuera del plan</span>` : ""}${q.fuente === "manual" ? ` <span class="chico">· a mano</span>` : ""}</td>
-      <td class="n">${coma(q.planificado)} %</td>
-      <td class="n">${coma(q.hecho)} %</td>
-      <td class="n ${q.desvio < 0 ? "mal" : "bien"}">${q.desvio > 0 ? "+" : ""}${coma(q.desvio)}</td>
-      <td class="n">${coma(q.alFinal)} %</td>
-    </tr>`).join("")).join("")}</tbody>
-  </table>`;
-}
-
-/** OT que avanzaron sin estar planificadas en el período (Tadeo, 29/10). */
-function seccionFueraDelPlan(ots) {
-  const fuera = ots.filter((o) => o.fueraDelPlan);
-  if (!fuera.length) return "";
-  return `<h2>🆕 Producción fuera del plan · ${fuera.length}</h2>
-  <div class="leyenda">OT que avanzaron sin nada planificado en el período; no cuentan en el cumplimiento</div>
-  <table class="tabla">
-    <thead><tr><th>OT</th><th>Procesos que avanzaron</th><th class="n">Va</th></tr></thead>
-    <tbody>${fuera.map((o) => `<tr>
-      <td><b>OT ${esc(o.ot)}</b>${o.cliente ? `<div class="chico">${esc(o.cliente)}</div>` : ""}${o.enOtroPlan ? `<div class="chico">planificada otro día</div>` : ""}</td>
-      <td>${o.procesos.filter((q) => q.hecho > 0).map((q) => `${esc(q.nombre)} +${coma(q.hecho)} %`).join(" · ")}</td>
-      <td class="n">${coma(o.alFinal)} %</td>
-    </tr>`).join("")}</tbody>
-  </table>`;
-}
-
-/** Lo del reporte del día (el que llega cada noche), si hay. */
-function seccionesDia(r) {
-  if (!r) return "";
-  const ot = (o) => `<b>OT ${esc(o.ot)}</b>${o.cliente ? ` <span class="chico">· ${esc(o.cliente)}</span>` : ""}`;
-  const nada = (t) => `<p class="chico">${t}</p>`;
-  return `
-  <h2>Reporte del día</h2>
-  <div class="tiles">
-    <div class="tile"><div class="tn">${r.piezasHoy}</div><div class="tl">piezas escaneadas</div></div>
-    <div class="tile"><div class="tn">${r.completadas.length}</div><div class="tl">OT con producción terminada</div></div>
-    <div class="tile"><div class="tn">${r.etapasCerradas.length}</div><div class="tl">etapas terminadas o firmadas</div></div>
-    <div class="tile"><div class="tn">${r.instalaciones.length}</div><div class="tl">reportes de instalación</div></div>
-  </div>
-  <h3>Producción (% al empezar → ahora)</h3>
-  ${r.produccion.length ? `<table class="tabla"><tbody>${r.produccion.map((o) => `<tr><td>${ot(o)}<div class="chico">${o.etapas.filter((e) => e.hoy > 0).map((e) => `${esc(e.nombre)}: ${e.hoy} pieza${e.hoy === 1 ? "" : "s"} (${e.pasaron} de ${e.total})`).join(" · ")}</div></td><td class="n">${o.antes ?? 0} % → <b>${o.despues ?? 0} %</b></td></tr>`).join("")}</tbody></table>` : nada("No se escanearon piezas.")}
-  <h3>Etapas terminadas o firmadas</h3>
-  ${r.etapasCerradas.length ? `<table class="tabla"><tbody>${r.etapasCerradas.map((x) => `<tr><td>${ot(x)} · ${esc(x.nombre)}</td><td class="n">${x.que === "firmada" ? "Firmada" : "Terminada, falta la firma"}</td></tr>`).join("")}</tbody></table>` : nada("Ninguna etapa se marcó ni se firmó.")}
-  <h3>Instalación</h3>
-  ${r.instalaciones.length ? `<table class="tabla"><tbody>${r.instalaciones.map((i) => `<tr><td>${ot(i)}<div class="chico">${[i.quien && esc(i.quien), `${i.modulos} módulo${i.modulos === 1 ? "" : "s"} colocado${i.modulos === 1 ? "" : "s"}`, i.pendientes?.length && `Pendientes: ${i.pendientes.map(esc).join("; ")}`, i.comentario && esc(i.comentario)].filter(Boolean).join(" · ")}</div></td><td class="n">${i.avance != null ? `${i.avance} %` : "—"}</td></tr>`).join("")}</tbody></table>` : nada("No hubo reportes de instalación.")}
-  <h3>Atrasadas contra la fecha de entrega</h3>
-  ${r.atrasadas.length ? `<table class="tabla"><tbody>${r.atrasadas.map((a) => `<tr><td>${ot(a)}</td><td class="n mal">${a.dias} día${a.dias === 1 ? "" : "s"}${a.porcentaje != null ? ` · ${a.porcentaje} %` : ""}</td></tr>`).join("")}</tbody></table>` : nada("Ninguna OT atrasada.")}`;
+/** Lo importante en pocas líneas (Tadeo, 30/10: claro y conciso, en una hoja). */
+export function puntosClave(r, reporteDia = null) {
+  const s = r.resumen;
+  const puntos = [];
+  if (s.horasPlan > 0) {
+    // Lo cumplido no cuenta lo adelantado de más en cada proceso; eso va aparte
+    const cumplidas = (s.cumplimiento / 100) * s.horasPlan;
+    const extra = s.horasHechas - cumplidas >= 0.5 ? ` En total se hicieron ${coma(s.horasHechas)} h.` : "";
+    puntos.push({ tono: tono(r.nota), texto: `Cumplimiento ${coma(s.cumplimiento)} %: se cumplieron ${coma(cumplidas)} h de las ${coma(s.horasPlan)} h planificadas.${extra}` });
+  }
+  else puntos.push({ tono: "neutro", texto: "No había nada planificado en el período." });
+  const atrasadas = r.ots.filter((o) => !o.fueraDelPlan && o.desvio <= -10);
+  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `OT ${o.ot} (${coma(o.desvio)} pts)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
+  const fuera = r.ots.filter((o) => o.fueraDelPlan);
+  if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
+  const tarde = r.ots.filter((o) => o.tarde);
+  if (s.otsTarde) puntos.push({ tono: "mal", texto: `${s.otsTarde} de ${s.otsAbiertas} OT terminan después de su semana${tarde.length ? `: ${lista(tarde)}` : ""}.` });
+  if (s.procesosCorridos) puntos.push({ tono: "medio", texto: `${s.procesosCorridos} de ${s.procesosAbiertos} procesos se corrieron del plan confirmado.` });
+  if (reporteDia) {
+    const d = reporteDia;
+    puntos.push({ tono: "neutro", texto: `Hoy: ${d.piezasHoy} pieza${d.piezasHoy === 1 ? "" : "s"} escaneada${d.piezasHoy === 1 ? "" : "s"}, ${d.etapasCerradas.length} etapa${d.etapasCerradas.length === 1 ? "" : "s"} terminada${d.etapasCerradas.length === 1 ? "" : "s"} o firmada${d.etapasCerradas.length === 1 ? "" : "s"}, ${d.instalaciones.length} reporte${d.instalaciones.length === 1 ? "" : "s"} de instalación${d.atrasadas.length ? `, ${d.atrasadas.length} OT atrasada${d.atrasadas.length === 1 ? "" : "s"} contra la entrega` : ""}.` });
+  }
+  if (puntos.length === 1 && s.horasPlan > 0 && !atrasadas.length) puntos.push({ tono: "bien", texto: "Ninguna OT atrasada contra el plan." });
+  return puntos;
 }
 
 /**
- * La hoja A4 del informe, lista para imprimir o guardar en PDF.
+ * La hoja A4 del informe (una sola), lista para imprimir o guardar en PDF.
  * @param {{ empresa?: object, informe: object, reporteDia?: object|null, ahora?: Date, guardado?: string|null }} datos
  */
 export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ahora = new Date(), guardado = null }) {
@@ -179,56 +141,48 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
   const tz = { timeZone: "America/Argentina/Buenos_Aires" };
   const hora = `${ahora.toLocaleDateString("es-AR", { ...tz, day: "2-digit", month: "2-digit", year: "numeric" })} a las ${ahora.toLocaleTimeString("es-AR", { ...tz, hour: "2-digit", minute: "2-digit", hour12: false })}`;
   const cuando = guardado ? "Informe guardado al cerrar el día" : `Parcial: con lo que hay hasta el ${hora}`;
+  const resto = r.ots.length - otsDeLaHoja(r.ots).length;
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de producción ${esc(NOMBRE_PERIODO[p.tipo] || "")} ${esc(periodo)}</title>
 <style>
-  @page { size: A4; margin: 12mm; }
+  @page { size: A4; margin: 10mm; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; color: #1c1917; font-size: 10pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm; border-bottom: .6mm solid #e8a33c; padding-bottom: 3mm; margin-bottom: 4mm; }
-  .cabecera img { max-height: 16mm; max-width: 45mm; object-fit: contain; display: block; margin-bottom: 1.5mm; }
+  .hoja { max-height: 276mm; overflow: hidden; }
+  .cabecera { display: flex; justify-content: space-between; align-items: center; gap: 6mm; border-bottom: .6mm solid #e8a33c; padding-bottom: 2mm; margin-bottom: 3mm; }
+  .cabecera img { max-height: 11mm; max-width: 35mm; object-fit: contain; display: block; }
+  .quien { display: flex; align-items: center; gap: 3mm; }
   .empresa { font-weight: 700; }
-  h1 { font-size: 17pt; margin: 0; text-align: right; }
-  h2 { font-size: 12.5pt; margin: 6mm 0 2mm; color: #9a3412; break-after: avoid; }
-  h3 { font-size: 10.5pt; margin: 4mm 0 1.5mm; break-after: avoid; }
-  .chico { font-size: 8.5pt; color: #57534e; }
+  h1 { font-size: 15pt; margin: 0; text-align: right; }
+  h2 { font-size: 11pt; margin: 4mm 0 1.5mm; color: #9a3412; }
+  .chico { font-size: 8pt; color: #57534e; }
   .derecha { text-align: right; }
-  .resumen { display: grid; grid-template-columns: 48mm 1fr; gap: 6mm; align-items: center; background: #faf7f2; border: .3mm solid #e7e5e4; border-radius: 3mm; padding: 4mm; break-inside: avoid; }
-  .gauge { width: 46mm; display: block; }
+  .resumen { display: grid; grid-template-columns: 38mm 1fr; gap: 5mm; align-items: center; background: #faf7f2; border: .3mm solid #e7e5e4; border-radius: 3mm; padding: 3mm 4mm; }
+  .gauge { width: 36mm; display: block; }
   .g-fondo { fill: none; stroke: #e7e5e4; stroke-width: 10; stroke-linecap: round; }
   .g-valor { fill: none; stroke-width: 10; stroke-linecap: round; }
   .gv-bien { stroke: #16a34a; } .gv-medio { stroke: #d97706; } .gv-mal { stroke: #dc2626; } .gv-neutro { stroke: #a8a29e; }
   .g-num { font-size: 22px; font-weight: 800; fill: #1c1917; } .gn-bien { fill: #16a34a; } .gn-medio { fill: #d97706; } .gn-mal { fill: #dc2626; }
   .g-sub { font-size: 7px; fill: #78716c; }
-  .partes, .porot, .porproc, .desvios { width: 100%; display: block; }
-  .b-fondo { fill: #e7e5e4; } .b-plan { fill: #a8a29e; } .b-hecho { fill: #e8a33c; } .b-mal { fill: #dc2626; } .b-bien { fill: #16a34a; }
-  .grilla { stroke: #e7e5e4; stroke-width: .5; } .eje { stroke: #78716c; stroke-width: .7; }
-  .t-label { font-size: 8px; fill: #44403c; } .t-num { font-size: 8.5px; font-weight: 700; fill: #1c1917; } .t-eje { font-size: 7px; fill: #78716c; }
-  .t-ot { font-size: 8.5px; font-weight: 700; fill: #1c1917; } .t-cli { font-size: 7px; fill: #78716c; }
+  .partes, .porot, .porproc { width: 100%; display: block; }
+  .b-fondo { fill: #e7e5e4; } .b-plan { fill: #a8a29e; } .b-hecho { fill: #e8a33c; }
+  .grilla { stroke: #e7e5e4; stroke-width: .5; }
+  .t-label { font-size: 8px; fill: #44403c; } .t-num { font-size: 8px; font-weight: 700; fill: #1c1917; } .t-eje { font-size: 6.5px; fill: #78716c; }
+  .t-ot { font-size: 8px; font-weight: 700; fill: #1c1917; } .t-cli { font-size: 6.5px; fill: #78716c; } .t-marca { font-size: 7px; fill: #b45309; }
   text.mal { fill: #dc2626; } text.bien { fill: #16a34a; }
-  .mal { color: #dc2626; } .bien { color: #16a34a; } .medio { color: #b45309; }
-  .mitad .t-eje, .mitad .t-cli { font-size: 12px; } .mitad .t-label { font-size: 13px; }
-  .explicacion { margin-top: 2mm; font-size: 8.5pt; color: #57534e; line-height: 1.4; }
-  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 3mm 0; break-inside: avoid; }
-  .tile { border: .3mm solid #e7e5e4; border-radius: 2.5mm; padding: 2.5mm; }
-  .tn { font-size: 15pt; font-weight: 800; } .tl { font-size: 8pt; color: #57534e; }
-  .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; break-inside: avoid; }
-  .leyenda { font-size: 8pt; color: #57534e; margin-bottom: 1.5mm; }
+  .formula { margin-top: 1mm; font-size: 7.5pt; color: #78716c; }
+  ul.puntos { list-style: none; margin: 0; padding: 0; }
+  .puntos li { padding: 1mm 0 1mm 3mm; border-left: 1.2mm solid #a8a29e; margin-bottom: 1.2mm; font-size: 9pt; line-height: 1.3; }
+  .puntos li.mal { border-color: #dc2626; } .puntos li.medio { border-color: #d97706; } .puntos li.bien { border-color: #16a34a; }
+  .dos { display: grid; grid-template-columns: 1.15fr 1fr; gap: 6mm; align-items: start; }
+  .leyenda { font-size: 7.5pt; color: #57534e; margin-bottom: 1mm; }
   .leyenda i { display: inline-block; width: 3mm; height: 2mm; border-radius: .5mm; margin: 0 1mm 0 2mm; vertical-align: middle; }
   .l-plan { background: #a8a29e; } .l-hecho { background: #e8a33c; }
-  table.tabla { border-collapse: collapse; width: 100%; font-size: 9pt; }
-  .tabla th { text-align: left; border-bottom: .4mm solid #1c1917; padding: 1.2mm 1mm; font-size: 8.5pt; }
-  .tabla th.n { text-align: right; }
-  .tabla td { border-bottom: .2mm solid #e7e5e4; padding: 1.2mm 1mm; vertical-align: top; }
-  .tabla tr.primera td { border-top: .3mm solid #a8a29e; }
-  .tabla tr { break-inside: avoid; }
-  .n { text-align: right; white-space: nowrap; }
-  .pie { margin-top: 6mm; font-size: 8pt; color: #78716c; }
-</style></head><body>
+  .pie { margin-top: 3mm; font-size: 7pt; color: #78716c; }
+</style></head><body><div class="hoja">
   <div class="cabecera">
-    <div>
+    <div class="quien">
       ${logo ? `<img src="${esc(logo)}" alt="">` : ""}
-      <div class="empresa">${esc(nombreEmpresa)}</div>
-      <div class="chico">${esc(cuando)}</div>
+      <div><div class="empresa">${esc(nombreEmpresa)}</div><div class="chico">${esc(cuando)}</div></div>
     </div>
     <div class="derecha">
       <h1>Informe de producción</h1>
@@ -240,33 +194,23 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
     ${svgNota(r.nota)}
     <div>
       ${svgPartes(s)}
-      <div class="explicacion">${esc(explicacionNota(r))}</div>
+      <div class="formula">Nota = 70 % cumplimiento + 20 % OT en su semana + 10 % procesos sin correrse, redondeada de a 0,5.</div>
     </div>
   </div>
 
-  <div class="tiles">
-    <div class="tile"><div class="tn">${s.ots}</div><div class="tl">OT trabajadas o planificadas</div></div>
-    <div class="tile"><div class="tn">${coma(s.horasHechas)} / ${coma(s.horasPlan)} h</div><div class="tl">horas hechas / planificadas</div></div>
-    <div class="tile"><div class="tn ${s.otsTarde ? "mal" : ""}">${s.otsTarde} de ${s.otsAbiertas}</div><div class="tl">OT que terminan después de su semana</div></div>
-    <div class="tile"><div class="tn ${s.procesosCorridos ? "medio" : ""}">${s.procesosCorridos} de ${s.procesosAbiertos}</div><div class="tl">procesos corridos del plan</div></div>
+  <div class="dos">
+    <div><h2>Lo importante</h2>
+      <ul class="puntos">${puntosClave(r, reporteDia).map((x) => `<li class="${x.tono}">${esc(x.texto)}</li>`).join("")}</ul></div>
+    ${r.ots.length ? `<div><h2>Horas por proceso</h2><div class="leyenda"><i class="l-plan"></i>planificadas <i class="l-hecho"></i>hechas</div>${svgPorProceso(r.ots)}</div>` : ""}
   </div>
 
   ${r.ots.length ? `
-  <h2>Planificado y hecho por OT</h2>
-  <div class="leyenda"><i class="l-plan"></i>planificado en el período <i class="l-hecho"></i>hecho · primero las más atrasadas${r.ots.length > MAX_OT ? ` · las ${MAX_OT} primeras` : ""}</div>
-  ${svgPorOt(r.ots)}
-  <div class="dos">
-    <div class="mitad"><h3>Horas por proceso</h3>${svgPorProceso(r.ots)}</div>
-    <div class="mitad"><h3>Desvío por OT</h3><div class="leyenda">rojo: atrasada contra lo planificado · verde: adelantada</div>${svgDesvios(r.ots)}</div>
-  </div>
-  <h2>Detalle por OT y proceso</h2>
-  ${tablaOts(r.ots)}
-  ${seccionFueraDelPlan(r.ots)}` : `<p>No hubo nada planificado ni hecho en el período.</p>`}
+  <h2>Por OT · ${r.ots.length}</h2>
+  <div class="leyenda"><i class="l-plan"></i>planificado <i class="l-hecho"></i>hecho · número: desvío en puntos · primero las más atrasadas${resto > 0 ? ` · las otras ${resto} están en Gypi` : ""}</div>
+  ${svgPorOt(r.ots)}` : ""}
 
-  ${seccionesDia(reporteDia)}
-
-  <div class="pie">Planificado: horas del plan confirmado en el período sobre las horas del proceso. Hecho: piezas escaneadas o lo que subió el checkeo manual en el período. Va: % del proceso al final del período. Las OT que llegan a su semana y los corrimientos son los del plan vivo a la hora del informe.</div>
-</body></html>`;
+  <div class="pie">Planificado: horas del plan confirmado en el período. Hecho: piezas escaneadas, checkeo manual o etapa firmada. El detalle por proceso de cada OT está en Gypi, en Reportes → Producción.</div>
+</div></body></html>`;
 }
 
 /** Abre el informe en una pestaña nueva con la ventana de imprimir (ahí se elige "Guardar como PDF"). */
