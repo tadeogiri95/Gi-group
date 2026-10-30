@@ -166,7 +166,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
   return (
     <div>
       {aviso && <div role="alert" className="text-[12px] text-gypi-red mb-2.5">{aviso}</div>}
-      <PlanSemana divisiones={divisiones} />
+      <PlanSemana divisiones={divisiones} proyectos={proyectos} />
       <div className="flex items-center gap-2 mb-2.5">
         <div className="flex-1 text-[12px] text-gypi-dim">
           {visibles.length} OT · ordenadas por entrega{porFirmar > 0 ? ` · ${porFirmar === 1 ? "1 etapa" : `${porFirmar} etapas`} por firmar` : ""}
