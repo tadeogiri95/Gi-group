@@ -675,6 +675,7 @@ export function htmlInformeProduccion({ empresa, slug, informe: r, explicacion }
       ${partesNota(s).map((p) => fila(`${p.label} (${p.pct == null ? "—" : `${coma(p.pct)} %`})`, `+${p.puntos == null ? "—" : coma(p.puntos)} de ${p.max}`)).join("")}
       ${fila("OT trabajadas", String(s.ots))}
       ${s.otsFueraDelPlan ? fila("🆕 OT con producción fuera del plan", `${s.otsFueraDelPlan}: ${escapeHtml(r.ots.filter((o) => o.fueraDelPlan).map((o) => o.ot).join(", "))}`) : ""}
+      ${(r.leadTime?.promedios || []).map((x) => fila(`⏱ Lead time ${escapeHtml(x.nombre)}${x.cantidad > 1 ? ` (promedio de ${x.cantidad})` : ""}`, `${coma(x.promedio)} h`)).join("")}
       ${s.horasRetrabajo ? fila("🔁 Retrabajo", `${coma(s.horasRetrabajo)} h: ${escapeHtml((r.retrabajos || []).map((x) => `OT ${x.ot} ${x.nombre} ${coma(x.horas)} h (${x.motivo})`).join("; "))}`) : ""}
     </table>
     <p style="margin:8px 0 0;font-size:12px;color:#777;line-height:1.5">${escapeHtml(explicacion)}</p>

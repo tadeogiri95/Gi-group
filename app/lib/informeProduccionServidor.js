@@ -12,6 +12,7 @@ import { modulosPorOt } from "./cargaPlanta";
 import { piezasConManual } from "./avanceManual";
 import { faltanManual } from "./ajustesTiempo";
 import { retrabajoPendiente } from "./retrabajo";
+import { leadTimeProcesos, ventanasDeGrilla } from "./leadTimeHoras";
 import { hoyArg } from "./dates";
 
 const vacio = () => ({ data: [] });
@@ -75,6 +76,9 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     periodo, items: vigentes, etapasCodigo,
     piezas: piezas.data, pasos: pasos.data, manual: manual.data, avance: avance.data,
     proyectos: todas, vivo, retrabajos: retrabajos.data,
+    // Lead time en horas de trabajo, con el horario de la planta
+    leadTime: leadTimeProcesos({ etapasCodigo, piezas: piezas.data, manual: manual.data, avance: avance.data, proyectos: proyectos.data,
+      ventanas: ventanasDeGrilla(emp.data, divisiones.data, cfgValor) }),
   });
 }
 

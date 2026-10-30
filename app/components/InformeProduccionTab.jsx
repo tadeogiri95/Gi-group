@@ -135,6 +135,29 @@ export function VistaInforme({ informe: r, guardado = null }) {
         </ul>
       </section>
 
+      {r.leadTime?.ots?.length > 0 && (
+        <section aria-label="Lead time" className="mb-3" data-lead-time>
+          <h3 className="m-0 mb-1 text-[14px] font-bold font-heading">⏱ Lead time · horas de trabajo</h3>
+          <div className="text-[12px] text-gypi-dim mb-2">Procesos y OT que terminaron en el período: del primer avance (escaneo o checkeo manual) al 100 %. La OT termina con Armado al 100 %.</div>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {r.leadTime.promedios.map((x) => (
+              <span key={x.etapa} className="bg-gypi-surface rounded-xl px-3 py-1.5 border border-gypi-border text-[13px]">
+                {x.nombre} <span className="font-bold">{coma(x.promedio)} h</span>{x.cantidad > 1 && <span className="text-gypi-dim"> · promedio de {x.cantidad}</span>}
+              </span>
+            ))}
+          </div>
+          <ul className="list-none m-0 p-0 flex flex-col gap-1">
+            {r.leadTime.ots.map((o) => (
+              <li key={o.ot} className="text-[13px]">
+                <span className="font-mono font-bold">OT {o.ot}</span>
+                {o.horas != null && <span className="font-bold"> · terminada en {coma(o.horas)} h</span>}
+                <span className="text-gypi-dim"> · {o.procesos.map((q) => `${q.nombre} ${coma(q.horas)} h`).join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {r.retrabajos?.length > 0 && (
         <section aria-label="Retrabajo" className="mb-3" data-retrabajos>
           <h3 className="m-0 mb-1 text-[14px] font-bold font-heading">🔁 Retrabajo · {coma(s.horasRetrabajo)} h</h3>

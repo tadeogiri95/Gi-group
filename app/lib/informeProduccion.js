@@ -21,9 +21,12 @@
 // Nunca menos de 1 (la columna nota de la 146 va de 1 a 10).
 // Retrabajo (Tadeo, 30/10; migración 147): las horas cargadas en el período,
 // por OT y proceso con su motivo. No cambia el % ni la nota.
+// Lead time (Tadeo, 30/10; app/lib/leadTimeHoras.js): los procesos y las OT
+// que terminaron en el período, en horas de trabajo.
 import { ETAPAS_PLAN } from "./planificacion";
 import { hoyArg } from "./dates";
 import { textoMotivoRetrabajo } from "./retrabajo";
+import { leadTimeDelPeriodo } from "./leadTimeHoras";
 
 export const TIPOS_INFORME = [
   { id: "dia", label: "Día" },
@@ -81,8 +84,9 @@ export function notaInforme(s) {
  *   proyectos: por OT; su avance_manual cubre a las OT sin historial (antes de la 146)
  *   vivo: planVivo de ahora (para las OT que llegan a su semana y los corrimientos)
  *   retrabajos: retrabajos_ot (migración 147); cuentan los cargados en el período
+ *   leadTime: leadTimeProcesos de todas las OT (cuentan las que terminaron algo en el período)
  */
-export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas = [], pasos = [], manual = [], avance = [], proyectos = new Map(), vivo = new Map(), retrabajos = [] }) {
+export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas = [], pasos = [], manual = [], avance = [], proyectos = new Map(), vivo = new Map(), retrabajos = [], leadTime = null }) {
   const { desde, hasta } = periodo;
   const k = (ot, etapa) => `${ot}|${etapa}`;
   // Horas del plan por proceso: todas y las del período
@@ -207,6 +211,7 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
     periodo: { tipo: periodo.tipo, desde, hasta },
     ots,
     retrabajos: rt,
+    leadTime: leadTimeDelPeriodo(leadTime, { desde, hasta }, proyectos),
     resumen: {
       ots: ots.length, procesosPlanificados: todos.filter((q) => q.planificado > 0).length,
       procesosCumplidos: todos.filter((q) => q.planificado > 0 && q.hecho >= q.planificado).length,
