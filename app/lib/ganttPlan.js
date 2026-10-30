@@ -198,13 +198,15 @@ const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
  * Devuelve lo mismo que procesosPlan, con además, por OT: tarde, diasTarde,
  * diasCorrido, finConfirmado, objetivo; y por proceso: tarde, diasTarde,
  * corrido, diasCorrido, hastaConfirmado, empezo, manual (lo manda un
- * "⏱ Faltan X h", migración 145).
+ * "⏱ Faltan X h", migración 145), retrabajo (horas de retrabajo sin terminar,
+ * migración 147: van al final del proceso, aunque estuviera completo) y
+ * retrabajoDesde/retrabajoIni (dónde empieza la parte roja de la barra).
  * @param {{ manual?: Map<string, { horas: number, pendiente: number|null }>, proyectos?: Map<string, object>, etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], modulos?: Map<string, number>, terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: object|null, diasExtra?: Set<string>|null }} opciones
  *   proyectos: las OT por número (fecha objetivo y datos para las horas)
  */
 export function planVivo(items = [], opciones) {
   const { proyectos = new Map(), etapasCodigo = {}, avance = [], piezas = [], modulos = new Map(), terminadas = new Set(), hoy,
-    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null } = opciones;
+    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null, retrabajo = null } = opciones;
   const confirmado = procesosPlan(items, { etapasCodigo, avance, piezas, terminadas, hoy, params, horasSemana, personal, diasExtra });
   const out = new Map();
   if (!confirmado.size) return out;
@@ -239,11 +241,21 @@ export function planVivo(items = [], opciones) {
       if (m && resta > 0) manuales.push({ r, id, horas: horasManuales(m, resta) });
     }
   }
-  const armadores = manuales.some((m) => m.id === "armado") ? secuenciar(restantes, { params, personal, ordenEtapa }) : null;
-  for (const { r, id, horas } of manuales) {
-    const k = id === "armado" ? (armadores.get(r.clave) || []).find((t) => t.etapa === "armado")?.personas || 1 : 1 / duracion(id, 1, params);
-    r.horas = { ...r.horas, [id]: horas * k };
+  // Retrabajo (147): horas como las muestra el Gantt, que se suman al proceso hasta que se termina
+  const retrabajos = [];
+  for (const r of restantes) {
+    if (terminadas.has(r.clave)) continue;
+    for (const { id } of ETAPAS_PLAN) {
+      const h = Number(retrabajo?.get(`${r.clave}|${id}`)) || 0;
+      if (h > 0) retrabajos.push({ r, id, horas: h });
+    }
   }
+  const usaArmado = [...manuales, ...retrabajos].some((m) => m.id === "armado");
+  const armadores = usaArmado ? secuenciar(restantes, { params, personal, ordenEtapa }) : null;
+  const aGente = (r, id) => (id === "armado" ? (armadores.get(r.clave) || []).find((t) => t.etapa === "armado")?.personas || 1 : 1 / duracion(id, 1, params));
+  for (const { r, id, horas } of manuales) r.horas = { ...r.horas, [id]: horas * aGente(r, id) };
+  for (const { r, id, horas } of retrabajos) r.horas = { ...r.horas, [id]: (r.horas[id] || 0) + horas * aGente(r, id) };
+  const conRetrabajo = new Map(retrabajos.map((m) => [`${m.r.clave}|${m.id}`, m.horas]));
   const conManual = new Set(manuales.map((m) => `${m.r.clave}|${m.id}`));
   const tramos = secuenciar(restantes, { params, personal, ordenEtapa });
 
@@ -272,6 +284,14 @@ export function planVivo(items = [], opciones) {
         q = { etapa: id, nombre, desde, hasta, ini: desde === qc.desde ? qc.ini : 0, fin: hasta === qc.hasta ? qc.fin : 1, t0: -1, horas: qc.horas, personas: qc.personas, completo: resta <= 0 };
       }
       q.manual = conManual.has(`${o.ot}|${id}`);
+      // Retrabajo: la parte final del proceso (en rojo en el Gantt)
+      const rt = tr ? conRetrabajo.get(`${o.ot}|${id}`) || 0 : 0;
+      q.retrabajo = rt;
+      if (rt > 0) {
+        const r0 = cal.punto(Math.max(tr.t0, tr.t1 - Math.min(rt, tr.t1 - tr.t0)), false);
+        q.retrabajoDesde = r0.fecha;
+        q.retrabajoIni = r0.frac;
+      }
       q.pendiente = resta;
       q.hecho = Math.round((1 - resta) * 100);
       q.empezo = empezo;

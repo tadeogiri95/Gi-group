@@ -110,6 +110,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
                   {o.tarde && <span className="text-gypi-red font-bold"> · ⚠ {o.diasTarde} d después de su semana</span>}
                   {o.diasCorrido > 0 && <span className="text-gypi-amber-ink font-bold"> · ↪ se corrió {o.diasCorrido} d</span>}
                   {o.fueraDelPlan && <span className="text-gypi-amber-ink font-bold"> · 🆕 fuera del plan{o.enOtroPlan ? " (planificada otro día)" : ""}</span>}
+                  {o.retrabajo > 0 && <span className="text-gypi-red font-bold"> · 🔁 {coma(o.retrabajo)} h de retrabajo</span>}
                 </div>
               </button>
               {abierta === o.ot && (
@@ -133,6 +134,21 @@ export function VistaInforme({ informe: r, guardado = null }) {
           ))}
         </ul>
       </section>
+
+      {r.retrabajos?.length > 0 && (
+        <section aria-label="Retrabajo" className="mb-3" data-retrabajos>
+          <h3 className="m-0 mb-1 text-[14px] font-bold font-heading">🔁 Retrabajo · {coma(s.horasRetrabajo)} h</h3>
+          <div className="text-[12px] text-gypi-dim mb-2">Horas cargadas en el período. No cambian el % ni la nota.</div>
+          <ul className="list-none m-0 p-0 flex flex-col gap-1">
+            {r.retrabajos.map((x, i) => (
+              <li key={`${x.ot}-${x.etapa}-${i}`} className="bg-gypi-surface rounded-xl px-3 py-2 border border-gypi-border text-[13px]">
+                <span className="font-mono font-bold">OT {x.ot}</span> · {x.nombre} · <span className="font-bold text-gypi-red">{coma(x.horas)} h</span> · {x.motivo}
+                <span className="text-gypi-dim">{x.terminado ? " · ✓ terminado" : " · sin terminar"}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

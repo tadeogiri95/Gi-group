@@ -1,10 +1,13 @@
 'use client';
 // app/components/AjusteTiempo.jsx — "⏱ Faltan X h" de un proceso, o por qué
 // se corrió (Tadeo, 29/10; migración 145; app/lib/ajustesTiempo.js).
-// Siempre con el motivo; queda registrado en la OT.
+// Siempre con el motivo; queda registrado en la OT. También el 🔁 retrabajo
+// (Tadeo, 30/10; migración 147): horas que se suman al proceso, aunque ya
+// estuviera completo, hasta que se marca terminado.
 import { useEffect, useState } from "react";
 import { sb } from "../lib/supabase";
 import { MOTIVOS_TIEMPO, validarAjuste, textoMotivo, AVISO_MIGRACION_145 } from "../lib/ajustesTiempo";
+import { MOTIVOS_RETRABAJO, validarRetrabajo, textoMotivoRetrabajo, AVISO_MIGRACION_147 } from "../lib/retrabajo";
 import { fmtH } from "../lib/cargaPlanta";
 import Modal from "./ui/Modal";
 import { Chip } from "./ui";
@@ -17,17 +20,53 @@ const dias = (n) => `${n} ${n === 1 ? "día" : "días"}`;
  *   onGuardado: (fila: object) => void, onClose: () => void }} props
  *   soloMotivo: viene de "Atrasos sin motivo" (se anota por qué se corrió, sin cambiar horas)
  *   diasCon: cuántos días queda corrido del plan confirmado con esas horas
+ *   completo: el proceso ya está al 100 % (solo se puede cargar retrabajo)
+ *   retrabajos: los retrabajos sin terminar de este proceso
  */
-export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = null, diasCorrido = 0, soloMotivo = false, diasCon, porNombre = null, onGuardado, onClose }) {
-  const [tipo, setTipo] = useState(soloMotivo ? "corrimiento" : "faltan");
-  const [texto, setTexto] = useState(soloMotivo ? "" : String(Math.round((horas || 0) * 10) / 10).replace(".", ","));
+export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = null, diasCorrido = 0, soloMotivo = false, diasCon, porNombre = null,
+  completo = false, retrabajos = [], onGuardado, onRetrabajo, onClose }) {
+  const [tipo, setTipo] = useState(soloMotivo ? "corrimiento" : completo ? "retrabajo" : "faltan");
+  const [texto, setTexto] = useState(soloMotivo || completo ? "" : String(Math.round((horas || 0) * 10) / 10).replace(".", ","));
   const [motivo, setMotivo] = useState("");
   const [detalle, setDetalle] = useState("");
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const titulo = `⏱ ${nombre} de la OT ${ot}`;
 
+  const elegir = (t) => { setTipo(t); setMotivo(""); setError(null); if (t === "retrabajo") setTexto(""); };
+
+  const guardarRetrabajo = async () => {
+    const h = Number(String(texto).replace(",", "."));
+    const fila = { ot, etapa, horas: texto.trim() !== "" && Number.isFinite(h) ? Math.round(h * 100) / 100 : NaN, motivo: motivo || null,
+      detalle: detalle.trim() || null, creado_nombre: porNombre ? String(porNombre).slice(0, 120) : null };
+    const err = validarRetrabajo(fila);
+    if (err) { setError(err); return; }
+    setGuardando(true);
+    setError(null);
+    try {
+      const r = await sb.post("retrabajos_ot", fila);
+      onRetrabajo?.({ ...fila, ...(Array.isArray(r) ? r[0] : r || {}), created_at: new Date().toISOString(), terminado_at: null });
+    } catch (e) {
+      setError(/retrabajos_ot/.test(String(e?.message)) ? AVISO_MIGRACION_147 : `No se pudo guardar: ${e?.message || e}`);
+      setGuardando(false);
+    }
+  };
+
+  const terminar = async (r) => {
+    setGuardando(true);
+    setError(null);
+    const cambio = { terminado_at: new Date().toISOString(), terminado_nombre: porNombre ? String(porNombre).slice(0, 120) : null };
+    try {
+      await sb.patch(`retrabajos_ot?id=eq.${r.id}`, cambio);
+      onRetrabajo?.({ ...r, ...cambio });
+    } catch (e) {
+      setError(`No se pudo guardar: ${e?.message || e}`);
+      setGuardando(false);
+    }
+  };
+
   const guardar = async () => {
+    if (tipo === "retrabajo") return guardarRetrabajo();
     const h = tipo === "faltan" ? Number(String(texto).replace(",", ".")) : null;
     const fila = {
       ot, etapa, tipo, motivo: motivo || null, detalle: detalle.trim() || null,
@@ -56,13 +95,34 @@ export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = nul
       <div className="p-4 overflow-y-auto text-gypi-text">
         <div className="text-[18px] font-bold mb-1">{titulo}</div>
         <div className="text-[14px] text-gypi-dim mb-3">
-          Ahora le faltan {fmtH(horas || 0)}{diasCorrido > 0 ? ` y se corrió ${dias(diasCorrido)} del plan confirmado` : ""}.
+          {completo && !retrabajos.length ? "El proceso está al 100 %." : `Ahora le faltan ${fmtH(horas || 0)}${diasCorrido > 0 ? ` y se corrió ${dias(diasCorrido)} del plan confirmado` : ""}.`}
         </div>
+        {retrabajos.length > 0 && (
+          <section aria-label="Retrabajo sin terminar" className="mb-3 rounded-xl border-2 border-gypi-red/40 p-2.5">
+            <div className="text-[14px] font-bold mb-1">🔁 Retrabajo sin terminar</div>
+            <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
+              {retrabajos.map((r) => (
+                <li key={r.id ?? r.created_at} className="flex items-center gap-2 text-[14px]">
+                  <span className="flex-1 min-w-0">{fmtH(Number(r.horas) || 0)} · {textoMotivoRetrabajo(r)}</span>
+                  {r.id != null && <button type="button" disabled={guardando} onClick={() => terminar(r)} className="g-btn g-btn-secondary">✓ Terminado</button>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {!soloMotivo && (
-          <div className="flex gap-1.5 mb-3" role="group" aria-label="Qué querés anotar">
-            <Chip active={tipo === "faltan"} onClick={() => setTipo("faltan")}>⏱ Cuánto le falta</Chip>
-            {diasCorrido > 0 && <Chip active={tipo === "corrimiento"} onClick={() => setTipo("corrimiento")}>↪ Por qué se corrió</Chip>}
+          <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Qué querés anotar">
+            {!completo && <Chip active={tipo === "faltan"} onClick={() => elegir("faltan")}>⏱ Cuánto le falta</Chip>}
+            {!completo && diasCorrido > 0 && <Chip active={tipo === "corrimiento"} onClick={() => elegir("corrimiento")}>↪ Por qué se corrió</Chip>}
+            <Chip active={tipo === "retrabajo"} onClick={() => elegir("retrabajo")}>🔁 Retrabajo</Chip>
           </div>
+        )}
+        {tipo === "retrabajo" && (
+          <>
+            <label className="g-label" htmlFor="ajuste-retrabajo">Horas de retrabajo</label>
+            <input id="ajuste-retrabajo" className="g-input w-full mb-1" inputMode="decimal" value={texto} onChange={(e) => setTexto(e.target.value)} />
+            <div className="text-[13px] text-gypi-dim mb-3">El % del proceso no baja: estas horas se suman al final del proceso (en rojo en el Gantt) hasta que se marca terminado.</div>
+          </>
         )}
         {tipo === "faltan" && (
           <>
@@ -73,7 +133,7 @@ export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = nul
         )}
         <div className="g-label">Motivo</div>
         <div className="flex flex-wrap gap-1.5 mb-2" role="radiogroup" aria-label="Motivo">
-          {MOTIVOS_TIEMPO.map((m) => (
+          {(tipo === "retrabajo" ? MOTIVOS_RETRABAJO : MOTIVOS_TIEMPO).map((m) => (
             <Chip key={m.id} role="radio" aria-checked={motivo === m.id} active={motivo === m.id} onClick={() => setMotivo(m.id)}>{m.label}</Chip>
           ))}
         </div>

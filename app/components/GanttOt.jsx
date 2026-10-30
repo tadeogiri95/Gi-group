@@ -35,6 +35,10 @@
 // primero otra. Ese orden queda solo en el plan confirmado; si después se
 // reordena por OT o se confirma desde Planificación, todos los procesos
 // vuelven al orden de la OT.
+// Retrabajo (Tadeo, 30/10; migración 147): las horas de retrabajo sin
+// terminar se suman al final del proceso y esa parte de la barra va en rojo;
+// se cargan y se marcan terminadas tocando la barra (también en un proceso
+// completo).
 // "🔄 Refrescar" (Tadeo, 30/10) vuelve a leer las OT, el avance, el plan y los
 // ajustes sin salir de la pantalla completa.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,6 +56,7 @@ import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { fmtH } from "../lib/cargaPlanta";
 import { faltanManual, atrasosSinMotivo } from "../lib/ajustesTiempo";
+import { retrabajoPendiente, pendientesDe } from "../lib/retrabajo";
 import AjusteTiempo from "./AjusteTiempo";
 
 const FILA = 26; // alto del renglón de cada proceso
@@ -151,6 +156,16 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     return () => { vivo = false; };
   }, [puedeAjustar, vuelta]);
   const manual = useMemo(() => faltanManual(ajustes || []), [ajustes]);
+  // Retrabajo (147): sin la migración, como si no hubiera
+  const [retrabajos, setRetrabajos] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    sbGetAll("retrabajos_ot?select=id,ot,etapa,horas,motivo,detalle,creado_nombre,created_at,terminado_at&order=created_at.asc", { maxFilas: 20000 })
+      .then((r) => { if (vivo) setRetrabajos(r.data || []); })
+      .catch(() => { if (vivo) setRetrabajos([]); });
+    return () => { vivo = false; };
+  }, [vuelta]);
+  const retrabajo = useMemo(() => retrabajoPendiente(retrabajos), [retrabajos]);
   const [editar, setEditar] = useState(null);
   const abiertasPorOt = useMemo(() => new Map(proyectos.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p])), [proyectos]);
   const previa = useMemo(() => {
@@ -179,8 +194,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       params, horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
       personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes),
     };
-    return (m) => planVivo(items, { ...opciones, manual: m });
-  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy]);
+    return (m) => planVivo(items, { ...opciones, manual: m, retrabajo });
+  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo]);
 
   const { renglones, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
     if (!vivoCon) return { renglones: null };
@@ -205,9 +220,11 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     };
   }, [vivoCon, manual, abiertasPorOt, divisiones, hoy, modo, puedeAjustar, ajustes, planes]);
   const abrirAjuste = (r, q, soloMotivo = false) => {
-    if (!puedeAjustar || !q || q.completo) return;
+    if (!puedeAjustar || !q) return;
     if (grande) cerrarGrande();
-    setEditar({ ot: r.ot, etapa: q.etapa, nombre: q.nombre, horas: q.horas, pendiente: q.pendiente ?? null, diasCorrido: q.diasCorrido || 0, soloMotivo });
+    // Un proceso completo solo puede tener retrabajo
+    setEditar({ ot: r.ot, etapa: q.etapa, nombre: q.nombre, horas: q.horas, pendiente: q.pendiente ?? null, diasCorrido: q.diasCorrido || 0, soloMotivo,
+      completo: !!q.completo || (q.pendiente ?? 1) <= 0, retrabajos: pendientesDe(retrabajos, r.ot, q.etapa) });
   };
   // Cuántos días queda corrido el proceso con esas horas
   const diasCon = (ot, etapa) => (horas) => {
@@ -386,10 +403,15 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       <>
         {corte > x0 && <rect data-pasado={etapa} x={x0} y={BARRA.y + dy} width={corte - x0} height={BARRA.alto} rx={3} className={COLOR[etapa]} fillOpacity={0.4} />}
         {x1 > corte && <rect x={corte} y={BARRA.y + dy} width={Math.max(3, x1 - corte)} height={BARRA.alto} rx={3} className={COLOR[etapa]} />}
+        {q.retrabajo > 0 && q.retrabajoDesde && (() => {
+          // Retrabajo (147): la parte final de la barra, en rojo
+          const xr = q.retrabajoDesde < desde ? 0 : Math.min(finVentana, x(q.retrabajoDesde) + (q.retrabajoIni || 0) * px);
+          return x1 > xr ? <rect data-retrabajo={etapa} x={xr} y={BARRA.y + dy} width={Math.max(3, x1 - xr)} height={BARRA.alto} rx={3} className="fill-gypi-red" /> : null;
+        })()}
         <rect data-proceso={etapa} data-estado={estado} x={x0} y={BARRA.y + dy} width={Math.max(3, x1 - x0)} height={BARRA.alto} rx={3}
           className={CONTORNO[estado] || undefined} fill="transparent" strokeWidth={CONTORNO[estado] ? 3 : 0} strokeDasharray={estado === "corrido" ? "6 3" : undefined} />
         <text x={Math.max(x0, x1) + 6} y={18 + dy} className={`text-[13px] font-bold ${q.tarde ? "fill-gypi-red" : "fill-gypi-text"}`}>
-          {q.completo ? "✓" : fmtH(q.horas)}{q.personas && !q.completo ? ` · 👷 ${q.personas}` : ""}{q.manual && !q.completo ? " ⏱" : ""}{q.tarde ? " ⚠" : q.corrido ? " ↪" : ""}
+          {q.completo ? "✓" : fmtH(q.horas)}{q.personas && !q.completo ? ` · 👷 ${q.personas}` : ""}{q.manual && !q.completo ? " ⏱" : ""}{q.retrabajo > 0 ? ` 🔁 ${fmtH(q.retrabajo)}` : ""}{q.tarde ? " ⚠" : q.corrido ? " ↪" : ""}
         </text>
       </>
     );
@@ -491,6 +513,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         ))}
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={tardes.length ? "text-gypi-red font-bold" : ""}>⚠ Termina después de su semana {tardes.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-dashed border-proc-margen" /><span className={corridas.length ? "font-bold" : ""}>↪ Se corrió del plan {corridas.length}</span></span>
+        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-red" />🔁 Retrabajo</span>
       </div>
       {reordenar && (cambio ? (
         <div role="status" aria-label="Orden nuevo sin confirmar" className="mb-2 rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3 shrink-0">
@@ -561,7 +584,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                             {[p.obra, nombreProyecto(p)].filter(Boolean).join(" · ")}
                           </div>
                         </button>
-                        <svg width={ancho} height={FILA_OT} aria-hidden="true" className={`block ${puedeAjustar && !q.completo ? "cursor-pointer" : ""}`} onClick={() => abrirAjuste(r, q)}>
+                        <svg width={ancho} height={FILA_OT} aria-hidden="true" className={`block ${puedeAjustar ? "cursor-pointer" : ""}`} onClick={() => abrirAjuste(r, q)}>
                           {fondoOt}
                           {barra(q, e.id, (FILA_OT - FILA) / 2)}
                         </svg>
@@ -605,11 +628,11 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                       {ETAPAS_PLAN.map((e) => {
                         const q = r.procesos.find((z) => z.etapa === e.id);
                         const nombre = <><span aria-hidden="true" className={`inline-block w-3 h-3 rounded-sm shrink-0 ${MUESTRA[e.id]}`} />{e.nombre}</>;
-                        // ⏱ Faltan X h: se toca el proceso (o su barra)
-                        return puedeAjustar && q && !q.completo ? (
-                          <button key={e.id} type="button" onClick={() => abrirAjuste(r, q)} aria-label={`⏱ ${e.nombre} de la OT ${r.ot}: cuánto falta`}
+                        // ⏱ Faltan X h o 🔁 retrabajo: se toca el proceso (o su barra), también si está completo
+                        return puedeAjustar && q ? (
+                          <button key={e.id} type="button" onClick={() => abrirAjuste(r, q)} aria-label={q.completo || (q.pendiente ?? 1) <= 0 ? `🔁 ${e.nombre} de la OT ${r.ot}: retrabajo` : `⏱ ${e.nombre} de la OT ${r.ot}: cuánto falta`}
                             className="w-full h-[26px] px-2 flex items-center gap-1.5 text-[13px] text-gypi-text bg-transparent border-0 cursor-pointer text-left">
-                            {nombre}{q.manual && <span className="ml-auto" aria-hidden="true">⏱</span>}
+                            {nombre}{q.retrabajo > 0 ? <span className="ml-auto" aria-hidden="true">🔁</span> : q.manual && <span className="ml-auto" aria-hidden="true">⏱</span>}
                           </button>
                         ) : (
                           <div key={e.id} className="h-[26px] px-2 flex items-center gap-1.5 text-[13px] text-gypi-text">{nombre}</div>
@@ -620,7 +643,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
                       {ETAPAS_PLAN.map((e) => {
                         const q = r.procesos.find((z) => z.etapa === e.id);
                         return (
-                          <svg key={e.id} width={ancho} height={FILA} aria-hidden="true" className={`block ${puedeAjustar && q && !q.completo ? "cursor-pointer" : ""}`} onClick={() => abrirAjuste(r, q)}>
+                          <svg key={e.id} width={ancho} height={FILA} aria-hidden="true" className={`block ${puedeAjustar && q ? "cursor-pointer" : ""}`} onClick={() => abrirAjuste(r, q)}>
                             {fondo}
                             {q && barra(q, e.id)}
                           </svg>
@@ -674,7 +697,8 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       )}
       {editar && (
         <AjusteTiempo {...editar} porNombre={usuarioNombre} diasCon={diasCon(editar.ot, editar.etapa)} onClose={() => setEditar(null)}
-          onGuardado={(fila) => { setAjustes((a) => [...(a || []), fila]); setEditar(null); }} />
+          onGuardado={(fila) => { setAjustes((a) => [...(a || []), fila]); setEditar(null); }}
+          onRetrabajo={(fila) => { setRetrabajos((l) => [...l.filter((x) => x.id == null || x.id !== fila.id), fila]); setEditar(null); }} />
       )}
       {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT. La parte clara de cada barra es lo que ya pasó. Tocá una OT para ver su detalle.</p>}
     </div>

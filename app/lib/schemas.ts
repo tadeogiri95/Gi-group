@@ -122,6 +122,11 @@ export const CAMPOS_PERMITIDOS: Record<string, Record<string, string[]>> = {
   ajustes_tiempo_ot: {
     POST: ["ot", "etapa", "tipo", "horas", "pendiente", "dias", "motivo", "detalle", "creado_nombre"],
   },
+  // Retrabajo (147); creado_por sale de la sesión; después solo se marca terminado
+  retrabajos_ot: {
+    POST: ["ot", "etapa", "horas", "motivo", "detalle", "creado_nombre"],
+    PATCH: ["terminado_at", "terminado_nombre"],
+  },
   // Historial del checkeo manual (146); creado_por sale de la sesión
   avance_manual_historial: {
     POST: ["ot", "etapa", "pct"],
