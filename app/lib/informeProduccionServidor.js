@@ -49,8 +49,10 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     // Sin la 145 no hay "Faltan X h"; sin la 146 no hay historial del checkeo manual
     sbGetAll(`ajustes_tiempo_ot?empresa_id=eq.${e}&tipo=eq.faltan&select=ot,etapa,tipo,horas,pendiente,created_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
     sbGetAll(`avance_manual_historial?empresa_id=eq.${e}&select=ot,etapa,pct,created_at&order=created_at.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
-    // Sin la 147 no hay retrabajo
-    sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
+    // Sin la 147 no hay retrabajo; sin la 148 no hay anulado_at
+    sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at,anulado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 })
+      .catch(() => sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }))
+      .catch(vacio),
   ]);
   const ids = planes.data.map((p) => p.id);
   const items = ids.length

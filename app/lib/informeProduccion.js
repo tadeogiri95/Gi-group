@@ -199,7 +199,7 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
   const sinCorrimiento = procesosAbiertos.length ? redondear((procesosAbiertos.filter((q) => !(q.diasCorrido > 0)).length / procesosAbiertos.length) * 100) : 100;
   const nota = notaInforme({ cumplimiento, enSemana, sinCorrimiento });
   // Retrabajo (147): las horas cargadas en el período, por proceso; no cambia la nota
-  const rt = (retrabajos || []).filter((x) => { const d = diaDe(x.created_at); return d >= desde && d <= hasta && Number(x.horas) > 0; })
+  const rt = (retrabajos || []).filter((x) => { const d = diaDe(x.created_at); return !x.anulado_at && d >= desde && d <= hasta && Number(x.horas) > 0; })
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
     .map((x) => ({ ot: String(x.ot), etapa: x.etapa, nombre: ETAPAS_PLAN.find((e) => e.id === x.etapa)?.nombre || x.etapa,
       horas: redondear(Number(x.horas)), motivo: textoMotivoRetrabajo(x), terminado: !!x.terminado_at, cliente: proyectos?.get?.(String(x.ot))?.cliente || null }));

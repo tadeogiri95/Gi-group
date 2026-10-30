@@ -3,11 +3,12 @@
 // se corrió (Tadeo, 29/10; migración 145; app/lib/ajustesTiempo.js).
 // Siempre con el motivo; queda registrado en la OT. También el 🔁 retrabajo
 // (Tadeo, 30/10; migración 147): horas que se suman al proceso, aunque ya
-// estuviera completo, hasta que se marca terminado.
+// estuviera completo, hasta que se marca terminado; uno mal cargado se
+// elimina (148).
 import { useEffect, useState } from "react";
 import { sb } from "../lib/supabase";
 import { MOTIVOS_TIEMPO, validarAjuste, textoMotivo, AVISO_MIGRACION_145 } from "../lib/ajustesTiempo";
-import { MOTIVOS_RETRABAJO, validarRetrabajo, textoMotivoRetrabajo, AVISO_MIGRACION_147 } from "../lib/retrabajo";
+import { MOTIVOS_RETRABAJO, validarRetrabajo, textoMotivoRetrabajo, AVISO_MIGRACION_147, AVISO_MIGRACION_148 } from "../lib/retrabajo";
 import { fmtH } from "../lib/cargaPlanta";
 import Modal from "./ui/Modal";
 import { Chip } from "./ui";
@@ -21,7 +22,7 @@ const dias = (n) => `${n} ${n === 1 ? "día" : "días"}`;
  *   soloMotivo: viene de "Atrasos sin motivo" (se anota por qué se corrió, sin cambiar horas)
  *   diasCon: cuántos días queda corrido del plan confirmado con esas horas
  *   completo: el proceso ya está al 100 % (solo se puede cargar retrabajo)
- *   retrabajos: los retrabajos sin terminar de este proceso
+ *   retrabajos: los retrabajos de este proceso (sin los eliminados)
  */
 export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = null, diasCorrido = 0, soloMotivo = false, diasCon, porNombre = null,
   completo = false, retrabajos = [], onGuardado, onRetrabajo, onClose }) {
@@ -31,6 +32,8 @@ export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = nul
   const [detalle, setDetalle] = useState("");
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [borrar, setBorrar] = useState(null); // id del retrabajo a eliminar (pide confirmar)
+  const pendientes = retrabajos.filter((r) => !r.terminado_at);
   const titulo = `⏱ ${nombre} de la OT ${ot}`;
 
   const elegir = (t) => { setTipo(t); setMotivo(""); setError(null); if (t === "retrabajo") setTexto(""); };
@@ -65,6 +68,19 @@ export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = nul
     }
   };
 
+  const eliminar = async (r) => {
+    setGuardando(true);
+    setError(null);
+    const cambio = { anulado_at: new Date().toISOString(), anulado_nombre: porNombre ? String(porNombre).slice(0, 120) : null };
+    try {
+      await sb.patch(`retrabajos_ot?id=eq.${r.id}`, cambio);
+      onRetrabajo?.({ ...r, ...cambio });
+    } catch (e) {
+      setError(/anulado/.test(String(e?.message)) ? AVISO_MIGRACION_148 : `No se pudo guardar: ${e?.message || e}`);
+      setGuardando(false);
+    }
+  };
+
   const guardar = async () => {
     if (tipo === "retrabajo") return guardarRetrabajo();
     const h = tipo === "faltan" ? Number(String(texto).replace(",", ".")) : null;
@@ -95,16 +111,27 @@ export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = nul
       <div className="p-4 overflow-y-auto text-gypi-text">
         <div className="text-[18px] font-bold mb-1">{titulo}</div>
         <div className="text-[14px] text-gypi-dim mb-3">
-          {completo && !retrabajos.length ? "El proceso está al 100 %." : `Ahora le faltan ${fmtH(horas || 0)}${diasCorrido > 0 ? ` y se corrió ${dias(diasCorrido)} del plan confirmado` : ""}.`}
+          {completo && !pendientes.length ? "El proceso está al 100 %." : `Ahora le faltan ${fmtH(horas || 0)}${diasCorrido > 0 ? ` y se corrió ${dias(diasCorrido)} del plan confirmado` : ""}.`}
         </div>
         {retrabajos.length > 0 && (
-          <section aria-label="Retrabajo sin terminar" className="mb-3 rounded-xl border-2 border-gypi-red/40 p-2.5">
-            <div className="text-[14px] font-bold mb-1">🔁 Retrabajo sin terminar</div>
+          <section aria-label="Retrabajos del proceso" className="mb-3 rounded-xl border-2 border-gypi-red/40 p-2.5">
+            <div className="text-[14px] font-bold mb-1">🔁 Retrabajos de este proceso</div>
             <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
               {retrabajos.map((r) => (
-                <li key={r.id ?? r.created_at} className="flex items-center gap-2 text-[14px]">
-                  <span className="flex-1 min-w-0">{fmtH(Number(r.horas) || 0)} · {textoMotivoRetrabajo(r)}</span>
-                  {r.id != null && <button type="button" disabled={guardando} onClick={() => terminar(r)} className="g-btn g-btn-secondary">✓ Terminado</button>}
+                <li key={r.id ?? r.created_at} className="flex flex-wrap items-center gap-2 text-[14px]" data-retrabajo-fila={r.id}>
+                  <span className="flex-1 min-w-0">{fmtH(Number(r.horas) || 0)} · {textoMotivoRetrabajo(r)}{r.terminado_at && <span className="text-gypi-dim"> · ✓ terminado</span>}</span>
+                  {r.id != null && borrar === r.id ? (
+                    <>
+                      <span className="text-[13px] font-bold text-gypi-red">¿Eliminar este retrabajo?</span>
+                      <button type="button" disabled={guardando} onClick={() => eliminar(r)} className="g-btn g-btn-danger">Sí, eliminar</button>
+                      <button type="button" disabled={guardando} onClick={() => setBorrar(null)} className="g-btn g-btn-secondary">No</button>
+                    </>
+                  ) : r.id != null && (
+                    <>
+                      {!r.terminado_at && <button type="button" disabled={guardando} onClick={() => terminar(r)} className="g-btn g-btn-secondary">✓ Terminado</button>}
+                      <button type="button" disabled={guardando} onClick={() => setBorrar(r.id)} aria-label={`Eliminar retrabajo de ${fmtH(Number(r.horas) || 0)}`} className="g-btn g-btn-secondary">🗑</button>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
