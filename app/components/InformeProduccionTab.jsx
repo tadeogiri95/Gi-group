@@ -102,7 +102,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
                 <div className="flex items-baseline gap-2">
                   <span className="font-mono text-[14px] font-bold">OT {o.ot}</span>
                   <span className="flex-1 min-w-0 text-[12px] text-gypi-dim truncate">{[o.cliente, o.descripcion].filter(Boolean).join(" · ")}</span>
-                  <span className={`text-[13px] font-bold ${o.desvio < 0 ? "text-gypi-red" : "text-gypi-green"}`} data-desvio>{o.desvio > 0 ? "+" : ""}{coma(o.desvio)} %</span>
+                  <span className={`text-[13px] font-bold ${!o.fueraDelPlan && o.hecho < o.planificado ? "text-gypi-red" : "text-gypi-green"}`} data-desvio>{o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</span>
                 </div>
                 <BarrasOt o={o} />
                 <div className="text-[12px] text-gypi-dim">
@@ -115,15 +115,14 @@ export function VistaInforme({ informe: r, guardado = null }) {
               {abierta === o.ot && (
                 <table className="w-full mt-2 text-[12px] border-collapse">
                   <thead>
-                    <tr className="text-gypi-dim text-left"><th className="font-normal">Proceso</th><th className="font-normal text-right">Planificado</th><th className="font-normal text-right">Hecho</th><th className="font-normal text-right">Desvío</th><th className="font-normal text-right">Va</th></tr>
+                    <tr className="text-gypi-dim text-left"><th className="font-normal">Proceso</th><th className="font-normal text-right">Planificado</th><th className="font-normal text-right">Hecho</th><th className="font-normal text-right">Avance total</th></tr>
                   </thead>
                   <tbody>
                     {o.procesos.map((q) => (
                       <tr key={q.etapa}>
                         <td>{q.nombre}{q.fueraDelPlan && <span className="text-gypi-amber-ink"> · 🆕 fuera del plan</span>}{q.fuente === "manual" && <span className="text-gypi-dim"> · ✋ a mano</span>}</td>
                         <td className="text-right">{coma(q.planificado)} %</td>
-                        <td className="text-right">{coma(q.hecho)} %</td>
-                        <td className={`text-right font-bold ${q.desvio < 0 ? "text-gypi-red" : "text-gypi-green"}`}>{q.desvio > 0 ? "+" : ""}{coma(q.desvio)}</td>
+                        <td className={`text-right font-bold ${q.planificado > 0 && q.hecho < q.planificado ? "text-gypi-red" : "text-gypi-green"}`}>{coma(q.hecho)} %</td>
                         <td className="text-right">{coma(q.alFinal)} %</td>
                       </tr>
                     ))}
