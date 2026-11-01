@@ -48,6 +48,8 @@ import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
 import { diaLaborable, feriadosDe } from "../lib/secuencia";
+import { finesVencidos, minutosArg } from "../lib/finProceso";
+import { ventanasDeGrilla } from "../lib/leadTimeHoras";
 import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente, ultimaConfirmacion } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { MODO_POR_DEFECTO, normalizarModo } from "../lib/semanaObjetivo";
@@ -230,6 +232,19 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       sinMotivo: puedeAjustar && ajustes ? atrasosSinMotivo(new Map(renglones.map((r) => [r.ot, r])), ajustes, ultimaConfirmacion(planes)) : [],
     };
   }, [vivoCon, manual, abiertasPorOt, divisiones, hoy, modo, puedeAjustar, ajustes, planes]);
+  // ⏰ Procesos de hoy que ya llegaron a su hora de fin y no se terminaron
+  // (Tadeo, 01/11): se revisa cada minuto; el celular lo avisa el cron fin-proceso
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+  const ventanasDia = useMemo(() => ventanasDeGrilla(empleados, divisiones, cfgValor), [empleados, divisiones, cfgValor]);
+  const porTerminar = useMemo(() => {
+    if (!renglones?.length) return [];
+    const porOt = new Map(renglones.map((r) => [r.ot, r]));
+    return finesVencidos(porOt, { hoy, ahoraMin: minutosArg(new Date(ahora)), ventanas: ventanasDia }).map((v) => ({ ...v, fila: porOt.get(v.ot) }));
+  }, [renglones, hoy, ahora, ventanasDia]);
   const abrirAjuste = (r, q, soloMotivo = false) => {
     if (!puedeAjustar || !q) return;
     if (grande) cerrarGrande();
@@ -552,6 +567,23 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-dashed border-proc-margen" /><span className={corridas.length ? "font-bold" : ""}>↪ Se corrió del plan {corridas.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-red" />🔁 Retrabajo</span>
       </div>
+      {porTerminar.length > 0 && (
+        <section aria-label="Procesos por terminar" className="mb-2 rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3 shrink-0">
+          <div className="text-[15px] font-bold text-gypi-text mb-1">⏰ Ya tenían que terminar · {porTerminar.length}</div>
+          <ul className={`list-none m-0 p-0 flex flex-col gap-1 overflow-auto ${grande ? "max-h-[20vh]" : ""}`}>
+            {porTerminar.map((v) => (
+              <li key={v.clave} className="flex flex-wrap items-center gap-2 text-[15px] text-gypi-text">
+                <span className="flex-1 min-w-0"><span className="font-mono font-bold">{v.ot}</span> · {v.nombre} tenía que terminar a las {v.hora}</span>
+                {puedeAjustar && (
+                  <button type="button" onClick={() => abrirAjuste(v.fila, v.fila.procesos.find((q) => q.etapa === v.etapa))}
+                    aria-label={`⏱ ${v.nombre} de la OT ${v.ot} necesita más tiempo`} className="g-btn g-btn-secondary">⏱ Necesita más tiempo</button>
+                )}
+                <button type="button" onClick={() => verDetalle(v.fila.proyecto)} aria-label={`Ver la OT ${v.ot} para marcar ${v.nombre} terminado`} className="g-btn g-btn-secondary">✅ Ver / marcar terminado</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {reordenar && (cambio ? (
         <div role="status" aria-label="Orden nuevo sin confirmar" className="mb-2 rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3 shrink-0">
           <div className="text-[15px] font-bold text-gypi-text mb-1">Vista previa del orden nuevo</div>

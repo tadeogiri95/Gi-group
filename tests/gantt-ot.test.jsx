@@ -681,3 +681,26 @@ test("📅 Gantt — los días sin trabajo quedan vacíos, la barra sigue el pr�
     mock.timers.reset();
   }
 });
+
+test("📅 Gantt — ⏰ avisa los procesos de hoy que ya tenían que terminar", () => {
+  lunes26(); // lunes 26/10 a las 12:00 en Argentina
+  try {
+    const planes = [{ id: 1, tipo: "semana", desde: "2026-10-19", hasta: "2026-11-30", items: [
+      { ot: "7100", etapa: "corte", fecha: "2026-10-26", horas: 2, orden: 0 },
+      { ot: "7100", etapa: "canteado", fecha: "2026-10-26", horas: 12, orden: 0 },
+    ] }];
+    const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+    const vistos = [];
+    render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} puedeAjustar
+      avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} onVerDetalle={(p) => vistos.push(p.ot)} />);
+    const caja = screen.getByRole("region", { name: "Procesos por terminar" });
+    // Corte de 2 h desde las 8: a las 10; el Canteado (6 h de máquina) recién a las 16
+    assert.match(caja.textContent, /7100 · Corte tenía que terminar a las 10:00/);
+    assert.doesNotMatch(caja.textContent, /Canteado/);
+    assert.ok(within(caja).getByRole("button", { name: "⏱ Corte de la OT 7100 necesita más tiempo" }));
+    fireEvent.click(within(caja).getByRole("button", { name: /Ver la OT 7100/ }));
+    assert.deepEqual(vistos, ["7100"]);
+  } finally {
+    mock.timers.reset();
+  }
+});
