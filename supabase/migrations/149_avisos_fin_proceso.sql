@@ -52,7 +52,7 @@ select cron.schedule(
   '*/15 * * * *',
   $cron$
     select net.http_get(
-      url := 'https://gypi.app/api/cron/fin-proceso',
+      url := 'https://gi-group-app.vercel.app/api/cron/fin-proceso',
       headers := jsonb_build_object('Authorization', 'Bearer PEGAR_ACA_EL_CRON_SECRET'),
       timeout_milliseconds := 60000
     );
