@@ -7,7 +7,7 @@ import "./helpers/domSetup.js";
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 
 const { default: ProyectosScreen } = await import("../app/proyectos_screen.jsx");
 const { PlanTrabajoLinks } = await import("../app/components/PlanillasConectadas.jsx");
@@ -90,7 +90,7 @@ test("listado de OT — trae todas las páginas, no se corta en 500", async () =
   assert.ok((await screen.findAllByText(/1200/)).length > 0);
 });
 
-test("lista de OT — botones grandes con texto, filtros en una fila y lo de vez en cuando en Más acciones", async () => {
+test("lista de OT — botones grandes con texto, resumen que filtra en una línea y lo de vez en cuando en Más (auditoría 01/11)", async () => {
   global.fetch = mockApi([]);
   render(
     <AuthContext.Provider value={{ divisiones: [{ id: "muebles", nombre: "Muebles" }], empresa: { nombre: "Acme" }, updateEmpresa: () => {} }}>
@@ -102,11 +102,17 @@ test("lista de OT — botones grandes con texto, filtros en una fila y lo de vez
     assert.match(b.className, /min-h-\[48px\]/);
     assert.match(b.className, /text-\[15px\]/);
   }
-  const estado = screen.getByRole("combobox", { name: "Estado de las OT" });
-  fireEvent.change(estado, { target: { value: "cerrado" } });
-  assert.equal(estado.value, "cerrado");
+  // El resumen es el filtro: tocar "cerradas" muestra las cerradas
+  const resumen = screen.getByRole("group", { name: "Estado de las OT" });
+  const cerradas = within(resumen).getByRole("button", { name: /cerradas/ });
+  assert.equal(cerradas.getAttribute("aria-pressed"), "false");
+  fireEvent.click(cerradas);
+  assert.equal(cerradas.getAttribute("aria-pressed"), "true");
   assert.ok(screen.getByRole("combobox", { name: "División" }));
-  // CSV, etiquetas, escáner y sincronización quedan guardados hasta abrir "Más acciones"
+  assert.ok(screen.getByRole("textbox", { name: "Buscar OT" }));
+  // Ya no están las 4 tarjetas de números
+  assert.equal(screen.queryByText("Total"), null);
+  // CSV y etiquetas quedan guardados hasta abrir "Más"
   assert.equal(screen.queryByText(/Importar OT desde un CSV/), null);
   assert.equal(screen.queryByText(/Imprimir etiquetas QR/), null);
   const mas = screen.getByRole("button", { name: /Más acciones/ });
@@ -114,7 +120,8 @@ test("lista de OT — botones grandes con texto, filtros en una fila y lo de vez
   fireEvent.click(mas);
   assert.ok(screen.getByText(/Importar OT desde un CSV/));
   assert.ok(screen.getByText(/Imprimir etiquetas QR/));
-  assert.ok(screen.getByRole("switch", { name: "Escanear OT con la cámara" }));
+  // El escáner de OT es del registro de tareas ("Iniciar tarea"): sin él no aparece
+  assert.equal(screen.queryByRole("switch", { name: "Escanear OT con la cámara" }), null);
 });
 
 test("lista de OT — un solo botón a la vista actualiza y sincroniza con la planilla", async () => {

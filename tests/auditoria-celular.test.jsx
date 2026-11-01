@@ -35,11 +35,12 @@ const conAuth = (ui, extra = {}) => (
   </AuthContext.Provider>
 );
 
-test("lista de OT — cada OT es un solo renglón; al tocarla se abre con todos sus botones grandes", async () => {
+test("lista de OT — cada OT es una tarjeta con estado y entrega; al tocarla se abre con todos sus botones grandes", async () => {
   global.fetch = mockDatos({ proyectos: OTS });
   render(conAuth(<ProyectosScreen empresaId={E} />));
-  const fila = await screen.findByRole("button", { name: /OT 7495: Banco Norte/ });
-  assert.match(fila.textContent, /Sucursal Centro · Muebles · Entrega 20\/11\/2026/);
+  const fila = await screen.findByRole("button", { name: /OT 7495: Banco Norte. Sin empezar/ });
+  assert.match(fila.textContent, /Sucursal Centro · Muebles/);
+  assert.match(fila.textContent, /Entrega 20\/11\/2026/);
   // Los 8 botones ya no se repiten en cada OT
   assert.equal(screen.queryByRole("button", { name: "📊 Detalle" }), null);
   assert.equal(screen.queryByRole("button", { name: "🚚 Carga" }), null);
@@ -103,4 +104,23 @@ test("fila que se desliza — no se parte en renglones y avisa si hay más a la 
     assert.match(readFileSync(new URL(`../app/${f}`, import.meta.url), "utf8"), /<FilaDeslizable /, f);
   }
   assert.doesNotMatch(readFileSync(new URL("../app/components/ComprasScreen.jsx", import.meta.url), "utf8"), /aria-label="Compras" className="flex gap-1\.5 mb-3 flex-wrap"/);
+});
+
+test("lista de OT — estado con la etapa en curso, avance y entrega (auditoría 01/11, PR 4)", async () => {
+  const { estadoOtLista, etapaEnCurso, textoEntrega } = await import("../app/lib/otLista.js");
+  const fila = { celdas: [
+    { estado: "aprobada", etapa: { nombre: "Corte" } },
+    { estado: "en_curso", etapa: { nombre: "Canteado" } },
+    { estado: "pendiente", etapa: { nombre: "Armado" } },
+  ] };
+  assert.equal(etapaEnCurso(fila), "Canteado");
+  assert.equal(etapaEnCurso({ celdas: [{ estado: "aprobada", etapa: { nombre: "Corte" } }, { estado: "pendiente", etapa: { nombre: "Armado" } }] }), "Armado");
+  assert.deepEqual(estadoOtLista({ estado: "activo" }, { enCurso: fila, porcentaje: 40 }), { texto: "En curso · Canteado", tono: "amber" });
+  assert.deepEqual(estadoOtLista({ estado: "activo" }, { porcentaje: 100 }), { texto: "Producción terminada", tono: "green" });
+  assert.deepEqual(estadoOtLista({ estado: "activo" }, {}), { texto: "Sin empezar", tono: "muted" });
+  assert.equal(estadoOtLista({ estado: "cerrado" }).texto, "Cerrada");
+  assert.equal(estadoOtLista({ estado: "activo", terminado_planilla: true }).texto, "Terminada en planilla");
+  assert.equal(textoEntrega({ semana_objetivo: 45, fecha_objetivo: "2026-11-06" }, "semana_lunes"), "Entrega S45 (6/11)");
+  assert.equal(textoEntrega({ fecha_objetivo: "2026-10-31" }, "entrega"), "Entrega 31/10/2026");
+  assert.equal(textoEntrega({}, "entrega"), "");
 });
