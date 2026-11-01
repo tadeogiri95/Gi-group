@@ -30,20 +30,25 @@ const horasDeSemana = (horasSemana) => ((horasSemana || []).some((h) => h > 0) ?
  * horarios, o es un día de horas extra del plan. Los demás quedan vacíos en
  * el Gantt y la barra sigue el próximo día de trabajo.
  */
-export function diaLaborable(horasSemana, extras = null) {
+export function diaLaborable(horasSemana, extras = null, feriados = null) {
   const hs = horasDeSemana(horasSemana);
-  return (fecha) => hs[diaSemana(fecha)] > 0 || !!extras?.has(fecha);
+  return (fecha) => !!extras?.has(fecha) || (hs[diaSemana(fecha)] > 0 && !feriados?.has(fecha));
 }
+
+/** Los feriados cargados en ⚙ Parámetros (Tadeo, 01/11), como Set de "AAAA-MM-DD". */
+export const feriadosDe = (params) => new Set((params?.feriados || []).map((f) => f.fecha));
 
 /**
  * Calendario de trabajo desde `base` con las horas de cada día de la semana.
  * t = horas de trabajo desde el comienzo de `base`. `extras` = días de horas
  * extra (un sábado o domingo sin nadie puesto), con las horas del día más largo.
+ * `feriados`: días que no se trabajan aunque la grilla tenga horas (salvo que
+ * el plan les ponga horas extra).
  */
-export function calendario(base, horasSemana, extras = null) {
+export function calendario(base, horasSemana, extras = null, feriados = null) {
   const hs = horasDeSemana(horasSemana);
   const largo = Math.max(...hs);
-  const horasDe = (f) => (hs[diaSemana(f)] > 0 ? hs[diaSemana(f)] : extras?.has(f) ? largo : 0);
+  const horasDe = (f) => (feriados?.has(f) ? (extras?.has(f) ? largo : 0) : hs[diaSemana(f)] > 0 ? hs[diaSemana(f)] : extras?.has(f) ? largo : 0);
   const dias = []; // { fecha, horas, desde (t al empezar el día) }
   const siguiente = (desde) => {
     let f = desde;

@@ -47,7 +47,7 @@ import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
-import { diaLaborable } from "../lib/secuencia";
+import { diaLaborable, feriadosDe } from "../lib/secuencia";
 import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente, ultimaConfirmacion } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { MODO_POR_DEFECTO, normalizarModo } from "../lib/semanaObjetivo";
@@ -204,8 +204,9 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho]);
 
   // Días que se trabajan: con horas en la grilla de horarios o de horas extra del plan
-  const laborable = useMemo(() => diaLaborable(horasSemanaDeGrilla(empleados, divisiones, cfgValor), planes ? diasExtraVigentes(planes) : null),
-    [empleados, divisiones, cfgValor, planes]);
+  const feriados = useMemo(() => feriadosDe(params), [params]);
+  const laborable = useMemo(() => diaLaborable(horasSemanaDeGrilla(empleados, divisiones, cfgValor), planes ? diasExtraVigentes(planes) : null, feriados),
+    [empleados, divisiones, cfgValor, planes, feriados]);
 
   const { renglones, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
     if (!vivoCon) return { renglones: null };
@@ -406,7 +407,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   // Fondo de cada renglón: días sin trabajo más oscuros, separadores de semana y la línea de hoy
   const fondoDe = (alto) => (
     <g>
-      {vista !== "mes" && sinTrabajo.map((f) => <rect key={f} data-sin-trabajo={f} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
+      {vista !== "mes" && sinTrabajo.map((f) => <rect key={f} data-sin-trabajo={f} data-feriado={feriados.has(f) ? f : undefined} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
       {vista !== "mes" && semanas.map((s) => <rect key={s.inicio} x={xSem(s)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
       {vista === "mes" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => f.endsWith("-01"))
         .map((f) => <rect key={f} x={x(f)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
@@ -485,7 +486,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
             {dia === hoy && <rect x={x(dia)} y={21} width={px} height={CAB - 21} className="fill-gypi-amber" fillOpacity={0.35} />}
             {conNombre && d > 0 && <rect x={x(dia)} y={21} width={1} height={CAB - 21} className="fill-gypi-border" />}
             <text x={x(dia) + px / 2} y={39} textAnchor="middle" className={`text-[14px] ${finde ? "fill-gypi-mute" : "fill-gypi-text font-bold"}`}>
-              {conNombre ? `${DIAS[diaSemana(dia)]} ${diaMes(dia)}` : Number(dia.slice(8))}
+              {conNombre ? `${feriados.has(dia) ? "Feriado" : DIAS[diaSemana(dia)]} ${diaMes(dia)}` : Number(dia.slice(8))}
             </text>
           </g>
         );
@@ -736,7 +737,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           onGuardado={(fila) => { setAjustes((a) => [...(a || []), fila]); setEditar(null); }}
           onRetrabajo={(fila) => { setRetrabajos((l) => [...l.filter((x) => x.id == null || x.id !== fila.id), fila]); setEditar(null); }} />
       )}
-      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT. La parte clara de cada barra es lo que ya pasó. Tocá una OT para ver su detalle.</p>}
+      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT. La línea finita es lo que ya pasó; los días sin trabajo (sin horas en la grilla) quedan vacíos y la barra sigue el próximo día. Lo que una máquina ya empezó lo termina antes de tomar otra OT. Tocá una OT para ver su detalle.</p>}
     </div>
   );
 }

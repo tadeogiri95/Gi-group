@@ -1354,3 +1354,33 @@ test("📊 Carga — una OT nueva con semana se tilda sola aunque haya tildadas 
   assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, false, "la que ya se conocía sigue destildada");
   localStorage.clear();
 });
+
+// Feriados (Tadeo, 01/11): se marcan en ⚙ Parámetros; ese día no se planifica
+// aunque la grilla tenga horas, salvo que el plan le ponga horas extra.
+test("⚙ Parámetros — se agregan y quitan feriados, y se guardan con los parámetros", async () => {
+  const pedidos = mockData({ cfg: [{ clave: "planificacion", valor: { eficiencia: 80, feriados: [{ fecha: "2026-12-25", nombre: "Navidad" }] } }] });
+  pantalla();
+  fireEvent.click(await screen.findByText("⚙ Parámetros"));
+  const caja = await screen.findByRole("region", { name: "Feriados" });
+  assert.match(caja.textContent, /25\/12\/2026 · Navidad/);
+  fireEvent.change(within(caja).getByLabelText("Fecha del feriado"), { target: { value: "2026-11-23" } });
+  fireEvent.change(within(caja).getByLabelText("Nombre del feriado"), { target: { value: "Soberanía" } });
+  fireEvent.click(within(caja).getByRole("button", { name: "Agregar" }));
+  fireEvent.click(within(caja).getByRole("button", { name: "Quitar el feriado del 25/12/2026" }));
+  fireEvent.click(screen.getByText("Guardar parámetros"));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.method === "PATCH" && p.path === "config_sistema?clave=eq.planificacion")));
+  const patch = pedidos.find((p) => p.method === "PATCH" && p.path === "config_sistema?clave=eq.planificacion");
+  assert.deepEqual(patch.body.valor.feriados, [{ fecha: "2026-11-23", nombre: "Soberanía" }]);
+});
+
+test("feriados — el calendario los salta salvo con horas extra, y quedan vacíos en el Gantt", async () => {
+  const { calendario, diaLaborable } = await import("../app/lib/secuencia.js");
+  const fer = new Set(["2026-11-23"]);
+  const cal = calendario("2026-11-23", [0, 8, 8, 8, 8, 8, 0], null, fer);
+  assert.equal(cal.punto(0, false).fecha, "2026-11-24", "el lunes feriado no se trabaja");
+  const conExtra = calendario("2026-11-23", [0, 8, 8, 8, 8, 8, 0], new Set(["2026-11-23"]), fer);
+  assert.equal(conExtra.punto(0, false).fecha, "2026-11-23", "con horas extra del plan, sí");
+  const lab = diaLaborable([0, 8, 8, 8, 8, 8, 0], null, fer);
+  assert.deepEqual(["2026-11-22", "2026-11-23", "2026-11-24"].map(lab), [false, false, true]);
+  assert.deepEqual(normalizarParametros({ feriados: [{ fecha: "2026-11-23" }, { fecha: "mal" }, { fecha: "2026-11-23", nombre: "x" }] }).feriados, [{ fecha: "2026-11-23", nombre: "x" }]);
+});
