@@ -9,7 +9,8 @@
 // la parte 10, los bultos cargados y si la carga está firmada; desde Stock
 // parte 16, el material necesario contra el retirado. Desde la auditoría del
 // 22/10, el estado de cada etapa de la ruta (como en el Tablero), que se ve
-// aunque nadie registre tareas.
+// aunque nadie registre tareas. Desde la Minuta (parte M3), 📝 En las
+// minutas: lo que se dijo de la OT en las reuniones (solo gerencia).
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
@@ -29,6 +30,7 @@ import { CambiosTiempoOt } from "./AjusteTiempo";
 import SelectorSemana from "./SelectorSemana";
 import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { useEscape } from "../hooks/useEscape";
+import MinutasDeOt from "./MinutasDeOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -382,6 +384,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
             ))}
           </div>
         </>)}
+        <MinutasDeOt ot={proyecto?.ot} />
       </div>
     </div>
   );

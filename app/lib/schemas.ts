@@ -1109,4 +1109,6 @@ export const minutasBody = z.discriminatedUnion("accion", [
     items: z.array(renglonMinuta).max(300).default([]),
   }).strict(),
   z.object({ accion: z.literal("reabrir"), fecha: fechaMinuta }).strict(),
+  // Seguimiento (parte M3): ✓ Resuelto de un renglón, o feedback revisado el jueves
+  z.object({ accion: z.literal("resolver"), id: uuid, resuelto: z.boolean() }).strict(),
 ]);

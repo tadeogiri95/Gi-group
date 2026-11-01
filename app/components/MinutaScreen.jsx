@@ -13,7 +13,7 @@ import { apiFetch, sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import {
   AREAS_DYT, AREAS_FEEDBACK, BLOQUES, CLAVE_CONFIG_MINUTA, ESTADOS_DYT, LISTO, SEMAFOROS, TIPOS_FEEDBACK, URGENCIAS,
-  datosDeOt, duracionMinutos, faltantesMinuta, hora, imprimirMinuta, participantesDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
+  VECES_A_GERENCIA, datosDeOt, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
 } from "../lib/minutas";
 import { nombreDivisionOt } from "../lib/avance";
 import { sugerenciasPendientes } from "../lib/minutasPrecarga";
@@ -88,13 +88,20 @@ function Semaforo({ value, onChange, disabled }) {
 }
 
 /** Un renglón de una sección, con los campos que lleva esa sección. */
-function Renglon({ s, it, cambiar, sacar, listas, disabled }) {
+function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null }) {
   const c = (campo) => s.campos.includes(campo);
   const datos = (k, v) => cambiar({ datos: { ...it.datos, [k]: v } });
   const textoOt = it.ot ? `OT ${it.ot}${it.proyecto ? ` · ${it.proyecto}` : ""}` : it.proyecto || "";
   const falta = (campo) => s.obligatorios?.includes(campo) && !it[campo === "fecha" ? "fecha_objetivo" : campo] && (it.ot || it.proyecto || it.texto);
   return (
-    <div className="g-card p-3 mb-2">
+    <div className={`g-card p-3 mb-2 ${it.resuelto_at ? "opacity-60" : ""}`}>
+      {(textoSeguimiento(it) || it.datos?.gerencia || it.resuelto_at) && (
+        <div className="flex flex-wrap gap-2 mb-2 text-[12px]">
+          {textoSeguimiento(it) && <span className="text-gypi-amber-ink font-semibold">{textoSeguimiento(it)}</span>}
+          {it.datos?.gerencia && <span className="text-gypi-red-ink font-semibold">🔴 {VECES_A_GERENCIA} días seguidos: lo toma Gerencia</span>}
+          {it.resuelto_at && <span className="text-gypi-green-ink font-semibold">✓ Resuelto</span>}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {c("articulo") && (
           <Campo label={s.texto} ancho>
@@ -198,9 +205,15 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled }) {
           <Campo label="Dónde"><input className="g-input w-full" aria-label="Dónde" value={it.datos?.donde || ""} disabled={disabled} onChange={(e) => datos("donde", e.target.value)} /></Campo>
         )}
       </div>
-      {!disabled && (
-        <div className="flex justify-end mt-1">
-          <button type="button" onClick={sacar} className="min-h-[44px] px-3 bg-transparent border-none text-gypi-red-ink cursor-pointer text-[13px]">🗑 Sacar renglón</button>
+      {(resolver || !disabled) && (
+        <div className="flex justify-end gap-2 mt-1">
+          {resolver && (
+            <button type="button" onClick={resolver} aria-pressed={!!it.resuelto_at}
+              className="min-h-[44px] px-3 bg-transparent border-none text-gypi-green-ink cursor-pointer text-[13px] font-semibold">
+              {it.resuelto_at ? "↺ Reabrir" : "✓ Resuelto"}
+            </button>
+          )}
+          {!disabled && <button type="button" onClick={sacar} className="min-h-[44px] px-3 bg-transparent border-none text-gypi-red-ink cursor-pointer text-[13px]">🗑 Sacar renglón</button>}
         </div>
       )}
     </div>
@@ -209,44 +222,99 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled }) {
 
 const fechaCorta = (f) => (f ? `${Number(f.slice(8, 10))}/${Number(f.slice(5, 7))}` : "");
 
-/** Lo que Gypi sugiere para una sección (parte M2): se agrega de a uno o todo junto. */
-function SugeridosGypi({ s, lista, otDe, hoy, onAgregar }) {
+/**
+ * Renglones para agregar con un toque: lo que Gypi sugiere (parte M2) o lo que
+ * sigue abierto de minutas anteriores (parte M3).
+ * opciones: [{ clave, nombre, detalle, valor }]
+ */
+function ParaAgregar({ titulo, label, opciones, onAgregar, alerta = false }) {
   const [abierto, setAbierto] = useState(true);
-  if (!lista.length) return null;
-  const detalle = (x) => [
+  if (!opciones.length) return null;
+  return (
+    <div className={`rounded-lg border border-dashed p-2 mb-2 ${alerta ? "border-gypi-amber" : "border-gypi-border"}`} aria-label={label} role="group">
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" className="bg-transparent border-none cursor-pointer text-left text-[13px] font-semibold text-gypi-text min-h-[44px] px-1"
+          aria-expanded={abierto} onClick={() => setAbierto((x) => !x)}>
+          {titulo} ({opciones.length}) {abierto ? "▾" : "▸"}
+        </button>
+        {opciones.length > 1 && <button type="button" className="g-btn g-btn-secondary" onClick={() => onAgregar(opciones.map((o) => o.valor))}>＋ Agregar todos</button>}
+      </div>
+      {abierto && (
+        <ul className="list-none m-0 p-0">
+          {opciones.map((o) => (
+            <li key={o.clave} className="flex items-center gap-2 py-1 border-t border-gypi-border first:border-t-0">
+              <span className="flex-1 min-w-0 text-[13px]">
+                <span className="font-semibold">{o.nombre}</span>
+                {o.detalle && <span className="block text-[12px] text-gypi-mute">{o.detalle}</span>}
+              </span>
+              <button type="button" className="g-btn g-btn-secondary" aria-label={`Agregar ${o.nombre}`} onClick={() => onAgregar([o.valor])}>＋</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Texto de una sugerencia de Gypi: "40 % · arranca hoy · Todo listo · entrega 6/11". */
+function detalleSugerencia(x, s, hoy) {
+  return [
     x.datos?.avance != null ? `${x.datos.avance} %` : "",
     x.datos?.arranca ? (x.datos.arranca === hoy ? "arranca hoy" : `arranca el ${fechaCorta(x.datos.arranca)}`) : "",
     x.datos?.listo ? LISTO.find((l) => l.id === x.datos.listo)?.label : "",
     x.texto || "",
     x.fecha_objetivo ? `${s.id === "prod_a_iniciar" ? "entrega" : "fecha"} ${fechaCorta(x.fecha_objetivo)}` : "",
   ].filter(Boolean).join(" · ");
+}
+
+/**
+ * Revisión del jueves (parte M3): el feedback de la última semana junto, por
+ * área, para revisarlo entre todos. ✓ Revisado lo deja anotado.
+ */
+function RevisionFeedback({ abierto, hasta, onCerrar }) {
+  const toast = useToast();
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    if (!abierto) return;
+    setItems(null);
+    const desde = new Date(Date.parse(`${hasta}T12:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10);
+    apiFetch(`/api/minutas?feedback=${desde}`).then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => setItems(ok ? j.items || [] : []))
+      .catch(() => setItems([]));
+  }, [abierto, hasta]);
+  async function revisar(it) {
+    const r = await apiFetch("/api/minutas", { method: "POST", body: JSON.stringify({ accion: "resolver", id: it.id, resuelto: !it.resuelto_at }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { toast.error(j.error || "No se pudo marcar"); return; }
+    setItems((l) => l.map((x) => (x.id === it.id ? { ...x, resuelto_at: j.item?.resuelto_at ?? null } : x)));
+  }
+  const areas = [...new Set((items || []).map((it) => it.area || "Sin área"))];
   return (
-    <div className="rounded-lg border border-dashed border-gypi-border p-2 mb-2" aria-label={`Gypi sugiere para ${s.titulo}`} role="group">
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" className="bg-transparent border-none cursor-pointer text-left text-[13px] font-semibold text-gypi-text min-h-[44px] px-1"
-          aria-expanded={abierto} onClick={() => setAbierto((a) => !a)}>
-          ✨ Gypi sugiere ({lista.length}) {abierto ? "▾" : "▸"}
-        </button>
-        {lista.length > 1 && <button type="button" className="g-btn g-btn-secondary" onClick={() => onAgregar(lista)}>＋ Agregar todos</button>}
-      </div>
-      {abierto && (
-        <ul className="list-none m-0 p-0">
-          {lista.map((x) => {
-            const p = datosDeOt(otDe(x.ot));
-            const nombre = [`OT ${x.ot}`, p.proyecto, p.cliente].filter(Boolean).join(" · ");
-            return (
-              <li key={x.clave} className="flex items-center gap-2 py-1 border-t border-gypi-border first:border-t-0">
+    <Modal open={abierto} onClose={onCerrar} title="Revisión del jueves: feedback de la semana" maxWidth={640}>
+      {items === null ? <div className="flex justify-center py-6"><Spinner /></div> : items.length === 0 ? (
+        <p className="text-[14px] text-gypi-mute">No hubo feedback en los últimos 7 días.</p>
+      ) : areas.map((area) => {
+        const deArea = items.filter((it) => (it.area || "Sin área") === area);
+        return (
+          <section key={area} className="mb-3" aria-label={`Feedback para ${area}`}>
+            <h3 className="text-[14px] font-bold m-0 mb-1">{area} <span className="font-normal text-gypi-mute text-[12px]">{deArea.filter((it) => it.resuelto_at).length} de {deArea.length} revisados</span></h3>
+            {deArea.map((it) => (
+              <div key={it.id} className={`flex items-center gap-2 py-2 border-t border-gypi-border ${it.resuelto_at ? "opacity-60" : ""}`}>
                 <span className="flex-1 min-w-0 text-[13px]">
-                  <span className="font-semibold">{nombre}</span>
-                  {detalle(x) && <span className="block text-[12px] text-gypi-mute">{detalle(x)}</span>}
+                  <span className="font-semibold">{[it.tipo, it.ot ? `OT ${it.ot}` : it.proyecto, it.cliente].filter(Boolean).join(" · ")}</span>
+                  <span className="block">{it.texto}</span>
+                  <span className="block text-[12px] text-gypi-mute">{[fechaCorta(it.fecha), it.responsable ? `lo trajo ${it.responsable}` : ""].filter(Boolean).join(" · ")}</span>
                 </span>
-                <button type="button" className="g-btn g-btn-secondary" aria-label={`Agregar ${nombre}`} onClick={() => onAgregar([x])}>＋</button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+                <button type="button" className="g-btn g-btn-secondary whitespace-nowrap" aria-pressed={!!it.resuelto_at} onClick={() => revisar(it)}>
+                  {it.resuelto_at ? "✓ Revisado" : "Revisar"}
+                </button>
+              </div>
+            ))}
+          </section>
+        );
+      })}
+      <button type="button" className="g-btn g-btn-secondary w-full mt-2" onClick={onCerrar}>Cerrar</button>
+    </Modal>
   );
 }
 
@@ -291,6 +359,8 @@ export default function MinutaScreen({ empresa = null }) {
   const [editarGente, setEditarGente] = useState(false);
   const [otsCrudas, setOtsCrudas] = useState([]);
   const [sugeridos, setSugeridos] = useState(null);
+  const [abiertos, setAbiertos] = useState([]);
+  const [revision, setRevision] = useState(false);
   const [otrasListas, setOtrasListas] = useState({ personas: [], articulos: [], proveedores: [], vehiculos: [] });
   const { divisiones } = useAuth();
   // La división de la OT se guarda con su nombre (en proyectos puede estar el id)
@@ -359,6 +429,12 @@ export default function MinutaScreen({ empresa = null }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (vivo) setSugeridos(j?.sugeridos || {}); })
       .catch(() => { if (vivo) setSugeridos({}); });
+    // Lo que sigue abierto de minutas anteriores (parte M3)
+    setAbiertos([]);
+    apiFetch(`/api/minutas?seguimiento=${fecha}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (vivo) setAbiertos(j?.items || []); })
+      .catch(() => {});
     return () => { vivo = false; };
   }, [fecha]);
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
@@ -382,6 +458,19 @@ export default function MinutaScreen({ empresa = null }) {
     })]);
     setCambios(true);
   };
+  const agregarQueSiguen = (lista) => {
+    setItems((l) => [...l, ...lista.map((it) => renglonQueSigue(it, it.fecha))]);
+    setCambios(true);
+  };
+  // ✓ Resuelto: se anota en el momento (también con la minuta cerrada); no pasa más al día siguiente
+  async function resolver(it) {
+    const resuelto = !it.resuelto_at;
+    const r = await apiFetch("/api/minutas", { method: "POST", body: JSON.stringify({ accion: "resolver", id: it.id, resuelto }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { toast.error(j.error || "No se pudo marcar"); return; }
+    setItems((l) => l.map((x) => (x.id === it.id ? { ...x, resuelto_at: j.item?.resuelto_at ?? null } : x)));
+    toast.success(resuelto ? "✓ Marcado como resuelto" : "Vuelve a quedar abierto");
+  }
   const asistio = (nombre) => cambiarMinuta({ asistentes: minuta.asistentes.includes(nombre) ? minuta.asistentes.filter((n) => n !== nombre) : [...minuta.asistentes, nombre] });
 
   const elegirFecha = (dia) => {
@@ -461,11 +550,27 @@ export default function MinutaScreen({ empresa = null }) {
       {s.id === "prod_en_curso" && (
         <p className="text-[13px] m-0 mb-2">Proyectos en producción hoy: <b>{sugeridos?.prod_en_curso ? Math.max(sugeridos.prod_en_curso.length, de(s.id).length) : de(s.id).length}</b> en total.</p>
       )}
+      {!cerrada && (
+        <ParaAgregar titulo={`↩ Sigue abierto de minutas anteriores`} label={`Sigue abierto en ${s.titulo}`} alerta
+          opciones={seguimientoPendiente(abiertos, items, s.id).map((it) => ({
+            clave: it.id,
+            nombre: [it.ot ? `OT ${it.ot}` : "", it.proyecto, it.cliente].filter(Boolean).join(" · ") || it.texto || "Sin detalle",
+            detalle: [`del ${fechaCorta(it.fecha)}`, it.texto, it.responsable, it.fecha_objetivo ? `fecha ${fechaCorta(it.fecha_objetivo)}` : ""].filter(Boolean).join(" · "),
+            valor: it,
+          }))}
+          onAgregar={agregarQueSiguen} />
+      )}
       {!cerrada && sugeridos && (
-        <SugeridosGypi s={s} lista={sugerenciasPendientes(sugeridos, items, s.id)} otDe={otDe} hoy={fecha} onAgregar={(l) => agregarSugeridos(s.id, l)} />
+        <ParaAgregar titulo="✨ Gypi sugiere" label={`Gypi sugiere para ${s.titulo}`}
+          opciones={sugerenciasPendientes(sugeridos, items, s.id).map((x) => {
+            const p = datosDeOt(otDe(x.ot));
+            return { clave: x.clave, nombre: [`OT ${x.ot}`, p.proyecto, p.cliente].filter(Boolean).join(" · "), detalle: detalleSugerencia(x, s, fecha), valor: x };
+          })}
+          onAgregar={(l) => agregarSugeridos(s.id, l)} />
       )}
       {de(s.id).map((it) => (
-        <Renglon key={it.id} s={s} it={it} listas={listas} disabled={cerrada} cambiar={(c) => cambiarItem(it.id, c)} sacar={() => sacarItem(it.id)} />
+        <Renglon key={it.id} s={s} it={it} listas={listas} disabled={cerrada} cambiar={(c) => cambiarItem(it.id, c)} sacar={() => sacarItem(it.id)}
+          resolver={SECCIONES_SEGUIMIENTO.includes(s.id) && it.created_at ? () => resolver(it) : null} />
       ))}
       {!cerrada && <button type="button" className="g-btn g-btn-secondary" onClick={() => agregar(s.id)} aria-label={`Agregar a ${s.titulo}`}>＋ Agregar</button>}
     </div>
@@ -536,6 +641,7 @@ export default function MinutaScreen({ empresa = null }) {
               <section key={b.id} className="g-card p-3 mb-3" aria-label={b.titulo}>
                 <h2 className="text-[15px] font-bold m-0">{b.numero ? `${b.numero} · ` : ""}{b.titulo} {b.horario && <span className="text-[12px] font-normal text-gypi-mute">{b.horario}</span>}</h2>
                 {b.ayuda && <p className="text-[12px] text-gypi-mute m-0 mb-2">{b.ayuda}</p>}
+                {b.id === "feedback" && <button type="button" className="g-btn g-btn-secondary mb-2" onClick={() => setRevision(true)}>🗂 Revisión del jueves</button>}
                 {b.id === "dyt" ? AREAS_DYT.map((a) => {
                   const s = seccionesDe("dyt")[0];
                   const deArea = de("dyt").filter((it) => it.area === a.id);
@@ -577,6 +683,7 @@ export default function MinutaScreen({ empresa = null }) {
         </div>
       )}
 
+      <RevisionFeedback abierto={revision} hasta={fecha} onCerrar={() => setRevision(false)} />
       <EditarParticipantes abierto={editarGente} inicial={participantes} onCerrar={() => setEditarGente(false)} onGuardar={guardarParticipantes} />
     </div>
   );
