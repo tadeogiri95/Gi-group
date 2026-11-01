@@ -16,6 +16,7 @@ import {
   datosDeOt, duracionMinutos, faltantesMinuta, hora, imprimirMinuta, participantesDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
 } from "../lib/minutas";
 import { nombreDivisionOt } from "../lib/avance";
+import { sugerenciasPendientes } from "../lib/minutasPrecarga";
 import { useAuth } from "../context/AuthContext";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -206,6 +207,49 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled }) {
   );
 }
 
+const fechaCorta = (f) => (f ? `${Number(f.slice(8, 10))}/${Number(f.slice(5, 7))}` : "");
+
+/** Lo que Gypi sugiere para una sección (parte M2): se agrega de a uno o todo junto. */
+function SugeridosGypi({ s, lista, otDe, hoy, onAgregar }) {
+  const [abierto, setAbierto] = useState(true);
+  if (!lista.length) return null;
+  const detalle = (x) => [
+    x.datos?.avance != null ? `${x.datos.avance} %` : "",
+    x.datos?.arranca ? (x.datos.arranca === hoy ? "arranca hoy" : `arranca el ${fechaCorta(x.datos.arranca)}`) : "",
+    x.datos?.listo ? LISTO.find((l) => l.id === x.datos.listo)?.label : "",
+    x.texto || "",
+    x.fecha_objetivo ? `${s.id === "prod_a_iniciar" ? "entrega" : "fecha"} ${fechaCorta(x.fecha_objetivo)}` : "",
+  ].filter(Boolean).join(" · ");
+  return (
+    <div className="rounded-lg border border-dashed border-gypi-border p-2 mb-2" aria-label={`Gypi sugiere para ${s.titulo}`} role="group">
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" className="bg-transparent border-none cursor-pointer text-left text-[13px] font-semibold text-gypi-text min-h-[44px] px-1"
+          aria-expanded={abierto} onClick={() => setAbierto((a) => !a)}>
+          ✨ Gypi sugiere ({lista.length}) {abierto ? "▾" : "▸"}
+        </button>
+        {lista.length > 1 && <button type="button" className="g-btn g-btn-secondary" onClick={() => onAgregar(lista)}>＋ Agregar todos</button>}
+      </div>
+      {abierto && (
+        <ul className="list-none m-0 p-0">
+          {lista.map((x) => {
+            const p = datosDeOt(otDe(x.ot));
+            const nombre = [`OT ${x.ot}`, p.proyecto, p.cliente].filter(Boolean).join(" · ");
+            return (
+              <li key={x.clave} className="flex items-center gap-2 py-1 border-t border-gypi-border first:border-t-0">
+                <span className="flex-1 min-w-0 text-[13px]">
+                  <span className="font-semibold">{nombre}</span>
+                  {detalle(x) && <span className="block text-[12px] text-gypi-mute">{detalle(x)}</span>}
+                </span>
+                <button type="button" className="g-btn g-btn-secondary" aria-label={`Agregar ${nombre}`} onClick={() => onAgregar([x])}>＋</button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Lista de participantes que se tildan en Asistencia y se eligen en Modera / Registra. */
 function EditarParticipantes({ abierto, inicial, onCerrar, onGuardar }) {
   const [lista, setLista] = useState(inicial);
@@ -246,6 +290,7 @@ export default function MinutaScreen({ empresa = null }) {
   const [participantes, setParticipantes] = useState([]);
   const [editarGente, setEditarGente] = useState(false);
   const [otsCrudas, setOtsCrudas] = useState([]);
+  const [sugeridos, setSugeridos] = useState(null);
   const [otrasListas, setOtrasListas] = useState({ personas: [], articulos: [], proveedores: [], vehiculos: [] });
   const { divisiones } = useAuth();
   // La división de la OT se guarda con su nombre (en proyectos puede estar el id)
@@ -306,6 +351,16 @@ export default function MinutaScreen({ empresa = null }) {
   }, []);
 
   useEffect(() => { cargar(fecha); }, [fecha, cargar]);
+  // Lo que Gypi sugiere para ese día (parte M2); si no se puede leer, la minuta anda igual
+  useEffect(() => {
+    let vivo = true;
+    setSugeridos(null);
+    apiFetch(`/api/minutas?precarga=${fecha}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (vivo) setSugeridos(j?.sugeridos || {}); })
+      .catch(() => { if (vivo) setSugeridos({}); });
+    return () => { vivo = false; };
+  }, [fecha]);
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
 
   const cerrada = minuta.estado === "cerrada";
@@ -314,6 +369,17 @@ export default function MinutaScreen({ empresa = null }) {
   const sacarItem = (id) => { setItems((l) => l.filter((it) => it.id !== id)); setCambios(true); };
   const agregar = (seccionId, extra = {}) => {
     setItems((l) => [...l, renglonNuevo(seccionId, seccionId === "compra" ? { tipo: "normal", ...extra } : extra)]);
+    setCambios(true);
+  };
+  const otDe = (ot) => listas.ots.find((o) => o.valor === ot)?.dato || null;
+  const agregarSugeridos = (seccionId, lista) => {
+    setItems((l) => [...l, ...lista.map((x) => {
+      const p = otDe(x.ot);
+      return renglonNuevo(seccionId, {
+        ...(p ? datosDeOt(p) : { ot: x.ot }),
+        texto: x.texto || "", semaforo: x.semaforo || null, fecha_objetivo: x.fecha_objetivo || null, datos: { ...(x.datos || {}) },
+      });
+    })]);
     setCambios(true);
   };
   const asistio = (nombre) => cambiarMinuta({ asistentes: minuta.asistentes.includes(nombre) ? minuta.asistentes.filter((n) => n !== nombre) : [...minuta.asistentes, nombre] });
@@ -392,7 +458,12 @@ export default function MinutaScreen({ empresa = null }) {
     <div key={s.id} className="mb-3">
       {s.letra && <h3 className="text-[14px] font-bold m-0 mt-2">{s.letra}. {s.titulo}</h3>}
       {s.ayuda && <p className="text-[12px] text-gypi-mute m-0 mb-2">{s.ayuda}</p>}
-      {s.id === "prod_en_curso" && <p className="text-[13px] m-0 mb-2">Proyectos en producción hoy: <b>{de(s.id).length}</b> en la minuta.</p>}
+      {s.id === "prod_en_curso" && (
+        <p className="text-[13px] m-0 mb-2">Proyectos en producción hoy: <b>{sugeridos?.prod_en_curso ? Math.max(sugeridos.prod_en_curso.length, de(s.id).length) : de(s.id).length}</b> en total.</p>
+      )}
+      {!cerrada && sugeridos && (
+        <SugeridosGypi s={s} lista={sugerenciasPendientes(sugeridos, items, s.id)} otDe={otDe} hoy={fecha} onAgregar={(l) => agregarSugeridos(s.id, l)} />
+      )}
       {de(s.id).map((it) => (
         <Renglon key={it.id} s={s} it={it} listas={listas} disabled={cerrada} cambiar={(c) => cambiarItem(it.id, c)} sacar={() => sacarItem(it.id)} />
       ))}

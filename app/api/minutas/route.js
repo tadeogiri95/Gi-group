@@ -4,6 +4,9 @@
 // Solo gerencia (rol gerencial), con el módulo Minutas prendido.
 //   GET ?fecha=AAAA-MM-DD → la minuta de ese día con sus renglones (o null)
 //   GET                   → historial: las últimas minutas, sin renglones
+//   GET ?precarga=AAAA-MM-DD → lo que Gypi sugiere para ese día (parte M2):
+//         producción terminada, en curso y a iniciar según el plan, actas,
+//         instalaciones en curso y pendientes. Solo lee.
 //   POST { accion: "guardar", fecha, minuta, items, cerrar? }
 //         → crea o actualiza la minuta del día y deja exactamente esos
 //           renglones (los que se sacaron se borran). Con cerrar anota la
@@ -18,6 +21,7 @@ import { minutasBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpers";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { faltantesMinuta, hora } from "../../lib/minutas";
+import { precargaMinuta } from "../../lib/minutasPrecargaServidor";
 import { logger } from "../../lib/logger";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
@@ -55,7 +59,13 @@ export async function GET(request) {
   try {
     const { sesion, response } = await entrar(request);
     if (response) return response;
-    const fecha = new URL(request.url).searchParams.get("fecha");
+    const q = new URL(request.url).searchParams;
+    const fecha = q.get("fecha");
+    const precarga = q.get("precarga");
+    if (precarga) {
+      if (!FECHA.test(precarga)) return json({ error: "Fecha inválida" }, 400);
+      return json({ ok: true, sugeridos: await precargaMinuta(sesion.empresa_id, precarga, { sesion }) });
+    }
     try {
       if (fecha) {
         if (!FECHA.test(fecha)) return json({ error: "Fecha inválida" }, 400);
