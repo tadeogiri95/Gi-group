@@ -342,3 +342,59 @@ test("migración 143 — tipo horizonte y planes de hasta 400 días", () => {
   assert.match(sql, /hasta - desde <= 400/);
   assert.match(sql, /do \$mig\$/);
 });
+
+// Material del día (Tadeo, 01/11): solo el material del proceso de ese día,
+// menos lo ya retirado para la OT; un proceso al 100 % no necesita nada.
+test("procesoMaterial — placas con Corte, cantos con Canteado y herrajes con Armado", async () => {
+  const { procesoMaterial } = await import("../app/lib/materialDia.js");
+  const placas = "Placas, chapas, mallas y paneles";
+  const herrajes = "Herrajes y Accesorios";
+  assert.equal(procesoMaterial({ familia: placas, nombre: "Melamina blanca 18 mm" }), "corte");
+  assert.equal(procesoMaterial({ familia: placas, nombre: "Fondo fibroplus 3 mm" }), "corte");
+  assert.equal(procesoMaterial({ familia: herrajes, nombre: "Canto PVC blanco 22x0,45" }), "canteado");
+  assert.equal(procesoMaterial({ familia: herrajes, nombre: "Tapacanto roble" }), "canteado");
+  assert.equal(procesoMaterial({ familia: herrajes, nombre: "Bisagra cazoleta 35 mm" }), "armado");
+  assert.equal(procesoMaterial({ familia: "Pinturas", nombre: "Laca" }), null);
+});
+
+test("📅 Plan de producción — material de cada día contra el stock", async () => {
+  const hoy = hoyArg();
+  const plan = { id: 2, tipo: "semana", desde: hoy, hasta: hoy, division_id: "d-m", dias_extra: [], items: [
+    { ot: "7473", etapa: "corte", fecha: hoy, horas: 6, orden: 0 },
+    { ot: "7473", etapa: "armado", fecha: hoy, horas: 2, orden: 0 },
+    { ot: "7500", etapa: "canteado", fecha: hoy, horas: 2, orden: 1 },
+  ] };
+  const filas = {
+    necesidades_stock: [
+      { ot: "7473", sku: "PL1", cantidad: 10 }, { ot: "7473", sku: "BIS", cantidad: 20 }, { ot: "7473", sku: "CAN", cantidad: 30 },
+      { ot: "7500", sku: "CAN", cantidad: 40 }, { ot: "7500", sku: "PL1", cantidad: 5 },
+    ],
+    // Ya se retiraron 4 placas para la 7473
+    movimientos_stock: [{ ot: "7473", sku: "PL1", cantidad: 4, tipo: "consumo", anulado: false }],
+    config_sistema: [{ valor: { etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 } } }],
+    articulos_stock: [
+      { sku: "PL1", nombre: "Melamina blanca", familia: "Placas, chapas, mallas y paneles", unidad: "u", stock: 3 },
+      { sku: "BIS", nombre: "Bisagra cazoleta", familia: "Herrajes y Accesorios", unidad: "u", stock: 100 },
+      { sku: "CAN", nombre: "Canto blanco", familia: "Herrajes y Accesorios", unidad: "m", stock: 50 },
+    ],
+  };
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith("/api/planificacion")) return new Response(JSON.stringify({ ok: true, plan }), { status: 200 });
+    const path = decodeURIComponent(JSON.parse(opts?.body || "{}").path || "");
+    const tabla = Object.keys(filas).find((t) => path.startsWith(t));
+    return new Response(JSON.stringify({ data: tabla ? filas[tabla] : [] }), { status: 200 });
+  };
+  // El Armado de la 7473 ya está terminado: sus bisagras no hacen falta
+  const avance = [{ ot: "7473", etapa: 4, estado: "terminada" }];
+  render(<PlanSemana divisiones={DIVISIONES} divisionUsuario="Muebles" proyectos={[{ ot: "7473" }, { ot: "7500" }]} empresaId={E} avance={avance} piezas={[]}
+    etapas={[{ codigo: 1, nombre: "Corte" }, { codigo: 2, nombre: "Canteado" }, { codigo: 3, nombre: "Mecanizado" }, { codigo: 4, nombre: "Armado" }]} />);
+  const boton = await screen.findByRole("button", { name: /Material del día/ });
+  assert.match(boton.textContent, /🔴 Faltan 1 de 2 artículos/);
+  fireEvent.click(boton);
+  const caja = screen.getByRole("region", { name: "Plan de la semana" });
+  // Placas: solo la 7473 (la 7500 hoy no corta): 10 − 4 = 6, hay 3 → faltan 3
+  assert.match(caja.textContent, /Melamina blancanecesita 6 u · stock 3faltan 3OT 7473/);
+  // Canto: solo la 7500 (la 7473 hoy no cantea): 40, hay 50
+  assert.match(caja.textContent, /Canto blanconecesita 40 m · stock 50✅OT 7500/);
+  assert.doesNotMatch(caja.textContent, /Bisagra/, "Armado terminado");
+});
