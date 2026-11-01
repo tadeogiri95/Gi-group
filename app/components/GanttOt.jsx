@@ -47,6 +47,7 @@ import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
+import { diaLaborable } from "../lib/secuencia";
 import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente, ultimaConfirmacion } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { MODO_POR_DEFECTO, normalizarModo } from "../lib/semanaObjetivo";
@@ -67,6 +68,7 @@ const ETIQUETAS = 260; // ancho de las columnas fijas de la izquierda
 const MARGEN_FIN = 56; // lugar para las horas de la última barra
 const CLAVE_HORIZONTE = "gypi_gantt_horizonte";
 const BARRA = { y: 4, alto: 18 };
+const LINEA = 4; // alto de la línea finita de lo ya hecho
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const CAB = 44; // alto de la fila de las fechas
 const COLOR = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecanizado: "fill-proc-mecanizado", armado: "fill-proc-armado" };
@@ -200,6 +202,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     };
     return (m) => planVivo(items, { ...opciones, manual: m, retrabajo, retrabajoHecho });
   }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho]);
+
+  // Días que se trabajan: con horas en la grilla de horarios o de horas extra del plan
+  const laborable = useMemo(() => diaLaborable(horasSemanaDeGrilla(empleados, divisiones, cfgValor), planes ? diasExtraVigentes(planes) : null),
+    [empleados, divisiones, cfgValor, planes]);
 
   const { renglones, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
     if (!vivoCon) return { renglones: null };
@@ -382,11 +388,25 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     );
   }
 
-  // Fondo de cada renglón: fines de semana más oscuros (por días), separadores de semana y la línea de hoy
+  // Días sin trabajo (sin horas en la grilla ni horas extra): quedan vacíos y las barras los saltan
+  const sinTrabajo = Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => !laborable(f));
+  const huecos = sinTrabajo.map((f) => [x(f), Math.min(finVentana, x(f) + px)]);
+  /** Los pedazos de [a, b] que caen en días de trabajo. */
+  const tramosX = (a, b) => {
+    const out = [];
+    let ini = a;
+    for (const [h0, h1] of huecos) {
+      if (h1 <= ini || h0 >= b) continue;
+      if (h0 > ini) out.push([ini, h0]);
+      ini = Math.max(ini, h1);
+    }
+    if (b > ini) out.push([ini, b]);
+    return out.length ? out : [[a, b]];
+  };
+  // Fondo de cada renglón: días sin trabajo más oscuros, separadores de semana y la línea de hoy
   const fondoDe = (alto) => (
     <g>
-      {vista === "dias" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => [0, 6].includes(diaSemana(f)))
-        .map((f) => <rect key={f} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
+      {vista !== "mes" && sinTrabajo.map((f) => <rect key={f} data-sin-trabajo={f} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
       {vista !== "mes" && semanas.map((s) => <rect key={s.inicio} x={xSem(s)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
       {vista === "mes" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => f.endsWith("-01"))
         .map((f) => <rect key={f} x={x(f)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
@@ -401,12 +421,16 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
     const x0 = q.desde < desde ? 0 : Math.min(finVentana, x(q.desde) + q.ini * px);
     const x1 = Math.min(finVentana, x(q.hasta) + q.fin * px);
     const estado = estadoDe(q);
-    // Lo ya pasado (desde que arrancó hasta hoy) más claro; lo que falta, lleno
+    // Lo ya pasado (desde que arrancó hasta hoy) como una línea finita (Tadeo,
+    // 01/11); lo que falta, lleno. Los días sin trabajo quedan vacíos.
     const corte = q.completo ? x1 : Math.min(Math.max(x0, xHoy), x1);
+    const pasado = corte > x0 ? tramosX(x0, corte) : [];
+    const futuro = x1 > corte ? tramosX(corte, Math.max(corte + 3, x1)) : [];
+    const contorno = futuro.length ? futuro : tramosX(x0, Math.max(x0 + 3, x1));
     return (
       <>
-        {corte > x0 && <rect data-pasado={etapa} x={x0} y={BARRA.y + dy} width={corte - x0} height={BARRA.alto} rx={3} className={COLOR[etapa]} fillOpacity={0.4} />}
-        {x1 > corte && <rect x={corte} y={BARRA.y + dy} width={Math.max(3, x1 - corte)} height={BARRA.alto} rx={3} className={COLOR[etapa]} />}
+        {pasado.map(([a, b], i) => <rect key={`p${i}`} data-pasado={i === 0 ? etapa : undefined} x={a} y={BARRA.y + dy + (BARRA.alto - LINEA) / 2} width={Math.max(1, b - a)} height={LINEA} rx={2} className={COLOR[etapa]} />)}
+        {futuro.map(([a, b], i) => <rect key={`f${i}`} data-falta={i === 0 ? etapa : undefined} x={a} y={BARRA.y + dy} width={Math.max(3, b - a)} height={BARRA.alto} rx={3} className={COLOR[etapa]} />)}
         {(q.hechos || []).map((h, i) => {
           // Retrabajo terminado: de cuándo se cargó a cuándo se terminó
           const a = h.fecha < desde ? 0 : Math.min(finVentana, x(h.fecha) + h.frac * px);
@@ -416,10 +440,12 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
         {q.retrabajo > 0 && q.retrabajoDesde && (() => {
           // Retrabajo (147): la parte final de la barra, en rojo
           const xr = q.retrabajoDesde < desde ? 0 : Math.min(finVentana, x(q.retrabajoDesde) + (q.retrabajoIni || 0) * px);
-          return x1 > xr ? <rect data-retrabajo={etapa} x={xr} y={BARRA.y + dy} width={Math.max(3, x1 - xr)} height={BARRA.alto} rx={3} className="fill-gypi-red" /> : null;
+          return x1 > xr ? tramosX(xr, x1).map(([a, b], i) => <rect key={`r${i}`} data-retrabajo={i === 0 ? etapa : undefined} x={a} y={BARRA.y + dy} width={Math.max(3, b - a)} height={BARRA.alto} rx={3} className="fill-gypi-red" />) : null;
         })()}
-        <rect data-proceso={etapa} data-estado={estado} x={x0} y={BARRA.y + dy} width={Math.max(3, x1 - x0)} height={BARRA.alto} rx={3}
-          className={CONTORNO[estado] || undefined} fill="transparent" strokeWidth={CONTORNO[estado] ? 3 : 0} strokeDasharray={estado === "corrido" ? "6 3" : undefined} />
+        {contorno.map(([a, b], i) => (
+          <rect key={`c${i}`} data-proceso={i === 0 ? etapa : undefined} data-estado={i === 0 ? estado : undefined} x={a} y={BARRA.y + dy} width={Math.max(3, b - a)} height={BARRA.alto} rx={3}
+            className={CONTORNO[estado] || undefined} fill="transparent" strokeWidth={CONTORNO[estado] ? 3 : 0} strokeDasharray={estado === "corrido" ? "6 3" : undefined} />
+        ))}
         <text x={Math.max(x0, x1) + 6} y={18 + dy} className={`text-[13px] font-bold ${q.tarde ? "fill-gypi-red" : "fill-gypi-text"}`}>
           {q.completo ? "✓" : fmtH(q.horas)}{q.personas && !q.completo ? ` · 👷 ${q.personas}` : ""}{q.manual && !q.completo ? " ⏱" : ""}{q.retrabajo > 0 ? ` 🔁 ${fmtH(q.retrabajo)}` : ""}{q.tarde ? " ⚠" : q.corrido ? " ↪" : ""}
         </text>
@@ -453,7 +479,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       </text>
       {Array.from({ length: diasDesde(s.desde, s.hasta) }, (_, d) => {
         const dia = sumarDias(s.desde, d);
-        const finde = [0, 6].includes(diaSemana(dia));
+        const finde = !laborable(dia);
         return (
           <g key={dia}>
             {dia === hoy && <rect x={x(dia)} y={21} width={px} height={CAB - 21} className="fill-gypi-amber" fillOpacity={0.35} />}

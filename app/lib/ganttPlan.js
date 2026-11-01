@@ -257,14 +257,24 @@ export function planVivo(items = [], opciones) {
       if (h > 0) retrabajos.push({ r, id, horas: h });
     }
   }
+  // Lo que ya se empezó y no se terminó va primero en su máquina (Tadeo, 01/11:
+  // en Canteado se veían 5 OT a la vez porque cada una se dibujaba desde su primer escaneo)
+  const primero = new Set();
+  for (const r of restantes) {
+    for (const { id } of ETAPAS_PLAN) {
+      if (terminadas.has(r.clave)) continue;
+      const fila = (piezas || []).find((x) => String(x.ot) === r.clave && Number(x.etapa) === Number(etapasCodigo?.[id]));
+      if (fila?.primer_paso || falta(r.clave, id) < 1) primero.add(`${r.clave}|${id}`);
+    }
+  }
   const usaArmado = [...manuales, ...retrabajos].some((m) => m.id === "armado");
-  const armadores = usaArmado ? secuenciar(restantes, { params, personal, ordenEtapa }) : null;
+  const armadores = usaArmado ? secuenciar(restantes, { params, personal, ordenEtapa, primero }) : null;
   const aGente = (r, id) => (id === "armado" ? (armadores.get(r.clave) || []).find((t) => t.etapa === "armado")?.personas || 1 : 1 / duracion(id, 1, params));
   for (const { r, id, horas } of manuales) r.horas = { ...r.horas, [id]: horas * aGente(r, id) };
   for (const { r, id, horas } of retrabajos) r.horas = { ...r.horas, [id]: (r.horas[id] || 0) + horas * aGente(r, id) };
   const conRetrabajo = new Map(retrabajos.map((m) => [`${m.r.clave}|${m.id}`, m.horas]));
   const conManual = new Set(manuales.map((m) => `${m.r.clave}|${m.id}`));
-  const tramos = secuenciar(restantes, { params, personal, ordenEtapa });
+  const tramos = secuenciar(restantes, { params, personal, ordenEtapa, primero });
 
   for (const o of ots) {
     const c = confirmado.get(o.ot);

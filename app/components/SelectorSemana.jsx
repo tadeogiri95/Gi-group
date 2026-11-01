@@ -10,16 +10,21 @@ import { opcionesSemana, cambioSemana, pendientePlanilla } from "../lib/semanaEd
 export default function SelectorSemana({ proyecto, modo, hoy, onCambio, compacto = false }) {
   const [aviso, setAviso] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [hecho, setHecho] = useState(null);
   if (modo === "entrega") return null; // la fecha objetivo sale de ENTREGA, no de la semana
   const actual = Number(proyecto.semana_objetivo) || null;
   const opciones = opcionesSemana(hoy, modo, actual);
+  const textoDe = (n) => opciones.find((o) => o.semana === Number(n))?.texto.replace(" (esta)", "") || `S${n}`;
   const elegir = async (valor) => {
     if (!valor || Number(valor) === actual) return;
     const cambio = cambioSemana(proyecto, valor, { modo, hoy });
     setGuardando(true);
     setAviso(null);
+    setHecho(null);
     try {
       await sb.patch(`proyectos?id=eq.${proyecto.id}`, cambio);
+      // La semana que tenía y la nueva, con sus días (Tadeo, 01/11)
+      setHecho(`${actual ? `De ${textoDe(actual)}` : "Sin semana"} → ${textoDe(valor)}`);
       onCambio?.({ id: proyecto.id, ...cambio });
     } catch (e) {
       setAviso(/semana_app|semana_planilla/.test(String(e.message)) ? "Para cambiar la semana falta correr la migración 144 en Supabase." : `No se pudo guardar: ${e.message}`);
@@ -37,6 +42,7 @@ export default function SelectorSemana({ proyecto, modo, hoy, onCambio, compacto
           {opciones.map((o) => <option key={o.semana} value={o.semana}>{o.texto}</option>)}
         </select>
       </label>
+      {hecho && <div role="status" className="text-xs text-gypi-green mt-0.5">✓ {hecho}</div>}
       {pendientePlanilla(proyecto) && <div className="text-xs text-gypi-amber-ink mt-0.5">⏳ Cambiada en Gypi, falta pasar a la planilla</div>}
       {aviso && <div role="alert" className="text-xs text-gypi-red mt-0.5">{aviso}</div>}
     </div>
