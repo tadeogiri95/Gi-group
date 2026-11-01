@@ -309,3 +309,99 @@ test("pantalla — un pendiente de instalación sin responsable avisa y no se gu
   await new Promise((r) => setTimeout(r, 20));
   assert.ok(!pedidos.some((p) => p.body?.accion === "guardar"));
 });
+
+// ─── Lo que Gypi sugiere (parte M2) ───
+
+const { armarPrecarga, habilAnterior, habilSiguiente, listoParaIniciar, sugerenciasPendientes } = await import("../app/lib/minutasPrecarga.js");
+
+test("precarga — días hábiles: el lunes mira desde el viernes; el viernes, a iniciar hasta el lunes", () => {
+  assert.equal(habilAnterior("2026-11-02"), "2026-10-30"); // lunes → viernes
+  assert.equal(habilAnterior("2026-11-04"), "2026-11-03");
+  assert.equal(habilSiguiente("2026-11-06"), "2026-11-09"); // viernes → lunes
+  assert.equal(listoParaIniciar({ conPiezas: true, faltaOt: new Map([["P1", 5]]), stock: new Map([["P1", 10]]) }), "listo");
+  assert.equal(listoParaIniciar({ conPiezas: true, faltaOt: new Map([["P1", 5]]), stock: new Map([["P1", 2]]) }), "falta_material");
+  assert.equal(listoParaIniciar({ conPiezas: false, faltaOt: undefined, stock: new Map() }), "falta_planilla");
+  assert.equal(listoParaIniciar({ conPiezas: false, faltaOt: new Map([["P1", 1]]), stock: new Map() }), "falta_todo");
+});
+
+test("precarga — terminada, en curso, a iniciar según el plan, actas, cargadas y pendientes", () => {
+  const fecha = "2026-11-02"; // lunes
+  const s = armarPrecarga({
+    fecha,
+    proyectos: [
+      { ot: "100", estado: "activo" }, { ot: "200", estado: "activo", fecha_entrega: "2026-11-10" }, { ot: "300", estado: "activo", fecha_entrega: "2026-11-20" },
+      { ot: "400", estado: "activo" }, { ot: "500", estado: "activo" }, { ot: "600", estado: "cerrado" }, { ot: "700", estado: "activo" }, { ot: "800", estado: "activo" },
+    ],
+    avancePiezas: [
+      { ot: "100", etapa: 1, total: 10, pasaron: 10 }, // terminó el sábado
+      { ot: "700", etapa: 1, total: 10, pasaron: 10 }, // terminó hoy: mañana
+      { ot: "200", etapa: 1, total: 10, pasaron: 4 },
+      { ot: "300", etapa: 1, total: 8, pasaron: 0 },
+    ],
+    pasos: [
+      { ot: "100", created_at: "2026-10-31T15:00:00Z" },
+      { ot: "700", created_at: "2026-10-31T15:00:00Z" }, { ot: "700", created_at: "2026-11-02T12:00:00Z" },
+    ],
+    planItems: [{ ot: "300", fecha: "2026-11-03" }, { ot: "300", fecha: "2026-11-04" }, { ot: "200", fecha: "2026-11-02" }, { ot: "400", fecha: "2026-11-09" }],
+    actas: [{ ot: "400", firmada_at: "2026-10-30T18:00:00Z" }, { ot: "800", firmada_at: "2026-10-20T18:00:00Z" }],
+    cargas: [{ ot: "500", firma_carga_at: "2026-10-29T10:00:00Z" }, { ot: "400", firma_carga_at: "2026-10-28T10:00:00Z" }, { ot: "600", firma_carga_at: "2026-10-28T10:00:00Z" }],
+    pendientes: [{ id: 9, ot: "400", descripcion: "Cambiar madera", fecha: "2026-11-04", resuelto: false, created_at: "2026-10-30T18:00:00Z" }],
+    necesidades: [{ ot: "300", sku: "P1", cantidad: 6 }],
+    movimientos: [{ ot: "300", sku: "P1", cantidad: 2, tipo: "consumo", anulado: false }],
+    articulos: [{ sku: "P1", stock: 3 }],
+  });
+  assert.deepEqual(s.prod_terminada.map((x) => x.ot), ["100"], "la que terminó hoy va mañana");
+  assert.deepEqual(s.prod_en_curso.map((x) => [x.ot, x.datos.avance, x.semaforo, x.fecha_objetivo]), [["200", 40, "verde", "2026-11-10"]]);
+  // 200 ya empezó; 400 arranca la semana que viene
+  assert.deepEqual(s.prod_a_iniciar.map((x) => [x.ot, x.datos.arranca, x.datos.listo, x.fecha_objetivo]), [["300", "2026-11-03", "falta_material", "2026-11-20"]]);
+  assert.deepEqual(s.inst_terminada.map((x) => x.ot), ["400"], "el acta del viernes, no la vieja");
+  assert.deepEqual(s.inst_en_curso.map((x) => x.ot), ["500"], "sin la de acta firmada ni la cerrada");
+  assert.deepEqual(s.inst_pendiente.map((x) => [x.ot, x.texto, x.fecha_objetivo, x.datos.pendiente_id]), [["400", "Cambiar madera", "2026-11-04", 9]]);
+  // Lo que ya está en la minuta no se vuelve a sugerir
+  const items = [renglonNuevo("inst_pendiente", { ot: "400", datos: { pendiente_id: 9 } }), renglonNuevo("prod_en_curso", { ot: "200" })];
+  assert.deepEqual(sugerenciasPendientes(s, items, "inst_pendiente"), []);
+  assert.deepEqual(sugerenciasPendientes(s, items, "prod_en_curso"), []);
+  assert.equal(sugerenciasPendientes(s, items, "prod_terminada").length, 1);
+});
+
+test("/api/minutas?precarga — solo gerencia, lee y no escribe", async () => {
+  const escrito = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/proyectos"), respond: () => ({ status: 200, body: [{ ot: "200", estado: "activo" }] }) },
+    { match: (u) => u.includes("/rest/v1/v_avance_piezas"), respond: () => ({ status: 200, body: [{ ot: "200", etapa: 1, total: 10, pasaron: 5 }] }) },
+    { match: (u, o) => { if (o.method && o.method !== "GET") escrito.push(u); return u.includes("/rest/v1/"); }, respond: () => ({ status: 200, body: [] }) },
+  ]);
+  assert.equal((await api.GET(reqGet(await token("administrativo"), "?precarga=2026-11-02"))).status, 403);
+  const res = await api.GET(reqGet(await token(), "?precarga=2026-11-02"));
+  assert.equal(res.status, 200);
+  const j = await res.json();
+  assert.deepEqual(j.sugeridos.prod_en_curso.map((x) => [x.ot, x.datos.avance]), [["200", 50]]);
+  assert.deepEqual(escrito, []);
+  assert.equal((await api.GET(reqGet(await token(), "?precarga=ayer"))).status, 400);
+});
+
+test("pantalla — Gypi sugiere: se agrega con la OT completa y deja de sugerirse", async () => {
+  const pedidos = [];
+  mockPantalla(pedidos);
+  const base = global.fetch;
+  global.fetch = async (url, opts) => {
+    if (String(url).includes("precarga=")) {
+      return new Response(JSON.stringify({ ok: true, sugeridos: { prod_en_curso: [{ clave: "prod_en_curso|7751", ot: "7751", semaforo: "verde", fecha_objetivo: "2026-11-10", datos: { avance: 40 } }] } }), { status: 200 });
+    }
+    return base(url, opts);
+  };
+  pantalla();
+  const sug = await screen.findByRole("group", { name: "Gypi sugiere para En curso" });
+  assert.ok(within(sug).getByText("40 % · fecha 10/11"));
+  // Total de proyectos en producción, aunque no estén en la minuta
+  assert.ok(screen.getByText(/Proyectos en producción hoy:/).textContent.includes("1 en total"));
+  fireEvent.click(await within(sug).findByRole("button", { name: /Agregar OT 7751 · COCINAS TIPO B · PRANA/ }));
+  await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Gypi sugiere para En curso" }), null));
+  fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
+  const it = pedidos.find((p) => p.body?.accion === "guardar").body.items[0];
+  assert.deepEqual([it.seccion, it.ot, it.division, it.cliente, it.semaforo, it.fecha_objetivo, it.datos.avance], ["prod_en_curso", "7751", "Muebles", "PRANA", "verde", "2026-11-10", 40]);
+});
