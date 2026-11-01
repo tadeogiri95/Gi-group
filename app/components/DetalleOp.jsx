@@ -290,7 +290,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                   <span className="w-24 text-right">{fmtPesos(costo.total)}</span>
                 </div>
               </div>
-              <div className="text-xs text-gypi-dim mt-1">A {fmtPesos(costoHora)} la hora. Se cambia en Configuración → Costo.</div>
+              <div className="text-xs text-gypi-dim mt-1">A {fmtPesos(costoHora)} la hora. Se cambia en Más → Producción → Costo.</div>
             </section>
           )}
 

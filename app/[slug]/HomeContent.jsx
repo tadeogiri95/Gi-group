@@ -291,7 +291,7 @@ export default function HomeContent() {
   };
 
   const getScreenTitle = () => {
-    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Permisos", equipo: "Equipo", "mis-sols": "Mis permisos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", proyectos: "Proyectos", inventario: "Inventario", mantenimiento: "Mantenimiento", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Permisos", equipo: "Equipo", "mis-sols": "Mis permisos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", proyectos: "Producción", inventario: "Materiales", mantenimiento: "Mantenimiento", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 
@@ -417,7 +417,7 @@ export default function HomeContent() {
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
           {uIsGer && screen === "equipo" && <EquipoScreen key={seccionMas || "equipo"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "ger-actividad" && <GerenciaActividadScreen empresaId={empresa?.id} />}
-          {uIsGer && BOTONES.has(screen) && <BotonGestionScreen key={`${screen}:${seccionMas || ""}`} boton={screen} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
+          {uIsGer && BOTONES.has(screen) && <BotonGestionScreen key={`${screen}:${seccionMas || ""}`} boton={screen} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} onIr={irA} />}
           {uIsGer && screen === "config" && (
             <ConfigScreen
               seccion={seccionMas}

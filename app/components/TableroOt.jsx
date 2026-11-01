@@ -269,7 +269,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
               ))}
             </div>
           ) : (
-            <div className="text-[12px] text-gypi-dim mb-3">Tu empresa no tiene checklist de liberación. Lo podés armar en Configuración → Liberación.</div>
+            <div className="text-[12px] text-gypi-dim mb-3">Tu empresa no tiene checklist de liberación. Lo podés armar en Más → Producción → Liberación.</div>
           )}
           <div className="g-label mb-1.5">Puntos críticos de la OT</div>
           <textarea className="g-input mb-1 min-h-[88px]" maxLength={2000} value={puntos} onChange={(e) => setPuntos(e.target.value)}

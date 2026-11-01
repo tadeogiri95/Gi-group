@@ -90,6 +90,26 @@ export default function PlanificacionScreen({ empresaId }) {
   );
 }
 
+/** Los mismos parámetros, desde Más → Planificación (auditoría 01/11, PR 3:
+ *  toda la configuración de la planta en un solo lugar). Lee y guarda la
+ *  misma config (CLAVE_PLANIFICACION) que la pestaña ⚙ Parámetros. */
+export function ParametrosPlanificacion({ empresaId }) {
+  const { divisiones = [], etapas = [] } = useAuth();
+  const [cfg, setCfg] = useState(undefined);
+  useEffect(() => {
+    let vivo = true;
+    sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`)
+      .then((rows) => { if (vivo) setCfg(normalizarParametros(rows?.[0]?.valor)); })
+      .catch(() => { if (vivo) setCfg(normalizarParametros(null)); });
+    return () => { vivo = false; };
+  }, []);
+  return (
+    <div className="flex-1 overflow-y-auto px-[18px] pb-24">
+      {cfg === undefined ? <Cargando /> : <ParametrosPlan empresaId={empresaId} cfg={cfg} divisiones={divisiones} etapas={etapas} onGuardado={setCfg} />}
+    </div>
+  );
+}
+
 // ─── Carga ──────────────────────────────────────────────────────────────────
 
 const TIPOS = [

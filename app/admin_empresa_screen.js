@@ -19,20 +19,23 @@ const ICON_OPTIONS = [
   "💼", "🎯", "🚀", "💡", "🔑", "📋", "📝", "✅", "⭐", "🔔",
 ];
 
-/* ─── Tabs ─── */
+/* ─── Tabs ───
+ * Auditoría 01/11 (PR 3): las 12 pestañas no entraban en la pantalla. Ahora
+ * son dos pantallas de Más: "Datos y apariencia" (grupo empresa) y
+ * "Producción" (grupo produccion, cómo trabaja la planta). */
 const TABS = [
-  { key: "general", label: "General" },
-  { key: "apariencia", label: "Apariencia" },
-  { key: "logo", label: "Logo" },
-  { key: "divisiones", label: "Divisiones" },
-  { key: "etapas", label: "Etapas" },
-  { key: "rutas", label: "Rutas" },
-  { key: "paradas", label: "Paradas" },
-  { key: "liberacion", label: "Liberación" },
-  { key: "carga", label: "Carga" },
-  { key: "instalacion", label: "Instalación" },
-  { key: "defectos", label: "Defectos" },
-  { key: "costo", label: "Costo", soloDueno: true },
+  { key: "general", label: "General", grupo: "empresa" },
+  { key: "apariencia", label: "Apariencia", grupo: "empresa" },
+  { key: "logo", label: "Logo", grupo: "empresa" },
+  { key: "divisiones", label: "Divisiones", grupo: "produccion" },
+  { key: "etapas", label: "Etapas", grupo: "produccion" },
+  { key: "rutas", label: "Rutas", grupo: "produccion" },
+  { key: "paradas", label: "Paradas", grupo: "produccion" },
+  { key: "liberacion", label: "Liberación", grupo: "produccion" },
+  { key: "carga", label: "Carga", grupo: "produccion" },
+  { key: "instalacion", label: "Instalación", grupo: "produccion" },
+  { key: "defectos", label: "Defectos", grupo: "produccion" },
+  { key: "costo", label: "Costo", grupo: "produccion", soloDueno: true },
 ];
 
 /* ─── Hex validation ─── */
@@ -61,11 +64,11 @@ function ColorRow({ label, value, onChange }) {
   );
 }
 
-export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [] }) {
-  const [tab, setTab] = useState("general");
+export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [], grupo = null }) {
+  const [tab, setTab] = useState(grupo === "produccion" ? "divisiones" : "general");
   const { usuario, causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, checklistCarga, setChecklistCarga, checklistInstalacion, setChecklistInstalacion, defectos, setDefectos } = useAuth();
   // Los costos los ve solo el dueño (OP parte 8)
-  const tabs = TABS.filter((t) => !t.soloDueno || usuario?.rol === "gerencial");
+  const tabs = TABS.filter((t) => (!t.soloDueno || usuario?.rol === "gerencial") && (!grupo || t.grupo === grupo));
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -590,7 +593,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   return (
     <div className="flex flex-col h-full text-gypi-text">
       {/* Tab bar */}
-      <div role="tablist" aria-label="Configuración de empresa" className="flex overflow-x-auto px-3.5 pb-2.5 gap-1 shrink-0">
+      <div role="tablist" aria-label={grupo === "produccion" ? "Configuración de producción" : "Configuración de empresa"} className="flex overflow-x-auto px-3.5 pb-2.5 gap-1 shrink-0">
         {tabs.map((t) => (
           <button
             key={t.key}

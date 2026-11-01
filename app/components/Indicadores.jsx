@@ -164,7 +164,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
                   `${fmtHoras(e.min)} trabajadas`,
                   e.unidad && e.cantidad > 0 && `${Number(e.cantidad.toFixed(2))} ${e.unidad}`,
                   e.unidad && e.sinCantidadPct > 0 && `${e.sinCantidadPct} % de las horas sin cantidad anotada`,
-                  !e.unidad && "sin unidad (se carga en Configuración → Etapas)",
+                  !e.unidad && "sin unidad (se carga en Más → Producción → Etapas)",
                 ].filter(Boolean).join(" · ")}
                 derecha={e.minPorUnidad != null ? `${fmtPorUnidad(e.minPorUnidad)} por ${singular(e.unidad)}` : "—"}
               />

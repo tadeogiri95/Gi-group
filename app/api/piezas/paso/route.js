@@ -79,7 +79,7 @@ async function terminarEtapa(sesion, ot, etapa, opts) {
 async function etapaPorPieza(sesion, codigo, opts) {
   const [etapa] = (await sbGet(`etapas?empresa_id=eq.${sesion.empresa_id}&codigo=eq.${codigo}&select=codigo,nombre,activa,por_pieza&limit=1`, opts)) || [];
   if (!etapa || !etapa.por_pieza || etapa.activa === false) {
-    return { response: NextResponse.json({ error: "Esa etapa ya no se escanea por pieza. Elegí otra (Configuración → Etapas)." }, { status: 400 }) };
+    return { response: NextResponse.json({ error: "Esa etapa ya no se escanea por pieza. Elegí otra (Más → Producción → Etapas)." }, { status: 400 }) };
   }
   return { etapa };
 }

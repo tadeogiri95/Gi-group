@@ -1,6 +1,6 @@
 "use client";
 // Pantalla de un botón de la barra de gestión (menú nuevo, parte 32):
-// Proyectos (OT, Reportes y Planificación, esta solo para gerencia), Inventario (Stock y Compras) y Mantenimiento
+// Producción (OT, Reportes y Planificación, esta solo para gerencia), Materiales (Stock y Compras) y Mantenimiento
 // (Flota vehicular y Maquinaria, parte 33). Reemplaza a la pestaña "Planta".
 // Stock (ítem 40), Compras (ítem 41), Flota y Maquinaria (Mantenimiento, ítem
 // 43) son módulos propios que vienen con las OT (131, 132). Lo que la empresa
@@ -10,7 +10,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { tieneModulo } from "../../lib/modulos";
-import { BOTONES_GESTION, opcionesBoton } from "../../lib/menuGestion";
+import { BOTONES_GESTION, opcionesBoton, esSupervisor } from "../../lib/menuGestion";
 import ModuloBloqueado from "../ModuloBloqueado";
 import Pestanas from "../ui/Pestanas";
 import { Spinner } from "../ui";
@@ -24,7 +24,7 @@ import PlanificacionScreen from "../PlanificacionScreen";
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
-export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlanes, seccion = null }) {
+export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlanes, seccion = null, onIr = null }) {
   const OPCIONES = opcionesBoton(boton, empresa, usuario);
   const primera = OPCIONES.find((o) => tieneModulo(empresa, o.modulo)) || OPCIONES[0];
   // seccion: la opción con la que abre (el Panel de control manda "ot", "compras"
@@ -35,6 +35,10 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
   const actual = OPCIONES.find((o) => o.id === opcion) || primera;
   const bloqueado = !tieneModulo(empresa, actual.modulo);
   const empresaId = usuario?.empresa_id || empresa?.id;
+  // Links de las planillas: en Más → Planillas conectadas (auditoría 01/11).
+  // Solo la oficina (no el supervisor ni el responsable de mantenimiento).
+  const oficina = (usuario?.rol === "gerencial" || usuario?.rol === "administrativo") && !esSupervisor(usuario);
+  const onPlanillas = onIr && oficina ? () => onIr("config:planillas") : null;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -42,8 +46,8 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
       <div role="tabpanel" aria-label={actual.label} className="flex-1 overflow-hidden flex flex-col">
         {bloqueado && <ModuloBloqueado modulo={actual.modulo} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}
-        {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} />}
-        {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} />}
+        {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} />}
+        {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} onPlanillas={onPlanillas} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria" ? "alertas" : "maquinas"} />}

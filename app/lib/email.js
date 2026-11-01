@@ -587,7 +587,7 @@ export function htmlResumenSemanal({ empresa, slug, resumen: r }) {
     ${conTareas ? `${titulo("Horas por OT")}${ots}${titulo("Tiempo muerto")}${muerto}` : ""}
     ${titulo("Faltas sin aviso")}${faltas}
     ${btn(`${APP_BASE}/${slug}`, "Ver el detalle en Gypi →")}
-    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">¿No querés recibirlo? Desactivalo en Más → Empresa → General.</p>
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">¿No querés recibirlo? Desactivalo en Más → Datos y apariencia → General.</p>
   `;
   return cuerpo;
 }

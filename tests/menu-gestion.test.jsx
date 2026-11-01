@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
-const { seccionesMas, conBoton, opcionesBoton, esSupervisor, partirDestino } = await import("../app/lib/menuGestion.js");
+const { seccionesMas, conBoton, opcionesBoton, esSupervisor, partirDestino, GRUPOS } = await import("../app/lib/menuGestion.js");
 const { getItems } = await import("../app/components/nav/BottomNav.jsx");
 const { modulosEfectivos } = await import("../app/lib/modulos.js");
 const { pasosActivacion } = await import("../app/lib/onboarding.js");
@@ -24,17 +24,17 @@ const ADMIN = { rol: "administrativo" };
 const SUPERVISOR = { rol: "administrativo", solo_su_division: true };
 const ids = (opciones) => seccionesMas(opciones).map((s) => s.id);
 
-test("barra de gestión — Inicio · Proyectos · Inventario · Mantenimiento · Más; cada botón con sus módulos", () => {
+test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento · Más; cada botón con sus módulos", () => {
   const labels = (modulos) => getItems("gerencial", 0, modulos).map((i) => i.label);
-  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Proyectos", "Inventario", "Mantenimiento", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"]);
   assert.deepEqual(labels(ASISTENCIA.modulos), ["Inicio", "Más"]);
   assert.equal(conBoton("proyectos", PLANTA), true);
   assert.equal(conBoton("proyectos", ASISTENCIA), false);
   // Lo apagado en Más → Módulos saca el botón entero si no le queda nada
   const sinInventario = PLANTA.modulos.filter((m) => m !== "stock" && m !== "compras");
-  assert.deepEqual(labels(sinInventario), ["Inicio", "Proyectos", "Mantenimiento", "Más"]);
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Proyectos", "Inventario", "Mantenimiento", "Más"], "queda Maquinaria");
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota" && m !== "maquinaria")), ["Inicio", "Proyectos", "Inventario", "Más"]);
+  assert.deepEqual(labels(sinInventario), ["Inicio", "Producción", "Mantenimiento", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"], "queda Maquinaria");
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota" && m !== "maquinaria")), ["Inicio", "Producción", "Materiales", "Más"]);
   // Los permisos pendientes se ven sobre "Más"
   assert.equal(getItems("gerencial", 3, PLANTA.modulos).find((i) => i.id === "config").badge, 3);
 });
@@ -50,10 +50,43 @@ test("botones — Proyectos: OT y Reportes; Inventario: Stock y Compras; Manteni
   assert.deepEqual(partirDestino("planta"), { pantalla: "proyectos", seccion: null });
 });
 
-test("Más — arriba Permisos y Equipo; después los ajustes; lo de producción está en los botones", () => {
+test("Más — agrupado por tema: Personas, Cómo trabaja la planta, Empresa y Tu cuenta (auditoría 01/11)", () => {
   const todo = ids({ empresa: PLANTA, usuario: DUENO });
-  assert.deepEqual(todo, ["permisos", "equipo", "ubicaciones", "asistencia", "reglas", "admin", "modulos", "facturacion", "privacidad"]);
+  assert.deepEqual(todo, ["equipo", "permisos", "asistencia", "produccion", "planificacion", "planillas", "admin", "ubicaciones", "reglas", "modulos", "facturacion", "privacidad"]);
   for (const id of ["personal", "horarios", "calendario", "reportes", "documentacion"]) assert.ok(!todo.includes(id), id);
+  const grupo = (id) => seccionesMas({ empresa: PLANTA, usuario: DUENO }).find((s) => s.id === id).grupo;
+  assert.deepEqual(["produccion", "planificacion", "planillas"].map(grupo), ["planta", "planta", "planta"], "toda la configuración de la planta junta");
+  assert.deepEqual(GRUPOS.map((g) => g.titulo), ["Personas", "Cómo trabaja la planta", "Empresa", "Tu cuenta"]);
+  // Planificación solo el dueño; sin OT no hay planificación ni planillas
+  assert.ok(!ids({ empresa: PLANTA, usuario: ADMIN }).includes("planificacion"));
+  assert.ok(ids({ empresa: PLANTA, usuario: ADMIN }).includes("planillas"));
+  const sinOt = ids({ empresa: ASISTENCIA, usuario: DUENO });
+  assert.ok(!sinOt.includes("planificacion") && !sinOt.includes("planillas"));
+});
+
+test("Más → Producción y Datos y apariencia reparten las 12 pestañas de Empresa", async () => {
+  const src = readFileSync(new URL("../app/admin_empresa_screen.js", import.meta.url), "utf8");
+  for (const k of ["general", "apariencia", "logo"]) assert.match(src, new RegExp(`key: "${k}", label: "[^"]+", grupo: "empresa"`));
+  for (const k of ["divisiones", "etapas", "rutas", "paradas", "liberacion", "carga", "instalacion", "defectos", "costo"]) assert.match(src, new RegExp(`key: "${k}", label: "[^"]+", grupo: "produccion"`));
+  const cfg = readFileSync(new URL("../app/components/screens/ConfigScreen.jsx", import.meta.url), "utf8");
+  assert.match(cfg, /id === "admin" +&& <AdminEmpresaScreen grupo="empresa"/);
+  assert.match(cfg, /id === "produccion" +&& <AdminEmpresaScreen grupo="produccion"/);
+  assert.match(cfg, /id === "planillas" +&& <PlanillasConectadas/);
+  assert.match(cfg, /id === "planificacion" +&& <ParametrosPlanificacion/);
+});
+
+test("Planillas conectadas — los links salieron de OT y de Stock; desde ahí se llega con un botón", () => {
+  const ot = readFileSync(new URL("../app/proyectos_screen.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(ot, /Guardar links|ConexionScript/);
+  assert.match(ot, /onPlanillas/);
+  const stock = readFileSync(new URL("../app/components/StockScreen.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(stock, /stock-inv|Guardar y sincronizar/);
+  const mov = readFileSync(new URL("../app/components/MovimientosStock.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(mov, /<PlanillaMrpConexion/);
+  const boton = readFileSync(new URL("../app/components/screens/BotonGestionScreen.jsx", import.meta.url), "utf8");
+  assert.match(boton, /onIr\("config:planillas"\)/);
+  assert.match(boton, /!esSupervisor\(usuario\)/, "el supervisor no configura planillas");
+  assert.deepEqual(partirDestino("config:planillas"), { pantalla: "config", seccion: "planillas" });
 });
 
 test("Más — Permisos y Equipo abren su pantalla; Permisos muestra los pendientes", () => {
@@ -64,7 +97,7 @@ test("Más — Permisos y Equipo abren su pantalla; Permisos muestra los pendien
     </AuthContext.Provider>
   );
   fireEvent.click(screen.getByRole("button", { name: /Permisos \(2 pendientes\)/ }));
-  fireEvent.click(screen.getByRole("button", { name: /^Equipo/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Equipo y horarios/ }));
   assert.deepEqual(ir, ["solicitudes", "equipo"]);
   const home = readFileSync(new URL("../app/[slug]/HomeContent.jsx", import.meta.url), "utf8");
   assert.match(home, /uIsGer && DESDE_MAS\.has\(screen\) \? "config" : screen/, "en Permisos y Equipo la barra marca Más");

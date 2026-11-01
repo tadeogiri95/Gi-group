@@ -197,7 +197,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                         {cambios.salen > 0 && <span className="text-gypi-red"> · se sacan {cambios.salen} que ya no están en la planilla</span>}
                       </div>
                     )}
-                    {!reglas.length && <div className="text-xs text-gypi-amber-ink">Ninguna etapa se escanea por pieza todavía: las piezas quedan sin etapas. Se marcan en Configuración → Etapas.</div>}
+                    {!reglas.length && <div className="text-xs text-gypi-amber-ink">Ninguna etapa se escanea por pieza todavía: las piezas quedan sin etapas. Se marcan en Más → Producción → Etapas.</div>}
                     {vista.sinColumna.map((r) => (
                       <div key={r.codigo} className="text-xs text-gypi-amber-ink">No encontré la columna {r.columnas.join(", ")} para {r.nombre}: ninguna pieza queda con {r.nombre}. La podés marcar en cada renglón.</div>
                     ))}

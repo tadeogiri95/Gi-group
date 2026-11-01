@@ -21,7 +21,7 @@ const Icons = {
 const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => modulos.includes(m));
 
 export function getItems(role, pend, modulos, { instalador = false, mantenimiento = false } = {}) {
-  // Gestión (menú nuevo, parte 32): Inicio · Proyectos · Inventario ·
+  // Gestión (menú nuevo, parte 32; nombres de la auditoría 01/11): Inicio · Producción · Materiales ·
   // Mantenimiento · Más. Cada botón del medio aparece si la empresa tiene
   // alguno de sus módulos. Permisos y Equipo pasaron a "Más", que lleva el
   // número de permisos pendientes.
@@ -29,8 +29,8 @@ export function getItems(role, pend, modulos, { instalador = false, mantenimient
     const empresa = { modulos };
     return [
       { id: 'home',          label: 'Inicio',        icon: Icons.home },
-      conBoton('proyectos', empresa) && { id: 'proyectos', label: 'Proyectos', icon: Icons.clipboard },
-      conBoton('inventario', empresa) && { id: 'inventario', label: 'Inventario', icon: Icons.box },
+      conBoton('proyectos', empresa) && { id: 'proyectos', label: 'Producción', icon: Icons.clipboard },
+      conBoton('inventario', empresa) && { id: 'inventario', label: 'Materiales', icon: Icons.box },
       conBoton('mantenimiento', empresa) && { id: 'mantenimiento', label: 'Mantenimiento', icon: Icons.wrench },
       { id: 'config',        label: 'Más',           icon: Icons.menu, badge: pend },
     ].filter(Boolean);

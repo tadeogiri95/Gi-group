@@ -280,7 +280,9 @@ test("📅 Gantt — sin plan confirmado explica cómo armarlo", () => {
 test("Proyectos → OT tiene el chip 📅 Gantt y la opción de cómo contar la semana", () => {
   const src = readFileSync(new URL("../app/proyectos_screen.jsx", import.meta.url), "utf8");
   assert.match(src, /📅 Gantt/);
-  assert.match(src, /MODOS_FECHA_OBJETIVO/);
+  // La opción está en Más → Planillas conectadas, junto a los links (auditoría 01/11)
+  const planillas = readFileSync(new URL("../app/components/PlanillasConectadas.jsx", import.meta.url), "utf8");
+  assert.match(planillas, /MODOS_FECHA_OBJETIVO/);
   const sql = readFileSync(new URL("../supabase/migrations/135_ot_semana_objetivo.sql", import.meta.url), "utf8");
   assert.match(sql, /semana_objetivo smallint/);
   assert.match(sql, /fecha_objetivo date/);
