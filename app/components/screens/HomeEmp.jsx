@@ -106,14 +106,15 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         <h2 className="m-0 font-heading text-[26px] font-extrabold text-gypi-text tracking-tight leading-[1.1]">Hola, {usuario.apodo}</h2>
         {diagH && <div className="text-[15px] text-gypi-dim mt-1.5">Tu horario hoy: <span className="text-gypi-text font-bold">{diagH.in} a {diagH.out}</span></div>}
         {!diagH && usuario.diagrama && <div className="text-[15px] text-gypi-green-ink font-bold mt-1.5">Hoy es franco</div>}
-        <div className={`mt-3.5 flex items-center gap-2 py-2 px-3 rounded-xl ${fichado ? "bg-gypi-green/10" : "bg-gypi-amber/10"}`}>
+        {/* Con el fichaje apagado (la empresa usa su propio control) no se habla de fichar (auditoría 01/11) */}
+        {conFichaje && <div className={`mt-3.5 flex items-center gap-2 py-2 px-3 rounded-xl ${fichado ? "bg-gypi-green/10" : "bg-gypi-amber/10"}`}>
           <span className={`w-2 h-2 rounded-full shrink-0 ${fichado ? "bg-gypi-green" : "bg-gypi-amber"}`} aria-hidden="true" />
           <span className={`text-[15px] font-bold ${fichado ? "text-gypi-green-ink" : "text-gypi-amber-ink"}`}>
             {fichado
               ? `Entrada ${fichadaHoy.ingreso.slice(0, 5)}${fichadaHoy?.egreso ? " · Salida " + fichadaHoy.egreso.slice(0, 5) : ""}`
               : "Todavía no fichaste"}
           </span>
-        </div>
+        </div>}
       </section>
 
       {/* Respuesta a un permiso pedido hoy */}
@@ -166,7 +167,8 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         )}
       </section>
       {/* Parte 41 (138): lo que gerencia confirmó para la semana, solo lectura */}
-      {!demo && tieneModulo(empresa, "proyectos") && <PlanSemana divisionUsuario={usuario?.division} />}
+      {/* El instalador trabaja en obra: el plan de la planta no le sirve (auditoría 01/11) */}
+      {!demo && !usuario?.es_instalador && tieneModulo(empresa, "proyectos") && <PlanSemana divisionUsuario={usuario?.division} />}
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}

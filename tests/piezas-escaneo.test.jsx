@@ -273,6 +273,11 @@ test("/api/piezas/paso — código que no es de pieza, pieza de otra OT o borrad
   res = await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - 7", etapa: 1 }, await token()));
   assert.equal(res.status, 404);
   assert.match((await res.json()).error, /Reimprimí su etiqueta/);
+  // Número escrito a mano que no existe: se avisa que revise el número
+  mock({ pieza: null });
+  res = await api.POST(req({ accion: "escanear", codigo: "9999", etapa: 1 }, await token()));
+  assert.equal(res.status, 404);
+  assert.match((await res.json()).error, /No hay ninguna pieza con el N° 9999/);
   mock({ falla: 'Could not find the table "public.piezas_ot"' });
   res = await api.POST(req({ accion: "escanear", codigo: "7", etapa: 1 }, await token()));
   assert.equal(res.status, 409);

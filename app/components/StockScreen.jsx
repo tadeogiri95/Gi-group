@@ -16,6 +16,7 @@ import {
 import FichaArticulo, { Semaforo } from "./FichaArticulo";
 import MovimientosStock from "./MovimientosStock";
 import ArticuloNuevo from "./ArticuloNuevo";
+import { esSupervisor } from "../lib/menuGestion";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -140,8 +141,8 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
         <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos</Chip>
       </div>
       {vista === "movimientos" ? <MovimientosStock usuario={usuario} articulos={articulos} onArticuloNuevo={(n) => setArticulos((prev) => [...prev.filter((x) => x.sku !== n.sku), n])} /> : (<>
-      {/* Planilla MRP */}
-      <div className="mb-3">
+      {/* Planilla MRP: los links los configura la oficina, no el supervisor (auditoría 01/11) */}
+      {!esSupervisor(usuario) && <div className="mb-3">
         <button onClick={() => setVerConfig((v) => !v)} aria-expanded={verConfig}
           className="w-full min-h-[44px] flex items-center justify-between px-3 rounded-[10px] border border-gypi-border bg-gypi-surface text-[14px] font-semibold text-gypi-text cursor-pointer">
           <span>🔗 Planilla MRP {cfg.inventario ? "· conectada" : "· sin conectar"}</span>
@@ -168,7 +169,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null }) {
               className="g-btn g-btn-primary w-full">Guardar y sincronizar</button>
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="flex items-center gap-2 mb-3">
         <div className="flex-1 text-[13px] text-gypi-dim">

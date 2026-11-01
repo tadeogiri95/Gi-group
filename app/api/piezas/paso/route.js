@@ -146,6 +146,11 @@ async function escanear(sesion, datos) {
   const lectura = leerQrPieza(datos.codigo) || (/^\d{1,15}$/.test(datos.codigo) ? { ot: null, id: Number(datos.codigo) } : null);
   if (!lectura) return NextResponse.json({ error: "Ese código no es de una pieza ni de un módulo. Escaneá la etiqueta de la pieza o del módulo." }, { status: 400 });
   const [pieza] = (await sbGet(`piezas_ot?id=eq.${lectura.id}&empresa_id=eq.${e}&select=id,ot,nombre,unidad,de,etapas&limit=1`, opts)) || [];
+  // Número escrito a mano que no existe: casi siempre es un error al tipear,
+  // no una planilla vuelta a pegar (auditoría 01/11)
+  if (!pieza && !lectura.ot) {
+    return NextResponse.json({ error: `No hay ninguna pieza con el N° ${lectura.id}. Revisá el número de la etiqueta.` }, { status: 404 });
+  }
   if (!pieza || (lectura.ot && normalizarOt(pieza.ot) !== normalizarOt(lectura.ot))) {
     return NextResponse.json({ error: "Esa pieza ya no está en la OT (puede que se haya vuelto a pegar la planilla). Reimprimí su etiqueta." }, { status: 404 });
   }
