@@ -3,6 +3,7 @@ import { useState, useCallback, useRef } from "react";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { useToast } from "../components/ui/Toast";
 import { PLANES } from "../lib/plans";
+import ChequeoBase from "./ChequeoBase";
 
 // Asistencia/Planta por tramos (ítem 25) + los planes viejos que siguen vigentes
 const PLAN_ORDEN = ["free", "trial", "asistencia_15", "asistencia_40", "asistencia_80", "planta_15", "planta_40", "planta_80", "starter", "pro", "enterprise"];
@@ -251,6 +252,7 @@ export default function Dashboard({ initialData }) {
 
         {tab === "empresas" && (
           <>
+            <ChequeoBase />
             {/* Stats */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
               <StatCard label="Total empresas" value={totalEmpresas} />
