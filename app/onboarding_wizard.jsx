@@ -239,7 +239,7 @@ function VistaPlantilla({ divisiones, etapas }) {
       <ol className="flex flex-wrap gap-1.5 mb-2 list-none p-0 m-0">
         {etapas.map((e, i) => <li key={e.codigo} className="px-2.5 py-1 rounded-full bg-gypi-surf-hi text-gypi-text text-[13px]">{i + 1}. {e.nombre}</li>)}
       </ol>
-      <p className="text-xs text-gypi-dim m-0">Las cambiás cuando quieras desde Más → Empresa. No hace falta acertar ahora.</p>
+      <p className="text-xs text-gypi-dim m-0">Las cambiás cuando quieras desde Más → Producción. No hace falta acertar ahora.</p>
     </div>
   );
 }

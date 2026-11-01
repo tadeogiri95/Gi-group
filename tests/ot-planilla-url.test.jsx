@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 const { default: ProyectosScreen } = await import("../app/proyectos_screen.jsx");
+const { PlanTrabajoLinks } = await import("../app/components/PlanillasConectadas.jsx");
 const { AuthContext } = await import("../app/context/AuthContext.jsx");
 
 const raiz = new URL("../supabase/", import.meta.url);
@@ -44,15 +45,12 @@ test("la línea base confirma el problema: config_sistema no tiene id y su clave
 test("Guardar URL — guarda el enlace de la planilla sin pedir columnas inexistentes", async () => {
   const pedidos = [];
   global.fetch = mockApi(pedidos);
+  // Los links están en Más → Planillas conectadas (auditoría 01/11, PR 3)
   render(
     <AuthContext.Provider value={{ divisiones: [], empresa: { nombre: "Acme" }, updateEmpresa: () => {} }}>
-      <ProyectosScreen empresaId="11111111-1111-1111-1111-111111111111" />
+      <PlanTrabajoLinks />
     </AuthContext.Provider>
   );
-
-  // La sincronización está dentro de "Más acciones" (revisión de la interfaz)
-  fireEvent.click(await screen.findByText(/Más acciones/));
-  fireEvent.click(screen.getByText(/Sincronización automática/));
   // Un link por renglón: la hoja PLAN y la hoja de una obra (OCAMPOURB)
   fireEvent.change(screen.getByPlaceholderText(/docs\.google\.com/), { target: { value: "https://docs.google.com/x/export?format=csv\nhttps://docs.google.com/y/export?format=csv\n" } });
   fireEvent.click(screen.getByText("Guardar links"));

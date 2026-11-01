@@ -216,5 +216,5 @@ test("htmlResumenSemanal — sin tareas cargadas no muestra horas por OT ni tiem
   assert.ok(!html.includes("Tiempo muerto"));
   assert.ok(!html.includes("Horas cargadas en OT"));
   assert.ok(html.includes("Faltas sin aviso"));
-  assert.ok(html.includes("Más → Empresa"));
+  assert.ok(html.includes("Más → Datos y apariencia"));
 });

@@ -19,6 +19,8 @@ const ReglasScreen = perezosa(() => import("./ReglasScreen"));
 const AdminEmpresaScreen = perezosa(() => import("../../admin_empresa_screen"));
 const AsistenciaReglasScreen = perezosa(() => import("./AsistenciaReglasScreen"));
 const ModulosScreen = perezosa(() => import("./ModulosScreen"));
+const PlanillasConectadas = perezosa(() => import("../PlanillasConectadas"));
+const ParametrosPlanificacion = perezosa(() => import("../PlanificacionScreen").then((m) => m.ParametrosPlanificacion));
 import CerrarSesion from "../CerrarSesion";
 import { BotonInstalar } from "../InstalarApp";
 
@@ -53,10 +55,10 @@ function PrivacidadPanel({ usuario, empresa }) {
   );
 }
 
-// Pantalla "Más" de gestión (reforma UX R5): arriba Permisos y Equipo, que
-// abren su pantalla (menú nuevo, parte 32), y abajo una lista simple de
-// ajustes; cada renglón abre su pantalla con "← Más". Lo de producción está en
-// Proyectos, Inventario y Mantenimiento.
+// Pantalla "Más" de gestión (reforma UX R5), agrupada por tema (auditoría
+// 01/11, PR 3): Personas, Cómo trabaja la planta, Empresa y Tu cuenta. Cada
+// renglón abre su pantalla con "← Más"; Permisos y Equipo abren la suya. Toda
+// la configuración de la planta está en "Cómo trabaja la planta".
 export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEmpresa, divisiones = [], etapas = [], onVerPlanes, seccion: seccionInicial = null, onSeccion, onIr, pendientes = 0 }) {
   const [seccionLocal, setSeccionLocal] = useState(seccionInicial);
   const seccionId = onSeccion ? seccionInicial : seccionLocal;
@@ -118,7 +120,10 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
         {id === "ubicaciones"   && <GeolocalizacionScreen empresaId={empresaId} />}
         {id === "asistencia"    && <AsistenciaReglasScreen />}
         {id === "reglas"        && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
-        {id === "admin"         && <AdminEmpresaScreen empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
+        {id === "admin"         && <AdminEmpresaScreen grupo="empresa" empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
+        {id === "produccion"    && <AdminEmpresaScreen grupo="produccion" empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
+        {id === "planificacion" && <ParametrosPlanificacion empresaId={empresaId} />}
+        {id === "planillas"     && <PlanillasConectadas empresa={empresa} />}
         {id === "modulos"       && <ModulosScreen onUpdateEmpresa={onUpdateEmpresa} />}
         {id === "privacidad"    && <PrivacidadPanel usuario={usuario} empresa={empresa} />}
         </>}

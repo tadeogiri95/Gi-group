@@ -304,7 +304,7 @@ function PegarPedido({ articulos, ots, onListo, onCancelar }) {
                 {leido.noEncontrados.slice(0, 20).map((x, i) => <li key={i}>{x.texto}</li>)}
               </ul>
               {leido.noEncontrados.length > 20 && <div className="text-[12px] text-gypi-dim">Y {leido.noEncontrados.length - 20} más.</div>}
-              <div className="text-[12px] text-gypi-dim">Si son artículos nuevos, sincronizá el stock (Inventario → Stock) o pedilos de a uno escribiéndolos.</div>
+              <div className="text-[12px] text-gypi-dim">Si son artículos nuevos, sincronizá el stock (Materiales → Stock) o pedilos de a uno escribiéndolos.</div>
             </div>
           )}
           {leido.sinCantidad.length > 0 && (

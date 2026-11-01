@@ -281,11 +281,21 @@ test("pantalla Stock — lista con semáforo, búsqueda, urgentes y ficha", asyn
   assert.ok(screen.getByText("Necesitan las OT"));
 });
 
-test("pantalla Stock — sin planilla conectada muestra dónde pegar los links", async () => {
+test("pantalla Stock — sin planilla conectada lleva a Más → Planillas conectadas, donde se pegan los links", async () => {
   mockPantalla({ articulos: [], valor: null });
-  render(<StockScreen empresa={{ slug: "gi" }} empresaId={E} />);
-  await waitFor(() => assert.ok(screen.getByLabelText("Link de la hoja INVENTARIO")));
-  assert.ok(screen.getByText(/Todavía no hay artículos/));
+  const ir = [];
+  render(<StockScreen empresa={{ slug: "gi" }} empresaId={E} usuario={{ rol: "gerencial" }} onPlanillas={() => ir.push("planillas")} />);
+  await waitFor(() => assert.ok(screen.getByText(/Todavía no hay artículos/)));
+  fireEvent.click(screen.getByText(/Planilla MRP · sin conectar/));
+  assert.deepEqual(ir, ["planillas"]);
+  cleanup();
+  // Los links se guardan igual que antes (misma clave) y se sincroniza
+  const pedidos = mockPantalla({ articulos: [], valor: null });
+  const { PlanillaMrpLinks } = await import("../app/components/PlanillasConectadas.jsx");
+  render(<PlanillaMrpLinks />);
+  fireEvent.change(screen.getByLabelText("Link de la hoja INVENTARIO"), { target: { value: "https://docs.google.com/inv.csv" } });
+  fireEvent.click(screen.getByText("Guardar y sincronizar"));
+  await waitFor(() => assert.deepEqual(pedidos, ["sync"]));
 });
 
 test("pantalla Stock — sincronizar y elegir etiquetas de lo filtrado", async () => {

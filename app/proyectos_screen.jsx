@@ -8,8 +8,6 @@ import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
-import { ConexionScript } from "./components/PlanillaMrpConexion";
-import { CLAVE_PLANILLA_PLAN } from "./lib/semanaEditable";
 import DetalleOp from "./components/DetalleOp";
 import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
 import { fmtPesos } from "./lib/costo";
@@ -26,8 +24,8 @@ import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { avancePorOt } from "./lib/piezas";
 import { hoyArg } from "./lib/dates";
-import { AVISO_DEMORA_GOOGLE, linksPlanilla, valorLinks } from "./lib/csvProyectos";
-import { CLAVE_FECHA_OBJETIVO, MODOS_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
+import { AVISO_DEMORA_GOOGLE, linksPlanilla } from "./lib/csvProyectos";
+import { CLAVE_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { useEscape } from "./hooks/useEscape";
 
 const GREEN = "#16A34A";
@@ -165,7 +163,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function ProyectosScreen({ empresaId }) {
+export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, checklistInstalacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(usuario?.rol === "gerencial");
@@ -204,7 +202,6 @@ export default function ProyectosScreen({ empresaId }) {
   const fileRef = useRef(null);
   const [syncCfg, setSyncCfg] = useState({ url: "", ultima_sync: null });
   const [syncLoading, setSyncLoading] = useState(false);
-  const [showSyncPanel, setShowSyncPanel] = useState(false);
   // Cómo se cuenta la fecha objetivo de las OT (135): semana del año o entrega
   const [modoObjetivo, setModoObjetivo] = useState(normalizarModo());
 
@@ -242,20 +239,6 @@ export default function ProyectosScreen({ empresaId }) {
       setModoObjetivo(normalizarModo(rows?.[0]?.valor?.modo));
     } catch {}
   }, [empresaId]);
-
-  const guardarModoObjetivo = async (modo) => {
-    const anterior = modoObjetivo;
-    setModoObjetivo(modo);
-    try {
-      const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=clave&limit=1`);
-      if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}`, { valor: { modo } });
-      else await sb.post("config_sistema", { clave: CLAVE_FECHA_OBJETIVO, valor: { modo } });
-      showToast("✅ Guardado. Apretá Sincronizar para que se aplique a las OT.", GREEN);
-    } catch (e) {
-      setModoObjetivo(anterior);
-      showToast(`Error: ${e.message}`, RED);
-    }
-  };
 
   useEffect(() => { cargar(); cargarSyncCfg(); }, [cargar, cargarSyncCfg]);
 
@@ -342,23 +325,6 @@ export default function ProyectosScreen({ empresaId }) {
     };
     reader.readAsText(f);
     e.target.value = "";
-  };
-
-  const guardarSyncUrl = async () => {
-    if (!syncCfg.url.trim()) return;
-    setSyncLoading(true);
-    try {
-      const valor = valorLinks(syncCfg.url);
-      const rows = await sb.get("config_sistema?clave=eq.proyectos_csv_url&select=clave&limit=1");
-      if (rows?.length) {
-        await sb.patch("config_sistema?clave=eq.proyectos_csv_url", { valor });
-      } else {
-        await sb.post("config_sistema", { clave: "proyectos_csv_url", valor });
-      }
-      const cuantos = 1 + valor.urls.length;
-      showToast(cuantos > 1 ? `✅ ${cuantos} links guardados` : "✅ URL guardada", GREEN);
-    } catch (e) { showToast(`Error: ${e.message}`, RED); }
-    setSyncLoading(false);
   };
 
   // Un solo botón a la vista: trae lo nuevo de la planilla (si hay links
@@ -508,7 +474,7 @@ export default function ProyectosScreen({ empresaId }) {
       {/* Acciones de todos los días: grandes y con texto (revisión de la interfaz, 2026-10) */}
       <div className="flex gap-2 mb-3">
         <button onClick={() => setModal({})} className="flex-1 min-h-[48px] rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[15px] font-bold cursor-pointer">+ Nueva OT</button>
-        <button onClick={sincronizar} disabled={syncLoading} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[15px] font-bold cursor-pointer disabled:opacity-60">
+        <button onClick={sincronizar} disabled={syncLoading} title={AVISO_DEMORA_GOOGLE} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[15px] font-bold cursor-pointer disabled:opacity-60">
           {syncLoading ? "Sincronizando…" : "🔄 Actualizar y sincronizar"}
         </button>
       </div>
@@ -561,60 +527,15 @@ export default function ProyectosScreen({ empresaId }) {
                 Imprimir etiquetas QR de las OT de la lista
               </button>
             </div>
-            {/* Panel de URL de sincronización */}
-            <div>
-              <button
-                onClick={() => setShowSyncPanel(p => !p)}
-                className="w-full py-2 px-3 rounded-[10px] border border-gypi-border bg-transparent text-gypi-dim text-xs font-semibold cursor-pointer flex justify-between items-center"
-              >
-                <span>🔗 Sincronización automática {syncCfg.url ? "· configurada" : ""}</span>
-                <span className="text-xs">{showSyncPanel ? "▲" : "▼"}</span>
+            {/* Links de la planilla y script del Plan de trabajo: en Más →
+                Planillas conectadas (auditoría 01/11, PR 3) */}
+            {onPlanillas && (
+              <button onClick={onPlanillas}
+                className="w-full py-2 px-3 rounded-[10px] border border-gypi-border bg-transparent text-gypi-dim text-xs font-semibold cursor-pointer flex justify-between items-center">
+                <span>🔗 Links de la planilla {syncCfg.url ? "· configurada" : ""}</span>
+                <span className="text-xs">Más → Planillas conectadas ›</span>
               </button>
-              {showSyncPanel && (
-                <div className="mt-1.5 p-3 bg-gypi-surface rounded-[10px] border border-gypi-border">
-                  <div className="text-xs text-gypi-dim mb-2 leading-relaxed">
-                    URL pública de CSV (Google Sheets, servidor, etc.). Se hace upsert por OT: las OT nuevas se crean y las existentes se actualizan.
-                    {" "}Para traer lo nuevo usá <b>🔄 Actualizar y sincronizar</b>, arriba de la lista. {AVISO_DEMORA_GOOGLE}
-                  </div>
-                  {syncCfg.ultima_sync && (
-                    <div className="text-xs text-gypi-green mb-2">
-                      Última sync: {new Date(syncCfg.ultima_sync).toLocaleString("es-AR")}
-                    </div>
-                  )}
-                  <label className="block text-xs font-semibold text-gypi-text mb-1" htmlFor="links-planilla">Links de la planilla, uno por renglón</label>
-                  <div className="text-xs text-gypi-dim mb-1 leading-relaxed">
-                    Primero el de la hoja PLAN. Si una obra tiene su hoja propia (OCAMPOURB, MALMÖ…), publicá esa hoja también como CSV y pegá su link en otro renglón.
-                  </div>
-                  <textarea
-                    id="links-planilla"
-                    value={syncCfg.url}
-                    onChange={e => setSyncCfg(p => ({ ...p, url: e.target.value }))}
-                    placeholder="https://docs.google.com/spreadsheets/d/…/export?format=csv"
-                    rows={4}
-                    className="g-input text-xs mb-2"
-                  />
-                  <label className="block text-xs font-semibold text-gypi-text mb-1" htmlFor="modo-objetivo">Fecha objetivo de las OT (Gantt y OT atrasadas)</label>
-                  <select id="modo-objetivo" value={modoObjetivo} onChange={e => guardarModoObjetivo(e.target.value)} className="g-input text-xs mb-2">
-                    {MODOS_FECHA_OBJETIVO.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                  </select>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={guardarSyncUrl}
-                      disabled={syncLoading || !syncCfg.url.trim()}
-                      className={`flex-1 py-2 rounded-lg border-none text-xs font-bold ${syncCfg.url.trim() ? "bg-gypi-amber/15 text-gypi-amber-ink cursor-pointer" : "bg-gypi-surface text-gypi-mute cursor-default"}`}
-                    >
-                      Guardar links
-                    </button>
-                  </div>
-                  {/* SEMANA cambiada en Gypi → columna SEMANA del Plan de trabajo (144) */}
-                  <div className="mt-3">
-                    <ConexionScript claveConfig={CLAVE_PLANILLA_PLAN} api="/api/proyectos/semanas-planilla" planilla="el Plan de trabajo" funcion="instalarSemanasGypi"
-                      titulo="📅 Pasar la SEMANA al Plan de trabajo" leyo="pidió las semanas" cada="cada 15 minutos"
-                      texto="Cuando cambiás la semana de una OT en Planificación o en el detalle de la OT, el Plan de trabajo la anota solo en la columna SEMANA, en todas las hojas donde está esa OT. Si alguien la cambió en la planilla después, gana la planilla (el cambio más reciente)." />
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         )}
       </div>

@@ -14,9 +14,11 @@ import { seccionBloqueada, seccionApagada, tieneModulo, moduloApagado, conRegist
 // Cada pestaña es de un módulo: lo apagado no se ve y lo no contratado va con
 // 🔒. "En vivo" sale del registro de tareas y no se muestra sin él (2026-10).
 export const BOTONES_GESTION = {
+  // Auditoría 01/11 (PR 3): "Proyectos" pasa a llamarse "Producción" e
+  // "Inventario", "Materiales"; los ids quedan igual (enlaces y avisos viejos).
   proyectos: {
-    label: "Proyectos",
-    detalle: "Órdenes de trabajo y reportes",
+    label: "Producción",
+    detalle: "Órdenes de trabajo, planificación y reportes",
     opciones: [
       { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
       { id: "ot", label: "OT", modulo: "proyectos" },
@@ -26,7 +28,7 @@ export const BOTONES_GESTION = {
     ],
   },
   inventario: {
-    label: "Inventario",
+    label: "Materiales",
     detalle: "Stock y compras",
     opciones: [
       { id: "stock", label: "Stock", modulo: "stock" },
@@ -63,25 +65,32 @@ export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;
 }
 
-// "Más" tiene arriba Permisos y Equipo (dejaron la barra en el menú nuevo,
-// parte 32), que abren su propia pantalla (pantalla), y abajo los ajustes.
-// Sin el botón Proyectos, las OT quedan acá.
+// "Más" agrupado por tema (auditoría 01/11, PR 3): Personas, Cómo trabaja la
+// planta (toda la configuración de producción en un solo lugar), Empresa y Tu
+// cuenta. Permisos y Equipo abren su propia pantalla (pantalla). Sin el botón
+// Producción, las OT quedan acá.
+// conProyectos: solo si la empresa tiene las OT; soloGerencia: solo el dueño.
 const SECCIONES = [
-  { id: "permisos", pantalla: "solicitudes", grupo: "dia", icono: "📨", label: "Permisos", detalle: "Permisos, vacaciones y avisos del personal", conPendientes: true },
-  { id: "equipo", pantalla: "equipo", grupo: "dia", icono: "👥", label: "Equipo", detalle: "Personas, horarios, calendario, reportes y documentos" },
-  { id: "proyectos", grupo: "dia", icono: "📋", label: "OT", detalle: "Órdenes de trabajo", soloSinProyectos: true },
-  { id: "ubicaciones", grupo: "config", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
-  { id: "asistencia", grupo: "config", icono: "⏱️", label: "Reglas de asistencia y permisos", detalle: "Tolerancia, bloqueos y tipos de permiso" },
-  { id: "reglas", grupo: "config", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
-  { id: "admin", grupo: "config", icono: "🏢", label: "Empresa", detalle: "Nombre, logo, colores, divisiones y etapas", sinSupervisor: true },
-  { id: "modulos", grupo: "config", icono: "🧩", label: "Módulos", detalle: "Prendé o apagá lo que usa la empresa", sinSupervisor: true },
-  { id: "facturacion", grupo: "config", icono: "💳", label: "Plan y facturación", detalle: "Tu plan, pagos y comprobantes", soloDueno: true },
-  { id: "privacidad", grupo: "config", icono: "👤", label: "Mi cuenta y privacidad", detalle: "Tus datos y cerrar sesión" },
+  { id: "equipo", pantalla: "equipo", grupo: "personas", icono: "👥", label: "Equipo y horarios", detalle: "Personas, turnos, calendario, reportes y documentos" },
+  { id: "permisos", pantalla: "solicitudes", grupo: "personas", icono: "📨", label: "Permisos", detalle: "Vacaciones, faltas y avisos del personal", conPendientes: true },
+  { id: "asistencia", grupo: "personas", icono: "⏱️", label: "Reglas de asistencia y permisos", detalle: "Tolerancia, bloqueos y tipos de permiso" },
+  { id: "proyectos", grupo: "planta", icono: "📋", label: "OT", detalle: "Órdenes de trabajo", soloSinProyectos: true },
+  { id: "produccion", grupo: "planta", icono: "🏭", label: "Producción", detalle: "Divisiones, etapas, rutas, paradas, liberación, carga, defectos", sinSupervisor: true },
+  { id: "planificacion", grupo: "planta", icono: "📅", label: "Planificación", detalle: "Tiempos, máquinas, feriados y capacidad", conProyectos: true, soloGerencia: true },
+  { id: "planillas", grupo: "planta", icono: "🔗", label: "Planillas conectadas", detalle: "Plan de trabajo, MRP y scripts, todo en un lugar", conProyectos: true, sinSupervisor: true },
+  { id: "admin", grupo: "empresa", icono: "🏢", label: "Datos y apariencia", detalle: "Nombre, logo, colores y resumen semanal", sinSupervisor: true },
+  { id: "ubicaciones", grupo: "empresa", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
+  { id: "reglas", grupo: "empresa", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
+  { id: "modulos", grupo: "empresa", icono: "🧩", label: "Módulos", detalle: "Prendé o apagá lo que usa la empresa", sinSupervisor: true },
+  { id: "facturacion", grupo: "empresa", icono: "💳", label: "Plan y facturación", detalle: "Tu plan, pagos y comprobantes", soloGerencia: true },
+  { id: "privacidad", grupo: "cuenta", icono: "👤", label: "Mi cuenta y privacidad", detalle: "Tus datos y cerrar sesión" },
 ];
 
 export const GRUPOS = [
-  { id: "dia", titulo: "Día a día" },
-  { id: "config", titulo: "Configuración" },
+  { id: "personas", titulo: "Personas" },
+  { id: "planta", titulo: "Cómo trabaja la planta" },
+  { id: "empresa", titulo: "Empresa" },
+  { id: "cuenta", titulo: "Tu cuenta" },
 ];
 
 /** Secciones visibles para esta empresa y este usuario, con su candado. */
@@ -90,7 +99,8 @@ export function seccionesMas({ empresa, usuario } = {}) {
   return SECCIONES
     .filter((s) => !(s.soloSinProyectos && proyectos))
     .filter((s) => !(s.sinSupervisor && esSupervisor(usuario)))
-    .filter((s) => !(s.soloDueno && usuario?.rol !== "gerencial"))
+    .filter((s) => !(s.conProyectos && !proyectos))
+    .filter((s) => !(s.soloGerencia && usuario?.rol !== "gerencial"))
     .filter((s) => !seccionApagada(s.id, empresa))
     .map((s) => ({ ...s, bloqueado: seccionBloqueada(s.id, empresa) }));
 }

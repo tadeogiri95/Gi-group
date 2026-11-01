@@ -399,7 +399,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       <div className="g-card py-8 px-6 text-center">
         <div className="text-[28px] mb-2">📅</div>
         <div className="text-sm font-bold text-gypi-text mb-1">No hay OT planificadas</div>
-        <div className="text-xs text-gypi-dim">Acá se ve el plan confirmado en Proyectos → Planificación: armalo en 📊 Carga con &quot;Ordenar automáticamente&quot; y tocá &quot;Confirmar plan&quot;.</div>
+        <div className="text-xs text-gypi-dim">Acá se ve el plan confirmado en Producción → Planificación: armalo en 📊 Carga con &quot;Ordenar automáticamente&quot; y tocá &quot;Confirmar plan&quot;.</div>
       </div>
     );
   }

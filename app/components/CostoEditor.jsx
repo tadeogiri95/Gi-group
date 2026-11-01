@@ -77,7 +77,7 @@ export default function CostoEditor({ avisar = () => {} }) {
           : guardado != null ? `Ahora: ${fmtPesos(guardado)} por hora.` : "Todavía no lo cargaste."}
       </div>
       <div className="text-xs text-gypi-dim mb-3.5">
-        Las horas de instalación salen de la etapa que se llama &quot;Instalación&quot; (Configuración → Etapas).
+        Las horas de instalación salen de la etapa que se llama &quot;Instalación&quot; (Más → Producción → Etapas).
       </div>
       <button onClick={guardar} disabled={guardando || !valido || valor === guardado} className="g-btn g-btn-primary w-full">
         {guardando ? "Guardando…" : "Guardar costo"}

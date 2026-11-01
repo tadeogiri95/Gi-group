@@ -117,7 +117,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
         </div>
 
         {!botones.length ? (
-          <div className="text-[14px] text-gypi-dim">Todavía no hay etapas que se escaneen por pieza. Se marcan en Configuración → Etapas.</div>
+          <div className="text-[14px] text-gypi-dim">Todavía no hay etapas que se escaneen por pieza. Se marcan en Más → Producción → Etapas.</div>
         ) : !etapa ? (
           <div className="text-[14px] text-gypi-dim">Elegí la etapa y escaneá las etiquetas de las piezas. En Armado escaneá la etiqueta del módulo: pasan todas sus piezas juntas.</div>
         ) : (

@@ -188,7 +188,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
               <option value="">Sin puesto (hace de todo)</option>
               {PUESTOS_PLANTA.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
-            <div className="text-xs text-gypi-dim mt-1">Se usa en Proyectos → Planificación para saber cuántos armadores hay. Los de otra línea no cuentan.</div>
+            <div className="text-xs text-gypi-dim mt-1">Se usa en Producción → Planificación para saber cuántos armadores hay. Los de otra línea no cuentan.</div>
           </div>
         )}
 
