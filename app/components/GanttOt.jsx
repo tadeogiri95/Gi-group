@@ -736,7 +736,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           onGuardado={(fila) => { setAjustes((a) => [...(a || []), fila]); setEditar(null); }}
           onRetrabajo={(fila) => { setRetrabajos((l) => [...l.filter((x) => x.id == null || x.id !== fila.id), fila]); setEditar(null); }} />
       )}
-      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT. La parte clara de cada barra es lo que ya pasó. Tocá una OT para ver su detalle.</p>}
+      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT. La línea finita es lo que ya pasó; los días sin trabajo (sin horas en la grilla) quedan vacíos y la barra sigue el próximo día. Lo que una máquina ya empezó lo termina antes de tomar otra OT. Tocá una OT para ver su detalle.</p>}
     </div>
   );
 }
