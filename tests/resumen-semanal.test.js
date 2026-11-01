@@ -208,3 +208,13 @@ test("/api/empresa — PATCH acepta resumen_semanal; GET sin la columna 077 cons
   assert.equal(pedidos.length, 2, "un solo reintento, sacando solo la columna que falta");
   assert.ok(pedidos[1].includes("escaner_ot") && pedidos[1].includes("tipos_solicitud"));
 });
+
+test("htmlResumenSemanal — sin tareas cargadas no muestra horas por OT ni tiempo muerto", () => {
+  const r = armarResumen({ ...SEMANA, empleados: [{ legajo: 9, nombre: "Ana", diagrama: L_V }] });
+  const html = htmlResumenSemanal({ empresa: "Acme", slug: "acme", resumen: r });
+  assert.ok(!html.includes("Horas por OT"));
+  assert.ok(!html.includes("Tiempo muerto"));
+  assert.ok(!html.includes("Horas cargadas en OT"));
+  assert.ok(html.includes("Faltas sin aviso"));
+  assert.ok(html.includes("Más → Empresa"));
+});
