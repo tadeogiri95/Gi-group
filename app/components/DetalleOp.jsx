@@ -153,9 +153,10 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
   }, [tareas, piezas.pasos, proyecto, etapas, divisiones, avance]);
 
   return (
-    <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Detalle de la OT ${proyecto?.ot}`}>
-      <div onClick={onClose} className="absolute inset-0 bg-black/60" />
-      <div className="relative w-full max-w-[560px] bg-gypi-bg rounded-t-[20px] p-[20px_18px_30px] max-h-[90vh] overflow-y-auto border border-gypi-border text-gypi-text">
+    // En la computadora se abre al costado, con la lista a la vista (auditoría 01/11, PR 5)
+    <div className="fixed inset-0 z-200 flex items-end justify-center lg:items-stretch lg:justify-end" role="dialog" aria-label={`Detalle de la OT ${proyecto?.ot}`}>
+      <div onClick={onClose} className="absolute inset-0 bg-black/60 lg:bg-black/20" />
+      <div className="relative w-full max-w-[560px] bg-gypi-bg rounded-t-[20px] p-[20px_18px_30px] max-h-[90vh] overflow-y-auto border border-gypi-border text-gypi-text lg:max-w-[600px] lg:max-h-none lg:h-full lg:rounded-none lg:shadow-2xl">
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-1 min-w-0">
             <div className="g-overline text-gypi-amber-ink">Orden {proyecto?.ot}</div>

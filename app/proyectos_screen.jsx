@@ -569,7 +569,61 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
             {search || filtroDiv ? "Probá con otro filtro o búsqueda." : "Creá la primera con + Nueva OT o importala desde Más acciones."}
           </div>
         </div>
-      ) : (
+      ) : (<>
+        {/* Computadora: tabla con columnas; tocar una fila abre el detalle al costado (auditoría 01/11, PR 5) */}
+        <div className="solo-pc">
+          <table className="w-full border-collapse text-[13px] bg-gypi-surface rounded-xl overflow-hidden border border-gypi-border" aria-label="Órdenes de trabajo">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-gypi-dim">
+                <th scope="col" className="px-3 py-2.5 font-bold">OT</th>
+                <th scope="col" className="px-3 py-2.5 font-bold">Cliente / obra</th>
+                <th scope="col" className="px-3 py-2.5 font-bold">Estado</th>
+                <th scope="col" className="px-3 py-2.5 font-bold w-[170px]">Avance</th>
+                <th scope="col" className="px-3 py-2.5 font-bold">Entrega</th>
+                {verPrecios && <th scope="col" className="px-3 py-2.5 font-bold text-right">Valor</th>}
+                <th scope="col" className="px-3 py-2.5"><span className="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map(p => {
+                const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
+                const pct = p.estado !== "cerrado" ? pctEscaneo.get(String(p.ot))?.porcentaje ?? null : null;
+                const estado = estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct });
+                const obra = [p.obra || p.proyecto, p.division && nombreDivisionOt(divisionesCtx || [], p.division)].filter(Boolean).join(" · ");
+                return (
+                  <tr key={p.id} onClick={() => setDetalle(p)} className={`border-t border-gypi-border cursor-pointer hover:bg-gypi-bg ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
+                    <td className="px-3 py-2.5">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setDetalle(p); }} aria-label={`Ver el detalle de la OT ${p.ot}`}
+                        className="bg-transparent border-none p-0 cursor-pointer font-mono text-[14px] font-bold" style={{ color: divInfo.color || AMBER }}>{p.ot}</button>
+                    </td>
+                    <td className="px-3 py-2.5 max-w-[320px]">
+                      <div className="font-bold text-gypi-text truncate">{p.cliente || p.proyecto || "—"}</div>
+                      {obra && <div className="text-xs text-gypi-dim truncate">{obra}</div>}
+                    </td>
+                    <td className="px-3 py-2.5"><Tag color={estado.tono === "amber" ? AMBER : estado.tono === "green" ? GREEN : "var(--color-text-muted)"}>{estado.texto}</Tag></td>
+                    <td className="px-3 py-2.5">
+                      {pct != null ? (
+                        <div className="flex items-center gap-2">
+                          <progress max={100} value={Math.min(100, Math.max(0, pct))} aria-hidden="true"
+                            className={`flex-1 h-2 rounded-full overflow-hidden appearance-none [&::-webkit-progress-bar]:bg-gypi-border [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-value]:rounded-full ${pct >= 100 ? "[&::-webkit-progress-value]:bg-gypi-green [&::-moz-progress-bar]:bg-gypi-green" : "[&::-webkit-progress-value]:bg-gypi-amber [&::-moz-progress-bar]:bg-gypi-amber"} bg-gypi-border`} />
+                          <span className="font-mono text-xs w-10 text-right">{pct} %</span>
+                        </div>
+                      ) : <span className="text-gypi-mute">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-gypi-dim">{textoEntrega(p, modoObjetivo).replace(/^Entrega /, "") || "—"}</td>
+                    {verPrecios && <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">{precios.has(String(p.ot)) ? fmtPesos(precios.get(String(p.ot))) : "—"}</td>}
+                    <td className="px-2 py-1.5 text-right">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setAcciones(p); }} aria-label={`Acciones de la OT ${p.ot}`}
+                        className="min-h-[36px] px-2.5 rounded-lg border border-gypi-border bg-transparent text-gypi-text cursor-pointer font-semibold">⋯</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-xs text-gypi-dim mt-2 mb-0">Tocá una fila para ver el detalle al costado, sin salir de la lista. Con ⋯ están las piezas, la carga, el acta y editar.</p>
+        </div>
+        <div className="solo-cel">
         <div className="lista-ancha flex flex-col gap-2">
           {filtrados.map(p => {
             const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
@@ -602,7 +656,8 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
             );
           })}
         </div>
-      )}
+        </div>
+      </>)}
       {carga && (
         <CargaOt ot={String(carga.ot)} empresaId={empresaId} empresa={empresa} usuario={usuario} checklist={checklistCarga || []}
           esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setCarga(null)}

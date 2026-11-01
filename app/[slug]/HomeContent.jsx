@@ -30,6 +30,7 @@ import { TarjetaInstalar } from "../components/InstalarApp";
 // estática para no agregar un salto de carga al camino crítico de entrada.
 import LoginScreen from "../components/screens/LoginScreen";
 import Nav from "../components/nav/BottomNav";
+import MenuLateral from "../components/nav/MenuLateral";
 import ErrorBoundary from "../components/ErrorBoundary";
 import EmpresaNoEncontrada from "../components/EmpresaNoEncontrada";
 import MisSolicitudesScreen from "../components/screens/MisSolicitudesScreen";
@@ -355,7 +356,10 @@ export default function HomeContent() {
   // (auditoría 22/10)
   const ancho = (uIsGer && (BOTONES.has(screen) || screen === "equipo")) || (!uIsGer && screen === "mantenimiento");
   return (
-    <div className={`app-shell bg-gypi-bg ${ancho ? "app-shell--ancho" : ""}`}>
+    <div className={`app-shell bg-gypi-bg ${ancho ? "app-shell--ancho" : ""} ${uIsGer ? "app-shell--pc" : ""}`}>
+      {/* En la computadora la oficina tiene el menú a la izquierda (auditoría 01/11, PR 5) */}
+      {uIsGer && <MenuLateral empresa={isDemo ? { ...empresa, modulos: undefined } : empresa} usuario={u} pend={pend} screen={screen} seccion={seccionMas} onIr={irA} />}
+      <div className="columna-app">
       {!isDemo && <PushManager legajo={u.legajo} empresaId={u.empresa_id || empresa?.id} />}
 
       {/* Dentro de una sección de "Más" el título lo pone la sección, con "← Más" */}
@@ -443,6 +447,7 @@ export default function HomeContent() {
       {/* Ofrecer instalar Gypi en el celular */}
       {!isDemo && !isChat && <TarjetaInstalar />}
       {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : uIsGer && DESDE_MAS.has(screen) ? "config" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} mantenimiento={!!u.es_mantenimiento} />}
+      </div>
 
       {paywallInfo && (
         <Paywall
