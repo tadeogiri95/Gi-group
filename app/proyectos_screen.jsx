@@ -22,6 +22,8 @@ import PiezasOt from "./components/PiezasOt";
 import { useCostoHora } from "./hooks/useCostoHora";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
 import { estadoOtLista, textoEntrega } from "./lib/otLista";
+import { otSinMovimiento, enTandas, DIAS_SIN_MOVIMIENTO } from "./lib/otOrdenar";
+import CerrarOtViejas from "./components/CerrarOtViejas";
 import { conRegistroTareas } from "./lib/modulos";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { avancePorOt } from "./lib/piezas";
@@ -260,6 +262,9 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
   const filaEnCurso = useMemo(() => new Map((enCurso || []).map(f => [String(f.proyecto.ot), f])), [enCurso]);
   // % de producción por escaneo de cada OT (parte 25)
   const pctEscaneo = useMemo(() => avancePorOt(avanceHoras?.piezas || []), [avanceHoras]);
+  // OT activas sin piezas escaneadas hace más de 30 días (auditoría 01/11, PR 6)
+  const quietas = useMemo(() => (avanceHoras ? new Set(otSinMovimiento(proyectos, avanceHoras.piezasEscaneo || [], { hoy: hoyArg() }).map((x) => String(x.p.ot))) : null), [avanceHoras, proyectos]);
+  const [limpiar, setLimpiar] = useState(false);
 
   const guardar = async (form) => {
     setSaving(true);
@@ -305,6 +310,17 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
       await sb.patch(`proyectos?id=eq.${id}`, { estado: "cerrado" });
       await cargar();
       showToast("OT cerrada", AMBER);
+    } catch (e) { showToast(`Error: ${e.message}`, RED); }
+  };
+
+  // 🧹 Cerrar OT viejas en lote (PR 6): solo el estado en Gypi; la planilla no se toca
+  const cerrarVarias = async (ids) => {
+    if (!ids.length) return;
+    try {
+      for (const tanda of enTandas(ids)) await sb.patch(`proyectos?id=in.(${tanda.join(",")})`, { estado: "cerrado" });
+      setLimpiar(false);
+      await cargar();
+      showToast(`${ids.length} OT cerradas`, AMBER);
     } catch (e) { showToast(`Error: ${e.message}`, RED); }
   };
 
@@ -386,6 +402,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
 
   const filtrados = proyectos.filter(p => {
     if (filtro === "en_curso") { if (!filaEnCurso.has(String(p.ot))) return false; }
+    else if (filtro === "quietas") { if (!quietas?.has(String(p.ot))) return false; }
     else if (filtro !== "todos" && p.estado !== filtro) return false;
     if (filtroDiv && p.division !== filtroDiv) return false;
     if (search.trim()) {
@@ -447,7 +464,8 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           { id: "activo", texto: `${activos} activas` },
           { id: "cerrado", texto: `${cerrados} cerradas` },
           { id: "todos", texto: `Todas (${proyectos.length})` },
-        ].map((f, i) => (
+          quietas?.size > 0 && { id: "quietas", texto: `⏸ ${quietas.size} sin movimiento (${DIAS_SIN_MOVIMIENTO} días)`, fuerte: true },
+        ].filter(Boolean).map((f, i) => (
           <span key={f.id} className="flex items-center gap-1">
             {i > 0 && <span aria-hidden="true" className="text-gypi-mute">·</span>}
             <button type="button" onClick={() => setFiltro(f.id)} aria-pressed={filtro === f.id}
@@ -489,6 +507,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           <div className="mt-2 flex flex-col gap-2">
             <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsv} />
             <button onClick={() => fileRef.current?.click()} className="w-full min-h-[48px] rounded-xl border-none bg-gypi-cyan/15 text-gypi-cyan text-[15px] font-bold cursor-pointer">📤 Importar OT desde un CSV</button>
+            <button onClick={() => setLimpiar(true)} disabled={!avanceHoras} className="w-full min-h-[48px] rounded-xl border border-gypi-border bg-transparent text-gypi-text text-[15px] font-bold cursor-pointer disabled:opacity-50">🧹 Cerrar OT viejas en lote</button>
             {/* Escáner de OT con la cámara: solo sirve con el registro de tareas
                 ("Iniciar tarea"), que GI no usa (auditoría 01/11) */}
             <div className="g-card !p-3 flex flex-col gap-2">
@@ -708,6 +727,10 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           </div>
         )}
       </Modal>
+      {limpiar && (
+        <CerrarOtViejas abierto={limpiar} proyectos={proyectos} piezas={avanceHoras?.piezasEscaneo || []} hoy={hoyArg()}
+          onCerrar={cerrarVarias} onClose={() => setLimpiar(false)} />
+      )}
       {ConfirmDialog}
     </div>
   );

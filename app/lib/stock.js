@@ -184,18 +184,26 @@ export function nivelSemaforo(texto) {
 
 const ORDEN_NIVEL = { rojo: 0, amarillo: 1 };
 
+/** ¿La planilla tiene stock negativo? Es un dato a revisar, no algo que falte comprar. */
+export function stockNegativo(a) {
+  return a?.stock != null && a.stock !== "" && Number(a.stock) < 0;
+}
+
 /**
  * Artículos que coinciden con la búsqueda, los urgentes primero.
  * @param {object[]} lista
- * @param {{ texto?: string, division?: string, urgentes?: boolean }} filtro
+ * @param {{ texto?: string, division?: string, urgentes?: boolean, negativos?: boolean }} filtro
  *   texto: palabras que tienen que estar en el nombre, el SKU o la familia
  */
-export function filtrarArticulos(lista, { texto = "", division = "", urgentes = false } = {}) {
+export function filtrarArticulos(lista, { texto = "", division = "", urgentes = false, negativos = false } = {}) {
   const palabras = normalizarTitulo(texto).split(" ").filter(Boolean);
   return (Array.isArray(lista) ? lista : [])
     .filter((a) => a && a.activo !== false)
     .filter((a) => !division || a.division === division)
-    .filter((a) => !urgentes || nivelSemaforo(a.semaforo) === "rojo")
+    // Urgente es lo que de verdad falta: el stock negativo es un dato a corregir
+    // en la planilla (falta un ingreso o sobra un consumo), no una compra (auditoría 01/11, PR 6)
+    .filter((a) => !urgentes || (nivelSemaforo(a.semaforo) === "rojo" && !stockNegativo(a)))
+    .filter((a) => !negativos || stockNegativo(a))
     .filter((a) => {
       if (!palabras.length) return true;
       const donde = normalizarTitulo([a.nombre, a.sku, a.familia].filter(Boolean).join(" "));

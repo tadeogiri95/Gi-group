@@ -41,6 +41,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
   const [texto, setTexto] = useState("");
   const [division, setDivision] = useState("");
   const [urgentes, setUrgentes] = useState(false);
+  const [negativos, setNegativos] = useState(false);
   const [elegidos, setElegidos] = useState(() => new Set());
   const [tamano, setTamano] = useState(leerTamano);
   const [ficha, setFicha] = useState(null);
@@ -73,8 +74,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
   useEffect(() => { cargar(); cargarCfg(); }, [cargar, cargarCfg]);
 
   const divisiones = useMemo(() => divisionesDe(articulos), [articulos]);
-  const filtrados = useMemo(() => filtrarArticulos(articulos, { texto, division, urgentes }), [articulos, texto, division, urgentes]);
+  const filtrados = useMemo(() => filtrarArticulos(articulos, { texto, division, urgentes, negativos }), [articulos, texto, division, urgentes, negativos]);
   const urgentesTotal = useMemo(() => filtrarArticulos(articulos, { urgentes: true }).length, [articulos]);
+  const negativosTotal = useMemo(() => filtrarArticulos(articulos, { negativos: true }).length, [articulos]);
 
   const sincronizar = async () => {
     if (!cfg.inventario.trim()) { toast.show("Falta conectar la planilla MRP: pegá el link de INVENTARIO en Más → Planillas conectadas", AMBER); onPlanillas?.(); return; }
@@ -162,10 +164,18 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       <input type="search" value={texto} onChange={(e) => setTexto(e.target.value)} aria-label="Buscar artículo"
         placeholder="Buscar por nombre, código o familia" className="g-input w-full mb-2" />
       <div className="flex gap-1.5 flex-wrap mb-3" role="group" aria-label="Filtros">
-        <Chip active={urgentes} onClick={() => setUrgentes((u) => !u)}>🔴 Urgentes ({urgentesTotal})</Chip>
+        <Chip active={urgentes} onClick={() => { setUrgentes((u) => !u); setNegativos(false); }}>🔴 Urgentes ({urgentesTotal})</Chip>
+        {negativosTotal > 0 && <Chip active={negativos} onClick={() => { setNegativos((n) => !n); setUrgentes(false); }}>⚠ Stock negativo ({negativosTotal})</Chip>}
         <Chip active={!division} onClick={() => setDivision("")}>Todas</Chip>
         {divisiones.map((d) => <Chip key={d} active={division === d} onClick={() => setDivision(division === d ? "" : d)}>{d}</Chip>)}
       </div>
+
+      {negativos && (
+        <p className="m-0 mb-3 text-[13px] text-gypi-amber-ink">
+          Estos artículos tienen stock negativo en la planilla MRP: falta cargar un ingreso o hay un consumo de más. No cuentan como urgentes;
+          corregilos en la planilla y volvé a sincronizar.
+        </p>
+      )}
 
       {/* Etiquetas */}
       <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
