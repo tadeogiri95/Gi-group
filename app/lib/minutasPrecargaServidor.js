@@ -4,6 +4,22 @@
 // plan, carga, acta, stock), esa sección sale sin sugerencias.
 import { sbGetAll } from "./sbHelpers";
 import { armarPrecarga, habilSiguiente, ventanaAyer } from "./minutasPrecarga";
+import { porcentajeOt } from "./piezas";
+
+// Para no armar consultas enormes: las OT con material que se miran
+const MAX_OTS_MATERIAL = 150;
+
+/** OT abiertas con avance por escaneo entre 0 y 100 %. */
+function enCursoPorEscaneo(proyectos, avancePiezas) {
+  const filas = new Map();
+  for (const f of avancePiezas) {
+    const ot = String(f.ot);
+    if (!filas.has(ot)) filas.set(ot, []);
+    filas.get(ot).push(f);
+  }
+  const abiertas = new Set(proyectos.filter((p) => p.estado !== "cerrado" && !p.terminado_planilla).map((p) => String(p.ot)));
+  return [...filas].filter(([ot, fs]) => { const x = porcentajeOt(fs); return abiertas.has(ot) && x > 0 && x < 100; }).map(([ot]) => ot);
+}
 
 const vacio = () => ({ data: [] });
 const lista = (vals) => vals.map((v) => `"${encodeURIComponent(String(v).replace(/"/g, ""))}"`).join(",");
@@ -45,8 +61,10 @@ export async function precargaMinuta(empresaId, fecha, { sesion } = {}) {
     ? (await sbGetAll(`plan_produccion_items?empresa_id=eq.${e}&plan_id=in.(${vigentes.map((p) => p.id).join(",")})&fecha=gte.${fecha}&fecha=lte.${manana}&select=ot,fecha&order=fecha.asc`, opts).catch(vacio)).data
     : [];
 
-  // Material de las OT que arrancan: lo que les falta retirar contra el stock
-  const ots = [...new Set(planItems.map((i) => String(i.ot)))];
+  // Material de las OT que arrancan y de las que están en curso: lo que les
+  // falta retirar contra el stock (¿planilla y material? y compras a disparar)
+  const enCurso = enCursoPorEscaneo(proyectos.data, avancePiezas.data);
+  const ots = [...new Set([...planItems.map((i) => String(i.ot)), ...enCurso])].slice(0, MAX_OTS_MATERIAL);
   let necesidades = [], movimientos = [], articulos = [];
   if (ots.length) {
     const [n, m] = await Promise.all([
@@ -56,7 +74,7 @@ export async function precargaMinuta(empresaId, fecha, { sesion } = {}) {
     necesidades = n.data;
     movimientos = m.data;
     const skus = [...new Set(necesidades.map((x) => x.sku))];
-    if (skus.length) articulos = (await sbGetAll(`articulos_stock?empresa_id=eq.${e}&sku=in.(${lista(skus)})&select=sku,stock`, opts).catch(vacio)).data;
+    if (skus.length) articulos = (await sbGetAll(`articulos_stock?empresa_id=eq.${e}&sku=in.(${lista(skus)})&select=sku,nombre,unidad,stock,en_transito`, opts).catch(vacio)).data;
   }
 
   return armarPrecarga({

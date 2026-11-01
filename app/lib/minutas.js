@@ -101,6 +101,33 @@ export function datosDeOt(p) {
 }
 
 /** Renglón vacío de una sección. */
+/** "12 placas": la cantidad de una compra con su unidad. */
+export function textoCantidad(it) {
+  const n = Number(it?.datos?.cantidad);
+  if (!(n > 0)) return "";
+  return `${String(Math.round(n * 1000) / 1000).replace(".", ",")}${it.datos?.unidad ? ` ${it.datos.unidad}` : ""}`;
+}
+
+/**
+ * Compra a disparar → pedido de material en Compras (parte M4). Devuelve el
+ * cuerpo para POST /api/compras (accion pedido_crear) o { error } si falta algo.
+ */
+export function pedidoDesdeMinuta(it, fecha) {
+  const cantidad = Number(it?.datos?.cantidad);
+  const sku = it?.datos?.sku || null;
+  const descripcion = sku ? null : String(it?.texto || "").trim().slice(0, 200) || null;
+  if (!sku && !descripcion) return { error: "Escribí o elegí qué se compra" };
+  if (!(cantidad > 0)) return { error: "Poné la cantidad a pedir" };
+  const dia = fecha ? `${Number(fecha.slice(8, 10))}/${Number(fecha.slice(5, 7))}` : "";
+  const notas = [`Minuta del ${dia}`, it.tipo === "urgente" ? "Urgente" : "", it.datos?.proveedor ? `Proveedor: ${it.datos.proveedor}` : "", it.datos?.ots ? `OT ${it.datos.ots}` : ""]
+    .filter(Boolean).join(" · ").slice(0, 300);
+  return {
+    accion: "pedido_crear", sku, descripcion, cantidad: Math.round(cantidad * 1000) / 1000,
+    ...(it.datos?.unidad && !sku ? { unidad: String(it.datos.unidad).slice(0, 20) } : {}),
+    ot: it.ot || null, para_fecha: it.fecha_objetivo || null, notas,
+  };
+}
+
 export function renglonNuevo(seccionId, extra = {}) {
   return {
     id: idRenglon(), seccion: seccionId, ot: null, division: null, proyecto: null, cliente: null,
@@ -187,7 +214,7 @@ function columnas(s) {
   const c = [];
   const proyectoOt = (it) => [it.ot ? `OT ${it.ot}` : "", it.proyecto].filter(Boolean).join(" · ");
   const fecha = [s.fecha || "Fecha objetivo", (it) => fechaDiaMes(it.fecha_objetivo)];
-  if (s.campos.includes("articulo")) c.push(["Qué se compra", (it) => it.texto], ["Para proyecto", (it) => [proyectoOt(it), it.cliente].filter(Boolean).join(" · ")]);
+  if (s.campos.includes("articulo")) c.push(["Qué se compra", (it) => [it.texto, textoCantidad(it)].filter(Boolean).join(" · ")], ["Para proyecto", (it) => [proyectoOt(it), it.cliente].filter(Boolean).join(" · ")]);
   else if (s.id === "dyt") c.push(["OT", (it) => it.ot]);
   else if (s.campos.includes("ot")) c.push(["División", (it) => it.division], ["Proyecto", proyectoOt], ["Cliente", (it) => it.cliente]);
   if (s.campos.includes("semaforo")) c.push(["Estado", (it) => (it.semaforo ? `<span class="punto ${esc(it.semaforo)}">●</span> ${esc(etiqueta(SEMAFOROS, it.semaforo))}` : ""), true]);

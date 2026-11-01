@@ -18,11 +18,16 @@
 //   2c Pendientes: los pendientes de obra sin resolver (de Instalaciones y
 //      del acta), con su fecha si la tienen. Responsable y fecha se completan
 //      en la reunión (sin eso no se registran).
+//   5a Compras a disparar (parte M4): artículos que les faltan a las OT en
+//      curso y a iniciar según el MRP (lo que necesitan menos lo ya
+//      retirado) y no alcanzan con el stock más lo que está en tránsito.
+//      Urgente si lo necesita una OT que arranca hoy o mañana.
 // No escribe nada: solo lee.
 import { porcentajeOt } from "./piezas";
 import { faltaPorOt } from "./materialDia";
 
 const DIA = 86400000;
+const MAX_COMPRAS = 40;
 const iso = (t) => new Date(t).toISOString().slice(0, 10);
 const diaSemana = (fecha) => new Date(`${fecha}T12:00:00Z`).getUTCDay();
 const sumar = (fecha, dias) => iso(Date.parse(`${fecha}T12:00:00Z`) + dias * DIA);
@@ -77,7 +82,7 @@ export function listoParaIniciar({ conPiezas, faltaOt, stock }) {
  *   pendientes?: object[],  // pendientes_obra sin resolver: id, ot, descripcion, fecha
  *   necesidades?: object[], // necesidades_stock de las OT a iniciar: ot, sku, cantidad
  *   movimientos?: object[], // movimientos_stock de esas OT: ot, sku, cantidad, tipo, anulado
- *   articulos?: object[],   // articulos_stock: sku, stock
+ *   articulos?: object[],   // articulos_stock: sku, nombre, unidad, stock, en_transito
  * }} datos
  * @returns {Record<string, object[]>} por sección: [{ clave, ot, texto, semaforo, fecha_objetivo, datos }]
  */
@@ -142,6 +147,37 @@ export function armarPrecarga({ fecha, proyectos = [], avancePiezas = [], pasos 
     .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
     .map((p) => ({ ot: String(p.ot), texto: p.descripcion || "", semaforo: "amarillo", fecha_objetivo: p.fecha || null, datos: { pendiente_id: p.id } }));
 
+  // 5a: lo que falta comprar para las OT en curso y a iniciar
+  const urgentes = new Set(prodAIniciar.map((x) => x.ot));
+  const relevantes = new Set([...prodEnCurso.map((x) => x.ot), ...urgentes]);
+  const porSku = new Map();
+  for (const [ot, skus] of falta) {
+    if (!relevantes.has(ot)) continue;
+    for (const [sku, n] of skus) {
+      if (!porSku.has(sku)) porSku.set(sku, { cantidad: 0, ots: [] });
+      const x = porSku.get(sku);
+      x.cantidad += n;
+      x.ots.push(ot);
+    }
+  }
+  const art = new Map(articulos.map((a) => [a.sku, a]));
+  const compra = [...porSku]
+    .map(([sku, x]) => {
+      const a = art.get(sku) || {};
+      const faltan = Math.round((x.cantidad - (Number(a.stock) || 0) - (Number(a.en_transito) || 0)) * 1000) / 1000;
+      const ots = [...new Set(x.ots)].sort((m, n) => m.localeCompare(n, "es", { numeric: true }));
+      const urgente = ots.some((ot) => urgentes.has(ot));
+      return faltan > 0 && {
+        ot: ots.length === 1 ? ots[0] : null,
+        texto: a.nombre || sku,
+        tipo: urgente ? "urgente" : "normal",
+        datos: { sku, cantidad: faltan, unidad: a.unidad || null, ...(ots.length > 1 ? { ots: ots.join(", ") } : {}) },
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.tipo === "urgente" ? 0 : 1) - (b.tipo === "urgente" ? 0 : 1) || a.texto.localeCompare(b.texto, "es"))
+    .slice(0, MAX_COMPRAS);
+
   const conClave = (seccion, lista) => lista.map((s) => ({ ...s, clave: claveSugerencia(seccion, s) }));
   return {
     prod_terminada: conClave("prod_terminada", prodTerminada),
@@ -150,11 +186,13 @@ export function armarPrecarga({ fecha, proyectos = [], avancePiezas = [], pasos 
     inst_terminada: conClave("inst_terminada", instTerminada),
     inst_en_curso: conClave("inst_en_curso", instEnCurso),
     inst_pendiente: conClave("inst_pendiente", instPendiente),
+    compra: conClave("compra", compra),
   };
 }
 
 /** Qué identifica a una sugerencia: la OT en su sección, o el pendiente de obra. */
 export function claveSugerencia(seccion, s) {
+  if (seccion === "compra") return `compra|${s?.datos?.sku || s?.texto || ""}`;
   return s?.datos?.pendiente_id != null ? `${seccion}|p${s.datos.pendiente_id}` : `${seccion}|${s?.ot || ""}`;
 }
 

@@ -542,3 +542,87 @@ test("Detalle de OT — 📝 En las minutas, solo para gerencia con el módulo",
   assert.equal(pedidos.length, 0, "ni lo pide");
   assert.equal(screen.queryByRole("region", { name: "En las minutas" }), null);
 });
+
+// ─── Compras (parte M4) ───
+
+const { pedidoDesdeMinuta, textoCantidad } = await import("../app/lib/minutas.js");
+const minutasEsquemas = await import("../app/lib/schemas.ts");
+
+test("compras a disparar — lo que falta para las OT en curso y a iniciar, menos stock y tránsito; urgente si arranca", () => {
+  const s = armarPrecarga({
+    fecha: "2026-11-02",
+    proyectos: [{ ot: "200", estado: "activo" }, { ot: "300", estado: "activo" }, { ot: "900", estado: "activo" }],
+    avancePiezas: [{ ot: "200", etapa: 1, total: 10, pasaron: 4 }, { ot: "300", etapa: 1, total: 8, pasaron: 0 }],
+    planItems: [{ ot: "300", fecha: "2026-11-03" }],
+    necesidades: [
+      { ot: "300", sku: "P1", cantidad: 6 }, { ot: "200", sku: "P1", cantidad: 5 },
+      { ot: "200", sku: "C1", cantidad: 10 }, { ot: "200", sku: "T1", cantidad: 3 },
+      { ot: "900", sku: "X1", cantidad: 50 }, // ni en curso ni a iniciar
+    ],
+    movimientos: [{ ot: "300", sku: "P1", cantidad: 2, tipo: "consumo", anulado: false }],
+    articulos: [
+      { sku: "P1", nombre: "Placa blanca 18", unidad: "placas", stock: 3, en_transito: 1 },
+      { sku: "C1", nombre: "Canto blanco", unidad: "m", stock: 4, en_transito: 0 },
+      { sku: "T1", nombre: "Tornillo", unidad: "u", stock: 2, en_transito: 5 }, // llega con lo que viene
+    ],
+  });
+  // P1: 4 + 5 = 9 menos 3 en stock y 1 en tránsito = 5; la necesita la 300 que arranca mañana → urgente
+  assert.deepEqual(s.compra.map((x) => [x.texto, x.tipo, x.ot, x.datos.sku, x.datos.cantidad, x.datos.unidad, x.datos.ots ?? null]), [
+    ["Placa blanca 18", "urgente", null, "P1", 5, "placas", "200, 300"],
+    ["Canto blanco", "normal", "200", "C1", 6, "m", null],
+  ]);
+  assert.equal(textoCantidad(s.compra[0]), "5 placas");
+  // La que ya está en la minuta no se vuelve a sugerir
+  assert.deepEqual(sugerenciasPendientes(s, [renglonNuevo("compra", { texto: "Placa", datos: { sku: "P1" } })], "compra").map((x) => x.datos.sku), ["C1"]);
+});
+
+test("compras a disparar — el pedido para Compras lleva artículo, cantidad, OT, fecha y nota de la minuta", () => {
+  const it = renglonNuevo("compra", { texto: "Placa blanca 18", tipo: "urgente", ot: "7751", fecha_objetivo: "2026-11-04", datos: { sku: "P1", cantidad: 5, unidad: "placas", proveedor: "Maderera Sur" } });
+  const p = pedidoDesdeMinuta(it, "2026-11-02");
+  assert.deepEqual(p, { accion: "pedido_crear", sku: "P1", descripcion: null, cantidad: 5, ot: "7751", para_fecha: "2026-11-04", notas: "Minuta del 2/11 · Urgente · Proveedor: Maderera Sur" });
+  // Pasa el esquema de /api/compras
+  const { comprasBody } = minutasEsquemas;
+  assert.ok(comprasBody.safeParse(p).success);
+  // Texto libre: va como descripción con su unidad
+  const libre = pedidoDesdeMinuta(renglonNuevo("compra", { texto: "Bisagras cierre suave", datos: { cantidad: 40, unidad: "u" } }), "2026-11-02");
+  assert.deepEqual([libre.sku, libre.descripcion, libre.unidad, libre.cantidad], [null, "Bisagras cierre suave", "u", 40]);
+  assert.ok(comprasBody.safeParse(libre).success);
+  assert.match(pedidoDesdeMinuta(renglonNuevo("compra", { texto: "Algo" }), "2026-11-02").error, /cantidad/);
+  assert.match(pedidoDesdeMinuta(renglonNuevo("compra", { datos: { cantidad: 2 } }), "2026-11-02").error, /qué se compra/);
+});
+
+
+test("pantalla — compra sugerida por Gypi: se agrega con cantidad y 🛒 Crear pedido la manda a Compras", async () => {
+  const pedidos = [];
+  mockPantalla(pedidos);
+  const base = global.fetch;
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.includes("precarga=")) {
+      return new Response(JSON.stringify({ ok: true, sugeridos: { compra: [{ clave: "compra|P1", ot: "7751", texto: "Placa blanca 18", tipo: "urgente", datos: { sku: "P1", cantidad: 5, unidad: "placas" } }] } }), { status: 200 });
+    }
+    if (u.startsWith("/api/compras")) {
+      pedidos.push({ url: u, body: JSON.parse(opts.body) });
+      return new Response(JSON.stringify({ ok: true, pedido: { id: 77 } }), { status: 200 });
+    }
+    return base(url, opts);
+  };
+  pantalla();
+  const sug = await screen.findByRole("group", { name: "Gypi sugiere para Compras a disparar hoy" });
+  assert.ok(within(sug).getByText("🔴 Urgente · OT 7751"));
+  fireEvent.click(within(sug).getByRole("button", { name: "Agregar Placa blanca 18 · 5 placas" }));
+  const compras = screen.getByRole("region", { name: "Compras y logística" });
+  const cant = await within(compras).findByRole("spinbutton", { name: "Cantidad" });
+  assert.equal(cant.value, "5");
+  assert.equal(within(compras).getByRole("combobox", { name: "Urgencia" }).value, "urgente");
+  fireEvent.change(cant, { target: { value: "6" } });
+  fireEvent.click(within(compras).getByRole("button", { name: "🛒 Crear pedido" }));
+  await within(compras).findByText("✓ Pedido creado en Compras");
+  const p = pedidos.find((x) => x.url.startsWith("/api/compras")).body;
+  assert.deepEqual([p.accion, p.sku, p.cantidad, p.ot], ["pedido_crear", "P1", 6, "7751"]);
+  assert.equal(within(compras).queryByRole("button", { name: "🛒 Crear pedido" }), null, "no se pide dos veces");
+  fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
+  await waitFor(() => assert.ok(pedidos.some((x) => x.body?.accion === "guardar")));
+  const it = pedidos.find((x) => x.body?.accion === "guardar").body.items[0];
+  assert.deepEqual([it.seccion, it.texto, it.tipo, it.datos.cantidad, it.datos.pedido_id], ["compra", "Placa blanca 18", "urgente", 6, 77]);
+});

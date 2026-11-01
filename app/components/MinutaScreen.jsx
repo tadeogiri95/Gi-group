@@ -13,11 +13,12 @@ import { apiFetch, sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import {
   AREAS_DYT, AREAS_FEEDBACK, BLOQUES, CLAVE_CONFIG_MINUTA, ESTADOS_DYT, LISTO, SEMAFOROS, TIPOS_FEEDBACK, URGENCIAS,
-  VECES_A_GERENCIA, datosDeOt, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
+  VECES_A_GERENCIA, datosDeOt, pedidoDesdeMinuta, textoCantidad, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
 } from "../lib/minutas";
 import { nombreDivisionOt } from "../lib/avance";
 import { sugerenciasPendientes } from "../lib/minutasPrecarga";
 import { useAuth } from "../context/AuthContext";
+import { tieneModulo } from "../lib/modulos";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -88,7 +89,7 @@ function Semaforo({ value, onChange, disabled }) {
 }
 
 /** Un renglón de una sección, con los campos que lleva esa sección. */
-function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null }) {
+function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, pedir = null }) {
   const c = (campo) => s.campos.includes(campo);
   const datos = (k, v) => cambiar({ datos: { ...it.datos, [k]: v } });
   const textoOt = it.ot ? `OT ${it.ot}${it.proyecto ? ` · ${it.proyecto}` : ""}` : it.proyecto || "";
@@ -155,6 +156,13 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null }) {
           </Campo>
         )}
         {s.id === "compra" && (
+          <Campo label={`Cantidad${it.datos?.unidad ? ` (${it.datos.unidad})` : ""}`}>
+            <input type="number" min="0" step="any" inputMode="decimal" className="g-input w-full" aria-label="Cantidad" value={it.datos?.cantidad ?? ""} disabled={disabled}
+              onChange={(e) => datos("cantidad", e.target.value === "" ? null : Number(e.target.value))} />
+            {it.datos?.ots && <span className="text-[12px] text-gypi-mute">Para OT {it.datos.ots}</span>}
+          </Campo>
+        )}
+        {s.id === "compra" && (
           <Campo label="Urgencia">
             <select className="g-input w-full" aria-label="Urgencia" value={it.tipo || "normal"} disabled={disabled} onChange={(e) => cambiar({ tipo: e.target.value })}>
               {URGENCIAS.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
@@ -205,8 +213,14 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null }) {
           <Campo label="Dónde"><input className="g-input w-full" aria-label="Dónde" value={it.datos?.donde || ""} disabled={disabled} onChange={(e) => datos("donde", e.target.value)} /></Campo>
         )}
       </div>
-      {(resolver || !disabled) && (
-        <div className="flex justify-end gap-2 mt-1">
+      {(resolver || !disabled || it.datos?.pedido_id) && (
+        <div className="flex flex-wrap justify-end items-center gap-2 mt-1">
+          {it.datos?.pedido_id && <span className="text-[13px] text-gypi-green-ink font-semibold">✓ Pedido creado en Compras</span>}
+          {pedir && !disabled && !it.datos?.pedido_id && (
+            <button type="button" onClick={pedir} className="min-h-[44px] px-3 bg-transparent border-none text-gypi-cyan cursor-pointer text-[13px] font-semibold">
+              🛒 Crear pedido
+            </button>
+          )}
           {resolver && (
             <button type="button" onClick={resolver} aria-pressed={!!it.resuelto_at}
               className="min-h-[44px] px-3 bg-transparent border-none text-gypi-green-ink cursor-pointer text-[13px] font-semibold">
@@ -453,7 +467,7 @@ export default function MinutaScreen({ empresa = null }) {
       const p = otDe(x.ot);
       return renglonNuevo(seccionId, {
         ...(p ? datosDeOt(p) : { ot: x.ot }),
-        texto: x.texto || "", semaforo: x.semaforo || null, fecha_objetivo: x.fecha_objetivo || null, datos: { ...(x.datos || {}) },
+        texto: x.texto || "", semaforo: x.semaforo || null, ...(x.tipo ? { tipo: x.tipo } : {}), fecha_objetivo: x.fecha_objetivo || null, datos: { ...(x.datos || {}) },
       });
     })]);
     setCambios(true);
@@ -470,6 +484,17 @@ export default function MinutaScreen({ empresa = null }) {
     if (!r.ok) { toast.error(j.error || "No se pudo marcar"); return; }
     setItems((l) => l.map((x) => (x.id === it.id ? { ...x, resuelto_at: j.item?.resuelto_at ?? null } : x)));
     toast.success(resuelto ? "✓ Marcado como resuelto" : "Vuelve a quedar abierto");
+  }
+  // 🛒 Crear pedido (parte M4): la compra pasa a Compras → Pedidos como un pedido de material
+  const conCompras = tieneModulo(empresa, "compras");
+  async function crearPedido(it) {
+    const body = pedidoDesdeMinuta(it, fecha);
+    if (body.error) { toast.error(body.error); return; }
+    const r = await apiFetch("/api/compras", { method: "POST", body: JSON.stringify(body) }).catch(() => null);
+    const j = r ? await r.json().catch(() => ({})) : {};
+    if (!r?.ok) { toast.error(j.error || "No se pudo crear el pedido"); return; }
+    cambiarItem(it.id, { datos: { ...it.datos, pedido_id: j.pedido?.id ?? true } });
+    toast.success("🛒 Pedido creado en Compras. Guardá la minuta para que quede anotado.");
   }
   const asistio = (nombre) => cambiarMinuta({ asistentes: minuta.asistentes.includes(nombre) ? minuta.asistentes.filter((n) => n !== nombre) : [...minuta.asistentes, nombre] });
 
@@ -563,6 +588,11 @@ export default function MinutaScreen({ empresa = null }) {
       {!cerrada && sugeridos && (
         <ParaAgregar titulo="✨ Gypi sugiere" label={`Gypi sugiere para ${s.titulo}`}
           opciones={sugerenciasPendientes(sugeridos, items, s.id).map((x) => {
+            if (s.id === "compra") {
+              const nombre = [x.texto, textoCantidad(x)].filter(Boolean).join(" · ");
+              const detalle = [x.tipo === "urgente" ? "🔴 Urgente" : "", x.ot ? `OT ${x.ot}` : x.datos?.ots ? `OT ${x.datos.ots}` : ""].filter(Boolean).join(" · ");
+              return { clave: x.clave, nombre, detalle, valor: x };
+            }
             const p = datosDeOt(otDe(x.ot));
             return { clave: x.clave, nombre: [`OT ${x.ot}`, p.proyecto, p.cliente].filter(Boolean).join(" · "), detalle: detalleSugerencia(x, s, fecha), valor: x };
           })}
@@ -570,7 +600,8 @@ export default function MinutaScreen({ empresa = null }) {
       )}
       {de(s.id).map((it) => (
         <Renglon key={it.id} s={s} it={it} listas={listas} disabled={cerrada} cambiar={(c) => cambiarItem(it.id, c)} sacar={() => sacarItem(it.id)}
-          resolver={SECCIONES_SEGUIMIENTO.includes(s.id) && it.created_at ? () => resolver(it) : null} />
+          resolver={SECCIONES_SEGUIMIENTO.includes(s.id) && it.created_at ? () => resolver(it) : null}
+          pedir={s.id === "compra" && conCompras ? () => crearPedido(it) : null} />
       ))}
       {!cerrada && <button type="button" className="g-btn g-btn-secondary" onClick={() => agregar(s.id)} aria-label={`Agregar a ${s.titulo}`}>＋ Agregar</button>}
     </div>
