@@ -1069,3 +1069,44 @@ export const maquinariaBody = z.discriminatedUnion("accion", [
   }).strict(),
   z.object({ accion: z.literal("falla_descartar"), id: idFlota, motivo: z.string().trim().min(1, "Poné el motivo").max(300) }).strict(),
 ]);
+
+// ── /api/minutas (150): minuta de la reunión de Buenos Días (Minuta, parte M1) ──
+const fechaMinuta = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const horaMinuta = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optional().transform((v) => v || null);
+const textoMinuta = (max: number) => z.string().trim().max(max).nullable().optional().transform((v) => v || null);
+const renglonMinuta = z.object({
+  id: uuid,
+  seccion: z.enum(["foco", "prod_terminada", "prod_en_curso", "prod_a_iniciar", "inst_terminada", "inst_en_curso", "inst_pendiente", "postventa", "dyt", "feedback", "compra", "movimiento", "estacionamiento"]),
+  orden: z.number().int().min(0).max(1000).default(0),
+  ot: textoMinuta(40),
+  division: textoMinuta(60),
+  proyecto: textoMinuta(200),
+  cliente: textoMinuta(200),
+  semaforo: z.enum(["verde", "amarillo", "rojo"]).nullable().optional().transform((v) => v || null),
+  texto: textoMinuta(1000),
+  responsable: textoMinuta(120),
+  fecha_objetivo: fechaMinuta.nullable().optional().transform((v) => v || null),
+  area: textoMinuta(40),
+  tipo: textoMinuta(40),
+  datos: z.record(z.string().max(30), z.union([z.string().max(300), z.number(), z.boolean(), z.null()])).default({})
+    .refine((d) => Object.keys(d).length <= 20, "Demasiados datos en un renglón"),
+  viene_de: uuid.nullable().optional().transform((v) => v || null),
+}).strict();
+export const minutasBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("guardar"),
+    fecha: fechaMinuta,
+    // Cerrar al guardar: anota el cierre y la deja firmada por el moderador
+    cerrar: z.boolean().default(false),
+    minuta: z.object({
+      inicio: horaMinuta,
+      cierre: horaMinuta,
+      modera: textoMinuta(80),
+      registra: textoMinuta(80),
+      asistentes: z.array(z.string().trim().min(1).max(80)).max(40).default([]),
+      notas: textoMinuta(4000),
+    }).strict(),
+    items: z.array(renglonMinuta).max(300).default([]),
+  }).strict(),
+  z.object({ accion: z.literal("reabrir"), fecha: fechaMinuta }).strict(),
+]);

@@ -25,6 +25,8 @@ export const BOTONES_GESTION = {
       { id: "reportes", label: "Reportes", modulo: "actividad" },
       // Planificación de la producción (parte 38): solo la arma gerencia
       { id: "planificacion", label: "Planificación", modulo: "proyectos", soloGerencia: true },
+      // Minuta de la reunión de Buenos Días (Minuta, parte M1, 150): solo Dueño / Gerencia
+      { id: "minuta", label: "Minuta", modulo: "minutas", soloGerencia: true },
     ],
   },
   inventario: {
@@ -59,7 +61,7 @@ export function conBoton(boton, empresa) {
 }
 
 // Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
-const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
+const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", minuta: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
 
 export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;
