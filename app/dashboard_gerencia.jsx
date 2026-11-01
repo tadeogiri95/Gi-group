@@ -39,6 +39,7 @@ const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
 
 import { Tag, EmptyState } from "./components/ui";
+import TarjetaMinuta from "./components/TarjetaMinuta";
 import Icon from "./components/Icon";
 import { nombreSolicitud } from "./lib/tiposSolicitud";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
@@ -695,6 +696,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           ))}
         </section>
       )}
+
+      {/* ─── Minuta de Buenos Días (parte M5): solo gerencia con el módulo ─── */}
+      {!isDemo && <TarjetaMinuta empresa={empresa} goto={goto} />}
 
       {/* ─── OT en curso: abiertas con alguna etapa empezada ─── */}
       {otCurso && (
