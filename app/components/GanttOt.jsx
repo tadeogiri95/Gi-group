@@ -47,7 +47,7 @@ import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
-import { diaLaborable } from "../lib/secuencia";
+import { diaLaborable, feriadosDe } from "../lib/secuencia";
 import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente, ultimaConfirmacion } from "../lib/ganttPlan";
 import { ETAPAS_PLAN, normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { MODO_POR_DEFECTO, normalizarModo } from "../lib/semanaObjetivo";
@@ -204,8 +204,9 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho]);
 
   // Días que se trabajan: con horas en la grilla de horarios o de horas extra del plan
-  const laborable = useMemo(() => diaLaborable(horasSemanaDeGrilla(empleados, divisiones, cfgValor), planes ? diasExtraVigentes(planes) : null),
-    [empleados, divisiones, cfgValor, planes]);
+  const feriados = useMemo(() => feriadosDe(params), [params]);
+  const laborable = useMemo(() => diaLaborable(horasSemanaDeGrilla(empleados, divisiones, cfgValor), planes ? diasExtraVigentes(planes) : null, feriados),
+    [empleados, divisiones, cfgValor, planes, feriados]);
 
   const { renglones, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
     if (!vivoCon) return { renglones: null };
@@ -406,7 +407,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   // Fondo de cada renglón: días sin trabajo más oscuros, separadores de semana y la línea de hoy
   const fondoDe = (alto) => (
     <g>
-      {vista !== "mes" && sinTrabajo.map((f) => <rect key={f} data-sin-trabajo={f} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
+      {vista !== "mes" && sinTrabajo.map((f) => <rect key={f} data-sin-trabajo={f} data-feriado={feriados.has(f) ? f : undefined} x={x(f)} y={0} width={px} height={alto} className="fill-gypi-surf-hi" />)}
       {vista !== "mes" && semanas.map((s) => <rect key={s.inicio} x={xSem(s)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
       {vista === "mes" && Array.from({ length: totalDias }, (_, d) => sumarDias(desde, d)).filter((f) => f.endsWith("-01"))
         .map((f) => <rect key={f} x={x(f)} y={0} width={1} height={alto} className="fill-gypi-border" />)}
@@ -485,7 +486,7 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
             {dia === hoy && <rect x={x(dia)} y={21} width={px} height={CAB - 21} className="fill-gypi-amber" fillOpacity={0.35} />}
             {conNombre && d > 0 && <rect x={x(dia)} y={21} width={1} height={CAB - 21} className="fill-gypi-border" />}
             <text x={x(dia) + px / 2} y={39} textAnchor="middle" className={`text-[14px] ${finde ? "fill-gypi-mute" : "fill-gypi-text font-bold"}`}>
-              {conNombre ? `${DIAS[diaSemana(dia)]} ${diaMes(dia)}` : Number(dia.slice(8))}
+              {conNombre ? `${feriados.has(dia) ? "Feriado" : DIAS[diaSemana(dia)]} ${diaMes(dia)}` : Number(dia.slice(8))}
             </text>
           </g>
         );

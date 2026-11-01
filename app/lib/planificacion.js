@@ -116,11 +116,26 @@ export function normalizarParametros(valor) {
     return [r.id, n != null && !errorParametro(r, n) ? n : t[r.id]];
   }))]));
   out.division_id = typeof v.division_id === "string" ? v.division_id : null;
+  out.feriados = normalizarFeriados(v.feriados);
   out.etapas = Object.fromEntries(ETAPAS_PLAN.map((ep) => {
     const c = Number(v.etapas?.[ep.id]);
     return [ep.id, Number.isInteger(c) && c > 0 ? c : null];
   }));
   return out;
+}
+
+/**
+ * Feriados de la empresa (Tadeo, 01/11): [{ fecha: "AAAA-MM-DD", nombre }],
+ * sin repetir y por fecha. Ese día no se planifica aunque la grilla tenga horas.
+ */
+export function normalizarFeriados(lista) {
+  const m = new Map();
+  for (const f of Array.isArray(lista) ? lista : []) {
+    const fecha = String(f?.fecha || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(Date.parse(`${fecha}T00:00:00Z`))) continue;
+    m.set(fecha, { fecha, nombre: String(f?.nombre || "").trim().slice(0, 60) });
+  }
+  return [...m.values()].sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
 /** Parámetros que todavía faltan para poder calcular la carga. */

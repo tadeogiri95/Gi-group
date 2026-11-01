@@ -42,7 +42,7 @@ import { cuerpoPlan } from "../lib/planGuardado";
 import { materialOt } from "../lib/ot";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
-  leerNumero, errorParametro, normalizarParametros, divisionPlan, etapasPlanDe,
+  leerNumero, errorParametro, normalizarParametros, normalizarFeriados, divisionPlan, etapasPlanDe,
   otsPlanificables, ordenarPorPrioridad, buscarOts, tildarTodas, tildadasPrimero, quitarPrioridad, cambiosPrioridad, parametrosFaltantes,
   numerarOt, conOrdenManual, ordenDelPlan, semanaVencida,
   MODOS_MECANIZADO, RELACIONES_TIPO,
@@ -939,6 +939,7 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
   const [modoMec, setModoMec] = useState(cfg.modo_mecanizado || "tipo");
   const [textosTipo, setTextosTipo] = useState(() => Object.fromEntries(TIPOS_TABLA.map((t) => [t.id,
     Object.fromEntries(RELACIONES_TIPO.map((r) => [r.id, conComa(cfg.por_tipo?.[t.id]?.[r.id])]))])));
+  const [feriados, setFeriados] = useState(() => cfg.feriados || []);
   const [estado, setEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -959,7 +960,7 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
     if (hayError) return;
     setGuardando(true);
     setEstado(null);
-    const valor = { ...valores, modo_mecanizado: modoMec, por_tipo: valoresTipo, division_id: division?.id || null, etapas: elegidas };
+    const valor = { ...valores, modo_mecanizado: modoMec, por_tipo: valoresTipo, division_id: division?.id || null, etapas: elegidas, feriados: normalizarFeriados(feriados) };
     try {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=clave&limit=1`);
       if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}`, { valor });
@@ -1024,10 +1025,48 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
         </div>
       ))}
 
+      <FeriadosPlan feriados={feriados} onChange={setFeriados} />
+
       {estado && <div role="status" className="text-[13px] text-gypi-dim mb-2">{estado}</div>}
       <button type="button" onClick={guardar} disabled={guardando || hayError} className="g-btn g-btn-primary w-full">
         {guardando ? "Guardando…" : "Guardar parámetros"}
       </button>
+    </section>
+  );
+}
+
+// Feriados (Tadeo, 01/11): ese día no se planifica aunque la grilla de
+// horarios tenga horas; en el Gantt queda vacío como un fin de semana.
+function FeriadosPlan({ feriados, onChange }) {
+  const [fecha, setFecha] = useState("");
+  const [nombre, setNombre] = useState("");
+  const agregar = () => {
+    if (!fecha) return;
+    onChange(normalizarFeriados([...feriados, { fecha, nombre }]));
+    setFecha("");
+    setNombre("");
+  };
+  const corta = (f) => `${Number(f.slice(8, 10))}/${Number(f.slice(5, 7))}/${f.slice(0, 4)}`;
+  return (
+    <section className="g-card mb-3.5" aria-label="Feriados">
+      <div className="g-label mb-2">📅 Feriados</div>
+      <div className="text-xs text-gypi-dim mb-2">El plan sigue la grilla de horarios. Un feriado no se trabaja aunque la grilla tenga horas, salvo que el plan le ponga horas extra.</div>
+      <div className="flex flex-wrap gap-2 mb-2">
+        <input type="date" aria-label="Fecha del feriado" className="g-input flex-1 min-w-0" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        <input aria-label="Nombre del feriado" className="g-input flex-1 min-w-0" placeholder="Nombre (opcional)" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <button type="button" className="g-btn" onClick={agregar} disabled={!fecha}>Agregar</button>
+      </div>
+      {feriados.length === 0 ? <div className="text-xs text-gypi-dim">No hay feriados cargados.</div> : (
+        <ul className="list-none m-0 p-0">
+          {feriados.map((f) => (
+            <li key={f.fecha} className="flex items-center justify-between border-t border-gypi-border py-1 text-[13px]">
+              <span><b>{corta(f.fecha)}</b>{f.nombre ? ` · ${f.nombre}` : ""}</span>
+              <button type="button" className="g-btn min-h-9" aria-label={`Quitar el feriado del ${corta(f.fecha)}`} onClick={() => onChange(feriados.filter((x) => x.fecha !== f.fecha))}>✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="text-xs text-gypi-dim mt-2">Se guarda con &quot;Guardar parámetros&quot;.</div>
     </section>
   );
 }

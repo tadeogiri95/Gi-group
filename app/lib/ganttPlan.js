@@ -19,7 +19,7 @@ import { pendienteEtapa, capacidadPlanta, operariosDePlanta, personalPlanta, hor
 import { hoyArg } from "./dates";
 import { diasEntre } from "./semanaObjetivo";
 import { porcentajeOt } from "./panelMantenimiento";
-import { HORAS_SEMANA_POR_DEFECTO, MAQUINAS_PLAN, calendario, duracion, secuenciar } from "./secuencia";
+import { HORAS_SEMANA_POR_DEFECTO, MAQUINAS_PLAN, calendario, duracion, feriadosDe, secuenciar } from "./secuencia";
 import { horasManuales } from "./ajustesTiempo";
 
 export { HORAS_SEMANA_POR_DEFECTO };
@@ -132,7 +132,7 @@ export function procesosPlan(items = [], { etapasCodigo = {}, avance = [], pieza
   const out = new Map();
   if (!ots.length) return out;
   const base = ots.reduce((m, o) => (o.primero < m ? o.primero : m), ots[0].primero);
-  const cal = calendario(base, horasSemana, diasExtra);
+  const cal = calendario(base, horasSemana, diasExtra, feriadosDe(params));
   const tHoy = hoy < base ? 0 : cal.inicio(hoy);
   // Ningún proceso antes del primer día que le dio el plan
   const tramos = secuenciar(ots.map((o) => ({ ...o, clave: o.ot })), {
@@ -237,7 +237,7 @@ export function planVivo(items = [], opciones) {
     return { clave: o.ot, horas };
   });
   const extras = diasExtra ? new Set([...diasExtra].filter((f) => f >= hoy)) : null;
-  const cal = calendario(hoy, horasSemana, extras);
+  const cal = calendario(hoy, horasSemana, extras, feriadosDe(params));
   // "⏱ Faltan X h" (145): X son horas como las muestra el Gantt (de máquina,
   // o de Armado con los armadores que le tocan); se pasan a horas de gente
   const manuales = [];

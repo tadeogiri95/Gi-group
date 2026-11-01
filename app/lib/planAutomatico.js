@@ -14,7 +14,7 @@
 // reloj con la eficiencia.
 import { ETAPAS_PLAN } from "./planificacion";
 import { inicioDeSemana } from "./semanaObjetivo";
-import { calendario, secuenciar } from "./secuencia";
+import { calendario, feriadosDe, secuenciar } from "./secuencia";
 
 const EPS = 1e-6;
 const diaSemana = (fecha) => new Date(`${fecha}T00:00:00Z`).getUTCDay();
@@ -37,7 +37,7 @@ export function horasSemanaDeDias(dias = []) {
  */
 function programar(trabajos, { desde, params, horasSemana, personal, extras, ordenEtapa = null }) {
   const ef = (params.eficiencia || 100) / 100;
-  const cal = calendario(desde, horasSemana, extras);
+  const cal = calendario(desde, horasSemana, extras, feriadosDe(params));
   const ots = trabajos.map((t) => ({ clave: t.id, horas: Object.fromEntries(ETAPAS_PLAN.map(({ id }) => [id, (t.etapas?.[id]?.gente || 0) / ef])) }));
   const tramos = secuenciar(ots, { params, personal, ordenEtapa });
   const segmentos = [];
