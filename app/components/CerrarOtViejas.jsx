@@ -25,7 +25,7 @@ export default function CerrarOtViejas({ abierto, proyectos, piezas, hoy, onCerr
     <Modal open={abierto} onClose={onClose} title="🧹 Cerrar OT viejas">
       <div className="flex flex-col gap-3">
         <p className="m-0 text-[13px] text-gypi-dim">
-          OT activas sin piezas escaneadas desde hace un tiempo (si nunca se escanearon, desde que se dieron de alta).
+          OT activas sin piezas escaneadas ni cargas manuales de avance desde hace un tiempo (si no tienen ninguna, desde que se dieron de alta).
           Destildá las que siguen vivas. Cerrar no toca la planilla y se puede reactivar.
         </p>
         <label className="flex items-center gap-2 text-[14px]">

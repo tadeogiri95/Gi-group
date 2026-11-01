@@ -31,11 +31,24 @@ test("OT sin movimiento — por último escaneo o, si nunca se escaneó, desde e
   const l = otSinMovimiento(proyectos, piezas, { hoy: "2026-11-01", dias: 30 });
   assert.deepEqual(l.map((x) => [x.p.ot, x.dias]), [["600", 214], ["200", 123], ["100", 73]]);
   assert.equal(l.find((x) => x.p.ot === "100").motivo, "Producción al 100 % · último escaneo el 20/8/26");
-  assert.equal(l.find((x) => x.p.ot === "200").motivo, "sin escaneos, alta el 1/7/26");
-  assert.equal(l.find((x) => x.p.ot === "600").motivo, "Terminada en la planilla · sin escaneos, alta el 1/4/26");
+  assert.equal(l.find((x) => x.p.ot === "200").motivo, "sin escaneos ni cargas manuales, alta el 1/7/26");
+  assert.equal(l.find((x) => x.p.ot === "600").motivo, "Terminada en la planilla · sin escaneos ni cargas manuales, alta el 1/4/26");
   // Con 90 días la de agosto todavía no entra
   assert.deepEqual(otSinMovimiento(proyectos, piezas, { hoy: "2026-11-01", dias: 90 }).map((x) => x.p.ot), ["600", "200"]);
   assert.deepEqual(enTandas([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+});
+
+test("una OT con cargas manuales recientes cuenta como activa (Tadeo, 01/11)", () => {
+  const ps = [
+    { id: 7, ot: "700", estado: "activo", created_at: "2026-03-01T10:00:00Z", avance_manual: { activo: true, etapas: { 1: 50 }, at: "2026-10-25T13:00:00Z" } },
+    { id: 8, ot: "800", estado: "activo", created_at: "2026-03-01T10:00:00Z", avance_manual: { activo: true, etapas: { 1: 50 }, at: "2026-08-01T13:00:00Z" } },
+    { id: 9, ot: "100", estado: "activo", created_at: "2026-05-01T10:00:00Z", avance_manual: { activo: true, etapas: { 3: 20 }, at: "2026-10-30T13:00:00Z" } },
+  ];
+  const l = otSinMovimiento(ps, piezas, { hoy: "2026-11-01", dias: 30 });
+  // 700: carga manual hace 7 días; 100: escaneada en agosto pero con carga manual el 30/10 → activas
+  assert.deepEqual(l.map((x) => x.p.ot), ["800"]);
+  assert.equal(l[0].motivo, "última carga manual el 1/8/26");
+  assert.equal(l[0].dias, 92);
 });
 
 test("Cerrar OT viejas — vista previa, destildar y cerrar las elegidas", async () => {
