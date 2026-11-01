@@ -10,7 +10,7 @@
 // suma los arreglos pendientes (🔴 no puede circular), services y
 // reparaciones, el historial de cada vehículo y la pestaña 💲 Costos.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { sbGetAll } from "../lib/supabase";
+import { sbGetAll, apiFetch } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
 import { hoyArg } from "../lib/dates";
 import {
@@ -49,13 +49,23 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
 
   const cargar = useCallback(async () => {
     if (!empresaId) return;
+    let pedido = null;
+    const delResponsable = () => (pedido ||= apiFetch("/api/flota").then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "No se pudo leer la flota");
+      return { data: j.empleados || [], mantenimientos: j.mantenimientos || [] };
+    }));
     try {
       const [v, p, e] = await Promise.all([
         sbGetAll("vehiculos?order=patente.asc,id.asc", { maxFilas: 2000 }),
         sbGetAll("vehiculo_papeles?order=created_at.desc,id.desc", { maxFilas: 20000 }),
-        // Con la 133 viene la casilla "Responsable de mantenimiento" (parte 34)
-        sbGetAll("empleados?activo=eq.true&select=id,nombre,division,licencia_categoria,licencia_vencimiento,es_mantenimiento&order=nombre.asc,id.asc", { maxFilas: 5000 })
-          .catch(() => sbGetAll("empleados?activo=eq.true&select=id,nombre,division,licencia_categoria,licencia_vencimiento&order=nombre.asc,id.asc", { maxFilas: 5000 })),
+        // Con la 133 viene la casilla "Responsable de mantenimiento" (parte 34).
+        // El responsable de mantenimiento (operario) no puede leer la lista de
+        // empleados ni los services por /api/data: los trae /api/flota (auditoría 01/11)
+        oficina
+          ? sbGetAll("empleados?activo=eq.true&select=id,nombre,division,licencia_categoria,licencia_vencimiento,es_mantenimiento&order=nombre.asc,id.asc", { maxFilas: 5000 })
+            .catch(() => sbGetAll("empleados?activo=eq.true&select=id,nombre,division,licencia_categoria,licencia_vencimiento&order=nombre.asc,id.asc", { maxFilas: 5000 }))
+          : delResponsable(),
       ]);
       setVehiculos(v.data || []);
       setPapeles(p.data || []);
@@ -67,7 +77,9 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
       // Ídem sin la 129: sin arreglos ni services
       const [a, m] = await Promise.all([
         sbGetAll("vehiculo_arreglos?order=created_at.desc,id.desc", { maxFilas: 5000 }).catch(() => ({ data: [] })),
-        sbGetAll("vehiculo_mantenimientos?order=fecha.desc,id.desc", { maxFilas: 5000 }).catch(() => ({ data: [] })),
+        oficina
+          ? sbGetAll("vehiculo_mantenimientos?order=fecha.desc,id.desc", { maxFilas: 5000 }).catch(() => ({ data: [] }))
+          : delResponsable().then((r) => ({ data: r.mantenimientos })).catch(() => ({ data: [] })),
       ]);
       setArreglos(a.data || []);
       setMantenimientos(m.data || []);
@@ -75,7 +87,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
       setVehiculos([]);
       setError(["vehiculos", "vehiculo_papeles", "licencia_"].some((t) => faltaTabla(err, t)) ? AVISO_MIGRACION : "No se pudo leer la flota");
     }
-  }, [empresaId]);
+  }, [empresaId, oficina]);
   useEffect(() => { cargar(); }, [cargar]);
 
   const porId = useMemo(() => new Map(empleados.map((e) => [e.id, e])), [empleados]);

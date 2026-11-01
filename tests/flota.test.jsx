@@ -315,3 +315,45 @@ test("Flota — alta de vehículo, choferes y aviso de migración", async () => 
   render(<FlotaScreen empresaId={E} usuario={{ rol: "gerencial" }} />);
   assert.match((await screen.findByRole("alert")).textContent, /falta correr la migración 126/);
 });
+
+// ─── GET (auditoría 01/11): choferes y services para el responsable ───
+
+function mockGet({ esMant = false } = {}) {
+  const pedidos = [];
+  global.fetch = createFetchMock([
+    { match: (u) => u.includes("select=es_mantenimiento&limit=1"), respond: () => ({ status: 200, body: esMant ? [{ es_mantenimiento: true }] : [] }) },
+    {
+      match: (u) => u.includes("/rest/v1/empleados?empresa_id=eq."),
+      respond: (u) => { pedidos.push(u); return { status: 200, body: [{ id: CHOFER, nombre: "Chofer" }, { id: EMP, nombre: "Yo" }] }; },
+    },
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/vehiculo_mantenimientos"), respond: () => ({ status: 200, body: [{ id: 1, vehiculo_id: 7, tipo: "service", costo: 50000, factura_url: "https://x.test/f.pdf" }] }) },
+  ]);
+  return pedidos;
+}
+const reqGet = (t) => new Request("http://localhost/api/flota", { headers: { Authorization: `Bearer ${t}` } });
+
+test("/api/flota GET — la oficina ve todo, el responsable sin licencias ni costos, el resto 403", async () => {
+  let pedidos = mockGet();
+  let res = await api.GET(reqGet(await token("gerencial")));
+  assert.equal(res.status, 200);
+  let j = await res.json();
+  assert.equal(j.empleados.length, 2, "lista completa para elegir chofer");
+  assert.match(pedidos[0], /licencia_vencimiento/);
+  assert.equal(j.mantenimientos[0].costo, 50000);
+
+  pedidos = mockGet({ esMant: true });
+  res = await api.GET(reqGet(await token("operativo")));
+  assert.equal(res.status, 200);
+  j = await res.json();
+  assert.equal(j.empleados.length, 2, "el responsable ve a todos, no solo a él");
+  assert.doesNotMatch(pedidos[0], /licencia/);
+  assert.equal("costo" in j.mantenimientos[0], false);
+  assert.equal("factura_url" in j.mantenimientos[0], false);
+
+  mockGet();
+  res = await api.GET(reqGet(await token("operativo")));
+  assert.equal(res.status, 403);
+});

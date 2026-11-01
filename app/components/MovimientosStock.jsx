@@ -10,6 +10,7 @@ import { sugerirArticulos } from "../lib/stock";
 import PlanillaMrpConexion from "./PlanillaMrpConexion";
 import ArticuloNuevo from "./ArticuloNuevo";
 import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
+import { esSupervisor } from "../lib/menuGestion";
 
 const CUANTOS = 100;
 const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "" };
@@ -92,7 +93,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
       {faltaMigracion && (
         <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">Para los movimientos falta correr la migración 107 en Supabase.</div>
       )}
-      {(usuario?.rol === "gerencial" || usuario?.rol === "administrativo") && <PlanillaMrpConexion />}
+      {(usuario?.rol === "gerencial" || usuario?.rol === "administrativo") && !esSupervisor(usuario) && <PlanillaMrpConexion />}
 
       {!form ? (
         <button onClick={() => { setForm({ ...VACIO }); setError(null); }} className="g-btn g-btn-primary w-full mb-3">＋ Cargar ingreso, ajuste o devolución</button>

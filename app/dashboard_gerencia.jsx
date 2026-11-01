@@ -31,6 +31,7 @@ import FotoViewer from "./components/FotoViewer";
 /* ─── Constantes ─── */
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
+import { esSupervisor } from "./lib/menuGestion";
 // getDemoDashboardData se carga dinámicamente (ver cargarDatos) — nunca debe
 // formar parte del bundle para empresas reales.
 
@@ -254,7 +255,10 @@ function ReportesObraPanel({ reportesObra }) {
    COMPONENTE PRINCIPAL: DashboardGerencia
    ═══════════════════════════════════════════════════════ */
 export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, isDemo = false }) {
-  const { divisiones: divisionesCtx, etapas: etapasCtx } = useAuth();
+  const { divisiones: divisionesCtx, etapas: etapasCtx, usuario } = useAuth();
+  // El supervisor de división no paga ni pone en marcha la empresa: sin el
+  // cartel de la prueba ni los primeros pasos del dueño (auditoría 01/11)
+  const supervisor = esSupervisor(usuario);
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [division, setDivision] = useState("todas");
   const [tab, setTab] = useState("resumen"); // resumen | asistencia | produccion | solicitudes
@@ -661,8 +665,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       </header>
 
       {/* ─── Banner de trial / vencimiento ─── */}
-      <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />
-      {!isDemo && <ChecklistActivacion empresa={empresa} goto={goto} />}
+      {!supervisor && <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />}
+      {!isDemo && !supervisor && <ChecklistActivacion empresa={empresa} goto={goto} />}
       {datosIncompletos && (
         <div role="alert" className={`mx-[18px] mb-3 p-3 rounded-xl text-[13px] ${TONO.mal.fondo} ${TONO.mal.txt}`}>
           Hay más datos de los que se pueden mostrar juntos: algunos totales del mes pueden estar incompletos.

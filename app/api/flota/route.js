@@ -25,7 +25,9 @@
 //                       arreglo). Un service pone al día la alerta de service.
 //   mantenimiento_borrar → uno cargado por error
 //   mantenimiento_asignar → responsable de mantenimiento y suplente (parte 34, 133)
-// La lectura va por /api/data (vehiculos, vehiculo_papeles, vehiculo_checklists,
+// GET → empleados (para elegir chofer y responsable) y services, para la
+//   oficina y los responsables de mantenimiento (auditoría 01/11).
+// El resto de la lectura va por /api/data (vehiculos, vehiculo_papeles, vehiculo_checklists,
 // flota_config, vehiculo_arreglos y vehiculo_mantenimientos, solo lectura).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
@@ -382,6 +384,40 @@ async function asignarMantenimiento(sesion, d) {
   if (!v) return noEncontrado("vehículo");
   broadcastRefresh(e, "vehiculos");
   return NextResponse.json({ ok: true, vehiculo: v });
+}
+
+// GET (auditoría 01/11): lo que el responsable de mantenimiento no puede leer
+// por /api/data, que a un operario solo le deja ver su propia fila de
+// empleados y no le deja ver los services. Sin esto, al cargar un vehículo la
+// lista de choferes lo mostraba solo a él. La oficina recibe además las
+// licencias y el costo y la factura de los services; el responsable, no
+// (eso es de 💲 Costos y de las licencias, que son solo de la oficina).
+export async function GET(request) {
+  try {
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    const oficina = puedeEditarFlota(sesion.rol);
+    if (!oficina && !(await esResponsableMantenimiento(sesion))) {
+      return NextResponse.json({ error: "Eso lo ven gerencia, Administración y los responsables de mantenimiento" }, { status: 403 });
+    }
+    const bloqueo = await chequeos(sesion);
+    if (bloqueo) return bloqueo;
+    const e = sesion.empresa_id;
+    const opts = { sesion };
+    const campos = oficina ? "id,nombre,division,es_mantenimiento,licencia_categoria,licencia_vencimiento" : "id,nombre,division,es_mantenimiento";
+    const empleados = (await sbGet(`empleados?empresa_id=eq.${e}&activo=eq.true&select=${campos}&order=nombre.asc,id.asc&limit=5000`, opts)) || [];
+    let mantenimientos = [];
+    try {
+      mantenimientos = (await sbGet(`vehiculo_mantenimientos?empresa_id=eq.${e}&order=fecha.desc,id.desc&limit=5000`, opts)) || [];
+    } catch (err) {
+      if (!faltaMigracionArreglos(err)) throw err;
+    }
+    if (!oficina) mantenimientos = mantenimientos.map(({ costo: _c, factura_url: _f, ...m }) => m);
+    return NextResponse.json({ ok: true, empleados, mantenimientos }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (err) {
+    logger.error("[flota] GET", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
+  }
 }
 
 export async function POST(request) {
