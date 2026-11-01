@@ -43,7 +43,10 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <Pestanas label={BOTONES_GESTION[boton].label} opciones={OPCIONES} actual={actual.id} onElegir={setOpcion} bloqueada={(o) => !tieneModulo(empresa, o.modulo)} />
+      {/* En la computadora las opciones están en el menú de la izquierda (auditoría 01/11, PR 5) */}
+      <div className="solo-cel shrink-0">
+        <Pestanas label={BOTONES_GESTION[boton].label} opciones={OPCIONES} actual={actual.id} onElegir={setOpcion} bloqueada={(o) => !tieneModulo(empresa, o.modulo)} />
+      </div>
       <div role="tabpanel" aria-label={actual.label} className="flex-1 overflow-hidden flex flex-col">
         {bloqueado && <ModuloBloqueado modulo={actual.modulo} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}

@@ -12,7 +12,7 @@ test("el shell se ensancha solo en Proyectos, Inventario, Mantenimiento y Equipo
   // El responsable de mantenimiento (operario) también tiene su pestaña Mantenimiento ancha (26/10)
   assert.match(home, /const ancho = \(uIsGer && \(BOTONES\.has\(screen\) \|\| screen === "equipo"\)\) \|\| \(!uIsGer && screen === "mantenimiento"\);/);
   assert.match(home, /const BOTONES = new Set\(\["proyectos", "inventario", "mantenimiento"\]\);/);
-  assert.match(home, /className=\{`app-shell bg-gypi-bg \$\{ancho \? "app-shell--ancho" : ""\}`\}/);
+  assert.match(home, /className=\{`app-shell bg-gypi-bg \$\{ancho \? "app-shell--ancho" : ""\} \$\{uIsGer \? "app-shell--pc" : ""\}`\}/);
 });
 
 test("CSS: ancho completo y listas en columnas solo desde 1024 px", () => {
@@ -23,7 +23,7 @@ test("CSS: ancho completo y listas en columnas solo desde 1024 px", () => {
   assert.equal(ancho[1], "1024", "en celular y tablet no cambia");
   assert.match(ancho[2], /\.app-shell\.app-shell--ancho \{\s*max-width: 1440px;/);
   assert.match(ancho[2], /\.app-shell--ancho \.lista-ancha \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(auto-fill, minmax\(360px, 1fr\)\)/);
-  assert.match(ancho[2], /\.app-shell--ancho > nav\[aria-label="Navegación principal"\]/, "la barra de abajo no se estira");
+  assert.match(ancho[2], /\.app-shell--ancho \.columna-app > nav\[aria-label="Navegación principal"\]/, "la barra de abajo no se estira");
   // .lista-ancha no aparece fuera del modo ancho
   for (const [, , cuerpo] of bloques.filter((b) => b !== ancho)) assert.doesNotMatch(cuerpo, /lista-ancha/);
 });

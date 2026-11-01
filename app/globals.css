@@ -277,7 +277,7 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { cursor: not-allo
     max-width: 1440px;
   }
   /* La barra de abajo no se estira: sus botones quedan juntos en el medio */
-  .app-shell--ancho > nav[aria-label="Navegación principal"] {
+  .app-shell--ancho .columna-app > nav[aria-label="Navegación principal"] {
     padding-left: max(8px, calc(50% - 320px));
     padding-right: max(8px, calc(50% - 320px));
   }
@@ -285,6 +285,46 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { cursor: not-allo
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     align-items: start;
+  }
+}
+
+/* La columna de la app: título, pantalla y barra de abajo. En el celular es
+   todo el shell; en la computadora va al lado del menú lateral. */
+.columna-app {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.menu-lateral,
+.solo-pc {
+  display: none;
+}
+
+/* Versión para computadora de la oficina (auditoría 01/11, PR 5): menú a la
+   izquierda en vez de la barra de abajo, todo el ancho de la pantalla, y las
+   pantallas que no son de lista (Inicio, Más) centradas y de ancho cómodo.
+   En el celular y en tablets no cambia nada. */
+@media (min-width: 1024px) {
+  .app-shell.app-shell--pc {
+    max-width: none;
+    flex-direction: row;
+    box-shadow: none;
+  }
+  .app-shell--pc .menu-lateral {
+    display: block;
+  }
+  .app-shell--pc .columna-app > nav[aria-label="Navegación principal"],
+  .app-shell--pc .solo-cel {
+    display: none;
+  }
+  .app-shell--pc .solo-pc {
+    display: block;
+  }
+  .app-shell--pc:not(.app-shell--ancho) .columna-app {
+    max-width: 800px;
+    margin-inline: auto;
   }
 }
 
