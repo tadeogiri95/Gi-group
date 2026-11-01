@@ -118,7 +118,7 @@ export function PasoOT({ ot, setOt }) {
   return (
     <>
       <h2 className="m-0 mb-1.5 font-heading text-lg font-bold text-gypi-text">Tu primera orden de trabajo</h2>
-      <p className="text-xs text-gypi-dim mb-3.5">Los operarios cargan sus tareas contra una OT (un pedido, una obra, un cliente). Si no trabajan por OT, saltá este paso.</p>
+      <p className="text-xs text-gypi-dim mb-3.5">Una OT es un pedido, una obra o un cliente. Cada pieza de la OT lleva una etiqueta con QR y, al escanearla, se ve cuánto avanzó. Si no trabajan por OT, saltá este paso.</p>
       <div className="g-card mb-3 flex flex-col gap-2">
         <label className="text-xs text-gypi-dim">Número de OT
           <input value={ot.ot} onChange={cambiar("ot")} className="g-input w-full mt-1" placeholder="Ej: 1001" />

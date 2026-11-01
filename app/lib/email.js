@@ -558,6 +558,9 @@ export function htmlResumenSemanal({ empresa, slug, resumen: r }) {
   const titulo = (t) => `<p style="margin:24px 0 6px;font-size:13px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.04em">${t}</p>`;
   const tabla = (filas) => `<table style="width:100%;border-collapse:collapse">${filas}</table>`;
 
+  // Horas por OT y tiempo muerto salen de "Iniciar tarea", que ya no se usa:
+  // solo se muestran si alguien cargó tareas esa semana.
+  const conTareas = r.horasEnOTs > 0 || r.ots.length > 0 || r.tiempoMuerto.horas > 0;
   const ots = r.ots.length
     ? tabla(r.ots.map((o) => fila(`OT ${escapeHtml(o.ot)}${o.detalle ? ` <span style="color:#9B9B9B">· ${escapeHtml(o.detalle)}</span>` : ""}`, `${o.horas} h`)).join(""))
       + (r.otrasOTs ? `<p style="margin:4px 0 0;font-size:12px;color:#9B9B9B">Y ${r.otrasOTs} OT más.</p>` : "")
@@ -577,15 +580,14 @@ export function htmlResumenSemanal({ empresa, slug, resumen: r }) {
     <p style="margin:0 0 16px;color:#444;line-height:1.6">Esto pasó en <strong>${escapeHtml(empresa)}</strong> del ${fmtFecha(r.desde)} al ${fmtFecha(r.hasta)}.</p>
     ${tabla(
       fila("Horas fichadas", `${r.horasFichadas} h`)
-      + fila("Horas cargadas en OT", `${r.horasEnOTs} h`)
+      + (conTareas ? fila("Horas cargadas en OT", `${r.horasEnOTs} h`) : "")
       + fila("Llegadas tarde", String(r.tardanzas), r.tardanzas ? COLOR_ROJO : COLOR_TEXTO)
       + fila("Días con ausencia justificada", String(r.diasJustificados))
     )}
-    ${titulo("Horas por OT")}${ots}
-    ${titulo("Tiempo muerto")}${muerto}
+    ${conTareas ? `${titulo("Horas por OT")}${ots}${titulo("Tiempo muerto")}${muerto}` : ""}
     ${titulo("Faltas sin aviso")}${faltas}
     ${btn(`${APP_BASE}/${slug}`, "Ver el detalle en Gypi →")}
-    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">¿No querés recibirlo? Desactivalo en Gestión → Configuración → Empresa.</p>
+    <p style="margin:20px 0 0;font-size:12px;color:#9B9B9B">¿No querés recibirlo? Desactivalo en Más → Empresa → General.</p>
   `;
   return cuerpo;
 }

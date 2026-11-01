@@ -12,16 +12,16 @@ export async function estadoActivacion(get = sb.get) {
   const hay = async (path) => {
     try { return ((await get(path)) || []).length > 0; } catch { return false; }
   };
-  const [ubicacion, equipo, horario, equipoActivo, ot, fichada, tarea] = await Promise.all([
+  const [ubicacion, equipo, horario, equipoActivo, ot, fichada, pieza] = await Promise.all([
     hay("geo_zonas?select=id&limit=1"),
     hay("empleados?rol=eq.operativo&activo=eq.true&select=id&limit=1"),
     hay("empleados?rol=eq.operativo&activo=eq.true&diagrama=not.is.null&select=id&limit=1"),
     hay("empleados?rol=eq.operativo&activo=eq.true&estado_activacion=eq.activo&select=id&limit=1"),
     hay("proyectos?select=id&limit=1"),
     hay("fichadas?select=id&limit=1"),
-    hay("registro_actividades?select=id&limit=1"),
+    hay("pasos_pieza?select=id&limit=1"),
   ]);
-  return { ubicacion, equipo, horario, equipoActivo, ot, fichada, tarea };
+  return { ubicacion, equipo, horario, equipoActivo, ot, fichada, pieza };
 }
 
 export default function ChecklistActivacion({ empresa, goto, cargar = estadoActivacion }) {

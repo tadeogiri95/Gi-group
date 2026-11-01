@@ -227,7 +227,7 @@ export default function Landing() {
   const FEATURES = [
     { icon: icons.clock,  title: "Fichaje con el celular", desc: "Un botón grande para la entrada y la salida, con la ubicación. También con PIN o en un kiosco." },
     { icon: icons.users,  title: "Pedidos sin papeles",    desc: "Permisos, vacaciones y horas extra: el operario los pide desde el celular y vos los respondés en un toque." },
-    { icon: icons.zap,    title: "Tareas y órdenes de trabajo", desc: "Cada operario carga en qué OT y etapa está; ves en vivo quién trabaja y quién está parado." },
+    { icon: icons.zap,    title: "Órdenes de trabajo por pieza", desc: "Cada pieza lleva una etiqueta con QR: al escanearla ves en qué etapa está cada OT y cuánto le falta." },
     { icon: icons.chart,  title: "Reportes y liquidación", desc: "Asistencia, tardanzas y horas por persona, listas para pasarle al contador en Excel." },
     { icon: icons.chat,   title: "Asistente",              desc: "El equipo le escribe para fichar, pedir un permiso o consultar sus horas." },
     { icon: icons.map,    title: "Trabajo en campo",        desc: "Reportes de obra con fotos, faltantes y desvíos, desde donde estén." },
@@ -236,7 +236,7 @@ export default function Landing() {
   const PASOS = [
     { num: "1", title: "Registrá tu empresa", desc: "Creá tu cuenta en un minuto. Sin tarjeta de crédito." },
     { num: "2", title: "Sumá a tu equipo",    desc: "Les mandás un link y entran con un PIN desde el celular." },
-    { num: "3", title: "Mirá tu tablero",      desc: "Quién vino, quién falta, quién está parado y qué permisos esperan respuesta." },
+    { num: "3", title: "Mirá tu tablero",      desc: "Quién vino, quién falta, cómo avanzan las OT y qué permisos esperan respuesta." },
   ];
 
   // Datos ciertos (antes decía "14 días" de prueba y un "99%" sin respaldo)
@@ -295,7 +295,7 @@ export default function Landing() {
           Tu equipo va a poder<br /><AnimatedTagline />
         </h1>
         <p className="text-[17px] text-gypi-dim leading-relaxed max-w-[540px] mx-auto mb-9">
-          Gypi es la app para el fichaje, los pedidos y las tareas de tu equipo operativo. Ellos la usan desde el celular; vos ves todo en un tablero.
+          Gypi es la app para el fichaje, los pedidos y el avance de la producción de tu equipo operativo. Ellos la usan desde el celular; vos ves todo en un tablero.
         </p>
         <div className="flex gap-3 justify-center flex-wrap">
           <button onClick={() => setShowRegistro(true)} className={BOTON_PRINCIPAL}>Empezar gratis</button>

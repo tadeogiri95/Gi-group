@@ -216,7 +216,7 @@ const RECIENTE = { id: "e1", created_at: new Date(Date.now() - 3 * DIA).toISOStr
 
 test("Checklist — muestra lo que falta, lleva a la pantalla y se puede ocultar", async () => {
   const destinos = [];
-  const cargar = async () => ({ ubicacion: true, equipo: true, horario: false, equipoActivo: false, ot: false, fichada: false, tarea: false });
+  const cargar = async () => ({ ubicacion: true, equipo: true, horario: false, equipoActivo: false, ot: false, fichada: false, pieza: false });
   render(<ChecklistActivacion empresa={RECIENTE} goto={(s) => destinos.push(s)} cargar={cargar} />);
   assert.ok(await screen.findByText("Primeros pasos · 2 de 7"));
   assert.ok(screen.getByText(/Te quedan 11 días/));
@@ -238,7 +238,7 @@ test("Checklist — no aparece pasados los 14 días ni con todo hecho", async ()
   assert.equal(screen.queryByText(/Primeros pasos/), null);
   assert.equal(consultas, 0, "ni siquiera consulta");
   cleanup();
-  const todo = { ubicacion: true, equipo: true, horario: true, equipoActivo: true, ot: true, fichada: true, tarea: true };
+  const todo = { ubicacion: true, equipo: true, horario: true, equipoActivo: true, ot: true, fichada: true, pieza: true };
   render(<ChecklistActivacion empresa={{ ...RECIENTE, id: "e3" }} cargar={async () => todo} />);
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(screen.queryByText(/Primeros pasos/), null);
@@ -253,5 +253,19 @@ test("estadoActivacion — una consulta por paso; si una falla, ese paso queda p
   });
   assert.equal(pedidos.length, 7);
   assert.ok(pedidos.every((p) => p.includes("limit=1")));
-  assert.deepEqual(hay, { ubicacion: true, equipo: false, horario: true, equipoActivo: false, ot: false, fichada: false, tarea: false });
+  assert.deepEqual(hay, { ubicacion: true, equipo: false, horario: true, equipoActivo: false, ot: false, fichada: false, pieza: false });
+});
+
+test("Checklist — el último paso es la primera pieza escaneada (ya no hay 'Iniciar tarea')", async () => {
+  const pedidos = [];
+  await estadoActivacion(async (path) => { pedidos.push(path); return []; });
+  assert.ok(pedidos.some((p) => p.startsWith("pasos_pieza")), "consulta las piezas escaneadas");
+  assert.ok(!pedidos.some((p) => p.startsWith("registro_actividades")), "no consulta tareas");
+  const destinos = [];
+  const cargar = async () => ({ ubicacion: true, equipo: true, horario: true, equipoActivo: true, ot: true, fichada: true, pieza: false });
+  render(<ChecklistActivacion empresa={{ ...RECIENTE, id: "e4" }} goto={(s) => destinos.push(s)} cargar={cargar} />);
+  assert.ok(await screen.findByText("Primera pieza escaneada"));
+  assert.equal(screen.queryByText(/tarea registrada/), null);
+  fireEvent.click(screen.getByText("Ir"));
+  assert.deepEqual(destinos, ["proyectos"]);
 });

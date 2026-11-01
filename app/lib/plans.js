@@ -133,7 +133,7 @@ export const LINEAS = {
   planta: {
     id: "planta",
     nombre: "Planta",
-    descripcion: "Todo Asistencia, más órdenes de trabajo y etapas, tareas con tiempo improductivo y su causa, tablero en vivo y reportes por OT.",
+    descripcion: "Todo Asistencia, más órdenes de trabajo y etapas, escaneo de piezas por etapa, tablero de avance y reportes por OT.",
     usd: { 15: 45, 40: 95, 80: 160 },
   },
 };
