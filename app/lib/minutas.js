@@ -297,3 +297,52 @@ export function imprimirMinuta(datos) {
   ventana.focus();
   setTimeout(() => ventana.print(), 400);
 }
+
+// ─── Seguimiento (parte M3) ─────────────────────────────────────────────────
+// Lo que tiene que resolverse pasa solo a la minuta siguiente hasta que se
+// marca ✓ Resuelto: contingencias (en curso que no está en verde),
+// pendientes de instalación, post-venta y estacionamiento.
+export const SECCIONES_SEGUIMIENTO = ["prod_en_curso", "inst_en_curso", "inst_pendiente", "postventa", "estacionamiento"];
+// "Si aparece 3 días seguidos, pasa a rojo y lo toma Gerencia"
+export const VECES_A_GERENCIA = 3;
+
+/** ¿El renglón pasa a la minuta siguiente? */
+export function sigueAbierto(it) {
+  if (!it || it.resuelto_at || !SECCIONES_SEGUIMIENTO.includes(it.seccion)) return false;
+  if (it.seccion === "prod_en_curso" || it.seccion === "inst_en_curso") return it.semaforo === "amarillo" || it.semaforo === "rojo";
+  return true;
+}
+
+/**
+ * El renglón de la minuta anterior, copiado para hoy: con viene_de, desde
+ * cuándo está y cuántas veces apareció. Un pendiente de instalación que
+ * llega a la 3.ª vez pasa a rojo y lo toma Gerencia.
+ * @param {object} it renglón de la minuta anterior
+ * @param {string} fechaAnterior fecha de esa minuta
+ */
+export function renglonQueSigue(it, fechaAnterior) {
+  const veces = (Number(it.datos?.veces) || 1) + 1;
+  const aGerencia = it.seccion === "inst_pendiente" && veces >= VECES_A_GERENCIA;
+  return renglonNuevo(it.seccion, {
+    ot: it.ot || null, division: it.division || null, proyecto: it.proyecto || null, cliente: it.cliente || null,
+    semaforo: aGerencia ? "rojo" : it.semaforo || null, texto: it.texto || "", responsable: it.responsable || "",
+    fecha_objetivo: it.fecha_objetivo || null, area: it.area || null, tipo: it.tipo || null,
+    datos: { ...(it.datos || {}), desde: it.datos?.desde || fechaAnterior, veces, ...(aGerencia ? { gerencia: true } : {}) },
+    viene_de: it.id,
+  });
+}
+
+/** Lo de la minuta anterior que todavía no se pasó a esta. */
+export function seguimientoPendiente(anteriores, items, seccionId) {
+  const ya = new Set(items.map((it) => it.viene_de).filter(Boolean));
+  const pendientesYa = new Set(items.filter((it) => it.seccion === seccionId && it.datos?.pendiente_id != null).map((it) => String(it.datos.pendiente_id)));
+  return (anteriores || []).filter((it) => it.seccion === seccionId && !ya.has(it.id)
+    && !(it.datos?.pendiente_id != null && pendientesYa.has(String(it.datos.pendiente_id))));
+}
+
+/** "Viene del 28/10 · 3.ª vez" */
+export function textoSeguimiento(it) {
+  if (!it?.datos?.desde) return "";
+  const d = String(it.datos.desde);
+  return `↩ Viene del ${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}${it.datos.veces ? ` · ${it.datos.veces}.ª vez` : ""}`;
+}

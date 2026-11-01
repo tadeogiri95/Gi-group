@@ -405,3 +405,140 @@ test("pantalla — Gypi sugiere: se agrega con la OT completa y deja de sugerirs
   const it = pedidos.find((p) => p.body?.accion === "guardar").body.items[0];
   assert.deepEqual([it.seccion, it.ot, it.division, it.cliente, it.semaforo, it.fecha_objetivo, it.datos.avance], ["prod_en_curso", "7751", "Muebles", "PRANA", "verde", "2026-11-10", 40]);
 });
+
+// ─── Seguimiento (parte M3) ───
+
+const { sigueAbierto, renglonQueSigue, seguimientoPendiente, textoSeguimiento } = await import("../app/lib/minutas.js");
+
+test("seguimiento — qué pasa al día siguiente y la regla de los 3 días", () => {
+  assert.equal(sigueAbierto({ seccion: "inst_pendiente" }), true);
+  assert.equal(sigueAbierto({ seccion: "inst_pendiente", resuelto_at: "2026-11-02T10:00:00Z" }), false, "resuelto no sigue");
+  assert.equal(sigueAbierto({ seccion: "prod_en_curso", semaforo: "verde" }), false, "lo verde lo vuelve a sugerir Gypi");
+  assert.equal(sigueAbierto({ seccion: "prod_en_curso", semaforo: "amarillo" }), true);
+  assert.equal(sigueAbierto({ seccion: "foco" }), false);
+  assert.equal(sigueAbierto({ seccion: "estacionamiento" }), true);
+
+  const dia1 = { id: ID1, seccion: "inst_pendiente", ot: "7495", proyecto: "Estudio", semaforo: "amarillo", texto: "Cambiar madera", responsable: "ANGELI", fecha_objetivo: "2026-10-30", datos: { pendiente_id: 9 } };
+  const dia2 = renglonQueSigue(dia1, "2026-10-28");
+  assert.equal(dia2.viene_de, ID1);
+  assert.notEqual(dia2.id, ID1);
+  assert.deepEqual([dia2.semaforo, dia2.datos.desde, dia2.datos.veces, dia2.datos.gerencia, dia2.responsable], ["amarillo", "2026-10-28", 2, undefined, "ANGELI"]);
+  const dia3 = renglonQueSigue({ ...dia2, id: ID2 }, "2026-10-29");
+  assert.deepEqual([dia3.semaforo, dia3.datos.desde, dia3.datos.veces, dia3.datos.gerencia], ["rojo", "2026-10-28", 3, true], "3 días seguidos: rojo y Gerencia");
+  assert.equal(textoSeguimiento(dia3), "↩ Viene del 28/10 · 3.ª vez");
+  // Ya pasado (por viene_de o por el mismo pendiente de obra): no se vuelve a ofrecer
+  assert.deepEqual(seguimientoPendiente([dia1], [dia2], "inst_pendiente"), []);
+  assert.deepEqual(seguimientoPendiente([dia1], [renglonNuevo("inst_pendiente", { datos: { pendiente_id: 9 } })], "inst_pendiente"), []);
+  assert.equal(seguimientoPendiente([dia1], [], "inst_pendiente").length, 1);
+  // Pasa la validación al guardar
+  assert.ok(minutasBody.safeParse({ accion: "guardar", fecha: "2026-10-29", minuta: {}, items: renglonesParaGuardar([dia3]) }).success);
+});
+
+function mockSeguimiento({ minutas = [], items = [], patch = null } = {}) {
+  const escrito = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/minutas"), respond: (u) => { escrito.push(u); return { status: 200, body: minutas }; } },
+    {
+      match: (u) => u.includes("/rest/v1/minuta_items"),
+      respond: (u, o) => {
+        escrito.push(`${o.method || "GET"} ${u}${o.body ? ` ${o.body}` : ""}`);
+        if (o.method === "PATCH") return { status: 200, body: patch ? [patch] : [] };
+        return { status: 200, body: items };
+      },
+    },
+  ]);
+  return escrito;
+}
+
+test("/api/minutas?seguimiento — lo abierto del último mes que no pasó a otra minuta", async () => {
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
+  const B = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4";
+  const C = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5";
+  const escrito = mockSeguimiento({
+    minutas: [{ id: 2, fecha: "2026-10-30" }, { id: 1, fecha: "2026-10-29" }],
+    items: [
+      { id: A, minuta_id: 1, seccion: "inst_pendiente", texto: "Zocalines" },                // pasó a B
+      { id: B, minuta_id: 2, seccion: "inst_pendiente", texto: "Zocalines", viene_de: A },   // sigue
+      { id: C, minuta_id: 1, seccion: "estacionamiento", texto: "Orden del depósito", resuelto_at: "2026-10-29T12:00:00Z" },
+    ],
+  });
+  const res = await api.GET(reqGet(await token(), "?seguimiento=2026-11-02"));
+  assert.equal(res.status, 200);
+  const j = await res.json();
+  assert.equal(j.anterior, "2026-10-30");
+  assert.deepEqual(j.items.map((it) => [it.id, it.fecha]), [[B, "2026-10-30"]]);
+  assert.ok(escrito.some((u) => u.includes("fecha=lt.2026-11-02") && u.includes("fecha=gte.2026-10-03")));
+});
+
+test("/api/minutas resolver — ✓ Resuelto aunque la minuta esté cerrada; ?ot y ?feedback", async () => {
+  let escrito = mockSeguimiento({ patch: { id: ID1, resuelto_at: "2026-11-02T12:00:00Z" } });
+  let res = await api.POST(req(await token(), { accion: "resolver", id: ID1, resuelto: true }));
+  assert.equal(res.status, 200);
+  const p = escrito.find((x) => x.startsWith("PATCH"));
+  assert.match(p, new RegExp(`id=eq\\.${ID1}&empresa_id=eq\\.${E}`));
+  assert.match(p, /"resuelto_at":"\d{4}-/);
+  mockSeguimiento();
+  assert.equal((await api.POST(req(await token(), { accion: "resolver", id: ID1, resuelto: false }))).status, 404);
+  assert.equal((await api.POST(req(await token("administrativo"), { accion: "resolver", id: ID1, resuelto: true }))).status, 403);
+
+  mockSeguimiento({ minutas: [{ id: 1, fecha: "2026-10-29" }], items: [{ id: ID1, minuta_id: 1, seccion: "feedback", ot: "7751", texto: "Faltó dato" }] });
+  res = await api.GET(reqGet(await token(), "?ot=7751"));
+  assert.deepEqual((await res.json()).items.map((it) => [it.ot, it.fecha]), [["7751", "2026-10-29"]]);
+  escrito = mockSeguimiento({ minutas: [{ id: 1, fecha: "2026-10-29" }], items: [{ id: ID1, minuta_id: 1, seccion: "feedback", area: "DyT" }] });
+  res = await api.GET(reqGet(await token(), "?feedback=2026-10-26"));
+  assert.equal((await res.json()).items[0].fecha, "2026-10-29");
+  assert.ok(escrito.some((u) => u.includes("seccion=eq.feedback")));
+});
+
+test("pantalla — lo abierto de ayer se pasa con un toque y muestra desde cuándo", async () => {
+  const pedidos = [];
+  mockPantalla(pedidos);
+  const base = global.fetch;
+  global.fetch = async (url, opts) => {
+    if (String(url).includes("seguimiento=")) {
+      return new Response(JSON.stringify({ ok: true, anterior: "2026-10-30", items: [{ id: ID1, fecha: "2026-10-30", seccion: "inst_pendiente", ot: "7495", proyecto: "Estudio", cliente: "BCG", semaforo: "amarillo", texto: "Cambiar madera", responsable: "ANGELI", fecha_objetivo: "2026-11-04", datos: { desde: "2026-10-29", veces: 2 } }] }), { status: 200 });
+    }
+    return base(url, opts);
+  };
+  pantalla();
+  const grupo = await screen.findByRole("group", { name: "Sigue abierto en Pendientes de instalación" });
+  assert.ok(within(grupo).getByText(/del 30\/10 · Cambiar madera · ANGELI/));
+  fireEvent.click(within(grupo).getByRole("button", { name: /Agregar OT 7495 · Estudio · BCG/ }));
+  await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Sigue abierto en Pendientes de instalación" }), null));
+  assert.ok(screen.getByText("↩ Viene del 29/10 · 3.ª vez"));
+  assert.ok(screen.getByText(/3 días seguidos: lo toma Gerencia/));
+  fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
+  const it = pedidos.find((p) => p.body?.accion === "guardar").body.items[0];
+  assert.deepEqual([it.viene_de, it.semaforo, it.datos.veces, it.datos.gerencia], [ID1, "rojo", 3, true]);
+});
+
+test("Detalle de OT — 📝 En las minutas, solo para gerencia con el módulo", async () => {
+  const { default: MinutasDeOt } = await import("../app/components/MinutasDeOt.jsx");
+  const pedidos = [];
+  global.fetch = async (url) => {
+    pedidos.push(String(url));
+    return new Response(JSON.stringify({ ok: true, items: [{ id: ID1, fecha: "2026-10-29", seccion: "inst_pendiente", semaforo: "rojo", texto: "Cambiar madera", responsable: "ANGELI", fecha_objetivo: "2026-11-04", resuelto_at: "2026-11-01T10:00:00Z" }] }), { status: 200 });
+  };
+  const ver = (usuario, modulos) => render(
+    <AuthContext.Provider value={{ usuario, empresa: { modulos } }}><MinutasDeOt ot="7495" /></AuthContext.Provider>
+  );
+  ver({ rol: "gerencial" }, ["proyectos", "minutas"]);
+  const sec = await screen.findByRole("region", { name: "En las minutas" });
+  assert.ok(within(sec).getByText("29/10/2026"));
+  assert.ok(within(sec).getByText("Pendientes de instalación"));
+  assert.ok(within(sec).getByText("🔴 Cambiar madera"));
+  assert.ok(within(sec).getByText("ANGELI · para el 04/11/2026"));
+  assert.ok(within(sec).getByText("✓ Resuelto"));
+  assert.ok(pedidos[0].includes("/api/minutas?ot=7495"));
+  cleanup();
+  pedidos.length = 0;
+  ver({ rol: "administrativo" }, ["proyectos", "minutas"]);
+  ver({ rol: "gerencial" }, ["proyectos"]);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(pedidos.length, 0, "ni lo pide");
+  assert.equal(screen.queryByRole("region", { name: "En las minutas" }), null);
+});

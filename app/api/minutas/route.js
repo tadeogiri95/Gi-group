@@ -12,6 +12,14 @@
 //           renglones (los que se sacaron se borran). Con cerrar anota la
 //           hora de cierre y la cierra. Una cerrada no se edita hasta reabrirla.
 //   POST { accion: "reabrir", fecha } → la vuelve a abrir para corregirla
+// Seguimiento (parte M3):
+//   GET ?seguimiento=AAAA-MM-DD → lo que sigue abierto de las minutas del
+//         último mes (contingencias, pendientes, post-venta, estacionamiento)
+//         y no pasó todavía a una minuta posterior
+//   GET ?ot=X              → los renglones de esa OT en todas las minutas (Detalle de OT)
+//   GET ?feedback=AAAA-MM-DD → el feedback desde ese día (revisión del jueves)
+//   POST { accion: "resolver", id, resuelto } → ✓ Resuelto (o revisado); se
+//         puede aunque la minuta esté cerrada: es el seguimiento
 // Los pendientes de instalación necesitan responsable y fecha objetivo.
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
@@ -20,12 +28,14 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { minutasBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpers";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
-import { faltantesMinuta, hora } from "../../lib/minutas";
+import { SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, sigueAbierto } from "../../lib/minutas";
 import { precargaMinuta } from "../../lib/minutasPrecargaServidor";
 import { logger } from "../../lib/logger";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
 const HISTORIAL = 90;
+// Hasta cuántos días atrás se busca lo que sigue abierto
+const DIAS_SEGUIMIENTO = 30;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 function faltaMigracion(err) {
@@ -67,6 +77,39 @@ export async function GET(request) {
       return json({ ok: true, sugeridos: await precargaMinuta(sesion.empresa_id, precarga, { sesion }) });
     }
     try {
+      const e = sesion.empresa_id;
+      const seguimiento = q.get("seguimiento");
+      if (seguimiento) {
+        // Lo abierto de las minutas del último mes que no pasó a una minuta posterior
+        if (!FECHA.test(seguimiento)) return json({ error: "Fecha inválida" }, 400);
+        const desde = new Date(Date.parse(`${seguimiento}T12:00:00Z`) - DIAS_SEGUIMIENTO * 86400000).toISOString().slice(0, 10);
+        const minutas = (await sbGet(`minutas?empresa_id=eq.${e}&fecha=lt.${seguimiento}&fecha=gte.${desde}&select=id,fecha&order=fecha.desc`, { sesion })) || [];
+        if (!minutas.length) return json({ ok: true, anterior: null, items: [] });
+        const fechaDe = new Map(minutas.map((m) => [m.id, m.fecha]));
+        const todos = (await sbGet(`minuta_items?empresa_id=eq.${e}&minuta_id=in.(${minutas.map((m) => m.id).join(",")})&seccion=in.(${SECCIONES_SEGUIMIENTO.join(",")})&select=*&order=created_at.asc&limit=2000`, { sesion })) || [];
+        const siguieron = new Set(todos.map((it) => it.viene_de).filter(Boolean));
+        const items = todos.filter((it) => sigueAbierto(it) && !siguieron.has(it.id))
+          .map((it) => ({ ...it, fecha: fechaDe.get(it.minuta_id) || null }))
+          .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+        return json({ ok: true, anterior: minutas[0].fecha, items });
+      }
+      const ot = q.get("ot");
+      if (ot) {
+        const items = (await sbGet(`minuta_items?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&select=*&order=created_at.desc&limit=200`, { sesion })) || [];
+        const ids = [...new Set(items.map((it) => it.minuta_id))];
+        const minutas = ids.length ? (await sbGet(`minutas?empresa_id=eq.${e}&id=in.(${ids.join(",")})&select=id,fecha`, { sesion })) || [] : [];
+        const fechaDe = new Map(minutas.map((m) => [m.id, m.fecha]));
+        return json({ ok: true, items: items.map((it) => ({ ...it, fecha: fechaDe.get(it.minuta_id) || null })).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))) });
+      }
+      const feedback = q.get("feedback");
+      if (feedback) {
+        if (!FECHA.test(feedback)) return json({ error: "Fecha inválida" }, 400);
+        const minutas = (await sbGet(`minutas?empresa_id=eq.${e}&fecha=gte.${feedback}&select=id,fecha&order=fecha.asc`, { sesion })) || [];
+        if (!minutas.length) return json({ ok: true, items: [] });
+        const fechaDe = new Map(minutas.map((m) => [m.id, m.fecha]));
+        const items = (await sbGet(`minuta_items?empresa_id=eq.${e}&seccion=eq.feedback&minuta_id=in.(${minutas.map((m) => m.id).join(",")})&select=*&order=created_at.asc&limit=500`, { sesion })) || [];
+        return json({ ok: true, items: items.map((it) => ({ ...it, fecha: fechaDe.get(it.minuta_id) || null })) });
+      }
       if (fecha) {
         if (!FECHA.test(fecha)) return json({ error: "Fecha inválida" }, 400);
         const minuta = await minutaDe(sesion, fecha);
@@ -144,6 +187,13 @@ export async function POST(request) {
     const d = parsed.data;
     try {
       if (d.accion === "guardar") return await guardar(sesion, d);
+      if (d.accion === "resolver") {
+        const filas = await sbPatch(`minuta_items?id=eq.${d.id}&empresa_id=eq.${sesion.empresa_id}`, {
+          resuelto_at: d.resuelto ? new Date().toISOString() : null, updated_at: new Date().toISOString(),
+        }, { sesion });
+        if (!filas?.length) return json({ error: "No encontré ese renglón (guardá la minuta primero)" }, 404);
+        return json({ ok: true, item: filas[0] });
+      }
       const minuta = await minutaDe(sesion, d.fecha);
       if (!minuta) return json({ error: "No hay minuta de ese día" }, 404);
       const [abierta] = await sbPatch(`minutas?id=eq.${minuta.id}&empresa_id=eq.${sesion.empresa_id}`, {
