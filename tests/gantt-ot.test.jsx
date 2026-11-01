@@ -629,3 +629,55 @@ test("📅 Gantt — con 1 semana o 1 día elegido, eso llena el ancho visible",
     if (ancho) Object.defineProperty(HTMLElement.prototype, "clientWidth", ancho);
   }
 });
+
+// Tadeo, 01/11: en Canteado se veían 5 OT a la vez el lunes; los días sin
+// trabajo de la grilla tienen que quedar vacíos; lo ya hecho, una línea finita.
+test("planVivo — la máquina termina primero lo que ya empezó, aunque otra OT vaya antes en el plan", async () => {
+  const { planVivo } = await import("../app/lib/ganttPlan.js");
+  const items = [
+    { ot: "A", etapa: "canteado", fecha: "2026-10-23", horas: 8, orden: 0 },
+    { ot: "B", etapa: "canteado", fecha: "2026-10-23", horas: 8, orden: 1 },
+  ];
+  // B arrancó el viernes y le falta la mitad; A no arrancó
+  const piezas = [{ ot: "B", etapa: 2, total: 10, pasaron: 5, primer_paso: "2026-10-23T12:00:00Z" }];
+  const r = planVivo(items, { etapasCodigo: { canteado: 2 }, piezas, hoy: "2026-10-26" });
+  const a = r.get("A").procesos[0];
+  const b = r.get("B").procesos[0];
+  assert.deepEqual([b.desde, b.hasta, b.fin], ["2026-10-23", "2026-10-26", 0.5], "B sigue hoy desde donde quedó");
+  assert.deepEqual([a.desde, a.ini, a.hasta], ["2026-10-26", 0.5, "2026-10-27"], "A arranca cuando B termina, no a la vez");
+});
+
+test("secuenciar — sin nada empezado respeta el orden del plan", async () => {
+  const { secuenciar } = await import("../app/lib/secuencia.js");
+  const ots = [{ clave: "A", horas: { corte: 2 } }, { clave: "B", horas: { corte: 3 } }];
+  const t = (m) => [m.get("A")[0].t0, m.get("B")[0].t0];
+  assert.deepEqual(t(secuenciar(ots)), [0, 2]);
+  assert.deepEqual(t(secuenciar(ots, { primero: new Set(["B|corte"]) })), [3, 0]);
+});
+
+test("📅 Gantt — los días sin trabajo quedan vacíos, la barra sigue el próximo día y lo hecho es una línea finita", () => {
+  lunes26();
+  try {
+    // 44 h de Corte desde hoy: de lunes a viernes (40 h) y 4 h el lunes siguiente
+    const planes = [{ id: 1, tipo: "semana", desde: "2026-10-19", hasta: "2026-11-30", items: [
+      { ot: "7100", etapa: "corte", fecha: "2026-10-26", horas: 44, orden: 0 },
+      { ot: "7200", etapa: "corte", fecha: "2026-10-26", horas: 1, orden: 1 },
+      { ot: "7200", etapa: "canteado", fecha: "2026-10-26", horas: 1, orden: 1 },
+    ] }];
+    const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }, { id: 2, ot: "7200", cliente: "Ana", division: "M", estado: "activo" }];
+    // 7200: Canteado terminado la semana pasada
+    const piezas = [{ ot: "7200", etapa: 2, total: 10, pasaron: 10, primer_paso: "2026-10-21T13:00:00Z", ultimo_paso: "2026-10-23T18:00:00Z" }];
+    const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas }} />);
+    assert.ok(container.querySelector('[data-sin-trabajo="2026-10-31"]'), "sábado vacío");
+    assert.ok(container.querySelector('[data-sin-trabajo="2026-11-01"]'), "domingo vacío");
+    assert.ok(!container.querySelector('[data-sin-trabajo="2026-10-30"]'), "el viernes se trabaja");
+    const ot = container.querySelector('[data-ot="7100"]');
+    const llenas = [...ot.querySelectorAll("rect.fill-proc-corte")].filter((r) => r.getAttribute("height") === "18");
+    assert.equal(llenas.length, 2, "la barra se corta en el fin de semana y sigue el lunes");
+    const pasado = container.querySelector('[data-ot="7200"] [data-pasado="canteado"]');
+    assert.ok(pasado, "lo ya hecho se ve");
+    assert.equal(pasado.getAttribute("height"), "4", "como una línea finita");
+  } finally {
+    mock.timers.reset();
+  }
+});

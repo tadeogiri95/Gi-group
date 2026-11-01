@@ -11,7 +11,7 @@ export const CLAVE_FECHA_OBJETIVO = "ot_fecha_objetivo";
 
 export const MODOS_FECHA_OBJETIVO = [
   { id: "semana_domingo", nombre: "Semana del año, de domingo a sábado (como NUM.DE.SEMANA de Google)" },
-  { id: "semana_lunes", nombre: "Semana del año, de lunes a domingo (ISO)" },
+  { id: "semana_lunes", nombre: "Semana del año, de lunes a domingo (Semana 2 de 2026 = 5/1 al 11/1)" },
   { id: "entrega", nombre: "Fecha de entrega (columna ENTREGA)" },
 ];
 export const MODO_POR_DEFECTO = "semana_domingo";

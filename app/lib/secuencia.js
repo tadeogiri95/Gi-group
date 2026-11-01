@@ -23,13 +23,25 @@ const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 export const MAQUINAS_PLAN = ["corte", "canteado", "mecanizado"];
 export const ETAPAS_SECUENCIA = [...MAQUINAS_PLAN, "armado"];
 
+const horasDeSemana = (horasSemana) => ((horasSemana || []).some((h) => h > 0) ? horasSemana : HORAS_SEMANA_POR_DEFECTO);
+
+/**
+ * Si en un día se trabaja (Tadeo, 01/11): tiene horas en la grilla de
+ * horarios, o es un día de horas extra del plan. Los demás quedan vacíos en
+ * el Gantt y la barra sigue el próximo día de trabajo.
+ */
+export function diaLaborable(horasSemana, extras = null) {
+  const hs = horasDeSemana(horasSemana);
+  return (fecha) => hs[diaSemana(fecha)] > 0 || !!extras?.has(fecha);
+}
+
 /**
  * Calendario de trabajo desde `base` con las horas de cada día de la semana.
  * t = horas de trabajo desde el comienzo de `base`. `extras` = días de horas
  * extra (un sábado o domingo sin nadie puesto), con las horas del día más largo.
  */
 export function calendario(base, horasSemana, extras = null) {
-  const hs = (horasSemana || []).some((h) => h > 0) ? horasSemana : HORAS_SEMANA_POR_DEFECTO;
+  const hs = horasDeSemana(horasSemana);
   const largo = Math.max(...hs);
   const horasDe = (f) => (hs[diaSemana(f)] > 0 ? hs[diaSemana(f)] : extras?.has(f) ? largo : 0);
   const dias = []; // { fecha, horas, desde (t al empezar el día) }
@@ -124,15 +136,18 @@ function crearArmado({ armadores, maxPorOt, ayudantes }) {
  *   ordenEtapa: orden propio de algún proceso ({ canteado: [clave, …] }), el
  *   que se arma en "OT por proceso" del Gantt (Tadeo, 29/10); en los demás,
  *   el orden recibido.
+ *   primero: procesos ya empezados ("clave|etapa"): la máquina termina lo
+ *   que empezó antes de agarrar otra OT (Tadeo, 01/11).
  */
-export function secuenciar(ots, { params = null, personal = null, inicio = () => 0, ordenEtapa = null } = {}) {
+export function secuenciar(ots, { params = null, personal = null, inicio = () => 0, ordenEtapa = null, primero = null } = {}) {
   const lugar = new Map(ots.map((o, i) => [o.clave, i]));
   const enOrden = (etapa) => {
     const propio = ordenEtapa?.[etapa];
-    if (!propio?.length) return ots;
-    const pos = new Map(propio.map((c, i) => [c, i]));
-    const en = (o) => (pos.has(o.clave) ? pos.get(o.clave) : propio.length + lugar.get(o.clave));
-    return [...ots].sort((a, b) => en(a) - en(b));
+    const pos = new Map((propio || []).map((c, i) => [c, i]));
+    const en = (o) => (pos.has(o.clave) ? pos.get(o.clave) : pos.size + lugar.get(o.clave));
+    const empezado = (o) => (primero?.has(`${o.clave}|${etapa}`) ? 0 : 1);
+    if (!pos.size && !primero?.size) return ots;
+    return [...ots].sort((a, b) => empezado(a) - empezado(b) || en(a) - en(b));
   };
   // 1) Máquinas: una OT a la vez por máquina, en secuencia dentro de cada OT
   const libre = {}; // hasta cuándo está ocupada cada máquina
