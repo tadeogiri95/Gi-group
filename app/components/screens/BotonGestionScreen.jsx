@@ -1,6 +1,6 @@
 "use client";
 // Pantalla de un botón de la barra de gestión (menú nuevo, parte 32):
-// Producción (OT, Reportes y Planificación, esta solo para gerencia), Materiales (Stock y Compras) y Mantenimiento
+// Producción (OT, Reportes, Planificación y Minuta, estas dos solo para gerencia), Materiales (Stock y Compras) y Mantenimiento
 // (Flota vehicular y Maquinaria, parte 33). Reemplaza a la pestaña "Planta".
 // Stock (ítem 40), Compras (ítem 41), Flota y Maquinaria (Mantenimiento, ítem
 // 43) son módulos propios que vienen con las OT (131, 132). Lo que la empresa
@@ -21,6 +21,7 @@ import ComprasScreen from "../ComprasScreen";
 import FlotaScreen from "../FlotaScreen";
 import MaquinariaScreen from "../MaquinariaScreen";
 import PlanificacionScreen from "../PlanificacionScreen";
+import MinutaScreen from "../MinutaScreen";
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
@@ -52,6 +53,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria" ? "alertas" : "maquinas"} />}
         {!bloqueado && actual.id === "planificacion" && <PlanificacionScreen empresaId={empresaId} />}
+        {!bloqueado && actual.id === "minuta" && <MinutaScreen empresa={empresa} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
       </div>
     </div>
