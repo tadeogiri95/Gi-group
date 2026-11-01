@@ -21,6 +21,8 @@ import EtiquetasModulos from "./components/EtiquetasModulos";
 import PiezasOt from "./components/PiezasOt";
 import { useCostoHora } from "./hooks/useCostoHora";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
+import { estadoOtLista, textoEntrega } from "./lib/otLista";
+import { conRegistroTareas } from "./lib/modulos";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
 import { avancePorOt } from "./lib/piezas";
 import { hoyArg } from "./lib/dates";
@@ -255,7 +257,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
     const abiertas = proyectos.filter(p => p.estado !== "cerrado");
     return otEnCurso(filasTablero(abiertas, { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avanceHoras, hoy: hoyArg() }));
   }, [avanceHoras, proyectos, etapasCtx, divisionesCtx]);
-  const otsEnCurso = useMemo(() => new Set((enCurso || []).map(f => String(f.proyecto.ot))), [enCurso]);
+  const filaEnCurso = useMemo(() => new Map((enCurso || []).map(f => [String(f.proyecto.ot), f])), [enCurso]);
   // % de producción por escaneo de cada OT (parte 25)
   const pctEscaneo = useMemo(() => avancePorOt(avanceHoras?.piezas || []), [avanceHoras]);
 
@@ -383,7 +385,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
   };
 
   const filtrados = proyectos.filter(p => {
-    if (filtro === "en_curso") { if (!otsEnCurso.has(String(p.ot))) return false; }
+    if (filtro === "en_curso") { if (!filaEnCurso.has(String(p.ot))) return false; }
     else if (filtro !== "todos" && p.estado !== filtro) return false;
     if (filtroDiv && p.division !== filtroDiv) return false;
     if (search.trim()) {
@@ -420,17 +422,10 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
         nombre: `OT ${p.ot}`,
         detalle: [p.cliente, p.proyecto].filter(Boolean).join(" · "),
         link: String(p.ot),
-        pie: "Escaneala en “Iniciar tarea” para elegir esta OT.",
+        pie: "Código QR de la OT.",
       })),
     }).catch(e => showToast(e.message, RED));
   };
-
-  // Obra, división y entrega en una línea, sin separadores sueltos si falta algo
-  const lineaOt = (p) => [
-    p.obra || p.proyecto,
-    p.division && nombreDivisionOt(divisionesCtx || [], p.division),
-    p.fecha_entrega && `Entrega ${fechaCorta(p.fecha_entrega)}`,
-  ].filter(Boolean).join(" · ");
 
   // Abre una pantalla de la OT y cierra la ventana de acciones
   const abrir = (fn) => { const p = acciones; setAcciones(null); fn(p); };
@@ -444,71 +439,60 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
       {modal && <ModalProyecto initial={modal} divisiones={divisiones} onClose={() => setModal(null)} onSave={guardar} saving={saving} />}
       {csvFilas && <ModalCSVPreview filas={csvFilas} onClose={() => { setCsvFilas(null); setCsvRawText(null); }} onConfirm={importarCSV} saving={saving} progreso={csvProgreso} />}
 
-      {/* Métricas */}
-      <div className="grid grid-cols-4 gap-2 mb-3.5">
-        <div className="g-card text-center !p-3">
-          <div className="font-heading text-[22px] font-bold text-gypi-green">{activos}</div>
-          <div className="g-overline mt-0.5">Activos</div>
-        </div>
-        <button type="button" onClick={() => setFiltro("en_curso")} aria-label={`${enCurso ? enCurso.length : "—"} OT en curso: ver la lista`}
-          className={`g-card text-center !p-3 cursor-pointer ${filtro === "en_curso" ? "!border-gypi-amber" : ""}`}>
-          <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{enCurso ? enCurso.length : "—"}</div>
-          <div className="g-overline mt-0.5">En curso</div>
-        </button>
-        <div className="g-card text-center !p-3">
-          <div className="font-heading text-[22px] font-bold text-gypi-mute">{cerrados}</div>
-          <div className="g-overline mt-0.5">Cerrados</div>
-        </div>
-        <div className="g-card text-center !p-3">
-          <div className="font-heading text-[22px] font-bold text-gypi-amber-ink">{proyectos.length}</div>
-          <div className="g-overline mt-0.5">Total</div>
-        </div>
+      {/* Resumen en una línea que también filtra (auditoría 01/11, PR 4: antes
+          eran 4 tarjetas grandes y un selector de estado aparte) */}
+      <div className="flex items-center gap-x-1 gap-y-1 flex-wrap mb-2.5 text-[14px]" role="group" aria-label="Estado de las OT">
+        {[
+          { id: "en_curso", texto: `${enCurso ? enCurso.length : "—"} en curso`, fuerte: true },
+          { id: "activo", texto: `${activos} activas` },
+          { id: "cerrado", texto: `${cerrados} cerradas` },
+          { id: "todos", texto: `Todas (${proyectos.length})` },
+        ].map((f, i) => (
+          <span key={f.id} className="flex items-center gap-1">
+            {i > 0 && <span aria-hidden="true" className="text-gypi-mute">·</span>}
+            <button type="button" onClick={() => setFiltro(f.id)} aria-pressed={filtro === f.id}
+              className={`min-h-[36px] px-1.5 rounded-lg border-none bg-transparent cursor-pointer ${filtro === f.id ? "text-gypi-text font-extrabold underline underline-offset-4 decoration-2 decoration-gypi-amber" : f.fuerte ? "text-gypi-amber-ink font-bold" : "text-gypi-dim font-semibold"}`}>
+              {f.texto}
+            </button>
+          </span>
+        ))}
+        <select value={filtroDiv} onChange={e => setFiltroDiv(e.target.value)} aria-label="División" className="g-input ml-auto !w-auto min-h-[36px] !py-1 text-[14px]">
+          <option value="">Todas las divisiones</option>
+          {divisiones.filter(d => d.id).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+        </select>
       </div>
 
-      {enCurso && enCurso.length > 0 && (
-        <div className="text-xs text-gypi-dim -mt-2 mb-3">
+      {filtro === "en_curso" && enCurso && enCurso.length > 0 && (
+        <div className="text-xs text-gypi-dim -mt-1 mb-2.5">
           En curso por división: {contarPorDivision(enCurso, divisionesCtx || []).map(d => `${d.nombre} ${d.cantidad}`).join(" · ")}
         </div>
       )}
 
       {/* Acciones de todos los días: grandes y con texto (revisión de la interfaz, 2026-10) */}
-      <div className="flex gap-2 mb-3">
+      <div className="flex gap-2 mb-2.5">
         <button onClick={() => setModal({})} className="flex-1 min-h-[48px] rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[15px] font-bold cursor-pointer">+ Nueva OT</button>
         <button onClick={sincronizar} disabled={syncLoading} title={AVISO_DEMORA_GOOGLE} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[15px] font-bold cursor-pointer disabled:opacity-60">
           {syncLoading ? "Sincronizando…" : "🔄 Actualizar y sincronizar"}
         </button>
       </div>
 
-      {/* Filtros en una sola fila */}
-      <div className="flex gap-2 mb-2.5">
-        <select value={filtro} onChange={e => setFiltro(e.target.value)} aria-label="Estado de las OT" className="g-input flex-1 min-h-[48px] text-[15px]">
-          <option value="activo">Activas</option>
-          <option value="en_curso">En curso</option>
-          <option value="cerrado">Cerradas</option>
-          <option value="todos">Todas</option>
-        </select>
-        <select value={filtroDiv} onChange={e => setFiltroDiv(e.target.value)} aria-label="División" className="g-input flex-1 min-h-[48px] text-[15px]">
-          <option value="">Divisiones</option>
-          {divisiones.filter(d => d.id).map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-        </select>
-      </div>
-
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 OT, cliente u obra" className="g-input mb-3" />
-
       {/* Lo que se usa de vez en cuando: CSV, etiquetas, escáner y sincronización */}
-      <div className="mb-3.5">
-        <button onClick={() => setMasAcciones(v => !v)} aria-expanded={masAcciones}
-          className="w-full min-h-[48px] px-3.5 rounded-xl border border-gypi-border bg-transparent text-gypi-text text-[15px] font-semibold cursor-pointer flex justify-between items-center">
-          <span>⋯ Más acciones</span>
-          <span aria-hidden="true" className="text-xs text-gypi-dim">{masAcciones ? "▲" : "▼"}</span>
-        </button>
+      <div className="mb-3">
+        <div className="flex gap-2">
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 OT, cliente u obra" aria-label="Buscar OT" className="g-input flex-1 min-w-0" />
+          <button onClick={() => setMasAcciones(v => !v)} aria-expanded={masAcciones} aria-label="Más acciones"
+            className="shrink-0 min-h-[48px] px-3 rounded-xl border border-gypi-border bg-transparent text-gypi-text text-[15px] font-semibold cursor-pointer">
+            ⋯ Más
+          </button>
+        </div>
         {masAcciones && (
           <div className="mt-2 flex flex-col gap-2">
             <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={onCsv} />
             <button onClick={() => fileRef.current?.click()} className="w-full min-h-[48px] rounded-xl border-none bg-gypi-cyan/15 text-gypi-cyan text-[15px] font-bold cursor-pointer">📤 Importar OT desde un CSV</button>
-            {/* Escáner de OT con la cámara */}
+            {/* Escáner de OT con la cámara: solo sirve con el registro de tareas
+                ("Iniciar tarea"), que GI no usa (auditoría 01/11) */}
             <div className="g-card !p-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-2">
+              {conRegistroTareas(empresa) && <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-gypi-dim">
                   <b className="text-gypi-text">Escanear OT con la cámara:</b> el operario escanea el código de la orden al iniciar una tarea.
                 </div>
@@ -522,7 +506,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
                 >
                   {empresa?.escaner_ot ? "Activado" : "Desactivado"}
                 </button>
-              </div>
+              </div>}
               <button onClick={imprimirEtiquetas} disabled={!filtrados.some(p => p.ot)} className="g-btn g-btn-secondary text-xs font-bold disabled:opacity-50">
                 Imprimir etiquetas QR de las OT de la lista
               </button>
@@ -590,20 +574,30 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           {filtrados.map(p => {
             const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
             const divColor = divInfo.color || AMBER;
+            // Avance, estado con la etapa y entrega a la vista (auditoría 01/11, PR 4)
+            const pct = p.estado !== "cerrado" ? pctEscaneo.get(String(p.ot))?.porcentaje ?? null : null;
+            const estado = estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct });
+            const entrega = textoEntrega(p, modoObjetivo);
+            const obra = [p.obra || p.proyecto, p.division && nombreDivisionOt(divisionesCtx || [], p.division)].filter(Boolean).join(" · ");
             return (
-              <button key={p.id} type="button" onClick={() => setAcciones(p)} aria-label={`OT ${p.ot}: ${p.cliente || p.proyecto || "sin cliente"}. Ver acciones`}
-                className={`g-card !p-3 w-full text-left cursor-pointer flex items-center gap-2.5 min-h-[64px] ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
-                <div className="min-w-[60px] h-10 rounded-[10px] flex items-center justify-center font-mono text-sm font-bold px-2" style={{ background: `${divColor}22`, color: divColor }}>{p.ot}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[15px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
-                  <div className="text-[13px] text-gypi-dim mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{lineaOt(p)}</div>
+              <button key={p.id} type="button" onClick={() => setAcciones(p)} aria-label={`OT ${p.ot}: ${p.cliente || p.proyecto || "sin cliente"}. ${estado.texto}${pct != null ? `, ${pct} %` : ""}. Ver acciones`}
+                className={`g-card !p-3.5 w-full text-left cursor-pointer flex flex-col gap-1 ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[15px] font-bold" style={{ color: divColor }}>{p.ot}</span>
+                  <Tag color={estado.tono === "amber" ? AMBER : estado.tono === "green" ? GREEN : "var(--color-text-muted)"}>{estado.texto}</Tag>
                 </div>
-                {verPrecios && precios.has(String(p.ot)) && <span className="text-xs font-bold text-gypi-dim whitespace-nowrap" aria-label={`Precio ${fmtPesos(precios.get(String(p.ot)))}`}>{fmtPesos(precios.get(String(p.ot)))}</span>}
-                {p.estado !== "cerrado" && pctEscaneo.get(String(p.ot))?.porcentaje != null && <Tag color={AMBER}>🧩 {pctEscaneo.get(String(p.ot)).porcentaje}%</Tag>}
-                {p.estado !== "cerrado" && otsEnCurso.has(String(p.ot)) && <Tag color={AMBER}>en curso</Tag>}
-                {p.estado === "cerrado" && <Tag color="var(--color-text-muted)">cerrado</Tag>}
-                {p.estado !== "cerrado" && p.terminado_planilla && <Tag color="var(--color-text-muted)">terminada en planilla</Tag>}
-                <span aria-hidden="true" className="text-gypi-mute text-lg">›</span>
+                <div className="text-[16px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
+                {obra && <div className="text-[13px] text-gypi-dim overflow-hidden text-ellipsis whitespace-nowrap">{obra}</div>}
+                {pct != null && (
+                  <progress max={100} value={Math.min(100, Math.max(0, pct))} aria-hidden="true"
+                    className={`w-full h-2 mt-1 rounded-full overflow-hidden appearance-none [&::-webkit-progress-bar]:bg-gypi-border [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-value]:rounded-full ${pct >= 100 ? "[&::-webkit-progress-value]:bg-gypi-green [&::-moz-progress-bar]:bg-gypi-green" : "[&::-webkit-progress-value]:bg-gypi-amber [&::-moz-progress-bar]:bg-gypi-amber"} bg-gypi-border`} />
+                )}
+                {(pct != null || entrega || (verPrecios && precios.has(String(p.ot)))) && (
+                  <div className="flex items-center justify-between gap-2 text-[13px] text-gypi-dim">
+                    <span>{pct != null ? `🧩 ${pct} %` : ""}{verPrecios && precios.has(String(p.ot)) ? `${pct != null ? " · " : ""}${fmtPesos(precios.get(String(p.ot)))}` : ""}</span>
+                    <span className="whitespace-nowrap">{entrega}</span>
+                  </div>
+                )}
               </button>
             );
           })}
