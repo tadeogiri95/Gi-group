@@ -626,3 +626,94 @@ test("pantalla — compra sugerida por Gypi: se agrega con cantidad y 🛒 Crear
   const it = pedidos.find((x) => x.body?.accion === "guardar").body.items[0];
   assert.deepEqual([it.seccion, it.texto, it.tipo, it.datos.cantidad, it.datos.pedido_id], ["compra", "Placa blanca 18", "urgente", 6, 77]);
 });
+
+// ─── Reportes y Panel (parte M5) ───
+
+const { resumenMinutas, tarjetaMinuta } = await import("../app/lib/minutasReporte.js");
+const ID3 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
+const ID4 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4";
+
+const minutasPeriodo = [
+  { id: 1, fecha: "2026-10-28", inicio: "08:45:00", cierre: "09:05:00", asistentes: ["Zacarías", "Tadeo"] },
+  { id: 2, fecha: "2026-10-29", inicio: "09:00:00", cierre: "09:30:00", asistentes: ["Zacarías"] },
+  { id: 3, fecha: "2026-10-30", inicio: "08:48:00", cierre: null, asistentes: ["Zacarías", "Tadeo"] },
+];
+const itemsPeriodo = [
+  { id: "a", minuta_id: 1, seccion: "prod_en_curso", ot: "7751", proyecto: "Cocinas", semaforo: "amarillo" },
+  { id: "b", minuta_id: 2, seccion: "prod_en_curso", ot: "7751", proyecto: "Cocinas", semaforo: "rojo" },
+  { id: "c", minuta_id: 3, seccion: "inst_en_curso", ot: "7495", semaforo: "amarillo" },
+  { id: "d", minuta_id: 3, seccion: "prod_en_curso", ot: "7000", semaforo: "verde" },
+  { id: "f1", minuta_id: 1, seccion: "foco", ot: "7751" }, { id: "f2", minuta_id: 2, seccion: "foco", ot: "7751" }, { id: "f3", minuta_id: 3, seccion: "foco", ot: "7495" },
+  // Cadena de un pendiente: 28 → 29 → 30, resuelto el 30
+  { id: ID1, minuta_id: 1, seccion: "inst_pendiente", ot: "7495", responsable: "ANGELI", fecha_objetivo: "2026-10-29" },
+  { id: ID2, minuta_id: 2, seccion: "inst_pendiente", ot: "7495", responsable: "ANGELI", viene_de: ID1, datos: { desde: "2026-10-28", veces: 2 } },
+  { id: ID3, minuta_id: 3, seccion: "inst_pendiente", ot: "7495", responsable: "ANGELI", viene_de: ID2, datos: { desde: "2026-10-28", veces: 3 }, resuelto_at: "2026-10-30T15:00:00Z" },
+  // Otro abierto y vencido
+  { id: ID4, minuta_id: 3, seccion: "postventa", ot: "7100", responsable: "Luciano", fecha_objetivo: "2026-10-29" },
+  { id: "fb1", minuta_id: 1, seccion: "feedback", area: "Diseño y técnica", tipo: "Error" },
+  { id: "fb2", minuta_id: 2, seccion: "feedback", area: "Diseño y técnica", tipo: "Error" },
+  { id: "fb3", minuta_id: 3, seccion: "feedback", area: "Producción", tipo: "Reconocimiento" },
+  { id: "c1", minuta_id: 2, seccion: "compra", tipo: "urgente", datos: { pedido_id: 5 } },
+  { id: "c2", minuta_id: 3, seccion: "compra", tipo: "normal", datos: {} },
+];
+
+test("reportes — reunión, contingencias, pendientes por responsable, feedback y compras", () => {
+  const r = resumenMinutas({ minutas: minutasPeriodo, items: itemsPeriodo, hoy: "2026-10-31" });
+  assert.deepEqual([r.reunion.cantidad, r.reunion.duracionPromedio, r.reunion.aHorario, r.reunion.conInicio], [3, 25, 2, 3]);
+  assert.deepEqual(r.reunion.asistencia.map((a) => [a.nombre, a.veces, a.pct]), [["Zacarías", 3, 100], ["Tadeo", 2, 67]]);
+  assert.deepEqual(r.otContingencias.map((o) => [o.ot, o.dias, o.diasRojo]), [["7751", 2, 1], ["7495", 1, 0]], "la verde no cuenta");
+  assert.deepEqual(r.otFoco.map((f) => [f.ot, f.veces]), [["7751", 2]]);
+  // La cadena cuenta una vez: resuelta en 2 días desde que apareció
+  assert.deepEqual(r.pendientes.map((p) => [p.responsable, p.abiertos, p.resueltos, p.vencidos, p.diasPromedio]), [["Luciano", 1, 0, 1, null], ["ANGELI", 0, 1, 0, 2]]);
+  assert.deepEqual(r.feedback.porArea.map((a) => [a.area, a.total, a.tipos]), [["Diseño y técnica", 2, { Error: 2 }], ["Producción", 1, { Reconocimiento: 1 }]]);
+  assert.deepEqual(r.compras, { total: 2, urgentes: 1, conPedido: 1 });
+});
+
+test("Panel — tarjeta de la minuta de hoy: estado y pendientes que vencen", () => {
+  const abiertos = [
+    { id: ID1, seccion: "inst_pendiente", fecha_objetivo: "2026-11-02" },
+    { id: ID2, seccion: "postventa", fecha_objetivo: "2026-10-30", datos: { gerencia: true } },
+    { id: ID3, seccion: "prod_en_curso", semaforo: "rojo" }, // el en curso no es pendiente
+  ];
+  assert.deepEqual(tarjetaMinuta({ minuta: null, abiertos, hoy: "2026-11-02" }), { estado: "sin_empezar", venceHoy: 1, vencidos: 1, abiertos: 2, gerencia: 1 });
+  // Ya pasó a la de hoy y se resolvió: no cuenta dos veces ni sigue abierto
+  const items = [{ id: ID4, seccion: "inst_pendiente", viene_de: ID1, fecha_objetivo: "2026-11-02", resuelto_at: "2026-11-02T12:00:00Z" }];
+  assert.deepEqual(tarjetaMinuta({ minuta: { estado: "cerrada" }, items, abiertos, hoy: "2026-11-02" }), { estado: "cerrada", venceHoy: 0, vencidos: 1, abiertos: 1, gerencia: 1 });
+});
+
+test("/api/minutas?reporte — solo gerencia, período válido, minutas con sus renglones", async () => {
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/minutas?"), respond: () => ({ status: 200, body: minutasPeriodo }) },
+    { match: (u) => u.includes("/rest/v1/minuta_items?") && u.includes("minuta_id=in.(1,2,3)"), respond: () => ({ status: 200, body: itemsPeriodo }) },
+  ]);
+  assert.equal((await api.GET(reqGet(await token("administrativo"), "?reporte=2026-10-26&hasta=2026-11-01"))).status, 403);
+  assert.equal((await api.GET(reqGet(await token(), "?reporte=2026-11-01&hasta=2026-10-26"))).status, 400);
+  assert.equal((await api.GET(reqGet(await token(), "?reporte=2026-01-01&hasta=2026-11-01"))).status, 400, "más de un trimestre");
+  const res = await api.GET(reqGet(await token(), "?reporte=2026-10-26&hasta=2026-11-01"));
+  assert.equal(res.status, 200);
+  const j = await res.json();
+  assert.equal(j.minutas.length, 3);
+  assert.equal(j.items.length, itemsPeriodo.length);
+});
+
+test("Reportes → 📝 Minutas — muestra el resumen del período", async () => {
+  const { default: MinutasReporteTab } = await import("../app/components/MinutasReporteTab.jsx");
+  const pedidos = [];
+  global.fetch = async (url) => {
+    pedidos.push(String(url));
+    return new Response(JSON.stringify({ ok: true, minutas: minutasPeriodo, items: itemsPeriodo }), { status: 200 });
+  };
+  render(<MinutasReporteTab fechaDesde="2026-10-26" fechaHasta="2026-11-01" labelPeriodo="la semana del 26/10" />);
+  const reunion = await screen.findByRole("region", { name: "Reunión" });
+  assert.ok(within(reunion).getByText("25 min"));
+  assert.ok(within(reunion).getByText("2 de 3"));
+  const cont = screen.getByRole("region", { name: "OT con más contingencias" });
+  assert.ok(within(cont).getByText("🔴 1 día en rojo"));
+  assert.ok(within(cont).getByText(/Se repiten en el foco: OT 7751 \(2 veces\)/));
+  const pend = screen.getByRole("region", { name: "Pendientes por responsable" });
+  assert.ok(within(pend).getByText(/1 resuelto · tarda 2 días en promedio/));
+  assert.ok(pedidos[0].includes("/api/minutas?reporte=2026-10-26&hasta=2026-11-01"));
+});

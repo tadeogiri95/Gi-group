@@ -18,6 +18,8 @@
 //         y no pasó todavía a una minuta posterior
 //   GET ?ot=X              → los renglones de esa OT en todas las minutas (Detalle de OT)
 //   GET ?feedback=AAAA-MM-DD → el feedback desde ese día (revisión del jueves)
+//   GET ?reporte=AAAA-MM-DD&hasta=AAAA-MM-DD → las minutas del período con
+//                             sus renglones (reportes consolidados, parte M5)
 //   POST { accion: "resolver", id, resuelto } → ✓ Resuelto (o revisado); se
 //         puede aunque la minuta esté cerrada: es el seguimiento
 // Los pendientes de instalación necesitan responsable y fecha objetivo.
@@ -26,7 +28,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { minutasBody } from "../../lib/schemas";
-import { sbGet, sbPost, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPost, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpers";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, sigueAbierto } from "../../lib/minutas";
 import { precargaMinuta } from "../../lib/minutasPrecargaServidor";
@@ -34,6 +36,8 @@ import { logger } from "../../lib/logger";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
 const HISTORIAL = 90;
+// Reportes: hasta un trimestre de una vez
+const DIAS_REPORTE = 100;
 // Hasta cuántos días atrás se busca lo que sigue abierto
 const DIAS_SEGUIMIENTO = 30;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -100,6 +104,16 @@ export async function GET(request) {
         const minutas = ids.length ? (await sbGet(`minutas?empresa_id=eq.${e}&id=in.(${ids.join(",")})&select=id,fecha`, { sesion })) || [] : [];
         const fechaDe = new Map(minutas.map((m) => [m.id, m.fecha]));
         return json({ ok: true, items: items.map((it) => ({ ...it, fecha: fechaDe.get(it.minuta_id) || null })).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))) });
+      }
+      const reporte = q.get("reporte");
+      if (reporte) {
+        const hasta = q.get("hasta") || reporte;
+        if (!FECHA.test(reporte) || !FECHA.test(hasta) || hasta < reporte) return json({ error: "Período inválido" }, 400);
+        if (Date.parse(hasta) - Date.parse(reporte) > DIAS_REPORTE * 86400000) return json({ error: `El período puede ser de hasta ${DIAS_REPORTE} días` }, 400);
+        const minutas = (await sbGet(`minutas?empresa_id=eq.${e}&fecha=gte.${reporte}&fecha=lte.${hasta}&select=id,fecha,inicio,cierre,estado,modera,registra,asistentes&order=fecha.asc`, { sesion })) || [];
+        if (!minutas.length) return json({ ok: true, minutas: [], items: [] });
+        const { data: items } = await sbGetAll(`minuta_items?empresa_id=eq.${e}&minuta_id=in.(${minutas.map((m) => m.id).join(",")})&select=id,minuta_id,seccion,ot,proyecto,cliente,semaforo,responsable,fecha_objetivo,area,tipo,datos,viene_de,resuelto_at&order=id.asc`, { sesion, maxFilas: 20000 });
+        return json({ ok: true, minutas, items: items || [] });
       }
       const feedback = q.get("feedback");
       if (feedback) {
