@@ -19,21 +19,17 @@ const vacio = () => ({ data: [] });
 const DIA = 86400000;
 
 /**
+ * Lo que hace falta para el plan vivo de una empresa (lo usan el informe de
+ * producción y los avisos de fin de proceso). `hoy`: desde cuándo se rearma.
  * @param {string} empresaId
- * @param {"dia"|"semana"|"mes"} tipo
- * @param {string} fecha un día del período (AAAA-MM-DD, Argentina)
- * @param {{ sesion?: object }} [opts]
+ * @param {{ sesion?: object, hoy?: string }} [opts]
  */
-export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) {
+export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {}) {
   const e = empresaId;
   const opts = { sesion };
-  const periodo = periodoDe(tipo, fecha);
-  const hoy = hoyArg();
-  // Los escaneos desde el primer día del período (los de después corrigen el % al final)
-  const desdeTs = encodeURIComponent(new Date(Date.parse(`${periodo.desde}T00:00:00-03:00`)).toISOString());
   const limite = hoyArg(new Date(Date.now() - 183 * DIA));
   const operarios = (extra) => sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo${extra}`, { ...opts, maxFilas: 5000 });
-  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, pasos, avance, mods, ajustes, manual, retrabajos] = await Promise.all([
+  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, avance, mods, ajustes, retrabajos] = await Promise.all([
     // También las cerradas: una OT que se terminó en el período cuenta
     sbGetAll(`proyectos?empresa_id=eq.${e}&select=*&order=id.asc`, { ...opts, maxFilas: 20000 }),
     sbGetAll(`etapas?empresa_id=eq.${e}&activa=eq.true&order=orden.asc`, opts).catch(vacio),
@@ -43,12 +39,10 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     sbGetAll(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,dias_extra,confirmado_at&order=desde.asc`, opts).catch(vacio),
     operarios(",es_instalador,puesto_planta").catch(() => operarios(",es_instalador")).catch(() => operarios("")).catch(vacio),
     sbGetAll(`v_avance_piezas?empresa_id=eq.${e}&select=ot,etapa,total,pasaron,primer_paso,ultimo_paso`, { ...opts, maxFilas: 20000 }).catch(vacio),
-    sbGetAll(`pasos_pieza?empresa_id=eq.${e}&requerida=eq.true&created_at=gte.${desdeTs}&select=ot,etapa,created_at&order=id.asc`, { ...opts, maxFilas: 100000 }).catch(vacio),
     sbGetAll(`avance_etapas?empresa_id=eq.${e}&select=ot,etapa,estado,terminada_at,aprobada_at`, opts).catch(vacio),
     sbGetAll(`piezas_ot?empresa_id=eq.${e}&modulo=not.is.null&select=ot,modulo`, { ...opts, maxFilas: 50000 }).catch(vacio),
-    // Sin la 145 no hay "Faltan X h"; sin la 146 no hay historial del checkeo manual
+    // Sin la 145 no hay "Faltan X h"
     sbGetAll(`ajustes_tiempo_ot?empresa_id=eq.${e}&tipo=eq.faltan&select=ot,etapa,tipo,horas,pendiente,created_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
-    sbGetAll(`avance_manual_historial?empresa_id=eq.${e}&select=ot,etapa,pct,created_at&order=created_at.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
     // Sin la 147 no hay retrabajo; sin la 148 no hay anulado_at
     sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at,anulado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 })
       .catch(() => sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }))
@@ -62,7 +56,6 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
   const vigentes = itemsVigentes(conItems);
   const cfgValor = cfg.data[0]?.valor || null;
   const etapasCodigo = etapasDelPlan(cfgValor, etapas.data, divisiones.data);
-  const todas = new Map(proyectos.data.map((p) => [String(p.ot), p]));
   const abiertas = new Map(proyectos.data.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p]));
   const conManual = piezasConManual(piezas.data, proyectos.data);
   const vivo = planVivo(vigentes, {
@@ -74,13 +67,37 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     manual: faltanManual(ajustes.data), retrabajo: retrabajoPendiente(retrabajos.data),
   });
   for (const [ot] of vivo) if (!abiertas.has(ot)) vivo.delete(ot);
+  return { vivo, vigentes, etapasCodigo, abiertas, cfgValor, proyectos: proyectos.data, divisiones: divisiones.data,
+    empleados: emp.data, piezas: piezas.data, avance: avance.data, retrabajos: retrabajos.data };
+}
+
+/**
+ * @param {string} empresaId
+ * @param {"dia"|"semana"|"mes"} tipo
+ * @param {string} fecha un día del período (AAAA-MM-DD, Argentina)
+ * @param {{ sesion?: object }} [opts]
+ */
+export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) {
+  const e = empresaId;
+  const opts = { sesion };
+  const periodo = periodoDe(tipo, fecha);
+  // Los escaneos desde el primer día del período (los de después corrigen el % al final)
+  const desdeTs = encodeURIComponent(new Date(Date.parse(`${periodo.desde}T00:00:00-03:00`)).toISOString());
+  const [base, pasos, manual] = await Promise.all([
+    cargarPlanVivo(e, { sesion }),
+    sbGetAll(`pasos_pieza?empresa_id=eq.${e}&requerida=eq.true&created_at=gte.${desdeTs}&select=ot,etapa,created_at&order=id.asc`, { ...opts, maxFilas: 100000 }).catch(vacio),
+    // Sin la 146 no hay historial del checkeo manual
+    sbGetAll(`avance_manual_historial?empresa_id=eq.${e}&select=ot,etapa,pct,created_at&order=created_at.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
+  ]);
+  const { vivo, vigentes, etapasCodigo, cfgValor, proyectos, divisiones, empleados, piezas, avance, retrabajos } = base;
+  const todas = new Map(proyectos.map((p) => [String(p.ot), p]));
   return calcularInforme({
     periodo, items: vigentes, etapasCodigo,
-    piezas: piezas.data, pasos: pasos.data, manual: manual.data, avance: avance.data,
-    proyectos: todas, vivo, retrabajos: retrabajos.data,
+    piezas, pasos: pasos.data, manual: manual.data, avance,
+    proyectos: todas, vivo, retrabajos,
     // Lead time en horas de trabajo, con el horario de la planta
-    leadTime: leadTimeProcesos({ etapasCodigo, piezas: piezas.data, manual: manual.data, avance: avance.data, proyectos: proyectos.data,
-      ventanas: ventanasDeGrilla(emp.data, divisiones.data, cfgValor) }),
+    leadTime: leadTimeProcesos({ etapasCodigo, piezas, manual: manual.data, avance, proyectos,
+      ventanas: ventanasDeGrilla(empleados, divisiones, cfgValor) }),
   });
 }
 
