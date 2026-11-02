@@ -108,7 +108,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
                 <BarrasOt o={o} />
                 <div className="text-[12px] text-gypi-dim">
                   Planificado {coma(o.planificado)} % · hecho {coma(o.hecho)} % · va {coma(o.alFinal)} % de la OT
-                  {o.tarde && <span className="text-gypi-red font-bold"> · ⚠ {o.diasTarde} d después de su semana</span>}
+                  {o.tarde && <span className="text-gypi-red font-bold"> · ⚠ {o.diasTarde} d después de su fecha límite</span>}
                   {o.diasCorrido > 0 && <span className="text-gypi-amber-ink font-bold"> · ↪ se corrió {o.diasCorrido} d</span>}
                   {o.fueraDelPlan && <span className="text-gypi-amber-ink font-bold"> · 🆕 fuera del plan{o.enOtroPlan ? " (planificada otro día)" : ""}</span>}
                   {o.retrabajo > 0 && <span className="text-gypi-red font-bold"> · 🔁 {coma(o.retrabajo)} h de retrabajo</span>}

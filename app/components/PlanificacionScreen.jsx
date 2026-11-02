@@ -51,6 +51,8 @@ import {
 import { TIPOS_PROYECTO, TIPO_GLOBAL, tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { Chip } from "./ui";
 import { errorInstalacion } from "../lib/instalacionPlan";
+import { limiteProduccion } from "../lib/planInstalacion";
+import { feriadosDe } from "../lib/secuencia";
 
 const VISTAS = [
   { id: "carga", label: "📊 Carga" },
@@ -264,7 +266,11 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const capacidadAnio = useMemo(() => capacidadPlanta(operarios, diasDesde(hoy, 366)), [operarios, hoy]);
   // Solo las OT tildadas, en el orden de prioridad (un solo criterio, 29/10)
   const otsPlan = useMemo(() => ots.filter((p) => elegidas?.has(p.id)), [ots, elegidas]);
-  const trabajos = useMemo(() => otsPlan.map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: p.fecha_objetivo || null })), [otsPlan, horas]);
+  // Fecha límite de producción (parte 45): la semana menos los días de instalación
+  const limites = useMemo(() => new Map(ots.map((p) => [p.id, limiteProduccion(p, params, {
+    modulosEtiquetas: datos?.modulos.get(String(p.ot)) || null, feriados: feriadosDe(params),
+  })?.limite || null])), [ots, params, datos]);
+  const trabajos = useMemo(() => otsPlan.map((p) => ({ ...horas.get(p.id), id: p.id, objetivo: limites.get(p.id) || null })), [otsPlan, horas, limites]);
   // El mismo cálculo que el Gantt de Proyectos (Tadeo, 29/10): horas de cada
   // día de la grilla de horarios y los armadores según los puestos
   const horasSemana = useMemo(() => horasSemanaDeGrilla(datos?.empleados, divisiones, params), [datos, divisiones, params]);
@@ -538,13 +544,13 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         </div>
         <div className="text-xs text-gypi-dim mb-2">
           {base === "objetivo"
-            ? "Cada OT tiene que terminar en su semana: si no llega, Gypi suma horas extra antes (primero sábados, después domingos) y te dice cuántas hacen falta por semana. El orden de las OT no cambia."
-            : "Solo el horario normal: cada OT sale con la fecha en que terminaría, y se marcan las que terminan después de su semana. El orden de las OT no cambia."}
+            ? "Cada OT tiene que terminar antes de su fecha límite (la semana de entrega menos los días de instalación): si no llega, Gypi suma horas extra antes (primero sábados, después domingos) y te dice cuántas hacen falta por semana. El orden de las OT no cambia."
+            : "Solo el horario normal: cada OT sale con la fecha en que terminaría, y se marcan las que terminan después de su fecha límite. El orden de las OT no cambia."}
         </div>
         {plan && plan.desde && <ResumenHorizonte plan={plan} base={base} modo={modo} />}
         {plan && (
           <>
-            <FinDeCadaOt plan={plan} ots={otsPlan} />
+            <FinDeCadaOt plan={plan} ots={otsPlan} limites={limites} />
             {!faltaMigracion && plan.segmentos.length > 0 && (
               <GuardarPlan cuerpo={(estado) => cuerpoPlan({ per: { tipo: "horizonte", desde: plan.desde, hasta: plan.hasta }, plan, division, ots: otsPlan, estado })}
                 confirmado={guardado?.estado === "confirmado"} onGuardado={setGuardado} onFaltaMigracion={() => setFaltaMigracion(true)} />
@@ -670,10 +676,10 @@ function TipoOt({ proyecto, onCambiar }) {
 const nombreDia = (f) => new Date(`${f}T00:00:00Z`).toLocaleDateString("es-AR", { weekday: "short", timeZone: "UTC" });
 
 function textoTarde(t) {
-  const semana = t.objetivo ? `su semana terminó el ${fechaCorta(t.objetivo)}` : "";
+  const semana = t.objetivo ? `su fecha límite era el ${fechaCorta(t.objetivo)}` : "";
   if (t.motivo === "sin_capacidad") return "no entra en el próximo año con la gente cargada";
   if (t.motivo === "atrasada") return `${semana}${t.fin ? `; termina el ${fechaCorta(t.fin)}` : ""}`;
-  const hasta = `semana hasta el ${fechaCorta(t.objetivo)}`;
+  const hasta = `fecha límite el ${fechaCorta(t.objetivo)}`;
   if (t.motivo === "no_llega") return `${hasta}; ni con sábados y domingos llega: termina el ${fechaCorta(t.fin)}`;
   return `${hasta}; termina el ${fechaCorta(t.fin)}`;
 }
@@ -704,12 +710,12 @@ function ResumenHorizonte({ plan, base, modo }) {
       )}
       {!plan.tarde.length && plan.segmentos.length > 0 && (
         <div className="font-bold text-gypi-green mb-2">
-          {base === "capacidad" ? "✅ Con el horario normal todas las OT llegan a su semana." : plan.diasExtra.length ? "✅ Con esas horas extra todas las OT llegan a su semana." : "✅ Todas las OT llegan a su semana sin horas extra."}
+          {base === "capacidad" ? "✅ Con el horario normal todas las OT llegan a su fecha límite." : plan.diasExtra.length ? "✅ Con esas horas extra todas las OT llegan a su fecha límite." : "✅ Todas las OT llegan a su fecha límite sin horas extra."}
         </div>
       )}
       {plan.tarde.length > 0 && (
-        <div className="mb-2" aria-label="OT que no llegan a su semana">
-          <div className="font-bold text-gypi-red mb-1">{base === "capacidad" ? "🔴 Terminan después de su semana" : "🔴 No llegan a su semana"}</div>
+        <div className="mb-2" aria-label="OT que no llegan a su fecha límite">
+          <div className="font-bold text-gypi-red mb-1">{base === "capacidad" ? "🔴 Terminan después de su fecha límite" : "🔴 No llegan a su fecha límite"}</div>
           <ul className="list-none m-0 p-0">
             {plan.tarde.map((t) => <li key={t.id} className="text-gypi-red-ink">{t.ot}: {textoTarde(t)}</li>)}
           </ul>
@@ -719,7 +725,7 @@ function ResumenHorizonte({ plan, base, modo }) {
   );
 }
 
-function FinDeCadaOt({ plan, ots }) {
+function FinDeCadaOt({ plan, ots, limites }) {
   const fin = (id) => plan.finPorOt.get(id);
   const pendiente = new Set(plan.pendientes.map((p) => p.id));
   return (
@@ -727,7 +733,7 @@ function FinDeCadaOt({ plan, ots }) {
       {ots.filter((p) => fin(p.id)).map((p) => (
         pendiente.has(p.id)
           ? <li key={p.id}>{p.ot} avanza hasta el {fechaCorta(fin(p.id))} y no termina en el próximo año</li>
-          : <li key={p.id}>{p.ot} termina el {fechaCorta(fin(p.id))}{p.fecha_objetivo && fin(p.id) > p.fecha_objetivo ? ` · después de su semana (${fechaCorta(p.fecha_objetivo)})` : ""}</li>
+          : <li key={p.id}>{p.ot} termina el {fechaCorta(fin(p.id))}{limites.get(p.id) && fin(p.id) > limites.get(p.id) ? ` · después de su fecha límite (${fechaCorta(limites.get(p.id))})` : ""}</li>
       ))}
     </ul>
   );

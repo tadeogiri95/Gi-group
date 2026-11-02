@@ -21,6 +21,7 @@ import { diasEntre } from "./semanaObjetivo";
 import { porcentajeOt } from "./panelMantenimiento";
 import { HORAS_SEMANA_POR_DEFECTO, MAQUINAS_PLAN, calendario, duracion, feriadosDe, secuenciar } from "./secuencia";
 import { horasManuales } from "./ajustesTiempo";
+import { limiteProduccion } from "./planInstalacion";
 
 export { HORAS_SEMANA_POR_DEFECTO };
 const DIA_MS = 86400000;
@@ -198,7 +199,8 @@ const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
  * Cada proceso se dibuja desde el día en que arrancó (primer escaneo; o el
  * día del plan si tiene avance sin escaneo) hasta que termina.
  * Dos alertas distintas:
- *  - tarde: el proceso (o la OT) termina después de su semana objetivo;
+ *  - tarde: el proceso (o la OT) termina después de su fecha límite de
+ *    producción (la semana menos los días de instalación, parte 45);
  *  - corrido: termina después de lo que decía el plan confirmado.
  * Devuelve lo mismo que procesosPlan, con además, por OT: tarde, diasTarde,
  * diasCorrido, finConfirmado, objetivo; y por proceso: tarde, diasTarde,
@@ -282,7 +284,10 @@ export function planVivo(items = [], opciones) {
 
   for (const o of ots) {
     const c = confirmado.get(o.ot);
-    const objetivo = proyectos.get(o.ot)?.fecha_objetivo || null;
+    // Fecha límite de producción (parte 45): la semana es la entrega ya
+    // instalada, así que producción tiene que terminar antes de instalar
+    const lim = limiteProduccion(proyectos.get(o.ot), params, { modulosEtiquetas: modulos.get(o.ot) || null, feriados: feriadosDe(params) });
+    const objetivo = lim?.limite || null;
     const porEtapa = new Map((tramos.get(o.ot) || []).map((t) => [t.etapa, t]));
     const procesos = [];
     for (const { id, nombre } of ETAPAS_PLAN) {
@@ -347,6 +352,8 @@ export function planVivo(items = [], opciones) {
       atrasados: procesos.filter((q) => q.tarde),
       pocoMargen: procesos.filter((q) => q.margen),
       objetivo,
+      entrega: lim?.entrega || null,
+      diasInstalacion: lim?.dias ?? null,
       tarde: diasTarde > 0,
       diasTarde,
       finConfirmado: c?.fin || null,

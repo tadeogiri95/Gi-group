@@ -752,7 +752,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
             <Tag color={otAtrasadasLista.length ? "var(--color-red)" : "var(--color-green)"}>{otAtrasadasLista.length}</Tag>
           </div>
           {otAtrasadasLista.length === 0 ? (
-            <p className="m-0 text-[13px] text-gypi-dim">✅ Todas las OT del plan llegan a su semana y ninguna se corrió del plan confirmado.</p>
+            <p className="m-0 text-[13px] text-gypi-dim">✅ Todas las OT del plan llegan a su fecha límite y ninguna se corrió del plan confirmado.</p>
           ) : (
             <div className="max-h-[240px] overflow-y-auto">
               {otAtrasadasLista.map(({ fila: f, dias, corrido, porcentaje, procesos }) => (
@@ -766,7 +766,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                     </div>
                   </div>
                   <span className="shrink-0 flex flex-col items-end gap-0.5">
-                    {dias > 0 && <span className={`px-2 py-1 rounded-lg text-[12px] font-bold ${TONO.mal.fondo} ${TONO.mal.txt}`} title="Días después de su semana">⚠ {textoDias(dias)}</span>}
+                    {dias > 0 && <span className={`px-2 py-1 rounded-lg text-[12px] font-bold ${TONO.mal.fondo} ${TONO.mal.txt}`} title="Días después de su fecha límite (la semana de entrega menos la instalación)">⚠ {textoDias(dias)}</span>}
                     {corrido > 0 && <span className="px-2 py-1 rounded-lg text-[12px] font-bold bg-gypi-amber/15 text-gypi-amber-ink" title="Días que se corrió del plan confirmado">↪ +{corrido} d</span>}
                   </span>
                 </button>
