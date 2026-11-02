@@ -632,8 +632,8 @@ export default function ReportesScreen({ grupo = null }) {
         {ver("personal") && !esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </FilaDeslizable>
 
-      {/* Periodo (el reporte del día y el informe de producción tienen el suyo) */}
-      {tab !== "dia" && tab !== "informe" && <>
+      {/* Periodo (el reporte del día, el informe de producción y el de minutas tienen el suyo) */}
+      {tab !== "dia" && tab !== "informe" && tab !== "minutas" && <>
       <div className="flex gap-1.5 mb-2.5">
         <Chip active={periodo === "semana"} onClick={() => setPeriodo("semana")} color={MARCA}>Por semana</Chip>
         <Chip active={periodo === "mes"} onClick={() => setPeriodo("mes")} color={MARCA}>Por mes</Chip>
@@ -649,9 +649,9 @@ export default function ReportesScreen({ grupo = null }) {
       </div>
 
       {/* Filtro división */}
-      {tab !== "minutas" && <FilaDeslizable role="group" aria-label="División" activa={division} className="gap-[5px] mb-3.5 pb-1">
+      <FilaDeslizable role="group" aria-label="División" activa={division} className="gap-[5px] mb-3.5 pb-1">
         {DIVISIONES.map(d => <Chip key={d.id} active={division === d.id} onClick={() => setDivision(d.id)} color={d.color || MARCA}>{d.label}</Chip>)}
-      </FilaDeslizable>}
+      </FilaDeslizable>
       </>}
 
       {tab === "dia" ? (
@@ -659,7 +659,7 @@ export default function ReportesScreen({ grupo = null }) {
       ) : tab === "informe" ? (
         <InformeProduccionTab empresa={empresa} />
       ) : tab === "minutas" ? (
-        <MinutasReporteTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} />
+        <MinutasReporteTab empresa={empresa} />
       ) : loading ? (
         <Puntos />
       ) : tab === "produccion" ? (

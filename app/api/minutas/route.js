@@ -19,7 +19,8 @@
 //   GET ?ot=X              → los renglones de esa OT en todas las minutas (Detalle de OT)
 //   GET ?feedback=AAAA-MM-DD → el feedback desde ese día (revisión del jueves)
 //   GET ?reporte=AAAA-MM-DD&hasta=AAAA-MM-DD → las minutas del período con
-//                             sus renglones (reportes consolidados, parte M5)
+//                             sus renglones y el precio de las OT terminadas
+//                             (informe consolidado del día, semana o mes)
 //   POST { accion: "resolver", id, resuelto } → ✓ Resuelto (o revisado); se
 //         puede aunque la minuta esté cerrada: es el seguimiento
 // Los pendientes de instalación necesitan responsable y fecha objetivo.
@@ -69,6 +70,23 @@ async function renglonesDe(sesion, minutaId) {
   return (await sbGet(`minuta_items?empresa_id=eq.${sesion.empresa_id}&minuta_id=eq.${minutaId}&select=*&order=seccion.asc,orden.asc`, { sesion })) || [];
 }
 
+/**
+ * Precio de las OT terminadas del informe (migración 142; solo lo lee
+ * gerencia, que es quien ve las minutas). Sin la migración, sin precios.
+ */
+async function preciosDe(sesion, items) {
+  const ots = [...new Set(items.filter((it) => (it.seccion === "prod_terminada" || it.seccion === "inst_terminada") && it.ot).map((it) => String(it.ot)))];
+  if (!ots.length) return {};
+  try {
+    const lista = ots.map((o) => `"${o.replace(/["\\]/g, "")}"`).join(",");
+    const filas = (await sbGet(`precios_ot?empresa_id=eq.${sesion.empresa_id}&ot=in.(${encodeURIComponent(lista)})&precio=not.is.null&select=ot,precio`, { sesion })) || [];
+    return Object.fromEntries(filas.map((f) => [String(f.ot), Number(f.precio)]));
+  } catch (err) {
+    logger.warn("[minutas] sin precios de OT", err);
+    return {};
+  }
+}
+
 export async function GET(request) {
   try {
     const { sesion, response } = await entrar(request);
@@ -112,8 +130,8 @@ export async function GET(request) {
         if (Date.parse(hasta) - Date.parse(reporte) > DIAS_REPORTE * 86400000) return json({ error: `El período puede ser de hasta ${DIAS_REPORTE} días` }, 400);
         const minutas = (await sbGet(`minutas?empresa_id=eq.${e}&fecha=gte.${reporte}&fecha=lte.${hasta}&select=id,fecha,inicio,cierre,estado,modera,registra,asistentes&order=fecha.asc`, { sesion })) || [];
         if (!minutas.length) return json({ ok: true, minutas: [], items: [] });
-        const { data: items } = await sbGetAll(`minuta_items?empresa_id=eq.${e}&minuta_id=in.(${minutas.map((m) => m.id).join(",")})&select=id,minuta_id,seccion,ot,proyecto,cliente,semaforo,responsable,fecha_objetivo,area,tipo,datos,viene_de,resuelto_at&order=id.asc`, { sesion, maxFilas: 20000 });
-        return json({ ok: true, minutas, items: items || [] });
+        const { data: items } = await sbGetAll(`minuta_items?empresa_id=eq.${e}&minuta_id=in.(${minutas.map((m) => m.id).join(",")})&select=id,minuta_id,seccion,orden,ot,proyecto,cliente,semaforo,texto,responsable,fecha_objetivo,area,tipo,datos,viene_de,resuelto_at&order=id.asc`, { sesion, maxFilas: 20000 });
+        return json({ ok: true, minutas, items: items || [], precios: await preciosDe(sesion, items || []) });
       }
       const feedback = q.get("feedback");
       if (feedback) {
