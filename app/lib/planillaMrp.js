@@ -16,7 +16,7 @@
 // "GY-OC-<n>" y se rehacen en cada vuelta; las cargadas a mano no se tocan.
 import crypto from "crypto";
 import { CLAVE_PLANILLA_MRP } from "./movimientosStock";
-import { ESTADOS_OC, pendienteItem } from "./ordenesCompra";
+import { ESTADOS_OC, cantidadEnStock, pendienteItem } from "./ordenesCompra";
 
 export { CLAVE_PLANILLA_MRP };
 
@@ -112,7 +112,8 @@ export function ordenesParaPlanilla(ordenes, items, timezone) {
         sku,
         nombre: it.descripcion || sku,
         proveedor: oc.proveedor_nombre || "",
-        cantidad: falta,
+        // La planilla lleva el stock en la unidad del artículo (152)
+        cantidad: cantidadEnStock(falta, it),
         fecha_oc: fechaEnZona(oc.enviada_at || oc.created_at, timezone),
         fecha_prometida: oc.fecha_prometida || "",
         numero: `GY-OC-${oc.numero}`,

@@ -384,6 +384,7 @@ const datosPedido = {
 };
 const monedaOc = z.enum(["ARS", "USD"]);
 const cantidadOc = z.number().finite().positive().max(1e10);
+const factorOc = z.number().finite().positive().max(1e6);
 const precioOc = z.number().finite().min(0).max(1e12).nullable().optional().transform((v) => v ?? null);
 export const comprasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("proveedor_guardar"), id: idCompras.optional(), ...datosProveedor }).strict(),
@@ -417,6 +418,9 @@ export const comprasBody = z.discriminatedUnion("accion", [
       unidad: textoSuelto(20),
       cantidad: cantidadOc,
       precio_unitario: precioOc,
+      // Unidad de compra distinta de la del stock (152): cuántas de stock trae cada una
+      factor: factorOc.optional().default(1),
+      unidad_stock: textoSuelto(20),
       pedido_id: idCompras.nullable().optional().transform((v) => v ?? null),
       ot: otSuelto.nullable().optional().transform((v) => v || null),
     }).strict()).min(1).max(200),
@@ -431,6 +435,10 @@ export const comprasBody = z.discriminatedUnion("accion", [
       id: idCompras, cantidad: cantidadOc, precio_unitario: precioOc,
       // Observación del renglón para el proveedor (120); undefined = no se toca
       observacion: z.string().trim().max(300).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
+      // Cambio de unidad de compra (152); undefined = no se toca
+      unidad: z.string().trim().max(20).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
+      factor: factorOc.optional(),
+      unidad_stock: z.string().trim().max(20).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
     }).strict()).max(200).optional(),
     quitar: z.array(idCompras).max(200).optional(),
   }).strict(),

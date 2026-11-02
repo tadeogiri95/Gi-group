@@ -15,8 +15,10 @@ import {
   ESTADOS_OC, ESTADOS_OC_ABIERTA, ESTADOS_OC_CERRABLE, MONEDAS, pendienteItem, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
   ALICUOTAS_IVA, IVA_POR_DEFECTO, cantidadFacturaInicial, renglonFactura, totalesFactura,
   ocACotizar, estadoOcVisible, cotizacionMasBarata, textoCotizacion,
+  factorItem, convertirUnidad, equivalenciaStock,
 } from "../lib/ordenesCompra";
 import { AVISO_MIGRACION_114 } from "./AComprar";
+import UnidadCompra from "./UnidadCompra";
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 const fechaCorta = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
@@ -343,7 +345,11 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
         moneda: oc.moneda,
         fecha_prometida: oc.fecha_prometida || "",
         notas: oc.notas || "",
-        renglones: Object.fromEntries((its || []).map((it) => [it.id, { cantidad: numTexto(it.cantidad), precio: numTexto(it.precio_unitario), obs: it.observacion || "" }])),
+        renglones: Object.fromEntries((its || []).map((it) => [it.id, {
+          cantidad: numTexto(it.cantidad), precio: numTexto(it.precio_unitario), obs: it.observacion || "",
+          // Unidad de compra (152); la del stock es unidad_stock, o la misma si no se cambió
+          unidad: it.unidad || null, factor: factorItem(it), unidad_base: it.unidad_stock || it.unidad || null,
+        }])),
         quitar: new Set(),
       });
     } catch {
@@ -361,7 +367,10 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
       if (!r) return it;
       const cantidad = leerCantidadMovimiento(r.cantidad) ?? it.cantidad;
       const precio = r.precio.trim() ? leerImporte(r.precio) : null;
-      return { ...it, cantidad, precio_unitario: r.precio.trim() ? precio ?? it.precio_unitario : null, observacion: r.obs.trim() || null };
+      return {
+        ...it, cantidad, precio_unitario: r.precio.trim() ? precio ?? it.precio_unitario : null, observacion: r.obs.trim() || null,
+        unidad: r.unidad, factor: r.factor, unidad_stock: r.factor !== 1 || r.unidad !== r.unidad_base ? r.unidad_base : null,
+      };
     }), [items, form]);
   const ocVista = form ? { ...oc, moneda: form.moneda, fecha_prometida: form.fecha_prometida || null, notas: form.notas.trim() || null } : oc;
   const total = totalOrden(vista);
@@ -387,8 +396,12 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
         if (r.precio.trim() && precio === null) { setError(`Revisá el precio de ${it.descripcion}`); return false; }
         const observacion = r.obs.trim() || null;
         const cambioObs = observacion !== (it.observacion || null);
-        if (cambioObs || cantidad !== Number(it.cantidad) || precio !== (it.precio_unitario === null ? null : Number(it.precio_unitario))) {
-          renglones.push({ id: it.id, cantidad, precio_unitario: precio, ...(cambioObs ? { observacion } : {}) });
+        const cambioUnidad = r.factor !== factorItem(it) || (r.unidad || null) !== (it.unidad || null);
+        const unidadNueva = cambioUnidad
+          ? { unidad: r.unidad, factor: r.factor, unidad_stock: r.factor !== 1 || r.unidad !== r.unidad_base ? r.unidad_base : null }
+          : {};
+        if (cambioObs || cambioUnidad || cantidad !== Number(it.cantidad) || precio !== (it.precio_unitario === null ? null : Number(it.precio_unitario))) {
+          renglones.push({ id: it.id, cantidad, precio_unitario: precio, ...(cambioObs ? { observacion } : {}), ...unidadNueva });
         }
       }
       if (form.quitar.size >= items.length) { setError("La OC tiene que tener al menos un renglón. Si no va, anulala."); return false; }
@@ -476,27 +489,44 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
                   <>
                     <div className="flex gap-2 mt-1 items-end">
                       <div className="flex-1 min-w-0">
-                        <label className="g-label" htmlFor={`oc-cant-${it.id}`}>Cantidad{it.unidad ? ` (${it.unidad})` : ""}</label>
+                        <label className="g-label" htmlFor={`oc-cant-${it.id}`}>Cantidad{form.renglones[it.id].unidad ? ` (${form.renglones[it.id].unidad})` : ""}</label>
                         <input id={`oc-cant-${it.id}`} aria-label={`Cantidad de ${it.descripcion}`} className="g-input" inputMode="decimal" value={form.renglones[it.id].cantidad}
                           onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], cantidad: e.target.value } } }))} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <label className="g-label" htmlFor={`oc-precio-${it.id}`}>Precio unitario {form.moneda === "USD" ? "US$" : "$"} sin IVA</label>
+                        <label className="g-label" htmlFor={`oc-precio-${it.id}`}>
+                          {form.renglones[it.id].factor !== 1 && form.renglones[it.id].unidad ? `Precio por ${form.renglones[it.id].unidad}` : "Precio unitario"} {form.moneda === "USD" ? "US$" : "$"} sin IVA
+                        </label>
                         <input id={`oc-precio-${it.id}`} aria-label={`Precio sin IVA de ${it.descripcion}`} className="g-input" inputMode="decimal" placeholder="Por cada unidad" value={form.renglones[it.id].precio}
                           onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], precio: e.target.value } } }))} />
                       </div>
                       <button onClick={() => setForm((f) => ({ ...f, quitar: new Set([...f.quitar, it.id]) }))} aria-label={`Quitar ${it.descripcion}`}
                         className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Quitar</button>
                     </div>
+                    {form.renglones[it.id].factor !== 1 && (
+                      <div className="text-[12px] text-gypi-dim mt-1">{equivalenciaStock(leerCantidadMovimiento(form.renglones[it.id].cantidad), vista.find((v) => v.id === it.id))}</div>
+                    )}
                     {subtotalRenglon(it.id) !== null && (
                       <div className="text-[12px] text-gypi-dim mt-1">Subtotal del renglón: {importeTexto(subtotalRenglon(it.id), form.moneda)} sin IVA</div>
                     )}
+                    <UnidadCompra id={`oc-u-${it.id}`} descripcion={it.descripcion} unidadBase={form.renglones[it.id].unidad_base}
+                      unidad={form.renglones[it.id].unidad} factor={form.renglones[it.id].factor}
+                      onCambiar={({ unidad, factor }) => setForm((f) => {
+                        const r = f.renglones[it.id];
+                        const precioActual = r.precio.trim() ? leerImporte(r.precio) : null;
+                        const { cantidad, precio } = convertirUnidad({ cantidad: leerCantidadMovimiento(r.cantidad), precio: precioActual, factor: r.factor }, factor);
+                        return { ...f, renglones: { ...f.renglones, [it.id]: {
+                          ...r, unidad, factor,
+                          cantidad: cantidad !== null ? numTexto(cantidad) : r.cantidad, precio: precio !== null ? numTexto(precio) : r.precio,
+                        } } };
+                      })} />
                     <input aria-label={`Observación para el proveedor de ${it.descripcion}`} className="g-input w-full mt-1" maxLength={300} placeholder="Observación para el proveedor (opcional)"
                       value={form.renglones[it.id].obs} onChange={(e) => setForm((f) => ({ ...f, renglones: { ...f.renglones, [it.id]: { ...f.renglones[it.id], obs: e.target.value } } }))} />
                   </>
                 ) : (
                   <div className="text-[13px] text-gypi-dim">
                     {Number(it.cantidad).toLocaleString("es-AR", { maximumFractionDigits: 3 })} {it.unidad || ""}
+                    {factorItem(it) !== 1 ? ` (${equivalenciaStock(it.cantidad, it)})` : ""}
                     {it.precio_unitario !== null ? ` · ${importeTexto(it.precio_unitario, oc.moneda)} c/u` : ""}
                     {Number(it.cantidad_recibida) > 0 ? ` · Recibido ${Number(it.cantidad_recibida).toLocaleString("es-AR")}` : ""}
                     {cerrada && pendienteItem(it) > 0 ? ` · No llegó ${pendienteItem(it).toLocaleString("es-AR")}` : ""}
