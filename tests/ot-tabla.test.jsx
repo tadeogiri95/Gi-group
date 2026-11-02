@@ -75,9 +75,9 @@ test("pantalla — tocar el título ordena (▲ / ▼) y las cajas de abajo filt
   fireEvent.click(within(tabla).getByRole("button", { name: "Ordenar por Entrega" }));
   assert.deepEqual(filasOt(), ["7858", "7495", "812"]);
   // Filtro por cliente
-  fireEvent.change(within(tabla).getByRole("textbox", { name: "Filtrar Cliente / obra" }), { target: { value: "banco" } });
+  fireEvent.change(within(tabla).getByRole("textbox", { name: "Filtrar Cliente / proyecto" }), { target: { value: "banco" } });
   assert.deepEqual(filasOt(), ["7495"]);
-  fireEvent.change(within(tabla).getByRole("textbox", { name: "Filtrar Cliente / obra" }), { target: { value: "nada" } });
+  fireEvent.change(within(tabla).getByRole("textbox", { name: "Filtrar Cliente / proyecto" }), { target: { value: "nada" } });
   assert.ok(within(tabla).getByText("Ninguna OT cumple esos filtros."));
   fireEvent.click(within(tabla).getByRole("button", { name: "Limpiar filtros" }));
   assert.equal(filasOt().length, 3);

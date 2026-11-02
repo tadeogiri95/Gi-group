@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch, sb } from "../lib/supabase";
 import { TIPOS_SUELTO, LIMITES, parsearPegado, resumenSueltos, nombreSuelto } from "../lib/sueltos";
 import { useEscape } from "../hooks/useEscape";
+import { TituloOt } from "./NombreOt";
 
 const VACIO = { tipo: "", codigo: "", descripcion: "", medida: "", cantidad: "1", va_con: "" };
 
@@ -96,7 +97,7 @@ export default function SueltosOt({ proyecto, empresaId, esGestion = false, onCl
         <div className="flex items-start gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <div className="g-overline text-gypi-amber-ink">Orden {ot} · Sueltos y herrajes</div>
-            <h3 className="m-0 font-heading text-lg font-bold truncate">{proyecto?.cliente || proyecto?.proyecto || "—"}</h3>
+            <TituloOt proyecto={proyecto} />
             {items && res.total > 0 && (
               <div className="text-xs text-gypi-dim mt-0.5">{res.total === 1 ? "1 ítem" : `${res.total} ítems`} · Acopio {res.acopio} de {res.total} · Carga {res.carga} de {res.total}</div>
             )}

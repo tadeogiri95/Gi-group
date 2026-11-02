@@ -65,6 +65,7 @@ import { faltanManual, atrasosSinMotivo } from "../lib/ajustesTiempo";
 import { retrabajoPendiente, retrabajosDe, retrabajosHechos } from "../lib/retrabajo";
 import AjusteTiempo from "./AjusteTiempo";
 import GanttInstalacion from "./GanttInstalacion";
+import NombreOt from "./NombreOt";
 
 const FILA = 26; // alto del renglón de cada proceso
 const FILA_OT = 34; // alto del renglón de cada OT en "OT por proceso"
@@ -591,7 +592,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
           <ul className={`list-none m-0 p-0 flex flex-col gap-1 overflow-auto ${grande ? "max-h-[20vh]" : ""}`}>
             {porTerminar.map((v) => (
               <li key={v.clave} className="flex flex-wrap items-center gap-2 text-[15px] text-gypi-text">
-                <span className="flex-1 min-w-0"><span className="font-mono font-bold">{v.ot}</span> · {v.nombre} tenía que terminar a las {v.hora}</span>
+                <span className="flex-1 min-w-0"><NombreOt proyecto={v.fila?.proyecto || abiertasPorOt.get(String(v.ot)) || { ot: v.ot }} /> · {v.nombre} tenía que terminar a las {v.hora}</span>
                 {puedeAjustar && (
                   <button type="button" onClick={() => abrirAjuste(v.fila, v.fila.procesos.find((q) => q.etapa === v.etapa))}
                     aria-label={`⏱ ${v.nombre} de la OT ${v.ot} necesita más tiempo`} className="g-btn g-btn-secondary">⏱ Necesita más tiempo</button>
@@ -753,7 +754,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
               <li key={x.ot}>
                 <button type="button" onClick={() => verDetalle(x.proyecto)}
                   className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
-                  <span className="font-mono font-bold">{x.ot}</span> · {textoPausa(x.pausa).replace(/^⏸ /, "")}
+                  <NombreOt proyecto={x.proyecto || { ot: x.ot }} /> · {textoPausa(x.pausa).replace(/^⏸ /, "")}
                 </button>
               </li>
             ))}
@@ -774,7 +775,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
                 <li key={r.ot}>
                   <button type="button" onClick={() => verDetalle(r.proyecto)}
                     className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
-                    <span className="font-mono font-bold">{r.ot}</span> · termina el {fechaCorta(r.fin)}
+                    <NombreOt proyecto={r.proyecto || abiertasPorOt.get(String(r.ot)) || { ot: r.ot }} /> · termina el {fechaCorta(r.fin)}
                     {r.tarde && <span className="text-gypi-red font-bold"> · ⚠ {dias(r.diasTarde)} después de su fecha límite ({textoLimite(r)})</span>}
                     {r.diasCorrido > 0 && <span className="text-gypi-amber-ink font-bold"> · ↪ se corrió {dias(r.diasCorrido)} del plan confirmado</span>}
                   </button>
@@ -788,7 +789,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
               <ul className={`list-none m-0 p-0 flex flex-col gap-1 overflow-auto ${grande ? "max-h-[20vh]" : ""}`}>
                 {sinMotivo.map((a) => (
                   <li key={`${a.ot}-${a.etapa}`} className="flex items-center gap-2 text-[15px] text-gypi-text">
-                    <span className="flex-1 min-w-0"><span className="font-mono font-bold">{a.ot}</span> · {a.nombre} · ↪ se corrió {dias(a.dias)}</span>
+                    <span className="flex-1 min-w-0"><NombreOt proyecto={a.fila?.proyecto || abiertasPorOt.get(String(a.ot)) || { ot: a.ot }} /> · {a.nombre} · ↪ se corrió {dias(a.dias)}</span>
                     <button type="button" onClick={() => abrirAjuste(a.fila, a.fila.procesos.find((q) => q.etapa === a.etapa), true)}
                       aria-label={`Anotar por qué se corrió ${a.nombre} de la OT ${a.ot}`} className="g-btn g-btn-secondary">Anotar motivo</button>
                   </li>

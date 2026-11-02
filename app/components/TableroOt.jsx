@@ -16,6 +16,8 @@ import { avancePorOt, clavesEscaneadas, reglasPieza } from "../lib/piezas";
 import { useEscape } from "../hooks/useEscape";
 import PlanSemana from "./PlanSemana";
 import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
+import NombreOt from "./NombreOt";
+import { textoOt } from "../lib/nombreOt";
 
 function claseCelda(estado) {
   switch (estado) {
@@ -193,7 +195,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
                 <button onClick={() => onVerDetalle?.(p)} className="w-full flex items-center gap-2 bg-transparent border-none p-0 text-left cursor-pointer text-gypi-text min-h-[44px]">
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${claseSemaforo(pausa ? "gris" : f.semaforo)}`} aria-hidden="true" />
                   <span className="font-mono text-[13px] font-bold">{p.ot}</span>
-                  <span className="flex-1 min-w-0 text-[12px] text-gypi-dim truncate">{p.cliente || p.proyecto || ""}</span>
+                  <NombreOt proyecto={p} sinCodigo truncar className="flex-1 min-w-0 text-[13px] text-gypi-dim" />
                   {p.fecha_entrega && (
                     <span className={`text-xs font-bold ${pausa ? "text-gypi-dim" : f.semaforo === "rojo" ? "text-gypi-red" : f.semaforo === "amarillo" ? "text-gypi-amber-ink" : "text-gypi-dim"}`}>
                       {f.semaforo === "rojo" && !pausa ? "Atrasada · " : ""}{fechaCorta(p.fecha_entrega)}
@@ -233,7 +235,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
       <div className="text-xs text-gypi-dim mt-3">Vacío: sin empezar · Amarillo: en curso · ✓: terminada, falta la firma · Verde ✓✓: firmada · Tachada: no aplica.</div>
 
       {celda && celdaInfo && (
-        <Hoja titulo={`${celdaInfo.etapa.nombre} · OT ${celda.proyecto.ot}`} onClose={() => setCelda(null)}>
+        <Hoja titulo={`${celdaInfo.etapa.nombre} · ${textoOt(celda.proyecto)}`} onClose={() => setCelda(null)}>
           <div className="text-sm mb-2"><b>Estado:</b> {nombreEstado(celdaInfo.estado)}</div>
           {(() => {
             const e = porEscaneo.get(String(celda.proyecto.ot))?.etapas.find((x) => x.codigo === celda.codigo);
@@ -260,7 +262,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
       )}
 
       {liberando && (
-        <Hoja titulo={`Liberación · OT ${liberando.ot}`} onClose={() => setLiberando(null)}>
+        <Hoja titulo={`Liberación · ${textoOt(liberando)}`} onClose={() => setLiberando(null)}>
           {liberando.liberada_at && <div className="text-[13px] text-gypi-green mb-2">✓ Liberada el {fechaCorta(liberando.liberada_at.slice(0, 10))}</div>}
           {checklist.length > 0 ? (
             <div className="flex flex-col gap-1.5 mb-3">

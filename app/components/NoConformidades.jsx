@@ -9,6 +9,7 @@ import { apiFetch, sbGetAll } from "../lib/supabase";
 import { DECISIONES, defectosDe, nombreDefecto } from "../lib/calidad";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
+import { mapaOts, otCompleta, textoOt } from "../lib/nombreOt";
 
 const DIAS = 90;
 
@@ -40,7 +41,7 @@ function Tarjeta({ nc, etapas, defectos, proyecto, onGuardar, onBorrar, guardand
         <span className="text-xs text-gypi-dim">{fechaCorta(String(nc.created_at).slice(0, 10))}</span>
       </div>
       <div className="text-[12px] text-gypi-dim mt-0.5">
-        OT {nc.ot}{proyecto?.cliente ? ` · ${proyecto.cliente}` : ""} · {nc.cantidad > 1 ? `${nc.cantidad} piezas` : "1 pieza"}{nc.pieza ? ` · ${nc.pieza}` : ""}
+        {textoOt(otCompleta(nc.ot, proyecto ? mapaOts([proyecto]) : null))} · {nc.cantidad > 1 ? `${nc.cantidad} piezas` : "1 pieza"}{nc.pieza ? ` · ${nc.pieza}` : ""}
       </div>
       {detalle && <div className="text-[12px] text-gypi-dim">{detalle}</div>}
       {nc.nota && <div className="text-[12px] mt-1">{nc.nota}</div>}

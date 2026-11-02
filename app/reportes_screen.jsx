@@ -42,6 +42,7 @@ import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { tieneModulo, conRegistroTareas } from "./lib/modulos";
 import { esSupervisor } from "./lib/menuGestion";
+import { detalleOt } from "./lib/nombreOt";
 
 /* ─── Helpers ─── */
 const parseHora = (str) => { if (!str) return null; const [h, m] = str.split(":").map(Number); return h * 60 + m; };
@@ -115,7 +116,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
       try {
         const [regsRes, proys] = await Promise.all([
           sbGetAll(`registro_actividades?empresa_id=eq.${empresaId}&fecha=gte.${fechaDesde}&fecha=lte.${fechaHasta}&etapa=gt.0&select=id,empleado_id,legajo,fecha,hora_inicio,hora_fin,codigo_proyecto,etapa,division,duracion_min,observaciones&order=fecha.desc`),
-          sb.get(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,ot,cliente,proyecto`),
+          sb.get(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,ot,cliente,obra,proyecto,descripcion`),
         ]);
         setDatos(regsRes.data || []);
         setTruncado(regsRes.truncado);
@@ -141,7 +142,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
     return Object.values(map)
       .map(p => ({
         ...p,
-        nombre: (() => { const pr = proyectos.find(pr => pr.ot === p.ot); return pr ? (pr.cliente || pr.proyecto || "") : ""; })(),
+        nombre: detalleOt(proyectos.find(pr => String(pr.ot) === String(p.ot))),
         empleadosList: Object.values(p.empleados).sort((a, b) => b.min - a.min),
       }))
       .sort((a, b) => b.totalMin - a.totalMin);
@@ -209,7 +210,7 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
                   <span className="text-base">📋</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-bold text-gypi-text truncate">OT {p.ot}{p.nombre ? ` — ${p.nombre}` : ""}</div>
+                  <div className="text-[13px] font-bold text-gypi-text">OT {p.ot}{p.nombre ? ` · ${p.nombre}` : ""}</div>
                   <div className="text-xs text-gypi-dim mt-0.5">{Object.keys(p.empleados).length} empleado{Object.keys(p.empleados).length !== 1 ? "s" : ""} · {p.registros} registro{p.registros !== 1 ? "s" : ""}</div>
                 </div>
                 <div className="text-right shrink-0">

@@ -122,7 +122,9 @@ test("elegir OT — muestra todas (no solo 20) con cliente, obra y descripción,
   fireEvent.click(screen.getByText("Corte"));
   assert.ok(screen.getByText("M-7495"), "la OT 401 también está en la lista");
   assert.equal(screen.queryByText(/refiná la búsqueda/), null);
-  assert.ok(screen.getByText("CASA REMODELACION · MUEBLE DIVISOR"));
+  // Cliente, proyecto y descripción, cada uno en su renglón (02/11)
+  assert.ok(screen.getByText("CASA REMODELACION"));
+  assert.ok(screen.getByText("MUEBLE DIVISOR"));
   fireEvent.change(screen.getByPlaceholderText(/Buscar OT/), { target: { value: "divisor" } });
   assert.ok(screen.getByText("SICILIANO ROMINA"));
 });

@@ -13,11 +13,14 @@ import ElegirOtCarga from "./ElegirOtCarga";
 import { Semaforo } from "./FichaArticulo";
 import { filtrarArticulos, leerQrArticulo, cantidadTexto } from "../lib/stock";
 import { leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
+import { useOts } from "../hooks/useOts";
+import { otCompleta, textoOt } from "../lib/nombreOt";
 
 const MAX_VISIBLES = 30;
 const SIN_OT = "";
 
 export default function RetirarMaterial({ empresaId, usuario, skuInicial = null, onClose }) {
+  const porOt = useOts();
   const [articulo, setArticulo] = useState(null);
   const [ot, setOt] = useState(null); // null = falta elegir; SIN_OT = sin OT
   const [paso, setPaso] = useState(skuInicial ? "cargando" : "articulo");
@@ -143,7 +146,7 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
   }
 
   const u = articulo?.unidad || "";
-  const textoOt = ot ? `OT ${ot}` : "Sin OT";
+  const textoDeLaOt = ot ? textoOt(otCompleta(ot, porOt)) : "Sin OT";
 
   return (
     <Modal open onClose={onClose} title={tipo === "devolucion" ? "Devolver material" : "Retirar material"}>
@@ -152,7 +155,7 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
 
         {paso === "articulo" && (
           <>
-            {ot !== null && <div className="text-[13px] text-gypi-dim mb-2">Para: <b className="text-gypi-text">{textoOt}</b></div>}
+            {ot !== null && <div className="text-[13px] text-gypi-dim mb-2">Para: <b className="text-gypi-text">{textoDeLaOt}</b></div>}
             {escanerDisponible() && (
               <div className="mb-3">
                 <button onClick={() => { setEscaneando(!escaneando); setAviso(null); }} aria-pressed={escaneando} className="g-btn g-btn-secondary w-full">
@@ -193,7 +196,7 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
               </div>
             </div>
             <div className="flex items-center gap-2 mb-3 text-[14px]">
-              <span className="flex-1">Para: <b>{textoOt}</b></span>
+              <span className="flex-1">Para: <b>{textoDeLaOt}</b></span>
               <button onClick={() => setPaso("ot")} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Cambiar</button>
               <button onClick={otroArticulo} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Otro artículo</button>
             </div>
@@ -216,7 +219,7 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
         {paso === "hecho" && hecho && (
           <>
             <div role="status" className={`p-3 rounded-xl mb-3 text-[15px] font-semibold ${hecho.anulado ? "bg-gypi-surf-hi text-gypi-dim" : "bg-gypi-green/10 text-gypi-green"}`}>
-              {hecho.anulado ? "Anulado." : "✅ Registrado:"} {textoMovimiento(hecho)} — {hecho.nombre || hecho.sku}
+              {hecho.anulado ? "Anulado." : "✅ Registrado:"} {textoMovimiento(hecho, porOt)} — {hecho.nombre || hecho.sku}
             </div>
             {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
             <button onClick={otroArticulo} className="g-btn g-btn-primary w-full mb-2">{ot ? `Retirar otro para la OT ${ot}` : "Retirar otro"}</button>
@@ -230,9 +233,9 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
             <ul className="list-none p-0 m-0 flex flex-col gap-1">
               {mios.map((m) => (
                 <li key={m.id} className="flex items-center gap-2 text-[13px]">
-                  <span className="flex-1 min-w-0 truncate">{textoMovimiento(m)} · {m.nombre || m.sku}</span>
+                  <span className="flex-1 min-w-0">{textoMovimiento(m, porOt)} · {m.nombre || m.sku}</span>
                   {puedeAnular(m, { rol: usuario?.rol, empleadoId: usuario?.id }) && (
-                    <button onClick={() => anular(m)} aria-label={`Anular ${textoMovimiento(m)} de ${m.nombre || m.sku}`}
+                    <button onClick={() => anular(m)} aria-label={`Anular ${textoMovimiento(m, porOt)} de ${m.nombre || m.sku}`}
                       className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Anular</button>
                   )}
                 </li>

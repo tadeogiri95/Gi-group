@@ -69,7 +69,7 @@ export async function GET(request) {
     const ot = new URL(request.url).searchParams.get("ot");
     try {
       if (ot) {
-        const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&select=ot,cliente,obra&limit=1`, { sesion })) || [];
+        const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&select=ot,cliente,obra,descripcion&limit=1`, { sesion })) || [];
         if (!proyecto) return json({ error: "No encontré esa OT" }, 404);
         const { avance, pendientes } = await estadoOt(sesion, proyecto.ot);
         return json({ ok: true, proyecto, ...avance, pendientes });
@@ -78,16 +78,21 @@ export async function GET(request) {
       const reportes = (await sbGet(`reportes_instalacion?empresa_id=eq.${e}${filtro}&select=*&order=created_at.desc&limit=${HISTORIAL}`, { sesion })) || [];
       const ids = reportes.map((r) => r.id);
       const quienes = [...new Set(reportes.map((r) => r.empleado_id).filter(Boolean))];
-      const [pendientes, empleados] = await Promise.all([
+      const otsReportes = [...new Set(reportes.map((r) => r.ot).filter(Boolean).map(String))];
+      const [pendientes, empleados, proyectos] = await Promise.all([
         ids.length ? sbGet(`pendientes_obra?empresa_id=eq.${e}&reporte_id=in.(${ids.join(",")})&select=id,reporte_id,descripcion,modulo,resuelto`, { sesion }) : [],
         quienes.length ? sbGet(`empleados?empresa_id=eq.${e}&id=in.(${quienes.join(",")})&select=id,nombre`, { sesion }) : [],
+        // Cada reporte con su OT completa: Código · Cliente · Proyecto · Descripción (02/11)
+        otsReportes.length ? sbGet(`proyectos?empresa_id=eq.${e}&ot=in.(${otsReportes.map((o) => `%22${encodeURIComponent(o)}%22`).join(",")})&select=ot,cliente,obra,descripcion`, { sesion }).catch(() => []) : [],
       ]);
       const nombre = new Map((empleados || []).map((x) => [x.id, x.nombre]));
+      const otPorCodigo = new Map((Array.isArray(proyectos) ? proyectos : []).map((p) => [String(p.ot), p]));
       return json({
         ok: true,
         reportes: reportes.map((r) => ({
           ...r,
           empleado: nombre.get(r.empleado_id) || null,
+          proyecto: otPorCodigo.get(String(r.ot)) || null,
           pendientes: (pendientes || []).filter((p) => p.reporte_id === r.id),
         })),
       });

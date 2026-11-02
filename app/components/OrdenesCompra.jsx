@@ -19,6 +19,8 @@ import {
 } from "../lib/ordenesCompra";
 import { AVISO_MIGRACION_114 } from "./AComprar";
 import UnidadCompra from "./UnidadCompra";
+import { useOts } from "../hooks/useOts";
+import { otCompleta, textoOt } from "../lib/nombreOt";
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 const fechaCorta = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
@@ -320,6 +322,7 @@ function CotizacionesOrden({ oc, ocVista, items, empresa, onCambio }) {
 }
 
 function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
+  const porOt = useOts();
   const [items, setItems] = useState(null);
   const [proveedor, setProveedor] = useState(null);
   const [form, setForm] = useState(null);
@@ -484,7 +487,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
           <ul aria-label="Renglones de la orden" className="list-none m-0 p-0 flex flex-col gap-1.5 mb-2">
             {items.filter((it) => !form.quitar.has(it.id)).map((it) => (
               <li key={it.id} className="p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">
-                <div className="text-[14px] font-semibold">{it.descripcion}{it.sku && <span className="text-gypi-dim font-normal"> · {it.sku}</span>}{it.ot && <span className="text-gypi-dim font-normal"> · OT {it.ot}</span>}</div>
+                <div className="text-[14px] font-semibold">{it.descripcion}{it.sku && <span className="text-gypi-dim font-normal"> · {it.sku}</span>}{it.ot && <span className="text-gypi-dim font-normal block text-[13px]" data-ot-completa>{textoOt(otCompleta(it.ot, porOt))}</span>}</div>
                 {borrador ? (
                   <>
                     <div className="flex gap-2 mt-1 items-end">

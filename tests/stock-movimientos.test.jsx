@@ -241,7 +241,7 @@ test("movimientos en Stock — lista, anular y cargar un ingreso", async () => {
   const movs = [{ id: 4, tipo: "consumo", sku: TABLILLA.sku, nombre: TABLILLA.nombre, cantidad: 3, unidad: "MT", ot: "M-7495", empleado_nombre: "Juan", created_at: "2026-10-15T12:00:00Z", anulado: false }];
   const enviados = mockPantalla({ movs });
   render(<MovimientosStock usuario={{ id: OTRO, rol: "administrativo" }} articulos={[TABLILLA]} />);
-  await waitFor(() => assert.ok(screen.getByText("📦 Retiro · 3 MT · OT M-7495")));
+  await waitFor(() => assert.ok(screen.getByText(/^📦 Retiro · 3 MT · OT M-7495/)));
   fireEvent.click(screen.getByLabelText(/Anular 📦 Retiro/));
   await waitFor(() => assert.deepEqual(enviados[0], { accion: "anular", id: 4 }));
 

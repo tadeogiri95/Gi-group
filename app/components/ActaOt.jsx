@@ -14,6 +14,7 @@ import { fotoBase64, subirImagen } from "../lib/foto";
 import FirmaDedo from "./FirmaDedo";
 import NoConformeForm from "./NoConformeForm";
 import { useEscape } from "../hooks/useEscape";
+import { TituloOt } from "./NombreOt";
 
 const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer";
 
@@ -53,7 +54,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
     const q = `empresa_id=eq.${empresaId}&ot=eq.${encodeURIComponent(ot)}`;
     try {
       const [proyectos, bultos, actas, pendientes, ncs] = await Promise.all([
-        sb.get(`proyectos?${q}&select=ot,cliente,proyecto,obra,fecha_entrega&limit=1`),
+        sb.get(`proyectos?${q}&select=ot,cliente,proyecto,obra,descripcion,fecha_entrega&limit=1`),
         sb.get(`bultos_ot?${q}&order=numero.asc&select=id,numero,contenido,descargado`).catch(() => []),
         sb.get(`actas_ot?${q}&select=*&limit=1`),
         sb.get(`pendientes_obra?${q}&order=id.asc&select=*`),
@@ -175,7 +176,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
     : `${bultos.length ? `Bultos ${estado.descargados} de ${estado.bultos} recibidos` : "Sin lista de bultos"}${lista.length ? ` · Checklist ${lista.length - estado.checklistFaltan.length} de ${lista.length}` : ""}${pendientes.length ? ` · ${pendientes.length === 1 ? "1 pendiente" : `${pendientes.length} pendientes`}` : ""}`;
 
   return (
-    <Marco ot={ot} onClose={onClose} titulo={proyecto?.cliente || proyecto?.proyecto} detalle={proyecto?.obra}>
+    <Marco ot={ot} onClose={onClose} proyecto={proyecto}>
       <div className={`p-3 rounded-[10px] text-[13px] mb-3 border ${estado.estado === "instalada" ? "bg-gypi-green/10 border-gypi-green/30 text-gypi-green" : estado.estado === "con_pendientes" ? "bg-gypi-amber/10 border-gypi-amber/30 text-gypi-amber-ink" : "bg-gypi-surface border-gypi-border"}`} role="status">
         {textoEstado}
       </div>
@@ -319,7 +320,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
   );
 }
 
-function Marco({ ot, titulo, detalle, onClose, children }) {
+function Marco({ ot, proyecto = null, detalle, onClose, children }) {
   useEscape(onClose);
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Acta de instalación de la OT ${ot}`}>
@@ -328,7 +329,7 @@ function Marco({ ot, titulo, detalle, onClose, children }) {
         <div className="flex items-start gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <div className="g-overline text-gypi-cyan">Orden {ot} · Acta de instalación</div>
-            <h3 className="m-0 font-heading text-lg font-bold truncate">{titulo || "—"}</h3>
+            <TituloOt proyecto={proyecto} />
             {detalle && <div className="text-xs text-gypi-dim mt-0.5">{detalle}</div>}
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>

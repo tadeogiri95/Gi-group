@@ -122,7 +122,7 @@ test("📅 Gantt — 📝 Atrasos sin motivo: se anota por qué se corrió y sal
     avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
   await esperar();
   const lista = screen.getByRole("group", { name: "Atrasos sin motivo" });
-  assert.match(lista.textContent, /7100 · Corte · ↪ se corrió 7 días/);
+  assert.match(lista.textContent, /OT 7100 · BCG · Corte · ↪ se corrió 7 días/);
   fireEvent.click(within(lista).getByRole("button", { name: "Anotar por qué se corrió Corte de la OT 7100" }));
   const dialogo = screen.getByRole("dialog", { name: "⏱ Corte de la OT 7100" });
   assert.ok(!within(dialogo).queryByLabelText("Faltan (horas)"), "solo el motivo");

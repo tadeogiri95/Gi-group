@@ -16,6 +16,7 @@ import { fotoBase64, subirImagen } from "../lib/foto";
 import { bultosPegados, cotejarQr, leerQr } from "../lib/escaneoCarga";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 import { useEscape } from "../hooks/useEscape";
+import { TituloOt } from "./NombreOt";
 
 // Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
 const CLAVE_TAMANO = "gypi_tamano_rotulo";
@@ -85,7 +86,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
     const q = `empresa_id=eq.${empresaId}&ot=eq.${encodeURIComponent(ot)}`;
     try {
       const [proyectos, bultos, sueltos, cargas] = await Promise.all([
-        sb.get(`proyectos?${q}&select=ot,cliente,proyecto,obra,fecha_entrega,total_modulos&limit=1`),
+        sb.get(`proyectos?${q}&select=ot,cliente,proyecto,obra,descripcion,fecha_entrega,total_modulos&limit=1`),
         sb.get(`bultos_ot?${q}&order=numero.asc&select=*`),
         sb.get(`sueltos_ot?${q}&order=orden.asc,id.asc&select=id,tipo,codigo,descripcion,cantidad,carga`).catch(() => []),
         sb.get(`cargas_ot?${q}&select=*&limit=1`),
@@ -270,7 +271,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
   };
 
   return (
-    <Marco ot={ot} onClose={onClose} titulo={proyecto?.cliente || proyecto?.proyecto} detalle={[proyecto?.obra, proyecto?.fecha_entrega && `Entrega ${fechaCorta(proyecto.fecha_entrega)}`].filter(Boolean).join(" · ")}>
+    <Marco ot={ot} onClose={onClose} proyecto={proyecto} detalle={proyecto?.fecha_entrega ? `Entrega ${fechaCorta(proyecto.fecha_entrega)}` : ""}>
       <div className={`p-3 rounded-[10px] text-[13px] mb-3 border ${estado.firmada ? "bg-gypi-green/10 border-gypi-green/30 text-gypi-green" : "bg-gypi-surface border-gypi-border"}`} role="status">
         {estado.firmada ? (estado.conFaltantes ? "🚚 Carga firmada, con faltantes anotados." : "🚚 Carga completa y firmada.")
           : `Bultos ${estado.bultosCargados} de ${estado.bultos} cargados${estado.sueltos ? ` · Sueltos ${estado.sueltosCargados} de ${estado.sueltos}` : ""}${lista.length ? ` · Checklist ${lista.length - estado.checklistFaltan.length} de ${lista.length}` : ""}`}
@@ -419,7 +420,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
   );
 }
 
-function Marco({ ot, titulo, detalle, onClose, children }) {
+function Marco({ ot, proyecto = null, detalle, onClose, children }) {
   useEscape(onClose);
   return (
     <div className="fixed inset-0 z-200 flex items-end justify-center" role="dialog" aria-label={`Carga de la OT ${ot}`}>
@@ -428,7 +429,7 @@ function Marco({ ot, titulo, detalle, onClose, children }) {
         <div className="flex items-start gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <div className="g-overline text-gypi-amber-ink">Orden {ot} · Acopio y carga</div>
-            <h3 className="m-0 font-heading text-lg font-bold truncate">{titulo || "—"}</h3>
+            <TituloOt proyecto={proyecto} />
             {detalle && <div className="text-xs text-gypi-dim mt-0.5">{detalle}</div>}
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>

@@ -17,7 +17,6 @@ import { sb, apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { buscarDivision } from "../lib/rutas";
-import { nombreProyecto } from "../lib/gantt";
 import { pendienteEtapa } from "../lib/cargaPlanta";
 import { otsEnPausa } from "../lib/pausaOt";
 import { normalizarParametros, divisionPlan } from "../lib/planificacion";
@@ -25,12 +24,18 @@ import { etapasDelPlan } from "../lib/ganttPlan";
 import { feriadosDe } from "../lib/secuencia";
 import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento } from "../lib/planInstalacion";
 import { textoDias } from "../lib/instalacionPlan";
+import NombreOt from "./NombreOt";
+import { partesOt, textoOt } from "../lib/nombreOt";
 
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const ETIQUETAS = 250;
-const FILA = 40;
+const FILA = 54;
+
+// Una obra puede juntar varias OT: "OT 7858 + 7859 · CEVT · OFICINAS · Escritorio + Armario"
+const descripcionObra = (o) => [...new Set(o.ots.map((t) => partesOt(t.proyecto).descripcion).filter(Boolean))].join(" + ");
+const textoObra = (o) => textoOt({ ...o.ots[0].proyecto, ot: o.ots.map((t) => t.ot).join(" + "), descripcion: descripcionObra(o) });
 const CAB = 40;
 const PX = 46; // ancho de un día
 const SIN_PAUSAS = [];
@@ -219,7 +224,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
             {obras.map((o, i) => (
               <li key={o.clave} className="flex items-center gap-2 text-[14px]">
                 <span className="w-6 text-gypi-dim text-right">{i + 1}</span>
-                <span className="flex-1 min-w-0 truncate"><span className="font-mono font-bold">{o.ots.map((t) => t.ot).join(" + ")}</span> · {[o.ots[0].proyecto.cliente, o.ots[0].proyecto.obra].filter(Boolean).join(" · ")}</span>
+                <span className="flex-1 min-w-0 truncate" title={textoObra(o)}>{textoObra(o)}</span>
                 <button type="button" aria-label={`Subir la obra de la OT ${o.ots[0].ot}`} disabled={ocupado || i === 0} onClick={() => mover(i, -1)} className="g-btn g-btn-secondary min-w-11">▲</button>
                 <button type="button" aria-label={`Bajar la obra de la OT ${o.ots[0].ot}`} disabled={ocupado || i === obras.length - 1} onClick={() => mover(i, 1)} className="g-btn g-btn-secondary min-w-11">▼</button>
               </li>
@@ -256,16 +261,19 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
               const y = CAB + i * FILA;
               const p0 = o.ots[0].proyecto;
               const titulo = o.ots.map((t) => t.ot).join(" + ");
-              const sub = [p0.cliente, p0.obra || nombreProyecto(p0)].filter(Boolean).join(" · ");
+              // Código · Cliente · Proyecto · Descripción, como en toda la app (02/11)
+              const sub = [partesOt(p0).cliente, partesOt(p0).proyecto].filter(Boolean).join(" · ");
+              const desc = descripcionObra(o);
               const equipo = o.equipo.map((id) => nombres.get(id) || "Instalador").join(", ");
               const contorno = o.tarde ? "stroke-gypi-red" : o.poco ? "stroke-proc-margen" : "stroke-none";
-              const texto = `OT ${titulo}${sub ? `, ${sub}` : ""}: ${o.sinLugar ? "sin lugar en el plan" : `del ${fechaCorta(o.inicio)} al ${fechaCorta(o.fin)}, ${textoDias(o.dias)} con ${o.personas} ${o.personas === 1 ? "instalador" : "instaladores"}`}${o.tarde ? `, termina ${o.diasTarde} días después de la entrega` : ""}${o.esperaProduccion ? ", espera que termine producción" : ""}${o.diasCorrido > 0 ? `, se corrió ${o.diasCorrido} días del plan confirmado` : ""}`;
+              const texto = `OT ${titulo}${sub ? `, ${sub}` : ""}${desc ? `, ${desc}` : ""}: ${o.sinLugar ? "sin lugar en el plan" : `del ${fechaCorta(o.inicio)} al ${fechaCorta(o.fin)}, ${textoDias(o.dias)} con ${o.personas} ${o.personas === 1 ? "instalador" : "instaladores"}`}${o.tarde ? `, termina ${o.diasTarde} días después de la entrega` : ""}${o.esperaProduccion ? ", espera que termine producción" : ""}${o.diasCorrido > 0 ? `, se corrió ${o.diasCorrido} días del plan confirmado` : ""}`;
               return (
                 <g key={o.clave} role="button" tabIndex={0} aria-label={texto} className="cursor-pointer"
                   onClick={() => onVerDetalle?.(p0)} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p0); }}>
                   <line x1={0} x2={ETIQUETAS + ancho} y1={y + FILA} y2={y + FILA} className="stroke-gypi-border" strokeWidth={0.5} />
                   <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{titulo.length > 28 ? `${titulo.slice(0, 27)}…` : titulo}{o.enCurso ? " · en obra" : ""}</text>
                   <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || "").slice(0, 38)}</text>
+                  {desc && <text x={8} y={y + 47} className="fill-gypi-text text-[12px] font-semibold" data-descripcion>{desc.length > 38 ? `${desc.slice(0, 37)}…` : desc}</text>}
                   {o.esperaProduccion && o.inicio > hoy && (
                     <rect x={ETIQUETAS + 2} y={y + 15} width={Math.max(0, x(o.inicio) - 4)} height={4} rx={2} className="fill-gypi-amber" opacity={0.6} />
                   )}
@@ -297,7 +305,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
               <div className="text-gypi-dim text-[13px] mb-1">Cargá los gabinetes por persona por día en ⚙ Parámetros → 🔧 Instalación, o corregilo a mano en el Detalle de la OT.</div>
               <ul className="list-none m-0 p-0 flex flex-wrap gap-1.5">
                 {sinDato.map(({ proyecto: p }) => (
-                  <li key={p.ot}><button type="button" className="g-btn g-btn-secondary" onClick={() => onVerDetalle?.(p)}>{p.ot}</button></li>
+                  <li key={p.ot}><button type="button" className="g-btn g-btn-secondary text-left" onClick={() => onVerDetalle?.(p)}><NombreOt proyecto={p} /></button></li>
                 ))}
               </ul>
             </div>

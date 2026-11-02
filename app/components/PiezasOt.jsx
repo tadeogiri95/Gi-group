@@ -14,6 +14,7 @@ import {
   avancePiezas, textoAvancePiezas,
 } from "../lib/piezas";
 import { useEscape } from "../hooks/useEscape";
+import { TituloOt } from "./NombreOt";
 
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
 const SIN_MODULO = "\u0000sin";
@@ -157,7 +158,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
         <div className="flex items-start gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <div className="g-overline text-gypi-amber-ink">Orden {ot} · Piezas</div>
-            <h3 className="m-0 font-heading text-lg font-bold truncate">{proyecto?.cliente || proyecto?.proyecto || "—"}</h3>
+            <TituloOt proyecto={proyecto} />
             {piezas?.length > 0 && (
               <div className="text-xs text-gypi-dim mt-0.5">
                 {piezasTexto(piezas.length)} · {renglones.length === 1 ? "1 renglón" : `${renglones.length} renglones`}

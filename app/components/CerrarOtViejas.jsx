@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "./ui";
 import { OPCIONES_DIAS, otSinMovimiento } from "../lib/otOrdenar";
+import NombreOt from "./NombreOt";
 
 export default function CerrarOtViejas({ abierto, proyectos, piezas, hoy, onCerrar, onClose }) {
   const [dias, setDias] = useState(60);
@@ -51,7 +52,7 @@ export default function CerrarOtViejas({ abierto, proyectos, piezas, hoy, onCerr
                   <label className="flex items-start gap-2.5 p-2.5 cursor-pointer">
                     <input type="checkbox" className="mt-1" checked={!fuera.has(x.p.id)} onChange={() => cambiar(x.p.id)} aria-label={`Cerrar la OT ${x.p.ot}`} />
                     <span className="flex-1 min-w-0">
-                      <span className="block text-[14px] font-semibold truncate"><span className="font-mono">{x.p.ot}</span> · {x.p.cliente || x.p.proyecto || "—"}</span>
+                      <NombreOt proyecto={x.p} truncar className="block text-[14px]" />
                       <span className="block text-[12px] text-gypi-dim">{x.dias} días quieta · {x.motivo}</span>
                     </span>
                   </label>

@@ -34,6 +34,7 @@ import MinutasDeOt from "./MinutasDeOt";
 import HistorialOt from "./HistorialOt";
 import PausaOt from "./PausaOt";
 import InstalacionOt from "./InstalacionOt";
+import { TituloOt } from "./NombreOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -164,10 +165,9 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-1 min-w-0">
             <div className="g-overline text-gypi-amber-ink">Orden {proyecto?.ot}</div>
-            <h3 className="m-0 font-heading text-lg font-bold truncate">{proyecto?.cliente || proyecto?.proyecto || "—"}</h3>
-            <div className="text-xs text-gypi-dim mt-0.5">
-              {[proyecto?.obra, proyecto?.descripcion, division?.label || proyecto?.division].filter(Boolean).join(" · ")}
-            </div>
+            {/* Código · Cliente · Proyecto · Descripción, como en toda la app (02/11) */}
+            <TituloOt proyecto={proyecto} />
+            {(division?.label || proyecto?.division) && <div className="text-xs text-gypi-dim mt-0.5">{division?.label || proyecto?.division}</div>}
             {(proyecto?.fecha_entrega || proyecto?.cantidad != null || proyecto?.total_modulos) && (
               <div className="text-xs text-gypi-dim mt-0.5">
                 {[proyecto?.fecha_entrega && `Entrega ${fechaCorta(proyecto.fecha_entrega)}`, proyecto?.cantidad != null && `Cantidad ${proyecto.cantidad}`, proyecto?.total_modulos && `${proyecto.total_modulos} módulos`].filter(Boolean).join(" · ")}
