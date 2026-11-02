@@ -3,8 +3,10 @@
 // vista previa. En GI había ~300 OT "activas", muchas viejas, que ensucian la
 // planificación, el Gantt y los avisos de atraso.
 //
-// "Movimiento" = la última pieza escaneada de la OT (o su checkeo manual); si
-// nunca se escaneó, cuenta desde el alta. Cerrar una OT solo cambia su estado
+// "Movimiento" = la última pieza escaneada de la OT o la última carga manual
+// de avance (Checkeo manual de OT, proyectos.avance_manual.at), lo que sea más
+// nuevo (Tadeo, 01/11: una OT con cargas manuales también está activa). Si no
+// tiene ninguna de las dos, cuenta desde el alta. Cerrar una OT solo cambia su estado
 // en Gypi: la planilla del Plan de trabajo no se toca, y la sincronización
 // nunca reabre una OT cerrada.
 
@@ -55,17 +57,21 @@ export function otSinMovimiento(proyectos = [], piezas = [], { hoy, dias = DIAS_
     if (!p || p.estado === "cerrado") continue;
     const ot = String(p.ot);
     const paso = fecha(ultimo.get(ot));
+    const manual = fecha(p.avance_manual?.at);
     const alta = fecha(p.created_at);
-    const desde = paso || alta;
+    const mov = [paso, manual].filter(Boolean).sort().pop() || null;
+    const desde = mov || alta;
     // Sin escaneos ni fecha de alta no hay cómo saberlo: no se propone
     if (!desde || Date.parse(`${desde}T12:00:00Z`) > limite) continue;
     const quieta = Math.floor((Date.parse(`${hoy}T12:00:00Z`) - Date.parse(`${desde}T12:00:00Z`)) / DIA);
     const pct = avance.get(ot) ?? null;
     const motivo = [
       p.terminado_planilla ? "Terminada en la planilla" : pct === 100 ? "Producción al 100 %" : "",
-      paso ? `último escaneo el ${corta(paso)}` : `sin escaneos, alta el ${corta(alta)}`,
+      mov
+        ? (mov === manual && manual !== paso ? `última carga manual el ${corta(manual)}` : `último escaneo el ${corta(paso)}`)
+        : `sin escaneos ni cargas manuales, alta el ${corta(alta)}`,
     ].filter(Boolean).join(" · ");
-    out.push({ p, ultimo: paso, dias: quieta, motivo, avance: pct });
+    out.push({ p, ultimo: mov, dias: quieta, motivo, avance: pct });
   }
   return out.sort((a, b) => b.dias - a.dias || String(a.p.ot).localeCompare(String(b.p.ot), "es", { numeric: true }));
 }
