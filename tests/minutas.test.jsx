@@ -340,6 +340,40 @@ test("instalación en curso — se tildan los instaladores del equipo y con Otro
   assert.match(html, /Mayco Díaz, Juan de producción/);
 });
 
+test("calendario de fechas objetivo — producción e instalación en curso, vencidas arriba, en pantalla e impresa", async () => {
+  const { calendarioMinuta } = await import("../app/lib/minutasCalendario.js");
+  const { htmlMinuta } = await import("../app/lib/minutas.js");
+  const items = [
+    { id: "a", seccion: "prod_en_curso", ot: "7751", semaforo: "rojo", fecha_objetivo: "2026-11-05" },
+    { id: "b", seccion: "inst_en_curso", ot: "7961", semaforo: "verde", fecha_objetivo: "2026-11-02" },
+    { id: "c", seccion: "prod_en_curso", ot: "7000", semaforo: "amarillo", fecha_objetivo: "2026-10-30" },
+    { id: "d", seccion: "inst_en_curso", ot: "7100" },
+    { id: "e", seccion: "foco", ot: "7751", fecha_objetivo: "2026-11-03" },
+  ];
+  const cal = calendarioMinuta(items, "2026-11-02", [{ tipo: "instalacion", ot: "7751", fecha: "2026-11-10" }]);
+  assert.equal(cal.semanas.length, 2, "de esta semana hasta la última fecha (mínimo 2)");
+  assert.equal(cal.semanas[0][0].fecha, "2026-11-02");
+  assert.deepEqual(cal.semanas[0][0].eventos.map((e) => [e.tipo, e.ot]), [["instalacion", "7961"]]);
+  assert.ok(cal.semanas[0][0].hoy);
+  assert.deepEqual(cal.semanas[0][3].eventos.map((e) => [e.ot, e.semaforo]), [["7751", "rojo"]]);
+  assert.deepEqual(cal.semanas[1][1].eventos.map((e) => [e.ot, e.origen]), [["7751", "plan"]], "suma fechas de otro lado (Gantt de instalación)");
+  assert.deepEqual(cal.vencidas.map((e) => e.ot), ["7000"]);
+  assert.deepEqual(cal.sinFecha.map((e) => e.ot), ["7100"]);
+  const lejos = calendarioMinuta([{ seccion: "prod_en_curso", ot: "1", fecha_objetivo: "2027-03-01" }], "2026-11-02");
+  assert.equal(lejos.semanas.length, 6);
+  assert.deepEqual(lejos.masAdelante.map((e) => e.ot), ["1"], "a más de 6 semanas va abajo, en una línea");
+  const html = htmlMinuta({ empresa: "Gi", minuta: { fecha: "2026-11-02" }, items });
+  assert.match(html, /Calendario de fechas objetivo/);
+  assert.match(html, /class="ev rojo">🏭 OT 7751/);
+  assert.match(html, /Ya vencieron/);
+  // En pantalla, al final de la minuta
+  const pedidos = [];
+  mockPantalla(pedidos);
+  pantalla();
+  const sec = await screen.findByRole("region", { name: "Calendario de fechas objetivo" });
+  assert.ok(within(sec).getByText(/Todavía no hay producción ni instalaciones en curso/));
+});
+
 // ─── Lo que Gypi sugiere (parte M2) ───
 
 const { armarPrecarga, habilAnterior, habilSiguiente, listoParaIniciar, sugerenciasPendientes } = await import("../app/lib/minutasPrecarga.js");

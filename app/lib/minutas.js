@@ -10,6 +10,8 @@
 // Lo usan la pantalla (app/components/MinutaScreen.jsx) y el servidor
 // (app/api/minutas/route.js).
 
+import { calendarioMinuta, nombreEvento, iconoEvento, DIAS_CORTOS } from "./minutasCalendario";
+
 export const CLAVE_CONFIG_MINUTA = "minuta_config";
 
 /** Los bloques de la reunión, con su horario y quién expone (formato v2). */
@@ -334,6 +336,13 @@ export function htmlMinuta({ empresa, minuta, items = [], participantes = [] }) 
   .punto.verde { color: #16a34a; } .punto.amarillo { color: #ca8a04; } .punto.rojo { color: #dc2626; }
   .notas { border: 1px solid #e5e7eb; min-height: 14mm; padding: 2mm; white-space: pre-wrap; }
   .pie { display: flex; justify-content: space-between; margin-top: 6mm; font-size: 8pt; color: #6b7280; }
+  table.cal { table-layout: fixed; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.cal th { text-align: center; }
+  table.cal td { height: 14mm; border: 1px solid #e5e7eb; padding: .8mm; font-size: 7.5pt; vertical-align: top; }
+  table.cal td.hoy { border: 2px solid #e8a33c; } table.cal td.finde { background: #f9fafb; }
+  .cal-dia { color: #6b7280; font-size: 7pt; } .cal-dia.hoy { color: #b45309; font-weight: bold; }
+  .ev { display: block; border-radius: 1mm; padding: 0 1mm; margin-top: .5mm; border-left: 1mm solid #9ca3af; background: #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev.verde { border-color: #16a34a; background: #dcfce7; } .ev.amarillo { border-color: #ca8a04; background: #fef9c3; } .ev.rojo { border-color: #dc2626; background: #fee2e2; }
 </style></head><body>
   <div class="marca">${esc(empresa)} · Gestión de operaciones</div>
   <h1>Minuta — Reunión de Buenos Días <small>8:45 a 9:05 hs</small></h1>
@@ -348,11 +357,26 @@ export function htmlMinuta({ empresa, minuta, items = [], participantes = [] }) 
   <div class="asistencia">${todos.map((p) => `<span class="${presentes.has(p.nombre) ? "si" : ""}">${esc(p.nombre)}${p.area ? ` · ${esc(p.area)}` : ""}</span>`).join("")}</div>
   ${BLOQUES.map(bloque).join("")}
   <section><h2>Notas libres</h2><div class="notas">${esc(minuta?.notas || "")}</div></section>
+  ${htmlCalendario(items, minuta?.fecha)}
   <div class="pie">
     <span>${esc(empresa)} · Minuta de la Reunión de Buenos Días — v2 · Gypi</span>
     <span>Firma / conforme del moderador: ${minuta?.estado === "cerrada" && minuta?.modera ? esc(minuta.modera) : "____________________"}</span>
   </div>
 </body></html>`;
+}
+
+/** Calendario de fechas objetivo para la minuta impresa (vacío si no hay nada). */
+function htmlCalendario(items, fecha) {
+  if (!fecha) return "";
+  const cal = calendarioMinuta(items, String(fecha).slice(0, 10));
+  if (!cal.total) return "";
+  const ev = (e, conFecha = false) => `<span class="ev ${esc(e.semaforo || "")}">${iconoEvento(e)} ${esc(nombreEvento(e))}${conFecha ? ` · ${esc(fechaCorta(e.fecha).slice(0, 5))}` : ""}</span>`;
+  return `<section><h2>Calendario de fechas objetivo</h2><p class="ayuda">🏭 producción y 🔧 instalación en curso, con el color de su semáforo.</p>
+  ${cal.vencidas.length ? `<p class="ayuda"><b>Ya vencieron:</b></p><div>${cal.vencidas.map((e) => ev(e, true)).join("")}</div>` : ""}
+  <table class="cal"><tr>${DIAS_CORTOS.map((d) => `<th>${d}</th>`).join("")}</tr>
+  ${cal.semanas.map((sem) => `<tr>${sem.map((d) => `<td class="${d.hoy ? "hoy" : ""} ${d.finde ? "finde" : ""}"><div class="cal-dia ${d.hoy ? "hoy" : ""}">${d.hoy ? "Hoy" : esc(d.etiqueta)}</div>${d.eventos.map((e) => ev(e)).join("")}</td>`).join("")}</tr>`).join("")}</table>
+  ${cal.masAdelante.length ? `<p class="ayuda">Más adelante: ${cal.masAdelante.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e))} ${esc(fechaCorta(e.fecha).slice(0, 5))}`).join(" · ")}</p>` : ""}
+  ${cal.sinFecha.length ? `<p class="ayuda">Sin fecha objetivo: ${cal.sinFecha.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e))}`).join(" · ")}</p>` : ""}</section>`;
 }
 
 /** Abre la minuta en una pestaña nueva con el diálogo de impresión ("Guardar como PDF"). */
