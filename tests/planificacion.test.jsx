@@ -762,7 +762,7 @@ test("avance_manual — solo se guarda con la forma correcta; migración 141", (
     assert.equal(validarPatch("proyectos", { avance_manual: mal }, { rol: "gerencial" })?.status, 400, JSON.stringify(mal));
   }
   const esquemas = readFileSync(new URL("../app/lib/schemas.ts", import.meta.url), "utf8");
-  assert.match(esquemas, /"tipo_proyecto", "avance_manual"\]/);
+  assert.match(esquemas, /"tipo_proyecto", "avance_manual"/);
   const sql = readFileSync(new URL("../supabase/migrations/141_proyectos_avance_manual.sql", import.meta.url), "utf8");
   assert.match(sql, /add column if not exists avance_manual jsonb/i);
 });

@@ -201,6 +201,20 @@ export function pendienteEtapa({ ot, codigo, avance = [], piezas = [] }) {
 }
 
 /**
+ * Gabinetes de una OT: los módulos de la planilla, o las etiquetas de módulo
+ * de Gypi, o placas × gabinetes por placa de su tipo. Lo usan el Armado y la
+ * instalación (app/lib/instalacionPlan.js).
+ * @returns {{ gabinetes: number, origen: "modulos"|"etiquetas"|"placas" }}
+ */
+export function gabinetesOt(proyecto, params, { modulosEtiquetas = null } = {}) {
+  if (num(proyecto?.total_modulos)) return { gabinetes: num(proyecto.total_modulos), origen: "modulos" };
+  if (modulosEtiquetas) return { gabinetes: modulosEtiquetas, origen: "etiquetas" };
+  const placas = (num(proyecto?.placas) || 0) + (num(proyecto?.fondos) || 0);
+  const rel = relacionesTipo(params, tipoDeOt(proyecto || {}).id);
+  return { gabinetes: placas * (rel.gab || 0), origen: "placas" };
+}
+
+/**
  * Horas de una OT por etapa (horas de trabajo efectivas, antes de la eficiencia).
  * @returns {{ ot, tipo: string|null, sinDatos: boolean, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas: Record<string,{gente:number, maquina:number, pendiente:number}>, total: number, completo: number }}
  */
@@ -214,10 +228,7 @@ export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = []
   const pct = params.modo_mecanizado === "porcentaje" ? (params.pct_mecanizado || 0) / 100 : 1;
   const mecanizados = deLaPlanilla ?? placas * pct * (rel.mec || 0);
   const origenMecanizados = deLaPlanilla != null ? "planilla" : "tipo";
-  let gabinetes, origenGabinetes;
-  if (num(proyecto.total_modulos)) { gabinetes = num(proyecto.total_modulos); origenGabinetes = "modulos"; }
-  else if (modulosEtiquetas) { gabinetes = modulosEtiquetas; origenGabinetes = "etiquetas"; }
-  else { gabinetes = placas * (rel.gab || 0); origenGabinetes = "placas"; }
+  const { gabinetes, origen: origenGabinetes } = gabinetesOt(proyecto, params, { modulosEtiquetas });
   const sinDatos = num(proyecto.placas) == null && num(proyecto.fondos) == null && num(proyecto.metros_canto) == null;
 
   const pend = (id) => pendienteEtapa({ ot: proyecto.ot, codigo: params.etapas?.[id], avance, piezas });

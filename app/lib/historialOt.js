@@ -84,7 +84,7 @@ const MOTIVOS = {
 };
 const NOMBRE_CAMPO = {
   cliente: "cliente", proyecto: "proyecto", descripcion: "descripción", obra: "obra", division: "división", fecha_entrega: "entrega",
-  cantidad: "cantidad", total_modulos: "módulos", tipo_proyecto: "tipo de proyecto", prioridad: "prioridad", semana_app: "semana",
+  cantidad: "cantidad", total_modulos: "módulos", tipo_proyecto: "tipo de proyecto", dias_instalacion: "días de instalación", personas_instalacion: "instaladores", prioridad: "prioridad", semana_app: "semana",
   notas: "notas", observaciones: "observaciones", estado: "estado", placas: "placas", fondos: "fondos", metros_canto: "metros de canto",
 };
 const ACCIONES_AVANCE = {

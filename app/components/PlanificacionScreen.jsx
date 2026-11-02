@@ -50,6 +50,7 @@ import {
 } from "../lib/planificacion";
 import { TIPOS_PROYECTO, TIPO_GLOBAL, tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { Chip } from "./ui";
+import { errorInstalacion } from "../lib/instalacionPlan";
 
 const VISTAS = [
   { id: "carga", label: "📊 Carga" },
@@ -966,6 +967,11 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
   const [textosTipo, setTextosTipo] = useState(() => Object.fromEntries(TIPOS_TABLA.map((t) => [t.id,
     Object.fromEntries(RELACIONES_TIPO.map((r) => [r.id, conComa(cfg.por_tipo?.[t.id]?.[r.id])]))])));
   const [feriados, setFeriados] = useState(() => cfg.feriados || []);
+  // 🔧 Instalación (parte 42): instaladores por OT y gabinetes por persona por día de cada tipo
+  const [textosInst, setTextosInst] = useState(() => ({
+    personas_por_ot: conComa(cfg.instalacion?.personas_por_ot),
+    gab_por_dia: Object.fromEntries(TIPOS_TABLA.map((t) => [t.id, conComa(cfg.instalacion?.gab_por_dia?.[t.id])])),
+  }));
   const [estado, setEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -979,14 +985,24 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
     if (!txt) return `${r.label}: falta el número`;
     return v == null ? `${r.label}: escribí solo el número` : (errorParametro(r, v) ? `${r.label}: ${errorParametro(r, v)}` : null);
   }).filter(Boolean).join(" · ")]));
-  const hayError = Object.values(errores).some(Boolean) || Object.values(erroresTipo).some(Boolean);
+  const valoresInst = {
+    personas_por_ot: leerNumero(textosInst.personas_por_ot),
+    gab_por_dia: Object.fromEntries(TIPOS_TABLA.map((t) => [t.id, leerNumero(textosInst.gab_por_dia[t.id])])),
+  };
+  const erroresInst = {
+    personas_por_ot: !textosInst.personas_por_ot.trim() ? "Falta el número"
+      : valoresInst.personas_por_ot == null ? "Escribí solo el número" : errorInstalacion("personas", valoresInst.personas_por_ot, { entero: true }),
+    ...Object.fromEntries(TIPOS_TABLA.map((t) => [t.id, textosInst.gab_por_dia[t.id].trim() && valoresInst.gab_por_dia[t.id] == null
+      ? "Escribí solo el número" : errorInstalacion("gab_por_dia", valoresInst.gab_por_dia[t.id])])),
+  };
+  const hayError = Object.values(errores).some(Boolean) || Object.values(erroresTipo).some(Boolean) || Object.values(erroresInst).some(Boolean);
   const productivas = (etapas || []).filter((e) => e.codigo > 0);
 
   const guardar = async () => {
     if (hayError) return;
     setGuardando(true);
     setEstado(null);
-    const valor = { ...valores, modo_mecanizado: modoMec, por_tipo: valoresTipo, division_id: division?.id || null, etapas: elegidas, feriados: normalizarFeriados(feriados) };
+    const valor = { ...valores, modo_mecanizado: modoMec, por_tipo: valoresTipo, division_id: division?.id || null, etapas: elegidas, feriados: normalizarFeriados(feriados), instalacion: valoresInst };
     try {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=clave&limit=1`);
       if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}`, { valor });
@@ -1051,6 +1067,8 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
         </div>
       ))}
 
+      <InstalacionParametros textos={textosInst} errores={erroresInst} onChange={setTextosInst} />
+
       <FeriadosPlan feriados={feriados} onChange={setFeriados} />
 
       {estado && <div role="status" className="text-[13px] text-gypi-dim mb-2">{estado}</div>}
@@ -1058,6 +1076,40 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
         {guardando ? "Guardando…" : "Guardar parámetros"}
       </button>
     </section>
+  );
+}
+
+// 🔧 Instalación (parte 42; app/lib/instalacionPlan.js): con esto Gypi calcula
+// los días de obra de cada OT = gabinetes ÷ (gabinetes por persona por día) ÷
+// instaladores, de a medio día. En el Detalle de la OT se corrige a mano.
+function InstalacionParametros({ textos, errores, onChange }) {
+  return (
+    <div className="g-card mb-3.5" aria-label="Parámetros de la instalación">
+      <div className="g-label mb-2">🔧 Instalación</div>
+      <div className="text-xs text-gypi-dim mb-3">Días de obra de cada OT = gabinetes ÷ gabinetes que instala una persona por día ÷ instaladores que van. Se redondea de a medio día. En el Detalle de la OT se puede corregir a mano.</div>
+      <label htmlFor="inst-personas" className="text-[13px] font-bold block mb-1">Instaladores por OT <span className="font-normal text-gypi-dim">(personas, si la OT no dice otra cosa)</span></label>
+      <input id="inst-personas" className="g-input w-full" inputMode="numeric" value={textos.personas_por_ot}
+        onChange={(e) => onChange((t) => ({ ...t, personas_por_ot: e.target.value }))} />
+      {errores.personas_por_ot && <div className="text-xs text-gypi-red mt-1">{errores.personas_por_ot}</div>}
+      <div className="text-[13px] font-bold mt-3 mb-1">Gabinetes que instala una persona por día</div>
+      <div className="text-xs text-gypi-dim mb-2">Por tipo de proyecto. Vacío = las OT de ese tipo usan &quot;Sin tipo&quot;; si también está vacío, hay que poner los días a mano.</div>
+      <table className="w-full text-[13px]">
+        <tbody>
+          {TIPOS_TABLA.map((t) => (
+            <tr key={t.id} className="border-t border-gypi-border align-top">
+              <td className="py-1.5 pr-2">
+                {t.nombre}
+                {errores[t.id] && <div className="text-xs text-gypi-red">{errores[t.id]}</div>}
+              </td>
+              <td className="py-1 w-[40%]">
+                <input className="g-input w-full" inputMode="decimal" placeholder="Sin cargar" aria-label={`Gabinetes que instala una persona por día en ${t.nombre}`}
+                  value={textos.gab_por_dia[t.id]} onChange={(e) => onChange((x) => ({ ...x, gab_por_dia: { ...x.gab_por_dia, [t.id]: e.target.value } }))} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

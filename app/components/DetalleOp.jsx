@@ -33,6 +33,7 @@ import { useEscape } from "../hooks/useEscape";
 import MinutasDeOt from "./MinutasDeOt";
 import HistorialOt from "./HistorialOt";
 import PausaOt from "./PausaOt";
+import InstalacionOt from "./InstalacionOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -196,6 +197,9 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
             </div>
           </section>
         )}
+
+        {/* 🔧 Instalación (153): días de obra para el plan de instalación; gestión los corrige */}
+        <InstalacionOt proyecto={proyecto} puedeEditar={puedeCambiarSemana} onGuardado={onProyectoActualizado} />
 
         {etapasOt.length > 0 && (
           <section className="mb-4" aria-label="Etapas de la OT">
