@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { imprimirRotulos, linkCarga, modulosParaEtiquetas, MAX_ETIQUETAS, TAMANOS_ROTULO } from "../lib/carga";
 import { useEscape } from "../hooks/useEscape";
+import { TituloOt } from "./NombreOt";
 
 // Aparte de las etiquetas de pieza y de stock: acá se puede elegir 1/4 de A4
 const CLAVE_TAMANO = "gypi_tamano_rotulo";
@@ -52,7 +53,7 @@ export default function EtiquetasModulos({ proyecto, empresa = null, onClose }) 
         <div className="flex items-start gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <div className="g-overline text-gypi-amber-ink">Orden {ot} · Etiquetas de módulo</div>
-            <h3 className="m-0 font-heading text-lg font-bold truncate">{proyecto?.cliente || proyecto?.proyecto || "—"}</h3>
+            <TituloOt proyecto={proyecto} />
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>

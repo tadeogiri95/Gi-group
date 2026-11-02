@@ -125,7 +125,7 @@ test("GanttInstalacion — dibuja cada obra con su gente y lista las OT sin día
   assert.ok(screen.getByText(/Sin días de instalación · 1/));
   assert.equal(screen.queryByText(/No hay instaladores marcados/), null);
   assert.match(obra.textContent, /Ana, Beto/);
-  fireEvent.click(screen.getByRole("button", { name: "7962" }));
+  fireEvent.click(screen.getByRole("button", { name: "OT 7962 · Otro · Centro" }));
   assert.deepEqual(vistos, ["7961", "7962"]);
 });
 

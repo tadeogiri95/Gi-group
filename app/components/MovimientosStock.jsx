@@ -9,6 +9,7 @@ import { sb, apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
 import ArticuloNuevo from "./ArticuloNuevo";
 import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
+import { useOts } from "../hooks/useOts";
 
 const CUANTOS = 100;
 const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "" };
@@ -18,6 +19,7 @@ function fechaHora(iso) {
 }
 
 export default function MovimientosStock({ usuario, articulos = [], onArticuloNuevo }) {
+  const porOt = useOts();
   const [movs, setMovs] = useState(null);
   const [creando, setCreando] = useState(false);
   const puedeCrear = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
@@ -187,11 +189,11 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
           {movs.map((m) => (
             <li key={m.id} className={`flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface ${m.anulado ? "opacity-60" : ""}`}>
               <div className="flex-1 min-w-0">
-                <div className={`text-[14px] font-semibold truncate ${m.anulado ? "line-through" : ""}`}>{textoMovimiento(m)}</div>
+                <div className={`text-[14px] font-semibold ${m.anulado ? "line-through" : ""}`}>{textoMovimiento(m, porOt)}</div>
                 <div className="text-[12px] text-gypi-dim truncate">{m.nombre || m.sku} · {m.empleado_nombre || (m.legajo ? `Legajo ${m.legajo}` : "—")} · {fechaHora(m.created_at)}{m.anulado ? " · Anulado" : ""}</div>
               </div>
               {puedeAnular(m, { rol: usuario?.rol, empleadoId: usuario?.id }) && (
-                <button onClick={() => anular(m)} aria-label={`Anular ${textoMovimiento(m)} de ${m.nombre || m.sku}`}
+                <button onClick={() => anular(m)} aria-label={`Anular ${textoMovimiento(m, porOt)} de ${m.nombre || m.sku}`}
                   className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Anular</button>
               )}
             </li>

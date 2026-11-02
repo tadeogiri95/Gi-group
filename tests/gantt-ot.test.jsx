@@ -192,7 +192,7 @@ test("📅 Gantt — plan vivo: lo que no se hizo pasa a hoy, todo se corre y av
     assert.match(corte.getAttribute("class"), /stroke-gypi-red/, "contorno rojo");
     assert.match(ot.querySelector("[data-alertas]").textContent, /⚠ \+4 d de su fecha límite · ↪ \+7 d del plan/, "cada OT muestra las dos alertas");
     const alertas = screen.getByRole("region", { name: "Alertas del plan" });
-    assert.match(alertas.textContent, /7100 · termina el 28\/10\/2026 · ⚠ 4 días después de su fecha límite .* · ↪ se corrió 7 días del plan confirmado/);
+    assert.match(alertas.textContent, /OT 7100 · BCG · termina el 28\/10\/2026 · ⚠ 4 días después de su fecha límite .* · ↪ se corrió 7 días del plan confirmado/);
     // El cuadro se minimiza para ver el Gantt entero, y se vuelve a abrir
     fireEvent.click(within(alertas).getByRole("button", { name: /Minimizar/ }));
     assert.doesNotMatch(alertas.textContent, /termina el/);
@@ -697,7 +697,7 @@ test("📅 Gantt — ⏰ avisa los procesos de hoy que ya tenían que terminar",
       avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} onVerDetalle={(p) => vistos.push(p.ot)} />);
     const caja = screen.getByRole("region", { name: "Procesos por terminar" });
     // Corte de 2 h desde las 8: a las 10; el Canteado (6 h de máquina) recién a las 16
-    assert.match(caja.textContent, /7100 · Corte tenía que terminar a las 10:00/);
+    assert.match(caja.textContent, /OT 7100 · BCG · Corte tenía que terminar a las 10:00/);
     assert.doesNotMatch(caja.textContent, /Canteado/);
     assert.ok(within(caja).getByRole("button", { name: "⏱ Corte de la OT 7100 necesita más tiempo" }));
     fireEvent.click(within(caja).getByRole("button", { name: /Ver la OT 7100/ }));

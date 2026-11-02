@@ -254,12 +254,12 @@ test("📅 Plan de la semana — la planta ve qué OT y etapa toca hoy; otra div
   assert.match(caja.textContent, /Hoy · /);
   assert.match(caja.textContent, /7473/);
   assert.match(caja.textContent, /Corte 6 h/);
-  assert.equal(caja.querySelector("[data-proyecto]"), null, "en el Inicio, sin cliente");
+  // En el Inicio lee las OT del plan para mostrarlas completas (02/11)
   cleanup();
   // En el Tablero: con cliente y descripción de cada OT (Tadeo, 30/10)
   render(<PlanSemana divisiones={DIVISIONES} divisionUsuario="Muebles" proyectos={[{ ot: "7473", cliente: "BCG", descripcion: "Cocina integral" }]} />);
   const tablero = await screen.findByRole("region", { name: "Plan de la semana" });
-  assert.match(tablero.textContent, /7473 BCG · Cocina integral/);
+  assert.match(tablero.textContent, /OT 7473 · BCG · Cocina integral/);
   assert.match(tablero.textContent, /Corte 6 h/);
   cleanup();
   render(<PlanSemana divisiones={DIVISIONES} divisionUsuario="Herrería" />);

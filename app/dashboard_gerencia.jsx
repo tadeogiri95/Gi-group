@@ -56,6 +56,8 @@ import { faltanManual } from "./lib/ajustesTiempo";
 import { itemsVigentes, diasExtraVigentes, planVivo, otAtrasadasPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "./lib/ganttPlan";
 import { CLAVE_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
+import NombreOt from "./components/NombreOt";
+import { mapaOts, otCompleta, textoOt } from "./lib/nombreOt";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -409,7 +411,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       manual: faltanManual(ajus?.data || []), pausadas: otsEnPausa(paus?.data || []),
     }) : null;
     setOtAtrasadasLista(procesos ? otAtrasadasPlan(filasOt, procesos, { porEscaneo: avancePorOt(avHs.piezas || []) }) : null);
-    setPedidosCompra(peds ? peds.data || [] : null);
+    // Cada pedido con su OT completa (Código · Cliente · Proyecto · Descripción, 02/11)
+    const otsAbiertas = mapaOts(proy?.data || []);
+    setPedidosCompra(peds ? (peds.data || []).map((p) => ({ ...p, otTexto: p.ot ? textoOt(otCompleta(p.ot, otsAbiertas)) : null })) : null);
   }, [isDemo, empresaId, conOt, conCompras, conFlota, conMaquinaria, etapasCtx, divisionesCtx]);
   useEffect(() => { cargarOtYCompras(); }, [cargarOtYCompras]); // eslint-disable-line react-hooks/set-state-in-effect
   // Cada minuto, solo con la pestaña a la vista (F3-04)
@@ -726,7 +730,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                   <div key={f.proyecto.id ?? f.proyecto.ot} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
                     <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-gypi-text truncate">{f.proyecto.cliente || f.proyecto.proyecto || f.proyecto.obra || "—"}</div>
+                      <NombreOt proyecto={f.proyecto} sinCodigo truncar className="block text-[13px] text-gypi-text" />
                       <div className="text-[12px] text-gypi-dim truncate">
                         {nombreDivisionOt(divisionesCtx || [], f.proyecto.division)} &middot; {f.cerradas} de {f.celdas.length} etapas cerradas{f.liberada ? "" : " · sin liberar"}
                       </div>
@@ -760,7 +764,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                   className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer">
                   <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-gypi-text truncate">{f.proyecto.cliente || f.proyecto.proyecto || f.proyecto.obra || "—"}</div>
+                    <NombreOt proyecto={f.proyecto} sinCodigo truncar className="block text-[13px] text-gypi-text" />
                     <div className="text-[12px] text-gypi-dim truncate">
                       {dias > 0 ? "⚠" : "↪"} {procesos.map((q) => `${q.nombre} (hasta el ${fechaCorta(q.hasta)})`).join(", ")}{porcentaje != null ? ` · ${porcentaje}% hecho` : ""}
                     </div>
@@ -887,7 +891,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-gypi-text truncate">{p.descripcion}</div>
                     <div className="text-[12px] text-gypi-dim truncate">
-                      {[p.empleado_nombre, p.ot && `OT ${p.ot}`, p.created_at && new Date(p.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })].filter(Boolean).join(" · ")}
+                      {[p.empleado_nombre, p.otTexto, p.created_at && new Date(p.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                   <span className="font-mono text-[13px] font-bold text-gypi-text shrink-0">{Number(p.cantidad).toLocaleString("es-AR")}{p.unidad ? ` ${p.unidad}` : ""}</span>

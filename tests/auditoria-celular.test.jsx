@@ -38,8 +38,8 @@ const conAuth = (ui, extra = {}) => (
 test("lista de OT — cada OT es una tarjeta con estado y entrega; al tocarla se abre con todos sus botones grandes", async () => {
   global.fetch = mockDatos({ proyectos: OTS });
   render(conAuth(<ProyectosScreen empresaId={E} />));
-  const fila = await screen.findByRole("button", { name: /OT 7495: Banco Norte. Sin empezar/ });
-  assert.match(fila.textContent, /Sucursal Centro · Muebles/);
+  const fila = await screen.findByRole("button", { name: /OT 7495 · Banco Norte.*\. Sin empezar/ });
+  assert.match(fila.textContent, /Sucursal Centro.*Muebles/);
   assert.match(fila.textContent, /Entrega 20\/11\/2026/);
   // Los 8 botones ya no se repiten en cada OT
   assert.equal(screen.queryByRole("button", { name: "📊 Detalle" }), null);
@@ -61,7 +61,7 @@ test("lista de OT — cada OT es una tarjeta con estado y entrega; al tocarla se
 test("lista de OT — sin obra no queda un puntito suelto antes de la división", async () => {
   global.fetch = mockDatos({ proyectos: OTS });
   render(conAuth(<ProyectosScreen empresaId={E} />));
-  const fila = await screen.findByRole("button", { name: /OT 7858: CEVT/ });
+  const fila = await screen.findByRole("button", { name: /OT 7858 · CEVT/ });
   assert.doesNotMatch(fila.textContent, /·\s*Muebles/);
   assert.match(fila.textContent, /Muebles/);
 });

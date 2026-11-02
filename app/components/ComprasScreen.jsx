@@ -23,6 +23,8 @@ import RecibirCompra from "./RecibirCompra";
 import ReportesCompras from "./ReportesCompras";
 import ArticuloNuevo from "./ArticuloNuevo";
 import FilaDeslizable from "./ui/FilaDeslizable";
+import { useOts } from "../hooks/useOts";
+import { otCompleta, textoOt } from "../lib/nombreOt";
 
 const CUANTOS = 300;
 const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad: "", ot: "", para_fecha: "", notas: "" };
@@ -61,6 +63,7 @@ function formDePedido(p, articulos) {
 
 /** Pedir material o, con `pedido`, corregir uno pendiente. */
 function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onCorregido, puedeCrearArticulo = false, onArticuloNuevo }) {
+  const porOt = useOts();
   const [form, setForm] = useState(() => (pedido ? formDePedido(pedido, articulos) : { ...VACIO }));
   const [creando, setCreando] = useState(false);
   const [error, setError] = useState(null);
@@ -111,7 +114,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onC
   if (hecho) {
     return (
       <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
-        <div role="status" className="text-[14px] font-semibold mb-3">✅ Pedido cargado: {textoPedido(hecho)}. Administración lo ve en Compras.</div>
+        <div role="status" className="text-[14px] font-semibold mb-3">✅ Pedido cargado: {textoPedido(hecho, porOt)}. Administración lo ve en Compras.</div>
         <div className="flex gap-2">
           <button onClick={onCancelar} className="g-btn g-btn-secondary flex-1">Listo</button>
           <button onClick={() => { setHecho(null); setForm({ ...VACIO, ot: form.ot, para_fecha: form.para_fecha }); }} className="g-btn g-btn-primary flex-1">Pedir otro</button>
@@ -177,7 +180,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onC
         <div className="flex-1">
           <label className="g-label" htmlFor="ped-ot">OT (opcional)</label>
           <input id="ped-ot" className="g-input w-full mb-2" list="ped-ots" value={form.ot} onChange={cambiar("ot")} maxLength={40} placeholder="Ej: M-7495" />
-          <datalist id="ped-ots">{ots.map((o) => <option key={o} value={o} />)}</datalist>
+          <datalist id="ped-ots">{ots.map((o) => <option key={o} value={o} label={textoOt(otCompleta(o, porOt))} />)}</datalist>
         </div>
         <div className="flex-1">
           <label className="g-label" htmlFor="ped-fecha">Para cuándo</label>
@@ -199,6 +202,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onC
 
 /** Varios pedidos de una vez, pegando renglones de la hoja INVENTARIO. */
 function PegarPedido({ articulos, ots, onListo, onCancelar }) {
+  const porOt = useOts();
   const [pegado, setPegado] = useState("");
   const [lista, setLista] = useState(null);
   const [leido, setLeido] = useState(null);
@@ -315,7 +319,7 @@ function PegarPedido({ articulos, ots, onListo, onCancelar }) {
             <div className="flex-1">
               <label className="g-label" htmlFor="pegar-ot">OT (opcional)</label>
               <input id="pegar-ot" className="g-input w-full mb-2" list="pegar-ots" value={comun.ot} onChange={cambiar("ot")} maxLength={40} placeholder="Ej: M-7495" />
-              <datalist id="pegar-ots">{ots.map((o) => <option key={o} value={o} />)}</datalist>
+              <datalist id="pegar-ots">{ots.map((o) => <option key={o} value={o} label={textoOt(otCompleta(o, porOt))} />)}</datalist>
             </div>
             <div className="flex-1">
               <label className="g-label" htmlFor="pegar-fecha">Para cuándo</label>
@@ -339,6 +343,7 @@ function PegarPedido({ articulos, ots, onListo, onCancelar }) {
 }
 
 export default function ComprasScreen({ empresaId, empresa = null, usuario = null }) {
+  const porOt = useOts();
   const [permisos, setPermisos] = useState(null);
   const [vista, setVista] = useState("pedidos");
   const [ordenNueva, setOrdenNueva] = useState(null);
@@ -473,7 +478,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
               onCorregido={async (data) => {
                 setEditando(null);
                 setHistorial(null);
-                setAviso(data.cambios?.length ? `Pedido corregido: ${textoPedido(data.pedido)}.` : "No había nada para cambiar.");
+                setAviso(data.cambios?.length ? `Pedido corregido: ${textoPedido(data.pedido, porOt)}.` : "No había nada para cambiar.");
                 await cargar();
               }} />
           ) : permisos.puede_pedir && (pidiendo ? (
@@ -513,7 +518,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
                   <li key={p.id} className={`p-2 rounded-[10px] border border-gypi-border bg-gypi-surface ${p.estado === "anulado" ? "opacity-60" : ""}`}>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className={`text-[14px] font-semibold truncate ${p.estado === "anulado" ? "line-through" : ""}`}>{textoPedido(p)}</div>
+                        <div className={`text-[14px] font-semibold ${p.estado === "anulado" ? "line-through" : ""}`}>{textoPedido(p, porOt)}</div>
                         <div className="text-[12px] text-gypi-dim truncate">
                           {est.icono} {est.nombre} · {p.empleado_nombre || "—"} · {fecha(p.created_at)}
                           {p.para_fecha ? ` · Para el ${fecha(p.para_fecha)}` : ""}
@@ -522,11 +527,11 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
                         </div>
                       </div>
                       {puedeEditarPedido(p, { comprador, empleadoId: usuario?.id }) && (
-                        <button onClick={() => { setEditando(p); setPidiendo(false); setPegando(false); setError(null); setAviso(null); }} aria-label={`Editar pedido de ${textoPedido(p)}`}
+                        <button onClick={() => { setEditando(p); setPidiendo(false); setPegando(false); setError(null); setAviso(null); }} aria-label={`Editar pedido de ${textoPedido(p, porOt)}`}
                           className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Editar</button>
                       )}
                       {puedeAnularPedido(p, { comprador, empleadoId: usuario?.id }) && (
-                        <button onClick={() => anular(p)} aria-label={`Anular pedido de ${textoPedido(p)}`}
+                        <button onClick={() => anular(p)} aria-label={`Anular pedido de ${textoPedido(p, porOt)}`}
                           className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Anular</button>
                       )}
                     </div>
@@ -537,7 +542,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
                       </button>
                     )}
                     {historial?.id === p.id && (
-                      <ul aria-label={`Correcciones de ${textoPedido(p)}`} className="list-none m-0 mt-1 p-2 rounded-lg bg-gypi-bg text-[12px] flex flex-col gap-1">
+                      <ul aria-label={`Correcciones de ${textoPedido(p, porOt)}`} className="list-none m-0 mt-1 p-2 rounded-lg bg-gypi-bg text-[12px] flex flex-col gap-1">
                         {historial.cambios === null ? <li role="status">Cargando…</li>
                           : historial.error ? <li>No se pudo leer el historial.</li>
                             : !historial.cambios.length ? <li>Sin correcciones guardadas.</li>

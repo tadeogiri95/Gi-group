@@ -8,6 +8,7 @@
 // Cada pregunta es un renglón de la sección 'revision'; el renglón de origen
 // va en datos.de (no en viene_de, que es la cadena del seguimiento).
 import { idRenglon } from "./minutas";
+import { textoRenglonOt } from "./nombreOt";
 
 export const SECCION_REVISION = "revision";
 const ALERTAS = ["prod_en_curso", "inst_en_curso", "inst_pendiente", "postventa"];
@@ -66,9 +67,9 @@ export function armarRevision({ anterior, items = [], pedidos = [], hoy, ya = []
 }
 
 /** Qué se está revisando, en una línea: "OT 7751 · Producción en curso · Falta herraje". */
-export function textoRevision(it) {
+export function textoRevision(it, porOt = null) {
   const d = it.datos || {};
-  return [it.ot ? `OT ${it.ot}` : it.proyecto, NOMBRE_SECCION[d.seccion_ayer], it.texto].filter(Boolean).join(" · ");
+  return [it.ot ? textoRenglonOt(it, porOt) : it.proyecto, NOMBRE_SECCION[d.seccion_ayer], it.texto].filter(Boolean).join(" · ");
 }
 
 /**

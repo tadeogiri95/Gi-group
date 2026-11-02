@@ -17,6 +17,8 @@ import { CLAVE_PLANIFICACION } from "../lib/planificacion";
 import { etapasDelPlan } from "../lib/ganttPlan";
 import { cantidadTexto } from "../lib/stock";
 import { faltaPorOt, materialDelDia } from "../lib/materialDia";
+import NombreOt from "./NombreOt";
+import { mapaOts, otCompleta, textoOt } from "../lib/nombreOt";
 
 const COLOR_ETAPA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
 
@@ -45,7 +47,7 @@ async function leerMaterial(empresaId, ots) {
   return { falta: faltaPorOt(nec, mov || []), articulos, cfgValor: cfg?.[0]?.valor || null };
 }
 
-function MaterialDia({ material }) {
+function MaterialDia({ material, porOt }) {
   const [abierto, setAbierto] = useState(false);
   if (!material.filas.length) return null;
   const resumen = material.conFalta
@@ -65,7 +67,7 @@ function MaterialDia({ material }) {
               <span className="font-bold flex-1 min-w-0">{f.nombre}</span>
               <span className="text-gypi-dim">necesita {cantidadTexto(f.cantidad)}{f.unidad ? ` ${f.unidad}` : ""} · stock {cantidadTexto(f.stock)}</span>
               <span className={f.faltan > 0 ? "text-gypi-red font-bold" : "text-gypi-green"}>{f.faltan > 0 ? `faltan ${cantidadTexto(f.faltan)}` : "✅"}</span>
-              <span className="w-full text-xs text-gypi-dim">OT {f.ots.join(", ")}</span>
+              <span className="w-full text-xs text-gypi-dim">{f.ots.map((ot) => textoOt(otCompleta(ot, porOt))).join(" / ")}</span>
             </li>
           ))}
         </ul>
@@ -80,7 +82,10 @@ export default function PlanSemana({ divisiones, divisionUsuario = null, proyect
   const [plan, setPlan] = useState(null);
   const [verTodo, setVerTodo] = useState(false);
   const hoy = hoyArg();
-  const porOt = new Map((proyectos || []).map((p) => [String(p.ot), p]));
+  // En el Inicio no viene la lista de OT: se leen las del plan para mostrar
+  // cada OT completa (Código · Cliente · Proyecto · Descripción, 02/11)
+  const [leidas, setLeidas] = useState(null);
+  const porOt = mapaOts(proyectos || leidas || []);
 
   useEffect(() => {
     let vivo = true;
@@ -90,6 +95,16 @@ export default function PlanSemana({ divisiones, divisionUsuario = null, proyect
       .catch(() => {});
     return () => { vivo = false; };
   }, [hoy]);
+
+  const otsDelPlan = plan && !proyectos ? [...new Set((plan.items || []).map((i) => String(i.ot)))].sort().join("|") : "";
+  useEffect(() => {
+    if (!otsDelPlan) return;
+    let vivo = true;
+    sb.get(`proyectos?ot=in.(${lista(otsDelPlan.split("|"))})&select=ot,cliente,obra,descripcion`)
+      .then((d) => { if (vivo && Array.isArray(d)) setLeidas(d); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [otsDelPlan]);
 
   // Material de cada día: solo en el Tablero (con las OT)
   const [stock, setStock] = useState(null);
@@ -128,12 +143,7 @@ export default function PlanSemana({ divisiones, divisionUsuario = null, proyect
             <ul className="list-none m-0 p-0 flex flex-col gap-1">
               {d.ots.map((o) => (
                 <li key={o.ot} className="text-[14px]">
-                  <span className="font-mono font-bold">{o.ot}</span>{" "}
-                  {(() => {
-                    const p = porOt.get(String(o.ot));
-                    const texto = [p?.cliente, p?.descripcion].filter(Boolean).join(" · ");
-                    return texto ? <span className="text-gypi-text mr-2" data-proyecto>{texto}</span> : null;
-                  })()}
+                  <NombreOt proyecto={otCompleta(o.ot, porOt)} className="text-gypi-text mr-2" />{" "}
                   {o.etapas.map((e) => (
                     <span key={e.id} className="inline-flex items-center gap-1 mr-2 text-gypi-dim">
                       <span aria-hidden="true" className={`inline-block w-2.5 h-2.5 rounded-sm ${COLOR_ETAPA[e.id]}`} />{e.nombre} {fmtH(e.horas)}
@@ -142,7 +152,7 @@ export default function PlanSemana({ divisiones, divisionUsuario = null, proyect
                 </li>
               ))}
             </ul>
-            {stock && <MaterialDia material={materialDelDia(d.ots, { falta: stock.falta, articulos: stock.articulos, pendiente })} />}
+            {stock && <MaterialDia porOt={porOt} material={materialDelDia(d.ots, { falta: stock.falta, articulos: stock.articulos, pendiente })} />}
           </li>
         ))}
       </ul>

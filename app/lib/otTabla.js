@@ -4,7 +4,7 @@
 
 export const COLUMNAS_OT = [
   { id: "ot", label: "OT", filtro: "texto" },
-  { id: "cliente", label: "Cliente / obra", filtro: "texto" },
+  { id: "cliente", label: "Cliente / proyecto", filtro: "texto" },
   { id: "estado", label: "Estado", filtro: "lista" },
   { id: "avance", label: "Avance", filtro: "rango" },
   { id: "entrega", label: "Entrega", filtro: "texto" },
@@ -41,7 +41,7 @@ function clave(f, col) {
 /** Texto donde busca el filtro de cada columna. */
 function textoDe(f, col) {
   if (col === "ot") return f.p.ot;
-  if (col === "cliente") return [f.p.cliente, f.p.proyecto, f.p.obra, f.obra].filter(Boolean).join(" ");
+  if (col === "cliente") return [f.p.cliente, f.p.proyecto, f.p.obra, f.p.descripcion, f.obra].filter(Boolean).join(" ");
   if (col === "entrega") return f.entrega || "";
   return "";
 }

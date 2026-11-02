@@ -14,6 +14,8 @@ import { buscarDivision } from "../lib/rutas";
 import { fechaCorta } from "../lib/ot";
 import { hoyArg } from "../lib/dates";
 import Stat from "./ui/Stat";
+import NombreOt from "./NombreOt";
+import { mapaOts, otCompleta } from "../lib/nombreOt";
 
 const fmtDias = (d) => (d == null ? "—" : `${String(d).replace(".", ",")} ${d === 1 ? "día" : "días"}`);
 const vacio = () => ({ data: [] });
@@ -30,8 +32,8 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
       try {
         const e = empresaId;
         const [proyectos, piezas, etapas, cargas, bultos, actas, manual, empleados, cfg, etapasEmpresa, pausas] = await Promise.all([
-          sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,proyecto,division,created_at,liberada_at,avance_manual&order=id.asc`, { maxFilas: 20000 })
-            .catch(() => sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,proyecto,division,created_at,liberada_at&order=id.asc`, { maxFilas: 20000 })),
+          sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,obra,proyecto,descripcion,division,created_at,liberada_at,avance_manual&order=id.asc`, { maxFilas: 20000 })
+            .catch(() => sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,obra,proyecto,descripcion,division,created_at,liberada_at&order=id.asc`, { maxFilas: 20000 })),
           // Sin las migraciones de cada parte, ese tramo queda sin dato
           sbGetAll(`v_avance_piezas?empresa_id=eq.${e}&select=ot,etapa,total,pasaron,primer_paso,ultimo_paso`, { maxFilas: 20000 }).catch(vacio),
           sbGetAll(`avance_etapas?empresa_id=eq.${e}&select=ot,etapa,estado,terminada_at,aprobada_at`, { maxFilas: 20000 }).catch(vacio),
@@ -65,6 +67,8 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
     avance: crudo.avance, proyectos: crudo.proyectos, ventanas: ventanasDeGrilla(crudo.empleados, divisiones, crudo.cfgValor),
     pausas: crudo.pausas,
   }), [crudo, divisiones]);
+
+  const porOt = useMemo(() => mapaOts(crudo?.proyectos || []), [crudo]);
 
   const resumen = useMemo(() => {
     if (!filas || !fechaDesde || !fechaHasta) return null;
@@ -122,8 +126,8 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
               <div className="flex flex-col gap-1.5">
                 {enHoras.ots.map((o) => (
                   <div key={o.ot} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border" data-lead-horas={o.ot}>
-                    <div className="text-[13px] truncate">
-                      <span className="font-mono font-bold">OT {o.ot}</span>{o.cliente && <span className="text-gypi-dim"> · {o.cliente}</span>}
+                    <div className="text-[13px]">
+                      <NombreOt proyecto={otCompleta(o.ot, porOt, { cliente: o.cliente })} />
                       {o.horas != null && <span className="font-bold"> · terminada en {fmtHoras(o.horas)}</span>}
                     </div>
                     <div className="text-[12px] text-gypi-dim mt-1">{o.procesos.map((q) => `${q.nombre} ${fmtHoras(q.horas)}`).join(" · ")}</div>
@@ -142,7 +146,7 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
         <div className="flex flex-col gap-1.5">
           {resumen.ots.map((o) => (
             <div key={o.ot} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border">
-              <div className="text-[13px] truncate"><span className="font-mono font-bold">OT {o.ot}</span>{o.cliente && <span className="text-gypi-dim"> · {o.cliente}</span>}</div>
+              <div className="text-[13px]"><NombreOt proyecto={otCompleta(o.ot, porOt, { cliente: o.cliente })} /></div>
               <div className="text-[12px] text-gypi-dim mt-1">
                 Producción {fmtDias(o.produccion)} · Instalación {fmtDias(o.instalacion)} · Total {fmtDias(o.total)}
               </div>

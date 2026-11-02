@@ -12,6 +12,8 @@ import { fotoBase64, subirImagen } from "../lib/foto";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { ESTADOS_OC, ESTADOS_OC_RECIBIBLE, equivalenciaStock, factorItem, ocACotizar, ocAtrasada, pendienteItem } from "../lib/ordenesCompra";
 import { faltaTabla } from "../lib/compras";
+import { useOts } from "../hooks/useOts";
+import { otCompleta, textoOt } from "../lib/nombreOt";
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 const cantTexto = (n) => Number(n).toLocaleString("es-AR", { maximumFractionDigits: 3 });
@@ -26,6 +28,7 @@ async function postCompras(body) {
 }
 
 function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
+  const porOt = useOts();
   const [items, setItems] = useState(null);
   const [recepciones, setRecepciones] = useState([]);
   const [cantidades, setCantidades] = useState({});
@@ -126,7 +129,7 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
               const falta = pendienteItem(it);
               return (
                 <li key={it.id} className="p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">
-                  <div className="text-[14px] font-semibold">{it.descripcion}{it.ot && <span className="text-gypi-dim font-normal"> · OT {it.ot}</span>}</div>
+                  <div className="text-[14px] font-semibold">{it.descripcion}{it.ot && <span className="text-gypi-dim font-normal block text-[13px]" data-ot-completa>{textoOt(otCompleta(it.ot, porOt))}</span>}</div>
                   <div className="text-[12px] text-gypi-dim">
                     Pedido {cantTexto(it.cantidad)} {it.unidad || ""} · Llegó {cantTexto(it.cantidad_recibida || 0)}{falta > 0 ? ` · Falta ${cantTexto(falta)}` : " · ✅ Completo"}
                   </div>

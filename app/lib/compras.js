@@ -7,6 +7,8 @@
 // asignada (un supervisor de división pide y recibe, pero no compra).
 // Migración 121: un pedido pendiente se corrige y queda registro de quién.
 
+import { otCompleta, textoOt } from "./nombreOt";
+
 export const ESTADOS_PEDIDO = {
   pendiente: { id: "pendiente", nombre: "Pendiente", icono: "🕓" },
   en_oc:     { id: "en_oc",     nombre: "En orden de compra", icono: "📄" },
@@ -126,14 +128,17 @@ export function numeroWhatsapp(texto) {
   return d.length >= 8 ? d : null;
 }
 
-/** "Placa melamina blanca · 4 placas · OT M-7495" para las listas. */
-export function textoPedido(p) {
+/**
+ * "Placa melamina blanca · 4 placas · OT M-7495 · Cliente · Proyecto · Descripción"
+ * para las listas (la OT completa si viene el mapa de OT de useOts).
+ */
+export function textoPedido(p, porOt = null) {
   const cant = Number(p?.cantidad);
   const cantidad = Number.isFinite(cant) ? cant.toLocaleString("es-AR", { maximumFractionDigits: 3 }) : "?";
   return [
     p?.descripcion || p?.sku || "",
     `${cantidad}${p?.unidad ? ` ${p.unidad}` : ""}`,
-    p?.ot ? `OT ${p.ot}` : null,
+    p?.ot ? textoOt(otCompleta(p.ot, porOt)) : null,
   ].filter(Boolean).join(" · ");
 }
 

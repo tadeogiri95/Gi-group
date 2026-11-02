@@ -14,6 +14,7 @@ import ElegirOtCarga from "../ElegirOtCarga";
 import Modal from "../ui/Modal";
 import EmptyState from "../ui/EmptyState";
 import { Button } from "../ui";
+import NombreOt from "../NombreOt";
 
 const MAX_FOTOS = 4;
 const fmtPct = (n) => (n === null || n === undefined ? "—" : `${String(n).replace(".", ",")}%`);
@@ -113,6 +114,7 @@ export function ReporteInstalacion({ ot, onClose, onEnviado }) {
           <>
             <div className="rounded-[14px] bg-gypi-surface border border-gypi-border px-4 py-3" role="status" aria-label="Avance de la instalación">
               <div className="text-[13px] text-gypi-dim">Instalación de la OT</div>
+              {estado.proyecto && <NombreOt proyecto={estado.proyecto} className="block text-[14px] text-gypi-text" />}
               <div className="text-[26px] font-extrabold text-gypi-text leading-tight">{fmtPct(vista.porcentaje)}</div>
               <div className="text-[12px] text-gypi-dim">
                 {vista.total ? `${vista.colocados} de ${vista.total} módulos colocados${vista.porArea ? " · pesa la superficie de cada módulo" : ""}` : "Sin piezas cargadas"}
@@ -225,7 +227,7 @@ function TarjetaReporte({ r }) {
   return (
     <article className="bg-gypi-surface rounded-[14px] border border-gypi-border px-4 py-3" aria-label={`Reporte de la OT ${r.ot} del ${fechaCorta(r.fecha)}`}>
       <div className="flex items-baseline gap-2">
-        <span className="text-[15px] font-bold text-gypi-text flex-1">OT {r.ot}</span>
+        <NombreOt proyecto={r.proyecto ? { ...r.proyecto, ot: r.ot } : { ot: r.ot }} className="text-[15px] text-gypi-text flex-1" />
         <span className="text-[15px] font-extrabold text-gypi-text">{fmtPct(r.avance)}</span>
       </div>
       <div className="text-[12px] text-gypi-dim">{fechaCorta(r.fecha)}{r.empleado ? ` · ${r.empleado}` : ""}</div>
@@ -277,8 +279,7 @@ export function MisInstalaciones() {
           </div>
           {d.proyectos.map((p) => (
             <div key={p.ot} className="text-[14px] mt-1">
-              <b>OT {p.ot}</b>{p.cliente ? ` · ${p.cliente}` : ""}{p.obra ? ` · ${p.obra}` : ""}
-              {p.descripcion && <div className="text-[13px] text-gypi-dim">{p.descripcion}</div>}
+              <NombreOt proyecto={p} />
             </div>
           ))}
           <div className="text-[13px] text-gypi-dim mt-1">{d.con.length ? `Con ${d.con.join(", ")}` : "Vas solo"}</div>

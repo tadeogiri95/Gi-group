@@ -389,7 +389,8 @@ test("revisión de ayer — alertas, fechas objetivo que vencían y compras, sin
   assert.ok(r.every((x) => x.seccion === "revision" && !x.viene_de && x.datos.fecha_ayer === "2026-10-30"));
   assert.deepEqual([r[2].datos.pedido_estado, r[2].datos.resultado], ["en_oc", "si"], "con pedido ya queda en Sí");
   assert.equal(r[3].datos.resultado, undefined);
-  assert.equal(textoRevision(r[0]), "OT 7751 · Producción en curso · Falta herraje");
+  // La OT completa con lo que guardó el renglón (02/11)
+  assert.equal(textoRevision(r[0]), "OT 7751 · Malmö · Producción en curso · Falta herraje");
   // Si ya está en la de hoy, no se vuelve a sumar
   assert.equal(armarRevision({ anterior: "2026-10-30", items: ayer, hoy: "2026-11-02", ya: r }).length, 0);
   assert.deepEqual(armarRevision({ anterior: null, items: ayer, hoy: "2026-11-02" }), []);
@@ -471,7 +472,7 @@ test("pantalla — la revisión de ayer viene cargada arriba y se contesta con u
   pantalla();
   const rev = await screen.findByRole("region", { name: "Revisión de ayer" });
   const alertas = within(rev).getByRole("group", { name: "Alertas amarillas y rojas" });
-  assert.ok(within(alertas).getByText(/OT 7751 · Producción en curso · Falta herraje/));
+  assert.ok(within(alertas).getByText(/OT 7751 .*Producción en curso · Falta herraje/));
   fireEvent.click(within(alertas).getByRole("button", { name: "✓ Se mitigó" }));
   const compras = within(rev).getByRole("group", { name: "Compras a disparar" });
   assert.ok(within(compras).getByText(/no se creó pedido desde la minuta/));
@@ -571,7 +572,7 @@ test("pantalla — Gypi sugiere: se agrega con la OT completa y deja de sugerirs
   assert.ok(within(sug).getByText("40 % · fecha 10/11"));
   // Total de proyectos en producción, aunque no estén en la minuta
   assert.ok(screen.getByText(/Proyectos en producción hoy:/).textContent.includes("1 en total"));
-  fireEvent.click(await within(sug).findByRole("button", { name: /Agregar OT 7751 · COCINAS TIPO B · PRANA/ }));
+  fireEvent.click(await within(sug).findByRole("button", { name: /Agregar OT 7751 · PRANA · COCINAS TIPO B/ }));
   await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Gypi sugiere para En curso" }), null));
   fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
   await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
@@ -679,7 +680,7 @@ test("pantalla — lo abierto de ayer se pasa con un toque y muestra desde cuán
   pantalla();
   const grupo = await screen.findByRole("group", { name: "Sigue abierto en Pendientes de instalación" });
   assert.ok(within(grupo).getByText(/del 30\/10 · Cambiar madera · ANGELI/));
-  fireEvent.click(within(grupo).getByRole("button", { name: /Agregar OT 7495 · Estudio · BCG/ }));
+  fireEvent.click(within(grupo).getByRole("button", { name: /Agregar OT 7495 · BCG · Estudio/ }));
   await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Sigue abierto en Pendientes de instalación" }), null));
   assert.ok(screen.getByText("↩ Viene del 29/10 · 3.ª vez"));
   assert.ok(screen.getByText(/3 días seguidos: lo toma Gerencia/));
@@ -782,7 +783,7 @@ test("pantalla — compra sugerida por Gypi: se agrega con cantidad y 🛒 Crear
   };
   pantalla();
   const sug = await screen.findByRole("group", { name: "Gypi sugiere para Compras a disparar hoy" });
-  assert.ok(within(sug).getByText("🔴 Urgente · OT 7751"));
+  assert.ok(within(sug).getByText(/^🔴 Urgente · OT 7751/));
   fireEvent.click(within(sug).getByRole("button", { name: "Agregar Placa blanca 18 · 5 placas" }));
   const compras = screen.getByRole("region", { name: "Compras y logística" });
   const cant = await within(compras).findByRole("spinbutton", { name: "Cantidad" });

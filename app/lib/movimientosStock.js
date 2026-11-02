@@ -6,6 +6,8 @@
 // ingresos de compras y los ajustes de inventario. La planilla MRP sigue
 // mandando: su script trae estos movimientos (parte 15, lib/planillaMrp.js).
 
+import { otCompleta, textoOt } from "./nombreOt";
+
 export const TIPOS_MOVIMIENTO = {
   consumo:    { id: "consumo",    nombre: "Retiro",     icono: "📦", gestion: false },
   devolucion: { id: "devolucion", nombre: "Devolución", icono: "↩️", gestion: false },
@@ -50,13 +52,13 @@ export function leerCantidadMovimiento(texto, { conSigno = false } = {}) {
 }
 
 /** "📦 Retiro · 3 MT · OT M-7495" para las listas. */
-export function textoMovimiento(m) {
+export function textoMovimiento(m, porOt = null) {
   const t = TIPOS_MOVIMIENTO[m?.tipo];
   const cant = Number(m?.cantidad);
   const cantidad = Number.isFinite(cant) ? cant.toLocaleString("es-AR", { maximumFractionDigits: 3 }) : "?";
   return [
     `${t?.icono || ""} ${t?.nombre || m?.tipo || ""}`.trim(),
     `${m?.tipo === "ajuste" && cant > 0 ? "+" : ""}${cantidad}${m?.unidad ? ` ${m.unidad}` : ""}`,
-    m?.ot ? `OT ${m.ot}` : null,
+    m?.ot ? textoOt(otCompleta(m.ot, porOt)) : null,
   ].filter(Boolean).join(" · ");
 }

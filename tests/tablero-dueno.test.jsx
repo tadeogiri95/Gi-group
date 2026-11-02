@@ -136,7 +136,7 @@ test("panel — pedidos de compras pendientes con su lista", async () => {
   const compras = await screen.findByRole("region", { name: "Pedidos de material" });
   await within(compras).findByText("Placa melamina blanca 18 mm");
   assert.ok(within(compras).getByText("1 pendiente"));
-  assert.ok(within(compras).getByText("Juan · OT 7495"));
+  assert.ok(within(compras).getByText(/^Juan · OT 7495/));
   fireEvent.click(within(compras).getByText(/Ir a Compras/));
   assert.deepEqual(destinos, ["inventario:compras"]);
 });

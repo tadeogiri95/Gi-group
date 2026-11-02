@@ -53,6 +53,8 @@ import { Chip } from "./ui";
 import { errorInstalacion } from "../lib/instalacionPlan";
 import { limiteProduccion } from "../lib/planInstalacion";
 import { feriadosDe } from "../lib/secuencia";
+import NombreOt from "./NombreOt";
+import { textoOt } from "../lib/nombreOt";
 
 const VISTAS = [
   { id: "carga", label: "📊 Carga" },
@@ -403,7 +405,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
                 <label className="flex items-start gap-2.5 cursor-pointer">
                   <input type="checkbox" className="mt-1 w-5 h-5" checked={elegidas.has(p.id)} onChange={() => tildar(p.id)} aria-label={`Planificar OT ${p.ot}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
+                    <NombreOt proyecto={p} truncar className="block text-[14px]" />
                     {semanaVencida(p, hoy) && <div className="text-xs font-bold text-gypi-red" data-vencida>🔴 Semana vencida · {textoObjetivo(p)}</div>}
                     <div className="text-xs text-gypi-dim truncate">
                       {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`].join(" · ")}
@@ -547,7 +549,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
             ? "Cada OT tiene que terminar antes de su fecha límite (la semana de entrega menos los días de instalación): si no llega, Gypi suma horas extra antes (primero sábados, después domingos) y te dice cuántas hacen falta por semana. El orden de las OT no cambia."
             : "Solo el horario normal: cada OT sale con la fecha en que terminaría, y se marcan las que terminan después de su fecha límite. El orden de las OT no cambia."}
         </div>
-        {plan && plan.desde && <ResumenHorizonte plan={plan} base={base} modo={modo} />}
+        {plan && plan.desde && <ResumenHorizonte plan={plan} base={base} modo={modo} ots={otsPlan} />}
         {plan && (
           <>
             <FinDeCadaOt plan={plan} ots={otsPlan} limites={limites} />
@@ -649,7 +651,7 @@ function AvisosOt({ sinTiempos, sinPrecio }) {
           </div>
           {abierto === a.id && (
             <ul className="list-none m-0 mt-1 pl-6 p-0 text-xs">
-              {a.lista.map((p) => <li key={p.id}>{p.ot} · {p.cliente || p.proyecto || "—"}</li>)}
+              {a.lista.map((p) => <li key={p.id}>{textoOt(p)}</li>)}
             </ul>
           )}
         </div>
@@ -686,7 +688,8 @@ function textoTarde(t) {
 
 // Resumen de todo el plan: hasta cuándo va, horas extra por semana (según
 // fechas objetivo) y las OT que no llegan a su semana.
-function ResumenHorizonte({ plan, base, modo }) {
+function ResumenHorizonte({ plan, base, modo, ots = [] }) {
+  const porId = new Map(ots.map((p) => [p.id, p]));
   const horasExtra = plan.diasExtra.reduce((t, d) => t + d.horas, 0);
   const dias = (Date.parse(`${plan.hasta}T00:00:00Z`) - Date.parse(`${plan.desde}T00:00:00Z`)) / 86400000 + 1;
   const semanas = Math.ceil(dias / 7);
@@ -717,7 +720,7 @@ function ResumenHorizonte({ plan, base, modo }) {
         <div className="mb-2" aria-label="OT que no llegan a su fecha límite">
           <div className="font-bold text-gypi-red mb-1">{base === "capacidad" ? "🔴 Terminan después de su fecha límite" : "🔴 No llegan a su fecha límite"}</div>
           <ul className="list-none m-0 p-0">
-            {plan.tarde.map((t) => <li key={t.id} className="text-gypi-red-ink">{t.ot}: {textoTarde(t)}</li>)}
+            {plan.tarde.map((t) => <li key={t.id} className="text-gypi-red-ink">{textoOt(porId.get(t.id) || t)}: {textoTarde(t)}</li>)}
           </ul>
         </div>
       )}
@@ -732,8 +735,8 @@ function FinDeCadaOt({ plan, ots, limites }) {
     <ul className="list-none m-0 p-0 mt-2 text-xs text-gypi-dim" aria-label="Fin de cada OT">
       {ots.filter((p) => fin(p.id)).map((p) => (
         pendiente.has(p.id)
-          ? <li key={p.id}>{p.ot} avanza hasta el {fechaCorta(fin(p.id))} y no termina en el próximo año</li>
-          : <li key={p.id}>{p.ot} termina el {fechaCorta(fin(p.id))}{limites.get(p.id) && fin(p.id) > limites.get(p.id) ? ` · después de su fecha límite (${fechaCorta(limites.get(p.id))})` : ""}</li>
+          ? <li key={p.id}>{textoOt(p)} avanza hasta el {fechaCorta(fin(p.id))} y no termina en el próximo año</li>
+          : <li key={p.id}>{textoOt(p)} termina el {fechaCorta(fin(p.id))}{limites.get(p.id) && fin(p.id) > limites.get(p.id) ? ` · después de su fecha límite (${fechaCorta(limites.get(p.id))})` : ""}</li>
       ))}
     </ul>
   );
@@ -905,7 +908,7 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onOrdenar, onNum
                   <NumeroPrioridad key={`${p.id}-${p.prioridad || 0}`} p={p} total={lista.length} disabled={sinColumna}
                     onNumero={(n) => onNumero(p.id, n)} onQuitar={() => aplicar(quitarPrioridad(lista, p.id))} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-bold truncate">{p.ot} · {p.cliente || p.proyecto || "—"}</div>
+                    <NombreOt proyecto={p} truncar className="block text-[14px]" />
                     {semanaVencida(p, hoy) && <div className="text-xs font-bold text-gypi-red" data-vencida>🔴 Semana vencida · {textoObjetivo(p)}</div>}
                     <div className="text-xs text-gypi-dim truncate">{[p.obra, modo === "entrega" ? textoObjetivo(p, modo) || "sin entrega" : null, material].filter(Boolean).join(" · ")}</div>
                     <SelectorSemana proyecto={p} modo={modo} hoy={hoy} onCambio={onSemana} compacto />

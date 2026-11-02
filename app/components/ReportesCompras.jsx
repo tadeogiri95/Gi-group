@@ -9,6 +9,7 @@ import { textoPedido } from "../lib/compras";
 import { importeTexto } from "../lib/ordenesCompra";
 import { comprasPorMes, comprasPorProveedor, historialPrecio, nombreMes, ordenesAtrasadas, pedidosSinAtender } from "../lib/reportesCompras";
 import { AVISO_MIGRACION_114 } from "./AComprar";
+import { useOts } from "../hooks/useOts";
 
 const fechaCorta = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
 const dias = (n) => `${n} día${n === 1 ? "" : "s"}`;
@@ -34,6 +35,7 @@ const renglon = "p-2 mb-1.5 rounded-[10px] border border-gypi-border bg-gypi-sur
 const nada = (t) => <p className="m-0 text-[14px] text-gypi-dim">{t}</p>;
 
 export default function ReportesCompras({ empresaId }) {
+  const porOt = useOts();
   const [datos, setDatos] = useState(null);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [mes, setMes] = useState("");
@@ -104,7 +106,7 @@ export default function ReportesCompras({ empresaId }) {
       <Seccion titulo={`🕓 Pedidos sin atender (${sinAtender.length})`}>
         {sinAtender.length ? sinAtender.map((p) => (
           <div key={p.id} className={renglon}>
-            <b>{textoPedido(p)}</b>
+            <b>{textoPedido(p, porOt)}</b>
             <div className="text-[12px] text-gypi-dim">{p.empleado_nombre || "—"}{p.division ? ` · ${p.division}` : ""} · pedido el {fechaCorta(p.created_at)} · esperando {dias(p.dias_espera)}</div>
           </div>
         )) : nada("Ninguno: todos los pedidos ya están en una orden.")}

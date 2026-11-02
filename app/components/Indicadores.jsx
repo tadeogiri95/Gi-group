@@ -16,6 +16,7 @@ import { hoyArg } from "../lib/dates";
 import { exportCSV } from "../lib/exportarReporte";
 import { costoDe, fmtPesos } from "../lib/costo";
 import Stat from "./ui/Stat";
+import { detalleOt, mapaOts, otCompleta, textoOt } from "../lib/nombreOt";
 
 const fmtPct = (n) => `${Number(n).toLocaleString("es-AR")} %`;
 
@@ -71,7 +72,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
             : { data: [] },
           // Sin la migración 101 no hay tabla: los indicadores siguen sin calidad
           sbGetAll(`no_conformidades?empresa_id=eq.${empresaId}&created_at=gte.${inicioDiaArg(fechaDesde)}&created_at=lt.${inicioDiaArg(diaSiguiente(fechaHasta))}&select=defecto,cantidad,etapa_origen,decision,minutos_retrabajo`).catch(() => ({ data: [] })),
-          sbGetAll(`proyectos?empresa_id=eq.${empresaId}&select=ot,cliente,proyecto,total_modulos,fecha_entrega,estado,terminado_planilla`, { maxFilas: 20000 }),
+          sbGetAll(`proyectos?empresa_id=eq.${empresaId}&select=ot,cliente,obra,proyecto,descripcion,total_modulos,fecha_entrega,estado,terminado_planilla`, { maxFilas: 20000 }),
         ]);
         if (!vivo) return;
         setDatos({ tareas: tareas.data || [], truncado: tareas.truncado, noConformidades: ncs.data || [], proyectos: proyectos.data || [] });
@@ -88,6 +89,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
     () => (datos ? calcularIndicadores({ ...datos, etapas, causas, defectos, hoy: hoyArg() }) : null),
     [datos, etapas, causas, defectos]
   );
+  const porOt = useMemo(() => mapaOts(datos?.proyectos || []), [datos]);
 
   // Solo llega con valor para el dueño (useCostoHora)
   const conCosto = conTareas && Number(costoHora) > 0;
@@ -116,8 +118,8 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
       filas.push(["Costo instalación", fmtHoras(ind.instalacionMin), fmtPesos(pesos(ind.instalacionMin))]);
       filas.push(["Costo total", "", fmtPesos(pesos(ind.productivoMin + ind.paradoMin))]);
     }
-    if (conTareas) for (const o of ind.ots) filas.push([`OT ${o.ot}`, o.cliente, conCosto ? `${fmtHoras(o.min)} · ${fmtPesos(costoOt(o))}` : fmtHoras(o.min)]);
-    for (const o of ind.atrasadas) filas.push([`Atrasada OT ${o.ot}`, o.cliente, `${o.dias} días`]);
+    if (conTareas) for (const o of ind.ots) filas.push([`OT ${o.ot}`, detalleOt(otCompleta(o.ot, porOt)), conCosto ? `${fmtHoras(o.min)} · ${fmtPesos(costoOt(o))}` : fmtHoras(o.min)]);
+    for (const o of ind.atrasadas) filas.push([`Atrasada OT ${o.ot}`, detalleOt(otCompleta(o.ot, porOt)), `${o.dias} días`]);
     exportCSV(filas, `indicadores_${fechaDesde}_${fechaHasta}.csv`);
   };
 
@@ -212,7 +214,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
         {ind.ots.length === 0 ? <Vacio>No hay horas cargadas a OT en este período.</Vacio> : (
           <div className="flex flex-col gap-1.5">
             {ind.ots.slice(0, 20).map((o) => (
-              <Fila key={o.ot} izquierda={`OT ${o.ot}${o.cliente ? ` · ${o.cliente}` : ""}`}
+              <Fila key={o.ot} izquierda={textoOt(otCompleta(o.ot, porOt, { cliente: o.cliente }))}
                 abajo={[
                   o.totalModulos && `${o.modulosHechos ? `${o.modulosHechos} de ${o.totalModulos} módulos` : `${o.totalModulos} módulos`} · ${fmtPorUnidad(o.minPorModulo)} por módulo`,
                   conCosto && `Costo ${fmtPesos(costoOt(o))}`,
@@ -229,7 +231,7 @@ export default function Indicadores({ fechaDesde, fechaHasta, labelPeriodo, empr
         {ind.atrasadas.length === 0 ? <Vacio>Ninguna OT abierta tiene la entrega vencida.</Vacio> : (
           <div className="flex flex-col gap-1.5">
             {ind.atrasadas.map((o) => (
-              <Fila key={o.ot} izquierda={`OT ${o.ot}${o.cliente ? ` · ${o.cliente}` : ""}`} abajo={`Entrega ${fechaCorta(o.fecha_entrega)}`} derecha={o.dias === 1 ? "1 día" : `${o.dias} días`} />
+              <Fila key={o.ot} izquierda={textoOt(otCompleta(o.ot, porOt, { cliente: o.cliente }))} abajo={`Entrega ${fechaCorta(o.fecha_entrega)}`} derecha={o.dias === 1 ? "1 día" : `${o.dias} días`} />
             ))}
           </div>
         )}

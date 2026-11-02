@@ -8,6 +8,8 @@ import { useToast } from "./components/ui/Toast";
 import { useConfirm } from "./components/ui/ConfirmDialog";
 import { imprimirTarjetas } from "./lib/tarjetasQR";
 import { fechaCorta } from "./lib/ot";
+import NombreOt from "./components/NombreOt";
+import { detalleOt, textoOt } from "./lib/nombreOt";
 import DetalleOp from "./components/DetalleOp";
 import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
 import { fmtPesos } from "./lib/costo";
@@ -142,10 +144,9 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
             <div key={i} className={`p-2.5 text-xs ${i < Math.min(filas.length, 50) - 1 ? "border-b border-gypi-border" : ""}`}>
               <div className="flex gap-2 items-center">
                 <span className="font-mono font-bold text-gypi-amber-ink min-w-[60px]">{r.ot}</span>
-                <span className="flex-1 text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{r.cliente || r.proyecto || "—"}</span>
+                <NombreOt proyecto={r} sinCodigo truncar className="flex-1 text-gypi-text" />
                 {r.division && <Tag color={CYAN}>{r.division}</Tag>}
               </div>
-              {r.obra && <div className="text-xs text-gypi-dim mt-0.5">{r.obra}</div>}
             </div>
           ))}
           {filas.length > 50 && <div className="p-2.5 text-center text-xs text-gypi-mute">+ {filas.length - 50} más</div>}
@@ -467,7 +468,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
       empresa: empresa?.nombre_corto || empresa?.nombre || "",
       tarjetas: lista.map(p => ({
         nombre: `OT ${p.ot}`,
-        detalle: [p.cliente, p.proyecto].filter(Boolean).join(" · "),
+        detalle: detalleOt(p),
         link: String(p.ot),
         pie: "Código QR de la OT.",
       })),
@@ -668,7 +669,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
               {filasTabla.length === 0 && (
                 <tr className="border-t border-gypi-border"><td colSpan={columnasTabla.length + 1} className="px-3 py-6 text-center text-gypi-dim">Ninguna OT cumple esos filtros.</td></tr>
               )}
-              {filasTabla.map(({ p, pct, estado, obra }) => {
+              {filasTabla.map(({ p, pct, estado }) => {
                 const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
                 return (
                   <tr key={p.id} onClick={() => setDetalle(p)} className={`border-t border-gypi-border cursor-pointer hover:bg-gypi-bg ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
@@ -677,8 +678,8 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
                         className="bg-transparent border-none p-0 cursor-pointer font-mono text-[14px] font-bold" style={{ color: divInfo.color || AMBER }}>{p.ot}</button>
                     </td>
                     <td className="px-3 py-2.5 max-w-[320px]">
-                      <div className="font-bold text-gypi-text truncate">{p.cliente || p.proyecto || "—"}</div>
-                      {obra && <div className="text-xs text-gypi-dim truncate">{obra}</div>}
+                      <NombreOt proyecto={p} forma="bloque" sinCodigo truncar />
+                      {p.division && <div className="text-xs text-gypi-dim truncate">{nombreDivisionOt(divisionesCtx || [], p.division)}</div>}
                     </td>
                     <td className="px-3 py-2.5"><Tag color={estado.tono === "amber" ? AMBER : estado.tono === "green" ? GREEN : "var(--color-text-muted)"}>{estado.texto}</Tag></td>
                     <td className="px-3 py-2.5">
@@ -714,16 +715,16 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
             const pct = p.estado !== "cerrado" ? pctEscaneo.get(String(p.ot))?.porcentaje ?? null : null;
             const estado = estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct, pausa: pausaPorOt.get(String(p.ot)) || null });
             const entrega = textoEntrega(p, modoObjetivo);
-            const obra = [p.obra || p.proyecto, p.division && nombreDivisionOt(divisionesCtx || [], p.division)].filter(Boolean).join(" · ");
+            const division = p.division ? nombreDivisionOt(divisionesCtx || [], p.division) : "";
             return (
-              <button key={p.id} type="button" onClick={() => setAcciones(p)} aria-label={`OT ${p.ot}: ${p.cliente || p.proyecto || "sin cliente"}. ${estado.texto}${pct != null ? `, ${pct} %` : ""}. Ver acciones`}
+              <button key={p.id} type="button" onClick={() => setAcciones(p)} aria-label={`${textoOt(p)}. ${estado.texto}${pct != null ? `, ${pct} %` : ""}. Ver acciones`}
                 className={`g-card !p-3.5 w-full text-left cursor-pointer flex flex-col gap-1 ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-[15px] font-bold" style={{ color: divColor }}>{p.ot}</span>
                   <Tag color={estado.tono === "amber" ? AMBER : estado.tono === "green" ? GREEN : "var(--color-text-muted)"}>{estado.texto}</Tag>
                 </div>
-                <div className="text-[16px] font-bold text-gypi-text overflow-hidden text-ellipsis whitespace-nowrap">{p.cliente || p.proyecto || "—"}</div>
-                {obra && <div className="text-[13px] text-gypi-dim overflow-hidden text-ellipsis whitespace-nowrap">{obra}</div>}
+                <NombreOt proyecto={p} forma="bloque" sinCodigo truncar className="text-[16px]" />
+                {division && <div className="text-[13px] text-gypi-dim overflow-hidden text-ellipsis whitespace-nowrap">{division}</div>}
                 {pct != null && (
                   <progress max={100} value={Math.min(100, Math.max(0, pct))} aria-hidden="true"
                     className={`w-full h-2 mt-1 rounded-full overflow-hidden appearance-none [&::-webkit-progress-bar]:bg-gypi-border [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-value]:rounded-full ${pct >= 100 ? "[&::-webkit-progress-value]:bg-gypi-green [&::-moz-progress-bar]:bg-gypi-green" : "[&::-webkit-progress-value]:bg-gypi-amber [&::-moz-progress-bar]:bg-gypi-amber"} bg-gypi-border`} />
@@ -766,10 +767,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
         {acciones && (
           <div className="flex flex-col gap-3">
             <div>
-              <div className="text-[15px] font-bold text-gypi-text">{acciones.cliente || acciones.proyecto || "—"}</div>
-              {[acciones.obra || acciones.proyecto, acciones.descripcion].filter(Boolean).length > 0 && (
-                <div className="text-[13px] text-gypi-dim mt-0.5">{[acciones.obra || acciones.proyecto, acciones.descripcion].filter(Boolean).join(" · ")}</div>
-              )}
+              <NombreOt proyecto={acciones} forma="bloque" sinCodigo className="text-[15px]" />
               <div className="text-[13px] text-gypi-dim mt-0.5">
                 {[acciones.division && nombreDivisionOt(divisionesCtx || [], acciones.division), acciones.fecha_entrega && `Entrega ${fechaCorta(acciones.fecha_entrega)}`, acciones.cantidad != null && `Cantidad ${acciones.cantidad}`].filter(Boolean).join(" · ")}
               </div>

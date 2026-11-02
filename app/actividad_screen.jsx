@@ -30,6 +30,8 @@ import { etapasParaOperario, otPasaPorEtapa } from "./lib/rutas";
 import { causasDe, nombreCausa } from "./lib/causas";
 import CantidadTarea from "./components/CantidadTarea";
 import NoConformeForm from "./components/NoConformeForm";
+import NombreOt from "./components/NombreOt";
+import { detalleOt, otCompleta, textoOt } from "./lib/nombreOt";
 
 /* ═══ HELPERS de etapas ═══ */
 function getEtapaInfo(etapas, codigo) {
@@ -390,7 +392,7 @@ export default function ActividadScreen({
                       <div className="text-[13px] font-bold">{etapa.nombre}</div>
                       {r.codigo_proyecto && (
                         <div className="text-xs text-gypi-dim font-mono">
-                          OT {r.codigo_proyecto}{proy ? ` · ${proy.cliente}` : ""}
+                          {textoOt(otCompleta(r.codigo_proyecto, null, proy || {}))}
                         </div>
                       )}
                     </div>
@@ -510,7 +512,7 @@ export default function ActividadScreen({
                     <div className="flex gap-1.5 flex-wrap">
                       {recientes.map(p => (
                         <button key={p.ot} onClick={() => iniciarTarea(p.ot)} disabled={saving} className={`min-h-[48px] px-3 rounded-[10px] border-2 text-[13px] font-bold font-mono cursor-pointer ${proyectoSeleccionado?.ot === p.ot ? "border-gypi-amber bg-gypi-amber/[0.09] text-gypi-amber-ink" : "border-transparent bg-gypi-surface text-gypi-text"}`}>
-                          OT {p.ot}{p.cliente ? <span className="font-body font-semibold text-gypi-dim"> · {p.cliente}</span> : null}
+                          OT {p.ot}{detalleOt(p) ? <span className="font-body font-semibold text-gypi-dim"> · {detalleOt(p)}</span> : null}
                         </button>
                       ))}
                     </div>
@@ -560,10 +562,7 @@ export default function ActividadScreen({
                         <button key={p.ot} onClick={() => iniciarTarea(p.ot)} disabled={saving} className={`min-h-[56px] py-3 px-3.5 rounded-xl cursor-pointer text-left flex items-center gap-2.5 font-body transition-all border-2 ${sel ? 'bg-gypi-amber/[0.09] border-gypi-amber' : 'bg-gypi-surface border-transparent'}`}>
                           <div className={`min-w-[48px] h-9 rounded-lg flex items-center justify-center font-mono text-[13px] font-bold shrink-0 px-1.5 ${sel ? 'bg-gypi-amber/10 text-gypi-amber-ink' : 'bg-gypi-surf-hi text-gypi-text'}`}>{p.ot}</div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-gypi-text truncate">{p.cliente || p.proyecto}</div>
-                            {(p.obra || p.descripcion) && (
-                              <div className="text-xs text-gypi-dim truncate mt-[1px]">{[p.obra, p.descripcion].filter(Boolean).join(" · ")}</div>
-                            )}
+                            <NombreOt proyecto={p} forma="bloque" sinCodigo truncar className="text-xs" />
                             {p.liberada_at === null && <div className="text-xs font-bold text-gypi-amber-ink mt-[1px]">⚠ Todavía no está liberada a producción</div>}
                             {p.puntos_criticos && <div className="text-xs text-gypi-amber-ink truncate mt-[1px]">⚠ {p.puntos_criticos}</div>}
                           </div>
@@ -662,7 +661,7 @@ export default function ActividadScreen({
                 {!isEspera && (
                   <div className="text-[13px] text-gypi-dim">
                     OT <span className="font-mono font-bold text-gypi-text">{tareaActiva?.codigo_proyecto}</span>
-                    {proyectoActivo && <span> · {proyectoActivo.cliente}</span>}
+                    {proyectoActivo && detalleOt(proyectoActivo) && <span> · {detalleOt(proyectoActivo)}</span>}
                   </div>
                 )}
                 {isEspera && <div className="text-[13px] text-gypi-red">Causa: {nombreCausa(causas, tareaActiva?.causa)}{tareaActiva?.codigo_proyecto ? ` · OT ${tareaActiva.codigo_proyecto}` : ""}</div>}

@@ -14,6 +14,7 @@ import { fechaCorta } from "../lib/ot";
 import Modal from "./ui/Modal";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 import { leerQr, otDelQr } from "../lib/escaneoCarga";
+import NombreOt from "./NombreOt";
 
 const MAX_VISIBLES = 50;
 
@@ -22,7 +23,7 @@ const normalizar = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace
 export function filtrarOts(lista, texto) {
   const q = normalizar(texto).trim();
   if (!q) return lista;
-  return lista.filter((p) => [p.ot, p.cliente, p.obra, p.proyecto].some((c) => normalizar(c).includes(q)));
+  return lista.filter((p) => [p.ot, p.cliente, p.obra, p.proyecto, p.descripcion].some((c) => normalizar(c).includes(q)));
 }
 
 export default function ElegirOtCarga({ empresaId, onElegir, onClose, titulo = "¿Qué OT vas a cargar?", verbo = "Cargar", onSinOt = null }) {
@@ -35,7 +36,7 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose, titulo = "
   useEffect(() => {
     if (!empresaId) return;
     let vivo = true;
-    sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,ot,cliente,obra,proyecto,fecha_entrega&order=id.desc`, { maxFilas: 20000 })
+    sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=eq.activo&select=id,ot,cliente,obra,proyecto,descripcion,fecha_entrega&order=id.desc`, { maxFilas: 20000 })
       .then(({ data }) => { if (vivo) setOts(ordenarPorOt(data || [])); })
       .catch(() => { if (vivo) { setOts([]); setError("No se pudieron leer las OT. Probá de nuevo."); } });
     return () => { vivo = false; };
@@ -79,10 +80,8 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose, titulo = "
               <li key={p.id ?? p.ot}>
                 <button onClick={() => onElegir(String(p.ot))} aria-label={`${verbo} la OT ${p.ot}`}
                   className="w-full min-h-[52px] text-left bg-gypi-surface rounded-xl px-3 py-2.5 border border-gypi-border cursor-pointer font-body text-gypi-text">
-                  <div className="text-[14px] font-bold">OT {p.ot}{p.cliente ? ` · ${p.cliente}` : ""}</div>
-                  <div className="text-[12px] text-gypi-dim truncate">
-                    {[p.obra || p.proyecto, p.fecha_entrega && `Entrega ${fechaCorta(p.fecha_entrega)}`].filter(Boolean).join(" · ") || "—"}
-                  </div>
+                  <NombreOt proyecto={p} className="block text-[14px]" />
+                  {p.fecha_entrega && <div className="text-[12px] text-gypi-dim truncate">Entrega {fechaCorta(p.fecha_entrega)}</div>}
                 </button>
               </li>
             ))}

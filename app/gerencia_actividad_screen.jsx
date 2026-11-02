@@ -7,6 +7,8 @@ import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { hoyArg } from "./lib/dates";
 import { nombreCausa } from "./lib/causas";
+import NombreOt from "./components/NombreOt";
+import { mapaOts, otCompleta } from "./lib/nombreOt";
 
 // R11: el color dice el ESTADO de la persona (trabajando / parado / sin tarea),
 // no la etapa; la etapa va con su ícono y su nombre.
@@ -71,6 +73,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
   const [actividades, setActividades] = useState([]);
   const [fichadaDetalle, setFichadaDetalle] = useState(null);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const [otsDetalle, setOtsDetalle] = useState(null);
 
   const hoy = hoyArg();
 
@@ -118,6 +121,13 @@ export default function GerenciaActividadScreen({ empresaId }) {
       ]);
       setActividades(data || []);
       setFichadaDetalle(fichadas?.[0] || null);
+      // Cada OT completa: Código · Cliente · Proyecto · Descripción (02/11)
+      const codigos = [...new Set((data || []).map((a) => a.codigo_proyecto).filter(Boolean).map(String))];
+      if (codigos.length) {
+        sb.get(`proyectos?empresa_id=eq.${empresaId}&ot=in.(${codigos.map((c) => `%22${encodeURIComponent(c)}%22`).join(",")})&select=ot,cliente,obra,descripcion`)
+          .then((d) => setOtsDetalle(mapaOts(Array.isArray(d) ? d : [])))
+          .catch(() => {});
+      }
     } catch (e) {
       console.error("Error cargando detalle:", e);
       setActividades([]);
@@ -313,7 +323,7 @@ export default function GerenciaActividadScreen({ empresaId }) {
                                           {/* Línea 2: proyecto + etapa + duración */}
                                           <div className="flex items-center gap-1.5 text-[12px]">
                                             {act.codigo_proyecto && (
-                                              <span className="font-mono font-semibold text-gypi-amber-ink">OT {act.codigo_proyecto}</span>
+                                              <NombreOt proyecto={otCompleta(act.codigo_proyecto, otsDetalle)} className="text-gypi-amber-ink" />
                                             )}
                                             {etapaInfo && (
                                               <span className="text-gypi-text">{etapaInfo.icon} {etapaInfo.nombre}</span>

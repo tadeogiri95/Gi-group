@@ -12,6 +12,8 @@ import { ESTADOS_OC_ABIERTA, MONEDAS, NOMBRE_A_COTIZAR, agruparPorProveedor, con
 import { faltaTabla } from "../lib/compras";
 import { Chip } from "./ui";
 import UnidadCompra from "./UnidadCompra";
+import { useOts } from "../hooks/useOts";
+import { otCompleta, textoOt } from "../lib/nombreOt";
 
 const MOSTRAR = 100;
 const COLUMNAS_ARTICULO = "sku,nombre,unidad,semaforo,sugerido,proxima_necesidad,activo";
@@ -28,6 +30,7 @@ const FILTROS = [
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 
 export default function AComprar({ empresaId, onCreadas }) {
+  const porOt = useOts();
   const [lineas, setLineas] = useState(null);
   const [proveedores, setProveedores] = useState([]);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
@@ -203,7 +206,7 @@ export default function AComprar({ empresaId, onCreadas }) {
                   <div className="text-[14px] font-semibold">
                     {l.origen === "pedido" ? "🛒 " : l.nivel === "rojo" ? "🔴 " : "🟡 "}{l.descripcion}
                     {l.sku && <span className="text-gypi-dim font-normal"> · {l.sku}</span>}
-                    {l.ot && <span className="text-gypi-dim font-normal"> · OT {l.ot}</span>}
+                    {l.ot && <span className="text-gypi-dim font-normal block text-[13px]" data-ot-completa>{textoOt(otCompleta(l.ot, porOt))}</span>}
                   </div>
                   {l.detalle && <div className="text-[12px] text-gypi-dim">{l.detalle}</div>}
                 </div>

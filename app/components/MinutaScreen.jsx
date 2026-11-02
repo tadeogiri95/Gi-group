@@ -23,6 +23,7 @@ import { useAuth } from "../context/AuthContext";
 import { tieneModulo } from "../lib/modulos";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
+import { mapaOts, otCompleta, textoOt, textoRenglonOt } from "../lib/nombreOt";
 
 const MAX_SUGERENCIAS = 8;
 const OTRO = "__otro";
@@ -139,7 +140,7 @@ function ClienteProyecto({ it, cambiar, listas, disabled }) {
       <Campo label="OT (si ya tiene)" div>
         {it.ot ? (
           <div className="flex items-center gap-2 min-h-[44px]">
-            <span className="text-[14px] font-semibold flex-1 min-w-0 truncate">OT {it.ot}{it.division ? ` · ${it.division}` : ""}</span>
+            <span className="text-[14px] font-semibold flex-1 min-w-0">{textoRenglonOt(it, listas?.porOt)}{it.division ? ` · ${it.division}` : ""}</span>
             {!disabled && <button type="button" className="min-h-[44px] px-2 bg-transparent border-none text-gypi-red-ink cursor-pointer text-[13px]" onClick={() => cambiar({ ot: null, division: null })}>✕ Quitar</button>}
           </div>
         ) : (
@@ -290,7 +291,7 @@ function CalendarioMinuta({ items, fecha }) {
  * 🔁 Revisión de ayer (155): lo que hay que mirar de la minuta anterior, ya
  * cargado. Se contesta con un toque: ¿se mitigó?, ¿se cumplió?, ¿se hizo?
  */
-function RevisionAyer({ items, cambiar, sacar, disabled, anterior }) {
+function RevisionAyer({ items, cambiar, sacar, disabled, anterior, porOt = null }) {
   const rev = items.filter((it) => it.seccion === SECCION_REVISION);
   if (!rev.length) return null;
   const fechaAyer = rev[0]?.datos?.fecha_ayer || anterior;
@@ -312,14 +313,14 @@ function RevisionAyer({ items, cambiar, sacar, disabled, anterior }) {
                 const punto = it.semaforo === "rojo" ? "🔴 " : it.semaforo === "amarillo" ? "🟡 " : "";
                 return (
                   <div key={it.id} className={`rounded-xl border p-2 ${res === "si" ? "border-gypi-green bg-gypi-green/5" : res === "no" ? "border-gypi-red bg-gypi-red/5" : "border-gypi-border"}`}>
-                    <div className="text-[13px]">{t.id === "alerta" ? punto : ""}{textoRevision(it) || "Sin detalle"}</div>
+                    <div className="text-[13px]">{t.id === "alerta" ? punto : ""}{textoRevision(it, porOt) || "Sin detalle"}</div>
                     <div className="text-[12px] text-gypi-mute">
                       {[it.responsable && `👤 ${it.responsable}`, it.fecha_objetivo && `📅 ${it.fecha_objetivo.slice(8, 10)}/${it.fecha_objetivo.slice(5, 7)}`, it.datos?.pedido_estado && `🛒 ${ESTADO_PEDIDO[it.datos.pedido_estado] || it.datos.pedido_estado}`, t.id === "compra" && !it.datos?.pedido_id && "🛒 no se creó pedido desde la minuta"].filter(Boolean).join(" · ")}
                     </div>
                     <div className="flex gap-1.5 mt-1">
                       <Chip active={res === "si"} disabled={disabled} color="var(--color-green)" onClick={() => marcar("si")}>{t.si}</Chip>
                       <Chip active={res === "no"} disabled={disabled} color="var(--color-red)" onClick={() => marcar("no")}>{t.no}</Chip>
-                      {!disabled && <button type="button" aria-label={`Sacar de la revisión: ${textoRevision(it)}`} className="ml-auto min-h-[40px] min-w-[40px] bg-transparent border-none text-gypi-mute cursor-pointer" onClick={() => sacar(it.id)}>✕</button>}
+                      {!disabled && <button type="button" aria-label={`Sacar de la revisión: ${textoRevision(it, porOt)}`} className="ml-auto min-h-[40px] min-w-[40px] bg-transparent border-none text-gypi-mute cursor-pointer" onClick={() => sacar(it.id)}>✕</button>}
                     </div>
                   </div>
                 );
@@ -336,7 +337,8 @@ function RevisionAyer({ items, cambiar, sacar, disabled, anterior }) {
 function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, pedir = null }) {
   const c = (campo) => s.campos.includes(campo);
   const datos = (k, v) => cambiar({ datos: { ...it.datos, [k]: v } });
-  const textoOt = it.ot ? `OT ${it.ot}${it.proyecto ? ` · ${it.proyecto}` : ""}` : it.proyecto || "";
+  // Código · Cliente · Proyecto · Descripción, como en toda la app (02/11)
+  const textoOt = it.ot ? textoRenglonOt(it, listas?.porOt) : it.proyecto || "";
   const falta = (campo) => s.obligatorios?.includes(campo) && !it[campo === "fecha" ? "fecha_objetivo" : campo] && (it.ot || it.proyecto || it.texto);
   return (
     <div className={`g-card p-3 mb-2 ${it.resuelto_at ? "opacity-60" : ""}`}>
@@ -400,7 +402,7 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, ped
           <Campo label={`Cantidad${it.datos?.unidad ? ` (${it.datos.unidad})` : ""}`}>
             <input type="number" min="0" step="any" inputMode="decimal" className="g-input w-full" aria-label="Cantidad" value={it.datos?.cantidad ?? ""} disabled={disabled}
               onChange={(e) => datos("cantidad", e.target.value === "" ? null : Number(e.target.value))} />
-            {it.datos?.ots && <span className="text-[12px] text-gypi-mute">Para OT {it.datos.ots}</span>}
+            {it.datos?.ots && <span className="text-[12px] text-gypi-mute">Para {String(it.datos.ots).split(",").map((o) => textoOt(otCompleta(o, listas?.porOt))).join(" / ")}</span>}
           </Campo>
         )}
         {s.id === "compra" && (
@@ -556,7 +558,7 @@ function RevisionFeedback({ abierto, hasta, onCerrar }) {
             {deArea.map((it) => (
               <div key={it.id} className={`flex items-center gap-2 py-2 border-t border-gypi-border ${it.resuelto_at ? "opacity-60" : ""}`}>
                 <span className="flex-1 min-w-0 text-[13px]">
-                  <span className="font-semibold">{[it.tipo, it.ot ? `OT ${it.ot}` : it.proyecto, it.cliente].filter(Boolean).join(" · ")}</span>
+                  <span className="font-semibold">{[it.tipo, textoRenglonOt(it)].filter(Boolean).join(" · ")}</span>
                   <span className="block">{it.texto}</span>
                   <span className="block text-[12px] text-gypi-mute">{[fechaCorta(it.fecha), it.responsable ? `lo trajo ${it.responsable}` : ""].filter(Boolean).join(" · ")}</span>
                 </span>
@@ -685,10 +687,11 @@ export default function MinutaScreen({ empresa = null }) {
   // La división de la OT se guarda con su nombre (en proyectos puede estar el id)
   const listas = useMemo(() => ({
     ...otrasListas,
+    porOt: mapaOts(otsCrudas),
     ots: otsCrudas.map((p) => {
       const division = p.division ? nombreDivisionOt(divisiones || [], p.division) : null;
       const dato = { ...p, division };
-      return { valor: p.ot, label: `OT ${p.ot}`, detalle: [p.descripcion || p.proyecto, p.cliente || p.obra, division, p.estado === "cerrado" ? "cerrada" : ""].filter(Boolean).join(" · "), dato };
+      return { valor: p.ot, label: textoOt(p), detalle: [division, p.estado === "cerrado" ? "cerrada" : ""].filter(Boolean).join(" · "), dato };
     }),
     clientes: clientesDe(otsCrudas, configMinuta),
     tiposFeedback: tiposFeedbackDe(configMinuta),
@@ -926,7 +929,7 @@ export default function MinutaScreen({ empresa = null }) {
         <ParaAgregar titulo={`↩ Sigue abierto de minutas anteriores`} label={`Sigue abierto en ${s.titulo}`} alerta
           opciones={seguimientoPendiente(abiertos, items, s.id).map((it) => ({
             clave: it.id,
-            nombre: [it.ot ? `OT ${it.ot}` : "", it.proyecto, it.cliente].filter(Boolean).join(" · ") || it.texto || "Sin detalle",
+            nombre: textoRenglonOt(it, listas.porOt) || it.texto || "Sin detalle",
             detalle: [`del ${fechaCorta(it.fecha)}`, it.texto, it.responsable, it.fecha_objetivo ? `fecha ${fechaCorta(it.fecha_objetivo)}` : ""].filter(Boolean).join(" · "),
             valor: it,
           }))}
@@ -937,11 +940,10 @@ export default function MinutaScreen({ empresa = null }) {
           opciones={sugerenciasPendientes(sugeridos, items, s.id).map((x) => {
             if (s.id === "compra") {
               const nombre = [x.texto, textoCantidad(x)].filter(Boolean).join(" · ");
-              const detalle = [x.tipo === "urgente" ? "🔴 Urgente" : "", x.ot ? `OT ${x.ot}` : x.datos?.ots ? `OT ${x.datos.ots}` : ""].filter(Boolean).join(" · ");
+              const detalle = [x.tipo === "urgente" ? "🔴 Urgente" : "", x.ot ? textoOt(otCompleta(x.ot, listas.porOt)) : x.datos?.ots ? String(x.datos.ots).split(",").map((o) => textoOt(otCompleta(o, listas.porOt))).join(" / ") : ""].filter(Boolean).join(" · ");
               return { clave: x.clave, nombre, detalle, valor: x };
             }
-            const p = datosDeOt(otDe(x.ot));
-            return { clave: x.clave, nombre: [`OT ${x.ot}`, p.proyecto, p.cliente].filter(Boolean).join(" · "), detalle: detalleSugerencia(x, s, fecha), valor: x };
+            return { clave: x.clave, nombre: textoOt(otCompleta(x.ot, listas.porOt)), detalle: detalleSugerencia(x, s, fecha), valor: x };
           })}
           onAgregar={(l) => agregarSugeridos(s.id, l)} />
       )}
@@ -1013,7 +1015,7 @@ export default function MinutaScreen({ empresa = null }) {
               )}
             </section>
 
-            <RevisionAyer items={items} anterior={revisionAyer?.anterior} disabled={cerrada} cambiar={cambiarItem} sacar={sacarItem} />
+            <RevisionAyer items={items} porOt={listas.porOt} anterior={revisionAyer?.anterior} disabled={cerrada} cambiar={cambiarItem} sacar={sacarItem} />
 
             {BLOQUES.map((b) => (
               <section key={b.id} className="g-card p-3 mb-3" aria-label={b.titulo}>
