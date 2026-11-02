@@ -8,11 +8,13 @@
 //            llega al 100 %.
 // Horas de trabajo: solo cuentan las horas en que la planta trabaja según la
 // grilla de horarios de los operarios (desde que entra el primero hasta que
-// sale el último de cada día). Todo sale de lo que ya queda registrado
+// sale el último de cada día), sin las horas en que la OT estuvo en pausa
+// (migración 151). Todo sale de lo que ya queda registrado
 // (escaneos, historial del checkeo manual de la 146 y firmas de etapa).
 import { ETAPAS_PLAN, divisionPlan, normalizarParametros } from "./planificacion";
 import { HORAS_SEMANA_POR_DEFECTO } from "./secuencia";
 import { operariosDePlanta, ventanasSemana } from "./cargaPlanta";
+import { intervalosPausa } from "./pausaOt";
 
 const HORA = 3600000;
 const DIA = 86400000;
@@ -52,19 +54,36 @@ export function horasTrabajo(desde, hasta, ventanas = VENTANAS_POR_DEFECTO) {
   return redondear(total / HORA);
 }
 
+/**
+ * Horas de trabajo entre dos momentos sin contar los tramos en pausa (151).
+ * @param {{ a: number, b: number }[]} pausas  tramos en milisegundos
+ */
+export function horasSinPausa(desde, hasta, ventanas = VENTANAS_POR_DEFECTO, pausas = []) {
+  const total = horasTrabajo(desde, hasta, ventanas);
+  if (total == null || !pausas?.length) return total;
+  const a = ms(desde), b = ms(hasta);
+  let enPausa = 0;
+  for (const t of pausas) {
+    const i = Math.max(a, t.a), f = Math.min(b, t.b);
+    if (f > i) enPausa += horasTrabajo(new Date(i).toISOString(), new Date(f).toISOString(), ventanas) || 0;
+  }
+  return redondear(Math.max(0, total - enPausa));
+}
+
 const primero = (ts) => ts.filter((t) => Number.isFinite(ms(t))).sort((x, y) => ms(x) - ms(y))[0] ?? null;
 
 /**
  * Inicio, fin y horas de cada proceso de cada OT, y de la OT entera.
- * @param {{ ots?: string[], etapasCodigo: Record<string, number|null>, piezas?: object[], manual?: object[], avance?: object[], proyectos?: object[], ventanas?: object[], ahora?: Date }} datos
+ * @param {{ ots?: string[], etapasCodigo: Record<string, number|null>, piezas?: object[], manual?: object[], avance?: object[], proyectos?: object[], ventanas?: object[], pausas?: object[], ahora?: Date }} datos
  *   piezas: v_avance_piezas (ot, etapa, total, pasaron, primer_paso, ultimo_paso), sin el checkeo manual mezclado
  *   manual: avance_manual_historial (ot, etapa = código, pct, created_at)
  *   avance: avance_etapas (ot, etapa, estado, terminada_at, aprobada_at)
  *   proyectos: su avance_manual cubre a las OT sin historial (antes de la 146)
+ *   pausas: pausas_ot (151); las horas en pausa no cuentan
  * @returns {Map<string, { ot, inicio, fin, horas, lleva, procesos: { etapa, nombre, inicio, fin, horas, lleva }[] }>}
  *   horas: de inicio a fin (null si no terminó); lleva: de inicio a ahora si no terminó
  */
-export function leadTimeProcesos({ ots = null, etapasCodigo = {}, piezas = [], manual = [], avance = [], proyectos = [], ventanas, ahora = new Date() }) {
+export function leadTimeProcesos({ ots = null, etapasCodigo = {}, piezas = [], manual = [], avance = [], proyectos = [], ventanas, pausas = [], ahora = new Date() }) {
   const k = (ot, codigo) => `${ot}|${Number(codigo)}`;
   const ini = new Map(), fin = new Map();
   const anotar = (m, c, t) => { if (Number.isFinite(ms(t)) && (!m.has(c) || ms(t) < ms(m.get(c)))) m.set(c, t); };
@@ -97,6 +116,8 @@ export function leadTimeProcesos({ ots = null, etapasCodigo = {}, piezas = [], m
   const out = new Map();
   const ahoraIso = ahora.toISOString();
   for (const ot of lista) {
+    const tramos = intervalosPausa(pausas, ot, ahora);
+    const hs = (a, b) => horasSinPausa(a, b, ventanas, tramos);
     const procesos = [];
     for (const { id, nombre } of ETAPAS_PLAN) {
       const codigo = etapasCodigo?.[id];
@@ -106,14 +127,14 @@ export function leadTimeProcesos({ ots = null, etapasCodigo = {}, piezas = [], m
       const f = fin.get(k(ot, codigo));
       const termino = f && ms(f) >= ms(i) ? f : null;
       procesos.push({ etapa: id, nombre, inicio: i, fin: termino,
-        horas: termino ? horasTrabajo(i, termino, ventanas) : null, lleva: termino ? null : horasTrabajo(i, ahoraIso, ventanas) });
+        horas: termino ? hs(i, termino) : null, lleva: termino ? null : hs(i, ahoraIso) });
     }
     if (!procesos.length) continue;
     const inicio = primero(procesos.map((q) => q.inicio));
     const armado = procesos.find((q) => q.etapa === "armado");
     const terminada = armado?.fin || null;
     out.set(ot, { ot, inicio, fin: terminada, procesos,
-      horas: terminada ? horasTrabajo(inicio, terminada, ventanas) : null, lleva: terminada ? null : horasTrabajo(inicio, ahoraIso, ventanas) });
+      horas: terminada ? hs(inicio, terminada) : null, lleva: terminada ? null : hs(inicio, ahoraIso) });
   }
   return out;
 }

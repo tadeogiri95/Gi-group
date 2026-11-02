@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { otsEnPausa } from "./lib/pausaOt";
 import Image from "next/image";
 import { useRefrescoVisible } from "./hooks/useRefrescoVisible";
 import { useEscape } from "./hooks/useEscape";
@@ -366,7 +367,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
   const cargarOtYCompras = useCallback(async () => {
     if (isDemo || !empresaId || !(conOt || conCompras || conFlota || conMaquinaria)) return;
     const si = (con, leer) => (con ? leer().catch(() => null) : null);
-    const [proy, avHs, cfgObjetivo, plan, peds, veh, pap, chk, cho, arr, maq, tar, fal, mods, ajus] = await Promise.all([
+    const [proy, avHs, cfgObjetivo, plan, peds, veh, pap, chk, cho, arr, maq, tar, fal, mods, ajus, paus] = await Promise.all([
       // Todas las columnas: el plan vivo calcula las horas que faltan con placas, cantos y módulos
       si(conOt, () => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=*&order=id.asc`, { maxFilas: 20000 })),
       si(conOt, () => leerAvanceYHoras(empresaId)),
@@ -389,6 +390,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       si(conOt, () => sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&modulo=not.is.null&select=ot,modulo`, { maxFilas: 50000 })),
       // "⏱ Faltan X h" (145), también como en el Gantt; sin la migración, nada
       si(conOt, () => sbGetAll("ajustes_tiempo_ot?select=ot,etapa,tipo,horas,pendiente,created_at&tipo=eq.faltan&order=created_at.asc", { maxFilas: 20000 })),
+      // OT en pausa (151): no cuentan como atrasadas; sin la migración, ninguna
+      si(conOt, () => sbGetAll("pausas_ot?hasta=is.null&select=ot", { maxFilas: 20000 })),
     ]);
     setFlota(veh ? { vehiculos: veh.data || [], papeles: pap?.data || [], checklists: chk?.data || [], choferes: cho?.data || [], arreglos: arr?.data || [] } : null);
     setMaquinaria(maq ? { maquinas: maq.data || [], tareas: tar?.data || [], fallas: fal?.data || [] } : null);
@@ -403,7 +406,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       terminadas: new Set((proy.data || []).filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy: hoyArg(),
       params: normalizarParametros(plan.cfgValor), horasSemana: horasSemanaDeGrilla(plan.empleados, divisionesCtx || [], plan.cfgValor),
       personal: personalGantt(plan.empleados, divisionesCtx || [], plan.cfgValor), diasExtra: diasExtraVigentes(plan.planes),
-      manual: faltanManual(ajus?.data || []),
+      manual: faltanManual(ajus?.data || []), pausadas: otsEnPausa(paus?.data || []),
     }) : null;
     setOtAtrasadasLista(procesos ? otAtrasadasPlan(filasOt, procesos, { porEscaneo: avancePorOt(avHs.piezas || []) }) : null);
     setPedidosCompra(peds ? peds.data || [] : null);

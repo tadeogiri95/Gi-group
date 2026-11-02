@@ -210,10 +210,14 @@ const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
  * siguen en rojo; la barra llega hasta ahí).
  * @param {{ manual?: Map<string, { horas: number, pendiente: number|null }>, proyectos?: Map<string, object>, etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], modulos?: Map<string, number>, terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: object|null, diasExtra?: Set<string>|null }} opciones
  *   proyectos: las OT por número (fecha objetivo y datos para las horas)
+ *   pausadas: OT en pausa (migración 151): salen del plan y las otras toman su
+ *     lugar; al reanudarse vuelven en su orden, desde hoy
  */
 export function planVivo(items = [], opciones) {
   const { proyectos = new Map(), etapasCodigo = {}, avance = [], piezas = [], modulos = new Map(), terminadas = new Set(), hoy,
-    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null, retrabajo = null, retrabajoHecho = null } = opciones;
+    params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null, retrabajo = null, retrabajoHecho = null,
+    pausadas = null } = opciones;
+  if (pausadas?.size) items = (items || []).filter((i) => !pausadas.has(String(i.ot)));
   const confirmado = procesosPlan(items, { etapasCodigo, avance, piezas, terminadas, hoy, params, horasSemana, personal, diasExtra });
   const out = new Map();
   if (!confirmado.size) return out;

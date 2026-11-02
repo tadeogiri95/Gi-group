@@ -17,13 +17,15 @@ export function etapaEnCurso(fila) {
 /**
  * Estado de la OT para la etiqueta de la tarjeta.
  * @param {object} p        la OT
- * @param {{ enCurso?: object|null, porcentaje?: number|null }} datos
- *   enCurso: su fila del tablero si está en curso; porcentaje: avance por escaneo
+ * @param {{ enCurso?: object|null, porcentaje?: number|null, pausa?: object|null }} datos
+ *   enCurso: su fila del tablero si está en curso; porcentaje: avance por escaneo;
+ *   pausa: su pausa abierta (151), si está en pausa
  * @returns {{ texto: string, tono: "amber"|"green"|"muted" }}
  */
-export function estadoOtLista(p, { enCurso = null, porcentaje = null } = {}) {
+export function estadoOtLista(p, { enCurso = null, porcentaje = null, pausa = null } = {}) {
   if (p?.estado === "cerrado") return { texto: "Cerrada", tono: "muted" };
   if (p?.terminado_planilla) return { texto: "Terminada en planilla", tono: "muted" };
+  if (pausa) return { texto: "⏸ En pausa", tono: "muted" };
   if (enCurso) {
     const etapa = etapaEnCurso(enCurso);
     return { texto: etapa ? `En curso · ${etapa}` : "En curso", tono: "amber" };

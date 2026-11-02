@@ -42,6 +42,7 @@
 // terminó; uno mal cargado se elimina (148).
 // "🔄 Refrescar" (Tadeo, 30/10) vuelve a leer las OT, el avance, el plan y los
 // ajustes sin salir de la pantalla completa.
+import { pausasAbiertas, textoPausa } from "../lib/pausaOt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
@@ -106,7 +107,9 @@ const alertasTexto = (q) => [q.tarde ? `termina ${dias(q.diasTarde)} después de
  * @param {object} [props.cfgValor]  parámetros de la planificación (qué etapa es cada proceso)
  * @param {object[]} [props.empleados]  personal operativo con su grilla de horarios (junto con planes)
  */
-export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null, onRefrescar = null }) {
+const SIN_PAUSAS = [];
+
+export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null, onRefrescar = null, pausas = SIN_PAUSAS }) {
   const hoy = hoyArg();
   // Cada "🔄 Refrescar" suma una vuelta y se vuelve a leer todo
   const [vuelta, setVuelta] = useState(0);
@@ -176,6 +179,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
   const retrabajoHecho = useMemo(() => retrabajosHechos(retrabajos), [retrabajos]);
   const [editar, setEditar] = useState(null);
   const abiertasPorOt = useMemo(() => new Map(proyectos.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p])), [proyectos]);
+  // En pausa (151): salen del plan vivo y las otras toman su lugar
+  const pausaPorOt = useMemo(() => pausasAbiertas(pausas), [pausas]);
+  const pausadas = useMemo(() => new Set(pausaPorOt.keys()), [pausaPorOt]);
+  const enPausa = useMemo(() => [...pausaPorOt].filter(([ot]) => abiertasPorOt.has(ot)).map(([ot, p]) => ({ ot, pausa: p, proyecto: abiertasPorOt.get(ot) })), [pausaPorOt, abiertasPorOt]);
   const previa = useMemo(() => {
     if (!cambio || !modulos) return null;
     return planReordenado({
@@ -200,10 +207,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
       terminadas: new Set(proyectos.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
       params, horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
-      personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes),
+      personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes), pausadas,
     };
     return (m) => planVivo(items, { ...opciones, manual: m, retrabajo, retrabajoHecho });
-  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho]);
+  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho, pausadas]);
 
   // Días que se trabajan: con horas en la grilla de horarios o de horas extra del plan
   const feriados = useMemo(() => feriadosDe(params), [params]);
@@ -726,6 +733,22 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
           ))}
         </div>
       </div>
+      {enPausa.length > 0 && (
+        <section aria-label="OT en pausa" className="mt-3 rounded-xl border border-gypi-border bg-gypi-surface p-3 shrink-0">
+          <div className="text-[15px] font-bold mb-1">⏸ En pausa · {enPausa.length}</div>
+          <div className="text-[13px] text-gypi-dim mb-1">No están en el Gantt: las otras OT ocupan su lugar. Al reanudarlas vuelven al plan desde ese día.</div>
+          <ul className="list-none m-0 p-0 flex flex-col gap-1">
+            {enPausa.map((x) => (
+              <li key={x.ot}>
+                <button type="button" onClick={() => verDetalle(x.proyecto)}
+                  className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
+                  <span className="font-mono font-bold">{x.ot}</span> · {textoPausa(x.pausa).replace(/^⏸ /, "")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {(tardes.length > 0 || corridas.length > 0) && (
         <section aria-label="Alertas del plan" className="mt-3 rounded-xl border border-gypi-red/40 bg-gypi-red/5 p-3 shrink-0">
           {/* Se puede minimizar para ver el Gantt entero (en el celular, en pantalla completa) */}

@@ -12,6 +12,8 @@
 //              El QR puede ser el de una etiqueta de módulo ("OT M-7495 -
 //              MODULO - M.izq"): pasan por la etapa todas las piezas de ese
 //              módulo de una vez (así se escanea el Armado).
+//              Si la OT está en pausa (151) se anota igual y la respuesta
+//              trae la pausa, para que el operario vea un aviso amarillo.
 //   deshacer → saca el escaneo (el mismo operario hasta 30 minutos después,
 //              o gestión). No toca el avance de la etapa.
 //   deshacer_modulo → lo mismo para todas las piezas de un módulo.
@@ -75,6 +77,16 @@ async function terminarEtapa(sesion, ot, etapa, opts) {
   return { codigo: etapa.codigo, nombre: etapa.nombre };
 }
 
+/** { pausa } si la OT está en pausa (151), para avisarle al operario; {} si no o sin la migración. */
+async function pausaDe(sesion, ot, opts) {
+  try {
+    const [p] = (await sbGet(`pausas_ot?empresa_id=eq.${sesion.empresa_id}&ot=eq.${encodeURIComponent(ot)}&hasta=is.null&select=motivo,detalle,desde&limit=1`, opts)) || [];
+    return p ? { pausa: p } : {};
+  } catch {
+    return {};
+  }
+}
+
 /** La etapa elegida, si se escanea por pieza; si no, la respuesta de error. */
 async function etapaPorPieza(sesion, codigo, opts) {
   const [etapa] = (await sbGet(`etapas?empresa_id=eq.${sesion.empresa_id}&codigo=eq.${codigo}&select=codigo,nombre,activa,por_pieza&limit=1`, opts)) || [];
@@ -134,7 +146,7 @@ async function escanearModulo(sesion, datos, lectura) {
   if (!r.ok) throw new Error(`POST pasos_pieza: ${await r.text()}`);
   broadcastRefresh(e, "pasos_pieza");
   const { progreso, etapaTerminada } = requeridas ? await progresoEtapa(sesion, ot, etapa, opts) : { progreso: null, etapaTerminada: null };
-  return NextResponse.json({ ok: true, ya: false, modulo, etapa: datos.etapa, etapaNombre: etapa.nombre, progreso, etapaTerminada });
+  return NextResponse.json({ ok: true, ya: false, modulo, etapa: datos.etapa, etapaNombre: etapa.nombre, progreso, etapaTerminada, ...(await pausaDe(sesion, ot, opts)) });
 }
 
 async function escanear(sesion, datos) {
@@ -178,7 +190,7 @@ async function escanear(sesion, datos) {
   broadcastRefresh(e, "pasos_pieza");
 
   const { progreso, etapaTerminada } = requerida ? await progresoEtapa(sesion, pieza.ot, etapa, opts) : { progreso: null, etapaTerminada: null };
-  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada });
+  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada, ...(await pausaDe(sesion, pieza.ot, opts)) });
 }
 
 async function deshacerModulo(sesion, datos) {

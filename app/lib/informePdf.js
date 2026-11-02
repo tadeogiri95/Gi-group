@@ -103,12 +103,15 @@ export function puntosClave(r, reporteDia = null) {
   const hayPlan = s.cumplimiento != null;
   if (hayPlan) puntos.push({ tono: tono(r.nota), texto: `Cumplimiento ${coma(s.cumplimiento)} %: se hizo ese % del avance planificado. ${s.procesosCumplidos} de ${s.procesosPlanificados} procesos planificados llegaron a lo previsto.` });
   else puntos.push({ tono: "neutro", texto: "No había nada planificado en el período." });
-  const atrasadas = r.ots.filter((o) => !o.fueraDelPlan && o.desvio <= -10);
+  const atrasadas = r.ots.filter((o) => !o.fueraDelPlan && !o.enPausa && o.desvio <= -10);
   if (atrasadas.length) puntos.push({ tono: "mal", texto: `Más atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `OT ${o.ot} (hizo ${coma(o.hecho)} % de ${coma(o.planificado)} %)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
   const fuera = r.ots.filter((o) => o.fueraDelPlan);
   if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
   const tarde = r.ots.filter((o) => o.tarde);
   if (s.otsTarde) puntos.push({ tono: "mal", texto: `${s.otsTarde} de ${s.otsAbiertas} OT terminan después de su semana${tarde.length ? `: ${lista(tarde)}` : ""}.` });
+  // OT en pausa (151): lo planificado esos días no cuenta en la nota
+  const pausa = r.enPausa || [];
+  if (pausa.length) puntos.push({ tono: "neutro", texto: `⏸ En pausa: ${pausa.slice(0, 3).map((p) => `OT ${p.ot} (${p.motivo})`).join(", ")}${pausa.length > 3 ? ` y ${pausa.length - 3} más` : ""}. Lo planificado mientras estuvo en pausa no cuenta en la nota.` });
   const rt = r.retrabajos || [];
   if (rt.length) {
     // Retrabajo (147): por OT y proceso, con el motivo

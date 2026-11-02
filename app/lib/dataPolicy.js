@@ -20,6 +20,7 @@
 
 import { validarAjuste } from "./ajustesTiempo";
 import { validarRetrabajo, validarFinRetrabajo } from "./retrabajo";
+import { validarPausa, validarReanudar } from "./pausaOt";
 
 export const ROLES_GESTION = new Set(["gerencial", "administrativo"]);
 
@@ -97,6 +98,9 @@ export const POLICY = {
   ajustes_tiempo_ot:            { GET: "gestion", POST: "gestion" },
   // Retrabajo de un proceso (147): lo cargan los mismos; solo se marca terminado
   retrabajos_ot:                { GET: "gestion", POST: "gestion", PATCH: "gestion" },
+  // OT en pausa (151): la ponen y la sacan los mismos; no se borra. La lee
+  // cualquiera (la lista de OT y el Tablero muestran "⏸ En pausa").
+  pausas_ot:                    { GET: "all", POST: "gestion", PATCH: "gestion" },
   // Informe de producción (146): los guarda el cron; historial del checkeo manual
   informes_produccion:          { GET: "gestion" },
   avance_manual_historial:      { GET: "gestion", POST: "gestion" },
@@ -182,6 +186,14 @@ export function prepararBodyPost(tabla, body, sesion, ownFilter) {
     out.creado_por = sesion?.empleado_id || null; // quién lo cargó sale de la sesión
     out.detalle = typeof out.detalle === "string" && out.detalle.trim() ? out.detalle.trim() : null;
   }
+  if (tabla === "pausas_ot") {
+    const err = validarPausa(out);
+    if (err) return { status: 400, error: err };
+    out.creado_por = sesion?.empleado_id || null; // quién la puso sale de la sesión
+    out.detalle = typeof out.detalle === "string" && out.detalle.trim() ? out.detalle.trim() : null;
+    out.desde = new Date().toISOString(); // empieza ahora (no se carga una pausa vieja)
+    delete out.hasta;
+  }
   if (tabla === "ajustes_tiempo_ot") {
     const err = validarAjuste(out);
     if (err) return { status: 400, error: err };
@@ -254,6 +266,11 @@ export function validarPatch(tabla, body, sesion) {
   // Retrabajo (147): solo se marca terminado
   if (tabla === "retrabajos_ot") {
     const err = validarFinRetrabajo(body);
+    if (err) return { status: 400, error: err };
+  }
+  // Pausa (151): solo se reanuda
+  if (tabla === "pausas_ot") {
+    const err = validarReanudar(body);
     if (err) return { status: 400, error: err };
   }
   if (tabla === "empresa" && sesion?.rol !== "gerencial") {

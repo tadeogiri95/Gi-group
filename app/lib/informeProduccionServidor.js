@@ -12,6 +12,7 @@ import { modulosPorOt } from "./cargaPlanta";
 import { piezasConManual } from "./avanceManual";
 import { faltanManual } from "./ajustesTiempo";
 import { retrabajoPendiente } from "./retrabajo";
+import { otsEnPausa } from "./pausaOt";
 import { leadTimeProcesos, ventanasDeGrilla } from "./leadTimeHoras";
 import { hoyArg } from "./dates";
 
@@ -29,7 +30,7 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
   const opts = { sesion };
   const limite = hoyArg(new Date(Date.now() - 183 * DIA));
   const operarios = (extra) => sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo${extra}`, { ...opts, maxFilas: 5000 });
-  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, avance, mods, ajustes, retrabajos] = await Promise.all([
+  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, avance, mods, ajustes, retrabajos, pausas] = await Promise.all([
     // También las cerradas: una OT que se terminó en el período cuenta
     sbGetAll(`proyectos?empresa_id=eq.${e}&select=*&order=id.asc`, { ...opts, maxFilas: 20000 }),
     sbGetAll(`etapas?empresa_id=eq.${e}&activa=eq.true&order=orden.asc`, opts).catch(vacio),
@@ -47,6 +48,8 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
     sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at,anulado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 })
       .catch(() => sbGetAll(`retrabajos_ot?empresa_id=eq.${e}&select=ot,etapa,horas,motivo,detalle,created_at,terminado_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }))
       .catch(vacio),
+    // Sin la 151 no hay pausas
+    sbGetAll(`pausas_ot?empresa_id=eq.${e}&select=ot,motivo,detalle,desde,hasta&order=desde.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
   ]);
   const ids = planes.data.map((p) => p.id);
   const items = ids.length
@@ -65,10 +68,11 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
     params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(emp.data, divisiones.data, cfgValor),
     personal: personalGantt(emp.data, divisiones.data, cfgValor), diasExtra: diasExtraVigentes(conItems),
     manual: faltanManual(ajustes.data), retrabajo: retrabajoPendiente(retrabajos.data),
+    pausadas: otsEnPausa(pausas.data),
   });
   for (const [ot] of vivo) if (!abiertas.has(ot)) vivo.delete(ot);
   return { vivo, vigentes, etapasCodigo, abiertas, cfgValor, proyectos: proyectos.data, divisiones: divisiones.data,
-    empleados: emp.data, piezas: piezas.data, avance: avance.data, retrabajos: retrabajos.data };
+    empleados: emp.data, piezas: piezas.data, avance: avance.data, retrabajos: retrabajos.data, pausas: pausas.data };
 }
 
 /**
@@ -89,14 +93,14 @@ export async function informeDeEmpresa(empresaId, tipo, fecha, { sesion } = {}) 
     // Sin la 146 no hay historial del checkeo manual
     sbGetAll(`avance_manual_historial?empresa_id=eq.${e}&select=ot,etapa,pct,created_at&order=created_at.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
   ]);
-  const { vivo, vigentes, etapasCodigo, cfgValor, proyectos, divisiones, empleados, piezas, avance, retrabajos } = base;
+  const { vivo, vigentes, etapasCodigo, cfgValor, proyectos, divisiones, empleados, piezas, avance, retrabajos, pausas } = base;
   const todas = new Map(proyectos.map((p) => [String(p.ot), p]));
   return calcularInforme({
     periodo, items: vigentes, etapasCodigo,
     piezas, pasos: pasos.data, manual: manual.data, avance,
-    proyectos: todas, vivo, retrabajos,
-    // Lead time en horas de trabajo, con el horario de la planta
-    leadTime: leadTimeProcesos({ etapasCodigo, piezas, manual: manual.data, avance, proyectos,
+    proyectos: todas, vivo, retrabajos, pausas,
+    // Lead time en horas de trabajo, con el horario de la planta y sin las pausas
+    leadTime: leadTimeProcesos({ etapasCodigo, piezas, manual: manual.data, avance, proyectos, pausas,
       ventanas: ventanasDeGrilla(empleados, divisiones, cfgValor) }),
   });
 }
