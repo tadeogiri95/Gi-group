@@ -9,6 +9,7 @@ import { apiFetch } from "../../lib/supabase";
 import { avanceInstalacion, PORCENTAJE_PENDIENTE } from "../../lib/instalacion";
 import { fotoBase64, subirImagen } from "../../lib/foto";
 import { fechaCorta } from "../../lib/ot";
+import { misDias } from "../../lib/planInstalacion";
 import ElegirOtCarga from "../ElegirOtCarga";
 import Modal from "../ui/Modal";
 import EmptyState from "../ui/EmptyState";
@@ -209,6 +210,7 @@ export function ReporteInstalacion({ ot, onClose, onEnviado }) {
           </>
         )}
         {error && <div role="alert" className="text-[13px] text-gypi-red">{error}</div>}
+      <MisInstalaciones />
         {estado && (
           <Button size="planta" className="w-full" onClick={enviar} disabled={enviando || subiendo || vacio}>
             {enviando ? "Enviando…" : "Enviar reporte"}
@@ -240,6 +242,49 @@ function TarjetaReporte({ r }) {
         </div>
       )}
     </article>
+  );
+}
+
+const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const textoFecha = (iso) => {
+  const d = new Date(`${iso}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? iso : `${DIAS_SEMANA[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
+};
+
+/** 📅 Mis instalaciones (parte 44): las obras que le tocan según el plan confirmado. */
+export function MisInstalaciones() {
+  const [dias, setDias] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    leer("/api/plan-instalacion?mio=1")
+      .then((d) => { if (vivo) setDias(misDias(d.dias || [])); })
+      .catch(() => { if (vivo) setDias([]); });
+    return () => { vivo = false; };
+  }, []);
+  if (dias === null) return null;
+  return (
+    <section aria-label="Mis instalaciones" className="flex flex-col gap-2">
+      <h2 className="m-0 text-[15px] font-bold text-gypi-dim">📅 Mis instalaciones</h2>
+      {dias.length === 0 ? (
+        <div className="bg-gypi-surface rounded-[14px] border border-gypi-border p-3 text-[13px] text-gypi-dim">
+          Todavía no tenés obras asignadas en el plan de instalación.
+        </div>
+      ) : dias.map((d) => (
+        <article key={`${d.fecha}|${d.obra}`} className="bg-gypi-surface rounded-[14px] border border-gypi-border p-3">
+          <div className="flex items-baseline gap-2">
+            <div className="font-bold text-[15px] flex-1">{textoFecha(d.fecha)}</div>
+            <div className="text-[13px] font-bold text-gypi-amber-ink">{d.parte}</div>
+          </div>
+          {d.proyectos.map((p) => (
+            <div key={p.ot} className="text-[14px] mt-1">
+              <b>OT {p.ot}</b>{p.cliente ? ` · ${p.cliente}` : ""}{p.obra ? ` · ${p.obra}` : ""}
+              {p.descripcion && <div className="text-[13px] text-gypi-dim">{p.descripcion}</div>}
+            </div>
+          ))}
+          <div className="text-[13px] text-gypi-dim mt-1">{d.con.length ? `Con ${d.con.join(", ")}` : "Vas solo"}</div>
+        </article>
+      ))}
+    </section>
   );
 }
 

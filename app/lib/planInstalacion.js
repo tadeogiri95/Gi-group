@@ -207,3 +207,61 @@ export function diasDeObra(tramos = []) {
   for (const z of tramos) m.set(z.fecha, (m.get(z.fecha) || 0) | (z.medio ? 2 : 1));
   return [...m].map(([fecha, v]) => ({ fecha, parte: v === 3 ? "dia" : v === 1 ? "manana" : "tarde" }));
 }
+
+// ─── Plan confirmado (parte 44; migración 154, /api/plan-instalacion) ───────
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lo que se guarda al confirmar: un renglón por obra, medio día e instalador (sin instaladores marcados, uno sin nombre). */
+export function itemsDelPlan(obras = []) {
+  const out = [];
+  obras.filter((o) => !o.sinLugar).forEach((o, orden) => {
+    const ots = o.ots.map((t) => String(t.ot));
+    const equipo = o.equipo.filter((id) => UUID.test(String(id)));
+    for (const z of o.tramos) {
+      for (const empleado_id of equipo.length ? equipo : [null]) {
+        out.push({ obra: o.clave.slice(0, 300), ots, fecha: z.fecha, medio: z.medio, empleado_id, orden });
+      }
+    }
+  });
+  return out;
+}
+
+/** Último día confirmado de cada OT: Map<ot, fecha>. */
+export function finConfirmadoPorOt(planes = []) {
+  const m = new Map();
+  for (const p of planes || []) {
+    for (const i of p.items || []) {
+      for (const ot of i.ots || []) {
+        const k = String(ot);
+        if (!m.has(k) || i.fecha > m.get(k)) m.set(k, i.fecha);
+      }
+    }
+  }
+  return m;
+}
+
+/** Cuántos días se corrió el fin de cada obra contra el plan confirmado (0 si no se corrió o no estaba). */
+export function conCorrimiento(obras = [], finConfirmado = new Map()) {
+  return obras.map((o) => {
+    const fechas = o.ots.map((t) => finConfirmado.get(String(t.ot))).filter(Boolean);
+    const confirmado = fechas.length ? fechas.sort().pop() : null;
+    const diasCorrido = confirmado && o.fin ? Math.max(0, diasEntre(confirmado, o.fin)) : 0;
+    return { ...o, finConfirmado: confirmado, diasCorrido };
+  });
+}
+
+/** 📅 Mis instalaciones: por día y obra, si es mañana, tarde o todo el día. */
+export function misDias(items = []) {
+  const m = new Map();
+  for (const i of items) {
+    const k = `${i.fecha}|${i.obra}`;
+    if (!m.has(k)) m.set(k, { fecha: i.fecha, obra: i.obra, ots: i.ots, proyectos: i.proyectos || [], con: new Set(), medios: 0 });
+    const d = m.get(k);
+    d.medios |= i.medio ? 2 : 1;
+    for (const c of i.con || []) d.con.add(c);
+  }
+  return [...m.values()]
+    .map((d) => ({ ...d, con: [...d.con], parte: d.medios === 3 ? "Todo el día" : d.medios === 1 ? "Mañana" : "Tarde" }))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.medios & 1 ? -1 : 1));
+}
