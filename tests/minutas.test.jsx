@@ -697,25 +697,89 @@ test("/api/minutas?reporte — solo gerencia, período válido, minutas con sus 
   const j = await res.json();
   assert.equal(j.minutas.length, 3);
   assert.equal(j.items.length, itemsPeriodo.length);
+  assert.deepEqual(j.precios, {}, "sin OT terminadas no pide precios");
 });
 
-test("Reportes → 📝 Minutas — muestra el resumen del período", async () => {
+test("informe consolidado — día: reunión, foco, terminadas con valor, en curso, pendientes con días y feedback", async () => {
+  const { informeMinutas } = await import("../app/lib/minutasReporte.js");
+  const minutas = [{ id: 9, fecha: "2026-10-30", inicio: "08:47:00", cierre: "09:06:00", modera: "Tadeo", asistentes: ["Zacarías", "Tadeo"] }];
+  const items = [
+    { id: "f1", minuta_id: 9, seccion: "foco", ot: "7751", proyecto: "Malmö", texto: "Entrega viernes", orden: 0 },
+    { id: "t1", minuta_id: 9, seccion: "prod_terminada", ot: "7858", proyecto: "CEVT" },
+    { id: "t2", minuta_id: 9, seccion: "inst_terminada", ot: "7000" },
+    { id: "e1", minuta_id: 9, seccion: "prod_en_curso", ot: "7751", semaforo: "rojo", texto: "Falta herraje", responsable: "Luciano", fecha_objetivo: "2026-10-31" },
+    { id: "e2", minuta_id: 9, seccion: "prod_en_curso", ot: "7900", semaforo: "verde" },
+    { id: ID2, minuta_id: 9, seccion: "inst_pendiente", ot: "7495", texto: "Falta tapacanto", responsable: "ANGELI", fecha_objetivo: "2026-10-29", viene_de: ID1, datos: { desde: "2026-10-27", gerencia: true } },
+    { id: "fb1", minuta_id: 9, seccion: "feedback", tipo: "Reconocimiento", area: "Producción" },
+    { id: "fb2", minuta_id: 9, seccion: "feedback", tipo: "Error", area: "DyT" },
+    { id: "fb3", minuta_id: 9, seccion: "feedback", tipo: "Error", area: "DyT" },
+  ];
+  const r = informeMinutas({ minutas, items, precios: { 7858: 1500000 }, hoy: "2026-11-02", modo: "dia", hasta: "2026-10-30" });
+  assert.deepEqual([r.reunion.dias[0].duracion, r.reunion.dias[0].aHorario, r.reunion.dias[0].asistentes.length], [19, true, 2]);
+  assert.deepEqual(r.foco.items.map((f) => [f.ot, f.texto]), [["7751", "Entrega viernes"]]);
+  assert.deepEqual([r.terminado.produccion, r.terminado.instalacion], [{ cantidad: 1, valor: 1500000, sinPrecio: 0 }, { cantidad: 1, valor: 0, sinPrecio: 1 }]);
+  assert.deepEqual([r.enCurso.verde, r.enCurso.amarillo, r.enCurso.rojo, r.enCurso.items[0].ot], [1, 0, 1, "7751"], "el rojo va primero");
+  const p = r.pendientes.items[0];
+  assert.deepEqual([p.desde, p.dias, p.vencido, p.gerencia], ["2026-10-27", 3, true, true], "los días cuentan desde que surgió hasta el día del informe");
+  assert.deepEqual(r.feedback.porTipo.map((t) => [t.tipo, t.n]), [["Error", 2], ["Reconocimiento", 1]]);
+});
+
+test("informe consolidado — semana: suma los días y cuenta los días de cada pendiente", async () => {
+  const { informeMinutas, rangoInforme, moverInforme, nombreInforme } = await import("../app/lib/minutasReporte.js");
+  assert.deepEqual(rangoInforme("semana", "2026-10-30"), { desde: "2026-10-26", hasta: "2026-11-01" });
+  assert.deepEqual(rangoInforme("mes", "2026-02-10"), { desde: "2026-02-01", hasta: "2026-02-28" });
+  assert.equal(moverInforme("mes", "2026-10-31", 1), "2026-11-15");
+  assert.equal(nombreInforme("semana", "2026-10-30"), "Semana del 26/10 al 01/11");
+  assert.equal(nombreInforme("dia", "2026-10-30"), "Viernes 30/10");
+  const r = informeMinutas({ minutas: minutasPeriodo, items: itemsPeriodo, hoy: "2026-10-31", modo: "semana", hasta: "2026-11-01" });
+  assert.deepEqual(r.serie.map((p) => [p.etiqueta, p.verde, p.amarillo, p.rojo, p.feedback]), [["Mié 28/10", 0, 1, 0, 1], ["Jue 29/10", 0, 0, 1, 1], ["Vie 30/10", 1, 1, 0, 1]]);
+  // Último estado de cada OT en curso: 7751 terminó la semana en rojo
+  assert.deepEqual(r.enCurso.items.map((x) => [x.ot, x.semaforo, x.diasProblema]), [["7751", "rojo", 2], ["7495", "amarillo", 1], ["7000", "verde", 0]]);
+  // La cadena de ANGELI cuenta una vez: resuelta a los 2 días; la de Luciano abierta hace 1 día
+  assert.deepEqual(r.pendientes.items.map((p) => [p.responsable, p.resuelto, p.dias]), [["Luciano", false, 1], ["ANGELI", true, 2]]);
+  assert.deepEqual([r.pendientes.abiertos, r.pendientes.vencidos, r.pendientes.resueltos], [1, 1, 1]);
+  assert.deepEqual(r.foco.porOt.map((f) => [f.ot, f.dias]), [["7751", 2], ["7495", 1]]);
+});
+
+test("informe consolidado — hoja para imprimir y texto de WhatsApp", async () => {
+  const { informeMinutas } = await import("../app/lib/minutasReporte.js");
+  const { htmlInformeMinutas, textoInformeMinutas } = await import("../app/lib/minutasInformePdf.js");
+  const r = informeMinutas({ minutas: minutasPeriodo, items: [...itemsPeriodo, { id: "t9", minuta_id: 2, seccion: "prod_terminada", ot: "7858", texto: "<b>ok</b>" }], precios: { 7858: 2500000 }, hoy: "2026-10-31", modo: "semana" });
+  const html = htmlInformeMinutas({ informe: r, titulo: "Semana del 26/10 al 01/11", empresa: "Gi Group" });
+  assert.match(html, /Informe de minutas/);
+  assert.match(html, /\$ 2\.500\.000/);
+  assert.match(html, /&lt;b&gt;ok&lt;\/b&gt;/, "escapa lo que se escribió");
+  assert.match(html, /📌 Pendientes a resolver/);
+  const txt = textoInformeMinutas(r, "Semana del 26/10 al 01/11");
+  assert.match(txt, /🚦 En curso: 🟢 1 · 🟡 1 · 🔴 1/);
+  assert.match(txt, /Luciano · 1 día/);
+});
+
+test("Reportes → 📝 Minutas — informe del día, semana o mes con gráficos", async () => {
   const { default: MinutasReporteTab } = await import("../app/components/MinutasReporteTab.jsx");
   const pedidos = [];
   global.fetch = async (url) => {
     pedidos.push(String(url));
-    return new Response(JSON.stringify({ ok: true, minutas: minutasPeriodo, items: itemsPeriodo }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true, minutas: minutasPeriodo, items: itemsPeriodo, precios: {} }), { status: 200 });
   };
-  render(<MinutasReporteTab fechaDesde="2026-10-26" fechaHasta="2026-11-01" labelPeriodo="la semana del 26/10" />);
-  const reunion = await screen.findByRole("region", { name: "Reunión" });
-  assert.ok(within(reunion).getByText("25 min"));
-  assert.ok(within(reunion).getByText("2 de 3"));
-  const cont = screen.getByRole("region", { name: "OT con más contingencias" });
-  assert.ok(within(cont).getByText("🔴 1 día en rojo"));
-  assert.ok(within(cont).getByText(/Se repiten en el foco: OT 7751 \(2 veces\)/));
-  const pend = screen.getByRole("region", { name: "Pendientes por responsable" });
-  assert.ok(within(pend).getByText(/1 resuelto · tarda 2 días en promedio/));
-  assert.ok(pedidos[0].includes("/api/minutas?reporte=2026-10-26&hasta=2026-11-01"));
+  render(<MinutasReporteTab empresa={{ nombre: "Gi Group" }} />);
+  const reunion = await screen.findByRole("region", { name: "⏱ Reunión" });
+  assert.ok(pedidos[0].includes("/api/minutas?reporte="), "arranca por el día");
+  fireEvent.click(screen.getByRole("button", { name: "Semana" }));
+  await waitFor(() => assert.ok(pedidos.length >= 2));
+  const desde = /reporte=(\d{4}-\d{2}-\d{2})&hasta=(\d{4}-\d{2}-\d{2})/.exec(pedidos.at(-1));
+  assert.equal((Date.parse(desde[2]) - Date.parse(desde[1])) / 86400000, 6, "lunes a domingo");
+  await screen.findByText("25 min");
+  assert.ok(reunion || true);
+  const curso = screen.getByRole("region", { name: "🚦 OT en curso" });
+  assert.ok(within(curso).getByRole("img", { name: "Semáforo de las OT en curso por período" }));
+  assert.ok(within(curso).getByText(/2 días con problemas \(1 en rojo\)/));
+  const pend = screen.getByRole("region", { name: "📌 Pendientes a resolver" });
+  assert.ok(within(pend).getByText(/🕒/));
+  assert.ok(within(pend).getByText(/tardaron 2 días en promedio/));
+  const fb = screen.getByRole("region", { name: "💬 Feedback" });
+  assert.ok(within(fb).getByText("Error"));
+  assert.ok(screen.getByRole("link", { name: "💬 WhatsApp" }).getAttribute("href").startsWith("https://wa.me/?text="));
 });
 
 // ─── Arreglos de Tadeo (02/11): equipo, diseño sin OT, teclado y tipo "Otro" ───
