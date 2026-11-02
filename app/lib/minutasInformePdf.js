@@ -36,6 +36,8 @@ export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
   const problemas = enCurso.items.filter((x) => x.semaforo !== "verde");
   const verdes = enCurso.items.filter((x) => x.semaforo === "verde");
   const abiertos = pendientes.items.filter((p) => !p.resuelto);
+  const maxValor = Math.max(1, ...terminado.items.map((t) => t.valor || 0));
+  const maxDias = Math.max(1, ...abiertos.map((p) => p.dias || 0));
   const maxTipo = Math.max(1, ...feedback.porTipo.map((t) => t.n));
   const maxFoco = Math.max(1, ...foco.porOt.map((f) => f.dias));
   const claseTipo = { Error: "rojo", "Falta de dato": "violeta", Mejora: "cyan", Reconocimiento: "verde" };
@@ -51,15 +53,19 @@ export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
     : `<table class="filas">${foco.porOt.slice(0, 8).map((f) => `<tr><td class="n">${esc(nombreOt(f) || f.texto)}</td><td>${barra([{ valor: f.dias, clase: "marca" }], maxFoco)}</td><td class="v">${fmtDias(f.dias)}</td></tr>`).join("")}</table>`;
 
   const terminadasHtml = `<div class="kpis">${kpi(terminado.produccion.cantidad, `En producción${terminado.produccion.valor ? ` · ${fmtPesos(terminado.produccion.valor)}` : ""}`, terminado.produccion.cantidad ? "ok" : "")}${kpi(terminado.instalacion.cantidad, `Instaladas${terminado.instalacion.valor ? ` · ${fmtPesos(terminado.instalacion.valor)}` : ""}`, terminado.instalacion.cantidad ? "ok" : "")}</div>
-    ${terminado.items.length ? `<table class="tabla"><tr><th>OT</th><th>Dónde</th>${dia ? "" : "<th>Día</th>"}<th>Observación</th><th class="v">Valor</th></tr>${terminado.items.map((t) => `<tr><td><b>${esc(nombreOt(t))}</b></td><td>${t.seccion === "prod_terminada" ? "Producción" : "Instalación"}</td>${dia ? "" : `<td>${ddmm(t.fecha)}</td>`}<td>${esc(t.texto)}</td><td class="v">${t.valor == null ? "sin precio" : esc(fmtPesos(t.valor))}</td></tr>`).join("")}</table>` : ""}`;
+    ${terminado.items.length ? `<table class="tabla"><tr><th>OT</th><th>Dónde</th>${dia ? "" : "<th>Día</th>"}<th>Observación</th><th class="dias">Valor</th></tr>${terminado.items.map((t) => `<tr><td><b>${esc(nombreOt(t))}</b></td><td>${t.seccion === "prod_terminada" ? "Producción" : "Instalación"}</td>${dia ? "" : `<td>${ddmm(t.fecha)}</td>`}<td>${esc(t.texto)}</td><td class="dias">${t.valor == null ? "" : barra([{ valor: t.valor, clase: "verde" }], maxValor)}${t.valor == null ? "sin precio" : esc(fmtPesos(t.valor))}</td></tr>`).join("")}</table>` : ""}`;
 
+  const totalCurso = enCurso.verde + enCurso.amarillo + enCurso.rojo;
+  const semaforoHtml = totalCurso ? `<div class="semaforo">${[["verde", enCurso.verde], ["amarillo", enCurso.amarillo], ["rojo", enCurso.rojo]].filter(([, n]) => n).map(([c, n]) => `<i class="${c}" style="width:${pct(n, totalCurso)}%">${n}</i>`).join("")}</div>
+    <div class="leyenda"><i class="verde"></i>Verde ${pct(enCurso.verde, totalCurso)} % <i class="amarillo"></i>Amarillo ${pct(enCurso.amarillo, totalCurso)} % <i class="rojo"></i>Rojo ${pct(enCurso.rojo, totalCurso)} %</div>` : "";
   const enCursoHtml = `<div class="kpis">${kpi(enCurso.verde, "🟢 Verde", "ok")}${kpi(enCurso.amarillo, "🟡 Amarillo", enCurso.amarillo ? "at" : "")}${kpi(enCurso.rojo, "🔴 Rojo", enCurso.rojo ? "ma" : "")}</div>
+    ${semaforoHtml}
     ${!dia && serie.length > 1 ? columnas(serie, [{ clave: "verde", clase: "verde", label: "Verde" }, { clave: "amarillo", clase: "amarillo", label: "Amarillo" }, { clave: "rojo", clase: "rojo", label: "Rojo" }]) : ""}
     ${problemas.length ? `<table class="tabla"><tr><th>OT</th><th>Contingencia / observación</th><th>Responsable</th><th>Fecha</th>${dia ? "" : "<th class=\"v\">Días</th>"}</tr>${problemas.map((x) => `<tr><td>${PUNTO[x.semaforo]} <b>${esc(nombreOt(x))}</b></td><td>${esc(x.texto)}</td><td>${esc(x.responsable || "")}</td><td>${ddmm(x.fecha_objetivo)}</td>${dia ? "" : `<td class="v">${x.diasProblema || ""}</td>`}</tr>`).join("")}</table>` : ""}
     ${verdes.length ? `<p class="chico">🟢 En verde: ${esc(verdes.map((x) => (x.texto ? `${nombreOt(x)} (${x.texto})` : nombreOt(x))).join(" · "))}</p>` : ""}`;
 
   const pendHtml = `<div class="kpis">${kpi(pendientes.abiertos, "Abiertos", pendientes.abiertos ? "at" : "ok")}${kpi(pendientes.vencidos, "Vencidos", pendientes.vencidos ? "ma" : "ok")}${kpi(pendientes.diasPromedioAbiertos == null ? "—" : fmtDias(pendientes.diasPromedioAbiertos), "Abiertos hace (promedio)")}${kpi(pendientes.resueltos, "Resueltos", "ok")}</div>
-    ${abiertos.length ? `<table class="tabla"><tr><th>Pendiente</th><th>OT</th><th>Responsable</th><th>Surgió</th><th>Fecha objetivo</th><th class="v">Días</th></tr>${abiertos.map((p) => `<tr class="${p.vencido || p.gerencia || (p.dias || 0) >= 3 ? "fila-mal" : ""}"><td>${esc(p.texto)}</td><td>${esc(nombreOt(p))}</td><td>${esc(p.responsable)}</td><td>${ddmm(p.desde)}</td><td>${ddmm(p.fecha_objetivo)}${p.vencido ? " ⏰" : ""}</td><td class="v"><b>${p.dias ?? "—"}</b></td></tr>`).join("")}</table>` : `<p class="chico">No quedaron pendientes abiertos.</p>`}`;
+    ${abiertos.length ? `<table class="tabla"><tr><th>Pendiente</th><th>OT</th><th>Responsable</th><th>Surgió</th><th>Fecha objetivo</th><th class="dias">Días abierto</th></tr>${abiertos.map((p) => `<tr class="${p.vencido || p.gerencia || (p.dias || 0) >= 3 ? "fila-mal" : ""}"><td>${esc(p.texto)}</td><td>${esc(nombreOt(p))}</td><td>${esc(p.responsable)}</td><td>${ddmm(p.desde)}</td><td>${ddmm(p.fecha_objetivo)}${p.vencido ? " ⏰" : ""}</td><td class="dias">${barra([{ valor: p.dias || 0, clase: p.vencido || p.gerencia || (p.dias || 0) >= 3 ? "rojo" : "amarillo" }], maxDias)}<b>${p.dias ?? "—"}</b></td></tr>`).join("")}</table>` : `<p class="chico">No quedaron pendientes abiertos.</p>`}`;
 
   const fbHtml = feedback.total === 0 ? `<p class="chico">No hubo feedback.</p>`
     : `<table class="filas">${feedback.porTipo.map((t) => `<tr><td class="n">${esc(t.tipo)}</td><td>${barra([{ valor: t.n, clase: claseTipo[t.tipo] || "marca" }], maxTipo)}</td><td class="v">${t.n}</td></tr>`).join("")}</table>
@@ -84,6 +90,11 @@ export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
   .tabla th { text-align: left; font-size: 7pt; text-transform: uppercase; color: #78716c; border-bottom: .3mm solid #a8a29e; padding: .8mm 1mm; }
   .tabla td { border-bottom: .2mm solid #e7e5e4; padding: 1mm; vertical-align: top; }
   .fila-mal td { background: #fef2f2; }
+  td.dias, th.dias { width: 42mm; text-align: right; white-space: nowrap; }
+  td.dias .barra { display: inline-flex; width: 22mm; vertical-align: middle; margin-right: 1.5mm; }
+  .semaforo { display: flex; height: 7mm; border-radius: 1.5mm; overflow: hidden; margin: 1mm 0; }
+  .semaforo i { display: flex; align-items: center; justify-content: center; font-style: normal; font-weight: 700; color: #fff; font-size: 9pt; }
+  .semaforo i.amarillo { color: #1c1917; }
   .barra { display: flex; height: 3mm; background: #f5f5f4; border-radius: .8mm; overflow: hidden; }
   .barra i, .pila i, .leyenda i { display: block; }
   .verde { background: #16a34a; } .amarillo { background: #facc15; } .rojo { background: #dc2626; } .marca { background: #e8a33c; } .violeta { background: #7c3aed; } .cyan { background: #0891b2; }
@@ -91,7 +102,7 @@ export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
   .col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; }
   .col span { font-size: 6.5pt; color: #78716c; text-align: center; margin-top: .5mm; }
   .pila { flex: 1; display: flex; flex-direction: column-reverse; }
-  .leyenda { font-size: 7pt; color: #57534e; margin: 3mm 0 1mm; } .leyenda i { display: inline-block; width: 3mm; height: 2mm; margin: 0 1mm 0 2mm; vertical-align: middle; }
+  .leyenda { font-size: 7pt; color: #57534e; margin: 1.5mm 0 1mm; } .leyenda i { display: inline-block; width: 3mm; height: 2mm; margin: 0 1mm 0 2mm; vertical-align: middle; }
   ol.lista { margin: 0; padding-left: 5mm; } ol.lista li { margin-bottom: .8mm; }
   .pie { margin-top: 3mm; font-size: 7pt; color: #78716c; }
 </style></head><body>
@@ -118,6 +129,84 @@ export function imprimirInformeMinutas(datos) {
   ventana.document.close();
   ventana.focus();
   setTimeout(() => ventana.print(), 400);
+}
+
+// ─── PDF a color, descargado directo ────────────────────────────────────────
+// "Guardar como PDF" desde imprimir puede salir en blanco y negro (según la
+// impresora elegida o si "Gráficos de fondo" está apagado). Acá se dibuja la
+// hoja como imagen y se arma el PDF en el navegador: sale siempre a color.
+
+const ANCHO_PX = 718; // 190 mm de ancho útil (A4 con 10 mm de margen)
+const MM = { ancho: 210, alto: 297, margen: 10 };
+const ALTO_PAGINA_PX = Math.floor(ANCHO_PX * (MM.alto - 2 * MM.margen) / (MM.ancho - 2 * MM.margen));
+
+/**
+ * Dónde cortar las páginas: entre secciones, sin partir una que entre entera.
+ * @param {{ top: number, bottom: number }[]} bloques  posición de cada sección (px)
+ * @param {number} alto  alto total
+ * @param {number} pagina  alto de una página
+ * @returns {number[]} el comienzo de cada página
+ */
+export function cortesDePagina(bloques, alto, pagina = ALTO_PAGINA_PX) {
+  const cortes = [0];
+  let inicio = 0;
+  for (const b of bloques) {
+    if (b.bottom - inicio <= pagina) continue;
+    // No entra: la página nueva empieza donde arranca la sección (si eso avanza)
+    let corte = b.top > inicio ? b.top : inicio + pagina;
+    while (b.bottom - corte > pagina) { cortes.push(corte); inicio = corte; corte += pagina; }
+    cortes.push(corte);
+    inicio = corte;
+  }
+  while (alto - inicio > pagina) { inicio += pagina; cortes.push(inicio); }
+  return [...new Set(cortes)].filter((c) => c < alto);
+}
+
+const nombreArchivo = (titulo) => `Informe de minutas - ${String(titulo || "").replace(/[\\/:*?"<>|]+/g, "-")}.pdf`;
+
+/** Arma el PDF a color de la hoja y lo descarga. */
+export async function descargarPdfInformeMinutas(datos) {
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas-pro"), import("jspdf")]);
+  const marco = document.createElement("iframe");
+  marco.setAttribute("aria-hidden", "true");
+  marco.style.cssText = `position:fixed;left:-10000px;top:0;width:${ANCHO_PX}px;height:2000px;border:0;visibility:hidden`;
+  document.body.appendChild(marco);
+  try {
+    const doc = marco.contentDocument;
+    doc.open();
+    doc.write(htmlInformeMinutas(datos));
+    doc.close();
+    await new Promise((ok) => (doc.readyState === "complete" ? ok() : marco.addEventListener("load", ok, { once: true })));
+    if (doc.fonts?.ready) await doc.fonts.ready;
+    const cuerpo = doc.body;
+    cuerpo.style.width = `${ANCHO_PX}px`;
+    const alto = Math.ceil(cuerpo.scrollHeight);
+    marco.style.height = `${alto}px`;
+    const bloques = [...cuerpo.querySelectorAll("section, .cabecera")].map((el) => ({ top: el.offsetTop, bottom: el.offsetTop + el.offsetHeight }));
+    const escala = 2;
+    const lienzo = await html2canvas(cuerpo, { scale: escala, backgroundColor: "white", width: ANCHO_PX, windowWidth: ANCHO_PX, height: alto, useCORS: true, logging: false });
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    const cortes = cortesDePagina(bloques, alto);
+    const mmPorPx = (MM.ancho - 2 * MM.margen) / ANCHO_PX;
+    cortes.forEach((desde, i) => {
+      const hasta = Math.min(cortes[i + 1] ?? alto, desde + ALTO_PAGINA_PX);
+      const trozo = document.createElement("canvas");
+      trozo.width = lienzo.width;
+      trozo.height = Math.max(1, Math.round((hasta - desde) * escala));
+      const ctx = trozo.getContext("2d");
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, trozo.width, trozo.height);
+      ctx.drawImage(lienzo, 0, Math.round(desde * escala), lienzo.width, trozo.height, 0, 0, trozo.width, trozo.height);
+      if (i > 0) pdf.addPage();
+      pdf.addImage(trozo.toDataURL("image/jpeg", 0.92), "JPEG", MM.margen, MM.margen, MM.ancho - 2 * MM.margen, (hasta - desde) * mmPorPx);
+      pdf.setFontSize(7);
+      pdf.setTextColor(120);
+      pdf.text(`Página ${i + 1} de ${cortes.length}`, MM.ancho - MM.margen, MM.alto - 4, { align: "right" });
+    });
+    pdf.save(nombreArchivo(datos.titulo));
+  } finally {
+    marco.remove();
+  }
 }
 
 /** Resumen corto para mandar por WhatsApp. */

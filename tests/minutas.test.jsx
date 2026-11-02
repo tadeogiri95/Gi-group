@@ -755,6 +755,20 @@ test("informe consolidado — hoja para imprimir y texto de WhatsApp", async () 
   assert.match(txt, /Luciano · 1 día/);
 });
 
+test("PDF a color — semáforo y días de cada pendiente en barras; cortes de página entre secciones", async () => {
+  const { informeMinutas } = await import("../app/lib/minutasReporte.js");
+  const { htmlInformeMinutas, cortesDePagina } = await import("../app/lib/minutasInformePdf.js");
+  const r = informeMinutas({ minutas: minutasPeriodo.slice(2), items: itemsPeriodo.filter((it) => it.minuta_id === 3), hoy: "2026-10-31", modo: "dia", hasta: "2026-10-30" });
+  const html = htmlInformeMinutas({ informe: r, titulo: "Viernes 30/10" });
+  assert.match(html, /class="semaforo"/, "barra del semáforo también en el día");
+  assert.match(html, /Días abierto/);
+  assert.match(html, /print-color-adjust: exact/);
+  // Una sección que no entra pasa entera a la página siguiente
+  assert.deepEqual(cortesDePagina([{ top: 0, bottom: 400 }, { top: 400, bottom: 900 }, { top: 900, bottom: 1300 }], 1300, 1000), [0, 900]);
+  // Una más alta que la página se corta por la mitad
+  assert.deepEqual(cortesDePagina([{ top: 0, bottom: 100 }, { top: 100, bottom: 2300 }], 2300, 1000), [0, 100, 1100, 2100]);
+});
+
 test("Reportes → 📝 Minutas — informe del día, semana o mes con gráficos", async () => {
   const { default: MinutasReporteTab } = await import("../app/components/MinutasReporteTab.jsx");
   const pedidos = [];
@@ -779,6 +793,7 @@ test("Reportes → 📝 Minutas — informe del día, semana o mes con gráficos
   assert.ok(within(pend).getByText(/tardaron 2 días en promedio/));
   const fb = screen.getByRole("region", { name: "💬 Feedback" });
   assert.ok(within(fb).getByText("Error"));
+  assert.ok(screen.getByRole("button", { name: "📄 Descargar PDF a color" }));
   assert.ok(screen.getByRole("link", { name: "💬 WhatsApp" }).getAttribute("href").startsWith("https://wa.me/?text="));
 });
 

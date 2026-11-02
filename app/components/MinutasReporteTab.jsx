@@ -11,7 +11,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fmtPesos } from "../lib/costo";
 import { informeMinutas, rangoInforme, moverInforme, nombreInforme, HORA_REUNION } from "../lib/minutasReporte";
-import { imprimirInformeMinutas, textoInformeMinutas } from "../lib/minutasInformePdf";
+import { imprimirInformeMinutas, descargarPdfInformeMinutas, textoInformeMinutas } from "../lib/minutasInformePdf";
 import { Chip } from "./ui";
 import Stat from "./ui/Stat";
 
@@ -131,8 +131,13 @@ export default function MinutasReporteTab({ empresa = null }) {
   const siguiente = moverInforme(modo, fecha, 1);
   const nombreEmpresa = empresa?.razon_social || empresa?.nombre || empresa?.nombre_corto || "";
 
+  const [armandoPdf, setArmandoPdf] = useState(false);
   const imprimir = () => {
     try { imprimirInformeMinutas({ informe: inf, titulo, empresa: nombreEmpresa }); } catch (e) { setError(e.message); }
+  };
+  const descargar = async () => {
+    setArmandoPdf(true);
+    try { await descargarPdfInformeMinutas({ informe: inf, titulo, empresa: nombreEmpresa }); } catch { setError("No se pudo armar el PDF. Probá con 🖨 Imprimir."); } finally { setArmandoPdf(false); }
   };
 
   return (
@@ -151,8 +156,11 @@ export default function MinutasReporteTab({ empresa = null }) {
           : !inf.reunion.cantidad ? <Vacio>No hay minutas guardadas {modo === "dia" ? "de este día" : modo === "semana" ? "en esta semana" : "en este mes"}.</Vacio>
             : (
               <>
+                <button type="button" onClick={descargar} disabled={armandoPdf} className="g-btn g-btn-primary w-full mb-2">
+                  {armandoPdf ? "Armando el PDF…" : "📄 Descargar PDF a color"}
+                </button>
                 <div className="flex gap-2 mb-4">
-                  <button type="button" onClick={imprimir} className="g-btn g-btn-secondary flex-1">🖨 Imprimir o PDF</button>
+                  <button type="button" onClick={imprimir} className="g-btn g-btn-secondary flex-1">🖨 Imprimir</button>
                   <a href={`https://wa.me/?text=${encodeURIComponent(textoInformeMinutas(inf, titulo))}`} target="_blank" rel="noopener noreferrer" className="g-btn g-btn-secondary flex-1 text-center no-underline">💬 WhatsApp</a>
                 </div>
                 <Informe inf={inf} />
