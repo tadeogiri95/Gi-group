@@ -562,6 +562,19 @@ export const planProduccionBody = z.object({
   }).strict()).max(20000),
 }).strict();
 
+// ── /api/plan-instalacion (154): plan de instalación confirmado ─────────
+export const planInstalacionBody = z.object({
+  division_id: z.string().trim().max(60).nullable().optional().transform((v) => v || null),
+  items: z.array(z.object({
+    obra: z.string().trim().min(1).max(300),
+    ots: z.array(otSuelto).min(1).max(50),
+    fecha,
+    medio: z.union([z.literal(0), z.literal(1)]),
+    empleado_id: z.string().uuid().nullable(),
+    orden: z.number().int().min(0).max(100000),
+  }).strict()).max(20000),
+}).strict();
+
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
 export const costoHoraBody = z.object({
   costo_hora: z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100),

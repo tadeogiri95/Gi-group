@@ -23,7 +23,7 @@ import { otsEnPausa } from "../lib/pausaOt";
 import { normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { etapasDelPlan } from "../lib/ganttPlan";
 import { feriadosDe } from "../lib/secuencia";
-import { trabajosInstalacion, planInstalacion, trabajaElDia } from "../lib/planInstalacion";
+import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento } from "../lib/planInstalacion";
 import { textoDias } from "../lib/instalacionPlan";
 
 const DIA_MS = 86400000;
@@ -58,9 +58,23 @@ function avanceDeReportes(reportes = []) {
   return m;
 }
 
-export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones = SIN_LISTA, avanceHoras = null, pausas = SIN_PAUSAS, empresaId = null, onVerDetalle }) {
+export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones = SIN_LISTA, avanceHoras = null, pausas = SIN_PAUSAS, empresaId = null, onVerDetalle, puedeConfirmar = false }) {
   const hoy = hoyArg();
   const [datos, setDatos] = useState(null);
+  // Plan confirmado (154): cuánto se corrió cada obra; se vuelve a leer al confirmar
+  const [confirmados, setConfirmados] = useState({ planes: [], falta: false });
+  const [vuelta, setVuelta] = useState(0);
+  useEffect(() => {
+    let vivoEf = true;
+    apiFetch("/api/plan-instalacion").then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((d) => { if (vivoEf) setConfirmados({ planes: d?.planes || [], falta: !!d?.falta_migracion }); });
+    return () => { vivoEf = false; };
+  }, [vuelta]);
+  // Prioridad de instalación (153) cambiada acá, antes de que vuelvan a leerse las OT
+  const [prioLocal, setPrioLocal] = useState(() => new Map());
+  const [aviso, setAviso] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [verOrden, setVerOrden] = useState(false);
   useEffect(() => {
     let vivoEf = true;
     const e = empresaId ? `empresa_id=eq.${empresaId}&` : "";
@@ -80,7 +94,8 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
     if (!vivo || !datos) return null;
     const params = normalizarParametros(vivo.cfgValor);
     const division = divisionPlan(divisiones, params.division_id);
-    const deLaDivision = proyectos.filter((p) => p.estado !== "cerrado" && (!division || buscarDivision(divisiones, p.division)?.id === division.id));
+    const deLaDivision = proyectos.filter((p) => p.estado !== "cerrado" && (!division || buscarDivision(divisiones, p.division)?.id === division.id))
+      .map((p) => (prioLocal.has(String(p.ot)) ? { ...p, prioridad_instalacion: prioLocal.get(String(p.ot)) } : p));
     const finProduccion = new Map();
     const producidas = new Set();
     for (const r of vivo.renglones || []) {
@@ -100,11 +115,70 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
       avance: datos.avance, params, inst: params.instalacion, modulos: vivo.modulos, hoy, feriados,
       maxPersonas: datos.instaladores.length || 2,
     });
-    return { obras: planInstalacion(trabajos, datos.instaladores, { hoy, feriados }), sinProduccion, sinDato, feriados };
-  }, [vivo, datos, proyectos, divisiones, etapas, avanceHoras, pausas, hoy]);
+    const obras = conCorrimiento(planInstalacion(trabajos, datos.instaladores, { hoy, feriados }), finConfirmadoPorOt(confirmados.planes));
+    return { obras, sinProduccion, sinDato, feriados, divisionId: division?.id || null };
+  }, [vivo, datos, proyectos, divisiones, etapas, avanceHoras, pausas, hoy, confirmados, prioLocal]);
 
   if (!calculo) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
-  const { obras, sinProduccion, sinDato, feriados } = calculo;
+  const { obras, sinProduccion, sinDato, feriados, divisionId } = calculo;
+  const corridas = obras.filter((o) => o.diasCorrido > 0);
+  const ultimoPlan = confirmados.planes.find((p) => (p.division_id || null) === divisionId) || confirmados.planes[0] || null;
+
+  const confirmar = async () => {
+    setOcupado(true);
+    setAviso(null);
+    try {
+      const r = await apiFetch("/api/plan-instalacion", { method: "POST", body: JSON.stringify({ division_id: divisionId, items: itemsDelPlan(obras) }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "No se pudo confirmar el plan de instalación.");
+      setAviso("✅ Plan de instalación confirmado. Cada instalador ya ve sus obras en Instalaciones.");
+      setVuelta((v) => v + 1);
+    } catch (e) {
+      setAviso(e.message);
+    } finally {
+      setOcupado(false);
+    }
+  };
+  // ▲▼: el orden de las obras queda como prioridad de instalación de sus OT (1, 2, 3…)
+  const guardarOrden = async (lista) => {
+    setOcupado(true);
+    setAviso(null);
+    const nueva = new Map(prioLocal);
+    lista.forEach((o, i) => o.ots.forEach((t) => nueva.set(String(t.ot), i + 1)));
+    const antes = prioLocal;
+    setPrioLocal(nueva);
+    try {
+      for (const [i, o] of lista.entries()) {
+        const ids = o.ots.map((t) => t.proyecto?.id).filter((id) => id != null);
+        if (ids.length) await sb.patch(`proyectos?id=in.(${ids.join(",")})`, { prioridad_instalacion: i + 1 });
+      }
+    } catch (e) {
+      setPrioLocal(antes);
+      setAviso(/prioridad_instalacion/.test(String(e.message)) ? "Para cambiar el orden falta correr la migración 153 en Supabase." : `No se pudo guardar el orden: ${e.message}`);
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const mover = (i, d) => {
+    const lista = [...obras];
+    const j = i + d;
+    if (j < 0 || j >= lista.length) return;
+    [lista[i], lista[j]] = [lista[j], lista[i]];
+    guardarOrden(lista);
+  };
+  const quitarOrden = async () => {
+    const ids = obras.flatMap((o) => o.ots.map((t) => t.proyecto?.id)).filter((id) => id != null);
+    setOcupado(true);
+    setAviso(null);
+    try {
+      if (ids.length) await sb.patch(`proyectos?id=in.(${ids.join(",")})`, { prioridad_instalacion: null });
+      setPrioLocal(new Map(obras.flatMap((o) => o.ots.map((t) => [String(t.ot), null]))));
+    } catch (e) {
+      setAviso(`No se pudo quitar el orden: ${e.message}`);
+    } finally {
+      setOcupado(false);
+    }
+  };
   const nombres = new Map((datos.instaladores || []).map((g) => [g.id, g.apodo || g.nombre]));
   const sinInstaladores = !datos.instaladores.length;
   const tardes = obras.filter((o) => o.tarde);
@@ -124,7 +198,36 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={tardes.length ? "text-gypi-red font-bold" : ""}>⚠ Termina después de la entrega {tardes.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-dashed border-proc-margen" />Poco margen</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-amber" />🏭 Espera producción</span>
+        {ultimoPlan && <span className={corridas.length ? "font-bold" : ""}>↪ Se corrió del plan confirmado {corridas.length}</span>}
       </div>
+      {puedeConfirmar && obras.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <button type="button" onClick={confirmar} disabled={ocupado} className="g-btn g-btn-primary">{ocupado ? "Guardando…" : "✅ Confirmar plan de instalación"}</button>
+          <button type="button" onClick={() => setVerOrden((v) => !v)} className="g-btn g-btn-secondary">{verOrden ? "Cerrar orden" : "↕ Cambiar orden"}</button>
+          <span className="text-[13px] text-gypi-dim">
+            {confirmados.falta ? "Para confirmar falta correr la migración 154 en Supabase."
+              : ultimoPlan ? `Confirmado el ${fechaCorta(String(ultimoPlan.confirmado_at).slice(0, 10))}${ultimoPlan.confirmado_nombre ? ` por ${ultimoPlan.confirmado_nombre}` : ""}. Los instaladores ven ese plan.`
+                : "Todavía no hay un plan confirmado: los instaladores no ven sus obras."}
+          </span>
+        </div>
+      )}
+      {aviso && <div role="status" className="text-[14px] font-bold text-gypi-text mb-2">{aviso}</div>}
+      {puedeConfirmar && verOrden && obras.length > 0 && (
+        <section aria-label="Orden de las obras" className="g-card mb-2">
+          <div className="text-[13px] text-gypi-dim mb-2">Las de arriba se instalan primero. El orden queda guardado en cada OT; las obras nuevas van después, por fecha de entrega.</div>
+          <ol className="list-none m-0 p-0 flex flex-col gap-1">
+            {obras.map((o, i) => (
+              <li key={o.clave} className="flex items-center gap-2 text-[14px]">
+                <span className="w-6 text-gypi-dim text-right">{i + 1}</span>
+                <span className="flex-1 min-w-0 truncate"><span className="font-mono font-bold">{o.ots.map((t) => t.ot).join(" + ")}</span> · {[o.ots[0].proyecto.cliente, o.ots[0].proyecto.obra].filter(Boolean).join(" · ")}</span>
+                <button type="button" aria-label={`Subir la obra de la OT ${o.ots[0].ot}`} disabled={ocupado || i === 0} onClick={() => mover(i, -1)} className="g-btn g-btn-secondary min-w-11">▲</button>
+                <button type="button" aria-label={`Bajar la obra de la OT ${o.ots[0].ot}`} disabled={ocupado || i === obras.length - 1} onClick={() => mover(i, 1)} className="g-btn g-btn-secondary min-w-11">▼</button>
+              </li>
+            ))}
+          </ol>
+          <button type="button" onClick={quitarOrden} disabled={ocupado} className="g-btn g-btn-secondary mt-2">Volver al orden por fecha de entrega</button>
+        </section>
+      )}
       {sinInstaladores && (
         <div role="status" className="text-[14px] text-gypi-amber-ink font-bold mb-2">No hay instaladores marcados: se planifica con 2 de lunes a viernes. Marcalos en la ficha de cada uno (&quot;Es instalador&quot;).</div>
       )}
@@ -156,7 +259,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
               const sub = [p0.cliente, p0.obra || nombreProyecto(p0)].filter(Boolean).join(" · ");
               const equipo = o.equipo.map((id) => nombres.get(id) || "Instalador").join(", ");
               const contorno = o.tarde ? "stroke-gypi-red" : o.poco ? "stroke-proc-margen" : "stroke-none";
-              const texto = `OT ${titulo}${sub ? `, ${sub}` : ""}: ${o.sinLugar ? "sin lugar en el plan" : `del ${fechaCorta(o.inicio)} al ${fechaCorta(o.fin)}, ${textoDias(o.dias)} con ${o.personas} ${o.personas === 1 ? "instalador" : "instaladores"}`}${o.tarde ? `, termina ${o.diasTarde} días después de la entrega` : ""}${o.esperaProduccion ? ", espera que termine producción" : ""}`;
+              const texto = `OT ${titulo}${sub ? `, ${sub}` : ""}: ${o.sinLugar ? "sin lugar en el plan" : `del ${fechaCorta(o.inicio)} al ${fechaCorta(o.fin)}, ${textoDias(o.dias)} con ${o.personas} ${o.personas === 1 ? "instalador" : "instaladores"}`}${o.tarde ? `, termina ${o.diasTarde} días después de la entrega` : ""}${o.esperaProduccion ? ", espera que termine producción" : ""}${o.diasCorrido > 0 ? `, se corrió ${o.diasCorrido} días del plan confirmado` : ""}`;
               return (
                 <g key={o.clave} role="button" tabIndex={0} aria-label={texto} className="cursor-pointer"
                   onClick={() => onVerDetalle?.(p0)} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p0); }}>
@@ -173,7 +276,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
                   ))}
                   {!o.sinLugar && (
                     <text x={ETIQUETAS + x(o.fin) + (o.finMedio ? PX : PX / 2) + 4} y={y + FILA / 2 + 4} className={`text-[12px] ${o.tarde ? "fill-gypi-red font-bold" : "fill-gypi-text"}`}>
-                      {textoDias(o.dias)} · {equipo}{o.tarde ? ` · ⚠ ${o.diasTarde} d tarde` : ""}
+                      {textoDias(o.dias)} · {equipo}{o.tarde ? ` · ⚠ ${o.diasTarde} d tarde` : ""}{o.diasCorrido > 0 ? ` · ↪ ${o.diasCorrido} d` : ""}
                     </text>
                   )}
                   {o.entrega && o.entrega >= hoy && x(o.entrega) < ancho && (

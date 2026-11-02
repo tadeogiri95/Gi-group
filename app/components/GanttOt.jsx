@@ -825,7 +825,7 @@ export default function GanttOt(props) {
       </div>
       {tipo === "instalacion" && (
         <GanttInstalacion vivo={vivo} proyectos={props.proyectos} etapas={props.etapas} divisiones={props.divisiones}
-          avanceHoras={props.avanceHoras} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} />
+          avanceHoras={props.avanceHoras} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} puedeConfirmar={!!props.puedeAjustar} />
       )}
     </>
   );
