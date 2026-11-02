@@ -333,7 +333,7 @@ export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, mo
       if (it.resuelto_at) p.resueltos += 1;
     }
   }
-  for (const t of terminadas) { const p = punto(t.fecha); p.terminadas += 1; p.valor += t.valor || 0; }
+  for (const t of terminadas) { if (!t.fecha) continue; const p = punto(t.fecha); p.terminadas += 1; p.valor += t.valor || 0; }
   const serie = [...serieMap.values()].sort((a, b) => a.clave.localeCompare(b.clave));
 
   return { modo, reunion, foco, terminado, enCurso, pendientes, feedback, compras: base.compras, otFoco: base.otFoco, serie };
