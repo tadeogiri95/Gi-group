@@ -23,6 +23,8 @@ const MODOS = [
 const PUNTO = { verde: "🟢", amarillo: "🟡", rojo: "🔴" };
 const RELLENO = { verde: "fill-gypi-green", amarillo: "fill-yellow-400", rojo: "fill-gypi-red", gris: "fill-gypi-border", marca: "fill-gypi-amber", violeta: "fill-gypi-violet", cyan: "fill-gypi-cyan" };
 const COLOR_TIPO = { Error: "rojo", "Falta de dato": "violeta", Mejora: "cyan", Reconocimiento: "verde" };
+const TONO_TIPO = { Error: "rojo", "Falta de dato": "amarillo", Mejora: "gris", Reconocimiento: "verde" };
+const TONO_TEXTO = { bien: "text-gypi-green-ink", atencion: "text-gypi-amber-ink", mal: "text-gypi-red-ink" };
 const fmtDias = (d) => (d == null ? "—" : `${String(d).replace(".", ",")} ${d === 1 ? "día" : "días"}`);
 const ddmm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : "");
 const nombreOt = (x) => [x.ot ? `OT ${x.ot}` : null, x.proyecto, x.cliente].filter(Boolean).join(" · ");
@@ -127,7 +129,7 @@ export default function MinutasReporteTab({ empresa = null }) {
     return () => { vivo = false; };
   }, [desde, hasta]);
 
-  const inf = useMemo(() => (datos ? informeMinutas({ minutas: datos.minutas || [], items: datos.items || [], precios: datos.precios || {}, hoy, modo, hasta }) : null), [datos, hoy, modo, hasta]);
+  const inf = useMemo(() => (datos ? informeMinutas({ minutas: datos.minutas || [], items: datos.items || [], precios: datos.precios || {}, hoy, modo, hasta, anterior: datos.feedbackAnterior || null }) : null), [datos, hoy, modo, hasta]);
   const siguiente = moverInforme(modo, fecha, 1);
   const nombreEmpresa = empresa?.razon_social || empresa?.nombre || empresa?.nombre_corto || "";
 
@@ -342,6 +344,26 @@ function Informe({ inf }) {
               <FilaBarra key={t.tipo} nombre={t.tipo} max={maxTipo} valor={t.n} partes={[{ valor: t.n, color: COLOR_TIPO[t.tipo] || "marca" }]} />
             ))}
             <div className="text-[12px] text-gypi-dim mt-1 px-1">Por área: {feedback.porArea.map((a) => `${a.area} ${a.total}`).join(" · ")}</div>
+            {feedback.analisis?.length > 0 && (
+              <div aria-label="Análisis del feedback" className="mt-3 rounded-xl border border-gypi-border bg-gypi-surface p-3">
+                <div className="text-[13px] font-semibold mb-1">🔎 Análisis</div>
+                <ul className="m-0 pl-4 flex flex-col gap-1 text-[13px]">
+                  {feedback.analisis.map((f, i) => <li key={i} className={TONO_TEXTO[f.tono] || ""}>{f.texto}</li>)}
+                </ul>
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5 mt-3" aria-label="Detalle del feedback">
+              {feedback.items.map((f, i) => (
+                <Renglon key={i} tono={TONO_TIPO[f.tipo] || "gris"}>
+                  <div className="flex justify-between gap-2">
+                    <span className="min-w-0"><b>{f.tipo}</b> <span className="text-gypi-dim">· para {f.area}{f.ot ? ` · ${nombreOt(f)}` : ""}</span></span>
+                    <span className="text-[12px] text-gypi-dim shrink-0">{dia ? "" : ddmm(f.fecha)}{f.revisado ? " ✓ revisado" : ""}</span>
+                  </div>
+                  {f.texto && <div className="mt-0.5">{f.texto}</div>}
+                  {f.trae && <div className="text-[12px] text-gypi-dim mt-0.5">Lo trajo {f.trae}</div>}
+                </Renglon>
+              ))}
+            </div>
           </>
         )}
       </Bloque>

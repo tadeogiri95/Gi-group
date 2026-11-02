@@ -69,7 +69,9 @@ export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
 
   const fbHtml = feedback.total === 0 ? `<p class="chico">No hubo feedback.</p>`
     : `<table class="filas">${feedback.porTipo.map((t) => `<tr><td class="n">${esc(t.tipo)}</td><td>${barra([{ valor: t.n, clase: claseTipo[t.tipo] || "marca" }], maxTipo)}</td><td class="v">${t.n}</td></tr>`).join("")}</table>
-      <p class="chico">${feedback.total} en total · por área: ${esc(feedback.porArea.map((a) => `${a.area} ${a.total}`).join(" · "))}</p>`;
+      <p class="chico">${feedback.total} en total · por área: ${esc(feedback.porArea.map((a) => `${a.area} ${a.total}`).join(" · "))}</p>
+      ${feedback.analisis?.length ? `<div class="analisis"><b>🔎 Análisis</b><ul>${feedback.analisis.map((f) => `<li class="t-${f.tono}">${esc(f.texto)}</li>`).join("")}</ul></div>` : ""}
+      ${feedback.items?.length ? `<table class="tabla"><tr>${dia ? "" : "<th>Día</th>"}<th>Tipo</th><th>Para</th><th>OT</th><th>Qué pasó</th><th>Lo trajo</th></tr>${feedback.items.map((f) => `<tr>${dia ? "" : `<td>${ddmm(f.fecha)}</td>`}<td><i class="punto ${claseTipo[f.tipo] || "marca"}"></i>${esc(f.tipo)}</td><td>${esc(f.area)}</td><td>${esc(f.ot ? `OT ${f.ot}` : "")}</td><td>${esc(f.texto)}</td><td>${esc(f.trae || "")}${f.revisado ? " ✓" : ""}</td></tr>`).join("")}</table>` : ""}`;
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe de minutas · ${esc(titulo)}</title>
 <style>
@@ -90,6 +92,10 @@ export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
   .tabla th { text-align: left; font-size: 7pt; text-transform: uppercase; color: #78716c; border-bottom: .3mm solid #a8a29e; padding: .8mm 1mm; }
   .tabla td { border-bottom: .2mm solid #e7e5e4; padding: 1mm; vertical-align: top; }
   .fila-mal td { background: #fef2f2; }
+  .analisis { border: .3mm solid #e7e5e4; border-radius: 2mm; background: #faf7f2; padding: 1.5mm 3mm; margin: 1.5mm 0; }
+  .analisis ul { margin: 1mm 0 0; padding-left: 4mm; } .analisis li { margin-bottom: .6mm; }
+  .t-bien { color: #15803d; } .t-atencion { color: #b45309; } .t-mal { color: #b91c1c; }
+  i.punto { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; margin-right: 1.2mm; vertical-align: middle; }
   td.dias, th.dias { width: 42mm; text-align: right; white-space: nowrap; }
   td.dias .barra { display: inline-flex; width: 22mm; vertical-align: middle; margin-right: 1.5mm; }
   .semaforo { display: flex; height: 7mm; border-radius: 1.5mm; overflow: hidden; margin: 1mm 0; }
@@ -225,6 +231,9 @@ export function textoInformeMinutas(inf, titulo) {
   for (const x of enCurso.items.filter((y) => y.semaforo !== "verde").slice(0, 6)) l.push(`   ${PUNTO[x.semaforo]} OT ${x.ot || "—"}${x.texto ? `: ${x.texto}` : ""}${x.responsable ? ` (${x.responsable})` : ""}`);
   l.push(`📌 Pendientes: ${pendientes.abiertos} abiertos${pendientes.vencidos ? `, ${pendientes.vencidos} vencidos` : ""}`);
   for (const p of pendientes.items.filter((y) => !y.resuelto).slice(0, 6)) l.push(`   • ${p.texto || nombreOt(p)} · ${p.responsable} · ${fmtDias(p.dias)}`);
-  if (feedback.total) l.push(`💬 Feedback: ${feedback.porTipo.map((t) => `${t.tipo} ${t.n}`).join(" · ")}`);
+  if (feedback.total) {
+    l.push(`💬 Feedback: ${feedback.porTipo.map((t) => `${t.tipo} ${t.n}`).join(" · ")}`);
+    for (const f of (feedback.analisis || []).slice(0, 3)) l.push(`   ${f.texto}`);
+  }
   return l.join("\n");
 }

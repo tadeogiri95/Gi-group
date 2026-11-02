@@ -769,6 +769,26 @@ test("PDF a color — semáforo y días de cada pendiente en barras; cortes de p
   assert.deepEqual(cortesDePagina([{ top: 0, bottom: 100 }, { top: 100, bottom: 2300 }], 2300, 1000), [0, 100, 1100, 2100]);
 });
 
+test("feedback detallado — cada uno y un análisis corto con reglas, contra el período anterior", async () => {
+  const { informeMinutas, analisisFeedback } = await import("../app/lib/minutasReporte.js");
+  const anterior = { reuniones: 5, items: [{ tipo: "Error" }, { tipo: "Error" }, { tipo: "Falta de dato" }, { tipo: "Error" }] };
+  const r = informeMinutas({ minutas: minutasPeriodo, items: [...itemsPeriodo, { id: "fb9", minuta_id: 3, seccion: "feedback", tipo: "Error", area: "Diseño y técnica", ot: "7751", texto: "Plano con medida mal", responsable: "Luciano" }], hoy: "2026-10-31", modo: "semana", anterior });
+  assert.equal(r.feedback.items.length, 4);
+  assert.equal(r.feedback.items[0].fecha, "2026-10-30", "el más nuevo primero");
+  const plano = r.feedback.items.find((f) => f.texto === "Plano con medida mal");
+  assert.deepEqual([plano.trae, plano.ot, plano.area], ["Luciano", "7751", "Diseño y técnica"]);
+  const textos = r.feedback.analisis.map((f) => f.texto);
+  assert.match(textos[0], /Hubo 4 feedback: 3 errores, 1 reconocimiento\. El 75 % marca un problema/);
+  assert.ok(textos.some((t) => /Diseño y técnica recibió todos los problemas/.test(t)));
+  assert.ok(textos.some((t) => /1 reconocimiento para Producción/.test(t)));
+  assert.ok(textos.some((t) => /Falta revisar 4 de 4/.test(t)));
+  const contra = r.feedback.analisis.at(-1);
+  assert.deepEqual([contra.tono, contra.texto], ["bien", "Contra el período anterior: los problemas bajaron (de 4 a 3) y el total pasó de 4 a 4."]);
+  assert.deepEqual(analisisFeedback([]), []);
+  // OT repetida
+  assert.ok(analisisFeedback([{ tipo: "Mejora", ot: "7000" }, { tipo: "Mejora", ot: "7000" }]).some((f) => /OT 7000 \(2 veces\)/.test(f.texto)));
+});
+
 test("Reportes → 📝 Minutas — informe del día, semana o mes con gráficos", async () => {
   const { default: MinutasReporteTab } = await import("../app/components/MinutasReporteTab.jsx");
   const pedidos = [];
@@ -792,7 +812,9 @@ test("Reportes → 📝 Minutas — informe del día, semana o mes con gráficos
   assert.ok(within(pend).getByText(/🕒/));
   assert.ok(within(pend).getByText(/tardaron 2 días en promedio/));
   const fb = screen.getByRole("region", { name: "💬 Feedback" });
-  assert.ok(within(fb).getByText("Error"));
+  assert.ok(within(fb).getAllByText("Error").length >= 2, "en las barras y en el detalle");
+  assert.ok(within(fb).getByLabelText("Análisis del feedback"));
+  assert.equal(within(within(fb).getByLabelText("Detalle del feedback")).getAllByText(/· para /).length, 3);
   assert.ok(screen.getByRole("button", { name: "📄 Descargar PDF a color" }));
   assert.ok(screen.getByRole("link", { name: "💬 WhatsApp" }).getAttribute("href").startsWith("https://wa.me/?text="));
 });

@@ -200,8 +200,9 @@ export function nombreInforme(modo, fecha) {
  * @param {{ minutas: object[], items: object[], precios?: Record<string, number>, hoy: string, modo?: "dia"|"semana"|"mes", hasta?: string }} datos
  *   precios: OT → precio (migración 142); sin precio la OT va sin valor.
  *   hasta: último día del período (los pendientes abiertos cuentan hasta ahí o hasta hoy).
+ *   anterior: el feedback del período anterior ({ reuniones, items: [{ tipo, area }] }) para comparar.
  */
-export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, modo = "semana", hasta = null }) {
+export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, modo = "semana", hasta = null, anterior = null }) {
   const base = resumenMinutas({ minutas, items, hoy });
   const fechaDe = new Map(minutas.map((m) => [m.id, m.fecha]));
   const its = items.map((it) => ({ ...it, fecha: it.fecha || fechaDe.get(it.minuta_id) || null }))
@@ -311,6 +312,13 @@ export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, mo
     }),
   };
 
+  // Feedback detallado: cada uno, del más nuevo al más viejo, y un análisis corto
+  feedback.items = its.filter((it) => it.seccion === "feedback").map((it) => ({
+    fecha: it.fecha, ot: it.ot || null, proyecto: it.proyecto || null, cliente: it.cliente || null,
+    tipo: it.tipo || "Sin tipo", area: it.area || "Sin área", texto: it.texto || "", trae: it.responsable || null, revisado: !!it.resuelto_at,
+  })).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  feedback.analisis = analisisFeedback(feedback.items, anterior);
+
   // Serie: un punto por día (semana) o por semana (mes) — la suma de los informes diarios
   const clave = (f) => (modo === "mes" ? lunesDe(f) : f);
   const serieMap = new Map();
@@ -337,4 +345,56 @@ export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, mo
   const serie = [...serieMap.values()].sort((a, b) => a.clave.localeCompare(b.clave));
 
   return { modo, reunion, foco, terminado, enCurso, pendientes, feedback, compras: base.compras, otFoco: base.otFoco, serie };
+}
+
+// ─── Análisis del feedback ──────────────────────────────────────────────────
+// Frases cortas armadas con reglas (no inventa nada): de qué tipo fue, qué
+// área recibió más errores, qué OT se repiten, quién trae más, cuántos se
+// revisaron el jueves y cómo viene contra el período anterior.
+
+const NEGATIVOS = ["Error", "Falta de dato"];
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+const NOMBRE_TIPO = { Error: ["error", "errores"], "Falta de dato": ["falta de dato", "faltas de dato"], Mejora: ["mejora", "mejoras"], Reconocimiento: ["reconocimiento", "reconocimientos"] };
+const nombreTipo = (t, n) => (NOMBRE_TIPO[t] ? plural(n, ...NOMBRE_TIPO[t]) : `${n} de tipo ${t}`);
+
+/**
+ * @param {{ tipo, area, ot, trae, revisado }[]} items  el feedback del período
+ * @param {{ reuniones?: number, items: { tipo, area }[] } | null} anterior
+ * @returns {{ tono: "bien"|"atencion"|"mal"|"normal", texto: string }[]}
+ */
+export function analisisFeedback(items = [], anterior = null) {
+  const frases = [];
+  if (!items.length) return frases;
+  const porTipo = ordenar(contar(items, (it) => it.tipo || "Sin tipo"));
+  const neg = items.filter((it) => NEGATIVOS.includes(it.tipo));
+  const pctNeg = Math.round((neg.length / items.length) * 100);
+  frases.push({
+    tono: pctNeg >= 50 ? "atencion" : "normal",
+    texto: `Hubo ${plural(items.length, "feedback", "feedback")}: ${porTipo.map(([t, n]) => nombreTipo(t, n)).join(", ")}.${neg.length ? ` El ${pctNeg} % marca un problema (error o falta de dato).` : " Ninguno marca un problema."}`,
+  });
+  if (neg.length) {
+    const [area, n] = ordenar(contar(neg, (it) => it.area || "Sin área"))[0];
+    if (n > 1 || neg.length === 1) frases.push({ tono: n >= 3 ? "mal" : "atencion", texto: `${area} recibió ${n === neg.length ? (n === 1 ? "el único problema" : "todos los problemas") : `${n} de los ${neg.length} problemas`}: conviene revisar con esa área de dónde vienen.` });
+  }
+  const otRep = ordenar(contar(items.filter((it) => it.ot), (it) => it.ot)).filter(([, n]) => n > 1);
+  if (otRep.length) frases.push({ tono: "atencion", texto: `Se repiten OT: ${otRep.slice(0, 4).map(([ot, n]) => `OT ${ot} (${n} veces)`).join(", ")}.` });
+  const rec = items.filter((it) => it.tipo === "Reconocimiento");
+  if (rec.length) {
+    const areas = [...new Set(rec.map((it) => it.area).filter(Boolean))];
+    frases.push({ tono: "bien", texto: `${plural(rec.length, "reconocimiento", "reconocimientos")}${areas.length ? ` para ${areas.join(", ")}` : ""}.` });
+  }
+  const trae = ordenar(contar(items.filter((it) => it.trae), (it) => it.trae));
+  if (trae.length && items.length >= 3) frases.push({ tono: "normal", texto: `Lo trajeron: ${trae.slice(0, 4).map(([q, n]) => `${q} ${n}`).join(", ")}${trae.length > 4 ? " y otros" : ""}.` });
+  const rev = items.filter((it) => it.revisado).length;
+  frases.push({ tono: rev === items.length ? "bien" : "normal", texto: rev === items.length ? "Todos ya se revisaron." : `Falta revisar ${items.length - rev} de ${items.length} en la revisión del jueves.` });
+  if (anterior && anterior.reuniones) {
+    const antNeg = (anterior.items || []).filter((it) => NEGATIVOS.includes(it.tipo)).length;
+    const total = (anterior.items || []).length;
+    const flecha = (a, b) => (b < a ? "bajaron" : b > a ? "subieron" : "siguen igual");
+    frases.push({
+      tono: neg.length < antNeg ? "bien" : neg.length > antNeg ? "mal" : "normal",
+      texto: `Contra el período anterior: los problemas ${flecha(antNeg, neg.length)} (de ${antNeg} a ${neg.length}) y el total pasó de ${total} a ${items.length}.`,
+    });
+  }
+  return frases;
 }
