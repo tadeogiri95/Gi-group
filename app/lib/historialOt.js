@@ -8,9 +8,11 @@
 // Lo que se cargó antes de este registro sale de las tablas que ya guardaban
 // quién y cuándo (demoras, retrabajos, avance manual, firmas de etapas).
 
+import { textoMotivoPausa } from "./pausaOt";
+
 export const ACCION_CAMBIO_OT = "ot.cambio";
 // Tablas con OT que se escriben por /api/data
-export const TABLAS_OT = ["proyectos", "ajustes_tiempo_ot", "retrabajos_ot", "no_conformidades", "sueltos_ot", "pendientes_obra"];
+export const TABLAS_OT = ["proyectos", "ajustes_tiempo_ot", "retrabajos_ot", "no_conformidades", "sueltos_ot", "pendientes_obra", "pausas_ot"];
 const MAX_FILAS = 200;
 const MAX_TEXTO = 300;
 
@@ -117,6 +119,11 @@ export function describirCambio(c, nombreEtapa = (x) => `etapa ${x}`) {
     if (c.metodo === "POST") return [`Cargó retrabajo de ${horas(campos.horas)} en ${etapa(campos.etapa)}`, MOTIVOS[campos.motivo], campos.detalle].filter(Boolean).join(" · ");
     return "Cambió un retrabajo";
   }
+  if (c.tabla === "pausas_ot") {
+    if (campos.hasta) return "▶ Reanudó la OT";
+    if (c.metodo === "POST") return ["⏸ Puso la OT en pausa", textoMotivoPausa(campos)].filter((x) => x && x !== "—").join(" · ");
+    return "Cambió una pausa";
+  }
   if (c.tabla === "proyectos") {
     if (c.metodo === "POST") return "Dio de alta la OT";
     if (c.metodo === "DELETE") return "Borró la OT";
@@ -148,9 +155,13 @@ export function cambioDeAudit(a) {
  * Lo cargado antes del registro, desde las tablas que ya guardaban quién y cuándo.
  * Solo lo anterior a `desde` (el primer cambio registrado) para no repetir.
  */
-export function cambiosAnteriores({ ajustes = [], retrabajos = [], manual = [], etapas = [], proyecto = null, desde = null }) {
+export function cambiosAnteriores({ ajustes = [], retrabajos = [], pausas = [], manual = [], etapas = [], proyecto = null, desde = null }) {
   const antes = (t) => t && (!desde || t < desde);
   const out = [];
+  for (const p of pausas) {
+    if (antes(p.desde)) out.push({ at: p.desde, actor_id: p.creado_por || null, nombre: p.creado_nombre || null, tabla: "pausas_ot", metodo: "POST", campos: { motivo: p.motivo, detalle: p.detalle } });
+    if (antes(p.hasta)) out.push({ at: p.hasta, nombre: p.reanudada_nombre || null, tabla: "pausas_ot", metodo: "PATCH", campos: { hasta: p.hasta } });
+  }
   for (const a of ajustes) if (antes(a.created_at)) out.push({ at: a.created_at, actor_id: a.creado_por || null, nombre: a.creado_nombre || null, tabla: "ajustes_tiempo_ot", metodo: "POST", campos: a });
   for (const r of retrabajos) {
     if (antes(r.created_at)) out.push({ at: r.created_at, actor_id: r.creado_por || null, nombre: r.creado_nombre || null, tabla: "retrabajos_ot", metodo: "POST", campos: { horas: r.horas, etapa: r.etapa, motivo: r.motivo, detalle: r.detalle } });

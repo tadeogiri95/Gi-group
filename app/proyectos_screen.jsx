@@ -22,6 +22,7 @@ import PiezasOt from "./components/PiezasOt";
 import { useCostoHora } from "./hooks/useCostoHora";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
 import { estadoOtLista, textoEntrega } from "./lib/otLista";
+import { pausasAbiertas } from "./lib/pausaOt";
 import { otSinMovimiento, enTandas, DIAS_SIN_MOVIMIENTO } from "./lib/otOrdenar";
 import { COLUMNAS_OT, RANGOS_AVANCE, RANGOS_VALOR, estadosPresentes, filasTablaOt, siguienteOrden } from "./lib/otTabla";
 import CerrarOtViejas from "./components/CerrarOtViejas";
@@ -183,6 +184,14 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
   }, [verPrecios, empresaId]);
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
   const [proyectos, setProyectos] = useState([]);
+  // OT en pausa (151): sin la migración, ninguna
+  const [pausas, setPausas] = useState([]);
+  const pausaPorOt = useMemo(() => pausasAbiertas(pausas), [pausas]);
+  const leerPausas = useCallback(() => {
+    if (!empresaId) return;
+    sbGetAll(`pausas_ot?empresa_id=eq.${empresaId}&select=id,ot,motivo,detalle,desde,hasta,creado_nombre,reanudada_nombre&order=desde.asc`, { maxFilas: 20000 })
+      .then((r) => setPausas(r.data || [])).catch(() => setPausas([]));
+  }, [empresaId]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [filtro, setFiltro] = useState("activo");
@@ -219,9 +228,10 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
       // Todas las OT, no solo las primeras 500 (cada pedido trae hasta 1000)
       const { data } = await sbGetAll(`proyectos?empresa_id=eq.${empresaId}&order=created_at.desc,id.desc`, { maxFilas: 20000 });
       setProyectos(data || []);
+      leerPausas();
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [empresaId]);
+  }, [empresaId, leerPausas]);
 
   // 🔄 Refrescar del Gantt: vuelve a leer las OT sin el cartel de "cargando"
   // (así no se cierra la pantalla completa); el avance se relee solo
@@ -229,7 +239,8 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
     if (!empresaId) return;
     const { data } = await sbGetAll(`proyectos?empresa_id=eq.${empresaId}&order=created_at.desc,id.desc`, { maxFilas: 20000 });
     setProyectos(data || []);
-  }, [empresaId]);
+    leerPausas();
+  }, [empresaId, leerPausas]);
 
   const cargarSyncCfg = useCallback(async () => {
     if (!empresaId) return;
@@ -421,13 +432,13 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
     const pct = p.estado !== "cerrado" ? pctEscaneo.get(String(p.ot))?.porcentaje ?? null : null;
     return {
       p, pct,
-      estado: estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct }),
+      estado: estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct, pausa: pausaPorOt.get(String(p.ot)) || null }),
       entrega: textoEntrega(p, modoObjetivo).replace(/^Entrega /, ""),
       obra: [p.obra || p.proyecto, p.division && nombreDivisionOt(divisionesCtx || [], p.division)].filter(Boolean).join(" · "),
       valor: verPrecios && precios.has(String(p.ot)) ? Number(precios.get(String(p.ot))) : null,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [filtrados, pctEscaneo, filaEnCurso, modoObjetivo, divisionesCtx, verPrecios, precios]);
+  }), [filtrados, pctEscaneo, filaEnCurso, pausaPorOt, modoObjetivo, divisionesCtx, verPrecios, precios]);
   const filasTabla = useMemo(() => filasTablaOt(filasBase, { orden: ordenTabla, filtros: filtrosTabla }), [filasBase, ordenTabla, filtrosTabla]);
   const hayFiltrosTabla = Object.values(filtrosTabla).some(Boolean);
 
@@ -582,6 +593,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           puedeReordenar={usuario?.rol === "gerencial"}
           puedeAjustar={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"}
           usuarioNombre={usuario?.nombre || null}
+          pausas={pausas}
           onVerDetalle={setDetalle}
           onRefrescar={refrescarOts}
         />
@@ -592,6 +604,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           etapas={etapasCtx || []}
           divisiones={divisionesCtx || []}
           checklist={checklistLiberacion || []}
+          pausas={pausaPorOt}
           onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))}
           onVerDetalle={setDetalle}
         />
@@ -699,7 +712,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
             const divColor = divInfo.color || AMBER;
             // Avance, estado con la etapa y entrega a la vista (auditoría 01/11, PR 4)
             const pct = p.estado !== "cerrado" ? pctEscaneo.get(String(p.ot))?.porcentaje ?? null : null;
-            const estado = estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct });
+            const estado = estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct, pausa: pausaPorOt.get(String(p.ot)) || null });
             const entrega = textoEntrega(p, modoObjetivo);
             const obra = [p.obra || p.proyecto, p.division && nombreDivisionOt(divisionesCtx || [], p.division)].filter(Boolean).join(" · ");
             return (
@@ -746,6 +759,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
       {detalle && (
         <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined}
           modoObjetivo={modoObjetivo} puedeCambiarSemana={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setDetalle(null)}
+          pausas={pausas} usuarioNombre={usuario?.nombre || null} onPausaCambiada={leerPausas}
           onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))} />
       )}
       <Modal open={!!acciones} onClose={() => setAcciones(null)} title={acciones ? `OT ${acciones.ot}` : ""}>

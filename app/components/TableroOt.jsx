@@ -4,6 +4,7 @@
 // ordenadas por fecha de entrega, con la liberación y cada etapa de su ruta.
 // El responsable toca una etapa para firmar su cierre, marcarla "no aplica"
 // o reabrirla, y toca "Liberada" para el checklist y los puntos críticos.
+import { textoPausa } from "../lib/pausaOt";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, sbGetAll } from "../lib/supabase";
 import { filasTablero, ESTADO_INFO } from "../lib/avance";
@@ -60,7 +61,7 @@ function Hoja({ titulo, onClose, children }) {
   );
 }
 
-export default function TableroOt({ proyectos = [], empresaId, etapas = [], divisiones = [], checklist = [], onProyectoActualizado, onVerDetalle }) {
+export default function TableroOt({ proyectos = [], empresaId, etapas = [], divisiones = [], checklist = [], pausas = new Map(), onProyectoActualizado, onVerDetalle }) {
   const [avance, setAvance] = useState([]);
   const [horas, setHoras] = useState(new Set());
   const [modulos, setModulos] = useState(new Map()); // "OT|etapa" → módulos hechos (101)
@@ -185,21 +186,24 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
         <div className="flex flex-col gap-2">
           {visibles.map((f) => {
             const p = f.proyecto;
+            // En pausa (151): no se marca atrasada
+            const pausa = pausas.get?.(String(p.ot)) || null;
             return (
               <div key={p.id ?? p.ot} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border">
                 <button onClick={() => onVerDetalle?.(p)} className="w-full flex items-center gap-2 bg-transparent border-none p-0 text-left cursor-pointer text-gypi-text min-h-[44px]">
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${claseSemaforo(f.semaforo)}`} aria-hidden="true" />
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${claseSemaforo(pausa ? "gris" : f.semaforo)}`} aria-hidden="true" />
                   <span className="font-mono text-[13px] font-bold">{p.ot}</span>
                   <span className="flex-1 min-w-0 text-[12px] text-gypi-dim truncate">{p.cliente || p.proyecto || ""}</span>
                   {p.fecha_entrega && (
-                    <span className={`text-xs font-bold ${f.semaforo === "rojo" ? "text-gypi-red" : f.semaforo === "amarillo" ? "text-gypi-amber-ink" : "text-gypi-dim"}`}>
-                      {f.semaforo === "rojo" ? "Atrasada · " : ""}{fechaCorta(p.fecha_entrega)}
+                    <span className={`text-xs font-bold ${pausa ? "text-gypi-dim" : f.semaforo === "rojo" ? "text-gypi-red" : f.semaforo === "amarillo" ? "text-gypi-amber-ink" : "text-gypi-dim"}`}>
+                      {f.semaforo === "rojo" && !pausa ? "Atrasada · " : ""}{fechaCorta(p.fecha_entrega)}
                     </span>
                   )}
                 </button>
                 {porEscaneo.get(String(p.ot))?.porcentaje != null && (
                   <div className="text-xs font-bold text-gypi-dim mb-1">🧩 Producción {porEscaneo.get(String(p.ot)).porcentaje}% {normalizarAvanceManual(p.avance_manual).activo ? "(escaneo y checkeo manual)" : "por escaneo"}</div>
                 )}
+                {pausa && <div className="text-xs font-bold text-gypi-amber-ink mb-1">{textoPausa(pausa)}</div>}
                 {p.puntos_criticos && <div className="text-xs text-gypi-amber-ink truncate mb-1">⚠ {p.puntos_criticos}</div>}
                 {instalacion.has(String(p.ot)) && (
                   <div className={`text-xs font-bold mb-1 ${instalacion.get(String(p.ot)) === "instalada" ? "text-gypi-green" : "text-gypi-amber-ink"}`}>{NOMBRE_ESTADO_ACTA[instalacion.get(String(p.ot))]}</div>

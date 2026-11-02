@@ -78,6 +78,7 @@ const TABLAS_PERMITIDAS = [
   "informes_produccion", // Informe de producción (146): solo lectura acá; lo guarda el cron
   "avance_manual_historial", // Historial del checkeo manual (146): gestión lee y agrega
   "retrabajos_ot", // Retrabajo de un proceso (147): gestión lee, agrega y marca terminado
+  "pausas_ot", // OT en pausa (151): todos leen; gestión pausa y reanuda
 ];
 
 // Flota (126): se leen por acá y se escriben solo por /api/flota.
@@ -157,6 +158,7 @@ const TABLAS_CON_EMPRESA = [
   "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145)
   "informes_produccion", "avance_manual_historial", // Informe de producción (146)
   "retrabajos_ot", // Retrabajo de un proceso (147)
+  "pausas_ot", // OT en pausa (151)
 ];
 
 function validarPath(path) {

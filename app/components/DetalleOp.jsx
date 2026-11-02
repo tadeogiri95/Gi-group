@@ -32,6 +32,7 @@ import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { useEscape } from "../hooks/useEscape";
 import MinutasDeOt from "./MinutasDeOt";
 import HistorialOt from "./HistorialOt";
+import PausaOt from "./PausaOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -68,7 +69,8 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, precio, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado }) {
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, precio, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado,
+  pausas = [], usuarioNombre = null, onPausaCambiada }) {
   useEscape(onClose);
   // Checkeo manual (141): lo guardado acá se ve sin volver a abrir el detalle
   const [avanceManual, setAvanceManual] = useState(undefined);
@@ -180,6 +182,10 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
+
+        {/* ⏸ Pausa (151): gestión la pone y la saca; los demás ven si está en pausa */}
+        <PausaOt ot={proyecto?.ot} pausas={pausas} puedePausar={puedeCambiarSemana && proyecto?.estado !== "cerrado"}
+          usuarioNombre={usuarioNombre} onCambio={onPausaCambiada} />
 
         {material.length > 0 && (
           <section className="mb-4" aria-label="Material de producción">

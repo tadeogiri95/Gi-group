@@ -29,7 +29,7 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
     (async () => {
       try {
         const e = empresaId;
-        const [proyectos, piezas, etapas, cargas, bultos, actas, manual, empleados, cfg, etapasEmpresa] = await Promise.all([
+        const [proyectos, piezas, etapas, cargas, bultos, actas, manual, empleados, cfg, etapasEmpresa, pausas] = await Promise.all([
           sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,proyecto,division,created_at,liberada_at,avance_manual&order=id.asc`, { maxFilas: 20000 })
             .catch(() => sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,proyecto,division,created_at,liberada_at&order=id.asc`, { maxFilas: 20000 })),
           // Sin las migraciones de cada parte, ese tramo queda sin dato
@@ -42,14 +42,16 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
           sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo,es_instalador,puesto_planta`, { maxFilas: 5000 }).catch(vacio),
           sbGetAll(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLANIFICACION}&select=valor`).catch(vacio),
           sbGetAll(`etapas?empresa_id=eq.${e}&activa=eq.true&order=orden.asc`).catch(vacio),
+          // Sin la 151 no hay pausas: cuenta todo
+          sbGetAll(`pausas_ot?empresa_id=eq.${e}&select=ot,desde,hasta`, { maxFilas: 20000 }).catch(vacio),
         ]);
         if (!vivo) return;
         setFilas(leadTimes({
           proyectos: proyectos.data, avancePiezas: piezas.data, avanceEtapas: etapas.data,
-          cargas: cargas.data, bultos: bultos.data, actas: actas.data,
+          cargas: cargas.data, bultos: bultos.data, actas: actas.data, pausas: pausas.data,
         }));
         setCrudo({ cfgValor: cfg.data[0]?.valor || null, etapas: etapasEmpresa.data, piezas: piezas.data, manual: manual.data,
-          avance: etapas.data, proyectos: proyectos.data, empleados: empleados.data });
+          avance: etapas.data, proyectos: proyectos.data, empleados: empleados.data, pausas: pausas.data });
       } catch (err) {
         if (vivo) setError("No se pudo calcular el lead time.");
         console.error(err);
@@ -61,6 +63,7 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
   const horas = useMemo(() => crudo && leadTimeProcesos({
     etapasCodigo: etapasDelPlan(crudo.cfgValor, crudo.etapas, divisiones), piezas: crudo.piezas, manual: crudo.manual,
     avance: crudo.avance, proyectos: crudo.proyectos, ventanas: ventanasDeGrilla(crudo.empleados, divisiones, crudo.cfgValor),
+    pausas: crudo.pausas,
   }), [crudo, divisiones]);
 
   const resumen = useMemo(() => {
@@ -85,7 +88,7 @@ export default function LeadTimeTab({ fechaDesde, fechaHasta, labelPeriodo, empr
     <div>
       <p className="text-[12px] text-gypi-dim mt-0 mb-3">
         OT que terminaron cada tramo en {labelPeriodo}. Producción: de la liberación (o el primer escaneo) a la última pieza escaneada.
-        Instalación: de la carga en el camión al acta firmada. Total: del alta de la OT al acta.
+        Instalación: de la carga en el camión al acta firmada. Total: del alta de la OT al acta. El tiempo en ⏸ pausa no cuenta.
       </p>
       <section aria-label="Promedios de lead time" className="grid grid-cols-1 gap-2 mb-4">
         {resumen.tramos.map((t) => (

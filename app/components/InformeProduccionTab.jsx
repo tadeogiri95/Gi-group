@@ -15,6 +15,7 @@ const DIA = 86400000;
 const coma = (n) => String(n ?? "—").replace(".", ",");
 const sumarDias = (f, n) => new Date(Date.parse(`${f}T00:00:00Z`) + n * DIA).toISOString().slice(0, 10);
 const NOMBRE_TIPO = { dia: "Día", semana: "Semana", mes: "Mes" };
+const fechaCortaTs = (ts) => fechaCorta(hoyArg(new Date(ts)));
 
 /** El mismo día de la semana o del mes anterior / siguiente. */
 function moverPeriodo(tipo, fecha, n) {
@@ -152,6 +153,21 @@ export function VistaInforme({ informe: r, guardado = null }) {
                 <span className="font-mono font-bold">OT {o.ot}</span>
                 {o.horas != null && <span className="font-bold"> · terminada en {coma(o.horas)} h</span>}
                 <span className="text-gypi-dim"> · {o.procesos.map((q) => `${q.nombre} ${coma(q.horas)} h`).join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {r.enPausa?.length > 0 && (
+        <section aria-label="OT en pausa" className="mb-3" data-pausas>
+          <h3 className="m-0 mb-1 text-[14px] font-bold font-heading">⏸ OT en pausa</h3>
+          <div className="text-[12px] text-gypi-dim mb-2">Lo planificado mientras estuvieron en pausa no cuenta en el cumplimiento ni en la nota.</div>
+          <ul className="list-none m-0 p-0 flex flex-col gap-1">
+            {r.enPausa.map((p, i) => (
+              <li key={`${p.ot}-${i}`} className="bg-gypi-surface rounded-xl px-3 py-2 border border-gypi-border text-[13px]">
+                <span className="font-mono font-bold">OT {p.ot}</span>{p.cliente ? ` · ${p.cliente}` : ""} · {p.motivo}
+                <span className="text-gypi-dim"> · desde {fechaCortaTs(p.desde)}{p.hasta ? ` hasta ${fechaCortaTs(p.hasta)}` : " (sigue en pausa)"}</span>
               </li>
             ))}
           </ul>

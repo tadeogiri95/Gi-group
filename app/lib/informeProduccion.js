@@ -26,6 +26,7 @@
 import { ETAPAS_PLAN } from "./planificacion";
 import { hoyArg } from "./dates";
 import { textoMotivoRetrabajo } from "./retrabajo";
+import { enPausaElDia, textoMotivoPausa } from "./pausaOt";
 import { leadTimeDelPeriodo } from "./leadTimeHoras";
 
 export const TIPOS_INFORME = [
@@ -85,17 +86,18 @@ export function notaInforme(s) {
  *   vivo: planVivo de ahora (para las OT que llegan a su semana y los corrimientos)
  *   retrabajos: retrabajos_ot (migración 147); cuentan los cargados en el período
  *   leadTime: leadTimeProcesos de todas las OT (cuentan las que terminaron algo en el período)
+ *   pausas: pausas_ot (151): lo planificado los días en que la OT estuvo en pausa no cuenta
  */
-export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas = [], pasos = [], manual = [], avance = [], proyectos = new Map(), vivo = new Map(), retrabajos = [], leadTime = null }) {
+export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas = [], pasos = [], manual = [], avance = [], proyectos = new Map(), vivo = new Map(), retrabajos = [], leadTime = null, pausas = [] }) {
   const { desde, hasta } = periodo;
   const k = (ot, etapa) => `${ot}|${etapa}`;
-  // Horas del plan por proceso: todas y las del período
+  // Horas del plan por proceso: todas y las del período (sin los días en pausa)
   const horas = new Map();
   for (const i of items || []) {
     const c = k(String(i.ot), i.etapa);
     const h = horas.get(c) || { total: 0, periodo: 0 };
     h.total += Number(i.horas) || 0;
-    if (i.fecha >= desde && i.fecha <= hasta) h.periodo += Number(i.horas) || 0;
+    if (i.fecha >= desde && i.fecha <= hasta && !enPausaElDia(pausas, i.ot, i.fecha)) h.periodo += Number(i.horas) || 0;
     horas.set(c, h);
   }
   const etapaDeCodigo = new Map(Object.entries(etapasCodigo || {}).filter(([, c]) => c != null).map(([id, c]) => [Number(c), id]));
@@ -207,9 +209,21 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
     const h = rt.filter((x) => x.ot === o.ot).reduce((t, x) => t + x.horas, 0);
     if (h > 0) o.retrabajo = redondear(h);
   }
+  // OT en pausa (151) algún día del período: se muestran aparte, no bajan la nota
+  const enPausa = [];
+  for (const p of pausas || []) {
+    const ini = diaDe(p.desde);
+    const fin = p.hasta ? diaDe(p.hasta) : null;
+    if (!ini || ini > hasta || (fin && fin < desde)) continue;
+    const ot = String(p.ot);
+    enPausa.push({ ot, cliente: proyectos?.get?.(ot)?.cliente || null, motivo: textoMotivoPausa(p), desde: p.desde, hasta: p.hasta || null });
+    const o = ots.find((x) => x.ot === ot);
+    if (o) o.enPausa = true;
+  }
   return {
     periodo: { tipo: periodo.tipo, desde, hasta },
     ots,
+    enPausa,
     retrabajos: rt,
     leadTime: leadTimeDelPeriodo(leadTime, { desde, hasta }, proyectos),
     resumen: {

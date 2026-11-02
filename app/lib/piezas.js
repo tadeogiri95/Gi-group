@@ -5,6 +5,7 @@
 // cada una con su QR. En cada etapa (parte 18) se escanea la pieza.
 import { filasTsv } from "./sueltos";
 import { svgQR } from "./tarjetasQR";
+import { textoMotivoPausa } from "./pausaOt";
 
 /**
  * Las etapas que se escanean pieza por pieza son las de cada empresa: en
@@ -478,6 +479,15 @@ export function clavesEscaneadas(filas = []) {
  * @returns {{ tono: "verde"|"amarillo"|"rojo", texto: string, detalle: string|null }}
  */
 export function mensajeEscaneo(r, nombres = {}) {
+  const m = mensajeBase(r, nombres);
+  // OT en pausa (151): se anota igual, con un aviso amarillo para el operario
+  if (m.tono === "rojo" || !r?.pausa) return m;
+  const ot = r.modulo?.ot || r.pieza?.ot || "";
+  const aviso = `⏸ La OT ${ot} está en pausa (${textoMotivoPausa(r.pausa)}). Quedó anotado; avisale a tu jefe.`;
+  return { tono: "amarillo", texto: m.texto, detalle: m.detalle ? `${aviso} ${m.detalle}` : aviso };
+}
+
+function mensajeBase(r, nombres = {}) {
   const nombreEtapa = (c) => nombres[c] || (Number(c) === Number(r?.etapa) && r?.etapaNombre) || `Etapa ${c}`;
   if (!r?.ok) return { tono: "rojo", texto: r?.error || "No se pudo anotar la pieza.", detalle: null };
   if (r.modulo) {

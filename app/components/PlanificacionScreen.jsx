@@ -17,6 +17,7 @@
 // hoy hasta que terminan las OT tildadas, según las fechas objetivo (SEMANA,
 // con horas extra) o según la capacidad de la planta (fechas estimadas). La
 // semana o el mes elegidos solo cambian qué parte del plan muestran las tablas.
+import { otsEnPausa } from "../lib/pausaOt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
@@ -175,18 +176,20 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
     let vivo = true;
     (async () => {
       try {
-        const [proy, emp, av, pz, cfgModo] = await Promise.all([
+        const [proy, emp, av, pz, cfgModo, paus] = await Promise.all([
           sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&order=id.asc`, { maxFilas: 20000 }),
           leerOperariosPlanta(`empresa_id=eq.${empresaId}&`, "id,nombre,rol,division,diagrama,activo"),
           leerAvanceYHoras(empresaId).catch(() => ({ avance: [], piezas: [] })),
           sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&modulo=not.is.null&select=ot,modulo`, { maxFilas: 50000 }).catch(() => ({ data: [] })),
           sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`).catch(() => null),
+          // OT en pausa (151): no se planifican; sin la migración, ninguna
+          sbGetAll(`pausas_ot?empresa_id=eq.${empresaId}&hasta=is.null&select=ot`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
         ]);
         if (!vivo) return;
         // Igual que el Gantt: la semana arranca el domingo, salvo que la empresa cuente de lunes
         setModo(normalizarModo(cfgModo?.[0]?.valor?.modo) === "semana_domingo" ? "semana_domingo" : "semana_lunes");
         setModoEmpresa(normalizarModo(cfgModo?.[0]?.valor?.modo));
-        setDatos({ proyectos: proy.data || [], empleados: emp.data || [], avance: av.avance || [], piezasEscaneo: av.piezasEscaneo || av.piezas || [], modulos: modulosPorOt(pz.data) });
+        setDatos({ proyectos: proy.data || [], pausadas: otsEnPausa(paus.data), empleados: emp.data || [], avance: av.avance || [], piezasEscaneo: av.piezasEscaneo || av.piezas || [], modulos: modulosPorOt(pz.data) });
       } catch (e) {
         if (vivo) setError(e.message || "No se pudieron leer los datos.");
       }
@@ -204,7 +207,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       .catch(() => { if (vivo) setGuardado(null); });
     return () => { vivo = false; };
   }, []);
-  const otsBase = useMemo(() => ordenarPorPrioridad(otsPlanificables(datos?.proyectos || [], divisiones, division)), [datos, divisiones, division]);
+  const delaDivision = useMemo(() => otsPlanificables(datos?.proyectos || [], divisiones, division), [datos, divisiones, division]);
+  const otsBase = useMemo(() => ordenarPorPrioridad(delaDivision.filter((p) => !datos?.pausadas?.has(String(p.ot)))), [delaDivision, datos]);
+  const enPausa = delaDivision.length - otsBase.length;
   // Orden armado a mano, sin números (Tadeo, 29/10): arrastrando en ② o
   // confirmando un orden nuevo en el Gantt. Vale el más reciente de los dos.
   const [ordenManual, setOrdenManual] = useState(null); // ids en orden, o null = prioridad y semana
@@ -367,6 +372,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
         </button>
         {listaAbierta && (
           <div className="mt-2">
+        {enPausa > 0 && <div className="text-xs font-bold text-gypi-dim mb-2">⏸ {enPausa === 1 ? "1 OT está en pausa y no aparece" : `${enPausa} OT están en pausa y no aparecen`}: se reanudan desde el detalle de la OT.</div>}
         <div className="text-xs text-gypi-dim mb-2">Vienen tildadas las que tienen semana y las de semana vencida siempre (arriba de todo, en rojo); después se ven las tildadas. Destildá o sumá las que quieras. El tipo de proyecto sale de la descripción; si no es el correcto, cambialo.</div>
         {avisoTipo && <div role="alert" className="text-[13px] text-gypi-red mb-2">{avisoTipo}</div>}
         <div className="flex gap-2 mb-2 items-center">

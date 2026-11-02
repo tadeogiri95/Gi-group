@@ -8,7 +8,9 @@
 //               bulto cargado) hasta el acta firmada.
 //   Total:      desde el alta de la OT hasta el acta firmada.
 // Una etapa que todavía no terminó no tiene lead time (null).
+// Los días en que la OT estuvo en pausa (migración 151) no cuentan.
 import { buscarDivision } from "./rutas";
+import { intervalosPausa } from "./pausaOt";
 
 const ms = (t) => (t ? Date.parse(t) : NaN);
 const minimo = (...ts) => ts.filter((t) => Number.isFinite(ms(t))).sort((a, b) => ms(a) - ms(b))[0] ?? null;
@@ -19,6 +21,15 @@ export function dias(desde, hasta) {
   const d = ms(desde), h = ms(hasta);
   if (!Number.isFinite(d) || !Number.isFinite(h) || h < d) return null;
   return Math.round(((h - d) / 86400000) * 10) / 10;
+}
+
+/** Días entre dos momentos sin los tramos en pausa ({ a, b } en milisegundos). */
+export function diasSinPausa(desde, hasta, tramos = []) {
+  const total = dias(desde, hasta);
+  if (total == null || !tramos.length) return total;
+  const d = ms(desde), h = ms(hasta);
+  const enPausa = tramos.reduce((s, t) => s + Math.max(0, Math.min(h, t.b) - Math.max(d, t.a)), 0);
+  return Math.round((Math.max(0, h - d - enPausa) / 86400000) * 10) / 10;
 }
 
 const agrupar = (filas, clave) => {
@@ -33,11 +44,11 @@ const agrupar = (filas, clave) => {
 
 /**
  * Lead time de cada OT.
- * @param {{ proyectos: object[], avancePiezas?: object[], avanceEtapas?: object[], cargas?: object[], bultos?: object[], actas?: object[] }} datos
+ * @param {{ proyectos: object[], avancePiezas?: object[], avanceEtapas?: object[], cargas?: object[], bultos?: object[], actas?: object[], pausas?: object[], ahora?: Date }} datos
  *   avancePiezas: filas de v_avance_piezas con primer_paso y ultimo_paso (118)
  * @returns {object[]} una fila por OT: fechas de cada hito y los días de cada tramo
  */
-export function leadTimes({ proyectos = [], avancePiezas = [], avanceEtapas = [], cargas = [], bultos = [], actas = [] }) {
+export function leadTimes({ proyectos = [], avancePiezas = [], avanceEtapas = [], cargas = [], bultos = [], actas = [], pausas = [], ahora = new Date() }) {
   const piezas = agrupar(avancePiezas, "ot");
   const etapas = agrupar(avanceEtapas, "ot");
   const bultosOt = agrupar(bultos, "ot");
@@ -60,15 +71,16 @@ export function leadTimes({ proyectos = [], avancePiezas = [], avanceEtapas = []
     const inicioProduccion = p.liberada_at || primerEscaneo;
     const inicioInstalacion = carga.get(ot)?.firma_carga_at || minimo(...(bultosOt.get(ot) || []).map((b) => b.cargado_at));
     const finInstalacion = acta.get(ot)?.firmada_at || null;
+    const tramos = intervalosPausa(pausas, ot, ahora);
     return {
       ot,
       cliente: p.cliente || p.proyecto || null,
       division: p.division || null,
       alta: p.created_at || null,
       inicioProduccion, finProduccion, inicioInstalacion, finInstalacion,
-      produccion: dias(inicioProduccion, finProduccion),
-      instalacion: dias(inicioInstalacion, finInstalacion),
-      total: dias(p.created_at, finInstalacion),
+      produccion: diasSinPausa(inicioProduccion, finProduccion, tramos),
+      instalacion: diasSinPausa(inicioInstalacion, finInstalacion, tramos),
+      total: diasSinPausa(p.created_at, finInstalacion, tramos),
     };
   });
 }
