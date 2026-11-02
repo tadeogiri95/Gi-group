@@ -8,9 +8,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { ESTADOS_OC_ABIERTA, MONEDAS, NOMBRE_A_COTIZAR, agruparPorProveedor, leerImporte, lineasAComprar } from "../lib/ordenesCompra";
+import { ESTADOS_OC_ABIERTA, MONEDAS, NOMBRE_A_COTIZAR, agruparPorProveedor, convertirUnidad, equivalenciaStock, leerImporte, lineasAComprar, ultimaUnidadPorSku } from "../lib/ordenesCompra";
 import { faltaTabla } from "../lib/compras";
 import { Chip } from "./ui";
+import UnidadCompra from "./UnidadCompra";
 
 const MOSTRAR = 100;
 const COLUMNAS_ARTICULO = "sku,nombre,unidad,semaforo,sugerido,proxima_necesidad,activo";
@@ -57,12 +58,19 @@ export default function AComprar({ empresaId, onCreadas }) {
       // Lo que ya está en una OC abierta no se vuelve a sugerir; el último proveedor de cada SKU se propone
       const skusEnOc = new Set();
       const ultimoPorSku = new Map();
+      let unidadPorSku = new Map();
       if (!sin114) {
         try {
           const ordenes = (await sb.get("ordenes_compra?estado=neq.anulada&select=id,proveedor_id,estado&order=id.desc&limit=1000")) || [];
           if (ordenes.length) {
             const porId = new Map(ordenes.map((o) => [o.id, o]));
-            const items = (await sb.get(`ordenes_compra_items?orden_id=in.(${ordenes.map((o) => o.id).join(",")})&sku=not.is.null&select=sku,orden_id&order=id.desc&limit=5000`)) || [];
+            const filtro = `ordenes_compra_items?orden_id=in.(${ordenes.map((o) => o.id).join(",")})&sku=not.is.null&order=id.desc&limit=5000`;
+            // Con la 152 también se recuerda la última unidad de compra de cada SKU
+            const items = (await sb.get(`${filtro}&select=sku,orden_id,unidad,factor,unidad_stock`).catch((e) => {
+              if (!/factor|unidad_stock/.test(String(e?.message))) throw e;
+              return sb.get(`${filtro}&select=sku,orden_id`);
+            })) || [];
+            unidadPorSku = ultimaUnidadPorSku(items);
             for (const it of items) {
               const o = porId.get(it.orden_id);
               if (!o) continue;
@@ -77,7 +85,7 @@ export default function AComprar({ empresaId, onCreadas }) {
       }
       setFaltaMigracion(sin114);
       setProveedores(provs);
-      setLineas(lineasAComprar({ pedidos: pedidos || [], articulos: articulos || [], proveedores: provs, skusEnOc, ultimoPorSku }));
+      setLineas(lineasAComprar({ pedidos: pedidos || [], articulos: articulos || [], proveedores: provs, skusEnOc, ultimoPorSku, unidadPorSku }));
       setElegidas(new Set());
       setCambios({});
     } catch (e) {
@@ -101,6 +109,16 @@ export default function AComprar({ empresaId, onCreadas }) {
   const nombreProveedor = (id) => (id ? proveedores.find((p) => p.id === id)?.nombre || "" : NOMBRE_A_COTIZAR);
 
   const cambiar = (clave, campo, valor) => setCambios((c) => ({ ...c, [clave]: { ...c[clave], [campo]: valor } }));
+  // Otra unidad de compra: la cantidad y el precio se convierten para que den lo mismo en el stock
+  const cambiarUnidad = (l, { unidad, factor }) => {
+    const leer = (v, f) => (typeof v === "number" ? v : String(v ?? "").trim() ? f(v) : null);
+    const { cantidad, precio } = convertirUnidad({ cantidad: leer(l.cantidad, leerCantidadMovimiento), precio: leer(l.precio_unitario, leerImporte), factor: l.factor }, factor);
+    const otra = factor !== 1 || (unidad || null) !== (l.unidad_base || null);
+    setCambios((c) => ({ ...c, [l.clave]: {
+      ...c[l.clave], unidad, factor, unidad_stock: otra ? l.unidad_base || null : null,
+      cantidad: cantidad ?? l.cantidad, precio_unitario: precio ?? l.precio_unitario,
+    } }));
+  };
   const tildar = (clave) => setElegidas((s) => {
     const n = new Set(s);
     if (n.has(clave)) n.delete(clave); else n.add(clave);
@@ -129,6 +147,7 @@ export default function AComprar({ empresaId, onCreadas }) {
       payload.push({
         proveedor_id: l.proveedor_id ? Number(l.proveedor_id) : null, sku: l.sku, descripcion: String(l.descripcion).slice(0, 200), unidad: l.unidad,
         cantidad, precio_unitario: precio ?? null, pedido_id: l.pedido_id, ot: l.ot,
+        ...(l.factor !== 1 || l.unidad_stock ? { factor: l.factor, unidad_stock: l.unidad_stock } : {}),
       });
     }
     setEnviando(true);
@@ -201,13 +220,21 @@ export default function AComprar({ empresaId, onCreadas }) {
                       <label className="g-label" htmlFor={`ac-cant-${l.clave}`}>Cantidad{l.unidad ? ` (${l.unidad})` : ""}</label>
                       <input id={`ac-cant-${l.clave}`} aria-label={`Cantidad de ${l.descripcion}`} className="g-input" inputMode="decimal"
                         value={typeof l.cantidad === "number" ? numTexto(l.cantidad) : l.cantidad ?? ""} onChange={(e) => cambiar(l.clave, "cantidad", e.target.value)} />
+                      {l.factor !== 1 && (
+                        <div className="text-[12px] text-gypi-dim mt-0.5">
+                          {equivalenciaStock(typeof l.cantidad === "number" ? l.cantidad : leerCantidadMovimiento(l.cantidad), l)}
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <label className="g-label" htmlFor={`ac-precio-${l.clave}`}>Precio unitario sin IVA</label>
+                      <label className="g-label" htmlFor={`ac-precio-${l.clave}`}>{l.factor !== 1 && l.unidad ? `Precio por ${l.unidad} sin IVA` : "Precio unitario sin IVA"}</label>
                       <input id={`ac-precio-${l.clave}`} aria-label={`Precio sin IVA de ${l.descripcion}`} className="g-input" inputMode="decimal" placeholder="Opcional"
                         value={typeof l.precio_unitario === "number" ? numTexto(l.precio_unitario) : l.precio_unitario ?? ""} onChange={(e) => cambiar(l.clave, "precio_unitario", e.target.value)} />
                     </div>
                   </div>
+                  {!faltaMigracion && (
+                    <UnidadCompra id={`ac-u-${l.clave}`} descripcion={l.descripcion} unidadBase={l.unidad_base} unidad={l.unidad} factor={l.factor} onCambiar={(c) => cambiarUnidad(l, c)} />
+                  )}
                 </div>
               )}
             </li>
