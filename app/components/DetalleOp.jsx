@@ -31,6 +31,7 @@ import SelectorSemana from "./SelectorSemana";
 import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { useEscape } from "../hooks/useEscape";
 import MinutasDeOt from "./MinutasDeOt";
+import HistorialOt from "./HistorialOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -386,6 +387,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </div>
         </>)}
         <MinutasDeOt ot={proyecto?.ot} />
+        <HistorialOt ot={proyecto?.ot} etapas={etapas} />
       </div>
     </div>
   );

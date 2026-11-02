@@ -17,6 +17,8 @@ import { alcanceDe, filtroAlcance, dentroDelAlcance, COLUMNA_PERSONA } from "../
 import { diasEntre, MAX_DIAS_SOLICITUD } from "../../lib/tiposSolicitud";
 import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD, TABLAS_SIN_SUPERVISOR } from "../../lib/dataPolicy";
 import { rlsActivo, rlsRutasActivo, configRlsFaltante, headersUsuario } from "../../lib/supabaseUsuario";
+import { TABLAS_OT, filasDeCambio } from "../../lib/historialOt";
+import { logAuditVarios } from "../../lib/audit";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -496,7 +498,23 @@ export async function POST(request) {
       opts.headers = await headersUsuario(sesion);
     }
 
+    // Historial de la OT (Tadeo, 02/11): en una edición de OT se guarda cómo estaba antes
+    const conHistorial = TABLAS_OT.includes(pathCheck.tabla) && (method === "POST" || method === "PATCH" || method === "DELETE");
+    let antes = [];
+    if (conHistorial && method === "PATCH" && pathCheck.tabla === "proyectos" && finalBody && typeof finalBody === "object") {
+      const campos = Object.keys(finalBody).filter((k) => /^[a-z_]+$/.test(k) && k !== "empresa_id");
+      if (campos.length) {
+        const sep = finalPath.includes("?") ? "&" : "?";
+        antes = await sbFetch(`${finalPath}${sep}select=id,${campos.join(",")}&limit=200`, { headers: opts.headers }).catch(() => []);
+      }
+    }
+
     const data = await sbFetch(finalPath, opts);
+
+    if (conHistorial) {
+      const filas = filasDeCambio({ tabla: pathCheck.tabla, metodo: method, body: finalBody, filas: data, antes, sesion });
+      if (filas.length) logAuditVarios(filas).catch(() => {});
+    }
 
     // Broadcast de cambios para tablas monitoreadas en tiempo real
     const BROADCAST_EN = ["solicitudes", "notificaciones", "registro_actividades"];

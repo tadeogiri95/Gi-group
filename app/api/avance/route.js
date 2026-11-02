@@ -19,6 +19,8 @@ import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { logger } from "../../lib/logger";
+import { filaDeAvance } from "../../lib/historialOt";
+import { logAudit } from "../../lib/audit";
 
 const SOLO_GESTION = new Set(["aprobar", "no_aplica", "reabrir", "liberar", "desliberar", "puntos"]);
 
@@ -86,7 +88,10 @@ export async function POST(request) {
     const sinModulo = await requireModulo(sesion.empresa_id, "actividad");
     if (sinModulo) return sinModulo;
     try {
-      return await procesar(sesion, parsed.data);
+      const res = await procesar(sesion, parsed.data);
+      // Historial de la OT: quién firmó, liberó o reabrió y cuándo
+      if (res.status === 200) logAudit(filaDeAvance({ sesion, ot: parsed.data.ot, accion: parsed.data.accion, etapa: parsed.data.etapa ?? null })).catch(() => {});
+      return res;
     } catch (err) {
       if (faltaMigracion(err)) {
         return NextResponse.json({ error: "Para guardar el avance falta correr la migración 100 en Supabase." }, { status: 409 });

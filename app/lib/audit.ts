@@ -31,3 +31,29 @@ export async function logAudit(entry: AuditEntry): Promise<boolean> {
     return false;
   }
 }
+
+// Varias acciones juntas en un solo pedido (historial de cambios de OT).
+export async function logAuditVarios(entries: AuditEntry[]): Promise<boolean> {
+  if (!entries.length || !SB_URL || !SB_KEY) return false;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/audit_log`, {
+      method: "POST",
+      headers: {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(entries),
+    });
+    if (!r.ok) {
+      const detalle = await r.text().catch(() => "");
+      logger.error(`[audit] No se pudieron registrar ${entries.length} cambios [${r.status}]`, new Error(detalle));
+      return false;
+    }
+    return true;
+  } catch (e) {
+    logger.error("[audit] Error de red registrando cambios", e);
+    return false;
+  }
+}
