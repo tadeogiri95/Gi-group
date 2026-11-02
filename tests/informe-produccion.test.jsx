@@ -85,7 +85,7 @@ test("calcularInforme — planificado, hecho y desvío por proceso y por OT; cum
   assert.equal(r.resumen.sinCorrimiento, 50);
   // 6,3 (de 7) + 1 (de 2) + 0,5 (de 1) = 7,8
   assert.equal(r.nota, 7.8);
-  assert.match(explicacionNota(r), /parte de 0 y suma puntos: cumplimiento 90 % \(avance hecho de lo planificado\) da 6,3 de 7; OT que llegan a su semana 50 % da 1 de 2; procesos sin correrse del plan 50 % da 0,5 de 1\. Total: 7,8 de 10\./);
+  assert.match(explicacionNota(r), /parte de 0 y suma puntos: cumplimiento 90 % \(avance hecho de lo planificado\) da 6,3 de 7; OT que llegan a su fecha límite 50 % da 1 de 2; procesos sin correrse del plan 50 % da 0,5 de 1\. Total: 7,8 de 10\./);
   assert.equal(textoPushInforme(r), "Nota 7,8 · cumplimiento 90 % · 2 OT trabajadas");
   assert.equal(informeVacio(r), false);
   assert.equal(informeVacio(calcularInforme({ ...DATOS, periodo: periodoDe("dia", "2026-10-20") })), true);
@@ -210,7 +210,7 @@ test("PDF — una hoja: nota en medio círculo, partes, lo importante, por proce
   assert.match(html, /stroke-dasharray="78 100"/);
   assert.match(html, /aria-label="Partes de la nota"/);
   assert.match(html, /aria-label="Planificado y hecho por OT"/);
-  assert.match(html, /La nota parte de 0 y suma: hasta 7 puntos por cumplimiento, hasta 2 por OT en su semana y hasta 1/, "cómo se calcula, en una línea");
+  assert.match(html, /La nota parte de 0 y suma: hasta 7 puntos por cumplimiento, hasta 2 por OT a tiempo y hasta 1/, "cómo se calcula, en una línea");
   assert.match(html, /\+6,3 de 7/);
   assert.match(html, /aria-label="Avance por proceso"/);
   assert.doesNotMatch(html, / h\b|horas/, "sin horas");
@@ -218,7 +218,7 @@ test("PDF — una hoja: nota en medio círculo, partes, lo importante, por proce
   assert.match(html, /Cumplimiento 90 %: se hizo ese % del avance planificado\. 1 de 2 procesos planificados llegaron a lo previsto\./);
   assert.match(html, /Más atrasadas contra el plan: OT 7200 \(hizo 40 % de 50 %\)\./);
   assert.match(html, /40 de 50 %<\/text>/);
-  assert.match(html, /1 de 2 OT terminan después de su semana: OT 7100\./);
+  assert.match(html, /1 de 2 OT terminan después de su fecha límite: OT 7100\./);
   assert.match(html, /Hoy: 6 piezas escaneadas, 1 etapa terminada o firmada, 0 reportes de instalación, 1 OT atrasada contra la entrega\./);
   assert.doesNotMatch(html, /Detalle por OT y proceso/, "el detalle queda en Gypi");
   assert.match(html, /\.hoja \{ max-height: 276mm; overflow: hidden; \}/, "nunca pasa de una hoja");

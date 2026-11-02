@@ -381,7 +381,7 @@ test("📊 Carga — vienen tildadas las OT con semana; la semana elegida muestr
   // El plan sigue semanas hacia adelante y marca la OT atrasada
   const plan = within(carga).getByLabelText("Resumen del plan");
   assert.match(plan.textContent, /El plan va del 26\/10\/2026 al/);
-  assert.match(plan.textContent, /🔴 Terminan después de su semanaM-7473: su semana terminó el 4\/1\/2020; termina el/);
+  assert.match(plan.textContent, /🔴 Terminan después de su fecha límiteM-7473: su fecha límite era el 4\/1\/2020; termina el/);
   // Cambiar de semana no destilda: muestra la parte del plan de esa semana
   fireEvent.click(screen.getByLabelText("Período siguiente"));
   assert.match(carga.textContent, /Lo que el plan pone del 1\/11\/2026 al 7\/11\/2026/);
@@ -416,7 +416,7 @@ test("📊 Carga — switch: según fechas objetivo pide horas extra por semana;
   assert.notEqual(horasPlanta(), conExtra, "sin horas extra, la planta tiene menos horas");
   assert.doesNotMatch(screen.getByLabelText("Carga de la planta").textContent, /incluyen .* de horas extra/);
   assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
-  assert.match(resumen().textContent, /🔴 Terminan después de su semanaM-7473: semana hasta el 31\/10\/2026; termina el \d+\/11\/2026/);
+  assert.match(resumen().textContent, /🔴 Terminan después de su fecha límiteM-7473: fecha límite el 31\/10\/2026; termina el \d+\/11\/2026/);
   assert.match(screen.getByLabelText("Carga de la planta").textContent, /✅ Entra en el período/);
 });
 
@@ -652,7 +652,7 @@ test("📊 Carga — sin Gantt propio: el plan dice cuándo termina cada OT y lo
   assert.match(within(plan).getByLabelText("Fin de cada OT").textContent, /M-7473 termina el 31\/10\/2026/);
   assert.match(within(plan).getByLabelText("Horas extra por semana").textContent, /sáb\.? 31\/10/);
   fireEvent.click(screen.getByText("🏭 Según capacidad de la planta"));
-  assert.match(within(plan).getByLabelText("Fin de cada OT").textContent, /M-7473 termina el \d+\/11\/2026 · después de su semana/);
+  assert.match(within(plan).getByLabelText("Fin de cada OT").textContent, /M-7473 termina el \d+\/11\/2026 · después de su fecha límite/);
 });
 
 // ─── Operarios por puesto y armadores (Tadeo, 27/10) ────────────────────────
@@ -1060,7 +1060,7 @@ test("📊 Carga — lo tildado y el switch se recuerdan al volver; por defecto,
   pantalla();
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
   assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, false, "no se vuelve a tildar sola");
-  assert.match(screen.getByLabelText("Plan automático").textContent, /Cada OT tiene que terminar en su semana/, "queda según fechas objetivo");
+  assert.match(screen.getByLabelText("Plan automático").textContent, /Cada OT tiene que terminar antes de su fecha límite/, "queda según fechas objetivo");
   assert.match(within(screen.getByLabelText("Plan automático")).getByLabelText("Fin de cada OT").textContent, /^M-7473 termina/);
   assert.doesNotMatch(within(screen.getByLabelText("Plan automático")).getByLabelText("Fin de cada OT").textContent, /M-9000/, "solo las tildadas");
   cleanup();

@@ -49,6 +49,7 @@ import { useEscape } from "../hooks/useEscape";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
 import { diaLaborable, feriadosDe } from "../lib/secuencia";
+import { textoDias } from "../lib/instalacionPlan";
 import { finesVencidos, minutosArg } from "../lib/finProceso";
 import { ventanasDeGrilla } from "../lib/leadTimeHoras";
 import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente, ultimaConfirmacion } from "../lib/ganttPlan";
@@ -100,7 +101,11 @@ const CONTORNO = { tarde: "stroke-gypi-red", corrido: "stroke-proc-margen" };
 const SIN_MODULOS = new Map();
 const dias = (n) => `${n} ${n === 1 ? "día" : "días"}`;
 /** Las alertas de un proceso, para leer en voz alta. */
-const alertasTexto = (q) => [q.tarde ? `termina ${dias(q.diasTarde)} después de su semana` : "", q.corrido ? `se corrió ${dias(q.diasCorrido)} del plan confirmado` : "", q.completo ? "completo" : ""].filter(Boolean).join(", ");
+/** "12/11; entrega 14/11 − 2 días de instalación" (parte 45). */
+export const textoLimite = (r) => (r.diasInstalacion != null && r.entrega
+  ? `${fechaCorta(r.objetivo)}; entrega ${fechaCorta(r.entrega)} − ${textoDias(r.diasInstalacion)} de instalación`
+  : fechaCorta(r.objetivo));
+const alertasTexto = (q) => [q.tarde ? `termina ${dias(q.diasTarde)} después de su fecha límite` : "", q.corrido ? `se corrió ${dias(q.diasCorrido)} del plan confirmado` : "", q.completo ? "completo" : ""].filter(Boolean).join(", ");
 
 /**
  * @param {object} props
@@ -576,7 +581,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
         {ETAPAS_PLAN.map((e) => (
           <span key={e.id} className="flex items-center gap-1.5"><span aria-hidden="true" className={`inline-block w-4 h-4 rounded-sm ${MUESTRA[e.id]}`} />{e.nombre}</span>
         ))}
-        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={tardes.length ? "text-gypi-red font-bold" : ""}>⚠ Termina después de su semana {tardes.length}</span></span>
+        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={tardes.length ? "text-gypi-red font-bold" : ""}>⚠ Termina después de su fecha límite {tardes.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-dashed border-proc-margen" /><span className={corridas.length ? "font-bold" : ""}>↪ Se corrió del plan {corridas.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-red" />🔁 Retrabajo</span>
       </div>
@@ -677,7 +682,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
               ))}
               {forma === "procesos" && filas.map((r) => {
                 const p = r.proyecto;
-                const texto = `faltan ${fmtH(r.horas)}${r.tarde ? `, termina ${dias(r.diasTarde)} después de su semana` : ""}${r.diasCorrido > 0 ? `, se corrió ${dias(r.diasCorrido)} del plan confirmado` : ""}; `
+                const texto = `faltan ${fmtH(r.horas)}${r.tarde ? `, termina ${dias(r.diasTarde)} después de su fecha límite` : ""}${r.diasCorrido > 0 ? `, se corrió ${dias(r.diasCorrido)} del plan confirmado` : ""}; `
                   + r.procesos.map((q) => `${q.nombre}${q.completo ? "" : ` ${fmtH(q.horas)}`}${q.personas && !q.completo ? ` con ${q.personas} ${q.personas === 1 ? "armador" : "armadores"}` : ""}, del ${fechaCorta(q.desde)} al ${fechaCorta(q.hasta)}${alertasTexto(q) ? `, ${alertasTexto(q)}` : ""}`).join("; ");
                 const movible = reordenar && delPlan.has(r.ot);
                 const sobre = arrastre && !arrastre.etapa && arrastre.sobre === r.ot && arrastre.ot !== r.ot;
@@ -696,7 +701,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
                       {/* Las dos alertas, cada una con su marca (Tadeo, 29/10) */}
                       {(r.tarde || r.diasCorrido > 0) && (
                         <div className="text-[12px] font-bold leading-tight" data-alertas>
-                          {r.tarde && <span className="text-gypi-red">⚠ +{r.diasTarde} d de su semana</span>}
+                          {r.tarde && <span className="text-gypi-red">⚠ +{r.diasTarde} d de su fecha límite</span>}
                           {r.tarde && r.diasCorrido > 0 && " · "}
                           {r.diasCorrido > 0 && <span className="text-gypi-amber-ink">↪ +{r.diasCorrido} d del plan</span>}
                         </div>
@@ -760,7 +765,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
           {/* Se puede minimizar para ver el Gantt entero (en el celular, en pantalla completa) */}
           <button type="button" onClick={() => setVerAtrasados((v) => !v)} aria-expanded={verAtrasados}
             className="w-full flex items-center gap-2 bg-transparent border-0 p-0 min-h-11 cursor-pointer text-left text-[15px] font-bold text-gypi-red">
-            <span className="flex-1">⚠ {tardes.length} después de su semana · ↪ {corridas.length} corridas del plan</span>
+            <span className="flex-1">⚠ {tardes.length} después de su fecha límite · ↪ {corridas.length} corridas del plan</span>
             <span className="text-[14px] text-gypi-dim">{verAtrasados ? "▾ Minimizar" : "▸ Ver detalle"}</span>
           </button>
           {verAtrasados && (
@@ -770,7 +775,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
                   <button type="button" onClick={() => verDetalle(r.proyecto)}
                     className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
                     <span className="font-mono font-bold">{r.ot}</span> · termina el {fechaCorta(r.fin)}
-                    {r.tarde && <span className="text-gypi-red font-bold"> · ⚠ {dias(r.diasTarde)} después de su semana ({fechaCorta(r.objetivo)})</span>}
+                    {r.tarde && <span className="text-gypi-red font-bold"> · ⚠ {dias(r.diasTarde)} después de su fecha límite ({textoLimite(r)})</span>}
                     {r.diasCorrido > 0 && <span className="text-gypi-amber-ink font-bold"> · ↪ se corrió {dias(r.diasCorrido)} del plan confirmado</span>}
                   </button>
                 </li>

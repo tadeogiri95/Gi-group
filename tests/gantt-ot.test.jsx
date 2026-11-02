@@ -185,14 +185,14 @@ test("📅 Gantt — plan vivo: lo que no se hizo pasa a hoy, todo se corre y av
     // El Corte no se hizo: arranca hoy y termina el martes (12 h con 8 h por día), se corrió 7 días;
     // el Armado (6 h) termina el miércoles 28: la OT pasa 4 días su semana (sábado 24)
     const colores = screen.getByLabelText("Colores del Gantt").textContent;
-    assert.match(colores, /⚠ Termina después de su semana 1/);
+    assert.match(colores, /⚠ Termina después de su fecha límite 1/);
     assert.match(colores, /↪ Se corrió del plan 1/);
     const corte = ot.querySelector('[data-proceso="corte"]');
     assert.equal(corte.getAttribute("data-estado"), "tarde");
     assert.match(corte.getAttribute("class"), /stroke-gypi-red/, "contorno rojo");
-    assert.match(ot.querySelector("[data-alertas]").textContent, /⚠ \+4 d de su semana · ↪ \+7 d del plan/, "cada OT muestra las dos alertas");
+    assert.match(ot.querySelector("[data-alertas]").textContent, /⚠ \+4 d de su fecha límite · ↪ \+7 d del plan/, "cada OT muestra las dos alertas");
     const alertas = screen.getByRole("region", { name: "Alertas del plan" });
-    assert.match(alertas.textContent, /7100 · termina el 28\/10\/2026 · ⚠ 4 días después de su semana .* · ↪ se corrió 7 días del plan confirmado/);
+    assert.match(alertas.textContent, /7100 · termina el 28\/10\/2026 · ⚠ 4 días después de su fecha límite .* · ↪ se corrió 7 días del plan confirmado/);
     // El cuadro se minimiza para ver el Gantt entero, y se vuelve a abrir
     fireEvent.click(within(alertas).getByRole("button", { name: /Minimizar/ }));
     assert.doesNotMatch(alertas.textContent, /termina el/);
@@ -204,7 +204,7 @@ test("📅 Gantt — plan vivo: lo que no se hizo pasa a hoy, todo se corre y av
     assert.ok(ot2.querySelector('[data-pasado="canteado"]'), "la parte que ya pasó");
     assert.equal(ot2.querySelector('[data-proceso="mecanizado"]').getAttribute("data-estado"), "pendiente");
     assert.equal(ot2.querySelector("[data-alertas]"), null, "sin alertas");
-    fireEvent.click(screen.getByRole("button", { name: /^OT 7100: faltan 18 h, termina 4 días después de su semana, se corrió 7 días del plan confirmado; Corte 12 h, del 26\/10\/2026 al 27\/10\/2026/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^OT 7100: faltan 18 h, termina 4 días después de su fecha límite, se corrió 7 días del plan confirmado; Corte 12 h, del 26\/10\/2026 al 27\/10\/2026/ }));
     assert.deepEqual(vistos, ["7100"]);
   } finally {
     mock.timers.reset();

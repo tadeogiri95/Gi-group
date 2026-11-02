@@ -108,7 +108,7 @@ export function puntosClave(r, reporteDia = null) {
   const fuera = r.ots.filter((o) => o.fueraDelPlan);
   if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
   const tarde = r.ots.filter((o) => o.tarde);
-  if (s.otsTarde) puntos.push({ tono: "mal", texto: `${s.otsTarde} de ${s.otsAbiertas} OT terminan después de su semana${tarde.length ? `: ${lista(tarde)}` : ""}.` });
+  if (s.otsTarde) puntos.push({ tono: "mal", texto: `${s.otsTarde} de ${s.otsAbiertas} OT terminan después de su fecha límite${tarde.length ? `: ${lista(tarde)}` : ""}.` });
   // OT en pausa (151): lo planificado esos días no cuenta en la nota
   const pausa = r.enPausa || [];
   if (pausa.length) puntos.push({ tono: "neutro", texto: `⏸ En pausa: ${pausa.slice(0, 3).map((p) => `OT ${p.ot} (${p.motivo})`).join(", ")}${pausa.length > 3 ? ` y ${pausa.length - 3} más` : ""}. Lo planificado mientras estuvo en pausa no cuenta en la nota.` });
@@ -208,7 +208,7 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
     ${svgNota(r.nota)}
     <div>
       ${svgPartes(s)}
-      <div class="formula">La nota parte de 0 y suma: hasta 7 puntos por cumplimiento, hasta 2 por OT en su semana y hasta 1 por procesos sin correrse.</div>
+      <div class="formula">La nota parte de 0 y suma: hasta 7 puntos por cumplimiento, hasta 2 por OT a tiempo y hasta 1 por procesos sin correrse.</div>
     </div>
   </div>
 

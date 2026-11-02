@@ -8,7 +8,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { itemsDelPlan, finConfirmadoPorOt, conCorrimiento, misDias } from "../app/lib/planInstalacion.js";
+import { itemsDelPlan, finConfirmadoPorOt, conCorrimiento, misDias, limiteProduccion, ultimoDiaHabil, diaHabilAnterior } from "../app/lib/planInstalacion.js";
+import { normalizarParametros } from "../app/lib/planificacion.js";
+import { planVivo } from "../app/lib/ganttPlan.js";
 import { planInstalacionBody } from "../app/lib/schemas.ts";
 import { MIGRACIONES } from "../app/lib/esquemaMigraciones.js";
 
@@ -146,4 +148,41 @@ test("📅 Mis instalaciones — muestra la obra del día y el compañero", asyn
   assert.ok(screen.getByText("Mañana"));
   assert.ok(screen.getByText("Con Pedro"));
   assert.ok(screen.getByText("OT 1"));
+});
+
+// ── Parte 45: fecha límite de producción ──
+const PARAMS = normalizarParametros({ instalacion: { gab_por_dia: { global: 3 } } });
+
+test("límite — entrega semana 10-16/11 con 2 días de instalación: instala J13 y V14, producción hasta X12", () => {
+  const p = { ot: "1", fecha_objetivo: "2026-11-15", dias_instalacion: 2 };
+  assert.equal(ultimoDiaHabil("2026-11-15"), "2026-11-13");
+  assert.deepEqual(limiteProduccion(p, PARAMS), { entrega: "2026-11-13", dias: 2, limite: "2026-11-11" });
+  // medio día cuenta como un día entero; feriado el jueves corre todo uno más
+  assert.equal(limiteProduccion({ ...p, dias_instalacion: 1.5 }, PARAMS).limite, "2026-11-11");
+  assert.equal(limiteProduccion({ ...p, dias_instalacion: 0.5 }, PARAMS).limite, "2026-11-12");
+  assert.equal(limiteProduccion(p, PARAMS, { feriados: new Set(["2026-11-12"]) }).limite, "2026-11-10");
+  assert.equal(diaHabilAnterior("2026-11-09"), "2026-11-06");
+});
+
+test("límite — sin fecha objetivo no hay; sin días de instalación queda la semana como antes", () => {
+  assert.equal(limiteProduccion({ ot: "1" }, PARAMS), null);
+  assert.deepEqual(limiteProduccion({ ot: "1", fecha_objetivo: "2026-11-15" }, normalizarParametros(null)), { entrega: "2026-11-15", dias: null, limite: "2026-11-15" });
+  assert.equal(limiteProduccion({ ot: "1", fecha_objetivo: "2026-11-15" }, null).limite, "2026-11-15");
+  // con gabinetes: 12 módulos ÷ 3 por día ÷ 2 instaladores = 2 días
+  assert.equal(limiteProduccion({ ot: "1", fecha_objetivo: "2026-11-15", total_modulos: 12 }, PARAMS).limite, "2026-11-11");
+});
+
+test("plan vivo — producción marca tarde contra la fecha límite, no contra la semana", () => {
+  const items = [{ ot: "A", etapa: "corte", fecha: "2026-11-12", horas: 8, orden: 0 }];
+  const base = { etapasCodigo: { corte: 1 }, hoy: "2026-11-12", params: PARAMS };
+  const sinInst = planVivo(items, { ...base, proyectos: new Map([["A", { ot: "A", fecha_objetivo: "2026-11-15" }]]) }).get("A");
+  const conInst = planVivo(items, { ...base, proyectos: new Map([["A", { ot: "A", fecha_objetivo: "2026-11-15", dias_instalacion: 2 }]]) }).get("A");
+  assert.equal(conInst.objetivo, "2026-11-11");
+  assert.equal(conInst.entrega, "2026-11-13");
+  assert.equal(conInst.diasInstalacion, 2);
+  assert.ok(conInst.fin >= "2026-11-12");
+  assert.equal(conInst.tarde, true);
+  assert.ok(conInst.diasTarde >= 1);
+  assert.equal(sinInst.objetivo, "2026-11-15"); // sin días ni gabinetes: la semana
+  assert.equal(sinInst.tarde, false);
 });

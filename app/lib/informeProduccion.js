@@ -61,7 +61,7 @@ export function periodoDe(tipo, fecha) {
 export function partesNota({ cumplimiento, enSemana, sinCorrimiento } = {}) {
   return [
     { id: "cumplimiento", label: "Cumplimiento de lo planificado", pct: cumplimiento ?? null },
-    { id: "enSemana", label: "OT que llegan a su semana", pct: enSemana ?? 100 },
+    { id: "enSemana", label: "OT que llegan a su fecha límite", pct: enSemana ?? 100 },
     { id: "sinCorrimiento", label: "Procesos sin correrse del plan", pct: sinCorrimiento ?? 100 },
   ].map((p) => ({ ...p, max: PUNTOS_NOTA[p.id], puntos: p.pct == null ? null : redondear((Math.max(0, Math.min(100, p.pct)) / 100) * PUNTOS_NOTA[p.id]) }));
 }
@@ -247,7 +247,7 @@ export function explicacionNota(r) {
   const fmt = (n) => String(redondear(n)).replace(".", ",");
   const [c, e, n] = partesNota(s);
   return `La nota parte de 0 y suma puntos: cumplimiento ${fmt(c.pct)} % (avance hecho de lo planificado) da ${fmt(c.puntos)} de ${c.max}; `
-    + `OT que llegan a su semana ${fmt(e.pct)} % da ${fmt(e.puntos)} de ${e.max}; `
+    + `OT que llegan a su fecha límite ${fmt(e.pct)} % da ${fmt(e.puntos)} de ${e.max}; `
     + `procesos sin correrse del plan ${fmt(n.pct)} % da ${fmt(n.puntos)} de ${n.max}. Total: ${fmt(r.nota)} de 10.`
     + (s.procesosFueraDelPlan ? " Lo que se hizo fuera del plan no cuenta en el cumplimiento." : "")
     + (s.horasRetrabajo ? " El retrabajo no cambia la nota." : "");

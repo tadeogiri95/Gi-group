@@ -265,3 +265,37 @@ export function misDias(items = []) {
     .map((d) => ({ ...d, con: [...d.con], parte: d.medios === 3 ? "Todo el día" : d.medios === 1 ? "Mañana" : "Tarde" }))
     .sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.medios & 1 ? -1 : 1));
 }
+
+/** El día hábil anterior a `fecha`. */
+export function diaHabilAnterior(fecha, feriados = null) {
+  let f = sumarDias(fecha, -1);
+  for (let i = 0; i < 30 && !esDiaHabil(f, feriados); i++) f = sumarDias(f, -1);
+  return f;
+}
+
+/** El último día hábil hasta `fecha` (ella misma si es hábil). */
+export function ultimoDiaHabil(fecha, feriados = null) {
+  return esDiaHabil(fecha, feriados) ? fecha : diaHabilAnterior(fecha, feriados);
+}
+
+/**
+ * Fecha límite de producción (parte 45; Tadeo, 02/11): la SEMANA es la
+ * entrega ya instalada. La instalación tiene que terminar el último día hábil
+ * de esa semana, así que producción tiene que terminar el día hábil antes de
+ * empezar a instalar: entrega − días de instalación (enteros, para arriba) en
+ * días hábiles. Ej.: entrega semana 10-16/11, 2 días → instala J13 y V14 →
+ * producción hasta X12.
+ * Sin días de instalación (faltan los parámetros) queda la fecha de la semana, como antes.
+ * @returns {{ entrega: string, dias: number|null, limite: string }|null} null sin fecha objetivo
+ */
+export function limiteProduccion(proyecto, params, { modulosEtiquetas = null, feriados = null } = {}) {
+  const objetivo = proyecto?.fecha_objetivo ? String(proyecto.fecha_objetivo).slice(0, 10) : null;
+  if (!objetivo) return null;
+  if (!params) return { entrega: objetivo, dias: null, limite: objetivo };
+  const { dias } = diasInstalacion(proyecto, params, params?.instalacion, { modulosEtiquetas });
+  if (dias == null) return { entrega: objetivo, dias: null, limite: objetivo };
+  const entrega = ultimoDiaHabil(objetivo, feriados);
+  let limite = entrega;
+  for (let i = 0; i < Math.ceil(dias - 1e-9); i++) limite = diaHabilAnterior(limite, feriados);
+  return { entrega, dias, limite };
+}
