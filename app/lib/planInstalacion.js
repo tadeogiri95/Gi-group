@@ -1,0 +1,209 @@
+// app/lib/planInstalacion.js — Plan vivo de la instalación (parte 43; diseño
+// en notes/diseno-gantt-instalacion.md).
+//
+// Tadeo (02/11): la SEMANA es la entrega del proyecto ya instalado. Cada OT de
+// Muebles entra a la instalación el día hábil siguiente a que termina su
+// producción (plan vivo del Gantt de producción, o ya terminada). No hay
+// cuadrillas fijas: cada OT lleva sus instaladores (2 por defecto) y sus días
+// de obra (app/lib/instalacionPlan.js); las OT de la misma obra se instalan
+// juntas y se reparten la gente (por ejemplo, 2 OT de 2 = 4 instaladores).
+// Un dúo puede hacer dos trabajos cortos el mismo día: se planifica de a
+// medio día (mañana y tarde). Cada instalador trabaja los días de su grilla de
+// horarios; los feriados no se trabajan.
+//
+// Orden: prioridad de instalación (153), después la fecha de entrega, después
+// el fin de producción. Cada obra va al primer medio día en que haya gente
+// libre para hacerla seguida.
+import { diasInstalacion, medioDia } from "./instalacionPlan";
+import { normalizar } from "./rutas";
+import { diasEntre } from "./semanaObjetivo";
+
+const DIA_MS = 86400000;
+const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
+export const HORIZONTE_DIAS = 400;
+const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
+const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
+
+/** Lunes a viernes sin feriado (para "fin de producción + 1 día hábil"). */
+export const esDiaHabil = (fecha, feriados = null) => {
+  const d = diaSemana(fecha);
+  return d >= 1 && d <= 5 && !feriados?.has(fecha);
+};
+
+/** El primer día hábil después de `fecha`. */
+export function diaHabilSiguiente(fecha, feriados = null) {
+  let f = sumarDias(fecha, 1);
+  for (let i = 0; i < 30 && !esDiaHabil(f, feriados); i++) f = sumarDias(f, 1);
+  return f;
+}
+
+/** El instalador trabaja ese día según su grilla (sin grilla cargada: lunes a viernes). */
+export function trabajaElDia(instalador, fecha, feriados = null) {
+  if (feriados?.has(fecha)) return false;
+  const d = instalador?.diagrama;
+  if (!d || typeof d !== "object" || !Object.keys(d).length) return esDiaHabil(fecha);
+  const t = d[DIAS_KEY[diaSemana(fecha)]];
+  return !!(t && t.in && t.out && t.in !== t.out);
+}
+
+/** Clave de la obra: cliente + obra sin tildes ni mayúsculas; sin obra, la OT sola. */
+export function claveObra(p) {
+  const obra = normalizar(p?.obra || "").trim();
+  if (!obra) return `ot:${p?.ot}`;
+  return `obra:${normalizar(p?.cliente || "").trim()}|${obra}`;
+}
+
+const numeroOt = (ot) => Number(String(ot).replace(/\D/g, "")) || 0;
+const conPrioridad = (n) => Number.isInteger(n) && n > 0;
+
+/**
+ * Las OT que van a la instalación, agrupadas por obra.
+ * @param {object} a
+ * @param {object[]} a.proyectos OT abiertas de la división
+ * @param {Map<string, {fin: string}>} a.finProduccion fin de producción del plan vivo, por OT
+ * @param {Set<string>} a.producidas OT con la producción ya terminada (Armado al 100 %)
+ * @param {Set<string>} a.instaladas OT con el acta de instalación firmada
+ * @param {Set<string>} a.pausadas OT en pausa (151)
+ * @param {Map<string, number>} a.avance % de instalación (último reporte), por OT
+ * @returns {{ trabajos: object[], sinProduccion: object[], sinDato: object[] }}
+ *   trabajos: una por obra, con sus OT, días de una persona que faltan, instaladores y desde cuándo puede arrancar
+ *   sinProduccion: OT sin plan de producción y sin terminar (no se sabe cuándo salen)
+ *   sinDato: OT sin días de instalación (faltan gabinetes o el parámetro)
+ */
+export function trabajosInstalacion({ proyectos = [], finProduccion = new Map(), producidas = new Set(), instaladas = new Set(), pausadas = new Set(), avance = new Map(), params, inst, modulos = new Map(), hoy, feriados = null, maxPersonas = Infinity }) {
+  const porObra = new Map();
+  const sinProduccion = [], sinDato = [];
+  for (const p of proyectos) {
+    const ot = String(p.ot);
+    if (p.estado === "cerrado" || instaladas.has(ot) || pausadas.has(ot)) continue;
+    const fin = finProduccion.get(ot)?.fin || null;
+    const lista = producidas.has(ot);
+    if (!fin && !lista) { sinProduccion.push(p); continue; }
+    const r = diasInstalacion(p, params, inst, { modulosEtiquetas: modulos.get(ot) || null });
+    if (r.dias == null) { sinDato.push({ proyecto: p, motivo: r.sinDato }); continue; }
+    const pct = Math.min(100, Math.max(0, Number(avance.get(ot)) || 0));
+    const enCurso = pct > 0;
+    // Fin de producción + 1 día hábil; ya producida (o empezada en obra), desde hoy
+    let desde = lista || enCurso ? hoy : diaHabilSiguiente(fin, feriados);
+    if (desde < hoy) desde = hoy;
+    const k = claveObra(p);
+    if (!porObra.has(k)) porObra.set(k, { clave: k, ots: [], diasPersona: 0, personas: 0, desde, esperaHasta: null, entrega: null, prioridad: null, finProduccion: null, enCurso: false });
+    const t = porObra.get(k);
+    t.ots.push({ ot, proyecto: p, dias: r.dias, personas: r.personas, diasPersona: r.diasPersona * (1 - pct / 100), avance: pct, manual: r.manual, finProduccion: fin, producida: lista });
+    t.diasPersona += r.diasPersona * (1 - pct / 100);
+    t.personas += r.personas;
+    if (desde > t.desde) t.desde = desde;
+    if (fin && (!t.finProduccion || fin > t.finProduccion)) t.finProduccion = fin;
+    if (p.fecha_objetivo && (!t.entrega || p.fecha_objetivo < t.entrega)) t.entrega = p.fecha_objetivo;
+    const pr = Number(p.prioridad_instalacion);
+    if (conPrioridad(pr) && (t.prioridad == null || pr < t.prioridad)) t.prioridad = pr;
+    t.enCurso = t.enCurso || enCurso;
+  }
+  const trabajos = [...porObra.values()].map((t) => {
+    const personas = Math.max(1, Math.min(t.personas, maxPersonas));
+    const dias = t.diasPersona > 0 ? medioDia(t.diasPersona / personas) : 0;
+    return { ...t, personas, dias, medios: Math.round(dias * 2) };
+  }).filter((t) => t.medios > 0);
+  return { trabajos: ordenarTrabajos(trabajos), sinProduccion, sinDato };
+}
+
+/** En curso primero, después prioridad de instalación, fecha de entrega, desde cuándo puede arrancar y número de OT. */
+export function ordenarTrabajos(trabajos) {
+  return [...trabajos].sort((a, b) => {
+    if (a.enCurso !== b.enCurso) return a.enCurso ? -1 : 1;
+    const pa = conPrioridad(a.prioridad), pb = conPrioridad(b.prioridad);
+    if (pa !== pb) return pa ? -1 : 1;
+    if (pa && a.prioridad !== b.prioridad) return a.prioridad - b.prioridad;
+    const ea = a.entrega || "9999", eb = b.entrega || "9999";
+    if (ea !== eb) return ea < eb ? -1 : 1;
+    if (a.desde !== b.desde) return a.desde < b.desde ? -1 : 1;
+    return numeroOt(a.ots[0]?.ot) - numeroOt(b.ots[0]?.ot);
+  });
+}
+
+/**
+ * Reparte las obras entre los instaladores, de a medio día.
+ * @param {object[]} trabajos de trabajosInstalacion (en orden)
+ * @param {object[]} instaladores [{ id, nombre, diagrama }]; vacío = 2 instaladores de lunes a viernes
+ * @returns {object[]} cada obra con: tramos [{ fecha, medio }] (medio 0 = mañana, 1 = tarde),
+ *   inicio, fin (fechas), finMedio, equipo (ids), esperaProduccion, tarde, diasTarde, poco (poco margen)
+ */
+export function planInstalacion(trabajos, instaladores, { hoy, feriados = null } = {}) {
+  const gente = instaladores?.length ? instaladores : [{ id: "i1", nombre: "Instalador 1" }, { id: "i2", nombre: "Instalador 2" }];
+  const ocupado = new Map(gente.map((g) => [g.id, new Set()])); // "fecha|medio"
+  const trabaja = new Map(); // "id|fecha" → bool
+  const puede = (g, fecha) => {
+    const k = `${g.id}|${fecha}`;
+    if (!trabaja.has(k)) trabaja.set(k, trabajaElDia(g, fecha, feriados));
+    return trabaja.get(k);
+  };
+  const slot = (i) => ({ fecha: sumarDias(hoy, Math.floor(i / 2)), medio: i % 2 });
+  const indice = (fecha) => Math.max(0, diasEntre(hoy, fecha) * 2);
+  const maxSlot = HORIZONTE_DIAS * 2;
+
+  // Desde el medio día s, los medios días seguidos (saltando los que el equipo no trabaja) que necesita la obra
+  const tramosDesde = (equipo, s, n) => {
+    const out = [];
+    for (let i = s; i < maxSlot && out.length < n; i++) {
+      const { fecha, medio } = slot(i);
+      if (!equipo.every((g) => puede(g, fecha))) {
+        // Un día que nadie del equipo trabaja se salta; si trabaja uno solo, también (el equipo va junto)
+        continue;
+      }
+      if (equipo.some((g) => ocupado.get(g.id).has(`${fecha}|${medio}`))) return null;
+      out.push({ fecha, medio });
+    }
+    return out.length === n ? out : null;
+  };
+
+  const salida = [];
+  for (const t of trabajos) {
+    const p = Math.min(t.personas, gente.length);
+    let puesto = null;
+    for (let s = indice(t.desde); s < maxSlot && !puesto; s++) {
+      const { fecha, medio } = slot(s);
+      const libres = gente.filter((g) => puede(g, fecha) && !ocupado.get(g.id).has(`${fecha}|${medio}`));
+      if (libres.length < p) continue;
+      // Los que tienen más medios días libres seguidos desde acá (para no cortar la obra)
+      const racha = (g) => {
+        let n = 0;
+        for (let i = s; i < Math.min(maxSlot, s + t.medios * 6) && n < t.medios; i++) {
+          const z = slot(i);
+          if (!puede(g, z.fecha)) continue;
+          if (ocupado.get(g.id).has(`${z.fecha}|${z.medio}`)) break;
+          n++;
+        }
+        return n;
+      };
+      const equipo = libres.map((g) => ({ g, n: racha(g) })).sort((a, b) => b.n - a.n).slice(0, p).map((x) => x.g);
+      const tramos = tramosDesde(equipo, s, t.medios);
+      if (tramos) puesto = { equipo, tramos };
+    }
+    if (!puesto) { salida.push({ ...t, tramos: [], equipo: [], inicio: null, fin: null, sinLugar: true }); continue; }
+    for (const g of puesto.equipo) for (const z of puesto.tramos) ocupado.get(g.id).add(`${z.fecha}|${z.medio}`);
+    const inicio = puesto.tramos[0], ultimo = puesto.tramos[puesto.tramos.length - 1];
+    const diasTarde = t.entrega ? Math.max(0, diasEntre(t.entrega, ultimo.fecha)) : 0;
+    salida.push({
+      ...t,
+      tramos: puesto.tramos,
+      equipo: puesto.equipo.map((g) => g.id),
+      inicio: inicio.fecha, inicioMedio: inicio.medio,
+      fin: ultimo.fecha, finMedio: ultimo.medio,
+      // La obra arranca apenas sale de fábrica: si producción se atrasa, se corre
+      esperaProduccion: !t.enCurso && t.desde > hoy && inicio.fecha === t.desde,
+      tarde: diasTarde > 0,
+      diasTarde,
+      // Termina el mismo día de la entrega o el día hábil anterior
+      poco: !!t.entrega && diasTarde === 0 && diaHabilSiguiente(ultimo.fecha, feriados) > t.entrega,
+      sinLugar: false,
+    });
+  }
+  return salida;
+}
+
+/** "mañana" / "tarde" / "todo el día" de cada fecha de una obra. */
+export function diasDeObra(tramos = []) {
+  const m = new Map();
+  for (const z of tramos) m.set(z.fecha, (m.get(z.fecha) || 0) | (z.medio ? 2 : 1));
+  return [...m].map(([fecha, v]) => ({ fecha, parte: v === 3 ? "dia" : v === 1 ? "manana" : "tarde" }));
+}
