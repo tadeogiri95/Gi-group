@@ -8,9 +8,14 @@
 // propia: primero con el índice de la API de Supabase (una sola consulta) y,
 // si no está disponible, preguntando tabla por tabla con limit=0.
 // Las que solo cambian permisos, crons o restricciones (090-096, 119, 143) no
-// dejan rastro visible y no se chequean.
+// dejan rastro visible y no se chequean. La 111 tampoco: su columna la saca la
+// 112. Si una migración nueva borra o renombra algo de otra, corregir acá la
+// de antes para no avisar de más.
 //
 // Al sumar una migración nueva que crea tablas o columnas, agregarla acá.
+
+// Migraciones que crean algo que otra posterior saca: no se chequean
+export const SIN_CHEQUEO = ["111_etapas_tipo_pieza.sql"];
 
 export const MIGRACIONES = [
   { n: 97, archivo: "097_ot_entrega_cantidad.sql", nombre: "Entrega y cantidad de OT", tablas: { proyectos: ["cantidad", "fecha_entrega", "terminado_planilla"] } },
@@ -27,8 +32,8 @@ export const MIGRACIONES = [
   { n: 108, archivo: "108_necesidades_stock.sql", nombre: "Stock: necesidades", tablas: { necesidades_stock: [] } },
   { n: 109, archivo: "109_piezas_ot.sql", nombre: "Piezas de OT", tablas: { piezas_ot: [] } },
   { n: 110, archivo: "110_pasos_pieza.sql", nombre: "Escaneo de piezas", tablas: { pasos_pieza: [] } },
-  { n: 111, archivo: "111_etapas_tipo_pieza.sql", nombre: "Etapas por tipo de pieza", tablas: { etapas: ["tipo_pieza"] } },
-  { n: 112, archivo: "112_etapas_por_pieza.sql", nombre: "Etapas escaneadas por pieza", tablas: { etapas: ["columna_pieza", "por_pieza", "tipo_pieza"] } },
+  // 112 saca etapas.tipo_pieza (la de la 111): la 111 queda cubierta por la 112
+  { n: 112, archivo: "112_etapas_por_pieza.sql", nombre: "Etapas escaneadas por pieza", tablas: { etapas: ["por_pieza", "columna_pieza"] } },
   { n: 113, archivo: "113_compras_pedidos.sql", nombre: "Compras: pedidos", tablas: { proveedores: [], pedidos_compra: [] } },
   { n: 114, archivo: "114_compras_ordenes.sql", nombre: "Compras: órdenes", tablas: { ordenes_compra: [], ordenes_compra_items: [], articulos_stock: ["multiplo", "plazo_dias", "proveedor_principal", "ultimo_precio"], pedidos_compra: ["orden_id"] } },
   { n: 115, archivo: "115_compras_recepciones.sql", nombre: "Compras: recepciones", tablas: { recepciones_compra: [], recepciones_compra_items: [], ordenes_compra: ["factura_fecha", "factura_numero", "tipo_cambio"] } },
