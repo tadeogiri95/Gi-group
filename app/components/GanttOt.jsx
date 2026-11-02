@@ -63,6 +63,7 @@ import { fmtH } from "../lib/cargaPlanta";
 import { faltanManual, atrasosSinMotivo } from "../lib/ajustesTiempo";
 import { retrabajoPendiente, retrabajosDe, retrabajosHechos } from "../lib/retrabajo";
 import AjusteTiempo from "./AjusteTiempo";
+import GanttInstalacion from "./GanttInstalacion";
 
 const FILA = 26; // alto del renglón de cada proceso
 const FILA_OT = 34; // alto del renglón de cada OT en "OT por proceso"
@@ -108,8 +109,9 @@ const alertasTexto = (q) => [q.tarde ? `termina ${dias(q.diasTarde)} después de
  * @param {object[]} [props.empleados]  personal operativo con su grilla de horarios (junto con planes)
  */
 const SIN_PAUSAS = [];
+const SIN_LISTA = []; // por defecto fijos: el Gantt de instalación se vuelve a dibujar cuando cambia el plan vivo
 
-export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null, onRefrescar = null, pausas = SIN_PAUSAS }) {
+function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones = SIN_LISTA, avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null, onRefrescar = null, pausas = SIN_PAUSAS, onPlanVivo = null }) {
   const hoy = hoyArg();
   // Cada "🔄 Refrescar" suma una vuelta y se vuelve a leer todo
   const [vuelta, setVuelta] = useState(0);
@@ -239,6 +241,10 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       sinMotivo: puedeAjustar && ajustes ? atrasosSinMotivo(new Map(renglones.map((r) => [r.ot, r])), ajustes, ultimaConfirmacion(planes)) : [],
     };
   }, [vivoCon, manual, abiertasPorOt, divisiones, hoy, modo, puedeAjustar, ajustes, planes]);
+  // El Gantt de instalación usa el fin de producción de este mismo plan vivo (parte 43)
+  useEffect(() => {
+    if (onPlanVivo && renglones) onPlanVivo({ renglones, cfgValor, modulos: modulos || SIN_MODULOS });
+  }, [onPlanVivo, renglones, cfgValor, modulos]);
   // ⏰ Procesos de hoy que ya llegaron a su hora de fin y no se terminaron
   // (Tadeo, 01/11): se revisa cada minuto; el celular lo avisa el cron fin-proceso
   const [ahora, setAhora] = useState(() => Date.now());
@@ -794,5 +800,33 @@ export default function GanttOt({ proyectos = [], etapas = [], divisiones = [], 
       )}
       {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT. La línea finita es lo que ya pasó; los días sin trabajo (sin horas en la grilla) quedan vacíos y la barra sigue el próximo día. Lo que una máquina ya empezó lo termina antes de tomar otra OT. Tocá una OT para ver su detalle.</p>}
     </div>
+  );
+}
+
+const CLAVE_TIPO = "gypi_gantt_tipo";
+
+/**
+ * 📅 Gantt: dos diagramas separados (Tadeo, 02/11): 🏭 Producción (el plan
+ * vivo de siempre) y 🔧 Instalación (parte 43), que toma el fin de producción
+ * de ese mismo plan. El de producción queda armado aunque se mire el otro.
+ */
+export default function GanttOt(props) {
+  const [tipo, setTipo] = useState(() => { try { return localStorage.getItem(CLAVE_TIPO) === "instalacion" ? "instalacion" : "produccion"; } catch { return "produccion"; } });
+  const cambiar = (t) => { setTipo(t); try { localStorage.setItem(CLAVE_TIPO, t); } catch { /* sin almacenamiento */ } };
+  const [vivo, setVivo] = useState(null);
+  return (
+    <>
+      <div className="flex gap-1.5 mb-2" role="group" aria-label="Qué Gantt ver">
+        <Chip active={tipo === "produccion"} onClick={() => cambiar("produccion")}>🏭 Producción</Chip>
+        <Chip active={tipo === "instalacion"} onClick={() => cambiar("instalacion")}>🔧 Instalación</Chip>
+      </div>
+      <div className={tipo === "instalacion" ? "hidden" : ""}>
+        <GanttProduccion {...props} onPlanVivo={setVivo} />
+      </div>
+      {tipo === "instalacion" && (
+        <GanttInstalacion vivo={vivo} proyectos={props.proyectos} etapas={props.etapas} divisiones={props.divisiones}
+          avanceHoras={props.avanceHoras} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} />
+      )}
+    </>
   );
 }
