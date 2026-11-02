@@ -31,7 +31,7 @@ export const SECCIONES = [
   { id: "prod_en_curso", bloque: "produccion", letra: "b", titulo: "En curso", ayuda: "Se detalla lo que cambió o tiene contingencia; el resto va en verde.", campos: ["ot", "semaforo", "texto", "responsable", "fecha"], texto: "Contingencia" },
   { id: "prod_a_iniciar", bloque: "produccion", letra: "c", titulo: "A iniciar", ayuda: "Entran a producción hoy y mañana.", campos: ["ot", "fecha", "listo", "texto"], texto: "Observación", fecha: "Entrega comprometida" },
   { id: "inst_terminada", bloque: "instalacion", letra: "a", titulo: "Instalación terminada", ayuda: "Obras cerradas ayer.", campos: ["ot", "texto"], texto: "Observación" },
-  { id: "inst_en_curso", bloque: "instalacion", letra: "b", titulo: "En curso", ayuda: "Dónde está cada cuadrilla hoy.", campos: ["ot", "semaforo", "texto", "responsable", "fecha"], texto: "Contingencia" },
+  { id: "inst_en_curso", bloque: "instalacion", letra: "b", titulo: "En curso", ayuda: "Dónde está cada cuadrilla hoy.", campos: ["ot", "semaforo", "instaladores", "texto", "responsable", "fecha"], texto: "Contingencia" },
   {
     id: "inst_pendiente", bloque: "instalacion", letra: "c", titulo: "Pendientes de instalación",
     ayuda: "Detalles chicos de obras ya \"terminadas\". Sin responsable y sin fecha objetivo el pendiente no se registra. Si aparece 3 días seguidos, pasa a rojo y lo toma Gerencia.",
@@ -83,6 +83,20 @@ export const LISTO = [
 ];
 
 /** Id nuevo para un renglón (lo genera la app para que no cambie al guardar). */
+// Instaladores de una instalación en curso: se guardan en datos.instaladores
+// como texto ("Ana, Pepe") porque datos solo lleva valores simples.
+export const MAX_INSTALADORES = 12;
+/** "Ana, Pepe" → ["Ana", "Pepe"] (sin vacíos ni repetidos). */
+export function listaInstaladores(v) {
+  const l = (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim()).filter(Boolean);
+  return [...new Set(l)].slice(0, MAX_INSTALADORES);
+}
+/** ["Ana", "Pepe"] → "Ana, Pepe" (o null si no hay nadie). */
+export function textoInstaladores(lista) {
+  const l = listaInstaladores(lista).map((x) => x.replace(/,/g, " ").slice(0, 60));
+  return l.length ? l.join(", ").slice(0, 300) : null;
+}
+
 export function idRenglon() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   const h = () => Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
@@ -247,6 +261,7 @@ function columnas(s) {
   if (s.id === "compra") c.push(["Proveedor", (it) => it.datos?.proveedor], ["Urgencia", (it) => etiqueta(URGENCIAS, it.tipo)]);
   // A iniciar: entrega y "¿planilla y material?" como en el papel; la observación al final
   if (s.campos.includes("listo")) c.push(fecha, ["¿Planilla y material?", (it) => etiqueta(LISTO, it.datos?.listo)]);
+  if (s.campos.includes("instaladores")) c.push(["Instaladores", (it) => listaInstaladores(it.datos?.instaladores).join(", ")]);
   if (s.campos.includes("texto")) c.push([s.texto || "Detalle", (it) => it.texto]);
   if (s.campos.includes("desde")) c.push(["Desde", (it) => it.datos?.desde], ["Hasta", (it) => it.datos?.hasta]);
   if (s.campos.includes("vehiculo")) c.push(["Quién / vehículo", (it) => [it.responsable, it.datos?.vehiculo].filter(Boolean).join(" / ")]);
