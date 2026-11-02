@@ -283,14 +283,14 @@ function Informe({ inf }) {
                 <div><b>{PUNTO[x.semaforo]} {nombreOt(x)}</b> <span className="text-gypi-dim">· {x.seccion === "prod_en_curso" ? "producción" : "instalación"}</span></div>
                 {x.texto && <div className="mt-0.5">{x.texto}</div>}
                 <div className="text-[12px] text-gypi-dim mt-0.5">
-                  {[x.responsable && `👤 ${x.responsable}`, x.fecha_objetivo && `📅 ${ddmm(x.fecha_objetivo)}`, !dia && x.diasProblema ? `${fmtDias(x.diasProblema)} con problemas${x.diasRojo ? ` (${x.diasRojo} en rojo)` : ""}` : null].filter(Boolean).join(" · ")}
+                  {[x.instaladores?.length ? `🔧 ${x.instaladores.join(", ")}` : null, x.responsable && `👤 ${x.responsable}`, x.fecha_objetivo && `📅 ${ddmm(x.fecha_objetivo)}`, !dia && x.diasProblema ? `${fmtDias(x.diasProblema)} con problemas${x.diasRojo ? ` (${x.diasRojo} en rojo)` : ""}` : null].filter(Boolean).join(" · ")}
                 </div>
               </Renglon>
             ))}
           </div>
         )}
         {enVerde.length > 0 && (
-          <div className="text-[12px] text-gypi-dim mt-2 px-1">🟢 En verde: {enVerde.map((x) => (x.texto ? `${nombreOt(x)} (${x.texto})` : nombreOt(x))).join(" · ")}</div>
+          <div className="text-[12px] text-gypi-dim mt-2 px-1">🟢 En verde: {enVerde.map((x) => `${x.texto ? `${nombreOt(x)} (${x.texto})` : nombreOt(x)}${x.instaladores?.length ? ` 🔧 ${x.instaladores.join(", ")}` : ""}`).join(" · ")}</div>
         )}
         {!enCurso.items.length && <Vacio>No se anotaron OT en curso.</Vacio>}
       </Bloque>

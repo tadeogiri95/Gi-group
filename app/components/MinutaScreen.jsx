@@ -13,7 +13,7 @@ import { apiFetch, sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import {
   AREAS_DYT, AREAS_FEEDBACK, BLOQUES, CLAVE_CONFIG_MINUTA, ESTADOS_DYT, LISTO, SEMAFOROS, URGENCIAS,
-  VECES_A_GERENCIA, datosDeOt, pedidoDesdeMinuta, textoCantidad, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, clientesDe, listaUnica, tiposFeedbackDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
+  VECES_A_GERENCIA, listaInstaladores, textoInstaladores, datosDeOt, pedidoDesdeMinuta, textoCantidad, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, clientesDe, listaUnica, tiposFeedbackDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
 } from "../lib/minutas";
 import { nombreDivisionOt } from "../lib/avance";
 import { sugerenciasPendientes } from "../lib/minutasPrecarga";
@@ -189,6 +189,49 @@ function TipoFeedback({ it, cambiar, listas, disabled }) {
   );
 }
 
+/**
+ * Instaladores de una instalación en curso: se tildan del equipo de
+ * instaladores (empleados marcados como instalador) y con "Otro…" se escribe
+ * a alguien de producción o nuevo.
+ */
+function Instaladores({ it, cambiar, listas, disabled }) {
+  const [otro, setOtro] = useState(null);
+  const elegidos = listaInstaladores(it.datos?.instaladores);
+  const poner = (lista) => cambiar({ datos: { ...it.datos, instaladores: textoInstaladores(lista) } });
+  const alternar = (n) => poner(elegidos.includes(n) ? elegidos.filter((x) => x !== n) : [...elegidos, n]);
+  const equipo = listas.instaladores || [];
+  const extras = elegidos.filter((n) => !equipo.some((p) => p.label === n));
+  const agregar = () => {
+    const n = String(otro || "").trim();
+    if (n) poner([...elegidos, n]);
+    setOtro(null);
+  };
+  return (
+    <Campo label="Instaladores" ancho div>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Instaladores">
+        {equipo.map((p) => (
+          <Chip key={p.valor} active={elegidos.includes(p.label)} aria-pressed={elegidos.includes(p.label)} disabled={disabled} onClick={() => alternar(p.label)}>{p.label}</Chip>
+        ))}
+        {extras.map((n) => (
+          <Chip key={n} active aria-pressed="true" aria-label={`Sacar a ${n}`} disabled={disabled} onClick={() => alternar(n)}>{n} ✕</Chip>
+        ))}
+        {otro === null ? (
+          !disabled && <Chip onClick={() => setOtro("")}>＋ Otro…</Chip>
+        ) : (
+          <span className="flex gap-1 w-full">
+            <input className="g-input w-full" aria-label="Otro instalador" placeholder="Nombre (de producción o nuevo)" value={otro} maxLength={60} autoFocus
+              onChange={(e) => setOtro(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregar(); } else if (e.key === "Escape") setOtro(null); }} />
+            <button type="button" className="g-btn g-btn-primary" disabled={!otro.trim()} onClick={agregar}>Agregar</button>
+            <button type="button" aria-label="Cancelar otro instalador" className="min-h-[44px] min-w-[44px] bg-transparent border-none text-gypi-mute cursor-pointer" onClick={() => setOtro(null)}>✕</button>
+          </span>
+        )}
+      </div>
+      {!equipo.length && <span className="text-[12px] text-gypi-mute">No hay instaladores marcados en Equipo: usá "Otro…" o marcá "Es instalador" en la ficha de cada uno.</span>}
+    </Campo>
+  );
+}
+
 /** Un renglón de una sección, con los campos que lleva esa sección. */
 function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, pedir = null }) {
   const c = (campo) => s.campos.includes(campo);
@@ -235,6 +278,7 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, ped
         {c("semaforo") && (
           <Campo label="Estado" ancho div><Semaforo value={it.semaforo} disabled={disabled} onChange={(v) => cambiar({ semaforo: v })} /></Campo>
         )}
+        {c("instaladores") && <Instaladores it={it} cambiar={cambiar} listas={listas} disabled={disabled} />}
         {s.id === "feedback" && (
           <>
             <TipoFeedback it={it} cambiar={cambiar} listas={listas} disabled={disabled} />
@@ -534,7 +578,7 @@ export default function MinutaScreen({ empresa = null }) {
   const [sugeridos, setSugeridos] = useState(null);
   const [abiertos, setAbiertos] = useState([]);
   const [revision, setRevision] = useState(false);
-  const [otrasListas, setOtrasListas] = useState({ personas: [], articulos: [], proveedores: [], vehiculos: [] });
+  const [otrasListas, setOtrasListas] = useState({ personas: [], instaladores: [], articulos: [], proveedores: [], vehiculos: [] });
   const [configMinuta, setConfigMinuta] = useState(null);
   const { divisiones } = useAuth();
   // La división de la OT se guarda con su nombre (en proyectos puede estar el id)
@@ -562,12 +606,15 @@ export default function MinutaScreen({ empresa = null }) {
       leer("proveedores?select=id,nombre&order=nombre.asc", { maxFilas: 2000 }),
       leer("vehiculos?activo=eq.true&select=id,patente,marca,modelo&order=patente.asc", { maxFilas: 200 }),
       sb.get(`config_sistema?clave=eq.${CLAVE_CONFIG_MINUTA}&select=valor&limit=1`).catch(() => []),
-    ]).then(([ots, personas, articulos, proveedores, vehiculos, config]) => {
+      // Los marcados como instalador (116); sin la columna, la lista queda vacía y se usa "Otro…"
+      leer("empleados?activo=eq.true&es_instalador=eq.true&select=id,nombre&order=nombre.asc", { maxFilas: 500 }),
+    ]).then(([ots, personas, articulos, proveedores, vehiculos, config, instaladores]) => {
       // Las cerradas van al final: lo de hoy son casi siempre las abiertas
       const orden = [...ots].sort((a, b) => (a.estado === "cerrado") - (b.estado === "cerrado"));
       setOtsCrudas(orden);
       setOtrasListas({
         personas: personas.map((e) => ({ valor: e.id, label: e.nombre, detalle: e.division || "" })),
+        instaladores: instaladores.map((e) => ({ valor: e.id, label: e.nombre })),
         articulos: articulos.map((a) => ({ valor: a.sku, label: a.nombre || a.sku, detalle: [a.sku, a.unidad].filter(Boolean).join(" · ") })),
         proveedores: proveedores.map((p) => ({ valor: String(p.id), label: p.nombre })),
         vehiculos: vehiculos.map((v) => ({ valor: String(v.id), label: [v.patente, v.marca, v.modelo].filter(Boolean).join(" ") })),

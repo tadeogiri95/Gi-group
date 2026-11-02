@@ -255,7 +255,8 @@ function mockPantalla(pedidos) {
     const { path = "" } = JSON.parse(opts.body || "{}");
     let data = [];
     if (path.startsWith("proyectos?")) data = [{ ot: "7751", descripcion: "COCINAS TIPO B", cliente: "PRANA", division: "d-muebles", estado: "activo" }];
-    if (path.startsWith("empleados?")) data = [{ id: "e1", nombre: "Agustín Pérez", division: "Instalación" }];
+    if (path.startsWith("empleados?") && path.includes("es_instalador=eq.true")) data = [{ id: "e1", nombre: "Agustín Pérez" }, { id: "e2", nombre: "Mayco Díaz" }];
+    else if (path.startsWith("empleados?")) data = [{ id: "e1", nombre: "Agustín Pérez", division: "Instalación" }];
     if (path.startsWith("config_sistema?")) data = [{ valor: { participantes: [{ nombre: "Zacarías", area: "Gerencia" }, { nombre: "Tadeo", area: "Compras/logística" }] } }];
     return new Response(JSON.stringify({ ok: true, data }), { status: 200 });
   };
@@ -308,6 +309,35 @@ test("pantalla — un pendiente de instalación sin responsable avisa y no se gu
   fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
   await new Promise((r) => setTimeout(r, 20));
   assert.ok(!pedidos.some((p) => p.body?.accion === "guardar"));
+});
+
+test("instalación en curso — se tildan los instaladores del equipo y con Otro… alguien de producción o nuevo", async () => {
+  const { listaInstaladores, textoInstaladores, htmlMinuta } = await import("../app/lib/minutas.js");
+  assert.deepEqual(listaInstaladores("Ana, Pepe, , Ana"), ["Ana", "Pepe"]);
+  assert.equal(textoInstaladores(["Ana", "Pepe, hijo"]), "Ana, Pepe  hijo");
+  assert.equal(textoInstaladores([]), null);
+  const pedidos = [];
+  mockPantalla(pedidos);
+  pantalla();
+  await screen.findByRole("region", { name: "Instalación" });
+  const inst = screen.getByRole("region", { name: "Instalación" });
+  fireEvent.click(within(inst).getByRole("button", { name: "Agregar a En curso" }));
+  const grupo = await within(inst).findByRole("group", { name: "Instaladores" });
+  fireEvent.click(await within(grupo).findByRole("button", { name: "Mayco Díaz" }));
+  fireEvent.click(within(grupo).getByRole("button", { name: "＋ Otro…" }));
+  fireEvent.change(within(grupo).getByRole("textbox", { name: "Otro instalador" }), { target: { value: "Juan de producción" } });
+  fireEvent.click(within(grupo).getByRole("button", { name: "Agregar" }));
+  assert.equal(within(grupo).getByRole("button", { name: "Mayco Díaz" }).getAttribute("aria-pressed"), "true");
+  assert.ok(within(grupo).getByRole("button", { name: "Sacar a Juan de producción" }));
+  fireEvent.change(within(inst).getAllByRole("combobox", { name: "OT o proyecto" }).at(-1), { target: { value: "Obra Malmö" } });
+  fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
+  const it = pedidos.find((p) => p.body?.accion === "guardar").body.items.find((x) => x.seccion === "inst_en_curso");
+  assert.equal(it.datos.instaladores, "Mayco Díaz, Juan de producción");
+  // En la minuta impresa
+  const html = htmlMinuta({ empresa: "Gi", minuta: { fecha: "2026-11-02" }, items: [{ ...it, id: "x" }] });
+  assert.match(html, /Instaladores/);
+  assert.match(html, /Mayco Díaz, Juan de producción/);
 });
 
 // ─── Lo que Gypi sugiere (parte M2) ───

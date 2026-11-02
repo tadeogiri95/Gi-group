@@ -11,7 +11,7 @@
 //   - Feedback por área y por tipo.
 //   - Compras disparadas desde la minuta: cuántas, urgentes y con pedido.
 // No escribe nada: solo cuenta.
-import { SECCIONES_SEGUIMIENTO } from "./minutas";
+import { SECCIONES_SEGUIMIENTO, listaInstaladores } from "./minutas";
 
 export const HORA_REUNION = "08:45";
 const TOLERANCIA_MIN = 5;
@@ -264,6 +264,7 @@ export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, mo
   const enCursoItems = [...ultimo.values()].map((it) => ({
     seccion: it.seccion, fecha: it.fecha, ot: it.ot || null, proyecto: it.proyecto || null, cliente: it.cliente || null,
     semaforo: it.semaforo || "verde", texto: it.texto || "", responsable: it.responsable || null, fecha_objetivo: it.fecha_objetivo || null,
+    instaladores: listaInstaladores(it.datos?.instaladores),
     diasProblema: contDe.get(it.ot)?.dias || 0, diasRojo: contDe.get(it.ot)?.diasRojo || 0,
   }));
   const orden = { rojo: 0, amarillo: 1, verde: 2 };
