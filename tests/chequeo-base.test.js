@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import {
-  MIGRACIONES, faltantesDesdeIndice, faltantesProbando, textoFaltantes,
+  MIGRACIONES, SIN_CHEQUEO, faltantesDesdeIndice, faltantesProbando, textoFaltantes,
 } from "../app/lib/esquemaMigraciones.js";
 import { chequearEsquema, _limpiarCacheEsquema } from "../app/lib/esquemaServidor.js";
 
@@ -85,10 +85,33 @@ test("texto para el aviso", () => {
 
 test("toda migración nueva que crea tablas o columnas está en la lista", () => {
   const dir = new URL("../supabase/migrations/", import.meta.url);
-  const enLista = new Set(MIGRACIONES.map((m) => m.archivo));
+  const enLista = new Set([...MIGRACIONES.map((m) => m.archivo), ...SIN_CHEQUEO]);
   const sinListar = readdirSync(dir)
     .filter((f) => Number(f.slice(0, 3)) >= 97)
     .filter((f) => /create table|add column if not exists|create (or replace )?(view|function)/i.test(readFileSync(new URL(f, dir), "utf8").replace(/--[^\n]*/g, "")))
     .filter((f) => !enLista.has(f));
   assert.deepEqual(sinListar, [], "Agregá estas migraciones a app/lib/esquemaMigraciones.js");
+});
+
+test("lo que se chequea no lo saca una migración posterior (la 112 sacó la columna de la 111)", () => {
+  const dir = new URL("../supabase/migrations/", import.meta.url);
+  const archivos = readdirSync(dir).sort();
+  const sacadas = [];
+  for (const f of archivos) {
+    const sql = readFileSync(new URL(f, dir), "utf8").replace(/--[^\n]*/g, "").toLowerCase();
+    for (const m of sql.matchAll(/alter table (?:if exists )?(?:public\.)?([a-z_]+)\s+drop column (?:if exists )?([a-z_]+)/g)) sacadas.push({ f, tabla: m[1], col: m[2] });
+    for (const m of sql.matchAll(/drop table (?:if exists )?(?:public\.)?([a-z_]+)/g)) sacadas.push({ f, tabla: m[1], col: null });
+  }
+  const choques = [];
+  for (const mig of MIGRACIONES) {
+    for (const [tabla, cols] of Object.entries(mig.tablas || {})) {
+      for (const s of sacadas) {
+        if (s.f <= mig.archivo || s.tabla !== tabla) continue;
+        if (s.col === null || cols.includes(s.col)) choques.push(`${mig.archivo} → ${tabla}.${s.col || "*"} lo saca ${s.f}`);
+      }
+    }
+  }
+  assert.deepEqual(choques, []);
+  assert.ok(!MIGRACIONES.some((m) => m.n === 111));
+  assert.deepEqual(MIGRACIONES.find((m) => m.n === 112).tablas, { etapas: ["por_pieza", "columna_pieza"] });
 });
