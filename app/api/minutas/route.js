@@ -16,6 +16,8 @@
 //   GET ?seguimiento=AAAA-MM-DD → lo que sigue abierto de las minutas del
 //         último mes (contingencias, pendientes, post-venta, estacionamiento)
 //         y no pasó todavía a una minuta posterior
+//   GET ?revision=AAAA-MM-DD → la minuta anterior con sus alertas, fechas
+//         objetivo y compras, y el estado de esos pedidos (revisión de ayer, 155)
 //   GET ?ot=X              → los renglones de esa OT en todas las minutas (Detalle de OT)
 //   GET ?feedback=AAAA-MM-DD → el feedback desde ese día (revisión del jueves)
 //   GET ?reporte=AAAA-MM-DD&hasta=AAAA-MM-DD → las minutas del período con
@@ -48,6 +50,7 @@ function faltaMigracion(err) {
   return /minutas|minuta_items/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
 }
 const SIN_MIGRACION = "Para usar la Minuta falta correr la migración 150 en Supabase.";
+const SIN_REVISION = "Se guardó la minuta, pero no la revisión de ayer: falta correr la migración 155 en Supabase.";
 
 /** Sesión de gerencia con el módulo prendido, o la respuesta de error. */
 async function entrar(request) {
@@ -129,9 +132,29 @@ export async function GET(request) {
           .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
         return json({ ok: true, anterior: minutas[0].fecha, items });
       }
+      const revision = q.get("revision");
+      if (revision) {
+        // Revisión de la minuta anterior (155): sus renglones con alerta, fecha
+        // objetivo o compra, y el estado de los pedidos que se crearon desde ahí
+        if (!FECHA.test(revision)) return json({ error: "Fecha inválida" }, 400);
+        const desde = new Date(Date.parse(`${revision}T12:00:00Z`) - DIAS_SEGUIMIENTO * 86400000).toISOString().slice(0, 10);
+        const [ant] = (await sbGet(`minutas?empresa_id=eq.${e}&fecha=lt.${revision}&fecha=gte.${desde}&select=id,fecha&order=fecha.desc&limit=1`, { sesion })) || [];
+        if (!ant) return json({ ok: true, anterior: null, items: [], pedidos: [] });
+        const items = (await sbGet(`minuta_items?empresa_id=eq.${e}&minuta_id=eq.${ant.id}&seccion=in.(prod_en_curso,inst_en_curso,inst_pendiente,postventa,estacionamiento,compra)&select=*&order=seccion.asc,orden.asc&limit=500`, { sesion })) || [];
+        const ids = [...new Set(items.map((it) => it.datos?.pedido_id).filter((x) => /^\d+$/.test(String(x ?? ""))))];
+        let pedidos = [];
+        if (ids.length) {
+          try {
+            pedidos = (await sbGet(`pedidos_compra?empresa_id=eq.${e}&id=in.(${ids.join(",")})&select=id,estado`, { sesion })) || [];
+          } catch (err) {
+            logger.warn("[minutas] sin estado de pedidos", err);
+          }
+        }
+        return json({ ok: true, anterior: ant.fecha, items, pedidos });
+      }
       const ot = q.get("ot");
       if (ot) {
-        const items = (await sbGet(`minuta_items?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&select=*&order=created_at.desc&limit=200`, { sesion })) || [];
+        const items = (await sbGet(`minuta_items?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&seccion=neq.revision&select=*&order=created_at.desc&limit=200`, { sesion })) || [];
         const ids = [...new Set(items.map((it) => it.minuta_id))];
         const minutas = ids.length ? (await sbGet(`minutas?empresa_id=eq.${e}&id=in.(${ids.join(",")})&select=id,fecha`, { sesion })) || [] : [];
         const fechaDe = new Map(minutas.map((m) => [m.id, m.fecha]));
@@ -218,7 +241,21 @@ async function guardar(sesion, d) {
       headers: await sbHeaders(opts, { Prefer: "resolution=merge-duplicates,return=minimal" }),
       body: JSON.stringify(filas),
     });
-    if (!r.ok) throw new Error(`POST minuta_items: ${await r.text()}`);
+    if (!r.ok) {
+      const texto = await r.text();
+      // Sin la 155 la sección 'revision' no existe: se guarda lo demás y se avisa
+      if (!/minuta_items_seccion_check|23514/.test(texto) || !filas.some((f) => f.seccion === "revision")) throw new Error(`POST minuta_items: ${texto}`);
+      const sinRevision = filas.filter((f) => f.seccion !== "revision");
+      if (sinRevision.length) {
+        const r2 = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/minuta_items?on_conflict=id`, {
+          method: "POST",
+          headers: await sbHeaders(opts, { Prefer: "resolution=merge-duplicates,return=minimal" }),
+          body: JSON.stringify(sinRevision),
+        });
+        if (!r2.ok) throw new Error(`POST minuta_items: ${await r2.text()}`);
+      }
+      return json({ ok: true, minuta, items: await renglonesDe(sesion, minuta.id), aviso: SIN_REVISION });
+    }
   }
   return json({ ok: true, minuta, items: await renglonesDe(sesion, minuta.id) });
 }

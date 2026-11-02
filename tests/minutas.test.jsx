@@ -374,6 +374,115 @@ test("calendario de fechas objetivo — producción e instalación en curso, ven
   assert.ok(within(sec).getByText(/Todavía no hay producción ni instalaciones en curso/));
 });
 
+test("revisión de ayer — alertas, fechas objetivo que vencían y compras, sin repetir; resumen para el informe", async () => {
+  const { armarRevision, resumenRevision, textoRevision } = await import("../app/lib/minutasRevision.js");
+  const ayer = [
+    { id: "a1", seccion: "prod_en_curso", ot: "7751", proyecto: "Malmö", semaforo: "amarillo", texto: "Falta herraje", responsable: "Luciano", fecha_objetivo: "2026-10-30" },
+    { id: "a2", seccion: "prod_en_curso", ot: "7858", semaforo: "verde", fecha_objetivo: "2026-11-05" },
+    { id: "a3", seccion: "inst_pendiente", ot: "7495", semaforo: "rojo", responsable: "ANGELI", fecha_objetivo: "2026-11-10", resuelto_at: "2026-10-30T12:00:00Z" },
+    { id: "a4", seccion: "compra", texto: "Placa blanca", datos: { pedido_id: 77 } },
+    { id: "a5", seccion: "compra", texto: "Bisagras" },
+    { id: "a6", seccion: "foco", ot: "7751", semaforo: "rojo" },
+  ];
+  const r = armarRevision({ anterior: "2026-10-30", items: ayer, pedidos: [{ id: 77, estado: "en_oc" }], hoy: "2026-11-02" });
+  assert.deepEqual(r.map((x) => [x.tipo, x.datos.de]), [["alerta", "a1"], ["fecha", "a1"], ["compra", "a4"], ["compra", "a5"]], "lo verde que vence después, lo resuelto y el foco no");
+  assert.ok(r.every((x) => x.seccion === "revision" && !x.viene_de && x.datos.fecha_ayer === "2026-10-30"));
+  assert.deepEqual([r[2].datos.pedido_estado, r[2].datos.resultado], ["en_oc", "si"], "con pedido ya queda en Sí");
+  assert.equal(r[3].datos.resultado, undefined);
+  assert.equal(textoRevision(r[0]), "OT 7751 · Producción en curso · Falta herraje");
+  // Si ya está en la de hoy, no se vuelve a sumar
+  assert.equal(armarRevision({ anterior: "2026-10-30", items: ayer, hoy: "2026-11-02", ya: r }).length, 0);
+  assert.deepEqual(armarRevision({ anterior: null, items: ayer, hoy: "2026-11-02" }), []);
+  r[0].datos.resultado = "si"; r[1].datos.resultado = "no"; r[3].datos.resultado = "no";
+  const res = resumenRevision(r);
+  assert.deepEqual(res.porTipo.map((t) => [t.id, t.si, t.no, t.pct]), [["alerta", 1, 0, 100], ["fecha", 0, 1, 0], ["compra", 1, 1, 50]]);
+  assert.equal(res.no.length, 2);
+  // En el informe consolidado y en la minuta impresa
+  const { informeMinutas } = await import("../app/lib/minutasReporte.js");
+  const { htmlMinuta } = await import("../app/lib/minutas.js");
+  const inf = informeMinutas({ minutas: [{ id: 1, fecha: "2026-11-02" }], items: r.map((x) => ({ ...x, minuta_id: 1 })), hoy: "2026-11-02", modo: "dia" });
+  assert.equal(inf.revision.porTipo[0].pct, 100);
+  const html = htmlMinuta({ empresa: "Gi", minuta: { fecha: "2026-11-02" }, items: r });
+  assert.match(html, /Revisión de la minuta anterior/);
+  assert.match(html, /✓ Se mitigó/);
+  assert.match(html, /ya está en una orden de compra/);
+});
+
+test("/api/minutas?revision — la minuta anterior con sus alertas, fechas y compras, y el estado de los pedidos", async () => {
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/minutas?") && u.includes("fecha=lt.2026-11-02"), respond: () => ({ status: 200, body: [{ id: 4, fecha: "2026-10-30" }] }) },
+    { match: (u) => u.includes("/rest/v1/minuta_items?") && u.includes("minuta_id=eq.4") && u.includes("seccion=in.(prod_en_curso,inst_en_curso,inst_pendiente,postventa,estacionamiento,compra)"), respond: () => ({ status: 200, body: [{ id: "x", seccion: "compra", datos: { pedido_id: 77 } }] }) },
+    { match: (u) => u.includes("/rest/v1/pedidos_compra?") && u.includes("id=in.(77)"), respond: () => ({ status: 200, body: [{ id: 77, estado: "pendiente" }] }) },
+  ]);
+  const j = await (await api.GET(reqGet(await token(), "?revision=2026-11-02"))).json();
+  assert.deepEqual([j.anterior, j.items.length, j.pedidos[0].estado], ["2026-10-30", 1, "pendiente"]);
+  assert.equal((await api.GET(reqGet(await token(), "?revision=ayer"))).status, 400);
+});
+
+test("/api/minutas guardar — sin la migración 155 guarda lo demás y avisa", async () => {
+  const subidos = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    {
+      match: (u) => u.includes("/rest/v1/minuta_items"),
+      respond: (u, o) => {
+        if (o.method === "POST") {
+          const body = JSON.parse(o.body);
+          subidos.push(body.map((f) => f.seccion));
+          if (body.some((f) => f.seccion === "revision")) return { status: 400, body: { code: "23514", message: "new row for relation \"minuta_items\" violates check constraint \"minuta_items_seccion_check\"" } };
+          return { status: 201, body: "" };
+        }
+        return { status: o.method === "DELETE" ? 204 : 200, body: o.method === "DELETE" ? undefined : [] };
+      },
+    },
+    { match: (u) => u.includes("/rest/v1/minutas"), respond: (u, o) => ({ status: o.method === "POST" ? 201 : 200, body: o.method === "POST" ? [{ id: 9, estado: "abierta" }] : [] }) },
+  ]);
+  const body = guardarBody();
+  body.items.push({ ...body.items[0], id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa9", seccion: "revision", tipo: "alerta", datos: { de: "x", resultado: "si" } });
+  const res = await api.POST(req(await token(), body));
+  assert.equal(res.status, 200);
+  const j = await res.json();
+  assert.match(j.aviso, /migración 155/);
+  assert.deepEqual(subidos.at(-1), ["foco", "inst_pendiente"]);
+  const sql = readFileSync(new URL("../supabase/migrations/155_minuta_revision.sql", import.meta.url), "utf8");
+  assert.match(sql, /'estacionamiento', 'revision'/);
+  assert.match(sql, /do \$mig\$/);
+});
+
+test("pantalla — la revisión de ayer viene cargada arriba y se contesta con un toque", async () => {
+  const pedidos = [];
+  mockPantalla(pedidos);
+  const base = global.fetch;
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.startsWith("/api/minutas?revision=")) {
+      return new Response(JSON.stringify({ ok: true, anterior: "2026-10-30", pedidos: [], items: [
+        { id: "a1", seccion: "prod_en_curso", ot: "7751", semaforo: "amarillo", texto: "Falta herraje", responsable: "Luciano", datos: {} },
+        { id: "a5", seccion: "compra", texto: "Bisagras", datos: {} },
+      ] }), { status: 200 });
+    }
+    return base(url, opts);
+  };
+  pantalla();
+  const rev = await screen.findByRole("region", { name: "Revisión de ayer" });
+  const alertas = within(rev).getByRole("group", { name: "Alertas amarillas y rojas" });
+  assert.ok(within(alertas).getByText(/OT 7751 · Producción en curso · Falta herraje/));
+  fireEvent.click(within(alertas).getByRole("button", { name: "✓ Se mitigó" }));
+  const compras = within(rev).getByRole("group", { name: "Compras a disparar" });
+  assert.ok(within(compras).getByText(/no se creó pedido desde la minuta/));
+  fireEvent.click(within(compras).getByRole("button", { name: "✗ No se hizo" }));
+  assert.ok(within(rev).getByText(/Contestadas 2 de 2/));
+  fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
+  const g = pedidos.find((p) => p.body?.accion === "guardar").body.items.filter((x) => x.seccion === "revision");
+  assert.deepEqual(g.map((x) => [x.tipo, x.datos.resultado, x.datos.de]), [["alerta", "si", "a1"], ["compra", "no", "a5"]]);
+});
+
 // ─── Lo que Gypi sugiere (parte M2) ───
 
 const { armarPrecarga, habilAnterior, habilSiguiente, listoParaIniciar, sugerenciasPendientes } = await import("../app/lib/minutasPrecarga.js");

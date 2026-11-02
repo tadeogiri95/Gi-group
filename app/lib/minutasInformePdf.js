@@ -3,6 +3,7 @@
 // Recibe lo que arma informeMinutas (app/lib/minutasReporte.js).
 import { fmtPesos } from "./costo";
 import { HORA_REUNION } from "./minutasReporte";
+import { textoRevision, tipoRevision } from "./minutasRevision";
 
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
@@ -117,6 +118,8 @@ export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
     <div style="text-align:right"><h1>Informe de minutas</h1><div class="chico">${esc(titulo)}</div></div>
   </div>
   <section><h2>⏱ Reunión</h2>${reunionHtml}</section>
+  ${inf.revision?.total ? `<section><h2>🔁 Revisión de lo del día anterior</h2><div class="kpis">${inf.revision.porTipo.filter((t) => t.total).map((t) => kpi(t.pct == null ? "—" : `${t.pct} %`, `${t.id === "alerta" ? "Alertas mitigadas" : t.id === "fecha" ? "Fechas cumplidas" : "Compras hechas"} (${t.si} de ${t.si + t.no})`, t.pct == null ? "" : t.pct >= 80 ? "ok" : t.pct >= 50 ? "at" : "ma")).join("")}</div>
+    ${inf.revision.no.length ? `<table class="tabla"><tr>${dia ? "" : "<th>Día</th>"}<th>Resultado</th><th>Qué</th><th>Responsable</th></tr>${inf.revision.no.map((it) => `<tr class="fila-mal">${dia ? "" : `<td>${ddmm(it.fecha)}</td>`}<td>${esc(tipoRevision(it.tipo).no)}</td><td>${esc(textoRevision(it))}</td><td>${esc(it.responsable || "")}</td></tr>`).join("")}</table>` : ""}</section>` : ""}
   <section><h2>🎯 Foco del día</h2>${focoHtml}</section>
   <section><h2>✅ OT terminadas</h2>${terminadasHtml}</section>
   <section><h2>🚦 OT en curso</h2>${enCursoHtml}</section>

@@ -13,6 +13,7 @@ import { fmtPesos } from "../lib/costo";
 import { informeMinutas, rangoInforme, moverInforme, nombreInforme, HORA_REUNION } from "../lib/minutasReporte";
 import { imprimirInformeMinutas, descargarPdfInformeMinutas, textoInformeMinutas } from "../lib/minutasInformePdf";
 import { Chip } from "./ui";
+import { textoRevision, tipoRevision } from "../lib/minutasRevision";
 import Stat from "./ui/Stat";
 
 const MODOS = [
@@ -221,6 +222,29 @@ function Informe({ inf }) {
           </>
         )}
       </Bloque>
+
+      {/* Revisión de la minuta anterior (155) */}
+      {inf.revision?.total > 0 && (
+        <Bloque titulo="🔁 Revisión de lo del día anterior">
+          <Grilla n={3}>
+            {inf.revision.porTipo.filter((t) => t.total).map((t) => (
+              <Stat key={t.id} value={t.pct == null ? "—" : `${t.pct} %`}
+                label={`${t.id === "alerta" ? "Alertas mitigadas" : t.id === "fecha" ? "Fechas cumplidas" : "Compras hechas"} (${t.si} de ${t.si + t.no}${t.sinRespuesta ? `, ${t.sinRespuesta} sin contestar` : ""})`}
+                tone={t.pct == null ? "normal" : t.pct >= 80 ? "bien" : t.pct >= 50 ? "atencion" : "mal"} />
+            ))}
+          </Grilla>
+          {inf.revision.no.length > 0 && (
+            <div className="flex flex-col gap-1.5" aria-label="Lo que no se cumplió">
+              {inf.revision.no.map((it, i) => (
+                <Renglon key={i} tono="rojo">
+                  <b>{tipoRevision(it.tipo).no}</b> <span className="text-gypi-dim">· {textoRevision(it)}</span>
+                  {(it.responsable || !dia) && <div className="text-[12px] text-gypi-dim mt-0.5">{[it.responsable && `👤 ${it.responsable}`, !dia && it.fecha && `revisado el ${ddmm(it.fecha)}`].filter(Boolean).join(" · ")}</div>}
+                </Renglon>
+              ))}
+            </div>
+          )}
+        </Bloque>
+      )}
 
       {/* 2. Foco */}
       <Bloque titulo="🎯 Foco del día">

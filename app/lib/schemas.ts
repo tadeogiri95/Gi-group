@@ -1084,7 +1084,7 @@ const horaMinuta = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).nullable().optiona
 const textoMinuta = (max: number) => z.string().trim().max(max).nullable().optional().transform((v) => v || null);
 const renglonMinuta = z.object({
   id: uuid,
-  seccion: z.enum(["foco", "prod_terminada", "prod_en_curso", "prod_a_iniciar", "inst_terminada", "inst_en_curso", "inst_pendiente", "postventa", "dyt", "feedback", "compra", "movimiento", "estacionamiento"]),
+  seccion: z.enum(["foco", "prod_terminada", "prod_en_curso", "prod_a_iniciar", "inst_terminada", "inst_en_curso", "inst_pendiente", "postventa", "dyt", "feedback", "compra", "movimiento", "estacionamiento", "revision"]),
   orden: z.number().int().min(0).max(1000).default(0),
   ot: textoMinuta(40),
   division: textoMinuta(60),

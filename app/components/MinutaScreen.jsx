@@ -8,7 +8,7 @@
 // los proveedores y los vehículos. Siempre se puede escribir a mano lo que no
 // está (un instalador de afuera, una obra sin OT). Solo Dueño / Gerencia.
 // Se guarda por /api/minutas; se imprime o se baja en PDF con el formato v2.
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { apiFetch, sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import {
@@ -18,6 +18,7 @@ import {
 import { nombreDivisionOt } from "../lib/avance";
 import { sugerenciasPendientes } from "../lib/minutasPrecarga";
 import { calendarioMinuta, nombreEvento, iconoEvento, fechaCorta as ddmmCal, DIAS_CORTOS } from "../lib/minutasCalendario";
+import { armarRevision, textoRevision, tipoRevision, TIPOS_REVISION, ESTADO_PEDIDO, SECCION_REVISION } from "../lib/minutasRevision";
 import { useAuth } from "../context/AuthContext";
 import { tieneModulo } from "../lib/modulos";
 import { Chip, Modal, Spinner } from "./ui";
@@ -281,6 +282,52 @@ function CalendarioMinuta({ items, fecha }) {
           )}
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * 🔁 Revisión de ayer (155): lo que hay que mirar de la minuta anterior, ya
+ * cargado. Se contesta con un toque: ¿se mitigó?, ¿se cumplió?, ¿se hizo?
+ */
+function RevisionAyer({ items, cambiar, sacar, disabled, anterior }) {
+  const rev = items.filter((it) => it.seccion === SECCION_REVISION);
+  if (!rev.length) return null;
+  const fechaAyer = rev[0]?.datos?.fecha_ayer || anterior;
+  const contestadas = rev.filter((it) => it.datos?.resultado).length;
+  return (
+    <section className="g-card p-3 mb-3" aria-label="Revisión de ayer">
+      <h2 className="text-[15px] font-bold m-0 mb-1">🔁 Revisión de la minuta anterior{fechaAyer ? <span className="text-[12px] font-normal text-gypi-mute"> · {fechaAyer.slice(8, 10)}/{fechaAyer.slice(5, 7)}</span> : null}</h2>
+      <p className="text-[12px] text-gypi-mute m-0 mb-2">Contestadas {contestadas} de {rev.length}. Lo que siga abierto, sumalo abajo con "↩ Sigue abierto".</p>
+      {TIPOS_REVISION.map((t) => {
+        const l = rev.filter((it) => it.tipo === t.id);
+        if (!l.length) return null;
+        return (
+          <div key={t.id} className="mb-2" role="group" aria-label={t.titulo}>
+            <h3 className="text-[14px] font-bold m-0 mb-1">{t.titulo} <span className="font-normal text-[12px] text-gypi-mute">{t.pregunta}</span></h3>
+            <div className="flex flex-col gap-1.5">
+              {l.map((it) => {
+                const res = it.datos?.resultado || null;
+                const marcar = (v) => cambiar(it.id, { datos: { ...it.datos, resultado: res === v ? null : v } });
+                const punto = it.semaforo === "rojo" ? "🔴 " : it.semaforo === "amarillo" ? "🟡 " : "";
+                return (
+                  <div key={it.id} className={`rounded-xl border p-2 ${res === "si" ? "border-gypi-green bg-gypi-green/5" : res === "no" ? "border-gypi-red bg-gypi-red/5" : "border-gypi-border"}`}>
+                    <div className="text-[13px]">{t.id === "alerta" ? punto : ""}{textoRevision(it) || "Sin detalle"}</div>
+                    <div className="text-[12px] text-gypi-mute">
+                      {[it.responsable && `👤 ${it.responsable}`, it.fecha_objetivo && `📅 ${it.fecha_objetivo.slice(8, 10)}/${it.fecha_objetivo.slice(5, 7)}`, it.datos?.pedido_estado && `🛒 ${ESTADO_PEDIDO[it.datos.pedido_estado] || it.datos.pedido_estado}`, t.id === "compra" && !it.datos?.pedido_id && "🛒 no se creó pedido desde la minuta"].filter(Boolean).join(" · ")}
+                    </div>
+                    <div className="flex gap-1.5 mt-1">
+                      <Chip active={res === "si"} disabled={disabled} color="var(--color-green)" onClick={() => marcar("si")}>{t.si}</Chip>
+                      <Chip active={res === "no"} disabled={disabled} color="var(--color-red)" onClick={() => marcar("no")}>{t.no}</Chip>
+                      {!disabled && <button type="button" aria-label={`Sacar de la revisión: ${textoRevision(it)}`} className="ml-auto min-h-[40px] min-w-[40px] bg-transparent border-none text-gypi-mute cursor-pointer" onClick={() => sacar(it.id)}>✕</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -630,6 +677,7 @@ export default function MinutaScreen({ empresa = null }) {
   const [otsCrudas, setOtsCrudas] = useState([]);
   const [sugeridos, setSugeridos] = useState(null);
   const [abiertos, setAbiertos] = useState([]);
+  const [revisionAyer, setRevisionAyer] = useState(null);
   const [revision, setRevision] = useState(false);
   const [otrasListas, setOtrasListas] = useState({ personas: [], instaladores: [], articulos: [], proveedores: [], vehiculos: [] });
   const [configMinuta, setConfigMinuta] = useState(null);
@@ -709,6 +757,12 @@ export default function MinutaScreen({ empresa = null }) {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (vivo) setSugeridos(j?.sugeridos || {}); })
       .catch(() => { if (vivo) setSugeridos({}); });
+    // Revisión de la minuta anterior (155)
+    setRevisionAyer(null);
+    apiFetch(`/api/minutas?revision=${fecha}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (vivo) setRevisionAyer(j || { anterior: null, items: [] }); })
+      .catch(() => { if (vivo) setRevisionAyer({ anterior: null, items: [] }); });
     // Lo que sigue abierto de minutas anteriores (parte M3)
     setAbiertos([]);
     apiFetch(`/api/minutas?seguimiento=${fecha}`)
@@ -718,6 +772,15 @@ export default function MinutaScreen({ empresa = null }) {
     return () => { vivo = false; };
   }, [fecha]);
   useEffect(() => { cargarHistorial(); }, [cargarHistorial]);
+  // Al abrir la minuta, la revisión de la anterior ya viene cargada (una vez por día)
+  const revisionPuesta = useRef(null);
+  useEffect(() => {
+    if (cargando || !revisionAyer || minuta.estado === "cerrada" || revisionPuesta.current === fecha) return;
+    revisionPuesta.current = fecha;
+    const nuevos = armarRevision({ anterior: revisionAyer.anterior, items: revisionAyer.items || [], pedidos: revisionAyer.pedidos || [], hoy: fecha, ya: items });
+    if (nuevos.length) setItems((l) => [...nuevos, ...l]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargando, revisionAyer, fecha]);
 
   const cerrada = minuta.estado === "cerrada";
   const cambiarMinuta = (c) => { setMinuta((m) => ({ ...m, ...c })); setCambios(true); };
@@ -789,7 +852,8 @@ export default function MinutaScreen({ empresa = null }) {
       setMinuta({ ...MINUTA_VACIA, ...j.minuta, modera: j.minuta.modera || "", registra: j.minuta.registra || "", notas: j.minuta.notas || "" });
       setItems((j.items || []).map((it) => ({ ...it, texto: it.texto || "", responsable: it.responsable || "", datos: it.datos || {} })));
       setCambios(false);
-      toast.success(cerrar ? "✅ Minuta cerrada" : "✅ Minuta guardada");
+      if (j.aviso) toast.error(j.aviso);
+      else toast.success(cerrar ? "✅ Minuta cerrada" : "✅ Minuta guardada");
       cargarHistorial();
     } catch (e) {
       toast.error(e.message);
@@ -948,6 +1012,8 @@ export default function MinutaScreen({ empresa = null }) {
                 </div>
               )}
             </section>
+
+            <RevisionAyer items={items} anterior={revisionAyer?.anterior} disabled={cerrada} cambiar={cambiarItem} sacar={sacarItem} />
 
             {BLOQUES.map((b) => (
               <section key={b.id} className="g-card p-3 mb-3" aria-label={b.titulo}>

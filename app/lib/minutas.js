@@ -11,6 +11,7 @@
 // (app/api/minutas/route.js).
 
 import { calendarioMinuta, nombreEvento, iconoEvento, DIAS_CORTOS } from "./minutasCalendario";
+import { TIPOS_REVISION, textoRevision, ESTADO_PEDIDO } from "./minutasRevision";
 
 export const CLAVE_CONFIG_MINUTA = "minuta_config";
 
@@ -355,6 +356,7 @@ export function htmlMinuta({ empresa, minuta, items = [], participantes = [] }) 
   </div>
   <h2>Asistencia</h2>
   <div class="asistencia">${todos.map((p) => `<span class="${presentes.has(p.nombre) ? "si" : ""}">${esc(p.nombre)}${p.area ? ` · ${esc(p.area)}` : ""}</span>`).join("")}</div>
+  ${htmlRevision(items)}
   ${BLOQUES.map(bloque).join("")}
   <section><h2>Notas libres</h2><div class="notas">${esc(minuta?.notas || "")}</div></section>
   ${htmlCalendario(items, minuta?.fecha)}
@@ -377,6 +379,18 @@ function htmlCalendario(items, fecha) {
   ${cal.semanas.map((sem) => `<tr>${sem.map((d) => `<td class="${d.hoy ? "hoy" : ""} ${d.finde ? "finde" : ""}"><div class="cal-dia ${d.hoy ? "hoy" : ""}">${d.hoy ? "Hoy" : esc(d.etiqueta)}</div>${d.eventos.map((e) => ev(e)).join("")}</td>`).join("")}</tr>`).join("")}</table>
   ${cal.masAdelante.length ? `<p class="ayuda">Más adelante: ${cal.masAdelante.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e))} ${esc(fechaCorta(e.fecha).slice(0, 5))}`).join(" · ")}</p>` : ""}
   ${cal.sinFecha.length ? `<p class="ayuda">Sin fecha objetivo: ${cal.sinFecha.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e))}`).join(" · ")}</p>` : ""}</section>`;
+}
+
+/** La revisión de la minuta anterior, para la impresa (vacía si no hay). */
+function htmlRevision(items) {
+  const rev = items.filter((it) => it.seccion === "revision");
+  if (!rev.length) return "";
+  const res = (t, it) => (it.datos?.resultado === "si" ? `<b class="punto verde">${esc(t.si)}</b>` : it.datos?.resultado === "no" ? `<b class="punto rojo">${esc(t.no)}</b>` : "—");
+  return `<section><h2>Revisión de la minuta anterior</h2>${TIPOS_REVISION.map((t) => {
+    const l = rev.filter((it) => it.tipo === t.id);
+    if (!l.length) return "";
+    return `<h3>${esc(t.titulo)} <span class="ayuda">— ${esc(t.pregunta)}</span></h3><table><tr><th>Qué</th><th>Responsable</th><th>Fecha objetivo</th><th>Respuesta</th></tr>${l.map((it) => `<tr><td>${esc(textoRevision(it))}${it.datos?.pedido_estado ? ` <span class="ayuda">(${esc(ESTADO_PEDIDO[it.datos.pedido_estado] || it.datos.pedido_estado)})</span>` : ""}</td><td>${esc(it.responsable || "")}</td><td>${esc(fechaCorta(it.fecha_objetivo).slice(0, 5))}</td><td>${res(t, it)}</td></tr>`).join("")}</table>`;
+  }).join("")}</section>`;
 }
 
 /** Abre la minuta en una pestaña nueva con el diálogo de impresión ("Guardar como PDF"). */
