@@ -117,11 +117,37 @@ export function normalizarParametros(valor) {
   }))]));
   out.division_id = typeof v.division_id === "string" ? v.division_id : null;
   out.feriados = normalizarFeriados(v.feriados);
+  out.instalacion = normalizarInstalacion(v.instalacion);
   out.etapas = Object.fromEntries(ETAPAS_PLAN.map((ep) => {
     const c = Number(v.etapas?.[ep.id]);
     return [ep.id, Number.isInteger(c) && c > 0 ? c : null];
   }));
   return out;
+}
+
+// ─── Instalación (parte 42; app/lib/instalacionPlan.js) ─────────────────────
+
+export const PERSONAS_POR_DEFECTO = 2;
+export const LIMITES_INSTALACION = {
+  gab_por_dia: { min: 0.1, max: 100 },
+  personas: { min: 1, max: 20 },
+  dias: { min: 0.5, max: 200 },
+};
+
+const numeroInst = (v) => (typeof v === "number" ? v : leerNumero(v));
+const dentroInst = (n, { min, max }) => n != null && Number.isFinite(n) && n >= min && n <= max;
+
+/** valor.instalacion de la config, limpio: { personas_por_ot, gab_por_dia: { tipo: n|null } }. Sin cargar = vacío. */
+export function normalizarInstalacion(valor) {
+  const v = valor && typeof valor === "object" ? valor : {};
+  const personas = numeroInst(v.personas_por_ot);
+  return {
+    personas_por_ot: dentroInst(personas, LIMITES_INSTALACION.personas) && Number.isInteger(personas) ? personas : PERSONAS_POR_DEFECTO,
+    gab_por_dia: Object.fromEntries(TIPOS_CON_GLOBAL.map((t) => {
+      const n = numeroInst(v.gab_por_dia?.[t.id]);
+      return [t.id, dentroInst(n, LIMITES_INSTALACION.gab_por_dia) ? n : null];
+    })),
+  };
 }
 
 /**

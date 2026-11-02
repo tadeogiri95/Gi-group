@@ -263,6 +263,13 @@ export function validarPatch(tabla, body, sesion) {
       && Object.entries(etapas).every(([c, n]) => /^\d{1,4}$/.test(c) && typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100);
     if (!ok) return { status: 400, error: "Avance manual inválido" };
   }
+  // Instalación de la OT (153): días de a medio día (0,5 a 200), instaladores y prioridad enteros, o null
+  if (tabla === "proyectos" && body) {
+    const d = body.dias_instalacion, p = body.personas_instalacion, pr = body.prioridad_instalacion;
+    if (d !== undefined && d !== null && !(typeof d === "number" && d >= 0.5 && d <= 200 && Number.isInteger(d * 2))) return { status: 400, error: "Días de instalación inválidos" };
+    if (p !== undefined && p !== null && !(Number.isInteger(p) && p >= 1 && p <= 20)) return { status: 400, error: "Instaladores inválidos" };
+    if (pr !== undefined && pr !== null && !(Number.isInteger(pr) && pr >= 1 && pr <= 99999)) return { status: 400, error: "Prioridad de instalación inválida" };
+  }
   // Retrabajo (147): solo se marca terminado
   if (tabla === "retrabajos_ot") {
     const err = validarFinRetrabajo(body);

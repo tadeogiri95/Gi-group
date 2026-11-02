@@ -72,6 +72,7 @@ export const MIGRACIONES = [
   { n: 150, archivo: "150_minutas.sql", nombre: "Minutas", tablas: { minutas: [], minuta_items: [] } },
   { n: 151, archivo: "151_pausas_ot.sql", nombre: "OT en pausa", tablas: { pausas_ot: [] } },
   { n: 152, archivo: "152_unidad_compra_oc.sql", nombre: "Unidad de compra en OC", tablas: { ordenes_compra_items: ["factor", "unidad_stock"] } },
+  { n: 153, archivo: "153_instalacion_ot.sql", nombre: "Días de instalación de OT", tablas: { proyectos: ["dias_instalacion", "personas_instalacion", "prioridad_instalacion"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */
