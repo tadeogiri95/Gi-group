@@ -17,6 +17,7 @@ import {
 } from "../lib/minutas";
 import { nombreDivisionOt } from "../lib/avance";
 import { sugerenciasPendientes } from "../lib/minutasPrecarga";
+import { calendarioMinuta, nombreEvento, iconoEvento, fechaCorta as ddmmCal, DIAS_CORTOS } from "../lib/minutasCalendario";
 import { useAuth } from "../context/AuthContext";
 import { tieneModulo } from "../lib/modulos";
 import { Chip, Modal, Spinner } from "./ui";
@@ -229,6 +230,58 @@ function Instaladores({ it, cambiar, listas, disabled }) {
       </div>
       {!equipo.length && <span className="text-[12px] text-gypi-mute">No hay instaladores marcados en Equipo: usá "Otro…" o marcá "Es instalador" en la ficha de cada uno.</span>}
     </Campo>
+  );
+}
+
+const TONO_CAL = { rojo: "border-gypi-red bg-gypi-red/10", amarillo: "border-yellow-400 bg-yellow-400/15", verde: "border-gypi-green bg-gypi-green/10" };
+function EventoCal({ e, conFecha = false }) {
+  return (
+    <span className={`block rounded-md border px-1 py-0.5 text-[12px] leading-tight truncate ${TONO_CAL[e.semaforo] || "border-gypi-border bg-gypi-surface"}`}
+      title={[nombreEvento(e), e.proyecto, e.responsable].filter(Boolean).join(" · ")}>
+      {iconoEvento(e)} {nombreEvento(e)}{conFecha ? ` · ${ddmmCal(e.fecha)}` : ""}
+    </span>
+  );
+}
+
+/**
+ * Calendario al final de la minuta: las fechas objetivo de producción (🏭) e
+ * instalación (🔧) en curso, día por día; lo vencido va arriba.
+ */
+function CalendarioMinuta({ items, fecha }) {
+  const cal = useMemo(() => calendarioMinuta(items, fecha), [items, fecha]);
+  return (
+    <section className="g-card p-3 mb-3" aria-label="Calendario de fechas objetivo">
+      <h2 className="text-[15px] font-bold m-0 mb-1">📅 Calendario de fechas objetivo</h2>
+      <p className="text-[12px] text-gypi-mute m-0 mb-2">🏭 producción y 🔧 instalación en curso, con el color de su semáforo.</p>
+      {cal.total === 0 ? <p className="text-[13px] text-gypi-mute m-0">Todavía no hay producción ni instalaciones en curso en esta minuta.</p> : (
+        <>
+          {cal.vencidas.length > 0 && (
+            <div className="mb-2" aria-label="Fechas objetivo vencidas">
+              <div className="text-[13px] font-semibold text-gypi-red-ink mb-1">⏰ Ya vencieron</div>
+              <div className="flex flex-wrap gap-1">{cal.vencidas.map((e, i) => <EventoCal key={i} e={e} conFecha />)}</div>
+            </div>
+          )}
+          <div className="grid grid-cols-7 gap-1 text-center text-[12px] text-gypi-mute mb-1">{DIAS_CORTOS.map((d) => <div key={d}>{d}</div>)}</div>
+          {cal.semanas.map((sem) => (
+            <div key={sem[0].fecha} className="grid grid-cols-7 gap-1 mb-1">
+              {sem.map((d) => (
+                <div key={d.fecha} aria-label={`Día ${d.etiqueta}`}
+                  className={`min-h-[56px] min-w-0 rounded-lg border p-1 ${d.hoy ? "border-gypi-amber bg-gypi-amber/10" : "border-gypi-border"} ${d.pasado || d.finde ? "opacity-70" : ""}`}>
+                  <div className={`text-[12px] ${d.hoy ? "font-bold text-gypi-amber-ink" : "text-gypi-mute"}`}>{d.hoy ? "Hoy" : d.etiqueta}</div>
+                  <div className="flex flex-col gap-0.5">{d.eventos.map((e, i) => <EventoCal key={i} e={e} />)}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+          {cal.masAdelante.length > 0 && (
+            <div className="text-[12px] text-gypi-mute mt-1">Más adelante: {cal.masAdelante.map((e) => `${iconoEvento(e)} ${nombreEvento(e)} ${ddmmCal(e.fecha)}`).join(" · ")}</div>
+          )}
+          {cal.sinFecha.length > 0 && (
+            <div className="text-[12px] text-gypi-mute mt-1">Sin fecha objetivo: {cal.sinFecha.map((e) => `${iconoEvento(e)} ${nombreEvento(e)}`).join(" · ")}</div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -921,6 +974,8 @@ export default function MinutaScreen({ empresa = null }) {
               <textarea className="g-input w-full min-h-[96px]" aria-label="Notas libres" value={minuta.notas || ""} maxLength={4000} disabled={cerrada}
                 onChange={(e) => cambiarMinuta({ notas: e.target.value })} placeholder="Cualquier cosa que no entre arriba." />
             </section>
+
+            <CalendarioMinuta items={items} fecha={fecha} />
           </>
         )}
       </div>
