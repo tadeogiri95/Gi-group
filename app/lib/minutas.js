@@ -38,7 +38,8 @@ export const SECCIONES = [
     campos: ["ot", "semaforo", "texto", "responsable", "fecha"], texto: "Contingencia", obligatorios: ["responsable", "fecha"],
   },
   { id: "postventa", bloque: "instalacion", letra: "d", titulo: "Post-venta", ayuda: "La contingencia es el reclamo del cliente.", campos: ["ot", "semaforo", "texto", "responsable", "fecha"], texto: "Reclamo" },
-  { id: "dyt", bloque: "dyt", titulo: "Estado de las cuatro áreas", campos: ["area", "tipo", "ot", "texto"], texto: "Ítem" },
+  // Sin OT todavía (presupuesto, diseño, relevamiento): cliente, proyecto y descripción
+  { id: "dyt", bloque: "dyt", titulo: "Estado de las cuatro áreas", campos: ["area", "tipo", "ot", "texto"], texto: "Descripción" },
   { id: "feedback", bloque: "feedback", titulo: "Feedback", campos: ["ot", "tipo", "area", "texto", "responsable"], texto: "Qué pasó", responsable: "Lo trae" },
   { id: "compra", bloque: "compras", letra: "a", titulo: "Compras a disparar hoy", campos: ["articulo", "ot", "proveedor", "tipo", "fecha"], texto: "Qué se compra", fecha: "Necesario para" },
   { id: "movimiento", bloque: "compras", letra: "b", titulo: "Movimientos del día", campos: ["texto", "desde", "hasta", "responsable", "vehiculo"], texto: "Qué se mueve", responsable: "Quién" },
@@ -199,8 +200,32 @@ export function duracionMinutos(inicio, cierre) {
 /** Participantes de la configuración: [{ nombre, area }]. */
 export function participantesDe(config) {
   const lista = Array.isArray(config?.participantes) ? config.participantes : [];
-  return lista.filter((p) => lleno(p?.nombre)).map((p) => ({ nombre: String(p.nombre).trim(), area: p.area ? String(p.area).trim() : "" }));
+  return lista.filter((p) => lleno(p?.nombre)).map((p) => ({
+    nombre: String(p.nombre).trim(), area: p.area ? String(p.area).trim() : "",
+    ...(p.empleado_id ? { empleado_id: String(p.empleado_id) } : {}),
+  }));
 }
+
+/** Lista de textos sin repetidos ni vacíos (sin distinguir mayúsculas ni acentos), en orden. */
+export function listaUnica(...listas) {
+  const vistos = new Set();
+  const out = [];
+  for (const x of listas.flat()) {
+    const t = String(x ?? "").trim();
+    const k = t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (!t || vistos.has(k)) continue;
+    vistos.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Tipos de feedback: los de siempre más los que la empresa agregó con "Otro". */
+export const tiposFeedbackDe = (config) => listaUnica(TIPOS_FEEDBACK, Array.isArray(config?.tipos_feedback) ? config.tipos_feedback : []);
+
+/** Clientes para Diseño y técnica: los de las OT más los agregados desde la minuta. */
+export const clientesDe = (ots = [], config = null) =>
+  listaUnica(Array.isArray(config?.clientes) ? config.clientes : [], ots.map((p) => p?.cliente)).sort((a, b) => a.localeCompare(b, "es"));
 
 // ─── Impresión (mismo formato que la minuta v2 en papel) ────────────────────
 
@@ -241,7 +266,7 @@ function tablaSeccion(s, items) {
 
 function tablaDyt(items) {
   const celda = (area, estado) => items.filter((it) => it.area === area && it.tipo === estado)
-    .map((it) => `<div>${esc([it.ot ? `OT ${it.ot}` : "", it.texto].filter(Boolean).join(" · "))}</div>`).join("");
+    .map((it) => `<div>${esc([it.ot ? `OT ${it.ot}` : "", it.cliente, it.ot ? "" : it.proyecto, it.texto].filter(Boolean).join(" · "))}</div>`).join("");
   return `<table class="dyt"><thead><tr><th>Área</th>${ESTADOS_DYT.map((e) => `<th>${esc(e.label)}</th>`).join("")}</tr></thead><tbody>${
     AREAS_DYT.map((a) => `<tr><td><b>${esc(a.label)}</b><br><small>${esc(a.detalle)}</small></td>${ESTADOS_DYT.map((e) => `<td>${celda(a.id, e.id)}</td>`).join("")}</tr>`).join("")
   }</tbody></table>`;

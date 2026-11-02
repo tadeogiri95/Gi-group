@@ -277,10 +277,10 @@ test("pantalla — asistencia, elegir la OT del listado y guardar con los datos 
   // Foco: se busca la OT por el cliente y trae división (con su nombre, no el id) y cliente
   fireEvent.click(screen.getByRole("button", { name: "Agregar a Foco del día" }));
   const foco = screen.getByRole("region", { name: "Foco del día" });
-  const buscar = within(foco).getByRole("textbox", { name: "OT o proyecto" });
+  const buscar = within(foco).getByRole("combobox", { name: "OT o proyecto" });
   fireEvent.focus(buscar);
   fireEvent.change(buscar, { target: { value: "prana" } });
-  fireEvent.click(await within(foco).findByRole("button", { name: /OT 7751/ }));
+  fireEvent.click(await within(foco).findByRole("option", { name: /OT 7751/ }));
   assert.ok(within(foco).getByText("Muebles · PRANA"));
   fireEvent.change(within(foco).getByRole("textbox", { name: "Por qué es prioridad" }), { target: { value: "Entrega el viernes" } });
   // Empezar anota la hora
@@ -302,7 +302,7 @@ test("pantalla — un pendiente de instalación sin responsable avisa y no se gu
   await screen.findByRole("region", { name: "Instalación" });
   fireEvent.click(screen.getByRole("button", { name: "Agregar a Pendientes de instalación" }));
   const inst = screen.getByRole("region", { name: "Instalación" });
-  fireEvent.change(within(inst).getByRole("textbox", { name: "OT o proyecto" }), { target: { value: "Zocalines BCG" } });
+  fireEvent.change(within(inst).getByRole("combobox", { name: "OT o proyecto" }), { target: { value: "Zocalines BCG" } });
   assert.ok(within(inst).getByText("Sin responsable no se registra"));
   assert.ok(within(inst).getByText("Sin fecha objetivo no se registra"));
   fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
@@ -716,4 +716,124 @@ test("Reportes → 📝 Minutas — muestra el resumen del período", async () =
   const pend = screen.getByRole("region", { name: "Pendientes por responsable" });
   assert.ok(within(pend).getByText(/1 resuelto · tarda 2 días en promedio/));
   assert.ok(pedidos[0].includes("/api/minutas?reporte=2026-10-26&hasta=2026-11-01"));
+});
+
+// ─── Arreglos de Tadeo (02/11): equipo, diseño sin OT, teclado y tipo "Otro" ───
+
+const { listaUnica, tiposFeedbackDe, clientesDe } = await import("../app/lib/minutas.js");
+
+test("listas — clientes de las OT más los agregados, tipos de feedback con los nuevos, sin repetidos", () => {
+  assert.deepEqual(listaUnica(["Error", "error", " Mejora "], ["Méjora", ""]), ["Error", "Mejora"]);
+  assert.deepEqual(tiposFeedbackDe({ tipos_feedback: ["Seguridad", "Error"] }), ["Error", "Falta de dato", "Mejora", "Reconocimiento", "Seguridad"]);
+  assert.deepEqual(clientesDe([{ cliente: "PRANA" }, { cliente: "BCG" }, { cliente: null }], { clientes: ["Zeta SA", "prana"] }), ["BCG", "prana", "Zeta SA"]);
+});
+
+function mockPantallaConfig(pedidos, escrituras) {
+  mockPantalla(pedidos);
+  const base = global.fetch;
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (!u.startsWith("/api/minutas")) {
+      const b = JSON.parse(opts.body || "{}");
+      if (b.method && b.method !== "GET") escrituras.push(b);
+    }
+    return base(url, opts);
+  };
+}
+
+test("pantalla — modera y registra se eligen del equipo; participantes se tildan del equipo", async () => {
+  const pedidos = [];
+  const escrituras = [];
+  mockPantallaConfig(pedidos, escrituras);
+  pantalla();
+  const modera = await screen.findByRole("combobox", { name: "Modera" });
+  assert.equal(modera.tagName, "SELECT");
+  await waitFor(() => assert.ok(within(modera).getByRole("option", { name: "Agustín Pérez" })));
+  fireEvent.change(modera, { target: { value: "Agustín Pérez" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Registra" }), { target: { value: "Agustín Pérez" } });
+  // Participantes: se tilda del equipo con su división como área
+  fireEvent.click(screen.getByRole("button", { name: "⚙ Participantes" }));
+  const dialogo = await screen.findByRole("dialog");
+  fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Participa Agustín Pérez" }));
+  assert.equal(within(dialogo).getByRole("textbox", { name: "Área de Agustín Pérez" }).value, "Instalación");
+  // Los de antes que no están en el equipo se pueden sacar
+  fireEvent.click(within(dialogo).getByRole("button", { name: "Sacar Tadeo" }));
+  fireEvent.click(within(dialogo).getByRole("button", { name: /Guardar/ }));
+  await waitFor(() => assert.ok(escrituras.some((e) => e.path?.startsWith("config_sistema"))));
+  const v = escrituras.find((e) => e.path?.startsWith("config_sistema")).body.valor;
+  assert.deepEqual(v.participantes, [{ nombre: "Agustín Pérez", area: "Instalación", empleado_id: "e1" }, { nombre: "Zacarías", area: "Gerencia" }]);
+  fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
+  const g = pedidos.find((p) => p.body?.accion === "guardar").body;
+  assert.equal(g.minuta.modera, "Agustín Pérez");
+  assert.equal(g.minuta.registra, "Agustín Pérez");
+});
+
+test("pantalla — en los buscadores se navega con las flechas y se elige con Enter", async () => {
+  const pedidos = [];
+  mockPantalla(pedidos);
+  pantalla();
+  await screen.findByRole("region", { name: "Foco del día" });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar a Foco del día" }));
+  const foco = screen.getByRole("region", { name: "Foco del día" });
+  const buscar = within(foco).getByRole("combobox", { name: "OT o proyecto" });
+  fireEvent.focus(buscar);
+  fireEvent.change(buscar, { target: { value: "7751" } });
+  await within(foco).findByRole("option", { name: /OT 7751/ });
+  fireEvent.keyDown(buscar, { key: "ArrowDown" });
+  assert.equal(within(foco).getByRole("option", { name: /OT 7751/ }).getAttribute("aria-selected"), "true");
+  fireEvent.keyDown(buscar, { key: "Enter" });
+  assert.ok(within(foco).getByText("Muebles · PRANA"));
+  assert.equal(within(foco).queryByRole("listbox"), null);
+});
+
+test("pantalla — diseño y técnica sin OT: cliente (o uno nuevo), proyecto y descripción", async () => {
+  const pedidos = [];
+  const escrituras = [];
+  mockPantallaConfig(pedidos, escrituras);
+  pantalla();
+  await screen.findByRole("region", { name: "Diseño y técnica" });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar a Presupuestos" }));
+  const dyt = screen.getByRole("region", { name: "Diseño y técnica" });
+  const cliente = within(dyt).getByRole("combobox", { name: "Cliente" });
+  fireEvent.focus(cliente);
+  fireEvent.change(cliente, { target: { value: "Hotel Sol" } });
+  fireEvent.click(await within(dyt).findByRole("option", { name: /Agregar nuevo cliente "Hotel Sol"/ }));
+  await waitFor(() => assert.ok(escrituras.some((e) => e.path?.startsWith("config_sistema") && e.body?.valor?.clientes)));
+  assert.deepEqual(escrituras.find((e) => e.body?.valor?.clientes).body.valor.clientes, ["Hotel Sol"]);
+  fireEvent.change(within(dyt).getByRole("textbox", { name: "Proyecto" }), { target: { value: "Habitaciones piso 3" } });
+  fireEvent.change(within(dyt).getByRole("textbox", { name: "Descripción" }), { target: { value: "Cotizar placares" } });
+  // Un cliente que ya existe en las OT aparece para elegir
+  fireEvent.click(screen.getByRole("button", { name: "Agregar a Diseño" }));
+  const clientes = within(dyt).getAllByRole("combobox", { name: "Cliente" });
+  fireEvent.focus(clientes[1]);
+  fireEvent.change(clientes[1], { target: { value: "pra" } });
+  fireEvent.click(await within(dyt).findByRole("option", { name: "PRANA" }));
+  fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
+  const its = pedidos.find((p) => p.body?.accion === "guardar").body.items;
+  assert.deepEqual([its[0].ot, its[0].cliente, its[0].proyecto, its[0].texto], [null, "Hotel Sol", "Habitaciones piso 3", "Cotizar placares"]);
+  assert.equal(its[1].cliente, "PRANA");
+});
+
+test("pantalla — feedback con tipo Otro: se escribe y queda en la lista", async () => {
+  const pedidos = [];
+  const escrituras = [];
+  mockPantallaConfig(pedidos, escrituras);
+  pantalla();
+  await screen.findByRole("region", { name: "Feedback general" });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar a Feedback" }));
+  const fb = screen.getByRole("region", { name: "Feedback general" });
+  fireEvent.change(within(fb).getByRole("combobox", { name: "Tipo de feedback" }), { target: { value: "__otro" } });
+  const nuevo = within(fb).getByRole("textbox", { name: "Nuevo tipo de feedback" });
+  fireEvent.change(nuevo, { target: { value: "Seguridad" } });
+  fireEvent.keyDown(nuevo, { key: "Enter" });
+  const tipo = within(fb).getByRole("combobox", { name: "Tipo de feedback" });
+  assert.equal(tipo.value, "Seguridad");
+  await waitFor(() => assert.ok(escrituras.some((e) => e.body?.valor?.tipos_feedback)));
+  assert.deepEqual(escrituras.find((e) => e.body?.valor?.tipos_feedback).body.valor.tipos_feedback, ["Seguridad"]);
+  // El renglón siguiente ya lo tiene en la lista
+  fireEvent.click(screen.getByRole("button", { name: "Agregar a Feedback" }));
+  const tipos = within(fb).getAllByRole("combobox", { name: "Tipo de feedback" });
+  assert.ok(within(tipos[1]).getByRole("option", { name: "Seguridad" }));
 });

@@ -8,12 +8,12 @@
 // los proveedores y los vehículos. Siempre se puede escribir a mano lo que no
 // está (un instalador de afuera, una obra sin OT). Solo Dueño / Gerencia.
 // Se guarda por /api/minutas; se imprime o se baja en PDF con el formato v2.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { apiFetch, sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import {
-  AREAS_DYT, AREAS_FEEDBACK, BLOQUES, CLAVE_CONFIG_MINUTA, ESTADOS_DYT, LISTO, SEMAFOROS, TIPOS_FEEDBACK, URGENCIAS,
-  VECES_A_GERENCIA, datosDeOt, pedidoDesdeMinuta, textoCantidad, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
+  AREAS_DYT, AREAS_FEEDBACK, BLOQUES, CLAVE_CONFIG_MINUTA, ESTADOS_DYT, LISTO, SEMAFOROS, URGENCIAS,
+  VECES_A_GERENCIA, datosDeOt, pedidoDesdeMinuta, textoCantidad, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, clientesDe, listaUnica, tiposFeedbackDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
 } from "../lib/minutas";
 import { nombreDivisionOt } from "../lib/avance";
 import { sugerenciasPendientes } from "../lib/minutasPrecarga";
@@ -23,37 +23,69 @@ import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const MAX_SUGERENCIAS = 8;
+const OTRO = "__otro";
 const normal = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/** Caja de texto que sugiere de una lista y deja escribir lo que no está. */
-function Sugerencias({ label, value, onChange, opciones, onElegir, placeholder = "", disabled = false }) {
+/**
+ * Caja de texto que sugiere de una lista y deja escribir lo que no está.
+ * Con el teclado: ↓ / ↑ recorren las opciones, Enter elige y Esc cierra.
+ * nuevo: { texto: (q) => string, onNuevo: (q) => void } agrega al final la
+ * opción de dar de alta lo escrito cuando no está en la lista.
+ */
+function Sugerencias({ label, value, onChange, opciones, onElegir, placeholder = "", disabled = false, nuevo = null }) {
   const [abierto, setAbierto] = useState(false);
+  const [activa, setActiva] = useState(-1);
+  const idLista = useId();
   const lista = useMemo(() => {
     const q = normal(value).trim();
     if (!q) return [];
-    return opciones.filter((o) => normal(`${o.label} ${o.detalle || ""}`).includes(q)).slice(0, MAX_SUGERENCIAS);
-  }, [value, opciones]);
+    const l = opciones.filter((o) => normal(`${o.label} ${o.detalle || ""}`).includes(q)).slice(0, MAX_SUGERENCIAS);
+    if (nuevo && !opciones.some((o) => normal(o.label).trim() === q)) {
+      l.push({ valor: "__nuevo", label: nuevo.texto(String(value).trim()), esNuevo: true });
+    }
+    return l;
+  }, [value, opciones, nuevo]);
+  useEffect(() => { setActiva(-1); }, [value]);
+  const elegir = (o) => {
+    if (o.esNuevo) nuevo.onNuevo(String(value).trim());
+    else onElegir(o);
+    setAbierto(false);
+    setActiva(-1);
+  };
+  const visible = abierto && lista.length > 0;
+  function tecla(e) {
+    if (e.key === "Escape") { setAbierto(false); return; }
+    if (!lista.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setAbierto(true); setActiva((i) => (i + 1) % lista.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setAbierto(true); setActiva((i) => (i <= 0 ? lista.length - 1 : i - 1)); }
+    else if (e.key === "Enter" && visible && activa >= 0) { e.preventDefault(); elegir(lista[activa]); }
+  }
   return (
     <div className="relative">
       <input
         className="g-input w-full"
         aria-label={label}
+        role="combobox"
+        aria-expanded={visible}
+        aria-controls={idLista}
+        aria-autocomplete="list"
+        aria-activedescendant={visible && activa >= 0 ? `${idLista}-${activa}` : undefined}
         placeholder={placeholder || label}
         value={value || ""}
         disabled={disabled}
         onChange={(e) => { onChange(e.target.value); setAbierto(true); }}
+        onKeyDown={tecla}
         onFocus={() => setAbierto(true)}
         onBlur={() => setTimeout(() => setAbierto(false), 150)}
       />
-      {abierto && lista.length > 0 && (
-        <ul role="listbox" aria-label={`Sugerencias de ${label}`} className="absolute z-20 left-0 right-0 mt-1 max-h-64 overflow-auto rounded-lg border border-gypi-border bg-gypi-bg shadow-lg list-none p-1 m-0">
-          {lista.map((o) => (
-            <li key={o.valor} role="option" aria-selected="false">
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onElegir(o); setAbierto(false); }}
-                className="w-full text-left bg-transparent border-none cursor-pointer px-2 py-2 rounded-md text-gypi-text text-[14px] min-h-[44px] hover:bg-gypi-surf-hi">
-                <span className="font-semibold">{o.label}</span>
-                {o.detalle && <span className="block text-[12px] text-gypi-mute">{o.detalle}</span>}
-              </button>
+      {visible && (
+        <ul id={idLista} role="listbox" aria-label={`Sugerencias de ${label}`} className="absolute z-20 left-0 right-0 mt-1 max-h-64 overflow-auto rounded-lg border border-gypi-border bg-gypi-bg shadow-lg list-none p-1 m-0">
+          {lista.map((o, i) => (
+            <li key={o.valor} id={`${idLista}-${i}`} role="option" aria-selected={i === activa}
+              onMouseDown={(e) => e.preventDefault()} onClick={() => elegir(o)} onMouseEnter={() => setActiva(i)}
+              className={`cursor-pointer px-2 py-2 rounded-md text-[14px] min-h-[44px] ${i === activa ? "bg-gypi-surf-hi" : ""} ${o.esNuevo ? "text-gypi-cyan font-semibold" : "text-gypi-text"}`}>
+              <span className={o.esNuevo ? "" : "font-semibold"}>{o.label}</span>
+              {o.detalle && <span className="block text-[12px] text-gypi-mute">{o.detalle}</span>}
             </li>
           ))}
         </ul>
@@ -88,6 +120,75 @@ function Semaforo({ value, onChange, disabled }) {
   );
 }
 
+/**
+ * Diseño y técnica: el primer eslabón, muchas veces sin OT todavía
+ * (presupuesto, diseño, relevamiento). Se elige la OT si ya existe; si no,
+ * el cliente (o se agrega uno nuevo) y se escribe el proyecto.
+ */
+function ClienteProyecto({ it, cambiar, listas, disabled }) {
+  const [buscar, setBuscar] = useState("");
+  const clientes = useMemo(() => listas.clientes.map((c) => ({ valor: c, label: c })), [listas.clientes]);
+  const nuevo = useMemo(() => ({
+    texto: (q) => `＋ Agregar nuevo cliente "${q}"`,
+    onNuevo: (q) => { cambiar({ cliente: q }); listas.agregarCliente(q); },
+  }), [cambiar, listas]);
+  return (
+    <>
+      <Campo label="OT (si ya tiene)" div>
+        {it.ot ? (
+          <div className="flex items-center gap-2 min-h-[44px]">
+            <span className="text-[14px] font-semibold flex-1 min-w-0 truncate">OT {it.ot}{it.division ? ` · ${it.division}` : ""}</span>
+            {!disabled && <button type="button" className="min-h-[44px] px-2 bg-transparent border-none text-gypi-red-ink cursor-pointer text-[13px]" onClick={() => cambiar({ ot: null, division: null })}>✕ Quitar</button>}
+          </div>
+        ) : (
+          <Sugerencias label="OT (si ya tiene)" value={buscar} disabled={disabled} opciones={listas.ots}
+            onChange={setBuscar} onElegir={(o) => { setBuscar(""); cambiar(datosDeOt(o.dato)); }} placeholder="Sin OT todavía: dejalo vacío" />
+        )}
+      </Campo>
+      <Campo label="Cliente" div>
+        <Sugerencias label="Cliente" value={it.cliente || ""} disabled={disabled} opciones={clientes} nuevo={nuevo}
+          onChange={(v) => cambiar({ cliente: v })} onElegir={(o) => cambiar({ cliente: o.label })} placeholder="Buscá o agregá el cliente" />
+      </Campo>
+      <Campo label="Proyecto">
+        <input className="g-input w-full" aria-label="Proyecto" value={it.proyecto || ""} maxLength={200} disabled={disabled} onChange={(e) => cambiar({ proyecto: e.target.value })} />
+      </Campo>
+    </>
+  );
+}
+
+/** Tipo de feedback: los de siempre, los agregados y "Otro" para escribir uno nuevo que queda en la lista. */
+function TipoFeedback({ it, cambiar, listas, disabled }) {
+  const [otro, setOtro] = useState(null);
+  const tipos = it.tipo && !listas.tiposFeedback.includes(it.tipo) ? [...listas.tiposFeedback, it.tipo] : listas.tiposFeedback;
+  const agregar = () => {
+    const t = String(otro || "").trim();
+    if (!t) return;
+    cambiar({ tipo: t });
+    listas.agregarTipoFeedback(t);
+    setOtro(null);
+  };
+  return (
+    <Campo label="Tipo" div>
+      {otro === null ? (
+        <select className="g-input w-full" aria-label="Tipo de feedback" value={it.tipo || ""} disabled={disabled}
+          onChange={(e) => (e.target.value === OTRO ? setOtro("") : cambiar({ tipo: e.target.value || null }))}>
+          <option value="">Elegí</option>
+          {tipos.map((t) => <option key={t} value={t}>{t}</option>)}
+          <option value={OTRO}>Otro…</option>
+        </select>
+      ) : (
+        <div className="flex gap-1">
+          <input className="g-input w-full" aria-label="Nuevo tipo de feedback" placeholder="Escribí el tipo" value={otro} maxLength={40} autoFocus
+            onChange={(e) => setOtro(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); agregar(); } else if (e.key === "Escape") setOtro(null); }} />
+          <button type="button" className="g-btn g-btn-primary" disabled={!otro.trim()} onClick={agregar}>Agregar</button>
+          <button type="button" aria-label="Cancelar tipo nuevo" className="min-h-[44px] min-w-[44px] bg-transparent border-none text-gypi-mute cursor-pointer" onClick={() => setOtro(null)}>✕</button>
+        </div>
+      )}
+    </Campo>
+  );
+}
+
 /** Un renglón de una sección, con los campos que lleva esa sección. */
 function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, pedir = null }) {
   const c = (campo) => s.campos.includes(campo);
@@ -118,14 +219,15 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, ped
             </select>
           </Campo>
         )}
-        {c("ot") && (
-          <Campo label={s.id === "compra" ? "Para proyecto" : "OT o proyecto"} ancho={s.id !== "dyt" && s.id !== "compra"}>
+        {c("ot") && s.id === "dyt" && <ClienteProyecto it={it} cambiar={cambiar} listas={listas} disabled={disabled} />}
+        {c("ot") && s.id !== "dyt" && (
+          <Campo label={s.id === "compra" ? "Para proyecto" : "OT o proyecto"} ancho={s.id !== "compra"}>
             <Sugerencias label={s.id === "compra" ? "Para proyecto" : "OT o proyecto"} value={textoOt} disabled={disabled} opciones={listas.ots}
               onChange={(v) => cambiar({ ot: null, proyecto: v })}
               onElegir={(o) => cambiar(datosDeOt(o.dato))} placeholder="Buscá la OT, el cliente o la obra" />
             {it.ot ? (
               <span className="text-[12px] text-gypi-mute">{[it.division, it.cliente].filter(Boolean).join(" · ")}</span>
-            ) : s.id !== "dyt" && s.id !== "compra" && (it.proyecto || "") !== "" ? (
+            ) : s.id !== "compra" && (it.proyecto || "") !== "" ? (
               <input className="g-input w-full" aria-label="Cliente" placeholder="Cliente" value={it.cliente || ""} disabled={disabled} onChange={(e) => cambiar({ cliente: e.target.value })} />
             ) : null}
           </Campo>
@@ -135,12 +237,7 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, ped
         )}
         {s.id === "feedback" && (
           <>
-            <Campo label="Tipo">
-              <select className="g-input w-full" aria-label="Tipo de feedback" value={it.tipo || ""} disabled={disabled} onChange={(e) => cambiar({ tipo: e.target.value || null })}>
-                <option value="">Elegí</option>
-                {TIPOS_FEEDBACK.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </Campo>
+            <TipoFeedback it={it} cambiar={cambiar} listas={listas} disabled={disabled} />
             <Campo label="Feedback para">
               <select className="g-input w-full" aria-label="Feedback para" value={it.area || ""} disabled={disabled} onChange={(e) => cambiar({ area: e.target.value || null })}>
                 <option value="">Elegí</option>
@@ -332,26 +429,88 @@ function RevisionFeedback({ abierto, hasta, onCerrar }) {
   );
 }
 
-/** Lista de participantes que se tildan en Asistencia y se eligen en Modera / Registra. */
-function EditarParticipantes({ abierto, inicial, onCerrar, onGuardar }) {
-  const [lista, setLista] = useState(inicial);
-  useEffect(() => { if (abierto) setLista(inicial.length ? inicial : [{ nombre: "", area: "" }]); }, [abierto, inicial]);
-  const cambiar = (i, campo, v) => setLista((l) => l.map((p, j) => (j === i ? { ...p, [campo]: v } : p)));
+/**
+ * Modera / Registra: una persona del equipo de la empresa. Los participantes
+ * de la reunión van primero. Un nombre viejo que no está en el equipo se
+ * sigue mostrando para no perderlo.
+ */
+function ElegirPersona({ label, value, onChange, personas, participantes, disabled }) {
+  const enReunion = new Set(participantes.map((p) => p.nombre));
+  const primero = personas.filter((p) => enReunion.has(p.label));
+  const resto = personas.filter((p) => !enReunion.has(p.label));
+  const fuera = value && !personas.some((p) => p.label === value);
+  return (
+    <select className="g-input w-full" aria-label={label} value={value || ""} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Elegí</option>
+      {fuera && <option value={value}>{value}</option>}
+      {primero.length > 0 && (
+        <optgroup label="En la reunión">{primero.map((p) => <option key={p.valor} value={p.label}>{p.label}</option>)}</optgroup>
+      )}
+      {resto.length > 0 && (
+        <optgroup label={primero.length ? "Resto del equipo" : "Equipo"}>{resto.map((p) => <option key={p.valor} value={p.label}>{p.label}</option>)}</optgroup>
+      )}
+    </select>
+  );
+}
+
+/**
+ * Participantes de la reunión: se tildan del equipo cargado en la empresa
+ * (Equipo). El área es lo que cada uno cuenta; por defecto, su división.
+ */
+function EditarParticipantes({ abierto, inicial, personas, onCerrar, onGuardar }) {
+  const [elegidos, setElegidos] = useState({});
+  const [buscar, setBuscar] = useState("");
+  useEffect(() => {
+    if (!abierto) return;
+    const m = {};
+    for (const p of inicial) m[p.nombre] = { ...p };
+    setElegidos(m);
+    setBuscar("");
+  }, [abierto, inicial]);
+  const q = normal(buscar).trim();
+  const equipo = personas.filter((p) => !q || normal(`${p.label} ${p.detalle || ""}`).includes(q));
+  // Los que quedaron de antes y no están en el equipo: se pueden sacar
+  const viejos = Object.values(elegidos).filter((p) => !personas.some((x) => x.label === p.nombre));
+  const tildar = (p) => setElegidos((m) => {
+    const n = { ...m };
+    if (n[p.label]) delete n[p.label];
+    else n[p.label] = { nombre: p.label, area: p.detalle || "", empleado_id: p.valor };
+    return n;
+  });
+  const area = (nombre, v) => setElegidos((m) => ({ ...m, [nombre]: { ...m[nombre], area: v } }));
+  const guardar = () => {
+    const orden = [...personas.map((p) => p.label), ...viejos.map((p) => p.nombre)];
+    onGuardar(participantesDe({ participantes: orden.filter((n) => elegidos[n]).map((n) => elegidos[n]) }));
+  };
   return (
     <Modal open={abierto} onClose={onCerrar} title="Participantes de la reunión" maxWidth={560}>
-      <p className="text-[13px] text-gypi-mute mt-0">Los que se tildan en Asistencia. El área es lo que cada uno cuenta (por ejemplo, Prod. muebles).</p>
-      {lista.map((p, i) => (
-        <div key={i} className="flex gap-2 mb-2">
-          <input className="g-input w-full" aria-label={`Nombre ${i + 1}`} placeholder="Nombre" value={p.nombre} maxLength={80} onChange={(e) => cambiar(i, "nombre", e.target.value)} />
-          <input className="g-input w-full" aria-label={`Área ${i + 1}`} placeholder="Área" value={p.area} maxLength={60} onChange={(e) => cambiar(i, "area", e.target.value)} />
-          <button type="button" aria-label={`Sacar ${p.nombre || i + 1}`} onClick={() => setLista((l) => l.filter((_, j) => j !== i))}
-            className="min-h-[44px] min-w-[44px] bg-transparent border-none text-gypi-red-ink cursor-pointer">✕</button>
-        </div>
-      ))}
-      <button type="button" className="g-btn g-btn-secondary mb-3" onClick={() => setLista((l) => [...l, { nombre: "", area: "" }])}>＋ Agregar persona</button>
-      <div className="flex gap-2">
+      <p className="text-[13px] text-gypi-mute mt-0">Tildá del equipo a los que participan. El área es lo que cada uno cuenta (por ejemplo, Prod. muebles).</p>
+      <input className="g-input w-full mb-2" aria-label="Buscar en el equipo" placeholder="Buscar en el equipo" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
+      {personas.length === 0 && <p className="text-[13px] text-gypi-mute">No hay personas activas en el equipo. Cargalas en Equipo.</p>}
+      <ul className="list-none m-0 p-0 max-h-[50vh] overflow-y-auto" aria-label="Equipo">
+        {equipo.map((p) => {
+          const el = elegidos[p.label];
+          return (
+            <li key={p.valor} className="flex items-center gap-2 py-1 border-b border-gypi-border last:border-b-0">
+              <label className="flex items-center gap-2 flex-1 min-w-0 min-h-[44px] cursor-pointer text-[14px]">
+                <input type="checkbox" checked={!!el} onChange={() => tildar(p)} aria-label={`Participa ${p.label}`} />
+                <span className="truncate">{p.label}</span>
+              </label>
+              {el && <input className="g-input !w-40" aria-label={`Área de ${p.label}`} placeholder="Área" value={el.area} maxLength={60} onChange={(e) => area(p.label, e.target.value)} />}
+            </li>
+          );
+        })}
+        {viejos.map((p) => (
+          <li key={`v-${p.nombre}`} className="flex items-center gap-2 py-1 border-b border-gypi-border last:border-b-0">
+            <span className="flex-1 min-w-0 text-[14px]">{p.nombre} <span className="text-[12px] text-gypi-mute">no está en el equipo</span></span>
+            <button type="button" aria-label={`Sacar ${p.nombre}`} onClick={() => setElegidos((m) => { const n = { ...m }; delete n[p.nombre]; return n; })}
+              className="min-h-[44px] min-w-[44px] bg-transparent border-none text-gypi-red-ink cursor-pointer">✕</button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2 mt-3">
         <button type="button" className="g-btn g-btn-secondary flex-1" onClick={onCerrar}>Cancelar</button>
-        <button type="button" className="g-btn g-btn-primary flex-1" onClick={() => onGuardar(participantesDe({ participantes: lista }))}>Guardar</button>
+        <button type="button" className="g-btn g-btn-primary flex-1" onClick={guardar}>Guardar ({Object.keys(elegidos).length})</button>
       </div>
     </Modal>
   );
@@ -376,6 +535,7 @@ export default function MinutaScreen({ empresa = null }) {
   const [abiertos, setAbiertos] = useState([]);
   const [revision, setRevision] = useState(false);
   const [otrasListas, setOtrasListas] = useState({ personas: [], articulos: [], proveedores: [], vehiculos: [] });
+  const [configMinuta, setConfigMinuta] = useState(null);
   const { divisiones } = useAuth();
   // La división de la OT se guarda con su nombre (en proyectos puede estar el id)
   const listas = useMemo(() => ({
@@ -385,7 +545,12 @@ export default function MinutaScreen({ empresa = null }) {
       const dato = { ...p, division };
       return { valor: p.ot, label: `OT ${p.ot}`, detalle: [p.descripcion || p.proyecto, p.cliente || p.obra, division, p.estado === "cerrado" ? "cerrada" : ""].filter(Boolean).join(" · "), dato };
     }),
-  }), [otsCrudas, otrasListas, divisiones]);
+    clientes: clientesDe(otsCrudas, configMinuta),
+    tiposFeedback: tiposFeedbackDe(configMinuta),
+    agregarCliente: (c) => agregarAConfig("clientes", c),
+    agregarTipoFeedback: (t) => agregarAConfig("tipos_feedback", t),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [otsCrudas, otrasListas, divisiones, configMinuta]);
 
   // Lo que se elige en los buscadores: si alguna lista no se puede leer, se escribe a mano
   useEffect(() => {
@@ -408,6 +573,7 @@ export default function MinutaScreen({ empresa = null }) {
         vehiculos: vehiculos.map((v) => ({ valor: String(v.id), label: [v.patente, v.marca, v.modelo].filter(Boolean).join(" ") })),
       });
       setParticipantes(participantesDe(config?.[0]?.valor));
+      setConfigMinuta(config?.[0]?.valor || {});
     });
   }, []);
 
@@ -540,17 +706,34 @@ export default function MinutaScreen({ empresa = null }) {
     toast.success("La minuta quedó abierta para corregirla");
   }
 
+  // La configuración de la minuta (participantes, clientes y tipos agregados) se relee antes de escribir
+  async function guardarConfig(cambiar) {
+    const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_CONFIG_MINUTA}&select=valor&limit=1`);
+    const valor = cambiar(rows?.[0]?.valor || {});
+    if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_CONFIG_MINUTA}`, { valor });
+    else await sb.post("config_sistema", { clave: CLAVE_CONFIG_MINUTA, valor });
+    setConfigMinuta(valor);
+    return valor;
+  }
+
   async function guardarParticipantes(lista) {
     try {
-      const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_CONFIG_MINUTA}&select=valor&limit=1`);
-      const valor = { ...(rows?.[0]?.valor || {}), participantes: lista };
-      if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_CONFIG_MINUTA}`, { valor });
-      else await sb.post("config_sistema", { clave: CLAVE_CONFIG_MINUTA, valor });
+      await guardarConfig((v) => ({ ...v, participantes: lista }));
       setParticipantes(lista);
       setEditarGente(false);
       toast.success("✅ Participantes guardados");
     } catch (e) {
       toast.error(`No se pudo guardar: ${e.message}`);
+    }
+  }
+
+  // "Agregar nuevo cliente" y el tipo "Otro" del feedback quedan en la lista para la próxima
+  async function agregarAConfig(clave, texto) {
+    try {
+      await guardarConfig((v) => ({ ...v, [clave]: listaUnica(Array.isArray(v[clave]) ? v[clave] : [], [texto]) }));
+      toast.success(clave === "clientes" ? `✅ Cliente "${texto}" agregado` : `✅ Tipo "${texto}" agregado a la lista`);
+    } catch (e) {
+      toast.error(`No se pudo agregar: ${e.message}`);
     }
   }
 
@@ -641,12 +824,10 @@ export default function MinutaScreen({ empresa = null }) {
                   <span className="text-[16px] font-bold text-gypi-text py-2">{minuta.cierre ? `${hora(minuta.cierre)}${duracion != null ? ` · ${duracion} min` : ""}` : "—"}</span>
                 </Campo>
                 <Campo label="Modera">
-                  <Sugerencias label="Modera" value={minuta.modera} disabled={cerrada} opciones={participantes.map((p) => ({ valor: p.nombre, label: p.nombre, detalle: p.area }))}
-                    onChange={(v) => cambiarMinuta({ modera: v })} onElegir={(o) => cambiarMinuta({ modera: o.label })} />
+                  <ElegirPersona label="Modera" value={minuta.modera} disabled={cerrada} personas={listas.personas} participantes={participantes} onChange={(v) => cambiarMinuta({ modera: v })} />
                 </Campo>
                 <Campo label="Registra">
-                  <Sugerencias label="Registra" value={minuta.registra} disabled={cerrada} opciones={participantes.map((p) => ({ valor: p.nombre, label: p.nombre, detalle: p.area }))}
-                    onChange={(v) => cambiarMinuta({ registra: v })} onElegir={(o) => cambiarMinuta({ registra: o.label })} />
+                  <ElegirPersona label="Registra" value={minuta.registra} disabled={cerrada} personas={listas.personas} participantes={participantes} onChange={(v) => cambiarMinuta({ registra: v })} />
                 </Campo>
               </div>
             </section>
@@ -657,7 +838,7 @@ export default function MinutaScreen({ empresa = null }) {
                 <button type="button" className="g-btn g-btn-secondary" onClick={() => setEditarGente(true)}>⚙ Participantes</button>
               </div>
               {presentes.length === 0 ? (
-                <p className="text-[13px] text-gypi-mute m-0">Armá la lista de los que participan con ⚙ Participantes.</p>
+                <p className="text-[13px] text-gypi-mute m-0">Elegí del equipo a los que participan con ⚙ Participantes.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {presentes.map((n) => {
@@ -715,7 +896,7 @@ export default function MinutaScreen({ empresa = null }) {
       )}
 
       <RevisionFeedback abierto={revision} hasta={fecha} onCerrar={() => setRevision(false)} />
-      <EditarParticipantes abierto={editarGente} inicial={participantes} onCerrar={() => setEditarGente(false)} onGuardar={guardarParticipantes} />
+      <EditarParticipantes abierto={editarGente} inicial={participantes} personas={listas.personas} onCerrar={() => setEditarGente(false)} onGuardar={guardarParticipantes} />
     </div>
   );
 }
