@@ -96,9 +96,19 @@ export function proveedorSugerido(articulo, proveedores, ultimoPorSku = new Map(
  * taller y después lo que la planilla sugiere comprar (rojo o amarillo con
  * cantidad sugerida), salvo los SKU que ya están en un pedido pendiente o en
  * una OC abierta.
- * @returns {object[]} { clave, origen: "pedido"|"mrp", sku, descripcion, unidad, cantidad, precio_unitario, proveedor_id, pedido_id, ot, detalle, nivel }
+ * Si el SKU se compró la última vez en otra unidad (cajas, rollos; 152), se
+ * propone esa unidad con la cantidad y el precio convertidos.
+ * @returns {object[]} { clave, origen: "pedido"|"mrp", sku, descripcion, unidad, unidad_base, factor, unidad_stock, cantidad, precio_unitario, proveedor_id, pedido_id, ot, detalle, nivel }
  */
-export function lineasAComprar({ pedidos = [], articulos = [], proveedores = [], skusEnOc = new Set(), ultimoPorSku = new Map() }) {
+/** Renglón de "A comprar" en la unidad del stock o en la última unidad de compra recordada. */
+function conUnidadRecordada(l, recordada) {
+  const base = { ...l, unidad_base: l.unidad, factor: 1, unidad_stock: null };
+  if (!l.sku || !recordada || (recordada.unidad_stock && l.unidad && recordada.unidad_stock !== l.unidad)) return base;
+  const { cantidad, precio } = convertirUnidad({ cantidad: l.cantidad, precio: l.precio_unitario }, recordada.factor);
+  return { ...base, unidad: recordada.unidad, factor: recordada.factor, unidad_stock: l.unidad || recordada.unidad_stock, cantidad, precio_unitario: precio };
+}
+
+export function lineasAComprar({ pedidos = [], articulos = [], proveedores = [], skusEnOc = new Set(), ultimoPorSku = new Map(), unidadPorSku = new Map() }) {
   const porSku = new Map((articulos || []).map((a) => [a.sku, a]));
   const out = [];
   const skusPedidos = new Set();
@@ -142,7 +152,7 @@ export function lineasAComprar({ pedidos = [], articulos = [], proveedores = [],
       nivel,
     });
   }
-  return out;
+  return out.map((l) => conUnidadRecordada(l, unidadPorSku.get(l.sku)));
 }
 
 /**
@@ -330,6 +340,70 @@ export function pendienteItem(it) {
   return p > 0 ? Math.round(p * 1000) / 1000 : 0;
 }
 
+// ─── Unidad de compra (migración 152) ───
+// Un renglón de la OC puede ir en otra unidad que la del stock (cajas, rollos,
+// metros): "factor" dice cuántas unidades de stock trae una de compra. La
+// cantidad, lo recibido y el precio del renglón van en la unidad de compra;
+// al stock entra cantidad × factor y el precio ÷ factor.
+
+/** Cuántas unidades de stock trae una unidad de compra del renglón; 1 = la misma unidad. */
+export function factorItem(it) {
+  const f = Number(it?.factor);
+  return Number.isFinite(f) && f > 0 ? f : 1;
+}
+
+/** Cantidad en la unidad de compra → en la unidad del stock. */
+export function cantidadEnStock(cantidad, it) {
+  return Math.round(Number(cantidad || 0) * factorItem(it) * 1000) / 1000;
+}
+
+/** Precio por unidad de compra → por unidad del stock (null si no hay precio). */
+export function precioEnStock(precio, it) {
+  if (precio === null || precio === undefined || precio === "") return null;
+  const p = Number(precio);
+  return Number.isFinite(p) ? p / factorItem(it) : null;
+}
+
+/** "= 150 unidades al stock" cuando el renglón va en otra unidad; "" si es la misma. */
+export function equivalenciaStock(cantidad, it) {
+  if (factorItem(it) === 1) return "";
+  const n = Number(cantidad);
+  if (!Number.isFinite(n) || n <= 0) return `1 ${it?.unidad || "unidad de compra"} = ${cantTexto(factorItem(it))} ${it?.unidad_stock || "unidades del stock"}`;
+  return `= ${cantTexto(cantidadEnStock(n, it))} ${it?.unidad_stock || "unidades"} al stock`;
+}
+
+/**
+ * Cambia la unidad de compra de un renglón conservando lo mismo en unidades de
+ * stock: 120 unidades a $10 → en cajas de 50 son 2,4 cajas a $500.
+ * @param {{ cantidad: number|null, precio: number|null, factor?: number }} actual
+ * @param {number} factorNuevo
+ * @returns {{ cantidad: number|null, precio: number|null }}
+ */
+export function convertirUnidad({ cantidad, precio, factor = 1 }, factorNuevo) {
+  const viejo = Number(factor) > 0 ? Number(factor) : 1;
+  const nuevo = Number(factorNuevo) > 0 ? Number(factorNuevo) : 1;
+  const c = cantidad === null || cantidad === undefined || !Number.isFinite(Number(cantidad)) ? null : Math.round((Number(cantidad) * viejo / nuevo) * 1000) / 1000;
+  const p = precio === null || precio === undefined || !Number.isFinite(Number(precio)) ? null : Math.round((Number(precio) / viejo * nuevo) * 100) / 100;
+  return { cantidad: c, precio: p };
+}
+
+/**
+ * Última unidad de compra usada para cada SKU (el renglón más nuevo primero):
+ * solo se recuerda si era otra que la del stock.
+ * @param {object[]} items ordenes_compra_items ordenados del más nuevo al más viejo
+ * @returns {Map<string, { unidad: string, factor: number, unidad_stock: string|null }>}
+ */
+export function ultimaUnidadPorSku(items) {
+  const vistos = new Set();
+  const out = new Map();
+  for (const it of items || []) {
+    if (!it?.sku || vistos.has(it.sku)) continue;
+    vistos.add(it.sku);
+    if (factorItem(it) !== 1 && it.unidad) out.set(it.sku, { unidad: it.unidad, factor: factorItem(it), unidad_stock: it.unidad_stock || null });
+  }
+  return out;
+}
+
 /** OC que se pueden cerrar con faltantes (123): ya llegó algo y el resto no va a venir. */
 export const ESTADOS_OC_CERRABLE = ["recibida_parcial"];
 
@@ -350,7 +424,8 @@ export function pedidosAlCerrar(items) {
     if (!it.pedido_id) continue;
     const falta = pendienteItem(it);
     if (falta === 0) completos.push(it.pedido_id);
-    else if (Number(it.cantidad_recibida || 0) > 0) nuevos.push({ pedido_id: it.pedido_id, cantidad: falta });
+    // Lo que faltó vuelve al pedido en la unidad del stock (152)
+    else if (Number(it.cantidad_recibida || 0) > 0) nuevos.push({ pedido_id: it.pedido_id, cantidad: cantidadEnStock(falta, it) });
     else volver.push(it.pedido_id);
   }
   return { completos, volver, nuevos };

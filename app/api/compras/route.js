@@ -27,6 +27,9 @@
 //   oc_guardar            → moneda, fecha prometida, notas, cantidades, precios y
 //                           observaciones; quitar renglones (en borrador); el pedido
 //                           quitado vuelve a pendiente
+//                           Cada renglón puede ir en otra unidad de compra (cajas,
+//                           rollos) con cuántas unidades de stock trae cada una;
+//                           al recibir entra al stock convertido (152)
 //   oc_enviar             → borrador → enviada
 //   oc_anular             → la OC queda anulada y sus pedidos vuelven a pendiente
 //   oc_cerrar_faltantes   → una OC recibida en parte se cierra con motivo: lo que no llegó
@@ -53,7 +56,7 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { alcanceDe } from "../../lib/alcance";
 import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
-import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, pedidosAlCerrar, precioEnPesos } from "../../lib/ordenesCompra";
+import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, pedidosAlCerrar, precioEnPesos, precioEnStock } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 
 function faltaMigracion(err) {
@@ -80,6 +83,17 @@ function faltaMigracionCierre(err) {
   const m = String(err?.message);
   return (/cerrada_motivo|cerrada_por|cerrada_at|faltante_de/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m))
     || (/ordenes_compra_estado_check/.test(m) && /23514|violates/.test(m));
+}
+
+function faltaMigracionUnidad(err) {
+  const m = String(err?.message);
+  return /\bfactor\b|unidad_stock/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+/** Columnas de la unidad de compra (152): solo si el renglón va en otra unidad que la del stock. */
+function columnasUnidad(l) {
+  const factor = Number(l.factor) > 0 ? Number(l.factor) : 1;
+  return factor !== 1 || l.unidad_stock ? { factor, unidad_stock: l.unidad_stock || null } : {};
 }
 
 function faltaMigracionCotizaciones(err) {
@@ -388,6 +402,7 @@ async function crearOrdenes(sesion, { moneda, lineas }) {
     const filas = mias.map((l) => ({
       empresa_id: e, orden_id: oc.id, sku: l.sku, descripcion: l.descripcion, unidad: l.unidad,
       cantidad: l.cantidad, precio_unitario: l.precio_unitario, ot: l.ot, pedido_id: l.pedido_id,
+      ...columnasUnidad(l),
       ...(notaPedido.get(l.pedido_id) ? { observacion: notaPedido.get(l.pedido_id) } : {}),
     }));
     try {
@@ -434,6 +449,8 @@ async function guardarOrden(sesion, d) {
   for (const it of d.items || []) {
     const cambiosItem = { cantidad: it.cantidad, precio_unitario: it.precio_unitario };
     if (it.observacion !== undefined) cambiosItem.observacion = it.observacion;
+    // Otra unidad de compra (152): la pantalla ya convirtió cantidad y precio
+    if (it.factor !== undefined) Object.assign(cambiosItem, { unidad: it.unidad ?? null, factor: it.factor, unidad_stock: it.unidad_stock ?? null });
     await sbPatch(`ordenes_compra_items?id=eq.${it.id}&orden_id=eq.${oc.id}&empresa_id=eq.${e}`, cambiosItem, opts);
   }
   const cambios = { updated_at: new Date().toISOString() };
@@ -552,12 +569,13 @@ function filaIngreso(sesion, { oc, item, articulo, comprobante, empleadoNombre }
   return {
     sku: item.sku,
     nombre: (articulo?.nombre || item.descripcion || "").slice(0, 200) || null,
-    unidad: articulo?.unidad ?? item.unidad ?? null,
+    unidad: articulo?.unidad ?? item.unidad_stock ?? item.unidad ?? null,
     division: articulo?.division ?? null,
     ot: item.ot || null,
     proveedor: String(oc.proveedor_nombre).slice(0, 120),
     comprobante: String(comprobante).slice(0, 60),
-    precio_unitario: precioEnPesos(item.precio_unitario, oc.moneda, oc.tipo_cambio),
+    // Por unidad del stock: el precio de la caja ÷ lo que trae (152); la cantidad la convierte la base
+    precio_unitario: precioEnPesos(precioEnStock(item.precio_unitario, item), oc.moneda, oc.tipo_cambio),
     notas: `OC N° ${oc.numero}`,
     empleado_id: sesion.empleado_id || null,
     legajo: Number.isInteger(sesion.legajo) ? sesion.legajo : null,
@@ -798,6 +816,9 @@ export async function POST(request) {
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
       return await facturaOrden(sesion, d);
     } catch (err) {
+      if (faltaMigracionUnidad(err)) {
+        return NextResponse.json({ error: "Para comprar en otra unidad (cajas, rollos, metros) falta correr la migración 152 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionTransacciones(err)) {
         return NextResponse.json({ error: "Para recibir mercadería y cargar facturas falta correr la migración 130 en Supabase." }, { status: 409 });
       }

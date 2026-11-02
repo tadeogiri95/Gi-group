@@ -4,12 +4,13 @@
 // Administración abre la orden de compra, pone cuánto llegó de cada renglón y
 // el N° de remito (y si quiere una foto del remito). Cada renglón de un
 // artículo de la planilla entra solo como ingreso de stock. Administración
-// puede anular una recepción mal cargada.
+// puede anular una recepción mal cargada. Un renglón comprado en otra unidad
+// (cajas, rollos; 152) se recibe en esa unidad y entra al stock convertido.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { fotoBase64, subirImagen } from "../lib/foto";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
-import { ESTADOS_OC, ESTADOS_OC_RECIBIBLE, ocACotizar, ocAtrasada, pendienteItem } from "../lib/ordenesCompra";
+import { ESTADOS_OC, ESTADOS_OC_RECIBIBLE, equivalenciaStock, factorItem, ocACotizar, ocAtrasada, pendienteItem } from "../lib/ordenesCompra";
 import { faltaTabla } from "../lib/compras";
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
@@ -135,6 +136,11 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
                       <input id={`rec-${it.id}`} aria-label={`Llegó ahora de ${it.descripcion}`} className="g-input w-[100px]" inputMode="decimal"
                         value={cantidades[it.id] ?? ""} onChange={(e) => setCantidades((c) => ({ ...c, [it.id]: e.target.value }))} placeholder="0" />
                       <span className="text-[13px] text-gypi-dim">{it.unidad || ""}</span>
+                    </div>
+                  )}
+                  {factorItem(it) !== 1 && (
+                    <div className="text-[12px] text-gypi-dim mt-0.5">
+                      📏 {recibible && leerCantidadMovimiento(cantidades[it.id] ?? "") ? equivalenciaStock(leerCantidadMovimiento(cantidades[it.id]), it) : equivalenciaStock(null, it)}
                     </div>
                   )}
                 </li>

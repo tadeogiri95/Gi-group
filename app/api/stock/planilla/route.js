@@ -49,11 +49,11 @@ async function ordenesAbiertas(e, timezone) {
   );
   if (!Array.isArray(ocs)) return null;
   if (!ocs.length) return [];
-  const items = await sbGet(
-    `ordenes_compra_items?empresa_id=eq.${e}&orden_id=in.(${ocs.map((o) => o.id).join(",")})` +
-    "&select=orden_id,sku,descripcion,cantidad,cantidad_recibida&order=id.asc&limit=10000",
-    { silent: true, fallback: null }
-  );
+  const filtro = `ordenes_compra_items?empresa_id=eq.${e}&orden_id=in.(${ocs.map((o) => o.id).join(",")})`;
+  const columnas = "orden_id,sku,descripcion,cantidad,cantidad_recibida";
+  // Con la unidad de compra (152) lo que falta va a la planilla en la unidad del stock
+  let items = await sbGet(`${filtro}&select=${columnas},factor&order=id.asc&limit=10000`, { silent: true, fallback: null });
+  if (!Array.isArray(items)) items = await sbGet(`${filtro}&select=${columnas}&order=id.asc&limit=10000`, { silent: true, fallback: null });
   if (!Array.isArray(items)) return null;
   return ordenesParaPlanilla(ocs, items, timezone);
 }
