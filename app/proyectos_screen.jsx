@@ -23,6 +23,7 @@ import { useCostoHora } from "./hooks/useCostoHora";
 import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
 import { estadoOtLista, textoEntrega } from "./lib/otLista";
 import { otSinMovimiento, enTandas, DIAS_SIN_MOVIMIENTO } from "./lib/otOrdenar";
+import { COLUMNAS_OT, RANGOS_AVANCE, RANGOS_VALOR, estadosPresentes, filasTablaOt, siguienteOrden } from "./lib/otTabla";
 import CerrarOtViejas from "./components/CerrarOtViejas";
 import { conRegistroTareas } from "./lib/modulos";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
@@ -412,6 +413,24 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
     return true;
   });
 
+  // Tabla de la computadora: ordenar y filtrar por columna (Tadeo, 02/11)
+  const [ordenTabla, setOrdenTabla] = useState(null);
+  const [filtrosTabla, setFiltrosTabla] = useState({});
+  const columnasTabla = COLUMNAS_OT.filter((c) => !c.soloPrecios || verPrecios);
+  const filasBase = useMemo(() => filtrados.map((p) => {
+    const pct = p.estado !== "cerrado" ? pctEscaneo.get(String(p.ot))?.porcentaje ?? null : null;
+    return {
+      p, pct,
+      estado: estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct }),
+      entrega: textoEntrega(p, modoObjetivo).replace(/^Entrega /, ""),
+      obra: [p.obra || p.proyecto, p.division && nombreDivisionOt(divisionesCtx || [], p.division)].filter(Boolean).join(" · "),
+      valor: verPrecios && precios.has(String(p.ot)) ? Number(precios.get(String(p.ot))) : null,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [filtrados, pctEscaneo, filaEnCurso, modoObjetivo, divisionesCtx, verPrecios, precios]);
+  const filasTabla = useMemo(() => filasTablaOt(filasBase, { orden: ordenTabla, filtros: filtrosTabla }), [filasBase, ordenTabla, filtrosTabla]);
+  const hayFiltrosTabla = Object.values(filtrosTabla).some(Boolean);
+
   /* ── Escáner de OT (D8, ítem 20) ── */
   const [guardandoEscaner, setGuardandoEscaner] = useState(false);
   const cambiarEscaner = async () => {
@@ -594,21 +613,50 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           <table className="w-full border-collapse text-[13px] bg-gypi-surface rounded-xl overflow-hidden border border-gypi-border" aria-label="Órdenes de trabajo">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-gypi-dim">
-                <th scope="col" className="px-3 py-2.5 font-bold">OT</th>
-                <th scope="col" className="px-3 py-2.5 font-bold">Cliente / obra</th>
-                <th scope="col" className="px-3 py-2.5 font-bold">Estado</th>
-                <th scope="col" className="px-3 py-2.5 font-bold w-[170px]">Avance</th>
-                <th scope="col" className="px-3 py-2.5 font-bold">Entrega</th>
-                {verPrecios && <th scope="col" className="px-3 py-2.5 font-bold text-right">Valor</th>}
-                <th scope="col" className="px-3 py-2.5"><span className="sr-only">Acciones</span></th>
+                {columnasTabla.map((c) => {
+                  const dir = ordenTabla?.col === c.id ? ordenTabla.dir : null;
+                  return (
+                    <th key={c.id} scope="col" aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
+                      className={`px-3 py-2.5 font-bold ${c.id === "avance" ? "w-[170px]" : ""} ${c.id === "valor" ? "text-right" : ""}`}>
+                      <button type="button" onClick={() => setOrdenTabla((o) => siguienteOrden(o, c.id))}
+                        aria-label={`Ordenar por ${c.label}${dir === "asc" ? " (de menor a mayor)" : dir === "desc" ? " (de mayor a menor)" : ""}`}
+                        className="bg-transparent border-none p-0 cursor-pointer uppercase tracking-wide font-bold text-xs text-gypi-dim hover:text-gypi-text inline-flex items-center gap-1 min-h-[32px]">
+                        {c.label}<span aria-hidden="true" className={dir ? "text-gypi-text" : "opacity-40"}>{dir === "asc" ? "▲" : dir === "desc" ? "▼" : "↕"}</span>
+                      </button>
+                    </th>
+                  );
+                })}
+                <th scope="col" className="px-3 py-2.5 text-right">
+                  {hayFiltrosTabla ? (
+                    <button type="button" onClick={() => setFiltrosTabla({})} className="bg-transparent border-none p-0 cursor-pointer text-xs font-semibold text-gypi-cyan normal-case tracking-normal min-h-[32px]">Limpiar filtros</button>
+                  ) : <span className="sr-only">Acciones</span>}
+                </th>
+              </tr>
+              <tr className="border-t border-gypi-border">
+                {columnasTabla.map((c) => (
+                  <td key={c.id} className="px-2 py-1.5">
+                    {c.filtro === "texto" ? (
+                      <input className="g-input !min-h-[32px] !py-1 !text-xs w-full" aria-label={`Filtrar ${c.label}`} placeholder="Filtrar…"
+                        value={filtrosTabla[c.id] || ""} onChange={(e) => setFiltrosTabla((f) => ({ ...f, [c.id]: e.target.value }))} />
+                    ) : (
+                      <select className="g-input !min-h-[32px] !py-1 !text-xs w-full" aria-label={`Filtrar ${c.label}`}
+                        value={filtrosTabla[c.id] || ""} onChange={(e) => setFiltrosTabla((f) => ({ ...f, [c.id]: e.target.value }))}>
+                        <option value="">Todos</option>
+                        {(c.filtro === "lista" ? estadosPresentes(filasBase).map((t) => ({ id: t, label: t })) : c.filtro === "rango" ? RANGOS_AVANCE : RANGOS_VALOR)
+                          .map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                      </select>
+                    )}
+                  </td>
+                ))}
+                <td />
               </tr>
             </thead>
             <tbody>
-              {filtrados.map(p => {
+              {filasTabla.length === 0 && (
+                <tr className="border-t border-gypi-border"><td colSpan={columnasTabla.length + 1} className="px-3 py-6 text-center text-gypi-dim">Ninguna OT cumple esos filtros.</td></tr>
+              )}
+              {filasTabla.map(({ p, pct, estado, obra }) => {
                 const divInfo = divisiones.find(d => d.id === p.division) || divisiones[0];
-                const pct = p.estado !== "cerrado" ? pctEscaneo.get(String(p.ot))?.porcentaje ?? null : null;
-                const estado = estadoOtLista(p, { enCurso: filaEnCurso.get(String(p.ot)) || null, porcentaje: pct });
-                const obra = [p.obra || p.proyecto, p.division && nombreDivisionOt(divisionesCtx || [], p.division)].filter(Boolean).join(" · ");
                 return (
                   <tr key={p.id} onClick={() => setDetalle(p)} className={`border-t border-gypi-border cursor-pointer hover:bg-gypi-bg ${p.estado === "cerrado" ? "opacity-60" : ""}`}>
                     <td className="px-3 py-2.5">
@@ -640,7 +688,9 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
               })}
             </tbody>
           </table>
-          <p className="text-xs text-gypi-dim mt-2 mb-0">Tocá una fila para ver el detalle al costado, sin salir de la lista. Con ⋯ están las piezas, la carga, el acta y editar.</p>
+          <p className="text-xs text-gypi-dim mt-2 mb-0">
+            {filasTabla.length !== filasBase.length ? `${filasTabla.length} de ${filasBase.length} OT. ` : ""}Tocá un título para ordenar (▲ de menor a mayor, ▼ de mayor a menor) y filtrá con las cajas de abajo. Tocá una fila para ver el detalle al costado; con ⋯ están las piezas, la carga, el acta y editar.
+          </p>
         </div>
         <div className="solo-cel">
         <div className="lista-ancha flex flex-col gap-2">
