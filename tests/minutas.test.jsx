@@ -569,6 +569,8 @@ test("pantalla — Gypi sugiere: se agrega con la OT completa y deja de sugerirs
   };
   pantalla();
   const sug = await screen.findByRole("group", { name: "Gypi sugiere para En curso" });
+  // Empieza cerrado: se ve cuántos hay y se abre con un toque
+  fireEvent.click(within(sug).getByRole("button", { name: /Gypi sugiere \(1\)/ }));
   assert.ok(within(sug).getByText("40 % · fecha 10/11"));
   // Total de proyectos en producción, aunque no estén en la minuta
   assert.ok(screen.getByText(/Proyectos en producción hoy:/).textContent.includes("1 en total"));
@@ -679,6 +681,7 @@ test("pantalla — lo abierto de ayer se pasa con un toque y muestra desde cuán
   };
   pantalla();
   const grupo = await screen.findByRole("group", { name: "Sigue abierto en Pendientes de instalación" });
+  fireEvent.click(within(grupo).getByRole("button", { name: /Sigue abierto de minutas anteriores/ }));
   assert.ok(within(grupo).getByText(/del 30\/10 · Cambiar madera · ANGELI/));
   fireEvent.click(within(grupo).getByRole("button", { name: /Agregar OT 7495 · BCG · Estudio/ }));
   await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Sigue abierto en Pendientes de instalación" }), null));
@@ -783,6 +786,7 @@ test("pantalla — compra sugerida por Gypi: se agrega con cantidad y 🛒 Crear
   };
   pantalla();
   const sug = await screen.findByRole("group", { name: "Gypi sugiere para Compras a disparar hoy" });
+  fireEvent.click(within(sug).getByRole("button", { name: /Gypi sugiere/ }));
   assert.ok(within(sug).getByText(/^🔴 Urgente · OT 7751/));
   fireEvent.click(within(sug).getByRole("button", { name: "Agregar Placa blanca 18 · 5 placas" }));
   const compras = screen.getByRole("region", { name: "Compras y logística" });
@@ -1080,9 +1084,12 @@ test("pantalla — diseño y técnica sin OT: cliente (o uno nuevo), proyecto y 
   fireEvent.change(within(dyt).getByRole("textbox", { name: "Descripción" }), { target: { value: "Cotizar placares" } });
   // Un cliente que ya existe en las OT aparece para elegir
   fireEvent.click(screen.getByRole("button", { name: "Agregar a Diseño" }));
+  // Se abre uno solo a la vez: el anterior queda en corto con lo cargado
+  assert.equal(within(dyt).getAllByRole("combobox", { name: "Cliente" }).length, 1);
+  assert.ok(within(dyt).getByRole("button", { name: /Habitaciones piso 3 · Hotel Sol.*En curso hoy · Cotizar placares/ }));
   const clientes = within(dyt).getAllByRole("combobox", { name: "Cliente" });
-  fireEvent.focus(clientes[1]);
-  fireEvent.change(clientes[1], { target: { value: "pra" } });
+  fireEvent.focus(clientes[0]);
+  fireEvent.change(clientes[0], { target: { value: "pra" } });
   fireEvent.click(await within(dyt).findByRole("option", { name: "PRANA" }));
   fireEvent.click(screen.getByRole("button", { name: "💾 Guardar" }));
   await waitFor(() => assert.ok(pedidos.some((p) => p.body?.accion === "guardar")));
@@ -1110,5 +1117,103 @@ test("pantalla — feedback con tipo Otro: se escribe y queda en la lista", asyn
   // El renglón siguiente ya lo tiene en la lista
   fireEvent.click(screen.getByRole("button", { name: "Agregar a Feedback" }));
   const tipos = within(fb).getAllByRole("combobox", { name: "Tipo de feedback" });
-  assert.ok(within(tipos[1]).getByRole("option", { name: "Seguridad" }));
+  assert.equal(tipos.length, 1);
+  assert.ok(within(tipos[0]).getByRole("option", { name: "Seguridad" }));
+});
+
+// ── Minuta en vivo (03/11): renglones cortos, uno abierto a la vez, secciones plegables,
+// barra de secciones y panel lateral en la computadora ──
+const vivo = await import("../app/lib/minutaVivo.js");
+
+test("en vivo — el renglón en corto lleva toda la información cargada", () => {
+  const s = SECCIONES.find((x) => x.id === "prod_en_curso");
+  const r = vivo.resumenRenglon({ ot: "7961", cliente: "RIOFRIO IVAN", proyecto: "COCINA", semaforo: "amarillo", texto: "Falta herraje", responsable: "Luciano", fecha_objetivo: "2026-11-05", datos: {} }, s);
+  assert.equal(r.punto, "🟡");
+  assert.match(r.titulo, /OT 7961/);
+  assert.equal(r.detalle, "Falta herraje · 👤 Luciano · 📅 5/11");
+  const pend = SECCIONES.find((x) => x.id === "inst_pendiente");
+  assert.deepEqual(vivo.resumenRenglon({ proyecto: "Zocalines", texto: "", responsable: "", datos: {} }, pend).falta, ["responsable", "fecha objetivo"]);
+  const mov = SECCIONES.find((x) => x.id === "movimiento");
+  assert.equal(vivo.resumenRenglon({ texto: "Placas", responsable: "Mayco", datos: { desde: "Planta", hasta: "Obra", vehiculo: "AB123CD" } }, mov).detalle, "Planta → Obra · 👤 Mayco · 🚚 AB123CD");
+  const compra = SECCIONES.find((x) => x.id === "compra");
+  const c = vivo.resumenRenglon({ texto: "Placa blanca 18", tipo: "urgente", datos: { cantidad: 5, unidad: "placas", proveedor: "Maderera" } }, compra);
+  assert.equal(c.titulo, "Placa blanca 18 · 5 placas");
+  assert.equal(c.detalle, "🔴 Urgente · 🏪 Maderera");
+});
+
+test("en vivo — resumen de sección, orden para ↑/↓ y conteo de la barra", () => {
+  const items = [
+    { id: "a", seccion: "prod_en_curso", semaforo: "verde" },
+    { id: "b", seccion: "foco" },
+    { id: "c", seccion: "prod_en_curso", semaforo: "rojo" },
+    { id: "d", seccion: "inst_pendiente", proyecto: "X", texto: "", responsable: "", datos: {} },
+    { id: "e", seccion: "dyt", area: "tecnica" },
+    { id: "f", seccion: "dyt", area: "presupuestos" },
+  ];
+  assert.equal(vivo.textoResumenSeccion(vivo.resumenSeccion(items.filter((i) => i.seccion === "prod_en_curso"))), "2 · 🟢1 🔴1");
+  assert.deepEqual(vivo.ordenRenglones(items), ["b", "a", "c", "d", "f", "e"]);
+  assert.equal(vivo.renglonVecino(vivo.ordenRenglones(items), "a", 1), "c");
+  assert.equal(vivo.renglonVecino(vivo.ordenRenglones(items), "b", -1), null);
+  const k = vivo.conteoBloques(items);
+  assert.deepEqual(k.produccion, { total: 2, falta: 0 });
+  assert.deepEqual(k.instalacion, { total: 1, falta: 1 });
+});
+
+test("pantalla en vivo — uno abierto a la vez, Listo lo cierra, secciones plegables y barra de secciones", async () => {
+  const pedidos = [];
+  mockPantalla(pedidos);
+  pantalla();
+  const nav = await screen.findByRole("navigation", { name: "Secciones de la minuta" });
+  assert.ok(within(nav).getByRole("button", { name: /Ir a 1 Producción/ }));
+  const foco = screen.getByRole("region", { name: "Foco del día" });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar a Foco del día" }));
+  fireEvent.change(within(foco).getByRole("textbox", { name: "Por qué es prioridad" }), { target: { value: "Entrega el viernes" } });
+  fireEvent.click(within(foco).getByRole("button", { name: "Listo, cerrar el renglón" }));
+  assert.equal(within(foco).queryByRole("textbox", { name: "Por qué es prioridad" }), null);
+  const corto = within(foco).getByRole("button", { name: /Entrega el viernes/ });
+  assert.equal(corto.getAttribute("aria-expanded"), "false");
+  // Al agregar otro, se abre ese y el primero sigue en corto
+  fireEvent.click(screen.getByRole("button", { name: "Agregar a Foco del día" }));
+  assert.equal(within(foco).getAllByRole("textbox", { name: "Por qué es prioridad" }).length, 1);
+  fireEvent.click(corto);
+  assert.equal(within(foco).getByRole("textbox", { name: "Por qué es prioridad" }).value, "Entrega el viernes");
+  // Plegar una sección: queda el resumen y se esconden los renglones
+  const prod = screen.getByRole("region", { name: "Producción" });
+  const plegar = within(prod).getByRole("button", { name: /^1 · Producción/ });
+  fireEvent.click(plegar);
+  assert.equal(plegar.getAttribute("aria-expanded"), "false");
+  assert.equal(within(prod).queryByRole("button", { name: "Agregar a En curso" }), null);
+  fireEvent.click(plegar);
+  assert.ok(within(prod).getByRole("button", { name: "Agregar a En curso" }));
+  // Plegar una sub-sección
+  fireEvent.click(within(prod).getByRole("button", { name: /^b\. En curso/ }));
+  assert.equal(within(prod).queryByRole("button", { name: "Agregar a En curso" }), null);
+});
+
+test("pantalla en vivo — en la computadora el renglón abierto se edita en el panel de la derecha", async () => {
+  const antes = window.matchMedia;
+  window.matchMedia = (q) => ({ matches: /min-width/.test(q), media: q, addEventListener() {}, removeEventListener() {} });
+  try {
+    const pedidos = [];
+    mockPantalla(pedidos);
+    pantalla();
+    const panel = await screen.findByRole("complementary", { name: "Renglón abierto" });
+    assert.ok(within(panel).getByText(/Tocá un renglón de la izquierda/));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar a Foco del día" }));
+    fireEvent.change(within(panel).getByRole("textbox", { name: "Por qué es prioridad" }), { target: { value: "Uno" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agregar a Foco del día" }));
+    fireEvent.change(within(panel).getByRole("textbox", { name: "Por qué es prioridad" }), { target: { value: "Dos" } });
+    // La lista queda en corto; ↑ pasa al anterior sin volver a la lista
+    const foco = screen.getByRole("region", { name: "Foco del día" });
+    assert.equal(within(foco).queryByRole("textbox"), null);
+    assert.ok(within(foco).getByRole("button", { name: /Uno/ }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Renglón anterior" }));
+    assert.equal(within(panel).getByRole("textbox", { name: "Por qué es prioridad" }).value, "Uno");
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    assert.equal(within(panel).getByRole("textbox", { name: "Por qué es prioridad" }).value, "Dos");
+    fireEvent.keyDown(window, { key: "Escape" });
+    assert.ok(within(panel).getByText(/Tocá un renglón de la izquierda/));
+  } finally {
+    window.matchMedia = antes;
+  }
 });
