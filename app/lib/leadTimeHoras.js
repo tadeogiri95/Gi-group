@@ -15,6 +15,7 @@ import { ETAPAS_PLAN, divisionPlan, normalizarParametros } from "./planificacion
 import { HORAS_SEMANA_POR_DEFECTO } from "./secuencia";
 import { operariosDePlanta, ventanasSemana } from "./cargaPlanta";
 import { intervalosPausa } from "./pausaOt";
+import { datosOt } from "./nombreOt";
 
 const HORA = 3600000;
 const DIA = 86400000;
@@ -149,14 +150,14 @@ const promedio = (xs) => (xs.length ? redondear(xs.reduce((s, x) => s + x, 0) / 
  * @returns {{ promedios: { etapa, nombre, cantidad, promedio }[], ots: object[] }}
  *   ots: las OT con algún proceso terminado en el período, con solo esos procesos
  */
-export function leadTimeDelPeriodo(lead, { desde, hasta }, datosOt = new Map()) {
+export function leadTimeDelPeriodo(lead, { desde, hasta }, otsPorCodigo = new Map()) {
   const ots = [];
   for (const o of lead?.values?.() || []) {
     const procesos = o.procesos.filter((q) => q.horas != null && enPeriodo(q.fin, desde, hasta));
     if (!procesos.length) continue;
     const terminada = o.horas != null && enPeriodo(o.fin, desde, hasta);
-    const p = datosOt.get?.(o.ot);
-    ots.push({ ot: o.ot, cliente: p?.cliente || null, procesos: procesos.map(({ etapa, nombre, horas }) => ({ etapa, nombre, horas })),
+    const p = otsPorCodigo.get?.(o.ot);
+    ots.push({ ot: o.ot, ...datosOt(p), procesos: procesos.map(({ etapa, nombre, horas }) => ({ etapa, nombre, horas })),
       horas: terminada ? o.horas : null, fin: terminada ? o.fin : null });
   }
   ots.sort((a, b) => (b.horas != null) - (a.horas != null) || a.ot.localeCompare(b.ot, "es", { numeric: true }));

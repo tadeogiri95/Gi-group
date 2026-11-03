@@ -3,6 +3,7 @@
 // faltantes con fecha, foto y dos firmas. "El camión no sale sin la lista
 // firmada": se firma con todo cargado y tildado, o con el faltante anotado.
 import { svgQR } from "./tarjetasQR";
+import { detalleOt } from "./nombreOt";
 import { normalizarChecklist } from "./avance";
 
 export const CLAVE_CHECKLIST_CARGA = "checklist_carga";
@@ -105,7 +106,7 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, tit
   const total = bultos.length;
   const enHoja = tamano.hoja === "A4";
   const qrMm = Math.min(tamano.alto - (enHoja ? 16 : 8), tamano.ancho * 0.42);
-  const datosObra = [proyecto.cliente || proyecto.proyecto, proyecto.obra].filter(Boolean).join(" · ");
+  const datosObra = detalleOt(proyecto);
   const entrega = proyecto.fecha_entrega ? `Entrega ${proyecto.fecha_entrega.split("-").reverse().join("/")}` : "";
   const items = bultos.map((b) => `
   <div class="rotulo">

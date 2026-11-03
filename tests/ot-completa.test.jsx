@@ -6,9 +6,13 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
-import { partesOt, textoOt, detalleOt, mapaOts, otCompleta, textoRenglonOt } from "../app/lib/nombreOt.js";
+import { partesOt, textoOt, detalleOt, mapaOts, otCompleta, textoRenglonOt, datosOt } from "../app/lib/nombreOt.js";
 import { textoPedido } from "../app/lib/compras.js";
 import { textoMovimiento } from "../app/lib/movimientosStock.js";
+import { mensajeEscaneo, htmlEtiquetasPiezas, htmlEtiquetasModulos } from "../app/lib/piezas.js";
+import { textoAvisoFin } from "../app/lib/finProceso.js";
+import { htmlActa } from "../app/lib/acta.js";
+import { nombreEvento } from "../app/lib/minutasCalendario.js";
 
 const { default: NombreOt, TituloOt } = await import("../app/components/NombreOt.jsx");
 afterEach(() => cleanup());
@@ -79,4 +83,37 @@ test("pantallas — ninguna arma el nombre de la OT a mano con la columna C", ()
     const src = readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
     assert.doesNotMatch(src, /cliente \|\| [\w?.]*proyecto/, `${f}: usá NombreOt / textoOt (app/lib/nombreOt.js)`);
   }
+});
+
+// ─── PR 2: PDF, emails, avisos al celular y etiquetas impresas ───
+
+test("datosOt — lo que viaja en informes y emails alcanza para nombrarla completa", () => {
+  assert.deepEqual(datosOt(OT), { cliente: "RIOFRIO IVAN", obra: "EDIFICIO MAIPU DEPTO 10", descripcion: "COCINA" });
+  assert.equal(textoOt({ ot: OT.ot, ...datosOt(OT) }), textoOt(OT));
+  assert.deepEqual(datosOt({ ot: "1" }), { cliente: null, obra: null, descripcion: null });
+});
+
+test("avisos — el escaneo y el aviso de fin de proceso nombran la OT completa", () => {
+  const mapa = mapaOts([OT]);
+  const r = { ok: true, etapa: 1, ya: false, requerida: true, pieza: { ot: "7961", nombre: "Lateral", unidad: 1, de: 1 }, progreso: { pasaron: 3, total: 10 } };
+  assert.match(mensajeEscaneo(r, { 1: "Corte" }, mapa).detalle, /piezas de la OT 7961 · RIOFRIO IVAN · EDIFICIO MAIPU DEPTO 10 · COCINA\./);
+  assert.match(mensajeEscaneo(r, { 1: "Corte" }).detalle, /piezas de la OT 7961\./, "sin la lista, el número");
+  assert.match(textoAvisoFin([{ ot: "7961", ...datosOt(OT), nombre: "Corte", hora: "12:00" }]), /^OT 7961 · RIOFRIO IVAN · EDIFICIO MAIPU DEPTO 10 · COCINA · Corte tenía que terminar/);
+});
+
+test("minuta — el evento del calendario lleva la OT completa", () => {
+  assert.match(nombreEvento({ ot: "7961", proyecto: "viejo", cliente: "viejo" }, mapaOts([OT])), /OT 7961 · RIOFRIO IVAN · EDIFICIO MAIPU DEPTO 10 · COCINA/);
+});
+
+test("etiquetas y acta — llevan cliente, proyecto y descripción, nunca la columna C", async () => {
+  const tamano = { ancho: 50, alto: 30 };
+  const piezas = await htmlEtiquetasPiezas({ empresa: "GI", ot: "7961", proyecto: OT, piezas: [{ id: 1, nombre: "Lateral", unidad: 1, de: 1, etapas: [] }], tamano });
+  assert.match(piezas, /data-de-la-ot>RIOFRIO IVAN · EDIFICIO MAIPU DEPTO 10 · COCINA</);
+  const modulos = await htmlEtiquetasModulos({ empresa: "GI", ot: "7961", proyecto: OT, modulos: [{ modulo: "M1", piezas: 2 }], tamano });
+  assert.match(modulos, /data-de-la-ot>RIOFRIO IVAN · EDIFICIO MAIPU DEPTO 10 · COCINA</);
+  assert.doesNotMatch(await htmlEtiquetasPiezas({ ot: "7961", piezas: [{ id: 1, nombre: "L", unidad: 1, de: 1 }], tamano }), /data-de-la-ot/, "sin datos de la OT, no va el renglón");
+  const acta = htmlActa({ empresa: "GI", proyecto: OT, acta: null });
+  for (const t of ["RIOFRIO IVAN", "EDIFICIO MAIPU DEPTO 10", "COCINA"]) assert.ok(acta.includes(t), t);
+  assert.ok(!acta.includes("M-7961-01"));
+  assert.ok(!piezas.includes("M-7961-01") && !modulos.includes("M-7961-01"));
 });

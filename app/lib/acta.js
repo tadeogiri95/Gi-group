@@ -3,6 +3,7 @@
 // revisa el checklist de instalación, anota los pendientes y el cliente firma
 // con el dedo en el celular. "La obra se cierra con un acta firmada".
 import { normalizarChecklist } from "./avance";
+import { partesOt } from "./nombreOt";
 
 export const CLAVE_CHECKLIST_INSTALACION = "checklist_instalacion";
 
@@ -68,10 +69,13 @@ export function htmlActa({ empresa, proyecto, acta, bultos = [], pendientes = []
   const est = estadoActa({ bultos, pendientes, acta, checklist });
   const tildados = new Set(Array.isArray(acta?.checklist) ? acta.checklist : []);
   const lista = normalizarChecklist(checklist);
+  // Código · Cliente · Proyecto · Descripción, como en toda la app (02/11)
+  const ot = partesOt(proyecto);
   const datosObra = [
-    ["Cliente", proyecto.cliente || proyecto.proyecto],
-    ["Obra", proyecto.obra],
-    ["OT", proyecto.ot],
+    ["OT", ot.codigo],
+    ["Cliente", ot.cliente],
+    ["Proyecto", ot.proyecto],
+    ["Descripción", ot.descripcion],
     ["Fecha", fecha(acta?.firmada_at) || fecha(new Date().toISOString())],
   ].filter(([, v]) => v);
   const firma = urlSegura(acta?.firma_url);

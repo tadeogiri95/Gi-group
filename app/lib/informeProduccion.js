@@ -28,6 +28,7 @@ import { hoyArg } from "./dates";
 import { textoMotivoRetrabajo } from "./retrabajo";
 import { enPausaElDia, textoMotivoPausa } from "./pausaOt";
 import { leadTimeDelPeriodo } from "./leadTimeHoras";
+import { datosOt } from "./nombreOt";
 
 export const TIPOS_INFORME = [
   { id: "dia", label: "Día" },
@@ -182,7 +183,7 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
     // Fuera del plan: se avanzó sin nada planificado para la OT en el período
     const sinPlan = procesos.every((q) => !(q.planificado > 0));
     return {
-      ot, cliente: p?.cliente || null, descripcion: p?.descripcion || null, procesos,
+      ot, ...datosOt(p), procesos,
       planificado: prom("planificado"), hecho: prom("hecho"), alFinal: prom("alFinal"), desvio: redondear(prom("hecho") - prom("planificado")),
       diasCorrido: v?.diasCorrido || 0, diasTarde: v?.diasTarde || 0, tarde: !!v?.tarde,
       fueraDelPlan: sinPlan && procesos.some((q) => q.hecho > 0), enOtroPlan: sinPlan && procesos.some((q) => q.enPlan),
@@ -204,7 +205,7 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
   const rt = (retrabajos || []).filter((x) => { const d = diaDe(x.created_at); return !x.anulado_at && d >= desde && d <= hasta && Number(x.horas) > 0; })
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
     .map((x) => ({ ot: String(x.ot), etapa: x.etapa, nombre: ETAPAS_PLAN.find((e) => e.id === x.etapa)?.nombre || x.etapa,
-      horas: redondear(Number(x.horas)), motivo: textoMotivoRetrabajo(x), terminado: !!x.terminado_at, cliente: proyectos?.get?.(String(x.ot))?.cliente || null }));
+      horas: redondear(Number(x.horas)), motivo: textoMotivoRetrabajo(x), terminado: !!x.terminado_at, ...datosOt(proyectos?.get?.(String(x.ot))) }));
   for (const o of ots) {
     const h = rt.filter((x) => x.ot === o.ot).reduce((t, x) => t + x.horas, 0);
     if (h > 0) o.retrabajo = redondear(h);
@@ -216,7 +217,7 @@ export function calcularInforme({ periodo, items = [], etapasCodigo = {}, piezas
     const fin = p.hasta ? diaDe(p.hasta) : null;
     if (!ini || ini > hasta || (fin && fin < desde)) continue;
     const ot = String(p.ot);
-    enPausa.push({ ot, cliente: proyectos?.get?.(ot)?.cliente || null, motivo: textoMotivoPausa(p), desde: p.desde, hasta: p.hasta || null });
+    enPausa.push({ ot, ...datosOt(proyectos?.get?.(ot)), motivo: textoMotivoPausa(p), desde: p.desde, hasta: p.hasta || null });
     const o = ots.find((x) => x.ot === ot);
     if (o) o.enPausa = true;
   }

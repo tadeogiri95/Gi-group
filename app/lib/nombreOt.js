@@ -72,3 +72,11 @@ export function textoRenglonOt(it, mapa = null) {
   if (limpio(it.ot)) return textoOt(otCompleta(it.ot, mapa, { cliente: it.cliente, descripcion: it.proyecto }));
   return [limpio(it.proyecto), limpio(it.cliente)].filter(Boolean).join(" · ");
 }
+
+/**
+ * Los datos de la OT que viajan en informes, emails y PDF ({ cliente, obra,
+ * descripcion }), para que del otro lado se nombre con textoOt.
+ */
+export function datosOt(p) {
+  return { cliente: limpio(p?.cliente) || null, obra: limpio(p?.obra) || null, descripcion: limpio(p?.descripcion) || null };
+}

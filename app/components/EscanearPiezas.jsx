@@ -14,6 +14,7 @@ import { enviarOEncolar } from "../lib/colaOffline";
 import Modal from "./ui/Modal";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 import { reglasPieza, nombresEtapas, mensajeEscaneo } from "../lib/piezas";
+import { useOts } from "../hooks/useOts";
 
 const CLAVE_ETAPA = "gypi_etapa_piezas";
 const REPETIDO_MS = 5000;
@@ -36,6 +37,7 @@ function etapaInicial(etapas, botones, tareaActiva) {
 }
 
 export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = null, onClose }) {
+  const porOt = useOts();
   const botones = reglasPieza(etapas);
   const nombres = nombresEtapas(etapas);
   const [etapa, setEtapa] = useState(() => etapaInicial(etapas, botones, tareaActiva));
@@ -69,7 +71,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
         return;
       }
       const data = r.data || {};
-      const m = mensajeEscaneo({ ...data, ok: r.status === 200 && data.ok }, nombres);
+      const m = mensajeEscaneo({ ...data, ok: r.status === 200 && data.ok }, nombres, porOt);
       const ok = m.tono !== "rojo" && !data.ya;
       const deshacer = !ok ? null
         : data.modulo ? { accion: "deshacer_modulo", ot: data.modulo.ot, modulo: data.modulo.nombre, etapa: data.etapa }

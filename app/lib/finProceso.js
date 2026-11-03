@@ -4,6 +4,8 @@
 // tiempo (⏱ Faltan X h). Lo usan el cron fin-proceso (cada 15 minutos, desde
 // Supabase; migración 149) y el aviso del Gantt en el navegador.
 
+import { datosOt, textoOt } from "./nombreOt";
+
 const DIA_MIN = 24 * 60;
 const ARG_MIN = -3 * 60; // Argentina, sin horario de verano
 
@@ -23,7 +25,7 @@ export const horaTexto = (min) => `${String(Math.floor(min / 60)).padStart(2, "0
  *   ventanas: horario de la planta por día de la semana (ventanasDeGrilla), en minutos
  * @returns {{ ot: string, etapa: string, nombre: string, finMin: number, hora: string, clave: string }[]}
  */
-export function finesVencidos(vivo, { hoy, ahoraMin, ventanas = [] }) {
+export function finesVencidos(vivo, { hoy, ahoraMin, ventanas = [], proyectos = null }) {
   const dia = new Date(`${hoy}T00:00:00Z`).getUTCDay();
   // Un día de horas extra sin horario en la grilla: el horario más largo
   const largo = (ventanas || []).filter(Boolean).reduce((a, v) => (!a || v.fin - v.ini > a.fin - a.ini ? v : a), null) || { ini: 8 * 60, fin: 16 * 60 };
@@ -34,7 +36,7 @@ export function finesVencidos(vivo, { hoy, ahoraMin, ventanas = [] }) {
       if (q.completo || q.hasta !== hoy || !(q.pendiente > 0)) continue;
       const finMin = Math.round(v.ini + (q.fin ?? 1) * (v.fin - v.ini));
       if (finMin > ahoraMin) continue;
-      out.push({ ot: String(r.ot), etapa: q.etapa, nombre: q.nombre, finMin, hora: horaTexto(finMin), clave: `${r.ot}|${q.etapa}|${hoy}|${finMin}` });
+      out.push({ ot: String(r.ot), ...datosOt(r.proyecto || proyectos?.get?.(String(r.ot))), etapa: q.etapa, nombre: q.nombre, finMin, hora: horaTexto(finMin), clave: `${r.ot}|${q.etapa}|${hoy}|${finMin}` });
     }
   }
   return out.sort((a, b) => a.finMin - b.finMin || a.ot.localeCompare(b.ot, "es", { numeric: true }));
@@ -44,8 +46,8 @@ export function finesVencidos(vivo, { hoy, ahoraMin, ventanas = [] }) {
 export function textoAvisoFin(lista) {
   if (lista.length === 1) {
     const x = lista[0];
-    return `OT ${x.ot} · ${x.nombre} tenía que terminar a las ${x.hora}. ¿Está terminado o necesita más tiempo?`;
+    return `${textoOt(x)} · ${x.nombre} tenía que terminar a las ${x.hora}. ¿Está terminado o necesita más tiempo?`;
   }
-  const primeros = lista.slice(0, 4).map((x) => `OT ${x.ot} ${x.nombre} (${x.hora})`).join(", ");
+  const primeros = lista.slice(0, 4).map((x) => `${textoOt(x)}: ${x.nombre} (${x.hora})`).join("; ");
   return `${lista.length} procesos tenían que terminar: ${primeros}${lista.length > 4 ? "…" : ""}. Revisalos en el Gantt.`;
 }

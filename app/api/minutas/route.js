@@ -77,6 +77,19 @@ async function renglonesDe(sesion, minutaId) {
  * Precio de las OT terminadas del informe (migración 142; solo lo lee
  * gerencia, que es quien ve las minutas). Sin la migración, sin precios.
  */
+/** Cliente, obra y descripción de las OT de los renglones, para nombrar cada OT completa (02/11). */
+async function otsDe(sesion, items) {
+  const ots = [...new Set(items.filter((it) => it.ot).map((it) => String(it.ot)))];
+  if (!ots.length) return [];
+  try {
+    const lista = ots.slice(0, 500).map((o) => `"${o.replace(/["\\]/g, "")}"`).join(",");
+    return (await sbGet(`proyectos?empresa_id=eq.${sesion.empresa_id}&ot=in.(${encodeURIComponent(lista)})&select=ot,cliente,obra,descripcion`, { sesion })) || [];
+  } catch (err) {
+    logger.warn("[minutas] sin datos de las OT", err);
+    return [];
+  }
+}
+
 async function preciosDe(sesion, items) {
   const ots = [...new Set(items.filter((it) => (it.seccion === "prod_terminada" || it.seccion === "inst_terminada") && it.ot).map((it) => String(it.ot)))];
   if (!ots.length) return {};
@@ -168,7 +181,7 @@ export async function GET(request) {
         const minutas = (await sbGet(`minutas?empresa_id=eq.${e}&fecha=gte.${reporte}&fecha=lte.${hasta}&select=id,fecha,inicio,cierre,estado,modera,registra,asistentes&order=fecha.asc`, { sesion })) || [];
         if (!minutas.length) return json({ ok: true, minutas: [], items: [] });
         const { data: items } = await sbGetAll(`minuta_items?empresa_id=eq.${e}&minuta_id=in.(${minutas.map((m) => m.id).join(",")})&select=id,minuta_id,seccion,orden,ot,proyecto,cliente,semaforo,texto,responsable,fecha_objetivo,area,tipo,datos,viene_de,resuelto_at&order=id.asc`, { sesion, maxFilas: 20000 });
-        return json({ ok: true, minutas, items: items || [], precios: await preciosDe(sesion, items || []), feedbackAnterior: await feedbackAnteriorDe(sesion, reporte, hasta) });
+        return json({ ok: true, minutas, items: items || [], precios: await preciosDe(sesion, items || []), ots: await otsDe(sesion, items || []), feedbackAnterior: await feedbackAnteriorDe(sesion, reporte, hasta) });
       }
       const feedback = q.get("feedback");
       if (feedback) {

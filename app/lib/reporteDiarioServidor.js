@@ -17,7 +17,7 @@ export async function reporteDiarioDeEmpresa(empresaId, fecha, { sesion } = {}) 
   const { inicio } = limitesDia(fecha);
   const desde = encodeURIComponent(inicio);
   const [proyectos, etapas, avancePiezas, pasos, avanceEtapas, reportes] = await Promise.all([
-    sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,proyecto,fecha_entrega,estado&order=id.asc`, opts),
+    sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,obra,proyecto,descripcion,fecha_entrega,estado&order=id.asc`, opts),
     sbGetAll(`etapas?empresa_id=eq.${e}&select=codigo,nombre,orden&order=codigo.asc`, opts).catch(vacio),
     // Sin las migraciones 110 a 118 no hay escaneos: el reporte sale sin producción
     sbGetAll(`v_avance_piezas?empresa_id=eq.${e}&select=ot,etapa,total,pasaron`, opts).catch(vacio),

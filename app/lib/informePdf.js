@@ -8,6 +8,7 @@
 import { ETAPAS_PLAN } from "./planificacion";
 import { partesNota } from "./informeProduccion";
 import { fechaCorta } from "./ot";
+import { partesOt, textoOt } from "./nombreOt";
 
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
@@ -61,8 +62,8 @@ export function svgPorOt(ots) {
     ${[0, 50, 100].map((p) => `<line x1="${x0 + (ancho * p) / 100}" x2="${x0 + (ancho * p) / 100}" y1="0" y2="${lista.length * alto}" class="grilla" />
       <text x="${x0 + (ancho * p) / 100}" y="${lista.length * alto + 9}" text-anchor="middle" class="t-eje">${p} %</text>`).join("")}
     ${lista.map((o, i) => `
-      <text x="0" y="${i * alto + 7}" class="t-ot">OT ${esc(o.ot)}</text>
-      <text x="0" y="${i * alto + 14}" class="t-cli">${esc(String(o.cliente || "").slice(0, 24))}</text>
+      <text x="0" y="${i * alto + 7}" class="t-ot">${esc(corto([`OT ${o.ot}`, partesOt(o).cliente].filter(Boolean).join(" · "), 22))}</text>
+      <text x="0" y="${i * alto + 14}" class="t-cli">${esc(corto([partesOt(o).proyecto, partesOt(o).descripcion].filter(Boolean).join(" · "), 28))}</text>
       <rect x="${x0}" y="${i * alto + 1}" width="${(ancho * lim(o.planificado)) / 100}" height="5.5" rx="2" class="b-plan" />
       <rect x="${x0}" y="${i * alto + 7.5}" width="${(ancho * lim(o.hecho)) / 100}" height="5.5" rx="2" class="b-hecho" />
       <text x="${x0 + ancho + 54}" y="${i * alto + 10}" text-anchor="end" class="t-num ${o.fueraDelPlan ? "" : o.hecho < o.planificado ? "mal" : "bien"}">${o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</text>
@@ -94,7 +95,9 @@ function svgPorProceso(ots) {
   </svg>`;
 }
 
-const lista = (ots, n = 3) => ots.slice(0, n).map((o) => `OT ${o.ot}`).join(", ") + (ots.length > n ? ` y ${ots.length - n} más` : "");
+// Cada OT completa: Código · Cliente · Proyecto · Descripción (Tadeo, 02/11)
+const corto = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+const lista = (ots, n = 3) => ots.slice(0, n).map((o) => textoOt(o)).join("; ") + (ots.length > n ? ` y ${ots.length - n} más` : "");
 
 /** Lo importante en pocas líneas (Tadeo, 30/10: claro y conciso, en una hoja). */
 export function puntosClave(r, reporteDia = null) {
@@ -104,34 +107,34 @@ export function puntosClave(r, reporteDia = null) {
   if (hayPlan) puntos.push({ tono: tono(r.nota), texto: `Cumplimiento ${coma(s.cumplimiento)} %: se hizo ese % del avance planificado. ${s.procesosCumplidos} de ${s.procesosPlanificados} procesos planificados llegaron a lo previsto.` });
   else puntos.push({ tono: "neutro", texto: "No había nada planificado en el período." });
   const atrasadas = r.ots.filter((o) => !o.fueraDelPlan && !o.enPausa && o.desvio <= -10);
-  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Más atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `OT ${o.ot} (hizo ${coma(o.hecho)} % de ${coma(o.planificado)} %)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
+  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Más atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `${textoOt(o)} (hizo ${coma(o.hecho)} % de ${coma(o.planificado)} %)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
   const fuera = r.ots.filter((o) => o.fueraDelPlan);
   if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
   const tarde = r.ots.filter((o) => o.tarde);
   if (s.otsTarde) puntos.push({ tono: "mal", texto: `${s.otsTarde} de ${s.otsAbiertas} OT terminan después de su fecha límite${tarde.length ? `: ${lista(tarde)}` : ""}.` });
   // OT en pausa (151): lo planificado esos días no cuenta en la nota
   const pausa = r.enPausa || [];
-  if (pausa.length) puntos.push({ tono: "neutro", texto: `⏸ En pausa: ${pausa.slice(0, 3).map((p) => `OT ${p.ot} (${p.motivo})`).join(", ")}${pausa.length > 3 ? ` y ${pausa.length - 3} más` : ""}. Lo planificado mientras estuvo en pausa no cuenta en la nota.` });
+  if (pausa.length) puntos.push({ tono: "neutro", texto: `⏸ En pausa: ${pausa.slice(0, 3).map((p) => `${textoOt(p)} (${p.motivo})`).join(", ")}${pausa.length > 3 ? ` y ${pausa.length - 3} más` : ""}. Lo planificado mientras estuvo en pausa no cuenta en la nota.` });
   const rt = r.retrabajos || [];
   if (rt.length) {
     // Retrabajo (147): por OT y proceso, con el motivo
     const grupos = new Map();
     for (const x of rt) {
       const k = `${x.ot}|${x.etapa}`;
-      const g = grupos.get(k) || { ot: x.ot, nombre: x.nombre, horas: 0, motivos: new Set() };
+      const g = grupos.get(k) || { ot: x.ot, cliente: x.cliente, obra: x.obra, descripcion: x.descripcion, nombre: x.nombre, horas: 0, motivos: new Set() };
       g.horas += x.horas;
       g.motivos.add(x.motivo);
       grupos.set(k, g);
     }
     const gs = [...grupos.values()].sort((a, b) => b.horas - a.horas);
-    puntos.push({ tono: "mal", texto: `🔁 Retrabajo: ${coma(s.horasRetrabajo)} h. ${gs.slice(0, 3).map((g) => `OT ${g.ot} ${g.nombre} ${coma(g.horas)} h (${[...g.motivos].join(", ")})`).join("; ")}${gs.length > 3 ? ` y ${gs.length - 3} más` : ""}.` });
+    puntos.push({ tono: "mal", texto: `🔁 Retrabajo: ${coma(s.horasRetrabajo)} h. ${gs.slice(0, 3).map((g) => `${textoOt(g)}: ${g.nombre} ${coma(g.horas)} h (${[...g.motivos].join(", ")})`).join("; ")}${gs.length > 3 ? ` y ${gs.length - 3} más` : ""}.` });
   }
   const lt = r.leadTime;
   if (lt?.promedios?.length) {
     // Lead time en horas de trabajo de lo que terminó en el período
     const terminadas = lt.ots.filter((o) => o.horas != null);
     const procs = lt.promedios.filter((x) => x.etapa !== "ot").map((x) => `${x.nombre} ${coma(x.promedio)} h${x.cantidad > 1 ? ` (promedio de ${x.cantidad})` : ""}`);
-    puntos.push({ tono: "neutro", texto: `⏱ Lead time en horas de trabajo: ${procs.join(", ")}.${terminadas.length ? ` OT terminadas: ${terminadas.slice(0, 3).map((o) => `OT ${o.ot} en ${coma(o.horas)} h`).join(", ")}${terminadas.length > 3 ? ` y ${terminadas.length - 3} más` : ""}.` : ""}` });
+    puntos.push({ tono: "neutro", texto: `⏱ Lead time en horas de trabajo: ${procs.join(", ")}.${terminadas.length ? ` OT terminadas: ${terminadas.slice(0, 3).map((o) => `${textoOt(o)} en ${coma(o.horas)} h`).join(", ")}${terminadas.length > 3 ? ` y ${terminadas.length - 3} más` : ""}.` : ""}` });
   }
   if (s.procesosCorridos) puntos.push({ tono: "medio", texto: `${s.procesosCorridos} de ${s.procesosAbiertos} procesos se corrieron del plan confirmado.` });
   if (reporteDia) {

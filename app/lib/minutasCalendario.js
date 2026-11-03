@@ -5,6 +5,8 @@
 // Lee los renglones de la minuta del día. `extras` deja sumar otras fechas
 // (por ejemplo, las del Gantt de instalación cuando esté) con la misma forma.
 
+import { textoRenglonOt } from "./nombreOt";
+
 const DIA = 86400000;
 const SECCIONES_CAL = { prod_en_curso: "produccion", inst_en_curso: "instalacion" };
 export const MAX_SEMANAS = 6;
@@ -63,6 +65,7 @@ export function calendarioMinuta(items = [], fecha, extras = []) {
   };
 }
 
-export const nombreEvento = (e) => (e.ot ? `OT ${e.ot}` : e.proyecto || "");
+// La OT completa con lo que guardó el renglón (02/11)
+export const nombreEvento = (e, porOt = null) => (e.ot ? textoRenglonOt(e, porOt) : e.proyecto || "");
 export const iconoEvento = (e) => (e.tipo === "instalacion" ? "🔧" : "🏭");
 export { ddmm as fechaCorta };

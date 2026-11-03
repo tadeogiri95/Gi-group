@@ -2,6 +2,7 @@
 // horas por OT, tiempo muerto por causa y ausencias de la semana pasada.
 
 import { nombreCausa } from "./causas";
+import { detalleOt } from "./nombreOt";
 
 export const CAUSAS = { M: "Falta material", H: "Falta herramienta", I: "Esperando indicación", O: "Otro" };
 const CAUSAS_RESUMEN = new Map(Object.entries(CAUSAS));
@@ -55,7 +56,7 @@ function cubierto(sols, legajo, fecha) {
  *  - fichadas:    { legajo, fecha, horas_trabajadas, llegada_tarde }
  *  - solicitudes: aprobadas que justifican { legajo, fecha, fecha_hasta, tipo }
  *  - empleados:   operativos activos { legajo, nombre, diagrama, created_at }
- *  - proyectos:   { ot, cliente, proyecto } para ponerle nombre a cada OT
+ *  - proyectos:   { ot, cliente, obra, descripcion } para ponerle nombre a cada OT
  *  - causas:      lista de causas de parada de la empresa (099); sin lista, las de siempre
  */
 export function armarResumen({ desde, hasta, actividades = [], fichadas = [], solicitudes = [], empleados = [], proyectos = [], causas = null }) {
@@ -72,7 +73,7 @@ export function armarResumen({ desde, hasta, actividades = [], fichadas = [], so
       porOT.set(a.codigo_proyecto, (porOT.get(a.codigo_proyecto) || 0) + min);
     }
   }
-  const nombreOT = new Map(proyectos.map((p) => [String(p.ot), [p.cliente, p.proyecto].filter(Boolean).join(" · ")]));
+  const nombreOT = new Map(proyectos.map((p) => [String(p.ot), detalleOt(p)]));
   const ots = [...porOT.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([ot, min]) => ({ ot, detalle: nombreOT.get(String(ot)) || "", horas: +(min / 60).toFixed(1) }));

@@ -57,7 +57,7 @@ test("armarResumen — horas por OT, tiempo muerto por causa y faltas sin aviso"
       { legajo: 3, nombre: "Sin horario", diagrama: null },
       { legajo: 4, nombre: "Nuevo", diagrama: L_V, created_at: "2026-10-02T10:00:00Z" },
     ],
-    proyectos: [{ ot: "1001", cliente: "Acme", proyecto: "Portón" }],
+    proyectos: [{ ot: "1001", cliente: "Acme", proyecto: "M-1001-01", obra: "Portón" }],
   });
   assert.equal(r.horasFichadas, 53.5);
   assert.equal(r.tardanzas, 1);

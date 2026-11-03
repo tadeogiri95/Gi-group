@@ -20,7 +20,7 @@ export async function resumenDeEmpresa(empresa, ahora = new Date()) {
     sbGetAll(`fichadas?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=legajo,fecha,horas_trabajadas,llegada_tarde&order=fecha.asc,id.asc`),
     sbGetAll(`solicitudes?empresa_id=eq.${e}&estado=eq.aprobado&fecha=lte.${hasta}&or=(fecha_hasta.gte.${desde},and(fecha_hasta.is.null,fecha.gte.${desde}))&tipo=in.(${TIPOS_QUE_JUSTIFICAN.join(",")})&select=legajo,fecha,fecha_hasta,tipo&order=id.asc`),
     sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=legajo,nombre,diagrama,created_at&order=legajo.asc`),
-    sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,proyecto&order=id.asc`, { maxFilas: 5000 }),
+    sbGetAll(`proyectos?empresa_id=eq.${e}&select=ot,cliente,obra,proyecto,descripcion&order=id.asc`, { maxFilas: 5000 }),
     sbGetAll(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_CAUSAS}&select=valor`).catch(() => ({ data: [] })),
   ]);
   return armarResumen({
