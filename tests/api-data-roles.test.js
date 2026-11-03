@@ -336,3 +336,45 @@ test("ajustes_tiempo_ot: administración lo guarda con su empresa y su id; el op
   const operario = await POST(req({ method: "POST", path: "ajustes_tiempo_ot", body: fila }, await token("operativo")));
   assert.equal(operario.status, 403);
 });
+
+// ─── OT en pausa (151): se guarda de punta a punta por el gateway ───
+// (02/11 faltaba la lista de campos y daba "Operación no permitida sobre pausas_ot")
+
+test("gestión: pone en pausa y reanuda una OT por /api/data", async () => {
+  const t = await token("gerencial");
+  const { handlers, llamadas } = capturar("pausas_ot");
+  global.fetch = createFetchMock(handlers);
+  const res = await POST(req({ method: "POST", path: "pausas_ot", body: { ot: "7100", motivo: "falta_pago", detalle: "cuota 2", creado_nombre: "Tadeo", hasta: "2026-11-05T00:00:00Z" } }, t));
+  assert.equal(res.status, 200, await res.clone().text());
+  const post = llamadas.find((l) => l.method === "POST");
+  assert.equal(post.body.ot, "7100");
+  assert.equal(post.body.motivo, "falta_pago");
+  assert.equal(post.body.creado_por, EMPLEADO_ID, "quién la puso sale de la sesión");
+  assert.equal(post.body.empresa_id, EMPRESA_ID);
+  assert.ok(post.body.desde);
+  assert.equal(post.body.hasta, undefined, "una pausa nueva no viene terminada");
+  const res2 = await POST(req({ method: "PATCH", path: "pausas_ot?id=eq.1&hasta=is.null", body: { hasta: "2026-11-05T12:00:00Z", reanudada_nombre: "Tadeo" } }, t));
+  assert.equal(res2.status, 200, await res2.clone().text());
+  const patch = llamadas.find((l) => l.method === "PATCH");
+  assert.deepEqual({ hasta: patch.body.hasta, reanudada_nombre: patch.body.reanudada_nombre }, { hasta: "2026-11-05T12:00:00Z", reanudada_nombre: "Tadeo" });
+});
+
+test("operativo: no puede poner una OT en pausa", async () => {
+  const t = await token("operativo");
+  const { handlers, llamadas } = capturar("pausas_ot");
+  global.fetch = createFetchMock(handlers);
+  const res = await POST(req({ method: "POST", path: "pausas_ot", body: { ot: "7100", motivo: "falta_pago" } }, t));
+  assert.equal(res.status, 403);
+  assert.equal(llamadas.filter((l) => l.method === "POST").length, 0);
+});
+
+// Toda tabla que la política deja escribir tiene su lista de campos (si no, el gateway la rechaza)
+test("cada POST/PATCH permitido en la política tiene su lista de campos", async () => {
+  const { POLICY } = await import("../app/lib/dataPolicy.js");
+  const { CAMPOS_PERMITIDOS } = await import("../app/lib/schemas.ts");
+  const faltan = [];
+  for (const [tabla, reglas] of Object.entries(POLICY)) {
+    for (const m of ["POST", "PATCH"]) if (reglas[m] && !CAMPOS_PERMITIDOS[tabla]?.[m]) faltan.push(`${tabla} ${m}`);
+  }
+  assert.deepEqual(faltan, []);
+});
