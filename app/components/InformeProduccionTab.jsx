@@ -10,6 +10,8 @@ import { fechaCorta } from "../lib/ot";
 import { TIPOS_INFORME, periodoDe, explicacionNota, partesNota } from "../lib/informeProduccion";
 import { imprimirInforme } from "../lib/informePdf";
 import { Chip } from "./ui";
+import NombreOt from "./NombreOt";
+import { textoOt } from "../lib/nombreOt";
 
 const DIA = 86400000;
 const coma = (n) => String(n ?? "—").replace(".", ",");
@@ -92,7 +94,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
         {!r.ots.length && <div className="text-[13px] text-gypi-dim">No hubo nada planificado ni hecho en el período.</div>}
         {s.otsFueraDelPlan > 0 && (
           <div className="text-[13px] text-gypi-amber-ink font-bold mb-2" data-fuera-plan>
-            🆕 {s.otsFueraDelPlan === 1 ? "1 OT tuvo producción" : `${s.otsFueraDelPlan} OT tuvieron producción`} sin estar planificada en el período: {r.ots.filter((o) => o.fueraDelPlan).map((o) => o.ot).join(", ")}
+            🆕 {s.otsFueraDelPlan === 1 ? "1 OT tuvo producción" : `${s.otsFueraDelPlan} OT tuvieron producción`} sin estar planificada en el período: {r.ots.filter((o) => o.fueraDelPlan).map((o) => textoOt(o)).join(" / ")}
           </div>
         )}
         <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
@@ -101,8 +103,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
               <button type="button" onClick={() => setAbierta(abierta === o.ot ? null : o.ot)} aria-expanded={abierta === o.ot}
                 className="w-full bg-transparent border-0 p-0 text-left cursor-pointer text-gypi-text">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-[14px] font-bold">OT {o.ot}</span>
-                  <span className="flex-1 min-w-0 text-[12px] text-gypi-dim truncate">{[o.cliente, o.descripcion].filter(Boolean).join(" · ")}</span>
+                  <NombreOt proyecto={o} className="flex-1 min-w-0 text-[14px]" />
                   <span className={`text-[13px] font-bold ${!o.fueraDelPlan && o.hecho < o.planificado ? "text-gypi-red" : "text-gypi-green"}`} data-desvio>{o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</span>
                 </div>
                 <BarrasOt o={o} />
@@ -150,7 +151,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
           <ul className="list-none m-0 p-0 flex flex-col gap-1">
             {r.leadTime.ots.map((o) => (
               <li key={o.ot} className="text-[13px]">
-                <span className="font-mono font-bold">OT {o.ot}</span>
+                <NombreOt proyecto={o} />
                 {o.horas != null && <span className="font-bold"> · terminada en {coma(o.horas)} h</span>}
                 <span className="text-gypi-dim"> · {o.procesos.map((q) => `${q.nombre} ${coma(q.horas)} h`).join(" · ")}</span>
               </li>
@@ -166,7 +167,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
           <ul className="list-none m-0 p-0 flex flex-col gap-1">
             {r.enPausa.map((p, i) => (
               <li key={`${p.ot}-${i}`} className="bg-gypi-surface rounded-xl px-3 py-2 border border-gypi-border text-[13px]">
-                <span className="font-mono font-bold">OT {p.ot}</span>{p.cliente ? ` · ${p.cliente}` : ""} · {p.motivo}
+                <NombreOt proyecto={p} /> · {p.motivo}
                 <span className="text-gypi-dim"> · desde {fechaCortaTs(p.desde)}{p.hasta ? ` hasta ${fechaCortaTs(p.hasta)}` : " (sigue en pausa)"}</span>
               </li>
             ))}
@@ -181,7 +182,7 @@ export function VistaInforme({ informe: r, guardado = null }) {
           <ul className="list-none m-0 p-0 flex flex-col gap-1">
             {r.retrabajos.map((x, i) => (
               <li key={`${x.ot}-${x.etapa}-${i}`} className="bg-gypi-surface rounded-xl px-3 py-2 border border-gypi-border text-[13px]">
-                <span className="font-mono font-bold">OT {x.ot}</span> · {x.nombre} · <span className="font-bold text-gypi-red">{coma(x.horas)} h</span> · {x.motivo}
+                <NombreOt proyecto={x} /> · {x.nombre} · <span className="font-bold text-gypi-red">{coma(x.horas)} h</span> · {x.motivo}
                 <span className="text-gypi-dim">{x.terminado ? " · ✓ terminado" : " · sin terminar"}</span>
               </li>
             ))}

@@ -4,12 +4,15 @@
 import { fmtPesos } from "./costo";
 import { HORA_REUNION } from "./minutasReporte";
 import { textoRevision, tipoRevision } from "./minutasRevision";
+import { textoRenglonOt } from "./nombreOt";
 
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 const ddmm = (f) => (f ? `${String(f).slice(8, 10)}/${String(f).slice(5, 7)}` : "");
 const fmtDias = (d) => (d == null ? "—" : `${String(d).replace(".", ",")} ${d === 1 ? "día" : "días"}`);
-const nombreOt = (x) => [x.ot ? `OT ${x.ot}` : null, x.proyecto, x.cliente].filter(Boolean).join(" · ");
+// La OT completa (Código · Cliente · Proyecto · Descripción, 02/11): con las OT
+// del período (inf.porOt) si vinieron; si no, lo que guardó el renglón.
+const nombreOtDe = (x, porOt) => textoRenglonOt(x, porOt);
 const PUNTO = { verde: "🟢", amarillo: "🟡", rojo: "🔴" };
 const pct = (v, max) => (max > 0 ? Math.round((v / max) * 1000) / 10 : 0);
 
@@ -31,6 +34,7 @@ const kpi = (valor, label, tono = "") => `<div class="kpi ${tono}"><b>${esc(valo
  * @param {{ informe: object, titulo: string, empresa?: string }} datos
  */
 export function htmlInformeMinutas({ informe: inf, titulo, empresa = "" }) {
+  const nombreOt = (x) => nombreOtDe(x, inf.porOt);
   const dia = inf.modo === "dia";
   const { reunion, foco, terminado, enCurso, pendientes, feedback, compras, serie } = inf;
   const r0 = reunion.dias[0];
@@ -220,6 +224,7 @@ export async function descargarPdfInformeMinutas(datos) {
 
 /** Resumen corto para mandar por WhatsApp. */
 export function textoInformeMinutas(inf, titulo) {
+  const nombreOt = (x) => nombreOtDe(x, inf.porOt);
   const { reunion, foco, terminado, enCurso, pendientes, feedback } = inf;
   const dia = inf.modo === "dia";
   const r0 = reunion.dias[0];
@@ -227,11 +232,11 @@ export function textoInformeMinutas(inf, titulo) {
   l.push(dia
     ? `⏱ Reunión ${r0?.inicio || "—"}${r0?.cierre ? ` a ${r0.cierre}` : ""}${r0?.duracion != null ? ` (${r0.duracion} min)` : ""} · ${r0?.asistentes.length || 0} presentes`
     : `⏱ ${reunion.cantidad} reuniones · ${reunion.aHorario} de ${reunion.conInicio} a horario · ${reunion.duracionPromedio ?? "—"} min promedio`);
-  if (foco.items.length) l.push(`🎯 Foco: ${(dia ? foco.items : foco.porOt.slice(0, 5)).map((f) => (f.ot ? `OT ${f.ot}` : f.texto)).join(", ")}`);
+  if (foco.items.length) l.push(`🎯 Foco: ${(dia ? foco.items : foco.porOt.slice(0, 5)).map((f) => (f.ot ? nombreOt(f) : f.texto)).join("; ")}`);
   const valor = terminado.produccion.valor + terminado.instalacion.valor;
   l.push(`✅ Terminadas: ${terminado.produccion.cantidad} en producción, ${terminado.instalacion.cantidad} instaladas${valor ? ` · ${fmtPesos(valor)}` : ""}`);
   l.push(`🚦 En curso: 🟢 ${enCurso.verde} · 🟡 ${enCurso.amarillo} · 🔴 ${enCurso.rojo}`);
-  for (const x of enCurso.items.filter((y) => y.semaforo !== "verde").slice(0, 6)) l.push(`   ${PUNTO[x.semaforo]} OT ${x.ot || "—"}${x.texto ? `: ${x.texto}` : ""}${x.responsable ? ` (${x.responsable})` : ""}`);
+  for (const x of enCurso.items.filter((y) => y.semaforo !== "verde").slice(0, 6)) l.push(`   ${PUNTO[x.semaforo]} ${x.ot ? nombreOt(x) : "Sin OT"}${x.texto ? `: ${x.texto}` : ""}${x.responsable ? ` (${x.responsable})` : ""}`);
   l.push(`📌 Pendientes: ${pendientes.abiertos} abiertos${pendientes.vencidos ? `, ${pendientes.vencidos} vencidos` : ""}`);
   for (const p of pendientes.items.filter((y) => !y.resuelto).slice(0, 6)) l.push(`   • ${p.texto || nombreOt(p)} · ${p.responsable} · ${fmtDias(p.dias)}`);
   if (feedback.total) {

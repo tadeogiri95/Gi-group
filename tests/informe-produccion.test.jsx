@@ -127,9 +127,9 @@ test("calcularInforme — avance a mano con piezas sin escanear, sin historial, 
   assert.match(explicacionNota(r), /fuera del plan no cuenta en el cumplimiento/);
   assert.match(textoPushInforme(r), /4 OT trabajadas · 2 fuera del plan$/);
   const html = htmlInformeProduccion({ empresa: "GI", slug: "gi", informe: r, explicacion: explicacionNota(r) });
-  assert.match(html, /OT con producción fuera del plan.*2: 7300, 7400/s);
+  assert.match(html, /OT con producción fuera del plan.*2: OT 7300 · Luis \/ OT 7400/s);
   render(<VistaInforme informe={r} />);
-  assert.match(document.querySelector("[data-fuera-plan]").textContent, /2 OT tuvieron producción sin estar planificada en el período: 7300, 7400/);
+  assert.match(document.querySelector("[data-fuera-plan]").textContent, /2 OT tuvieron producción sin estar planificada en el período: OT 7300 · Luis \/ OT 7400/);
   assert.match(document.querySelector('[data-ot="7300"]').textContent, /🆕 fuera del plan/);
 });
 
@@ -216,9 +216,9 @@ test("PDF — una hoja: nota en medio círculo, partes, lo importante, por proce
   assert.doesNotMatch(html, / h\b|horas/, "sin horas");
   assert.match(html, /<h2>Lo importante<\/h2>/);
   assert.match(html, /Cumplimiento 90 %: se hizo ese % del avance planificado\. 1 de 2 procesos planificados llegaron a lo previsto\./);
-  assert.match(html, /Más atrasadas contra el plan: OT 7200 \(hizo 40 % de 50 %\)\./);
+  assert.match(html, /Más atrasadas contra el plan: OT 7200[^(]* \(hizo 40 % de 50 %\)\./);
   assert.match(html, /40 de 50 %<\/text>/);
-  assert.match(html, /1 de 2 OT terminan después de su fecha límite: OT 7100\./);
+  assert.match(html, /1 de 2 OT terminan después de su fecha límite: OT 7100[^.]*\./);
   assert.match(html, /Hoy: 6 piezas escaneadas, 1 etapa terminada o firmada, 0 reportes de instalación, 1 OT atrasada contra la entrega\./);
   assert.doesNotMatch(html, /Detalle por OT y proceso/, "el detalle queda en Gypi");
   assert.match(html, /\.hoja \{ max-height: 276mm; overflow: hidden; \}/, "nunca pasa de una hoja");

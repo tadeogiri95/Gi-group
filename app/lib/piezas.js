@@ -6,6 +6,7 @@
 import { filasTsv } from "./sueltos";
 import { svgQR } from "./tarjetasQR";
 import { textoMotivoPausa } from "./pausaOt";
+import { detalleOt, otCompleta, textoOt } from "./nombreOt";
 
 /**
  * Las etapas que se escanean pieza por pieza son las de cada empresa: en
@@ -304,9 +305,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
  * Página con una etiqueta por pieza, del tamaño del rollo de la impresora de
  * etiquetas (una por página): OT, pieza, "2 de 4", medidas, material, módulo,
  * las etapas que le tocan y el QR.
- * @param {{ empresa?: string, ot: string, piezas: object[], tamano: { ancho: number, alto: number }, nombres?: Record<number, string> }} datos
+ * @param {{ empresa?: string, ot: string, proyecto?: object | null, piezas: object[], tamano: { ancho: number, alto: number }, nombres?: Record<number, string> }} datos
  */
-export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano, nombres = {} }) {
+export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, piezas, tamano, nombres = {} }) {
+  const deLaOt = detalleOt(proyecto);
   const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
   const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
@@ -318,6 +320,7 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano, no
   <div class="etiqueta">
     <div class="texto">
       <div class="ot">${empresa ? `${esc(empresa)} · ` : ""}OT ${esc(ot)}</div>
+      ${deLaOt ? `<div class="deot" data-de-la-ot>${esc(deLaOt)}</div>` : ""}
       <div class="pieza">${esc(p.nombre)}</div>
       <div class="unidad">${p.unidad} de ${p.de}${medidas(p) ? ` · ${esc(medidas(p))}` : ""}</div>
       ${p.material ? `<div class="chico">${esc(p.material)}</div>` : ""}
@@ -335,6 +338,7 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano, no
   .etiqueta { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 2.5mm; display: flex; gap: 2.5mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page; }
   .texto { flex: 1; min-width: 0; }
   .ot { font-size: ${pt(8)}; font-weight: 700; text-transform: uppercase; }
+  .deot { font-size: ${pt(6.5)}; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .pieza { font-size: ${pt(15)}; font-weight: 800; line-height: 1.1; word-break: break-word; }
   .unidad { font-size: ${pt(10)}; font-weight: 700; margin-top: .5mm; }
   .chico { font-size: ${pt(7)}; margin-top: .3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -344,7 +348,8 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, piezas, tamano, no
 }
 
 /** Página con una etiqueta por módulo, mismo rollo que las de pieza: OT, módulo, cuántas piezas y el QR. */
-export async function htmlEtiquetasModulos({ empresa = "", ot, modulos, tamano }) {
+export async function htmlEtiquetasModulos({ empresa = "", ot, proyecto = null, modulos, tamano }) {
+  const deLaOt = detalleOt(proyecto);
   const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
   const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
@@ -355,6 +360,7 @@ export async function htmlEtiquetasModulos({ empresa = "", ot, modulos, tamano }
   <div class="etiqueta">
     <div class="texto">
       <div class="ot">${empresa ? `${esc(empresa)} · ` : ""}OT ${esc(ot)}</div>
+      ${deLaOt ? `<div class="deot" data-de-la-ot>${esc(deLaOt)}</div>` : ""}
       <div class="titulo">MÓDULO</div>
       <div class="modulo">${esc(m.modulo)}</div>
       <div class="chico">${i + 1} de ${modulos.length} · ${m.piezas === 1 ? "1 pieza" : `${m.piezas} piezas`}</div>
@@ -370,6 +376,7 @@ export async function htmlEtiquetasModulos({ empresa = "", ot, modulos, tamano }
   .etiqueta { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 2.5mm; display: flex; gap: 2.5mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page; }
   .texto { flex: 1; min-width: 0; }
   .ot { font-size: ${pt(8)}; font-weight: 700; text-transform: uppercase; }
+  .deot { font-size: ${pt(6.5)}; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .titulo { font-size: ${pt(8)}; font-weight: 800; margin-top: .5mm; letter-spacing: .05em; }
   .modulo { font-size: ${pt(17)}; font-weight: 800; line-height: 1.1; word-break: break-word; }
   .chico { font-size: ${pt(8)}; margin-top: .8mm; border-top: .3mm solid #000; padding-top: .5mm; }
@@ -478,22 +485,24 @@ export function clavesEscaneadas(filas = []) {
  * respuesta de /api/piezas/paso.
  * @returns {{ tono: "verde"|"amarillo"|"rojo", texto: string, detalle: string|null }}
  */
-export function mensajeEscaneo(r, nombres = {}) {
-  const m = mensajeBase(r, nombres);
+export function mensajeEscaneo(r, nombres = {}, porOt = null) {
+  const m = mensajeBase(r, nombres, porOt);
   // OT en pausa (151): se anota igual, con un aviso amarillo para el operario
   if (m.tono === "rojo" || !r?.pausa) return m;
   const ot = r.modulo?.ot || r.pieza?.ot || "";
-  const aviso = `⏸ La OT ${ot} está en pausa (${textoMotivoPausa(r.pausa)}). Quedó anotado; avisale a tu jefe.`;
+  const aviso = `⏸ La ${textoOt(otCompleta(ot, porOt)) || "OT"} está en pausa (${textoMotivoPausa(r.pausa)}). Quedó anotado; avisale a tu jefe.`;
   return { tono: "amarillo", texto: m.texto, detalle: m.detalle ? `${aviso} ${m.detalle}` : aviso };
 }
 
-function mensajeBase(r, nombres = {}) {
+function mensajeBase(r, nombres = {}, porOt = null) {
+  // La OT completa si la pantalla tiene la lista de OT (02/11)
+  const deLaOt = (ot) => textoOt(otCompleta(ot, porOt)) || `OT ${ot}`;
   const nombreEtapa = (c) => nombres[c] || (Number(c) === Number(r?.etapa) && r?.etapaNombre) || `Etapa ${c}`;
   if (!r?.ok) return { tono: "rojo", texto: r?.error || "No se pudo anotar la pieza.", detalle: null };
   if (r.modulo) {
     const m = r.modulo;
     const etapa = nombreEtapa(r.etapa);
-    const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la OT ${m.ot}.` : null;
+    const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la ${deLaOt(m.ot)}.` : null;
     const terminada = r.etapaTerminada ? ` ✅ Pasaron todas: la etapa ${r.etapaTerminada.nombre} quedó terminada, falta la firma.` : "";
     const detalle = progreso ? `${progreso}${terminada}` : null;
     if (r.ya) return { tono: "amarillo", texto: `El módulo ${m.nombre} ya estaba escaneado en ${etapa}.`, detalle };
@@ -503,7 +512,7 @@ function mensajeBase(r, nombres = {}) {
   const p = r.pieza || {};
   const cual = `${p.nombre}${p.de > 1 ? ` (${p.unidad} de ${p.de})` : ""}`;
   const etapa = nombreEtapa(r.etapa);
-  const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la OT ${p.ot}.` : null;
+  const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la ${deLaOt(p.ot)}.` : null;
   const terminada = r.etapaTerminada ? ` ✅ Pasaron todas: la etapa ${r.etapaTerminada.nombre} quedó terminada, falta la firma.` : "";
   const detalle = progreso ? `${progreso}${terminada}` : null;
   if (r.ya) return { tono: "amarillo", texto: `${cual} ya estaba escaneada en ${etapa}.`, detalle };

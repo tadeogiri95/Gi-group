@@ -134,7 +134,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
     setError(null);
     const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
     try {
-      await imprimirEtiquetasModulos({ empresa: empresa?.nombre_corto || "", ot, modulos: paraModulos, tamano: t });
+      await imprimirEtiquetasModulos({ empresa: empresa?.nombre_corto || "", ot, proyecto, modulos: paraModulos, tamano: t });
     } catch (e) {
       setError(e.message);
     }
@@ -145,7 +145,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
     const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
     try { localStorage.setItem(CLAVE_TAMANO, t.id); } catch { /* sin almacenamiento */ }
     try {
-      await imprimirEtiquetasPiezas({ empresa: empresa?.nombre_corto || "", ot, piezas: lista, tamano: t, nombres });
+      await imprimirEtiquetasPiezas({ empresa: empresa?.nombre_corto || "", ot, proyecto, piezas: lista, tamano: t, nombres });
     } catch (e) {
       setError(e.message);
     }

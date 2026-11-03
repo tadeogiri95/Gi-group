@@ -7,6 +7,7 @@
 import { Resend } from "resend";
 import { logger } from "./logger";
 import { partesNota } from "./informeProduccion";
+import { detalleOt, textoOt } from "./nombreOt";
 
 // El constructor de Resend tira si la key es falsy — instanciar solo cuando
 // existe. Cada función de abajo ya hace `if (!RESEND_API_KEY) return;` antes
@@ -612,7 +613,7 @@ export function htmlReporteDiario({ empresa, slug, reporte: r }) {
   const titulo = (t) => `<p style="margin:24px 0 6px;font-size:13px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.04em">${t}</p>`;
   const tabla = (filas) => `<table style="width:100%;border-collapse:collapse">${filas}</table>`;
   const nada = (t) => `<p style="margin:0;color:#9B9B9B;font-size:14px">${t}</p>`;
-  const ot = (o) => `OT ${escapeHtml(o.ot)}${o.cliente ? ` <span style="color:#9B9B9B">· ${escapeHtml(o.cliente)}</span>` : ""}`;
+  const ot = (o) => `OT ${escapeHtml(o.ot)}${detalleOt(o) ? ` <span style="color:#9B9B9B">· ${escapeHtml(detalleOt(o))}</span>` : ""}`;
   const MAX = 15;
 
   const produccion = r.produccion.length
@@ -664,7 +665,7 @@ export function htmlInformeProduccion({ empresa, slug, informe: r, explicacion }
   const barra = (pct, hecho) => `<table style="width:100%;border-collapse:collapse;height:8px"><tr><td style="width:${Math.max(0, Math.min(100, pct))}%;background:${hecho ? "orange" : "silver"};height:8px;padding:0"></td><td style="background:#EEE;height:8px;padding:0"></td></tr></table>`;
   const MAX = 20;
   const ots = r.ots.slice(0, MAX).map((o) => `
-    <p style="margin:12px 0 2px;font-size:14px;font-weight:700">OT ${escapeHtml(o.ot)}${o.cliente ? ` <span style="color:#9B9B9B;font-weight:400">· ${escapeHtml(o.cliente)}</span>` : ""}
+    <p style="margin:12px 0 2px;font-size:14px;font-weight:700">OT ${escapeHtml(o.ot)}${detalleOt(o) ? ` <span style="color:#9B9B9B;font-weight:400">· ${escapeHtml(detalleOt(o))}</span>` : ""}
       <span style="float:right;color:${!o.fueraDelPlan && o.hecho < o.planificado ? COLOR_ROJO : COLOR_VERDE}">${o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</span></p>
     <p style="margin:0;font-size:12px;color:#777">Planificado ${coma(o.planificado)} % · hecho ${coma(o.hecho)} % · total ${coma(o.alFinal)} %${o.diasCorrido > 0 ? ` · se corrió ${o.diasCorrido} d` : ""}${o.tarde ? ` · ${o.diasTarde} d después de su semana` : ""}${o.fueraDelPlan ? " · 🆕 fuera del plan" : ""}${o.retrabajo > 0 ? ` · 🔁 ${coma(o.retrabajo)} h de retrabajo` : ""}</p>
     ${barra(o.planificado, false)}${barra(o.hecho, true)}
@@ -676,9 +677,9 @@ export function htmlInformeProduccion({ empresa, slug, informe: r, explicacion }
     <table style="width:100%;border-collapse:collapse">
       ${partesNota(s).map((p) => fila(`${p.label} (${p.pct == null ? "—" : `${coma(p.pct)} %`})`, `+${p.puntos == null ? "—" : coma(p.puntos)} de ${p.max}`)).join("")}
       ${fila("OT trabajadas", String(s.ots))}
-      ${s.otsFueraDelPlan ? fila("🆕 OT con producción fuera del plan", `${s.otsFueraDelPlan}: ${escapeHtml(r.ots.filter((o) => o.fueraDelPlan).map((o) => o.ot).join(", "))}`) : ""}
+      ${s.otsFueraDelPlan ? fila("🆕 OT con producción fuera del plan", `${s.otsFueraDelPlan}: ${escapeHtml(r.ots.filter((o) => o.fueraDelPlan).map((o) => textoOt(o)).join(" / "))}`) : ""}
       ${(r.leadTime?.promedios || []).map((x) => fila(`⏱ Lead time ${escapeHtml(x.nombre)}${x.cantidad > 1 ? ` (promedio de ${x.cantidad})` : ""}`, `${coma(x.promedio)} h`)).join("")}
-      ${s.horasRetrabajo ? fila("🔁 Retrabajo", `${coma(s.horasRetrabajo)} h: ${escapeHtml((r.retrabajos || []).map((x) => `OT ${x.ot} ${x.nombre} ${coma(x.horas)} h (${x.motivo})`).join("; "))}`) : ""}
+      ${s.horasRetrabajo ? fila("🔁 Retrabajo", `${coma(s.horasRetrabajo)} h: ${escapeHtml((r.retrabajos || []).map((x) => `${textoOt(x)}: ${x.nombre} ${coma(x.horas)} h (${x.motivo})`).join("; "))}`) : ""}
     </table>
     <p style="margin:8px 0 0;font-size:12px;color:#777;line-height:1.5">${escapeHtml(explicacion)}</p>
     ${titulo("Por OT (gris: planificado · naranja: hecho)")}${ots || `<p style="margin:0;color:#9B9B9B;font-size:14px">No hubo nada planificado ni hecho.</p>`}

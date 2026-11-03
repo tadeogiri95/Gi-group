@@ -8,6 +8,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import Stat from "./ui/Stat";
+import NombreOtComun from "./NombreOt";
 
 const moverDia = (fecha, dias) => {
   const d = new Date(`${fecha}T12:00:00-03:00`);
@@ -27,12 +28,8 @@ function Seccion({ titulo, vacio, children, hay }) {
   );
 }
 
-const NombreOt = ({ o }) => (
-  <>
-    <span className="font-mono text-[13px] font-bold">OT {o.ot}</span>
-    {o.cliente && <span className="text-[12px] text-gypi-dim truncate"> · {o.cliente}</span>}
-  </>
-);
+// La OT completa, como en toda la app (02/11)
+const NombreOt = ({ o }) => <NombreOtComun proyecto={o} className="text-[13px]" />;
 
 export default function ReporteDiaTab() {
   const hoy = hoyArg();
@@ -79,7 +76,7 @@ export default function ReporteDiaTab() {
             {r.produccion.map((o) => (
               <Tarjeta key={o.ot}>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0 truncate"><NombreOt o={o} /></div>
+                  <div className="flex-1 min-w-0"><NombreOt o={o} /></div>
                   <div className="text-[13px] font-bold text-gypi-amber-ink" aria-label={`De ${o.antes ?? 0}% a ${o.despues ?? 0}%`}>{o.antes ?? 0}% → {o.despues ?? 0}%</div>
                 </div>
                 <div className="text-xs text-gypi-dim mt-1">
@@ -93,7 +90,7 @@ export default function ReporteDiaTab() {
             {r.etapasCerradas.map((x) => (
               <Tarjeta key={`${x.ot}-${x.codigo}-${x.que}`}>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0 truncate"><NombreOt o={x} /> <span className="text-[12px]">· {x.nombre}</span></div>
+                  <div className="flex-1 min-w-0"><NombreOt o={x} /> <span className="text-[12px]">· {x.nombre}</span></div>
                   <div className={`text-[12px] font-bold ${x.que === "firmada" ? "text-gypi-green" : "text-gypi-amber-ink"}`}>{x.que === "firmada" ? "Firmada" : "Falta la firma"}</div>
                 </div>
               </Tarjeta>
@@ -104,7 +101,7 @@ export default function ReporteDiaTab() {
             {r.instalaciones.map((i, n) => (
               <Tarjeta key={`${i.ot}-${n}`}>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0 truncate"><NombreOt o={i} /></div>
+                  <div className="flex-1 min-w-0"><NombreOt o={i} /></div>
                   {i.avance != null && <div className="text-[13px] font-bold text-gypi-amber-ink">{i.avance}%</div>}
                 </div>
                 <div className="text-xs text-gypi-dim mt-1">
@@ -119,7 +116,7 @@ export default function ReporteDiaTab() {
             {r.atrasadas.map((a) => (
               <Tarjeta key={a.ot}>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0 truncate"><NombreOt o={a} /></div>
+                  <div className="flex-1 min-w-0"><NombreOt o={a} /></div>
                   <div className="text-[12px] font-bold text-gypi-red">{a.dias === 1 ? "1 día" : `${a.dias} días`}{a.porcentaje != null ? ` · ${a.porcentaje}%` : ""}</div>
                 </div>
                 <div className="text-xs text-gypi-dim mt-1">Entrega {fechaCorta(a.entrega)}</div>

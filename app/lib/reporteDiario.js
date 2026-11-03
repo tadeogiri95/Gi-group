@@ -12,6 +12,7 @@
 // después a lo que suma hoy la vista v_avance_piezas.
 import { pct, porcentajeOt } from "./piezas";
 import { hoyArg } from "./dates";
+import { datosOt } from "./nombreOt";
 
 // Argentina no tiene horario de verano: el día va de 00:00 a 24:00 en -03:00.
 export function limitesDia(fecha) {
@@ -27,7 +28,7 @@ const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 8640000
 /**
  * @param {{
  *   fecha: string,
- *   proyectos: object[],      // ot, cliente, obra, proyecto, fecha_entrega, estado
+ *   proyectos: object[],      // ot, cliente, obra, proyecto, descripcion, fecha_entrega, estado
  *   etapas: object[],         // codigo, nombre, orden
  *   avancePiezas: object[],   // filas de v_avance_piezas: ot, etapa, total, pasaron
  *   pasos: object[],          // pasos_pieza desde el inicio del día: ot, etapa, created_at
@@ -67,7 +68,7 @@ export function armarReporteDiario({ fecha, proyectos = [], etapas = [], avanceP
     const p = proy.get(ot) || {};
     return {
       ot,
-      cliente: p.cliente || p.proyecto || null,
+      ...datosOt(p),
       antes: porcentajeOt(filas.map((e) => ({ total: e.total, pasaron: e.alInicio }))),
       despues: porcentajeOt(filas.map((e) => ({ total: e.total, pasaron: e.alFinal }))),
       piezasHoy: filas.reduce((s, e) => s + e.hoy, 0),
@@ -81,7 +82,7 @@ export function armarReporteDiario({ fecha, proyectos = [], etapas = [], avanceP
   const produccion = [...todas.values()]
     .filter((o) => o.piezasHoy > 0)
     .sort((a, b) => b.piezasHoy - a.piezasHoy || a.ot.localeCompare(b.ot, "es", { numeric: true }));
-  const completadas = produccion.filter((o) => o.despues === 100 && o.antes < 100).map((o) => ({ ot: o.ot, cliente: o.cliente }));
+  const completadas = produccion.filter((o) => o.despues === 100 && o.antes < 100).map((o) => ({ ot: o.ot, cliente: o.cliente, obra: o.obra, descripcion: o.descripcion }));
 
   const enElDia = (ts) => ts && Date.parse(ts) >= Date.parse(inicio) && Date.parse(ts) < Date.parse(fin);
   const etapasCerradas = avanceEtapas
@@ -90,18 +91,18 @@ export function armarReporteDiario({ fecha, proyectos = [], etapas = [], avanceP
       enElDia(a.aprobada_at) && { ot: String(a.ot), codigo: Number(a.etapa), que: "firmada" },
     ])
     .filter(Boolean)
-    .map((x) => ({ ...x, nombre: nombre.get(x.codigo) || `Etapa ${x.codigo}`, cliente: proy.get(x.ot)?.cliente || null }))
+    .map((x) => ({ ...x, nombre: nombre.get(x.codigo) || `Etapa ${x.codigo}`, ...datosOt(proy.get(x.ot)) }))
     .sort((a, b) => a.ot.localeCompare(b.ot, "es", { numeric: true }) || (orden.get(a.codigo) ?? 999) - (orden.get(b.codigo) ?? 999));
 
   // Atrasadas: abiertas, con entrega antes de ese día y producción sin terminar
   const atrasadas = proyectos
     .filter((p) => p.estado !== "cerrado" && p.fecha_entrega && p.fecha_entrega < fecha && todas.get(String(p.ot))?.despues !== 100)
-    .map((p) => ({ ot: String(p.ot), cliente: p.cliente || p.proyecto || null, entrega: p.fecha_entrega, dias: diasEntre(p.fecha_entrega, fecha), porcentaje: todas.get(String(p.ot))?.despues ?? null }))
+    .map((p) => ({ ot: String(p.ot), ...datosOt(p), entrega: p.fecha_entrega, dias: diasEntre(p.fecha_entrega, fecha), porcentaje: todas.get(String(p.ot))?.despues ?? null }))
     .sort((a, b) => b.dias - a.dias);
 
   const instalaciones = instalacion.map((r) => ({
     ot: String(r.ot),
-    cliente: proy.get(String(r.ot))?.cliente || null,
+    ...datosOt(proy.get(String(r.ot))),
     quien: r.empleado || null,
     modulos: (r.modulos || []).length,
     avance: r.avance ?? null,

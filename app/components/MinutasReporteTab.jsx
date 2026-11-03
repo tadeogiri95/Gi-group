@@ -15,6 +15,7 @@ import { imprimirInformeMinutas, descargarPdfInformeMinutas, textoInformeMinutas
 import { Chip } from "./ui";
 import { textoRevision, tipoRevision } from "../lib/minutasRevision";
 import Stat from "./ui/Stat";
+import { mapaOts, textoRenglonOt } from "../lib/nombreOt";
 
 const MODOS = [
   { id: "dia", label: "Del día" },
@@ -28,7 +29,8 @@ const TONO_TIPO = { Error: "rojo", "Falta de dato": "amarillo", Mejora: "gris", 
 const TONO_TEXTO = { bien: "text-gypi-green-ink", atencion: "text-gypi-amber-ink", mal: "text-gypi-red-ink" };
 const fmtDias = (d) => (d == null ? "—" : `${String(d).replace(".", ",")} ${d === 1 ? "día" : "días"}`);
 const ddmm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : "");
-const nombreOt = (x) => [x.ot ? `OT ${x.ot}` : null, x.proyecto, x.cliente].filter(Boolean).join(" · ");
+// La OT completa, como en toda la app (02/11): con las OT que manda el servidor (inf.porOt)
+const nombreOtDe = (x, porOt) => textoRenglonOt(x, porOt);
 
 function Bloque({ titulo, children }) {
   return (
@@ -130,7 +132,7 @@ export default function MinutasReporteTab({ empresa = null }) {
     return () => { vivo = false; };
   }, [desde, hasta]);
 
-  const inf = useMemo(() => (datos ? informeMinutas({ minutas: datos.minutas || [], items: datos.items || [], precios: datos.precios || {}, hoy, modo, hasta, anterior: datos.feedbackAnterior || null }) : null), [datos, hoy, modo, hasta]);
+  const inf = useMemo(() => (datos ? { ...informeMinutas({ minutas: datos.minutas || [], items: datos.items || [], precios: datos.precios || {}, hoy, modo, hasta, anterior: datos.feedbackAnterior || null }), porOt: mapaOts(datos.ots || []) } : null), [datos, hoy, modo, hasta]);
   const siguiente = moverInforme(modo, fecha, 1);
   const nombreEmpresa = empresa?.razon_social || empresa?.nombre || empresa?.nombre_corto || "";
 
@@ -174,6 +176,7 @@ export default function MinutasReporteTab({ empresa = null }) {
 }
 
 function Informe({ inf }) {
+  const nombreOt = (x) => nombreOtDe(x, inf.porOt);
   const dia = inf.modo === "dia";
   const { reunion, foco, terminado, enCurso, pendientes, feedback, compras, serie } = inf;
   const r0 = reunion.dias[0];

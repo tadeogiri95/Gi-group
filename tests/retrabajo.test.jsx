@@ -201,9 +201,9 @@ test("informe — horas de retrabajo del período por OT y proceso, sin cambiar 
   assert.equal(r.resumen.horasRetrabajo, 3.5, "solo lo cargado en el período");
   assert.equal(r.ots[0].retrabajo, 3.5);
   assert.deepEqual(r.retrabajos.map((x) => [x.nombre, x.horas, x.motivo, x.terminado]), [["Corte", 2.5, "Pieza mal cortada", false], ["Corte", 1, "Otros: Se mojó", true]]);
-  assert.ok(puntosClave(r).some((p) => /🔁 Retrabajo: 3,5 h\. OT 7100 Corte 3,5 h \(Pieza mal cortada, Otros: Se mojó\)/.test(p.texto)));
+  assert.ok(puntosClave(r).some((p) => /🔁 Retrabajo: 3,5 h\. OT 7100[^:]*: Corte 3,5 h \(Pieza mal cortada, Otros: Se mojó\)/.test(p.texto)));
   assert.match(svgPorOt(r.ots), /🔁 3,5 h/);
-  assert.match(htmlInformeProduccion({ empresa: "GI", slug: "gi", informe: r, explicacion: explicacionNota(r) }), /🔁 Retrabajo.*3,5 h: OT 7100 Corte 2,5 h/s);
+  assert.match(htmlInformeProduccion({ empresa: "GI", slug: "gi", informe: r, explicacion: explicacionNota(r) }), /🔁 Retrabajo.*3,5 h: OT 7100[^:]*: Corte 2,5 h/s);
   assert.match(textoPushInforme(r), /🔁 3,5 h de retrabajo/);
   assert.match(explicacionNota(r), /El retrabajo no cambia la nota/);
   assert.equal(informeVacio({ ots: [], retrabajos: r.retrabajos }), false, "un día solo con retrabajo también tiene informe");

@@ -82,10 +82,10 @@ test("armarReporteDiario — OT que llegó al 100%, etapas marcadas y firmadas, 
     ],
     instalacion: [{ ot: "7495", empleado: "Juan", modulos: ["M1", "M2"], avance: 48.5, pendientes: [{ descripcion: "Tiras de ajuste" }] }],
   });
-  assert.deepEqual(r.completadas, [{ ot: "7858", cliente: "CEVT" }]);
+  assert.deepEqual(r.completadas, [{ ot: "7858", cliente: "CEVT", obra: null, descripcion: null }]);
   assert.equal(r.atrasadas.length, 0, "la atrasada terminó su producción");
   assert.deepEqual(r.etapasCerradas.map((x) => [x.ot, x.nombre, x.que]), [["7858", "Corte", "terminada"], ["7858", "Corte", "firmada"]]);
-  assert.deepEqual(r.instalaciones[0], { ot: "7495", cliente: "Siciliano", quien: "Juan", modulos: 2, avance: 48.5, comentario: null, pendientes: ["Tiras de ajuste"] });
+  assert.deepEqual(r.instalaciones[0], { ot: "7495", cliente: "Siciliano", obra: null, descripcion: null, quien: "Juan", modulos: 2, avance: 48.5, comentario: null, pendientes: ["Tiras de ajuste"] });
   assert.equal(reporteVacio(r), false);
 });
 

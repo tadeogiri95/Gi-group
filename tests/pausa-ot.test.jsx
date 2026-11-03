@@ -101,7 +101,7 @@ test("informe — lo planificado en días de pausa no cuenta y se muestra aparte
   const r = calcularInforme({ ...base, pausas: [PAUSA] });
   assert.equal(r.resumen.cumplimiento, 100, "con pausa no baja");
   assert.deepEqual(r.enPausa.map((p) => [p.ot, p.cliente, p.motivo]), [["7100", "BCG", "Falta de pago"]]);
-  assert.ok(puntosClave(r).some((p) => /⏸ En pausa: OT 7100 \(Falta de pago\)/.test(p.texto)));
+  assert.ok(puntosClave(r).some((p) => /⏸ En pausa: OT 7100 · BCG \(Falta de pago\)/.test(p.texto)));
   // Una pausa de otro mes no aparece
   assert.equal(calcularInforme({ ...base, pausas: [{ ...PAUSA, desde: "2026-09-01T11:00:00Z", hasta: "2026-09-02T11:00:00Z" }] }).enPausa.length, 0);
 });

@@ -12,6 +12,7 @@
 
 import { calendarioMinuta, nombreEvento, iconoEvento, DIAS_CORTOS } from "./minutasCalendario";
 import { TIPOS_REVISION, textoRevision, ESTADO_PEDIDO } from "./minutasRevision";
+import { otCompleta, partesOt, textoRenglonOt } from "./nombreOt";
 
 export const CLAVE_CONFIG_MINUTA = "minuta_config";
 
@@ -252,13 +253,19 @@ const fechaCorta = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse()
 const fechaDiaMes = (iso) => (iso ? `${Number(String(iso).slice(8, 10))}/${Number(String(iso).slice(5, 7))}` : "");
 const etiqueta = (lista, id) => lista.find((x) => x.id === id)?.label || id || "";
 
-function columnas(s) {
+function columnas(s, porOt = null) {
   const c = [];
-  const proyectoOt = (it) => [it.ot ? `OT ${it.ot}` : "", it.proyecto].filter(Boolean).join(" · ");
+  // "Proyecto": la OT con su proyecto (obra) y descripción; el cliente va en su columna (02/11)
+  const proyectoOt = (it) => {
+    if (!it.ot) return it.proyecto || "";
+    const p = partesOt(otCompleta(it.ot, porOt, { cliente: it.cliente, descripcion: it.proyecto }));
+    return [`OT ${it.ot}`, p.proyecto, p.descripcion].filter(Boolean).join(" · ");
+  };
+  const clienteOt = (it) => (it.ot ? partesOt(otCompleta(it.ot, porOt, { cliente: it.cliente })).cliente : it.cliente) || "";
   const fecha = [s.fecha || "Fecha objetivo", (it) => fechaDiaMes(it.fecha_objetivo)];
-  if (s.campos.includes("articulo")) c.push(["Qué se compra", (it) => [it.texto, textoCantidad(it)].filter(Boolean).join(" · ")], ["Para proyecto", (it) => [proyectoOt(it), it.cliente].filter(Boolean).join(" · ")]);
-  else if (s.id === "dyt") c.push(["OT", (it) => it.ot]);
-  else if (s.campos.includes("ot")) c.push(["División", (it) => it.division], ["Proyecto", proyectoOt], ["Cliente", (it) => it.cliente]);
+  if (s.campos.includes("articulo")) c.push(["Qué se compra", (it) => [it.texto, textoCantidad(it)].filter(Boolean).join(" · ")], ["Para proyecto", (it) => [proyectoOt(it), clienteOt(it)].filter(Boolean).join(" · ")]);
+  else if (s.id === "dyt") c.push(["OT", (it) => textoRenglonOt(it, porOt)]);
+  else if (s.campos.includes("ot")) c.push(["División", (it) => it.division], ["Proyecto", proyectoOt], ["Cliente", clienteOt]);
   if (s.campos.includes("semaforo")) c.push(["Estado", (it) => (it.semaforo ? `<span class="punto ${esc(it.semaforo)}">●</span> ${esc(etiqueta(SEMAFOROS, it.semaforo))}` : ""), true]);
   if (s.id === "feedback") c.push(["Tipo", (it) => it.tipo], ["Feedback para", (it) => it.area]);
   if (s.id === "compra") c.push(["Proveedor", (it) => it.datos?.proveedor], ["Urgencia", (it) => etiqueta(URGENCIAS, it.tipo)]);
@@ -274,17 +281,17 @@ function columnas(s) {
   return c;
 }
 
-function tablaSeccion(s, items) {
-  const cols = columnas(s);
+function tablaSeccion(s, items, porOt = null) {
+  const cols = columnas(s, porOt);
   const filas = items.length
     ? items.map((it) => `<tr>${cols.map(([, f, html]) => `<td>${html ? f(it) : esc(f(it))}</td>`).join("")}</tr>`).join("")
     : `<tr>${cols.map(() => "<td>&nbsp;</td>").join("")}</tr>`;
   return `<table><thead><tr>${cols.map(([t]) => `<th>${esc(t)}</th>`).join("")}</tr></thead><tbody>${filas}</tbody></table>`;
 }
 
-function tablaDyt(items) {
+function tablaDyt(items, porOt = null) {
   const celda = (area, estado) => items.filter((it) => it.area === area && it.tipo === estado)
-    .map((it) => `<div>${esc([it.ot ? `OT ${it.ot}` : "", it.cliente, it.ot ? "" : it.proyecto, it.texto].filter(Boolean).join(" · "))}</div>`).join("");
+    .map((it) => `<div>${esc([it.ot ? textoRenglonOt(it, porOt) : [it.cliente, it.proyecto].filter(Boolean).join(" · "), it.texto].filter(Boolean).join(" · "))}</div>`).join("");
   return `<table class="dyt"><thead><tr><th>Área</th>${ESTADOS_DYT.map((e) => `<th>${esc(e.label)}</th>`).join("")}</tr></thead><tbody>${
     AREAS_DYT.map((a) => `<tr><td><b>${esc(a.label)}</b><br><small>${esc(a.detalle)}</small></td>${ESTADOS_DYT.map((e) => `<td>${celda(a.id, e.id)}</td>`).join("")}</tr>`).join("")
   }</tbody></table>`;
@@ -294,7 +301,7 @@ function tablaDyt(items) {
  * La minuta lista para imprimir o guardar en PDF (hoja A4), con el formato v2.
  * @param {{ empresa: string, minuta: object, items: object[], participantes: { nombre: string, area: string }[] }} datos
  */
-export function htmlMinuta({ empresa, minuta, items = [], participantes = [] }) {
+export function htmlMinuta({ empresa, minuta, items = [], participantes = [], porOt = null }) {
   const presentes = new Set(Array.isArray(minuta?.asistentes) ? minuta.asistentes : []);
   const todos = [...participantes];
   for (const n of presentes) if (!todos.some((p) => p.nombre === n)) todos.push({ nombre: n, area: "" });
@@ -303,11 +310,11 @@ export function htmlMinuta({ empresa, minuta, items = [], participantes = [] }) 
   const bloque = (b) => {
     const titulo = `${b.numero ? `${b.numero} · ` : ""}${esc(b.titulo)}`;
     const cabeza = `<h2>${titulo}${b.horario ? ` <span class="hora">${esc(b.horario)}</span>` : ""}</h2>${b.ayuda ? `<p class="ayuda">${esc(b.ayuda)}</p>` : ""}`;
-    if (b.id === "dyt") return `<section>${cabeza}${tablaDyt(de("dyt"))}</section>`;
+    if (b.id === "dyt") return `<section>${cabeza}${tablaDyt(de("dyt"), porOt)}</section>`;
     const partes = seccionesDe(b.id).map((s) => {
       const sub = s.letra ? `<h3>${esc(s.letra)}. ${esc(s.titulo)}${s.ayuda ? ` <span class="ayuda">— ${esc(s.ayuda)}</span>` : ""}</h3>` : "";
       const total = s.id === "prod_en_curso" ? `<p class="ayuda">Proyectos en producción hoy: <b>${enCurso || "__"}</b> en total.</p>` : "";
-      return `${sub}${total}${tablaSeccion(s, de(s.id))}`;
+      return `${sub}${total}${tablaSeccion(s, de(s.id), porOt)}`;
     }).join("");
     return `<section>${cabeza}${partes}</section>`;
   };
@@ -359,7 +366,7 @@ export function htmlMinuta({ empresa, minuta, items = [], participantes = [] }) 
   ${htmlRevision(items)}
   ${BLOQUES.map(bloque).join("")}
   <section><h2>Notas libres</h2><div class="notas">${esc(minuta?.notas || "")}</div></section>
-  ${htmlCalendario(items, minuta?.fecha)}
+  ${htmlCalendario(items, minuta?.fecha, porOt)}
   <div class="pie">
     <span>${esc(empresa)} · Minuta de la Reunión de Buenos Días — v2 · Gypi</span>
     <span>Firma / conforme del moderador: ${minuta?.estado === "cerrada" && minuta?.modera ? esc(minuta.modera) : "____________________"}</span>
@@ -368,17 +375,17 @@ export function htmlMinuta({ empresa, minuta, items = [], participantes = [] }) 
 }
 
 /** Calendario de fechas objetivo para la minuta impresa (vacío si no hay nada). */
-function htmlCalendario(items, fecha) {
+function htmlCalendario(items, fecha, porOt = null) {
   if (!fecha) return "";
   const cal = calendarioMinuta(items, String(fecha).slice(0, 10));
   if (!cal.total) return "";
-  const ev = (e, conFecha = false) => `<span class="ev ${esc(e.semaforo || "")}">${iconoEvento(e)} ${esc(nombreEvento(e))}${conFecha ? ` · ${esc(fechaCorta(e.fecha).slice(0, 5))}` : ""}</span>`;
+  const ev = (e, conFecha = false) => `<span class="ev ${esc(e.semaforo || "")}">${iconoEvento(e)} ${esc(nombreEvento(e, porOt))}${conFecha ? ` · ${esc(fechaCorta(e.fecha).slice(0, 5))}` : ""}</span>`;
   return `<section><h2>Calendario de fechas objetivo</h2><p class="ayuda">🏭 producción y 🔧 instalación en curso, con el color de su semáforo.</p>
   ${cal.vencidas.length ? `<p class="ayuda"><b>Ya vencieron:</b></p><div>${cal.vencidas.map((e) => ev(e, true)).join("")}</div>` : ""}
   <table class="cal"><tr>${DIAS_CORTOS.map((d) => `<th>${d}</th>`).join("")}</tr>
   ${cal.semanas.map((sem) => `<tr>${sem.map((d) => `<td class="${d.hoy ? "hoy" : ""} ${d.finde ? "finde" : ""}"><div class="cal-dia ${d.hoy ? "hoy" : ""}">${d.hoy ? "Hoy" : esc(d.etiqueta)}</div>${d.eventos.map((e) => ev(e)).join("")}</td>`).join("")}</tr>`).join("")}</table>
-  ${cal.masAdelante.length ? `<p class="ayuda">Más adelante: ${cal.masAdelante.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e))} ${esc(fechaCorta(e.fecha).slice(0, 5))}`).join(" · ")}</p>` : ""}
-  ${cal.sinFecha.length ? `<p class="ayuda">Sin fecha objetivo: ${cal.sinFecha.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e))}`).join(" · ")}</p>` : ""}</section>`;
+  ${cal.masAdelante.length ? `<p class="ayuda">Más adelante: ${cal.masAdelante.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e, porOt))} ${esc(fechaCorta(e.fecha).slice(0, 5))}`).join(" · ")}</p>` : ""}
+  ${cal.sinFecha.length ? `<p class="ayuda">Sin fecha objetivo: ${cal.sinFecha.map((e) => `${iconoEvento(e)} ${esc(nombreEvento(e, porOt))}`).join(" · ")}</p>` : ""}</section>`;
 }
 
 /** La revisión de la minuta anterior, para la impresa (vacía si no hay). */

@@ -23,7 +23,7 @@ export async function revisarFinProcesos(empresa, { ahora = new Date(), messagin
   const hoy = hoyArg(ahora);
   const base = await cargarPlanVivo(e, { hoy });
   if (!base.vivo.size) return { vencidos: 0, nuevos: 0, push: 0 };
-  const vencidos = finesVencidos(base.vivo, { hoy, ahoraMin: minutosArg(ahora), ventanas: ventanasDeGrilla(base.empleados, base.divisiones, base.cfgValor) });
+  const vencidos = finesVencidos(base.vivo, { hoy, proyectos: base.abiertas, ahoraMin: minutosArg(ahora), ventanas: ventanasDeGrilla(base.empleados, base.divisiones, base.cfgValor) });
   if (!vencidos.length) return { vencidos: 0, nuevos: 0, push: 0 };
   // Sin la migración 149 no se sabe qué ya se avisó: mejor no avisar que avisar cada 15 minutos
   let ya;
