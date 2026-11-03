@@ -845,6 +845,11 @@ const frecuenciaFlota = z.object({
 }).strict();
 const frecuenciasFlota = z.partialRecord(z.enum(ASPECTOS_FLOTA), frecuenciaFlota);
 const urlFoto = z.string().trim().url().max(500).refine((u) => u.startsWith("https://"), "La foto tiene que ser https");
+// 156: el PDF de un papel (la póliza), subido por /api/flota/poliza
+const archivoPapel = {
+  archivo_path: z.string().trim().max(300).nullable().optional().transform((v) => v || null),
+  archivo_nombre: textoSuelto(200),
+};
 export const flotaBody = z.discriminatedUnion("accion", [
   z.object({
     accion: z.literal("vehiculo_guardar"),
@@ -860,6 +865,17 @@ export const flotaBody = z.discriminatedUnion("accion", [
     km: z.number().int().min(0).max(9999999).nullable().optional().transform((v) => v ?? null),
     combustible: z.enum(["nafta", "gasoil", "gnc", "electrico", "otro"]).nullable().optional().transform((v) => v ?? null),
     foto_url: urlFoto.nullable().optional().transform((v) => v || null),
+    // 156: hasta 6 fotos; la primera es foto_url
+    fotos: z.array(urlFoto).max(6).optional(),
+    // 156: al dar de alta, el seguro leído de la póliza
+    seguro: z.object({
+      numero: textoSuelto(60),
+      fecha: fechaFlota,
+      vencimiento: fechaFlota,
+      compania: textoSuelto(80),
+      cobertura: textoSuelto(120),
+      ...archivoPapel,
+    }).strict().optional(),
     division: textoSuelto(60),
     responsable_id: uuid.nullable().optional().transform((v) => v || null),
     notas: textoSuelto(500),
@@ -883,8 +899,11 @@ export const flotaBody = z.discriminatedUnion("accion", [
     resultado: z.enum(["apto", "condicional", "rechazado"]).nullable().optional().transform((v) => v ?? null),
     detalle: textoSuelto(300),
     fotos: z.array(urlFoto).max(4).default([]),
+    ...archivoPapel,
   }).strict().refine((p) => p.tipo !== "otro" || p.nombre, { message: "Poné el nombre del papel", path: ["nombre"] }),
   z.object({ accion: z.literal("papel_borrar"), id: idFlota }).strict(),
+  // 156: link para descargar el PDF de un papel
+  z.object({ accion: z.literal("papel_archivo"), id: idFlota }).strict(),
   z.object({
     accion: z.literal("licencia_guardar"),
     empleado_id: uuid,

@@ -12,6 +12,7 @@ import {
 } from "../lib/flota";
 import { Chip } from "./ui";
 import BotonFoto from "./BotonFoto";
+import BotonPoliza, { AvisoPoliza, descargarPdfPapel } from "./BotonPoliza";
 import ChecklistVehiculo from "./ChecklistVehiculo";
 import { VerChecklist } from "./ChecklistsVehiculo";
 import { FRECUENCIAS, alertasVehiculo } from "../lib/alertasFlota";
@@ -64,11 +65,32 @@ function frecuenciasParaGuardar(form) {
   return { frecuencias: out };
 }
 
+const MAX_FOTOS = 6;
+const SEGURO_VACIO = { numero: "", fecha: "", vencimiento: "", compania: "", cobertura: "" };
+
+/** Las fotos del vehículo (156); antes de la 156 había una sola, en foto_url. */
+export const fotosVehiculo = (v) => (Array.isArray(v?.fotos) && v.fotos.length ? v.fotos : v?.foto_url ? [v.foto_url] : []);
+
 export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancelar, onGuardado }) {
   const [form, setForm] = useState(() => (vehiculo ? { ...VEHICULO_VACIO, ...Object.fromEntries(Object.entries(vehiculo).map(([k, v]) => [k, v ?? ""])) } : { ...VEHICULO_VACIO }));
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
-  const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+  const [fotos, setFotos] = useState(() => fotosVehiculo(vehiculo));
+  // 156: la póliza adjunta al dar de alta, el seguro que se leyó y qué campos completó Gypi
+  const [poliza, setPoliza] = useState(null);
+  const [seguro, setSeguro] = useState(SEGURO_VACIO);
+  const [leidos, setLeidos] = useState(() => new Set());
+  const cambiar = (campo) => (e) => { setForm((f) => ({ ...f, [campo]: e.target.value })); setLeidos((l) => { if (!l.has(campo)) return l; const n = new Set(l); n.delete(campo); return n; }); };
+  const cambiarSeguro = (campo) => (e) => { setSeguro((x) => ({ ...x, [campo]: e.target.value })); setLeidos((l) => { const k = `seguro.${campo}`; if (!l.has(k)) return l; const n = new Set(l); n.delete(k); return n; }); };
+  // Lo que completó Gypi va en amarillo hasta que se toca
+  const input = (campo, extra = "") => `g-input w-full mb-2 ${extra} ${leidos.has(campo) ? "!bg-gypi-amber/10 !border-gypi-amber" : ""}`;
+  const leida = (r) => {
+    setPoliza(r);
+    const v = r.datos?.vehiculo || {};
+    setForm((f) => ({ ...f, ...Object.fromEntries(Object.entries(v).map(([k, x]) => [k, String(x)])) }));
+    setSeguro((x) => ({ ...x, ...(r.datos?.seguro || {}) }));
+    setLeidos(new Set(r.datos?.encontrados || []));
+  };
   const [frec, setFrec] = useState(() => frecuenciasForm(vehiculo?.frecuencias));
   const [verFrec, setVerFrec] = useState(false);
 
@@ -98,7 +120,15 @@ export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancela
         chasis: vacioANull(form.chasis),
         km,
         combustible: form.combustible || null,
-        foto_url: form.foto_url || null,
+        foto_url: fotos[0] || null,
+        fotos,
+        ...(poliza && !vehiculo?.id ? {
+          seguro: {
+            numero: vacioANull(seguro.numero), fecha: seguro.fecha || null, vencimiento: seguro.vencimiento || null,
+            compania: vacioANull(seguro.compania), cobertura: vacioANull(seguro.cobertura),
+            archivo_path: poliza.archivo.path, archivo_nombre: poliza.archivo.nombre,
+          },
+        } : {}),
         division: vacioANull(form.division),
         responsable_id: form.responsable_id || null,
         notas: vacioANull(form.notas),
@@ -116,36 +146,43 @@ export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancela
   return (
     <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
       <div className="text-[15px] font-bold mb-2">{vehiculo ? `Editar ${vehiculo.patente}` : "Nuevo vehículo"}</div>
+      {!vehiculo && (
+        <>
+          {!poliza && <div className="text-[12px] text-gypi-dim mb-1.5">Con la póliza del seguro en PDF, Gypi completa los datos del vehículo y del seguro.</div>}
+          <BotonPoliza label={poliza ? "📄 Cambiar la póliza" : "📄 Cargar desde la póliza (PDF)"} disabled={enviando} onLeida={leida} />
+          <AvisoPoliza resultado={poliza} />
+        </>
+      )}
       <div className="flex gap-2">
         <Campo id="veh-patente" label="Patente">
-          <input id="veh-patente" className="g-input w-full mb-2 uppercase" value={form.patente} onChange={cambiar("patente")} maxLength={20} placeholder="AB 123 CD" />
+          <input id="veh-patente" className={input("patente", "uppercase")} value={form.patente} onChange={cambiar("patente")} maxLength={20} placeholder="AB 123 CD" />
         </Campo>
         <Campo id="veh-tipo" label="Tipo">
-          <select id="veh-tipo" className="g-input w-full mb-2" value={form.tipo} onChange={cambiar("tipo")}>
+          <select id="veh-tipo" className={input("tipo")} value={form.tipo} onChange={cambiar("tipo")}>
             {TIPOS_VEHICULO.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select>
         </Campo>
       </div>
       <div className="flex gap-2">
-        <Campo id="veh-marca" label="Marca"><input id="veh-marca" className="g-input w-full mb-2" value={form.marca} onChange={cambiar("marca")} maxLength={60} /></Campo>
-        <Campo id="veh-modelo" label="Modelo"><input id="veh-modelo" className="g-input w-full mb-2" value={form.modelo} onChange={cambiar("modelo")} maxLength={80} /></Campo>
+        <Campo id="veh-marca" label="Marca"><input id="veh-marca" className={input("marca")} value={form.marca} onChange={cambiar("marca")} maxLength={60} /></Campo>
+        <Campo id="veh-modelo" label="Modelo"><input id="veh-modelo" className={input("modelo")} value={form.modelo} onChange={cambiar("modelo")} maxLength={80} /></Campo>
       </div>
       <div className="flex gap-2">
-        <Campo id="veh-anio" label="Año"><input id="veh-anio" className="g-input w-full mb-2" inputMode="numeric" value={form.anio} onChange={cambiar("anio")} maxLength={4} /></Campo>
-        <Campo id="veh-color" label="Color"><input id="veh-color" className="g-input w-full mb-2" value={form.color} onChange={cambiar("color")} maxLength={40} /></Campo>
+        <Campo id="veh-anio" label="Año"><input id="veh-anio" className={input("anio")} inputMode="numeric" value={form.anio} onChange={cambiar("anio")} maxLength={4} /></Campo>
+        <Campo id="veh-color" label="Color"><input id="veh-color" className={input("color")} value={form.color} onChange={cambiar("color")} maxLength={40} /></Campo>
       </div>
       <div className="flex gap-2">
         <Campo id="veh-km" label="Kilómetros"><input id="veh-km" className="g-input w-full mb-2" inputMode="numeric" value={form.km} onChange={cambiar("km")} /></Campo>
         <Campo id="veh-combustible" label="Combustible">
-          <select id="veh-combustible" className="g-input w-full mb-2" value={form.combustible} onChange={cambiar("combustible")}>
+          <select id="veh-combustible" className={input("combustible")} value={form.combustible} onChange={cambiar("combustible")}>
             <option value="">—</option>
             {COMBUSTIBLES.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
         </Campo>
       </div>
       <div className="flex gap-2">
-        <Campo id="veh-motor" label="N° de motor"><input id="veh-motor" className="g-input w-full mb-2" value={form.motor} onChange={cambiar("motor")} maxLength={40} /></Campo>
-        <Campo id="veh-chasis" label="N° de chasis"><input id="veh-chasis" className="g-input w-full mb-2" value={form.chasis} onChange={cambiar("chasis")} maxLength={40} /></Campo>
+        <Campo id="veh-motor" label="N° de motor"><input id="veh-motor" className={input("motor")} value={form.motor} onChange={cambiar("motor")} maxLength={40} /></Campo>
+        <Campo id="veh-chasis" label="N° de chasis"><input id="veh-chasis" className={input("chasis")} value={form.chasis} onChange={cambiar("chasis")} maxLength={40} /></Campo>
       </div>
       <div className="flex gap-2">
         <Campo id="veh-responsable" label="Chofer habitual">
@@ -187,9 +224,30 @@ export function FormVehiculo({ vehiculo = null, empleados, divisiones, onCancela
           </table>
         </div>
       )}
-      <div className="flex gap-2 items-center mb-3">
-        <BotonFoto label={form.foto_url ? "📷 Cambiar foto" : "📷 Foto del vehículo"} disabled={enviando} onFoto={(url) => setForm((f) => ({ ...f, foto_url: url }))} />
-        {form.foto_url && <img src={form.foto_url} alt="Foto del vehículo" className="h-12 w-16 object-cover rounded-[6px]" />}
+      {poliza && !vehiculo && (
+        <div className="p-2.5 mb-2 rounded-[10px] border border-gypi-border">
+          <div className="text-[13px] font-bold mb-1.5">🛡 Seguro</div>
+          <div className="flex gap-2">
+            <Campo id="veh-seg-compania" label="Compañía"><input id="veh-seg-compania" className={input("seguro.compania")} value={seguro.compania} onChange={cambiarSeguro("compania")} maxLength={80} /></Campo>
+            <Campo id="veh-seg-numero" label="N° de póliza"><input id="veh-seg-numero" className={input("seguro.numero")} value={seguro.numero} onChange={cambiarSeguro("numero")} maxLength={60} /></Campo>
+          </div>
+          <label className="g-label" htmlFor="veh-seg-cobertura">Cobertura</label>
+          <input id="veh-seg-cobertura" className={input("seguro.cobertura")} value={seguro.cobertura} onChange={cambiarSeguro("cobertura")} maxLength={120} placeholder="Ej: terceros completo" />
+          <div className="flex gap-2">
+            <Campo id="veh-seg-fecha" label="Desde"><input id="veh-seg-fecha" type="date" className={input("seguro.fecha")} value={seguro.fecha} onChange={cambiarSeguro("fecha")} /></Campo>
+            <Campo id="veh-seg-vencimiento" label="Vence"><input id="veh-seg-vencimiento" type="date" className={input("seguro.vencimiento")} value={seguro.vencimiento} onChange={cambiarSeguro("vencimiento")} /></Campo>
+          </div>
+        </div>
+      )}
+      <div className="text-[12px] text-gypi-dim mb-1">Fotos ({fotos.length} de {MAX_FOTOS}){fotos.length > 1 ? ". La primera es la que se ve en la lista; tocá una para sacarla." : ""}</div>
+      <div className="flex gap-2 items-center flex-wrap mb-3">
+        {fotos.length < MAX_FOTOS && <BotonFoto label={fotos.length ? "📷 Otra foto" : "📷 Foto del vehículo"} disabled={enviando} onFoto={(url) => setFotos((f) => [...f, url].slice(0, MAX_FOTOS))} />}
+        {fotos.map((url, i) => (
+          <button key={url} type="button" onClick={() => setFotos((f) => f.filter((u) => u !== url))} aria-label={`Sacar la foto ${i + 1}`}
+            className="p-0 border-none bg-transparent cursor-pointer">
+            <img src={url} alt={`Foto ${i + 1} del vehículo`} className="h-12 w-16 object-cover rounded-[6px]" />
+          </button>
+        ))}
       </div>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
       <div className="flex gap-2">
@@ -211,6 +269,15 @@ export function FormPapel({ vehiculo, papel = null, tipoInicial = "seguro", reno
   const [enviando, setEnviando] = useState(false);
   const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
   const t = form.tipo;
+  // 156: la póliza en PDF del seguro (la que ya tenía, o una nueva leída por Gypi)
+  const [archivo, setArchivo] = useState(() => (papel?.archivo_path ? { path: papel.archivo_path, nombre: papel.archivo_nombre || "poliza.pdf" } : null));
+  const [poliza, setPoliza] = useState(null);
+  const leida = (r) => {
+    setPoliza(r);
+    setArchivo(r.archivo);
+    const s = r.datos?.seguro || {};
+    setForm((f) => ({ ...f, ...Object.fromEntries(["numero", "fecha", "vencimiento", "compania", "cobertura"].filter((k) => s[k]).map((k) => [k, String(s[k])])) }));
+  };
 
   const guardar = async () => {
     if (t === "otro" && !form.nombre.trim()) { setError("Poné el nombre del papel"); return; }
@@ -232,6 +299,7 @@ export function FormPapel({ vehiculo, papel = null, tipoInicial = "seguro", reno
         resultado: t === "itv" ? form.resultado || null : null,
         detalle: vacioANull(form.detalle),
         fotos: form.fotos,
+        ...(t === "seguro" && archivo ? { archivo_path: archivo.path, archivo_nombre: archivo.nombre } : {}),
       });
       await onGuardado();
     } catch (e) {
@@ -257,6 +325,12 @@ export function FormPapel({ vehiculo, papel = null, tipoInicial = "seguro", reno
         <>
           <label className="g-label" htmlFor="papel-nombre">Qué papel es</label>
           <input id="papel-nombre" className="g-input w-full mb-2" value={form.nombre} onChange={cambiar("nombre")} maxLength={80} placeholder="Ej: RUTA, permiso de carga" disabled={Boolean(renovar)} />
+        </>
+      )}
+      {t === "seguro" && (
+        <>
+          <BotonPoliza label={archivo ? "📄 Cambiar la póliza (PDF)" : "📄 Adjuntar la póliza (PDF)"} disabled={enviando} onLeida={leida} />
+          {poliza ? <AvisoPoliza resultado={poliza} /> : archivo && <div className="text-[12px] text-gypi-dim mb-2">📄 {archivo.nombre}</div>}
         </>
       )}
       {t === "seguro" && (
@@ -358,6 +432,15 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
   const estadoLic = responsable ? estadoVencimiento(responsable.licencia_vencimiento, AVISO_LICENCIA, hoy) : null;
   const listo = async () => { setPapelForm(null); setLicencia(false); setEditando(false); setArregloForm(null); setResolver(null); setMantForm(null); await onCambio(); };
 
+  const descargar = async (p) => {
+    setError(null);
+    try {
+      await descargarPdfPapel(p.id);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const fotos = fotosVehiculo(vehiculo);
   const accion = async (body) => {
     setError(null);
     try {
@@ -401,12 +484,19 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
     <div>
       <button onClick={onVolver} className="min-h-[44px] bg-transparent border-none p-0 text-[14px] font-semibold text-gypi-dim cursor-pointer font-body">← Flota</button>
       <div className="flex items-center gap-3 mb-3">
-        {vehiculo.foto_url && <img src={vehiculo.foto_url} alt={`Foto de ${vehiculo.patente}`} className="h-16 w-20 object-cover rounded-[8px]" />}
+        {fotos[0] && <a href={fotos[0]} target="_blank" rel="noopener noreferrer"><img src={fotos[0]} alt={`Foto de ${vehiculo.patente}`} className="h-16 w-20 object-cover rounded-[8px]" /></a>}
         <div className="flex-1 min-w-0">
           <div className="text-[20px] font-extrabold tracking-wide">{vehiculo.patente}{!vehiculo.activo && <span className="text-[13px] font-semibold text-gypi-dim"> · dado de baja</span>}</div>
           <Semaforo nivel={nivel}>{SEMAFORO[nivel].texto}</Semaforo>
         </div>
       </div>
+      {fotos.length > 1 && (
+        <ul aria-label="Fotos del vehículo" className="list-none m-0 p-0 flex gap-1.5 flex-wrap mb-3">
+          {fotos.slice(1).map((url, i) => (
+            <li key={url}><a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`Foto ${i + 2} de ${vehiculo.patente}`} className="h-14 w-[72px] object-cover rounded-[6px]" /></a></li>
+          ))}
+        </ul>
+      )}
       {sinCircular.length > 0 && (
         <div className="p-2.5 mb-3 rounded-[10px] bg-gypi-red/10 text-[14px] font-semibold text-gypi-red">
           🔴 No puede circular: {sinCircular.map((a) => a.descripcion).join(" · ")}
@@ -451,6 +541,9 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
                   </div>
                 )}
               </div>
+              {p.archivo_path && (
+                <button onClick={() => descargar(p)} className="g-btn g-btn-secondary w-full mt-1.5">{p.tipo === "seguro" ? "⬇ Descargar póliza (PDF)" : "⬇ Descargar PDF"}</button>
+              )}
               {p.fotos?.length > 0 && (
                 <div className="flex gap-1.5 mt-1.5 flex-wrap">
                   {p.fotos.map((url, i) => <a key={url} href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt={`${nombrePapel(p)}, foto ${i + 1}`} className="h-12 w-16 object-cover rounded-[6px]" /></a>)}
@@ -471,6 +564,7 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
               {historial.map((p) => (
                 <li key={p.id} className="flex items-center gap-2 text-[13px] text-gypi-dim">
                   <span className="flex-1 min-w-0 truncate">{nombrePapel(p)}{p.vencimiento ? ` · venció el ${fechaCorta(p.vencimiento)}` : ""}{p.compania ? ` · ${p.compania}` : ""}</span>
+                  {p.archivo_path && <button onClick={() => descargar(p)} aria-label={`Descargar el PDF de ${nombrePapel(p)} anterior`} className="min-h-[36px] bg-transparent border-none text-[12px] font-semibold text-gypi-dim cursor-pointer">⬇ PDF</button>}
                   {editable && <button onClick={() => accion({ accion: "papel_borrar", id: p.id })} aria-label={`Borrar ${nombrePapel(p)} anterior`} className="min-h-[36px] bg-transparent border-none text-[12px] text-gypi-dim cursor-pointer">Borrar</button>}
                 </li>
               ))}

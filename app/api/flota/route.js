@@ -7,6 +7,11 @@
 //   vehiculo_baja     → dar de baja o reactivar (no se borra: tiene historial)
 //   papel_guardar     → con id corrige un papel; sin id agrega uno (renovar)
 //   papel_borrar      → un papel cargado por error
+//   papel_archivo     → link de dos minutos para descargar el PDF de un papel
+//                       (156; lo puede pedir cualquiera que ve la flota)
+// 156: el vehículo tiene hasta 6 fotos (la primera es foto_url) y al darlo de
+//   alta puede venir el seguro leído de la póliza (/api/flota/poliza), que se
+//   guarda como su papel de seguro con el PDF.
 //   licencia_guardar  → categoría y vencimiento de la licencia de un empleado
 //   checklist_plantilla_guardar → secciones y puntos del checklist de la empresa
 //                       (null = volver a la de fábrica; 127)
@@ -43,11 +48,20 @@ import { arreglosDeChecklist, ultimoService } from "../../lib/arreglosFlota";
 import { ACCIONES_RESPONSABLE, CAMPOS_VEHICULO, puedeChecklistVehiculo } from "../../lib/mantenimiento";
 import { esResponsableMantenimiento } from "../../lib/mantenimientoServidor";
 import { logger } from "../../lib/logger";
+import { esRutaDeLaEmpresa, linkPdf } from "../../lib/flotaArchivos";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
   return /vehiculos|vehiculo_papeles|licencia_/.test(m) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(m);
 }
+
+// 156: fotos del vehículo y PDF de los papeles
+function faltaMigracionFotos(err) {
+  const m = String(err?.message);
+  return /fotos|archivo_path|archivo_nombre/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+const archivoInvalido = () => NextResponse.json({ error: "No encontré ese PDF. Volvé a adjuntarlo." }, { status: 400 });
 
 // Parte 31: arreglos y mantenimientos
 function faltaMigracionArreglos(err) {
@@ -96,11 +110,16 @@ async function guardarVehiculo(sesion, d) {
   const ahora = new Date().toISOString();
   const fila = {
     patente, tipo: d.tipo, marca: d.marca, modelo: d.modelo, anio: d.anio, color: d.color,
-    motor: d.motor, chasis: d.chasis, km: d.km, combustible: d.combustible, foto_url: d.foto_url,
+    motor: d.motor, chasis: d.chasis, km: d.km, combustible: d.combustible, foto_url: d.fotos ? d.fotos[0] ?? null : d.foto_url,
     division: d.division, responsable_id: d.responsable_id, notas: d.notas, updated_at: ahora,
     service_fecha: d.service_fecha, service_km: d.service_km,
   };
   if (d.frecuencias) fila.frecuencias = d.frecuencias;
+  if (d.fotos) fila.fotos = d.fotos;
+  if (d.seguro?.archivo_path && !esRutaDeLaEmpresa(d.seguro.archivo_path, e)) return archivoInvalido();
+  if (d.seguro?.vencimiento && d.seguro.fecha && d.seguro.vencimiento < d.seguro.fecha) {
+    return NextResponse.json({ error: "El vencimiento del seguro no puede ser antes de la fecha de inicio" }, { status: 400 });
+  }
   try {
     if (d.id) {
       const [antes] = (await sbGet(`vehiculos?id=eq.${d.id}&empresa_id=eq.${e}&select=km`, opts)) || [];
@@ -115,7 +134,18 @@ async function guardarVehiculo(sesion, d) {
     if (sesion.es_mantenimiento && !puedeEditarFlota(sesion.rol)) fila[CAMPOS_VEHICULO.responsable] = sesion.empleado_id;
     const [v] = (await sbPost("vehiculos", { ...fila, empresa_id: e, km_at: d.km === null ? null : ahora }, opts)) || [];
     broadcastRefresh(e, "vehiculos");
-    return NextResponse.json({ ok: true, vehiculo: v || fila });
+    // 156: el seguro leído de la póliza queda como su papel, con el PDF
+    let papel = null;
+    const s = d.seguro;
+    if (v?.id && s && (s.archivo_path || s.numero || s.vencimiento || s.compania)) {
+      [papel] = (await sbPost("vehiculo_papeles", {
+        empresa_id: e, vehiculo_id: v.id, tipo: "seguro", numero: s.numero, fecha: s.fecha, vencimiento: s.vencimiento,
+        compania: s.compania, cobertura: s.cobertura, archivo_path: s.archivo_path, archivo_nombre: s.archivo_path ? s.archivo_nombre : null,
+        fotos: [], cargado_por: sesion.empleado_id || null,
+      }, opts)) || [];
+      broadcastRefresh(e, "vehiculo_papeles");
+    }
+    return NextResponse.json({ ok: true, vehiculo: v || fila, papel });
   } catch (err) {
     if (String(err?.message).includes("23505")) {
       return NextResponse.json({ error: `Ya hay un vehículo con la patente ${patente}` }, { status: 409 });
@@ -140,6 +170,7 @@ async function guardarPapel(sesion, d) {
   if (d.vencimiento && d.fecha && d.vencimiento < d.fecha) {
     return NextResponse.json({ error: "El vencimiento no puede ser antes de la fecha" }, { status: 400 });
   }
+  if (d.archivo_path && !esRutaDeLaEmpresa(d.archivo_path, e)) return archivoInvalido();
   const fila = {
     tipo: d.tipo,
     nombre: d.tipo === "otro" ? d.nombre : null,
@@ -153,6 +184,8 @@ async function guardarPapel(sesion, d) {
     fotos: d.fotos,
     updated_at: new Date().toISOString(),
   };
+  // 156: solo si el papel tiene PDF (sin la 156 se guarda igual que antes)
+  if (d.archivo_path) Object.assign(fila, { archivo_path: d.archivo_path, archivo_nombre: d.archivo_nombre });
   if (d.id) {
     const [p] = (await sbPatch(`vehiculo_papeles?id=eq.${d.id}&vehiculo_id=eq.${d.vehiculo_id}&empresa_id=eq.${e}`, fila, opts)) || [];
     if (!p) return noEncontrado("papel");
@@ -171,6 +204,14 @@ async function borrarPapel(sesion, id) {
   await sbDelete(`vehiculo_papeles?id=eq.${id}&empresa_id=eq.${e}`, { sesion });
   broadcastRefresh(e, "vehiculo_papeles");
   return NextResponse.json({ ok: true });
+}
+
+async function linkArchivo(sesion, id) {
+  const e = sesion.empresa_id;
+  const [p] = (await sbGet(`vehiculo_papeles?id=eq.${id}&empresa_id=eq.${e}&select=id,archivo_path,archivo_nombre`, { sesion })) || [];
+  if (!p?.archivo_path) return noEncontrado("PDF");
+  if (!esRutaDeLaEmpresa(p.archivo_path, e)) return noEncontrado("PDF");
+  return NextResponse.json({ ok: true, url: await linkPdf(p.archivo_path, p.archivo_nombre || "poliza.pdf") }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 async function guardarLicencia(sesion, d) {
@@ -429,7 +470,8 @@ export async function POST(request) {
     if (parsed.response) return parsed.response;
     // El checklist lo hace también el responsable de mantenimiento (se controla adentro),
     // y un arreglo lo resuelve también su responsable (se controla adentro)
-    const deTodos = parsed.data.accion === "checklist_crear" || (parsed.data.accion === "mantenimiento_crear" && parsed.data.arreglo_id);
+    // El PDF de un papel lo descarga cualquiera que ve la flota (156)
+    const deTodos = parsed.data.accion === "checklist_crear" || parsed.data.accion === "papel_archivo" || (parsed.data.accion === "mantenimiento_crear" && parsed.data.arreglo_id);
     // El responsable de mantenimiento (133) carga la flota igual que la oficina,
     // menos la licencia de los empleados y borrar services (pedido de Tadeo, 26/10)
     if (!puedeEditarFlota(sesion.rol) && await esResponsableMantenimiento(sesion)) sesion = { ...sesion, es_mantenimiento: true };
@@ -444,6 +486,7 @@ export async function POST(request) {
       if (d.accion === "vehiculo_baja") return await bajaVehiculo(sesion, d);
       if (d.accion === "papel_guardar") return await guardarPapel(sesion, d);
       if (d.accion === "papel_borrar") return await borrarPapel(sesion, d.id);
+      if (d.accion === "papel_archivo") return await linkArchivo(sesion, d.id);
       if (d.accion === "checklist_crear") return await crearChecklist(sesion, d);
       if (d.accion === "checklist_plantilla_guardar") return await guardarPlantilla(sesion, d);
       if (d.accion === "arreglo_crear") return await crearArreglo(sesion, d);
@@ -454,6 +497,9 @@ export async function POST(request) {
       if (d.accion === "mantenimiento_asignar") return await asignarMantenimiento(sesion, d);
       return await guardarLicencia(sesion, d);
     } catch (err) {
+      if (faltaMigracionFotos(err)) {
+        return NextResponse.json({ error: "Para las fotos del vehículo y la póliza en PDF falta correr la migración 156 en Supabase." }, { status: 409 });
+      }
       if (faltaMigracionResponsables(err)) {
         return NextResponse.json({ error: "Para los responsables de mantenimiento falta correr la migración 133 en Supabase." }, { status: 409 });
       }
