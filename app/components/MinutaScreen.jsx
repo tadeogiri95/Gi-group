@@ -12,7 +12,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { apiFetch, sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import {
-  AREAS_DYT, AREAS_FEEDBACK, BLOQUES, CLAVE_CONFIG_MINUTA, ESTADOS_DYT, LISTO, SEMAFOROS, URGENCIAS,
+  AREAS_DYT, AREAS_FEEDBACK, BLOQUES, CLAVE_CONFIG_MINUTA, seccion as seccionPorId, ESTADOS_DYT, LISTO, SEMAFOROS, URGENCIAS,
   VECES_A_GERENCIA, listaInstaladores, textoInstaladores, datosDeOt, pedidoDesdeMinuta, textoCantidad, duracionMinutos, renglonQueSigue, seguimientoPendiente, textoSeguimiento, SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, imprimirMinuta, participantesDe, clientesDe, listaUnica, tiposFeedbackDe, renglonNuevo, renglonesParaGuardar, seccionesDe,
 } from "../lib/minutas";
 import { nombreDivisionOt } from "../lib/avance";
@@ -24,6 +24,7 @@ import { tieneModulo } from "../lib/modulos";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import { mapaOts, otCompleta, textoOt, textoRenglonOt } from "../lib/nombreOt";
+import { conteoBloques, ordenRenglones, renglonVecino, resumenRenglon, resumenSeccion, textoResumenSeccion } from "../lib/minutaVivo";
 
 const MAX_SUGERENCIAS = 8;
 const OTRO = "__otro";
@@ -334,14 +335,15 @@ function RevisionAyer({ items, cambiar, sacar, disabled, anterior, porOt = null 
 }
 
 /** Un renglón de una sección, con los campos que lleva esa sección. */
-function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, pedir = null }) {
+function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, pedir = null, cabecera = null, resaltado = false, enPanel = false }) {
   const c = (campo) => s.campos.includes(campo);
   const datos = (k, v) => cambiar({ datos: { ...it.datos, [k]: v } });
   // Código · Cliente · Proyecto · Descripción, como en toda la app (02/11)
   const textoOt = it.ot ? textoRenglonOt(it, listas?.porOt) : it.proyecto || "";
   const falta = (campo) => s.obligatorios?.includes(campo) && !it[campo === "fecha" ? "fecha_objetivo" : campo] && (it.ot || it.proyecto || it.texto);
   return (
-    <div className={`g-card p-3 mb-2 ${it.resuelto_at ? "opacity-60" : ""}`}>
+    <div className={`g-card p-3 mb-2 ${resaltado ? "border-2 border-gypi-amber shadow-md" : ""} ${it.resuelto_at ? "opacity-60" : ""}`}>
+      {cabecera}
       {(textoSeguimiento(it) || it.datos?.gerencia || it.resuelto_at) && (
         <div className="flex flex-wrap gap-2 mb-2 text-[12px]">
           {textoSeguimiento(it) && <span className="text-gypi-amber-ink font-semibold">{textoSeguimiento(it)}</span>}
@@ -349,7 +351,7 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, ped
           {it.resuelto_at && <span className="text-gypi-green-ink font-semibold">✓ Resuelto</span>}
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${enPanel ? "" : "lg:grid-cols-4"} gap-2`}>
         {c("articulo") && (
           <Campo label={s.texto} ancho>
             <Sugerencias label={s.texto} value={it.texto} disabled={disabled} opciones={listas.articulos}
@@ -477,6 +479,47 @@ function Renglon({ s, it, cambiar, sacar, listas, disabled, resolver = null, ped
   );
 }
 
+
+/** true en pantallas anchas (computadora): el renglón abierto se edita en el panel de la derecha. */
+function useEsAncho(min = 1024) {
+  const [ancho, setAncho] = useState(false);
+  useEffect(() => {
+    const mq = typeof window !== "undefined" && window.matchMedia ? window.matchMedia(`(min-width: ${min}px)`) : null;
+    if (!mq) return undefined;
+    const ver = () => setAncho(mq.matches);
+    ver();
+    mq.addEventListener?.("change", ver);
+    return () => mq.removeEventListener?.("change", ver);
+  }, [min]);
+  return ancho;
+}
+
+/**
+ * Un renglón en corto (03/11): una o dos líneas con todo lo cargado. Se toca
+ * y se abre para editar; se abre uno solo a la vez.
+ */
+function RenglonCorto({ s, it, porOt, abierto, onAbrir }) {
+  const r = resumenRenglon(it, s, porOt);
+  const marcas = [
+    textoSeguimiento(it) && <span key="s" className="text-gypi-amber-ink font-semibold">{textoSeguimiento(it)}</span>,
+    it.datos?.gerencia && <span key="g" className="text-gypi-red-ink font-semibold">🔴 Lo toma Gerencia</span>,
+    it.resuelto_at && <span key="r" className="text-gypi-green-ink font-semibold">✓ Resuelto</span>,
+    it.datos?.pedido_id && <span key="p" className="text-gypi-green-ink font-semibold">✓ Pedido creado</span>,
+    r.falta.length > 0 && <span key="f" className="text-gypi-red-ink font-semibold">Falta {r.falta.join(" y ")}</span>,
+  ].filter(Boolean);
+  return (
+    <button type="button" id={`renglon-${it.id}`} aria-expanded={abierto} onClick={onAbrir}
+      className={`w-full text-left rounded-xl border bg-gypi-surface px-3 py-2 mb-1.5 cursor-pointer min-h-[44px] scroll-mt-16 ${abierto ? "border-2 border-gypi-amber shadow-md" : "border-gypi-border"} ${it.resuelto_at ? "opacity-60" : ""}`}>
+      <span className="block text-[14px] truncate text-gypi-text">
+        {r.punto && <span aria-hidden="true">{r.punto} </span>}
+        {r.titulo ? <b>{r.titulo}</b> : <span className="text-gypi-mute">Renglón vacío: tocá para completarlo</span>}
+      </span>
+      {r.detalle && <span className="block text-[12px] text-gypi-mute truncate">{r.detalle}</span>}
+      {marcas.length > 0 && <span className="flex flex-wrap gap-x-2 text-[12px]">{marcas}</span>}
+    </button>
+  );
+}
+
 const fechaCorta = (f) => (f ? `${Number(f.slice(8, 10))}/${Number(f.slice(5, 7))}` : "");
 
 /**
@@ -485,7 +528,8 @@ const fechaCorta = (f) => (f ? `${Number(f.slice(8, 10))}/${Number(f.slice(5, 7)
  * opciones: [{ clave, nombre, detalle, valor }]
  */
 function ParaAgregar({ titulo, label, opciones, onAgregar, alerta = false }) {
-  const [abierto, setAbierto] = useState(true);
+  // Empieza cerrado (03/11): se ve cuántos hay y se abre con un toque
+  const [abierto, setAbierto] = useState(false);
   if (!opciones.length) return null;
   return (
     <div className={`rounded-lg border border-dashed p-2 mb-2 ${alerta ? "border-gypi-amber" : "border-gypi-border"}`} aria-label={label} role="group">
@@ -683,6 +727,12 @@ export default function MinutaScreen({ empresa = null }) {
   const [revision, setRevision] = useState(false);
   const [otrasListas, setOtrasListas] = useState({ personas: [], instaladores: [], articulos: [], proveedores: [], vehiculos: [] });
   const [configMinuta, setConfigMinuta] = useState(null);
+  // En vivo (03/11): un solo renglón abierto, secciones plegables y barra de secciones
+  const [abierto, setAbierto] = useState(null);
+  const [plegados, setPlegados] = useState({});
+  const [activa, setActiva] = useState(null);
+  const esAncho = useEsAncho();
+  const scrollRef = useRef(null);
   const { divisiones } = useAuth();
   // La división de la OT se guarda con su nombre (en proyectos puede estar el id)
   const listas = useMemo(() => ({
@@ -736,6 +786,7 @@ export default function MinutaScreen({ empresa = null }) {
 
   const cargar = useCallback(async (dia) => {
     setCargando(true);
+    setAbierto(null);
     try {
       const r = await apiFetch(`/api/minutas?fecha=${dia}`);
       const j = await r.json().catch(() => ({}));
@@ -788,25 +839,60 @@ export default function MinutaScreen({ empresa = null }) {
   const cerrada = minuta.estado === "cerrada";
   const cambiarMinuta = (c) => { setMinuta((m) => ({ ...m, ...c })); setCambios(true); };
   const cambiarItem = (id, c) => { setItems((l) => l.map((it) => (it.id === id ? { ...it, ...c } : it))); setCambios(true); };
-  const sacarItem = (id) => { setItems((l) => l.filter((it) => it.id !== id)); setCambios(true); };
+  const sacarItem = (id) => { setItems((l) => l.filter((it) => it.id !== id)); setCambios(true); setAbierto((a) => (a === id ? null : a)); };
+  // Un renglón nuevo se abre solo para completarlo
   const agregar = (seccionId, extra = {}) => {
-    setItems((l) => [...l, renglonNuevo(seccionId, seccionId === "compra" ? { tipo: "normal", ...extra } : extra)]);
+    const nuevo = renglonNuevo(seccionId, seccionId === "compra" ? { tipo: "normal", ...extra } : extra);
+    setItems((l) => [...l, nuevo]);
+    setAbierto(nuevo.id);
     setCambios(true);
   };
   const otDe = (ot) => listas.ots.find((o) => o.valor === ot)?.dato || null;
   const agregarSugeridos = (seccionId, lista) => {
-    setItems((l) => [...l, ...lista.map((x) => {
+    const nuevos = lista.map((x) => {
       const p = otDe(x.ot);
       return renglonNuevo(seccionId, {
         ...(p ? datosDeOt(p) : { ot: x.ot }),
         texto: x.texto || "", semaforo: x.semaforo || null, ...(x.tipo ? { tipo: x.tipo } : {}), fecha_objetivo: x.fecha_objetivo || null, datos: { ...(x.datos || {}) },
       });
-    })]);
+    });
+    setItems((l) => [...l, ...nuevos]);
+    if (nuevos.length === 1) setAbierto(nuevos[0].id);
     setCambios(true);
   };
   const agregarQueSiguen = (lista) => {
-    setItems((l) => [...l, ...lista.map((it) => renglonQueSigue(it, it.fecha))]);
+    const nuevos = lista.map((it) => renglonQueSigue(it, it.fecha));
+    setItems((l) => [...l, ...nuevos]);
+    if (nuevos.length === 1) setAbierto(nuevos[0].id);
     setCambios(true);
+  };
+  const orden = useMemo(() => ordenRenglones(items), [items]);
+  const conteos = useMemo(() => conteoBloques(items), [items]);
+  const plegar = (clave) => setPlegados((p) => ({ ...p, [clave]: !p[clave] }));
+  const alternarRenglon = (id) => setAbierto((a) => (a === id ? null : id));
+  const mover = useCallback((paso) => setAbierto((a) => renglonVecino(orden, a, paso) || a), [orden]);
+  // El renglón que se abre queda a la vista
+  useEffect(() => {
+    if (!abierto || typeof document === "undefined") return;
+    document.getElementById(`renglon-${abierto}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [abierto, esAncho]);
+  // En la computadora: ↑ / ↓ pasan de renglón y Esc lo cierra (fuera de las cajas de texto)
+  useEffect(() => {
+    if (!esAncho || !abierto) return undefined;
+    const tecla = (e) => {
+      const t = e.target;
+      if (t && (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable)) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); mover(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); mover(-1); }
+      else if (e.key === "Escape") setAbierto(null);
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [esAncho, abierto, mover]);
+  const irA = (id) => {
+    setActiva(id);
+    const el = typeof document !== "undefined" ? document.getElementById(`minuta-${id}`) : null;
+    el?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   };
   // ✓ Resuelto: se anota en el momento (también con la minuta cerrada); no pasa más al día siguiente
   async function resolver(it) {
@@ -918,9 +1004,59 @@ export default function MinutaScreen({ empresa = null }) {
     return <div className="flex-1 p-4"><div className="g-card p-4 text-[14px]" role="alert">{error}</div></div>;
   }
 
-  const listaSeccion = (s) => (
+  // Los botones del renglón abierto: cerrar y, en la computadora, pasar al anterior / siguiente
+  const propsRenglon = (s, it) => ({
+    s, it, listas, disabled: cerrada, cambiar: (c) => cambiarItem(it.id, c), sacar: () => sacarItem(it.id),
+    resolver: SECCIONES_SEGUIMIENTO.includes(s.id) && it.created_at ? () => resolver(it) : null,
+    pedir: s.id === "compra" && conCompras ? () => crearPedido(it) : null,
+  });
+  const cabeceraAbierto = (s, it, enPanel = false) => {
+    const r = resumenRenglon(it, s, listas.porOt);
+    const b = BLOQUES.find((x) => x.id === s.bloque);
+    const donde = [b?.numero ? `${b.numero}${s.letra || ""}` : "", s.letra || s.id === "dyt" ? s.titulo : b?.titulo, s.id === "dyt" ? AREAS_DYT.find((a) => a.id === it.area)?.label : ""].filter(Boolean).join(" · ");
+    const i = orden.indexOf(it.id);
+    return (
+      <div className="flex items-start gap-2 mb-2">
+        <div className="flex-1 min-w-0">
+          {enPanel && <div className="text-[12px] text-gypi-mute">{donde}</div>}
+          <div className={`font-bold text-gypi-text ${enPanel ? "text-[16px]" : "text-[14px] truncate"}`}>{r.punto ? `${r.punto} ` : ""}{r.titulo || "Renglón nuevo"}</div>
+        </div>
+        {enPanel && (
+          <>
+            <button type="button" className="g-btn g-btn-secondary" disabled={i <= 0} onClick={() => mover(-1)} aria-label="Renglón anterior">↑</button>
+            <button type="button" className="g-btn g-btn-secondary" disabled={i < 0 || i >= orden.length - 1} onClick={() => mover(1)} aria-label="Renglón siguiente">↓</button>
+          </>
+        )}
+        <button type="button" className="g-btn g-btn-primary" onClick={() => setAbierto(null)} aria-label="Listo, cerrar el renglón">Listo ▴</button>
+      </div>
+    );
+  };
+  // En el celular el renglón abierto se edita en su lugar; en la computadora, en el panel de la derecha
+  const renglon = (s, it) => (abierto === it.id && !esAncho ? (
+    <div key={it.id} id={`renglon-${it.id}`} className="scroll-mt-16">
+      <Renglon {...propsRenglon(s, it)} resaltado cabecera={cabeceraAbierto(s, it)} />
+    </div>
+  ) : (
+    <RenglonCorto key={it.id} s={s} it={it} porOt={listas.porOt} abierto={abierto === it.id} onAbrir={() => alternarRenglon(it.id)} />
+  ));
+  const itAbierto = esAncho && abierto ? items.find((it) => it.id === abierto) : null;
+  const sAbierto = itAbierto ? seccionPorId(itAbierto.seccion) : null;
+
+  const listaSeccion = (s) => {
+    const plegada = !!plegados[s.id];
+    const resumen = resumenSeccion(de(s.id), s);
+    return (
     <div key={s.id} className="mb-3">
-      {s.letra && <h3 className="text-[14px] font-bold m-0 mt-2">{s.letra}. {s.titulo}</h3>}
+      {s.letra && (
+        <h3 className="text-[14px] font-bold m-0 mt-2">
+          <button type="button" aria-expanded={!plegada} onClick={() => plegar(s.id)}
+            className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left text-gypi-text text-[14px] font-bold min-h-[44px] px-0">
+            <span>{s.letra}. {s.titulo} <span className="font-normal text-[12px] text-gypi-mute">· {textoResumenSeccion(resumen)}{resumen.falta ? ` · ${resumen.falta} con faltantes` : ""}</span></span>
+            <span aria-hidden="true" className="text-gypi-mute">{plegada ? "▸" : "▾"}</span>
+          </button>
+        </h3>
+      )}
+      {!plegada && <>
       {s.ayuda && <p className="text-[12px] text-gypi-mute m-0 mb-2">{s.ayuda}</p>}
       {s.id === "prod_en_curso" && (
         <p className="text-[13px] m-0 mb-2">Proyectos en producción hoy: <b>{sugeridos?.prod_en_curso ? Math.max(sugeridos.prod_en_curso.length, de(s.id).length) : de(s.id).length}</b> en total.</p>
@@ -947,18 +1083,35 @@ export default function MinutaScreen({ empresa = null }) {
           })}
           onAgregar={(l) => agregarSugeridos(s.id, l)} />
       )}
-      {de(s.id).map((it) => (
-        <Renglon key={it.id} s={s} it={it} listas={listas} disabled={cerrada} cambiar={(c) => cambiarItem(it.id, c)} sacar={() => sacarItem(it.id)}
-          resolver={SECCIONES_SEGUIMIENTO.includes(s.id) && it.created_at ? () => resolver(it) : null}
-          pedir={s.id === "compra" && conCompras ? () => crearPedido(it) : null} />
-      ))}
+      {de(s.id).map((it) => renglon(s, it))}
       {!cerrada && <button type="button" className="g-btn g-btn-secondary" onClick={() => agregar(s.id)} aria-label={`Agregar a ${s.titulo}`}>＋ Agregar</button>}
+      </>}
     </div>
-  );
+    );
+  };
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-5xl mx-auto p-4 pb-28">
+    <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+      {!cargando && (
+        <nav aria-label="Secciones de la minuta" className="sticky top-0 z-10 border-b border-gypi-border bg-gypi-bg">
+          <div className={`${esAncho ? "max-w-7xl" : "max-w-5xl"} mx-auto flex gap-1.5 overflow-x-auto fila-desliza px-3 py-2`}>
+            {[
+              { id: "cabecera", label: "Cabecera" },
+              ...(items.some((it) => it.seccion === SECCION_REVISION) ? [{ id: "revision", label: `🔁 Revisión de ayer ${items.filter((it) => it.seccion === SECCION_REVISION && it.datos?.resultado).length}/${items.filter((it) => it.seccion === SECCION_REVISION).length}` }] : []),
+              ...BLOQUES.map((b) => ({ id: b.id, label: `${b.numero ? `${b.numero} ` : b.id === "foco" ? "⭐ " : "🅿 "}${b.titulo}${conteos[b.id]?.total ? ` ${conteos[b.id].total}` : ""}`, falta: conteos[b.id]?.falta })),
+              { id: "notas", label: "📝 Notas" },
+              { id: "calendario", label: "📅 Calendario" },
+            ].map((x) => (
+              <span key={x.id} className="shrink-0">
+                <Chip active={activa === x.id} onClick={() => irA(x.id)} aria-label={`Ir a ${x.label}${x.falta ? ` (${x.falta} con faltantes)` : ""}`}>
+                  {x.label}{x.falta ? <span className="text-gypi-red-ink" aria-hidden="true"> ●</span> : null}
+                </Chip>
+              </span>
+            ))}
+          </div>
+        </nav>
+      )}
+      <div className={`${esAncho ? "max-w-7xl" : "max-w-5xl"} mx-auto p-4 pb-28`}>
         <div className="flex flex-wrap items-end gap-2 mb-3">
           <Campo label="Día de la minuta">
             <input type="date" className="g-input w-full" aria-label="Día de la minuta" value={fecha} onChange={(e) => elegirFecha(e.target.value)} />
@@ -978,7 +1131,9 @@ export default function MinutaScreen({ empresa = null }) {
 
         {cargando ? <div className="flex justify-center py-10"><Spinner /></div> : (
           <>
-            <section className="g-card p-3 mb-3" aria-label="Cabecera">
+          <div className={esAncho ? "grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] gap-4 items-start" : ""}>
+          <div className="min-w-0">
+            <section id="minuta-cabecera" className="g-card p-3 mb-3 scroll-mt-16" aria-label="Cabecera">
               <h2 className="text-[16px] font-bold m-0 mb-2">Minuta — Reunión de Buenos Días <span className="text-[13px] font-normal text-gypi-mute">8:45 a 9:05 hs</span></h2>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <Campo label="Inicio" div>
@@ -1015,11 +1170,20 @@ export default function MinutaScreen({ empresa = null }) {
               )}
             </section>
 
-            <RevisionAyer items={items} porOt={listas.porOt} anterior={revisionAyer?.anterior} disabled={cerrada} cambiar={cambiarItem} sacar={sacarItem} />
+            <div id="minuta-revision" className="scroll-mt-16"><RevisionAyer items={items} porOt={listas.porOt} anterior={revisionAyer?.anterior} disabled={cerrada} cambiar={cambiarItem} sacar={sacarItem} /></div>
 
             {BLOQUES.map((b) => (
-              <section key={b.id} className="g-card p-3 mb-3" aria-label={b.titulo}>
-                <h2 className="text-[15px] font-bold m-0">{b.numero ? `${b.numero} · ` : ""}{b.titulo} {b.horario && <span className="text-[12px] font-normal text-gypi-mute">{b.horario}</span>}</h2>
+              <section key={b.id} id={`minuta-${b.id}`} className="g-card p-3 mb-3 scroll-mt-16" aria-label={b.titulo}>
+                <h2 className="text-[15px] font-bold m-0">
+                  <button type="button" aria-expanded={!plegados[b.id]} onClick={() => plegar(b.id)}
+                    className="w-full flex items-center justify-between gap-2 bg-transparent border-none cursor-pointer text-left text-gypi-text text-[15px] font-bold min-h-[44px] px-0">
+                    <span>{b.numero ? `${b.numero} · ` : ""}{b.titulo} {b.horario && <span className="text-[12px] font-normal text-gypi-mute">{b.horario}</span>}</span>
+                    <span className="text-[12px] font-normal text-gypi-mute whitespace-nowrap">
+                      {plegados[b.id] ? `${conteos[b.id]?.total || 0} renglones${conteos[b.id]?.falta ? ` · ${conteos[b.id].falta} con faltantes` : ""} ` : ""}<span aria-hidden="true">{plegados[b.id] ? "▸" : "▾"}</span>
+                    </span>
+                  </button>
+                </h2>
+                {!plegados[b.id] && <>
                 {b.ayuda && <p className="text-[12px] text-gypi-mute m-0 mb-2">{b.ayuda}</p>}
                 {b.id === "feedback" && <button type="button" className="g-btn g-btn-secondary mb-2" onClick={() => setRevision(true)}>🗂 Revisión del jueves</button>}
                 {b.id === "dyt" ? AREAS_DYT.map((a) => {
@@ -1029,21 +1193,35 @@ export default function MinutaScreen({ empresa = null }) {
                     <div key={a.id} className="mb-3">
                       <h3 className="text-[14px] font-bold m-0 mt-2">{a.label} <span className="font-normal text-[12px] text-gypi-mute">{a.detalle}</span></h3>
                       {deArea.length === 0 && <p className="text-[12px] text-gypi-mute m-0 mb-1">Sin cambios</p>}
-                      {deArea.map((it) => <Renglon key={it.id} s={s} it={it} listas={listas} disabled={cerrada} cambiar={(c) => cambiarItem(it.id, c)} sacar={() => sacarItem(it.id)} />)}
+                      {deArea.map((it) => renglon(s, it))}
                       {!cerrada && <button type="button" className="g-btn g-btn-secondary" aria-label={`Agregar a ${a.label}`} onClick={() => agregar("dyt", { area: a.id, tipo: "en_curso" })}>＋ Agregar</button>}
                     </div>
                   );
                 }) : seccionesDe(b.id).map(listaSeccion)}
+                </>}
               </section>
             ))}
 
-            <section className="g-card p-3 mb-3" aria-label="Notas libres">
+            <section id="minuta-notas" className="g-card p-3 mb-3 scroll-mt-16" aria-label="Notas libres">
               <h2 className="text-[15px] font-bold m-0 mb-2">Notas libres <span className="text-[12px] font-normal text-gypi-mute">opcional</span></h2>
               <textarea className="g-input w-full min-h-[96px]" aria-label="Notas libres" value={minuta.notas || ""} maxLength={4000} disabled={cerrada}
                 onChange={(e) => cambiarMinuta({ notas: e.target.value })} placeholder="Cualquier cosa que no entre arriba." />
             </section>
 
-            <CalendarioMinuta items={items} fecha={fecha} porOt={listas.porOt} />
+            <div id="minuta-calendario" className="scroll-mt-16"><CalendarioMinuta items={items} fecha={fecha} porOt={listas.porOt} /></div>
+          </div>
+          {esAncho && (
+            <aside aria-label="Renglón abierto" className="sticky top-16 max-h-[calc(100vh-170px)] overflow-y-auto">
+              {itAbierto && sAbierto ? (
+                <Renglon {...propsRenglon(sAbierto, itAbierto)} resaltado enPanel cabecera={cabeceraAbierto(sAbierto, itAbierto, true)} />
+              ) : (
+                <div className="g-card p-4 text-[13px] text-gypi-mute">
+                  Tocá un renglón de la izquierda para editarlo acá. Con ↑ y ↓ del teclado pasás al anterior o al siguiente sin volver a la lista; Esc lo cierra.
+                </div>
+              )}
+            </aside>
+          )}
+          </div>
           </>
         )}
       </div>
