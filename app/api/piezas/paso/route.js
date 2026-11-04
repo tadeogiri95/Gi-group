@@ -157,6 +157,7 @@ async function escanear(sesion, datos) {
   // El QR de la etiqueta, o el número de pieza escrito a mano ("N° 1234")
   const lectura = leerQrPieza(datos.codigo) || (/^\d{1,15}$/.test(datos.codigo) ? { ot: null, id: Number(datos.codigo) } : null);
   if (!lectura) return NextResponse.json({ error: "Ese código no es de una pieza ni de un módulo. Escaneá la etiqueta de la pieza o del módulo." }, { status: 400 });
+  if (lectura.nombre) return escanearPiezaPlanilla(sesion, datos, lectura);
   const [pieza] = (await sbGet(`piezas_ot?id=eq.${lectura.id}&empresa_id=eq.${e}&select=id,ot,nombre,unidad,de,etapas&limit=1`, opts)) || [];
   // Número escrito a mano que no existe: casi siempre es un error al tipear,
   // no una planilla vuelta a pegar (auditoría 01/11)
@@ -166,6 +167,30 @@ async function escanear(sesion, datos) {
   if (!pieza || (lectura.ot && normalizarOt(pieza.ot) !== normalizarOt(lectura.ot))) {
     return NextResponse.json({ error: "Esa pieza ya no está en la OT (puede que se haya vuelto a pegar la planilla). Reimprimí su etiqueta." }, { status: 404 });
   }
+  return anotarPieza(sesion, datos, pieza);
+}
+
+/**
+ * QR armado en la planilla de Excel: "OT M-7495 - PIEZA - M.izq-11 - 2 DE 4".
+ * Se busca la pieza por OT + nombre + cuál de la cantidad (igual que al volver
+ * a pegar la planilla, que reconoce las piezas por nombre y unidad).
+ */
+async function escanearPiezaPlanilla(sesion, datos, lectura) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(lectura.ot)}&select=ot&limit=1`, opts)) || [];
+  const ot = proyecto?.ot || lectura.ot;
+  const [pieza] = (await sbGet(`piezas_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&nombre=eq.${encodeURIComponent(lectura.nombre)}&unidad=eq.${lectura.unidad}&select=id,ot,nombre,unidad,de,etapas&limit=1`, opts)) || [];
+  if (!pieza) {
+    return NextResponse.json({ error: `La OT ${ot} no tiene la pieza ${lectura.nombre} (${lectura.unidad} de ${lectura.de}). Revisá que la planilla esté pegada en 🧩 Piezas y que la OT y el nombre estén escritos igual.` }, { status: 404 });
+  }
+  return anotarPieza(sesion, datos, pieza);
+}
+
+/** Anota que la pieza pasó por la etapa (si no estaba) y cuenta el avance de la etapa. */
+async function anotarPieza(sesion, datos, pieza) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
   const { etapa, response } = await etapaPorPieza(sesion, datos.etapa, opts);
   if (response) return response;
   const datosPieza = { id: pieza.id, ot: pieza.ot, nombre: pieza.nombre, unidad: pieza.unidad, de: pieza.de };

@@ -270,10 +270,31 @@ export function textoQrPieza(ot, id) {
   return `OT ${ot} - PIEZA - ${id}`;
 }
 
-/** QR de pieza → { ot, id }, o null si no es de una pieza. */
+/**
+ * QR de pieza armado en la planilla de Excel (sin el N° de Gypi, que Excel no
+ * conoce): "OT M-7495 - PIEZA - M.izq-11 - 2 DE 4" = nombre de la pieza (el
+ * PANEL) y cuál de la cantidad es.
+ */
+export function textoQrPiezaPlanilla(ot, nombre, unidad, de) {
+  return `OT ${ot} - PIEZA - ${nombre} - ${unidad} DE ${de}`;
+}
+
+/**
+ * QR de pieza → { ot, id } (etiqueta de Gypi) o { ot, nombre, unidad, de }
+ * (armado en la planilla), o null si no es de una pieza.
+ */
 export function leerQrPieza(texto) {
-  const m = String(texto ?? "").trim().match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\d{1,15})$/i);
-  return m ? { ot: m[1], id: Number(m[2]) } : null;
+  const s = String(texto ?? "").trim();
+  let m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\d{1,15})$/i);
+  if (m) return { ot: m[1], id: Number(m[2]) };
+  m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\S.{0,119}?)\s+-\s+(\d{1,4})\s+DE\s+(\d{1,4})$/i);
+  if (!m) return null;
+  const unidad = Number(m[3]);
+  const de = Number(m[4]);
+  if (unidad < 1 || unidad > de) return null;
+  // Igual que al pegar la planilla: espacios de más afuera, hasta 80 letras
+  const nombre = m[2].replace(/\s+/g, " ").trim().slice(0, LIMITES_PIEZA.nombre);
+  return { ot: m[1], nombre, unidad, de };
 }
 
 /**
