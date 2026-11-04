@@ -157,6 +157,7 @@ async function escanear(sesion, datos) {
   // El QR de la etiqueta, o el número de pieza escrito a mano ("N° 1234")
   const lectura = leerQrPieza(datos.codigo) || (/^\d{1,15}$/.test(datos.codigo) ? { ot: null, id: Number(datos.codigo) } : null);
   if (!lectura) return NextResponse.json({ error: "Ese código no es de una pieza ni de un módulo. Escaneá la etiqueta de la pieza o del módulo." }, { status: 400 });
+  if (lectura.nombre && !lectura.unidad) return escanearRenglon(sesion, datos, lectura);
   if (lectura.nombre) return escanearPiezaPlanilla(sesion, datos, lectura);
   const [pieza] = (await sbGet(`piezas_ot?id=eq.${lectura.id}&empresa_id=eq.${e}&select=id,ot,nombre,unidad,de,etapas&limit=1`, opts)) || [];
   // Número escrito a mano que no existe: casi siempre es un error al tipear,
@@ -164,10 +165,52 @@ async function escanear(sesion, datos) {
   if (!pieza && !lectura.ot) {
     return NextResponse.json({ error: `No hay ninguna pieza con el N° ${lectura.id}. Revisá el número de la etiqueta.` }, { status: 404 });
   }
+  // "OT X - PIEZA - 11": si no hay pieza N° 11 en esa OT, es la pieza que se llama "11"
+  if (lectura.ot && (!pieza || normalizarOt(pieza.ot) !== normalizarOt(lectura.ot))) {
+    const renglon = await unidadesDelRenglon(sesion, lectura.ot, String(lectura.id), opts);
+    if (renglon.piezas.length) return escanearRenglon(sesion, datos, { ot: lectura.ot, nombre: String(lectura.id) }, renglon);
+  }
   if (!pieza || (lectura.ot && normalizarOt(pieza.ot) !== normalizarOt(lectura.ot))) {
     return NextResponse.json({ error: "Esa pieza ya no está en la OT (puede que se haya vuelto a pegar la planilla). Reimprimí su etiqueta." }, { status: 404 });
   }
   return anotarPieza(sesion, datos, pieza);
+}
+
+/** Las unidades de un renglón de la OT (mismo nombre), en orden: { ot, piezas }. */
+async function unidadesDelRenglon(sesion, otQr, nombre, opts) {
+  const e = sesion.empresa_id;
+  const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(otQr)}&select=ot&limit=1`, opts)) || [];
+  const ot = proyecto?.ot || otQr;
+  const piezas = (await sbGet(`piezas_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&nombre=eq.${encodeURIComponent(nombre)}&select=id,ot,nombre,unidad,de,etapas&order=unidad.asc`, opts)) || [];
+  return { ot, piezas };
+}
+
+/**
+ * QR del renglón (04/11, Tadeo): "OT M-7495 - PIEZA - M.izq-11", el mismo
+ * para las 7 unidades. Cada escaneo anota en la etapa la siguiente unidad que
+ * falta y dice cuántas van (3 de 7); con todas, avisa que ya estaban.
+ */
+async function escanearRenglon(sesion, datos, lectura, renglon = null) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const { ot, piezas } = renglon || (await unidadesDelRenglon(sesion, lectura.ot, lectura.nombre, opts));
+  if (!piezas.length) {
+    return NextResponse.json({ error: `La OT ${ot} no tiene la pieza ${lectura.nombre}. Revisá que la planilla esté pegada en 🧩 Piezas y que la OT y el nombre estén escritos igual.` }, { status: 404 });
+  }
+  const ids = piezas.map((p) => p.id);
+  const hechos = new Set(((await sbGet(`pasos_pieza?empresa_id=eq.${e}&etapa=eq.${datos.etapa}&pieza_id=in.(${ids.join(",")})&select=pieza_id`, opts)) || []).map((p) => Number(p.pieza_id)));
+  const siguiente = piezas.find((p) => !hechos.has(Number(p.id)));
+  if (!siguiente) {
+    const { etapa, response } = await etapaPorPieza(sesion, datos.etapa, opts);
+    if (response) return response;
+    const ultima = piezas[piezas.length - 1];
+    return NextResponse.json({
+      ok: true, ya: true, pieza: { id: ultima.id, ot: ultima.ot, nombre: ultima.nombre, unidad: ultima.unidad, de: ultima.de },
+      etapa: datos.etapa, etapaNombre: etapa.nombre, requerida: (ultima.etapas || []).map(Number).includes(datos.etapa),
+      faltan: [], progreso: null, etapaTerminada: null, conteo: { pasaron: piezas.length, de: piezas.length },
+    });
+  }
+  return anotarPieza(sesion, datos, siguiente, { conteo: { pasaron: hechos.size + 1, de: piezas.length } });
 }
 
 /**
@@ -188,7 +231,7 @@ async function escanearPiezaPlanilla(sesion, datos, lectura) {
 }
 
 /** Anota que la pieza pasó por la etapa (si no estaba) y cuenta el avance de la etapa. */
-async function anotarPieza(sesion, datos, pieza) {
+async function anotarPieza(sesion, datos, pieza, extra = {}) {
   const e = sesion.empresa_id;
   const opts = { sesion };
   const { etapa, response } = await etapaPorPieza(sesion, datos.etapa, opts);
@@ -199,7 +242,7 @@ async function anotarPieza(sesion, datos, pieza) {
   const requerida = (pieza.etapas || []).map(Number).includes(datos.etapa);
   const previo = pasos.find((p) => Number(p.etapa) === datos.etapa);
   if (previo) {
-    return NextResponse.json({ ok: true, ya: true, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan: [], progreso: null, etapaTerminada: null, momento: previo.created_at });
+    return NextResponse.json({ ok: true, ya: true, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan: [], progreso: null, etapaTerminada: null, momento: previo.created_at, ...extra });
   }
 
   const faltan = requerida ? etapasSalteadas(pieza, datos.etapa, pasos) : [];
@@ -215,7 +258,7 @@ async function anotarPieza(sesion, datos, pieza) {
   broadcastRefresh(e, "pasos_pieza");
 
   const { progreso, etapaTerminada } = requerida ? await progresoEtapa(sesion, pieza.ot, etapa, opts) : { progreso: null, etapaTerminada: null };
-  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada, ...(await pausaDe(sesion, pieza.ot, opts)) });
+  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada, ...extra, ...(await pausaDe(sesion, pieza.ot, opts)) });
 }
 
 async function deshacerModulo(sesion, datos) {

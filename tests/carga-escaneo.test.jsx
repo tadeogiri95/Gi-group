@@ -94,6 +94,8 @@ test("cotejarQr — la etiqueta de una pieza tilda el suelto que se llama igual"
   assert.equal(r2.tipo, "suelto");
   assert.equal(r2.item.id, 7);
   assert.match(cotejarQr("OT M-7495 - PIEZA - M.izq-11 - 1 DE 1", datos).error, /escaneá el rótulo del bulto/);
+  assert.deepEqual(leerQr("OT M-7495 - PIEZA - EST-11"), { ot: "M-7495", piezaNombre: "EST-11" }, "el QR sin '1 DE 2'");
+  assert.equal(cotejarQr("OT M-7495 - PIEZA - EST-11", { ...datos, piezas: [] }).item.id, 7);
   assert.match(cotejarQr("OT M-7495 - PIEZA - 99", datos).error, /no está en la lista de piezas/);
   assert.match(cotejarQr("OT M-7038 - PIEZA - 50", datos).error, /OT M-7038, no de esta/);
 });

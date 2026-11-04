@@ -7,6 +7,8 @@
 //   amarillo → ya estaba escaneada, se salteó una etapa anterior o no le toca
 //   rojo     → no es una etiqueta de pieza, o la pieza ya no está en la OT
 // La etiqueta de un módulo hace pasar todas sus piezas de una vez (Armado).
+// El QR de una pieza es el mismo para todas sus unidades: cada escaneo anota
+// la siguiente que falta ("3 de 7 en Corte").
 // Sin señal, el escaneo se guarda y se manda solo cuando vuelve la conexión.
 // Desde el 04/11, cada pieza escaneada muestra 📄 para abrir el PDF de su OT.
 // codigoInicial: el QR leído con la cámara del celular (link ?qr=, ver
@@ -23,7 +25,8 @@ import { indicePdfs } from "../lib/pdfOt";
 import { LinkPdfOt } from "./PdfOt";
 
 const CLAVE_ETAPA = "gypi_etapa_piezas";
-const REPETIDO_MS = 5000;
+// Sin leerlo este rato, el QR salió de cuadro y el próximo escaneo cuenta
+const FUERA_DE_CUADRO_MS = 1000;
 const MAX_RESULTADOS = 30;
 
 const TONOS = {
@@ -65,11 +68,14 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
   const anotar = async (codigo) => {
     const texto = String(codigo || "").trim();
     if (!texto || !etapa) return;
-    // La cámara lee el mismo QR varias veces por segundo: uno cada 5 s
+    // La cámara lee el QR ~3 veces por segundo mientras está a la vista: se
+    // cuenta una vez y vuelve a contar recién cuando el QR salió de cuadro
+    // (04/11: las 7 unidades de una pieza llevan el mismo QR y cada escaneo suma una)
     const ahora = Date.now();
     const clave = `${etapa}|${texto}`;
-    if (ahora - (vistos.current.get(clave) || 0) < REPETIDO_MS) return;
+    const visto = vistos.current.get(clave) || 0;
     vistos.current.set(clave, ahora);
+    if (ahora - visto < FUERA_DE_CUADRO_MS) return;
     try {
       const r = await enviarOEncolar({
         empleadoId: usuario?.id, tipo: "paso_pieza", url: "/api/piezas/paso",
@@ -85,7 +91,9 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
       const deshacer = !ok ? null
         : data.modulo ? { accion: "deshacer_modulo", ot: data.modulo.ot, modulo: data.modulo.nombre, etapa: data.etapa }
           : data.pieza?.id ? { accion: "deshacer", pieza_id: data.pieza.id, etapa: data.etapa } : null;
-      agregar({ ...m, deshacer, ot: data.modulo?.ot || data.pieza?.ot || null });
+      // QR de la pieza (mismo para todas las unidades): "Sumar otra" sin volver a escanear
+      const otra = data.conteo && !data.ya && data.conteo.pasaron < data.conteo.de ? texto : null;
+      agregar({ ...m, deshacer, otra, ot: data.modulo?.ot || data.pieza?.ot || null });
     } catch (e) {
       agregar({ tono: "rojo", texto: e?.message || "No se pudo anotar la pieza.", detalle: null });
     }
@@ -167,6 +175,10 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
                     {r.detalle && <div className="text-[12px] mt-0.5 opacity-90">{r.detalle}</div>}
                   </div>
                   {r.ot && <LinkPdfOt ot={r.ot} indice={indicePdf} />}
+                  {r.otra && (
+                    <button onClick={() => { vistos.current.delete(`${etapa}|${r.otra}`); anotar(r.otra); }}
+                      className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">+1 otra</button>
+                  )}
                   {r.deshacer && (
                     <button onClick={() => deshacer(r)} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">Deshacer</button>
                   )}
