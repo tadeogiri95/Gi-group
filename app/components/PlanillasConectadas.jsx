@@ -11,6 +11,7 @@
 //   CLAVE_PLANILLA_PLAN     → script que pasa la SEMANA al Plan de trabajo
 //   CLAVE_STOCK_CSV         → links del libro MRP (INVENTARIO, ARTICULOS…)
 //   CLAVE_PLANILLA_MRP      → script que pasa los movimientos al MRP
+//   CLAVE_PDF_OT            → script de la carpeta de Drive con los PDF de las OT (04/11)
 import { useEffect, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { useToast } from "./ui/Toast";
@@ -20,6 +21,7 @@ import { CLAVE_FECHA_OBJETIVO, MODOS_FECHA_OBJETIVO, normalizarModo } from "../l
 import { CLAVE_PLANILLA_PLAN } from "../lib/semanaEditable";
 import { AVISO_DEMORA_GOOGLE, CLAVE_STOCK_CSV } from "../lib/stock";
 import PlanillaMrpConexion, { ConexionScript } from "./PlanillaMrpConexion";
+import CarpetaPdfOt from "./CarpetaPdfOt";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 
@@ -184,6 +186,7 @@ export default function PlanillasConectadas({ empresa }) {
         Acá están todos los links de las planillas de Google y los códigos para pegar en Apps Script. Se configuran una vez; después se sincronizan solas.
       </p>
       <PlanTrabajoLinks />
+      <CarpetaPdfOt />
       {conStock && <PlanillaMrpLinks />}
     </div>
   );

@@ -10,7 +10,8 @@
 // parte 16, el material necesario contra el retirado. Desde la auditoría del
 // 22/10, el estado de cada etapa de la ruta (como en el Tablero), que se ve
 // aunque nadie registre tareas. Desde la Minuta (parte M3), 📝 En las
-// minutas: lo que se dijo de la OT en las reuniones (solo gerencia).
+// minutas: lo que se dijo de la OT en las reuniones (solo gerencia). Desde el
+// 04/11, 📄 Ver PDF de la OT (carpeta de Drive, PdfOt.jsx).
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
@@ -35,6 +36,7 @@ import HistorialOt from "./HistorialOt";
 import PausaOt from "./PausaOt";
 import InstalacionOt from "./InstalacionOt";
 import { TituloOt } from "./NombreOt";
+import { PdfDeOt } from "./PdfOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -183,6 +185,9 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
+
+        {/* 📄 PDF de la OT desde la carpeta de Drive (04/11) */}
+        <PdfDeOt ot={proyecto?.ot} />
 
         {/* ⏸ Pausa (151): gestión la pone y la saca; los demás ven si está en pausa */}
         <PausaOt ot={proyecto?.ot} pausas={pausas} puedePausar={puedeCambiarSemana && proyecto?.estado !== "cerrado"}

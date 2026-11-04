@@ -70,7 +70,7 @@ test("090 — la clave primaria pasa a (empresa_id, clave), solo si todavía es 
 test("listado de OT — trae todas las páginas, no se corta en 500", async () => {
   const pedidos = [];
   global.fetch = async (url, opts = {}) => {
-    const { method, path } = JSON.parse(opts.body || "{}");
+    const { method, path = "" } = JSON.parse(opts.body || "{}"); // los GET sin body (📄 PDF de las OT) no traen path
     pedidos.push({ method, path });
     if (path.startsWith("proyectos?")) {
       const offset = Number(new URLSearchParams(path.split("?")[1]).get("offset") || 0);
