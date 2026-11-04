@@ -6,7 +6,7 @@ before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
 });
 
-const { numeroDePdf, numeroDeOt, pdfsDeOt, indicePdfs, urlDrive, idCarpeta, limpiarArchivos, scriptCarpetaPdf, MAX_PDFS } = await import("../app/lib/pdfOt.js");
+const { numeroDePdf, numeroDeOt, pdfsDeOt, indicePdfs, urlDrive, idCarpeta, limpiarArchivos, scriptCarpetaPdf, MAX_PDFS, otDeQr } = await import("../app/lib/pdfOt.js");
 const { validateCsrf } = await import("../app/lib/csrf.js");
 
 test("numeroDePdf — los nombres reales de la carpeta", () => {
@@ -106,4 +106,16 @@ test("csrf — el PATCH del script está exento; el POST de la misma ruta no", (
   const req = (method) => ({ method, nextUrl: { pathname: "/api/proyectos/pdfs", host: "gypi.app" }, cookies: { get: () => undefined }, headers: new Headers() });
   assert.equal(validateCsrf(req("PATCH")), null);
   assert.notEqual(validateCsrf(req("POST")), null);
+});
+
+test("otDeQr — la OT de cualquier QR de Gypi o de la planilla", () => {
+  assert.equal(otDeQr("M-7495"), "M-7495");
+  assert.equal(otDeQr(" m-7498-36 "), "m-7498-36");
+  assert.equal(otDeQr("OT M-7495 - PIEZA - 1234"), "M-7495");
+  assert.equal(otDeQr("OT M-7495 - BULTO 3 DE 4 - M.izq"), "M-7495");
+  assert.equal(otDeQr("OT M-7495 - SUELTO - EST-11"), "M-7495");
+  assert.equal(otDeQr("OT M-7495 - MODULO - M.izq"), "M-7495");
+  assert.equal(otDeQr("https://gypi.app/acme?carga=M-7495&bulto=2"), "M-7495");
+  assert.equal(otDeQr("hola que tal"), null);
+  assert.equal(otDeQr(""), null);
 });
