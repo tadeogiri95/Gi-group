@@ -11,6 +11,9 @@ import { fechaCorta } from "./lib/ot";
 import NombreOt from "./components/NombreOt";
 import { detalleOt, textoOt } from "./lib/nombreOt";
 import DetalleOp from "./components/DetalleOp";
+import { BotonPdfOt, LinkPdfOt } from "./components/PdfOt";
+import { usePdfsOt } from "./hooks/usePdfsOt";
+import { indicePdfs } from "./lib/pdfOt";
 import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
 import { fmtPesos } from "./lib/costo";
 import TableroOt from "./components/TableroOt";
@@ -184,6 +187,9 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
     return () => { vivo = false; };
   }, [verPrecios, empresaId]);
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
+  // 📄 PDF de cada OT desde la carpeta de Drive (04/11): índice por número
+  const archivosPdf = usePdfsOt(!!empresaId);
+  const indicePdf = useMemo(() => indicePdfs(archivosPdf), [archivosPdf]);
   const [proyectos, setProyectos] = useState([]);
   // OT en pausa (151): sin la migración, ninguna
   const [pausas, setPausas] = useState([]);
@@ -693,7 +699,8 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-gypi-dim">{textoEntrega(p, modoObjetivo).replace(/^Entrega /, "") || "—"}</td>
                     {verPrecios && <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">{precios.has(String(p.ot)) ? fmtPesos(precios.get(String(p.ot))) : "—"}</td>}
-                    <td className="px-2 py-1.5 text-right">
+                    <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                      <LinkPdfOt ot={p.ot} indice={indicePdf} />
                       <button type="button" onClick={(e) => { e.stopPropagation(); setAcciones(p); }} aria-label={`Acciones de la OT ${p.ot}`}
                         className="min-h-[36px] px-2.5 rounded-lg border border-gypi-border bg-transparent text-gypi-text cursor-pointer font-semibold">⋯</button>
                     </td>
@@ -774,6 +781,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <BotonOt onClick={() => abrir(setDetalle)}>📊 Detalle</BotonOt>
+              <BotonPdfOt ot={acciones.ot} indice={indicePdf} />
               <BotonOt onClick={() => abrir(setPiezasOt)}>🧩 Piezas</BotonOt>
               <BotonOt onClick={() => abrir(setSueltos)}>📦 Sueltos</BotonOt>
               <BotonOt onClick={() => abrir(setCarga)}>🚚 Carga</BotonOt>
