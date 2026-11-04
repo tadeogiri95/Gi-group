@@ -18,6 +18,7 @@
 //
 // 📄 Ver PDF de una OT (PR 2): otDeQr saca la OT de cualquier QR de Gypi o de
 // la planilla (el de la OT, una pieza, un bulto, un suelto o un módulo).
+import { textoDeQr } from "./linkQr";
 import { leerQr } from "./escaneoCarga";
 
 export const CLAVE_PDF_OT = "pdf_ot_script";
@@ -86,7 +87,7 @@ export function pdfsDeOt(ot, archivosOIndice) {
  * (?carga=M-7495) o el número escrito a mano. Null si no trae una OT.
  */
 export function otDeQr(texto) {
-  const s = String(texto ?? "").trim();
+  const s = textoDeQr(texto);
   const lectura = leerQr(s);
   if (lectura?.ot) return lectura.ot;
   const m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+/i);

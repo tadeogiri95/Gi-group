@@ -318,7 +318,8 @@ const etapaPieza = codigoEtapaPieza;
 export const pasoPiezaBody = z.discriminatedUnion("accion", [
   z.object({
     accion: z.literal("escanear"),
-    codigo: z.string().trim().min(1).max(200),
+    // El texto del QR, o el link de Gypi que lo trae adentro (?qr=)
+    codigo: z.string().trim().min(1).max(1000),
     etapa: etapaPieza,
     // Desde la cola sin señal (colaOffline): id de la operación y cuándo se escaneó
     op_id: z.string().uuid().optional(),

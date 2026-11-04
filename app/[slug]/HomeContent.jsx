@@ -62,6 +62,8 @@ const ActaOt = dynamic(() => import("../components/ActaOt"), { ssr: false });
 const InstalacionesScreen = dynamic(() => import("../components/screens/InstalacionesScreen"), { ssr: false });
 const FichaArticulo = dynamic(() => import("../components/FichaArticulo"), { ssr: false });
 const AvisarFalla = dynamic(() => import("../components/AvisarFalla"), { ssr: false });
+const QrAbierto = dynamic(() => import("../components/QrAbierto"), { ssr: false });
+const EscanearPiezas = dynamic(() => import("../components/EscanearPiezas"), { ssr: false });
 
 // Demo data — cargado dinámicamente solo cuando ?demo=true (nunca para usuarios reales)
 
@@ -130,6 +132,15 @@ export default function HomeContent() {
   const codigoMaquina = /^[A-Za-z0-9][\w.-]{0,19}$/.test(searchParams.get("maquina") || "") ? searchParams.get("maquina").toUpperCase() : null;
   const cerrarMaquina = () => cambiarParams((p) => p.delete("maquina"));
   const abrirActa = () => cambiarParams((p) => { p.delete("carga"); p.set("acta", otCarga); });
+  // QR de Gypi como link (04/11): ?qr=<texto del QR> leído con la cámara del
+  // celular abre la OT, el módulo o la pieza; ?anotar=<texto> abre Escanear
+  // piezas con ese código para elegir la etapa (app/lib/linkQr.js)
+  const textoQr = (clave) => { const v = (searchParams.get(clave) || "").trim(); return v && v.length <= 300 ? v : null; };
+  const qrAbierto = textoQr("qr");
+  const qrAnotar = textoQr("anotar");
+  const cerrarQr = () => cambiarParams((p) => { p.delete("qr"); p.delete("anotar"); });
+  const anotarQr = (texto) => cambiarParams((p) => { p.delete("qr"); p.set("anotar", texto); });
+  const cargaQr = (ot) => cambiarParams((p) => { p.delete("qr"); p.set("carga", ot); });
 
   // ─── Impersonation exchange (superadmin → ?imp=code) ───
   useEffect(() => {
@@ -464,6 +475,8 @@ export default function HomeContent() {
         <CargaOt ot={otCarga} empresaId={u?.empresa_id || empresa?.id} empresa={empresa} usuario={u} checklist={checklistCarga}
           esGestion={u?.rol === "gerencial" || u?.rol === "administrativo"} onClose={cerrarCarga} onAbrirActa={abrirActa} />
       )}
+      {qrAbierto && !otCarga && !otActa && !isDemo && <QrAbierto texto={qrAbierto} onAnotar={anotarQr} onCarga={cargaQr} onClose={cerrarQr} />}
+      {qrAnotar && !qrAbierto && !otCarga && !otActa && !isDemo && <EscanearPiezas usuario={u} etapas={etapasEmpresa} codigoInicial={qrAnotar} onClose={cerrarQr} />}
       {codigoMaquina && !skuArticulo && !otCarga && !otActa && !isDemo && <AvisarFalla codigoInicial={codigoMaquina} onClose={cerrarMaquina} />}
       {skuArticulo && !otCarga && !otActa && !isDemo && <FichaArticulo sku={skuArticulo} usuario={u} empresaId={u?.empresa_id || empresa?.id} onClose={cerrarArticulo} />}
       {otActa && !isDemo && (

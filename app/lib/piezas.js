@@ -5,6 +5,7 @@
 // cada una con su QR. En cada etapa (parte 18) se escanea la pieza.
 import { filasTsv } from "./sueltos";
 import { svgQR } from "./tarjetasQR";
+import { textoDeQr, linkQr } from "./linkQr";
 import { textoMotivoPausa } from "./pausaOt";
 import { detalleOt, otCompleta, textoOt } from "./nombreOt";
 
@@ -284,7 +285,7 @@ export function textoQrPiezaPlanilla(ot, nombre, unidad, de) {
  * (armado en la planilla), o null si no es de una pieza.
  */
 export function leerQrPieza(texto) {
-  const s = String(texto ?? "").trim();
+  const s = textoDeQr(texto);
   let m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\d{1,15})$/i);
   if (m) return { ot: m[1], id: Number(m[2]) };
   m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\S.{0,119}?)\s+-\s+(\d{1,4})\s+DE\s+(\d{1,4})$/i);
@@ -308,7 +309,7 @@ export function textoQrModulo(ot, modulo) {
 
 /** QR de módulo → { ot, modulo }, o null si no es de un módulo. */
 export function leerQrModulo(texto) {
-  const m = String(texto ?? "").trim().match(/^OT\s+([\w.-]{1,40})\s+-\s+MODULO\s+-\s+(\S.{0,39})$/i);
+  const m = textoDeQr(texto).match(/^OT\s+([\w.-]{1,40})\s+-\s+MODULO\s+-\s+(\S.{0,39})$/i);
   return m ? { ot: m[1], modulo: m[2].trim() } : null;
 }
 
@@ -323,19 +324,26 @@ const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&q
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 
 /**
+ * El QR de la etiqueta: con link = { origen, slug } va metido en un link de
+ * Gypi (?qr=), así la cámara del celular abre la app; adentro de Gypi se lee
+ * igual que el texto solo (app/lib/linkQr.js).
+ */
+const qrConLink = (texto, link) => (link?.origen && link?.slug ? linkQr(link.origen, link.slug, texto) : texto);
+
+/**
  * Página con una etiqueta por pieza, del tamaño del rollo de la impresora de
  * etiquetas (una por página): OT, pieza, "2 de 4", medidas, material, módulo,
  * las etapas que le tocan y el QR.
  * @param {{ empresa?: string, ot: string, proyecto?: object | null, piezas: object[], tamano: { ancho: number, alto: number }, nombres?: Record<number, string> }} datos
  */
-export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, piezas, tamano, nombres = {} }) {
+export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, piezas, tamano, nombres = {}, link = null }) {
   const deLaOt = detalleOt(proyecto);
   const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
   const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
   const items = [];
   for (const p of piezas) {
-    const qr = await svgQR(textoQrPieza(ot, p.id));
+    const qr = await svgQR(qrConLink(textoQrPieza(ot, p.id), link));
     const ruta = (p.etapas || []).map((c) => nombres[c] || `Etapa ${c}`).join(" › ");
     items.push(`
   <div class="etiqueta">
@@ -369,14 +377,14 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
 }
 
 /** Página con una etiqueta por módulo, mismo rollo que las de pieza: OT, módulo, cuántas piezas y el QR. */
-export async function htmlEtiquetasModulos({ empresa = "", ot, proyecto = null, modulos, tamano }) {
+export async function htmlEtiquetasModulos({ empresa = "", ot, proyecto = null, modulos, tamano, link = null }) {
   const deLaOt = detalleOt(proyecto);
   const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
   const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
   const items = [];
   for (const [i, m] of modulos.entries()) {
-    const qr = await svgQR(textoQrModulo(ot, m.modulo));
+    const qr = await svgQR(qrConLink(textoQrModulo(ot, m.modulo), link));
     items.push(`
   <div class="etiqueta">
     <div class="texto">
