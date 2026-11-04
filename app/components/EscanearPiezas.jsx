@@ -8,13 +8,17 @@
 //   rojo     → no es una etiqueta de pieza, o la pieza ya no está en la OT
 // La etiqueta de un módulo hace pasar todas sus piezas de una vez (Armado).
 // Sin señal, el escaneo se guarda y se manda solo cuando vuelve la conexión.
-import { useEffect, useRef, useState } from "react";
+// Desde el 04/11, cada pieza escaneada muestra 📄 para abrir el PDF de su OT.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { enviarOEncolar } from "../lib/colaOffline";
 import Modal from "./ui/Modal";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 import { reglasPieza, nombresEtapas, mensajeEscaneo } from "../lib/piezas";
 import { useOts } from "../hooks/useOts";
+import { usePdfsOt } from "../hooks/usePdfsOt";
+import { indicePdfs } from "../lib/pdfOt";
+import { LinkPdfOt } from "./PdfOt";
 
 const CLAVE_ETAPA = "gypi_etapa_piezas";
 const REPETIDO_MS = 5000;
@@ -38,6 +42,8 @@ function etapaInicial(etapas, botones, tareaActiva) {
 
 export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = null, onClose }) {
   const porOt = useOts();
+  const archivosPdf = usePdfsOt();
+  const indicePdf = useMemo(() => indicePdfs(archivosPdf), [archivosPdf]);
   const botones = reglasPieza(etapas);
   const nombres = nombresEtapas(etapas);
   const [etapa, setEtapa] = useState(() => etapaInicial(etapas, botones, tareaActiva));
@@ -76,7 +82,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
       const deshacer = !ok ? null
         : data.modulo ? { accion: "deshacer_modulo", ot: data.modulo.ot, modulo: data.modulo.nombre, etapa: data.etapa }
           : data.pieza?.id ? { accion: "deshacer", pieza_id: data.pieza.id, etapa: data.etapa } : null;
-      agregar({ ...m, deshacer });
+      agregar({ ...m, deshacer, ot: data.modulo?.ot || data.pieza?.ot || null });
     } catch (e) {
       agregar({ tono: "rojo", texto: e?.message || "No se pudo anotar la pieza.", detalle: null });
     }
@@ -148,6 +154,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
                     <div className="font-semibold">{r.texto}</div>
                     {r.detalle && <div className="text-[12px] mt-0.5 opacity-90">{r.detalle}</div>}
                   </div>
+                  {r.ot && <LinkPdfOt ot={r.ot} indice={indicePdf} />}
                   {r.deshacer && (
                     <button onClick={() => deshacer(r)} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">Deshacer</button>
                   )}

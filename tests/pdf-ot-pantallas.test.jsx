@@ -7,6 +7,8 @@ import { render, screen, cleanup } from "@testing-library/react";
 const { PdfDeOt, BotonPdfOt } = await import("../app/components/PdfOt.jsx");
 const { olvidarPdfsOt } = await import("../app/hooks/usePdfsOt.js");
 const { indicePdfs } = await import("../app/lib/pdfOt.js");
+const { default: VerPdfOt } = await import("../app/components/VerPdfOt.jsx");
+const { fireEvent } = await import("@testing-library/react");
 
 const ARCHIVOS = [
   { nombre: "7498-36-GRUPO ELYON-PLACARD.pdf", id: "1aaaaaaaaaaaaaaa", fecha: "2026-10-01T00:00:00.000Z" },
@@ -54,4 +56,23 @@ test("Lista — el botón 📄 PDF aparece solo si la OT tiene PDF", () => {
   assert.equal(screen.getByRole("link", { name: /PDF/ }).getAttribute("href"), "https://drive.google.com/file/d/1bbbbbbbbbbbbbbb/view");
   rerender(<BotonPdfOt ot="M-9999" indice={indice} />);
   assert.equal(container.textContent, "");
+});
+
+test("Ver PDF de una OT — escribiendo la OT aparece 📄 Abrir el PDF con el más nuevo", async () => {
+  respuesta({ conectado: true, archivos: ARCHIVOS });
+  render(<VerPdfOt onClose={() => {}} />);
+  await screen.findByLabelText("Número de la OT");
+  fireEvent.change(screen.getByLabelText("Número de la OT"), { target: { value: "m-7498-36" } });
+  fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
+  const link = await screen.findByRole("link", { name: /Abrir el PDF/ });
+  assert.equal(link.getAttribute("href"), "https://drive.google.com/file/d/1bbbbbbbbbbbbbbb/view");
+});
+
+test("Ver PDF de una OT — una OT sin PDF lo avisa", async () => {
+  respuesta({ conectado: true, archivos: ARCHIVOS });
+  render(<VerPdfOt onClose={() => {}} />);
+  await new Promise((r) => setTimeout(r, 30));
+  fireEvent.change(screen.getByLabelText("Número de la OT"), { target: { value: "M-1234" } });
+  fireEvent.click(screen.getByRole("button", { name: "Buscar" }));
+  assert.ok(await screen.findByText(/No hay PDF de esta OT/));
 });

@@ -15,6 +15,10 @@
 // El PDF se abre en Drive (la carpeta está compartida "cualquier persona con
 // el enlace puede ver"), así el operario no necesita cuenta de Google.
 // Sin crypto ni nada de servidor: lo usan las pantallas.
+//
+// 📄 Ver PDF de una OT (PR 2): otDeQr saca la OT de cualquier QR de Gypi o de
+// la planilla (el de la OT, una pieza, un bulto, un suelto o un módulo).
+import { leerQr } from "./escaneoCarga";
 
 export const CLAVE_PDF_OT = "pdf_ot_script";
 export const MAX_PDFS = 5000;
@@ -74,6 +78,19 @@ export function pdfsDeOt(ot, archivosOIndice) {
   if (propios.length || !numero.includes("-")) return { pdfs: propios, deLaMadre: false };
   const madre = indice.get(numero.split("-")[0]) || [];
   return { pdfs: madre, deLaMadre: madre.length > 0 };
+}
+
+/**
+ * La OT de cualquier QR: "M-7495", "OT M-7495 - PIEZA - 12",
+ * "OT M-7495 - BULTO 3 DE 4", "OT M-7495 - MODULO - M.izq", el link del rótulo
+ * (?carga=M-7495) o el número escrito a mano. Null si no trae una OT.
+ */
+export function otDeQr(texto) {
+  const s = String(texto ?? "").trim();
+  const lectura = leerQr(s);
+  if (lectura?.ot) return lectura.ot;
+  const m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+/i);
+  return m ? m[1] : null;
 }
 
 /** Link para ver el PDF en Drive (el id viene del script; se arma acá, no se confía en un link). */

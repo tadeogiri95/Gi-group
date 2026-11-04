@@ -2,7 +2,8 @@
 // Inicio del operario (R8): solo lo de todos los días — cómo está, fichar y
 // los botones grandes del trabajo (escanear piezas, retirar material, carga y,
 // para el responsable de mantenimiento, 🔧 Mi mantenimiento con sus vehículos y
-// máquinas; parte 34, migración 133).
+// máquinas; parte 34, migración 133). Desde el 04/11, 📄 Ver PDF de una OT
+// escaneando su QR, si la carpeta de Drive de los PDF está conectada.
 // Pedir permiso está en la pestaña "Permisos" y horario, fichadas, documentos,
 // PIN y salir en la pestaña "Mi cuenta" (revisión de la interfaz, 2026-10).
 // Sin estilos sueltos (R11).
@@ -22,6 +23,8 @@ import ChecklistVehiculo from "../ChecklistVehiculo";
 import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
 import AvisarFalla from "../AvisarFalla";
 import PlanSemana from "../PlanSemana";
+import VerPdfOt from "../VerPdfOt";
+import { usePdfsOt } from "../../hooks/usePdfsOt";
 import { CAMPOS_VEHICULO, conResponsables, detalleMiMantenimiento, resumenMiMantenimiento } from "../../lib/mantenimiento";
 import { sb } from "../../lib/supabase";
 
@@ -48,6 +51,10 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   const [elegirCarga, setElegirCarga] = useState(false);
   const [retirar, setRetirar] = useState(false);
   const [escanearPiezas, setEscanearPiezas] = useState(false);
+  // 📄 PDF de las OT (carpeta de Drive): sin carpeta conectada no hay botón
+  const conProyectos = !demo && tieneModulo(empresa, "proyectos");
+  const pdfsOt = usePdfsOt(conProyectos);
+  const [verPdf, setVerPdf] = useState(false);
   const [misVehiculos, setMisVehiculos] = useState([]);
   const [checklist, setChecklist] = useState(false);
   const [sinCircular, setSinCircular] = useState([]);
@@ -149,6 +156,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       {/* El trabajo del día: botones grandes, lo más usado primero */}
       <section aria-label="Trabajo" className="flex flex-col gap-2.5 mb-[18px]">
         {conTareas && !demo && <BotonAccion icono="🧩" titulo="Escanear piezas" detalle="Marcá por qué etapa pasó cada pieza" destacado onClick={() => setEscanearPiezas(true)} />}
+        {conProyectos && pdfsOt && <BotonAccion icono="📄" titulo="Ver PDF de una OT" detalle="Escaneá el QR de la OT, una pieza o un módulo" onClick={() => setVerPdf(true)} />}
         {conStock && <BotonAccion icono="📦" titulo="Retirar material" detalle="Escaneá el QR del artículo y anotá cuánto sacás" onClick={() => setRetirar(true)} />}
         {/* Acopio y carga: el responsable elige la OT sin depender del QR de un rótulo */}
         {conTareas && onAbrirCarga && <BotonAccion icono="🚚" titulo="Carga de una OT" detalle="Armar bultos, imprimir rótulos y cargar el camión" onClick={() => setElegirCarga(true)} />}
@@ -170,6 +178,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       {/* El instalador trabaja en obra: el plan de la planta no le sirve (auditoría 01/11) */}
       {!demo && !usuario?.es_instalador && tieneModulo(empresa, "proyectos") && <PlanSemana divisionUsuario={usuario?.division} />}
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
+      {verPdf && <VerPdfOt onClose={() => setVerPdf(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}
       {checklist && <ChecklistVehiculo vehiculos={misVehiculos} empresaNombre={empresa?.nombre || ""} onClose={() => setChecklist(false)} />}
