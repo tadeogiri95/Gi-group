@@ -14,7 +14,9 @@
 //     busca el suelto que se llama igual que la pieza (código = PANEL).
 //   - El QR para el cliente (04/11): el link .../ot/<código> trae la OT
 //     adentro (la firma la controla el servidor; acá solo se lee la OT).
+//   - Cualquiera de esos metido en un link de Gypi (?qr=, app/lib/linkQr.js).
 // Un suelto se carga entero con un escaneo (una lectura por renglón).
+import { textoDeQr } from "./linkQr";
 
 const OT_VALIDA = /^[\w.-]{1,40}$/;
 
@@ -29,7 +31,8 @@ const normalizarTexto = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]
  *   Sin bulto ni suelto, es el QR de la OT.
  */
 export function leerQr(texto) {
-  const s = String(texto ?? "").trim();
+  // Link de Gypi con el QR adentro (?qr=): vale el texto de adentro
+  const s = textoDeQr(texto);
   if (!s || s.length > 500) return null;
 
   // Link de la app (rótulo de bulto o etiqueta de suelto)

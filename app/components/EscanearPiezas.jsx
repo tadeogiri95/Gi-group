@@ -9,6 +9,8 @@
 // La etiqueta de un módulo hace pasar todas sus piezas de una vez (Armado).
 // Sin señal, el escaneo se guarda y se manda solo cuando vuelve la conexión.
 // Desde el 04/11, cada pieza escaneada muestra 📄 para abrir el PDF de su OT.
+// codigoInicial: el QR leído con la cámara del celular (link ?qr=, ver
+// QrAbierto.jsx); queda esperando que el operario elija la etapa y confirme.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { enviarOEncolar } from "../lib/colaOffline";
@@ -40,7 +42,7 @@ function etapaInicial(etapas, botones, tareaActiva) {
   } catch { return null; }
 }
 
-export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = null, onClose }) {
+export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = null, codigoInicial = null, onClose }) {
   const porOt = useOts();
   const archivosPdf = usePdfsOt();
   const indicePdf = useMemo(() => indicePdfs(archivosPdf), [archivosPdf]);
@@ -49,6 +51,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
   const [etapa, setEtapa] = useState(() => etapaInicial(etapas, botones, tareaActiva));
   const [resultados, setResultados] = useState([]);
   const [numero, setNumero] = useState("");
+  const [leido, setLeido] = useState(codigoInicial);
   const vistos = useRef(new Map());
   const contador = useRef(0);
 
@@ -136,6 +139,15 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
               </div>
             ) : (
               <div className="text-[13px] text-gypi-dim mb-2">Para escanear con la cámara usá Chrome en un celular Android. Mientras tanto, escribí el número de la etiqueta (N°).</div>
+            )}
+            {leido && (
+              <div className="rounded-xl p-3 mb-3 bg-gypi-amber/10 border border-gypi-amber">
+                <div className="text-[13px] text-gypi-dim">Leíste con la cámara</div>
+                <div className="text-[14px] font-semibold break-words mb-2">{leido}</div>
+                <button onClick={() => { const c = leido; setLeido(null); anotar(c); }} className="g-btn g-btn-primary w-full min-h-[48px] font-bold">
+                  Anotar en {nombreEtapa}
+                </button>
+              </div>
             )}
             <form onSubmit={escribir} className="flex gap-2 mb-3">
               <input className="g-input flex-1" inputMode="numeric" value={numero} onChange={(e) => setNumero(e.target.value)}
