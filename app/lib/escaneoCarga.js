@@ -25,7 +25,7 @@ const normalizarTexto = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]
 
 /**
  * Qué dice un QR escaneado.
- * @returns {null | { ot: string, bulto?: number, sueltoId?: number, suelto?: string, piezaId?: number }}
+ * @returns {null | { ot: string, bulto?: number, sueltoId?: number, suelto?: string, piezaId?: number, piezaNombre?: string }}
  *   Sin bulto ni suelto, es el QR de la OT.
  */
 export function leerQr(texto) {
@@ -51,6 +51,9 @@ export function leerQr(texto) {
   // Etiqueta de pieza (🧩 Piezas)
   let m = s.match(/^OT\s+(\S+)\s+-\s+PIEZA\s+-\s+(\d{1,15})$/i);
   if (m && OT_VALIDA.test(m[1])) return { ot: m[1], piezaId: Number(m[2]) };
+  // Etiqueta de pieza armada en la planilla: "OT M-7495 - PIEZA - 11 - 2 DE 4"
+  m = s.match(/^OT\s+(\S+)\s+-\s+PIEZA\s+-\s+(\S.{0,119}?)\s+-\s+\d{1,4}\s+DE\s+\d{1,4}$/i);
+  if (m && OT_VALIDA.test(m[1])) return { ot: m[1], piezaNombre: m[2].replace(/\s+/g, " ").trim() };
 
   // Hoja CARGA de la planilla
   m = s.match(/^OT\s+(\S+)\s+-\s+BULTO\s+(\d+)\b/i);
@@ -120,6 +123,12 @@ export function cotejarQr(texto, { ot, bultos = [], sueltos = [], piezas = [] })
     const nombrePieza = String(p.nombre ?? "").replace(/\s+\(\d+\)$/, "");
     const s = sueltoLlamado(nombrePieza, sueltos);
     if (!s) return { error: `La pieza ${nombrePieza} no está en la lista de sueltos. Si va dentro de un módulo armado, escaneá el rótulo del bulto.` };
+    const nombre = [s.codigo, s.descripcion].filter(Boolean).join(" · ") || "Suelto";
+    return { tipo: "suelto", item: s, yaCargado: !!s.carga, nombre };
+  }
+  if (lectura.piezaNombre) {
+    const s = sueltoLlamado(lectura.piezaNombre, sueltos);
+    if (!s) return { error: `La pieza ${lectura.piezaNombre} no está en la lista de sueltos. Si va dentro de un módulo armado, escaneá el rótulo del bulto.` };
     const nombre = [s.codigo, s.descripcion].filter(Boolean).join(" · ") || "Suelto";
     return { tipo: "suelto", item: s, yaCargado: !!s.carga, nombre };
   }

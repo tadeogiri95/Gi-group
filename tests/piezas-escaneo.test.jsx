@@ -9,6 +9,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   etapasSalteadas, avancePiezas, textoAvancePiezas, mensajeEscaneo, reglasPieza, nombresEtapas,
+  leerQrPieza, textoQrPiezaPlanilla,
 } from "../app/lib/piezas.js";
 import { pasoPiezaBody } from "../app/lib/schemas.ts";
 import { autorizar } from "../app/lib/dataPolicy.js";
@@ -138,8 +139,10 @@ function req(body, t) {
 
 const PIEZA = { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2, etapas: [1, 2, 3] };
 
+let leidas = [];
 function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false } = {}) {
   const escrito = [];
+  leidas = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
@@ -151,9 +154,11 @@ function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = []
         return { status: 200, body: etapas.filter((e) => e.codigo === codigo) };
       },
     },
+    { match: (u) => u.includes("/rest/v1/proyectos?"), respond: () => ({ status: 200, body: [{ ot: "M-7495" }] }) },
     {
       match: (u, o) => u.includes("/rest/v1/piezas_ot?") && (!o?.method || o.method === "GET"),
       respond: (u) => {
+        leidas.push(u);
         if (falla) return { status: 404, body: { code: "PGRST205", message: falla } };
         if (u.includes("etapas=cs.")) return { status: 200, body: [{ id: 1 }], headers: { "content-range": `0-0/${total}` } };
         return { status: 200, body: pieza ? [pieza] : [] };
@@ -197,6 +202,38 @@ test("/api/piezas/paso — escanear: anota la pieza con quién, devuelve el avan
   assert.equal(escrito[0].body.empleado_id, EMP);
   assert.equal(escrito[0].body.requerida, true);
   assert.ok(Math.abs(Date.parse(escrito[0].body.created_at) - Date.now()) < 5000);
+});
+
+test("QR de pieza armado en la planilla de Excel — nombre + cuál de la cantidad", () => {
+  assert.equal(textoQrPiezaPlanilla("M-7495", "M.izq-11", 2, 2), "OT M-7495 - PIEZA - M.izq-11 - 2 DE 2");
+  assert.deepEqual(leerQrPieza("OT M-7495 - PIEZA - M.izq-11 - 2 DE 2"), { ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2 });
+  assert.deepEqual(leerQrPieza("ot m-7495 - pieza - 2.AL1P - 11  -  1 de 3"), { ot: "m-7495", nombre: "2.AL1P - 11", unidad: 1, de: 3 });
+  // La etiqueta de Gypi sigue igual
+  assert.deepEqual(leerQrPieza("OT M-7495 - PIEZA - 1234"), { ot: "M-7495", id: 1234 });
+  for (const malo of ["OT M-7495 - PIEZA - M.izq-11 - 3 DE 2", "OT M-7495 - PIEZA - M.izq-11 - 0 DE 2", "OT M-7495 - PIEZA - M.izq-11", "OT M-7495 - PIEZA -  - 1 DE 2"]) {
+    assert.equal(leerQrPieza(malo), null, malo);
+  }
+});
+
+test("/api/piezas/paso — escanear el QR de la planilla busca la pieza por OT, nombre y unidad", async () => {
+  const escrito = mock();
+  const res = await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - M.izq-11 - 2 DE 2", etapa: 2 }, await token()));
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  assert.equal(data.pieza.id, 7);
+  assert.equal(data.ya, false);
+  const busqueda = leidas.find((u) => u.includes("nombre=eq."));
+  assert.ok(busqueda, "busca por nombre");
+  assert.match(busqueda, /ot=eq\.M-7495/);
+  assert.match(busqueda, /nombre=eq\.M\.izq-11/);
+  assert.match(busqueda, /unidad=eq\.2/);
+  assert.match(busqueda, new RegExp(`empresa_id=eq\\.${E}`));
+  assert.equal(escrito[0].body.pieza_id, 7);
+
+  mock({ pieza: null });
+  const no = await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - M.izq-99 - 1 DE 1", etapa: 2 }, await token()));
+  assert.equal(no.status, 404);
+  assert.match((await no.json()).error, /no tiene la pieza M\.izq-99 \(1 de 1\)/);
 });
 
 test("/api/piezas/paso — la última pieza termina la etapa de la OT (si no estaba firmada)", async () => {
