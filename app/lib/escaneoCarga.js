@@ -12,6 +12,8 @@
 //       "OT M-7495 - SUELTO - EST-11" (código, o la descripción si no tiene)
 //   - La etiqueta de cada pieza (🧩 Piezas): "OT M-7495 - PIEZA - 1234". Se
 //     busca el suelto que se llama igual que la pieza (código = PANEL).
+//   - El QR para el cliente (04/11): el link .../ot/<código> trae la OT
+//     adentro (la firma la controla el servidor; acá solo se lee la OT).
 // Un suelto se carga entero con un escaneo (una lectura por renglón).
 
 const OT_VALIDA = /^[\w.-]{1,40}$/;
@@ -34,6 +36,8 @@ export function leerQr(texto) {
   if (/^https?:\/\//i.test(s)) {
     let url;
     try { url = new URL(s); } catch { return null; }
+    const delCliente = otDeLinkCliente(url.pathname);
+    if (delCliente) return { ot: delCliente };
     const ot = url.searchParams.get("carga");
     if (!ot || !OT_VALIDA.test(ot)) return null;
     const lectura = { ot };
@@ -58,6 +62,20 @@ export function leerQr(texto) {
 
   // QR de la OT en la planilla: el número solo
   return OT_VALIDA.test(s) ? { ot: s } : null;
+}
+
+/** "/ot/<base64url de empresa|OT>.<firma>" → la OT, o null. */
+function otDeLinkCliente(ruta) {
+  const m = String(ruta || "").match(/^\/ot\/([A-Za-z0-9_-]{10,160})\.[A-Za-z0-9_-]{22}\/?$/);
+  if (!m) return null;
+  try {
+    const b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+    const bytes = Uint8Array.from(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+    const [, ot, ...resto] = new TextDecoder().decode(bytes).split("|");
+    return !resto.length && ot && OT_VALIDA.test(ot) ? ot : null;
+  } catch {
+    return null;
+  }
 }
 
 /** La OT de la lista que corresponde a un QR, o null. */

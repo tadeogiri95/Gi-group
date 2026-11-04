@@ -12,6 +12,7 @@ import NombreOt from "./components/NombreOt";
 import { detalleOt, textoOt } from "./lib/nombreOt";
 import DetalleOp from "./components/DetalleOp";
 import { BotonPdfOt, LinkPdfOt } from "./components/PdfOt";
+import LinkClienteOt from "./components/LinkClienteOt";
 import { usePdfsOt } from "./hooks/usePdfsOt";
 import { indicePdfs } from "./lib/pdfOt";
 import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
@@ -212,6 +213,9 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
   const [acta, setActa] = useState(null);
   const [etiquetas, setEtiquetas] = useState(null);
   const [piezasOt, setPiezasOt] = useState(null);
+  // 🔗 Para el cliente (04/11): QR de la página de la OT para el cliente
+  const [paraCliente, setParaCliente] = useState(null);
+  const esGestionOt = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
   // OT tocada en la lista: se abre con todos sus botones (auditoría 22/10)
   const [acciones, setAcciones] = useState(null);
   const [vista, setVista] = useState("lista");
@@ -753,6 +757,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setCarga(null)}
           onAbrirActa={() => { setActa(carga); setCarga(null); }} />
       )}
+      {paraCliente && <LinkClienteOt proyecto={paraCliente} empresaNombre={empresa?.nombre || ""} onClose={() => setParaCliente(null)} />}
       {etiquetas && <EtiquetasModulos proyecto={etiquetas} empresa={empresa} onClose={() => setEtiquetas(null)} />}
       {piezasOt && (
         <PiezasOt proyecto={piezasOt} empresaId={empresaId} empresa={empresa} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setPiezasOt(null)} />
@@ -782,6 +787,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
             <div className="grid grid-cols-2 gap-2">
               <BotonOt onClick={() => abrir(setDetalle)}>📊 Detalle</BotonOt>
               <BotonPdfOt ot={acciones.ot} indice={indicePdf} />
+              {esGestionOt && <BotonOt onClick={() => abrir(setParaCliente)}>🔗 Para el cliente</BotonOt>}
               <BotonOt onClick={() => abrir(setPiezasOt)}>🧩 Piezas</BotonOt>
               <BotonOt onClick={() => abrir(setSueltos)}>📦 Sueltos</BotonOt>
               <BotonOt onClick={() => abrir(setCarga)}>🚚 Carga</BotonOt>
