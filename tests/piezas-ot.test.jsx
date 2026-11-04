@@ -146,7 +146,7 @@ test("QR — 'OT M-7495 - PIEZA - 1234' ida y vuelta; la carga lo lee como pieza
   assert.deepEqual(leerQr("OT M-7495 - PIEZA - 1234"), { ot: "M-7495", piezaId: 1234 }, "en la carga busca el suelto que se llama como la pieza");
 });
 
-test("etiquetas — una página por pieza con OT, nombre, 'n de N', medidas, módulo, etapas y QR", async () => {
+test("etiquetas — una página por pieza con OT, nombre, cantidad, medidas, módulo, etapas y QR", async () => {
   const html = await htmlEtiquetasPiezas({
     empresa: "GI", ot: "M-7495", tamano: { ancho: 100, alto: 50 },
     nombres: nombresEtapas(ETAPAS),
@@ -158,7 +158,7 @@ test("etiquetas — una página por pieza con OT, nombre, 'n de N', medidas, mó
   assert.equal((html.match(/class="etiqueta"/g) || []).length, 2);
   assert.match(html, /@page \{ size: 100mm 50mm/);
   assert.match(html, /GI · OT M-7495/);
-  assert.match(html, /1 de 2 · 402 × 342/);
+  assert.match(html, /Cant\. 2 · 402 × 342/);
   assert.match(html, /Módulo M\.izq/);
   assert.match(html, /Corte › Canto › CNC · N° 10/);
   assert.match(html, /N° 11/);

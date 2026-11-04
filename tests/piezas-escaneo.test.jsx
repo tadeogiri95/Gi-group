@@ -9,7 +9,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   etapasSalteadas, avancePiezas, textoAvancePiezas, mensajeEscaneo, reglasPieza, nombresEtapas,
-  leerQrPieza, textoQrPiezaPlanilla,
+  leerQrPieza, textoQrPiezaRenglon, htmlEtiquetasPiezas,
 } from "../app/lib/piezas.js";
 import { pasoPiezaBody } from "../app/lib/schemas.ts";
 import { autorizar } from "../app/lib/dataPolicy.js";
@@ -140,7 +140,7 @@ function req(body, t) {
 const PIEZA = { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2, etapas: [1, 2, 3] };
 
 let leidas = [];
-function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false } = {}) {
+function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false, renglon = null, hechos = [] } = {}) {
   const escrito = [];
   leidas = [];
   global.fetch = createFetchMock([
@@ -159,6 +159,7 @@ function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = []
       match: (u, o) => u.includes("/rest/v1/piezas_ot?") && (!o?.method || o.method === "GET"),
       respond: (u) => {
         leidas.push(u);
+        if (u.includes("order=unidad.asc")) return { status: 200, body: renglon || [] };
         if (falla) return { status: 404, body: { code: "PGRST205", message: falla } };
         if (u.includes("etapas=cs.")) return { status: 200, body: [{ id: 1 }], headers: { "content-range": `0-0/${total}` } };
         return { status: 200, body: pieza ? [pieza] : [] };
@@ -169,6 +170,7 @@ function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = []
       respond: (u) => {
         if (u.includes("requerida=eq.true")) return { status: 200, body: [{ id: 1 }], headers: { "content-range": `0-0/${pasaron}` } };
         if (u.includes("select=id,empleado_id,created_at")) return { status: 200, body: paso ? [paso] : [] };
+        if (u.includes("pieza_id=in.")) return { status: 200, body: hechos.map((id) => ({ pieza_id: id })) };
         return { status: 200, body: pasos };
       },
     },
@@ -205,12 +207,13 @@ test("/api/piezas/paso — escanear: anota la pieza con quién, devuelve el avan
 });
 
 test("QR de pieza armado en la planilla de Excel — nombre + cuál de la cantidad", () => {
-  assert.equal(textoQrPiezaPlanilla("M-7495", "M.izq-11", 2, 2), "OT M-7495 - PIEZA - M.izq-11 - 2 DE 2");
+  assert.equal(textoQrPiezaRenglon("M-7495", "M.izq-11"), "OT M-7495 - PIEZA - M.izq-11");
+  assert.deepEqual(leerQrPieza("OT M-7495 - PIEZA - M.izq-11"), { ot: "M-7495", nombre: "M.izq-11" }, "el mismo QR para todas las unidades");
   assert.deepEqual(leerQrPieza("OT M-7495 - PIEZA - M.izq-11 - 2 DE 2"), { ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2 });
   assert.deepEqual(leerQrPieza("ot m-7495 - pieza - 2.AL1P - 11  -  1 de 3"), { ot: "m-7495", nombre: "2.AL1P - 11", unidad: 1, de: 3 });
   // La etiqueta de Gypi sigue igual
   assert.deepEqual(leerQrPieza("OT M-7495 - PIEZA - 1234"), { ot: "M-7495", id: 1234 });
-  for (const malo of ["OT M-7495 - PIEZA - M.izq-11 - 3 DE 2", "OT M-7495 - PIEZA - M.izq-11 - 0 DE 2", "OT M-7495 - PIEZA - M.izq-11", "OT M-7495 - PIEZA -  - 1 DE 2"]) {
+  for (const malo of ["OT M-7495 - PIEZA - M.izq-11 - 3 DE 2", "OT M-7495 - PIEZA - M.izq-11 - 0 DE 2", "OT M-7495 - PIEZA - "]) {
     assert.equal(leerQrPieza(malo), null, malo);
   }
 });
@@ -234,6 +237,51 @@ test("/api/piezas/paso — escanear el QR de la planilla busca la pieza por OT, 
   const no = await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - M.izq-99 - 1 DE 1", etapa: 2 }, await token()));
   assert.equal(no.status, 404);
   assert.match((await no.json()).error, /no tiene la pieza M\.izq-99 \(1 de 1\)/);
+});
+
+test("/api/piezas/paso — el mismo QR para las 7 unidades: cada escaneo anota la siguiente que falta", async () => {
+  const renglon = [1, 2, 3].map((u) => ({ ...PIEZA, id: 20 + u, nombre: "LAT-1", unidad: u, de: 3 }));
+  let escrito = mock({ renglon, hechos: [21] });
+  let res = await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - LAT-1", etapa: 2 }, await token()));
+  assert.equal(res.status, 200);
+  let data = await res.json();
+  assert.equal(data.pieza.id, 22, "la 1 ya estaba: anota la 2");
+  assert.deepEqual(data.conteo, { pasaron: 2, de: 3 });
+  assert.equal(escrito[0].body.pieza_id, 22);
+  const busqueda = leidas.find((u) => u.includes("order=unidad.asc"));
+  assert.match(busqueda, /ot=eq\.M-7495/);
+  assert.match(busqueda, /nombre=eq\.LAT-1/);
+  assert.equal(mensajeEscaneo(data, NOMBRES).texto, "LAT-1: 2 de 3 en Canto, pero no tiene escaneo de Corte.");
+  assert.equal(mensajeEscaneo({ ...data, faltan: [] }, NOMBRES).texto, "LAT-1: 2 de 3 en Canto.");
+
+  // Con las 3 anotadas avisa y no escribe nada
+  escrito = mock({ renglon, hechos: [21, 22, 23] });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - LAT-1", etapa: 2 }, await token()))).json();
+  assert.equal(data.ya, true);
+  assert.deepEqual(data.conteo, { pasaron: 3, de: 3 });
+  assert.equal(escrito.length, 0);
+  assert.equal(mensajeEscaneo(data, NOMBRES).texto, "LAT-1: ya pasaron las 3 por Canto.");
+
+  // Un nombre que es solo un número ("11"): si no hay pieza N° 11 en la OT, se busca por nombre
+  const once = [1, 2].map((u) => ({ ...PIEZA, id: 30 + u, nombre: "11", unidad: u, de: 2 }));
+  mock({ pieza: null, renglon: once });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - 11", etapa: 2 }, await token()))).json();
+  assert.equal(data.pieza.id, 31);
+  assert.deepEqual(data.conteo, { pasaron: 1, de: 2 });
+
+  mock({ renglon: [] });
+  res = await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - NO-EXISTE", etapa: 2 }, await token()));
+  assert.equal(res.status, 404);
+  assert.match((await res.json()).error, /no tiene la pieza NO-EXISTE/);
+});
+
+test("etiquetas de Gypi — todas las unidades de una pieza llevan el mismo QR", async () => {
+  const piezas = [1, 2].map((u) => ({ id: 40 + u, nombre: "LAT-1", unidad: u, de: 2, etapas: [] }));
+  const html = await htmlEtiquetasPiezas({ ot: "M-7495", piezas, tamano: { ancho: 50, alto: 30 } });
+  const qrs = html.match(/<svg[\s\S]*?<\/svg>/g);
+  assert.equal(qrs.length, 2);
+  assert.equal(qrs[0], qrs[1]);
+  assert.match(html, /Cant\. 2/);
 });
 
 test("/api/piezas/paso — la última pieza termina la etapa de la OT (si no estaba firmada)", async () => {

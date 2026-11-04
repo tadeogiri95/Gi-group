@@ -55,7 +55,8 @@ export function leerQr(texto) {
   let m = s.match(/^OT\s+(\S+)\s+-\s+PIEZA\s+-\s+(\d{1,15})$/i);
   if (m && OT_VALIDA.test(m[1])) return { ot: m[1], piezaId: Number(m[2]) };
   // Etiqueta de pieza armada en la planilla: "OT M-7495 - PIEZA - 11 - 2 DE 4"
-  m = s.match(/^OT\s+(\S+)\s+-\s+PIEZA\s+-\s+(\S.{0,119}?)\s+-\s+\d{1,4}\s+DE\s+\d{1,4}$/i);
+  // (o "OT M-7495 - PIEZA - 11", el mismo QR para todas las unidades)
+  m = s.match(/^OT\s+(\S+)\s+-\s+PIEZA\s+-\s+(\S.{0,119}?)(?:\s+-\s+\d{1,4}\s+DE\s+\d{1,4})?$/i);
   if (m && OT_VALIDA.test(m[1])) return { ot: m[1], piezaNombre: m[2].replace(/\s+/g, " ").trim() };
 
   // Hoja CARGA de la planilla
@@ -121,6 +122,9 @@ export function cotejarQr(texto, { ot, bultos = [], sueltos = [], piezas = [] })
   }
   if (lectura.piezaId) {
     const p = piezas.find((x) => Number(x.id) === lectura.piezaId);
+    // "OT X - PIEZA - 11" puede ser la pieza que se llama "11" (QR de la planilla)
+    const porNombre = p ? null : sueltoLlamado(String(lectura.piezaId), sueltos);
+    if (porNombre) return { tipo: "suelto", item: porNombre, yaCargado: !!porNombre.carga, nombre: [porNombre.codigo, porNombre.descripcion].filter(Boolean).join(" · ") || "Suelto" };
     if (!p) return { error: "Esa pieza no está en la lista de piezas de la OT." };
     // "11 (2)" es el segundo renglón llamado "11" en 🧩 Piezas
     const nombrePieza = String(p.nombre ?? "").replace(/\s+\(\d+\)$/, "");

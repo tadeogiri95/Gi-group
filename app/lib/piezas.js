@@ -272,30 +272,38 @@ export function textoQrPieza(ot, id) {
 }
 
 /**
- * QR de pieza armado en la planilla de Excel (sin el N° de Gypi, que Excel no
- * conoce): "OT M-7495 - PIEZA - M.izq-11 - 2 DE 4" = nombre de la pieza (el
- * PANEL) y cuál de la cantidad es.
+ * QR de una pieza de la planilla (04/11, Tadeo): el mismo QR para todas las
+ * unidades del renglón, "OT M-7495 - PIEZA - M.izq-11". Cada escaneo en una
+ * etapa anota la siguiente unidad que falta (7 escaneos = las 7 cortadas).
+ * Se arma en Excel con el PANEL; Gypi lo pone en sus etiquetas de pieza.
  */
-export function textoQrPiezaPlanilla(ot, nombre, unidad, de) {
-  return `OT ${ot} - PIEZA - ${nombre} - ${unidad} DE ${de}`;
+export function textoQrPiezaRenglon(ot, nombre) {
+  return `OT ${ot} - PIEZA - ${nombre}`;
 }
 
 /**
- * QR de pieza → { ot, id } (etiqueta de Gypi) o { ot, nombre, unidad, de }
- * (armado en la planilla), o null si no es de una pieza.
+ * QR de pieza →
+ *   { ot, id }                    etiqueta vieja de Gypi (N° de cada unidad)
+ *   { ot, nombre, unidad, de }    "OT X - PIEZA - nombre - 2 DE 4" (una unidad)
+ *   { ot, nombre }                "OT X - PIEZA - nombre" (el renglón: suma de a una)
+ * o null si no es de una pieza. Un nombre que es solo un número ("11") llega
+ * como { id }: el servidor, si no hay pieza con ese N° en la OT, lo busca por nombre.
  */
 export function leerQrPieza(texto) {
   const s = textoDeQr(texto);
   let m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\d{1,15})$/i);
   if (m) return { ot: m[1], id: Number(m[2]) };
-  m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\S.{0,119}?)\s+-\s+(\d{1,4})\s+DE\s+(\d{1,4})$/i);
-  if (!m) return null;
-  const unidad = Number(m[3]);
-  const de = Number(m[4]);
-  if (unidad < 1 || unidad > de) return null;
   // Igual que al pegar la planilla: espacios de más afuera, hasta 80 letras
-  const nombre = m[2].replace(/\s+/g, " ").trim().slice(0, LIMITES_PIEZA.nombre);
-  return { ot: m[1], nombre, unidad, de };
+  const limpio = (n) => n.replace(/\s+/g, " ").trim().slice(0, LIMITES_PIEZA.nombre);
+  m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\S.{0,119}?)\s+-\s+(\d{1,4})\s+DE\s+(\d{1,4})$/i);
+  if (m) {
+    const unidad = Number(m[3]);
+    const de = Number(m[4]);
+    if (unidad < 1 || unidad > de) return null;
+    return { ot: m[1], nombre: limpio(m[2]), unidad, de };
+  }
+  m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\S.{0,119})$/i);
+  return m ? { ot: m[1], nombre: limpio(m[2]) } : null;
 }
 
 /**
@@ -343,7 +351,8 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
   const items = [];
   for (const p of piezas) {
-    const qr = await svgQR(qrConLink(textoQrPieza(ot, p.id), link));
+    // El mismo QR para todas las unidades del renglón (cada escaneo suma una)
+    const qr = await svgQR(qrConLink(textoQrPiezaRenglon(ot, p.nombre), link));
     const ruta = (p.etapas || []).map((c) => nombres[c] || `Etapa ${c}`).join(" › ");
     items.push(`
   <div class="etiqueta">
@@ -351,7 +360,7 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
       <div class="ot">${empresa ? `${esc(empresa)} · ` : ""}OT ${esc(ot)}</div>
       ${deLaOt ? `<div class="deot" data-de-la-ot>${esc(deLaOt)}</div>` : ""}
       <div class="pieza">${esc(p.nombre)}</div>
-      <div class="unidad">${p.unidad} de ${p.de}${medidas(p) ? ` · ${esc(medidas(p))}` : ""}</div>
+      <div class="unidad">${p.de > 1 ? `Cant. ${p.de}` : "Cant. 1"}${medidas(p) ? ` · ${esc(medidas(p))}` : ""}</div>
       ${p.material ? `<div class="chico">${esc(p.material)}</div>` : ""}
       ${p.modulo ? `<div class="chico">Módulo ${esc(p.modulo)}</div>` : ""}
       ${ruta ? `<div class="ruta">${esc(ruta)} · N° ${p.id}</div>` : `<div class="ruta">N° ${p.id}</div>`}
@@ -544,6 +553,15 @@ function mensajeBase(r, nombres = {}, porOt = null) {
   const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la ${deLaOt(p.ot)}.` : null;
   const terminada = r.etapaTerminada ? ` ✅ Pasaron todas: la etapa ${r.etapaTerminada.nombre} quedó terminada, falta la firma.` : "";
   const detalle = progreso ? `${progreso}${terminada}` : null;
+  // QR del renglón: cuántas de la cantidad van en esta etapa
+  if (r.conteo) {
+    const c = r.conteo;
+    if (r.ya) return { tono: "amarillo", texto: `${p.nombre}: ya pasaron las ${c.de} por ${etapa}.`, detalle };
+    const cuenta = `${p.nombre}: ${c.pasaron} de ${c.de} en ${etapa}`;
+    if (!r.requerida) return { tono: "amarillo", texto: `${cuenta}, pero según la planilla no pasa por esa etapa.`, detalle };
+    if (r.faltan?.length) return { tono: "amarillo", texto: `${cuenta}, pero no tiene escaneo de ${r.faltan.map(nombreEtapa).join(" ni ")}.`, detalle };
+    return { tono: "verde", texto: `${cuenta}.`, detalle };
+  }
   if (r.ya) return { tono: "amarillo", texto: `${cual} ya estaba escaneada en ${etapa}.`, detalle };
   if (!r.requerida) return { tono: "amarillo", texto: `${cual} quedó anotada en ${etapa}, pero según la planilla no pasa por esa etapa.`, detalle };
   if (r.faltan?.length) {
