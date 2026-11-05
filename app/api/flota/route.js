@@ -18,7 +18,7 @@
 // POST checklist_crear (parte 29, 127): el responsable de mantenimiento del
 //   vehículo o su suplente (parte 34, 133; sin la 133, el chofer), o gerencia
 //   y Administración, de cualquiera. Revisa que estén todos los
-//   puntos de las secciones elegidas, con nota y foto los que no están bien, y
+//   puntos de las secciones elegidas, con nota los que no están bien (foto opcional), y
 //   actualiza los kilómetros del vehículo.
 //   Cada punto en Mal crea un arreglo pendiente (parte 31, 129).
 // POST arreglos y mantenimientos (parte 31, 129; gerencia y Administración):
@@ -240,7 +240,7 @@ async function crearChecklist(sesion, d) {
   if (veh.km != null && d.km < veh.km) {
     return NextResponse.json({ error: `El vehículo tenía ${veh.km.toLocaleString("es-AR")} km. Revisá el número.` }, { status: 400 });
   }
-  // Cada punto de cada sección elegida, con su estado; nota y foto si no está bien
+  // Cada punto de cada sección elegida, con su estado; nota si no está bien (la foto es opcional)
   const plantilla = await plantillaEmpresa(sesion);
   const secciones = plantilla.filter((s) => d.secciones.includes(s.id));
   if (secciones.length !== new Set(d.secciones).size) return NextResponse.json({ error: "Hay una sección que ya no está en el checklist. Volvé a abrirlo." }, { status: 409 });
@@ -249,8 +249,8 @@ async function crearChecklist(sesion, d) {
     for (const pt of s.puntos) {
       const it = porClave.get(`${s.id}.${pt.id}`);
       if (!it) return NextResponse.json({ error: `Falta marcar ${s.nombre}: ${pt.nombre}` }, { status: 400 });
-      if ((it.estado === "revisar" || it.estado === "mal") && (!it.nota || !it.foto)) {
-        return NextResponse.json({ error: `${s.nombre}: ${pt.nombre} necesita nota y foto` }, { status: 400 });
+      if ((it.estado === "revisar" || it.estado === "mal") && !String(it.nota ?? "").trim()) {
+        return NextResponse.json({ error: `${s.nombre}: ${pt.nombre} necesita una nota` }, { status: 400 });
       }
     }
   }

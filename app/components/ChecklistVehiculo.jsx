@@ -3,7 +3,7 @@
 // vehículo (Mantenimiento, parte 29; migración 127). Lo hace el chofer desde
 // su Inicio (🚚 Checklist de mi vehículo) o la oficina desde la ficha del
 // vehículo. Completo o solo algunas secciones; cada punto Bien, Revisar, Mal
-// o No aplica, con nota y foto cuando no está bien. Al final, observaciones,
+// o No aplica, con nota (y foto si quiere) cuando no está bien. Al final, observaciones,
 // fotos del vehículo y firma; queda un PDF para imprimir o mandar.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
@@ -175,7 +175,7 @@ export default function ChecklistVehiculo({ vehiculos, empresaNombre = "", onClo
                             <input className="g-input w-full" maxLength={300} aria-label={`Nota de ${pt.nombre}`} value={r.nota ?? ""}
                               onChange={(e) => responder(clave, { nota: e.target.value })} placeholder="Qué tiene" />
                             <div className="flex items-center gap-2">
-                              <BotonFoto label={r.foto ? "📷 Cambiar foto" : "📷 Foto"} disabled={enviando} onFoto={(url) => responder(clave, { foto: url })} />
+                              <BotonFoto label={r.foto ? "📷 Cambiar foto" : "📷 Foto (opcional)"} disabled={enviando} onFoto={(url) => responder(clave, { foto: url })} />
                               {r.foto && <img src={r.foto} alt={`Foto de ${pt.nombre}`} className="h-10 w-14 object-cover rounded-[6px]" />}
                             </div>
                             {r.estado === "mal" && (

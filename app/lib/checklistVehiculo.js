@@ -4,7 +4,7 @@
 //
 // La plantilla son secciones con puntos. Cada empresa la puede cambiar
 // (flota_config.checklist); sin cambios se usa PLANTILLA_FABRICA. Cada punto
-// se marca Bien, Revisar, Mal o No aplica; Revisar y Mal piden nota y foto.
+// se marca Bien, Revisar, Mal o No aplica; Revisar y Mal piden nota; la foto es opcional.
 // Un punto con "minimo" (por ejemplo el dibujo de la cubierta, 1,6 mm) se
 // marca Mal solo si el valor queda debajo.
 
@@ -119,7 +119,7 @@ export function estadoSugerido(punto, valor) {
 
 /**
  * Qué falta para guardar: cada punto de las secciones elegidas con su estado,
- * y nota y foto en los que quedaron en Revisar o Mal. Devuelve una lista de
+ * y nota en los que quedaron en Revisar o Mal (la foto es opcional). Devuelve una lista de
  * textos (vacía = se puede guardar).
  */
 export function faltantesChecklist({ plantilla, secciones = [], respuestas = {}, km }) {
@@ -131,7 +131,6 @@ export function faltantesChecklist({ plantilla, secciones = [], respuestas = {},
       const r = respuestas[`${s.id}.${pt.id}`] || {};
       if (!r.estado) { faltan.push(`${s.nombre}: ${pt.nombre}`); continue; }
       if ((r.estado === "revisar" || r.estado === "mal") && !String(r.nota ?? "").trim()) faltan.push(`${s.nombre}: ${pt.nombre} (falta la nota)`);
-      if ((r.estado === "revisar" || r.estado === "mal") && !r.foto) faltan.push(`${s.nombre}: ${pt.nombre} (falta la foto)`);
     }
   }
   return faltan;

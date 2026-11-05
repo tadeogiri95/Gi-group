@@ -1,7 +1,7 @@
 // tests/flota-checklist.test.jsx — Mantenimiento, parte 29 (ítem 43,
 // migración 127): el checklist de mantenimiento de un vehículo. Lo hace el
 // chofer responsable (o la oficina, de cualquiera), completo o por secciones;
-// Revisar y Mal piden nota y foto; la plantilla la edita cada empresa.
+// Revisar y Mal piden nota (la foto es opcional); la plantilla la edita cada empresa.
 import "./helpers/domSetup.js";
 import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -60,7 +60,8 @@ test("qué falta, lo que se guarda, el resumen y el PDF", () => {
     "luces.altas": { estado: "mal", nota: "Quemada" },
   };
   let faltan = faltantesChecklist({ plantilla: MINI, secciones: ["luces"], respuestas, km: "" });
-  assert.deepEqual(faltan, ["Los kilómetros", "Luces: Altas (falta la foto)"]);
+  assert.deepEqual(faltan, ["Los kilómetros"], "sin foto igual se puede guardar");
+  assert.deepEqual(faltantesChecklist({ plantilla: MINI, secciones: ["luces"], respuestas: { ...respuestas, "luces.altas": { estado: "mal" } }, km: 1000 }), ["Luces: Altas (falta la nota)"]);
   faltan = faltantesChecklist({ plantilla: MINI, secciones: ["luces", "neumaticos"], respuestas: { ...respuestas, "luces.altas": { estado: "mal", nota: "Quemada", foto: "https://x.test/f.jpg" } }, km: 1000 });
   assert.deepEqual(faltan, ["Neumáticos: Delantera izquierda: dibujo"]);
 
@@ -191,15 +192,15 @@ test("/api/flota checklist_crear — el chofer de su vehículo; cuenta lo mal y 
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /tenía 1\.000 km/);
 
-  // Falta un punto de la sección, o la foto de uno en Mal
+  // Falta un punto de la sección, o la nota de uno en Mal
   mockRuta();
   res = await api.POST(req(await token(), { ...CHK, items: [ITEMS[0]] }));
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /Falta marcar Luces: Altas/);
   mockRuta();
-  res = await api.POST(req(await token(), { ...CHK, items: [ITEMS[0], { ...ITEMS[1], foto: null }] }));
+  res = await api.POST(req(await token(), { ...CHK, items: [ITEMS[0], { ...ITEMS[1], nota: "  " }] }));
   assert.equal(res.status, 400);
-  assert.match((await res.json()).error, /necesita nota y foto/);
+  assert.match((await res.json()).error, /necesita una nota/);
 
   // Sin plantilla propia usa la de fábrica: "luces" de fábrica tiene más puntos
   mockRuta({ config: [] });
@@ -258,7 +259,7 @@ function mockPantalla({ config = [{ checklist: MINI }], sin127 = false } = {}) {
 
 const VEH = { id: 7, patente: "AB123CD", marca: "Toyota", km: 1000 };
 
-test("Checklist — todo bien, una luz mal con nota, el dibujo bajo el mínimo marca Mal; sin foto no guarda", async () => {
+test("Checklist — todo bien, una luz mal con nota, el dibujo bajo el mínimo marca Mal; sin foto igual guarda", async () => {
   const enviados = mockPantalla();
   render(<ChecklistVehiculo vehiculos={[VEH]} onClose={() => {}} />);
   const luces = await screen.findByRole("region", { name: "Luces" });
@@ -270,15 +271,16 @@ test("Checklist — todo bien, una luz mal con nota, el dibujo bajo el mínimo m
   fireEvent.click(within(within(luces).getByRole("group", { name: "Estado de Altas" })).getByText(/Mal/));
   fireEvent.change(screen.getByLabelText("Nota de Altas"), { target: { value: "Quemada" } });
 
-  // 1,2 mm: debajo de 1,6 queda en Mal y pide nota y foto
+  // 1,2 mm: debajo de 1,6 queda en Mal y pide nota
   fireEvent.change(screen.getByLabelText("Delantera izquierda: dibujo (mm)"), { target: { value: "1,2" } });
   assert.equal(within(screen.getByRole("group", { name: "Estado de Delantera izquierda: dibujo" })).getByText(/Mal/).closest("button").getAttribute("aria-pressed"), "true");
 
   // Solo Luces: se saca Neumáticos
   fireEvent.click(within(screen.getByRole("group", { name: "Secciones" })).getByText(/Neumáticos/));
   fireEvent.click(screen.getByText("Guardar checklist"));
-  assert.match(screen.getByRole("alert").textContent, /Luces: Altas \(falta la foto\)/);
-  assert.equal(enviados.length, 0);
+  await waitFor(() => assert.equal(enviados.length, 1));
+  const altas = enviados[0].items.find((i) => i.punto === "altas");
+  assert.deepEqual([altas.estado, altas.nota, altas.foto], ["mal", "Quemada", null]);
 });
 
 test("Checklist — guarda solo las secciones elegidas; el chofer con dos vehículos elige", async () => {
