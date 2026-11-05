@@ -11,12 +11,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
-import { buscarDivision } from "../lib/rutas";
 import { otsEnPausa } from "../lib/pausaOt";
-import { CLAVE_PLANIFICACION, normalizarParametros, divisionPlan } from "../lib/planificacion";
-import { feriadosDe } from "../lib/secuencia";
+import { CLAVE_PLANIFICACION } from "../lib/planificacion";
 import { esDiaHabil } from "../lib/planInstalacion";
-import { planDisenoTecnica, finDelPlan, barrasSeguidas, esperaTecnica, limiteTecnica } from "../lib/planDisenoTecnica";
+import { finDelPlan, barrasSeguidas, limiteTecnica, planDeEmpresa } from "../lib/planDisenoTecnica";
 import { textoDiasHabiles, textoHoras } from "../lib/disenoTecnicaPlan";
 import { nombreTipo } from "../lib/tipoProyecto";
 import { partesOt } from "../lib/nombreOt";
@@ -73,20 +71,12 @@ export function usePlanDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_L
       sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`).catch(() => null),
       sbGetAll(`empleados?${e}activo=eq.true&select=id,nombre&order=nombre.asc`, { maxFilas: 2000 }).catch(() => null),
     ]).then(([cfg, emp]) => {
-      if (vivo) setDatos({ params: normalizarParametros(cfg?.[0]?.valor), personal: emp?.data || [] });
+      if (vivo) setDatos({ cfgValor: cfg?.[0]?.valor || null, personal: emp?.data || [] });
     });
     return () => { vivo = false; };
   }, [empresaId, omitir]);
-  return useMemo(() => {
-    if (!datos) return null;
-    const { params, personal } = datos;
-    const division = divisionPlan(divisiones, params.division_id);
-    const abiertas = proyectos.filter((p) => p.estado !== "cerrado" && !p.terminado_planilla
-      && (!division || buscarDivision(divisiones, p.division)?.id === division.id));
-    const feriados = feriadosDe(params);
-    const plan = planDisenoTecnica({ proyectos: abiertas, dt: params.diseno_tecnica, personal, hoy, feriados, pausadas: otsEnPausa(pausas) });
-    return { ...plan, feriados, dt: params.diseno_tecnica, espera: esperaTecnica(plan.renglones, feriados) };
-  }, [datos, proyectos, divisiones, pausas, hoy]);
+  return useMemo(() => (datos ? planDeEmpresa({ proyectos, divisiones, cfgValor: datos.cfgValor, personal: datos.personal, hoy, pausadas: otsEnPausa(pausas) }) : null),
+    [datos, proyectos, divisiones, pausas, hoy]);
 }
 
 /**

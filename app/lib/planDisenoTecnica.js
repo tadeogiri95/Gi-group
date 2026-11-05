@@ -18,6 +18,9 @@
 import { avanceArea } from "./complejidad";
 import { tiemposOt } from "./disenoTecnicaPlan";
 import { esDiaHabil, diaHabilSiguiente, diaHabilAnterior } from "./planInstalacion";
+import { normalizarParametros, divisionPlan } from "./planificacion";
+import { buscarDivision } from "./rutas";
+import { feriadosDe } from "./secuencia";
 
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
@@ -263,4 +266,24 @@ export function limiteTecnica(produccion, finTecnica, feriados = null) {
   if (finTecnica > limite) return { limite, estado: "rojo", diasTarde: Math.max(1, diasHabilesEntre(diaHabilSiguiente(limite, feriados), finTecnica, feriados)) };
   const margen = diasHabilesEntre(diaHabilSiguiente(finTecnica, feriados), limite, feriados);
   return { limite, estado: margen < MARGEN_TECNICA ? "amarillo" : "verde", diasTarde: 0 };
+}
+
+/**
+ * Plan de Diseño y Técnica de la empresa con lo que ya tienen el Gantt, el
+ * Panel y el informe: las OT abiertas de la división que se planifica.
+ * @returns {{ renglones, sinDato, sinEtapas, terminadas, arquitectas, feriados, dt, espera: Map }}
+ */
+export function planDeEmpresa({ proyectos = [], divisiones = [], cfgValor = null, personal = [], hoy, pausadas = new Set() }) {
+  const params = normalizarParametros(cfgValor);
+  const division = divisionPlan(divisiones, params.division_id);
+  const abiertas = proyectos.filter((p) => p.estado !== "cerrado" && !p.terminado_planilla
+    && (!division || buscarDivision(divisiones, p.division)?.id === division.id));
+  const feriados = feriadosDe(params);
+  const plan = planDisenoTecnica({ proyectos: abiertas, dt: params.diseno_tecnica, personal, hoy, feriados, pausadas });
+  return { ...plan, feriados, dt: params.diseno_tecnica, espera: esperaTecnica(plan.renglones, feriados) };
+}
+
+/** Lo que el plan vivo de Producción usa como noAntes: OT → primer día en que puede arrancar. */
+export function noAntesDeTecnica(espera) {
+  return new Map([...(espera || new Map())].filter(([, e]) => e.desde).map(([ot, e]) => [ot, e.desde]));
 }
