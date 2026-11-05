@@ -11,6 +11,9 @@
 // planillas (arrastrando desde ⠿ o con ▲▼) y elige la arquitecta de cada una;
 // ve la vista previa y con "✅ Confirmar plan" queda guardado en cada OT (y
 // cada arquitecta lo ve en 📐 Mis planillas). Después avisa cuánto se corrió.
+// 05/11 (Tadeo): ⛶ Pantalla completa, y las OT se arrastran desde ⠿ en el
+// mismo Gantt. No deja mover ni asignar si alguna OT queda más tarde contra
+// su fecha límite de Técnica (la que hace llegar a la entrega programada).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { mover } from "../lib/reordenarPlan";
@@ -19,10 +22,12 @@ import { fechaCorta } from "../lib/ot";
 import { otsEnPausa } from "../lib/pausaOt";
 import { CLAVE_PLANIFICACION } from "../lib/planificacion";
 import { esDiaHabil } from "../lib/planInstalacion";
-import { finDelPlan, barrasSeguidas, limiteTecnica, planDeEmpresa, conCambio, cuerposConfirmar, hayConfirmado } from "../lib/planDisenoTecnica";
+import { finDelPlan, barrasSeguidas, limiteTecnica, planDeEmpresa, conCambio, cuerposConfirmar, hayConfirmado, entregasComprometidas } from "../lib/planDisenoTecnica";
+import { pedirPantallaCompleta, salirPantallaCompleta } from "../lib/pantallaCompleta";
+import { useEscape } from "../hooks/useEscape";
 import { textoDiasHabiles, textoHoras } from "../lib/disenoTecnicaPlan";
 import { nombreTipo } from "../lib/tipoProyecto";
-import { partesOt } from "../lib/nombreOt";
+import { partesOt, textoOt } from "../lib/nombreOt";
 import NombreOt from "./NombreOt";
 
 const DIA_MS = 86400000;
@@ -158,6 +163,10 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   const [aviso, setAviso] = useState(null);
   const [arrastre, setArrastre] = useState(null); // { ot, sobre }
   const calculo = useMemo(() => (base && cambio && base.rehacer ? base.rehacer(cambio) : base), [base, cambio]);
+  const [grande, setGrande] = useState(false);
+  const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
+  useEscape(cerrarGrande, grande);
+  useEffect(() => () => { salirPantallaCompleta(); }, []);
   // Fecha límite de Técnica de cada OT con lo que dura su Producción en el plan vivo (parte 49)
   const limites = useMemo(() => {
     const m = new Map();
@@ -178,16 +187,28 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   // ─── Ordenar, asignar y confirmar (parte 50) ───
   const ordenVisto = renglones.map((r) => r.ot);
   const elegidas = () => cambio?.arquitectas || Object.fromEntries(renglones.map((r) => [r.ot, r.proyecto.arquitecta_tecnica != null ? String(r.proyecto.arquitecta_tecnica) : null]));
+  // Prueba el cambio: si alguna OT queda más tarde contra su entrega, no lo hace y avisa
+  const probar = (nuevo, que) => {
+    const despues = base.rehacer ? base.rehacer(nuevo) : null;
+    const malas = despues ? entregasComprometidas(calculo, despues, vivo) : [];
+    if (malas.length) {
+      const m = malas[0];
+      setAviso(`⛔ No se puede ${que}: la ${textoOt(m.proyecto || { ot: m.ot })} terminaría la Técnica ${textoDiasHabiles(m.diasTarde)} después de su fecha límite (${fechaCorta(m.limite)}) y no llegaría a la entrega programada${malas.length > 1 ? ` (y ${malas.length - 1} OT más)` : ""}.`);
+      return;
+    }
+    setAviso(null);
+    setCambio(nuevo);
+  };
   const moverA = (ot, destino) => {
     const i = ordenVisto.indexOf(ot);
     if (i < 0 || destino < 0 || destino >= ordenVisto.length || destino === i) return;
-    setAviso(null);
-    setCambio({ orden: mover(ordenVisto, i, destino), arquitectas: elegidas() });
+    probar({ orden: mover(ordenVisto, i, destino), arquitectas: elegidas() }, `mover la OT ${ot} ahí`);
   };
   const elegir = (ot, id) => {
-    setAviso(null);
-    setCambio({ orden: ordenVisto, arquitectas: { ...elegidas(), [ot]: id || null } });
+    probar({ orden: ordenVisto, arquitectas: { ...elegidas(), [ot]: id || null } }, "asignarla así");
   };
+  const verDetalle = (p) => { if (grande) cerrarGrande(); onVerDetalle?.(p); };
+  const movible = puedeReordenar && renglones.length > 1;
   const empezarArrastre = (e, ot) => { e.currentTarget.setPointerCapture?.(e.pointerId); setArrastre({ ot, sobre: ot }); };
   const moverArrastre = (e) => {
     if (!arrastre || typeof document === "undefined" || !document.elementFromPoint) return;
@@ -247,11 +268,15 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   const amarillas = conLimite.filter((l) => l.estado === "amarillo").length;
 
   return (
-    <section aria-label="Gantt de Diseño y Técnica">
-      <div className="flex items-center gap-2 mb-2" role="group" aria-label="Moverse en el Gantt de Diseño y Técnica">
+    <section aria-label="Gantt de Diseño y Técnica" role={grande ? "dialog" : undefined}
+      className={grande ? "fixed inset-0 z-[300] bg-gypi-bg p-3 flex flex-col overflow-y-auto" : ""}>
+      <div className="flex flex-wrap items-center gap-2 mb-2" role="group" aria-label="Moverse en el Gantt de Diseño y Técnica">
         <button type="button" onClick={() => navegar(-1)} aria-label="Una semana para atrás" className="g-btn g-btn-secondary min-w-11">◀</button>
         <button type="button" onClick={irAHoy} className="g-btn g-btn-secondary">Hoy</button>
         <button type="button" onClick={() => navegar(1)} aria-label="Una semana para adelante" className="g-btn g-btn-secondary min-w-11">▶</button>
+        <button type="button" onClick={grande ? cerrarGrande : () => { setGrande(true); pedirPantallaCompleta(); }} className="g-btn g-btn-secondary ml-auto">
+          {grande ? "✕ Salir" : "⛶ Pantalla completa"}
+        </button>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[15px] text-gypi-text mb-2" aria-label="Colores del Gantt de Diseño y Técnica">
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-area-diseno" />Diseño</span>
@@ -289,8 +314,9 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
           <div className="text-xs text-gypi-dim">Entran las OT abiertas que tienen alguna etapa de Diseño o de Técnica sin hacer en el Plan de trabajo (columnas DIS a PDF). Apretá Sincronizar en OT para traerlas.</div>
         </div>
       ) : (
-        <div ref={medir} className="overflow-x-auto border border-gypi-border rounded-xl bg-gypi-surface">
-          <svg width={ETIQUETAS + ancho} height={CAB + renglones.length * FILA} role="img" aria-label={`Diseño y Técnica de ${renglones.length} OT`}>
+        <div ref={medir} className={`overflow-auto border border-gypi-border rounded-xl bg-gypi-surface ${grande ? "flex-1 min-h-[40vh]" : ""}`}>
+          <svg width={ETIQUETAS + ancho} height={CAB + renglones.length * FILA} role="img" aria-label={`Diseño y Técnica de ${renglones.length} OT`}
+            onPointerMove={moverArrastre} onPointerUp={soltarArrastre} onPointerCancel={soltarArrastre}>
             {fechas.map((f) => {
               const d = new Date(`${f}T00:00:00Z`).getUTCDay();
               return (
@@ -311,12 +337,21 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
               const lim = limites.get(r.ot) || null;
               const nota = [notaTecnica(r), lim && r.tecnica?.inicio ? `límite ${fechaCorta(lim.limite)}${lim.estado === "rojo" ? ` · ⚠ ${lim.diasTarde} d tarde` : ""}` : null, r.corrido > 0 ? `↪ se corrió ${r.corrido} d` : null].filter(Boolean).join(" · ");
               return (
-                <g key={r.ot} role="button" tabIndex={0} aria-label={textoRenglon(r, lim)} className="cursor-pointer"
-                  onClick={() => onVerDetalle?.(p)} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p); }}>
+                <g key={r.ot} role="button" tabIndex={0} aria-label={textoRenglon(r, lim)} data-orden-ot={movible ? r.ot : undefined}
+                  className={`cursor-pointer ${arrastre?.ot === r.ot ? "opacity-60" : ""}`}
+                  onClick={() => verDetalle(p)} onKeyDown={(e) => { if (e.key === "Enter") verDetalle(p); }}>
+                  <rect x={0} y={y} width={ETIQUETAS + ancho} height={FILA} className="fill-transparent" />
+                  {arrastre && arrastre.sobre === r.ot && arrastre.ot !== r.ot && (
+                    <rect data-destino={r.ot} x={0} y={y} width={ETIQUETAS + ancho} height={FILA} className="fill-gypi-amber stroke-gypi-amber" fillOpacity={0.15} strokeWidth={2} />
+                  )}
+                  {movible && (
+                    <text data-arrastrar={r.ot} x={ETIQUETAS - 22} y={y + 34} className="fill-gypi-dim text-[20px] cursor-grab select-none touch-none"
+                      onPointerDown={(e) => { e.stopPropagation(); empezarArrastre(e, r.ot); }} onClick={(e) => e.stopPropagation()}>⠿</text>
+                  )}
                   <line x1={0} x2={ETIQUETAS + ancho} y1={y + FILA} y2={y + FILA} className="stroke-gypi-border" strokeWidth={0.5} />
                   <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{r.ot} · {r.clase}</text>
-                  <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || nombreTipo(r.tipo)).slice(0, 38)}</text>
-                  <text x={8} y={y + 48} className="fill-gypi-text text-[12px] font-semibold">{(partesOt(p).descripcion || "").slice(0, 38)}</text>
+                  <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || nombreTipo(r.tipo)).slice(0, movible ? 32 : 38)}</text>
+                  <text x={8} y={y + 48} className="fill-gypi-text text-[12px] font-semibold">{(partesOt(p).descripcion || "").slice(0, movible ? 32 : 38)}</text>
                   {r.diseno && barra(r.diseno.tramos, y + 8, 18, "fill-area-diseno", `diseno-${r.ot}`)}
                   {r.tecnica?.tramos?.length > 0 && barra(r.tecnica.tramos, y + 30, 18, "fill-area-tecnica", `tecnica-${r.ot}`, lim?.estado || null)}
                   {lim && lim.limite >= hoy && lim.limite < sumarDias(hoy, totalDias) && (
@@ -341,7 +376,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
               <div className="text-gypi-dim text-[13px] mb-1">Cargá las horas de su tipo y clase en ⚙ Parámetros → 📐 Diseño y Técnica, o ponelas a mano en el Detalle de la OT.</div>
               <ul className="list-none m-0 p-0 flex flex-wrap gap-1.5">
                 {sinDato.map((r) => (
-                  <li key={r.ot}><button type="button" className="g-btn g-btn-secondary text-left" onClick={() => onVerDetalle?.(r.proyecto)}><NombreOt proyecto={r.proyecto} /> · {nombreTipo(r.tipo)} {r.clase}</button></li>
+                  <li key={r.ot}><button type="button" className="g-btn g-btn-secondary text-left" onClick={() => verDetalle(r.proyecto)}><NombreOt proyecto={r.proyecto} /> · {nombreTipo(r.tipo)} {r.clase}</button></li>
                 ))}
               </ul>
             </div>
@@ -350,7 +385,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
           {sinEtapas > 0 && <div className="text-gypi-dim text-[13px]">{sinEtapas === 1 ? "1 OT no tiene" : `${sinEtapas} OT no tienen`} las columnas DIS a PDF en el Plan de trabajo: no entran.</div>}
         </div>
       )}
-      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el confirmado acá (si hay) y después la prioridad de Producción y la semana de entrega. La línea roja es la fecha límite de Técnica: el último día en que puede terminar para que Producción, con lo que dura en su plan, llegue a su fecha límite. Producción no arranca una OT hasta el día hábil siguiente a que termina su Técnica, salvo que EXCEL ya esté hecho (arranca con aviso). Tocá una OT para ver su detalle.</p>
+      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el confirmado acá (si hay) y después la prioridad de Producción y la semana de entrega. La línea roja es la fecha límite de Técnica: el último día en que puede terminar para que Producción, con lo que dura en su plan, llegue a su fecha límite. Producción no arranca una OT hasta el día hábil siguiente a que termina su Técnica, salvo que EXCEL ya esté hecho (arranca con aviso). Tocá una OT para ver su detalle.{movible ? " Para cambiar el orden, arrastrá una OT desde ⠿: no deja moverla si otra OT no llegaría a su entrega programada." : ""}</p>}
     </section>
   );
 }

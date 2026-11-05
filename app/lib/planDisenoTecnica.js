@@ -375,3 +375,29 @@ export function renglonCorto(r) {
     finConfirmado: r.finConfirmado || null, corrido: r.corrido || 0,
   };
 }
+
+/**
+ * OT que un cambio de orden o de arquitecta deja más tarde contra su fecha
+ * límite de Técnica (la que hace llegar a Producción a la entrega). Se compara
+ * con el plan de antes: una OT que ya venía tarde solo cuenta si queda peor.
+ * Sin el plan de Producción no se puede saber y no bloquea.
+ * @param {{ renglones: object[], feriados?: Set<string> }} antes
+ * @param {{ renglones: object[], feriados?: Set<string> }} despues
+ * @param {{ renglones: object[] }|null} vivo plan vivo de Producción
+ * @returns {{ ot: string, proyecto: object, diasTarde: number, limite: string }[]}
+ */
+export function entregasComprometidas(antes, despues, vivo) {
+  if (!vivo?.renglones || !antes || !despues) return [];
+  const prod = new Map(vivo.renglones.map((r) => [String(r.ot), r]));
+  const tarde = (plan) => {
+    const m = new Map();
+    for (const r of plan.renglones) {
+      const l = limiteTecnica(prod.get(r.ot), r.tecnica?.fin || null, plan.feriados || null);
+      if (l?.estado === "rojo") m.set(r.ot, { ...l, proyecto: r.proyecto });
+    }
+    return m;
+  };
+  const a = tarde(antes);
+  return [...tarde(despues)].filter(([ot, l]) => l.diasTarde > (a.get(ot)?.diasTarde || 0))
+    .map(([ot, l]) => ({ ot, proyecto: l.proyecto, diasTarde: l.diasTarde, limite: l.limite }));
+}

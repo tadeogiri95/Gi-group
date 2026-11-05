@@ -46,6 +46,7 @@ import { pausasAbiertas, textoPausa } from "../lib/pausaOt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./ui";
 import { useEscape } from "../hooks/useEscape";
+import { pedirPantallaCompleta, salirPantallaCompleta } from "../lib/pantallaCompleta";
 import { nombreDivisionOt } from "../lib/avance";
 import { escalaGantt, diasDesde, nombreProyecto, ventanaGantt, enVentana, escalaAncho, HORIZONTES_GANTT } from "../lib/gantt";
 import { diaLaborable, feriadosDe } from "../lib/secuencia";
@@ -88,16 +89,6 @@ const SIN_EMPLEADOS = [];
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
 const diaSemana = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
-
-/** Pantalla completa y apaisada (televisor o celular; si no se puede, igual ocupa toda la pantalla). */
-async function pedirPantallaCompleta() {
-  try { await document.documentElement.requestFullscreen?.(); } catch { /* el navegador no deja */ }
-  try { await globalThis.screen?.orientation?.lock?.("landscape"); } catch { /* se gira a mano */ }
-}
-function salirPantallaCompleta() {
-  try { globalThis.screen?.orientation?.unlock?.(); } catch { /* nada */ }
-  try { if (document.fullscreenElement) document.exitFullscreen?.(); } catch { /* nada */ }
-}
 
 const diaMes = (iso) => { const [, m, d] = String(iso).split("-"); return `${Number(d)}/${Number(m)}`; };
 const estadoDe = (q) => (q.tarde ? "tarde" : q.corrido ? "corrido" : q.completo ? "completo" : "pendiente");
