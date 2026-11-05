@@ -5,7 +5,8 @@
 // lo ven el Tablero y el Inicio de los operarios de la división del plan.
 // Sin plan confirmado (o sin la migración) no muestra nada. En el Tablero
 // (con las OT) cada OT lleva su cliente y descripción (Tadeo, 30/10) y cada
-// día el material de sus procesos contra el stock (Tadeo, 01/11; materialDia.js).
+// día el material de sus procesos contra el stock (Tadeo, 01/11; materialDia.js),
+// y el material sumado de los días que se elijan (Tadeo, 05/11).
 import { useContext, useEffect, useState } from "react";
 import { apiFetch, sb } from "../lib/supabase";
 import { AuthContext } from "../context/AuthContext";
@@ -16,7 +17,8 @@ import { planPorDia, planEsDeMiDivision } from "../lib/planGuardado";
 import { CLAVE_PLANIFICACION } from "../lib/planificacion";
 import { etapasDelPlan } from "../lib/ganttPlan";
 import { cantidadTexto } from "../lib/stock";
-import { faltaPorOt, materialDelDia } from "../lib/materialDia";
+import { faltaPorOt, materialDelDia, otsDeLosDias } from "../lib/materialDia";
+import { Chip } from "./ui";
 import NombreOt from "./NombreOt";
 import { mapaOts, otCompleta, textoOt } from "../lib/nombreOt";
 
@@ -50,27 +52,77 @@ async function leerMaterial(empresaId, ots) {
 function MaterialDia({ material, porOt }) {
   const [abierto, setAbierto] = useState(false);
   if (!material.filas.length) return null;
-  const resumen = material.conFalta
-    ? `🔴 Faltan ${material.conFalta} de ${material.filas.length} ${material.filas.length === 1 ? "artículo" : "artículos"}`
-    : `✅ Hay stock de los ${material.filas.length === 1 ? "1 artículo" : `${material.filas.length} artículos`}`;
+  const resumen = resumenMaterial(material);
   return (
     <div className="mt-1.5" data-material-dia>
       <button type="button" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}
         className={`g-btn g-btn-secondary w-full justify-between text-[14px] ${material.conFalta ? "text-gypi-red" : ""}`}>
         <span>🧱 Material del día · {resumen}</span><span aria-hidden="true">{abierto ? "▲" : "▼"}</span>
       </button>
-      {abierto && (
-        <ul className="list-none m-0 p-0 mt-1 flex flex-col gap-1">
-          {material.filas.map((f) => (
-            <li key={f.sku} className="text-[13px] flex flex-wrap items-center gap-x-2 border-t border-gypi-border pt-1">
-              <span aria-hidden="true" className={`inline-block w-2.5 h-2.5 rounded-sm ${COLOR_ETAPA[f.proceso]}`} />
-              <span className="font-bold flex-1 min-w-0">{f.nombre}</span>
-              <span className="text-gypi-dim">necesita {cantidadTexto(f.cantidad)}{f.unidad ? ` ${f.unidad}` : ""} · stock {cantidadTexto(f.stock)}</span>
-              <span className={f.faltan > 0 ? "text-gypi-red font-bold" : "text-gypi-green"}>{f.faltan > 0 ? `faltan ${cantidadTexto(f.faltan)}` : "✅"}</span>
-              <span className="w-full text-xs text-gypi-dim">{f.ots.map((ot) => textoOt(otCompleta(ot, porOt))).join(" / ")}</span>
-            </li>
-          ))}
-        </ul>
+      {abierto && <ListaMaterial filas={material.filas} porOt={porOt} />}
+    </div>
+  );
+}
+
+function resumenMaterial(material) {
+  return material.conFalta
+    ? `🔴 Faltan ${material.conFalta} de ${material.filas.length} ${material.filas.length === 1 ? "artículo" : "artículos"}`
+    : `✅ Hay stock de los ${material.filas.length === 1 ? "1 artículo" : `${material.filas.length} artículos`}`;
+}
+
+function ListaMaterial({ filas, porOt }) {
+  return (
+    <ul className="list-none m-0 p-0 mt-1 flex flex-col gap-1">
+      {filas.map((f) => (
+        <li key={f.sku} className="text-[13px] flex flex-wrap items-center gap-x-2 border-t border-gypi-border pt-1">
+          <span aria-hidden="true" className={`inline-block w-2.5 h-2.5 rounded-sm ${COLOR_ETAPA[f.proceso]}`} />
+          <span className="font-bold flex-1 min-w-0">{f.nombre}</span>
+          <span className="text-gypi-dim">necesita {cantidadTexto(f.cantidad)}{f.unidad ? ` ${f.unidad}` : ""} · stock {cantidadTexto(f.stock)}</span>
+          <span className={f.faltan > 0 ? "text-gypi-red font-bold" : "text-gypi-green"}>{f.faltan > 0 ? `faltan ${cantidadTexto(f.faltan)}` : "✅"}</span>
+          <span className="w-full text-xs text-gypi-dim">{f.ots.map((ot) => textoOt(otCompleta(ot, porOt))).join(" / ")}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * 🧮 Material de varios días (Tadeo, 05/11): se eligen los días y sale una
+ * sola lista sumada contra el stock. Una OT que sigue con el mismo proceso
+ * varios días cuenta su material una sola vez (otsDeLosDias).
+ */
+function MaterialVariosDias({ dias, hoy, datos, porOt }) {
+  const [elegidos, setElegidos] = useState(() => new Set());
+  const todos = elegidos.size === dias.length;
+  const cambiar = (fecha) => setElegidos((prev) => {
+    const n = new Set(prev);
+    if (n.has(fecha)) n.delete(fecha); else n.add(fecha);
+    return n;
+  });
+  const material = elegidos.size ? materialDelDia(otsDeLosDias(dias, elegidos), datos) : null;
+  return (
+    <div className="mt-3 border-t border-gypi-border pt-2.5" data-material-varios>
+      <div className="text-[14px] font-bold mb-1">🧮 Material de varios días</div>
+      <div className="text-xs text-gypi-dim mb-1.5">Tocá los días que querés sumar.</div>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Días a sumar">
+        <Chip type="button" active={todos}
+          onClick={() => setElegidos(todos ? new Set() : new Set(dias.map((d) => d.fecha)))}>Todos</Chip>
+        {dias.map((d) => (
+          <Chip key={d.fecha} type="button" active={elegidos.has(d.fecha)} onClick={() => cambiar(d.fecha)}>
+            {d.fecha === hoy ? "Hoy " : ""}{nombreDia(d.fecha)}
+          </Chip>
+        ))}
+      </div>
+      {material && !material.filas.length && (
+        <div className="text-[14px] text-gypi-dim mt-1.5">Esos días no necesitan material (o ya se retiró todo).</div>
+      )}
+      {material && material.filas.length > 0 && (
+        <div className="mt-1.5" aria-live="polite">
+          <div className={`text-[14px] font-bold ${material.conFalta ? "text-gypi-red" : "text-gypi-green"}`}>
+            {elegidos.size} {elegidos.size === 1 ? "día" : "días"} · {resumenMaterial(material)}
+          </div>
+          <ListaMaterial filas={material.filas} porOt={porOt} />
+        </div>
       )}
     </div>
   );
@@ -156,6 +208,9 @@ export default function PlanSemana({ divisiones, divisionUsuario = null, proyect
           </li>
         ))}
       </ul>
+      {stock && vienen.length > 1 && (
+        <MaterialVariosDias dias={vienen} hoy={hoy} porOt={porOt} datos={{ falta: stock.falta, articulos: stock.articulos, pendiente }} />
+      )}
       {dias.length > mostrar.length && (
         <button type="button" onClick={() => setVerTodo(true)} className="g-btn g-btn-secondary w-full mt-2">Ver todo el plan</button>
       )}

@@ -83,3 +83,27 @@ export function materialDelDia(ots = [], { falta, articulos, pendiente }) {
     .sort((a, b) => (b.faltan > 0) - (a.faltan > 0) || a.nombre.localeCompare(b.nombre, "es"));
   return { filas, conFalta: filas.filter((f) => f.faltan > 0).length };
 }
+
+/**
+ * Junta varios días del plan en una sola lista de OT (Tadeo, 05/11: "ver
+ * consolidado lo que necesito en los días que seleccione"). Cada OT queda una
+ * vez con todos sus procesos de esos días, así el material de una OT con Corte
+ * el lunes y el martes se cuenta una sola vez (materialDelDia ya usa lo que le
+ * falta a la OT entera).
+ * @param {{ fecha: string, ots: { ot: string, etapas: { id: string }[] }[] }[]} dias
+ * @param {Iterable<string>} fechas las fechas elegidas
+ */
+export function otsDeLosDias(dias = [], fechas = []) {
+  const elegidas = new Set(fechas);
+  const porOt = new Map();
+  for (const d of dias) {
+    if (!elegidas.has(d.fecha)) continue;
+    for (const o of d.ots) {
+      const ot = String(o.ot);
+      if (!porOt.has(ot)) porOt.set(ot, { ot, etapas: [] });
+      const e = porOt.get(ot).etapas;
+      for (const et of o.etapas) if (!e.some((x) => x.id === et.id)) e.push({ id: et.id });
+    }
+  }
+  return [...porOt.values()];
+}
