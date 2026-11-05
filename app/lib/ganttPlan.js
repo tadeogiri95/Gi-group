@@ -216,11 +216,13 @@ const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
  *   proyectos: las OT por número (fecha objetivo y datos para las horas)
  *   pausadas: OT en pausa (migración 151): salen del plan y las otras toman su
  *     lugar; al reanudarse vuelven en su orden, desde hoy
+ *   noAntes: Map<ot, "AAAA-MM-DD"> (parte 49): una OT que no arrancó en planta
+ *     no empieza antes de ese día (el día hábil siguiente al fin de su Técnica)
  */
 export function planVivo(items = [], opciones) {
   const { proyectos = new Map(), etapasCodigo = {}, avance = [], piezas = [], modulos = new Map(), terminadas = new Set(), hoy,
     params = null, horasSemana = HORAS_SEMANA_POR_DEFECTO, personal = null, diasExtra = null, manual = null, retrabajo = null, retrabajoHecho = null,
-    pausadas = null } = opciones;
+    pausadas = null, noAntes = null } = opciones;
   if (pausadas?.size) items = (items || []).filter((i) => !pausadas.has(String(i.ot)));
   const confirmado = procesosPlan(items, { etapasCodigo, avance, piezas, terminadas, hoy, params, horasSemana, personal, diasExtra });
   const out = new Map();
@@ -275,14 +277,23 @@ export function planVivo(items = [], opciones) {
       if (fila?.primer_paso || falta(r.clave, id) < 1) primero.add(`${r.clave}|${id}`);
     }
   }
+  // Diseño y Técnica (parte 49): una OT que todavía no arrancó en planta no
+  // empieza antes del día hábil siguiente a que termina su Técnica
+  const empezoAlgo = (ot) => ETAPAS_PLAN.some(({ id }) => primero.has(`${ot}|${id}`));
+  const espera = new Map();
+  for (const r of restantes) {
+    const f = noAntes?.get(r.clave);
+    if (f && f > hoy && !terminadas.has(r.clave) && !empezoAlgo(r.clave)) espera.set(r.clave, f);
+  }
+  const inicio = espera.size ? (o) => (espera.has(o.clave) ? cal.inicio(espera.get(o.clave)) : 0) : undefined;
   const usaArmado = [...manuales, ...retrabajos].some((m) => m.id === "armado");
-  const armadores = usaArmado ? secuenciar(restantes, { params, personal, ordenEtapa, primero }) : null;
+  const armadores = usaArmado ? secuenciar(restantes, { params, personal, ordenEtapa, primero, inicio }) : null;
   const aGente = (r, id) => (id === "armado" ? (armadores.get(r.clave) || []).find((t) => t.etapa === "armado")?.personas || 1 : 1 / duracion(id, 1, params));
   for (const { r, id, horas } of manuales) r.horas = { ...r.horas, [id]: horas * aGente(r, id) };
   for (const { r, id, horas } of retrabajos) r.horas = { ...r.horas, [id]: (r.horas[id] || 0) + horas * aGente(r, id) };
   const conRetrabajo = new Map(retrabajos.map((m) => [`${m.r.clave}|${m.id}`, m.horas]));
   const conManual = new Set(manuales.map((m) => `${m.r.clave}|${m.id}`));
-  const tramos = secuenciar(restantes, { params, personal, ordenEtapa, primero });
+  const tramos = secuenciar(restantes, { params, personal, ordenEtapa, primero, inicio });
 
   for (const o of ots) {
     const c = confirmado.get(o.ot);
@@ -364,6 +375,8 @@ export function planVivo(items = [], opciones) {
       finConfirmado: c?.fin || null,
       // Lo que más se corrió alguno de sus procesos
       diasCorrido: Math.max(0, ...procesos.map((q) => q.diasCorrido)),
+      // Espera a que termine Técnica (parte 49): no antes de ese día
+      esperaTecnica: espera.get(o.ot) || null,
     });
   }
   return out;

@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { normalizarDisenoTecnica } from "../app/lib/planificacion.js";
-import { planDisenoTecnica, sonSusIniciales, inicialesDe, barrasSeguidas, ordenDiseno, finDelPlan } from "../app/lib/planDisenoTecnica.js";
+import { planDisenoTecnica, sonSusIniciales, inicialesDe, barrasSeguidas, ordenDiseno, finDelPlan, esperaTecnica, limiteTecnica, diasHabilesEntre } from "../app/lib/planDisenoTecnica.js";
+import { planVivo } from "../app/lib/ganttPlan.js";
+import { normalizarParametros } from "../app/lib/planificacion.js";
 
 const { default: GanttDisenoTecnica, textoRenglon } = await import("../app/components/GanttDisenoTecnica.jsx");
 
@@ -129,5 +131,65 @@ test("Gantt — sin arquitectas avisa dónde elegirlas; GanttOt tiene el selecto
   assert.ok(await screen.findByText(/Todavía no hay arquitectas de Técnica/));
   const src = readFileSync(new URL("../app/components/GanttOt.jsx", import.meta.url), "utf8");
   assert.match(src, /📐 Diseño y Técnica<\/Chip>/);
-  assert.match(src, /tipo === "diseno" && \(\s*<GanttDisenoTecnica/);
+  assert.match(src, /planDT \? <GanttDisenoTecnica calculo=\{planDT\} vivo=\{vivo\}/);
+  assert.match(src, /<GanttProduccion \{\.\.\.props\} onPlanVivo=\{setVivo\} planDT=\{planDT\} \/>/);
+});
+
+// ─── Parte 49: enlace con Producción ────────────────────────────────────────
+
+test("esperaTecnica — Producción arranca el día hábil siguiente al fin de Técnica; con EXCEL hecho no espera", () => {
+  const proyectos = [
+    OT("M-1", { prioridad: 1 }),
+    OT("M-2", { prioridad: 2, etapas_diseno: { dis: hecho("GR"), nf: hecho("MJT"), excel: hecho("MJT"), pdf: falta } }),
+    OT("M-3", { prioridad: 3, descripcion: "PLACARD" }), // sin horas de Técnica
+    OT("M-4", { prioridad: 4, etapas_diseno: { dis: hecho("GR"), nf: hecho("MJT"), excel: hecho("MJT"), pdf: hecho("MJT") } }),
+  ];
+  const { renglones } = planDisenoTecnica({ proyectos, dt: DT, personal: PERSONAL, hoy: LUNES });
+  const m = esperaTecnica(renglones);
+  // M-1: Diseño lunes y martes, Técnica (9 h) el miércoles → Producción el jueves
+  assert.deepEqual(m.get("M-1"), { desde: "2026-11-12", finTecnica: "2026-11-11", excel: false, sinPlan: false });
+  assert.equal(m.get("M-2").desde, null, "EXCEL hecho: puede arrancar");
+  assert.equal(m.get("M-2").excel, true);
+  assert.deepEqual(m.get("M-3"), { desde: null, finTecnica: null, excel: false, sinPlan: true });
+  assert.equal(m.has("M-4"), false, "Técnica terminada");
+  // El viernes termina → arranca el lunes (y si es feriado, el martes)
+  const vie = esperaTecnica([{ ot: "X", proyecto: OT("X"), tecnica: { fin: "2026-11-13", pct: 0 } }], new Set(["2026-11-16"]));
+  assert.equal(vie.get("X").desde, "2026-11-17");
+});
+
+test("limiteTecnica — lo último que puede terminar Técnica para que Producción llegue", () => {
+  assert.equal(diasHabilesEntre("2026-11-09", "2026-11-13"), 5);
+  // Producción dura 3 días hábiles (lun a mié) y tiene que terminar el viernes 20: arranca a más tardar el miércoles 18; Técnica hasta el martes 17
+  const prod = { inicio: "2026-11-09", fin: "2026-11-11", objetivo: "2026-11-20" };
+  assert.deepEqual(limiteTecnica(prod, "2026-11-12"), { limite: "2026-11-17", estado: "verde", diasTarde: 0 });
+  assert.equal(limiteTecnica(prod, "2026-11-16").estado, "amarillo", "1 día de margen");
+  assert.deepEqual(limiteTecnica(prod, "2026-11-19"), { limite: "2026-11-17", estado: "rojo", diasTarde: 2 });
+  assert.equal(limiteTecnica({ inicio: "2026-11-09", fin: "2026-11-11", objetivo: null }, "2026-11-19"), null, "sin fecha límite de Producción");
+});
+
+test("planVivo — con noAntes la OT que no arrancó espera a que termine su Técnica", () => {
+  const items = [{ ot: "A", etapa: "corte", fecha: "2026-11-09", horas: 8, orden: 0 }];
+  const proyectos = new Map([["A", { ot: "A", placas: 48 }]]);
+  const params = normalizarParametros({ min_placa: 10, eficiencia: 100, etapas: { corte: 1 } });
+  const base = { proyectos, params, etapasCodigo: { corte: 1 }, hoy: LUNES };
+  assert.equal(planVivo(items, base).get("A").procesos[0].desde, LUNES);
+  const espera = planVivo(items, { ...base, noAntes: new Map([["A", "2026-11-12"]]) }).get("A");
+  assert.equal(espera.procesos[0].desde, "2026-11-12");
+  assert.equal(espera.esperaTecnica, "2026-11-12");
+  // Ya escaneada en Corte: no se la frena
+  const piezas = [{ ot: "A", etapa: 1, total: 10, pasaron: 5, primer_paso: "2026-11-06T12:00:00Z" }];
+  const empezada = planVivo(items, { ...base, piezas, noAntes: new Map([["A", "2026-11-12"]]) }).get("A");
+  assert.equal(empezada.esperaTecnica, null);
+  assert.equal(empezada.procesos[0].desde, "2026-11-06");
+});
+
+test("Gantt 📐 — con el plan de Producción pinta la fecha límite de Técnica", async () => {
+  const calculo = planDisenoTecnica({ proyectos: [OT("M-1")], dt: DT, personal: PERSONAL, hoy: LUNES });
+  const vivo = { renglones: [{ ot: "M-1", inicio: "2026-11-12", fin: "2026-11-13", objetivo: "2026-11-13" }] };
+  render(<GanttDisenoTecnica calculo={{ ...calculo, feriados: null }} vivo={vivo} />);
+  const fila = await screen.findByRole("button", { name: /^OT M-1, clase B/ });
+  // Producción dura 2 días y termina el viernes 13: Técnica tenía que terminar el miércoles 11; termina el 11 → poco margen
+  assert.match(fila.getAttribute("aria-label"), /fecha límite de Técnica 11\/11\/2026, poco margen$/);
+  assert.equal(fila.querySelector('[data-barra="tecnica-M-1"]').getAttribute("data-estado"), "amarillo");
+  assert.ok(screen.getByText(/🟡 Poco margen 1/));
 });
