@@ -461,7 +461,7 @@ test("📅 Gantt — barra para moverse: Hoy, ◀ ▶ y el deslizador", () => {
 
 // Armado con varios armadores (Tadeo, 27/10): hasta el máximo por OT; los que
 // sobran arman otra OT en paralelo, y los de una máquina sin trabajo se suman.
-test("procesosPlan — armado en paralelo, todos a una OT o con los de las máquinas que se liberan", async () => {
+test("procesosPlan — armado de a una OT por vez, con todos los armadores libres o los de las máquinas que se liberan", async () => {
   const { procesosPlan } = await import("../app/lib/ganttPlan.js");
   const lun = "2026-10-26";
   const items = [
@@ -469,10 +469,11 @@ test("procesosPlan — armado en paralelo, todos a una OT o con los de las máqu
     { ot: "B", etapa: "armado", fecha: lun, horas: 32, orden: 1 },
   ];
   const armado = (r, ot) => r.get(ot).procesos.map((p) => [p.personas, p.desde, p.hasta, p.horas]);
-  // 6 armadores y hasta 4 por OT: A con 4 (32 h de gente = 8 h, el lunes) y B en paralelo con 2 (lunes y martes)
+  // 6 armadores y hasta 4 por OT: A con 4 (32 h de gente = 8 h, el lunes) y B no arranca hasta
+  // que termina A (Tadeo, 05/11: "que armado vaya de a una OT"), el martes con 4
   const par = procesosPlan(items, { hoy: "2026-10-20", personal: { armadores: 6, maxPorOt: 4, ayudantes: {} } });
   assert.deepEqual(armado(par, "A"), [[4, lun, lun, 8]]);
-  assert.deepEqual(armado(par, "B"), [[2, lun, "2026-10-27", 16]]);
+  assert.deepEqual(armado(par, "B"), [[4, "2026-10-27", "2026-10-27", 8]]);
   // 4 armadores: van todos a A y después todos a B
   const juntos = procesosPlan(items, { hoy: "2026-10-20", personal: { armadores: 4, maxPorOt: 4, ayudantes: {} } });
   assert.deepEqual(armado(juntos, "A"), [[4, lun, lun, 8]]);
@@ -480,6 +481,7 @@ test("procesosPlan — armado en paralelo, todos a una OT o con los de las máqu
   // El máximo por OT se respeta aunque haya más gente
   const tope = procesosPlan(items, { hoy: "2026-10-20", personal: { armadores: 10, maxPorOt: 2, ayudantes: {} } });
   assert.deepEqual([armado(tope, "A")[0][0], armado(tope, "B")[0][0]], [2, 2]);
+  assert.equal(armado(tope, "B")[0][1] > armado(tope, "A")[0][2], true, "B arranca cuando termina A, aunque sobre gente");
   // 1 armador; el de la seccionadora se suma cuando termina de cortar (lunes): el martes arman 2
   const ayuda = procesosPlan([
     { ot: "A", etapa: "corte", fecha: lun, horas: 8, orden: 0 },
@@ -653,6 +655,42 @@ test("planVivo — la máquina termina primero lo que ya empezó, aunque otra OT
   const b = r.get("B").procesos[0];
   assert.deepEqual([b.desde, b.hasta, b.fin], ["2026-10-23", "2026-10-26", 0.5], "B sigue hoy desde donde quedó");
   assert.deepEqual([a.desde, a.ini, a.hasta], ["2026-10-26", 0.5, "2026-10-27"], "A arranca cuando B termina, no a la vez");
+});
+
+test("planVivo — Armado empezado en dos OT: va de a una y la otra espera su turno (Tadeo, 05/11)", async () => {
+  const { planVivo } = await import("../app/lib/ganttPlan.js");
+  const items = [
+    { ot: "A", etapa: "armado", fecha: "2026-10-23", horas: 8, orden: 0 },
+    { ot: "B", etapa: "armado", fecha: "2026-10-23", horas: 8, orden: 1 },
+  ];
+  // Las dos arrancaron el viernes y les falta la mitad; hay gente de sobra
+  const piezas = ["A", "B"].map((ot) => ({ ot, etapa: 4, total: 10, pasaron: 5, primer_paso: "2026-10-23T12:00:00Z" }));
+  const r = planVivo(items, { etapasCodigo: { armado: 4 }, piezas, hoy: "2026-10-26", personal: { armadores: 6, maxPorOt: 2, ayudantes: {} } });
+  const a = r.get("A").procesos[0];
+  const b = r.get("B").procesos[0];
+  assert.equal(a.desde, "2026-10-23");
+  assert.equal(a.trabajaDesde, "2026-10-26", "A sigue hoy");
+  assert.deepEqual([b.trabajaDesde, b.trabajaIni], ["2026-10-26", 0.25], "B vuelve a armarse cuando termina A, no a la vez");
+});
+
+test("📅 Gantt — un proceso empezado que espera su turno se ve punteado hasta que se vuelve a trabajar", () => {
+  lunes26();
+  try {
+    const planes = [{ id: 1, tipo: "semana", desde: "2026-10-19", hasta: "2026-11-30", items: [
+      { ot: "7100", etapa: "canteado", fecha: "2026-10-23", horas: 32, orden: 0 },
+      { ot: "7200", etapa: "canteado", fecha: "2026-10-23", horas: 8, orden: 1 },
+    ] }];
+    const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }, { id: 2, ot: "7200", cliente: "Ana", division: "M", estado: "activo" }];
+    const piezas = ["7100", "7200"].map((ot) => ({ ot, etapa: 2, total: 10, pasaron: 5, primer_paso: "2026-10-23T12:00:00Z" }));
+    const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} avanceHoras={{ avance: [], horas: new Set(), piezas }} />);
+    assert.ok(!container.querySelector('[data-ot="7100"] [data-espera]'), "la primera se trabaja desde hoy");
+    const espera = container.querySelector('[data-ot="7200"] [data-espera="canteado"]');
+    assert.ok(espera, "la segunda espera su turno");
+    assert.equal(espera.getAttribute("stroke-dasharray"), "4 6", "punteada");
+    assert.match(container.textContent, /Espera su turno/);
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test("secuenciar — sin nada empezado respeta el orden del plan", async () => {

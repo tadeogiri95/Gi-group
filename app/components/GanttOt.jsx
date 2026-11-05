@@ -78,6 +78,7 @@ const LINEA = 4; // alto de la línea finita de lo ya hecho
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const CAB = 44; // alto de la fila de las fechas
 const COLOR = { corte: "fill-proc-corte", canteado: "fill-proc-canteado", mecanizado: "fill-proc-mecanizado", armado: "fill-proc-armado" };
+const TRAZO = { corte: "stroke-proc-corte", canteado: "stroke-proc-canteado", mecanizado: "stroke-proc-mecanizado", armado: "stroke-proc-armado" };
 const MUESTRA = { corte: "bg-proc-corte", canteado: "bg-proc-canteado", mecanizado: "bg-proc-mecanizado", armado: "bg-proc-armado" };
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -462,11 +463,16 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
     // 01/11); lo que falta, lleno. Los días sin trabajo quedan vacíos.
     const corte = q.completo ? x1 : Math.min(Math.max(x0, xHoy), x1);
     const pasado = corte > x0 ? tramosX(x0, corte) : [];
-    const futuro = x1 > corte ? tramosX(corte, Math.max(corte + 3, x1)) : [];
+    // Empezado pero esperando su turno (Tadeo, 05/11): de hoy hasta que se
+    // vuelve a trabajar, línea punteada; lleno solo cuando se trabaja
+    const xTrabaja = q.trabajaDesde && !q.completo ? Math.min(x1, Math.max(corte, q.trabajaDesde < desde ? 0 : Math.min(finVentana, x(q.trabajaDesde) + (q.trabajaIni || 0) * px))) : corte;
+    const espera = xTrabaja > corte ? tramosX(corte, xTrabaja) : [];
+    const futuro = x1 > xTrabaja ? tramosX(xTrabaja, Math.max(xTrabaja + 3, x1)) : [];
     const contorno = futuro.length ? futuro : tramosX(x0, Math.max(x0 + 3, x1));
     return (
       <>
         {pasado.map(([a, b], i) => <rect key={`p${i}`} data-pasado={i === 0 ? etapa : undefined} x={a} y={BARRA.y + dy + (BARRA.alto - LINEA) / 2} width={Math.max(1, b - a)} height={LINEA} rx={2} className={COLOR[etapa]} />)}
+        {espera.map(([a, b], i) => <line key={`e${i}`} data-espera={i === 0 ? etapa : undefined} x1={a} x2={b} y1={BARRA.y + dy + BARRA.alto / 2} y2={BARRA.y + dy + BARRA.alto / 2} strokeWidth={LINEA} strokeDasharray="4 6" className={TRAZO[etapa]} />)}
         {futuro.map(([a, b], i) => <rect key={`f${i}`} data-falta={i === 0 ? etapa : undefined} x={a} y={BARRA.y + dy} width={Math.max(3, b - a)} height={BARRA.alto} rx={3} className={COLOR[etapa]} />)}
         {(q.hechos || []).map((h, i) => {
           // Retrabajo terminado: de cuándo se cargó a cuándo se terminó
@@ -587,6 +593,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={tardes.length ? "text-gypi-red font-bold" : ""}>⚠ Termina después de su fecha límite {tardes.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-dashed border-proc-margen" /><span className={corridas.length ? "font-bold" : ""}>↪ Se corrió del plan {corridas.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-red" />🔁 Retrabajo</span>
+        <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-5 border-t-4 border-dotted border-gypi-dim" />Espera su turno</span>
       </div>
       {hayAvisos && (
         <section aria-label="Avisos del Gantt" className="mb-2 rounded-xl border border-gypi-border bg-gypi-surface px-3 shrink-0">
@@ -818,7 +825,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
           onGuardado={(fila) => { setAjustes((a) => [...(a || []), fila]); setEditar(null); }}
           onRetrabajo={(fila) => { setRetrabajos((l) => [...l.filter((x) => x.id == null || x.id !== fila.id), fila]); setEditar(null); }} />
       )}
-      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y en Armado trabajan hasta el máximo de armadores por OT. La línea finita es lo que ya pasó; los días sin trabajo (sin horas en la grilla) quedan vacíos y la barra sigue el próximo día. Lo que una máquina ya empezó lo termina antes de tomar otra OT. Tocá una OT para ver su detalle.</p>}
+      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: el orden es el del plan confirmado y las fechas se vuelven a armar cada día desde hoy, con lo que falta de cada proceso (escaneo o checkeo manual), los parámetros y la grilla de horarios de ahora (los días sin nadie puesto no se trabajan). Lo que no se terminó pasa al día siguiente y todo se corre. En cada OT un proceso arranca cuando termina el anterior, por cada máquina pasa una OT a la vez y Armado va de a una OT por vez, con hasta el máximo de armadores por OT. La línea finita es lo que ya pasó y la punteada, un proceso empezado que espera su turno; los días sin trabajo (sin horas en la grilla) quedan vacíos y la barra sigue el próximo día. Lo que una máquina ya empezó lo termina antes de tomar otra OT. Tocá una OT para ver su detalle.</p>}
     </div>
   );
 }

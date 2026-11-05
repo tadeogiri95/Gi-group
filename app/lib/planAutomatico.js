@@ -6,7 +6,7 @@
 // cálculo que el Gantt de Proyectos (secuencia.js):
 // - Las OT van en el orden de prioridad: la primera pasa antes por cada máquina.
 // - Cada OT sigue Corte → Canteado → Mecanizado → Armado; por cada máquina pasa
-//   una OT a la vez y Armado se reparte entre los armadores.
+//   una OT a la vez, y Armado también (de a una OT, con sus armadores).
 // - Cada día tiene las horas de la grilla de horarios del personal operativo;
 //   los días de horas extra (sábados, después domingos) rinden como el día
 //   más largo.
