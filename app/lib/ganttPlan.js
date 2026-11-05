@@ -115,7 +115,7 @@ function ordenDeItems(items) {
  *  - en cada OT un proceso arranca cuando termina el anterior;
  *  - por cada máquina pasa una sola OT a la vez: si dos OT tienen que cortarse
  *    el mismo día, el corte de la segunda arranca cuando termina el de la primera;
- *  - Armado se reparte entre los armadores (personal: crearArmado);
+ *  - Armado va de a una OT por vez (personal: crearArmado);
  *  - ningún proceso arranca antes del primer día que le dio el plan.
  * Cada proceso tiene por día las horas de la grilla de horarios del personal
  * operativo (horasSemana): un día sin nadie puesto no se trabaja, salvo los
@@ -207,7 +207,9 @@ const minFecha = (fs) => fs.reduce((m, f) => (f < m ? f : m), fs[0]);
  * corrido, diasCorrido, hastaConfirmado, empezo, manual (lo manda un
  * "⏱ Faltan X h", migración 145), retrabajo (horas de retrabajo sin terminar,
  * migración 147: van al final del proceso, aunque estuviera completo),
- * retrabajoDesde/retrabajoIni (dónde empieza la parte roja de la barra) y
+ * retrabajoDesde/retrabajoIni (dónde empieza la parte roja de la barra),
+ * trabajaDesde/trabajaIni (un proceso empezado que espera su turno: desde
+ * cuándo se vuelve a trabajar; antes de eso la barra va punteada) y
  * hechos (retrabajos terminados: de cuándo se cargó a cuándo se terminó,
  * siguen en rojo; la barra llega hasta ahí).
  * @param {{ manual?: Map<string, { horas: number, pendiente: number|null }>, proyectos?: Map<string, object>, etapasCodigo: Record<string, number|null>, avance?: object[], piezas?: object[], modulos?: Map<string, number>, terminadas?: Set<string>, hoy: string, params?: object, horasSemana?: number[], personal?: object|null, diasExtra?: Set<string>|null }} opciones
@@ -303,6 +305,9 @@ export function planVivo(items = [], opciones) {
         const b = cal.punto(tr.t1, true);
         const desde = empezo && empezo < a.fecha ? empezo : a.fecha;
         q = { etapa: id, nombre, desde, hasta: b.fecha, ini: desde === a.fecha ? a.frac : 0, fin: b.frac, t0: tr.t0, horas: tr.horas, personas: tr.personas, completo: false };
+        // Empezado antes pero esperando su turno (Tadeo, 05/11): desde cuándo se vuelve a trabajar,
+        // para que la espera se dibuje punteada y no parezca que se arma a la vez que otra OT
+        if (desde !== a.fecha) { q.trabajaDesde = a.fecha; q.trabajaIni = a.frac; }
       } else {
         // Terminado (o sin horas que hacer): desde que arrancó hasta su último escaneo, o hasta donde decía el plan
         const hasta = fila?.ultimo_paso ? diaArg(fila.ultimo_paso) : qc.hasta < hoy ? qc.hasta : hoy;

@@ -7,7 +7,7 @@
 //  - en cada OT un proceso arranca cuando termina el anterior
 //    (Corte → Canteado → Mecanizado → Armado);
 //  - por cada máquina pasa una sola OT a la vez, en el orden de prioridad;
-//  - Armado se reparte entre los armadores (crearArmado);
+//  - Armado va de a una OT por vez, con los armadores libres hasta el máximo por OT (crearArmado, 05/11);
 //  - cada día tiene las horas de la grilla de horarios del personal operativo
 //    (del primero que entra al último que sale); los días de horas extra
 //    rinden como el día más largo de la semana.
@@ -100,35 +100,28 @@ export function duracion(etapa, horas, params) {
 }
 
 /**
- * Armado con varios armadores a la vez (Tadeo, 27/10). Cada OT, en el orden
- * del plan, arranca apenas está lista (terminó su Mecanizado y llegó su día
- * del plan) y hay armadores libres: toma hasta maxPorOt; los que sobran
- * arman la OT siguiente en paralelo. Con k armadores, G horas de gente
- * tardan G / k. Los operarios de una máquina que ya no tiene más trabajo
- * pasan a Armado (ayudantes[máquina], desde que se libera).
+ * Armado de a una OT por vez (Tadeo, 05/11: "que armado vaya de a una OT").
+ * Cada OT, en el orden del plan, arranca cuando está lista (terminó su
+ * Mecanizado y llegó su día del plan) y terminó la OT anterior de Armado.
+ * Toma a todos los armadores libres, hasta "máximo de armadores por OT"
+ * (maxPorOt): con k armadores, G horas de gente tardan G / k. Los operarios
+ * de una máquina que ya no tiene más trabajo pasan a Armado
+ * (ayudantes[máquina], desde que se libera). Antes (27/10) los que sobraban
+ * armaban otra OT en paralelo y en el Gantt se veían OT encimadas.
  */
 function crearArmado({ armadores, maxPorOt, ayudantes }) {
-  const tomados = []; // { t0, t1, k }
+  let libre = 0; // hasta cuándo está ocupado Armado
   const pool = (t) => armadores + ayudantes.reduce((s, a) => s + (a.desde <= t + 1e-9 ? a.n : 0), 0);
-  const usados = (t) => tomados.reduce((s, x) => s + (x.t0 <= t + 1e-9 && t < x.t1 - 1e-9 ? x.k : 0), 0);
-  const libres = (t0, t1) => {
-    // Lo mínimo libre en el tramo: se mira al empezar y cada vez que arranca otra OT adentro
-    const puntos = [t0, ...tomados.map((x) => x.t0).filter((t) => t > t0 && t < t1)];
-    return Math.min(...puntos.map((t) => pool(t) - usados(t)));
-  };
   return (listo, G) => {
-    const candidatos = [...new Set([listo, ...tomados.map((x) => x.t1), ...ayudantes.map((a) => a.desde)].filter((t) => t >= listo))].sort((a, b) => a - b);
-    for (const t0 of candidatos) {
-      for (let k = Math.min(maxPorOt, pool(t0) - usados(t0)); k >= 1; k--) {
-        const t1 = t0 + G / k;
-        if (libres(t0, t1) >= k) { tomados.push({ t0, t1, k }); return { t0, t1, k }; }
-      }
+    let t0 = Math.max(listo, libre);
+    // Sin nadie todavía: espera a que se libere alguna máquina
+    if (pool(t0) < 1) {
+      const proximo = ayudantes.map((a) => a.desde).filter((t) => t > t0).sort((x, y) => x - y)[0];
+      if (proximo != null) t0 = proximo;
     }
-    // No debería pasar: cuando todo lo anterior termina, queda alguien libre
-    const t0 = Math.max(listo, ...tomados.map((x) => x.t1));
     const k = Math.max(1, Math.min(maxPorOt, pool(t0)));
-    tomados.push({ t0, t1: t0 + G / k, k });
-    return { t0, t1: t0 + G / k, k };
+    libre = t0 + G / k;
+    return { t0, t1: libre, k };
   };
 }
 
