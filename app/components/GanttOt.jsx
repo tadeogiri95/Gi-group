@@ -884,12 +884,12 @@ export default function GanttOt(props) {
         <GanttProduccion {...props} onPlanVivo={setVivo} planDT={planDT} />
       </div>
       {tipo === "diseno" && (
-        planDT ? <GanttDisenoTecnica calculo={planDT} vivo={vivo} onVerDetalle={props.onVerDetalle} puedeReordenar={!!props.puedeReordenar} onRefrescar={props.onRefrescar} />
+        planDT ? <GanttDisenoTecnica calculo={planDT} vivo={vivo} onVerDetalle={props.onVerDetalle} puedeReordenar={!!props.puedeReordenar} onRefrescar={props.onRefrescar} puedeAjustar={!!props.puedeAjustar} usuarioNombre={props.usuarioNombre} />
           : <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       )}
       {tipo === "instalacion" && (
         <GanttInstalacion vivo={vivo} proyectos={props.proyectos} etapas={props.etapas} divisiones={props.divisiones}
-          avanceHoras={props.avanceHoras} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} puedeConfirmar={!!props.puedeAjustar} />
+          avanceHoras={props.avanceHoras} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} puedeConfirmar={!!props.puedeAjustar} usuarioNombre={props.usuarioNombre} />
       )}
     </>
   );

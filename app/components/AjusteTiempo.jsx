@@ -7,7 +7,7 @@
 // elimina (148).
 import { useEffect, useState } from "react";
 import { sb } from "../lib/supabase";
-import { MOTIVOS_TIEMPO, validarAjuste, textoMotivo, AVISO_MIGRACION_145 } from "../lib/ajustesTiempo";
+import { MOTIVOS_TIEMPO, validarAjuste, textoMotivo, AVISO_MIGRACION_145, NOMBRE_ETAPA, textoValor } from "../lib/ajustesTiempo";
 import { MOTIVOS_RETRABAJO, validarRetrabajo, textoMotivoRetrabajo, AVISO_MIGRACION_147, AVISO_MIGRACION_148 } from "../lib/retrabajo";
 import { fmtH } from "../lib/cargaPlanta";
 import Modal from "./ui/Modal";
@@ -177,7 +177,6 @@ export default function AjusteTiempo({ ot, etapa, nombre, horas, pendiente = nul
   );
 }
 
-const ETIQUETA_ETAPA = { corte: "Corte", canteado: "Canteado", mecanizado: "Mecanizado", armado: "Armado" };
 
 /**
  * Detalle OT → ⏱ Cambios de tiempo: todo lo que se anotó de la OT, el más
@@ -201,7 +200,7 @@ export function CambiosTiempoOt({ ot }) {
         {filas.map((a) => (
           <li key={a.id ?? a.created_at} className="bg-gypi-surface rounded-xl p-3 border border-gypi-border text-[13px]">
             <div className="font-bold">
-              {ETIQUETA_ETAPA[a.etapa] || a.etapa} · {a.tipo === "faltan" ? `⏱ faltan ${fmtH(Number(a.horas) || 0)}` : `↪ se corrió ${dias(Number(a.dias) || 0)}`}
+              {NOMBRE_ETAPA[a.etapa] || a.etapa} · {a.tipo === "faltan" ? `⏱ faltan ${textoValor(a.horas, a.etapa)}` : `↪ se corrió ${dias(Number(a.dias) || 0)}`}
             </div>
             <div>{textoMotivo(a)}</div>
             <div className="text-xs text-gypi-dim">{fechaHora(a.created_at)}{a.creado_nombre ? ` · ${a.creado_nombre}` : ""}</div>

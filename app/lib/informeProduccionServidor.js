@@ -66,7 +66,7 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
   const conManual = piezasConManual(piezas.data, proyectos.data);
   // Producción espera que termine Técnica, como en el Gantt (parte 49)
   const pausadas = otsEnPausa(pausas.data);
-  const planDT = planDeEmpresa({ proyectos: proyectos.data, divisiones: divisiones.data, cfgValor, personal: personal.data, hoy, pausadas });
+  const planDT = planDeEmpresa({ proyectos: proyectos.data, divisiones: divisiones.data, cfgValor, personal: personal.data, hoy, pausadas, ajustes: ajustes.data });
   const vivo = planVivo(vigentes, {
     proyectos: abiertas, modulos: modulosPorOt(mods.data), etapasCodigo,
     avance: avance.data, piezas: conManual,

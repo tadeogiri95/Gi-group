@@ -432,7 +432,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
       params: normalizarParametros(plan.cfgValor), horasSemana: horasSemanaDeGrilla(plan.empleados, divisionesCtx || [], plan.cfgValor),
       personal: personalGantt(plan.empleados, divisionesCtx || [], plan.cfgValor), diasExtra: diasExtraVigentes(plan.planes),
       manual: faltanManual(ajus?.data || []), pausadas: otsEnPausa(paus?.data || []),
-      noAntes: noAntesDeTecnica(planDeEmpresa({ proyectos: proy.data || [], divisiones: divisionesCtx || [], cfgValor: plan.cfgValor, personal: pers?.data || [], hoy: hoyArg(), pausadas: otsEnPausa(paus?.data || []) }).espera),
+      noAntes: noAntesDeTecnica(planDeEmpresa({ proyectos: proy.data || [], divisiones: divisionesCtx || [], cfgValor: plan.cfgValor, personal: pers?.data || [], hoy: hoyArg(), pausadas: otsEnPausa(paus?.data || []), ajustes: ajus?.data || [] }).espera),
     }) : null;
     setOtAtrasadasLista(procesos ? otAtrasadasPlan(filasOt, procesos, { porEscaneo: avancePorOt(avHs.piezas || []) }) : null);
     // Cada pedido con su OT completa (Código · Cliente · Proyecto · Descripción, 02/11)

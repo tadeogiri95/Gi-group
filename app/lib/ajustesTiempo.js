@@ -12,6 +12,11 @@
 // Cada registro guarda cuántos días estaba corrido el proceso del plan
 // confirmado (dias): si después se corre más, vuelve a pedir el motivo.
 // Queda en la OT para analizar después (Detalle OT → ⏱ Cambios de tiempo).
+//
+// 05/11 (Tadeo, migración 162): también "⏱ Necesita más tiempo" en Diseño
+// (días hábiles), Técnica (horas) e Instalación (días de obra), cada uno con
+// sus motivos. En esos solo hay 'faltan'. El valor va en `horas` aunque sea
+// en días (unidadDe dice cuál).
 
 export const MOTIVOS_TIEMPO = [
   { id: "falta_material", label: "Falta de material" },
@@ -21,13 +26,40 @@ export const MOTIVOS_TIEMPO = [
   { id: "interrupcion", label: "Interrupción del trabajo" },
   { id: "otros", label: "Otros" },
 ];
-const IDS_MOTIVO = new Set(MOTIVOS_TIEMPO.map((m) => m.id));
-const ETAPAS = new Set(["corte", "canteado", "mecanizado", "armado"]);
+const M = (id, label) => ({ id, label });
+const SUBESTIMADO = M("planificacion_subestimada", "Tiempo de planificación subestimado");
+const OTROS = M("otros", "Otros");
+/** Motivos de Diseño y Técnica (162). */
+export const MOTIVOS_DISENO = [
+  M("cambios_cliente", "Cambios del cliente"), M("espera_cliente", "Espera de aprobación o respuesta del cliente"),
+  M("falta_informacion", "Falta información o medidas"), SUBESTIMADO, M("interrupcion", "Interrupción del trabajo"), OTROS,
+];
+/** Motivos de Instalación (162). */
+export const MOTIVOS_INSTALACION = [
+  M("obra_no_lista", "La obra no estaba lista"), M("falta_material", "Falta de material"), M("cambios_cliente", "Cambios del cliente"),
+  M("clima", "Clima"), SUBESTIMADO, M("interrupcion", "Interrupción del trabajo"), OTROS,
+];
+const PRODUCCION = new Set(["corte", "canteado", "mecanizado", "armado"]);
+const ETAPAS = new Set([...PRODUCCION, "diseno", "tecnica", "instalacion"]);
+/** Los motivos que se pueden elegir en un proceso o área. */
+export const motivosDe = (etapa) => (etapa === "diseno" || etapa === "tecnica" ? MOTIVOS_DISENO : etapa === "instalacion" ? MOTIVOS_INSTALACION : MOTIVOS_TIEMPO);
+/** "h" (horas) o "dias" (días hábiles): Diseño e Instalación van en días. */
+export const unidadDe = (etapa) => (etapa === "diseno" || etapa === "instalacion" ? "dias" : "h");
+/** Nombre del proceso o área. */
+export const NOMBRE_ETAPA = { corte: "Corte", canteado: "Canteado", mecanizado: "Mecanizado", armado: "Armado", diseno: "Diseño", tecnica: "Técnica", instalacion: "Instalación" };
+/** "12 h", "medio día", "3 días". */
+export function textoValor(n, etapa) {
+  const v = Math.round((Number(n) || 0) * 10) / 10;
+  if (unidadDe(etapa) === "h") return `${String(v).replace(".", ",")} h`;
+  if (v === 0.5) return "medio día";
+  return `${String(v).replace(".", ",")} ${v === 1 ? "día" : "días"}`;
+}
+export const AVISO_MIGRACION_162 = "Para anotar más tiempo en Diseño, Técnica o Instalación falta correr la migración 162 en Supabase.";
 export const AVISO_MIGRACION_145 = "Para guardar el motivo falta correr la migración 145 en Supabase.";
 
 /** "Falta de material", o "Otros: …" con lo que se escribió. */
 export function textoMotivo(a) {
-  const m = MOTIVOS_TIEMPO.find((x) => x.id === a?.motivo);
+  const m = [...MOTIVOS_TIEMPO, ...MOTIVOS_DISENO, ...MOTIVOS_INSTALACION].find((x) => x.id === a?.motivo);
   if (!m) return "—";
   return m.id === "otros" && a.detalle ? `Otros: ${a.detalle}` : m.label;
 }
@@ -43,13 +75,15 @@ export function validarAjuste(a) {
   if (typeof a.ot !== "string" || !a.ot.trim() || a.ot.length > 40) return "Falta la OT";
   if (!ETAPAS.has(a.etapa)) return "Proceso inválido";
   if (a.tipo !== "faltan" && a.tipo !== "corrimiento") return "Tipo inválido";
-  if (!IDS_MOTIVO.has(a.motivo)) return "Elegí el motivo";
+  if (!PRODUCCION.has(a.etapa) && a.tipo !== "faltan") return "Tipo inválido";
+  if (!motivosDe(a.etapa).some((m) => m.id === a.motivo)) return "Elegí el motivo";
   const detalle = typeof a.detalle === "string" ? a.detalle.trim() : "";
   if (a.motivo === "otros" && !detalle) return "Escribí cuál es el motivo";
   if (detalle.length > 300) return "El motivo es muy largo (hasta 300 letras)";
   if (a.tipo === "faltan") {
     const h = a.horas;
-    if (typeof h !== "number" || !Number.isFinite(h) || h < 0 || h > 9999) return "Escribí cuántas horas faltan";
+    if (typeof h !== "number" || !Number.isFinite(h) || h < 0 || h > 9999) return unidadDe(a.etapa) === "h" ? "Escribí cuántas horas faltan" : "Escribí cuántos días faltan";
+    if (!PRODUCCION.has(a.etapa) && h < 0.5) return unidadDe(a.etapa) === "h" ? "Tiene que ser media hora o más" : "Tiene que ser medio día o más";
   }
   if (a.pendiente != null && (typeof a.pendiente !== "number" || a.pendiente < 0 || a.pendiente > 1)) return "Avance inválido";
   if (a.dias != null && (!Number.isInteger(a.dias) || a.dias < 0 || a.dias > 3650)) return "Días inválidos";

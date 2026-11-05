@@ -29,6 +29,8 @@ import { textoDiasHabiles, textoHoras } from "../lib/disenoTecnicaPlan";
 import { nombreTipo } from "../lib/tipoProyecto";
 import { partesOt, textoOt } from "../lib/nombreOt";
 import NombreOt from "./NombreOt";
+import MasTiempo from "./MasTiempo";
+import { textoValor } from "../lib/ajustesTiempo";
 
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
@@ -46,6 +48,7 @@ export function textoRenglon(r, limite = null) {
   partes.push(notaTecnica(r, true));
   if (limite) partes.push(textoLimite(limite));
   if (r.corrido > 0) partes.push(`se corrió ${textoDiasHabiles(r.corrido)} desde el plan confirmado`);
+  if (r.disenoManual || r.tecnicaManual) partes.push(`con más tiempo anotado en ${[r.disenoManual && "Diseño", r.tecnicaManual && "Técnica"].filter(Boolean).join(" y ")}`);
   return partes.filter(Boolean).join(", ");
 }
 
@@ -130,17 +133,21 @@ export function usePlanDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_L
     Promise.all([
       sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`).catch(() => null),
       sbGetAll(`empleados?${e}activo=eq.true&select=id,nombre&order=nombre.asc`, { maxFilas: 2000 }).catch(() => null),
-    ]).then(([cfg, emp]) => {
-      if (vivo) setDatos({ cfgValor: cfg?.[0]?.valor || null, personal: emp?.data || [] });
+      // "⏱ Necesita más tiempo" de Diseño y Técnica (162); sin la 145 no hay nada
+      sbGetAll(`ajustes_tiempo_ot?${e}tipo=eq.faltan&etapa=in.(diseno,tecnica)&select=ot,etapa,tipo,horas,pendiente,created_at&order=created_at.asc`, { maxFilas: 20000 }).catch(() => null),
+    ]).then(([cfg, emp, aj]) => {
+      if (vivo) setDatos({ cfgValor: cfg?.[0]?.valor || null, personal: emp?.data || [], ajustes: aj?.data || [] });
     });
     return () => { vivo = false; };
   }, [empresaId, omitir]);
+  // Lo que se acaba de anotar entra al plan sin volver a leer
+  const agregarAjuste = useCallback((fila) => setDatos((d) => (d ? { ...d, ajustes: [...d.ajustes, fila] } : d)), []);
   return useMemo(() => {
     if (!datos) return null;
-    const armar = (lista) => planDeEmpresa({ proyectos: lista, divisiones, cfgValor: datos.cfgValor, personal: datos.personal, hoy, pausadas: otsEnPausa(pausas) });
+    const armar = (lista) => planDeEmpresa({ proyectos: lista, divisiones, cfgValor: datos.cfgValor, personal: datos.personal, hoy, pausadas: otsEnPausa(pausas), ajustes: datos.ajustes });
     // rehacer: el mismo plan con otro orden o arquitectas (vista previa, parte 50)
-    return { ...armar(proyectos), rehacer: (cambio) => armar(conCambio(proyectos, cambio)) };
-  }, [datos, proyectos, divisiones, pausas, hoy]);
+    return { ...armar(proyectos), rehacer: (cambio) => armar(conCambio(proyectos, cambio)), agregarAjuste };
+  }, [datos, proyectos, divisiones, pausas, hoy, agregarAjuste]);
 }
 
 /**
@@ -149,8 +156,10 @@ export function usePlanDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_L
  * @param {{ renglones: object[] }|null} [props.vivo] plan vivo de Producción (para la fecha límite de Técnica)
  * @param {boolean} [props.puedeReordenar] Dueño o supervisor: cambia el orden, la arquitecta y confirma (parte 50)
  * @param {() => void} [props.onRefrescar] vuelve a leer las OT después de confirmar
+ * @param {boolean} [props.puedeAjustar] gerencia y administración: "⏱ Necesita más tiempo" (162)
+ * @param {string|null} [props.usuarioNombre] quién lo anota
  */
-export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_LISTA, pausas = SIN_LISTA, empresaId = null, onVerDetalle, calculo: calculoProp = null, vivo = null, puedeReordenar = false, onRefrescar = null }) {
+export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_LISTA, pausas = SIN_LISTA, empresaId = null, onVerDetalle, calculo: calculoProp = null, vivo = null, puedeReordenar = false, onRefrescar = null, puedeAjustar = false, usuarioNombre = null }) {
   const hoy = hoyArg();
   const scrollRef = useRef(null);
   const medir = useCallback((el) => { scrollRef.current = el; }, []);
@@ -162,6 +171,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   const [confirmando, setConfirmando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [arrastre, setArrastre] = useState(null); // { ot, sobre }
+  const [masTiempo, setMasTiempo] = useState(null); // opciones de MasTiempo
   const calculo = useMemo(() => (base && cambio && base.rehacer ? base.rehacer(cambio) : base), [base, cambio]);
   const [grande, setGrande] = useState(false);
   const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
@@ -209,6 +219,16 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   };
   const verDetalle = (p) => { if (grande) cerrarGrande(); onVerDetalle?.(p); };
   const movible = puedeReordenar && renglones.length > 1;
+  // ⏱ Necesita más tiempo: Diseño (días) y Técnica (horas) que faltan de la OT
+  const opcionesTiempo = (r) => [
+    r.diseno && { ot: r.ot, etapa: "diseno", nombre: "Diseño", valor: r.diseno.dias, pendiente: 1 - (r.diseno.pct || 0) / 100 },
+    r.tecnica && { ot: r.ot, etapa: "tecnica", nombre: "Técnica", valor: r.tecnica.horas, pendiente: 1 - (r.tecnica.pct || 0) / 100 },
+  ].filter(Boolean);
+  const abrirMasTiempo = (r, etapa = null) => {
+    const ops = opcionesTiempo(r);
+    if (!ops.length) return;
+    setMasTiempo(etapa ? [...ops.filter((o) => o.etapa === etapa), ...ops.filter((o) => o.etapa !== etapa)] : ops);
+  };
   const empezarArrastre = (e, ot) => { e.currentTarget.setPointerCapture?.(e.pointerId); setArrastre({ ot, sobre: ot }); };
   const moverArrastre = (e) => {
     if (!arrastre || typeof document === "undefined" || !document.elementFromPoint) return;
@@ -335,7 +355,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
               const fin = r.tecnica?.fin || r.diseno?.fin;
               const finFrac = r.tecnica?.tramos?.at(-1)?.hasta ?? r.diseno?.tramos?.at(-1)?.hasta ?? 1;
               const lim = limites.get(r.ot) || null;
-              const nota = [notaTecnica(r), lim && r.tecnica?.inicio ? `límite ${fechaCorta(lim.limite)}${lim.estado === "rojo" ? ` · ⚠ ${lim.diasTarde} d tarde` : ""}` : null, r.corrido > 0 ? `↪ se corrió ${r.corrido} d` : null].filter(Boolean).join(" · ");
+              const nota = [notaTecnica(r), lim && r.tecnica?.inicio ? `límite ${fechaCorta(lim.limite)}${lim.estado === "rojo" ? ` · ⚠ ${lim.diasTarde} d tarde` : ""}` : null, r.corrido > 0 ? `↪ se corrió ${r.corrido} d` : null, r.disenoManual || r.tecnicaManual ? "⏱ más tiempo" : null].filter(Boolean).join(" · ");
               return (
                 <g key={r.ot} role="button" tabIndex={0} aria-label={textoRenglon(r, lim)} data-orden-ot={movible ? r.ot : undefined}
                   className={`cursor-pointer ${arrastre?.ot === r.ot ? "opacity-60" : ""}`}
@@ -343,6 +363,11 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
                   <rect x={0} y={y} width={ETIQUETAS + ancho} height={FILA} className="fill-transparent" />
                   {arrastre && arrastre.sobre === r.ot && arrastre.ot !== r.ot && (
                     <rect data-destino={r.ot} x={0} y={y} width={ETIQUETAS + ancho} height={FILA} className="fill-gypi-amber stroke-gypi-amber" fillOpacity={0.15} strokeWidth={2} />
+                  )}
+                  {puedeAjustar && opcionesTiempo(r).length > 0 && (
+                    <text data-mas-tiempo={r.ot} role="button" tabIndex={0} aria-label={`⏱ La OT ${r.ot} necesita más tiempo`} x={ETIQUETAS - (movible ? 46 : 24)} y={y + 34}
+                      className="fill-gypi-text text-[18px] cursor-pointer select-none"
+                      onClick={(e) => { e.stopPropagation(); abrirMasTiempo(r); }} onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); abrirMasTiempo(r); } }}>⏱</text>
                   )}
                   {movible && (
                     <text data-arrastrar={r.ot} x={ETIQUETAS - 22} y={y + 34} className="fill-gypi-dim text-[20px] cursor-grab select-none touch-none"
@@ -352,8 +377,8 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
                   <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{r.ot} · {r.clase}</text>
                   <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || nombreTipo(r.tipo)).slice(0, movible ? 32 : 38)}</text>
                   <text x={8} y={y + 48} className="fill-gypi-text text-[12px] font-semibold">{(partesOt(p).descripcion || "").slice(0, movible ? 32 : 38)}</text>
-                  {r.diseno && barra(r.diseno.tramos, y + 8, 18, "fill-area-diseno", `diseno-${r.ot}`)}
-                  {r.tecnica?.tramos?.length > 0 && barra(r.tecnica.tramos, y + 30, 18, "fill-area-tecnica", `tecnica-${r.ot}`, lim?.estado || null)}
+                  {r.diseno && <g onClick={puedeAjustar ? (e) => { e.stopPropagation(); abrirMasTiempo(r, "diseno"); } : undefined}>{barra(r.diseno.tramos, y + 8, 18, "fill-area-diseno", `diseno-${r.ot}`)}</g>}
+                  {r.tecnica?.tramos?.length > 0 && <g onClick={puedeAjustar ? (e) => { e.stopPropagation(); abrirMasTiempo(r, "tecnica"); } : undefined}>{barra(r.tecnica.tramos, y + 30, 18, "fill-area-tecnica", `tecnica-${r.ot}`, lim?.estado || null)}</g>}
                   {lim && lim.limite >= hoy && lim.limite < sumarDias(hoy, totalDias) && (
                     <line data-limite={r.ot} x1={ETIQUETAS + x(lim.limite) + PX} x2={ETIQUETAS + x(lim.limite) + PX} y1={y + 27} y2={y + 51} className="stroke-gypi-red" strokeWidth={2} />
                   )}
@@ -385,7 +410,11 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
           {sinEtapas > 0 && <div className="text-gypi-dim text-[13px]">{sinEtapas === 1 ? "1 OT no tiene" : `${sinEtapas} OT no tienen`} las columnas DIS a PDF en el Plan de trabajo: no entran.</div>}
         </div>
       )}
-      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el confirmado acá (si hay) y después la prioridad de Producción y la semana de entrega. La línea roja es la fecha límite de Técnica: el último día en que puede terminar para que Producción, con lo que dura en su plan, llegue a su fecha límite. Producción no arranca una OT hasta el día hábil siguiente a que termina su Técnica, salvo que EXCEL ya esté hecho (arranca con aviso). Tocá una OT para ver su detalle.{movible ? " Para cambiar el orden, arrastrá una OT desde ⠿: no deja moverla si otra OT no llegaría a su entrega programada." : ""}</p>}
+      {!grande && <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el confirmado acá (si hay) y después la prioridad de Producción y la semana de entrega. La línea roja es la fecha límite de Técnica: el último día en que puede terminar para que Producción, con lo que dura en su plan, llegue a su fecha límite. Producción no arranca una OT hasta el día hábil siguiente a que termina su Técnica, salvo que EXCEL ya esté hecho (arranca con aviso). Tocá una OT para ver su detalle.{puedeAjustar ? " Si una OT necesita más tiempo de Diseño o de Técnica, tocá su barra o ⏱ y anotá cuánto falta y por qué." : ""}{movible ? " Para cambiar el orden, arrastrá una OT desde ⠿: no deja moverla si otra OT no llegaría a su entrega programada." : ""}</p>}
+      {masTiempo && (
+        <MasTiempo opciones={masTiempo} porNombre={usuarioNombre} onClose={() => setMasTiempo(null)}
+          onGuardado={(fila) => { base.agregarAjuste?.(fila); setMasTiempo(null); setAviso(`⏱ Anotado: a la OT ${fila.ot} le faltan ${textoValor(fila.horas, fila.etapa)} de ${fila.etapa === "diseno" ? "Diseño" : "Técnica"}.`); }} />
+      )}
     </section>
   );
 }

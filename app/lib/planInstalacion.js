@@ -14,6 +14,7 @@
 // Orden: prioridad de instalación (153), después la fecha de entrega, después
 // el fin de producción. Cada obra va al primer medio día en que haya gente
 // libre para hacerla seguida.
+import { horasManuales } from "./ajustesTiempo";
 import { diasInstalacion, medioDia } from "./instalacionPlan";
 import { normalizar, buscarDivision } from "./rutas";
 import { diasEntre } from "./semanaObjetivo";
@@ -82,12 +83,13 @@ const conPrioridad = (n) => Number.isInteger(n) && n > 0;
  * @param {Set<string>} a.instaladas OT con el acta de instalación firmada
  * @param {Set<string>} a.pausadas OT en pausa (151)
  * @param {Map<string, number>} a.avance % de instalación (último reporte), por OT
+ * @param {Map} [a.manual] faltanManual(ajustes): "⏱ Necesita más tiempo" de Instalación, en días de la OT (162)
  * @returns {{ trabajos: object[], sinProduccion: object[], sinDato: object[] }}
  *   trabajos: una por obra, con sus OT, días de una persona que faltan, instaladores y desde cuándo puede arrancar
  *   sinProduccion: OT sin plan de producción y sin terminar (no se sabe cuándo salen)
  *   sinDato: OT sin días de instalación (faltan gabinetes o el parámetro)
  */
-export function trabajosInstalacion({ proyectos = [], finProduccion = new Map(), producidas = new Set(), instaladas = new Set(), pausadas = new Set(), avance = new Map(), params, inst, modulos = new Map(), hoy, feriados = null, maxPersonas = Infinity }) {
+export function trabajosInstalacion({ proyectos = [], finProduccion = new Map(), producidas = new Set(), instaladas = new Set(), pausadas = new Set(), avance = new Map(), params, inst, modulos = new Map(), hoy, feriados = null, maxPersonas = Infinity, manual = new Map() }) {
   const porObra = new Map();
   const sinProduccion = [], sinDato = [];
   for (const p of proyectos) {
@@ -113,8 +115,13 @@ export function trabajosInstalacion({ proyectos = [], finProduccion = new Map(),
     const t = porObra.get(k);
     if (minimo > t.minimo) t.minimo = minimo;
     if (fijada && (!t.fijada || fijada > t.fijada)) t.fijada = fijada;
-    t.ots.push({ ot, proyecto: p, dias: r.dias, personas: r.personas, diasPersona: r.diasPersona * (1 - pct / 100), avance: pct, manual: r.manual, finProduccion: fin, producida: lista });
-    t.diasPersona += r.diasPersona * (1 - pct / 100);
+    // "⏱ Necesita más tiempo" (162): días que le faltan a la OT con su gente; si
+    // después avanza el reporte de instalación, baja en la misma proporción
+    const mI = manual.get(`${ot}|instalacion`);
+    const porDia = r.dias > 0 && r.diasPersona > 0 ? r.diasPersona / r.dias : Math.max(1, r.personas || 1);
+    const faltan = mI ? horasManuales(mI, 1 - pct / 100) * porDia : r.diasPersona * (1 - pct / 100);
+    t.ots.push({ ot, proyecto: p, dias: r.dias, personas: r.personas, diasPersona: faltan, faltanDias: faltan / porDia, avance: pct, manual: r.manual, masTiempo: !!mI, finProduccion: fin, producida: lista });
+    t.diasPersona += faltan;
     t.personas += r.personas;
     if (desde > t.desde) t.desde = desde;
     if (fin && (!t.finProduccion || fin > t.finProduccion)) t.finProduccion = fin;
