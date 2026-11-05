@@ -19,6 +19,7 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { logger } from "../../lib/logger";
 import { hoyArg } from "../../lib/dates";
+import { nombreInstalador } from "../../lib/planInstalacion";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
 const SIN_MIGRACION_154 = "Para confirmar el plan de instalación falta correr la migración 154 en Supabase.";
@@ -66,7 +67,7 @@ export async function GET(request) {
         ]);
         const otros = [...new Set((juntos || []).map((j) => j.empleado_id).filter((id) => id && id !== sesion.empleado_id))];
         const gente = otros.length ? ((await sbGet(`empleados?empresa_id=eq.${e}&id=in.(${otros.join(",")})&select=id,nombre,apodo`, opts)) || []) : [];
-        const nombre = new Map(gente.map((g) => [g.id, g.apodo || g.nombre]));
+        const nombre = new Map(gente.map((g) => [g.id, nombreInstalador(g)]));
         const porOt = new Map((proyectos || []).map((p) => [String(p.ot), p]));
         const dias = mios.map((i) => ({
           ...i,

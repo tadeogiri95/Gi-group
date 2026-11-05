@@ -15,7 +15,7 @@
 // el fin de producción. Cada obra va al primer medio día en que haya gente
 // libre para hacerla seguida.
 import { diasInstalacion, medioDia } from "./instalacionPlan";
-import { normalizar } from "./rutas";
+import { normalizar, buscarDivision } from "./rutas";
 import { diasEntre } from "./semanaObjetivo";
 
 const DIA_MS = 86400000;
@@ -45,6 +45,23 @@ export function trabajaElDia(instalador, fecha, feriados = null) {
   const t = d[DIAS_KEY[diaSemana(fecha)]];
   return !!(t && t.in && t.out && t.in !== t.out);
 }
+
+/**
+ * Los instaladores que sirven para la división del plan (Tadeo, 05/11: los de
+ * Aluminio o Herrería no instalan Muebles). Entran los de esa división y los
+ * que no tienen división cargada; los de otra división quedan afuera.
+ */
+export function instaladoresDeLaDivision(instaladores = [], divisiones = [], division = null) {
+  if (!division) return instaladores || [];
+  return (instaladores || []).filter((g) => {
+    if (!String(g.division || "").trim()) return true;
+    const d = buscarDivision(divisiones, g.division);
+    return !d || d.id === division.id;
+  });
+}
+
+/** Nombre y apellido para el Gantt y Mis instalaciones (no el apodo). */
+export const nombreInstalador = (g) => String(g?.nombre || "").trim() || String(g?.apodo || "").trim() || "Instalador";
 
 /** Clave de la obra: cliente + obra sin tildes ni mayúsculas; sin obra, la OT sola. */
 export function claveObra(p) {
