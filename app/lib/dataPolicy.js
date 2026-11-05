@@ -265,6 +265,9 @@ export function validarPatch(tabla, body, sesion, { comoDueno = sesion?.rol === 
     if (d !== undefined && d !== null && !(typeof d === "number" && d >= 0.5 && d <= 200 && Number.isInteger(d * 2))) return { status: 400, error: "Días de instalación inválidos" };
     if (p !== undefined && p !== null && !(Number.isInteger(p) && p >= 1 && p <= 20)) return { status: 400, error: "Instaladores inválidos" };
     if (pr !== undefined && pr !== null && !(Number.isInteger(pr) && pr >= 1 && pr <= 99999)) return { status: 400, error: "Prioridad de instalación inválida" };
+    // 157: fecha elegida a mano en el Gantt de instalación ("AAAA-MM-DD"), o null
+    const f = body.instalacion_desde;
+    if (f !== undefined && f !== null && !(typeof f === "string" && /^\d{4}-\d{2}-\d{2}$/.test(f) && !Number.isNaN(Date.parse(`${f}T00:00:00Z`)))) return { status: 400, error: "Fecha de instalación inválida" };
   }
   // Retrabajo (147): solo se marca terminado
   if (tabla === "retrabajos_ot") {

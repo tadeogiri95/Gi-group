@@ -22,7 +22,7 @@ import { otsEnPausa } from "../lib/pausaOt";
 import { normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { etapasDelPlan } from "../lib/ganttPlan";
 import { feriadosDe } from "../lib/secuencia";
-import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento, mismoPlan } from "../lib/planInstalacion";
+import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento, mismoPlan, fechaArrastrada } from "../lib/planInstalacion";
 import { textoDias } from "../lib/instalacionPlan";
 import NombreOt from "./NombreOt";
 import { Chip } from "./ui";
@@ -80,6 +80,11 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
   }, [vuelta]);
   // Prioridad de instalación (153) cambiada acá, antes de que vuelvan a leerse las OT
   const [prioLocal, setPrioLocal] = useState(() => new Map());
+  // Día elegido arrastrando (157), antes de que vuelvan a leerse las OT
+  const [fijaLocal, setFijaLocal] = useState(() => new Map());
+  // { clave, x0, dx }: la obra que se está arrastrando y cuánto se movió
+  const [arrastre, setArrastre] = useState(null);
+  const recienArrastrada = useRef(false);
   const [aviso, setAviso] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [verOrden, setVerOrden] = useState(false);
@@ -120,7 +125,8 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
     const params = normalizarParametros(vivo.cfgValor);
     const division = divisionPlan(divisiones, params.division_id);
     const deLaDivision = proyectos.filter((p) => p.estado !== "cerrado" && (!division || buscarDivision(divisiones, p.division)?.id === division.id))
-      .map((p) => (prioLocal.has(String(p.ot)) ? { ...p, prioridad_instalacion: prioLocal.get(String(p.ot)) } : p));
+      .map((p) => (prioLocal.has(String(p.ot)) ? { ...p, prioridad_instalacion: prioLocal.get(String(p.ot)) } : p))
+      .map((p) => (fijaLocal.has(String(p.ot)) ? { ...p, instalacion_desde: fijaLocal.get(String(p.ot)) } : p));
     const finProduccion = new Map();
     const producidas = new Set();
     for (const r of vivo.renglones || []) {
@@ -142,7 +148,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
     });
     const obras = conCorrimiento(planInstalacion(trabajos, datos.instaladores, { hoy, feriados }), finConfirmadoPorOt(confirmados.planes));
     return { obras, sinProduccion, sinDato, feriados, divisionId: division?.id || null };
-  }, [vivo, datos, proyectos, divisiones, etapas, avanceHoras, pausas, hoy, confirmados, prioLocal]);
+  }, [vivo, datos, proyectos, divisiones, etapas, avanceHoras, pausas, hoy, confirmados, prioLocal, fijaLocal]);
 
   if (!calculo) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
   const { obras, sinProduccion, sinDato, feriados, divisionId } = calculo;
@@ -193,6 +199,49 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
     if (j < 0 || j >= lista.length) return;
     [lista[i], lista[j]] = [lista[j], lista[i]];
     guardarOrden(lista);
+  };
+  // Arrastrar una obra a otro día (Tadeo, 05/11): queda "instalar desde" en
+  // sus OT; nunca antes del día hábil siguiente al fin de producción
+  const fijar = async (o, fecha) => {
+    const ids = o.ots.map((t) => t.proyecto?.id).filter((id) => id != null);
+    if (!ids.length) return;
+    const antes = fijaLocal;
+    setFijaLocal(new Map([...fijaLocal, ...o.ots.map((t) => [String(t.ot), fecha])]));
+    setOcupado(true);
+    try {
+      await sb.patch(`proyectos?id=in.(${ids.join(",")})`, { instalacion_desde: fecha });
+    } catch (e) {
+      setFijaLocal(antes);
+      setAviso(/instalacion_desde/.test(String(e.message)) ? "Para mover obras falta correr la migración 157 en Supabase." : `No se pudo mover la obra: ${e.message}`);
+    } finally {
+      setOcupado(false);
+    }
+  };
+  const soltar = (o, dias) => {
+    if (!dias || o.sinLugar) return;
+    const { fecha, ajustada } = fechaArrastrada(o, sumarDias(o.inicio, dias));
+    setAviso(ajustada
+      ? `La OT ${o.ots.map((t) => t.ot).join(" + ")} no se puede instalar antes del ${fechaCorta(fecha)} (el día hábil siguiente a que termina producción). Quedó desde ese día.`
+      : `OT ${o.ots.map((t) => t.ot).join(" + ")}: se instala desde el ${fechaCorta(fecha)} (o el primer día con instaladores libres).`);
+    fijar(o, fecha);
+  };
+  const quitarFecha = (o) => fijar(o, null).then(() => setAviso(`OT ${o.ots.map((t) => t.ot).join(" + ")}: vuelve a la fecha automática.`));
+  const empezarArrastre = (e, o) => {
+    if (!puedeConfirmar || ocupado || o.sinLugar) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setArrastre({ clave: o.clave, x0: e.clientX, dx: 0 });
+  };
+  const moverArrastre = (e) => {
+    if (!arrastre) return;
+    setArrastre({ ...arrastre, dx: e.clientX - arrastre.x0 });
+  };
+  const soltarArrastre = (o) => {
+    if (!arrastre) return;
+    const dias = Math.round(arrastre.dx / px);
+    if (Math.abs(arrastre.dx) > 4) recienArrastrada.current = true; // que no abra el detalle
+    setArrastre(null);
+    soltar(o, dias);
   };
   const quitarOrden = async () => {
     const ids = obras.flatMap((o) => o.ots.map((t) => t.proyecto?.id)).filter((id) => id != null);
@@ -277,12 +326,15 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
       {aviso && <div role="status" className="text-[14px] font-bold text-gypi-text mb-2">{aviso}</div>}
       {puedeConfirmar && verOrden && obras.length > 0 && (
         <section aria-label="Orden de las obras" className="g-card mb-2">
-          <div className="text-[13px] text-gypi-dim mb-2">Las de arriba se instalan primero. El orden queda guardado en cada OT; las obras nuevas van después, por fecha de entrega.</div>
+          <div className="text-[13px] text-gypi-dim mb-2">Las de arriba se instalan primero. El orden queda guardado en cada OT; las obras nuevas van después, por fecha de entrega. 📌 = la moviste a un día arrastrándola; tocá ✕ para que vuelva a la fecha automática.</div>
           <ol className="list-none m-0 p-0 flex flex-col gap-1">
             {obras.map((o, i) => (
               <li key={o.clave} className="flex items-center gap-2 text-[14px]">
                 <span className="w-6 text-gypi-dim text-right">{i + 1}</span>
                 <span className="flex-1 min-w-0 truncate" title={textoObra(o)}>{textoObra(o)}</span>
+                {o.fijada && (
+                  <button type="button" disabled={ocupado} onClick={() => quitarFecha(o)} aria-label={`Quitar la fecha elegida de la OT ${o.ots[0].ot}`} className="g-btn g-btn-secondary">📌 {fechaCorta(o.fijada)} ✕</button>
+                )}
                 <button type="button" aria-label={`Subir la obra de la OT ${o.ots[0].ot}`} disabled={ocupado || i === 0} onClick={() => mover(i, -1)} className="g-btn g-btn-secondary min-w-11">▲</button>
                 <button type="button" aria-label={`Bajar la obra de la OT ${o.ots[0].ot}`} disabled={ocupado || i === obras.length - 1} onClick={() => mover(i, 1)} className="g-btn g-btn-secondary min-w-11">▼</button>
               </li>
@@ -326,11 +378,14 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
               const sub = [partesOt(p0).cliente, partesOt(p0).proyecto].filter(Boolean).join(" · ");
               const desc = descripcionObra(o);
               const equipo = o.equipo.map((id) => nombres.get(id) || "Instalador").join(", ");
+              const movible = puedeConfirmar && !o.sinLugar;
+              const moviendo = arrastre?.clave === o.clave;
+              const destino = moviendo && o.inicio ? fechaArrastrada(o, sumarDias(o.inicio, Math.round(arrastre.dx / px))) : null;
               const contorno = o.tarde ? "stroke-gypi-red" : o.poco ? "stroke-proc-margen" : "stroke-none";
-              const texto = `OT ${titulo}${sub ? `, ${sub}` : ""}${desc ? `, ${desc}` : ""}: ${o.sinLugar ? "sin lugar en el plan" : `del ${fechaCorta(o.inicio)} al ${fechaCorta(o.fin)}, ${textoDias(o.dias)} con ${o.personas} ${o.personas === 1 ? "instalador" : "instaladores"}`}${o.tarde ? `, termina ${o.diasTarde} días después de la entrega` : ""}${o.esperaProduccion ? ", espera que termine producción" : ""}${o.diasCorrido > 0 ? `, se corrió ${o.diasCorrido} días del plan confirmado` : ""}`;
+              const texto = `OT ${titulo}${sub ? `, ${sub}` : ""}${desc ? `, ${desc}` : ""}: ${o.sinLugar ? "sin lugar en el plan" : `del ${fechaCorta(o.inicio)} al ${fechaCorta(o.fin)}, ${textoDias(o.dias)} con ${o.personas} ${o.personas === 1 ? "instalador" : "instaladores"}`}${o.tarde ? `, termina ${o.diasTarde} días después de la entrega` : ""}${o.esperaProduccion ? ", espera que termine producción" : ""}${o.diasCorrido > 0 ? `, se corrió ${o.diasCorrido} días del plan confirmado` : ""}${o.fijada ? `, movida a mano desde el ${fechaCorta(o.fijada)}` : ""}`;
               return (
                 <g key={o.clave} role="button" tabIndex={0} aria-label={texto} className="cursor-pointer"
-                  onClick={() => onVerDetalle?.(p0)} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p0); }}>
+                  onClick={() => { if (recienArrastrada.current) { recienArrastrada.current = false; return; } onVerDetalle?.(p0); }} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p0); }}>
                   <line x1={0} x2={ETIQUETAS + ancho} y1={y + FILA} y2={y + FILA} className="stroke-gypi-border" strokeWidth={0.5} />
                   <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{titulo.length > 28 ? `${titulo.slice(0, 27)}…` : titulo}{o.enCurso ? " · en obra" : ""}</text>
                   <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || "").slice(0, 38)}</text>
@@ -338,14 +393,24 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
                   {o.esperaProduccion && o.inicio > desde && (
                     <rect x={ETIQUETAS + 2} y={y + 15} width={Math.max(0, Math.min(ancho, x(o.inicio)) - 4)} height={4} rx={2} className="fill-gypi-amber" opacity={0.6} />
                   )}
+                  <g data-barras={o.clave} transform={moviendo ? `translate(${arrastre.dx} 0)` : undefined} opacity={moviendo ? 0.75 : 1}
+                    className={movible ? "cursor-grab touch-none" : undefined}
+                    onPointerDown={movible ? (e) => empezarArrastre(e, o) : undefined} onPointerMove={movible ? moverArrastre : undefined}
+                    onPointerUp={movible ? () => soltarArrastre(o) : undefined} onPointerCancel={movible ? () => setArrastre(null) : undefined}>
                   {seguidos(tramos).map(([a, b]) => (
                     <rect key={`${a.fecha}|${a.medio}`} x={ETIQUETAS + x(a.fecha) + (a.medio ? px / 2 : 0) + 1} y={y + 7}
                       width={x(b.fecha) + (b.medio ? px : px / 2) - x(a.fecha) - (a.medio ? px / 2 : 0) - 2} height={FILA - 14} rx={4}
                       className={`fill-gypi-green ${contorno}`} strokeWidth={o.tarde || o.poco ? 2.5 : 0} strokeDasharray={o.poco && !o.tarde ? "4 2" : undefined} />
                   ))}
+                  </g>
+                  {moviendo && destino && (
+                    <text x={ETIQUETAS + Math.max(0, x(o.inicio) + arrastre.dx)} y={y + 5} className={`text-[12px] font-bold ${destino.ajustada ? "fill-gypi-red" : "fill-gypi-text"}`}>
+                      → {fechaCorta(destino.fecha)}{destino.ajustada ? " (antes no: termina producción)" : ""}
+                    </text>
+                  )}
                   {finVisible && (
                     <text x={ETIQUETAS + x(o.fin) + (o.finMedio ? px : px / 2) + 4} y={y + FILA / 2 + 4} className={`text-[12px] ${o.tarde ? "fill-gypi-red font-bold" : "fill-gypi-text"}`}>
-                      {textoDias(o.dias)} · {equipo}{o.tarde ? ` · ⚠ ${o.diasTarde} d tarde` : ""}{o.diasCorrido > 0 ? ` · ↪ ${o.diasCorrido} d` : ""}
+                      {textoDias(o.dias)} · {equipo}{o.tarde ? ` · ⚠ ${o.diasTarde} d tarde` : ""}{o.diasCorrido > 0 ? ` · ↪ ${o.diasCorrido} d` : ""}{o.fijada ? " · 📌" : ""}
                     </text>
                   )}
                   {o.entrega && enVentana(o.entrega) && (
@@ -377,7 +442,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
           {obras.some((o) => o.sinLugar) && <div className="text-gypi-red text-[13px] mt-1">Hay obras que no entran en los próximos 400 días con los instaladores de ahora.</div>}
         </div>
       )}
-      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: cada OT entra el día hábil siguiente a que termina su producción (si producción se atrasa, la instalación se corre sola). Días de obra = gabinetes ÷ gabinetes por persona por día ÷ instaladores, de a medio día. Las OT de la misma obra van juntas y se reparten la gente. La línea roja es el fin de la semana de entrega. Los días grises no trabaja ningún instalador (o son feriados). Tocá una obra para ver el detalle.</p>
+      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: cada OT entra el día hábil siguiente a que termina su producción (si producción se atrasa, la instalación se corre sola). Días de obra = gabinetes ÷ gabinetes por persona por día ÷ instaladores, de a medio día. Las OT de la misma obra van juntas y se reparten la gente. La línea roja es el fin de la semana de entrega. Los días grises no trabaja ningún instalador (o son feriados). Tocá una obra para ver el detalle.{puedeConfirmar ? " Para cambiarla de día, tomá su barra y arrastrala: nunca antes del día hábil siguiente a que termina producción." : ""}</p>
     </section>
   );
 }
