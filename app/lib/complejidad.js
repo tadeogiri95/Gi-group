@@ -16,7 +16,7 @@
 // comparado contra las demás OT de la empresa (percentil). Dentro de cada tipo
 // de proyecto: el 20 % de las OT con más puntaje es A, el 50 % siguiente B y
 // el 30 % restante C. Un tipo con pocas OT usa los cortes de todas las OT.
-// La clase elegida a mano (proyectos.clase_complejidad, 158) manda.
+// La clase elegida a mano (proyectos.clase_complejidad, 159) manda.
 import { tipoDeOt } from "./tipoProyecto";
 
 /* ─── Etapas del Plan de trabajo ─── */
@@ -92,7 +92,7 @@ export const CORTE_B = 0.7;
 /** Un tipo con menos OT que esto usa los cortes de todas las OT. */
 export const MIN_OT_POR_TIPO = 10;
 export const CLASE_SIN_DATOS = "B";
-export const AVISO_MIGRACION_158 = "Para cambiar la clase a mano falta correr la migración 158 en Supabase.";
+export const AVISO_MIGRACION_159 = "Para cambiar la clase a mano falta correr la migración 159 en Supabase.";
 
 /** Qué es cada renglón de necesidades, por el nombre: canto, placa o componente. */
 export function categoriaArticulo(nombre) {

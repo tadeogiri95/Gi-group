@@ -1,8 +1,8 @@
 // app/lib/syncComplejidad.js — Recalcula la clase A/B/C automática de las OT
-// de una empresa (parte 46, migración 158; cálculo en app/lib/complejidad.js).
+// de una empresa (parte 46, migración 159; cálculo en app/lib/complejidad.js).
 // Corre al final de la sincronización del Plan de trabajo (cambian placas y
 // cantos preliminares) y de la planilla MRP (cambian las necesidades). Solo
-// escribe las OT cuya clase cambió. Sin la migración 158 no hace nada.
+// escribe las OT cuya clase cambió. Sin la migración 159 no hace nada.
 import { logger } from "./logger";
 import { clasesAutomaticas, cambiosClase } from "./complejidad";
 
@@ -30,7 +30,7 @@ export async function recalcularClases(empresaId, fetcher) {
   try {
     proyectos = await todas(fetcher, `proyectos?empresa_id=eq.${empresaId}&select=ot,descripcion,tipo_proyecto,placas,fondos,metros_canto,clase_auto&order=ot`);
   } catch (e) {
-    // Falta la 158 (clase_auto) o la 136/139: se sigue sin clase
+    // Falta la 159 (clase_auto) o la 136/139: se sigue sin clase
     return { omitido: String(e?.message || e).slice(0, 200) };
   }
   let necesidades = [];

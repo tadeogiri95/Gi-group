@@ -110,7 +110,7 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
   }
 
   const nec = urls.necesidades ? await syncNecesidades(empresaId, urls.necesidades, ahora, sesion) : { necesidades: 0, avisoNecesidades: null };
-  // Clase A/B/C de las OT (158): las necesidades nuevas pueden cambiarla
+  // Clase A/B/C de las OT (159): las necesidades nuevas pueden cambiarla
   if (nec.necesidades > 0) await recalcularClases(empresaId, (path, opts) => sbFetch(path, opts, sesion));
   const tab = urls.tablas ? await syncTablas(empresaId, urls.tablas, ahora, sesion) : { avisoTablas: null };
 

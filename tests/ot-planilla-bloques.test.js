@@ -94,7 +94,7 @@ test("planilla real — lee cliente, obra y descripción", () => {
     ot: "M-7495", cliente: "SICILIANO ROMINA", obra: "CASA REMODELACION",
     proyecto: "7495", division: "MUEBLES", descripcion: "MUEBLE DIVISOR",
     fecha_entrega: "2026-05-01", cantidad: 1, terminado_planilla: null, semana_objetivo: null,
-    // Etapas de Diseño del Plan (158): INFO PROY hecha por GR, N.P vacía
+    // Etapas de Diseño del Plan (159): INFO PROY hecha por GR, N.P vacía
     etapas_diseno: { info: { e: "hecho", q: "GR" }, np: { e: "falta" } },
   }]);
 });

@@ -204,7 +204,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
           </section>
         )}
 
-        {/* 📐 Diseño y Técnica (158): etapas del Plan y clase A/B/C; gestión elige la clase */}
+        {/* 📐 Diseño y Técnica (159): etapas del Plan y clase A/B/C; gestión elige la clase */}
         <DisenoTecnicaOt proyecto={proyecto} empresaId={empresaId} puedeEditar={puedeCambiarSemana} onGuardado={onProyectoActualizado} />
 
         {/* 🔧 Instalación (153): días de obra para el plan de instalación; gestión los corrige */}

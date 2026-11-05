@@ -164,7 +164,7 @@ export function parseCsvProyectos(text) {
     .filter((m) => m.i >= 0);
   // PRECIO en pesos (142): título exacto; no va a proyectos sino a precios_ot
   const iPrecio = headers.findIndex((h) => h.trim() === "precio");
-  // Etapas de Diseño (L-P) y Técnica (Q, R, T) (158): solo título exacto
+  // Etapas de Diseño (L-P) y Técnica (Q, R, T) (159): solo título exacto
   const iEtapas = columnasEtapas(headers);
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);

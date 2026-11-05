@@ -1,4 +1,4 @@
-// tests/diseno-tecnica.test.jsx — Diseño y Técnica, parte 46 (migración 158;
+// tests/diseno-tecnica.test.jsx — Diseño y Técnica, parte 46 (migración 159;
 // app/lib/complejidad.js): etapas DIS…PDF del Plan de trabajo, clase A/B/C de
 // cada OT dentro de su tipo de proyecto con cantidades totales, y la clase a mano.
 import "./helpers/domSetup.js";
@@ -167,7 +167,7 @@ test("recalcularClases — lee OT y necesidades y escribe solo lo que cambió", 
   assert.equal(patches.length, 3);
   assert.ok(patches.every((p) => p.path.startsWith("proyectos?empresa_id=eq.emp1&ot=in.(")));
   assert.deepEqual(patches.map((p) => JSON.parse(p.opts.body).clase_auto).sort(), ["A", "B", "C"]);
-  // Sin la migración 158 no hace nada ni corta la sincronización
+  // Sin la migración 159 no hace nada ni corta la sincronización
   const sin = await recalcularClases("emp1", async () => { throw new Error("column proyectos.clase_auto does not exist"); });
   assert.ok(sin.omitido);
 });
@@ -189,14 +189,14 @@ test("PATCH de proyectos — clase a mano solo A, B, C o vacía", () => {
   assert.equal(validarPatch("proyectos", { clase_complejidad: "D" }, { rol: "gerencial" })?.status, 400);
 });
 
-test("Migración 158 — columnas, chequeos y registro en el chequeo de la base", () => {
-  const sql = readFileSync(new URL("../supabase/migrations/158_diseno_tecnica_clase.sql", import.meta.url), "utf8");
+test("Migración 159 — columnas, chequeos y registro en el chequeo de la base", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/159_diseno_tecnica_clase.sql", import.meta.url), "utf8");
   assert.match(sql, /do \$mig\$/);
   assert.match(sql, /add column if not exists etapas_diseno jsonb/);
   assert.match(sql, /add column if not exists clase_auto text/);
   assert.match(sql, /add column if not exists clase_complejidad text/);
   assert.match(sql, /clase_complejidad in \('A', 'B', 'C'\)/);
-  const m = MIGRACIONES.find((x) => x.n === 158);
+  const m = MIGRACIONES.find((x) => x.n === 159);
   assert.deepEqual(m.tablas, { proyectos: ["etapas_diseno", "clase_auto", "clase_complejidad"] });
 });
 

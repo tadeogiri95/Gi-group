@@ -8,7 +8,7 @@ export const COLUMNAS_OT = [
   { id: "cliente", label: "Cliente / proyecto", filtro: "texto" },
   { id: "estado", label: "Estado", filtro: "lista" },
   { id: "avance", label: "Avance", filtro: "rango" },
-  // Clase de complejidad A/B/C dentro del tipo de proyecto (158)
+  // Clase de complejidad A/B/C dentro del tipo de proyecto (159)
   { id: "clase", label: "Clase", filtro: "clase" },
   { id: "entrega", label: "Entrega", filtro: "texto" },
   { id: "valor", label: "Valor", filtro: "rango_valor", soloPrecios: true },

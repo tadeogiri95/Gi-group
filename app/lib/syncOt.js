@@ -171,7 +171,7 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     body: JSON.stringify(batch.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !omitidas.has(k))))),
   }, sesion);
-  // Etapas de Diseño y Técnica (158): si alguna hoja trae esas columnas, van
+  // Etapas de Diseño y Técnica (159): si alguna hoja trae esas columnas, van
   // en todas las filas (PostgREST pide las mismas claves en todo el lote)
   const conEtapas = filas.some((r) => "etapas_diseno" in r);
   for (let i = 0; i < filas.length; i += BATCH) {
@@ -283,7 +283,7 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
     }
   }
 
-  // Clase de complejidad A/B/C de cada OT (158): con las placas recién
+  // Clase de complejidad A/B/C de cada OT (159): con las placas recién
   // sincronizadas y las necesidades del MRP. Sin la migración no hace nada.
   await recalcularClases(empresaId, (path, opts) => sbFetch(path, opts, sesion));
 

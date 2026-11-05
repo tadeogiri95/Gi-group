@@ -67,7 +67,7 @@ test("sync de OT con RLS_RUTAS=on — config y upsert con el pase del usuario", 
   assert.equal(res.status, 200);
   assert.equal((await res.json()).procesados, 2);
   // GET de la planilla, de cómo cuenta las semanas, de las fechas objetivo que ya tenían (135) y de las semanas cambiadas en Gypi (144);
-  // al final, el GET de las OT para recalcular la clase A/B/C (158), también con el pase del usuario
+  // al final, el GET de las OT para recalcular la clase A/B/C (159), también con el pase del usuario
   assert.deepEqual(capturas.map((c) => c.method), ["GET", "GET", "GET", "GET", "POST", "PATCH", "PATCH", "GET", "PATCH"]);
   for (const c of capturas) assert.equal(await eidDe(c.headers), EMPRESA_ID, `${c.method} ${c.url}`);
   assert.equal(capturas[4].headers.Prefer, "resolution=merge-duplicates,return=minimal");

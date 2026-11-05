@@ -2,10 +2,10 @@
 // 📐 Diseño y Técnica en el Detalle de la OT (parte 46; app/lib/complejidad.js):
 // qué etapas de Diseño y de Técnica están hechas según el Nuevo Plan de
 // trabajo (y quién las hizo), y la clase de complejidad A/B/C de la OT dentro
-// de su tipo de proyecto. Gestión puede elegir la clase a mano (migración 158).
+// de su tipo de proyecto. Gestión puede elegir la clase a mano (migración 159).
 import { useEffect, useState } from "react";
 import { sb } from "../lib/supabase";
-import { AREAS, AVISO_MIGRACION_158, CLASES, ETAPAS_DISENO, avanceArea, cantidadesOt, claseDeOt, totalesNecesidades } from "../lib/complejidad";
+import { AREAS, AVISO_MIGRACION_159, CLASES, ETAPAS_DISENO, avanceArea, cantidadesOt, claseDeOt, totalesNecesidades } from "../lib/complejidad";
 import { tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 
 const fmt = (n) => String(Math.round(n * 10) / 10).replace(".", ",");
@@ -58,7 +58,7 @@ export default function DisenoTecnicaOt({ proyecto, empresaId, puedeEditar = fal
       setPropio({ clase_complejidad: valor });
       onGuardado?.({ id: proyecto.id, clase_complejidad: valor });
     } catch (e) {
-      setAviso(/clase_complejidad/.test(String(e.message)) ? AVISO_MIGRACION_158 : `No se pudo guardar: ${e.message}`);
+      setAviso(/clase_complejidad/.test(String(e.message)) ? AVISO_MIGRACION_159 : `No se pudo guardar: ${e.message}`);
     } finally {
       setGuardando(false);
     }

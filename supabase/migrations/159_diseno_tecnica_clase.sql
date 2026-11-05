@@ -1,4 +1,4 @@
--- 158: etapas de Diseño y Técnica de cada OT y su clase de complejidad A/B/C
+-- 159: etapas de Diseño y Técnica de cada OT y su clase de complejidad A/B/C
 -- (Gantt de Diseño y Técnica, parte 46; diseño en
 -- notes/diseno-gantt-diseno-tecnica.md; cálculo en app/lib/complejidad.js)
 --
