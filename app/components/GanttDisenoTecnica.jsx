@@ -16,7 +16,7 @@ import { otsEnPausa } from "../lib/pausaOt";
 import { CLAVE_PLANIFICACION, normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { feriadosDe } from "../lib/secuencia";
 import { esDiaHabil } from "../lib/planInstalacion";
-import { planDisenoTecnica, finDelPlan, barrasSeguidas } from "../lib/planDisenoTecnica";
+import { planDisenoTecnica, finDelPlan, barrasSeguidas, esperaTecnica, limiteTecnica } from "../lib/planDisenoTecnica";
 import { textoDiasHabiles, textoHoras } from "../lib/disenoTecnicaPlan";
 import { nombreTipo } from "../lib/tipoProyecto";
 import { partesOt } from "../lib/nombreOt";
@@ -32,12 +32,23 @@ const PX = 40;
 const SIN_LISTA = [];
 
 /** Texto de un renglón para lectores de pantalla. */
-export function textoRenglon(r) {
+export function textoRenglon(r, limite = null) {
   const partes = [`OT ${r.ot}`, `clase ${r.clase}`];
   if (r.diseno) partes.push(`Diseño del ${fechaCorta(r.diseno.inicio)} al ${fechaCorta(r.diseno.fin)} (${textoDiasHabiles(r.diseno.dias)}${r.arquitectaDiseno ? `, ${r.arquitectaDiseno}` : ""})`);
   partes.push(notaTecnica(r, true));
+  if (limite) partes.push(textoLimite(limite));
   return partes.filter(Boolean).join(", ");
 }
+
+/** "fecha límite de Técnica 20/11" con cómo viene. */
+export function textoLimite(l) {
+  const base = `fecha límite de Técnica ${fechaCorta(l.limite)}`;
+  if (l.estado === "rojo") return `${base}, ⚠ ${l.diasTarde} ${l.diasTarde === 1 ? "día hábil" : "días hábiles"} tarde`;
+  if (l.estado === "amarillo") return `${base}, poco margen`;
+  return base;
+}
+
+const CONTORNO = { rojo: "stroke-gypi-red", amarillo: "stroke-proc-margen", verde: "stroke-gypi-green" };
 
 /** Lo que se escribe al final de la barra de Técnica (o en lugar de ella). */
 function notaTecnica(r, largo = false) {
@@ -47,13 +58,15 @@ function notaTecnica(r, largo = false) {
   return largo ? "Técnica terminada" : "";
 }
 
-export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_LISTA, pausas = SIN_LISTA, empresaId = null, onVerDetalle }) {
+/**
+ * Plan de Diseño y Técnica de las OT (lo usan este Gantt y el de Producción,
+ * que espera el fin de Técnica, parte 49). null mientras carga.
+ */
+export function usePlanDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_LISTA, pausas = SIN_LISTA, empresaId = null, omitir = false }) {
   const hoy = hoyArg();
   const [datos, setDatos] = useState(null);
-  const scrollRef = useRef(null);
-  const medir = useCallback((el) => { scrollRef.current = el; }, []);
-
   useEffect(() => {
+    if (omitir) return;
     let vivo = true;
     const e = empresaId ? `empresa_id=eq.${empresaId}&` : "";
     Promise.all([
@@ -63,9 +76,8 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
       if (vivo) setDatos({ params: normalizarParametros(cfg?.[0]?.valor), personal: emp?.data || [] });
     });
     return () => { vivo = false; };
-  }, [empresaId]);
-
-  const calculo = useMemo(() => {
+  }, [empresaId, omitir]);
+  return useMemo(() => {
     if (!datos) return null;
     const { params, personal } = datos;
     const division = divisionPlan(divisiones, params.division_id);
@@ -73,8 +85,32 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
       && (!division || buscarDivision(divisiones, p.division)?.id === division.id));
     const feriados = feriadosDe(params);
     const plan = planDisenoTecnica({ proyectos: abiertas, dt: params.diseno_tecnica, personal, hoy, feriados, pausadas: otsEnPausa(pausas) });
-    return { ...plan, feriados, dt: params.diseno_tecnica };
+    return { ...plan, feriados, dt: params.diseno_tecnica, espera: esperaTecnica(plan.renglones, feriados) };
   }, [datos, proyectos, divisiones, pausas, hoy]);
+}
+
+/**
+ * @param {object} props
+ * @param {object} [props.calculo] usePlanDisenoTecnica(...) del Gantt de OT; sin él, lo arma solo
+ * @param {{ renglones: object[] }|null} [props.vivo] plan vivo de Producción (para la fecha límite de Técnica)
+ */
+export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_LISTA, pausas = SIN_LISTA, empresaId = null, onVerDetalle, calculo: calculoProp = null, vivo = null }) {
+  const hoy = hoyArg();
+  const scrollRef = useRef(null);
+  const medir = useCallback((el) => { scrollRef.current = el; }, []);
+  const propio = usePlanDisenoTecnica({ proyectos, divisiones, pausas, empresaId, omitir: !!calculoProp });
+  const calculo = calculoProp || propio;
+  // Fecha límite de Técnica de cada OT con lo que dura su Producción en el plan vivo (parte 49)
+  const limites = useMemo(() => {
+    const m = new Map();
+    if (!calculo || !vivo?.renglones) return m;
+    const prod = new Map(vivo.renglones.map((r) => [String(r.ot), r]));
+    for (const r of calculo.renglones) {
+      const l = limiteTecnica(prod.get(r.ot), r.tecnica?.fin || null, calculo.feriados);
+      if (l) m.set(r.ot, l);
+    }
+    return m;
+  }, [calculo, vivo]);
 
   if (!calculo) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
   const { renglones, sinDato, sinEtapas, terminadas, arquitectas, feriados } = calculo;
@@ -94,11 +130,15 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
     return { ...a, ots: suyas.length, hasta: suyas.reduce((m, r) => (r.tecnica.fin > m ? r.tecnica.fin : m), "") };
   });
 
-  const barra = (tramos, y, alto, clase, key) => barrasSeguidas(tramos).map((b) => {
+  const barra = (tramos, y, alto, clase, key, estado = null) => barrasSeguidas(tramos).map((b) => {
     const x0 = ETIQUETAS + x(b.desde.fecha) + b.desde.desde * PX;
     const x1 = ETIQUETAS + x(b.hasta.fecha) + b.hasta.hasta * PX;
-    return <rect key={`${key}|${b.desde.fecha}|${b.desde.desde}`} data-barra={key} x={x0 + 1} y={y} width={Math.max(2, x1 - x0 - 2)} height={alto} rx={3} className={clase} />;
+    return <rect key={`${key}|${b.desde.fecha}|${b.desde.desde}`} data-barra={key} data-estado={estado || undefined} x={x0 + 1} y={y} width={Math.max(2, x1 - x0 - 2)} height={alto} rx={3}
+      className={`${clase} ${estado ? CONTORNO[estado] : ""}`} strokeWidth={estado ? 2.5 : 0} strokeDasharray={estado === "amarillo" ? "4 2" : undefined} />;
   });
+  const conLimite = [...limites.values()];
+  const rojas = conLimite.filter((l) => l.estado === "rojo").length;
+  const amarillas = conLimite.filter((l) => l.estado === "amarillo").length;
 
   return (
     <section aria-label="Gantt de Diseño y Técnica">
@@ -110,6 +150,11 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[15px] text-gypi-text mb-2" aria-label="Colores del Gantt de Diseño y Técnica">
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-area-diseno" />Diseño</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-area-tecnica" />Técnica</span>
+        {vivo && <>
+          <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-green" />🟢 Llega a su fecha límite</span>
+          <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-dashed border-proc-margen" />🟡 Poco margen {amarillas}</span>
+          <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={rojas ? "text-gypi-red font-bold" : ""}>🔴 Termina después de su fecha límite {rojas}</span></span>
+        </>}
       </div>
 
       {carga.length > 0 && (
@@ -152,16 +197,20 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
               const sub = [partesOt(p).cliente, partesOt(p).proyecto].filter(Boolean).join(" · ");
               const fin = r.tecnica?.fin || r.diseno?.fin;
               const finFrac = r.tecnica?.tramos?.at(-1)?.hasta ?? r.diseno?.tramos?.at(-1)?.hasta ?? 1;
-              const nota = notaTecnica(r);
+              const lim = limites.get(r.ot) || null;
+              const nota = [notaTecnica(r), lim && r.tecnica?.inicio ? `límite ${fechaCorta(lim.limite)}${lim.estado === "rojo" ? ` · ⚠ ${lim.diasTarde} d tarde` : ""}` : null].filter(Boolean).join(" · ");
               return (
-                <g key={r.ot} role="button" tabIndex={0} aria-label={textoRenglon(r)} className="cursor-pointer"
+                <g key={r.ot} role="button" tabIndex={0} aria-label={textoRenglon(r, lim)} className="cursor-pointer"
                   onClick={() => onVerDetalle?.(p)} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p); }}>
                   <line x1={0} x2={ETIQUETAS + ancho} y1={y + FILA} y2={y + FILA} className="stroke-gypi-border" strokeWidth={0.5} />
                   <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{r.ot} · {r.clase}</text>
                   <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || nombreTipo(r.tipo)).slice(0, 38)}</text>
                   <text x={8} y={y + 48} className="fill-gypi-text text-[12px] font-semibold">{(partesOt(p).descripcion || "").slice(0, 38)}</text>
                   {r.diseno && barra(r.diseno.tramos, y + 8, 18, "fill-area-diseno", `diseno-${r.ot}`)}
-                  {r.tecnica?.tramos?.length > 0 && barra(r.tecnica.tramos, y + 30, 18, "fill-area-tecnica", `tecnica-${r.ot}`)}
+                  {r.tecnica?.tramos?.length > 0 && barra(r.tecnica.tramos, y + 30, 18, "fill-area-tecnica", `tecnica-${r.ot}`, lim?.estado || null)}
+                  {lim && lim.limite >= hoy && lim.limite < sumarDias(hoy, totalDias) && (
+                    <line data-limite={r.ot} x1={ETIQUETAS + x(lim.limite) + PX} x2={ETIQUETAS + x(lim.limite) + PX} y1={y + 27} y2={y + 51} className="stroke-gypi-red" strokeWidth={2} />
+                  )}
                   {fin && nota && (
                     <text x={ETIQUETAS + x(fin) + finFrac * PX + 4} y={y + 43} className="fill-gypi-text text-[12px]">{nota}</text>
                   )}
@@ -190,7 +239,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
           {sinEtapas > 0 && <div className="text-gypi-dim text-[13px]">{sinEtapas === 1 ? "1 OT no tiene" : `${sinEtapas} OT no tienen`} las columnas DIS a PDF en el Plan de trabajo: no entran.</div>}
         </div>
       )}
-      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el de la prioridad de Producción y después la semana de entrega. Tocá una OT para ver su detalle.</p>
+      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el de la prioridad de Producción y después la semana de entrega. La línea roja es la fecha límite de Técnica: el último día en que puede terminar para que Producción, con lo que dura en su plan, llegue a su fecha límite. Producción no arranca una OT hasta el día hábil siguiente a que termina su Técnica, salvo que EXCEL ya esté hecho (arranca con aviso). Tocá una OT para ver su detalle.</p>
     </section>
   );
 }

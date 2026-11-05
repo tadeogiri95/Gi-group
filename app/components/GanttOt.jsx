@@ -65,7 +65,7 @@ import { faltanManual, atrasosSinMotivo } from "../lib/ajustesTiempo";
 import { retrabajoPendiente, retrabajosDe, retrabajosHechos } from "../lib/retrabajo";
 import AjusteTiempo from "./AjusteTiempo";
 import GanttInstalacion from "./GanttInstalacion";
-import GanttDisenoTecnica from "./GanttDisenoTecnica";
+import GanttDisenoTecnica, { usePlanDisenoTecnica } from "./GanttDisenoTecnica";
 import NombreOt from "./NombreOt";
 
 const FILA = 26; // alto del renglón de cada proceso
@@ -119,7 +119,7 @@ const alertasTexto = (q) => [q.tarde ? `termina ${dias(q.diasTarde)} después de
 const SIN_PAUSAS = [];
 const SIN_LISTA = []; // por defecto fijos: el Gantt de instalación se vuelve a dibujar cuando cambia el plan vivo
 
-function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones = SIN_LISTA, avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null, onRefrescar = null, pausas = SIN_PAUSAS, onPlanVivo = null }) {
+function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones = SIN_LISTA, avanceHoras = null, modo = MODO_POR_DEFECTO, planes: planesProp, cfgValor: cfgProp, empleados: empleadosProp = SIN_EMPLEADOS, onVerDetalle, empresaId = null, puedeReordenar = false, puedeAjustar = false, usuarioNombre = null, onRefrescar = null, pausas = SIN_PAUSAS, onPlanVivo = null, planDT = null }) {
   const hoy = hoyArg();
   // Cada "🔄 Refrescar" suma una vuelta y se vuelve a leer todo
   const [vuelta, setVuelta] = useState(0);
@@ -207,6 +207,9 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
   // Las OT que se pueden mover: las del plan confirmado de la división
   const delPlan = useMemo(() => new Set((planVigente(planesConfirmados, divId)?.items || []).map((i) => String(i.ot))), [planesConfirmados, divId]);
 
+  // Técnica sin terminar (parte 49): no antes del día hábil siguiente a su fin; con EXCEL hecho, solo aviso
+  const espera = planDT?.espera || null;
+  const noAntes = useMemo(() => (espera ? new Map([...espera].filter(([, e]) => e.desde).map(([ot, e]) => [ot, e.desde])) : null), [espera]);
   // Lo que necesita el plan vivo (también para ver cuánto se corre con un "Faltan X h" nuevo)
   const vivoCon = useMemo(() => {
     if (!planes) return null;
@@ -217,10 +220,10 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
       avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [],
       terminadas: new Set(proyectos.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
       params, horasSemana: horasSemanaDeGrilla(empleados, divisiones, cfgValor),
-      personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes), pausadas,
+      personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes), pausadas, noAntes,
     };
     return (m) => planVivo(items, { ...opciones, manual: m, retrabajo, retrabajoHecho });
-  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho, pausadas]);
+  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho, pausadas, noAntes]);
 
   // Días que se trabajan: con horas en la grilla de horarios o de horas extra del plan
   const feriados = useMemo(() => feriadosDe(params), [params]);
@@ -378,7 +381,11 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
   const [grande, setGrande] = useState(false);
   // Siempre minimizada al abrir (Tadeo, 05/11): el Gantt se ve entero
   const [verAvisos, setVerAvisos] = useState(false);
-  const hayAvisos = porTerminar.length > 0 || enPausa.length > 0 || tardes.length > 0 || corridas.length > 0 || sinMotivo.length > 0;
+  // 📐 Técnica: las que esperan su fin y las que arrancan con EXCEL hecho pero Técnica sin terminar
+  const enPlan = new Set((renglones || []).map((r) => r.ot));
+  const esperanTecnica = (renglones || []).filter((r) => r.esperaTecnica);
+  const tecnicaAbierta = espera ? [...espera].filter(([ot, e]) => enPlan.has(ot) && (e.excel || e.sinPlan)).map(([ot, e]) => ({ ot, ...e, proyecto: abiertasPorOt.get(ot) })) : [];
+  const hayAvisos = porTerminar.length > 0 || enPausa.length > 0 || tardes.length > 0 || corridas.length > 0 || sinMotivo.length > 0 || esperanTecnica.length > 0 || tecnicaAbierta.length > 0;
   const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
   useEscape(cerrarGrande, grande);
   useEffect(() => () => { salirPantallaCompleta(); }, []);
@@ -607,6 +614,8 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
             {tardes.length > 0 && <span className="text-gypi-red">⚠ {tardes.length} después de su fecha límite</span>}
             {corridas.length > 0 && <span className="text-gypi-amber-ink">↪ {corridas.length} {corridas.length === 1 ? "corrida" : "corridas"} del plan</span>}
             {sinMotivo.length > 0 && <span>📝 {sinMotivo.length} sin motivo</span>}
+            {esperanTecnica.length > 0 && <span>📐 {esperanTecnica.length} esperan Técnica</span>}
+            {tecnicaAbierta.length > 0 && <span className="text-gypi-amber-ink">📐 {tecnicaAbierta.length} con Técnica sin terminar</span>}
             <span className="ml-auto text-[14px] text-gypi-dim font-normal">{verAvisos ? "▾ Minimizar" : "▸ Ver"}</span>
           </button>
           {verAvisos && (
@@ -623,6 +632,28 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
                           aria-label={`⏱ ${v.nombre} de la OT ${v.ot} necesita más tiempo`} className="g-btn g-btn-secondary">⏱ Necesita más tiempo</button>
                       )}
                       <button type="button" onClick={() => verDetalle(v.fila.proyecto)} aria-label={`Ver la OT ${v.ot} para marcar ${v.nombre} terminado`} className="g-btn g-btn-secondary">✅ Ver / marcar terminado</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              )}
+              {(esperanTecnica.length > 0 || tecnicaAbierta.length > 0) && (
+              <section aria-label="Técnica antes de Producción" className="rounded-xl border-2 border-proc-margen bg-proc-margen/10 p-3">
+                <div className="text-[15px] font-bold text-gypi-text mb-1">📐 Técnica antes de Producción</div>
+                <div className="text-[13px] text-gypi-dim mb-1">Producción arranca el día hábil siguiente a que termina la Técnica de la OT (en el Gantt 📐 Diseño y Técnica). Si EXCEL ya está hecho puede arrancar antes, pero conviene esperar que esté todo.</div>
+                <ul className="list-none m-0 p-0 flex flex-col gap-1">
+                  {esperanTecnica.map((r) => (
+                    <li key={`e-${r.ot}`}>
+                      <button type="button" onClick={() => verDetalle(r.proyecto)} className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
+                        <NombreOt proyecto={r.proyecto} /> · espera Técnica: arranca el {fechaCorta(r.esperaTecnica)}
+                      </button>
+                    </li>
+                  ))}
+                  {tecnicaAbierta.map((x) => (
+                    <li key={`a-${x.ot}`}>
+                      <button type="button" onClick={() => verDetalle(x.proyecto)} className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-amber-ink font-bold">
+                        <NombreOt proyecto={x.proyecto || { ot: x.ot }} /> · ⚠ {x.excel ? "Técnica sin terminar (EXCEL hecho)" : "Técnica sin planificar (faltan horas o arquitectas)"}{x.finTecnica ? `: termina el ${fechaCorta(x.finTecnica)}` : ""}
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -775,6 +806,11 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
                       <div className={`font-mono text-[16px] font-bold leading-tight ${r.tarde ? "text-gypi-red" : "text-gypi-text"}`}>
                         {r.tarde ? "⚠ " : ""}{p.ot} <span className="text-[14px]">· {fmtH(r.horas)}</span>
                       </div>
+                      {(r.esperaTecnica || espera?.get(r.ot)?.excel) && (
+                        <div className="text-[12px] font-bold leading-tight text-gypi-amber-ink" data-tecnica>
+                          {r.esperaTecnica ? `📐 espera Técnica: ${fechaCorta(r.esperaTecnica)}` : "📐 Técnica sin terminar"}
+                        </div>
+                      )}
                       {/* Las dos alertas, cada una con su marca (Tadeo, 29/10) */}
                       {(r.tarde || r.diasCorrido > 0) && (
                         <div className="text-[12px] font-bold leading-tight" data-alertas>
@@ -843,6 +879,8 @@ export default function GanttOt(props) {
   const [tipo, setTipo] = useState(() => { try { const t = localStorage.getItem(CLAVE_TIPO); return t === "instalacion" || t === "diseno" ? t : "produccion"; } catch { return "produccion"; } });
   const cambiar = (t) => { setTipo(t); try { localStorage.setItem(CLAVE_TIPO, t); } catch { /* sin almacenamiento */ } };
   const [vivo, setVivo] = useState(null);
+  // Diseño y Técnica (parte 49): Producción espera que termine Técnica
+  const planDT = usePlanDisenoTecnica({ proyectos: props.proyectos, divisiones: props.divisiones, pausas: props.pausas, empresaId: props.empresaId });
   return (
     <>
       <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Qué Gantt ver">
@@ -851,10 +889,11 @@ export default function GanttOt(props) {
         <Chip active={tipo === "instalacion"} onClick={() => cambiar("instalacion")}>🔧 Instalación</Chip>
       </div>
       <div className={tipo !== "produccion" ? "hidden" : ""}>
-        <GanttProduccion {...props} onPlanVivo={setVivo} />
+        <GanttProduccion {...props} onPlanVivo={setVivo} planDT={planDT} />
       </div>
       {tipo === "diseno" && (
-        <GanttDisenoTecnica proyectos={props.proyectos} divisiones={props.divisiones} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} />
+        planDT ? <GanttDisenoTecnica calculo={planDT} vivo={vivo} onVerDetalle={props.onVerDetalle} />
+          : <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       )}
       {tipo === "instalacion" && (
         <GanttInstalacion vivo={vivo} proyectos={props.proyectos} etapas={props.etapas} divisiones={props.divisiones}

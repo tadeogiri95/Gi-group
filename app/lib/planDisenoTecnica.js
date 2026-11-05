@@ -17,7 +17,7 @@
 // entre 0 y 1 de la jornada).
 import { avanceArea } from "./complejidad";
 import { tiemposOt } from "./disenoTecnicaPlan";
-import { esDiaHabil } from "./planInstalacion";
+import { esDiaHabil, diaHabilSiguiente, diaHabilAnterior } from "./planInstalacion";
 
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
@@ -109,6 +109,7 @@ export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feri
   const deTecnica = arquitectas.filter((a) => a.horasTecnica > 0);
   const deDiseno = arquitectas.filter((a) => a.pctTecnica < 100);
   const renglones = [];
+  const pendientes = []; // Técnica por repartir
   const sinDato = [];
   let sinEtapas = 0, terminadas = 0;
 
@@ -135,35 +136,48 @@ export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feri
       if (d.sinLugar) r.sinLugar = true;
     }
 
-    // Técnica: horas de una arquitecta, una planilla por vez
+    // Técnica: se reparte después, cuando ya se sabe cuándo termina el Diseño de todas
     if (tec && !tec.terminada) {
       if (t.horasTecnica == null) { r.faltanHoras = true; sinDato.push(r); renglones.push(r); continue; }
       const resta = Math.max(0.5, Math.round(t.horasTecnica * (1 - tec.pct / 100) * 2) / 2);
       if (!deTecnica.length) { r.sinArquitecta = true; r.tecnica = { horas: resta, pct: tec.pct, tramos: [] }; renglones.push(r); continue; }
-      const desdeListo = (a) => {
-        const pa = fraccion(a.punto, a.horasTecnica);
-        return despues(listo, pa) ? { fecha: listo.fecha, usado: listo.frac * a.horasTecnica } : a.punto;
-      };
-      const fija = deTecnica.find((a) => tec.quienes.some((q) => sonSusIniciales(q, a.nombre)));
-      let elegida = fija, mejor = null;
-      if (!elegida) {
-        for (const a of deTecnica) {
-          const prueba = llenar(desdeListo(a), resta, a.horasTecnica, feriados);
-          const fin = prueba.tramos.at(-1);
-          const clave = fin ? `${fin.fecha}|${fin.hasta.toFixed(4)}` : "9999";
-          if (!mejor || clave < mejor.clave || (clave === mejor.clave && a.ots < mejor.a.ots)) mejor = { a, clave };
-        }
-        elegida = mejor.a;
-      }
-      const res = llenar(desdeListo(elegida), resta, elegida.horasTecnica, feriados);
-      elegida.punto = res.fin;
-      elegida.ots++;
-      r.arquitecta = elegida.nombre;
-      r.arquitectaId = elegida.id;
-      r.tecnica = { tramos: res.tramos, inicio: res.tramos[0]?.fecha || null, fin: res.tramos.at(-1)?.fecha || null, horas: resta, pct: tec.pct };
-      if (res.sinLugar) r.sinLugar = true;
+      const fija = deTecnica.find((a) => tec.quienes.some((q) => sonSusIniciales(q, a.nombre))) || null;
+      pendientes.push({ r, listo, resta, pct: tec.pct, fija, orden: pendientes.length });
     }
     renglones.push(r);
+  }
+
+  // Técnica: una planilla por vez por arquitecta, sin dejarla parada. Cada vez
+  // se toma la planilla que puede empezar antes (a igual hora, la de más
+  // prioridad) con la arquitecta que la termina antes (o la suya, si ya la empezó).
+  const desdeListo = (a, listo) => {
+    const pa = fraccion(a.punto, a.horasTecnica);
+    return despues(listo, pa) ? { fecha: habilDesde(listo.fecha, feriados), usado: listo.frac * a.horasTecnica } : { ...a.punto, fecha: habilDesde(a.punto.fecha, feriados) };
+  };
+  const clavePunto = (p, porDia) => `${p.fecha}|${(p.usado / porDia).toFixed(4)}`;
+  while (pendientes.length) {
+    let mejor = null;
+    for (const x of pendientes) {
+      for (const a of x.fija ? [x.fija] : deTecnica) {
+        const arranque = desdeListo(a, x.listo);
+        const clave = clavePunto(arranque, a.horasTecnica);
+        if (mejor && (clave > mejor.clave || (clave === mejor.clave && x.orden > mejor.x.orden))) continue;
+        const prueba = llenar(arranque, x.resta, a.horasTecnica, feriados);
+        const fin = prueba.tramos.at(-1);
+        const claveFin = fin ? `${fin.fecha}|${fin.hasta.toFixed(4)}` : "9999";
+        if (!mejor || clave < mejor.clave || x.orden < mejor.x.orden || claveFin < mejor.claveFin || (claveFin === mejor.claveFin && a.ots < mejor.a.ots)) {
+          mejor = { x, a, clave, claveFin, res: prueba };
+        }
+      }
+    }
+    const { x, a, res } = mejor;
+    pendientes.splice(pendientes.indexOf(x), 1);
+    a.punto = res.fin;
+    a.ots++;
+    x.r.arquitecta = a.nombre;
+    x.r.arquitectaId = a.id;
+    x.r.tecnica = { tramos: res.tramos, inicio: res.tramos[0]?.fecha || null, fin: res.tramos.at(-1)?.fecha || null, horas: x.resta, pct: x.pct };
+    if (res.sinLugar) x.r.sinLugar = true;
   }
   return { renglones, sinDato, sinEtapas, terminadas, arquitectas };
 }
@@ -186,4 +200,67 @@ export function barrasSeguidas(tramos = []) {
     else out.push({ desde: z, hasta: z });
   }
   return out;
+}
+
+// ─── Enlace con Producción (parte 49) ───────────────────────────────────────
+
+const hechaONa = (c) => c?.e === "hecho" || c?.e === "na";
+
+/**
+ * Cuándo puede arrancar Producción cada OT según su Técnica: el día hábil
+ * siguiente a que termina en el plan de Diseño y Técnica. Si EXCEL ya está
+ * hecho, Producción puede arrancar igual (Tadeo, 05/11) y queda solo el aviso.
+ * Solo las OT con Técnica sin terminar.
+ * @returns {Map<string, { desde: string|null, finTecnica: string|null, excel: boolean, sinPlan: boolean }>}
+ *   desde: no antes de ese día (null = no se espera: EXCEL hecho o Técnica sin planificar)
+ *   sinPlan: Técnica sin terminar pero sin fecha (faltan las horas o no hay arquitectas)
+ */
+export function esperaTecnica(renglones = [], feriados = null) {
+  const out = new Map();
+  for (const r of renglones) {
+    const tec = r.tecnica;
+    const pendiente = r.faltanHoras || r.sinArquitecta || (tec && tec.pct < 100);
+    if (!pendiente) continue;
+    const excel = hechaONa(r.proyecto?.etapas_diseno?.excel);
+    const finTecnica = tec?.fin || null;
+    out.set(r.ot, {
+      desde: finTecnica && !excel ? diaHabilSiguiente(finTecnica, feriados) : null,
+      finTecnica,
+      excel,
+      sinPlan: !finTecnica,
+    });
+  }
+  return out;
+}
+
+/** Días hábiles de `a` a `b`, los dos incluidos (0 si b < a). */
+export function diasHabilesEntre(a, b, feriados = null) {
+  if (!a || !b || b < a) return 0;
+  let n = 0;
+  for (let f = a, i = 0; f <= b && i < 800; f = sumarDias(f, 1), i++) if (esDiaHabil(f, feriados)) n++;
+  return n;
+}
+
+/** Margen (días hábiles) desde el que Técnica queda amarilla. */
+export const MARGEN_TECNICA = 2;
+
+/**
+ * Fecha límite de Técnica: el último día hábil en que puede terminar para que
+ * Producción, con lo que dura en el plan vivo, llegue a su fecha límite (la de
+ * la entrega menos la instalación, parte 45).
+ * @param {{ inicio: string, fin: string, objetivo: string|null }} produccion renglón del plan vivo de Producción
+ * @param {string|null} finTecnica
+ * @returns {{ limite: string, estado: "verde"|"amarillo"|"rojo", diasTarde: number } | null}
+ */
+export function limiteTecnica(produccion, finTecnica, feriados = null) {
+  if (!produccion?.objetivo || !produccion.inicio || !produccion.fin) return null;
+  const dura = Math.max(1, diasHabilesEntre(produccion.inicio, produccion.fin, feriados));
+  let inicioTarde = produccion.objetivo;
+  if (!esDiaHabil(inicioTarde, feriados)) inicioTarde = diaHabilAnterior(inicioTarde, feriados);
+  for (let i = 1; i < dura; i++) inicioTarde = diaHabilAnterior(inicioTarde, feriados);
+  const limite = diaHabilAnterior(inicioTarde, feriados);
+  if (!finTecnica) return { limite, estado: "verde", diasTarde: 0 };
+  if (finTecnica > limite) return { limite, estado: "rojo", diasTarde: Math.max(1, diasHabilesEntre(diaHabilSiguiente(limite, feriados), finTecnica, feriados)) };
+  const margen = diasHabilesEntre(diaHabilSiguiente(finTecnica, feriados), limite, feriados);
+  return { limite, estado: margen < MARGEN_TECNICA ? "amarillo" : "verde", diasTarde: 0 };
 }

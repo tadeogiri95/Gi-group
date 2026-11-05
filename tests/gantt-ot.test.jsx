@@ -6,7 +6,7 @@ import "./helpers/domSetup.js";
 import { test, before, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within, act, waitFor } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { rangoSemana, numeroSemana, inicioDeSemana, semanaPlanilla, fechaObjetivo, textoObjetivo, normalizarModo } from "../app/lib/semanaObjetivo.js";
 import { filasGantt, escalaGantt, primerEscaneoPorOt, ventanaGantt, enVentana, escalaAncho } from "../app/lib/gantt.js";
@@ -749,6 +749,45 @@ test("📅 Gantt — ⏰ avisa los procesos de hoy que ya tenían que terminar",
     assert.ok(within(caja).getByRole("button", { name: "⏱ Corte de la OT 7100 necesita más tiempo" }));
     fireEvent.click(within(caja).getByRole("button", { name: /Ver la OT 7100/ }));
     assert.deepEqual(vistos, ["7100"]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+// Parte 49: la OT que no arrancó espera a que termine su Técnica (Gantt 📐 Diseño y Técnica)
+test("📅 Gantt — Producción espera el fin de Técnica y avisa; con EXCEL hecho solo avisa", async () => {
+  lunes26();
+  try {
+    global.fetch = async (url, opts = {}) => {
+      const { path } = JSON.parse(opts.body || "{}");
+      if (String(path).startsWith("config_sistema")) return new Response(JSON.stringify({ data: [{ valor: { diseno_tecnica: { dias_diseno: 2, horas: { global: { B: 9 } }, arquitectas: [{ id: "12", pct_tecnica: 100 }] } } }] }), { status: 200 });
+      if (String(path).startsWith("empleados")) return new Response(JSON.stringify({ data: String(path).includes("offset=0") ? [{ id: 12, nombre: "María José Torres" }] : [] }), { status: 200 });
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    };
+    const falta = { e: "falta" };
+    const proyectos = [
+      // Diseño lunes 26 y martes 27, Técnica el miércoles 28 → Producción desde el jueves 29
+      { id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo", fecha_objetivo: "2026-11-21", etapas_diseno: { dis: falta, np: falta, nf: falta, excel: falta, pdf: falta } },
+      // EXCEL hecho: arranca igual, con aviso
+      { id: 2, ot: "7200", cliente: "Ana", division: "M", estado: "activo", fecha_objetivo: "2026-11-21", etapas_diseno: { dis: { e: "hecho" }, nf: { e: "hecho" }, excel: { e: "hecho", q: "MJT" }, pdf: falta } },
+    ];
+    const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLAN_VIVO} cfgValor={null}
+      avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+    await waitFor(() => assert.match(container.querySelector('[data-ot="7100"] [data-tecnica]')?.textContent || "", /📐 espera Técnica: 29\/10\/2026/));
+    assert.equal(container.querySelector('[data-ot="7100"] [data-proceso="corte"]').closest("[data-ot]").getAttribute("data-ot"), "7100");
+    assert.match(container.querySelector('[data-ot="7200"] [data-tecnica]').textContent, /📐 Técnica sin terminar/);
+    const avisos = screen.getByRole("region", { name: "Avisos del Gantt" });
+    const barra = within(avisos).getByRole("button", { name: /🔔 Avisos/ });
+    assert.match(barra.textContent, /📐 1 esperan Técnica/);
+    assert.match(barra.textContent, /📐 1 con Técnica sin terminar/);
+    fireEvent.click(barra);
+    const sec = screen.getByRole("region", { name: "Técnica antes de Producción" });
+    assert.match(sec.textContent, /OT 7100 .*espera Técnica: arranca el 29\/10\/2026/);
+    assert.match(sec.textContent, /OT 7200 .*⚠ Técnica sin terminar \(EXCEL hecho\): termina el 26\/10\/2026/);
+    // El chip 📐 muestra el Gantt de Diseño y Técnica con la fecha límite contra Producción
+    fireEvent.click(screen.getByRole("button", { name: "📐 Diseño y Técnica" }));
+    const fila = await screen.findByRole("button", { name: /^OT 7100, clase B, Diseño del 26\/10\/2026/ });
+    assert.match(fila.getAttribute("aria-label"), /fecha límite de Técnica/);
   } finally {
     mock.timers.reset();
   }
