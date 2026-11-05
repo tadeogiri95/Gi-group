@@ -121,6 +121,7 @@ test("📅 Gantt — 📝 Atrasos sin motivo: se anota por qué se corrió y sal
   render(<GanttOt proyectos={PROYECTOS} divisiones={DIV} etapas={ETAPAS} planes={PLAN} cfgValor={null} puedeAjustar usuarioNombre="Tadeo"
     avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
   await esperar();
+  fireEvent.click(screen.getByRole("button", { name: /🔔 Avisos/ }));
   const lista = screen.getByRole("group", { name: "Atrasos sin motivo" });
   assert.match(lista.textContent, /OT 7100 · BCG · Corte · ↪ se corrió 7 días/);
   fireEvent.click(within(lista).getByRole("button", { name: "Anotar por qué se corrió Corte de la OT 7100" }));
@@ -147,6 +148,7 @@ test("📅 Gantt — ⏱ Faltan X h: se toca el proceso, se escriben las horas y
   const { container } = render(<GanttOt proyectos={PROYECTOS} divisiones={DIV} etapas={ETAPAS} planes={PLAN} cfgValor={null} puedeAjustar
     avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
   await esperar();
+  fireEvent.click(screen.getByRole("button", { name: /🔔 Avisos/ }));
   assert.ok(screen.getByRole("group", { name: "Atrasos sin motivo" }));
   fireEvent.click(screen.getByRole("button", { name: "⏱ Corte de la OT 7100: cuánto falta" }));
   const dialogo = screen.getByRole("dialog", { name: "⏱ Corte de la OT 7100" });
