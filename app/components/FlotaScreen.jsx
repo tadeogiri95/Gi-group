@@ -20,7 +20,7 @@ import { alertasVehiculo, textoAlerta, urgentes as soloUrgentes } from "../lib/a
 import { costosFlota, nombreMes, textoCosto, ultimosMeses } from "../lib/arreglosFlota";
 import { puedeGestionarMantenimiento } from "../lib/mantenimiento";
 import { Chip, FilaDeslizable } from "./ui";
-import FichaVehiculo, { FormVehiculo, FormLicencia } from "./FichaVehiculo";
+import FichaVehiculo, { FormVehiculo, FormLicencia, fotosVehiculo } from "./FichaVehiculo";
 import { ListaChecklists, VerChecklist } from "./ChecklistsVehiculo";
 import PlantillaChecklist from "./PlantillaChecklist";
 
@@ -190,14 +190,21 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
             <ul aria-label="Vehículos" className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
               {filas.map(({ v, nivel, urgentes }) => {
                 const resp = porId.get(v.responsable_id);
-                const datos = [nombreTipoVehiculo(v.tipo), [v.marca, v.modelo].filter(Boolean).join(" "), resp?.nombre].filter(Boolean);
+                // Arriba se lee el modelo (marca y modelo) y debajo la patente, con
+                // la foto principal al lado para reconocerlo de un vistazo.
+                const modelo = [v.marca, v.modelo].filter(Boolean).join(" ");
+                const datos = [modelo ? v.patente : null, nombreTipoVehiculo(v.tipo), resp?.nombre].filter(Boolean);
+                const foto = fotosVehiculo(v)[0];
                 return (
                   <li key={v.id}>
                     <button onClick={() => setFichaId(v.id)} aria-label={`Ver ${v.patente}`}
                       className="w-full flex items-center gap-2.5 p-2.5 min-h-[44px] rounded-[10px] border border-gypi-border bg-gypi-surface text-left cursor-pointer font-body text-gypi-text">
                       <span className="text-[20px]" aria-label={SEMAFORO[nivel].texto}>{SEMAFORO[nivel].emoji}</span>
+                      {foto
+                        ? <img src={foto} alt="" loading="lazy" className="h-12 w-16 shrink-0 object-cover rounded-[8px] border border-gypi-border" />
+                        : <span aria-hidden="true" className="h-12 w-16 shrink-0 rounded-[8px] border border-gypi-border bg-gypi-surf flex items-center justify-center text-[22px]">🚚</span>}
                       <span className="flex-1 min-w-0">
-                        <span className="block text-[15px] font-bold tracking-wide">{v.patente}</span>
+                        <span className="block text-[15px] font-bold truncate">{modelo || v.patente}</span>
                         <span className="block text-[12px] text-gypi-dim truncate">{datos.join(" · ")}</span>
                         {urgentes.length > 0 && (
                           <span className="block text-[12px] font-semibold truncate">
