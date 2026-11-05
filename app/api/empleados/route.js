@@ -16,7 +16,6 @@ import { logEvent, EVT } from "../../lib/analytics";
 import { nuevaActivacion, linkActivacion, DIAS_VIGENCIA } from "../../lib/activacion";
 
 import { ipCliente } from "../../lib/ip";
-import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance, filtroAlcance } from "../../lib/alcance";
 import { esPuestoPlanta } from "../../lib/cargaPlanta";
 const APP_BASE = process.env.NEXT_PUBLIC_APP_URL || "https://gypi.app";
 
@@ -45,10 +44,9 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const soloActivos = searchParams.get("activo") !== "false";
   const filtroActivo = soloActivos ? "&activo=eq.true" : "";
-  const filtroDiv = filtroAlcance("empleados", await alcanceDe(sesion));
 
   const rows = await sbGet(
-    `empleados?empresa_id=eq.${sesion.empresa_id}${filtroActivo}${filtroDiv ? `&${filtroDiv}` : ""}&select=${CAMPOS_PUBLICOS}&order=legajo.asc`
+    `empleados?empresa_id=eq.${sesion.empresa_id}${filtroActivo}&select=${CAMPOS_PUBLICOS}&order=legajo.asc`
   );
   return NextResponse.json(rows || [], {
     headers: { "Cache-Control": "private, no-store" },
@@ -118,12 +116,6 @@ export async function POST(request) {
 
   let rolesValidos = ["operativo", "gerencial", "administrativo"];
   if (sesion.rol === "administrativo") rolesValidos = ["operativo", "administrativo"];
-  // Supervisor de división (D2): solo da de alta operarios de su división
-  const alcance = await alcanceDe(sesion);
-  if (alcance) {
-    if (!alcance.division) return NextResponse.json({ error: "No tenés una división asignada" }, { status: 403 });
-    rolesValidos = ["operativo"];
-  }
   const rolFinal = rolesValidos.includes(rol) ? rol : "operativo";
   const passwordHash = await bcrypt.hash(passwordInicial(), 10);
 
@@ -139,7 +131,7 @@ export async function POST(request) {
       apodo: (typeof apodo === "string" && apodo.trim()) || nombre.trim().split(" ")[0],
       email: emailNorm,
       area: area?.trim() || "produccion",
-      division: alcance ? alcance.division : division?.trim() || null,
+      division: division?.trim() || null,
       ...(planta_id ? { planta_id } : {}),
       rol: rolFinal,
       activo: true,
@@ -219,17 +211,13 @@ export async function PATCH(request) {
     `empleados?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=id&limit=1`
   );
   if (!check?.length) return NextResponse.json({ error: "Empleado no encontrado" }, { status: 404 });
-  const alcance = await alcanceDe(sesion);
-  if (!dentroDelAlcance(alcance, { id })) return respuestaFueraDeAlcance();
 
   const body = await request.json();
 
-  // Campos permitidos — rol y "ve solo su división" (supervisor, D2) solo el dueño;
-  // un supervisor tampoco cambia divisiones
-  const CAMPOS_EDITABLES = ["nombre", "apodo", "email", "area", "diagrama", "activo"];
-  // "Es instalador" (migración 116) y "Responsable de mantenimiento" (133) los
-  // marca quien gestiona toda la empresa
-  if (!alcance) CAMPOS_EDITABLES.push("division", "planta_id", "es_instalador", "es_mantenimiento", "puesto_planta");
+  // Campos permitidos — rol y "Supervisor" (solo_su_division) solo el dueño.
+  // Desde el 05/11 el supervisor gestiona a toda la empresa como el dueño.
+  const CAMPOS_EDITABLES = ["nombre", "apodo", "email", "area", "diagrama", "activo",
+    "division", "planta_id", "es_instalador", "es_mantenimiento", "puesto_planta"];
   if (sesion.rol === "gerencial") CAMPOS_EDITABLES.push("rol", "solo_su_division");
   for (const campo of ["solo_su_division", "es_instalador", "es_mantenimiento"]) {
     if (body[campo] !== undefined && typeof body[campo] !== "boolean") {
@@ -298,7 +286,6 @@ export async function DELETE(request) {
     `empleados?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=id,legajo,nombre&limit=1`
   );
   if (!check?.length) return NextResponse.json({ error: "Empleado no encontrado" }, { status: 404 });
-  if (!dentroDelAlcance(await alcanceDe(sesion), { id })) return respuestaFueraDeAlcance();
 
   await sbPatch(`empleados?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}`, { activo: false });
 

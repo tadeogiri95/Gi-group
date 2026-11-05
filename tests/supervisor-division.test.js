@@ -1,5 +1,7 @@
-// tests/supervisor-division.test.js — Supervisor limitado a su división (D2, ítem 22)
-// y facturación solo para el dueño.
+// tests/supervisor-division.test.js — El Supervisor (administrativo con
+// solo_su_division) puede lo mismo que el Dueño desde el 05/11 (antes estaba
+// limitado a su división, D2). Facturación y nombrar supervisores siguen
+// siendo solo del dueño.
 import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
@@ -11,7 +13,8 @@ before(() => {
 });
 
 const { signAccessToken } = await import("../app/lib/jwt.ts");
-const { alcanceDe, filtroAlcance, dentroDelAlcance, _limpiarCacheAlcance } = await import("../app/lib/alcance.js");
+const { esSupervisorSesion, comoDueno, _limpiarCacheAlcance } = await import("../app/lib/alcance.js");
+const { POST: planificacion } = await import("../app/api/planificacion/route.js");
 const { POST: data } = await import("../app/api/data/route.js");
 const empleadosRoute = await import("../app/api/empleados/route.js");
 const { GET: liquidacion } = await import("../app/api/reportes/liquidacion/route.js");
@@ -32,44 +35,36 @@ async function token(rol, empleadoId = SUPER_ID) {
 function soy({ supervisor = true, division = "herreria" } = {}) {
   return [
     {
-      match: (url) => url.includes("select=id,legajo,division,solo_su_division"),
-      respond: () => ({ status: 200, body: [{ id: SUPER_ID, legajo: 5, division, solo_su_division: supervisor }] }),
-    },
-    {
-      match: (url) => url.includes("/rest/v1/empleados?empresa_id=eq.") && url.includes("division=eq.herreria") && url.includes("select=id,legajo"),
-      respond: () => ({ status: 200, body: [DE_SU_DIVISION] }),
+      match: (url) => url.includes("select=id,solo_su_division"),
+      respond: () => ({ status: 200, body: [{ id: SUPER_ID, division, solo_su_division: supervisor }] }),
     },
   ];
 }
 
 // ── lib/alcance ──
 
-test("alcanceDe — solo un administrativo marcado es supervisor", async () => {
+test("esSupervisorSesion / comoDueno — solo un administrativo marcado es supervisor", async () => {
   global.fetch = createFetchMock([...soy({ supervisor: false })]);
-  assert.equal(await alcanceDe({ rol: "gerencial", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), null);
-  assert.equal(await alcanceDe({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), null);
+  assert.equal(await esSupervisorSesion({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), false);
+  assert.equal(await comoDueno({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), false);
+  assert.equal(await comoDueno({ rol: "gerencial", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), true);
+  assert.equal(await comoDueno({ rol: "operativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), false);
 
   _limpiarCacheAlcance();
   global.fetch = createFetchMock([...soy()]);
-  const a = await alcanceDe({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID });
-  assert.equal(a.division, "herreria");
-  assert.deepEqual(a.ids.sort(), [DE_SU_DIVISION.id, SUPER_ID].sort());
-  assert.deepEqual(a.legajos.sort(), ["21", "5"]);
-  assert.ok(dentroDelAlcance(a, { legajo: 21 }));
-  assert.ok(!dentroDelAlcance(a, { id: DE_OTRA.id }));
-  assert.match(filtroAlcance("fichadas", a), /^legajo=in\.\(/);
-  assert.equal(filtroAlcance("proyectos", a), null, "catálogos de la empresa no se filtran");
+  assert.equal(await esSupervisorSesion({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), true);
+  assert.equal(await comoDueno({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), true);
 });
 
-test("alcanceDe — sin la migración 075 nadie es supervisor; otro error corta (no muestra de más)", async () => {
+test("esSupervisorSesion — sin la migración 075 nadie es supervisor; otro error corta", async () => {
   global.fetch = createFetchMock([
     { match: (url) => url.includes("solo_su_division"), respond: () => ({ status: 400, body: { message: "column empleados.solo_su_division does not exist" } }) },
   ]);
-  assert.equal(await alcanceDe({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), null);
+  assert.equal(await esSupervisorSesion({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }), false);
 
   _limpiarCacheAlcance();
   global.fetch = createFetchMock([{ match: (url) => url.includes("solo_su_division"), respond: () => ({ status: 503, body: "caído" }) }]);
-  await assert.rejects(alcanceDe({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }));
+  await assert.rejects(esSupervisorSesion({ rol: "administrativo", empleado_id: SUPER_ID, empresa_id: EMPRESA_ID }));
 });
 
 // ── /api/data ──
@@ -99,42 +94,33 @@ async function pedir(body, rol = "administrativo") {
   }));
 }
 
-test("/api/data — el supervisor solo ve fichadas y empleados de su división", async () => {
+test("/api/data — el supervisor ve toda la empresa (sin filtro por división)", async () => {
   let llamadas = capturar("fichadas", soy());
   assert.equal((await pedir({ path: "fichadas?fecha=eq.2026-10-07" })).status, 200);
-  assert.match(llamadas.at(-1).url, /legajo=in\.\((21,5|5,21)\)/);
+  assert.ok(!llamadas.at(-1).url.includes("legajo=in."));
 
-  _limpiarCacheAlcance();
   llamadas = capturar("empleados", soy());
   await pedir({ path: "empleados?select=id,nombre" });
-  assert.match(llamadas.at(-1).url, /id=in\.\(/);
-  assert.ok(!llamadas.at(-1).url.includes(DE_OTRA.id));
+  assert.ok(!llamadas.at(-1).url.includes("id=in."));
+
+  llamadas = capturar("precios_ot", soy());
+  assert.equal((await pedir({ path: "precios_ot?select=ot,precio" })).status, 200, "ve el precio de las OT");
 });
 
-test("/api/data — un administrador (no supervisor) sigue viendo toda la empresa", async () => {
-  const llamadas = capturar("fichadas", soy({ supervisor: false }));
-  await pedir({ path: "fichadas?fecha=eq.2026-10-07" });
-  assert.ok(!llamadas.at(-1).url.includes("legajo=in."));
-});
-
-test("/api/data — el supervisor no puede cargar ni cambiar datos de otra división", async () => {
+test("/api/data — el supervisor carga y cambia datos de cualquier división", async () => {
   capturar("solicitudes", soy());
-  const fuera = await pedir({ method: "POST", path: "solicitudes", body: { legajo: DE_OTRA.legajo, empleado_id: DE_OTRA.id, nombre_empleado: "X", tipo: "permiso", motivo: "m" } });
-  assert.equal(fuera.status, 403);
+  const otra = await pedir({ method: "POST", path: "solicitudes", body: { legajo: DE_OTRA.legajo, empleado_id: DE_OTRA.id, nombre_empleado: "X", tipo: "permiso", motivo: "m" } });
+  assert.notEqual(otra.status, 403);
 
-  _limpiarCacheAlcance();
   capturar("empleados", soy());
   const cambiarDivision = await pedir({ method: "PATCH", path: `empleados?id=eq.${DE_SU_DIVISION.id}`, body: { division: "muebles" } });
-  assert.equal(cambiarDivision.status, 403);
-
-  _limpiarCacheAlcance();
-  const llamadas = capturar("solicitudes", soy());
-  await pedir({ method: "PATCH", path: "solicitudes?id=eq.10", body: { estado: "aprobado" } });
-  assert.match(llamadas.at(-1).url, /legajo=in\./, "aprobar solo dentro de su división");
+  assert.equal(cambiarDivision.status, 200);
 });
 
-test("/api/data — pagos y suscripciones son solo del dueño", async () => {
+test("/api/data — pagos y suscripciones son solo del dueño (tampoco el supervisor)", async () => {
   capturar("pagos", soy({ supervisor: false }));
+  assert.equal((await pedir({ path: "pagos?select=id" }, "administrativo")).status, 403);
+  capturar("pagos", soy());
   assert.equal((await pedir({ path: "pagos?select=id" }, "administrativo")).status, 403);
   capturar("pagos");
   assert.equal((await pedir({ path: "pagos?select=id" }, "gerencial")).status, 200);
@@ -155,65 +141,63 @@ test("/api/empleados — el listado es solo de gestión", async () => {
   assert.equal((await empleadosRoute.GET(await reqEmpleados("GET", { rol: "operativo" }))).status, 403);
 });
 
-test("/api/empleados PATCH — el supervisor no edita a alguien de otra división", async () => {
-  global.fetch = createFetchMock([
-    ...soy(),
-    ...authPassHandlers(),
-    { match: (url) => url.includes(`empleados?id=eq.${DE_OTRA.id}`) && url.includes("select=id&limit=1"), respond: () => ({ status: 200, body: [{ id: DE_OTRA.id }] }) },
-  ]);
-  const res = await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_OTRA.id, body: { nombre: "X" } }));
-  assert.equal(res.status, 403);
-});
-
-test("/api/empleados PATCH — solo el dueño marca a un supervisor", async () => {
-  let cambios = null;
-  const handlers = (extra = []) => [
+function handlersPatch(extra = [], alGuardar) {
+  return [
     ...extra,
     ...authPassHandlers(),
-    { match: (url, opts) => url.includes(`empleados?id=eq.${DE_SU_DIVISION.id}`) && opts?.method === "PATCH", respond: (url, opts) => { cambios = JSON.parse(opts.body); return { status: 200, body: [{ id: DE_SU_DIVISION.id, ...cambios }] }; } },
-    { match: (url) => url.includes(`empleados?id=eq.${DE_SU_DIVISION.id}`), respond: () => ({ status: 200, body: [{ id: DE_SU_DIVISION.id }] }) },
+    { match: (url, opts) => url.includes("empleados?id=eq.") && opts?.method === "PATCH", respond: (url, opts) => { const c = JSON.parse(opts.body); alGuardar(c); return { status: 200, body: [{ id: DE_OTRA.id, ...c }] }; } },
+    { match: (url) => url.includes("empleados?id=eq."), respond: () => ({ status: 200, body: [{ id: DE_OTRA.id }] }) },
   ];
-  global.fetch = createFetchMock(handlers());
+}
+
+test("/api/empleados PATCH — el supervisor edita a cualquiera y marca instalador, división y planta", async () => {
+  let cambios = null;
+  global.fetch = createFetchMock(handlersPatch(soy(), (c) => { cambios = c; }));
+  const res = await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_OTRA.id, body: { nombre: "Ana", es_instalador: true, division: "muebles" } }));
+  assert.equal(res.status, 200);
+  assert.equal(cambios.nombre, "Ana");
+  assert.equal(cambios.es_instalador, true);
+  assert.equal(cambios.division, "muebles");
+
+  global.fetch = createFetchMock(handlersPatch(soy(), () => {}));
+  const mal = await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_OTRA.id, body: { es_instalador: "si" } }));
+  assert.equal(mal.status, 400);
+});
+
+test("/api/empleados PATCH — solo el dueño marca a un supervisor o cambia el rol", async () => {
+  let cambios = null;
+  global.fetch = createFetchMock(handlersPatch([], (c) => { cambios = c; }));
   await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { solo_su_division: true }, rol: "gerencial" }));
   assert.equal(cambios.solo_su_division, true);
 
-  cambios = null;
-  global.fetch = createFetchMock(handlers(soy({ supervisor: false })));
-  const res = await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { solo_su_division: false, nombre: "Ana" } }));
-  assert.equal(res.status, 200);
-  assert.equal(cambios.solo_su_division, undefined, "un administrativo no lo puede cambiar");
+  for (const supervisor of [false, true]) {
+    cambios = null;
+    _limpiarCacheAlcance();
+    global.fetch = createFetchMock(handlersPatch(soy({ supervisor }), (c) => { cambios = c; }));
+    const res = await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { solo_su_division: false, rol: "gerencial", nombre: "Ana" } }));
+    assert.equal(res.status, 200);
+    assert.equal(cambios.solo_su_division, undefined, "ni administración ni el supervisor lo cambian");
+    assert.equal(cambios.rol, undefined);
+  }
 });
 
-test("/api/empleados PATCH — \"Es instalador\" lo marca la gestión de toda la empresa, no el supervisor", async () => {
-  let cambios = null;
-  const handlers = (extra = []) => [
-    ...extra,
-    ...authPassHandlers(),
-    { match: (url, opts) => url.includes(`empleados?id=eq.${DE_SU_DIVISION.id}`) && opts?.method === "PATCH", respond: (url, opts) => { cambios = JSON.parse(opts.body); return { status: 200, body: [{ id: DE_SU_DIVISION.id, ...cambios }] }; } },
-    { match: (url) => url.includes(`empleados?id=eq.${DE_SU_DIVISION.id}`), respond: () => ({ status: 200, body: [{ id: DE_SU_DIVISION.id }] }) },
-  ];
-  global.fetch = createFetchMock(handlers(soy({ supervisor: false })));
-  await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { es_instalador: true } }));
-  assert.equal(cambios.es_instalador, true, "un administrativo de toda la empresa lo marca");
+// ── Lo que antes era solo del dueño ──
 
-  global.fetch = createFetchMock(handlers(soy({ supervisor: false })));
-  const mal = await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { es_instalador: "si" } }));
-  assert.equal(mal.status, 400);
+test("planificación — el supervisor la guarda; un administrativo común no", async () => {
+  const pedirPlan = async () => planificacion(new Request("http://localhost/api/planificacion", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token("administrativo")}` },
+    body: JSON.stringify({}),
+  }));
+  const modulos = { match: (url) => url.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", modulos: null, modulos_apagados: [] }] }) };
+  global.fetch = createFetchMock([...soy({ supervisor: false }), ...authPassHandlers(), modulos]);
+  const comun = await pedirPlan();
+  assert.equal(comun.status, 403);
 
-  cambios = null;
   _limpiarCacheAlcance();
-  global.fetch = createFetchMock(handlers(soy()));
-  await empleadosRoute.PATCH(await reqEmpleados("PATCH", { id: DE_SU_DIVISION.id, body: { es_instalador: true, nombre: "Ana" } }));
-  assert.equal(cambios.es_instalador, undefined, "el supervisor no lo cambia");
-});
-
-// ── Rutas que todavía no filtran por división: el supervisor no entra ──
-
-test("liquidación — un supervisor recibe 403", async () => {
-  global.fetch = createFetchMock([...soy(), ...authPassHandlers()]);
-  const res = await liquidacion(new Request("http://localhost/api/reportes/liquidacion?desde=2026-10-01&hasta=2026-10-07", { headers: { Authorization: `Bearer ${await token("administrativo")}` } }));
-  assert.equal(res.status, 403);
-  assert.match((await res.json()).error, /supervisor de división/);
+  global.fetch = createFetchMock([...soy(), ...authPassHandlers(), modulos]);
+  const sup = await pedirPlan();
+  assert.notEqual(sup.status, 403, "el supervisor pasa el control (el cuerpo vacío lo rechaza la validación)");
 });
 
 // ── Facturación ──

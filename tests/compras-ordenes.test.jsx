@@ -303,9 +303,9 @@ test("/api/compras oc_crear — si dos arman a la vez, toma el número siguiente
   assert.equal(escrito.filter((x) => x.tabla === "ordenes_compra").length, 1);
 });
 
-test("/api/compras oc_crear — el jefe de taller no; pedidos ya tomados o proveedor de baja no", async () => {
-  let escrito = mockRuta({ supervisor: "MUEBLES" });
-  let res = await api.POST(req(await token("administrativo"), { accion: "oc_crear", lineas: [LINEAS[1]] }));
+test("/api/compras oc_crear — un operario no; pedidos ya tomados o proveedor de baja no", async () => {
+  let escrito = mockRuta();
+  let res = await api.POST(req(await token("operativo"), { accion: "oc_crear", lineas: [LINEAS[1]] }));
   assert.equal(res.status, 403);
   assert.equal(escrito.length, 0);
 

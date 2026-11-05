@@ -16,7 +16,6 @@ import { sbGet, sbPatch } from "../../../lib/sbHelpers";
 import { isUUID } from "../../../lib/validate";
 import { logAudit } from "../../../lib/audit";
 import { pinAleatorio } from "../../../lib/pinServidor";
-import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance } from "../../../lib/alcance";
 import { ipCliente } from "../../../lib/ip";
 
 export async function POST(request) {
@@ -35,7 +34,6 @@ export async function POST(request) {
     `empleados?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&activo=eq.true&select=id,legajo,nombre,rol&limit=1`
   ) || [];
   if (!empleado) return NextResponse.json({ error: "Empleado no encontrado" }, { status: 404 });
-  if (!dentroDelAlcance(await alcanceDe(sesion), { id: empleado.id })) return respuestaFueraDeAlcance();
   if (empleado.rol !== "operativo") {
     return NextResponse.json({ error: "El PIN es solo para operarios; gestión entra con contraseña." }, { status: 400 });
   }

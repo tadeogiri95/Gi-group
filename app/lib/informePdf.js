@@ -4,7 +4,9 @@
 // en una pestaña con la ventana de imprimir ("Guardar como PDF"), como las
 // órdenes de compra. Con el informe del día va una línea con el reporte del
 // día (piezas escaneadas, etapas terminadas o firmadas, instalación y OT
-// atrasadas).
+// atrasadas). Tadeo, 05/11: salía cortado; ahora las OT van cortas en "Lo
+// importante", Por OT es una tabla de un renglón y nada se esconde (si un
+// día no entra, sigue en la segunda hoja sin partir renglones).
 import { ETAPAS_PLAN } from "./planificacion";
 import { partesNota } from "./informeProduccion";
 import { fechaCorta } from "./ot";
@@ -51,24 +53,24 @@ export function otsDeLaHoja(ots) {
   return [...plan, ...ots.filter((o) => o.fueraDelPlan).slice(0, MAX_OT - plan.length)];
 }
 
-/** Planificado (gris) y hecho (naranja) por OT, con "hecho de planificado" y las marcas a la derecha. */
+/** Lo que va a la derecha de cada OT: fuera del plan, tarde, corrida y retrabajo. */
+const marcasOt = (o) => [o.fueraDelPlan ? "🆕 fuera del plan" : [o.tarde && (o.diasTarde > 0 ? `⚠ ${o.diasTarde} d tarde` : "⚠ tarde"), o.diasCorrido > 0 && `↪ ${o.diasCorrido} d`].filter(Boolean).join(" "),
+  o.retrabajo > 0 && `🔁 ${coma(o.retrabajo)} h`].filter(Boolean).join(" ");
+
+/** Tabla por OT, un renglón cada una: planificado (gris) y hecho (naranja), "hecho de planificado" y las marcas. */
 export function svgPorOt(ots) {
-  const lista = otsDeLaHoja(ots);
-  if (!lista.length) return "";
-  const alto = 16, x0 = 92, ancho = 170;
-  const marcas = (o) => [o.fueraDelPlan ? "🆕 fuera del plan" : [o.tarde && (o.diasTarde > 0 ? `⚠ ${o.diasTarde} d tarde` : "⚠ tarde"), o.diasCorrido > 0 && `↪ ${o.diasCorrido} d`].filter(Boolean).join(" "),
-    o.retrabajo > 0 && `🔁 ${coma(o.retrabajo)} h`].filter(Boolean).join(" ");
-  return `<svg class="porot" viewBox="0 0 400 ${lista.length * alto + 12}" role="img" aria-label="Planificado y hecho por OT">
-    ${[0, 50, 100].map((p) => `<line x1="${x0 + (ancho * p) / 100}" x2="${x0 + (ancho * p) / 100}" y1="0" y2="${lista.length * alto}" class="grilla" />
-      <text x="${x0 + (ancho * p) / 100}" y="${lista.length * alto + 9}" text-anchor="middle" class="t-eje">${p} %</text>`).join("")}
-    ${lista.map((o, i) => `
-      <text x="0" y="${i * alto + 7}" class="t-ot">${esc(corto([`OT ${o.ot}`, partesOt(o).cliente].filter(Boolean).join(" · "), 22))}</text>
-      <text x="0" y="${i * alto + 14}" class="t-cli">${esc(corto([partesOt(o).proyecto, partesOt(o).descripcion].filter(Boolean).join(" · "), 28))}</text>
-      <rect x="${x0}" y="${i * alto + 1}" width="${(ancho * lim(o.planificado)) / 100}" height="5.5" rx="2" class="b-plan" />
-      <rect x="${x0}" y="${i * alto + 7.5}" width="${(ancho * lim(o.hecho)) / 100}" height="5.5" rx="2" class="b-hecho" />
-      <text x="${x0 + ancho + 54}" y="${i * alto + 10}" text-anchor="end" class="t-num ${o.fueraDelPlan ? "" : o.hecho < o.planificado ? "mal" : "bien"}">${o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</text>
-      <text x="${x0 + ancho + 60}" y="${i * alto + 10}" class="t-marca">${esc(marcas(o))}</text>`).join("")}
-  </svg>`;
+  const filas = otsDeLaHoja(ots);
+  if (!filas.length) return "";
+  const barra = (o) => `<svg class="mini" viewBox="0 0 100 12" aria-hidden="true">
+    <rect x="0" y="0" width="${lim(o.planificado)}" height="5" rx="1.5" class="b-plan" /><rect x="0" y="6.5" width="${lim(o.hecho)}" height="5" rx="1.5" class="b-hecho" /></svg>`;
+  return `<table class="porot" aria-label="Planificado y hecho por OT"><thead><tr><th>OT</th><th>Obra · descripción</th><th class="c-barra">Avance</th><th class="num">Hecho</th><th>Marcas</th></tr></thead><tbody>
+    ${filas.map((o) => { const { proyecto, descripcion } = partesOt(o); return `<tr>
+      <td class="c-ot">${esc(otCorta(o))}</td>
+      <td class="c-obra">${esc(corto([proyecto, descripcion].filter(Boolean).join(" · "), 46))}</td>
+      <td class="c-barra">${barra(o)}</td>
+      <td class="num ${o.fueraDelPlan ? "" : o.hecho < o.planificado ? "mal" : "bien"}">${o.fueraDelPlan ? `${coma(o.hecho)} %` : `${coma(o.hecho)} de ${coma(o.planificado)} %`}</td>
+      <td class="c-marca">${esc(marcasOt(o))}</td></tr>`; }).join("")}
+  </tbody></table>`;
 }
 
 /** Avance de cada proceso: promedio de lo planificado y de lo hecho en las OT que lo tienen. */
@@ -96,8 +98,11 @@ function svgPorProceso(ots) {
 }
 
 // Cada OT completa: Código · Cliente · Proyecto · Descripción (Tadeo, 02/11)
-const corto = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
-const lista = (ots, n = 3) => ots.slice(0, n).map((o) => textoOt(o)).join("; ") + (ots.length > n ? ` y ${ots.length - n} más` : "");
+const corto = (t, n) => (t = String(t ?? ""), t.length > n ? `${t.slice(0, n - 1)}…` : t);
+// En la hoja la OT va corta (código · cliente): el detalle completo está en Gypi y en la tabla Por OT
+export const otCorta = (o) => { const { codigo, cliente } = partesOt(o); return [codigo ? `OT ${codigo}` : "", corto(cliente, 22)].filter(Boolean).join(" · ") || textoOt(o); };
+const mas = (total, n) => (total > n ? ` y ${total - n} más` : "");
+const lista = (ots, n = 2, f = otCorta) => ots.slice(0, n).map(f).join(", ") + mas(ots.length, n);
 
 /** Lo importante en pocas líneas (Tadeo, 30/10: claro y conciso, en una hoja). */
 export function puntosClave(r, reporteDia = null) {
@@ -107,14 +112,14 @@ export function puntosClave(r, reporteDia = null) {
   if (hayPlan) puntos.push({ tono: tono(r.nota), texto: `Cumplimiento ${coma(s.cumplimiento)} %: se hizo ese % del avance planificado. ${s.procesosCumplidos} de ${s.procesosPlanificados} procesos planificados llegaron a lo previsto.` });
   else puntos.push({ tono: "neutro", texto: "No había nada planificado en el período." });
   const atrasadas = r.ots.filter((o) => !o.fueraDelPlan && !o.enPausa && o.desvio <= -10);
-  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Más atrasadas contra el plan: ${atrasadas.slice(0, 3).map((o) => `${textoOt(o)} (hizo ${coma(o.hecho)} % de ${coma(o.planificado)} %)`).join(", ")}${atrasadas.length > 3 ? ` y ${atrasadas.length - 3} más` : ""}.` });
+  if (atrasadas.length) puntos.push({ tono: "mal", texto: `Más atrasadas contra el plan: ${lista(atrasadas, 2, (o) => `${otCorta(o)} (hizo ${coma(o.hecho)} % de ${coma(o.planificado)} %)`)}.` });
   const fuera = r.ots.filter((o) => o.fueraDelPlan);
   if (fuera.length) puntos.push({ tono: "medio", texto: `Producción fuera del plan: ${lista(fuera)} (no cuenta en el cumplimiento).` });
   const tarde = r.ots.filter((o) => o.tarde);
   if (s.otsTarde) puntos.push({ tono: "mal", texto: `${s.otsTarde} de ${s.otsAbiertas} OT terminan después de su fecha límite${tarde.length ? `: ${lista(tarde)}` : ""}.` });
   // OT en pausa (151): lo planificado esos días no cuenta en la nota
   const pausa = r.enPausa || [];
-  if (pausa.length) puntos.push({ tono: "neutro", texto: `⏸ En pausa: ${pausa.slice(0, 3).map((p) => `${textoOt(p)} (${p.motivo})`).join(", ")}${pausa.length > 3 ? ` y ${pausa.length - 3} más` : ""}. Lo planificado mientras estuvo en pausa no cuenta en la nota.` });
+  if (pausa.length) puntos.push({ tono: "neutro", texto: `⏸ En pausa: ${lista(pausa, 2, (p) => `${otCorta(p)} (${corto(p.motivo, 30)})`)}. Lo planificado en la pausa no cuenta en la nota.` });
   const rt = r.retrabajos || [];
   if (rt.length) {
     // Retrabajo (147): por OT y proceso, con el motivo
@@ -127,14 +132,14 @@ export function puntosClave(r, reporteDia = null) {
       grupos.set(k, g);
     }
     const gs = [...grupos.values()].sort((a, b) => b.horas - a.horas);
-    puntos.push({ tono: "mal", texto: `🔁 Retrabajo: ${coma(s.horasRetrabajo)} h. ${gs.slice(0, 3).map((g) => `${textoOt(g)}: ${g.nombre} ${coma(g.horas)} h (${[...g.motivos].join(", ")})`).join("; ")}${gs.length > 3 ? ` y ${gs.length - 3} más` : ""}.` });
+    puntos.push({ tono: "mal", texto: `🔁 Retrabajo: ${coma(s.horasRetrabajo)} h. ${gs.slice(0, 2).map((g) => `${otCorta(g)}: ${g.nombre} ${coma(g.horas)} h (${corto([...g.motivos].join(", "), 40)})`).join("; ")}${mas(gs.length, 2)}.` });
   }
   const lt = r.leadTime;
   if (lt?.promedios?.length) {
     // Lead time en horas de trabajo de lo que terminó en el período
     const terminadas = lt.ots.filter((o) => o.horas != null);
-    const procs = lt.promedios.filter((x) => x.etapa !== "ot").map((x) => `${x.nombre} ${coma(x.promedio)} h${x.cantidad > 1 ? ` (promedio de ${x.cantidad})` : ""}`);
-    puntos.push({ tono: "neutro", texto: `⏱ Lead time en horas de trabajo: ${procs.join(", ")}.${terminadas.length ? ` OT terminadas: ${terminadas.slice(0, 3).map((o) => `${textoOt(o)} en ${coma(o.horas)} h`).join(", ")}${terminadas.length > 3 ? ` y ${terminadas.length - 3} más` : ""}.` : ""}` });
+    const procs = lt.promedios.filter((x) => x.etapa !== "ot").map((x) => `${x.nombre} ${coma(x.promedio)} h`);
+    puntos.push({ tono: "neutro", texto: `⏱ Lead time en horas de trabajo: ${procs.join(", ")}.${terminadas.length ? ` OT terminadas: ${lista(terminadas, 2, (o) => `${otCorta(o)} en ${coma(o.horas)} h`)}.` : ""}` });
   }
   if (s.procesosCorridos) puntos.push({ tono: "medio", texto: `${s.procesosCorridos} de ${s.procesosAbiertos} procesos se corrieron del plan confirmado.` });
   if (reporteDia) {
@@ -164,7 +169,9 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
   @page { size: A4; margin: 10mm; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; color: #1c1917; font-size: 10pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .hoja { max-height: 276mm; overflow: hidden; }
+  /* Entra en una hoja; si hay mucho, sigue en la segunda sin cortar renglones (Tadeo, 05/11: nada a medias) */
+  .resumen, .puntos li, .porot tr, .porproc { break-inside: avoid; }
+  thead { display: table-header-group; }
   .cabecera { display: flex; justify-content: space-between; align-items: center; gap: 6mm; border-bottom: .6mm solid #e8a33c; padding-bottom: 2mm; margin-bottom: 3mm; }
   .cabecera img { max-height: 11mm; max-width: 35mm; object-fit: contain; display: block; }
   .quien { display: flex; align-items: center; gap: 3mm; }
@@ -180,7 +187,14 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
   .gv-bien { stroke: #16a34a; } .gv-medio { stroke: #d97706; } .gv-mal { stroke: #dc2626; } .gv-neutro { stroke: #a8a29e; }
   .g-num { font-size: 22px; font-weight: 800; fill: #1c1917; } .gn-bien { fill: #16a34a; } .gn-medio { fill: #d97706; } .gn-mal { fill: #dc2626; }
   .g-sub { font-size: 7px; fill: #78716c; }
-  .partes, .porot, .porproc { width: 100%; display: block; }
+  .partes, .porproc { width: 100%; display: block; }
+  table.porot { width: 100%; border-collapse: collapse; font-size: 8pt; table-layout: fixed; }
+  .porot th { text-align: left; font-size: 7pt; font-weight: 600; color: #78716c; border-bottom: .3mm solid #d6d3d1; padding: .6mm 1mm; }
+  .porot td { padding: .7mm 1mm; border-bottom: .2mm solid #f0eeec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+  .porot th:nth-child(1) { width: 46mm; } .porot th:nth-child(3) { width: 28mm; } .porot th:nth-child(4) { width: 22mm; } .porot th:nth-child(5) { width: 32mm; }
+  .c-ot { font-weight: 700; } .c-obra { color: #78716c; font-size: 7pt; } .c-marca { color: #b45309; font-size: 7pt; }
+  .num { text-align: right; font-weight: 700; } td.mal { color: #dc2626; } td.bien { color: #16a34a; }
+  .mini { width: 100%; height: 3mm; display: block; }
   .b-fondo { fill: #e7e5e4; } .b-plan { fill: #a8a29e; } .b-hecho { fill: #e8a33c; }
   .grilla { stroke: #e7e5e4; stroke-width: .5; }
   .t-label { font-size: 8px; fill: #44403c; } .t-num { font-size: 8px; font-weight: 700; fill: #1c1917; } .t-eje { font-size: 6.5px; fill: #78716c; }
@@ -188,9 +202,9 @@ export function htmlInformePdf({ empresa = {}, informe: r, reporteDia = null, ah
   text.mal { fill: #dc2626; } text.bien { fill: #16a34a; }
   .formula { margin-top: 1mm; font-size: 7.5pt; color: #78716c; }
   ul.puntos { list-style: none; margin: 0; padding: 0; }
-  .puntos li { padding: 1mm 0 1mm 3mm; border-left: 1.2mm solid #a8a29e; margin-bottom: 1.2mm; font-size: 9pt; line-height: 1.3; }
+  .puntos li { padding: .6mm 0 .6mm 2.5mm; border-left: 1.2mm solid #a8a29e; margin-bottom: 1mm; font-size: 8.5pt; line-height: 1.28; }
   .puntos li.mal { border-color: #dc2626; } .puntos li.medio { border-color: #d97706; } .puntos li.bien { border-color: #16a34a; }
-  .dos { display: grid; grid-template-columns: 1.15fr 1fr; gap: 6mm; align-items: start; }
+  .dos { display: grid; grid-template-columns: 1.6fr 1fr; gap: 6mm; align-items: start; }
   .leyenda { font-size: 7.5pt; color: #57534e; margin-bottom: 1mm; }
   .leyenda i { display: inline-block; width: 3mm; height: 2mm; border-radius: .5mm; margin: 0 1mm 0 2mm; vertical-align: middle; }
   .l-plan { background: #a8a29e; } .l-hecho { background: #e8a33c; }

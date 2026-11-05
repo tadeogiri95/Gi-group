@@ -857,7 +857,7 @@ test("📊 Carga — el checkeo manual baja las horas que faltan de la OT y no d
 
 // ─── Valorización con el PRECIO del Plan de trabajo (Tadeo, 27/10; migración 142) ───
 const { puedeVerPrecios, valorizarPlan, nombreMes } = await import("../app/lib/valorizacion.js");
-const { autorizar, TABLAS_SIN_SUPERVISOR } = await import("../app/lib/dataPolicy.js");
+const { autorizar } = await import("../app/lib/dataPolicy.js");
 
 test("valorizarPlan — reparte el precio según las horas de cada semana y mes", () => {
   // OT de 10 h en total: 3 h ya hechas, 4 h el viernes 30/10, 2 h el lunes 2/11 y 1 h pasa al período siguiente
@@ -882,17 +882,15 @@ test("valorizarPlan — reparte el precio según las horas de cada semana y mes"
   assert.equal(nombreMes("2026-11"), "Noviembre 2026");
 });
 
-test("precios — solo Dueño y Administración; el supervisor de división no", () => {
+test("precios — Dueño, Administración y Supervisor; los operarios no", () => {
   assert.equal(puedeVerPrecios({ rol: "gerencial" }), true);
   assert.equal(puedeVerPrecios({ rol: "administrativo" }), true);
-  assert.equal(puedeVerPrecios({ rol: "administrativo", solo_su_division: true }), false);
+  assert.equal(puedeVerPrecios({ rol: "administrativo", solo_su_division: true }), true);
   assert.equal(puedeVerPrecios({ rol: "operativo" }), false);
   assert.equal(autorizar("precios_ot", "GET", { rol: "operativo" }).ok, false);
   assert.equal(autorizar("precios_ot", "GET", { rol: "administrativo" }).ok, true);
   assert.equal(autorizar("precios_ot", "POST", { rol: "gerencial" }).ok, false, "lo escribe solo la sincronización");
-  assert.ok(TABLAS_SIN_SUPERVISOR.has("precios_ot"));
   const route = readFileSync(new URL("../app/api/data/route.js", import.meta.url), "utf8");
-  assert.match(route, /alcance && TABLAS_SIN_SUPERVISOR\.has\(pathCheck\.tabla\)/);
   assert.match(route, /TABLAS_SOLO_LECTURA = \[[^\]]*"precios_ot"/);
   const sql = readFileSync(new URL("../supabase/migrations/142_precios_ot.sql", import.meta.url), "utf8");
   assert.match(sql, /create table if not exists public\.precios_ot/);
@@ -950,7 +948,7 @@ test("📊 Carga — 💲 precio de cada OT y valorización por semana y mes", a
   assert.equal(within(valor).queryByLabelText("Valorización por semana"), null);
 });
 
-test("📊 Carga — el supervisor de división no ve precios ni los pide", async () => {
+test("📊 Carga — el supervisor ve los precios y los pide (05/11)", async () => {
   const pedidos = mockConPrecios([{ ot: "M-7473", precio: 2500000 }]);
   render(
     <AuthContext.Provider value={{ divisiones: DIVISIONES, etapas: ETAPAS, usuario: { rol: "administrativo", solo_su_division: true } }}>
@@ -958,9 +956,7 @@ test("📊 Carga — el supervisor de división no ve precios ni los pide", asyn
     </AuthContext.Provider>
   );
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  assert.equal(screen.queryByLabelText("Valorización"), null);
-  assert.doesNotMatch(screen.getByLabelText("Planificar OT M-7473").closest("li").textContent, /\$/);
-  assert.ok(!pedidos.some((p) => p.startsWith("precios_ot")));
+  await waitFor(() => assert.ok(pedidos.some((p) => p.startsWith("precios_ot"))));
 });
 
 test("📊 Carga — avisa cuántas OT tildadas no tienen precio y cuántas no tienen placas, fondos ni canto", async () => {
@@ -980,7 +976,7 @@ test("📊 Carga — avisa cuántas OT tildadas no tienen precio y cuántas no t
   assert.equal(screen.queryByLabelText("Avisos de la planificación"), null);
 });
 
-test("📊 Carga — el supervisor de división ve el aviso de datos pero no el de precio", async () => {
+test("📊 Carga — el supervisor ve el aviso de datos y el de precio", async () => {
   mockConPrecios([]);
   render(
     <AuthContext.Provider value={{ divisiones: DIVISIONES, etapas: ETAPAS, usuario: { rol: "administrativo", solo_su_division: true } }}>
@@ -989,8 +985,7 @@ test("📊 Carga — el supervisor de división ve el aviso de datos pero no el 
   );
   const avisos = await screen.findByLabelText("Avisos de la planificación");
   assert.ok(avisos.querySelector('[data-aviso="tiempos"]'));
-  assert.equal(avisos.querySelector('[data-aviso="precio"]'), null);
-  assert.doesNotMatch(screen.getByLabelText("Planificar OT M-7473").closest("li").textContent, /sin precio/);
+  await waitFor(() => assert.ok(avisos.querySelector('[data-aviso="precio"]')));
 });
 
 // ─── Arreglos de Planificación (Tadeo, 27/10) ───

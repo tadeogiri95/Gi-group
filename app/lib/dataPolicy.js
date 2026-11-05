@@ -24,11 +24,6 @@ import { validarPausa, validarReanudar } from "./pausaOt";
 
 export const ROLES_GESTION = new Set(["gerencial", "administrativo"]);
 
-// Tablas que un supervisor de división (administrativo con solo_su_division)
-// no ve aunque sea gestión: el precio de las OT solo lo ven Dueño y
-// Administración (Tadeo, 27/10).
-export const TABLAS_SIN_SUPERVISOR = new Set(["precios_ot"]);
-
 // Tipos de solicitud que acepta /api/data. hora_extra (F1-06) y
 // salida_anticipada (D22) los crea el chat y antes se rechazaban con 400.
 export const TIPOS_SOLICITUD = ["permiso", "vacaciones", "justificacion", "tardanza", "ausencia", "cambio_horario", "hora_extra", "salida_anticipada", "otro"];
@@ -64,7 +59,7 @@ export const POLICY = {
   no_conformidades:             { GET: "all" },   // se escribe por /api/no-conformidades (OP parte 6)
   pasos_pieza:                  { GET: "all" },   // se escribe por /api/piezas/paso (OP parte 18)
   piezas_ot:                    { GET: "all" },   // se escribe por /api/piezas (OP parte 17)
-  precios_ot:                   { GET: "gestion" }, // precio de cada OT (142); sin supervisores (TABLAS_SIN_SUPERVISOR); lo escribe la sincronización
+  precios_ot:                   { GET: "gestion" }, // precio de cada OT (142); lo escribe la sincronización
   v_avance_piezas:              { GET: "all" },   // vista: % de avance por escaneo (parte 25, migración 118)
   sueltos_ot:                   { GET: "all" },   // se escribe por /api/sueltos (OP parte 9)
   articulos_stock:              { GET: "all" },   // lo escribe la sincronización con la planilla MRP (Stock parte 13)
@@ -243,7 +238,8 @@ function validarActividad(body) {
 }
 
 /** Restricciones de campos por rol en PATCH. Devuelve null si está OK, o { status, error }. */
-export function validarPatch(tabla, body, sesion) {
+// comoDueno: Dueño o Supervisor (lo calcula la ruta, la sesión no trae la casilla).
+export function validarPatch(tabla, body, sesion, { comoDueno = sesion?.rol === "gerencial" } = {}) {
   // Cantidad hecha en una tarea (099): número >= 0, o null para borrarla
   if (tabla === "registro_actividades" && body && body.cantidad !== undefined && body.cantidad !== null) {
     const n = body.cantidad;
@@ -280,9 +276,9 @@ export function validarPatch(tabla, body, sesion) {
     const err = validarReanudar(body);
     if (err) return { status: 400, error: err };
   }
-  if (tabla === "empresa" && sesion?.rol !== "gerencial") {
+  if (tabla === "empresa" && !comoDueno) {
     const prohibido = CAMPOS_EMPRESA_SOLO_DUENO.find((c) => body && body[c] !== undefined);
-    if (prohibido) return { status: 403, error: "Solo el dueño de la cuenta puede cambiar las instrucciones de la IA" };
+    if (prohibido) return { status: 403, error: "Solo el dueño de la cuenta o un supervisor puede cambiar las instrucciones de la IA" };
   }
   return null;
 }

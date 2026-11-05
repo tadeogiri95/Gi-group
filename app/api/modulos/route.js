@@ -7,7 +7,6 @@
 // empresa_modulos solo la usa el servidor con la service key (083).
 import { NextResponse } from "next/server";
 import { validarToken } from "../../lib/auth";
-import { rechazarSiSupervisor } from "../../lib/alcance";
 import { getModulosEmpresa, invalidarCachePlan } from "../../lib/planEnforcement";
 import { MODULOS, SIEMPRE_PRENDIDOS } from "../../lib/modulos";
 import { logAudit } from "../../lib/audit";
@@ -23,8 +22,6 @@ async function sesionDeGestion(request) {
   if (!["gerencial", "administrativo"].includes(sesion.rol)) {
     return { respuesta: NextResponse.json({ error: "Sin permisos" }, { status: 403 }) };
   }
-  const supervisor = await rechazarSiSupervisor(sesion);
-  if (supervisor) return { respuesta: supervisor };
   return { sesion };
 }
 

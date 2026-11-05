@@ -12,7 +12,6 @@ import { sanitizePostgrestParam } from "../../../lib/validate";
 import { chatQueryBody } from "../../../lib/schemas";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { duracionMinutos } from "../../../lib/calc";
-import { rechazarSiSupervisor } from "../../../lib/alcance";
 import { sbHeaders } from "../../../lib/sbHelpers";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -369,12 +368,6 @@ export async function POST(request) {
     if (GERENCIAL_ONLY.has(query_type) && !["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Esta consulta requiere rol gerencial." }, { status: 403 });
     }
-    // Las consultas de gestión cubren a toda la empresa: un supervisor de división no las usa (D2)
-    if (GERENCIAL_ONLY.has(query_type)) {
-      const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-      if (bloqueoSupervisor) return bloqueoSupervisor;
-    }
-
     const params = {};
     for (const [k, v] of Object.entries(rawParams || {})) {
       params[k] = typeof v === "string" ? sanitizePostgrestParam(v) : v;

@@ -23,6 +23,7 @@ const { default: Indicadores } = await import("../app/components/Indicadores.jsx
 const { default: CostoEditor, leerPesos } = await import("../app/components/CostoEditor.jsx");
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/costo-hora/route.js");
+const { _limpiarCacheAlcance } = await import("../app/lib/alcance.js");
 
 const E = "11111111-1111-1111-1111-111111111111";
 const EMP = "22222222-2222-2222-2222-222222222222";
@@ -117,9 +118,11 @@ function req(t, body) {
   });
 }
 
-function mockCosto({ fila = null, falla = null } = {}) {
+function mockCosto({ fila = null, falla = null, supervisor = false } = {}) {
   const escrito = [];
+  _limpiarCacheAlcance();
   global.fetch = createFetchMock([
+    { match: (u) => u.includes("select=id,solo_su_division"), respond: () => ({ status: 200, body: [{ id: EMP, solo_su_division: supervisor }] }) },
     ...authPassHandlers(),
     {
       match: (u) => u.includes("/rest/v1/costos_empresa"),
@@ -134,9 +137,9 @@ function mockCosto({ fila = null, falla = null } = {}) {
   return escrito;
 }
 
-test("/api/costo-hora — ni el supervisor, ni el administrativo, ni el operario ven ni cambian el costo", async () => {
+test("/api/costo-hora — ni el administrativo ni el operario ven ni cambian el costo", async () => {
   const escrito = mockCosto({ fila: { costo_hora: 9000, empresa_id: E } });
-  for (const rol of ["operativo", "administrativo", "supervisor"]) {
+  for (const rol of ["operativo", "administrativo"]) {
     const get = await api.GET(req(await token(rol)));
     assert.equal(get.status, 403, `GET ${rol}`);
     assert.equal((await get.json()).costo_hora, undefined);
@@ -144,6 +147,18 @@ test("/api/costo-hora — ni el supervisor, ni el administrativo, ni el operario
     assert.equal(post.status, 403, `POST ${rol}`);
   }
   assert.equal(escrito.length, 0);
+});
+
+test("/api/costo-hora — el supervisor lo ve y lo cambia (desde 05/11), en su empresa", async () => {
+  mockCosto({ fila: { costo_hora: 9000, empresa_id: E }, supervisor: true });
+  const get = await api.GET(req(await token("administrativo")));
+  assert.equal(get.status, 200);
+  assert.equal((await get.json()).costo_hora, 9000);
+  const escrito = mockCosto({ fila: { empresa_id: E }, supervisor: true });
+  const post = await api.POST(req(await token("administrativo"), { costo_hora: 9100 }));
+  assert.equal(post.status, 200);
+  assert.equal(escrito[0].metodo, "PATCH");
+  assert.match(escrito[0].url, new RegExp(`empresa_id=eq\\.${E}`));
 });
 
 test("/api/costo-hora — el dueño lo lee y lo guarda en su empresa", async () => {

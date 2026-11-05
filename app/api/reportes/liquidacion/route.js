@@ -13,7 +13,6 @@ import { requireModulo } from "../../../lib/planEnforcement";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
-import { rechazarSiSupervisor } from "../../../lib/alcance";
 import { BASES_AUSENCIA, diasEnPeriodo } from "../../../lib/tiposSolicitud";
 
 const ROLES_PERMITIDOS = new Set(["gerencial", "administrativo"]);
@@ -39,8 +38,6 @@ export async function GET(request) {
         { status: 403 }
       );
     }
-    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-    if (bloqueoSupervisor) return bloqueoSupervisor;
 
     const empresaId = sesion.empresa_id;
 

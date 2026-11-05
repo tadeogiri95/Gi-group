@@ -37,13 +37,12 @@ const PLACA = { sku: "1.1.2.18", nombre: "Placa melamina blanca 18 mm", unidad: 
 
 // ─── Reglas ───
 
-test("quién pide y quién compra — operarios no piden; el supervisor de división pide pero no compra", () => {
+test("quién pide y quién compra — operarios no piden; Dueño, Administración y Supervisor compran", () => {
   assert.equal(puedePedir("operativo"), false);
   assert.equal(puedePedir("administrativo"), true);
   assert.equal(puedePedir("gerencial"), true);
   assert.equal(puedeComprar("gerencial"), true);
-  assert.equal(puedeComprar("administrativo", null), true);
-  assert.equal(puedeComprar("administrativo", { division: "MUEBLES", ids: [], legajos: [] }), false);
+  assert.equal(puedeComprar("administrativo"), true);
   assert.equal(puedeComprar("operativo"), false);
 });
 
@@ -204,7 +203,7 @@ test("/api/compras GET — dice si la sesión compra", async () => {
   assert.deepEqual(await (await api.GET(req(await token("gerencial")))).json(), { comprador: true, puede_pedir: true });
   assert.deepEqual(await (await api.GET(req(await token("operativo")))).json(), { comprador: false, puede_pedir: false });
   mockRuta({ supervisor: "MUEBLES" });
-  assert.deepEqual(await (await api.GET(req(await token("administrativo")))).json(), { comprador: false, puede_pedir: true });
+  assert.deepEqual(await (await api.GET(req(await token("administrativo")))).json(), { comprador: true, puede_pedir: true }, "el supervisor también compra (05/11)");
 });
 
 test("/api/compras — el jefe de taller pide del catálogo para una OT; queda pendiente con su nombre", async () => {
@@ -259,8 +258,7 @@ test("/api/compras — anular: el suyo sí, el de otro no (salvo el comprador), 
   _limpiarCacheAlcance();
   escrito = mockRuta({ supervisor: "MUEBLES", pedido: { id: 5, estado: "pendiente", empleado_id: OTRO } });
   res = await api.POST(req(await token("administrativo"), { accion: "pedido_anular", id: 5 }));
-  assert.equal(res.status, 403);
-  assert.equal(escrito.length, 0);
+  assert.equal(res.status, 200, "el supervisor compra: anula el de cualquiera");
   res = await api.POST(req(await token("gerencial"), { accion: "pedido_anular", id: 5 }));
   assert.equal(res.status, 200);
 
@@ -310,9 +308,7 @@ test("/api/compras — corregir: sin cambios no registra; el de otro, en OC o si
 
   escrito = mockRuta({ supervisor: "MUEBLES", pedido: { ...PEDIDO, empleado_id: OTRO } });
   res = await api.POST(req(await token("administrativo"), CORRECCION));
-  assert.equal(res.status, 403);
-  assert.match((await res.json()).error, /tus pedidos/);
-  assert.equal(escrito.length, 0);
+  assert.equal(res.status, 200, "el supervisor compra: corrige el de cualquiera");
   res = await api.POST(req(await token("gerencial"), CORRECCION));
   assert.equal(res.status, 200, "el comprador corrige el de cualquiera");
 
@@ -331,11 +327,12 @@ test("/api/compras — corregir: sin cambios no registra; el de otro, en OC o si
   assert.match((await res.json()).error, /migración 121/);
 });
 
-test("/api/compras — proveedores: Administración sí, el supervisor de división no", async () => {
+test("/api/compras — proveedores: Administración y el supervisor sí, el operario no", async () => {
   let escrito = mockRuta({ supervisor: "MUEBLES" });
   let res = await api.POST(req(await token("administrativo"), { accion: "proveedor_guardar", nombre: "Aluar" }));
+  assert.equal(res.status, 200);
+  res = await api.POST(req(await token("operativo"), { accion: "proveedor_guardar", nombre: "Aluar" }));
   assert.equal(res.status, 403);
-  assert.equal(escrito.length, 0);
 
   _limpiarCacheAlcance();
   escrito = mockRuta();
