@@ -7,14 +7,19 @@
 // que se planifica, con una barra de Diseño (días hábiles fijos, varias OT a
 // la vez) y una de Técnica (horas de una arquitecta, una planilla por vez).
 // Salen las OT que ya tienen Diseño y Técnica terminados en el Plan de trabajo.
+// Parte 50 (migración 161): el Dueño o un supervisor cambia el orden de las
+// planillas (arrastrando desde ⠿ o con ▲▼) y elige la arquitecta de cada una;
+// ve la vista previa y con "✅ Confirmar plan" queda guardado en cada OT (y
+// cada arquitecta lo ve en 📐 Mis planillas). Después avisa cuánto se corrió.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
+import { mover } from "../lib/reordenarPlan";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
 import { otsEnPausa } from "../lib/pausaOt";
 import { CLAVE_PLANIFICACION } from "../lib/planificacion";
 import { esDiaHabil } from "../lib/planInstalacion";
-import { finDelPlan, barrasSeguidas, limiteTecnica, planDeEmpresa } from "../lib/planDisenoTecnica";
+import { finDelPlan, barrasSeguidas, limiteTecnica, planDeEmpresa, conCambio, cuerposConfirmar, hayConfirmado } from "../lib/planDisenoTecnica";
 import { textoDiasHabiles, textoHoras } from "../lib/disenoTecnicaPlan";
 import { nombreTipo } from "../lib/tipoProyecto";
 import { partesOt } from "../lib/nombreOt";
@@ -35,6 +40,7 @@ export function textoRenglon(r, limite = null) {
   if (r.diseno) partes.push(`Diseño del ${fechaCorta(r.diseno.inicio)} al ${fechaCorta(r.diseno.fin)} (${textoDiasHabiles(r.diseno.dias)}${r.arquitectaDiseno ? `, ${r.arquitectaDiseno}` : ""})`);
   partes.push(notaTecnica(r, true));
   if (limite) partes.push(textoLimite(limite));
+  if (r.corrido > 0) partes.push(`se corrió ${textoDiasHabiles(r.corrido)} desde el plan confirmado`);
   return partes.filter(Boolean).join(", ");
 }
 
@@ -44,6 +50,55 @@ export function textoLimite(l) {
   if (l.estado === "rojo") return `${base}, ⚠ ${l.diasTarde} ${l.diasTarde === 1 ? "día hábil" : "días hábiles"} tarde`;
   if (l.estado === "amarillo") return `${base}, poco margen`;
   return base;
+}
+
+export const AVISO_MIGRACION_161 = "Para confirmar el plan de Diseño y Técnica falta correr la migración 161 en Supabase.";
+
+/** Panel para ordenar las planillas, elegir arquitecta y confirmar (parte 50). */
+function OrdenarPlan({ renglones, deTecnica, editando, setEditando, cambio, confirmando, confirmado, corridas, aviso, arrastre, moverA, elegir, empezarArrastre, moverArrastre, soltarArrastre, deshacer, confirmar }) {
+  const boton = "bg-transparent border-none text-gypi-dim cursor-pointer min-w-8 min-h-8 disabled:opacity-30";
+  return (
+    <section aria-label="Ordenar y confirmar el plan de Diseño y Técnica" className={`mb-2 rounded-xl border-2 p-3 ${cambio ? "border-gypi-amber bg-gypi-amber/10" : "border-gypi-border"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex-1 min-w-0 text-[14px] text-gypi-text">
+          {cambio ? <><span className="font-bold">Vista previa:</span> así quedaría el plan. Las arquitectas siguen viendo el confirmado hasta que confirmes.</>
+            : confirmado ? (corridas.length ? <span className="text-gypi-red-ink font-bold">↪ {corridas.length === 1 ? "1 planilla se corrió" : `${corridas.length} planillas se corrieron`} desde el plan confirmado</span> : "Plan confirmado. Para cambiar el orden o quién hace cada planilla, tocá ✏ Ordenar y asignar.")
+            : "Todavía no confirmaste un plan: el orden sale de la prioridad de Producción. Podés ordenar las planillas y elegir la arquitecta de cada una."}
+        </div>
+        <button type="button" onClick={() => setEditando(!editando)} aria-expanded={editando} className="g-btn g-btn-secondary">{editando ? "Cerrar" : "✏ Ordenar y asignar"}</button>
+        <button type="button" onClick={confirmar} disabled={confirmando} className="g-btn g-btn-primary">{confirmando ? "Confirmando…" : "✅ Confirmar plan"}</button>
+        {cambio && <button type="button" onClick={deshacer} disabled={confirmando} className="g-btn g-btn-secondary">↩ Deshacer</button>}
+      </div>
+      {aviso && <div role="status" className="text-[14px] font-bold mt-2">{aviso}</div>}
+      {editando && (
+        <>
+          <div className="text-[13px] text-gypi-dim mt-2 mb-1">Arrastrá una OT desde ⠿ o usá ▲▼ para cambiar el orden de las planillas. Si en el Plan de trabajo ya figuran las iniciales de una arquitecta, sigue con ella.</div>
+          <ol aria-label="Orden de las planillas" className="list-none m-0 p-0 flex flex-col gap-1" onPointerMove={moverArrastre} onPointerUp={soltarArrastre} onPointerCancel={soltarArrastre}>
+            {renglones.map((r, i) => (
+              <li key={r.ot} data-orden-ot={r.ot}
+                className={`flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1 bg-gypi-surface ${arrastre?.sobre === r.ot && arrastre.ot !== r.ot ? "border-gypi-amber" : "border-gypi-border"} ${arrastre?.ot === r.ot ? "opacity-60" : ""}`}>
+                <span aria-hidden="true" onPointerDown={(e) => empezarArrastre(e, r.ot)} className="cursor-grab touch-none select-none text-[18px] text-gypi-dim px-1">⠿</span>
+                <span className="text-[13px] font-bold text-gypi-dim w-6 text-right">{i + 1}</span>
+                <button type="button" onClick={() => moverA(r.ot, i - 1)} disabled={i === 0} aria-label={`Subir la OT ${r.ot}`} className={boton}>▲</button>
+                <button type="button" onClick={() => moverA(r.ot, i + 1)} disabled={i === renglones.length - 1} aria-label={`Bajar la OT ${r.ot}`} className={boton}>▼</button>
+                <span className="flex-1 min-w-[180px] text-[14px]"><NombreOt proyecto={r.proyecto} /> · {r.clase}</span>
+                <span className="text-[13px] text-gypi-dim">{r.tecnica?.inicio ? `Técnica ${fechaCorta(r.tecnica.inicio)} → ${fechaCorta(r.tecnica.fin)}` : r.diseno ? "Solo Diseño" : notaTecnica(r)}</span>
+                {r.tecnica && deTecnica.length > 0 && (r.arquitectaPlan ? (
+                  <span className="text-[13px]">{r.arquitecta} <span className="text-gypi-dim">(según el Plan)</span></span>
+                ) : (
+                  <select aria-label={`Arquitecta de la OT ${r.ot}`} className="g-input !w-auto text-[14px]"
+                    value={r.proyecto.arquitecta_tecnica != null ? String(r.proyecto.arquitecta_tecnica) : ""} onChange={(e) => elegir(r.ot, e.target.value)}>
+                    <option value="">Automática{r.arquitecta && r.proyecto.arquitecta_tecnica == null ? ` (${r.arquitecta})` : ""}</option>
+                    {deTecnica.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                  </select>
+                ))}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+    </section>
+  );
 }
 
 const CONTORNO = { rojo: "stroke-gypi-red", amarillo: "stroke-proc-margen", verde: "stroke-gypi-green" };
@@ -75,21 +130,34 @@ export function usePlanDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_L
     });
     return () => { vivo = false; };
   }, [empresaId, omitir]);
-  return useMemo(() => (datos ? planDeEmpresa({ proyectos, divisiones, cfgValor: datos.cfgValor, personal: datos.personal, hoy, pausadas: otsEnPausa(pausas) }) : null),
-    [datos, proyectos, divisiones, pausas, hoy]);
+  return useMemo(() => {
+    if (!datos) return null;
+    const armar = (lista) => planDeEmpresa({ proyectos: lista, divisiones, cfgValor: datos.cfgValor, personal: datos.personal, hoy, pausadas: otsEnPausa(pausas) });
+    // rehacer: el mismo plan con otro orden o arquitectas (vista previa, parte 50)
+    return { ...armar(proyectos), rehacer: (cambio) => armar(conCambio(proyectos, cambio)) };
+  }, [datos, proyectos, divisiones, pausas, hoy]);
 }
 
 /**
  * @param {object} props
  * @param {object} [props.calculo] usePlanDisenoTecnica(...) del Gantt de OT; sin él, lo arma solo
  * @param {{ renglones: object[] }|null} [props.vivo] plan vivo de Producción (para la fecha límite de Técnica)
+ * @param {boolean} [props.puedeReordenar] Dueño o supervisor: cambia el orden, la arquitecta y confirma (parte 50)
+ * @param {() => void} [props.onRefrescar] vuelve a leer las OT después de confirmar
  */
-export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_LISTA, pausas = SIN_LISTA, empresaId = null, onVerDetalle, calculo: calculoProp = null, vivo = null }) {
+export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones = SIN_LISTA, pausas = SIN_LISTA, empresaId = null, onVerDetalle, calculo: calculoProp = null, vivo = null, puedeReordenar = false, onRefrescar = null }) {
   const hoy = hoyArg();
   const scrollRef = useRef(null);
   const medir = useCallback((el) => { scrollRef.current = el; }, []);
   const propio = usePlanDisenoTecnica({ proyectos, divisiones, pausas, empresaId, omitir: !!calculoProp });
-  const calculo = calculoProp || propio;
+  const base = calculoProp || propio;
+  // Orden y arquitectas que se están probando (parte 50); null = el plan guardado
+  const [cambio, setCambio] = useState(null);
+  const [editando, setEditando] = useState(false);
+  const [confirmando, setConfirmando] = useState(false);
+  const [aviso, setAviso] = useState(null);
+  const [arrastre, setArrastre] = useState(null); // { ot, sobre }
+  const calculo = useMemo(() => (base && cambio && base.rehacer ? base.rehacer(cambio) : base), [base, cambio]);
   // Fecha límite de Técnica de cada OT con lo que dura su Producción en el plan vivo (parte 49)
   const limites = useMemo(() => {
     const m = new Map();
@@ -105,6 +173,54 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   if (!calculo) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
   const { renglones, sinDato, sinEtapas, terminadas, arquitectas, feriados } = calculo;
   const sinArquitectas = !arquitectas.some((a) => a.pctTecnica > 0);
+  const deTecnica = arquitectas.filter((a) => a.pctTecnica > 0);
+
+  // ─── Ordenar, asignar y confirmar (parte 50) ───
+  const ordenVisto = renglones.map((r) => r.ot);
+  const elegidas = () => cambio?.arquitectas || Object.fromEntries(renglones.map((r) => [r.ot, r.proyecto.arquitecta_tecnica != null ? String(r.proyecto.arquitecta_tecnica) : null]));
+  const moverA = (ot, destino) => {
+    const i = ordenVisto.indexOf(ot);
+    if (i < 0 || destino < 0 || destino >= ordenVisto.length || destino === i) return;
+    setAviso(null);
+    setCambio({ orden: mover(ordenVisto, i, destino), arquitectas: elegidas() });
+  };
+  const elegir = (ot, id) => {
+    setAviso(null);
+    setCambio({ orden: ordenVisto, arquitectas: { ...elegidas(), [ot]: id || null } });
+  };
+  const empezarArrastre = (e, ot) => { e.currentTarget.setPointerCapture?.(e.pointerId); setArrastre({ ot, sobre: ot }); };
+  const moverArrastre = (e) => {
+    if (!arrastre || typeof document === "undefined" || !document.elementFromPoint) return;
+    const ot = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-orden-ot]")?.getAttribute("data-orden-ot");
+    if (ot && ot !== arrastre.sobre) setArrastre({ ...arrastre, sobre: ot });
+  };
+  const soltarArrastre = () => {
+    if (!arrastre) return;
+    const { ot, sobre } = arrastre;
+    setArrastre(null);
+    if (sobre !== ot) moverA(ot, ordenVisto.indexOf(sobre));
+  };
+  const deshacer = () => { setCambio(null); setAviso(null); };
+  const confirmar = async () => {
+    setConfirmando(true);
+    setAviso(null);
+    try {
+      const cuerpos = cuerposConfirmar(renglones);
+      for (let i = 0; i < cuerpos.length; i += 10) {
+        await Promise.all(cuerpos.slice(i, i + 10).map((c) => sb.patch(`proyectos?id=eq.${c.id}`, c.cuerpo)));
+      }
+      setAviso(`✅ Plan confirmado: ${cuerpos.length} OT. Cada arquitecta lo ve en 📐 Mis planillas.`);
+      setEditando(false);
+      await onRefrescar?.();
+      setCambio(null);
+    } catch (e) {
+      setAviso(/orden_tecnica|arquitecta_tecnica|tecnica_fin_confirmado/.test(String(e?.message)) ? AVISO_MIGRACION_161 : `No se pudo confirmar: ${e?.message || "error"}`);
+    } finally {
+      setConfirmando(false);
+    }
+  };
+  const confirmado = hayConfirmado(renglones);
+  const corridas = renglones.filter((r) => r.corrido > 0);
 
   const ultimo = finDelPlan(renglones, sumarDias(hoy, 13));
   const totalDias = Math.min(400, Math.round((Date.parse(`${ultimo}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / DIA_MS) + 3);
@@ -161,6 +277,11 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
         <div role="status" className="text-[14px] text-gypi-amber-ink font-bold mb-2">Todavía no hay arquitectas de Técnica: elegilas en ⚙ Parámetros → 📐 Diseño y Técnica para poder repartir las planillas.</div>
       )}
 
+      {puedeReordenar && renglones.length > 0 && (
+        <OrdenarPlan {...{ renglones, deTecnica, editando, setEditando, cambio, confirmando, confirmado, corridas, aviso, arrastre, moverA, elegir, empezarArrastre, moverArrastre, soltarArrastre, deshacer, confirmar }} />
+      )}
+      {!puedeReordenar && aviso && <div role="status" className="text-[14px] font-bold mb-2">{aviso}</div>}
+
       {!renglones.length ? (
         <div className="g-card py-8 px-6 text-center">
           <div className="text-[28px] mb-2">📐</div>
@@ -188,7 +309,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
               const fin = r.tecnica?.fin || r.diseno?.fin;
               const finFrac = r.tecnica?.tramos?.at(-1)?.hasta ?? r.diseno?.tramos?.at(-1)?.hasta ?? 1;
               const lim = limites.get(r.ot) || null;
-              const nota = [notaTecnica(r), lim && r.tecnica?.inicio ? `límite ${fechaCorta(lim.limite)}${lim.estado === "rojo" ? ` · ⚠ ${lim.diasTarde} d tarde` : ""}` : null].filter(Boolean).join(" · ");
+              const nota = [notaTecnica(r), lim && r.tecnica?.inicio ? `límite ${fechaCorta(lim.limite)}${lim.estado === "rojo" ? ` · ⚠ ${lim.diasTarde} d tarde` : ""}` : null, r.corrido > 0 ? `↪ se corrió ${r.corrido} d` : null].filter(Boolean).join(" · ");
               return (
                 <g key={r.ot} role="button" tabIndex={0} aria-label={textoRenglon(r, lim)} className="cursor-pointer"
                   onClick={() => onVerDetalle?.(p)} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p); }}>
@@ -229,7 +350,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
           {sinEtapas > 0 && <div className="text-gypi-dim text-[13px]">{sinEtapas === 1 ? "1 OT no tiene" : `${sinEtapas} OT no tienen`} las columnas DIS a PDF en el Plan de trabajo: no entran.</div>}
         </div>
       )}
-      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el de la prioridad de Producción y después la semana de entrega. La línea roja es la fecha límite de Técnica: el último día en que puede terminar para que Producción, con lo que dura en su plan, llegue a su fecha límite. Producción no arranca una OT hasta el día hábil siguiente a que termina su Técnica, salvo que EXCEL ya esté hecho (arranca con aviso). Tocá una OT para ver su detalle.</p>
+      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: se arma cada día desde hoy, de lunes a viernes sin feriados. Diseño (celeste) dura los días hábiles de la OT, menos lo que ya está hecho; varias OT pueden estar en Diseño a la vez porque incluye esperar la aprobación. Técnica (rosa) arranca cuando termina Diseño y son horas de una arquitecta, que hace una planilla por vez con su % de Técnica de la jornada. Si en el Plan ya figuran sus iniciales, la OT sigue con ella; si no, va a la que la termina antes. El orden es el confirmado acá (si hay) y después la prioridad de Producción y la semana de entrega. La línea roja es la fecha límite de Técnica: el último día en que puede terminar para que Producción, con lo que dura en su plan, llegue a su fecha límite. Producción no arranca una OT hasta el día hábil siguiente a que termina su Técnica, salvo que EXCEL ya esté hecho (arranca con aviso). Tocá una OT para ver su detalle.</p>
     </section>
   );
 }

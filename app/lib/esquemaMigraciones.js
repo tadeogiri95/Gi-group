@@ -78,6 +78,7 @@ export const MIGRACIONES = [
   { n: 157, archivo: "157_instalacion_desde.sql", nombre: "Mover obras en el Gantt de instalación", tablas: { proyectos: ["instalacion_desde"] } },
   { n: 159, archivo: "159_diseno_tecnica_clase.sql", nombre: "Diseño y Técnica: etapas y clase A/B/C", tablas: { proyectos: ["etapas_diseno", "clase_auto", "clase_complejidad"] } },
   { n: 160, archivo: "160_diseno_tecnica_tiempos.sql", nombre: "Diseño y Técnica: tiempos a mano", tablas: { proyectos: ["dias_diseno", "horas_tecnica"] } },
+  { n: 161, archivo: "161_diseno_tecnica_confirmado.sql", nombre: "Diseño y Técnica: plan confirmado", tablas: { proyectos: ["orden_tecnica", "arquitecta_tecnica", "tecnica_fin_confirmado"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

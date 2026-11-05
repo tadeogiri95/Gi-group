@@ -279,6 +279,13 @@ export function validarPatch(tabla, body, sesion, { comoDueno = sesion?.rol === 
     if (d !== undefined && d !== null && !(typeof d === "number" && d >= 0.5 && d <= 200 && Number.isInteger(d * 2))) return { status: 400, error: "Días de Diseño inválidos" };
     if (h !== undefined && h !== null && !(typeof h === "number" && h >= 0.5 && h <= 1000 && Number.isInteger(h * 2))) return { status: 400, error: "Horas de Técnica inválidas" };
   }
+  // Plan de Diseño y Técnica confirmado (161): orden entero, id de arquitecta y fecha de fin, o null
+  if (tabla === "proyectos" && body) {
+    const o = body.orden_tecnica, a = body.arquitecta_tecnica, f = body.tecnica_fin_confirmado;
+    if (o !== undefined && o !== null && !(Number.isInteger(o) && o >= 1 && o <= 99999)) return { status: 400, error: "Orden de Técnica inválido" };
+    if (a !== undefined && a !== null && !(typeof a === "string" && a.length >= 1 && a.length <= 64)) return { status: 400, error: "Arquitecta inválida" };
+    if (f !== undefined && f !== null && !(typeof f === "string" && /^\d{4}-\d{2}-\d{2}$/.test(f) && !Number.isNaN(Date.parse(`${f}T00:00:00Z`)))) return { status: 400, error: "Fecha de fin de Técnica inválida" };
+  }
   // Retrabajo (147): solo se marca terminado
   if (tabla === "retrabajos_ot") {
     const err = validarFinRetrabajo(body);

@@ -893,7 +893,7 @@ export default function GanttOt(props) {
         <GanttProduccion {...props} onPlanVivo={setVivo} planDT={planDT} />
       </div>
       {tipo === "diseno" && (
-        planDT ? <GanttDisenoTecnica calculo={planDT} vivo={vivo} onVerDetalle={props.onVerDetalle} />
+        planDT ? <GanttDisenoTecnica calculo={planDT} vivo={vivo} onVerDetalle={props.onVerDetalle} puedeReordenar={!!props.puedeReordenar} onRefrescar={props.onRefrescar} />
           : <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>
       )}
       {tipo === "instalacion" && (

@@ -11,8 +11,10 @@
 //    cuando termina Diseño. Si en el Plan ya figuran las iniciales de una
 //    arquitecta en Técnica, la OT sigue con ella; si no, va a la que la
 //    termina antes.
-//  • Orden: la prioridad de Producción (arrastrar en el Gantt de Producción),
-//    después la semana de entrega y el número de OT.
+//  • Orden: el confirmado en este Gantt (parte 50, orden_tecnica), después la
+//    prioridad de Producción, la semana de entrega y el número de OT.
+//  • Arquitecta: la de las iniciales del Plan; si no hay, la elegida al
+//    confirmar (arquitecta_tecnica); si no, la que la termina antes.
 // Las fechas son "AAAA-MM-DD"; cada tramo es un pedazo de un día (desde/hasta
 // entre 0 y 1 de la jornada).
 import { avanceArea } from "./complejidad";
@@ -76,9 +78,13 @@ function llenar(punto, cantidad, porDia, feriados) {
 const fraccion = (p, porDia) => ({ fecha: p.fecha, frac: porDia > 0 ? p.usado / porDia : 0 });
 const despues = (a, b) => a.fecha > b.fecha || (a.fecha === b.fecha && a.frac > b.frac + EPS);
 
-/** Orden del plan: prioridad de Producción, semana de entrega, OT. */
+const ordenT = (p) => (Number.isInteger(p.orden_tecnica) && p.orden_tecnica >= 1 ? p.orden_tecnica : Infinity);
+
+/** Orden del plan: el confirmado en el Gantt 📐 (parte 50), prioridad de Producción, semana de entrega, OT. */
 export function ordenDiseno(proyectos = []) {
   return [...proyectos].sort((a, b) => {
+    const oa = ordenT(a), ob = ordenT(b);
+    if (oa !== ob) return oa - ob;
     const pa = Number.isInteger(a.prioridad) ? a.prioridad : Infinity;
     const pb = Number.isInteger(b.prioridad) ? b.prioridad : Infinity;
     if (pa !== pb) return pa - pb;
@@ -144,7 +150,11 @@ export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feri
       if (t.horasTecnica == null) { r.faltanHoras = true; sinDato.push(r); renglones.push(r); continue; }
       const resta = Math.max(0.5, Math.round(t.horasTecnica * (1 - tec.pct / 100) * 2) / 2);
       if (!deTecnica.length) { r.sinArquitecta = true; r.tecnica = { horas: resta, pct: tec.pct, tramos: [] }; renglones.push(r); continue; }
-      const fija = deTecnica.find((a) => tec.quienes.some((q) => sonSusIniciales(q, a.nombre))) || null;
+      // Manda el Plan de trabajo (ya la empezó); si no, la elegida al confirmar (parte 50)
+      const delPlan = deTecnica.find((a) => tec.quienes.some((q) => sonSusIniciales(q, a.nombre))) || null;
+      const elegida = p.arquitecta_tecnica != null ? deTecnica.find((a) => a.id === String(p.arquitecta_tecnica)) || null : null;
+      const fija = delPlan || elegida;
+      r.arquitectaPlan = !!delPlan;
       pendientes.push({ r, listo, resta, pct: tec.pct, fija, orden: pendientes.length });
     }
     renglones.push(r);
@@ -181,6 +191,12 @@ export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feri
     x.r.arquitectaId = a.id;
     x.r.tecnica = { tramos: res.tramos, inicio: res.tramos[0]?.fecha || null, fin: res.tramos.at(-1)?.fecha || null, horas: x.resta, pct: x.pct };
     if (res.sinLugar) x.r.sinLugar = true;
+  }
+  // Cuánto se corrió la Técnica desde el plan confirmado (parte 50)
+  for (const r of renglones) {
+    const conf = r.proyecto.tecnica_fin_confirmado || null;
+    r.finConfirmado = conf;
+    r.corrido = conf && r.tecnica?.fin && r.tecnica.fin > conf ? diasHabilesEntre(sumarDias(conf, 1), r.tecnica.fin, feriados) : 0;
   }
   return { renglones, sinDato, sinEtapas, terminadas, arquitectas };
 }
@@ -286,4 +302,76 @@ export function planDeEmpresa({ proyectos = [], divisiones = [], cfgValor = null
 /** Lo que el plan vivo de Producción usa como noAntes: OT → primer día en que puede arrancar. */
 export function noAntesDeTecnica(espera) {
   return new Map([...(espera || new Map())].filter(([, e]) => e.desde).map(([ot, e]) => [ot, e.desde]));
+}
+
+// ─── Plan confirmado y "Mis planillas" (parte 50) ───────────────────────────
+
+/**
+ * Proyectos con el orden y las arquitectas que se están probando (vista previa
+ * antes de confirmar).
+ * @param {object[]} proyectos
+ * @param {{ orden: string[], arquitectas: Record<string, string|null> }} cambio
+ *   orden: números de OT en el orden nuevo; arquitectas: OT → id elegido (null = automática)
+ */
+export function conCambio(proyectos = [], cambio = null) {
+  if (!cambio) return proyectos;
+  const lugar = new Map((cambio.orden || []).map((ot, i) => [String(ot), i + 1]));
+  const elegidas = cambio.arquitectas || {};
+  return proyectos.map((p) => {
+    const ot = String(p.ot);
+    if (!lugar.has(ot) && !(ot in elegidas)) return p;
+    return {
+      ...p,
+      ...(lugar.has(ot) ? { orden_tecnica: lugar.get(ot) } : {}),
+      ...(ot in elegidas ? { arquitecta_tecnica: elegidas[ot] || null } : {}),
+    };
+  });
+}
+
+/**
+ * Lo que se guarda en cada OT al confirmar: orden, arquitecta elegida y el
+ * día en que termina la Técnica en este plan.
+ * @returns {{ id: any, ot: string, cuerpo: { orden_tecnica: number, arquitecta_tecnica: string|null, tecnica_fin_confirmado: string|null } }[]}
+ */
+export function cuerposConfirmar(renglones = []) {
+  return renglones.map((r, i) => ({
+    id: r.proyecto.id,
+    ot: r.ot,
+    cuerpo: {
+      orden_tecnica: i + 1,
+      arquitecta_tecnica: r.proyecto.arquitecta_tecnica != null ? String(r.proyecto.arquitecta_tecnica) : null,
+      tecnica_fin_confirmado: r.tecnica?.fin || null,
+    },
+  }));
+}
+
+/** ¿Hay algo confirmado en el plan? */
+export const hayConfirmado = (renglones = []) => renglones.some((r) => r.proyecto?.orden_tecnica != null || r.proyecto?.tecnica_fin_confirmado);
+
+/**
+ * Lo que le toca a una arquitecta: sus planillas técnicas en orden (la que
+ * está haciendo primero) y las OT en las que figura en Diseño.
+ * @param {{ renglones: object[], arquitectas: object[] }} plan planDeEmpresa(...)
+ * @param {string} empleadoId
+ * @returns {{ es: boolean, nombre: string|null, pctTecnica: number|null, tecnica: object[], diseno: object[] }}
+ */
+export function misPlanillas(plan, empleadoId) {
+  const yo = (plan?.arquitectas || []).find((a) => a.id === String(empleadoId ?? ""));
+  if (!yo) return { es: false, nombre: null, pctTecnica: null, tecnica: [], diseno: [] };
+  const tecnica = plan.renglones.filter((r) => r.arquitectaId === yo.id && r.tecnica?.inicio)
+    .sort((a, b) => a.tecnica.inicio.localeCompare(b.tecnica.inicio));
+  const diseno = plan.renglones.filter((r) => r.diseno && r.arquitectaDiseno === yo.nombre);
+  return { es: true, nombre: yo.nombre, pctTecnica: yo.pctTecnica, tecnica, diseno };
+}
+
+/** Renglón resumido para mandar a la pantalla de la arquitecta (sin la fila entera de la OT). */
+export function renglonCorto(r) {
+  const p = r.proyecto || {};
+  return {
+    ot: r.ot, clase: r.clase, tipo: r.tipo,
+    cliente: p.cliente || null, obra: p.obra || null, proyecto: p.proyecto || null, descripcion: p.descripcion || null,
+    diseno: r.diseno ? { inicio: r.diseno.inicio, fin: r.diseno.fin, dias: r.diseno.dias, pct: r.diseno.pct } : null,
+    tecnica: r.tecnica?.inicio ? { inicio: r.tecnica.inicio, fin: r.tecnica.fin, horas: r.tecnica.horas, pct: r.tecnica.pct } : null,
+    finConfirmado: r.finConfirmado || null, corrido: r.corrido || 0,
+  };
 }
