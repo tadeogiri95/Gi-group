@@ -191,13 +191,19 @@ test("📅 Gantt — plan vivo: lo que no se hizo pasa a hoy, todo se corre y av
     assert.equal(corte.getAttribute("data-estado"), "tarde");
     assert.match(corte.getAttribute("class"), /stroke-gypi-red/, "contorno rojo");
     assert.match(ot.querySelector("[data-alertas]").textContent, /⚠ \+4 d de su fecha límite · ↪ \+7 d del plan/, "cada OT muestra las dos alertas");
+    // Los avisos arrancan siempre minimizados en una barra con los números (Tadeo, 05/11)
+    const avisos = screen.getByRole("region", { name: "Avisos del Gantt" });
+    const barra = within(avisos).getByRole("button", { name: /🔔 Avisos/ });
+    assert.equal(barra.getAttribute("aria-expanded"), "false");
+    assert.match(barra.textContent, /⚠ 1 después de su fecha límite/);
+    assert.match(barra.textContent, /↪ 1 corrida del plan/);
+    assert.equal(screen.queryByRole("region", { name: "Alertas del plan" }), null, "minimizada no tapa el Gantt");
+    fireEvent.click(barra);
     const alertas = screen.getByRole("region", { name: "Alertas del plan" });
     assert.match(alertas.textContent, /OT 7100 · BCG · termina el 28\/10\/2026 · ⚠ 4 días después de su fecha límite .* · ↪ se corrió 7 días del plan confirmado/);
-    // El cuadro se minimiza para ver el Gantt entero, y se vuelve a abrir
-    fireEvent.click(within(alertas).getByRole("button", { name: /Minimizar/ }));
-    assert.doesNotMatch(alertas.textContent, /termina el/);
-    fireEvent.click(within(alertas).getByRole("button", { name: /Ver detalle/ }));
-    assert.match(alertas.textContent, /termina el/);
+    // Se vuelve a minimizar
+    fireEvent.click(within(avisos).getByRole("button", { name: /Minimizar/ }));
+    assert.equal(screen.queryByRole("region", { name: "Alertas del plan" }), null);
     // 7200: el Canteado terminado se ve desde que arrancó, más claro; el Mecanizado arranca hoy, antes de lo planificado
     const ot2 = container.querySelector('[data-ot="7200"]');
     assert.equal(ot2.querySelector('[data-proceso="canteado"]').getAttribute("data-estado"), "completo");
@@ -695,6 +701,9 @@ test("📅 Gantt — ⏰ avisa los procesos de hoy que ya tenían que terminar",
     const vistos = [];
     render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} puedeAjustar
       avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} onVerDetalle={(p) => vistos.push(p.ot)} />);
+    const barra = screen.getByRole("button", { name: /🔔 Avisos/ });
+    assert.match(barra.textContent, /⏰ 1 por terminar/);
+    fireEvent.click(barra);
     const caja = screen.getByRole("region", { name: "Procesos por terminar" });
     // Corte de 2 h desde las 8: a las 10; el Canteado (6 h de máquina) recién a las 16
     assert.match(caja.textContent, /OT 7100 · BCG · Corte tenía que terminar a las 10:00/);

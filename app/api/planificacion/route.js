@@ -25,6 +25,7 @@ import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { logger } from "../../lib/logger";
 import { hoyArg } from "../../lib/dates";
+import { comoDueno } from "../../lib/alcance";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,7 +36,6 @@ const falta143 = (err) => /planes_produccion_(tipo_)?check/.test(String(err?.mes
 const faltaMigracion = (err) => !falta143(err) && /planes_produccion|plan_produccion_items/.test(String(err?.message));
 const DIA_MS = 86400000;
 const diaAntes = (f) => new Date(Date.parse(`${f}T00:00:00Z`) - DIA_MS).toISOString().slice(0, 10);
-const esGerencia = (sesion) => sesion?.rol === "gerencial";
 
 async function entrar(request) {
   const sesion = await validarToken(request);
@@ -67,13 +67,13 @@ export async function GET(request) {
         return json({ ok: true, planes: planes.map((p) => ({ ...p, items: items.filter((i) => i.plan_id === p.id) })) });
       }
       if (q.get("horizonte")) {
-        if (!esGerencia(sesion)) return json({ error: "La planificación la arma gerencia" }, 403);
+        if (!(await comoDueno(sesion))) return json({ error: "La planificación la arman el Dueño y los supervisores" }, 403);
         const hoy = hoyArg();
         const [plan] = (await sbGet(`planes_produccion?empresa_id=eq.${e}&tipo=eq.horizonte&hasta=gte.${hoy}&select=*&order=updated_at.desc&limit=1`, { sesion })) || [];
         return json({ ok: true, plan: await conItems(sesion, plan) });
       }
       if (desde || hasta) {
-        if (!esGerencia(sesion)) return json({ error: "La planificación la arma gerencia" }, 403);
+        if (!(await comoDueno(sesion))) return json({ error: "La planificación la arman el Dueño y los supervisores" }, 403);
         if (!FECHA.test(desde || "") || !FECHA.test(hasta || "")) return json({ error: "Fechas inválidas" }, 400);
         const [plan] = (await sbGet(`planes_produccion?empresa_id=eq.${e}&desde=eq.${desde}&hasta=eq.${hasta}&select=*&limit=1`, { sesion })) || [];
         return json({ ok: true, plan: await conItems(sesion, plan) });
@@ -115,7 +115,7 @@ export async function POST(request) {
   try {
     const { sesion, response } = await entrar(request);
     if (response) return response;
-    if (!esGerencia(sesion)) return json({ error: "La planificación la arma gerencia" }, 403);
+    if (!(await comoDueno(sesion))) return json({ error: "La planificación la arman el Dueño y los supervisores" }, 403);
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
     const parsed = validateBody(planProduccionBody, await request.json().catch(() => null));

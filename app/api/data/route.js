@@ -13,9 +13,9 @@ import { logger } from "../../lib/logger";
 import { stripUnallowedFields, sanitizePostgrestParam, safeErrorMessage } from "../../lib/validate";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
-import { alcanceDe, filtroAlcance, dentroDelAlcance, COLUMNA_PERSONA } from "../../lib/alcance";
+import { comoDueno } from "../../lib/alcance";
 import { diasEntre, MAX_DIAS_SOLICITUD } from "../../lib/tiposSolicitud";
-import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD, TABLAS_SIN_SUPERVISOR } from "../../lib/dataPolicy";
+import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
 import { rlsActivo, rlsRutasActivo, configRlsFaltante, headersUsuario } from "../../lib/supabaseUsuario";
 import { TABLAS_OT, filasDeCambio } from "../../lib/historialOt";
 import { logAuditVarios } from "../../lib/audit";
@@ -63,7 +63,7 @@ const TABLAS_PERMITIDAS = [
   "v_avance_piezas", // Avance por escaneo, parte 25 (118): vista de solo lectura
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
-  "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión sin supervisores; lo escribe la sincronización
+  "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión; lo escribe la sincronización
   "proveedores", "pedidos_compra", // Compras parte 20 (113): solo lectura acá; se escriben por /api/compras
   "ordenes_compra", "ordenes_compra_items", // Compras parte 21 (114): ídem
   "recepciones_compra", "recepciones_compra_items", // Compras parte 22 (115): ídem
@@ -154,7 +154,7 @@ const TABLAS_CON_EMPRESA = [
   "v_avance_piezas", // Avance por escaneo, parte 25 (118): vista de solo lectura
   "bultos_ot", "cargas_ot", // OP parte 10 (104): solo lectura acá; se escriben por /api/carga
   "actas_ot", "pendientes_obra", // OP parte 11 (105): solo lectura acá; se escriben por /api/acta
-  "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión sin supervisores; lo escribe la sincronización
+  "precios_ot", // Precio de cada OT (142): solo lectura acá, solo gestión; lo escribe la sincronización
   "ajustes_tiempo_ot", // Cambios de tiempo con motivo (145)
   "informes_produccion", "avance_manual_historial", // Informe de producción (146)
   "retrabajos_ot", // Retrabajo de un proceso (147)
@@ -386,26 +386,9 @@ export async function POST(request) {
     if ((method === "POST" || method === "PATCH") && !CAMPOS_PERMITIDOS[pathCheck.tabla]?.[method]) {
       return NextResponse.json({ error: `Operación no permitida sobre "${pathCheck.tabla}"` }, { status: 403 });
     }
-    // ─── ALCANCE: un supervisor de división solo ve y toca a su gente (D2) ───
-    const alcance = await alcanceDe(sesion);
-    if (alcance && TABLAS_SIN_SUPERVISOR.has(pathCheck.tabla)) {
-      return NextResponse.json({ error: "Tu rol no tiene permiso para esta acción" }, { status: 403 });
-    }
-    if (alcance && method && method !== "GET") {
-      if (method === "PATCH" && pathCheck.tabla === "empleados" && body && body.division !== undefined) {
-        return NextResponse.json({ error: "Un supervisor no puede cambiar la división de un empleado" }, { status: 403 });
-      }
-      const regla = COLUMNA_PERSONA[pathCheck.tabla];
-      if (method === "POST" && regla) {
-        const filas = Array.isArray(body) ? body : [body];
-        const campo = regla.lista === "ids" ? "id" : "legajo";
-        if (filas.some((f) => !dentroDelAlcance(alcance, { [campo]: f?.[regla.col] }))) {
-          return NextResponse.json({ error: "Ese empleado no es de tu división" }, { status: 403 });
-        }
-      }
-    }
     if (method === "PATCH") {
-      const patchCheck = validarPatch(pathCheck.tabla, body, sesion);
+      const dueno = pathCheck.tabla === "empresa" ? await comoDueno(sesion) : undefined;
+      const patchCheck = validarPatch(pathCheck.tabla, body, sesion, dueno === undefined ? {} : { comoDueno: dueno });
       if (patchCheck) return NextResponse.json({ error: patchCheck.error }, { status: patchCheck.status });
     }
 
@@ -450,9 +433,6 @@ export async function POST(request) {
       finalPath = inyectarEmpresaEnGet(path, pathCheck.tabla, empresaId);
       // Operativo: solo sus propias filas (filtro AND sobre lo que pida el cliente)
       finalPath = aplicarFiltroPropio(finalPath, auth.ownFilter);
-      // Supervisor: además, solo filas de empleados de su división
-      const filtroDiv = filtroAlcance(pathCheck.tabla, alcance);
-      if (filtroDiv) finalPath += (finalPath.includes("?") ? "&" : "?") + filtroDiv;
     }
     // Aplicar paginación a todo GET para evitar retornos sin límite.
     // Si viene `cursor`, se usa keyset (ignora offset); si no, offset clásico.

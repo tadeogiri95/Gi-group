@@ -24,7 +24,7 @@ export default function PlantasPanel() {
   // editando: null | { id?: string, nombre: string } — sin id es una planta nueva
   const [editando, setEditando] = useState(null);
   const [guardando, setGuardando] = useState(false);
-  const puedeEditar = usuario?.rol === "gerencial" || (usuario?.rol === "administrativo" && !usuario?.solo_su_division);
+  const puedeEditar = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
 
   if (plantas.length === 0) return null; // sin la migración 084 o en modo demo
 

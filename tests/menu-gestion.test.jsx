@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
-const { seccionesMas, conBoton, opcionesBoton, esSupervisor, partirDestino, GRUPOS } = await import("../app/lib/menuGestion.js");
+const { seccionesMas, conBoton, opcionesBoton, esSupervisor, comoDueno, partirDestino, GRUPOS } = await import("../app/lib/menuGestion.js");
 const { getItems } = await import("../app/components/nav/BottomNav.jsx");
 const { modulosEfectivos } = await import("../app/lib/modulos.js");
 const { pasosActivacion } = await import("../app/lib/onboarding.js");
@@ -85,7 +85,7 @@ test("Planillas conectadas — los links salieron de OT y de Stock; desde ahí s
   assert.doesNotMatch(mov, /<PlanillaMrpConexion/);
   const boton = readFileSync(new URL("../app/components/screens/BotonGestionScreen.jsx", import.meta.url), "utf8");
   assert.match(boton, /onIr\("config:planillas"\)/);
-  assert.match(boton, /!esSupervisor\(usuario\)/, "el supervisor no configura planillas");
+  assert.doesNotMatch(boton, /esSupervisor/, "el supervisor también configura planillas (05/11)");
   assert.deepEqual(partirDestino("config:planillas"), { pantalla: "config", seccion: "planillas" });
 });
 
@@ -111,13 +111,22 @@ test("Más — sin Proyectos, las OT aparecen acá (con candado si no están en 
   assert.equal(ot.bloqueado, true);
 });
 
-test("Más — administración no ve facturación; el supervisor tampoco ve Empresa", () => {
+test("Más — el supervisor ve lo mismo que el dueño menos facturación; administración, sin planificación", () => {
   assert.ok(!ids({ empresa: PLANTA, usuario: ADMIN }).includes("facturacion"));
   assert.ok(ids({ empresa: PLANTA, usuario: ADMIN }).includes("admin"));
+  assert.ok(!ids({ empresa: PLANTA, usuario: ADMIN }).includes("planificacion"));
   const sup = ids({ empresa: PLANTA, usuario: SUPERVISOR });
-  assert.ok(!sup.includes("admin") && !sup.includes("facturacion"));
+  const dueno = ids({ empresa: PLANTA, usuario: DUENO });
+  assert.deepEqual(sup, dueno.filter((id) => id !== "facturacion"));
+  for (const id of ["admin", "produccion", "planillas", "modulos", "planificacion"]) assert.ok(sup.includes(id), id);
   assert.equal(esSupervisor(SUPERVISOR), true);
   assert.equal(esSupervisor(ADMIN), false);
+  assert.equal(comoDueno(SUPERVISOR), true);
+  assert.equal(comoDueno(ADMIN), false);
+  assert.equal(comoDueno(DUENO), true);
+  const pestanas = (u) => opcionesBoton("proyectos", PLANTA, u).map((o) => o.id);
+  assert.ok(pestanas(SUPERVISOR).includes("planificacion"));
+  assert.ok(!pestanas(ADMIN).includes("planificacion"));
 });
 
 test("U-03 — las reglas de asistencia no quedan bloqueadas sin el Asistente", () => {
@@ -142,11 +151,11 @@ test("U-12 — los primeros pasos abren la sección justa", () => {
   assert.match(home, /seccion=\{seccionMas\}/);
 });
 
-test("U-16 — Reportes muestra Producción (solo con el registro de tareas) y Obra con su módulo; la liquidación no al supervisor", () => {
+test("U-16 — Reportes muestra Producción (solo con el registro de tareas) y Obra con su módulo; la liquidación también al supervisor", () => {
   const src = readFileSync(new URL("../app/reportes_screen.jsx", import.meta.url), "utf8");
   assert.match(src, /ver\("produccion"\) && conRegistroTareas\(empresa\) && <Chip active=\{tab === "produccion"\}/);
   assert.match(src, /ver\("produccion"\) && tieneModulo\(empresa, "obra"\) && <Chip active=\{tab === "obra"\}/);
-  assert.match(src, /ver\("personal"\) && !esSupervisor\(usuario\) && <Chip active=\{tab === "liquidacion"\}/);
+  assert.match(src, /ver\("personal"\) && <Chip active=\{tab === "liquidacion"\}/);
 });
 
 test("Proyectos — sin el registro de tareas no hay 'En vivo'; lo que no está en el plan, con candado; abre en lo que tiene", async () => {
@@ -219,5 +228,5 @@ test("Módulos — lo que la empresa apagó no aparece (ni con candado); lo no c
   assert.ok(opcionesBoton("mantenimiento", PLANTA).some((o) => o.id === "flota"));
   assert.equal(conBoton("mantenimiento", apagada), false);
   assert.ok(ids({ empresa: PLANTA, usuario: DUENO }).includes("modulos"));
-  assert.ok(!ids({ empresa: PLANTA, usuario: SUPERVISOR }).includes("modulos"));
+  assert.ok(ids({ empresa: PLANTA, usuario: SUPERVISOR }).includes("modulos"));
 });

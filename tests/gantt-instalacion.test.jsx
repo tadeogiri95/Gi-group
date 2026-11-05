@@ -129,6 +129,31 @@ test("GanttInstalacion — dibuja cada obra con su gente y lista las OT sin día
   assert.deepEqual(vistos, ["7961", "7962"]);
 });
 
+test("GanttInstalacion — después de confirmar no vuelve a ofrecer el botón mientras el plan no cambie", async () => {
+  let confirmado = null;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.includes("/api/plan-instalacion") && opts?.method === "POST") {
+      confirmado = JSON.parse(opts.body).items;
+      return Response.json({ ok: true });
+    }
+    if (u.includes("/api/plan-instalacion")) {
+      return Response.json({ ok: true, planes: confirmado ? [{ id: 1, division_id: "muebles", confirmado_at: "2026-11-05T10:00:00Z", confirmado_nombre: "Tadeo", items: confirmado }] : [] });
+    }
+    if (u.includes("empleados")) return Response.json({ data: [{ id: "a", nombre: "Ana", diagrama: LV }, { id: "b", nombre: "Beto", diagrama: LV }] });
+    return Response.json({ data: [] });
+  };
+  const proyectos = [{ id: 1, ot: "7961", cliente: "Riofrío", obra: "Maipú", division: "Muebles", total_modulos: 6, fecha_objetivo: "2099-01-10" }];
+  const { hoyArg } = await import("../app/lib/dates.js");
+  const fin = new Date(Date.parse(`${hoyArg()}T00:00:00Z`) + 3 * 86400000).toISOString().slice(0, 10);
+  const vivo = { renglones: [{ ot: "7961", fin, procesos: [{ completo: false }] }], cfgValor: { instalacion: { gab_por_dia: { global: 3 } } }, modulos: new Map() };
+  render(<GanttInstalacion vivo={vivo} proyectos={proyectos} divisiones={[{ id: "muebles", label: "Muebles" }]} puedeConfirmar />);
+  fireEvent.click(await screen.findByRole("button", { name: /Confirmar plan de instalación/ }));
+  await waitFor(() => assert.ok(screen.getByText(/✅ Plan confirmado el .* por Tadeo/)));
+  assert.equal(screen.queryByRole("button", { name: /Confirmar/ }), null);
+  assert.ok(screen.getByRole("button", { name: /Cambiar orden/ }));
+});
+
 test("instaladoresDeLaDivision — los de Aluminio o Herrería no instalan Muebles; sin división entran", () => {
   const divisiones = [{ id: "muebles", label: "Muebles" }, { id: "aluminio", label: "Aluminio" }, { id: "herreria", label: "Herrería" }];
   const gente = [

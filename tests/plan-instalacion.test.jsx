@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { itemsDelPlan, finConfirmadoPorOt, conCorrimiento, misDias, limiteProduccion, ultimoDiaHabil, diaHabilAnterior } from "../app/lib/planInstalacion.js";
+import { itemsDelPlan, mismoPlan, finConfirmadoPorOt, conCorrimiento, misDias, limiteProduccion, ultimoDiaHabil, diaHabilAnterior } from "../app/lib/planInstalacion.js";
 import { normalizarParametros } from "../app/lib/planificacion.js";
 import { planVivo } from "../app/lib/ganttPlan.js";
 import { planInstalacionBody } from "../app/lib/schemas.ts";
@@ -43,6 +43,18 @@ test("itemsDelPlan — un renglón por medio día e instalador; sin lugar no ent
   assert.equal(items[4].orden, 1);
   assert.equal(planInstalacionBody.safeParse({ division_id: "muebles", items }).success, true);
   assert.equal(planInstalacionBody.safeParse({ items: [{ ...items[0], medio: 2 }] }).success, false);
+});
+
+test("mismoPlan — igual al confirmado desde hoy (los días pasados no cuentan); un cambio de día o de gente lo hace distinto", () => {
+  const vivo = [{ obra: "ot:1", ots: ["1"], fecha: "2026-11-06", medio: 0, empleado_id: YO }];
+  const conf = [
+    { obra: "ot:1", ots: ["1"], fecha: "2026-11-04", medio: 1, empleado_id: YO },
+    { obra: "ot:1", ots: ["1"], fecha: "2026-11-06", medio: 0, empleado_id: YO },
+  ];
+  assert.equal(mismoPlan(vivo, conf, "2026-11-05"), true);
+  assert.equal(mismoPlan(vivo, [{ ...conf[1], fecha: "2026-11-07" }], "2026-11-05"), false);
+  assert.equal(mismoPlan(vivo, [{ ...conf[1], empleado_id: OTRO }], "2026-11-05"), false);
+  assert.equal(mismoPlan(vivo, [], "2026-11-05"), false);
 });
 
 test("conCorrimiento — cuántos días se corrió el fin contra lo confirmado", () => {

@@ -1,7 +1,7 @@
 // tests/rls-chequeos-internos.test.js — RLS en los chequeos internos (ítem 37,
 // etapa 3). Con RLS_API_DATA=on, el chequeo de REFERENCIAS de /api/data va con
 // el pase del usuario (menos `plantas`, que sigue con service_role). Con
-// RLS_RUTAS=on, el alcance de un supervisor (lib/alcance.js) se lee con el
+// RLS_RUTAS=on, la casilla de supervisor (lib/alcance.js) se lee con el
 // pase del usuario.
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ process.env.SUPABASE_SERVICE_KEY = "test-service-key";
 
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const { POST } = await import("../app/api/data/route.js");
-const { alcanceDe, _limpiarCacheAlcance } = await import("../app/lib/alcance.js");
+const { esSupervisorSesion, _limpiarCacheAlcance } = await import("../app/lib/alcance.js");
 
 const EMPRESA_ID = "11111111-1111-1111-1111-111111111111";
 const EMPLEADO_ID = "22222222-2222-2222-2222-222222222222";
@@ -104,43 +104,40 @@ test("REFERENCIAS con RLS_API_DATA apagado — siguen con service_role", async (
   for (const c of capturas) assert.ok(esServiceRole(c.headers), `${c.tabla} con service_role`);
 });
 
-// ─── Alcance de un supervisor (lib/alcance.js) ──────────────────────────────
+// ─── ¿Es supervisor? (lib/alcance.js) ───────────────────────────────────────
 
 function alcance(capturas) {
   return {
     match: (url) => url.includes("/rest/v1/empleados?"),
     respond: (url, opts) => {
       capturas.push({ url, headers: opts.headers });
-      if (url.includes("solo_su_division")) return { status: 200, body: [{ id: EMPLEADO_ID, legajo: 7, division: "Taller", solo_su_division: true }] };
-      return { status: 200, body: [{ id: OTRO_EMPLEADO, legajo: 8 }] };
+      return { status: 200, body: [{ id: EMPLEADO_ID, solo_su_division: true }] };
     },
   };
 }
 
-test("alcance con RLS_RUTAS=on — lee al supervisor y a su división con el pase del usuario", async () => {
+test("supervisor con RLS_RUTAS=on — lee la casilla con el pase del usuario", async () => {
   process.env.RLS_RUTAS = "on";
   const capturas = [];
   global.fetch = createFetchMock([alcance(capturas)]);
-  const a = await alcanceDe(SESION_SUPERVISOR);
-  assert.equal(a.division, "Taller");
-  assert.deepEqual(a.ids.sort(), [EMPLEADO_ID, OTRO_EMPLEADO].sort());
-  assert.equal(capturas.length, 2);
+  assert.equal(await esSupervisorSesion(SESION_SUPERVISOR), true);
+  assert.equal(capturas.length, 1);
   for (const c of capturas) assert.equal(await eidDe(c.headers), EMPRESA_ID);
 });
 
-test("alcance con RLS_RUTAS apagado — sigue con service_role", async () => {
+test("supervisor con RLS_RUTAS apagado — sigue con service_role", async () => {
   const capturas = [];
   global.fetch = createFetchMock([alcance(capturas)]);
-  await alcanceDe(SESION_SUPERVISOR);
-  assert.equal(capturas.length, 2);
+  await esSupervisorSesion(SESION_SUPERVISOR);
+  assert.equal(capturas.length, 1);
   for (const c of capturas) assert.ok(esServiceRole(c.headers));
 });
 
-test("alcance con RLS_RUTAS=on sin SUPABASE_JWT_SECRET — corta sin consultar", async () => {
+test("supervisor con RLS_RUTAS=on sin SUPABASE_JWT_SECRET — corta sin consultar", async () => {
   process.env.RLS_RUTAS = "on";
   delete process.env.SUPABASE_JWT_SECRET;
   const capturas = [];
   global.fetch = createFetchMock([alcance(capturas)]);
-  await assert.rejects(() => alcanceDe(SESION_SUPERVISOR), /SUPABASE_JWT_SECRET/);
+  await assert.rejects(() => esSupervisorSesion(SESION_SUPERVISOR), /SUPABASE_JWT_SECRET/);
   assert.equal(capturas.length, 0, "no vuelve en silencio a la llave maestra");
 });

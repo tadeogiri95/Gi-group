@@ -4,15 +4,19 @@
 //   GET  → { costo_hora } (null si todavía no se cargó)
 //   POST → { costo_hora } guarda el valor
 //
-// Solo el dueño (rol gerencial): ni el supervisor ni el administrativo ven
-// costos. Con RLS_RUTAS=on va con el pase del usuario ({ sesion }) y la base
-// también exige el rol gerencial.
+// Solo el dueño (rol gerencial) y, desde el 05/11, el Supervisor; el
+// administrativo no ve costos. Con RLS_RUTAS=on el dueño va con su pase
+// ({ sesion }) y la base exige el rol gerencial (migración 102). El pase no
+// sabe si un administrativo es Supervisor, así que para el Supervisor la
+// lectura y escritura van con la clave del servidor, después de que
+// comoDueno() lo verificó acá (filtrando siempre por su empresa).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { costoHoraBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { logger } from "../../lib/logger";
+import { comoDueno } from "../../lib/alcance";
 
 const FALTA_MIGRACION = "Para guardar el costo de la hora falta correr la migración 102 en Supabase.";
 
@@ -23,18 +27,20 @@ function faltaMigracion(err) {
 async function sesionDueno(request) {
   const sesion = await validarToken(request);
   if (!sesion?.empresa_id) return { response: respuestaNoAutorizado() };
-  if (sesion.rol !== "gerencial") {
-    return { response: NextResponse.json({ error: "Solo el dueño puede ver y cambiar los costos" }, { status: 403 }) };
+  if (!(await comoDueno(sesion))) {
+    return { response: NextResponse.json({ error: "Solo el dueño y los supervisores pueden ver y cambiar los costos" }, { status: 403 }) };
   }
   return { sesion };
 }
+
+const opcionesBase = (sesion) => (sesion.rol === "gerencial" ? { sesion } : {});
 
 export async function GET(request) {
   try {
     const { sesion, response } = await sesionDueno(request);
     if (response) return response;
     try {
-      const [fila] = (await sbGet(`costos_empresa?empresa_id=eq.${sesion.empresa_id}&select=costo_hora&limit=1`, { sesion })) || [];
+      const [fila] = (await sbGet(`costos_empresa?empresa_id=eq.${sesion.empresa_id}&select=costo_hora&limit=1`, opcionesBase(sesion))) || [];
       return NextResponse.json({ costo_hora: fila ? Number(fila.costo_hora) : null });
     } catch (err) {
       // Sin la migración no hay costo cargado: la app sigue, sin costos
@@ -56,7 +62,7 @@ export async function POST(request) {
     if (parsed.response) return parsed.response;
 
     const e = sesion.empresa_id;
-    const opts = { sesion };
+    const opts = opcionesBase(sesion);
     const cambios = { costo_hora: parsed.data.costo_hora, actualizado_por: sesion.empleado_id || null, updated_at: new Date().toISOString() };
     try {
       const filtro = `costos_empresa?empresa_id=eq.${e}`;

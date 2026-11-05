@@ -89,7 +89,7 @@ function legajoProvisorio() {
 }
 
 /* ═══ MODAL EMPLEADO ═══ */
-function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES, puedeMarcarSupervisor = false, divisionBloqueada = false, plantas = [] }) {
+function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving, rolesPermitidos = ROLES, puedeMarcarSupervisor = false, plantas = [] }) {
   useEscape(onClose);
   const [form, setForm] = useState(initialData);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -124,8 +124,8 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
             </select>
           </div>
           <div>
-            <label className="g-label block mb-1.5">Division{divisionBloqueada ? " (la tuya)" : ""}</label>
-            <select value={form.division || ""} onChange={e => set("division", e.target.value)} disabled={divisionBloqueada} className="g-input cursor-pointer text-[13px] disabled:opacity-60">
+            <label className="g-label block mb-1.5">Division</label>
+            <select value={form.division || ""} onChange={e => set("division", e.target.value)} className="g-input cursor-pointer text-[13px]">
               {divisiones.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </div>
@@ -134,8 +134,8 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
         {/* Planta (ítem 36): solo se pregunta cuando la empresa tiene más de una */}
         {plantas.length > 1 && (
           <div className="mb-3">
-            <label htmlFor="empleado-planta" className="g-label block mb-1.5">¿En qué planta trabaja?{divisionBloqueada ? " (la elige el dueño)" : ""}</label>
-            <select id="empleado-planta" value={form.planta_id || plantas[0].id} onChange={e => set("planta_id", e.target.value)} disabled={divisionBloqueada} className="g-input cursor-pointer text-[13px] disabled:opacity-60">
+            <label htmlFor="empleado-planta" className="g-label block mb-1.5">¿En qué planta trabaja?</label>
+            <select id="empleado-planta" value={form.planta_id || plantas[0].id} onChange={e => set("planta_id", e.target.value)} className="g-input cursor-pointer text-[13px]">
               {plantas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
           </div>
@@ -150,15 +150,16 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
           </div>
         </div>
 
-        {/* Supervisor de división (D2): solo el dueño lo marca. Si la migración 075
-            no se corrió, el dato no viene y la casilla no aparece. */}
+        {/* Supervisor (columna solo_su_division, 075): solo el dueño lo marca.
+            Desde el 05/11 puede lo mismo que el dueño. Si la migración 075 no
+            se corrió, el dato no viene y la casilla no aparece. */}
         {mode === "editar" && puedeMarcarSupervisor && form.rol === "administrativo" && initialData.solo_su_division !== undefined && (
           <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" checked={!!form.solo_su_division} onChange={e => set("solo_su_division", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
               <div>
-                <div className="text-[13px] font-bold text-gypi-text">Ve solo su división (supervisor)</div>
-                <div className="text-xs text-gypi-dim mt-0.5">Solo va a ver y gestionar a los empleados de su división. Sin marcar, ve toda la empresa.</div>
+                <div className="text-[13px] font-bold text-gypi-text">Es supervisor de su división</div>
+                <div className="text-xs text-gypi-dim mt-0.5">Puede ver y cambiar lo mismo que el dueño, también la planificación (menos el pago del plan). Recibe los avisos de fin de proceso de su división.</div>
               </div>
             </label>
           </div>
@@ -166,7 +167,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
 
         {/* Instalador (parte 24): ve la pestaña Instalaciones. Si la migración 116
             no se corrió, el dato no viene y la casilla no aparece. */}
-        {mode === "editar" && !divisionBloqueada && initialData.es_instalador !== undefined && (
+        {mode === "editar" && initialData.es_instalador !== undefined && (
           <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" checked={!!form.es_instalador} onChange={e => set("es_instalador", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
@@ -181,7 +182,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
         {/* Puesto en la planta (migración 140): para planificar Armado con varios
             armadores. "Otra línea" (por ejemplo Puertas) no cuenta en la
             planificación. Sin la migración el dato no viene y no aparece. */}
-        {mode === "editar" && !divisionBloqueada && initialData.puesto_planta !== undefined && (form.rol || "operativo") === "operativo" && (
+        {mode === "editar" && initialData.puesto_planta !== undefined && (form.rol || "operativo") === "operativo" && (
           <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
             <label htmlFor="emp-puesto-planta" className="text-[13px] font-bold text-gypi-text block mb-1">Puesto en la planta</label>
             <select id="emp-puesto-planta" className="g-input w-full" value={form.puesto_planta || ""} onChange={e => set("puesto_planta", e.target.value || null)}>
@@ -194,7 +195,7 @@ function ModalEmpleado({ mode, initialData, divisiones, onClose, onSave, saving,
 
         {/* Responsable de mantenimiento (parte 34): ve "Mi mantenimiento" en su
             Inicio. Sin la migración 133 el dato no viene y la casilla no aparece. */}
-        {mode === "editar" && !divisionBloqueada && initialData.es_mantenimiento !== undefined && (
+        {mode === "editar" && initialData.es_mantenimiento !== undefined && (
           <div className="mb-4 p-3 rounded-[10px] bg-gypi-surface border border-gypi-border">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" checked={!!form.es_mantenimiento} onChange={e => set("es_mantenimiento", e.target.checked)} className="w-[18px] h-[18px] mt-0.5" />
@@ -419,10 +420,8 @@ function ModalPin({ datos, empresa, onClose }) {
 export default function GestionPersonalScreen({ empresaId }) {
   const { divisiones: divisionesCtx, usuario: sesion, empresa, plantas: plantasCtx } = useAuth();
   const plantas = ordenarPlantas(plantasCtx);
-  // Un administrativo no puede crear/asignar rol gerencial (misma regla que /api/empleados)
-  // Supervisor de división (D2): da de alta solo operarios de su división y no cambia divisiones
-  const soySupervisor = sesion?.rol === "administrativo" && !!sesion?.solo_su_division;
-  const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : soySupervisor ? ["operativo"] : ROLES.filter(r => r !== "gerencial");
+  // Un administrativo (o supervisor) no puede crear/asignar rol gerencial (misma regla que /api/empleados)
+  const rolesPermitidos = sesion?.rol === "gerencial" ? ROLES : ROLES.filter(r => r !== "gerencial");
   const DIVISIONES = getDivisionesConSinAsignar(divisionesCtx);
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -582,10 +581,10 @@ export default function GestionPersonalScreen({ empresaId }) {
           rol: form.rol || "operativo",
           area: form.area || "produccion",
           email: form.email?.trim() || null,
-          ...(plantas.length > 1 && form.planta_id && !soySupervisor ? { planta_id: form.planta_id } : {}),
-          ...(form.es_instalador !== undefined && !soySupervisor ? { es_instalador: !!form.es_instalador } : {}),
-          ...(form.es_mantenimiento !== undefined && !soySupervisor ? { es_mantenimiento: !!form.es_mantenimiento } : {}),
-          ...(form.puesto_planta !== undefined && !soySupervisor ? { puesto_planta: form.puesto_planta || null } : {}),
+          ...(plantas.length > 1 && form.planta_id ? { planta_id: form.planta_id } : {}),
+          ...(form.es_instalador !== undefined ? { es_instalador: !!form.es_instalador } : {}),
+          ...(form.es_mantenimiento !== undefined ? { es_mantenimiento: !!form.es_mantenimiento } : {}),
+          ...(form.puesto_planta !== undefined ? { puesto_planta: form.puesto_planta || null } : {}),
           ...(sesion?.rol === "gerencial" && form.solo_su_division !== undefined
             ? { solo_su_division: form.rol === "administrativo" && !!form.solo_su_division }
             : {}),
@@ -940,9 +939,8 @@ export default function GestionPersonalScreen({ empresaId }) {
       {modalAlta && (
         <ModalEmpleado
           mode="alta"
-          initialData={soySupervisor ? { ...modalAlta, division: sesion.division || "" } : modalAlta}
+          initialData={modalAlta}
           divisiones={DIVISIONES}
-          divisionBloqueada={soySupervisor}
           rolesPermitidos={rolesPermitidos}
           plantas={plantas}
           onClose={() => setModalAlta(null)}
@@ -956,7 +954,6 @@ export default function GestionPersonalScreen({ empresaId }) {
           initialData={modalEditar}
           divisiones={DIVISIONES}
           puedeMarcarSupervisor={sesion?.rol === "gerencial"}
-          divisionBloqueada={soySupervisor}
           rolesPermitidos={rolesPermitidos}
           plantas={plantas}
           onClose={() => setModalEditar(null)}

@@ -244,6 +244,20 @@ export function itemsDelPlan(obras = []) {
   return out;
 }
 
+/**
+ * ¿El plan vivo es el mismo que el confirmado? Compara desde hoy (los días
+ * pasados ya no están en el plan vivo) obra, día, medio día e instalador.
+ * Sirve para no volver a ofrecer "Confirmar" si no cambió nada.
+ */
+export function mismoPlan(items = [], confirmados = [], hoy = null) {
+  const clave = (i) => `${i.obra}|${String(i.fecha).slice(0, 10)}|${Number(i.medio)}|${i.empleado_id || ""}`;
+  const desdeHoy = (l) => new Set((l || []).filter((i) => !hoy || String(i.fecha).slice(0, 10) >= hoy).map(clave));
+  const a = desdeHoy(items), b = desdeHoy(confirmados);
+  if (a.size !== b.size) return false;
+  for (const k of a) if (!b.has(k)) return false;
+  return true;
+}
+
 /** Último día confirmado de cada OT: Map<ot, fecha>. */
 export function finConfirmadoPorOt(planes = []) {
   const m = new Map();

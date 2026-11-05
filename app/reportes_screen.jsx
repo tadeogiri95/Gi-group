@@ -41,7 +41,7 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { tieneModulo, conRegistroTareas } from "./lib/modulos";
-import { esSupervisor } from "./lib/menuGestion";
+import { comoDueno } from "./lib/menuGestion";
 import { detalleOt } from "./lib/nombreOt";
 
 /* ─── Helpers ─── */
@@ -476,14 +476,14 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 export default function ReportesScreen({ grupo = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, defectos, usuario, empresa } = useAuth();
   const ver = (g) => !grupo || grupo === g;
-  const conDia = tieneModulo(empresa, "actividad") && !esSupervisor(usuario);
+  const conDia = tieneModulo(empresa, "actividad");
   // Informe de producción (146): gerencia, supervisores y administración, con el plan de producción
   const conInforme = tieneModulo(empresa, "proyectos") && (usuario?.rol === "gerencial" || usuario?.rol === "administrativo");
   // Reportes de las minutas de Buenos Días (parte M5): solo gerencia
-  const conMinutas = tieneModulo(empresa, "minutas") && usuario?.rol === "gerencial";
+  const conMinutas = tieneModulo(empresa, "minutas") && comoDueno(usuario);
   const empresaId = usuario?.empresa_id;
   // Costo de la hora: solo el dueño (OP parte 8)
-  const costoHora = useCostoHora(usuario?.rol === "gerencial");
+  const costoHora = useCostoHora(comoDueno(usuario));
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
   const [tab, setTab] = useState(grupo === "produccion" ? (conDia ? "dia" : "indicadores") : "cumplimiento");
   const [periodo, setPeriodo] = useState("semana");
@@ -630,7 +630,7 @@ export default function ReportesScreen({ grupo = null }) {
         {ver("produccion") && conMinutas && <Chip active={tab === "minutas"} onClick={() => setTab("minutas")} color={MARCA}>📝 Minutas</Chip>}
         {ver("produccion") && tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
         {ver("personal") && <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>}
-        {ver("personal") && !esSupervisor(usuario) && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
+        {ver("personal") && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </FilaDeslizable>
 
       {/* Periodo (el reporte del día, el informe de producción y el de minutas tienen el suyo) */}

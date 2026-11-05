@@ -11,7 +11,6 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { sbGet } from "../../../lib/sbHelpers";
 import { hashCodigo, linkActivacion } from "../../../lib/activacion";
-import { rechazarSiSupervisor } from "../../../lib/alcance";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { htmlTarjetas } from "../../../lib/tarjetasQR";
 import { sendTarjetasQR } from "../../../lib/email";
@@ -26,8 +25,6 @@ export async function POST(request) {
   if (!["gerencial", "administrativo"].includes(sesion.rol)) {
     return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
   }
-  const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-  if (bloqueoSupervisor) return bloqueoSupervisor;
 
   const body = await request.json().catch(() => ({}));
   const pedidas = Array.isArray(body?.tarjetas) ? body.tarjetas : null;

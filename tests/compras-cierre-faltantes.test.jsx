@@ -113,7 +113,7 @@ test("/api/compras oc_cerrar_faltantes — cierra con motivo y lo que faltó vue
   );
 });
 
-test("/api/compras oc_cerrar_faltantes — sin nada recibido se anula; supervisor no; sin migración avisa", async () => {
+test("/api/compras oc_cerrar_faltantes — sin nada recibido se anula; un operario no; sin migración avisa", async () => {
   let escrito = mockRuta({ oc: { ...OC, estado: "enviada" } });
   let res = await api.POST(req(await token("gerencial"), { accion: "oc_cerrar_faltantes", id: 101, motivo: "x" }));
   assert.equal(res.status, 409);
@@ -121,12 +121,8 @@ test("/api/compras oc_cerrar_faltantes — sin nada recibido se anula; superviso
   assert.equal(escrito.length, 0);
 
   escrito = mockRuta();
-  const fetchBase = global.fetch;
-  global.fetch = (u, o) => (String(u).includes("solo_su_division")
-    ? Promise.resolve(new Response(JSON.stringify([{ id: EMP, legajo: 7, division: "ALUMINIO", solo_su_division: true }]), { status: 200, headers: { "Content-Type": "application/json" } }))
-    : fetchBase(u, o));
-  res = await api.POST(req(await token("administrativo"), { accion: "oc_cerrar_faltantes", id: 101, motivo: "x" }));
-  assert.equal(res.status, 403, "el jefe de taller no cierra órdenes");
+  res = await api.POST(req(await token("operativo"), { accion: "oc_cerrar_faltantes", id: 101, motivo: "x" }));
+  assert.equal(res.status, 403, "un operario no cierra órdenes");
   assert.equal(escrito.length, 0);
 
   _limpiarCacheAlcance();

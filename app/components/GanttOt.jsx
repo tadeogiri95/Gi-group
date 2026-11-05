@@ -374,7 +374,9 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
   // Navegar (Tadeo, 29/10): con lo elegido, ◀ ▶ corren la ventana; con Todo, mueven la barra de desplazamiento
   const [corrimiento, setCorrimiento] = useState(0);
   const [grande, setGrande] = useState(false);
-  const [verAtrasados, setVerAtrasados] = useState(true);
+  // Siempre minimizada al abrir (Tadeo, 05/11): el Gantt se ve entero
+  const [verAvisos, setVerAvisos] = useState(false);
+  const hayAvisos = porTerminar.length > 0 || enPausa.length > 0 || tardes.length > 0 || corridas.length > 0 || sinMotivo.length > 0;
   const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
   useEscape(cerrarGrande, grande);
   useEffect(() => () => { salirPantallaCompleta(); }, []);
@@ -586,21 +588,87 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-dashed border-proc-margen" /><span className={corridas.length ? "font-bold" : ""}>↪ Se corrió del plan {corridas.length}</span></span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-red" />🔁 Retrabajo</span>
       </div>
-      {porTerminar.length > 0 && (
-        <section aria-label="Procesos por terminar" className="mb-2 rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3 shrink-0">
-          <div className="text-[15px] font-bold text-gypi-text mb-1">⏰ Ya tenían que terminar · {porTerminar.length}</div>
-          <ul className={`list-none m-0 p-0 flex flex-col gap-1 overflow-auto ${grande ? "max-h-[20vh]" : ""}`}>
-            {porTerminar.map((v) => (
-              <li key={v.clave} className="flex flex-wrap items-center gap-2 text-[15px] text-gypi-text">
-                <span className="flex-1 min-w-0"><NombreOt proyecto={v.fila?.proyecto || abiertasPorOt.get(String(v.ot)) || { ot: v.ot }} /> · {v.nombre} tenía que terminar a las {v.hora}</span>
-                {puedeAjustar && (
-                  <button type="button" onClick={() => abrirAjuste(v.fila, v.fila.procesos.find((q) => q.etapa === v.etapa))}
-                    aria-label={`⏱ ${v.nombre} de la OT ${v.ot} necesita más tiempo`} className="g-btn g-btn-secondary">⏱ Necesita más tiempo</button>
+      {hayAvisos && (
+        <section aria-label="Avisos del Gantt" className="mb-2 rounded-xl border border-gypi-border bg-gypi-surface px-3 shrink-0">
+          {/* Los avisos tapaban el Gantt (Tadeo, 05/11): una sola barra que arranca siempre minimizada */}
+          <button type="button" onClick={() => setVerAvisos((v) => !v)} aria-expanded={verAvisos}
+            className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 bg-transparent border-0 p-0 min-h-11 cursor-pointer text-left text-[15px] font-bold text-gypi-text">
+            <span>🔔 Avisos:</span>
+            {porTerminar.length > 0 && <span className="text-gypi-amber-ink">⏰ {porTerminar.length} por terminar</span>}
+            {enPausa.length > 0 && <span>⏸ {enPausa.length} en pausa</span>}
+            {tardes.length > 0 && <span className="text-gypi-red">⚠ {tardes.length} después de su fecha límite</span>}
+            {corridas.length > 0 && <span className="text-gypi-amber-ink">↪ {corridas.length} {corridas.length === 1 ? "corrida" : "corridas"} del plan</span>}
+            {sinMotivo.length > 0 && <span>📝 {sinMotivo.length} sin motivo</span>}
+            <span className="ml-auto text-[14px] text-gypi-dim font-normal">{verAvisos ? "▾ Minimizar" : "▸ Ver"}</span>
+          </button>
+          {verAvisos && (
+            <div className={`overflow-auto pb-3 flex flex-col gap-2 ${grande ? "max-h-[35vh]" : "max-h-[45vh]"}`}>
+              {porTerminar.length > 0 && (
+              <section aria-label="Procesos por terminar" className="rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3">
+                <div className="text-[15px] font-bold text-gypi-text mb-1">⏰ Ya tenían que terminar · {porTerminar.length}</div>
+                <ul className="list-none m-0 p-0 flex flex-col gap-1">
+                  {porTerminar.map((v) => (
+                    <li key={v.clave} className="flex flex-wrap items-center gap-2 text-[15px] text-gypi-text">
+                      <span className="flex-1 min-w-0"><NombreOt proyecto={v.fila?.proyecto || abiertasPorOt.get(String(v.ot)) || { ot: v.ot }} /> · {v.nombre} tenía que terminar a las {v.hora}</span>
+                      {puedeAjustar && (
+                        <button type="button" onClick={() => abrirAjuste(v.fila, v.fila.procesos.find((q) => q.etapa === v.etapa))}
+                          aria-label={`⏱ ${v.nombre} de la OT ${v.ot} necesita más tiempo`} className="g-btn g-btn-secondary">⏱ Necesita más tiempo</button>
+                      )}
+                      <button type="button" onClick={() => verDetalle(v.fila.proyecto)} aria-label={`Ver la OT ${v.ot} para marcar ${v.nombre} terminado`} className="g-btn g-btn-secondary">✅ Ver / marcar terminado</button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              )}
+              {enPausa.length > 0 && (
+              <section aria-label="OT en pausa" className="rounded-xl border border-gypi-border bg-gypi-bg p-3">
+                <div className="text-[15px] font-bold mb-1">⏸ En pausa · {enPausa.length}</div>
+                <div className="text-[13px] text-gypi-dim mb-1">No están en el Gantt: las otras OT ocupan su lugar. Al reanudarlas vuelven al plan desde ese día.</div>
+                <ul className="list-none m-0 p-0 flex flex-col gap-1">
+                  {enPausa.map((x) => (
+                    <li key={x.ot}>
+                      <button type="button" onClick={() => verDetalle(x.proyecto)}
+                        className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
+                        <NombreOt proyecto={x.proyecto || { ot: x.ot }} /> · {textoPausa(x.pausa).replace(/^⏸ /, "")}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              )}
+              {(tardes.length > 0 || corridas.length > 0) && (
+              <section aria-label="Alertas del plan" className="rounded-xl border border-gypi-red/40 bg-gypi-red/5 p-3">
+                <div className="text-[15px] font-bold text-gypi-red mb-1">⚠ {tardes.length} después de su fecha límite · ↪ {corridas.length} corridas del plan</div>
+                <ul className="list-none m-0 p-0 flex flex-col gap-1">
+                  {[...tardes, ...corridas.filter((r) => !r.tarde)].map((r) => (
+                    <li key={r.ot}>
+                      <button type="button" onClick={() => verDetalle(r.proyecto)}
+                        className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
+                        <NombreOt proyecto={r.proyecto || abiertasPorOt.get(String(r.ot)) || { ot: r.ot }} /> · termina el {fechaCorta(r.fin)}
+                        {r.tarde && <span className="text-gypi-red font-bold"> · ⚠ {dias(r.diasTarde)} después de su fecha límite ({textoLimite(r)})</span>}
+                        {r.diasCorrido > 0 && <span className="text-gypi-amber-ink font-bold"> · ↪ se corrió {dias(r.diasCorrido)} del plan confirmado</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {sinMotivo.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gypi-border" role="group" aria-label="Atrasos sin motivo">
+                    <div className="text-[15px] font-bold text-gypi-amber-ink mb-1">📝 Atrasos sin motivo · {sinMotivo.length}</div>
+                    <ul className="list-none m-0 p-0 flex flex-col gap-1">
+                      {sinMotivo.map((a) => (
+                        <li key={`${a.ot}-${a.etapa}`} className="flex items-center gap-2 text-[15px] text-gypi-text">
+                          <span className="flex-1 min-w-0"><NombreOt proyecto={a.fila?.proyecto || abiertasPorOt.get(String(a.ot)) || { ot: a.ot }} /> · {a.nombre} · ↪ se corrió {dias(a.dias)}</span>
+                          <button type="button" onClick={() => abrirAjuste(a.fila, a.fila.procesos.find((q) => q.etapa === a.etapa), true)}
+                            aria-label={`Anotar por qué se corrió ${a.nombre} de la OT ${a.ot}`} className="g-btn g-btn-secondary">Anotar motivo</button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
-                <button type="button" onClick={() => verDetalle(v.fila.proyecto)} aria-label={`Ver la OT ${v.ot} para marcar ${v.nombre} terminado`} className="g-btn g-btn-secondary">✅ Ver / marcar terminado</button>
-              </li>
-            ))}
-          </ul>
+              </section>
+              )}
+            </div>
+          )}
         </section>
       )}
       {reordenar && (cambio ? (
@@ -745,60 +813,6 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
           ))}
         </div>
       </div>
-      {enPausa.length > 0 && (
-        <section aria-label="OT en pausa" className="mt-3 rounded-xl border border-gypi-border bg-gypi-surface p-3 shrink-0">
-          <div className="text-[15px] font-bold mb-1">⏸ En pausa · {enPausa.length}</div>
-          <div className="text-[13px] text-gypi-dim mb-1">No están en el Gantt: las otras OT ocupan su lugar. Al reanudarlas vuelven al plan desde ese día.</div>
-          <ul className="list-none m-0 p-0 flex flex-col gap-1">
-            {enPausa.map((x) => (
-              <li key={x.ot}>
-                <button type="button" onClick={() => verDetalle(x.proyecto)}
-                  className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
-                  <NombreOt proyecto={x.proyecto || { ot: x.ot }} /> · {textoPausa(x.pausa).replace(/^⏸ /, "")}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {(tardes.length > 0 || corridas.length > 0) && (
-        <section aria-label="Alertas del plan" className="mt-3 rounded-xl border border-gypi-red/40 bg-gypi-red/5 p-3 shrink-0">
-          {/* Se puede minimizar para ver el Gantt entero (en el celular, en pantalla completa) */}
-          <button type="button" onClick={() => setVerAtrasados((v) => !v)} aria-expanded={verAtrasados}
-            className="w-full flex items-center gap-2 bg-transparent border-0 p-0 min-h-11 cursor-pointer text-left text-[15px] font-bold text-gypi-red">
-            <span className="flex-1">⚠ {tardes.length} después de su fecha límite · ↪ {corridas.length} corridas del plan</span>
-            <span className="text-[14px] text-gypi-dim">{verAtrasados ? "▾ Minimizar" : "▸ Ver detalle"}</span>
-          </button>
-          {verAtrasados && (
-            <ul className={`list-none m-0 p-0 flex flex-col gap-1 overflow-auto ${grande ? "max-h-[30vh]" : ""}`}>
-              {[...tardes, ...corridas.filter((r) => !r.tarde)].map((r) => (
-                <li key={r.ot}>
-                  <button type="button" onClick={() => verDetalle(r.proyecto)}
-                    className="w-full text-left bg-transparent border-0 p-0 min-h-11 cursor-pointer text-[15px] text-gypi-text">
-                    <NombreOt proyecto={r.proyecto || abiertasPorOt.get(String(r.ot)) || { ot: r.ot }} /> · termina el {fechaCorta(r.fin)}
-                    {r.tarde && <span className="text-gypi-red font-bold"> · ⚠ {dias(r.diasTarde)} después de su fecha límite ({textoLimite(r)})</span>}
-                    {r.diasCorrido > 0 && <span className="text-gypi-amber-ink font-bold"> · ↪ se corrió {dias(r.diasCorrido)} del plan confirmado</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {verAtrasados && sinMotivo.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-gypi-border" role="group" aria-label="Atrasos sin motivo">
-              <div className="text-[15px] font-bold text-gypi-amber-ink mb-1">📝 Atrasos sin motivo · {sinMotivo.length}</div>
-              <ul className={`list-none m-0 p-0 flex flex-col gap-1 overflow-auto ${grande ? "max-h-[20vh]" : ""}`}>
-                {sinMotivo.map((a) => (
-                  <li key={`${a.ot}-${a.etapa}`} className="flex items-center gap-2 text-[15px] text-gypi-text">
-                    <span className="flex-1 min-w-0"><NombreOt proyecto={a.fila?.proyecto || abiertasPorOt.get(String(a.ot)) || { ot: a.ot }} /> · {a.nombre} · ↪ se corrió {dias(a.dias)}</span>
-                    <button type="button" onClick={() => abrirAjuste(a.fila, a.fila.procesos.find((q) => q.etapa === a.etapa), true)}
-                      aria-label={`Anotar por qué se corrió ${a.nombre} de la OT ${a.ot}`} className="g-btn g-btn-secondary">Anotar motivo</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-      )}
       {editar && (
         <AjusteTiempo {...editar} porNombre={usuarioNombre} diasCon={diasCon(editar.ot, editar.etapa)} onClose={() => setEditar(null)}
           onGuardado={(fila) => { setAjustes((a) => [...(a || []), fila]); setEditar(null); }}

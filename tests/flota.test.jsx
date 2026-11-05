@@ -228,7 +228,7 @@ test("/api/flota — papeles, licencia, baja, permisos y migración", async () =
 // ─── Pantalla ───
 
 const VEHICULOS = [
-  { id: 7, patente: "AB123CD", tipo: "camioneta", marca: "Toyota", modelo: "Hilux", km: 85000, responsable_id: CHOFER, activo: true },
+  { id: 7, patente: "AB123CD", tipo: "camioneta", marca: "Toyota", modelo: "Hilux", km: 85000, responsable_id: CHOFER, activo: true, fotos: ["https://x.test/hilux-1.jpg", "https://x.test/hilux-2.jpg"] },
   { id: 8, patente: "AA999ZZ", tipo: "camion", marca: "Iveco", activo: true },
 ];
 const PAPELES = [
@@ -263,11 +263,15 @@ test("Flota — lista con semáforo, lo vencido arriba; ficha con papeles y reno
   render(<FlotaScreen empresaId={E} usuario={{ rol: "administrativo" }} />);
   const lista = await screen.findByRole("list", { name: "Vehículos" });
   const filas = lista.querySelectorAll("li");
-  assert.match(filas[0].textContent, /🔴AA999ZZ/, "el vencido primero");
+  // Arriba el modelo y debajo la patente, con la foto principal al lado
+  // (o 🚚 si no tiene foto)
+  assert.match(filas[0].textContent, /🔴🚚Iveco\s*AA999ZZ · Camión/, "el vencido primero");
   assert.match(filas[0].textContent, /Seguro: venció hace/);
   assert.match(filas[0].textContent, /Falta cargar la ITV/);
   // Papeles al día, pero sin checklist ni service cargado: 🟡 (parte 30)
-  assert.match(filas[1].textContent, /🟡AB123CD.*Juan Pérez.*Falta el primer checklist/);
+  assert.match(filas[1].textContent, /🟡Toyota Hilux\s*AB123CD · Camioneta · Juan Pérez.*Falta el primer checklist/);
+  assert.equal(filas[1].querySelector("img")?.getAttribute("src"), "https://x.test/hilux-1.jpg", "la foto principal es la primera");
+  assert.equal(filas[0].querySelector("img"), null);
 
   fireEvent.click(screen.getByLabelText("Ver AB123CD"));
   const papeles = await screen.findByRole("list", { name: "Papeles vigentes" });

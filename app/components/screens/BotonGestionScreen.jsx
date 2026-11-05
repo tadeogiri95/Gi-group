@@ -10,7 +10,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { tieneModulo } from "../../lib/modulos";
-import { BOTONES_GESTION, opcionesBoton, esSupervisor } from "../../lib/menuGestion";
+import { BOTONES_GESTION, opcionesBoton } from "../../lib/menuGestion";
 import ModuloBloqueado from "../ModuloBloqueado";
 import Pestanas from "../ui/Pestanas";
 import { Spinner } from "../ui";
@@ -37,8 +37,8 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
   const bloqueado = !tieneModulo(empresa, actual.modulo);
   const empresaId = usuario?.empresa_id || empresa?.id;
   // Links de las planillas: en Más → Planillas conectadas (auditoría 01/11).
-  // Solo la oficina (no el supervisor ni el responsable de mantenimiento).
-  const oficina = (usuario?.rol === "gerencial" || usuario?.rol === "administrativo") && !esSupervisor(usuario);
+  // Solo la oficina (no el responsable de mantenimiento).
+  const oficina = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
   const onPlanillas = onIr && oficina ? () => onIr("config:planillas") : null;
 
   return (

@@ -13,7 +13,6 @@ import { validateBody, safeErrorMessage } from "../../../lib/validate";
 import { resolverSolicitudBody } from "../../../lib/schemas";
 import { sbGet, sbRpc } from "../../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
-import { alcanceDe, dentroDelAlcance, respuestaFueraDeAlcance } from "../../../lib/alcance";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { horaLocal } from "../../../lib/offline";
 import { buscarHoraExtraAprobable, planResolucion } from "../../../lib/solicitudes";
@@ -38,7 +37,6 @@ export async function POST(request) {
     const [sol] = (await sbGet(`solicitudes?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
     if (!sol) return NextResponse.json({ ok: false, error: "Ese pedido no existe" }, { status: 404 });
     // Un supervisor de división solo responde pedidos de su gente (D2)
-    if (!dentroDelAlcance(await alcanceDe(sesion), { id: sol.empleado_id, legajo: sol.legajo })) return respuestaFueraDeAlcance();
     if (sol.estado !== "pendiente") {
       return NextResponse.json({ ok: false, tipo: "ya_resuelta", error: "Otra persona ya respondió este permiso." }, { status: 409 });
     }

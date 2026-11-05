@@ -225,6 +225,8 @@ test("pantalla — el botón de reporte arriba y el historial abajo", async () =
   assert.ok(screen.getByText("50%"));
   assert.ok(screen.getByText(/Colocados: M1, M2/));
   assert.ok(screen.getByText(/Tiras · M2/));
+  // 📅 Mis instalaciones está en la pestaña, no escondido dentro del reporte (05/11)
+  assert.ok(await screen.findByRole("region", { name: "Mis instalaciones" }));
 });
 
 test("reporte — tildar módulos y anotar un pendiente muestra el % antes de enviar", async () => {

@@ -398,3 +398,60 @@ test("📅 Plan de producción — material de cada día contra el stock", async
   assert.match(caja.textContent, /Canto blanconecesita 40 m · stock 50✅OT 7500/);
   assert.doesNotMatch(caja.textContent, /Bisagra/, "Armado terminado");
 });
+
+// Material de varios días (Tadeo, 05/11): se eligen días y sale todo sumado;
+// una OT con el mismo proceso dos días cuenta su material una sola vez.
+test("otsDeLosDias — junta las OT de los días elegidos sin repetirlas", async () => {
+  const { otsDeLosDias } = await import("../app/lib/materialDia.js");
+  const dias = [
+    { fecha: "2026-11-05", ots: [{ ot: "7473", etapas: [{ id: "corte" }] }] },
+    { fecha: "2026-11-06", ots: [{ ot: "7473", etapas: [{ id: "corte" }, { id: "canteado" }] }, { ot: "7500", etapas: [{ id: "armado" }] }] },
+    { fecha: "2026-11-07", ots: [{ ot: "7600", etapas: [{ id: "corte" }] }] },
+  ];
+  assert.deepEqual(otsDeLosDias(dias, ["2026-11-05", "2026-11-06"]), [
+    { ot: "7473", etapas: [{ id: "corte" }, { id: "canteado" }] },
+    { ot: "7500", etapas: [{ id: "armado" }] },
+  ]);
+  assert.deepEqual(otsDeLosDias(dias, []), []);
+});
+
+test("📅 Plan de producción — 🧮 material de varios días sumado contra el stock", async () => {
+  const hoy = hoyArg();
+  const sumar = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const manana = sumar(hoy, 1);
+  const pasado = sumar(hoy, 2);
+  const plan = { id: 3, tipo: "horizonte", desde: hoy, hasta: pasado, division_id: "d-m", dias_extra: [], items: [
+    { ot: "7473", etapa: "corte", fecha: hoy, horas: 8, orden: 0 },
+    { ot: "7473", etapa: "corte", fecha: manana, horas: 2, orden: 0 },
+    { ot: "7500", etapa: "corte", fecha: manana, horas: 6, orden: 1 },
+    { ot: "7600", etapa: "corte", fecha: pasado, horas: 6, orden: 0 },
+  ] };
+  const filas = {
+    necesidades_stock: [{ ot: "7473", sku: "PL1", cantidad: 10 }, { ot: "7500", sku: "PL1", cantidad: 5 }, { ot: "7600", sku: "PL1", cantidad: 7 }],
+    movimientos_stock: [],
+    config_sistema: [{ valor: { etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 } } }],
+    articulos_stock: [{ sku: "PL1", nombre: "Melamina blanca", familia: "Placas, chapas, mallas y paneles", unidad: "u", stock: 12 }],
+  };
+  global.fetch = async (url, opts) => {
+    if (String(url).startsWith("/api/planificacion")) return new Response(JSON.stringify({ ok: true, plan }), { status: 200 });
+    const path = decodeURIComponent(JSON.parse(opts?.body || "{}").path || "");
+    const tabla = Object.keys(filas).find((t) => path.startsWith(t));
+    return new Response(JSON.stringify({ data: tabla ? filas[tabla] : [] }), { status: 200 });
+  };
+  render(<PlanSemana divisiones={DIVISIONES} divisionUsuario="Muebles" proyectos={[{ ot: "7473" }, { ot: "7500" }, { ot: "7600" }]} empresaId={E} avance={[]} piezas={[]}
+    etapas={[{ codigo: 1, nombre: "Corte" }, { codigo: 2, nombre: "Canteado" }, { codigo: 3, nombre: "Mecanizado" }, { codigo: 4, nombre: "Armado" }]} />);
+  const grupo = await screen.findByRole("group", { name: "Días a sumar" });
+  const caja = screen.getByRole("region", { name: "Plan de la semana" });
+  const botones = grupo.querySelectorAll("button");
+  // Hoy + mañana: la 7473 (corta los dos días, una sola vez) + la 7500 = 15, hay 12
+  fireEvent.click(botones[1]);
+  fireEvent.click(botones[2]);
+  assert.match(caja.textContent, /2 días · 🔴 Faltan 1 de 1 artículo/);
+  assert.match(caja.textContent, /Melamina blancanecesita 15 u · stock 12faltan 3OT 7473 \/ OT 7500/);
+  // Todos: 10 + 5 + 7 = 22
+  fireEvent.click(botones[0]);
+  assert.match(caja.textContent, /3 días · .*necesita 22 u · stock 12faltan 10/);
+  // Todos de nuevo: no queda ninguno elegido
+  fireEvent.click(botones[0]);
+  assert.doesNotMatch(caja.textContent, /días · /);
+});

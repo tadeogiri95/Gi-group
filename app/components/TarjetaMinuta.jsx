@@ -9,6 +9,7 @@ import { hoyArg } from "../lib/dates";
 import { tieneModulo } from "../lib/modulos";
 import { tarjetaMinuta } from "../lib/minutasReporte";
 import { useAuth } from "../context/AuthContext";
+import { comoDueno } from "../lib/menuGestion";
 import { Tag } from "./ui";
 
 const ESTADO = {
@@ -19,7 +20,7 @@ const ESTADO = {
 
 export default function TarjetaMinuta({ empresa, goto }) {
   const { usuario } = useAuth();
-  const con = usuario?.rol === "gerencial" && tieneModulo(empresa, "minutas");
+  const con = comoDueno(usuario) && tieneModulo(empresa, "minutas");
   const [t, setT] = useState(null);
 
   useEffect(() => {

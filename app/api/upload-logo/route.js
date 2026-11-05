@@ -8,7 +8,6 @@ import { safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { contenidoCoincide, EXT_POR_MIME } from "../../lib/fileSignature";
-import { rechazarSiSupervisor } from "../../lib/alcance";
 import { sbHeaders } from "../../lib/sbHelpers";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -20,8 +19,6 @@ export async function POST(request) {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     if (!ROLES_GESTION.has(sesion.rol)) return NextResponse.json({ error: "Solo gerencia o administración pueden cambiar el logo" }, { status: 403 });
-    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-    if (bloqueoSupervisor) return bloqueoSupervisor;
     const empresaId = sesion.empresa_id;
 
     const formData = await request.formData();
