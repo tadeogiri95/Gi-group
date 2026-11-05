@@ -3,8 +3,8 @@
 // Parte 20 (migración 113): proveedores y pedidos de material. Piden los
 // jefes de taller (supervisores de división), gerencia, dueños y
 // Administración; los operarios no. Administración consolida los pedidos y
-// compra (parte 21): "comprador" es gerencia o Administración sin división
-// asignada (un supervisor de división pide y recibe, pero no compra).
+// compra (parte 21): "comprador" es gerencia, Administración o Supervisor
+// (desde el 05/11 el supervisor también compra).
 // Migración 121: un pedido pendiente se corrige y queda registro de quién.
 
 import { otCompleta, textoOt } from "./nombreOt";
@@ -30,10 +30,9 @@ export function puedePedir(rol) {
   return rol === "gerencial" || rol === "administrativo";
 }
 
-/** ¿Puede comprar (proveedores, consolidar pedidos)? alcance = el de app/lib/alcance.js (null = ve toda la empresa). */
-export function puedeComprar(rol, alcance = null) {
-  if (rol === "gerencial") return true;
-  return rol === "administrativo" && !alcance;
+/** ¿Puede comprar (proveedores, consolidar pedidos)? Dueño, Administración y Supervisor (desde 05/11). */
+export function puedeComprar(rol) {
+  return rol === "gerencial" || rol === "administrativo";
 }
 
 /** ¿Puede anular este pedido? El comprador, cualquiera pendiente; quien lo pidió, el suyo mientras siga pendiente. */

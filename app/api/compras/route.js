@@ -54,7 +54,6 @@ import { comprasBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch, sbDelete, sbRpc } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
-import { alcanceDe } from "../../lib/alcance";
 import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
 import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, pedidosAlCerrar, precioEnPesos, precioEnStock } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
@@ -119,9 +118,7 @@ function faltaMigracionRecepcion(err) {
 const soloComprador = () => NextResponse.json({ error: "Los proveedores los maneja Administración" }, { status: 403 });
 
 async function esComprador(sesion) {
-  if (sesion.rol === "gerencial") return true;
-  if (sesion.rol !== "administrativo") return false;
-  return puedeComprar(sesion.rol, await alcanceDe(sesion));
+  return puedeComprar(sesion.rol);
 }
 
 async function guardarProveedor(sesion, d) {

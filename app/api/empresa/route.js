@@ -7,7 +7,7 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { CAMPOS_EMPRESA_SOLO_DUENO } from "../../lib/dataPolicy";
 
 import { ipCliente } from "../../lib/ip";
-import { rechazarSiSupervisor } from "../../lib/alcance";
+import { comoDueno } from "../../lib/alcance";
 import { getModulosEmpresa } from "../../lib/planEnforcement";
 import { sbHeaders } from "../../lib/sbHelpers";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -118,8 +118,6 @@ export async function PATCH(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
-    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-    if (bloqueoSupervisor) return bloqueoSupervisor;
 
     const rawBody = await request.json();
     const parsed = validateBody(empresaPatchBody, rawBody);
@@ -128,9 +126,9 @@ export async function PATCH(request) {
 
     // Las instrucciones de la IA y las reglas de asistencia las define solo el dueño (F2-06, D5)
     const soloDueno = CAMPOS_EMPRESA_SOLO_DUENO.find((c) => body[c] !== undefined);
-    if (sesion.rol !== "gerencial" && soloDueno) {
+    if (soloDueno && !(await comoDueno(sesion))) {
       const que = soloDueno === "reglas_asistencia" ? "las reglas de asistencia" : "las instrucciones de la IA";
-      return NextResponse.json({ error: `Solo el dueño de la cuenta puede cambiar ${que}` }, { status: 403 });
+      return NextResponse.json({ error: `Solo el dueño de la cuenta o un supervisor puede cambiar ${que}` }, { status: 403 });
     }
 
     const updates = {};

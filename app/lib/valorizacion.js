@@ -1,16 +1,16 @@
 // app/lib/valorizacion.js — Precio de cada OT y valorización de la
 // planificación (Tadeo, 27/10; migración 142). El precio sale de la columna
-// PRECIO (AE) del Plan de trabajo, en pesos. Solo lo ven Dueño y
-// Administración (no el supervisor de división ni los operarios).
+// PRECIO (AE) del Plan de trabajo, en pesos. Lo ven Dueño, Administración y
+// Supervisor (desde 05/11); los operarios no.
 // En la planificación, el precio de una OT se reparte entre semanas y meses
 // según las horas que el plan pone en cada uno (Tadeo eligió "según las
 // horas de cada semana").
 import { sbGetAll } from "./supabase";
 import { inicioDeSemana } from "./semanaObjetivo";
 
-/** Dueño y Administración ven los precios; el supervisor de división y los operarios no. */
+/** Dueño, Administración y Supervisor ven los precios; los operarios no. */
 export function puedeVerPrecios(usuario) {
-  return usuario?.rol === "gerencial" || (usuario?.rol === "administrativo" && !usuario?.solo_su_division);
+  return usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
 }
 
 /** Precios de las OT (navegador): Map OT → precio. Sin permiso o sin la migración 142, vacío. */

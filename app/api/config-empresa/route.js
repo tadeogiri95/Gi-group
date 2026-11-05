@@ -10,7 +10,6 @@ import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { configPostBody, configPatchBody } from "../../lib/schemas";
 import { validateBody, isUUID, safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
-import { rechazarSiSupervisor } from "../../lib/alcance";
 import { ordenarPlantas } from "../../lib/plantas";
 import { CLAVE_CAUSAS, normalizarCausas } from "../../lib/causas";
 import { CLAVE_CHECKLIST, normalizarChecklist } from "../../lib/avance";
@@ -133,8 +132,6 @@ export async function POST(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
-    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-    if (bloqueoSupervisor) return bloqueoSupervisor;
     const empresaId = sesion.empresa_id;
 
     const rawBody = await request.json();
@@ -225,8 +222,6 @@ export async function PATCH(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
-    const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-    if (bloqueoSupervisor) return bloqueoSupervisor;
     const empresaId = sesion.empresa_id;
 
     const rawBody = await request.json();
@@ -367,11 +362,7 @@ export async function DELETE(request) {
     if (!id || !type) return NextResponse.json({ error: "type e id requeridos" }, { status: 400 });
     if (!isUUID(id)) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
-    if (type === "planta") {
-      const bloqueoSupervisor = await rechazarSiSupervisor(sesion);
-      if (bloqueoSupervisor) return bloqueoSupervisor;
-      return darDeBajaPlanta(empresaId, id);
-    }
+    if (type === "planta") return darDeBajaPlanta(empresaId, id);
 
     const tabla = type === "division" ? "divisiones" : type === "etapa" ? "etapas" : null;
     if (!tabla) return NextResponse.json({ error: "type inválido" }, { status: 400 });

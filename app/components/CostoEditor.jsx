@@ -67,7 +67,7 @@ export default function CostoEditor({ avisar = () => {} }) {
   return (
     <div className="g-card mb-3.5">
       <div className="text-[13px] text-gypi-dim mb-3 leading-normal">
-        Cuánto te cuesta una hora de trabajo (sueldo más cargas), un solo valor para toda la fábrica. Con esto la app calcula el costo de mano de obra de cada OT, separado en fábrica, paradas e instalación. Solo lo ves vos: ni los supervisores ni los administrativos ven costos.
+        Cuánto te cuesta una hora de trabajo (sueldo más cargas), un solo valor para toda la fábrica. Con esto la app calcula el costo de mano de obra de cada OT, separado en fábrica, paradas e instalación. Solo lo ven el dueño y los supervisores: los administrativos no ven costos.
       </div>
       {aviso && <div role="alert" className="text-[12px] text-gypi-red mb-2.5">{aviso}</div>}
       <label htmlFor="costo-hora" className="g-label mb-1.5 block">Costo de la hora ($)</label>

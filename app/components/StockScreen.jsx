@@ -17,7 +17,6 @@ import {
 import FichaArticulo, { Semaforo } from "./FichaArticulo";
 import MovimientosStock from "./MovimientosStock";
 import ArticuloNuevo from "./ArticuloNuevo";
-import { esSupervisor } from "../lib/menuGestion";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -128,7 +127,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       {vista === "movimientos" ? <MovimientosStock usuario={usuario} articulos={articulos} onArticuloNuevo={(n) => setArticulos((prev) => [...prev.filter((x) => x.sku !== n.sku), n])} /> : (<>
       {/* Los links del libro MRP se configuran en Más → Planillas conectadas
           (auditoría 01/11, PR 3); el supervisor no los ve */}
-      {!esSupervisor(usuario) && onPlanillas && (
+      {onPlanillas && (
         <button onClick={onPlanillas}
           className="w-full min-h-[44px] mb-3 flex items-center justify-between px-3 rounded-[10px] border border-gypi-border bg-gypi-surface text-[14px] font-semibold text-gypi-text cursor-pointer">
           <span>🔗 Planilla MRP {cfg.inventario ? "· conectada" : "· sin conectar"}</span>

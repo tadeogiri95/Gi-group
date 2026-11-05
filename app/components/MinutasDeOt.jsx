@@ -6,6 +6,7 @@
 import { useContext, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { tieneModulo } from "../lib/modulos";
+import { comoDueno } from "../lib/menuGestion";
 import { seccion, SEMAFOROS } from "../lib/minutas";
 import { AuthContext } from "../context/AuthContext";
 
@@ -13,7 +14,7 @@ const fechaCorta = (f) => (f ? String(f).slice(0, 10).split("-").reverse().join(
 
 export default function MinutasDeOt({ ot }) {
   const auth = useContext(AuthContext);
-  const puede = auth?.usuario?.rol === "gerencial" && tieneModulo(auth?.empresa, "minutas");
+  const puede = comoDueno(auth?.usuario) && tieneModulo(auth?.empresa, "minutas");
   const [items, setItems] = useState(null);
   useEffect(() => {
     if (!puede || !ot) return;

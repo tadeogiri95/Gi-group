@@ -1,7 +1,7 @@
 // /api/minutas — Minuta de la reunión de Buenos Días (Minuta, parte M1;
 // migración 150; diseño en notes/diseno-minuta-buenos-dias.md).
 //
-// Solo gerencia (rol gerencial), con el módulo Minutas prendido.
+// Solo gerencia (rol gerencial) y supervisores (desde 05/11), con el módulo Minutas prendido.
 //   GET ?fecha=AAAA-MM-DD → la minuta de ese día con sus renglones (o null)
 //   GET                   → historial: las últimas minutas, sin renglones
 //   GET ?precarga=AAAA-MM-DD → lo que Gypi sugiere para ese día (parte M2):
@@ -36,6 +36,7 @@ import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, sigueAbierto } from "../../lib/minutas";
 import { precargaMinuta } from "../../lib/minutasPrecargaServidor";
 import { logger } from "../../lib/logger";
+import { comoDueno } from "../../lib/alcance";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
 const HISTORIAL = 90;
@@ -56,7 +57,7 @@ const SIN_REVISION = "Se guardó la minuta, pero no la revisión de ayer: falta 
 async function entrar(request) {
   const sesion = await validarToken(request);
   if (!sesion?.empresa_id) return { response: respuestaNoAutorizado() };
-  if (sesion.rol !== "gerencial") return { response: json({ error: "La minuta es de Dueño / Gerencia" }, 403) };
+  if (!(await comoDueno(sesion))) return { response: json({ error: "La minuta es del Dueño y los supervisores" }, 403) };
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return { response: sinPlan };
   const sinModulo = await requireModulo(sesion.empresa_id, "minutas");
