@@ -22,7 +22,7 @@ import { otsEnPausa } from "../lib/pausaOt";
 import { normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { etapasDelPlan } from "../lib/ganttPlan";
 import { feriadosDe } from "../lib/secuencia";
-import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento } from "../lib/planInstalacion";
+import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento, mismoPlan } from "../lib/planInstalacion";
 import { textoDias } from "../lib/instalacionPlan";
 import NombreOt from "./NombreOt";
 import { partesOt, textoOt } from "../lib/nombreOt";
@@ -128,12 +128,15 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
   const { obras, sinProduccion, sinDato, feriados, divisionId } = calculo;
   const corridas = obras.filter((o) => o.diasCorrido > 0);
   const ultimoPlan = confirmados.planes.find((p) => (p.division_id || null) === divisionId) || confirmados.planes[0] || null;
+  // Confirmado y sin cambios: no se vuelve a ofrecer el botón (Tadeo, 05/11)
+  const items = itemsDelPlan(obras);
+  const alDia = !!ultimoPlan && mismoPlan(items, ultimoPlan.items, hoy);
 
   const confirmar = async () => {
     setOcupado(true);
     setAviso(null);
     try {
-      const r = await apiFetch("/api/plan-instalacion", { method: "POST", body: JSON.stringify({ division_id: divisionId, items: itemsDelPlan(obras) }) });
+      const r = await apiFetch("/api/plan-instalacion", { method: "POST", body: JSON.stringify({ division_id: divisionId, items }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "No se pudo confirmar el plan de instalación.");
       setAviso("✅ Plan de instalación confirmado. Cada instalador ya ve sus obras en Instalaciones.");
@@ -207,11 +210,15 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
       </div>
       {puedeConfirmar && obras.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <button type="button" onClick={confirmar} disabled={ocupado} className="g-btn g-btn-primary">{ocupado ? "Guardando…" : "✅ Confirmar plan de instalación"}</button>
+          {!alDia && (
+            <button type="button" onClick={confirmar} disabled={ocupado} className="g-btn g-btn-primary">
+              {ocupado ? "Guardando…" : ultimoPlan ? "✅ Confirmar los cambios" : "✅ Confirmar plan de instalación"}
+            </button>
+          )}
           <button type="button" onClick={() => setVerOrden((v) => !v)} className="g-btn g-btn-secondary">{verOrden ? "Cerrar orden" : "↕ Cambiar orden"}</button>
-          <span className="text-[13px] text-gypi-dim">
+          <span className={`text-[13px] ${alDia ? "text-gypi-green-ink font-bold" : "text-gypi-dim"}`}>
             {confirmados.falta ? "Para confirmar falta correr la migración 154 en Supabase."
-              : ultimoPlan ? `Confirmado el ${fechaCorta(String(ultimoPlan.confirmado_at).slice(0, 10))}${ultimoPlan.confirmado_nombre ? ` por ${ultimoPlan.confirmado_nombre}` : ""}. Los instaladores ven ese plan.`
+              : ultimoPlan ? `${alDia ? "✅ Plan confirmado" : "El plan cambió desde que se confirmó"} el ${fechaCorta(String(ultimoPlan.confirmado_at).slice(0, 10))}${ultimoPlan.confirmado_nombre ? ` por ${ultimoPlan.confirmado_nombre}` : ""}. ${alDia ? "Los instaladores ya lo ven." : "Los instaladores ven el anterior hasta que confirmes los cambios."}`
                 : "Todavía no hay un plan confirmado: los instaladores no ven sus obras."}
           </span>
         </div>
