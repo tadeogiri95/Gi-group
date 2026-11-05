@@ -212,7 +212,6 @@ export function ReporteInstalacion({ ot, onClose, onEnviado }) {
           </>
         )}
         {error && <div role="alert" className="text-[13px] text-gypi-red">{error}</div>}
-      <MisInstalaciones />
         {estado && (
           <Button size="planta" className="w-full" onClick={enviar} disabled={enviando || subiendo || vacio}>
             {enviando ? "Enviando…" : "Enviar reporte"}
@@ -308,6 +307,9 @@ export default function InstalacionesScreen({ empresaId }) {
       <Button size="planta" className="w-full" onClick={() => { setAviso(null); setEligiendo(true); }}>📝 Generar reporte</Button>
       {aviso && <div role="status" className="text-[14px] font-bold text-gypi-green-ink">{aviso}</div>}
       {error && <div role="alert" className="text-[13px] text-gypi-red">{error}</div>}
+
+      {/* 📅 Lo que le toca según el plan confirmado (antes quedaba escondido dentro del reporte) */}
+      <MisInstalaciones />
 
       <h2 className="m-0 mt-2 text-[15px] font-bold text-gypi-dim">Historial de reportes</h2>
       {reportes === null ? (
