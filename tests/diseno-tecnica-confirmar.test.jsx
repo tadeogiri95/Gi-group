@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { normalizarDisenoTecnica } from "../app/lib/planificacion.js";
-import { planDisenoTecnica, planDeEmpresa, conCambio, cuerposConfirmar, hayConfirmado, misPlanillas, renglonCorto } from "../app/lib/planDisenoTecnica.js";
+import { planDisenoTecnica, planDeEmpresa, conCambio, cuerposConfirmar, hayConfirmado, misPlanillas, renglonCorto, entregasComprometidas } from "../app/lib/planDisenoTecnica.js";
 import { validarPatch } from "../app/lib/dataPolicy.js";
 import { MIGRACIONES } from "../app/lib/esquemaMigraciones.js";
 
@@ -195,4 +195,64 @@ test("📐 Mis planillas — en el Inicio del operario y en el Panel; la ruta so
   assert.match(ruta, /misPlanillas\(plan, sesion\.empleado_id\)/);
   assert.match(ruta, /\{ sesion \}/);
   assert.match(ruta, /renglonCorto/);
+});
+
+// ─── 05/11: pantalla completa y arrastrar en el Gantt sin comprometer entregas ───
+
+const SOLO_MJT = { ...VALOR_DT, arquitectas: [{ id: "12", pct_tecnica: 100 }] };
+const calculoMjt = (proyectos) => {
+  const armar = (lista) => planDeEmpresa({ proyectos: lista, cfgValor: { diseno_tecnica: SOLO_MJT }, personal: PERSONAL, hoy: LUNES });
+  return { ...armar(proyectos), rehacer: (cambio) => armar(conCambio(proyectos, cambio)) };
+};
+// M-1 tiene que entrar a Producción el martes 10 (límite de Técnica lunes 09); M-2 tiene tiempo
+const VIVO = { renglones: [
+  { ot: "M-1", inicio: "2026-11-11", fin: "2026-11-11", objetivo: "2026-11-10" },
+  { ot: "M-2", inicio: "2026-11-20", fin: "2026-11-20", objetivo: "2026-12-30" },
+  { ot: "M-3", inicio: "2026-11-20", fin: "2026-11-20", objetivo: "2026-12-30" },
+] };
+const TRES = () => [OT("M-1", { etapas_diseno: SOLO_TECNICA, prioridad: 1 }), OT("M-2", { etapas_diseno: SOLO_TECNICA, prioridad: 2 }), OT("M-3", { etapas_diseno: SOLO_TECNICA, prioridad: 3 })];
+
+test("entregasComprometidas — la OT que pasaría su fecha límite; sin plan de Producción no bloquea", () => {
+  const c = calculoMjt(TRES());
+  assert.deepEqual(c.renglones.map((r) => r.tecnica.fin), ["2026-11-09", "2026-11-10", "2026-11-11"]);
+  const peor = c.rehacer({ orden: ["M-2", "M-1", "M-3"], arquitectas: {} });
+  const malas = entregasComprometidas(c, peor, VIVO);
+  assert.deepEqual(malas.map((m) => [m.ot, m.diasTarde, m.limite]), [["M-1", 1, "2026-11-09"]]);
+  assert.deepEqual(entregasComprometidas(c, c.rehacer({ orden: ["M-1", "M-3", "M-2"], arquitectas: {} }), VIVO), []);
+  assert.deepEqual(entregasComprometidas(c, peor, null), []);
+  // Si ya venía tarde, solo cuenta si queda peor
+  assert.deepEqual(entregasComprometidas(peor, peor, VIVO), []);
+});
+
+test("Gantt 📐 — no deja mover una OT si otra no llega a su entrega; arrastrando desde ⠿ sí reordena", async () => {
+  render(<GanttDisenoTecnica calculo={calculoMjt(TRES())} vivo={VIVO} puedeReordenar />);
+  const orden = () => [...document.querySelectorAll("g[data-orden-ot]")].map((g) => g.getAttribute("data-orden-ot"));
+  assert.deepEqual(orden(), ["M-1", "M-2", "M-3"]);
+  // Arrastrar M-1 debajo de M-2: M-1 pasaría su fecha límite
+  const soltarSobre = (desde, hasta) => {
+    const destino = document.querySelector(`g[data-orden-ot="${hasta}"]`);
+    document.elementFromPoint = () => destino;
+    fireEvent.pointerDown(document.querySelector(`[data-arrastrar="${desde}"]`), { pointerId: 1, clientX: 5, clientY: 5 });
+    fireEvent.pointerMove(destino, { pointerId: 1, clientX: 5, clientY: 60 });
+    fireEvent.pointerUp(destino, { pointerId: 1 });
+  };
+  soltarSobre("M-1", "M-2");
+  assert.match(screen.getByRole("status").textContent, /⛔ No se puede mover la OT M-1 ahí: la OT M-1 · COCINA terminaría la Técnica 1 día hábil después de su fecha límite \(9\/11\/2026\)/);
+  assert.deepEqual(orden(), ["M-1", "M-2", "M-3"], "no cambió");
+  // M-3 antes que M-2 no compromete nada: queda la vista previa
+  soltarSobre("M-3", "M-2");
+  assert.deepEqual(orden(), ["M-1", "M-3", "M-2"]);
+  assert.match(screen.getByLabelText("Ordenar y confirmar el plan de Diseño y Técnica").textContent, /Vista previa/);
+  delete document.elementFromPoint;
+});
+
+test("Gantt 📐 — ⛶ Pantalla completa abre y ✕ Salir cierra; sin permiso no hay ⠿", () => {
+  render(<GanttDisenoTecnica calculo={calculoMjt(TRES())} />);
+  assert.equal(document.querySelector("[data-arrastrar]"), null);
+  fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
+  assert.ok(screen.getByRole("dialog", { name: "Gantt de Diseño y Técnica" }));
+  fireEvent.click(screen.getByRole("button", { name: "✕ Salir" }));
+  assert.equal(screen.queryByRole("dialog"), null);
+  const ganttOt = readFileSync(new URL("../app/components/GanttOt.jsx", import.meta.url), "utf8");
+  assert.match(ganttOt, /from "\.\.\/lib\/pantallaCompleta"/);
 });
