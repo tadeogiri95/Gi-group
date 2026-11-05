@@ -12,7 +12,7 @@
 // libre antes pero la OT todavía no salió de fábrica. Si producción se atrasa,
 // la instalación se corre sola. Las OT en pausa no entran. Las instaladas
 // (acta firmada) salen.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
 import { fechaCorta } from "../lib/ot";
@@ -25,6 +25,8 @@ import { feriadosDe } from "../lib/secuencia";
 import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento } from "../lib/planInstalacion";
 import { textoDias } from "../lib/instalacionPlan";
 import NombreOt from "./NombreOt";
+import { Chip } from "./ui";
+import { HORIZONTES_GANTT, ventanaGantt } from "../lib/gantt";
 import { partesOt, textoOt } from "../lib/nombreOt";
 
 const DIA_MS = 86400000;
@@ -37,7 +39,8 @@ const FILA = 54;
 const descripcionObra = (o) => [...new Set(o.ots.map((t) => partesOt(t.proyecto).descripcion).filter(Boolean))].join(" + ");
 const textoObra = (o) => textoOt({ ...o.ots[0].proyecto, ot: o.ots.map((t) => t.ot).join(" + "), descripcion: descripcionObra(o) });
 const CAB = 40;
-const PX = 46; // ancho de un día
+const PX = 46; // ancho de un día con "Todo"
+const CLAVE_HORIZONTE = "gypi_gantt_instalacion_horizonte";
 const SIN_PAUSAS = [];
 const SIN_LISTA = [];
 
@@ -80,6 +83,23 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
   const [aviso, setAviso] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [verOrden, setVerOrden] = useState(false);
+  // Horizonte como en producción (Tadeo, 05/11): 1 día … 1 mes o Todo, con ◀ Hoy ▶
+  const [horizonte, setHorizonte] = useState(() => { try { const h = localStorage.getItem(CLAVE_HORIZONTE); return HORIZONTES_GANTT.some((x) => x.id === h) ? h : "todo"; } catch { return "todo"; } });
+  const [corrimiento, setCorrimiento] = useState(0);
+  const cambiarHorizonte = (h) => { setHorizonte(h); setCorrimiento(0); try { localStorage.setItem(CLAVE_HORIZONTE, h); } catch { /* sin almacenamiento */ } };
+  const [anchoVisible, setAnchoVisible] = useState(0);
+  const scrollRef = useRef(null);
+  const observador = useRef(null);
+  const medir = useCallback((el) => {
+    scrollRef.current = el;
+    observador.current?.disconnect();
+    observador.current = null;
+    if (!el) return;
+    setAnchoVisible(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    observador.current = new ResizeObserver(() => setAnchoVisible(el.clientWidth));
+    observador.current.observe(el);
+  }, []);
   useEffect(() => {
     let vivoEf = true;
     const e = empresaId ? `empresa_id=eq.${empresaId}&` : "";
@@ -190,14 +210,45 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
   const conLugar = obras.filter((o) => !o.sinLugar);
 
   const ultimo = conLugar.reduce((m, o) => (o.fin > m ? o.fin : m), sumarDias(hoy, 13));
-  const totalDias = Math.min(400, Math.round((Date.parse(`${ultimo}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / DIA_MS) + 3);
-  const fechas = Array.from({ length: totalDias }, (_, i) => sumarDias(hoy, i));
-  const x = (fecha) => Math.round((Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / DIA_MS) * PX;
-  const ancho = totalDias * PX;
+  const recortado = horizonte !== "todo";
+  const ventana = recortado ? ventanaGantt(null, horizonte, hoy, corrimiento) : null;
+  const desde = ventana?.desde || hoy;
+  const totalDias = ventana ? ventana.dias : Math.min(400, Math.round((Date.parse(`${ultimo}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / DIA_MS) + 3);
+  const hasta = sumarDias(desde, totalDias); // el día siguiente al último que se ve
+  // Con un horizonte, los días se estiran para ocupar todo el ancho
+  const px = recortado && anchoVisible > ETIQUETAS + 40 ? Math.max(12, (anchoVisible - ETIQUETAS - 2) / totalDias) : PX;
+  const fechas = Array.from({ length: totalDias }, (_, i) => sumarDias(desde, i));
+  const x = (fecha) => Math.round((Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / DIA_MS) * px;
+  const ancho = totalDias * px;
+  const enVentana = (f) => f >= desde && f < hasta;
+  // Con un horizonte, solo las obras que trabajan en esos días
+  const vistas = recortado ? obras.filter((o) => o.tramos.some((z) => enVentana(z.fecha))) : obras;
+  const navegar = (paso) => {
+    if (recortado) { setCorrimiento((c) => c + paso); return; }
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = Math.max(0, el.scrollLeft + paso * 7 * PX);
+  };
+  const irAHoy = () => {
+    if (recortado) { setCorrimiento(0); return; }
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+  };
+  const conEtiqueta = (f, d) => px >= 30 || d === 1 || f === hoy; // angosto: solo los lunes (y hoy)
   const algunoTrabaja = (f) => (sinInstaladores ? trabajaElDia(null, f, feriados) : datos.instaladores.some((g) => trabajaElDia(g, f, feriados)));
 
   return (
     <section aria-label="Gantt de instalación">
+      <div className="flex flex-wrap gap-1.5 items-center mb-2" role="group" aria-label="Qué se ve">
+        <span className="text-[14px] text-gypi-dim">Ver:</span>
+        {HORIZONTES_GANTT.map((h) => (
+          <Chip key={h.id} active={horizonte === h.id} onClick={() => cambiarHorizonte(h.id)}>{h.label}</Chip>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mb-2" role="group" aria-label="Moverse en el Gantt de instalación">
+        <button type="button" onClick={() => navegar(-1)} aria-label={recortado ? "Ver antes" : "Una semana para atrás"} className="g-btn g-btn-secondary min-w-11">◀</button>
+        <button type="button" onClick={irAHoy} className="g-btn g-btn-secondary">Hoy</button>
+        <button type="button" onClick={() => navegar(1)} aria-label={recortado ? "Ver después" : "Una semana para adelante"} className="g-btn g-btn-secondary min-w-11">▶</button>
+        {recortado && <span className="text-[14px] text-gypi-dim">{corrimiento === 0 ? "Desde hoy" : `Del ${fechaCorta(desde)} al ${fechaCorta(sumarDias(hasta, -1))}`}</span>}
+      </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[15px] text-gypi-text mb-2" aria-label="Colores del Gantt de instalación">
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-green" />Instalación</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={tardes.length ? "text-gypi-red font-bold" : ""}>⚠ Termina después de la entrega {tardes.length}</span></span>
@@ -244,21 +295,24 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
           <div className="text-xs text-gypi-dim">Entran las OT de Muebles que están en el plan de producción o ya producidas, con días de instalación y sin acta firmada.</div>
         </div>
       ) : (
-        <div className="overflow-x-auto border border-gypi-border rounded-xl bg-gypi-surface">
-          <svg width={ETIQUETAS + ancho} height={CAB + obras.length * FILA} role="img" aria-label={`Instalación de ${obras.length} ${obras.length === 1 ? "obra" : "obras"}`}>
+        <div ref={medir} className="overflow-x-auto border border-gypi-border rounded-xl bg-gypi-surface">
+          {!vistas.length && <div className="px-3 py-6 text-[15px] text-gypi-dim">No hay obras para instalar {horizonte === "1d" ? "ese día" : "en esos días"}.</div>}
+          {vistas.length > 0 && <svg width={ETIQUETAS + ancho} height={CAB + vistas.length * FILA} role="img" aria-label={`Instalación de ${vistas.length} ${vistas.length === 1 ? "obra" : "obras"}`}>
             {fechas.map((f) => {
               const d = new Date(`${f}T00:00:00Z`).getUTCDay();
               return (
                 <g key={f}>
-                  {!algunoTrabaja(f) && <rect x={ETIQUETAS + x(f)} y={0} width={PX} height={CAB + obras.length * FILA} className="fill-gypi-surf-hi" />}
-                  <line x1={ETIQUETAS + x(f)} x2={ETIQUETAS + x(f)} y1={0} y2={CAB + obras.length * FILA} className={d === 1 ? "stroke-gypi-dim" : "stroke-gypi-border"} strokeWidth={d === 1 ? 1 : 0.5} />
-                  <text x={ETIQUETAS + x(f) + PX / 2} y={16} textAnchor="middle" className="fill-gypi-dim text-[12px]">{DIAS[d]}</text>
-                  <text x={ETIQUETAS + x(f) + PX / 2} y={32} textAnchor="middle" className={f === hoy ? "fill-gypi-amber text-[12px] font-bold" : "fill-gypi-text text-[12px]"}>{Number(f.slice(8))}/{Number(f.slice(5, 7))}</text>
+                  {!algunoTrabaja(f) && <rect x={ETIQUETAS + x(f)} y={0} width={px} height={CAB + vistas.length * FILA} className="fill-gypi-surf-hi" />}
+                  <line x1={ETIQUETAS + x(f)} x2={ETIQUETAS + x(f)} y1={0} y2={CAB + vistas.length * FILA} className={d === 1 ? "stroke-gypi-dim" : "stroke-gypi-border"} strokeWidth={d === 1 ? 1 : 0.5} />
+                  {conEtiqueta(f, d) && <text x={ETIQUETAS + x(f) + (px >= 30 ? px / 2 : 2)} y={16} textAnchor={px >= 30 ? "middle" : "start"} className="fill-gypi-dim text-[12px]">{DIAS[d]}</text>}
+                  {conEtiqueta(f, d) && <text x={ETIQUETAS + x(f) + (px >= 30 ? px / 2 : 2)} y={32} textAnchor={px >= 30 ? "middle" : "start"} className={f === hoy ? "fill-gypi-amber text-[12px] font-bold" : "fill-gypi-text text-[12px]"}>{Number(f.slice(8))}/{Number(f.slice(5, 7))}</text>}
                 </g>
               );
             })}
-            {obras.map((o, i) => {
+            {vistas.map((o, i) => {
               const y = CAB + i * FILA;
+              const tramos = o.tramos.filter((z) => enVentana(z.fecha));
+              const finVisible = !o.sinLugar && enVentana(o.fin);
               const p0 = o.ots[0].proyecto;
               const titulo = o.ots.map((t) => t.ot).join(" + ");
               // Código · Cliente · Proyecto · Descripción, como en toda la app (02/11)
@@ -274,26 +328,26 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
                   <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{titulo.length > 28 ? `${titulo.slice(0, 27)}…` : titulo}{o.enCurso ? " · en obra" : ""}</text>
                   <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || "").slice(0, 38)}</text>
                   {desc && <text x={8} y={y + 47} className="fill-gypi-text text-[12px] font-semibold" data-descripcion>{desc.length > 38 ? `${desc.slice(0, 37)}…` : desc}</text>}
-                  {o.esperaProduccion && o.inicio > hoy && (
-                    <rect x={ETIQUETAS + 2} y={y + 15} width={Math.max(0, x(o.inicio) - 4)} height={4} rx={2} className="fill-gypi-amber" opacity={0.6} />
+                  {o.esperaProduccion && o.inicio > desde && (
+                    <rect x={ETIQUETAS + 2} y={y + 15} width={Math.max(0, Math.min(ancho, x(o.inicio)) - 4)} height={4} rx={2} className="fill-gypi-amber" opacity={0.6} />
                   )}
-                  {seguidos(o.tramos).map(([a, b]) => (
-                    <rect key={`${a.fecha}|${a.medio}`} x={ETIQUETAS + x(a.fecha) + (a.medio ? PX / 2 : 0) + 1} y={y + 7}
-                      width={x(b.fecha) + (b.medio ? PX : PX / 2) - x(a.fecha) - (a.medio ? PX / 2 : 0) - 2} height={FILA - 14} rx={4}
+                  {seguidos(tramos).map(([a, b]) => (
+                    <rect key={`${a.fecha}|${a.medio}`} x={ETIQUETAS + x(a.fecha) + (a.medio ? px / 2 : 0) + 1} y={y + 7}
+                      width={x(b.fecha) + (b.medio ? px : px / 2) - x(a.fecha) - (a.medio ? px / 2 : 0) - 2} height={FILA - 14} rx={4}
                       className={`fill-gypi-green ${contorno}`} strokeWidth={o.tarde || o.poco ? 2.5 : 0} strokeDasharray={o.poco && !o.tarde ? "4 2" : undefined} />
                   ))}
-                  {!o.sinLugar && (
-                    <text x={ETIQUETAS + x(o.fin) + (o.finMedio ? PX : PX / 2) + 4} y={y + FILA / 2 + 4} className={`text-[12px] ${o.tarde ? "fill-gypi-red font-bold" : "fill-gypi-text"}`}>
+                  {finVisible && (
+                    <text x={ETIQUETAS + x(o.fin) + (o.finMedio ? px : px / 2) + 4} y={y + FILA / 2 + 4} className={`text-[12px] ${o.tarde ? "fill-gypi-red font-bold" : "fill-gypi-text"}`}>
                       {textoDias(o.dias)} · {equipo}{o.tarde ? ` · ⚠ ${o.diasTarde} d tarde` : ""}{o.diasCorrido > 0 ? ` · ↪ ${o.diasCorrido} d` : ""}
                     </text>
                   )}
-                  {o.entrega && o.entrega >= hoy && x(o.entrega) < ancho && (
-                    <line x1={ETIQUETAS + x(o.entrega) + PX} x2={ETIQUETAS + x(o.entrega) + PX} y1={y + 3} y2={y + FILA - 3} className="stroke-gypi-red" strokeWidth={2} />
+                  {o.entrega && enVentana(o.entrega) && (
+                    <line x1={ETIQUETAS + x(o.entrega) + px} x2={ETIQUETAS + x(o.entrega) + px} y1={y + 3} y2={y + FILA - 3} className="stroke-gypi-red" strokeWidth={2} />
                   )}
                 </g>
               );
             })}
-          </svg>
+          </svg>}
         </div>
       )}
 
