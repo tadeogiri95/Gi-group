@@ -9,6 +9,7 @@
 // Las filas vacías (",,,,") se saltean.
 
 import { semanaPlanilla } from "./semanaObjetivo";
+import { columnasEtapas, estadoCelda, juntarEtapas } from "./complejidad";
 
 /** Lo que se le avisa a quien sincroniza: Google actualiza la copia publicada
  *  de la planilla con unos minutos de demora. */
@@ -115,7 +116,7 @@ const FILAS_ANTES_DE_TITULOS = 10;
 const SI = new Set(["si", "sí", "x", "ok", "terminado", "terminada"]);
 
 /**
- * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla,semana_objetivo,placas,fondos,metros_canto,placas_mecanizadas,precio}[], repetidas: number }}
+ * @returns {{ filas: {ot,cliente,obra,proyecto,division,descripcion,fecha_entrega,cantidad,total_modulos,terminado_planilla,semana_objetivo,placas,fondos,metros_canto,placas_mecanizadas,precio,etapas_diseno}[], repetidas: number }}
  * filas: una por OT. Si una OT aparece varias veces (un renglón por ítem), vale
  * la última fila, las columnas vacías se completan con las anteriores y las
  * descripciones de todos los ítems se juntan con " / ". De todos sus ítems:
@@ -163,6 +164,8 @@ export function parseCsvProyectos(text) {
     .filter((m) => m.i >= 0);
   // PRECIO en pesos (142): título exacto; no va a proyectos sino a precios_ot
   const iPrecio = headers.findIndex((h) => h.trim() === "precio");
+  // Etapas de Diseño (L-P) y Técnica (Q, R, T) (158): solo título exacto
+  const iEtapas = columnasEtapas(headers);
   const tituloOt = todas[0][iOt];
   const valor = (c, i) => (i >= 0 ? limpio(c[i]) || null : null);
 
@@ -183,6 +186,7 @@ export function parseCsvProyectos(text) {
       // Sin la columna, la clave no va (no pisa lo que ya había)
       ...Object.fromEntries(iMaterial.map((m) => [m.campo, numeroPlanilla(c[m.i])])),
       ...(iPrecio >= 0 ? { precio: precioPlanilla(c[iPrecio]) } : {}),
+      ...(iEtapas.length ? { etapas_diseno: Object.fromEntries(iEtapas.map((e) => [e.id, estadoCelda(c[e.i])])) } : {}),
     };
     const previa = porOt.get(ot);
     if (previa) {
@@ -196,6 +200,7 @@ export function parseCsvProyectos(text) {
       const semanas = [previa.semana_objetivo, fila.semana_objetivo].filter(Boolean);
       const material = Object.fromEntries(iMaterial.map((m) => [m.campo, sumar(previa[m.campo], fila[m.campo])]));
       const precio = iPrecio >= 0 ? sumar(previa.precio, fila.precio) : undefined;
+      const etapas = iEtapas.length ? juntarEtapas(previa.etapas_diseno, fila.etapas_diseno) : undefined;
       for (const k of Object.keys(fila)) if (fila[k] == null) fila[k] = previa[k];
       fila.descripcion = [...new Set(descs.flatMap(d => d.split(" / ")))].join(" / ").slice(0, MAX_DESCRIPCION) || null;
       fila.fecha_entrega = fechas.at(-1) || null;
@@ -205,6 +210,7 @@ export function parseCsvProyectos(text) {
       fila.semana_objetivo = semanas.length ? Math.max(...semanas) : null;
       Object.assign(fila, material);
       if (iPrecio >= 0) fila.precio = precio;
+      if (iEtapas.length) fila.etapas_diseno = etapas;
     }
     porOt.set(ot, fila);
   }
