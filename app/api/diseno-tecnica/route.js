@@ -36,16 +36,18 @@ export async function GET(request) {
     const ids = (cfgValor?.diseno_tecnica?.arquitectas || []).map((a) => String(a?.id ?? ""));
     // Sin ser arquitecta no hace falta armar el plan
     if (!ids.includes(String(sesion.empleado_id))) return json(NADA);
-    const [proyectos, divisiones, personal, pausas] = await Promise.all([
+    const [proyectos, divisiones, personal, pausas, ajustes] = await Promise.all([
       sbGetAll(`proyectos?empresa_id=eq.${e}&estado=neq.cerrado&select=*&order=id.asc`, { ...opts, maxFilas: 20000 }),
       sbGetAll(`divisiones?empresa_id=eq.${e}&activa=eq.true&order=orden.asc`, opts).catch(vacio),
       sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&select=id,nombre&order=nombre.asc`, { ...opts, maxFilas: 2000 }).catch(vacio),
       // Sin la 151 no hay pausas
       sbGetAll(`pausas_ot?empresa_id=eq.${e}&select=ot,motivo,detalle,desde,hasta&order=desde.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
+      // "⏱ Necesita más tiempo" de Diseño y Técnica (162)
+      sbGetAll(`ajustes_tiempo_ot?empresa_id=eq.${e}&tipo=eq.faltan&etapa=in.(diseno,tecnica)&select=ot,etapa,tipo,horas,pendiente,created_at&order=created_at.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
     ]);
     const plan = planDeEmpresa({
       proyectos: proyectos.data, divisiones: divisiones.data, cfgValor, personal: personal.data,
-      hoy: hoyArg(), pausadas: otsEnPausa(pausas.data),
+      hoy: hoyArg(), pausadas: otsEnPausa(pausas.data), ajustes: ajustes.data,
     });
     const mias = misPlanillas(plan, sesion.empleado_id);
     return json({

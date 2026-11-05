@@ -23,6 +23,7 @@ import { esDiaHabil, diaHabilSiguiente, diaHabilAnterior } from "./planInstalaci
 import { normalizarParametros, divisionPlan } from "./planificacion";
 import { buscarDivision } from "./rutas";
 import { feriadosDe } from "./secuencia";
+import { faltanManual, horasManuales } from "./ajustesTiempo";
 
 const DIA_MS = 86400000;
 const sumarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DIA_MS).toISOString().slice(0, 10);
@@ -103,9 +104,10 @@ export function ordenDiseno(proyectos = []) {
  * @param {string} opts.hoy "AAAA-MM-DD"
  * @param {Set<string>} [opts.feriados]
  * @param {Set<string>} [opts.pausadas] OT en pausa (no entran)
+ * @param {Map} [opts.manual] faltanManual(ajustes): "⏱ Necesita más tiempo" de Diseño (días) y Técnica (horas)
  * @returns {{ renglones: object[], sinDato: object[], sinEtapas: number, terminadas: number, arquitectas: object[] }}
  */
-export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feriados = null, pausadas = new Set() }) {
+export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feriados = null, pausadas = new Set(), manual = new Map() }) {
   const nombres = new Map((personal || []).map((e) => [String(e.id), e.nombre || ""]));
   const arquitectas = (dt?.arquitectas || []).map((a) => ({
     id: String(a.id),
@@ -135,7 +137,11 @@ export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feri
     // Diseño: lo que falta de los días fijos, desde hoy, en paralelo con las demás OT
     let listo = { fecha: habilDesde(hoy, feriados), frac: 0 };
     if (dis && !dis.terminada) {
-      const resta = Math.max(0.5, Math.ceil(t.diasDiseno * (1 - dis.pct / 100) * 2 - EPS) / 2);
+      // "⏱ Necesita más tiempo" manda (162); si después avanza el Plan, baja en la misma proporción
+      const mD = manual.get(`${r.ot}|diseno`);
+      const base = mD ? horasManuales(mD, 1 - dis.pct / 100) : t.diasDiseno * (1 - dis.pct / 100);
+      const resta = Math.max(0.5, Math.ceil(base * 2 - EPS) / 2);
+      r.disenoManual = !!mD;
       const d = llenar({ fecha: hoy, usado: 0 }, resta, 1, feriados);
       r.diseno = { tramos: d.tramos, inicio: d.tramos[0]?.fecha || null, fin: d.tramos.at(-1)?.fecha || null, dias: resta, pct: dis.pct };
       const ultimo = d.tramos.at(-1);
@@ -147,8 +153,10 @@ export function planDisenoTecnica({ proyectos = [], dt, personal = [], hoy, feri
 
     // Técnica: se reparte después, cuando ya se sabe cuándo termina el Diseño de todas
     if (tec && !tec.terminada) {
-      if (t.horasTecnica == null) { r.faltanHoras = true; sinDato.push(r); renglones.push(r); continue; }
-      const resta = Math.max(0.5, Math.round(t.horasTecnica * (1 - tec.pct / 100) * 2) / 2);
+      const mT = manual.get(`${r.ot}|tecnica`);
+      if (t.horasTecnica == null && !mT) { r.faltanHoras = true; sinDato.push(r); renglones.push(r); continue; }
+      const resta = Math.max(0.5, Math.round((mT ? horasManuales(mT, 1 - tec.pct / 100) : t.horasTecnica * (1 - tec.pct / 100)) * 2) / 2);
+      r.tecnicaManual = !!mT;
       if (!deTecnica.length) { r.sinArquitecta = true; r.tecnica = { horas: resta, pct: tec.pct, tramos: [] }; renglones.push(r); continue; }
       // Manda el Plan de trabajo (ya la empezó); si no, la elegida al confirmar (parte 50)
       const delPlan = deTecnica.find((a) => tec.quienes.some((q) => sonSusIniciales(q, a.nombre))) || null;
@@ -289,13 +297,13 @@ export function limiteTecnica(produccion, finTecnica, feriados = null) {
  * Panel y el informe: las OT abiertas de la división que se planifica.
  * @returns {{ renglones, sinDato, sinEtapas, terminadas, arquitectas, feriados, dt, espera: Map }}
  */
-export function planDeEmpresa({ proyectos = [], divisiones = [], cfgValor = null, personal = [], hoy, pausadas = new Set() }) {
+export function planDeEmpresa({ proyectos = [], divisiones = [], cfgValor = null, personal = [], hoy, pausadas = new Set(), ajustes = [] }) {
   const params = normalizarParametros(cfgValor);
   const division = divisionPlan(divisiones, params.division_id);
   const abiertas = proyectos.filter((p) => p.estado !== "cerrado" && !p.terminado_planilla
     && (!division || buscarDivision(divisiones, p.division)?.id === division.id));
   const feriados = feriadosDe(params);
-  const plan = planDisenoTecnica({ proyectos: abiertas, dt: params.diseno_tecnica, personal, hoy, feriados, pausadas });
+  const plan = planDisenoTecnica({ proyectos: abiertas, dt: params.diseno_tecnica, personal, hoy, feriados, pausadas, manual: faltanManual(ajustes) });
   return { ...plan, feriados, dt: params.diseno_tecnica, espera: esperaTecnica(plan.renglones, feriados) };
 }
 

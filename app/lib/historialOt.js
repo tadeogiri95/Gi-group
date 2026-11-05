@@ -9,6 +9,7 @@
 // quién y cuándo (demoras, retrabajos, avance manual, firmas de etapas).
 
 import { textoMotivoPausa } from "./pausaOt";
+import { textoValor } from "./ajustesTiempo";
 
 export const ACCION_CAMBIO_OT = "ot.cambio";
 // Tablas con OT que se escriben por /api/data
@@ -75,10 +76,12 @@ export function filaDeAvance({ sesion, ot, accion, etapa = null }) {
 
 // ─── Para mostrar ───────────────────────────────────────────────────────────
 
-const ETAPA_PLAN = { corte: "Corte", canteado: "Canteado", mecanizado: "Mecanizado", armado: "Armado" };
+const ETAPA_PLAN = { corte: "Corte", canteado: "Canteado", mecanizado: "Mecanizado", armado: "Armado", diseno: "Diseño", tecnica: "Técnica", instalacion: "Instalación" };
 const MOTIVOS = {
   falta_material: "Falta de material", falla_maquina: "Falla de máquina", corte_electricidad: "Corte de electricidad",
   planificacion_subestimada: "Tiempo de planificación subestimado", interrupcion: "Interrupción del trabajo", otros: "Otros",
+  cambios_cliente: "Cambios del cliente", espera_cliente: "Espera de aprobación o respuesta del cliente", falta_informacion: "Falta información o medidas",
+  obra_no_lista: "La obra no estaba lista", clima: "Clima",
   pieza_mal_cortada: "Pieza mal cortada", error_medida: "Error de medida o plano", danio_manipulacion: "Daño en manipulación",
   canto_mal_pegado: "Canto mal pegado", pieza_mal_procesada: "Pieza mal procesada", error_diseno: "Error de diseño",
 };
@@ -110,7 +113,7 @@ export function describirCambio(c, nombreEtapa = (x) => `etapa ${x}`) {
   if (c.tabla === "avance_manual") return `Cargó avance manual: ${nombreEtapa(campos.etapa)} ${campos.pct} %`;
   if (c.tabla === "ajustes_tiempo_ot") {
     if (c.metodo === "DELETE") return "Borró una demora";
-    const que = campos.tipo === "corrimiento" ? `Corrimiento de ${campos.dias || 0} días` : campos.horas != null ? `Faltan ${horas(campos.horas)}` : "Demora";
+    const que = campos.tipo === "corrimiento" ? `Corrimiento de ${campos.dias || 0} días` : campos.horas != null ? `Faltan ${["diseno", "instalacion"].includes(campos.etapa) ? textoValor(campos.horas, campos.etapa) : horas(campos.horas)}` : "Demora";
     return [`Cargó demora en ${etapa(campos.etapa)}: ${que}`, MOTIVOS[campos.motivo], campos.detalle].filter(Boolean).join(" · ");
   }
   if (c.tabla === "retrabajos_ot") {

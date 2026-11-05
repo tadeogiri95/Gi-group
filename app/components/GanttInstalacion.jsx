@@ -12,6 +12,8 @@
 // libre antes pero la OT todavía no salió de fábrica. Si producción se atrasa,
 // la instalación se corre sola. Las OT en pausa no entran. Las instaladas
 // (acta firmada) salen.
+// 05/11 (Tadeo, migración 162): ⏱ en cada obra para anotar que una OT
+// necesita más tiempo de instalación (días que faltan, con el motivo).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sb, apiFetch } from "../lib/supabase";
 import { hoyArg } from "../lib/dates";
@@ -25,6 +27,8 @@ import { feriadosDe } from "../lib/secuencia";
 import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento, mismoPlan, fechaArrastrada, instaladoresDeLaDivision, nombreInstalador } from "../lib/planInstalacion";
 import { textoDias } from "../lib/instalacionPlan";
 import NombreOt from "./NombreOt";
+import MasTiempo, { nombreOpcion } from "./MasTiempo";
+import { faltanManual, textoValor } from "../lib/ajustesTiempo";
 import { Chip } from "./ui";
 import { HORIZONTES_GANTT, ventanaGantt } from "../lib/gantt";
 import { partesOt, textoOt } from "../lib/nombreOt";
@@ -66,7 +70,7 @@ function avanceDeReportes(reportes = []) {
   return m;
 }
 
-export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones = SIN_LISTA, avanceHoras = null, pausas = SIN_PAUSAS, empresaId = null, onVerDetalle, puedeConfirmar = false }) {
+export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones = SIN_LISTA, avanceHoras = null, pausas = SIN_PAUSAS, empresaId = null, onVerDetalle, puedeConfirmar = false, usuarioNombre = null }) {
   const hoy = hoyArg();
   const [datos, setDatos] = useState(null);
   // Plan confirmado (154): cuánto se corrió cada obra; se vuelve a leer al confirmar
@@ -86,6 +90,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
   const [arrastre, setArrastre] = useState(null);
   const recienArrastrada = useRef(false);
   const [aviso, setAviso] = useState(null);
+  const [masTiempo, setMasTiempo] = useState(null); // opciones de MasTiempo (una por OT de la obra)
   const [ocupado, setOcupado] = useState(false);
   const [verOrden, setVerOrden] = useState(false);
   // Horizonte como en producción (Tadeo, 05/11): 1 día … 1 mes o Todo, con ◀ Hoy ▶
@@ -113,9 +118,11 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
       sb.get(`empleados?${e}activo=eq.true&es_instalador=eq.true&select=id,nombre,apodo,division,diagrama&order=nombre.asc`).catch(() => []),
       sb.get(`actas_ot?${e}firmada_at=not.is.null&select=ot`).catch(() => []),
       apiFetch("/api/instalacion").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([instaladores, actas, hist]) => {
+      // "⏱ Necesita más tiempo" de Instalación (162)
+      sb.get(`ajustes_tiempo_ot?${e}tipo=eq.faltan&etapa=eq.instalacion&select=ot,etapa,tipo,horas,pendiente,created_at&order=created_at.asc`).catch(() => []),
+    ]).then(([instaladores, actas, hist, ajustes]) => {
       if (!vivoEf) return;
-      setDatos({ instaladores: instaladores || [], instaladas: new Set((actas || []).map((a) => String(a.ot))), avance: avanceDeReportes(hist?.reportes || []) });
+      setDatos({ instaladores: instaladores || [], instaladas: new Set((actas || []).map((a) => String(a.ot))), avance: avanceDeReportes(hist?.reportes || []), ajustes: ajustes || [] });
     });
     return () => { vivoEf = false; };
   }, [empresaId]);
@@ -145,7 +152,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
     const { trabajos, sinProduccion, sinDato } = trabajosInstalacion({
       proyectos: deLaDivision, finProduccion, producidas, instaladas: datos.instaladas, pausadas: otsEnPausa(pausas),
       avance: datos.avance, params, inst: params.instalacion, modulos: vivo.modulos, hoy, feriados,
-      maxPersonas: instaladores.length || 2,
+      maxPersonas: instaladores.length || 2, manual: faltanManual(datos.ajustes || []),
     });
     const obras = conCorrimiento(planInstalacion(trabajos, instaladores, { hoy, feriados }), finConfirmadoPorOt(confirmados.planes));
     return { obras, sinProduccion, sinDato, feriados, divisionId: division?.id || null, instaladores, divisionNombre: division?.label || null };
@@ -288,6 +295,12 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
   const conEtiqueta = (f, d) => px >= 30 || d === 1 || f === hoy; // angosto: solo los lunes (y hoy)
   const algunoTrabaja = (f) => (sinInstaladores ? trabajaElDia(null, f, feriados) : instaladores.some((g) => trabajaElDia(g, f, feriados)));
 
+  // ⏱ Necesita más tiempo: una opción por OT de la obra, con los días que le faltan
+  const abrirMasTiempo = (o) => setMasTiempo(o.ots.map((t) => ({
+    ot: t.ot, etapa: "instalacion", nombre: o.ots.length > 1 ? nombreOpcion("instalacion", t.ot) : "Instalación",
+    valor: Math.round((t.faltanDias || 0) * 2) / 2, pendiente: 1 - (t.avance || 0) / 100,
+  })));
+
   return (
     <section aria-label="Gantt de instalación">
       <div className="flex flex-wrap gap-1.5 items-center mb-2" role="group" aria-label="Qué se ve">
@@ -388,9 +401,14 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
                 <g key={o.clave} role="button" tabIndex={0} aria-label={texto} className="cursor-pointer"
                   onClick={() => { if (recienArrastrada.current) { recienArrastrada.current = false; return; } onVerDetalle?.(p0); }} onKeyDown={(e) => { if (e.key === "Enter") onVerDetalle?.(p0); }}>
                   <line x1={0} x2={ETIQUETAS + ancho} y1={y + FILA} y2={y + FILA} className="stroke-gypi-border" strokeWidth={0.5} />
-                  <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{titulo.length > 28 ? `${titulo.slice(0, 27)}…` : titulo}{o.enCurso ? " · en obra" : ""}</text>
-                  <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || "").slice(0, 38)}</text>
-                  {desc && <text x={8} y={y + 47} className="fill-gypi-text text-[12px] font-semibold" data-descripcion>{desc.length > 38 ? `${desc.slice(0, 37)}…` : desc}</text>}
+                  <text x={8} y={y + 16} className="fill-gypi-text text-[13px] font-bold font-mono">{titulo.length > (puedeConfirmar ? 24 : 28) ? `${titulo.slice(0, puedeConfirmar ? 23 : 27)}…` : titulo}{o.enCurso ? " · en obra" : ""}</text>
+                  <text x={8} y={y + 32} className="fill-gypi-dim text-[12px]">{(sub || "").slice(0, puedeConfirmar ? 32 : 38)}</text>
+                  {desc && <text x={8} y={y + 47} className="fill-gypi-text text-[12px] font-semibold" data-descripcion>{desc.length > (puedeConfirmar ? 32 : 38) ? `${desc.slice(0, puedeConfirmar ? 31 : 37)}…` : desc}</text>}
+                  {puedeConfirmar && (
+                    <text data-mas-tiempo={o.clave} role="button" tabIndex={0} aria-label={`⏱ Más tiempo para la obra ${titulo}`} x={ETIQUETAS - 24} y={y + 34}
+                      className="fill-gypi-text text-[18px] cursor-pointer select-none"
+                      onClick={(e) => { e.stopPropagation(); abrirMasTiempo(o); }} onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); abrirMasTiempo(o); } }}>⏱</text>
+                  )}
                   {o.esperaProduccion && o.inicio > desde && (
                     <rect x={ETIQUETAS + 2} y={y + 15} width={Math.max(0, Math.min(ancho, x(o.inicio)) - 4)} height={4} rx={2} className="fill-gypi-amber" opacity={0.6} />
                   )}
@@ -411,7 +429,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
                   )}
                   {finVisible && (
                     <text x={ETIQUETAS + x(o.fin) + (o.finMedio ? px : px / 2) + 4} y={y + FILA / 2 + 4} className={`text-[12px] ${o.tarde ? "fill-gypi-red font-bold" : "fill-gypi-text"}`}>
-                      {textoDias(o.dias)} · {equipo}{o.tarde ? ` · ⚠ ${o.diasTarde} d tarde` : ""}{o.diasCorrido > 0 ? ` · ↪ ${o.diasCorrido} d` : ""}{o.fijada ? " · 📌" : ""}
+                      {textoDias(o.dias)} · {equipo}{o.tarde ? ` · ⚠ ${o.diasTarde} d tarde` : ""}{o.diasCorrido > 0 ? ` · ↪ ${o.diasCorrido} d` : ""}{o.fijada ? " · 📌" : ""}{o.ots.some((t) => t.masTiempo) ? " · ⏱ más tiempo" : ""}
                     </text>
                   )}
                   {o.entrega && enVentana(o.entrega) && (
@@ -443,7 +461,15 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
           {obras.some((o) => o.sinLugar) && <div className="text-gypi-red text-[13px] mt-1">Hay obras que no entran en los próximos 400 días con los instaladores de ahora.</div>}
         </div>
       )}
-      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: cada OT entra el día hábil siguiente a que termina su producción (si producción se atrasa, la instalación se corre sola). Días de obra = gabinetes ÷ gabinetes por persona por día ÷ instaladores, de a medio día. Las OT de la misma obra van juntas y se reparten la gente. La línea roja es el fin de la semana de entrega. Los días grises no trabaja ningún instalador (o son feriados). Tocá una obra para ver el detalle.{puedeConfirmar ? " Para cambiarla de día, tomá su barra y arrastrala: nunca antes del día hábil siguiente a que termina producción." : ""}</p>
+      <p className="text-[13px] text-gypi-mute mt-2 mb-0">Plan vivo: cada OT entra el día hábil siguiente a que termina su producción (si producción se atrasa, la instalación se corre sola). Días de obra = gabinetes ÷ gabinetes por persona por día ÷ instaladores, de a medio día. Las OT de la misma obra van juntas y se reparten la gente. La línea roja es el fin de la semana de entrega. Los días grises no trabaja ningún instalador (o son feriados). Tocá una obra para ver el detalle.{puedeConfirmar ? " Para cambiarla de día, tomá su barra y arrastrala: nunca antes del día hábil siguiente a que termina producción. Si una OT necesita más tiempo de instalación, tocá ⏱ y anotá cuántos días faltan y por qué." : ""}</p>
+      {masTiempo && (
+        <MasTiempo opciones={masTiempo} porNombre={usuarioNombre} onClose={() => setMasTiempo(null)}
+          onGuardado={(fila) => {
+            setDatos((d) => (d ? { ...d, ajustes: [...(d.ajustes || []), fila] } : d));
+            setMasTiempo(null);
+            setAviso(`⏱ Anotado: a la OT ${fila.ot} le faltan ${textoValor(fila.horas, "instalacion")} de instalación.`);
+          }} />
+      )}
     </section>
   );
 }
