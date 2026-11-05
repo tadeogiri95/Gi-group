@@ -7,6 +7,7 @@ import { enviarPushLegajos } from "./pushGerencia";
 import { sendInformeProduccion } from "./email";
 import { logger } from "./logger";
 import { CLAVE_PLANIFICACION, normalizarParametros } from "./planificacion";
+import { planDeEmpresa, noAntesDeTecnica } from "./planDisenoTecnica";
 import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, horasSemanaDeGrilla, personalGantt } from "./ganttPlan";
 import { modulosPorOt } from "./cargaPlanta";
 import { piezasConManual } from "./avanceManual";
@@ -30,7 +31,7 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
   const opts = { sesion };
   const limite = hoyArg(new Date(Date.now() - 183 * DIA));
   const operarios = (extra) => sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo${extra}`, { ...opts, maxFilas: 5000 });
-  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, avance, mods, ajustes, retrabajos, pausas] = await Promise.all([
+  const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, avance, mods, ajustes, retrabajos, pausas, personal] = await Promise.all([
     // También las cerradas: una OT que se terminó en el período cuenta
     sbGetAll(`proyectos?empresa_id=eq.${e}&select=*&order=id.asc`, { ...opts, maxFilas: 20000 }),
     sbGetAll(`etapas?empresa_id=eq.${e}&activa=eq.true&order=orden.asc`, opts).catch(vacio),
@@ -50,6 +51,8 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
       .catch(vacio),
     // Sin la 151 no hay pausas
     sbGetAll(`pausas_ot?empresa_id=eq.${e}&select=ot,motivo,detalle,desde,hasta&order=desde.asc`, { ...opts, maxFilas: 20000 }).catch(vacio),
+    // Nombres de las arquitectas (Diseño y Técnica, parte 49)
+    sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&select=id,nombre&order=nombre.asc`, { ...opts, maxFilas: 2000 }).catch(vacio),
   ]);
   const ids = planes.data.map((p) => p.id);
   const items = ids.length
@@ -61,6 +64,9 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
   const etapasCodigo = etapasDelPlan(cfgValor, etapas.data, divisiones.data);
   const abiertas = new Map(proyectos.data.filter((p) => p.estado !== "cerrado").map((p) => [String(p.ot), p]));
   const conManual = piezasConManual(piezas.data, proyectos.data);
+  // Producción espera que termine Técnica, como en el Gantt (parte 49)
+  const pausadas = otsEnPausa(pausas.data);
+  const planDT = planDeEmpresa({ proyectos: proyectos.data, divisiones: divisiones.data, cfgValor, personal: personal.data, hoy, pausadas });
   const vivo = planVivo(vigentes, {
     proyectos: abiertas, modulos: modulosPorOt(mods.data), etapasCodigo,
     avance: avance.data, piezas: conManual,
@@ -68,7 +74,7 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
     params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(emp.data, divisiones.data, cfgValor),
     personal: personalGantt(emp.data, divisiones.data, cfgValor), diasExtra: diasExtraVigentes(conItems),
     manual: faltanManual(ajustes.data), retrabajo: retrabajoPendiente(retrabajos.data),
-    pausadas: otsEnPausa(pausas.data),
+    pausadas, noAntes: noAntesDeTecnica(planDT.espera),
   });
   for (const [ot] of vivo) if (!abiertas.has(ot)) vivo.delete(ot);
   return { vivo, vigentes, etapasCodigo, abiertas, cfgValor, proyectos: proyectos.data, divisiones: divisiones.data,

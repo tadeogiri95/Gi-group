@@ -66,6 +66,7 @@ import { retrabajoPendiente, retrabajosDe, retrabajosHechos } from "../lib/retra
 import AjusteTiempo from "./AjusteTiempo";
 import GanttInstalacion from "./GanttInstalacion";
 import GanttDisenoTecnica, { usePlanDisenoTecnica } from "./GanttDisenoTecnica";
+import { noAntesDeTecnica } from "../lib/planDisenoTecnica";
 import NombreOt from "./NombreOt";
 
 const FILA = 26; // alto del renglón de cada proceso
@@ -209,7 +210,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
 
   // Técnica sin terminar (parte 49): no antes del día hábil siguiente a su fin; con EXCEL hecho, solo aviso
   const espera = planDT?.espera || null;
-  const noAntes = useMemo(() => (espera ? new Map([...espera].filter(([, e]) => e.desde).map(([ot, e]) => [ot, e.desde])) : null), [espera]);
+  const noAntes = useMemo(() => (espera ? noAntesDeTecnica(espera) : null), [espera]);
   // Lo que necesita el plan vivo (también para ver cuánto se corre con un "Faltan X h" nuevo)
   const vivoCon = useMemo(() => {
     if (!planes) return null;
