@@ -22,7 +22,7 @@ import { otsEnPausa } from "../lib/pausaOt";
 import { normalizarParametros, divisionPlan } from "../lib/planificacion";
 import { etapasDelPlan } from "../lib/ganttPlan";
 import { feriadosDe } from "../lib/secuencia";
-import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento } from "../lib/planInstalacion";
+import { trabajosInstalacion, planInstalacion, trabajaElDia, itemsDelPlan, finConfirmadoPorOt, conCorrimiento, instaladoresDeLaDivision, nombreInstalador } from "../lib/planInstalacion";
 import { textoDias } from "../lib/instalacionPlan";
 import NombreOt from "./NombreOt";
 import { partesOt, textoOt } from "../lib/nombreOt";
@@ -85,7 +85,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
     const e = empresaId ? `empresa_id=eq.${empresaId}&` : "";
     Promise.all([
       // Sin la migración 116 no hay es_instalador: sin instaladores
-      sb.get(`empleados?${e}activo=eq.true&es_instalador=eq.true&select=id,nombre,apodo,diagrama&order=nombre.asc`).catch(() => []),
+      sb.get(`empleados?${e}activo=eq.true&es_instalador=eq.true&select=id,nombre,apodo,division,diagrama&order=nombre.asc`).catch(() => []),
       sb.get(`actas_ot?${e}firmada_at=not.is.null&select=ot`).catch(() => []),
       apiFetch("/api/instalacion").then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ]).then(([instaladores, actas, hist]) => {
@@ -115,17 +115,18 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
       if (armado != null && pendienteEtapa({ ot, codigo: armado, avance: avanceHoras?.avance || [], piezas: avanceHoras?.piezas || [] }) <= 0) producidas.add(ot);
     }
     const feriados = feriadosDe(params);
+    const instaladores = instaladoresDeLaDivision(datos.instaladores, divisiones, division);
     const { trabajos, sinProduccion, sinDato } = trabajosInstalacion({
       proyectos: deLaDivision, finProduccion, producidas, instaladas: datos.instaladas, pausadas: otsEnPausa(pausas),
       avance: datos.avance, params, inst: params.instalacion, modulos: vivo.modulos, hoy, feriados,
-      maxPersonas: datos.instaladores.length || 2,
+      maxPersonas: instaladores.length || 2,
     });
-    const obras = conCorrimiento(planInstalacion(trabajos, datos.instaladores, { hoy, feriados }), finConfirmadoPorOt(confirmados.planes));
-    return { obras, sinProduccion, sinDato, feriados, divisionId: division?.id || null };
+    const obras = conCorrimiento(planInstalacion(trabajos, instaladores, { hoy, feriados }), finConfirmadoPorOt(confirmados.planes));
+    return { obras, sinProduccion, sinDato, feriados, divisionId: division?.id || null, instaladores, divisionNombre: division?.label || null };
   }, [vivo, datos, proyectos, divisiones, etapas, avanceHoras, pausas, hoy, confirmados, prioLocal]);
 
   if (!calculo) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
-  const { obras, sinProduccion, sinDato, feriados, divisionId } = calculo;
+  const { obras, sinProduccion, sinDato, feriados, divisionId, instaladores, divisionNombre } = calculo;
   const corridas = obras.filter((o) => o.diasCorrido > 0);
   const ultimoPlan = confirmados.planes.find((p) => (p.division_id || null) === divisionId) || confirmados.planes[0] || null;
 
@@ -184,8 +185,8 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
       setOcupado(false);
     }
   };
-  const nombres = new Map((datos.instaladores || []).map((g) => [g.id, g.apodo || g.nombre]));
-  const sinInstaladores = !datos.instaladores.length;
+  const nombres = new Map(instaladores.map((g) => [g.id, nombreInstalador(g)]));
+  const sinInstaladores = !instaladores.length;
   const tardes = obras.filter((o) => o.tarde);
   const conLugar = obras.filter((o) => !o.sinLugar);
 
@@ -194,7 +195,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
   const fechas = Array.from({ length: totalDias }, (_, i) => sumarDias(hoy, i));
   const x = (fecha) => Math.round((Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / DIA_MS) * PX;
   const ancho = totalDias * PX;
-  const algunoTrabaja = (f) => (sinInstaladores ? trabajaElDia(null, f, feriados) : datos.instaladores.some((g) => trabajaElDia(g, f, feriados)));
+  const algunoTrabaja = (f) => (sinInstaladores ? trabajaElDia(null, f, feriados) : instaladores.some((g) => trabajaElDia(g, f, feriados)));
 
   return (
     <section aria-label="Gantt de instalación">
@@ -234,7 +235,7 @@ export default function GanttInstalacion({ vivo, proyectos = SIN_LISTA, etapas =
         </section>
       )}
       {sinInstaladores && (
-        <div role="status" className="text-[14px] text-gypi-amber-ink font-bold mb-2">No hay instaladores marcados: se planifica con 2 de lunes a viernes. Marcalos en la ficha de cada uno (&quot;Es instalador&quot;).</div>
+        <div role="status" className="text-[14px] text-gypi-amber-ink font-bold mb-2">No hay instaladores{divisionNombre ? ` de ${divisionNombre}` : ""} marcados: se planifica con 2 de lunes a viernes. Marcalos en la ficha de cada uno (&quot;Es instalador&quot;){divisionNombre ? ` con la división ${divisionNombre} o sin división` : ""}.</div>
       )}
 
       {!obras.length ? (

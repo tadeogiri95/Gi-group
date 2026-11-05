@@ -135,7 +135,7 @@ test("/api/plan-instalacion?mio=1 — mis días con la OT y con quién voy", asy
   mock();
   const d = await (await api.GET(req(await token("operativo"), { query: "?mio=1" }))).json();
   assert.equal(d.dias.length, 1);
-  assert.deepEqual(d.dias[0].con, ["Pedro"]);
+  assert.deepEqual(d.dias[0].con, ["Pedro Gómez"], "nombre y apellido, no el apodo");
   assert.equal(d.dias[0].proyectos[0].cliente, "Depto");
 });
 
