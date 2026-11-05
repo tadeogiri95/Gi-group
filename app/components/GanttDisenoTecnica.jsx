@@ -174,7 +174,9 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   const [masTiempo, setMasTiempo] = useState(null); // opciones de MasTiempo
   const calculo = useMemo(() => (base && cambio && base.rehacer ? base.rehacer(cambio) : base), [base, cambio]);
   const [grande, setGrande] = useState(false);
-  const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
+  // En pantalla completa en el celular, colores, carga y orden van plegados en "☰ Opciones" (Tadeo, 05/11)
+  const [verOpciones, setVerOpciones] = useState(false);
+  const cerrarGrande = () => { setGrande(false); setVerOpciones(false); salirPantallaCompleta(); };
   useEscape(cerrarGrande, grande);
   useEffect(() => () => { salirPantallaCompleta(); }, []);
   // Fecha límite de Técnica de cada OT con lo que dura su Producción en el plan vivo (parte 49)
@@ -287,17 +289,28 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
   const rojas = conLimite.filter((l) => l.estado === "rojo").length;
   const amarillas = conLimite.filter((l) => l.estado === "amarillo").length;
 
+  // Mientras se cambia el orden, el panel queda a la vista aunque esté plegado
+  const verExtras = !grande || verOpciones || editando || !!cambio;
+  const boton = grande ? "min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer" : "g-btn g-btn-secondary";
+
   return (
     <section aria-label="Gantt de Diseño y Técnica" role={grande ? "dialog" : undefined}
-      className={grande ? "fixed inset-0 z-[300] bg-gypi-bg p-3 flex flex-col overflow-y-auto" : ""}>
-      <div className="flex flex-wrap items-center gap-2 mb-2" role="group" aria-label="Moverse en el Gantt de Diseño y Técnica">
-        <button type="button" onClick={() => navegar(-1)} aria-label="Una semana para atrás" className="g-btn g-btn-secondary min-w-11">◀</button>
-        <button type="button" onClick={irAHoy} className="g-btn g-btn-secondary">Hoy</button>
-        <button type="button" onClick={() => navegar(1)} aria-label="Una semana para adelante" className="g-btn g-btn-secondary min-w-11">▶</button>
-        <button type="button" onClick={grande ? cerrarGrande : () => { setGrande(true); pedirPantallaCompleta(); }} className="g-btn g-btn-secondary ml-auto">
+      className={grande ? "fixed inset-0 z-[300] bg-gypi-bg p-2 flex flex-col" : ""}>
+      <div className={`flex flex-wrap items-center gap-2 mb-2 ${grande ? "shrink-0" : ""}`} role="group" aria-label="Moverse en el Gantt de Diseño y Técnica">
+        <button type="button" onClick={() => navegar(-1)} aria-label="Una semana para atrás" className={`${boton} min-w-11`}>◀</button>
+        <button type="button" onClick={irAHoy} className={boton}>Hoy</button>
+        <button type="button" onClick={() => navegar(1)} aria-label="Una semana para adelante" className={`${boton} min-w-11`}>▶</button>
+        {grande && (
+          <button type="button" onClick={() => setVerOpciones((v) => !v)} aria-expanded={verOpciones} className={boton}>
+            {verOpciones ? "▾ Opciones" : "☰ Opciones"}
+          </button>
+        )}
+        <button type="button" onClick={grande ? cerrarGrande : () => { setGrande(true); pedirPantallaCompleta(); }} className={`${boton} ml-auto`}>
           {grande ? "✕ Salir" : "⛶ Pantalla completa"}
         </button>
       </div>
+      <div className={grande ? "shrink-0 max-h-[50vh] overflow-auto" : ""}>
+      {verExtras && (
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[15px] text-gypi-text mb-2" aria-label="Colores del Gantt de Diseño y Técnica">
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-area-diseno" />Diseño</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-area-tecnica" />Técnica</span>
@@ -307,8 +320,9 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
           <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm border-[3px] border-gypi-red" /><span className={rojas ? "text-gypi-red font-bold" : ""}>🔴 Termina después de su fecha límite {rojas}</span></span>
         </>}
       </div>
+      )}
 
-      {carga.length > 0 && (
+      {verExtras && carga.length > 0 && (
         <ul className="list-none m-0 p-0 flex flex-wrap gap-2 mb-2" aria-label="Carga de las arquitectas">
           {carga.map((a) => (
             <li key={a.id} className="g-card py-2 px-3 text-[14px]">
@@ -322,10 +336,11 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
         <div role="status" className="text-[14px] text-gypi-amber-ink font-bold mb-2">Todavía no hay arquitectas de Técnica: elegilas en ⚙ Parámetros → 📐 Diseño y Técnica para poder repartir las planillas.</div>
       )}
 
-      {puedeReordenar && renglones.length > 0 && (
+      {verExtras && puedeReordenar && renglones.length > 0 && (
         <OrdenarPlan {...{ renglones, deTecnica, editando, setEditando, cambio, confirmando, confirmado, corridas, aviso, arrastre, moverA, elegir, empezarArrastre, moverArrastre, soltarArrastre, deshacer, confirmar }} />
       )}
-      {!puedeReordenar && aviso && <div role="status" className="text-[14px] font-bold mb-2">{aviso}</div>}
+      {(!puedeReordenar || !verExtras) && aviso && <div role="status" className="text-[14px] font-bold mb-2">{aviso}</div>}
+      </div>
 
       {!renglones.length ? (
         <div className="g-card py-8 px-6 text-center">
@@ -334,7 +349,7 @@ export default function GanttDisenoTecnica({ proyectos = SIN_LISTA, divisiones =
           <div className="text-xs text-gypi-dim">Entran las OT abiertas que tienen alguna etapa de Diseño o de Técnica sin hacer en el Plan de trabajo (columnas DIS a PDF). Apretá Sincronizar en OT para traerlas.</div>
         </div>
       ) : (
-        <div ref={medir} className={`overflow-auto border border-gypi-border rounded-xl bg-gypi-surface ${grande ? "flex-1 min-h-[40vh]" : ""}`}>
+        <div ref={medir} className={`overflow-auto border border-gypi-border rounded-xl bg-gypi-surface ${grande ? "flex-1 min-h-0" : ""}`}>
           <svg width={ETIQUETAS + ancho} height={CAB + renglones.length * FILA} role="img" aria-label={`Diseño y Técnica de ${renglones.length} OT`}
             onPointerMove={moverArrastre} onPointerUp={soltarArrastre} onPointerCancel={soltarArrastre}>
             {fechas.map((f) => {

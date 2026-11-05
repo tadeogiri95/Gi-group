@@ -258,12 +258,47 @@ test("📅 Gantt — lo elegido ocupa todo el ancho, fila de fechas fija y panta
   assert.equal(screen.queryByRole("dialog"), null);
 });
 
+// Tadeo, 05/11: en el celular, botones, colores y avisos tapaban la mitad de la pantalla completa
+test("📅 Gantt — en pantalla completa todo queda plegado en una fila y el Gantt usa el resto", () => {
+  lunes26();
+  try {
+    const planes = [{ id: 1, tipo: "semana", desde: "2026-10-19", hasta: "2026-11-30", items: [
+      { ot: "7100", etapa: "corte", fecha: "2026-10-26", horas: 2, orden: 0 },
+    ] }];
+    const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+    const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={planes} puedeReordenar
+      avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+    assert.ok(screen.getByLabelText("Colores del Gantt"), "fuera de pantalla completa se ve todo");
+    fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
+    const dialogo = screen.getByRole("dialog", { name: "Gantt de OT en pantalla completa" });
+    assert.equal(screen.queryByLabelText("Colores del Gantt"), null, "colores plegados");
+    assert.equal(screen.queryByRole("region", { name: "Avisos del Gantt" }), null, "avisos plegados");
+    assert.equal(screen.queryByRole("button", { name: "🔄 Refrescar" }), null);
+    assert.equal(screen.queryByText(/Para cambiar el orden/), null, "sin la ayuda larga");
+    const fila = within(dialogo).getByRole("group", { name: "Moverse en el Gantt" });
+    assert.equal(dialogo.firstElementChild, fila, "la fila de botones va arriba de todo");
+    for (const b of ["Hoy", "☰ Opciones", "🔔 1 avisos", "✕ Salir"]) assert.ok(within(fila).getByRole("button", { name: b }), b);
+    assert.ok(container.querySelector(".flex-1.min-h-0.overflow-auto"), "el Gantt ocupa el resto de la pantalla");
+    fireEvent.click(within(fila).getByRole("button", { name: "🔔 1 avisos" }));
+    assert.ok(screen.getByRole("region", { name: "Avisos del Gantt" }), "🔔 abre los avisos");
+    fireEvent.click(within(fila).getByRole("button", { name: "☰ Opciones" }));
+    assert.ok(screen.getByLabelText("Colores del Gantt"));
+    assert.ok(screen.getByRole("button", { name: "🔄 Refrescar" }));
+    assert.equal(screen.getAllByRole("button", { name: "✕ Salir" }).length, 1, "un solo Salir");
+    fireEvent.click(within(fila).getByRole("button", { name: "✕ Salir" }));
+    assert.equal(screen.queryByRole("dialog"), null);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test("📅 Gantt — 🔄 Refrescar vuelve a leer todo sin salir de la pantalla completa", async () => {
   const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
   let veces = 0;
   render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLANES} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }}
     onRefrescar={async () => { veces++; }} />);
   fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
+  fireEvent.click(screen.getByRole("button", { name: "☰ Opciones" }));
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "🔄 Refrescar" })); for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r)); });
   assert.equal(veces, 1);
   assert.ok(screen.getByRole("dialog", { name: "Gantt de OT en pantalla completa" }), "sigue en pantalla completa");
