@@ -39,6 +39,7 @@ import { hoyArg } from "./lib/dates";
 import { AVISO_DEMORA_GOOGLE, linksPlanilla } from "./lib/csvProyectos";
 import { CLAVE_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { useEscape } from "./hooks/useEscape";
+import { comoDueno } from "./lib/menuGestion";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -177,7 +178,7 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, checklistInstalacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
   // Costo de la hora: solo el dueño (OP parte 8)
-  const costoHora = useCostoHora(usuario?.rol === "gerencial");
+  const costoHora = useCostoHora(comoDueno(usuario));
   // Precio de cada OT (142): solo Dueño y Administración
   const verPrecios = puedeVerPrecios(usuario);
   const [precios, setPrecios] = useState(() => new Map());
@@ -601,7 +602,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
           avanceHoras={avanceHoras}
           modo={modoObjetivo}
           empresaId={empresaId}
-          puedeReordenar={usuario?.rol === "gerencial"}
+          puedeReordenar={comoDueno(usuario)}
           puedeAjustar={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"}
           usuarioNombre={usuario?.nombre || null}
           pausas={pausas}

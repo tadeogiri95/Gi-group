@@ -216,10 +216,10 @@ test("/api/compras recepcion_crear — operario no; OC anulada o recibida no; re
   assert.equal(escrito.length, 0);
 });
 
-test("/api/compras recepcion_anular — Administración anula todo junto; el jefe de taller no", async () => {
-  let escrito = mockRuta({ supervisor: "ALUMINIO", recepcion: { id: 9, orden_id: 101, remito: "R-1", anulada: false } });
-  let res = await api.POST(req(await token("administrativo"), { accion: "recepcion_anular", id: 9 }));
-  assert.equal(res.status, 403, "el jefe de taller no anula");
+test("/api/compras recepcion_anular — Administración anula todo junto; un operario no", async () => {
+  let escrito = mockRuta({ recepcion: { id: 9, orden_id: 101, remito: "R-1", anulada: false } });
+  let res = await api.POST(req(await token("operativo"), { accion: "recepcion_anular", id: 9 }));
+  assert.equal(res.status, 403, "un operario no anula");
   assert.equal(escrito.length, 0);
 
   _limpiarCacheAlcance();
@@ -251,7 +251,7 @@ test("/api/compras oc_factura — la factura y el reemplazo de ingresos van junt
   assert.deepEqual(body.p_quien, { empleado_id: EMP, legajo: 7, empleado_nombre: "Pedro Jefe" });
 });
 
-test("/api/compras oc_factura — sin cambios en los renglones no los manda; OC anulada no; el jefe no", async () => {
+test("/api/compras oc_factura — sin cambios en los renglones no los manda; OC anulada no; un operario no", async () => {
   let escrito = mockRuta({ oc: { ...OC, estado: "recibida", factura_numero: "F-1" }, items: [{ ...PERFIL, cantidad_recibida: 12 }] });
   let res = await api.POST(req(await token("gerencial"), { accion: "oc_factura", id: 101, factura_numero: "F-1", renglones: [{ item_id: 1, precio_unitario: 1500 }] }));
   assert.equal(res.status, 200);
@@ -267,8 +267,8 @@ test("/api/compras oc_factura — sin cambios en los renglones no los manda; OC 
   assert.equal(res.status, 409, "renglón de otra OC");
   assert.equal(escrito.length, 0);
 
-  mockRuta({ supervisor: "ALUMINIO" });
-  res = await api.POST(req(await token("administrativo"), { accion: "oc_factura", id: 101, factura_numero: "F-1" }));
+  mockRuta();
+  res = await api.POST(req(await token("operativo"), { accion: "oc_factura", id: 101, factura_numero: "F-1" }));
   assert.equal(res.status, 403, "la factura la carga Administración");
 });
 

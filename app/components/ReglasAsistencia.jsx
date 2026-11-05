@@ -4,6 +4,7 @@
 // el servidor (/api/empresa) también lo exige.
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { comoDueno } from "../lib/menuGestion";
 import { apiFetch } from "../lib/supabase";
 import { normalizarReglasAsistencia } from "../lib/calc";
 
@@ -15,7 +16,7 @@ export default function ReglasAsistencia() {
   const [bloqueoTardanzas, setBloqueoTardanzas] = useState(inicial.bloqueo_tardanzas_mes);
   const [permisoSalida, setPermisoSalida] = useState(inicial.permiso_salida_anticipada);
   const [estado, setEstado] = useState(null); // null | "guardando" | "ok" | mensaje de error
-  const esDueno = usuario?.rol === "gerencial";
+  const esDueno = comoDueno(usuario);
 
   const num = (v, min, max) => {
     const n = parseInt(v, 10);
@@ -43,7 +44,7 @@ export default function ReglasAsistencia() {
     <div className="rounded-card p-4 border border-gypi-border mb-3.5 bg-gypi-surface">
       <div className="g-overline text-gypi-amber-ink">REGLAS DE ASISTENCIA</div>
       <div className="text-xs text-gypi-dim mt-1 mb-2 leading-relaxed">
-        Se aplican al fichar la entrada. {esDueno ? "" : "Solo el dueño de la cuenta puede cambiarlas."}
+        Se aplican al fichar la entrada. {esDueno ? "" : "Solo el dueño de la cuenta o un supervisor puede cambiarlas."}
       </div>
 
       <div className={fila}>

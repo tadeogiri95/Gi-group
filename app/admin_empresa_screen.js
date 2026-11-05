@@ -12,6 +12,7 @@ import CostoEditor from "./components/CostoEditor";
 import { cambiosEtapa, formDeEtapa, ETAPA_NUEVA } from "./lib/etapasForm";
 import { useToast } from "./components/ui/Toast";
 import { useAuth } from "./context/AuthContext";
+import { comoDueno } from "./lib/menuGestion";
 
 /* ─── Icon list for selectors ─── */
 const ICON_OPTIONS = [
@@ -68,7 +69,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
   const [tab, setTab] = useState(grupo === "produccion" ? "divisiones" : "general");
   const { usuario, causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, checklistCarga, setChecklistCarga, checklistInstalacion, setChecklistInstalacion, defectos, setDefectos } = useAuth();
   // Los costos los ve solo el dueño (OP parte 8)
-  const tabs = TABS.filter((t) => (!t.soloDueno || usuario?.rol === "gerencial") && (!grupo || t.grupo === grupo));
+  const tabs = TABS.filter((t) => (!t.soloDueno || comoDueno(usuario)) && (!grupo || t.grupo === grupo));
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -584,7 +585,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
         return <DefectosEditor defectos={defectos} etapas={etapas} onGuardados={setDefectos} avisar={showToast} />;
 
       case "costo":
-        return usuario?.rol === "gerencial" ? <CostoEditor avisar={showToast} /> : null;
+        return comoDueno(usuario) ? <CostoEditor avisar={showToast} /> : null;
 
       default: return null;
     }
