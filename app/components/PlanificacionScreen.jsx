@@ -51,6 +51,7 @@ import {
 import { TIPOS_PROYECTO, TIPO_GLOBAL, tipoDeOt, nombreTipo } from "../lib/tipoProyecto";
 import { Chip } from "./ui";
 import { errorInstalacion } from "../lib/instalacionPlan";
+import { CLASES_DT, errorDisenoTecnica } from "../lib/disenoTecnicaPlan";
 import { limiteProduccion } from "../lib/planInstalacion";
 import { feriadosDe } from "../lib/secuencia";
 import NombreOt from "./NombreOt";
@@ -981,6 +982,8 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
     personas_por_ot: conComa(cfg.instalacion?.personas_por_ot),
     gab_por_dia: Object.fromEntries(TIPOS_TABLA.map((t) => [t.id, conComa(cfg.instalacion?.gab_por_dia?.[t.id])])),
   }));
+  // 📐 Diseño y Técnica (parte 47): días de Diseño, jornada, horas por tipo × clase y arquitectas
+  const [textosDt, setTextosDt] = useState(() => textosDisenoTecnica(cfg.diseno_tecnica));
   const [estado, setEstado] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -1004,14 +1007,16 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
     ...Object.fromEntries(TIPOS_TABLA.map((t) => [t.id, textosInst.gab_por_dia[t.id].trim() && valoresInst.gab_por_dia[t.id] == null
       ? "Escribí solo el número" : errorInstalacion("gab_por_dia", valoresInst.gab_por_dia[t.id])])),
   };
-  const hayError = Object.values(errores).some(Boolean) || Object.values(erroresTipo).some(Boolean) || Object.values(erroresInst).some(Boolean);
+  const { valores: valoresDt, errores: erroresDt } = leerDisenoTecnica(textosDt);
+  const hayError = Object.values(errores).some(Boolean) || Object.values(erroresTipo).some(Boolean) || Object.values(erroresInst).some(Boolean)
+    || Object.values(erroresDt).some(Boolean);
   const productivas = (etapas || []).filter((e) => e.codigo > 0);
 
   const guardar = async () => {
     if (hayError) return;
     setGuardando(true);
     setEstado(null);
-    const valor = { ...valores, modo_mecanizado: modoMec, por_tipo: valoresTipo, division_id: division?.id || null, etapas: elegidas, feriados: normalizarFeriados(feriados), instalacion: valoresInst };
+    const valor = { ...valores, modo_mecanizado: modoMec, por_tipo: valoresTipo, division_id: division?.id || null, etapas: elegidas, feriados: normalizarFeriados(feriados), instalacion: valoresInst, diseno_tecnica: valoresDt };
     try {
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}&select=clave&limit=1`);
       if (rows?.length) await sb.patch(`config_sistema?clave=eq.${CLAVE_PLANIFICACION}`, { valor });
@@ -1078,6 +1083,8 @@ function ParametrosPlan({ empresaId, cfg, divisiones, etapas, onGuardado }) {
 
       <InstalacionParametros textos={textosInst} errores={erroresInst} onChange={setTextosInst} />
 
+      <DisenoTecnicaParametros empresaId={empresaId} textos={textosDt} errores={erroresDt} onChange={setTextosDt} />
+
       <FeriadosPlan feriados={feriados} onChange={setFeriados} />
 
       {estado && <div role="status" className="text-[13px] text-gypi-dim mb-2">{estado}</div>}
@@ -1118,6 +1125,138 @@ function InstalacionParametros({ textos, errores, onChange }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// 📐 Diseño y Técnica (parte 47; app/lib/disenoTecnicaPlan.js): Diseño lleva
+// días hábiles fijos; Técnica, las horas de la tabla tipo × clase A/B/C. Las
+// arquitectas se eligen del personal con qué % de su tiempo hace Técnica.
+function textosDisenoTecnica(dt) {
+  return {
+    dias_diseno: conComa(dt?.dias_diseno),
+    horas_dia: conComa(dt?.horas_dia),
+    horas: Object.fromEntries(TIPOS_TABLA.map((t) => [t.id, Object.fromEntries(CLASES_DT.map((c) => [c, conComa(dt?.horas?.[t.id]?.[c])]))])),
+    arquitectas: (dt?.arquitectas || []).map((a) => ({ id: a.id, pct_tecnica: conComa(a.pct_tecnica) })),
+  };
+}
+
+function leerDisenoTecnica(t) {
+  const num = (txt) => leerNumero(txt);
+  const err = (txt, campo, opts) => {
+    if (!String(txt ?? "").trim()) return null;
+    const n = num(txt);
+    return n == null ? "Escribí solo el número" : errorDisenoTecnica(campo, n, opts);
+  };
+  const valores = {
+    dias_diseno: num(t.dias_diseno),
+    horas_dia: num(t.horas_dia),
+    horas: Object.fromEntries(TIPOS_TABLA.map((x) => [x.id, Object.fromEntries(CLASES_DT.map((c) => [c, num(t.horas[x.id][c])]))])),
+    arquitectas: t.arquitectas.map((a) => ({ id: a.id, pct_tecnica: num(a.pct_tecnica) })),
+  };
+  const errores = {
+    dias_diseno: !t.dias_diseno.trim() ? "Falta el número" : err(t.dias_diseno, "dias_diseno"),
+    horas_dia: !t.horas_dia.trim() ? "Falta el número" : err(t.horas_dia, "horas_dia"),
+    ...Object.fromEntries(TIPOS_TABLA.map((x) => [`h_${x.id}`, CLASES_DT.map((c) => {
+      const e = err(t.horas[x.id][c], "horas_tecnica");
+      return e ? `${c}: ${e}` : null;
+    }).filter(Boolean).join(" · ") || null])),
+    ...Object.fromEntries(t.arquitectas.map((a) => [`a_${a.id}`, !String(a.pct_tecnica).trim() ? "Falta el %" : err(a.pct_tecnica, "pct_tecnica", { entero: true })])),
+  };
+  return { valores, errores };
+}
+
+function DisenoTecnicaParametros({ empresaId, textos, errores, onChange }) {
+  const [personal, setPersonal] = useState(null);
+  const [nueva, setNueva] = useState("");
+  useEffect(() => {
+    if (!empresaId) return;
+    let vivo = true;
+    sbGetAll(`empleados?empresa_id=eq.${empresaId}&activo=eq.true&select=id,nombre&order=nombre.asc`, { maxFilas: 2000 })
+      .then((r) => { if (vivo) setPersonal(r?.data || []); })
+      .catch(() => { if (vivo) setPersonal([]); });
+    return () => { vivo = false; };
+  }, [empresaId]);
+  const nombre = (id) => (personal || []).find((e) => String(e.id) === String(id))?.nombre || "Persona que ya no está activa";
+  const elegidas = new Set(textos.arquitectas.map((a) => String(a.id)));
+  const libres = (personal || []).filter((e) => !elegidas.has(String(e.id)));
+  const cambiarHoras = (tipo, clase, valor) => onChange((t) => ({ ...t, horas: { ...t.horas, [tipo]: { ...t.horas[tipo], [clase]: valor } } }));
+  const cambiarPct = (id, valor) => onChange((t) => ({ ...t, arquitectas: t.arquitectas.map((a) => (a.id === id ? { ...a, pct_tecnica: valor } : a)) }));
+  const agregar = () => {
+    if (!nueva) return;
+    onChange((t) => ({ ...t, arquitectas: [...t.arquitectas, { id: nueva, pct_tecnica: "100" }] }));
+    setNueva("");
+  };
+  const quitar = (id) => onChange((t) => ({ ...t, arquitectas: t.arquitectas.filter((a) => a.id !== id) }));
+
+  return (
+    <div className="g-card mb-3.5" aria-label="Parámetros de Diseño y Técnica">
+      <div className="g-label mb-2">📐 Diseño y Técnica</div>
+      <div className="text-xs text-gypi-dim mb-3">Diseño (relevamiento, diseño y aprobación) lleva siempre los mismos días hábiles. Técnica lleva las horas de la tabla según el tipo de proyecto y la clase A, B o C de la OT. En el Detalle de la OT se pueden corregir a mano.</div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label htmlFor="dt-dias" className="text-[13px] font-bold block mb-1">Días de Diseño <span className="font-normal text-gypi-dim">(días hábiles)</span></label>
+          <input id="dt-dias" className="g-input w-full" inputMode="decimal" value={textos.dias_diseno}
+            onChange={(e) => onChange((t) => ({ ...t, dias_diseno: e.target.value }))} />
+          {errores.dias_diseno && <div className="text-xs text-gypi-red mt-1">{errores.dias_diseno}</div>}
+        </div>
+        <div>
+          <label htmlFor="dt-horas-dia" className="text-[13px] font-bold block mb-1">Jornada <span className="font-normal text-gypi-dim">(horas por día)</span></label>
+          <input id="dt-horas-dia" className="g-input w-full" inputMode="decimal" value={textos.horas_dia}
+            onChange={(e) => onChange((t) => ({ ...t, horas_dia: e.target.value }))} />
+          {errores.horas_dia ? <div className="text-xs text-gypi-red mt-1">{errores.horas_dia}</div>
+            : <div className="text-xs text-gypi-dim mt-1">8:30 a 17:30 = 9 horas.</div>}
+        </div>
+      </div>
+
+      <div className="text-[13px] font-bold mt-3 mb-1">Horas de Técnica por tipo y clase</div>
+      <div className="text-xs text-gypi-dim mb-2">Horas de una arquitecta para hacer la planilla técnica de una OT. Vacío = las OT de ese tipo usan &quot;Sin tipo&quot;; si también está vacío, hay que poner las horas a mano en la OT.</div>
+      <table className="w-full text-[13px]">
+        <thead><tr className="text-gypi-dim text-left"><th className="font-normal">Tipo</th>{CLASES_DT.map((c) => <th key={c} className="font-normal">Clase {c}</th>)}</tr></thead>
+        <tbody>
+          {TIPOS_TABLA.map((t) => (
+            <tr key={t.id} className="border-t border-gypi-border align-top">
+              <td className="py-1.5 pr-2">
+                {t.nombre}
+                {errores[`h_${t.id}`] && <div className="text-xs text-gypi-red">{errores[`h_${t.id}`]}</div>}
+              </td>
+              {CLASES_DT.map((c) => (
+                <td key={c} className="py-1 pr-1">
+                  <input className="g-input w-full" inputMode="decimal" placeholder="—" aria-label={`Horas de Técnica de ${t.nombre} clase ${c}`}
+                    value={textos.horas[t.id][c]} onChange={(e) => cambiarHoras(t.id, c, e.target.value)} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="text-[13px] font-bold mt-3 mb-1">Arquitectas</div>
+      <div className="text-xs text-gypi-dim mb-2">Qué parte de su tiempo hace Técnica; el resto es Diseño. Cada una hace una planilla por vez.</div>
+      {textos.arquitectas.length === 0 && <div className="text-xs text-gypi-dim mb-2">Todavía no hay arquitectas elegidas.</div>}
+      {textos.arquitectas.map((a) => {
+        const pct = leerNumero(a.pct_tecnica);
+        return (
+          <div key={a.id} className="mb-2">
+          <div className="flex items-center gap-2">
+            <span className="flex-1 min-w-0 text-[13px] truncate">{personal ? nombre(a.id) : "…"}</span>
+            <input className="g-input w-[90px]" inputMode="numeric" aria-label={`% de Técnica de ${personal ? nombre(a.id) : "la arquitecta"}`}
+              value={a.pct_tecnica} onChange={(e) => cambiarPct(a.id, e.target.value)} />
+            <span className="text-xs text-gypi-dim w-[120px]">{pct != null && pct >= 0 && pct <= 100 ? `% Técnica · ${100 - pct} % Diseño` : "% Técnica"}</span>
+            <button type="button" className="g-btn g-btn-secondary" aria-label={`Quitar a ${personal ? nombre(a.id) : "la arquitecta"}`} onClick={() => quitar(a.id)}>✕</button>
+          </div>
+            {errores[`a_${a.id}`] && <div className="text-xs text-gypi-red mt-1">{errores[`a_${a.id}`]}</div>}
+          </div>
+        );
+      })}
+      <div className="flex gap-2">
+        <select className="g-input flex-1" aria-label="Elegir arquitecta" value={nueva} onChange={(e) => setNueva(e.target.value)} disabled={!personal}>
+          <option value="">{personal ? "Elegí una persona del personal" : "Cargando personal…"}</option>
+          {libres.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+        </select>
+        <button type="button" className="g-btn g-btn-secondary" disabled={!nueva} onClick={agregar}>➕ Agregar</button>
+      </div>
     </div>
   );
 }

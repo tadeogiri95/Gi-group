@@ -273,6 +273,12 @@ export function validarPatch(tabla, body, sesion, { comoDueno = sesion?.rol === 
   if (tabla === "proyectos" && body && body.clase_complejidad !== undefined && body.clase_complejidad !== null && !["A", "B", "C"].includes(body.clase_complejidad)) {
     return { status: 400, error: "Clase inválida" };
   }
+  // Tiempos de Diseño y Técnica a mano (160): de a medio día / media hora, o null
+  if (tabla === "proyectos" && body) {
+    const d = body.dias_diseno, h = body.horas_tecnica;
+    if (d !== undefined && d !== null && !(typeof d === "number" && d >= 0.5 && d <= 200 && Number.isInteger(d * 2))) return { status: 400, error: "Días de Diseño inválidos" };
+    if (h !== undefined && h !== null && !(typeof h === "number" && h >= 0.5 && h <= 1000 && Number.isInteger(h * 2))) return { status: 400, error: "Horas de Técnica inválidas" };
+  }
   // Retrabajo (147): solo se marca terminado
   if (tabla === "retrabajos_ot") {
     const err = validarFinRetrabajo(body);
