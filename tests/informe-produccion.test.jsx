@@ -221,15 +221,23 @@ test("PDF — una hoja: nota en medio círculo, partes, lo importante, por proce
   assert.match(html, /1 de 2 OT terminan después de su fecha límite: OT 7100[^.]*\./);
   assert.match(html, /Hoy: 6 piezas escaneadas, 1 etapa terminada o firmada, 0 reportes de instalación, 1 OT atrasada contra la entrega\./);
   assert.doesNotMatch(html, /Detalle por OT y proceso/, "el detalle queda en Gypi");
-  assert.match(html, /\.hoja \{ max-height: 276mm; overflow: hidden; \}/, "nunca pasa de una hoja");
+  assert.doesNotMatch(html, /overflow: hidden; \}\n/, "nada queda escondido al pie de la hoja");
+  assert.match(html, /\.puntos li, \.porot tr, \.porproc \{ break-inside: avoid; \}/, "si sigue en otra hoja no parte renglones");
+  assert.match(html, /<table class="porot" aria-label="Planificado y hecho por OT">/);
   assert.doesNotMatch(html, /<script/i);
   assert.doesNotMatch(html, /Producción fuera del plan/, "sin OT fuera del plan no va el punto");
   const fuera = htmlInformePdf({ informe: calcularInforme({ ...DATOS, avance: [{ ot: "7400", etapa: 2, estado: "terminada", terminada_at: "2026-10-28T16:00:00Z" }] }) });
   assert.match(fuera, /Producción fuera del plan: OT 7400 \(no cuenta en el cumplimiento\)\./);
-  assert.match(fuera, /OT 7400<\/text>[\s\S]*100 %[\s\S]*🆕 fuera del plan/);
+  assert.match(fuera, /OT 7400<\/td>[\s\S]*100 %[\s\S]*🆕 fuera del plan/);
   // Muchas OT: las 14 que entran, con las de fuera del plan al final aunque no estén atrasadas
   const muchas = [...Array.from({ length: 20 }, (_, i) => ({ ot: String(i), desvio: -i })), { ot: "F1", fueraDelPlan: true }, { ot: "F2", fueraDelPlan: true }];
   assert.deepEqual(otsDeLaHoja(muchas).map((o) => o.ot), [...Array.from({ length: 12 }, (_, i) => String(i)), "F1", "F2"]);
+  // Día cargado (Tadeo, 05/11: salía cortado): cada punto nombra 2 OT como mucho, cortas (código · cliente)
+  const { puntosClave } = await import("../app/lib/informePdf.js");
+  const cargadas = Array.from({ length: 20 }, (_, i) => ({ ot: String(7800 + i), cliente: "RIOFRIO IVAN", obra: "EDIFICIO MAIPU", descripcion: "COCINA COMPLETA", planificado: 80, hecho: 20, desvio: -60, tarde: true, procesos: [] }));
+  const pesado = puntosClave({ ...r, ots: cargadas, resumen: { ...r.resumen, otsTarde: 20, otsAbiertas: 20 } });
+  assert.match(pesado.find((p) => /Más atrasadas/.test(p.texto)).texto, /^Más atrasadas contra el plan: OT 7800 · RIOFRIO IVAN \(hizo 20 % de 80 %\), OT 7801 · RIOFRIO IVAN \(hizo 20 % de 80 %\) y 18 más\.$/);
+  assert.ok(pesado.every((p) => !/EDIFICIO MAIPU/.test(p.texto)), "la obra y la descripción quedan en la tabla");
   assert.deepEqual(avancePorProceso(r.ots).map((p) => [p.nombre, p.ots, p.plan, p.hecho]), [["Corte", 1, 50, 60], ["Armado", 1, 50, 40]]);
   // Guardado de la noche, de una semana: sin reporte del día
   const semana = htmlInformePdf({ informe: calcularInforme({ ...DATOS, periodo: periodoDe("semana", "2026-10-28") }), guardado: "2026-10-29T02:00:00Z" });
