@@ -118,6 +118,7 @@ export function normalizarParametros(valor) {
   out.division_id = typeof v.division_id === "string" ? v.division_id : null;
   out.feriados = normalizarFeriados(v.feriados);
   out.instalacion = normalizarInstalacion(v.instalacion);
+  out.diseno_tecnica = normalizarDisenoTecnica(v.diseno_tecnica);
   out.etapas = Object.fromEntries(ETAPAS_PLAN.map((ep) => {
     const c = Number(v.etapas?.[ep.id]);
     return [ep.id, Number.isInteger(c) && c > 0 ? c : null];
@@ -147,6 +148,52 @@ export function normalizarInstalacion(valor) {
       const n = numeroInst(v.gab_por_dia?.[t.id]);
       return [t.id, dentroInst(n, LIMITES_INSTALACION.gab_por_dia) ? n : null];
     })),
+  };
+}
+
+// ─── Diseño y Técnica (parte 47; app/lib/disenoTecnicaPlan.js) ─────────────
+
+/** Días hábiles de Diseño de cada OT si no se cargó otra cosa (Tadeo, 05/11). */
+export const DIAS_DISENO_DEFECTO = 10;
+/** Jornada de las arquitectas: lunes a viernes de 8:30 a 17:30. */
+export const HORAS_DIA_DEFECTO = 9;
+export const CLASES_DT = ["A", "B", "C"];
+export const LIMITES_DT = {
+  dias_diseno: { min: 0.5, max: 200 },
+  horas_tecnica: { min: 0.5, max: 1000 },
+  horas_dia: { min: 1, max: 24 },
+  pct_tecnica: { min: 0, max: 100 },
+};
+export const MAX_ARQUITECTAS = 20;
+
+/**
+ * valor.diseno_tecnica de la config, limpio:
+ * { dias_diseno, horas_dia, horas: { tipo: { A, B, C } }, arquitectas: [{ id, pct_tecnica }] }.
+ * Las horas de Técnica arrancan vacías (Tadeo no tiene valores de arranque).
+ * pct_tecnica: qué parte de su tiempo hace Técnica; el resto, Diseño.
+ */
+export function normalizarDisenoTecnica(valor) {
+  const v = valor && typeof valor === "object" ? valor : {};
+  const dias = numeroInst(v.dias_diseno);
+  const horasDia = numeroInst(v.horas_dia);
+  const vistas = new Set();
+  const arquitectas = [];
+  for (const a of Array.isArray(v.arquitectas) ? v.arquitectas : []) {
+    const id = String(a?.id ?? "").trim().slice(0, 64);
+    const pct = numeroInst(a?.pct_tecnica);
+    if (!id || vistas.has(id) || !dentroInst(pct, LIMITES_DT.pct_tecnica) || !Number.isInteger(pct)) continue;
+    vistas.add(id);
+    arquitectas.push({ id, pct_tecnica: pct });
+    if (arquitectas.length >= MAX_ARQUITECTAS) break;
+  }
+  return {
+    dias_diseno: dentroInst(dias, LIMITES_DT.dias_diseno) && Number.isInteger(dias * 2) ? dias : DIAS_DISENO_DEFECTO,
+    horas_dia: dentroInst(horasDia, LIMITES_DT.horas_dia) && Number.isInteger(horasDia * 2) ? horasDia : HORAS_DIA_DEFECTO,
+    horas: Object.fromEntries(TIPOS_CON_GLOBAL.map((t) => [t.id, Object.fromEntries(CLASES_DT.map((c) => {
+      const n = numeroInst(v.horas?.[t.id]?.[c]);
+      return [c, dentroInst(n, LIMITES_DT.horas_tecnica) && Number.isInteger(n * 2) ? n : null];
+    }))])),
+    arquitectas,
   };
 }
 
