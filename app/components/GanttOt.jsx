@@ -65,6 +65,7 @@ import { faltanManual, atrasosSinMotivo } from "../lib/ajustesTiempo";
 import { retrabajoPendiente, retrabajosDe, retrabajosHechos } from "../lib/retrabajo";
 import AjusteTiempo from "./AjusteTiempo";
 import GanttInstalacion from "./GanttInstalacion";
+import GanttDisenoTecnica from "./GanttDisenoTecnica";
 import NombreOt from "./NombreOt";
 
 const FILA = 26; // alto del renglón de cada proceso
@@ -833,23 +834,28 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
 const CLAVE_TIPO = "gypi_gantt_tipo";
 
 /**
- * 📅 Gantt: dos diagramas separados (Tadeo, 02/11): 🏭 Producción (el plan
+ * 📅 Gantt: diagramas separados (Tadeo, 02/11): 📐 Diseño y Técnica (parte 48,
+ * antes de Producción), 🏭 Producción (el plan
  * vivo de siempre) y 🔧 Instalación (parte 43), que toma el fin de producción
  * de ese mismo plan. El de producción queda armado aunque se mire el otro.
  */
 export default function GanttOt(props) {
-  const [tipo, setTipo] = useState(() => { try { return localStorage.getItem(CLAVE_TIPO) === "instalacion" ? "instalacion" : "produccion"; } catch { return "produccion"; } });
+  const [tipo, setTipo] = useState(() => { try { const t = localStorage.getItem(CLAVE_TIPO); return t === "instalacion" || t === "diseno" ? t : "produccion"; } catch { return "produccion"; } });
   const cambiar = (t) => { setTipo(t); try { localStorage.setItem(CLAVE_TIPO, t); } catch { /* sin almacenamiento */ } };
   const [vivo, setVivo] = useState(null);
   return (
     <>
-      <div className="flex gap-1.5 mb-2" role="group" aria-label="Qué Gantt ver">
+      <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Qué Gantt ver">
+        <Chip active={tipo === "diseno"} onClick={() => cambiar("diseno")}>📐 Diseño y Técnica</Chip>
         <Chip active={tipo === "produccion"} onClick={() => cambiar("produccion")}>🏭 Producción</Chip>
         <Chip active={tipo === "instalacion"} onClick={() => cambiar("instalacion")}>🔧 Instalación</Chip>
       </div>
-      <div className={tipo === "instalacion" ? "hidden" : ""}>
+      <div className={tipo !== "produccion" ? "hidden" : ""}>
         <GanttProduccion {...props} onPlanVivo={setVivo} />
       </div>
+      {tipo === "diseno" && (
+        <GanttDisenoTecnica proyectos={props.proyectos} divisiones={props.divisiones} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} />
+      )}
       {tipo === "instalacion" && (
         <GanttInstalacion vivo={vivo} proyectos={props.proyectos} etapas={props.etapas} divisiones={props.divisiones}
           avanceHoras={props.avanceHoras} pausas={props.pausas} empresaId={props.empresaId} onVerDetalle={props.onVerDetalle} puedeConfirmar={!!props.puedeAjustar} />
