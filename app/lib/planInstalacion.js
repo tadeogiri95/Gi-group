@@ -103,9 +103,16 @@ export function trabajosInstalacion({ proyectos = [], finProduccion = new Map(),
     // Fin de producción + 1 día hábil; ya producida (o empezada en obra), desde hoy
     let desde = lista || enCurso ? hoy : diaHabilSiguiente(fin, feriados);
     if (desde < hoy) desde = hoy;
+    // Lo más temprano posible (fin de producción + 1 día hábil); una fecha
+    // elegida a mano en el Gantt (157) solo puede correrla para después
+    const minimo = desde;
+    const fijada = /^\d{4}-\d{2}-\d{2}/.test(String(p.instalacion_desde || "")) ? String(p.instalacion_desde).slice(0, 10) : null;
+    if (fijada && fijada > desde) desde = fijada;
     const k = claveObra(p);
-    if (!porObra.has(k)) porObra.set(k, { clave: k, ots: [], diasPersona: 0, personas: 0, desde, esperaHasta: null, entrega: null, prioridad: null, finProduccion: null, enCurso: false });
+    if (!porObra.has(k)) porObra.set(k, { clave: k, ots: [], diasPersona: 0, personas: 0, desde, minimo, fijada: null, esperaHasta: null, entrega: null, prioridad: null, finProduccion: null, enCurso: false });
     const t = porObra.get(k);
+    if (minimo > t.minimo) t.minimo = minimo;
+    if (fijada && (!t.fijada || fijada > t.fijada)) t.fijada = fijada;
     t.ots.push({ ot, proyecto: p, dias: r.dias, personas: r.personas, diasPersona: r.diasPersona * (1 - pct / 100), avance: pct, manual: r.manual, finProduccion: fin, producida: lista });
     t.diasPersona += r.diasPersona * (1 - pct / 100);
     t.personas += r.personas;
@@ -124,10 +131,17 @@ export function trabajosInstalacion({ proyectos = [], finProduccion = new Map(),
   return { trabajos: ordenarTrabajos(trabajos), sinProduccion, sinDato };
 }
 
-/** En curso primero, después prioridad de instalación, fecha de entrega, desde cuándo puede arrancar y número de OT. */
+/**
+ * En curso primero; después las que se movieron a mano a un día (157, por
+ * fecha: así toman ese lugar y las demás se acomodan alrededor); después
+ * prioridad de instalación, fecha de entrega, desde cuándo puede arrancar y
+ * número de OT.
+ */
 export function ordenarTrabajos(trabajos) {
   return [...trabajos].sort((a, b) => {
     if (a.enCurso !== b.enCurso) return a.enCurso ? -1 : 1;
+    if (!!a.fijada !== !!b.fijada) return a.fijada ? -1 : 1;
+    if (a.fijada && b.fijada && a.fijada !== b.fijada) return a.fijada < b.fijada ? -1 : 1;
     const pa = conPrioridad(a.prioridad), pb = conPrioridad(b.prioridad);
     if (pa !== pb) return pa ? -1 : 1;
     if (pa && a.prioridad !== b.prioridad) return a.prioridad - b.prioridad;
@@ -207,7 +221,7 @@ export function planInstalacion(trabajos, instaladores, { hoy, feriados = null }
       inicio: inicio.fecha, inicioMedio: inicio.medio,
       fin: ultimo.fecha, finMedio: ultimo.medio,
       // La obra arranca apenas sale de fábrica: si producción se atrasa, se corre
-      esperaProduccion: !t.enCurso && t.desde > hoy && inicio.fecha === t.desde,
+      esperaProduccion: !t.enCurso && (t.minimo ?? t.desde) > hoy && inicio.fecha === (t.minimo ?? t.desde),
       tarde: diasTarde > 0,
       diasTarde,
       // Termina el mismo día de la entrega o el día hábil anterior
@@ -216,6 +230,16 @@ export function planInstalacion(trabajos, instaladores, { hoy, feriados = null }
     });
   }
   return salida;
+}
+
+/**
+ * A qué día se puede llevar una obra que se arrastró en el Gantt: nunca antes
+ * del día hábil siguiente al fin de producción (`obra.minimo`).
+ * @returns {{ fecha: string, ajustada: boolean }} ajustada = se pidió antes de lo posible
+ */
+export function fechaArrastrada(obra, fecha) {
+  const minimo = obra?.minimo || obra?.desde || fecha;
+  return fecha < minimo ? { fecha: minimo, ajustada: true } : { fecha, ajustada: false };
 }
 
 /** "mañana" / "tarde" / "todo el día" de cada fecha de una obra. */

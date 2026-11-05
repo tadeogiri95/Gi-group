@@ -7,7 +7,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { normalizarParametros } from "../app/lib/planificacion.js";
-import { trabajosInstalacion, planInstalacion, diaHabilSiguiente, trabajaElDia, claveObra, diasDeObra, ordenarTrabajos, instaladoresDeLaDivision, nombreInstalador } from "../app/lib/planInstalacion.js";
+import { claveObra, diaHabilSiguiente, diasDeObra, instaladoresDeLaDivision, nombreInstalador, ordenarTrabajos, planInstalacion, trabajaElDia, trabajosInstalacion } from "../app/lib/planInstalacion.js";
 
 const { default: GanttInstalacion } = await import("../app/components/GanttInstalacion.jsx");
 
@@ -184,6 +184,29 @@ test("GanttInstalacion — muestra nombre y apellido y no usa a los de otra divi
   const obra = await screen.findByRole("button", { name: /OT 7961/ });
   assert.match(obra.textContent, /Ana Pérez, Beto Ruiz/);
   assert.doesNotMatch(obra.textContent, /Carla|Anita/);
+});
+
+test("GanttInstalacion — horizonte como en producción: solo las obras de esos días, con ◀ ▶", async () => {
+  try { localStorage.removeItem("gypi_gantt_instalacion_horizonte"); } catch { /* sin almacenamiento */ }
+  global.fetch = async (url, opts) => {
+    if (`${url} ${opts?.body || ""}`.includes("empleados")) return Response.json({ data: [{ id: "a", nombre: "Ana", diagrama: LV }, { id: "b", nombre: "Beto", diagrama: LV }] });
+    return Response.json({ data: [] });
+  };
+  const proyectos = [{ id: 1, ot: "7961", cliente: "Riofrío", obra: "Maipú", division: "Muebles", total_modulos: 6, fecha_objetivo: "2099-01-10" }];
+  const { hoyArg } = await import("../app/lib/dates.js");
+  const fin = new Date(Date.parse(`${hoyArg()}T00:00:00Z`) + 8 * 86400000).toISOString().slice(0, 10);
+  const vivo = { renglones: [{ ot: "7961", fin, procesos: [{ completo: false }] }], cfgValor: { instalacion: { gab_por_dia: { global: 3 } } }, modulos: new Map() };
+  render(<GanttInstalacion vivo={vivo} proyectos={proyectos} divisiones={[{ id: "muebles", label: "Muebles" }]} />);
+  assert.ok(await screen.findByRole("button", { name: /OT 7961/ }), "con Todo se ve");
+  fireEvent.click(screen.getByRole("button", { name: "1 semana" }));
+  assert.equal(screen.queryByRole("button", { name: /OT 7961/ }), null, "en la primera semana todavía no se instala");
+  assert.ok(screen.getByText(/No hay obras para instalar en esos días/));
+  fireEvent.click(screen.getByRole("button", { name: "Ver después" }));
+  assert.ok(screen.getByRole("button", { name: /OT 7961/ }), "la semana siguiente sí");
+  assert.ok(screen.getByText(/^Del /));
+  fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
+  assert.ok(screen.getByText("Desde hoy"));
+  fireEvent.click(screen.getByRole("button", { name: "Todo" }));
 });
 
 test("seguidos — junta los medios días pegados en una barra", async () => {
