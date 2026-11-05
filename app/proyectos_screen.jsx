@@ -30,7 +30,8 @@ import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./
 import { estadoOtLista, textoEntrega } from "./lib/otLista";
 import { pausasAbiertas } from "./lib/pausaOt";
 import { otSinMovimiento, enTandas, DIAS_SIN_MOVIMIENTO } from "./lib/otOrdenar";
-import { COLUMNAS_OT, RANGOS_AVANCE, RANGOS_VALOR, estadosPresentes, filasTablaOt, siguienteOrden } from "./lib/otTabla";
+import { claseDeOt } from "./lib/complejidad";
+import { COLUMNAS_OT, OPCIONES_CLASE, RANGOS_AVANCE, RANGOS_VALOR, estadosPresentes, filasTablaOt, siguienteOrden } from "./lib/otTabla";
 import CerrarOtViejas from "./components/CerrarOtViejas";
 import { conRegistroTareas } from "./lib/modulos";
 import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
@@ -667,7 +668,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
                       <select className="g-input !min-h-[32px] !py-1 !text-xs w-full" aria-label={`Filtrar ${c.label}`}
                         value={filtrosTabla[c.id] || ""} onChange={(e) => setFiltrosTabla((f) => ({ ...f, [c.id]: e.target.value }))}>
                         <option value="">Todos</option>
-                        {(c.filtro === "lista" ? estadosPresentes(filasBase).map((t) => ({ id: t, label: t })) : c.filtro === "rango" ? RANGOS_AVANCE : RANGOS_VALOR)
+                        {(c.filtro === "lista" ? estadosPresentes(filasBase).map((t) => ({ id: t, label: t })) : c.filtro === "rango" ? RANGOS_AVANCE : c.filtro === "clase" ? OPCIONES_CLASE : RANGOS_VALOR)
                           .map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                       </select>
                     )}
@@ -701,6 +702,9 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
                           <span className="font-mono text-xs w-10 text-right">{pct} %</span>
                         </div>
                       ) : <span className="text-gypi-mute">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[13px] font-bold" title={claseDeOt(p).manual ? "Elegida a mano" : claseDeOt(p).sinDatos ? "Sin datos todavía" : "Dentro de su tipo de proyecto"}>
+                      {claseDeOt(p).clase}{claseDeOt(p).sinDatos ? <span className="text-gypi-mute font-normal">?</span> : null}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-gypi-dim">{textoEntrega(p, modoObjetivo).replace(/^Entrega /, "") || "—"}</td>
                     {verPrecios && <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">{precios.has(String(p.ot)) ? fmtPesos(precios.get(String(p.ot))) : "—"}</td>}

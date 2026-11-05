@@ -35,6 +35,7 @@ import MinutasDeOt from "./MinutasDeOt";
 import HistorialOt from "./HistorialOt";
 import PausaOt from "./PausaOt";
 import InstalacionOt from "./InstalacionOt";
+import DisenoTecnicaOt from "./DisenoTecnicaOt";
 import { TituloOt } from "./NombreOt";
 import { PdfDeOt } from "./PdfOt";
 
@@ -202,6 +203,9 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
             </div>
           </section>
         )}
+
+        {/* 📐 Diseño y Técnica (159): etapas del Plan y clase A/B/C; gestión elige la clase */}
+        <DisenoTecnicaOt proyecto={proyecto} empresaId={empresaId} puedeEditar={puedeCambiarSemana} onGuardado={onProyectoActualizado} />
 
         {/* 🔧 Instalación (153): días de obra para el plan de instalación; gestión los corrige */}
         <InstalacionOt proyecto={proyecto} puedeEditar={puedeCambiarSemana} onGuardado={onProyectoActualizado} />

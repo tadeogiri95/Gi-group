@@ -269,6 +269,10 @@ export function validarPatch(tabla, body, sesion, { comoDueno = sesion?.rol === 
     const f = body.instalacion_desde;
     if (f !== undefined && f !== null && !(typeof f === "string" && /^\d{4}-\d{2}-\d{2}$/.test(f) && !Number.isNaN(Date.parse(`${f}T00:00:00Z`)))) return { status: 400, error: "Fecha de instalación inválida" };
   }
+  // Clase de complejidad elegida a mano (159): A, B, C, o null (automática)
+  if (tabla === "proyectos" && body && body.clase_complejidad !== undefined && body.clase_complejidad !== null && !["A", "B", "C"].includes(body.clase_complejidad)) {
+    return { status: 400, error: "Clase inválida" };
+  }
   // Retrabajo (147): solo se marca terminado
   if (tabla === "retrabajos_ot") {
     const err = validarFinRetrabajo(body);

@@ -1,12 +1,15 @@
 // app/lib/otTabla.js — Tabla de OT en la computadora (Producción → OT, vista
 // Lista): ordenar de forma ascendente o descendente y filtrar por cada
 // columna (Tadeo, 02/11). Solo cambia lo que se ve: no toca las OT.
+import { claseDeOt, CLASES } from "./complejidad";
 
 export const COLUMNAS_OT = [
   { id: "ot", label: "OT", filtro: "texto" },
   { id: "cliente", label: "Cliente / proyecto", filtro: "texto" },
   { id: "estado", label: "Estado", filtro: "lista" },
   { id: "avance", label: "Avance", filtro: "rango" },
+  // Clase de complejidad A/B/C dentro del tipo de proyecto (159)
+  { id: "clase", label: "Clase", filtro: "clase" },
   { id: "entrega", label: "Entrega", filtro: "texto" },
   { id: "valor", label: "Valor", filtro: "rango_valor", soloPrecios: true },
 ];
@@ -17,6 +20,7 @@ export const RANGOS_AVANCE = [
   { id: "mitad", label: "50 a 99 %", ok: (v) => v >= 50 && v < 100 },
   { id: "completa", label: "100 %", ok: (v) => v >= 100 },
 ];
+export const OPCIONES_CLASE = CLASES.map((c) => ({ id: c, label: c }));
 export const RANGOS_VALOR = [
   { id: "con", label: "Con valor", ok: (v) => v != null },
   { id: "sin", label: "Sin valor", ok: (v) => v == null },
@@ -32,6 +36,7 @@ function clave(f, col) {
     case "cliente": return f.p.cliente || f.p.proyecto || "";
     case "estado": return f.estado?.texto || "";
     case "avance": return f.pct;
+    case "clase": return claseDeOt(f.p).clase;
     case "entrega": return f.p.fecha_objetivo || f.p.fecha_entrega || null;
     case "valor": return f.valor;
     default: return null;
@@ -55,6 +60,7 @@ export function filasTablaOt(filas, { orden = null, filtros = {} } = {}) {
   let out = filas.filter((f) => Object.entries(filtros).every(([col, v]) => {
     if (!v) return true;
     if (col === "estado") return (f.estado?.texto || "") === v;
+    if (col === "clase") return claseDeOt(f.p).clase === v;
     if (col === "avance") return RANGOS_AVANCE.find((r) => r.id === v)?.ok(f.pct) ?? true;
     if (col === "valor") return RANGOS_VALOR.find((r) => r.id === v)?.ok(f.valor) ?? true;
     return normal(textoDe(f, col)).includes(normal(v));

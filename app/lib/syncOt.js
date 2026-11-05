@@ -10,6 +10,7 @@ import { sbHeaders } from "./sbHelpers";
 import { CLAVE_FECHA_OBJETIVO, normalizarModo, fechaObjetivo } from "./semanaObjetivo";
 import { resolverSemana } from "./semanaEditable";
 import { hoyArg } from "./dates";
+import { recalcularClases } from "./syncComplejidad";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -163,13 +164,16 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
   // placas_mecanizadas). Si la base todavía no tiene alguna, se
   // reintenta sin ella para que la sincronización no se corte.
   const omitidas = new Set();
-  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos", "semana_objetivo", "fecha_objetivo", "semana_app_at", "semana_app", "semana_planilla", ...CAMPOS_MATERIAL];
+  const OPCIONALES = ["descripcion", "fecha_entrega", "cantidad", "terminado_planilla", "total_modulos", "semana_objetivo", "fecha_objetivo", "semana_app_at", "semana_app", "semana_planilla", "etapas_diseno", ...CAMPOS_MATERIAL];
   if (!conSemana144) ["semana_app", "semana_app_at", "semana_planilla"].forEach((c) => omitidas.add(c));
   const subir = (batch) => sbFetch("proyectos?on_conflict=empresa_id,ot", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     body: JSON.stringify(batch.map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !omitidas.has(k))))),
   }, sesion);
+  // Etapas de Diseño y Técnica (159): si alguna hoja trae esas columnas, van
+  // en todas las filas (PostgREST pide las mismas claves en todo el lote)
+  const conEtapas = filas.some((r) => "etapas_diseno" in r);
   for (let i = 0; i < filas.length; i += BATCH) {
     // Sin `estado`: las nuevas toman el valor por defecto y abajo la columna
     // TERMINADO cierra o reabre las que están en la planilla.
@@ -195,6 +199,7 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       // ninguna: PostgREST pide las mismas claves en todo el lote)
       ...("total_modulos" in r ? { total_modulos: r.total_modulos } : {}),
       ...Object.fromEntries(CAMPOS_MATERIAL.filter((k) => k in r).map((k) => [k, r[k]])),
+      ...(conEtapas ? { etapas_diseno: r.etapas_diseno ?? null } : {}),
       };
     });
     try {
@@ -277,6 +282,10 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       break;
     }
   }
+
+  // Clase de complejidad A/B/C de cada OT (159): con las placas recién
+  // sincronizadas y las necesidades del MRP. Sin la migración no hace nada.
+  await recalcularClases(empresaId, (path, opts) => sbFetch(path, opts, sesion));
 
   // Actualizar última sync en config
   try {
