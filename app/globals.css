@@ -34,6 +34,9 @@
   --color-proc-mecanizado: #7C3AED;
   --color-proc-armado: #B08968;
   --color-proc-margen: #FACC15;
+  /* Gantt de Diseño y Técnica (parte 48): colores fijos de cada área */
+  --color-area-diseno: #0EA5E9;
+  --color-area-tecnica: #DB2777;
 
   --font-heading: "Bricolage Grotesque", system-ui, sans-serif;
   --font-body: "Geist", system-ui, sans-serif;
