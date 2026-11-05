@@ -24,6 +24,7 @@ import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
 import AvisarFalla from "../AvisarFalla";
 import PlanSemana from "../PlanSemana";
 import VerPdfOt from "../VerPdfOt";
+import MisPlanillas, { detalleMisPlanillas, useMisPlanillas } from "../MisPlanillas";
 import { usePdfsOt } from "../../hooks/usePdfsOt";
 import { CAMPOS_VEHICULO, conResponsables, detalleMiMantenimiento, resumenMiMantenimiento } from "../../lib/mantenimiento";
 import { sb } from "../../lib/supabase";
@@ -65,6 +66,9 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   // Parte 34 (133): lo que tiene a cargo como responsable de mantenimiento o suplente
   const mant = useMiMantenimiento(demo ? null : usuario?.id, { conFlota, conMaquinaria });
   const [verMant, setVerMant] = useState(false);
+  // 📐 Mis planillas (parte 50): solo para las arquitectas de Diseño y Técnica
+  const planillas = useMisPlanillas(conProyectos);
+  const [verPlanillas, setVerPlanillas] = useState(false);
   const [avisarFalla, setAvisarFalla] = useState(false);
   const conMiMant = !mant.cargando && (usuario?.es_mantenimiento || mant.items.length > 0);
   const resumenMant = resumenMiMantenimiento(mant.items);
@@ -160,6 +164,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         {conStock && <BotonAccion icono="📦" titulo="Retirar material" detalle="Escaneá el QR del artículo y anotá cuánto sacás" onClick={() => setRetirar(true)} />}
         {/* Acopio y carga: el responsable elige la OT sin depender del QR de un rótulo */}
         {conTareas && onAbrirCarga && <BotonAccion icono="🚚" titulo="Carga de una OT" detalle="Armar bultos, imprimir rótulos y cargar el camión" onClick={() => setElegirCarga(true)} />}
+        {planillas && <BotonAccion icono="📐" titulo="Mis planillas" detalle={detalleMisPlanillas(planillas)} onClick={() => setVerPlanillas(true)} />}
         {conMiMant && (
           <BotonAccion icono="🔧" titulo="Mi mantenimiento" detalle={detalleMiMantenimiento(mant.items)} destacado={resumenMant.vencidas > 0} onClick={() => setVerMant(true)} />
         )}
@@ -178,6 +183,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       {/* El instalador trabaja en obra: el plan de la planta no le sirve (auditoría 01/11) */}
       {!demo && !usuario?.es_instalador && tieneModulo(empresa, "proyectos") && <PlanSemana divisionUsuario={usuario?.division} />}
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
+      {verPlanillas && <MisPlanillas datos={planillas} onClose={() => setVerPlanillas(false)} />}
       {verPdf && <VerPdfOt onClose={() => setVerPdf(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}

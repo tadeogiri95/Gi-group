@@ -59,6 +59,7 @@ import { CLAVE_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
 import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
 import NombreOt from "./components/NombreOt";
 import { mapaOts, otCompleta, textoOt } from "./lib/nombreOt";
+import MisPlanillas, { detalleMisPlanillas, useMisPlanillas } from "./components/MisPlanillas";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -144,6 +145,25 @@ const PulseDot = ({ activo = true, chico = false }) => (
 
 
 /* ─── Panel de Reportes de Obra con fotos y detalle expandible ─── */
+/** 📐 Mis planillas de la arquitecta que entra (parte 50); nada si no es arquitecta. */
+function TarjetaMisPlanillas() {
+  const datos = useMisPlanillas(true);
+  const [ver, setVer] = useState(false);
+  if (!datos) return null;
+  return (
+    <section aria-label="Mis planillas" className="card-hover g-card mb-4">
+      <button type="button" onClick={() => setVer(true)} className="w-full flex items-center gap-3 bg-transparent border-none p-0 cursor-pointer text-left font-body text-gypi-text">
+        <span aria-hidden="true" className="text-[26px]">📐</span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[16px] font-bold">Mis planillas</span>
+          <span className="block text-[14px] text-gypi-dim">{detalleMisPlanillas(datos)}</span>
+        </span>
+      </button>
+      {ver && <MisPlanillas datos={datos} onClose={() => setVer(false)} />}
+    </section>
+  );
+}
+
 function ReportesObraPanel({ reportesObra }) {
   const [expandedReport, setExpandedReport] = useState(null);
   const [fotoViewer, setFotoViewer] = useState(null); // { fotos: [], index: 0 }
@@ -709,6 +729,9 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
           ))}
         </section>
       )}
+
+      {/* ─── 📐 Mis planillas (parte 50): solo si quien entra es arquitecta de Diseño y Técnica ─── */}
+      {!isDemo && conOt && <TarjetaMisPlanillas />}
 
       {/* ─── Minuta de Buenos Días (parte M5): solo gerencia con el módulo ─── */}
       {!isDemo && <TarjetaMinuta empresa={empresa} goto={goto} />}
