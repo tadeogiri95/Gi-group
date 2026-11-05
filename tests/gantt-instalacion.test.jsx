@@ -7,7 +7,7 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { normalizarParametros } from "../app/lib/planificacion.js";
-import { trabajosInstalacion, planInstalacion, diaHabilSiguiente, trabajaElDia, claveObra, diasDeObra, ordenarTrabajos } from "../app/lib/planInstalacion.js";
+import { trabajosInstalacion, planInstalacion, diaHabilSiguiente, trabajaElDia, claveObra, diasDeObra, ordenarTrabajos, instaladoresDeLaDivision, nombreInstalador } from "../app/lib/planInstalacion.js";
 
 const { default: GanttInstalacion } = await import("../app/components/GanttInstalacion.jsx");
 
@@ -152,6 +152,38 @@ test("GanttInstalacion — después de confirmar no vuelve a ofrecer el botón m
   await waitFor(() => assert.ok(screen.getByText(/✅ Plan confirmado el .* por Tadeo/)));
   assert.equal(screen.queryByRole("button", { name: /Confirmar/ }), null);
   assert.ok(screen.getByRole("button", { name: /Cambiar orden/ }));
+});
+
+test("instaladoresDeLaDivision — los de Aluminio o Herrería no instalan Muebles; sin división entran", () => {
+  const divisiones = [{ id: "muebles", label: "Muebles" }, { id: "aluminio", label: "Aluminio" }, { id: "herreria", label: "Herrería" }];
+  const gente = [
+    { id: "a", nombre: "Ana Pérez", division: "Muebles" },
+    { id: "b", nombre: "Beto Ruiz", division: "aluminio" },
+    { id: "c", nombre: "Carla Sosa", division: "Herreria" },
+    { id: "d", nombre: "Dani Paz", division: null },
+  ];
+  assert.deepEqual(instaladoresDeLaDivision(gente, divisiones, divisiones[0]).map((g) => g.id), ["a", "d"]);
+  assert.equal(instaladoresDeLaDivision(gente, divisiones, null).length, 4);
+  assert.equal(nombreInstalador({ nombre: "Ana Pérez", apodo: "Anita" }), "Ana Pérez");
+});
+
+test("GanttInstalacion — muestra nombre y apellido y no usa a los de otra división", async () => {
+  global.fetch = async (url, opts) => {
+    if (`${url} ${opts?.body || ""}`.includes("empleados")) return Response.json({ data: [
+      { id: "a", nombre: "Ana Pérez", apodo: "Anita", division: "Muebles", diagrama: LV },
+      { id: "b", nombre: "Beto Ruiz", apodo: "Beto", division: "Muebles", diagrama: LV },
+      { id: "c", nombre: "Carla Sosa", division: "Aluminio", diagrama: LV },
+    ] });
+    return Response.json({ data: [] });
+  };
+  const proyectos = [{ id: 1, ot: "7961", cliente: "Riofrío", obra: "Maipú", division: "Muebles", total_modulos: 6, fecha_objetivo: "2099-01-10" }];
+  const { hoyArg } = await import("../app/lib/dates.js");
+  const fin = new Date(Date.parse(`${hoyArg()}T00:00:00Z`) + 3 * 86400000).toISOString().slice(0, 10);
+  const vivo = { renglones: [{ ot: "7961", fin, procesos: [{ completo: false }] }], cfgValor: { division_id: "muebles", instalacion: { gab_por_dia: { global: 3 } } }, modulos: new Map() };
+  render(<GanttInstalacion vivo={vivo} proyectos={proyectos} divisiones={[{ id: "muebles", label: "Muebles" }, { id: "aluminio", label: "Aluminio" }]} />);
+  const obra = await screen.findByRole("button", { name: /OT 7961/ });
+  assert.match(obra.textContent, /Ana Pérez, Beto Ruiz/);
+  assert.doesNotMatch(obra.textContent, /Carla|Anita/);
 });
 
 test("seguidos — junta los medios días pegados en una barra", async () => {
