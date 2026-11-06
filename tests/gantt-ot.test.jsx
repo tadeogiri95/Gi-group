@@ -258,6 +258,19 @@ test("📅 Gantt — lo elegido ocupa todo el ancho, fila de fechas fija y panta
   assert.equal(screen.queryByRole("dialog"), null);
 });
 
+// 06/11: al contar los avisos mientras cargaba el plan se rompía toda la pantalla de Producción
+test("📅 Gantt — mientras carga el plan muestra Cargando sin romperse", () => {
+  const antes = global.fetch;
+  global.fetch = () => new Promise(() => {});
+  try {
+    const proyectos = [{ id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" }];
+    render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+    assert.ok(screen.getAllByRole("status", { name: "Cargando" }).length);
+  } finally {
+    global.fetch = antes;
+  }
+});
+
 // Tadeo, 05/11: en el celular, botones, colores y avisos tapaban la mitad de la pantalla completa
 test("📅 Gantt — en pantalla completa todo queda plegado en una fila y el Gantt usa el resto", () => {
   lunes26();

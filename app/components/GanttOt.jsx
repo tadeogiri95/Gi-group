@@ -223,7 +223,8 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
     [empleados, divisiones, cfgValor, planes, feriados]);
 
   const { renglones, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
-    if (!vivoCon) return { renglones: null };
+    // Mientras carga, listas vacías: los avisos se cuentan antes de saber si hay renglones
+    if (!vivoCon) return { renglones: null, tardes: [], corridas: [], sinMotivo: [] };
     const abiertas = abiertasPorOt;
     const procesos = vivoCon(manual);
     // En el orden del plan: la que arranca primero arriba
