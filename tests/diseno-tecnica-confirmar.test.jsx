@@ -251,6 +251,10 @@ test("Gantt 📐 — ⛶ Pantalla completa abre y ✕ Salir cierra; sin permiso 
   assert.equal(document.querySelector("[data-arrastrar]"), null);
   fireEvent.click(screen.getByRole("button", { name: "⛶ Pantalla completa" }));
   assert.ok(screen.getByRole("dialog", { name: "Gantt de Diseño y Técnica" }));
+  // En el celular los colores y la carga tapaban el Gantt: quedan en ☰ Opciones (05/11)
+  assert.equal(screen.queryByLabelText("Colores del Gantt de Diseño y Técnica"), null);
+  fireEvent.click(screen.getByRole("button", { name: "☰ Opciones" }));
+  assert.ok(screen.getByLabelText("Colores del Gantt de Diseño y Técnica"));
   fireEvent.click(screen.getByRole("button", { name: "✕ Salir" }));
   assert.equal(screen.queryByRole("dialog"), null);
   const ganttOt = readFileSync(new URL("../app/components/GanttOt.jsx", import.meta.url), "utf8");

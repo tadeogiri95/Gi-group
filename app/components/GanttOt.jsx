@@ -378,7 +378,11 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
   const esperanTecnica = (renglones || []).filter((r) => r.esperaTecnica);
   const tecnicaAbierta = espera ? [...espera].filter(([ot, e]) => enPlan.has(ot) && (e.excel || e.sinPlan)).map(([ot, e]) => ({ ot, ...e, proyecto: abiertasPorOt.get(ot) })) : [];
   const hayAvisos = porTerminar.length > 0 || enPausa.length > 0 || tardes.length > 0 || corridas.length > 0 || sinMotivo.length > 0 || esperanTecnica.length > 0 || tecnicaAbierta.length > 0;
-  const cerrarGrande = () => { setGrande(false); salirPantallaCompleta(); };
+  const cantAvisos = porTerminar.length + enPausa.length + tardes.length + corridas.length + sinMotivo.length + esperanTecnica.length + tecnicaAbierta.length;
+  // En pantalla completa en el celular, botones, colores y avisos ocupaban media pantalla (Tadeo, 05/11):
+  // quedan plegados detrás de "☰ Opciones" y "🔔" para que el Gantt use toda la pantalla.
+  const [verOpciones, setVerOpciones] = useState(false);
+  const cerrarGrande = () => { setGrande(false); setVerOpciones(false); setVerAvisos(false); salirPantallaCompleta(); };
   useEscape(cerrarGrande, grande);
   useEffect(() => () => { salirPantallaCompleta(); }, []);
 
@@ -564,8 +568,39 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
     .map(([division, filas]) => [division, recortado ? filas.filter((r) => r.procesos.some((q) => enVentana(q, ventana))) : filas])
     .filter(([, filas]) => filas.length);
 
+  const verControles = !grande || verOpciones;
+  // En pantalla completa, botones más angostos para que entren en una sola fila del celular
+  const boton = grande ? "min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer" : "g-btn g-btn-secondary";
+  const navegacion = (
+    <div className={`flex items-center gap-2 mb-2 ${grande ? "shrink-0 flex-wrap" : ""}`} role="group" aria-label="Moverse en el Gantt">
+        <button type="button" onClick={() => navegar(-1)} aria-label={recortado ? "Ver antes" : "Una semana para atrás"} className={`${boton} min-w-11`}>◀</button>
+        <button type="button" onClick={irAHoy} className={boton}>Hoy</button>
+        <button type="button" onClick={() => navegar(1)} aria-label={recortado ? "Ver después" : "Una semana para adelante"} className={`${boton} min-w-11`}>▶</button>
+        {!grande && !recortado && scroll.max > 0 && (
+          <input type="range" min={0} max={Math.round(scroll.max)} value={Math.round(scroll.x)} onChange={(e) => desplazar(Number(e.target.value))}
+            aria-label="Desplazar el Gantt hacia atrás o adelante" className="flex-1 min-w-0 accent-gypi-amber" />
+        )}
+        {!grande && recortado && <span className="text-[14px] text-gypi-dim">{corrimiento === 0 ? "Desde hoy" : `Del ${fechaCorta(ventana.desde)} al ${fechaCorta(sumarDias(ventana.hasta, -1))}`}</span>}
+      {grande && (
+        <>
+          <button type="button" onClick={() => setVerOpciones((v) => !v)} aria-expanded={verOpciones} className={boton}>
+            {verOpciones ? "▾ Opciones" : "☰ Opciones"}
+          </button>
+          {hayAvisos && (
+            <button type="button" onClick={() => setVerAvisos((v) => !v)} aria-expanded={verAvisos} aria-label={`🔔 ${cantAvisos} avisos`}
+              className={`${boton} ${tardes.length || porTerminar.length ? "text-gypi-red" : ""}`}>🔔 {cantAvisos}</button>
+          )}
+          <button type="button" onClick={cerrarGrande} className={boton}>✕ Salir</button>
+        </>
+      )}
+    </div>
+  );
+
   return (
-    <div className={grande ? "fixed inset-0 z-[300] bg-gypi-bg p-3 flex flex-col" : ""} role={grande ? "dialog" : undefined} aria-label={grande ? "Gantt de OT en pantalla completa" : undefined}>
+    <div className={grande ? "fixed inset-0 z-[300] bg-gypi-bg p-2 flex flex-col" : ""} role={grande ? "dialog" : undefined} aria-label={grande ? "Gantt de OT en pantalla completa" : undefined}>
+      {grande && navegacion}
+      <div className={grande ? "shrink-0 max-h-[50vh] overflow-auto" : ""}>
+      {verControles && (
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <div className="flex gap-1.5" role="group" aria-label="Forma del Gantt">
           <Chip active={forma === "procesos"} onClick={() => cambiarForma("procesos")}>Procesos por OT</Chip>
@@ -581,11 +616,15 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
           className="ml-auto min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer disabled:opacity-60">
           {refrescando ? "Refrescando…" : "🔄 Refrescar"}
         </button>
-        <button type="button" onClick={grande ? cerrarGrande : () => { setGrande(true); pedirPantallaCompleta(); }}
-          className="min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer">
-          {grande ? "✕ Salir" : "⛶ Pantalla completa"}
-        </button>
+        {!grande && (
+          <button type="button" onClick={() => { setGrande(true); pedirPantallaCompleta(); }}
+            className="min-h-11 px-3 rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[14px] font-bold cursor-pointer">
+            ⛶ Pantalla completa
+          </button>
+        )}
       </div>
+      )}
+      {verControles && (
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[15px] text-gypi-text mb-2" aria-label="Colores del Gantt">
         {ETAPAS_PLAN.map((e) => (
           <span key={e.id} className="flex items-center gap-1.5"><span aria-hidden="true" className={`inline-block w-4 h-4 rounded-sm ${MUESTRA[e.id]}`} />{e.nombre}</span>
@@ -595,7 +634,8 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-4 h-4 rounded-sm bg-gypi-red" />🔁 Retrabajo</span>
         <span className="flex items-center gap-1.5"><span aria-hidden="true" className="inline-block w-5 border-t-4 border-dotted border-gypi-dim" />Espera su turno</span>
       </div>
-      {hayAvisos && (
+      )}
+      {hayAvisos && (!grande || verAvisos) && (
         <section aria-label="Avisos del Gantt" className="mb-2 rounded-xl border border-gypi-border bg-gypi-surface px-3 shrink-0">
           {/* Los avisos tapaban el Gantt (Tadeo, 05/11): una sola barra que arranca siempre minimizada */}
           <button type="button" onClick={() => setVerAvisos((v) => !v)} aria-expanded={verAvisos}
@@ -611,7 +651,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
             <span className="ml-auto text-[14px] text-gypi-dim font-normal">{verAvisos ? "▾ Minimizar" : "▸ Ver"}</span>
           </button>
           {verAvisos && (
-            <div className={`overflow-auto pb-3 flex flex-col gap-2 ${grande ? "max-h-[35vh]" : "max-h-[45vh]"}`}>
+            <div className={`pb-3 flex flex-col gap-2 ${grande ? "" : "overflow-auto max-h-[45vh]"}`}>
               {porTerminar.length > 0 && (
               <section aria-label="Procesos por terminar" className="rounded-xl border-2 border-gypi-amber bg-gypi-amber/10 p-3">
                 <div className="text-[15px] font-bold text-gypi-text mb-1">⏰ Ya tenían que terminar · {porTerminar.length}</div>
@@ -713,7 +753,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
             <button type="button" onClick={deshacer} disabled={confirmando} className="g-btn g-btn-secondary">↩ Deshacer</button>
           </div>
         </div>
-      ) : (
+      ) : verControles && (
         <div className="text-[14px] text-gypi-dim mb-2">
           {forma === "procesos"
             ? "Para cambiar el orden, arrastrá una OT desde ⠿ o usá ▲▼ (todos los procesos quedan en ese orden): antes de confirmar ves cómo queda."
@@ -721,16 +761,8 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
         </div>
       ))}
       {aviso && <div role="status" className="text-[14px] font-bold text-gypi-text mb-2">{aviso}</div>}
-      <div className="flex items-center gap-2 mb-2" role="group" aria-label="Moverse en el Gantt">
-        <button type="button" onClick={() => navegar(-1)} aria-label={recortado ? "Ver antes" : "Una semana para atrás"} className="g-btn g-btn-secondary min-w-11">◀</button>
-        <button type="button" onClick={irAHoy} className="g-btn g-btn-secondary">Hoy</button>
-        <button type="button" onClick={() => navegar(1)} aria-label={recortado ? "Ver después" : "Una semana para adelante"} className="g-btn g-btn-secondary min-w-11">▶</button>
-        {!recortado && scroll.max > 0 && (
-          <input type="range" min={0} max={Math.round(scroll.max)} value={Math.round(scroll.x)} onChange={(e) => desplazar(Number(e.target.value))}
-            aria-label="Desplazar el Gantt hacia atrás o adelante" className="flex-1 min-w-0 accent-gypi-amber" />
-        )}
-        {recortado && <span className="text-[14px] text-gypi-dim">{corrimiento === 0 ? "Desde hoy" : `Del ${fechaCorta(ventana.desde)} al ${fechaCorta(sumarDias(ventana.hasta, -1))}`}</span>}
       </div>
+      {!grande && navegacion}
       {/* Con scroll propio para que la fila de las fechas quede fija arriba al bajar */}
       <div ref={medir} onScroll={leerScroll} className={`overflow-auto rounded-xl border border-gypi-border ${grande ? "flex-1 min-h-0" : "max-h-[75vh]"}`}>
         <div className="min-w-max">
