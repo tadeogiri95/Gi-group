@@ -15,8 +15,11 @@
 //   - El QR para el cliente (04/11): el link .../ot/<código> trae la OT
 //     adentro (la firma la controla el servidor; acá solo se lee la OT).
 //   - Cualquiera de esos metido en un link de Gypi (?qr=, app/lib/linkQr.js).
+//   - El código de barras de la pieza (06/11): "M7819-GB2P-11" (OT-Módulo-
+//     Pieza, app/lib/codigoBarras.js). Con sub-OT trae otras lecturas posibles.
 // Un suelto se carga entero con un escaneo (una lectura por renglón).
 import { textoDeQr } from "./linkQr";
+import { leerBarrasPieza } from "./codigoBarras";
 
 const OT_VALIDA = /^[\w.-]{1,40}$/;
 
@@ -67,6 +70,14 @@ export function leerQr(texto) {
   m = s.match(/^OT\s+(\S+)$/i);
   if (m && OT_VALIDA.test(m[1])) return { ot: m[1] };
 
+  // Código de barras de la pieza: "M7819-GB2P-11" (antes que la OT sola,
+  // porque "M7819-GB2P-11" también parece el código de una OT)
+  const barras = leerBarrasPieza(s);
+  if (barras) {
+    const [primera, ...otras] = barras.map((b) => ({ ot: b.ot, piezaNombre: b.nombre }));
+    return otras.length ? { ...primera, otras } : primera;
+  }
+
   // QR de la OT en la planilla: el número solo
   return OT_VALIDA.test(s) ? { ot: s } : null;
 }
@@ -89,9 +100,12 @@ function otDeLinkCliente(ruta) {
 export function otDelQr(texto, ots = []) {
   const lectura = leerQr(texto);
   if (!lectura) return null;
-  const buscada = normalizarOt(lectura.ot);
-  const p = ots.find((x) => normalizarOt(x.ot) === buscada);
-  return p ? String(p.ot) : null;
+  for (const l of [lectura, ...(lectura.otras || [])]) {
+    const buscada = normalizarOt(l.ot);
+    const p = ots.find((x) => normalizarOt(x.ot) === buscada);
+    if (p) return String(p.ot);
+  }
+  return null;
 }
 
 /** El suelto que se llama así (por código, o por descripción si no tiene); primero el que falta cargar. */
@@ -111,8 +125,10 @@ function sueltoLlamado(nombre, sueltos) {
  *   | { error: string } | { tipo: "ot" }}
  */
 export function cotejarQr(texto, { ot, bultos = [], sueltos = [], piezas = [] }) {
-  const lectura = leerQr(texto);
-  if (!lectura) return { error: "Ese código no es de Gypi ni de la planilla." };
+  const leida = leerQr(texto);
+  if (!leida) return { error: "Ese código no es de Gypi ni de la planilla." };
+  // Con sub-OT, el código de barras puede leerse de dos maneras: vale la de esta OT
+  const lectura = [leida, ...(leida.otras || [])].find((l) => normalizarOt(l.ot) === normalizarOt(ot)) || leida;
   if (normalizarOt(lectura.ot) !== normalizarOt(ot)) return { error: `Ese código es de la OT ${lectura.ot}, no de esta.` };
 
   if (lectura.bulto) {

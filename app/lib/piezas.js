@@ -6,6 +6,7 @@
 import { filasTsv } from "./sueltos";
 import { svgQR } from "./tarjetasQR";
 import { textoDeQr, linkQr } from "./linkQr";
+import { leerBarrasPieza, svgBarras, textoBarrasPieza } from "./codigoBarras";
 import { textoMotivoPausa } from "./pausaOt";
 import { detalleOt, otCompleta, textoOt } from "./nombreOt";
 
@@ -286,6 +287,8 @@ export function textoQrPiezaRenglon(ot, nombre) {
  *   { ot, id }                    etiqueta vieja de Gypi (N° de cada unidad)
  *   { ot, nombre, unidad, de }    "OT X - PIEZA - nombre - 2 DE 4" (una unidad)
  *   { ot, nombre }                "OT X - PIEZA - nombre" (el renglón: suma de a una)
+ *   { ot, nombre, otras? }        código de barras "M7819-GB2P-11" (el renglón;
+ *                                 otras = otras lecturas posibles, con sub-OT)
  * o null si no es de una pieza. Un nombre que es solo un número ("11") llega
  * como { id }: el servidor, si no hay pieza con ese N° en la OT, lo busca por nombre.
  */
@@ -303,7 +306,12 @@ export function leerQrPieza(texto) {
     return { ot: m[1], nombre: limpio(m[2]), unidad, de };
   }
   m = s.match(/^OT\s+([\w.-]{1,40})\s+-\s+PIEZA\s+-\s+(\S.{0,119})$/i);
-  return m ? { ot: m[1], nombre: limpio(m[2]) } : null;
+  if (m) return { ot: m[1], nombre: limpio(m[2]) };
+  // Código de barras de la máquina de etiquetas (06/11): "M7819-GB2P-11"
+  const barras = leerBarrasPieza(s);
+  if (!barras) return null;
+  const [primera, ...otras] = barras.map((b) => ({ ot: b.ot, nombre: limpio(b.nombre) }));
+  return otras.length ? { ...primera, otras } : primera;
 }
 
 /**
@@ -340,8 +348,10 @@ const qrConLink = (texto, link) => (link?.origen && link?.slug ? linkQr(link.ori
 
 /**
  * Página con una etiqueta por pieza, del tamaño del rollo de la impresora de
- * etiquetas (una por página): OT, pieza, "2 de 4", medidas, material, módulo,
- * las etapas que le tocan y el QR.
+ * etiquetas (una por página): OT, pieza, cantidad, medidas, material, módulo,
+ * las etapas que le tocan y, abajo, el código de barras "M7819-GB2P-11"
+ * (06/11, Tadeo: el mismo que imprime la máquina de etiquetas). Si el nombre
+ * tiene letras que no entran en un código de barras (ñ, tildes), va el QR.
  * @param {{ empresa?: string, ot: string, proyecto?: object | null, piezas: object[], tamano: { ancho: number, alto: number }, nombres?: Record<number, string> }} datos
  */
 export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, piezas, tamano, nombres = {}, link = null }) {
@@ -349,24 +359,35 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
   const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
   const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
+  const barrasMm = Math.max(7, Math.min(14, tamano.alto * 0.3));
   const items = [];
   for (const p of piezas) {
-    // El mismo QR para todas las unidades del renglón (cada escaneo suma una)
-    const qr = await svgQR(qrConLink(textoQrPiezaRenglon(ot, p.nombre), link));
+    // El mismo código para todas las unidades del renglón (cada escaneo suma una)
+    const codigo = textoBarrasPieza(ot, p.nombre);
+    const barras = svgBarras(codigo);
     const ruta = (p.etapas || []).map((c) => nombres[c] || `Etapa ${c}`).join(" › ");
-    items.push(`
-  <div class="etiqueta">
+    const texto = `
     <div class="texto">
       <div class="ot">${empresa ? `${esc(empresa)} · ` : ""}OT ${esc(ot)}</div>
       ${deLaOt ? `<div class="deot" data-de-la-ot>${esc(deLaOt)}</div>` : ""}
       <div class="pieza">${esc(p.nombre)}</div>
       <div class="unidad">${p.de > 1 ? `Cant. ${p.de}` : "Cant. 1"}${medidas(p) ? ` · ${esc(medidas(p))}` : ""}</div>
       ${p.material ? `<div class="chico">${esc(p.material)}</div>` : ""}
-      ${p.modulo ? `<div class="chico">Módulo ${esc(p.modulo)}</div>` : ""}
+      ${p.modulo ? `<div class="chico mod">Módulo ${esc(p.modulo)}</div>` : ""}
       ${ruta ? `<div class="ruta">${esc(ruta)} · N° ${p.id}</div>` : `<div class="ruta">N° ${p.id}</div>`}
-    </div>
+    </div>`;
+    if (barras) {
+      items.push(`
+  <div class="etiqueta con-barras">${texto}
+    <div class="barras" data-barras="${esc(codigo)}">${barras}<div class="codigo">${esc(codigo)}</div></div>
+  </div>`);
+    } else {
+      const qr = await svgQR(qrConLink(textoQrPiezaRenglon(ot, p.nombre), link));
+      items.push(`
+  <div class="etiqueta">${texto}
     <div class="qr">${qr}</div>
   </div>`);
+    }
   }
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Piezas OT ${esc(ot)}</title>
 <style>
@@ -374,7 +395,8 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; color: #000; }
   .etiqueta { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 2.5mm; display: flex; gap: 2.5mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page; }
-  .texto { flex: 1; min-width: 0; }
+  .etiqueta.con-barras { flex-direction: column; align-items: stretch; gap: 1mm; padding: 2mm 2.5mm; }
+  .texto { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
   .ot { font-size: ${pt(8)}; font-weight: 700; text-transform: uppercase; }
   .deot { font-size: ${pt(6.5)}; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .pieza { font-size: ${pt(15)}; font-weight: 800; line-height: 1.1; word-break: break-word; }
@@ -382,6 +404,14 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
   .chico { font-size: ${pt(7)}; margin-top: .3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ruta { font-size: ${pt(7)}; margin-top: .8mm; border-top: .3mm solid #000; padding-top: .5mm; }
   .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
+  .con-barras .texto { display: flex; flex-direction: column; }
+  .con-barras .texto > * { flex: none; }
+  .con-barras .mod { display: none; } /* el módulo ya está en el nombre y en el código */
+  .con-barras .ruta { order: -1; border-top: 0; padding-top: 0; margin-top: 0; }
+  .con-barras .ot, .con-barras .deot { order: -2; }
+  .barras { flex: none; border-top: .3mm solid #000; padding-top: .8mm; }
+  .barras svg { width: 100%; height: ${barrasMm}mm; display: block; }
+  .codigo { font-family: ui-monospace, monospace; font-size: ${pt(8)}; font-weight: 700; text-align: center; letter-spacing: .05em; }
 </style></head><body>${items.join("")}</body></html>`;
 }
 

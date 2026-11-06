@@ -72,8 +72,9 @@ test("QrAbierto — OT: abre la carga; un QR que no es de Gypi lo dice", () => {
 
 test("etiquetas de Gypi — con link, el QR lleva el link de la empresa", async () => {
   const tamano = { ancho: 50, alto: 30 };
-  const sinLink = await htmlEtiquetasPiezas({ ot: "M-7961", piezas: [{ id: 5, nombre: "L", unidad: 1, de: 1 }], tamano });
-  const conLink = await htmlEtiquetasPiezas({ ot: "M-7961", piezas: [{ id: 5, nombre: "L", unidad: 1, de: 1 }], tamano, link: { origen: "https://gypi.app", slug: "gi" } });
+  // Las piezas llevan código de barras (06/11); el QR queda para nombres con ñ o tildes
+  const sinLink = await htmlEtiquetasPiezas({ ot: "M-7961", piezas: [{ id: 5, nombre: "Puño", unidad: 1, de: 1 }], tamano });
+  const conLink = await htmlEtiquetasPiezas({ ot: "M-7961", piezas: [{ id: 5, nombre: "Puño", unidad: 1, de: 1 }], tamano, link: { origen: "https://gypi.app", slug: "gi" } });
   assert.notEqual(sinLink, conLink, "el QR cambia con el link");
   const mod = await htmlEtiquetasModulos({ ot: "M-7961", modulos: [{ modulo: "M1", piezas: 2 }], tamano, link: { origen: "https://gypi.app", slug: "" } });
   const modSin = await htmlEtiquetasModulos({ ot: "M-7961", modulos: [{ modulo: "M1", piezas: 2 }], tamano });
