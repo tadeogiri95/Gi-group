@@ -21,7 +21,7 @@ export function queEsQr(texto) {
   const s = textoDeQr(texto);
   const pieza = leerQrPieza(s);
   if (pieza) {
-    const titulo = pieza.nombre ? `Pieza ${pieza.nombre} (${pieza.unidad} de ${pieza.de})` : `Pieza N° ${pieza.id}`;
+    const titulo = !pieza.nombre ? `Pieza N° ${pieza.id}` : pieza.unidad ? `Pieza ${pieza.nombre} (${pieza.unidad} de ${pieza.de})` : `Pieza ${pieza.nombre}`;
     return { tipo: "pieza", ot: pieza.ot, titulo };
   }
   const modulo = leerQrModulo(s);

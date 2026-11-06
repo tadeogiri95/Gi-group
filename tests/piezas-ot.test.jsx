@@ -155,7 +155,7 @@ test("etiquetas — una página por pieza con OT, nombre, cantidad, medidas, mó
       { id: 11, nombre: "<script>", unidad: 2, de: 2, etapas: [1] },
     ],
   });
-  assert.equal((html.match(/class="etiqueta"/g) || []).length, 2);
+  assert.equal((html.match(/class="etiqueta con-barras"/g) || []).length, 2, "con código de barras (06/11)");
   assert.match(html, /@page \{ size: 100mm 50mm/);
   assert.match(html, /GI · OT M-7495/);
   assert.match(html, /Cant\. 2 · 402 × 342/);

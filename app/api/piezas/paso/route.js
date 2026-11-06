@@ -193,7 +193,12 @@ async function unidadesDelRenglon(sesion, otQr, nombre, opts) {
 async function escanearRenglon(sesion, datos, lectura, renglon = null) {
   const e = sesion.empresa_id;
   const opts = { sesion };
-  const { ot, piezas } = renglon || (await unidadesDelRenglon(sesion, lectura.ot, lectura.nombre, opts));
+  let { ot, piezas } = renglon || (await unidadesDelRenglon(sesion, lectura.ot, lectura.nombre, opts));
+  // Código de barras con sub-OT ("M7498-36-GB2P-11"): la otra lectura posible
+  for (const otra of piezas.length ? [] : lectura.otras || []) {
+    const r = await unidadesDelRenglon(sesion, otra.ot, otra.nombre, opts);
+    if (r.piezas.length) { ({ ot, piezas } = r); break; }
+  }
   if (!piezas.length) {
     return NextResponse.json({ error: `La OT ${ot} no tiene la pieza ${lectura.nombre}. Revisá que la planilla esté pegada en 🧩 Piezas y que la OT y el nombre estén escritos igual.` }, { status: 404 });
   }

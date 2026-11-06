@@ -3,9 +3,13 @@
 // Chrome en Android). Lo usan el kiosco (tarjeta QR del operario) y el inicio
 // de tareas (código de la OT, D8). Si el navegador no lo soporta no muestra
 // nada (o el aviso), y quien lo usa ofrece escribir el dato a mano.
+// Por defecto lee QR y código de barras (06/11: las etiquetas de piezas de la
+// máquina vienen con código de barras, "M7819-GB2P-11").
 // Cada código nuevo suena con un "bip" (y vibra).
 import { useState, useEffect, useRef } from "react";
 import { bip, debeSonar } from "../lib/bip";
+
+export const FORMATOS = ["qr_code", "code_128", "code_39"];
 
 export function escanerDisponible() {
   return typeof window !== "undefined" && "BarcodeDetector" in window && !!navigator.mediaDevices?.getUserMedia;
@@ -15,7 +19,7 @@ export function escanerDisponible() {
  * @param {{ onCodigo: (texto: string) => void, formatos?: string[], camara?: "user"|"environment", ayuda?: string }} props
  *   onCodigo recibe el texto de cada código leído; quien lo usa decide si sirve.
  */
-export default function EscanerCodigo({ onCodigo, formatos = ["qr_code"], camara = "environment", ayuda }) {
+export default function EscanerCodigo({ onCodigo, formatos = FORMATOS, camara = "environment", ayuda }) {
   const videoRef = useRef(null);
   const onCodigoRef = useRef(onCodigo);
   const [error, setError] = useState("");
