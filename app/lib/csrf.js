@@ -17,6 +17,7 @@
 //     pasa por acá: lo usa el navegador con la sesión.
 //   - PATCH /api/proyectos/semanas-planilla (script del Plan de trabajo, igual).
 //   - PATCH /api/proyectos/pdfs (script de la carpeta de PDF de las OT, igual).
+//   - PATCH /api/piezas/planillas (script de la carpeta de planillas de despiece, igual).
 // Login, recupero, alta, superadmin, etc. ya NO están exentos: el navegador
 // siempre manda el header Origin en un POST, así que pasan por la capa 2.
 
@@ -30,7 +31,7 @@ const EXEMPT_PATHS = [
 ];
 
 // Ruta y método exentos de a uno (el resto de los métodos de la ruta, no)
-const EXEMPT_METHOD_PATHS = [["PATCH", "/api/stock/planilla"], ["PATCH", "/api/proyectos/semanas-planilla"], ["PATCH", "/api/proyectos/pdfs"]];
+const EXEMPT_METHOD_PATHS = [["PATCH", "/api/stock/planilla"], ["PATCH", "/api/proyectos/semanas-planilla"], ["PATCH", "/api/proyectos/pdfs"], ["PATCH", "/api/piezas/planillas"]];
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
