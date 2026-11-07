@@ -4,7 +4,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { armarDestinos, modulosACorregir, sueltosDeDestinos, textoDestinos, ARMADO, SUELTAS } from "../app/lib/destinosPiezas.js";
+import { armarDestinos, modulosACorregir, sueltosDeDestinos, textoDestinos, planBultos, moduloDeBulto, ARMADO, SUELTAS } from "../app/lib/destinosPiezas.js";
 import { componentesPlanilla, esPlaca } from "../app/lib/sueltosPlanilla.js";
 import { piezasBody } from "../app/lib/schemas.ts";
 import { autorizar } from "../app/lib/dataPolicy.js";
@@ -112,6 +112,23 @@ test("NECESIDADES — lista completa con SUELTO, sin placas ni cantos, repetidos
   assert.equal(esPlaca("MANIJA"), false);
 });
 
+test("planBultos — un bulto por módulo armado, sin huecos, sin tocar los cargados ni los armados a mano", () => {
+  assert.deepEqual(planBultos([], ["GB2P", "M1"]), { crear: [{ numero: 1, contenido: "Módulo GB2P" }, { numero: 2, contenido: "Módulo M1" }], borrar: [], renumerar: [] });
+  const bultos = [
+    { id: 1, numero: 1, contenido: "Módulo AJ" },               // AJ pasó a "Van sueltas": se borra
+    { id: 2, numero: 2, contenido: "Módulo GB2P" },
+    { id: 3, numero: 3, contenido: "Módulo VIEJO", cargado: true }, // ya cargado: queda
+  ];
+  assert.deepEqual(planBultos(bultos, ["GB2P", "M1"]), {
+    crear: [{ numero: 3, contenido: "Módulo M1" }],
+    borrar: [1],
+    renumerar: [{ id: 2, numero: 1 }, { id: 3, numero: 2 }],
+  });
+  assert.equal(planBultos([{ id: 9, numero: 1, contenido: "caja de herrajes" }], ["M1"]), null);
+  assert.equal(moduloDeBulto("Módulo M.izq"), "M.izq");
+  assert.equal(moduloDeBulto("M1"), null);
+});
+
 test("esquema y permisos", () => {
   assert.equal(piezasBody.safeParse({ accion: "destino", ot: "M-7961", cambios: [{ tipo: "modulo", clave: "AJ", suelto: true }] }).success, true);
   assert.equal(piezasBody.safeParse({ accion: "destino", ot: "M-7961", cambios: [] }).success, false);
@@ -127,6 +144,7 @@ test("POST destino — valida contra las piezas, guarda, mueve la pieza al módu
   const piezas = PIEZAS.map((p, i) => ({ ...p, id: i + 1 }));
   const destinos = [];
   const escrito = [];
+  const bultos = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
@@ -149,6 +167,9 @@ test("POST destino — valida contra las piezas, guarda, mueve la pieza al módu
     } },
     { match: (u, o) => u.includes("/rest/v1/sueltos_ot") && (!o.method || o.method === "GET"), respond: () => ({ body: [] }) },
     { match: (u, o) => u.includes("/rest/v1/sueltos_ot") && o.method === "POST", respond: (u, o) => ({ status: 201, body: JSON.parse(o.body).map((f, i) => ({ ...f, id: 50 + i })) }) },
+    { match: (u) => u.includes("/rest/v1/cargas_ot?"), respond: () => ({ body: [] }) },
+    { match: (u, o) => u.includes("/rest/v1/bultos_ot") && (!o.method || o.method === "GET"), respond: () => ({ body: bultos }) },
+    { match: (u, o) => u.includes("/rest/v1/bultos_ot") && o.method === "POST", respond: (u, o) => { bultos.push(...JSON.parse(o.body)); return { status: 201, body: [] }; } },
   ]);
   const token = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
   const post = async (cambios, rol = "gerencial") => api.POST(new Request("http://localhost/api/piezas", {
@@ -175,4 +196,6 @@ test("POST destino — valida contra las piezas, guarda, mueve la pieza al módu
     ["modulo", "AJ", true, null, EMP], ["pieza", "ZOC1", null, "M1", EMP], ["pieza", "TAPA", true, null, EMP],
   ]);
   assert.deepEqual(escrito.map((x) => [decodeURIComponent(x.url.split("nombre=eq.")[1]), x.body.modulo]), [["ZOC1", "M1"]]);
+  // Un bulto por módulo armado (AJ va suelto)
+  assert.deepEqual(bultos.map((b) => [b.numero, b.contenido]), [[1, "Módulo GB2P"], [2, "Módulo M1"]]);
 });

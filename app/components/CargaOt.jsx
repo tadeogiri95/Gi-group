@@ -7,13 +7,14 @@
 // "📷 Escanear carga": cada QR de bulto o suelto que se lee se tilda solo y
 // la lista muestra en verde lo cargado y en amarillo lo que falta.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiFetch, sb } from "../lib/supabase";
+import { apiFetch, sb, sbGetAll } from "../lib/supabase";
+import { armarDestinos, moduloDeBulto } from "../lib/destinosPiezas";
 import { estadoCarga, imprimirRotulos, linkCarga, TAMANOS_ROTULO } from "../lib/carga";
 import { nombreSuelto } from "../lib/sueltos";
 import { normalizarChecklist } from "../lib/avance";
 import { fechaCorta } from "../lib/ot";
 import { fotoBase64, subirImagen } from "../lib/foto";
-import { bultosPegados, cotejarQr, leerQr } from "../lib/escaneoCarga";
+import { bultosPegados, cotejarQr, leerQr, textoBarrasBulto } from "../lib/escaneoCarga";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 import { useEscape } from "../hooks/useEscape";
 import { TituloOt } from "./NombreOt";
@@ -25,6 +26,15 @@ const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cur
 const FILA = "flex items-center gap-2 rounded-xl p-2.5 border";
 const filaCargada = (cargado) => `${FILA} ${cargado ? "bg-gypi-green/10 border-gypi-green/50" : "bg-yellow-400/10 border-yellow-500/60"}`;
 const REPETIDO_MS = 2500;
+
+/** Aviso amarillo (no bloquea): piezas sin módulo a las que nadie les eligió destino. */
+function AvisoSinDefinir({ nombres }) {
+  return (
+    <div role="status" className="text-[12px] text-gypi-amber-ink mb-2 p-2 rounded-lg border border-yellow-500/60 bg-yellow-400/10">
+      ⚠ {nombres.length === 1 ? "1 pieza no tiene" : `${nombres.length} piezas no tienen`} destino (ni módulo ni suelta): {nombres.slice(0, 6).join(", ")}{nombres.length > 6 ? "…" : ""}. Se define en 🧩 Piezas → 📍 Destinos.
+    </div>
+  );
+}
 
 /** Pitido corto (ok) o doble (error) para quien escanea sin mirar la pantalla. */
 function avisar(ok) {
@@ -85,18 +95,22 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
     if (!ot || !empresaId) return;
     const q = `empresa_id=eq.${empresaId}&ot=eq.${encodeURIComponent(ot)}`;
     try {
-      const [proyectos, bultos, sueltos, cargas] = await Promise.all([
+      const [proyectos, bultos, sueltos, cargas, piezas, destinos] = await Promise.all([
         sb.get(`proyectos?${q}&select=ot,cliente,proyecto,obra,descripcion,fecha_entrega,total_modulos&limit=1`),
         sb.get(`bultos_ot?${q}&order=numero.asc&select=*`),
         sb.get(`sueltos_ot?${q}&order=orden.asc,id.asc&select=id,tipo,codigo,descripcion,cantidad,carga`).catch(() => []),
         sb.get(`cargas_ot?${q}&select=*&limit=1`),
+        // Para avisar si quedan piezas sin destino (📍 Destinos, migración 163)
+        sbGetAll(`piezas_ot?${q}&select=nombre,modulo&order=id.asc`).then((r) => r.data || []).catch(() => []),
+        sbGetAll(`destinos_ot?${q}&select=tipo,clave,planilla_suelto,en_planilla,suelto,modulo&order=id.asc`).then((r) => r.data || []).catch(() => null),
       ]);
       const carga = cargas?.[0] || null;
-      setDatos({ proyecto: proyectos?.[0] || null, bultos: bultos || [], sueltos: sueltos || [], carga });
+      const sinDefinir = destinos && piezas.length ? armarDestinos(piezas, destinos).sinModulo.filter((p) => !p.destino).map((p) => p.nombre) : [];
+      setDatos({ proyecto: proyectos?.[0] || null, bultos: bultos || [], sueltos: sueltos || [], carga, sinDefinir, conPiezas: piezas.length > 0 });
       setFaltantes({ texto: carga?.faltantes || "", fecha: carga?.faltantes_fecha || "" });
       setAviso(null);
     } catch {
-      setDatos({ proyecto: null, bultos: [], sueltos: [], carga: null });
+      setDatos({ proyecto: null, bultos: [], sueltos: [], carga: null, sinDefinir: [], conPiezas: false });
       setAviso("No se pudo leer la carga (¿falta correr la migración 104?).");
     }
   }, [ot, empresaId]);
@@ -129,7 +143,8 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
     );
   }
 
-  const { proyecto, bultos, sueltos, carga } = datos;
+  const { proyecto, bultos, sueltos, carga, sinDefinir = [], conPiezas = false } = datos;
+  const deModulos = bultos.length > 0 && bultos.every((b) => moduloDeBulto(b.contenido));
   const lista = normalizarChecklist(checklist);
   const tildados = new Set(Array.isArray(carga?.checklist) ? carga.checklist : []);
   const estado = estadoCarga({ bultos, sueltos, carga, checklist: lista });
@@ -226,7 +241,8 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
       await imprimirRotulos({
         empresa: empresa?.nombre_corto || empresa?.nombre || "",
         proyecto: proyecto || { ot: otStr },
-        bultos: bultos.map((b) => ({ ...b, link: linkCarga(window.location.origin, empresa?.slug || "", otStr, { bulto: b.numero }) })),
+        // Código de barras: el del módulo, (OT)-(Módulo), o (OT)-BULTO3 si se armó a mano
+        bultos: bultos.map((b) => ({ ...b, barras: textoBarrasBulto(otStr, b), link: linkCarga(window.location.origin, empresa?.slug || "", otStr, { bulto: b.numero }) })),
         link: linkCarga(window.location.origin, empresa?.slug || "", otStr),
         tamano: t,
       });
@@ -299,7 +315,13 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
       )}
 
       <Seccion titulo="Bultos">
-        {bultos.length === 0 ? <div className="text-[13px] text-gypi-dim mb-2">Todavía no hay bultos. Agregá uno por cada paquete que va al camión.</div> : (
+        {sinDefinir.length > 0 && <AvisoSinDefinir nombres={sinDefinir} />}
+        {deModulos && <div className="text-xs text-gypi-dim mb-2">Cada módulo armado es un bulto. Se tilda escaneando el código de barras de su etiqueta de módulo.</div>}
+        {bultos.length === 0 ? (
+          <div className="text-[13px] text-gypi-dim mb-2">
+            {conPiezas ? "Los bultos salen solos de los módulos armados de la OT (📍 Destinos en 🧩 Piezas). También podés agregar uno a mano." : "Todavía no hay bultos. Agregá uno por cada paquete que va al camión."}
+          </div>
+        ) : (
           <ul aria-label="Lista de bultos" className="list-none p-0 m-0 mb-2 flex flex-col gap-1.5">
             {bultos.map((b) => (
               <li key={b.id} className={filaCargada(b.cargado)}>
@@ -396,6 +418,7 @@ export default function CargaOt({ ot, empresaId, empresa = null, usuario = null,
       </Seccion>
 
       <Seccion titulo="Firmas">
+        {!estado.firmada && sinDefinir.length > 0 && <AvisoSinDefinir nombres={sinDefinir} />}
         {!estado.firmada && !estado.puedeFirmar && (
           <div className="text-[12px] text-gypi-amber-ink mb-2">
             {estado.bultos ? `Para firmar: ${estado.pendientes.join(" · ")}. Si se sale igual, anotá el faltante con su fecha.` : "Para firmar, primero armá la lista de bultos."}

@@ -87,13 +87,13 @@ test("cotejarQr — la etiqueta de una pieza tilda el suelto que se llama igual"
   const r = cotejarQr("OT M-7495 - PIEZA - 50", datos);
   assert.equal(r.tipo, "suelto");
   assert.equal(r.item.id, 7, "sin el (2) de renglón repetido, y primero el que falta");
-  assert.match(cotejarQr("OT M-7495 - PIEZA - 51", datos).error, /escaneá el rótulo del bulto/);
+  assert.match(cotejarQr("OT M-7495 - PIEZA - 51", datos).error, /escaneá la etiqueta del módulo/);
   // QR de pieza armado en la planilla de Excel: se busca el suelto por el nombre
   assert.deepEqual(leerQr("OT M-7495 - PIEZA - EST-11 - 1 DE 2"), { ot: "M-7495", piezaNombre: "EST-11" });
   const r2 = cotejarQr("OT M-7495 - PIEZA - EST-11 - 1 DE 2", { ...datos, piezas: [] });
   assert.equal(r2.tipo, "suelto");
   assert.equal(r2.item.id, 7);
-  assert.match(cotejarQr("OT M-7495 - PIEZA - M.izq-11 - 1 DE 1", datos).error, /escaneá el rótulo del bulto/);
+  assert.match(cotejarQr("OT M-7495 - PIEZA - M.izq-11 - 1 DE 1", datos).error, /escaneá la etiqueta del módulo/);
   assert.deepEqual(leerQr("OT M-7495 - PIEZA - EST-11"), { ot: "M-7495", piezaNombre: "EST-11" }, "el QR sin '1 DE 2'");
   assert.equal(cotejarQr("OT M-7495 - PIEZA - EST-11", { ...datos, piezas: [] }).item.id, 7);
   assert.match(cotejarQr("OT M-7495 - PIEZA - 99", datos).error, /no está en la lista de piezas/);
@@ -224,4 +224,21 @@ test("elegir la OT — escaneando el QR de la planilla", async () => {
   render(<ElegirOtCarga empresaId={E} onElegir={(ot) => elegidas.push(ot)} onClose={() => {}} />);
   fireEvent.click(await screen.findByText("📷 Escanear el QR de la OT"));
   await waitFor(() => assert.deepEqual(elegidas, ["M-7495"]), { timeout: 3000 });
+});
+
+test("cotejarQr — código de barras del módulo tilda su bulto; (OT)-BULTO3 el bulto armado a mano", async () => {
+  const { textoBarrasBulto } = await import("../app/lib/escaneoCarga.js");
+  const bultos = [{ id: 1, numero: 1, contenido: "Módulo GB2P", cargado: false }, { id: 2, numero: 2, contenido: "Módulo M1", cargado: true }];
+  const r = cotejarQr("M7495-GB2P", { ot: "M-7495", bultos, sueltos: [] });
+  assert.equal(r.tipo, "bulto");
+  assert.equal(r.item.id, 1);
+  assert.equal(r.nombre, "Bulto 1 de 2 · Módulo GB2P");
+  assert.equal(cotejarQr("M7495-M1", { ot: "M-7495", bultos, sueltos: [] }).yaCargado, true);
+  // Una pieza suelta con el mismo nombre gana (es una pieza, no el módulo)
+  assert.equal(cotejarQr("M7495-GB2P", { ot: "M-7495", bultos, sueltos: [{ id: 9, codigo: "GB2P" }] }).tipo, "suelto");
+  const aMano = [{ id: 5, numero: 3, contenido: "caja de herrajes" }];
+  assert.equal(cotejarQr("M7495-BULTO3", { ot: "M-7495", bultos: aMano, sueltos: [] }).item.id, 5);
+  assert.match(cotejarQr("M7495-BULTO4", { ot: "M-7495", bultos: aMano, sueltos: [] }).error, /no tiene el bulto 4/);
+  assert.equal(textoBarrasBulto("M-7495", bultos[0]), "M7495-GB2P");
+  assert.equal(textoBarrasBulto("M-7495", aMano[0]), "M7495-BULTO3");
 });

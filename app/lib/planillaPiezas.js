@@ -27,8 +27,9 @@ export const CLAVE_PLANILLAS_PIEZAS = "planillas_piezas_script";
 export const POR_VUELTA = 8;
 // Sube cuando Gypi aprende a leer algo nuevo de la planilla: las OT leídas
 // con una versión anterior se vuelven a leer solas (2 = lista completa de
-// herrajes para 📍 Destinos, migración 163).
-export const VERSION_LECTURA = 2;
+// herrajes para 📍 Destinos, migración 163; 3 = un bulto por módulo armado
+// en 🚚 Carga).
+export const VERSION_LECTURA = 3;
 /** Más grande que esto no entra en un pedido a Gypi (base64 suma un tercio). */
 export const MAX_BYTES_EXCEL = 3 * 1024 * 1024;
 export const MAX_EXCELS = 3000;

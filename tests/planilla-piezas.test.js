@@ -151,7 +151,7 @@ test("cada Excel con su OT — sub-OT exacta y el más nuevo si hay dos", () => 
 
 test("qué Excel pedir — Técnica lista, no leídos o cambiados, sin los gigantes", () => {
   assert.deepEqual(excelsPendientes(lista, proyectos, {}).map((p) => p.ot), ["M-7408-230", "M-7961"]);
-  const cargas = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z", v: 2 } };
+  const cargas = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z", v: 3 } };
   assert.deepEqual(excelsPendientes(lista, proyectos, cargas).map((p) => p.ot), ["M-7961"]);
   // Leída con una versión anterior de Gypi (sin la lista de herrajes): se vuelve a leer
   const vieja = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z" } };
@@ -222,6 +222,8 @@ test("PATCH /api/piezas/planillas — lista, pide, lee el Excel y no borra pieza
     { match: (u, o) => u.includes("/destinos_ot") && (!o.method || o.method === "GET"), respond: () => ({ body: [] }) },
     { match: (u) => u.includes("/destinos_ot"), respond: () => ({ status: 201, body: [] }) },
     { match: (u, o) => u.includes("/sueltos_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: [] }) },
+    { match: (u) => u.includes("/cargas_ot?"), respond: () => ({ body: [] }) },
+    { match: (u) => u.includes("/bultos_ot"), respond: (u, o) => ({ status: o.method === "POST" ? 201 : 200, body: [] }) },
   ]);
   const req = (body, auth = `Bearer ${clave}`) => new Request("http://localhost/api/piezas/planillas", { method: "PATCH", headers: { Authorization: auth, "content-type": "application/json" }, body: JSON.stringify(body) });
 
@@ -381,6 +383,8 @@ test("PATCH planilla — con columnas SUELTO arma la hoja de sueltos de la OT", 
     { match: (u, o) => u.includes("/piezas_ot?on_conflict") && o.method === "POST", respond: (u, o) => { piezas.push(...JSON.parse(o.body).map((p, i) => ({ ...p, id: piezas.length + i + 1 }))); return { status: 201, body: "" }; } },
     { match: (u, o) => u.includes("/piezas_ot?") && o.method === "PATCH", respond: () => ({ body: [] }) },
     ...destinos.handlers,
+    { match: (u) => u.includes("/cargas_ot?"), respond: () => ({ body: [] }) },
+    { match: (u) => u.includes("/bultos_ot"), respond: (u, o) => ({ status: o.method === "POST" ? 201 : 200, body: [] }) },
     { match: (u, o) => u.includes("/sueltos_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: sueltos }) },
     { match: (u, o) => u.endsWith("/sueltos_ot") && o.method === "POST", respond: (u, o) => {
       const filas = JSON.parse(o.body).map((f, i) => ({ ...f, id: 100 + creados.length + i }));
@@ -406,6 +410,6 @@ test("PATCH planilla — con columnas SUELTO arma la hoja de sueltos de la OT", 
   assert.equal(herrajes.length, 3);
   assert.deepEqual(herrajes.filter((h) => h.planilla_suelto).map((h) => h.datos.tipo).sort(), ["Herraje", "Perfil"]);
   assert.deepEqual(destinos.filas.filter((d) => d.tipo === "pieza").map((d) => d.clave), ["M1.21", "CENEFA"]);
-  assert.equal(c.v, 2);
+  assert.equal(c.v, 3);
   assert.match(textoCarga(c), /4 sueltos para la carga/);
 });
