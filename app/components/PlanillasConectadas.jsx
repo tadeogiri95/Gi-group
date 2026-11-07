@@ -22,6 +22,7 @@ import { CLAVE_PLANILLA_PLAN } from "../lib/semanaEditable";
 import { AVISO_DEMORA_GOOGLE, CLAVE_STOCK_CSV } from "../lib/stock";
 import PlanillaMrpConexion, { ConexionScript } from "./PlanillaMrpConexion";
 import CarpetaPdfOt from "./CarpetaPdfOt";
+import CarpetaPiezasOt from "./CarpetaPiezasOt";
 
 const AMBER = "var(--color-empresa-primary, #F97316)";
 
@@ -187,6 +188,7 @@ export default function PlanillasConectadas({ empresa }) {
       </p>
       <PlanTrabajoLinks />
       <CarpetaPdfOt />
+      <CarpetaPiezasOt />
       {conStock && <PlanillaMrpLinks />}
     </div>
   );

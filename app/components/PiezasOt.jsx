@@ -15,6 +15,7 @@ import {
 } from "../lib/piezas";
 import { useEscape } from "../hooks/useEscape";
 import { TituloOt } from "./NombreOt";
+import { CLAVE_PLANILLAS_PIEZAS, textoCarga } from "../lib/planillaPiezas";
 
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
 const SIN_MODULO = "\u0000sin";
@@ -22,6 +23,12 @@ const SIN_MODULO = "\u0000sin";
 function leerTamano() {
   try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
 }
+
+/** ¿Alguien pegó la planilla a mano después de la carga automática? (2 minutos de margen) */
+const pegadasDespues = (piezas, auto) => {
+  const t = Date.parse(auto?.at || "");
+  return Number.isFinite(t) && (piezas || []).some((p) => Date.parse(p.cargada_at || "") > t + 120_000);
+};
 
 const piezasTexto = (n) => (n === 1 ? "1 pieza" : `${n.toLocaleString("es-AR")} piezas`);
 
@@ -40,6 +47,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
   const [modulo, setModulo] = useState("");
   const [confirmarVaciar, setConfirmarVaciar] = useState(false);
   const [listo, setListo] = useState(null);
+  const [auto, setAuto] = useState(null);
 
   const ot = String(proyecto?.ot ?? "");
   const cargar = useCallback(async () => {
@@ -66,6 +74,14 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
   }, [ot, empresaId]);
 
   useEffect(() => { cargar(); }, [cargar]); // eslint-disable-line react-hooks/set-state-in-effect
+
+  // Si las piezas llegaron solas desde la carpeta de planillas (solo gestión ve config_sistema)
+  useEffect(() => {
+    if (!esGestion || !ot) return;
+    sbGetAll(`config_sistema?clave=eq.${CLAVE_PLANILLAS_PIEZAS}&select=valor&order=clave.asc`)
+      .then((r) => setAuto(r.data?.[0]?.valor?.cargas?.[ot] || null))
+      .catch(() => setAuto(null));
+  }, [esGestion, ot]);
 
   const enviar = async (body) => {
     setGuardando(true);
@@ -171,6 +187,12 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
         </div>
 
         <div className="text-[12px] text-gypi-dim mb-3">Cada pieza de la planilla técnica lleva su etiqueta con QR. En cada etapa se escanea para saber por dónde pasó.</div>
+        {auto && !pegadasDespues(piezas, auto) && (
+          <div className={`text-[12px] mb-3 ${auto.error || auto.sin_codigo_total || auto.no_borradas ? "text-gypi-red" : "text-gypi-dim"}`}>
+            🔄 Cargadas solas desde la planilla <b>{auto.nombre}</b>{auto.at ? ` el ${new Date(auto.at).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}` : ""}: {textoCarga(auto)}.
+            {auto.sin_codigo?.length > 0 && ` Sin código: ${auto.sin_codigo.join(", ")}.`}
+          </div>
+        )}
         {aviso && <div role="alert" className="text-[12px] text-gypi-red mb-2.5">{aviso}</div>}
         {error && <div role="alert" className="text-[12px] text-gypi-red mb-2.5">{error}</div>}
         {listo && <div role="status" className="text-[12px] text-gypi-green mb-2.5">{listo}</div>}

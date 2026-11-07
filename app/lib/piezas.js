@@ -75,12 +75,21 @@ function leerMedida(texto) {
   return n > 0 && n < 100000 ? n : null;
 }
 
-/** El módulo de una pieza: lo que va antes del primer guion ("M.izq-11" → "M.izq"). */
+/**
+ * El módulo de una pieza: lo que va antes del primer guion ("M.izq-11" →
+ * "M.izq"). Si el nombre no tiene guion, lo que va antes del primer punto,
+ * como en muchas planillas de Técnica ("M1.11" → "M1", "CUBO.T1" → "CUBO"),
+ * siempre que ahí haya alguna letra ("1.5" no es un módulo).
+ */
 export function moduloDe(nombre) {
   const s = String(nombre ?? "");
   const i = s.indexOf("-");
-  if (i <= 0) return null;
-  return s.slice(0, i).trim().slice(0, LIMITES_PIEZA.modulo) || null;
+  if (i === 0) return null;
+  if (i > 0) return s.slice(0, i).trim().slice(0, LIMITES_PIEZA.modulo) || null;
+  const p = s.indexOf(".");
+  if (p <= 0) return null;
+  const antes = s.slice(0, p).trim();
+  return /[a-záéíóúñ]/i.test(antes) ? antes.slice(0, LIMITES_PIEZA.modulo) : null;
 }
 
 // Una fila es de títulos mientras no tenga 3 números (las de piezas tienen

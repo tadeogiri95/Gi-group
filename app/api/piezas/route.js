@@ -14,38 +14,18 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { piezasBody } from "../../lib/schemas";
-import { sbGet, sbGetAll, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpers";
+import { sbGet, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
-import { expandirPiezas, cambiosAlReemplazar, reglasPieza } from "../../lib/piezas";
+import { ordenarEtapas, guardarPiezas } from "../../lib/piezasServidor";
 import { logger } from "../../lib/logger";
-
-const LOTE = 500;
 
 function faltaMigracion(err) {
   const m = String(err?.message);
   return m.includes("piezas_ot") && /does not exist|could not find|PGRST205|42P01/i.test(m);
 }
 const falta112 = (err) => /por_pieza|columna_pieza/.test(String(err?.message));
-
-/** Deja solo las etapas de la empresa que se escanean por pieza, en su orden. */
-async function ordenarEtapas(e, opts) {
-  const etapas = (await sbGet(`etapas?empresa_id=eq.${e}&select=codigo,nombre,orden,activa,por_pieza,columna_pieza`, opts)) || [];
-  const orden = reglasPieza(etapas).map((r) => r.codigo);
-  return (lista) => orden.filter((c) => lista.includes(c));
-}
-
-async function upsertPiezas(filas, opts) {
-  for (let i = 0; i < filas.length; i += LOTE) {
-    const r = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/piezas_ot?on_conflict=empresa_id,ot,nombre,unidad`, {
-      method: "POST",
-      headers: await sbHeaders(opts, { Prefer: "resolution=merge-duplicates,return=minimal" }),
-      body: JSON.stringify(filas.slice(i, i + LOTE)),
-    });
-    if (!r.ok) throw new Error(`POST piezas_ot: ${await r.text()}`);
-  }
-}
 
 async function procesar(sesion, datos) {
   const e = sesion.empresa_id;
@@ -71,30 +51,10 @@ async function procesar(sesion, datos) {
   }
 
   // cargar
-  const { data: actuales } = await sbGetAll(`${filtroOt}&select=nombre,unidad&order=id.asc`, { sesion, maxFilas: 5000 });
-  const piezas = expandirPiezas(datos.renglones);
-  const cambios = cambiosAlReemplazar(actuales, piezas);
-  const ahora = new Date().toISOString();
-  // Mismas claves en todas las filas (PostgREST lo exige en un lote)
-  await upsertPiezas(piezas.map((p) => ({
-    empresa_id: e,
-    ot: proyecto.ot,
-    renglon: p.renglon,
-    nombre: p.nombre,
-    modulo: p.modulo,
-    material: p.material,
-    l1: p.l1,
-    l2: p.l2,
-    unidad: p.unidad,
-    de: p.de,
-    etapas: ordenar(p.etapas),
-    cargada_at: ahora,
-    creado_por: sesion.empleado_id || null,
-  })), opts);
-  // Lo que no vino en esta carga ya no está en la planilla
-  if (cambios.salen) await sbDelete(`${filtroOt}&cargada_at=lt.${encodeURIComponent(ahora)}`, opts);
+  const r = await guardarPiezas({ e, ot: proyecto.ot, renglones: datos.renglones, opts, empleadoId: sesion.empleado_id || null });
   broadcastRefresh(e, "piezas_ot");
-  return NextResponse.json({ ok: true, piezas: piezas.length, ...cambios });
+  const { noBorradas: _n, ...cambios } = r;
+  return NextResponse.json({ ok: true, ...cambios });
 }
 
 export async function POST(request) {
