@@ -7,7 +7,8 @@
 // etiquetas impresas y los escaneos siguen valiendo.
 import { sbGet, sbGetAll, sbPost, sbPatch, sbDelete, sbHeaders } from "./sbHelpers";
 import { expandirPiezas, cambiosAlReemplazar, reglasPieza } from "./piezas";
-import { planSueltos } from "./sueltosPlanilla";
+import { planSueltos, claveComponente } from "./sueltosPlanilla";
+import { modulosACorregir, sueltosDeDestinos } from "./destinosPiezas";
 
 const LOTE = 500;
 const LOTE_IDS = 200;
@@ -91,21 +92,25 @@ export async function guardarPiezas({ e, ot, renglones, opts = {}, empleadoId = 
 }
 
 /**
- * Deja la hoja de sueltos de la OT como la pide la planilla (carga
- * automática, con las columnas SUELTO). Lo cargado a mano no se toca; lo que
- * cargó la planilla antes se corrige o se borra (salvo si ya está tildado).
+ * Deja la hoja de sueltos de la OT como la piden los destinos. Lo cargado a
+ * mano no se toca; lo que puso Gypi antes (origen 'planilla', migración 163)
+ * se corrige o se borra (salvo si ya está tildado).
  * @returns {Promise<{ ids: number[], creados: number, borrados: number, quedanTildados: number }>}
  */
 export async function sincronizarSueltos({ e, ot, items, idsPrevios = [], opts = {} }) {
   const filtroOt = `sueltos_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}`;
-  const actuales = (await sbGet(`${filtroOt}&select=id,orden,tipo,codigo,descripcion,medida,cantidad,acopio,carga&order=orden.asc,id.asc`, opts)) || [];
-  const plan = planSueltos(actuales, items, idsPrevios);
+  const actuales = (await sbGet(`${filtroOt}&select=id,orden,tipo,codigo,descripcion,medida,cantidad,acopio,carga,origen&order=orden.asc,id.asc`, opts)) || [];
+  const propios = [...new Set([...idsPrevios.map(Number), ...actuales.filter((a) => a.origen === "planilla").map((a) => Number(a.id))])];
+  const plan = planSueltos(actuales, items, propios);
   for (let i = 0; i < plan.borrar.length; i += LOTE_IDS) {
     await sbDelete(`${filtroOt}&id=in.(${plan.borrar.slice(i, i + LOTE_IDS).join(",")})`, opts);
   }
   for (const c of plan.corregir) {
     await sbPatch(`${filtroOt}&id=eq.${c.id}`, { cantidad: c.cantidad, medida: c.medida }, opts);
   }
+  // Los que ya estaban y ahora los maneja Gypi quedan marcados como suyos
+  const adoptar = plan.siguen.filter((id) => !actuales.find((a) => Number(a.id) === Number(id))?.origen);
+  if (adoptar.length) await sbPatch(`${filtroOt}&id=in.(${adoptar.join(",")})&origen=is.null`, { origen: "planilla" }, opts);
   let creados = [];
   if (plan.crear.length) {
     const base = actuales.reduce((m, a) => Math.max(m, Number(a.orden) || 0), -1) + 1;
@@ -121,6 +126,7 @@ export async function sincronizarSueltos({ e, ot, items, idsPrevios = [], opts =
       cantidad: item.cantidad ?? 1,
       va_con: item.va_con ?? null,
       creado_por: null,
+      origen: "planilla",
     })), opts)) || [];
   }
   return {
@@ -129,4 +135,73 @@ export async function sincronizarSueltos({ e, ot, items, idsPrevios = [], opts =
     borrados: plan.borrar.length,
     quedanTildados: plan.quedanTildados.length,
   };
+}
+
+async function upsertDestinos(filas, opts) {
+  for (let i = 0; i < filas.length; i += LOTE) {
+    const r = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/destinos_ot?on_conflict=empresa_id,ot,tipo,clave`, {
+      method: "POST",
+      headers: await sbHeaders(opts, { Prefer: "resolution=merge-duplicates,return=minimal" }),
+      body: JSON.stringify(filas.slice(i, i + LOTE)),
+    });
+    if (!r.ok) throw new Error(`POST destinos_ot: ${await r.text()}`);
+  }
+}
+
+/**
+ * Lo que dice la planilla, en destinos_ot: la lista completa de herrajes y
+ * perfiles de NECESIDADES (con su SUELTO) y las piezas marcadas SUELTO en
+ * DATOS. Lo elegido a mano (suelto, modulo) no se toca.
+ * @param {object} p
+ * @param {object[]|null} p.componentes de componentesPlanilla (null = la planilla no tiene la lista)
+ * @param {string[]|null} p.piezasSueltas nombres de las piezas marcadas SUELTO (null = sin la columna)
+ */
+export async function guardarDestinosPlanilla({ e, ot, componentes, piezasSueltas, opts = {} }) {
+  const filtroOt = `destinos_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}`;
+  const ahora = new Date().toISOString();
+  if (componentes) {
+    await sbPatch(`${filtroOt}&tipo=eq.herraje&en_planilla=eq.true`, { en_planilla: false }, opts);
+    const filas = new Map();
+    for (const c of componentes.slice(0, 1000)) {
+      const clave = claveComponente(c);
+      if (!clave.replace(/\|/g, "")) continue;
+      filas.set(clave, {
+        empresa_id: e, ot, tipo: "herraje", clave,
+        datos: { tipo: c.tipo, codigo: c.codigo, descripcion: c.descripcion, medida: c.medida, cantidad: c.cantidad },
+        planilla_suelto: !!c.suelto, en_planilla: true, updated_at: ahora,
+      });
+    }
+    await upsertDestinos([...filas.values()], opts);
+  }
+  await sbPatch(`${filtroOt}&tipo=eq.pieza&planilla_suelto=eq.true`, { planilla_suelto: false }, opts);
+  const nombres = [...new Set((piezasSueltas || []).map((n) => String(n).slice(0, 300)).filter(Boolean))];
+  if (nombres.length) {
+    await upsertDestinos(nombres.map((clave) => ({ empresa_id: e, ot, tipo: "pieza", clave, planilla_suelto: true, en_planilla: true, updated_at: ahora })), opts);
+  }
+}
+
+/** Piezas y destinos de la OT. */
+export async function leerDestinos({ e, ot, opts = {} }) {
+  const filtro = `empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}`;
+  const [{ data: piezas }, { data: destinos }] = await Promise.all([
+    sbGetAll(`piezas_ot?${filtro}&select=id,nombre,modulo,material,l1,l2&order=id.asc`, { sesion: opts.sesion, maxFilas: 5000 }),
+    sbGetAll(`destinos_ot?${filtro}&select=tipo,clave,datos,planilla_suelto,en_planilla,suelto,modulo&order=id.asc`, { sesion: opts.sesion, maxFilas: 5000 }),
+  ]);
+  return { piezas: piezas || [], destinos: destinos || [] };
+}
+
+/**
+ * Aplica los destinos: las piezas sin módulo asignadas pasan a ser de ese
+ * módulo en piezas_ot (así sus etiquetas de módulo y el escaneo de Armado
+ * las incluyen) y 📦 Sueltos queda con lo que va suelto.
+ */
+export async function aplicarDestinos({ e, ot, idsPrevios = [], opts = {} }) {
+  const { piezas, destinos } = await leerDestinos({ e, ot, opts });
+  const filtroOt = `piezas_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}`;
+  const corregir = modulosACorregir(piezas, destinos);
+  for (const [nombre, modulo] of Object.entries(corregir)) {
+    await sbPatch(`${filtroOt}&nombre=eq.${encodeURIComponent(nombre)}`, { modulo }, opts);
+  }
+  const s = await sincronizarSueltos({ e, ot, items: sueltosDeDestinos(piezas, destinos), idsPrevios, opts });
+  return { modulos: Object.keys(corregir).length, sueltos: s };
 }

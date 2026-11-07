@@ -151,8 +151,11 @@ test("cada Excel con su OT — sub-OT exacta y el más nuevo si hay dos", () => 
 
 test("qué Excel pedir — Técnica lista, no leídos o cambiados, sin los gigantes", () => {
   assert.deepEqual(excelsPendientes(lista, proyectos, {}).map((p) => p.ot), ["M-7408-230", "M-7961"]);
-  const cargas = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z" } };
+  const cargas = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z", v: 2 } };
   assert.deepEqual(excelsPendientes(lista, proyectos, cargas).map((p) => p.ot), ["M-7961"]);
+  // Leída con una versión anterior de Gypi (sin la lista de herrajes): se vuelve a leer
+  const vieja = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z" } };
+  assert.deepEqual(excelsPendientes(lista, proyectos, vieja).map((p) => p.ot).sort(), ["M-7408-230", "M-7961"]);
   // La planilla cambió: se vuelve a leer
   const cambio = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-01T00:00:00.000Z" }, "M-7961": { id: "1aaaaaaaaaaaaaaaaaaaa", fecha: "2026-10-01T00:00:00.000Z" } };
   assert.deepEqual(excelsPendientes(lista, proyectos, cambio).map((p) => p.ot).sort(), ["M-7408-230", "M-7961"]);
@@ -215,6 +218,10 @@ test("PATCH /api/piezas/planillas — lista, pide, lee el Excel y no borra pieza
     { match: (u, o) => u.includes("/piezas_ot?on_conflict") && o.method === "POST", respond: (u, o) => { subidas.push(...JSON.parse(o.body)); return { status: 201, body: "" }; } },
     { match: (u) => u.includes("/pasos_pieza?"), respond: () => ({ body: [{ pieza_id: 5 }] }) },
     { match: (u, o) => u.includes("/piezas_ot?") && o.method === "DELETE", respond: (u) => { borradas.push(u); return { status: 204 }; } },
+    { match: (u, o) => u.includes("/piezas_ot?") && o.method === "PATCH", respond: () => ({ body: [] }) },
+    { match: (u, o) => u.includes("/destinos_ot") && (!o.method || o.method === "GET"), respond: () => ({ body: [] }) },
+    { match: (u) => u.includes("/destinos_ot"), respond: () => ({ status: 201, body: [] }) },
+    { match: (u, o) => u.includes("/sueltos_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: [] }) },
   ]);
   const req = (body, auth = `Bearer ${clave}`) => new Request("http://localhost/api/piezas/planillas", { method: "PATCH", headers: { Authorization: auth, "content-type": "application/json" }, body: JSON.stringify(body) });
 
@@ -330,6 +337,32 @@ test("planSueltos — no pierde lo tildado ni lo cargado a mano", () => {
   assert.deepEqual(p.siguen.sort(), [1, 3]);
 });
 
+/** destinos_ot en memoria: upsert por (tipo, clave), PATCH con filtros eq simples. */
+function mockDestinos() {
+  const filas = [];
+  const filtros = (u) => [...new URL(u).searchParams.entries()].filter(([k, v]) => !["empresa_id", "ot", "select", "order", "on_conflict", "limit", "offset"].includes(k) && v.startsWith("eq."))
+    .map(([k, v]) => [k, v.slice(3)]);
+  const cumple = (f, u) => filtros(u).every(([k, v]) => String(f[k]) === v);
+  return {
+    filas,
+    handlers: [
+      { match: (u, o) => u.includes("/destinos_ot") && (!o.method || o.method === "GET"), respond: () => ({ body: filas }) },
+      { match: (u, o) => u.includes("/destinos_ot") && o.method === "POST", respond: (u, o) => {
+        for (const n of JSON.parse(o.body)) {
+          const f = filas.find((x) => x.tipo === n.tipo && x.clave === n.clave);
+          if (f) Object.assign(f, n); else filas.push({ datos: null, planilla_suelto: false, en_planilla: false, suelto: null, modulo: null, ...n });
+        }
+        return { status: 201, body: "" };
+      } },
+      { match: (u, o) => u.includes("/destinos_ot") && o.method === "PATCH", respond: (u, o) => {
+        const cambio = JSON.parse(o.body);
+        for (const f of filas) if (cumple(f, u)) Object.assign(f, cambio);
+        return { body: [] };
+      } },
+    ],
+  };
+}
+
 test("PATCH planilla — con columnas SUELTO arma la hoja de sueltos de la OT", async () => {
   const { PATCH } = await import("../app/api/piezas/planillas/route.js");
   const E = "11111111-1111-1111-1111-111111111111";
@@ -337,13 +370,17 @@ test("PATCH planilla — con columnas SUELTO arma la hoja de sueltos de la OT", 
   let config = { hash, carpeta: "1xKHlgKCkxWA5BXPYUCwIX0Bc0xA5bNmQ", cargas: {} };
   let sueltos = [{ id: 9, orden: 0, tipo: "Accesorio", codigo: null, descripcion: "A MANO", cantidad: 1 }];
   const creados = [];
+  const piezas = [];
+  const destinos = mockDestinos();
   global.fetch = createFetchMock([
     { match: (u, o) => u.includes("/config_sistema") && (!o.method || o.method === "GET"), respond: () => ({ body: [{ valor: config }] }) },
     { match: (u, o) => u.includes("/config_sistema") && o.method === "PATCH", respond: (u, o) => { config = JSON.parse(o.body).valor; return { body: [] }; } },
     { match: (u) => u.includes("/proyectos?"), respond: () => ({ body: [{ ot: "M-7961", etapas_diseno: { excel: { e: "hecho", q: "MJT" } } }] }) },
     { match: (u) => u.includes("/etapas?"), respond: () => ({ body: [] }) },
-    { match: (u, o) => u.includes("/piezas_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: [] }) },
-    { match: (u, o) => u.includes("/piezas_ot?on_conflict") && o.method === "POST", respond: () => ({ status: 201, body: "" }) },
+    { match: (u, o) => u.includes("/piezas_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: piezas }) },
+    { match: (u, o) => u.includes("/piezas_ot?on_conflict") && o.method === "POST", respond: (u, o) => { piezas.push(...JSON.parse(o.body).map((p, i) => ({ ...p, id: piezas.length + i + 1 }))); return { status: 201, body: "" }; } },
+    { match: (u, o) => u.includes("/piezas_ot?") && o.method === "PATCH", respond: () => ({ body: [] }) },
+    ...destinos.handlers,
     { match: (u, o) => u.includes("/sueltos_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: sueltos }) },
     { match: (u, o) => u.endsWith("/sueltos_ot") && o.method === "POST", respond: (u, o) => {
       const filas = JSON.parse(o.body).map((f, i) => ({ ...f, id: 100 + creados.length + i }));
@@ -357,11 +394,18 @@ test("PATCH planilla — con columnas SUELTO arma la hoja de sueltos de la OT", 
   const r = await (await PATCH(req)).json();
   assert.equal(r.ok, true);
   assert.deepEqual(creados.map((c) => [c.tipo, c.codigo || c.descripcion]), [
-    ["Madera", "M1.21"], ["Madera", "CENEFA"], ["Perfil", "PERFIL LED DE EMBUTIR-S/Marca-ANODIZADO NATURAL-2MT"], ["Herraje", "MANIJA BARRAL 128-S/Marca-NEGRO-1 PZ"],
+    ["Madera", "M1.21"], ["Madera", "CENEFA"], ["Herraje", "MANIJA BARRAL 128-S/Marca-NEGRO-1 PZ"], ["Perfil", "PERFIL LED DE EMBUTIR-S/Marca-ANODIZADO NATURAL-2MT"],
   ]);
+  assert.ok(creados.every((c) => c.origen === "planilla"));
   assert.equal(creados[0].orden, 1);
   const c = config.cargas["M-7961"];
   assert.deepEqual(c.sueltos.ids, [100, 101, 102, 103]);
   assert.equal(c.sueltos.componentes, 2);
+  // La lista completa de herrajes queda guardada (la melamina es material, no herraje)
+  const herrajes = destinos.filas.filter((d) => d.tipo === "herraje");
+  assert.equal(herrajes.length, 3);
+  assert.deepEqual(herrajes.filter((h) => h.planilla_suelto).map((h) => h.datos.tipo).sort(), ["Herraje", "Perfil"]);
+  assert.deepEqual(destinos.filas.filter((d) => d.tipo === "pieza").map((d) => d.clave), ["M1.21", "CENEFA"]);
+  assert.equal(c.v, 2);
   assert.match(textoCarga(c), /4 sueltos para la carga/);
 });

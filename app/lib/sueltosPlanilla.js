@@ -12,7 +12,7 @@
 // Gypi busca la columna por el título, así puede ir donde le quede cómoda a
 // Técnica. Sin red ni base.
 
-const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+export const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const TITULOS_SUELTO = new Set(["suelto", "suelta", "vasuelto", "vasuelta", "sueltos", "sueltas"]);
 const FILAS_TITULO = 30;
 const MAX_FILAS = 3000;
@@ -53,6 +53,11 @@ export function piezasSueltasDeDatos(filas) {
   return out;
 }
 
+/** Placas y cantos de NECESIDADES: son material de las piezas, no van ni dentro ni sueltos. */
+export function esPlaca(descripcion) {
+  return /^(melamina|mdf|aglomerado|enchapad|fibrofacil|terciado|multilaminado|laminado|canto|tapacanto|hdf|placa|tablero)/.test(norm(descripcion));
+}
+
 /** "PERFIL MOA…" → Perfil; el resto de los componentes, Herraje. */
 export function tipoComponente(descripcion) {
   const d = norm(descripcion);
@@ -68,38 +73,64 @@ const envase = (descripcion) => {
 };
 
 /**
- * Hoja PLANILLA → componentes de NECESIDADES marcados SUELTO, o null si la
- * lista no tiene la columna. Busca el renglón con NOMBRE · DESCRIPCIÓN ·
- * CANTIDAD y la columna SUELTO en ese renglón (a la derecha).
+ * Hoja PLANILLA → todos los componentes de NECESIDADES (herrajes, perfiles,
+ * accesorios), cada uno con suelto = true si la columna SUELTO dice SI. Sin
+ * la columna, todos van dentro del mueble. Null si no hay lista (renglón con
+ * DESCRIPCIÓN y CANTIDAD al lado). Repetidos (mismo código y descripción)
+ * suman su cantidad.
  * @param {string[][]|null} filas
- * @returns {{ tipo: string, codigo: string|null, descripcion: string, medida: string|null, cantidad: number }[] | null}
+ * @returns {{ tipo: string, codigo: string|null, descripcion: string, medida: string|null, cantidad: number, suelto: boolean }[] | null}
  */
-export function componentesSueltos(filas) {
+export function componentesPlanilla(filas) {
   if (!filas) return null;
   const d = buscarTitulo(filas, new Set(["descripcion"]));
   if (!d) return null;
   const titulo = filas[d.fila];
   const colNombre = norm(titulo[d.col - 1]) === "nombre" ? d.col - 1 : null;
   const colCant = norm(titulo[d.col + 1]).startsWith("cant") ? d.col + 1 : null;
+  if (colCant == null) return null;
   const s = buscarTitulo(filas, TITULOS_SUELTO, { enFila: d.fila, desdeCol: d.col + 1 });
-  if (!s || colCant == null) return null;
-  const out = [];
+  const porClave = new Map();
   for (let f = d.fila + 1; f < Math.min(filas.length, MAX_FILAS); f++) {
     const fila = filas[f] || [];
-    if (!esSi(fila[s.col])) continue;
     const descripcion = String(fila[d.col] ?? "").replace(/\s+/g, " ").trim();
-    if (!descripcion || descripcion === "0") continue;
+    if (!descripcion || descripcion === "0" || esPlaca(descripcion)) continue;
     const n = Number(String(fila[colCant] ?? "").replace(",", "."));
     const codigo = colNombre != null ? String(fila[colNombre] ?? "").trim() : "";
-    out.push({
+    const item = {
       tipo: tipoComponente(descripcion),
       codigo: codigo && codigo !== "-" && codigo !== "0" ? codigo.slice(0, 40) : null,
       descripcion: descripcion.slice(0, 200),
       medida: envase(descripcion),
       cantidad: Number.isFinite(n) && n > 0 ? Math.min(Math.round(n * 100) / 100, 99999) : 1,
-    });
+      suelto: s ? esSi(fila[s.col]) : false,
+    };
+    const k = claveComponente(item);
+    const antes = porClave.get(k);
+    if (antes) {
+      antes.cantidad = Math.min(Math.round((antes.cantidad + item.cantidad) * 100) / 100, 99999);
+      antes.suelto = antes.suelto || item.suelto;
+    } else porClave.set(k, item);
   }
-  return out;
+  return [...porClave.values()];
+}
+
+/** Clave estable de un componente de NECESIDADES (código + descripción). */
+export function claveComponente(c) {
+  return `${norm(c.codigo)}|${norm(c.descripcion)}`.slice(0, 300);
+}
+
+/**
+ * Hoja PLANILLA → componentes de NECESIDADES marcados SUELTO, o null si la
+ * lista no tiene la columna.
+ * @param {string[][]|null} filas
+ */
+export function componentesSueltos(filas) {
+  if (!filas) return null;
+  const d = buscarTitulo(filas, new Set(["descripcion"]));
+  if (!d || !buscarTitulo(filas, TITULOS_SUELTO, { enFila: d.fila, desdeCol: d.col + 1 })) return null;
+  const todos = componentesPlanilla(filas);
+  return todos ? todos.filter((c) => c.suelto).map(({ suelto: _s, ...c }) => c) : null;
 }
 
 /** Piezas marcadas → ítems de la hoja de sueltos (código = nombre de la pieza, así el escaneo de Carga lo tilda). */

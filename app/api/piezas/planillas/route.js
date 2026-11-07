@@ -26,8 +26,8 @@ import { idCarpeta } from "../../../lib/pdfOt";
 import { leerHojaXlsx } from "../../../lib/leerXlsx";
 import { leerPiezas } from "../../../lib/piezas";
 import { piezasBody } from "../../../lib/schemas";
-import { guardarPiezas, reglasDeEmpresa, sincronizarSueltos } from "../../../lib/piezasServidor";
-import { piezasSueltasDeDatos, componentesSueltos, piezasComoSueltos } from "../../../lib/sueltosPlanilla";
+import { guardarPiezas, reglasDeEmpresa, guardarDestinosPlanilla, aplicarDestinos } from "../../../lib/piezasServidor";
+import { piezasSueltasDeDatos, componentesPlanilla, norm as normNombre } from "../../../lib/sueltosPlanilla";
 import {
   CLAVE_PLANILLAS_PIEZAS, HOJA_PIEZAS, MAX_BYTES_EXCEL, limpiarExcels, excelPorOt, excelsPendientes,
   tecnicaLista, textoDesdePanel, sinCodigo, resumenCarga, scriptCarpetaPiezas,
@@ -89,29 +89,37 @@ async function cargarExcel(e, archivo, contenido, proyectos, previa = null) {
   if (!valida.success) return fallo(valida.error.issues[0]?.message || "las piezas no se pudieron validar");
   const r = await guardarPiezas({ e, ot, renglones: valida.data.renglones, protegerEscaneadas: true });
   broadcastRefresh(e, "piezas_ot");
-  const sueltos = await cargarSueltos(e, ot, u8, filas, vista.renglones, previa);
-  return { ot, resumen: resumenCarga({ ...base, piezas: r.piezas, noBorradas: r.noBorradas, sueltos }) };
+  const sueltos = await cargarDestinos(e, ot, u8, filas, vista.renglones, previa);
+  return { ot, resumen: resumenCarga({ ...base, piezas: r.piezas, noBorradas: r.noBorradas, sueltos, v: sueltos?.error ? 1 : undefined }) };
 }
 
 /**
- * Columnas SUELTO (DATOS por pieza, NECESIDADES por herraje) → hoja de
- * sueltos de la OT. Una planilla sin ninguna de las dos no toca la hoja.
- * Null si no hay columnas; { error } si no se pudo guardar.
+ * Lo que dice la planilla sobre qué va suelto (columnas SUELTO de DATOS y de
+ * NECESIDADES, y la lista completa de herrajes) → destinos_ot, y después los
+ * destinos de la OT → piezas asignadas a su módulo y 📦 Sueltos al día.
+ * { error } si no se pudo (por ejemplo, falta la migración 163).
  */
-async function cargarSueltos(e, ot, u8, filasPlanilla, renglones, previa) {
+async function cargarDestinos(e, ot, u8, filasPlanilla, renglones, previa) {
   let datos = null;
   try { datos = leerHojaXlsx(u8, "DATOS"); } catch { datos = null; }
   const marcadas = piezasSueltasDeDatos(datos);
-  const componentes = componentesSueltos(filasPlanilla);
-  if (!marcadas && !componentes) return null;
-  const items = [...piezasComoSueltos(renglones, marcadas), ...(componentes || [])].slice(0, 300);
+  const componentes = componentesPlanilla(filasPlanilla);
+  const piezasSueltas = marcadas ? renglones.filter((r) => marcadas.has(normNombre(r.nombre))).map((r) => r.nombre) : null;
   try {
-    const s = await sincronizarSueltos({ e, ot, items, idsPrevios: previa?.sueltos?.ids || previa?.sueltos_previos || [] });
+    await guardarDestinosPlanilla({ e, ot, componentes, piezasSueltas });
+    const r = await aplicarDestinos({ e, ot, idsPrevios: previa?.sueltos?.ids || previa?.sueltos_previos || [] });
     broadcastRefresh(e, "sueltos_ot");
-    return { total: s.ids.length, piezas: items.filter((i) => i.tipo === "Madera").length, componentes: componentes?.length || 0, ids: s.ids, tildados: s.quedanTildados };
+    return {
+      total: r.sueltos.ids.length,
+      piezas: piezasSueltas?.length || 0,
+      componentes: componentes?.filter((c) => c.suelto).length || 0,
+      herrajes: componentes?.length || 0,
+      ids: r.sueltos.ids,
+      tildados: r.sueltos.quedanTildados,
+    };
   } catch (err) {
-    logger.error("[piezas/planillas] sueltos", err);
-    return { error: String(err?.message).includes("sueltos_ot") ? "falta la hoja de sueltos (migración 103)" : "no se pudo guardar la hoja de sueltos" };
+    logger.error("[piezas/planillas] destinos", err);
+    return { error: /destinos_ot|origen/.test(String(err?.message)) ? "falta correr la migración 163 (destinos)" : "no se pudo guardar la hoja de sueltos" };
   }
 }
 

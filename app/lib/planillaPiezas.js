@@ -25,6 +25,10 @@ import { numeroDePdf, numeroDeOt } from "./pdfOt";
 export const CLAVE_PLANILLAS_PIEZAS = "planillas_piezas_script";
 /** Excel que se piden por vuelta del script (cada uno pesa ~2 MB). */
 export const POR_VUELTA = 8;
+// Sube cuando Gypi aprende a leer algo nuevo de la planilla: las OT leídas
+// con una versión anterior se vuelven a leer solas (2 = lista completa de
+// herrajes para 📍 Destinos, migración 163).
+export const VERSION_LECTURA = 2;
 /** Más grande que esto no entra en un pedido a Gypi (base64 suma un tercio). */
 export const MAX_BYTES_EXCEL = 3 * 1024 * 1024;
 export const MAX_EXCELS = 3000;
@@ -91,7 +95,7 @@ export function excelsPendientes(archivos, proyectos, cargas = {}, max = POR_VUE
     if (!tecnicaLista(etapas.get(ot))) continue;
     if (a.bytes != null && a.bytes > MAX_BYTES_EXCEL) continue;
     const c = cargas?.[ot];
-    if (c && c.id === a.id && c.fecha === a.fecha) continue;
+    if (c && c.id === a.id && c.fecha === a.fecha && (Number(c.v) || 1) >= VERSION_LECTURA) continue;
     lista.push({ ot, id: a.id, nombre: a.nombre, fecha: a.fecha, nueva: !c });
   }
   lista.sort((x, y) => Number(y.nueva) - Number(x.nueva) || String(y.fecha || "").localeCompare(String(x.fecha || "")));
@@ -121,8 +125,9 @@ export function sinCodigo(renglones = []) {
 }
 
 /** Resumen de una carga para guardar y mostrar (corto: entra en config_sistema). */
-export function resumenCarga({ archivo, piezas = 0, renglones = 0, modulos = 0, sinCod = [], errores = [], noBorradas = 0, sueltos = null, error = null, ahora }) {
+export function resumenCarga({ archivo, piezas = 0, renglones = 0, modulos = 0, sinCod = [], errores = [], noBorradas = 0, sueltos = null, error = null, ahora, v = VERSION_LECTURA }) {
   return {
+    v,
     // Hoja de sueltos desde las columnas SUELTO (null = la planilla no las tiene)
     sueltos: sueltos ? { ...sueltos, ids: (sueltos.ids || []).slice(0, 400) } : null,
     id: archivo.id,
@@ -156,6 +161,7 @@ export function textoCarga(c) {
   if (c.errores?.length) partes.push(`${c.errores.length} ${c.errores.length === 1 ? "renglón" : "renglones"} con error`);
   if (c.sueltos?.error) partes.push(`sueltos: ${c.sueltos.error}`);
   else if (c.sueltos) partes.push(c.sueltos.total ? `${c.sueltos.total} ${c.sueltos.total === 1 ? "suelto" : "sueltos"} para la carga` : "nada suelto");
+  if (c.sueltos?.herrajes) partes.push(`${c.sueltos.herrajes} ${c.sueltos.herrajes === 1 ? "herraje" : "herrajes"} en la lista`);
   if (c.no_borradas) partes.push(`${c.no_borradas} ya no están en la planilla pero tienen escaneos (no se borraron)`);
   return partes.join(" · ");
 }
