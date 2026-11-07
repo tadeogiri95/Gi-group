@@ -256,3 +256,112 @@ test("PATCH /api/piezas/planillas — lista, pide, lee el Excel y no borra pieza
   assert.equal(r5.ok, false);
   assert.match(config.cargas["M-7961"].error, /no es un Excel/);
 });
+
+/* ─── Columnas SUELTO (PR 2) ─── */
+const { esSi, piezasSueltasDeDatos, componentesSueltos, tipoComponente, piezasComoSueltos, planSueltos } = await import("../app/lib/sueltosPlanilla.js");
+
+// DATOS como la llena Técnica a mano, con la columna SUELTO al final
+const DATOS = [
+  ["INFORMACION GENERAL"],
+  ["IND", "Nª", "MAT", "L1", "L2", "CANT", "SUELTO"],
+  ["Columna1", "Columna2", "Columna3", "Columna4", "Columna5", "Columna6", "Columna7"],
+  ["", "2.AL1P-11", "MELAMINA 18MM BLANCO", 791, 328, 2, ""],
+  ["", "M1.21", "MELAMINA 18MM GRAFITO", 545, 330, 1, "SI"],
+  ["", "CENEFA", "MELAMINA 18MM GRAFITO", 1880, 346, 1, "sí"],
+];
+// PLANILLA con la lista de NECESIDADES a la derecha (AP-AR en el molde) y SUELTO al lado
+const NEC = 13;
+const conNecesidades = (sueltoTitulo = "SUELTO") => [...PLANILLA, []].map((fila, i) => {
+  const f = [...fila];
+  while (f.length < NEC) f.push("");
+  if (i === 14) f.push("NOMBRE", "DESCRIPCIÓN", "CANTIDAD", sueltoTitulo);
+  if (i === 15) f.push("-", "MELAMINA SOBRE MDF 18MM-Faplac-GRAFITO-4,7M2", 0.2, "");
+  if (i === 16) f.push("-", "BISAGRA 35 CODO 0 CIERRE SUAVE-S/Marca-S/COLOR-1 PZ", 4, "");
+  if (i === 17) f.push("-", "PERFIL LED DE EMBUTIR-S/Marca-ANODIZADO NATURAL-2MT", 0.5, "SI");
+  if (i === 18) f.push("-", "MANIJA BARRAL 128-S/Marca-NEGRO-1 PZ", 6, "x");
+  return f;
+});
+
+test("SUELTO — qué cuenta como sí", () => {
+  for (const v of ["SI", "si", "Sí", "x", "X", "✓"]) assert.equal(esSi(v), true, v);
+  for (const v of ["", "NO", "0", "1", "-", null]) assert.equal(esSi(v), false, String(v));
+});
+
+test("SUELTO en DATOS — piezas marcadas; sin la columna, null", () => {
+  assert.deepEqual([...piezasSueltasDeDatos(DATOS)], ["m121", "cenefa"]);
+  assert.equal(piezasSueltasDeDatos(DATOS.map((f) => f.slice(0, 6))), null);
+  assert.equal(piezasSueltasDeDatos(null), null);
+  const renglones = [{ nombre: "M1.21", modulo: "M1", material: "MELAMINA 18MM GRAFITO", l1: 545, l2: 330, cantidad: 1 }, { nombre: "2.AL1P-11", modulo: "2.AL1P", cantidad: 2 }];
+  assert.deepEqual(piezasComoSueltos(renglones, piezasSueltasDeDatos(DATOS)), [
+    { tipo: "Madera", codigo: "M1.21", descripcion: "MELAMINA 18MM GRAFITO", medida: "545 × 330", cantidad: 1, va_con: "Módulo M1" },
+  ]);
+  assert.deepEqual(piezasComoSueltos(renglones, null), []);
+});
+
+test("SUELTO en NECESIDADES — herrajes y perfiles marcados; sin la columna, null", () => {
+  const items = componentesSueltos(conNecesidades());
+  assert.deepEqual(items, [
+    { tipo: "Perfil", codigo: null, descripcion: "PERFIL LED DE EMBUTIR-S/Marca-ANODIZADO NATURAL-2MT", medida: "2MT", cantidad: 0.5 },
+    { tipo: "Herraje", codigo: null, descripcion: "MANIJA BARRAL 128-S/Marca-NEGRO-1 PZ", medida: "1 PZ", cantidad: 6 },
+  ]);
+  assert.equal(componentesSueltos(conNecesidades("OTRA COSA")), null);
+  assert.equal(componentesSueltos(PLANILLA), null);
+  assert.equal(tipoComponente("BISAGRA 35"), "Herraje");
+  assert.equal(tipoComponente("LED CALIDO-S/Marca"), "Accesorio");
+});
+
+test("planSueltos — no pierde lo tildado ni lo cargado a mano", () => {
+  const actuales = [
+    { id: 1, tipo: "Herraje", codigo: null, descripcion: "MANIJA", medida: null, cantidad: 4 }, // de la planilla, cambia cantidad
+    { id: 2, tipo: "Perfil", codigo: null, descripcion: "PERFIL VIEJO", cantidad: 1 },            // de la planilla, ya no viene
+    { id: 3, tipo: "Perfil", codigo: null, descripcion: "PERFIL TILDADO", cantidad: 1, carga: true }, // ya no viene pero está tildado
+    { id: 4, tipo: "Accesorio", codigo: null, descripcion: "A MANO", cantidad: 1 },                // cargado a mano
+  ];
+  const nuevos = [
+    { tipo: "Herraje", codigo: null, descripcion: "manija", cantidad: 6, medida: null },
+    { tipo: "Accesorio", codigo: null, descripcion: "A MANO", cantidad: 1 },
+    { tipo: "Madera", codigo: "CENEFA", descripcion: "MELAMINA", cantidad: 1 },
+  ];
+  const p = planSueltos(actuales, nuevos, [1, 2, 3]);
+  assert.deepEqual(p.crear.map((i) => i.codigo), ["CENEFA"]);
+  assert.deepEqual(p.corregir, [{ id: 1, cantidad: 6, medida: null }]);
+  assert.deepEqual(p.borrar, [2]);
+  assert.deepEqual(p.quedanTildados, [3]);
+  assert.deepEqual(p.siguen.sort(), [1, 3]);
+});
+
+test("PATCH planilla — con columnas SUELTO arma la hoja de sueltos de la OT", async () => {
+  const { PATCH } = await import("../app/api/piezas/planillas/route.js");
+  const E = "11111111-1111-1111-1111-111111111111";
+  const { clave, hash } = generarClave(E);
+  let config = { hash, carpeta: "1xKHlgKCkxWA5BXPYUCwIX0Bc0xA5bNmQ", cargas: {} };
+  let sueltos = [{ id: 9, orden: 0, tipo: "Accesorio", codigo: null, descripcion: "A MANO", cantidad: 1 }];
+  const creados = [];
+  global.fetch = createFetchMock([
+    { match: (u, o) => u.includes("/config_sistema") && (!o.method || o.method === "GET"), respond: () => ({ body: [{ valor: config }] }) },
+    { match: (u, o) => u.includes("/config_sistema") && o.method === "PATCH", respond: (u, o) => { config = JSON.parse(o.body).valor; return { body: [] }; } },
+    { match: (u) => u.includes("/proyectos?"), respond: () => ({ body: [{ ot: "M-7961", etapas_diseno: { excel: { e: "hecho", q: "MJT" } } }] }) },
+    { match: (u) => u.includes("/etapas?"), respond: () => ({ body: [] }) },
+    { match: (u, o) => u.includes("/piezas_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: [] }) },
+    { match: (u, o) => u.includes("/piezas_ot?on_conflict") && o.method === "POST", respond: () => ({ status: 201, body: "" }) },
+    { match: (u, o) => u.includes("/sueltos_ot?") && (!o.method || o.method === "GET"), respond: () => ({ body: sueltos }) },
+    { match: (u, o) => u.endsWith("/sueltos_ot") && o.method === "POST", respond: (u, o) => {
+      const filas = JSON.parse(o.body).map((f, i) => ({ ...f, id: 100 + creados.length + i }));
+      creados.push(...filas);
+      return { status: 201, body: filas };
+    } },
+  ]);
+  const archivo = { nombre: "7961-RIOFRIO-COCINA.xlsm", id: "1QRVGnV5BrXMKGlxwmcuPh", fecha: "2026-11-08T10:00:00.000Z" };
+  const contenido = Buffer.from(xlsx({ DATOS, PLANILLA: conNecesidades() })).toString("base64");
+  const req = new Request("http://localhost/api/piezas/planillas", { method: "PATCH", headers: { Authorization: `Bearer ${clave}`, "content-type": "application/json" }, body: JSON.stringify({ accion: "planilla", ...archivo, contenido }) });
+  const r = await (await PATCH(req)).json();
+  assert.equal(r.ok, true);
+  assert.deepEqual(creados.map((c) => [c.tipo, c.codigo || c.descripcion]), [
+    ["Madera", "M1.21"], ["Madera", "CENEFA"], ["Perfil", "PERFIL LED DE EMBUTIR-S/Marca-ANODIZADO NATURAL-2MT"], ["Herraje", "MANIJA BARRAL 128-S/Marca-NEGRO-1 PZ"],
+  ]);
+  assert.equal(creados[0].orden, 1);
+  const c = config.cargas["M-7961"];
+  assert.deepEqual(c.sueltos.ids, [100, 101, 102, 103]);
+  assert.equal(c.sueltos.componentes, 2);
+  assert.match(textoCarga(c), /4 sueltos para la carga/);
+});

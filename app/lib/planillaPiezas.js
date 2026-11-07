@@ -121,8 +121,10 @@ export function sinCodigo(renglones = []) {
 }
 
 /** Resumen de una carga para guardar y mostrar (corto: entra en config_sistema). */
-export function resumenCarga({ archivo, piezas = 0, renglones = 0, modulos = 0, sinCod = [], errores = [], noBorradas = 0, error = null, ahora }) {
+export function resumenCarga({ archivo, piezas = 0, renglones = 0, modulos = 0, sinCod = [], errores = [], noBorradas = 0, sueltos = null, error = null, ahora }) {
   return {
+    // Hoja de sueltos desde las columnas SUELTO (null = la planilla no las tiene)
+    sueltos: sueltos ? { ...sueltos, ids: (sueltos.ids || []).slice(0, 400) } : null,
     id: archivo.id,
     nombre: archivo.nombre,
     fecha: archivo.fecha || null,
@@ -141,7 +143,7 @@ export function resumenCarga({ archivo, piezas = 0, renglones = 0, modulos = 0, 
 /** Cargas para la pantalla: las más nuevas primero, con problemas marcados. */
 export function cargasParaVer(cargas = {}) {
   return Object.entries(cargas || {})
-    .map(([ot, c]) => ({ ot, ...c, problema: !!(c.error || c.sin_codigo_total || c.errores?.length || c.no_borradas) }))
+    .map(([ot, c]) => ({ ot, ...c, problema: !!(c.error || c.sin_codigo_total || c.errores?.length || c.no_borradas || c.sueltos?.error) }))
     .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
 }
 
@@ -152,6 +154,8 @@ export function textoCarga(c) {
   const partes = [`${c.piezas} ${c.piezas === 1 ? "pieza" : "piezas"} en ${c.modulos} ${c.modulos === 1 ? "módulo" : "módulos"}`];
   if (c.sin_codigo_total) partes.push(`${c.sin_codigo_total} sin código de módulo`);
   if (c.errores?.length) partes.push(`${c.errores.length} ${c.errores.length === 1 ? "renglón" : "renglones"} con error`);
+  if (c.sueltos?.error) partes.push(`sueltos: ${c.sueltos.error}`);
+  else if (c.sueltos) partes.push(c.sueltos.total ? `${c.sueltos.total} ${c.sueltos.total === 1 ? "suelto" : "sueltos"} para la carga` : "nada suelto");
   if (c.no_borradas) partes.push(`${c.no_borradas} ya no están en la planilla pero tienen escaneos (no se borraron)`);
   return partes.join(" · ");
 }

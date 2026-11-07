@@ -89,6 +89,9 @@ export default function CarpetaPiezasOt() {
         Cuando en el Plan de trabajo la columna <b>EXCEL</b> de una OT tiene las iniciales de la arquitecta, Gypi abre la planilla de esa OT y carga solas sus piezas en 🧩 Piezas, con su módulo.
         La planilla se reconoce por el número del principio del nombre (por ejemplo <b>7408-230-BCG-….xlsm</b> para la OT M-7408-230). Si la planilla cambia, Gypi la vuelve a leer y las piezas ya escaneadas no pierden sus escaneos.
       </p>
+      <p className="m-0 text-[13px] text-gypi-dim leading-relaxed">
+        Todo va dentro del mueble salvo lo que se marca. En las planillas con la columna <b>SUELTO</b> (en DATOS al lado de cada pieza y en PLANILLA al lado de CANTIDAD de NECESIDADES), lo que dice <b>SI</b> pasa a 📦 Sueltos de la OT para controlarlo en el acopio y la carga.
+      </p>
       {estado && <div className={`text-xs ${cfg?.ultima_lectura ? "text-gypi-green" : "text-gypi-dim"}`}>{estado}</div>}
       <label className="g-label" htmlFor="carpeta-piezas">Link de la carpeta de Drive</label>
       <input id="carpeta-piezas" value={carpeta} onChange={(e) => setCarpeta(e.target.value)}

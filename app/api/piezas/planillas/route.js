@@ -26,7 +26,8 @@ import { idCarpeta } from "../../../lib/pdfOt";
 import { leerHojaXlsx } from "../../../lib/leerXlsx";
 import { leerPiezas } from "../../../lib/piezas";
 import { piezasBody } from "../../../lib/schemas";
-import { guardarPiezas, reglasDeEmpresa } from "../../../lib/piezasServidor";
+import { guardarPiezas, reglasDeEmpresa, sincronizarSueltos } from "../../../lib/piezasServidor";
+import { piezasSueltasDeDatos, componentesSueltos, piezasComoSueltos } from "../../../lib/sueltosPlanilla";
 import {
   CLAVE_PLANILLAS_PIEZAS, HOJA_PIEZAS, MAX_BYTES_EXCEL, limpiarExcels, excelPorOt, excelsPendientes,
   tecnicaLista, textoDesdePanel, sinCodigo, resumenCarga, scriptCarpetaPiezas,
@@ -55,7 +56,7 @@ async function proyectosDe(e) {
 }
 
 /** El Excel del script → piezas de la OT. Devuelve el resumen que se guarda. */
-async function cargarExcel(e, archivo, contenido, proyectos) {
+async function cargarExcel(e, archivo, contenido, proyectos, previa = null) {
   const ahora = new Date().toISOString();
   const ot = excelPorOt([archivo], proyectos).keys().next().value || null;
   if (!ot) return { ot: null, resumen: null, motivo: "El nombre del archivo no empieza con el número de una OT de Gypi" };
@@ -66,9 +67,10 @@ async function cargarExcel(e, archivo, contenido, proyectos) {
   const bytes = Buffer.from(String(contenido || ""), "base64");
   if (!bytes.length) return fallo("el archivo llegó vacío");
   if (bytes.length > MAX_BYTES_EXCEL) return fallo("el archivo es demasiado grande");
+  const u8 = new Uint8Array(bytes);
   let filas;
   try {
-    filas = leerHojaXlsx(new Uint8Array(bytes), HOJA_PIEZAS);
+    filas = leerHojaXlsx(u8, HOJA_PIEZAS);
   } catch {
     return fallo("no es un Excel que Gypi pueda abrir");
   }
@@ -87,7 +89,30 @@ async function cargarExcel(e, archivo, contenido, proyectos) {
   if (!valida.success) return fallo(valida.error.issues[0]?.message || "las piezas no se pudieron validar");
   const r = await guardarPiezas({ e, ot, renglones: valida.data.renglones, protegerEscaneadas: true });
   broadcastRefresh(e, "piezas_ot");
-  return { ot, resumen: resumenCarga({ ...base, piezas: r.piezas, noBorradas: r.noBorradas }) };
+  const sueltos = await cargarSueltos(e, ot, u8, filas, vista.renglones, previa);
+  return { ot, resumen: resumenCarga({ ...base, piezas: r.piezas, noBorradas: r.noBorradas, sueltos }) };
+}
+
+/**
+ * Columnas SUELTO (DATOS por pieza, NECESIDADES por herraje) → hoja de
+ * sueltos de la OT. Una planilla sin ninguna de las dos no toca la hoja.
+ * Null si no hay columnas; { error } si no se pudo guardar.
+ */
+async function cargarSueltos(e, ot, u8, filasPlanilla, renglones, previa) {
+  let datos = null;
+  try { datos = leerHojaXlsx(u8, "DATOS"); } catch { datos = null; }
+  const marcadas = piezasSueltasDeDatos(datos);
+  const componentes = componentesSueltos(filasPlanilla);
+  if (!marcadas && !componentes) return null;
+  const items = [...piezasComoSueltos(renglones, marcadas), ...(componentes || [])].slice(0, 300);
+  try {
+    const s = await sincronizarSueltos({ e, ot, items, idsPrevios: previa?.sueltos?.ids || previa?.sueltos_previos || [] });
+    broadcastRefresh(e, "sueltos_ot");
+    return { total: s.ids.length, piezas: items.filter((i) => i.tipo === "Madera").length, componentes: componentes?.length || 0, ids: s.ids, tildados: s.quedanTildados };
+  } catch (err) {
+    logger.error("[piezas/planillas] sueltos", err);
+    return { error: String(err?.message).includes("sueltos_ot") ? "falta la hoja de sueltos (migración 103)" : "no se pudo guardar la hoja de sueltos" };
+  }
 }
 
 export async function PATCH(request) {
@@ -116,8 +141,13 @@ export async function PATCH(request) {
     if (body?.accion === "planilla") {
       const [archivo] = limpiarExcels([body]);
       if (!archivo) return json({ error: "Falta el id o el nombre del Excel" }, 400);
-      const { ot, resumen, motivo } = await cargarExcel(e, archivo, body.contenido, proyectos);
+      const previas = v.cargas || {};
+      const otArchivo = excelPorOt([archivo], proyectos).keys().next().value || null;
+      const { ot, resumen, motivo } = await cargarExcel(e, archivo, body.contenido, proyectos, otArchivo ? previas[otArchivo] : null);
       if (!resumen) return json({ ok: false, ot, motivo });
+      // Sin columnas SUELTO o con error: se recuerdan los sueltos que había puesto la planilla
+      const anteriores = previas[ot]?.sueltos?.ids || previas[ot]?.sueltos_previos;
+      if (!resumen.sueltos?.ids && anteriores?.length) resumen.sueltos_previos = anteriores;
       // Se vuelve a leer la config: entre la lista y este Excel pasaron otros
       const actual = (await leerConfig(e)) || v;
       await sbPatch(filtroCfg(e), { valor: { ...actual, cargas: { ...(actual.cargas || {}), [ot]: resumen } } });
