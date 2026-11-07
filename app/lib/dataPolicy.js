@@ -62,6 +62,7 @@ export const POLICY = {
   precios_ot:                   { GET: "gestion" }, // precio de cada OT (142); lo escribe la sincronización
   v_avance_piezas:              { GET: "all" },   // vista: % de avance por escaneo (parte 25, migración 118)
   sueltos_ot:                   { GET: "all" },   // se escribe por /api/sueltos (OP parte 9)
+  destinos_ot:                  { GET: "all" },   // se escribe por /api/piezas (destinos, 163)
   articulos_stock:              { GET: "all" },   // lo escribe la sincronización con la planilla MRP (Stock parte 13)
   movimientos_stock:            { GET: "all" },   // se escribe por /api/stock/movimientos (Stock parte 14)
   proveedores:                  { GET: "gestion" }, // se escribe por /api/compras (Compras parte 20)

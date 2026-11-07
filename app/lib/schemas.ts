@@ -285,6 +285,18 @@ export const sueltosBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("tildar"), id: z.number().int().positive(), columna: z.enum(["acopio", "carga"]), valor: z.boolean() }).strict(),
   z.object({ accion: z.literal("borrar"), id: z.number().int().positive() }).strict(),
   z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
+  // 📍 Destinos (163): módulo "Van sueltas", pieza sin módulo a un módulo o
+  // suelta, herraje suelto o dentro del mueble. null = volver a lo de la planilla.
+  z.object({
+    accion: z.literal("destino"),
+    ot: otSuelto,
+    cambios: z.array(z.object({
+      tipo: z.enum(["modulo", "pieza", "herraje"]),
+      clave: z.string().trim().min(1).max(300),
+      suelto: z.boolean().nullable(),
+      modulo: textoSuelto(40),
+    }).strict()).min(1).max(500),
+  }).strict(),
 ]);
 
 // ── /api/piezas (109): piezas de la OT con etiqueta QR (OP parte 17) ────────
@@ -311,6 +323,18 @@ export const piezasBody = z.discriminatedUnion("accion", [
   }).strict(),
   z.object({ accion: z.literal("etapas"), ot: otSuelto, nombre: nombrePieza, etapas: etapasPieza }).strict(),
   z.object({ accion: z.literal("vaciar"), ot: otSuelto }).strict(),
+  // 📍 Destinos (163): módulo "Van sueltas", pieza sin módulo a un módulo o
+  // suelta, herraje suelto o dentro del mueble. null = volver a lo de la planilla.
+  z.object({
+    accion: z.literal("destino"),
+    ot: otSuelto,
+    cambios: z.array(z.object({
+      tipo: z.enum(["modulo", "pieza", "herraje"]),
+      clave: z.string().trim().min(1).max(300),
+      suelto: z.boolean().nullable(),
+      modulo: textoSuelto(40),
+    }).strict()).min(1).max(500),
+  }).strict(),
 ]);
 
 // ── /api/piezas/paso (110): escaneo de piezas en cada etapa (OP parte 18) ──

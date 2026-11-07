@@ -15,6 +15,7 @@ import {
 } from "../lib/piezas";
 import { useEscape } from "../hooks/useEscape";
 import { TituloOt } from "./NombreOt";
+import DestinosOt from "./DestinosOt";
 import { CLAVE_PLANILLAS_PIEZAS, textoCarga } from "../lib/planillaPiezas";
 
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
@@ -265,6 +266,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
           <div className="text-sm text-gypi-dim py-3">Esta OT todavía no tiene piezas cargadas.{esGestion ? "" : " Las carga técnica o el encargado."}</div>
         ) : (
           <>
+            {esGestion && <DestinosOt ot={ot} empresaId={empresaId} piezas={piezas} onCambio={cargar} />}
             <section aria-label="Imprimir etiquetas" className="g-card mb-3">
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-xs text-gypi-dim">Qué piezas
