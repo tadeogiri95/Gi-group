@@ -5,8 +5,9 @@
 // por la empresa de la clave del script).
 // Las piezas que ya estaban (mismo nombre y número) conservan su id, así las
 // etiquetas impresas y los escaneos siguen valiendo.
-import { sbGet, sbGetAll, sbDelete, sbHeaders } from "./sbHelpers";
+import { sbGet, sbGetAll, sbPost, sbPatch, sbDelete, sbHeaders } from "./sbHelpers";
 import { expandirPiezas, cambiosAlReemplazar, reglasPieza } from "./piezas";
+import { planSueltos } from "./sueltosPlanilla";
 
 const LOTE = 500;
 const LOTE_IDS = 200;
@@ -87,4 +88,45 @@ export async function guardarPiezas({ e, ot, renglones, opts = {}, empleadoId = 
     }
   }
   return { piezas: piezas.length, ...cambios, noBorradas };
+}
+
+/**
+ * Deja la hoja de sueltos de la OT como la pide la planilla (carga
+ * automática, con las columnas SUELTO). Lo cargado a mano no se toca; lo que
+ * cargó la planilla antes se corrige o se borra (salvo si ya está tildado).
+ * @returns {Promise<{ ids: number[], creados: number, borrados: number, quedanTildados: number }>}
+ */
+export async function sincronizarSueltos({ e, ot, items, idsPrevios = [], opts = {} }) {
+  const filtroOt = `sueltos_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}`;
+  const actuales = (await sbGet(`${filtroOt}&select=id,orden,tipo,codigo,descripcion,medida,cantidad,acopio,carga&order=orden.asc,id.asc`, opts)) || [];
+  const plan = planSueltos(actuales, items, idsPrevios);
+  for (let i = 0; i < plan.borrar.length; i += LOTE_IDS) {
+    await sbDelete(`${filtroOt}&id=in.(${plan.borrar.slice(i, i + LOTE_IDS).join(",")})`, opts);
+  }
+  for (const c of plan.corregir) {
+    await sbPatch(`${filtroOt}&id=eq.${c.id}`, { cantidad: c.cantidad, medida: c.medida }, opts);
+  }
+  let creados = [];
+  if (plan.crear.length) {
+    const base = actuales.reduce((m, a) => Math.max(m, Number(a.orden) || 0), -1) + 1;
+    // Mismas claves en todas las filas (PostgREST lo exige en un lote)
+    creados = (await sbPost("sueltos_ot", plan.crear.map((item, i) => ({
+      empresa_id: e,
+      ot,
+      orden: base + i,
+      tipo: item.tipo ?? null,
+      codigo: item.codigo ?? null,
+      descripcion: item.descripcion ?? null,
+      medida: item.medida ?? null,
+      cantidad: item.cantidad ?? 1,
+      va_con: item.va_con ?? null,
+      creado_por: null,
+    })), opts)) || [];
+  }
+  return {
+    ids: [...plan.siguen, ...creados.map((c) => c.id)].map(Number),
+    creados: creados.length,
+    borrados: plan.borrar.length,
+    quedanTildados: plan.quedanTildados.length,
+  };
 }
