@@ -199,6 +199,15 @@ async function escanearRenglon(sesion, datos, lectura, renglon = null) {
     const r = await unidadesDelRenglon(sesion, otra.ot, otra.nombre, opts);
     if (r.piezas.length) { ({ ot, piezas } = r); break; }
   }
+  // Código de barras de un módulo, (OT)-(Módulo) (07/11): "M7819-GB2P" no es
+  // una pieza; si la OT tiene ese módulo, pasan todas sus piezas
+  if (!piezas.length && !renglon) {
+    for (const l of [lectura, ...(lectura.otras || [])]) {
+      const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(l.ot)}&select=ot&limit=1`, opts)) || [];
+      if (!proyecto) continue;
+      if ((await piezasDelModulo(sesion, proyecto.ot, l.nombre, opts)).length) return escanearModulo(sesion, datos, { ot: proyecto.ot, modulo: l.nombre });
+    }
+  }
   if (!piezas.length) {
     return NextResponse.json({ error: `La OT ${ot} no tiene la pieza ${lectura.nombre}. Revisá que la planilla esté pegada en 🧩 Piezas y que la OT y el nombre estén escritos igual.` }, { status: 404 });
   }

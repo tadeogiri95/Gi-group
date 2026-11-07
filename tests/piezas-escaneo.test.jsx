@@ -140,7 +140,7 @@ function req(body, t) {
 const PIEZA = { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2, etapas: [1, 2, 3] };
 
 let leidas = [];
-function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false, renglon = null, hechos = [] } = {}) {
+function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false, renglon = null, hechos = [], modulo = [] } = {}) {
   const escrito = [];
   leidas = [];
   global.fetch = createFetchMock([
@@ -160,6 +160,7 @@ function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = []
       respond: (u) => {
         leidas.push(u);
         if (u.includes("order=unidad.asc")) return { status: 200, body: renglon || [] };
+        if (u.includes("&modulo=eq.")) return { status: 200, body: modulo };
         if (falla) return { status: 404, body: { code: "PGRST205", message: falla } };
         if (u.includes("etapas=cs.")) return { status: 200, body: [{ id: 1 }], headers: { "content-range": `0-0/${total}` } };
         return { status: 200, body: pieza ? [pieza] : [] };
@@ -273,6 +274,14 @@ test("/api/piezas/paso — el mismo QR para las 7 unidades: cada escaneo anota l
   res = await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - NO-EXISTE", etapa: 2 }, await token()));
   assert.equal(res.status, 404);
   assert.match((await res.json()).error, /no tiene la pieza NO-EXISTE/);
+
+  // Código de barras del módulo, (OT)-(Módulo) (07/11): no es una pieza, pasan todas las del módulo
+  const delModulo = [1, 2, 3].map((n) => ({ id: 60 + n, ot: "M-7495", etapas: [2] }));
+  escrito = mock({ renglon: [], modulo: delModulo });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "M7495-GB2P", etapa: 2 }, await token()))).json();
+  assert.equal(data.ok, true);
+  assert.deepEqual([data.modulo.nombre, data.modulo.nuevas], ["GB2P", 3]);
+  assert.equal(escrito[0].body.length, 3);
 });
 
 test("etiquetas de Gypi — todas las unidades de una pieza llevan el mismo QR", async () => {

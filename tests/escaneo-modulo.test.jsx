@@ -39,12 +39,17 @@ test("modulosConPiezas — un módulo por nombre con su cantidad; las sueltas no
   assert.deepEqual(modulosConPiezas([{ modulo: "M2" }, { modulo: "M10" }, { modulo: "M2" }, { modulo: null }]), [{ modulo: "M2", piezas: 2 }, { modulo: "M10", piezas: 1 }]);
 });
 
-test("htmlEtiquetasModulos — una página por módulo con su QR y el nombre escapado", async () => {
-  const html = await htmlEtiquetasModulos({ empresa: "GI", ot: "7495", modulos: [{ modulo: "M<1>", piezas: 3 }, { modulo: "M2", piezas: 1 }], tamano: { ancho: 50, alto: 30 } });
-  assert.equal((html.match(/class="etiqueta"/g) || []).length, 2);
+test("htmlEtiquetasModulos — una página por módulo con su código de barras (OT)-(Módulo) y el nombre escapado", async () => {
+  const html = await htmlEtiquetasModulos({ empresa: "GI", ot: "M-7495", modulos: [{ modulo: "M<1>", piezas: 3 }, { modulo: "M2", piezas: 1 }, { modulo: "CAÑO", piezas: 2 }], tamano: { ancho: 50, alto: 30 } });
+  assert.equal((html.match(/class="etiqueta( con-barras)?"/g) || []).length, 3);
   assert.ok(html.includes("M&lt;1&gt;"));
-  assert.ok(html.includes("1 de 2 · 3 piezas"));
-  assert.ok(html.includes("<svg"));
+  assert.ok(html.includes("BULTO 1 DE 3"));
+  assert.ok(html.includes("3 piezas"));
+  assert.ok(html.includes('data-barras="M7495-M2"'));
+  assert.ok(html.includes('data-barras="M7495-M&lt;1&gt;"'));
+  // Con ñ no entra en un código de barras: va el QR de antes
+  assert.equal((html.match(/class="etiqueta con-barras"/g) || []).length, 2);
+  assert.equal((html.match(/class="qr"/g) || []).length, 1);
 });
 
 test("mensajeEscaneo — módulo listo, ya escaneado o que no pasa por la etapa", () => {

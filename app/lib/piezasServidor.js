@@ -8,7 +8,10 @@
 import { sbGet, sbGetAll, sbPost, sbPatch, sbDelete, sbHeaders } from "./sbHelpers";
 import { expandirPiezas, cambiosAlReemplazar, reglasPieza } from "./piezas";
 import { planSueltos, claveComponente } from "./sueltosPlanilla";
-import { modulosACorregir, sueltosDeDestinos } from "./destinosPiezas";
+import { broadcastRefresh } from "./broadcast";
+import { modulosACorregir, sueltosDeDestinos, armarDestinos, planBultos, ARMADO } from "./destinosPiezas";
+
+const broadcastBultos = (e) => broadcastRefresh(e, "bultos_ot");
 
 const LOTE = 500;
 const LOTE_IDS = 200;
@@ -203,5 +206,31 @@ export async function aplicarDestinos({ e, ot, idsPrevios = [], opts = {} }) {
     await sbPatch(`${filtroOt}&nombre=eq.${encodeURIComponent(nombre)}`, { modulo }, opts);
   }
   const s = await sincronizarSueltos({ e, ot, items: sueltosDeDestinos(piezas, destinos), idsPrevios, opts });
-  return { modulos: Object.keys(corregir).length, sueltos: s };
+  const armados = armarDestinos(piezas, destinos).modulos.filter((m) => m.destino === ARMADO).map((m) => m.modulo);
+  const bultos = await sincronizarBultos({ e, ot, modulos: armados, opts });
+  return { modulos: Object.keys(corregir).length, sueltos: s, bultos };
+}
+
+/**
+ * Un bulto por módulo armado en 🚚 Carga (planBultos). No toca nada si la OT
+ * tiene bultos armados a mano o si la carga ya está firmada.
+ * @returns {Promise<{ creados: number, borrados: number } | null>}
+ */
+export async function sincronizarBultos({ e, ot, modulos, opts = {} }) {
+  const otq = encodeURIComponent(ot);
+  const [carga] = (await sbGet(`cargas_ot?empresa_id=eq.${e}&ot=eq.${otq}&select=firma_carga_at&limit=1`, opts)) || [];
+  if (carga?.firma_carga_at) return null;
+  const bultos = (await sbGet(`bultos_ot?empresa_id=eq.${e}&ot=eq.${otq}&select=id,numero,contenido,cargado&order=numero.asc`, opts)) || [];
+  const plan = planBultos(bultos, modulos.slice(0, 999));
+  if (!plan) return null;
+  for (let i = 0; i < plan.borrar.length; i += LOTE_IDS) {
+    await sbDelete(`bultos_ot?empresa_id=eq.${e}&ot=eq.${otq}&id=in.(${plan.borrar.slice(i, i + LOTE_IDS).join(",")})`, opts);
+  }
+  // De menor a mayor: cada número nuevo es menor o igual al viejo, no choca
+  for (const r of plan.renumerar) await sbPatch(`bultos_ot?empresa_id=eq.${e}&id=eq.${r.id}`, { numero: r.numero }, opts);
+  if (plan.crear.length) {
+    await sbPost("bultos_ot", plan.crear.map((b) => ({ empresa_id: e, ot, numero: b.numero, contenido: b.contenido, creado_por: null })), opts);
+  }
+  if (plan.crear.length || plan.borrar.length || plan.renumerar.length) broadcastBultos(e);
+  return { creados: plan.crear.length, borrados: plan.borrar.length };
 }

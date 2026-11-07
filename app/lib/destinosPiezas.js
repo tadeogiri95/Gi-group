@@ -161,3 +161,31 @@ export function textoDestinos(d) {
   if (d.sinDefinir) partes.push(`${d.sinDefinir} sin definir`);
   return partes.join(" · ");
 }
+
+/** Contenido del bulto de un módulo armado en 🚚 Carga: "Módulo M1". */
+export const contenidoBultoModulo = (modulo) => `Módulo ${modulo}`;
+const MODULO_DE_BULTO = /^Módulo (.+)$/;
+/** "Módulo M1" → "M1"; null si el bulto no es de un módulo. */
+export const moduloDeBulto = (contenido) => String(contenido ?? "").match(MODULO_DE_BULTO)?.[1] || null;
+
+/**
+ * Bultos de la OT = sus módulos armados (Tadeo, 07/11: el módulo es el bulto).
+ * Qué hacer con bultos_ot para que haya uno por módulo armado, en orden:
+ *   - se agregan los que faltan al final;
+ *   - se borran los de módulos que ya no se arman, salvo si ya están cargados;
+ *   - los números se corren para quedar "1 de N" sin huecos.
+ * Null si la OT tiene bultos armados a mano (otro contenido): no se tocan.
+ * @param {{ id: number, numero: number, contenido: string|null, cargado?: boolean }[]} bultos
+ * @param {string[]} modulos los módulos armados
+ */
+export function planBultos(bultos = [], modulos = []) {
+  if ((bultos || []).some((b) => !moduloDeBulto(b.contenido))) return null;
+  const quiero = new Set(modulos);
+  const ordenados = [...(bultos || [])].sort((a, b) => a.numero - b.numero);
+  const borrar = ordenados.filter((b) => !quiero.has(moduloDeBulto(b.contenido)) && !b.cargado).map((b) => b.id);
+  const quedan = ordenados.filter((b) => !borrar.includes(b.id));
+  const renumerar = quedan.flatMap((b, i) => (b.numero === i + 1 ? [] : [{ id: b.id, numero: i + 1 }]));
+  const tienen = new Set(quedan.map((b) => moduloDeBulto(b.contenido)));
+  const crear = modulos.filter((m) => !tienen.has(m)).map((m, i) => ({ numero: quedan.length + i + 1, contenido: contenidoBultoModulo(m) }));
+  return { crear, borrar, renumerar };
+}

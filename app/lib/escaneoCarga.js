@@ -17,9 +17,12 @@
 //   - Cualquiera de esos metido en un link de Gypi (?qr=, app/lib/linkQr.js).
 //   - El código de barras de la pieza (06/11): "M7819-GB2P-11" (OT-Módulo-
 //     Pieza, app/lib/codigoBarras.js). Con sub-OT trae otras lecturas posibles.
+//   - El código de barras del módulo (07/11): "M7819-GB2P" (OT-Módulo). El
+//     módulo armado es el bulto ("Módulo GB2P"). Un bulto armado a mano
+//     lleva "M7819-BULTO3".
 // Un suelto se carga entero con un escaneo (una lectura por renglón).
 import { textoDeQr } from "./linkQr";
-import { leerBarrasPieza } from "./codigoBarras";
+import { leerBarrasPieza, textoBarrasPieza } from "./codigoBarras";
 
 const OT_VALIDA = /^[\w.-]{1,40}$/;
 
@@ -116,6 +119,18 @@ function sueltoLlamado(nombre, sueltos) {
   return iguales.find((x) => !x.carga) || iguales[0];
 }
 
+/** El bulto del módulo (contenido "Módulo M1", app/lib/destinosPiezas.js). */
+function bultoDeModulo(modulo, bultos) {
+  const buscado = normalizarTexto(`Módulo ${modulo}`);
+  return bultos.find((b) => normalizarTexto(b.contenido) === buscado) || null;
+}
+
+/** Código de barras del rótulo de un bulto: el del módulo, (OT)-(Módulo), o (OT)-BULTO3 si se armó a mano. */
+export function textoBarrasBulto(ot, bulto) {
+  const m = String(bulto?.contenido ?? "").match(/^Módulo (.+)$/);
+  return textoBarrasPieza(ot, m ? m[1] : `BULTO${bulto?.numero}`);
+}
+
 /**
  * Coteja un QR contra lo que lleva la OT abierta.
  * @param {string} texto lo que leyó la cámara
@@ -145,13 +160,23 @@ export function cotejarQr(texto, { ot, bultos = [], sueltos = [], piezas = [] })
     // "11 (2)" es el segundo renglón llamado "11" en 🧩 Piezas
     const nombrePieza = String(p.nombre ?? "").replace(/\s+\(\d+\)$/, "");
     const s = sueltoLlamado(nombrePieza, sueltos);
-    if (!s) return { error: `La pieza ${nombrePieza} no está en la lista de sueltos. Si va dentro de un módulo armado, escaneá el rótulo del bulto.` };
+    if (!s) return { error: `La pieza ${nombrePieza} no está en la lista de sueltos. Si va dentro de un módulo armado, escaneá la etiqueta del módulo.` };
     const nombre = [s.codigo, s.descripcion].filter(Boolean).join(" · ") || "Suelto";
     return { tipo: "suelto", item: s, yaCargado: !!s.carga, nombre };
   }
   if (lectura.piezaNombre) {
     const s = sueltoLlamado(lectura.piezaNombre, sueltos);
-    if (!s) return { error: `La pieza ${lectura.piezaNombre} no está en la lista de sueltos. Si va dentro de un módulo armado, escaneá el rótulo del bulto.` };
+    // Código de barras del módulo, (OT)-(Módulo): es su bulto (07/11)
+    const b = s ? null : bultoDeModulo(lectura.piezaNombre, bultos);
+    if (b) return { tipo: "bulto", item: b, yaCargado: !!b.cargado, nombre: `Bulto ${b.numero} de ${bultos.length} · ${b.contenido}` };
+    // Rótulo de un bulto armado a mano: (OT)-BULTO3
+    const n = Number(lectura.piezaNombre.match(/^BULTO(\d{1,3})$/i)?.[1]);
+    if (n) {
+      const porNumero = bultos.find((x) => x.numero === n);
+      if (!porNumero) return { error: `La OT no tiene el bulto ${n}. Revisá la lista de bultos.` };
+      return { tipo: "bulto", item: porNumero, yaCargado: !!porNumero.cargado, nombre: `Bulto ${porNumero.numero} de ${bultos.length}` };
+    }
+    if (!s) return { error: `La pieza ${lectura.piezaNombre} no está en la lista de sueltos. Si va dentro de un módulo armado, escaneá la etiqueta del módulo.` };
     const nombre = [s.codigo, s.descripcion].filter(Boolean).join(" · ") || "Suelto";
     return { tipo: "suelto", item: s, yaCargado: !!s.carga, nombre };
   }
