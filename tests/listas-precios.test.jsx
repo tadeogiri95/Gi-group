@@ -67,6 +67,22 @@ test("títulos — qué es cada columna; moneda y IVA por el título del precio"
   assert.deepEqual([c.moneda, c.conIva, c.codigo], ["USD", true, -1]);
 });
 
+test("Artículo (código) y Descripción — gana la de nombres largos y el resto de la fila queda como detalle", () => {
+  const g = [
+    ["Artículo", "Descripción", "Rubro", "Unidad", "Precio"],
+    ["BIS-35", "Bisagra cazoleta 35 mm codo 0 con cierre suave", "Herrajes", "u", "1200"],
+    ["COR-450", "Corredera telescópica 450 mm", "Herrajes", "par", "5400"],
+  ];
+  const c = detectarColumnas(g, { excel: true });
+  assert.deepEqual([c.descripcion, c.codigo, c.precio], [1, 0, 4]);
+  const r = renglonesDeGrilla(g, c, { excel: true }).renglones[0];
+  assert.equal(r.descripcion, "Bisagra cazoleta 35 mm codo 0 con cierre suave");
+  assert.equal(r.codigo, "BIS-35");
+  assert.equal(r.detalle, "Rubro: Herrajes · Unidad: u");
+  const sinTitulos = renglonesDeGrilla([["A1", "Placa", "x", "10"]], { titulos: -1, descripcion: 1, codigo: 0, precio: 3 }).renglones[0];
+  assert.equal(sinTitulos.detalle, "x");
+});
+
 test("sin títulos — precio = números más a la derecha, descripción = textos más largos", () => {
   const g = [["101", "Placa MDF 18mm blanco", "45000.5"], ["102", "Placa MDF 15mm negro", "40000"], ["103", "Bisagra codo cero", "12.5"]];
   const c = detectarColumnas(g, { excel: true });
@@ -100,7 +116,7 @@ test("Excel — se lee la hoja y salen los renglones", () => {
   });
   const g = leerHojaXlsx(bytes, "Hoja1");
   const c = detectarColumnas(g, { excel: true });
-  assert.deepEqual(renglonesDeGrilla(g, c, { excel: true }).renglones, [{ descripcion: "CANTO ABS BLANCO 22MM", codigo: "C22", cantidad: 1, precio: 950.75 }]);
+  assert.deepEqual(renglonesDeGrilla(g, c, { excel: true }).renglones, [{ descripcion: "CANTO ABS BLANCO 22MM", codigo: "C22", cantidad: 1, precio: 950.75, detalle: "" }]);
 });
 
 test("ayudas — sacar IVA, proveedor por el nombre del archivo, sugerencias parecidas", () => {
@@ -150,6 +166,9 @@ test("migración 169 — tipo, 'descartado' y carga 'planilla' sin tocar los otr
   assert.match(sql, /'nombre', 'manual', 'descartado'/);
   assert.match(sql, /\\mcarga\\M/, "no borra el control de cargada_por_nombre");
   assert.ok(MIGRACIONES.some((m) => m.n === 169 && m.tablas.facturas_sueltas.includes("tipo")));
+  const sql170 = readFileSync(new URL("../supabase/migrations/170_detalle_renglon_lista.sql", import.meta.url), "utf8");
+  assert.match(sql170, /add column if not exists detalle text/);
+  assert.ok(MIGRACIONES.some((m) => m.n === 170 && m.tablas.facturas_sueltas_renglones.includes("detalle")));
 });
 
 // ─── API ───
@@ -192,16 +211,18 @@ function mockApi() {
 
 test("/api/facturas-sueltas — guardar una lista grande en tandas, reconociendo por código recordado", async () => {
   const { escrito } = mockApi();
-  const renglones = Array.from({ length: 1500 }, (_, i) => ({ descripcion: i === 0 ? "Melamina blanca 18mm" : `Cosa ${i}`, codigo: i === 1 ? "202" : "", precio: 10 + i }));
+  const renglones = Array.from({ length: 1500 }, (_, i) => ({ descripcion: i === 0 ? "Melamina blanca 18mm" : `Cosa ${i}`, codigo: i === 1 ? "202" : "", precio: 10 + i, detalle: i === 2 ? "Rubro: Varios" : "" }));
   const res = await post("administrativo", { accion: "guardar", tipo: "lista", carga: "planilla", proveedor: "Faplac", numero: "Lista nov", fecha: "2026-11-08", moneda: "ARS", renglones });
   assert.equal(res.status, 200);
   const d = await res.json();
   assert.deepEqual([d.asociados, d.sinAsociar], [2, 1498]);
   const cab = escrito.find((w) => w.tabla === "facturas_sueltas" && w.metodo === "POST").body;
+  assert.equal(escrito.find((w) => w.tabla === "facturas_sueltas_renglones").body[0].detalle, null);
   assert.deepEqual([cab.tipo, cab.carga], ["lista", "planilla"]);
   const tandas = escrito.filter((w) => w.tabla === "facturas_sueltas_renglones" && w.metodo === "POST");
   assert.deepEqual(tandas.map((t) => t.body.length), [1000, 500]);
   assert.deepEqual(tandas[0].body.slice(0, 2).map((r) => [r.sku, r.asociado_como, r.cantidad]), [["1.10", "nombre", 1], ["3.30", "codigo", 1]]);
+  assert.equal(tandas[0].body[2].detalle, "Rubro: Varios", "se guarda el resto de la fila");
   assert.equal(escrito.filter((w) => w.tabla === "precios_articulos").reduce((s, w) => s + w.body.length, 0), 2);
 });
 
@@ -232,7 +253,7 @@ test("/api/facturas-sueltas — Sin asociar deja afuera lo que no es del MRP; el
   const { leidos } = mockApi();
   const r1 = await (await get("?vista=sin_asociar")).json();
   assert.equal(r1.ok, true);
-  assert.ok(leidos.some((u) => u.includes("sku=is.null&asociado_como=is.null") && u.includes("facturas_sueltas!inner(tipo,")));
+  assert.ok(leidos.some((u) => u.includes("sku=is.null&asociado_como=is.null") && u.includes("detalle") && u.includes("facturas_sueltas!inner(tipo,")));
   const r2 = await (await get("")).json();
   assert.equal(r2.sinAsociar, 7);
 });
@@ -275,6 +296,7 @@ test("pantalla — Sin asociar: sugerencia, filtro por documento y No es del MRP
       return Response.json({ ok: true, renglones: [
         { id: 9, factura_id: 4, descripcion: "Bisagra cazoleta 35mm codo 0", codigo: "B35", cantidad: 1, precio: 1200, facturas_sueltas: doc },
         { id: 10, factura_id: 4, descripcion: "Flete a obra", codigo: "", cantidad: 1, precio: 5000, facturas_sueltas: doc },
+        { id: 11, factura_id: 4, descripcion: "MEL-18", codigo: "", detalle: "Nombre: Melamina blanca 18mm · Rubro: Placas", cantidad: 1, precio: 80000, facturas_sueltas: doc },
       ] });
     }
     return Response.json({ ok: true, sinAsociar: 2, facturas: [] });
@@ -282,6 +304,8 @@ test("pantalla — Sin asociar: sugerencia, filtro por documento y No es del MRP
   window.confirm = () => true;
   render(<FacturasSueltas />);
   fireEvent.click(await screen.findByRole("tab", { name: "Sin asociar (2)" }));
+  assert.ok(await screen.findByText("Nombre: Melamina blanca 18mm · Rubro: Placas"), "se ve la fila completa");
+  assert.ok(screen.getByText("¿Es MELAMINA BLANCA 18MM?"), "sugiere con el resto de la fila si la descripción es un código");
   fireEvent.click(await screen.findByText("¿Es BISAGRA CAZOLETA 35 CODO 0?"));
   await waitFor(() => assert.equal(pedidos.length, 1));
   assert.deepEqual(pedidos[0], { accion: "asociar", renglon_id: 9, sku: "3.30" });
@@ -291,7 +315,7 @@ test("pantalla — Sin asociar: sugerencia, filtro por documento y No es del MRP
   fireEvent.change(screen.getByLabelText("Buscar en Sin asociar"), { target: { value: "flete" } });
   await waitFor(() => assert.equal(screen.queryByText("Bisagra cazoleta 35mm codo 0"), null));
   fireEvent.change(screen.getByLabelText("Documento"), { target: { value: "4" } });
-  fireEvent.click(await screen.findByText(/Los 2 que quedan de este documento no son del MRP/));
+  fireEvent.click(await screen.findByText(/Los 3 que quedan de este documento no son del MRP/));
   await waitFor(() => assert.equal(pedidos.length, 3));
   assert.deepEqual(pedidos[2], { accion: "descartar", factura_id: 4 });
 });

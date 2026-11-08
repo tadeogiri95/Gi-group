@@ -196,6 +196,7 @@ export function validarFactura(d) {
       orden: i,
       descripcion,
       codigo: texto(r?.codigo, 60),
+      detalle: texto(r?.detalle, 600),
       cantidad: Math.round(cantidad * 1000) / 1000,
       precio: r4(precio),
       sku: texto(r?.sku, 60),
@@ -232,7 +233,7 @@ export const PROMPT_FACTURA = `Leés facturas y listas de precios de proveedores
 - moneda: "USD" si los importes están en dólares, si no "ARS".
 - tipo_cambio: el tipo de cambio si la factura lo dice; 0 si no.
 - precios_con_iva: true si los precios unitarios incluyen IVA (factura B o C, o lista "con IVA" o "precio final"), false si son sin IVA (factura A, o lista "más IVA" o "neto").
-- renglones: uno por cada ítem facturado o cada artículo de la lista, en orden. En una lista, cantidad = 1 y precio_unitario = el precio de la lista (si hay varias columnas de precio, el sin IVA o neto). descripcion tal cual figura; codigo del artículo del proveedor si figura (vacío si no); cantidad; precio_unitario sin bonificaciones aplicadas aparte (si hay descuento por renglón, el precio unitario ya descontado). No incluyas renglones de subtotal, IVA, percepciones ni otros impuestos.
+- renglones: uno por cada ítem facturado o cada artículo de la lista, en orden. En una lista, cantidad = 1 y precio_unitario = el precio de la lista (si hay varias columnas de precio, el sin IVA o neto). descripcion: el nombre o la descripción completa del artículo tal cual figura (no el código; si hay varias columnas de texto, juntalas); codigo del artículo del proveedor si figura (vacío si no); cantidad; precio_unitario sin bonificaciones aplicadas aparte (si hay descuento por renglón, el precio unitario ya descontado). No incluyas renglones de subtotal, IVA, percepciones ni otros impuestos.
 Usá punto como separador decimal en los números. Si algo no se puede leer, dejalo vacío o en 0; no inventes datos.`;
 
 export const ESQUEMA_FACTURA = {
