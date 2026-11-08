@@ -13,6 +13,7 @@ import Stat from "./components/ui/Stat";
 import Indicadores from "./components/Indicadores";
 import ReporteDiaTab from "./components/ReporteDiaTab";
 import InformeProduccionTab from "./components/InformeProduccionTab";
+import CostoOtTab from "./components/CostoOtTab";
 import LeadTimeTab from "./components/LeadTimeTab";
 import MinutasReporteTab from "./components/MinutasReporteTab";
 import { useCostoHora } from "./hooks/useCostoHora";
@@ -481,6 +482,8 @@ export default function ReportesScreen({ grupo = null }) {
   const conInforme = tieneModulo(empresa, "proyectos") && (usuario?.rol === "gerencial" || usuario?.rol === "administrativo");
   // Reportes de las minutas de Buenos Días (parte M5): solo gerencia
   const conMinutas = tieneModulo(empresa, "minutas") && comoDueno(usuario);
+  // Costo por OT (costo de OT, parte F): Dueño y Supervisor
+  const conCostoOt = tieneModulo(empresa, "proyectos") && comoDueno(usuario);
   const empresaId = usuario?.empresa_id;
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(comoDueno(usuario));
@@ -627,6 +630,7 @@ export default function ReportesScreen({ grupo = null }) {
         {ver("produccion") && conRegistroTareas(empresa) && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
         {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
         {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "leadtime"} onClick={() => setTab("leadtime")} color={MARCA}>⏱️ Lead time</Chip>}
+        {ver("produccion") && conCostoOt && <Chip active={tab === "costo"} onClick={() => setTab("costo")} color={MARCA}>💲 Costo por OT</Chip>}
         {ver("produccion") && conMinutas && <Chip active={tab === "minutas"} onClick={() => setTab("minutas")} color={MARCA}>📝 Minutas</Chip>}
         {ver("produccion") && tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
         {ver("personal") && <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>}
@@ -670,6 +674,8 @@ export default function ReportesScreen({ grupo = null }) {
           etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} conTareas={conRegistroTareas(empresa)} />
       ) : tab === "leadtime" ? (
         <LeadTimeTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} divisiones={divisionesCtx || []} division={division} />
+      ) : tab === "costo" ? (
+        <CostoOtTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} divisiones={divisionesCtx || []} division={division} />
       ) : tab === "obra" ? (
         <ReportesObraTab empresaId={empresaId} />
       ) : tab === "liquidacion" ? (

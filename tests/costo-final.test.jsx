@@ -108,7 +108,7 @@ function mockApi({ costos = [], estado = "cerrado", supervisor = false } = {}) {
     { match: (u) => u.includes("/rest/v1/precios_fijos_ot?"), respond: () => ({ status: 200, body: [{ sku: "A", fecha: "2026-01-01", precio: 70000, precio_ars: 70000, moneda: "ARS", origen: "mrp" }] }) },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ nombre: "Tadeo" }] }) },
     { match: (u) => u.includes("/rest/v1/costos_empresa?"), respond: () => ({ status: 200, body: [{ costo_hora: 5000 }] }) },
-    { match: (u) => u.includes("/rest/v1/horas_ot?"), respond: () => ({ status: 200, body: [{ etapa: "total", reales: 12, presupuestadas: 10 }] }) },
+    { match: (u) => u.includes("/rest/v1/horas_ot?"), respond: () => ({ status: 200, body: [{ ot: "M-7471", etapa: "total", reales: 12, presupuestadas: 10 }] }) },
     vacio(/\/rest\/v1\/(movimientos_stock|articulos_stock|etapas|divisiones|config_sistema|v_avance_piezas|avance_etapas|avance_manual_historial|pausas_ot|pasos_pieza|registro_actividades)\?/),
     {
       match: (u) => u.includes("/rest/v1/costos_finales_ot"),
