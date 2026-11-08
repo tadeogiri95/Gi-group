@@ -26,6 +26,7 @@ export const CRONS_ESPERADOS = {
   "sync-ot": 26 * HORA, // 6 de la mañana en Argentina
   "reporte-diario": 26 * HORA, // 23:00 en Argentina
   "flota-alertas": 26 * HORA, // 7 de la mañana en Argentina
+  "costos-ot": 26 * HORA, // 6:30 en Argentina, después de sync-ot
 };
 
 async function registrar(nombre, datos) {

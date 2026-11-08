@@ -27,6 +27,7 @@ import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
 import CostoMaterialesOt from "./CostoMaterialesOt";
+import CostoFinalOt from "./CostoFinalOt";
 import HorasOt from "./HorasOt";
 import AvanceManualOt from "./AvanceManualOt";
 import { CambiosTiempoOt } from "./AjusteTiempo";
@@ -272,6 +273,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         )}
 
         <MaterialOt ot={proyecto?.ot} empresaId={empresaId} />
+        {verCostos && <CostoFinalOt proyecto={proyecto} />}
         {verCostos && <CostoMaterialesOt ot={proyecto?.ot} />}
         {puedeCambiarSemana && <HorasOt ot={proyecto?.ot} />}
 
