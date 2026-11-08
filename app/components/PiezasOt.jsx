@@ -187,7 +187,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
           <button onClick={onClose} aria-label="Cerrar" className="min-w-[44px] min-h-[44px] bg-transparent border-none text-2xl cursor-pointer text-gypi-text">✕</button>
         </div>
 
-        <div className="text-[12px] text-gypi-dim mb-3">Cada pieza de la planilla técnica lleva su etiqueta con QR. En cada etapa se escanea para saber por dónde pasó.</div>
+        <div className="text-[12px] text-gypi-dim mb-3">Cada pieza de la planilla técnica lleva su etiqueta con código de barras. En cada etapa se escanea para saber por dónde pasó.</div>
         {auto && !pegadasDespues(piezas, auto) && (
           <div className={`text-[12px] mb-3 ${auto.error || auto.sin_codigo_total || auto.no_borradas ? "text-gypi-red" : "text-gypi-dim"}`}>
             🔄 Cargadas solas desde la planilla <b>{auto.nombre}</b>{auto.at ? ` el ${new Date(auto.at).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}` : ""}: {textoCarga(auto)}.
@@ -289,7 +289,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                   <button onClick={imprimirModulos} className="g-btn g-btn-secondary w-full mt-2">
                     🏷 Imprimir {paraModulos.length === 1 ? "1 etiqueta de módulo" : `${paraModulos.length} etiquetas de módulo`}
                   </button>
-                  <div className="text-xs text-gypi-dim mt-1">Se pegan en el módulo armado. Al escanearla en Armado pasan todas sus piezas juntas.</div>
+                  <div className="text-xs text-gypi-dim mt-1">Se pega en el módulo armado: es la etiqueta del bulto. Su código de barras (OT-Módulo) pasa todas sus piezas juntas en Armado y tilda el bulto en 🚚 Carga.</div>
                 </>
               )}
             </section>

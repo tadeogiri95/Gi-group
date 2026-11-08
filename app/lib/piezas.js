@@ -382,7 +382,7 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
       <div class="pieza">${esc(p.nombre)}</div>
       <div class="unidad">${p.de > 1 ? `Cant. ${p.de}` : "Cant. 1"}${medidas(p) ? ` · ${esc(medidas(p))}` : ""}</div>
       ${p.material ? `<div class="chico">${esc(p.material)}</div>` : ""}
-      ${p.modulo ? `<div class="chico mod">Módulo ${esc(p.modulo)}</div>` : ""}
+      ${p.modulo ? `<div class="chico${moduloDe(p.nombre) ? " mod" : ""}">Módulo ${esc(p.modulo)}</div>` : ""}
       ${ruta ? `<div class="ruta">${esc(ruta)} · N° ${p.id}</div>` : `<div class="ruta">N° ${p.id}</div>`}
     </div>`;
     if (barras) {
@@ -424,26 +424,48 @@ export async function htmlEtiquetasPiezas({ empresa = "", ot, proyecto = null, p
 </style></head><body>${items.join("")}</body></html>`;
 }
 
-/** Página con una etiqueta por módulo, mismo rollo que las de pieza: OT, módulo, cuántas piezas y el QR. */
+/** Código de barras de un módulo: (OT)-(Módulo), "M7819-GB2P" (07/11, Tadeo: módulo = bulto). */
+export function textoBarrasModulo(ot, modulo) {
+  return textoBarrasPieza(ot, modulo);
+}
+
+/**
+ * Página con una etiqueta por módulo, mismo rollo que las de pieza: OT,
+ * módulo, cuántas piezas y, abajo, el código de barras (OT)-(Módulo). Es la
+ * etiqueta del bulto: en Armado pasan todas sus piezas juntas y en 🚚 Carga
+ * tilda el bulto. Si el nombre no entra en un código de barras (ñ, tildes),
+ * va el QR de antes.
+ */
 export async function htmlEtiquetasModulos({ empresa = "", ot, proyecto = null, modulos, tamano, link = null }) {
   const deLaOt = detalleOt(proyecto);
   const qrMm = Math.min(tamano.alto - 6, tamano.ancho * 0.45);
   const escala = Math.max(0.6, Math.min(1.4, tamano.alto / 50));
   const pt = (n) => `${Math.round(n * escala * 10) / 10}pt`;
+  const barrasMm = Math.max(7, Math.min(14, tamano.alto * 0.3));
   const items = [];
   for (const [i, m] of modulos.entries()) {
-    const qr = await svgQR(qrConLink(textoQrModulo(ot, m.modulo), link));
-    items.push(`
-  <div class="etiqueta">
+    const texto = `
     <div class="texto">
       <div class="ot">${empresa ? `${esc(empresa)} · ` : ""}OT ${esc(ot)}</div>
       ${deLaOt ? `<div class="deot" data-de-la-ot>${esc(deLaOt)}</div>` : ""}
-      <div class="titulo">MÓDULO</div>
+      <div class="titulo">MÓDULO · BULTO ${i + 1} DE ${modulos.length}</div>
       <div class="modulo">${esc(m.modulo)}</div>
-      <div class="chico">${i + 1} de ${modulos.length} · ${m.piezas === 1 ? "1 pieza" : `${m.piezas} piezas`}</div>
-    </div>
+      <div class="chico">${m.piezas === 1 ? "1 pieza" : `${m.piezas} piezas`}</div>
+    </div>`;
+    const codigo = textoBarrasModulo(ot, m.modulo);
+    const barras = svgBarras(codigo);
+    if (barras) {
+      items.push(`
+  <div class="etiqueta con-barras">${texto}
+    <div class="barras" data-barras="${esc(codigo)}">${barras}<div class="codigo">${esc(codigo)}</div></div>
+  </div>`);
+    } else {
+      const qr = await svgQR(qrConLink(textoQrModulo(ot, m.modulo), link));
+      items.push(`
+  <div class="etiqueta">${texto}
     <div class="qr">${qr}</div>
   </div>`);
+    }
   }
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Módulos OT ${esc(ot)}</title>
 <style>
@@ -454,10 +476,15 @@ export async function htmlEtiquetasModulos({ empresa = "", ot, proyecto = null, 
   .texto { flex: 1; min-width: 0; }
   .ot { font-size: ${pt(8)}; font-weight: 700; text-transform: uppercase; }
   .deot { font-size: ${pt(6.5)}; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .titulo { font-size: ${pt(8)}; font-weight: 800; margin-top: .5mm; letter-spacing: .05em; }
+  .titulo { font-size: ${pt(7.5)}; font-weight: 800; margin-top: .5mm; letter-spacing: .05em; }
   .modulo { font-size: ${pt(17)}; font-weight: 800; line-height: 1.1; word-break: break-word; }
-  .chico { font-size: ${pt(8)}; margin-top: .8mm; border-top: .3mm solid #000; padding-top: .5mm; }
+  .chico { font-size: ${pt(8)}; margin-top: .5mm; }
   .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
+  .etiqueta.con-barras { flex-direction: column; align-items: stretch; gap: 1mm; padding: 2mm 2.5mm; }
+  .con-barras .texto { min-height: 0; overflow: hidden; }
+  .barras { flex: none; border-top: .3mm solid #000; padding-top: .8mm; }
+  .barras svg { width: 100%; height: ${barrasMm}mm; display: block; }
+  .codigo { font-family: ui-monospace, monospace; font-size: ${pt(8)}; font-weight: 700; text-align: center; letter-spacing: .05em; }
 </style></head><body>${items.join("")}</body></html>`;
 }
 

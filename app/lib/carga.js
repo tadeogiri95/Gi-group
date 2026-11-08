@@ -3,6 +3,7 @@
 // faltantes con fecha, foto y dos firmas. "El camión no sale sin la lista
 // firmada": se firma con todo cargado y tildado, o con el faltante anotado.
 import { svgQR } from "./tarjetasQR";
+import { svgBarras } from "./codigoBarras";
 import { detalleOt } from "./nombreOt";
 import { normalizarChecklist } from "./avance";
 
@@ -98,18 +99,22 @@ export function modulosParaEtiquetas(total, nombres = "") {
  * tamaño del rollo de la impresora de etiquetas (una etiqueta por página), o
  * de un cuarto de hoja A4 (tamano.hoja: cuatro por hoja, con línea de corte).
  * Cada bulto puede traer su propio link (b.link) para el QR; si no, va `link`.
+ * Con b.barras (07/11, Tadeo: solo códigos de barras) va ese código de barras
+ * abajo en lugar del QR: (OT)-(Módulo) en los bultos de módulo.
  * @param {{ empresa: string, proyecto: object, bultos: object[], link: string, tamano: { ancho: number, alto: number }, titulo?: string }} datos
  */
 export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, titulo = "Bulto" }) {
   const qrs = new Map();
-  for (const l of new Set(bultos.map((b) => b.link || link))) qrs.set(l, await svgQR(l));
+  for (const l of new Set(bultos.filter((b) => !svgBarras(b.barras || "")).map((b) => b.link || link))) qrs.set(l, await svgQR(l));
   const total = bultos.length;
   const enHoja = tamano.hoja === "A4";
   const qrMm = Math.min(tamano.alto - (enHoja ? 16 : 8), tamano.ancho * 0.42);
   const datosObra = detalleOt(proyecto);
   const entrega = proyecto.fecha_entrega ? `Entrega ${proyecto.fecha_entrega.split("-").reverse().join("/")}` : "";
-  const items = bultos.map((b) => `
-  <div class="rotulo">
+  const items = bultos.map((b) => {
+    const barras = b.barras ? svgBarras(b.barras) : null;
+    return `
+  <div class="rotulo${barras ? " con-barras" : ""}">
     <div class="texto">
       <div class="empresa">${esc(empresa)}</div>
       <div class="ot">OT ${esc(proyecto.ot)}</div>
@@ -118,8 +123,9 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, tit
       ${entrega ? `<div class="obra">${esc(entrega)}</div>` : ""}
       ${b.contenido ? `<div class="contenido">${esc(b.contenido)}</div>` : ""}
     </div>
-    <div class="qr">${qrs.get(b.link || link)}</div>
-  </div>`);
+    ${barras ? `<div class="barras" data-barras="${esc(b.barras)}">${barras}<div class="codigo">${esc(b.barras)}</div></div>` : `<div class="qr">${qrs.get(b.link || link)}</div>`}
+  </div>`;
+  });
   // En hoja A4: de a cuatro por hoja (2 × 2, apaisada)
   const cuerpo = enHoja
     ? Array.from({ length: Math.ceil(items.length / 4) }, (_, i) => `<div class="hoja">${items.slice(i * 4, i * 4 + 4).join("")}</div>`).join("")
@@ -136,7 +142,12 @@ export async function htmlRotulos({ empresa, proyecto, bultos, link, tamano, tit
   .bulto { font-size: 14pt; font-weight: 800; margin-top: 1mm; }
   .obra { font-size: 8pt; margin-top: .5mm; }
   .contenido { font-size: 8pt; margin-top: 1mm; border-top: .3mm solid #000; padding-top: 1mm; max-height: 40%; overflow: hidden; }
-  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }${enHoja ? `
+  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
+  .rotulo.con-barras { flex-direction: column; align-items: stretch; gap: 1.5mm; }
+  .con-barras .texto { min-height: 0; overflow: hidden; }
+  .barras { flex: none; border-top: .3mm solid #000; padding-top: 1mm; }
+  .barras svg { width: 100%; height: ${Math.max(8, Math.min(enHoja ? 30 : 16, tamano.alto * 0.28))}mm; display: block; }
+  .codigo { font-family: ui-monospace, monospace; font-size: ${enHoja ? 14 : 9}pt; font-weight: 700; text-align: center; letter-spacing: .05em; }${enHoja ? `
   .hoja { width: 297mm; height: 210mm; display: grid; grid-template-columns: repeat(2, ${tamano.ancho}mm); grid-template-rows: repeat(2, ${tamano.alto}mm); overflow: hidden; }
   .hoja:not(:last-child) { page-break-after: always; break-after: page; }
   .hoja .rotulo { padding: 8mm; gap: 6mm; outline: .2mm dashed #999; outline-offset: -.1mm; page-break-after: auto; break-after: auto; }

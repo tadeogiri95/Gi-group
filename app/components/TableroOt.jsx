@@ -18,6 +18,7 @@ import PlanSemana from "./PlanSemana";
 import { piezasConManual, normalizarAvanceManual } from "../lib/avanceManual";
 import NombreOt from "./NombreOt";
 import { textoOt } from "../lib/nombreOt";
+import { armarDestinos } from "../lib/destinosPiezas";
 
 function claseCelda(estado) {
   switch (estado) {
@@ -75,6 +76,7 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
   const [soloPorFirmar, setSoloPorFirmar] = useState(false);
   const [celda, setCelda] = useState(null); // { proyecto, codigo }
   const [liberando, setLiberando] = useState(null); // proyecto
+  const [sinDefinir, setSinDefinir] = useState([]); // piezas sin destino de la OT que se libera
   const [tildes, setTildes] = useState([]);
   const [puntos, setPuntos] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -152,6 +154,14 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
     setTildes(Array.isArray(p.liberacion?.items) ? p.liberacion.items : []);
     setPuntos(p.puntos_criticos || "");
     setError(null);
+    setSinDefinir([]);
+    // Aviso (no bloquea): piezas sin módulo sin destino (📍 Destinos, migración 163)
+    const q = `empresa_id=eq.${empresaId}&ot=eq.${encodeURIComponent(String(p.ot))}`;
+    Promise.all([
+      sbGetAll(`piezas_ot?${q}&select=nombre,modulo&order=id.asc`).then((r) => r.data || []),
+      sbGetAll(`destinos_ot?${q}&select=tipo,clave,planilla_suelto,en_planilla,suelto,modulo&order=id.asc`).then((r) => r.data || []),
+    ]).then(([piezas, destinos]) => setSinDefinir(piezas.length ? armarDestinos(piezas, destinos).sinModulo.filter((x) => !x.destino).map((x) => x.nombre) : []))
+      .catch(() => setSinDefinir([]));
   };
 
   const accionLiberacion = async (accion) => {
@@ -264,6 +274,11 @@ export default function TableroOt({ proyectos = [], empresaId, etapas = [], divi
       {liberando && (
         <Hoja titulo={`Liberación · ${textoOt(liberando)}`} onClose={() => setLiberando(null)}>
           {liberando.liberada_at && <div className="text-[13px] text-gypi-green mb-2">✓ Liberada el {fechaCorta(liberando.liberada_at.slice(0, 10))}</div>}
+          {sinDefinir.length > 0 && (
+            <div role="status" className="text-[12px] text-gypi-amber-ink mb-2 p-2 rounded-lg border border-yellow-500/60 bg-yellow-400/10">
+              ⚠ {sinDefinir.length === 1 ? "1 pieza no tiene" : `${sinDefinir.length} piezas no tienen`} destino (ni módulo ni suelta): {sinDefinir.slice(0, 6).join(", ")}{sinDefinir.length > 6 ? "…" : ""}. Se define en 🧩 Piezas → 📍 Destinos.
+            </div>
+          )}
           {checklist.length > 0 ? (
             <div className="flex flex-col gap-1.5 mb-3">
               {checklist.map((t) => (
