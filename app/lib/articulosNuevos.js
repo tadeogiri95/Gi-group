@@ -103,6 +103,25 @@ export function armarSku(datos, listas, numero) {
   return { sku: [...ids, numero].join("."), valores };
 }
 
+/**
+ * Datos de un artículo parecido para arrancar uno nuevo igual, cambiando lo
+ * que difiere (por ejemplo la marca o el color). El nombre sale del nombre
+ * normalizado sin la marca, el color y el pack del final.
+ * @param {object} a fila de articulos_stock
+ */
+export function datosDeParecido(a) {
+  if (!a) return {};
+  const t = (v) => String(v ?? "").trim();
+  let nombre = t(a.nombre);
+  const cola = `-${[a.marca, a.color, a.pack].map(t).join("-")}`;
+  if (cola !== "---" && nombre.toLowerCase().endsWith(cola.toLowerCase())) nombre = nombre.slice(0, -cola.length).trim();
+  const datos = { nombre_articulo: nombre };
+  for (const campo of ["division", "familia", "tipo", "marca", "color", "unidad", "pack", "proveedor_principal"]) if (t(a[campo])) datos[campo] = t(a[campo]);
+  if (a.multiplo != null && a.multiplo !== "") datos.lote_minimo = String(a.multiplo);
+  if (a.plazo_dias != null && a.plazo_dias !== "") datos.factor_tiempo = String(a.plazo_dias);
+  return datos;
+}
+
 /** Artículos con un nombre parecido, para no cargar dos veces el mismo. */
 export function parecidos(articulos, nombre, max = 3) {
   const t = String(nombre ?? "").trim();

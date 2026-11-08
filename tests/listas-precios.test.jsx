@@ -319,3 +319,84 @@ test("pantalla — Sin asociar: sugerencia, filtro por documento y No es del MRP
   await waitFor(() => assert.equal(pedidos.length, 3));
   assert.deepEqual(pedidos[2], { accion: "descartar", factura_id: 4 });
 });
+
+// ─── Varios a la vez y artículo nuevo en el MRP ───
+
+test("artículo parecido — copia las clasificaciones y saca marca, color y pack del nombre", async () => {
+  const { datosDeParecido } = await import("../app/lib/articulosNuevos.js");
+  const a = { sku: "3.30", nombre: "BISAGRA CAZOLETA 35 CODO 0-Hettich-NIQUEL-1 U", division: "HERRAJES", familia: "Bisagras", tipo: "Componente", marca: "Hettich", color: "NIQUEL", unidad: "U", pack: "1 U", proveedor_principal: "Herrajes SA", multiplo: 10, plazo_dias: 5 };
+  assert.deepEqual(datosDeParecido(a), {
+    nombre_articulo: "BISAGRA CAZOLETA 35 CODO 0", division: "HERRAJES", familia: "Bisagras", tipo: "Componente", marca: "Hettich", color: "NIQUEL", unidad: "U", pack: "1 U", proveedor_principal: "Herrajes SA", lote_minimo: "10", factor_tiempo: "5",
+  });
+  assert.equal(datosDeParecido({ sku: "1", nombre: "TORNILLO" }).nombre_articulo, "TORNILLO");
+});
+
+const LISTAS = {
+  division: [{ id: 1, nombre: "HERRAJES" }], familia: [{ id: 2, nombre: "Bisagras" }], tipo: [{ id: 3, nombre: "Componente" }],
+  marca: [{ id: 4, nombre: "Hettich" }, { id: 5, nombre: "Hafele" }], color: [{ id: 6, nombre: "NIQUEL" }], unidad: [{ id: 7, nombre: "U" }], pack: [{ id: 8, nombre: "1 U" }],
+};
+
+test("pantalla — tildar varios y marcarlos juntos como No es del MRP", async () => {
+  const pedidos = [];
+  const doc = { tipo: "lista", proveedor: "Faplac", numero: "Lista nov", fecha: "2026-11-08", moneda: "ARS" };
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.includes("/api/data")) return Response.json({ data: ARTICULOS });
+    if (opts.method === "POST") { pedidos.push(JSON.parse(opts.body)); return Response.json({ ok: true, descartados: 2 }); }
+    if (u.includes("vista=sin_asociar")) {
+      return Response.json({ ok: true, renglones: [
+        { id: 21, factura_id: 4, descripcion: "Flete a obra", precio: 5000, cantidad: 1, facturas_sueltas: doc },
+        { id: 22, factura_id: 4, descripcion: "Embalaje", precio: 300, cantidad: 1, facturas_sueltas: doc },
+        { id: 23, factura_id: 4, descripcion: "Pegamento", precio: 900, cantidad: 1, facturas_sueltas: doc },
+      ] });
+    }
+    return Response.json({ ok: true, sinAsociar: 3, facturas: [] });
+  };
+  render(<FacturasSueltas />);
+  fireEvent.click(await screen.findByRole("tab", { name: "Sin asociar (3)" }));
+  fireEvent.click(await screen.findByLabelText("Elegir Flete a obra"));
+  fireEvent.click(screen.getByLabelText("Elegir Embalaje"));
+  fireEvent.click(screen.getByText("🚫 No es del MRP (2)"));
+  await waitFor(() => assert.equal(pedidos.length, 1));
+  assert.deepEqual(pedidos[0], { accion: "descartar", renglon_ids: [21, 22] });
+  fireEvent.click(screen.getByText("☑ Tildar los 3 que se ven"));
+  assert.ok(screen.getByText("🚫 No es del MRP (3)"));
+});
+
+test("pantalla — cargar artículo nuevo en el MRP copiando uno parecido; queda asociado", async () => {
+  const pedidos = [];
+  let alta = null;
+  const parecido = { sku: "1.2.3.4.6.7.8.30", nombre: "BISAGRA CAZOLETA 35 CODO 0-Hettich-NIQUEL-1 U", division: "HERRAJES", familia: "Bisagras", tipo: "Componente", marca: "Hettich", color: "NIQUEL", unidad: "U", pack: "1 U" };
+  const doc = { tipo: "lista", proveedor: "Hafele Argentina", numero: "Lista nov", fecha: "2026-11-08", moneda: "ARS" };
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.includes("/api/data")) return Response.json({ data: [parecido] });
+    if (u.includes("/api/stock/articulos")) {
+      if (opts.method === "POST") {
+        alta = JSON.parse(opts.body);
+        return Response.json({ ok: true, articulo: { sku: "1.2.3.5.6.7.8.31", nombre: "BISAGRA CAZOLETA 35 CODO 0-Hafele-NIQUEL-1 U" } });
+      }
+      return Response.json({ puede: true, listas: LISTAS });
+    }
+    if (opts.method === "POST") { pedidos.push(JSON.parse(opts.body)); return Response.json({ ok: true }); }
+    if (u.includes("vista=sin_asociar")) {
+      return Response.json({ ok: true, renglones: [{ id: 31, factura_id: 5, descripcion: "Bisagra cazoleta 35 codo 0 Hafele", precio: 1500, cantidad: 1, facturas_sueltas: doc }] });
+    }
+    return Response.json({ ok: true, sinAsociar: 1, facturas: [] });
+  };
+  render(<FacturasSueltas />);
+  fireEvent.click(await screen.findByRole("tab", { name: "Sin asociar (1)" }));
+  fireEvent.click(await screen.findByText("➕ Cargar artículo nuevo en MRP"));
+  await screen.findByLabelText("Nombre del artículo");
+  assert.equal(screen.getByLabelText("Proveedor principal").value, "Hafele Argentina", "el proveedor de la lista");
+  fireEvent.click(screen.getByText(`📋 ${parecido.nombre}`));
+  assert.equal(screen.getByLabelText("Nombre del artículo").value, "BISAGRA CAZOLETA 35 CODO 0");
+  assert.equal(screen.getByLabelText("Familia").value, "Bisagras");
+  fireEvent.change(screen.getByLabelText("Marca"), { target: { value: "Hafele" } });
+  fireEvent.click(screen.getByText("Cargar artículo"));
+  await screen.findByText(/Artículo cargado/);
+  assert.deepEqual([alta.nombre_articulo, alta.marca, alta.color, alta.familia, alta.proveedor_principal], ["BISAGRA CAZOLETA 35 CODO 0", "Hafele", "NIQUEL", "Bisagras", "Hafele Argentina"]);
+  fireEvent.click(screen.getByText("Listo"));
+  await waitFor(() => assert.equal(pedidos.length, 1));
+  assert.deepEqual(pedidos[0], { accion: "asociar", renglon_id: 31, sku: "1.2.3.5.6.7.8.31" });
+});

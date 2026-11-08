@@ -15,6 +15,7 @@ import { textoPrecio } from "../lib/preciosArticulos";
 import { COMO_ASOCIADO, MAX_ARCHIVO_B64, TIPOS_DOCUMENTO, netoFactura } from "../lib/facturasSueltas";
 import { detectarColumnas, letraColumna, parsearCsv, proveedorDeArchivo, renglonesDeGrilla, sacarIva, sugerirParecidos } from "../lib/listasPrecios";
 import { useToast } from "./ui/Toast";
+import ArticuloNuevo from "./ArticuloNuevo";
 
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 const fechaCorta = (f) => (f ? String(f).split("-").reverse().join("/") : "");
@@ -323,24 +324,28 @@ function DetalleFactura({ id, articulos, onCambio }) {
 }
 
 /** Un renglón sin artículo: sugerencias, buscador y "No es del MRP". */
-function RenglonSinAsociar({ r, articulos, onAsociar, onDescartar }) {
+function RenglonSinAsociar({ r, articulos, elegido, onTildar, onAsociar, onDescartar, onArticuloNuevo }) {
+  const [creando, setCreando] = useState(false);
   // Si la descripción sola no se parece a nada (por ejemplo, es un código), se prueba con el resto de la fila
   const parecidos = useMemo(() => {
-    const solo = sugerirParecidos(r.descripcion, articulos, 3);
-    return solo.length || !r.detalle ? solo : sugerirParecidos(`${r.descripcion} ${r.detalle}`, articulos, 3);
+    const solo = sugerirParecidos(r.descripcion, articulos, 5);
+    return solo.length || !r.detalle ? solo : sugerirParecidos(`${r.descripcion} ${r.detalle}`, articulos, 5);
   }, [r.descripcion, r.detalle, articulos]);
   const doc = r.facturas_sueltas || {};
   const esLista = doc.tipo === "lista";
   return (
-    <li className="p-2.5 rounded-xl border border-gypi-red bg-gypi-red/10">
-      <div className="text-[13px] font-semibold">{r.descripcion}{r.codigo ? <span className="text-xs text-gypi-dim"> · cód. {r.codigo}</span> : null}</div>
+    <li className={`p-2.5 rounded-xl border ${elegido ? "border-gypi-amber bg-gypi-amber/10" : "border-gypi-red bg-gypi-red/10"}`}>
+      <div className="flex items-start gap-2">
+        <input type="checkbox" className="mt-0.5 w-5 h-5 shrink-0" checked={elegido} onChange={() => onTildar(r.id)} aria-label={`Elegir ${r.descripcion}`} />
+        <div className="text-[13px] font-semibold flex-1">{r.descripcion}{r.codigo ? <span className="text-xs text-gypi-dim"> · cód. {r.codigo}</span> : null}</div>
+      </div>
       {r.detalle && <div className="text-xs text-gypi-text">{r.detalle}</div>}
       <div className="text-xs text-gypi-dim">
         {esLista ? "📋 " : "🧾 "}{doc.proveedor}{doc.numero ? ` · ${esLista ? "" : "N° "}${doc.numero}` : ""} · {fechaCorta(doc.fecha)} · {esLista ? "" : `${cantidadTexto(r.cantidad)} × `}{textoPrecio(Number(r.precio), doc.moneda)}
       </div>
       {parecidos.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1">
-          {parecidos.map((a) => (
+          {parecidos.slice(0, 3).map((a) => (
             <button key={a.sku} type="button" onClick={() => onAsociar(r, a)}
               className="min-h-[36px] px-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer text-xs text-gypi-text text-left">
               ¿Es {a.nombre}?
@@ -349,13 +354,27 @@ function RenglonSinAsociar({ r, articulos, onAsociar, onDescartar }) {
         </div>
       )}
       <ElegirArticulo articulos={articulos} etiqueta={`Artículo para ${r.descripcion}`} onElegir={(a) => onAsociar(r, a)} />
-      <button type="button" onClick={() => onDescartar(r)} className="min-h-[36px] mt-1 bg-transparent border-none cursor-pointer text-xs text-gypi-dim underline p-0">🚫 No es del MRP</button>
+      <div className="flex flex-wrap gap-3 mt-1">
+        <button type="button" onClick={() => onDescartar(r)} className="min-h-[36px] bg-transparent border-none cursor-pointer text-xs text-gypi-dim underline p-0">🚫 No es del MRP</button>
+        {onArticuloNuevo && !creando && (
+          <button type="button" onClick={() => setCreando(true)} className="min-h-[36px] bg-transparent border-none cursor-pointer text-xs text-gypi-text font-semibold underline p-0">➕ Cargar artículo nuevo en MRP</button>
+        )}
+      </div>
+      {creando && (
+        <div className="mt-2">
+          <ArticuloNuevo articulos={articulos} nombreInicial={r.descripcion} inicial={doc.proveedor ? { proveedor_principal: doc.proveedor } : null}
+            sugeridos={parecidos} aviso={`Para el renglón "${r.descripcion}". Al cargarlo queda asociado y su precio entra a la lista de precios.`}
+            onCancelar={() => setCreando(false)} onCreado={(a) => { setCreando(false); onArticuloNuevo(r, a); }} />
+        </div>
+      )}
     </li>
   );
 }
 
-function SinAsociar({ datos, articulos, onAsociar, onDescartar, onDescartarDoc }) {
+function SinAsociar({ datos, articulos, onAsociar, onDescartar, onDescartarDoc, onDescartarVarios, onArticuloNuevo }) {
   const [texto, setTexto] = useState("");
+  const [elegidos, setElegidos] = useState(() => new Set());
+  const [marcando, setMarcando] = useState(false);
   const [doc, setDoc] = useState("");
   const [paginas, setPaginas] = useState(1);
   const docs = useMemo(() => {
@@ -370,10 +389,20 @@ function SinAsociar({ datos, articulos, onAsociar, onDescartar, onDescartarDoc }
   const filtrados = useMemo(() => {
     const t = texto.trim().toLowerCase();
     return datos.renglones.filter((r) => (!doc || String(r.factura_id) === doc)
-      && (!t || String(r.descripcion).toLowerCase().includes(t) || String(r.codigo || "").toLowerCase().includes(t) || String(r.facturas_sueltas?.proveedor || "").toLowerCase().includes(t)));
+      && (!t || [r.descripcion, r.codigo, r.detalle, r.facturas_sueltas?.proveedor].some((v) => String(v || "").toLowerCase().includes(t))));
   }, [datos.renglones, texto, doc]);
   const visibles = filtrados.slice(0, paginas * POR_PAGINA);
   const elegido = docs.find((x) => String(x.id) === doc);
+  // Los tildados que siguen en la lista (al recargar, los ya resueltos se van solos)
+  const tildados = datos.renglones.filter((r) => elegidos.has(r.id)).map((r) => r.id);
+  const tildar = (id) => setElegidos((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const tildarVisibles = () => setElegidos(new Set([...tildados, ...visibles.map((r) => r.id)]));
+  const descartarTildados = async () => {
+    setMarcando(true);
+    const ok = await onDescartarVarios(tildados);
+    if (ok) setElegidos(new Set());
+    setMarcando(false);
+  };
 
   if (datos.renglones.length === 0) return <div className="text-[13px] text-gypi-green">✅ No hay renglones sin asociar.</div>;
   return (
@@ -392,9 +421,21 @@ function SinAsociar({ datos, articulos, onAsociar, onDescartar, onDescartarDoc }
           🚫 Los {elegido.n} que quedan de este documento no son del MRP
         </button>
       )}
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <button type="button" onClick={tildarVisibles} className="min-h-[36px] bg-transparent border-none cursor-pointer text-xs text-gypi-dim underline p-0">☑ Tildar los {visibles.length} que se ven</button>
+        {tildados.length > 0 && (
+          <>
+            <button type="button" onClick={descartarTildados} disabled={marcando} className="g-btn g-btn-secondary">{marcando ? "Marcando…" : `🚫 No es del MRP (${tildados.length})`}</button>
+            <button type="button" onClick={() => setElegidos(new Set())} className="min-h-[36px] bg-transparent border-none cursor-pointer text-xs text-gypi-dim underline p-0">Destildar</button>
+          </>
+        )}
+      </div>
       <div className="text-xs text-gypi-dim mb-1.5">{filtrados.length} renglón(es){filtrados.length !== datos.renglones.length ? ` de ${datos.renglones.length}` : ""}. Lo que elijas, Gypi lo recuerda para la próxima lista o factura de ese proveedor.</div>
       <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
-        {visibles.map((r) => <RenglonSinAsociar key={r.id} r={r} articulos={articulos} onAsociar={onAsociar} onDescartar={onDescartar} />)}
+        {visibles.map((r) => (
+          <RenglonSinAsociar key={r.id} r={r} articulos={articulos} elegido={elegidos.has(r.id)} onTildar={tildar}
+            onAsociar={onAsociar} onDescartar={onDescartar} onArticuloNuevo={onArticuloNuevo} />
+        ))}
       </ul>
       {filtrados.length > visibles.length && (
         <button type="button" onClick={() => setPaginas((p) => p + 1)} className="g-btn g-btn-secondary mt-2">Ver {Math.min(POR_PAGINA, filtrados.length - visibles.length)} más</button>
@@ -417,7 +458,7 @@ export default function FacturasSueltas() {
   const recargar = () => setVersion((v) => v + 1);
 
   useEffect(() => {
-    sbGetAll("articulos_stock?activo=eq.true&select=sku,nombre,unidad,division&order=sku.asc", { maxFilas: 20000 })
+    sbGetAll("articulos_stock?activo=eq.true&select=sku,nombre,unidad,division,familia,tipo,marca,color,pack,proveedor_principal,multiplo,plazo_dias&order=sku.asc", { maxFilas: 20000 })
       .then(({ data }) => setArticulos(data || []))
       .catch(() => {});
   }, []);
@@ -501,6 +542,26 @@ export default function FacturasSueltas() {
     }
   };
 
+  const descartarVarios = async (ids) => {
+    if (!ids.length) return false;
+    try {
+      let total = 0;
+      for (let i = 0; i < ids.length; i += 500) total += (await post({ accion: "descartar", renglon_ids: ids.slice(i, i + 500) }, "No se pudo marcar")).descartados || 0;
+      toast.success(`✅ ${total} renglón(es) fuera de Sin asociar.`);
+      recargar();
+      return true;
+    } catch (e) {
+      toast.error(e.message);
+      return false;
+    }
+  };
+
+  // Artículo nuevo cargado desde Sin asociar: se suma a la lista y queda asociado a ese renglón
+  const articuloNuevo = async (r, a) => {
+    setArticulos((prev) => [...prev.filter((x) => x.sku !== a.sku), a]);
+    await asociar(r, a);
+  };
+
   const descartarDoc = async (x) => {
     if (!window.confirm(`¿Marcar los ${x.n} renglones sin asociar de ${x.f.proveedor} como "No es del MRP"? Se puede deshacer de a uno desde el documento.`)) return;
     try {
@@ -570,7 +631,8 @@ export default function FacturasSueltas() {
           </ul>
         )
       ) : !sinAsociar?.ok ? <div className="text-[13px] text-gypi-dim">Cargando…</div> : (
-        <SinAsociar datos={sinAsociar} articulos={articulos} onAsociar={asociar} onDescartar={descartar} onDescartarDoc={descartarDoc} />
+        <SinAsociar datos={sinAsociar} articulos={articulos} onAsociar={asociar} onDescartar={descartar} onDescartarDoc={descartarDoc}
+          onDescartarVarios={descartarVarios} onArticuloNuevo={articuloNuevo} />
       )}
     </div>
   );
