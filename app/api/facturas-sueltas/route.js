@@ -3,7 +3,8 @@
 //
 //   GET                      → últimas facturas, con cuántos renglones están asociados
 //   GET ?id=12               → una factura con sus renglones
-//   GET ?vista=sin_asociar   → renglones sin artículo de las facturas vigentes
+//   GET ?vista=sin_asociar   → renglones sin artículo de las facturas y listas
+//        vigentes (sin los marcados "No es del MRP")
 //   POST { accion: "leer", archivo, tipo }  → la IA lee el PDF o la foto y
 //        devuelve un borrador (con el artículo reconocido de cada renglón);
 //        no guarda nada.
@@ -11,6 +12,11 @@
 //        renglones sin artículo y el precio de cada renglón asociado entra a
 //        la lista de precios. Lo elegido a mano se recuerda para ese proveedor.
 //   POST { accion: "asociar", renglon_id, sku } → elige el artículo de un renglón.
+//   POST { accion: "descartar", renglon_ids | factura_id } → "No es del MRP":
+//        salen de Sin asociar (de una lista, todos los que quedan sin asociar).
+//   POST { accion: "restaurar", renglon_id } → vuelve a Sin asociar.
+// Desde la 169 una "factura" puede ser una lista de precios (tipo 'lista'):
+// hasta 5000 renglones, cantidad 1; se guarda en tandas.
 //   POST { accion: "anular", id } → anula la factura y saca sus precios de la lista.
 //
 // Dueño y Administración (gestión). Lee y escribe con la clave del servidor
@@ -33,8 +39,24 @@ import { ErrorIa, leerFacturaIa } from "../../lib/facturaIa";
 export const maxDuration = 60;
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const FALTA = "Para las facturas sueltas falta correr la migración 168 en Supabase.";
+const FALTA = "Para las facturas sueltas y listas de precios falta correr las migraciones 168 y 169 en Supabase.";
 const faltaMigracion = (err) => /facturas_sueltas|asociaciones_articulos/.test(String(err?.message));
+const TANDA = 1000;
+const SIN_ASOCIAR = "sku=is.null&asociado_como=is.null";
+
+/** Cuántas filas cumplen el filtro (sin traerlas). */
+async function contar(path) {
+  const r = await fetch(`${SB_URL}/rest/v1/${path}&limit=1`, { headers: await sbHeaders({}, { Prefer: "count=exact" }) });
+  if (!r.ok) throw new Error(`GET ${path}: ${await r.text()}`);
+  const total = Number(String(r.headers.get("content-range") || "").split("/")[1]);
+  return Number.isFinite(total) ? total : 0;
+}
+
+async function enTandas(filas, fn) {
+  const out = [];
+  for (let i = 0; i < filas.length; i += TANDA) out.push(...((await fn(filas.slice(i, i + TANDA))) || []));
+  return out;
+}
 
 async function sesionGestion(request) {
   const sesion = await validarToken(request);
@@ -73,7 +95,7 @@ async function upsert(tabla, conflicto, filas) {
 }
 
 const recordar = (filas) => upsert("asociaciones_articulos", "empresa_id,proveedor_clave,tipo,clave", filas);
-const guardarPrecios = (filas) => upsert("precios_articulos", "empresa_id,origen,referencia", filas);
+const guardarPrecios = (filas) => enTandas(filas, (t) => upsert("precios_articulos", "empresa_id,origen,referencia", t));
 
 export async function GET(request) {
   try {
@@ -87,16 +109,16 @@ export async function GET(request) {
         if (!/^\d{1,15}$/.test(id)) return NextResponse.json({ error: "Factura inválida" }, { status: 400 });
         const [factura] = (await sbGet(`facturas_sueltas?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
         if (!factura) return NextResponse.json({ error: "No encontré esa factura" }, { status: 404 });
-        const renglones = (await sbGet(`facturas_sueltas_renglones?factura_id=eq.${id}&empresa_id=eq.${e}&select=*&order=orden.asc,id.asc`)) || [];
+        const { data: renglones } = await sbGetAll(`facturas_sueltas_renglones?factura_id=eq.${id}&empresa_id=eq.${e}&select=*&order=orden.asc,id.asc`, { maxFilas: 10000 });
         return NextResponse.json({ ok: true, factura, renglones });
       }
       if (params.get("vista") === "sin_asociar") {
-        const renglones = (await sbGet(`facturas_sueltas_renglones?empresa_id=eq.${e}&sku=is.null&select=id,descripcion,codigo,cantidad,precio,factura_id,facturas_sueltas!inner(proveedor,numero,fecha,moneda,anulada_at)&facturas_sueltas.anulada_at=is.null&order=id.desc&limit=300`)) || [];
-        return NextResponse.json({ ok: true, renglones });
+        const { data } = await sbGetAll(`facturas_sueltas_renglones?empresa_id=eq.${e}&${SIN_ASOCIAR}&select=id,descripcion,codigo,cantidad,precio,factura_id,facturas_sueltas!inner(tipo,proveedor,numero,fecha,moneda,anulada_at)&facturas_sueltas.anulada_at=is.null&order=id.desc`, { maxFilas: 5000 });
+        return NextResponse.json({ ok: true, renglones: data || [] });
       }
-      const facturas = (await sbGet(`facturas_sueltas?empresa_id=eq.${e}&select=*,facturas_sueltas_renglones(cantidad,precio,sku)&order=created_at.desc,id.desc&limit=100`)) || [];
-      const sin = (await sbGet(`facturas_sueltas_renglones?empresa_id=eq.${e}&sku=is.null&select=id,facturas_sueltas!inner(anulada_at)&facturas_sueltas.anulada_at=is.null&limit=1000`)) || [];
-      return NextResponse.json({ ok: true, facturas, sinAsociar: sin.length });
+      const facturas = (await sbGet(`facturas_sueltas?empresa_id=eq.${e}&select=*,facturas_sueltas_renglones(cantidad,precio,sku,asociado_como)&order=created_at.desc,id.desc&limit=100`)) || [];
+      const sinAsociar = await contar(`facturas_sueltas_renglones?empresa_id=eq.${e}&${SIN_ASOCIAR}&select=id,facturas_sueltas!inner(anulada_at)&facturas_sueltas.anulada_at=is.null`);
+      return NextResponse.json({ ok: true, facturas, sinAsociar });
     } catch (err) {
       if (faltaMigracion(err)) return NextResponse.json({ ok: false, falta_migracion: FALTA });
       throw err;
@@ -110,7 +132,7 @@ export async function GET(request) {
 async function leer(request, sesion, d) {
   const tipo = String(d?.tipo ?? "");
   const archivo = typeof d?.archivo === "string" ? d.archivo : "";
-  if (!TIPOS_ARCHIVO.includes(tipo)) return NextResponse.json({ error: "Subí un PDF o una foto (JPG, PNG o WEBP)" }, { status: 400 });
+  if (!TIPOS_ARCHIVO.includes(tipo)) return NextResponse.json({ error: "Subí un PDF, una foto (JPG, PNG o WEBP) o un Excel" }, { status: 400 });
   if (!archivo || archivo.length > MAX_ARCHIVO_B64 || !/^[A-Za-z0-9+/=]+$/.test(archivo.slice(0, 2000))) {
     return NextResponse.json({ error: "El archivo es muy grande (hasta 3 MB) o no se pudo leer" }, { status: 400 });
   }
@@ -124,7 +146,7 @@ async function leer(request, sesion, d) {
   logAudit({
     empresa_id: sesion.empresa_id, actor_id: sesion.empleado_id, actor_legajo: sesion.legajo, actor_rol: sesion.rol,
     accion: "chat_ia", entidad: "factura_suelta",
-    datos_despues: { tipo: "factura", tokens_input: r.uso.input_tokens, tokens_output: r.uso.output_tokens, model: r.modelo },
+    datos_despues: { tipo: r.lectura?.tipo_documento === "lista" ? "lista_precios" : "factura", tokens_input: r.uso.input_tokens, tokens_output: r.uso.output_tokens, model: r.modelo },
     ip: ipCliente(request),
   });
   const borrador = borradorDeLectura(r.lectura);
@@ -160,7 +182,7 @@ async function guardar(sesion, d) {
       asociado_por_nombre: rec && como === "manual" ? nombre : null, asociado_at: rec ? ahora : null,
     };
   });
-  const renglones = (await sbPost("facturas_sueltas_renglones", filas)) || [];
+  const renglones = await enTandas(filas, (t) => sbPost("facturas_sueltas_renglones", t));
   await recordar(renglones.filter((r) => r.asociado_como === "manual").flatMap((r) => filasAsociacion(e, factura.proveedor, r, r.sku, nombre)));
   await guardarPrecios(renglones.filter((r) => r.sku).map((r) => filaPrecioFactura(e, factura, r)));
   const asociados = renglones.filter((r) => r.sku).length;
@@ -187,6 +209,35 @@ async function asociar(sesion, d) {
   return NextResponse.json({ ok: true });
 }
 
+async function descartar(sesion, d) {
+  const e = sesion.empresa_id;
+  const nombre = await nombreDe(sesion);
+  const cambio = { asociado_como: "descartado", asociado_por_nombre: nombre, asociado_at: new Date().toISOString() };
+  let filtro;
+  if (d?.factura_id != null) {
+    const fid = Number(d.factura_id);
+    if (!Number.isInteger(fid) || fid <= 0) return NextResponse.json({ error: "Lista inválida" }, { status: 400 });
+    filtro = `factura_id=eq.${fid}`;
+  } else {
+    const ids = Array.isArray(d?.renglon_ids) ? d.renglon_ids.map(Number) : [];
+    if (!ids.length || ids.length > 500 || ids.some((n) => !Number.isInteger(n) || n <= 0)) return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
+    filtro = `id=in.(${ids.join(",")})`;
+  }
+  const hechos = (await sbPatch(`facturas_sueltas_renglones?${filtro}&empresa_id=eq.${e}&${SIN_ASOCIAR}`, cambio)) || [];
+  return NextResponse.json({ ok: true, descartados: hechos.length });
+}
+
+async function restaurar(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d?.renglon_id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
+  const [r] = (await sbPatch(`facturas_sueltas_renglones?id=eq.${id}&empresa_id=eq.${e}&asociado_como=eq.descartado`, {
+    asociado_como: null, asociado_por_nombre: null, asociado_at: null,
+  })) || [];
+  if (!r) return NextResponse.json({ error: "No encontré ese renglón" }, { status: 404 });
+  return NextResponse.json({ ok: true });
+}
+
 async function anular(sesion, d) {
   const e = sesion.empresa_id;
   const id = Number(d?.id);
@@ -194,9 +245,9 @@ async function anular(sesion, d) {
   const nombre = await nombreDe(sesion);
   const [factura] = (await sbPatch(`facturas_sueltas?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: new Date().toISOString(), anulada_por_nombre: nombre })) || [];
   if (!factura) return NextResponse.json({ error: "No encontré esa factura o ya estaba anulada" }, { status: 404 });
-  const renglones = (await sbGet(`facturas_sueltas_renglones?factura_id=eq.${id}&empresa_id=eq.${e}&select=id`)) || [];
-  if (renglones.length) {
-    const refs = renglones.map((r) => `FS-${r.id}`).join(",");
+  const { data: renglones } = await sbGetAll(`facturas_sueltas_renglones?factura_id=eq.${id}&empresa_id=eq.${e}&sku=not.is.null&select=id&order=id.asc`, { maxFilas: 10000 });
+  for (let i = 0; i < (renglones || []).length; i += 200) {
+    const refs = renglones.slice(i, i + 200).map((r) => `FS-${r.id}`).join(",");
     await sbDelete(`precios_articulos?empresa_id=eq.${e}&origen=eq.factura&referencia=in.(${refs})`);
   }
   return NextResponse.json({ ok: true });
@@ -212,6 +263,8 @@ export async function POST(request) {
         case "leer": return await leer(request, sesion, d);
         case "guardar": return await guardar(sesion, d);
         case "asociar": return await asociar(sesion, d);
+        case "descartar": return await descartar(sesion, d);
+        case "restaurar": return await restaurar(sesion, d);
         case "anular": return await anular(sesion, d);
         default: return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
       }

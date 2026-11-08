@@ -32,8 +32,8 @@ const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad
 // Los jefes de taller piden y reciben; el comprador además arma las OC y maneja proveedores
 const PESTANAS_JEFE = [["pedidos", "🛒 Pedidos"], ["recibir", "📦 Recibir"]];
 const PESTANAS_COMPRADOR = [["pedidos", "🛒 Pedidos"], ["acomprar", "🧾 A comprar"], ["ordenes", "📄 Órdenes"], ["recibir", "📦 Recibir"], ["proveedores", "🏭 Proveedores"], ["reportes", "📊 Reportes"]];
-// Facturas sueltas (costo de OT, parte D): Dueño y Administración
-const PESTANA_FACTURAS = ["facturas", "🧾 Facturas sueltas"];
+// Facturas sueltas y listas de precios (costo de OT, parte D; 169): Dueño y Administración
+const PESTANA_FACTURAS = ["facturas", "🧾 Facturas y listas"];
 export const AVISO_MIGRACION_113 = "Para usar Compras falta correr la migración 113 en Supabase.";
 
 function fecha(iso) {
