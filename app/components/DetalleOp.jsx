@@ -26,6 +26,7 @@ import { estadoActa, NOMBRE_ESTADO_ACTA } from "../lib/acta";
 import { filasTablero, ESTADO_INFO } from "../lib/avance";
 import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
+import CostoMaterialesOt from "./CostoMaterialesOt";
 import AvanceManualOt from "./AvanceManualOt";
 import { CambiosTiempoOt } from "./AjusteTiempo";
 import SelectorSemana from "./SelectorSemana";
@@ -74,7 +75,7 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, precio, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado,
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, verCostos = false, precio, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado,
   pausas = [], usuarioNombre = null, onPausaCambiada }) {
   useEscape(onClose);
   // Checkeo manual (141): lo guardado acá se ve sin volver a abrir el detalle
@@ -270,6 +271,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         )}
 
         <MaterialOt ot={proyecto?.ot} empresaId={empresaId} />
+        {verCostos && <CostoMaterialesOt ot={proyecto?.ot} />}
 
         {error ? (
           <div role="alert" className="text-sm text-gypi-red">{error}</div>
