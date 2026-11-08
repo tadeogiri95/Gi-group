@@ -81,6 +81,7 @@ export const MIGRACIONES = [
   { n: 161, archivo: "161_diseno_tecnica_confirmado.sql", nombre: "Diseño y Técnica: plan confirmado", tablas: { proyectos: ["orden_tecnica", "arquitecta_tecnica", "tecnica_fin_confirmado"] } },
   { n: 163, archivo: "163_destinos_ot.sql", nombre: "Destinos de módulos, piezas y herrajes", tablas: { destinos_ot: [], sueltos_ot: ["origen"] } },
   { n: 164, archivo: "164_precios_articulos.sql", nombre: "Precios de artículos con fecha", tablas: { precios_articulos: [] } },
+  { n: 165, archivo: "165_precios_fijos_ot.sql", nombre: "Precio fijo de cada artículo en la OT", tablas: { precios_fijos_ot: [] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */
