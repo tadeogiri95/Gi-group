@@ -90,7 +90,7 @@ function mockServidor({ manuales = [] } = {}) {
     },
     // Pausa de 9 a 10 (hora argentina): no cuenta
     { match: (u) => u.includes("/rest/v1/pausas_ot?"), respond: () => ({ status: 200, body: [{ ot: "M-1", desde: "2026-11-02T12:00:00Z", hasta: "2026-11-02T13:00:00Z" }] }) },
-    { match: (u) => u.includes("/rest/v1/pasos_pieza?"), respond: () => ({ status: 200, body: [{ etapa: "1", empleado_id: "a" }, { etapa: "1", empleado_id: "b" }] }) },
+    { match: (u) => u.includes("/rest/v1/pasos_pieza?"), respond: () => ({ status: 200, body: [{ ot: "M-1", etapa: "1", empleado_id: "a" }, { ot: "M-1", etapa: "1", empleado_id: "b" }] }) },
     { match: (u) => u.includes("/rest/v1/horas_ot?") && (!u.includes("on_conflict")), respond: () => ({ status: 200, body: manuales }) },
     {
       match: (u, o) => u.includes("/rest/v1/horas_ot?on_conflict"),

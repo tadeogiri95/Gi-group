@@ -86,3 +86,72 @@ export async function costoMaterialesDeOt(e, ot) {
   const costo = costoMaterialesOt({ necesidades: necesidades || [], fijos, articulos, movimientos: movimientos || [] });
   return { ot, fecha_ot: fechaOt, ...costo };
 }
+
+const MAX_LOTE_OT = 60;
+const MAX_LOTE_SKU = 150;
+const trozos = (lista, n) => Array.from({ length: Math.ceil(lista.length / n) }, (_, i) => lista.slice(i * n, i * n + n));
+const agrupar = (filas) => {
+  const m = new Map();
+  for (const f of filas || []) {
+    const k = String(f.ot);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(f);
+  }
+  return m;
+};
+
+/**
+ * Costo de materiales de varias OT a la vez (reporte de costo, parte F). Igual
+ * que costoMaterialesDeOt: lo que todavía no tiene precio fijo lo busca y lo fija.
+ * @param {string} e empresa
+ * @param {object[]} proyectos filas de proyectos (ot, created_at)
+ * @returns {Promise<Map<string, { fecha_ot, filas, total, sinPrecio, provisorio }>>}
+ */
+export async function costoMaterialesDeOts(e, proyectos) {
+  const out = new Map();
+  for (const grupo of trozos(proyectos || [], MAX_LOTE_OT)) {
+    const l = lista(grupo.map((p) => String(p.ot)));
+    const [necesidades, fijosAntes, movimientos] = await Promise.all([
+      sbGetAll(`necesidades_stock?empresa_id=eq.${e}&ot=in.(${l})&select=ot,sku,nombre,cantidad`, { maxFilas: 100000 }).then((r) => r.data).catch(() => []),
+      sbGetAll(`precios_fijos_ot?empresa_id=eq.${e}&ot=in.(${l})&select=*`, { maxFilas: 100000 }).then((r) => r.data),
+      sbGetAll(`movimientos_stock?empresa_id=eq.${e}&ot=in.(${l})&anulado=eq.false&tipo=in.(consumo,devolucion)&select=ot,sku,cantidad,tipo,anulado`, { maxFilas: 100000 }).then((r) => r.data).catch(() => []),
+    ]);
+    const necDe = agrupar(necesidades), fijosDe = agrupar(fijosAntes), movDe = agrupar(movimientos);
+    // Lo que falta fijar, por OT
+    const faltanDe = new Map();
+    const todosFaltan = new Set();
+    const todos = new Set();
+    for (const p of grupo) {
+      const ot = String(p.ot);
+      const ya = new Set((fijosDe.get(ot) || []).map((f) => f.sku));
+      const skus = [...new Set((necDe.get(ot) || []).filter((n) => Number(n.cantidad) > 0).map((n) => n.sku))].slice(0, MAX_SKUS);
+      skus.forEach((s) => todos.add(s));
+      const faltan = skus.filter((s) => !ya.has(s));
+      faltan.forEach((s) => todosFaltan.add(s));
+      faltanDe.set(ot, faltan);
+    }
+    const precios = new Map();
+    for (const t of trozos([...todosFaltan], MAX_LOTE_SKU)) for (const [k, v] of await preciosDe(e, t)) precios.set(k, v);
+    const nuevos = [];
+    for (const p of grupo) {
+      const ot = String(p.ot);
+      const fechaOt = fechaCargaOt(p);
+      for (const sku of faltanDe.get(ot)) {
+        const elegido = elegirPrecio(precios.get(sku) || [], fechaOt);
+        if (elegido) nuevos.push(filaPrecioFijo(e, ot, sku, elegido));
+      }
+    }
+    await guardarFijos(nuevos);
+    // Si otro lo fijó a la vez, gana el que quedó guardado
+    const fijos = nuevos.length ? agrupar((await sbGetAll(`precios_fijos_ot?empresa_id=eq.${e}&ot=in.(${l})&select=*`, { maxFilas: 100000 })).data) : fijosDe;
+    const articulos = [];
+    for (const t of trozos([...todos], MAX_LOTE_SKU)) {
+      articulos.push(...((await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=in.(${lista(t)})&select=sku,nombre,unidad`).catch(() => [])) || []));
+    }
+    for (const p of grupo) {
+      const ot = String(p.ot);
+      out.set(ot, { fecha_ot: fechaCargaOt(p), ...costoMaterialesOt({ necesidades: necDe.get(ot) || [], fijos: fijos.get(ot) || [], articulos, movimientos: movDe.get(ot) || [] }) });
+    }
+  }
+  return out;
+}
