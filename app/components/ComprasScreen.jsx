@@ -21,6 +21,7 @@ import AComprar from "./AComprar";
 import OrdenesCompra from "./OrdenesCompra";
 import RecibirCompra from "./RecibirCompra";
 import ReportesCompras from "./ReportesCompras";
+import FacturasSueltas from "./FacturasSueltas";
 import ArticuloNuevo from "./ArticuloNuevo";
 import FilaDeslizable from "./ui/FilaDeslizable";
 import { useOts } from "../hooks/useOts";
@@ -31,6 +32,8 @@ const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad
 // Los jefes de taller piden y reciben; el comprador además arma las OC y maneja proveedores
 const PESTANAS_JEFE = [["pedidos", "🛒 Pedidos"], ["recibir", "📦 Recibir"]];
 const PESTANAS_COMPRADOR = [["pedidos", "🛒 Pedidos"], ["acomprar", "🧾 A comprar"], ["ordenes", "📄 Órdenes"], ["recibir", "📦 Recibir"], ["proveedores", "🏭 Proveedores"], ["reportes", "📊 Reportes"]];
+// Facturas sueltas (costo de OT, parte D): Dueño y Administración
+const PESTANA_FACTURAS = ["facturas", "🧾 Facturas sueltas"];
 export const AVISO_MIGRACION_113 = "Para usar Compras falta correr la migración 113 en Supabase.";
 
 function fecha(iso) {
@@ -361,6 +364,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
   const [estado, setEstado] = useState("pendiente");
   const [error, setError] = useState(null);
   const comprador = Boolean(permisos?.comprador);
+  const gestion = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
 
   // Si falla (sin señal, servidor caído) no se asume "sin permisos": antes el
   // comprador quedaba viendo solo Pedidos sin saber por qué. Se avisa y se reintenta.
@@ -443,7 +447,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       {permisos.puede_pedir && (
         <FilaDeslizable role="tablist" aria-label="Compras" activa={vista} className="gap-1.5 mb-3">
-          {(comprador ? PESTANAS_COMPRADOR : PESTANAS_JEFE).map(([id, label]) => (
+          {(comprador ? [...PESTANAS_COMPRADOR, ...(gestion ? [PESTANA_FACTURAS] : [])] : PESTANAS_JEFE).map(([id, label]) => (
             <button key={id} role="tab" aria-selected={vista === id} onClick={() => { setVista(id); setOrdenNueva(null); setCreadas(null); }}
               className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-bold cursor-pointer ${vista === id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
               {label}
@@ -471,6 +475,8 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
         <ProveedoresCompras empresaId={empresaId} />
       ) : vista === "reportes" && comprador ? (
         <ReportesCompras empresaId={empresaId} />
+      ) : vista === "facturas" && comprador && gestion ? (
+        <FacturasSueltas />
       ) : (
         <>
           {editando ? (
