@@ -60,6 +60,8 @@ export const POLICY = {
   pasos_pieza:                  { GET: "all" },   // se escribe por /api/piezas/paso (OP parte 18)
   piezas_ot:                    { GET: "all" },   // se escribe por /api/piezas (OP parte 17)
   precios_ot:                   { GET: "gestion" }, // precio de cada OT (142); lo escribe la sincronización
+  precios_articulos:            { GET: "gestion" }, // precios con fecha (164); los copia la sincronización de Stock
+  v_precios_articulos:          { GET: "gestion" }, // precios con fecha + facturas de OC (164, vista)
   v_avance_piezas:              { GET: "all" },   // vista: % de avance por escaneo (parte 25, migración 118)
   sueltos_ot:                   { GET: "all" },   // se escribe por /api/sueltos (OP parte 9)
   destinos_ot:                  { GET: "all" },   // se escribe por /api/piezas (destinos, 163)
