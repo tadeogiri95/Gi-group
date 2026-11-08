@@ -12,6 +12,9 @@
 // cargados en Gypi que la planilla todavía no trae (origen 'gypi', 124).
 // La hoja TABLAS (opcional) da las listas del formulario de artículo nuevo y
 // se guarda en config_sistema (CLAVE_TABLAS_MRP).
+// La hoja fact_ingresos_stock (opcional, clave `ingresos`) da los precios con
+// fecha de cada artículo (164, costo de materiales por OT): lo que deja de
+// estar en la hoja se borra de precios_articulos.
 
 import { logger } from "./logger";
 import { safeErrorMessage } from "./validate";
@@ -20,6 +23,7 @@ import { descargarCsv } from "./syncOt";
 import { CLAVE_STOCK_CSV, unirArticulos, leerNecesidades } from "./stock";
 import { CLAVE_TABLAS_MRP, leerTablas } from "./articulosNuevos";
 import { recalcularClases } from "./syncComplejidad";
+import { leerIngresosMrp } from "./preciosArticulos";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -113,6 +117,7 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
   // Clase A/B/C de las OT (159): las necesidades nuevas pueden cambiarla
   if (nec.necesidades > 0) await recalcularClases(empresaId, (path, opts) => sbFetch(path, opts, sesion));
   const tab = urls.tablas ? await syncTablas(empresaId, urls.tablas, ahora, sesion) : { avisoTablas: null };
+  const pre = urls.ingresos ? await syncPrecios(empresaId, urls.ingresos, ahora, sesion) : { precios: 0, avisoPrecios: null };
 
   try {
     await sbFetch(
@@ -128,7 +133,7 @@ export async function syncStockEmpresa(empresaId, { sesion } = {}) {
     logger.error("[stock/sync] No se pudo guardar la fecha de sincronización", e);
   }
 
-  return { articulos: filas.length, desactivados, sinSku, errores, ...nec, ...tab };
+  return { articulos: filas.length, desactivados, sinSku, errores, ...nec, ...tab, ...pre };
 }
 
 /**
@@ -211,4 +216,42 @@ export async function syncStockTodas() {
     }
   }
   return results;
+}
+
+/**
+ * Copia los precios de la hoja fact_ingresos_stock a precios_articulos
+ * (origen 'mrp'). Lo que ya no está en la hoja se borra (si todo se guardó).
+ * @returns {Promise<{ precios: number, avisoPrecios: string|null }>}
+ */
+async function syncPrecios(empresaId, url, ahora, sesion) {
+  let texto;
+  try {
+    texto = await descargarCsv(url);
+  } catch (e) {
+    return { precios: 0, avisoPrecios: `No pude leer la hoja fact_ingresos_stock (${e.message}). Revisá que esté publicada como CSV.` };
+  }
+  const { filas, faltaColumnas } = leerIngresosMrp(texto);
+  if (faltaColumnas) return { precios: 0, avisoPrecios: "No encontré las columnas ID_SKU y PRECIO UNIT. S/IVA en la hoja de ingresos. ¿El link es de fact_ingresos_stock?" };
+  try {
+    for (let i = 0; i < filas.length; i += BATCH) {
+      const lote = filas.slice(i, i + BATCH).map((f) => ({ empresa_id: empresaId, ...f, sincronizado_at: ahora }));
+      await sbFetch("precios_articulos?on_conflict=empresa_id,origen,referencia", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(lote),
+      }, sesion);
+    }
+    await sbFetch(
+      `precios_articulos?empresa_id=eq.${empresaId}&origen=eq.mrp&sincronizado_at=lt.${encodeURIComponent(ahora)}`,
+      { method: "DELETE", headers: { Prefer: "return=minimal" } },
+      sesion
+    );
+    return { precios: filas.length, avisoPrecios: null };
+  } catch (e) {
+    if (String(e?.message).includes("precios_articulos")) {
+      return { precios: 0, avisoPrecios: "Para los precios de los artículos falta correr la migración 164 en Supabase." };
+    }
+    logger.error("[stock/sync] Error en precios", e);
+    return { precios: 0, avisoPrecios: "No se pudieron guardar los precios de los artículos. Probá de nuevo." };
+  }
 }

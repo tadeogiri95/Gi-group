@@ -200,7 +200,7 @@ function mockSync({ urls = { inventario: "https://docs.google.com/inv.csv", arti
 test("sincronizar — sube todo por SKU, apaga lo que ya no está y guarda la fecha", async () => {
   const escrito = mockSync();
   const r = await syncStockEmpresa(E);
-  assert.deepEqual(r, { articulos: 4, desactivados: 1, sinSku: 1, errores: [], necesidades: 0, avisoNecesidades: null, avisoTablas: null });
+  assert.deepEqual(r, { articulos: 4, desactivados: 1, sinSku: 1, errores: [], necesidades: 0, avisoNecesidades: null, avisoTablas: null, precios: 0, avisoPrecios: null });
   const [subida, apagar, config] = escrito;
   assert.equal(subida.metodo, "POST");
   assert.match(subida.url, /articulos_stock\?on_conflict=empresa_id,sku/);

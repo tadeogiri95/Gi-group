@@ -33,7 +33,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
   const [articulos, setArticulos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
-  const [cfg, setCfg] = useState({ inventario: "", articulos: "", necesidades: "", tablas: "", ultima_sync: null });
+  const [cfg, setCfg] = useState({ inventario: "", articulos: "", necesidades: "", tablas: "", ingresos: "", ultima_sync: null });
   const [nuevo, setNuevo] = useState(false);
   const puedeCrear = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
   const [sincronizando, setSincronizando] = useState(false);
@@ -65,7 +65,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       const rows = await sb.get(`config_sistema?clave=eq.${CLAVE_STOCK_CSV}&select=valor&limit=1`);
       const v = rows?.[0]?.valor;
       if (v) {
-        setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", necesidades: v.necesidades || "", tablas: v.tablas || "", ultima_sync: v.ultima_sync || null });
+        setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", necesidades: v.necesidades || "", tablas: v.tablas || "", ingresos: v.ingresos || "", ultima_sync: v.ultima_sync || null });
       }
     } catch { /* sin config todavía */ }
   }, []);
@@ -85,7 +85,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo sincronizar");
       if (data.errores?.length) toast.show(`⚠️ ${data.articulos} artículos leídos, pero algunos no se guardaron. Probá de nuevo.`, AMBER);
-      else if (data.avisoNecesidades || data.avisoTablas) toast.show(`⚠️ ${data.articulos} artículos sincronizados. ${data.avisoNecesidades || data.avisoTablas}`, AMBER);
+      else if (data.avisoNecesidades || data.avisoTablas || data.avisoPrecios) toast.show(`⚠️ ${data.articulos} artículos sincronizados. ${data.avisoNecesidades || data.avisoTablas || data.avisoPrecios}`, AMBER);
       else toast.show(`✅ ${data.articulos} artículos sincronizados${data.desactivados ? ` (${data.desactivados} ya no están en la planilla)` : ""}`, GREEN);
       setCfg((c) => ({ ...c, ultima_sync: new Date().toISOString() }));
       await cargar();

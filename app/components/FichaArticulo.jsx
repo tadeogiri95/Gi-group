@@ -3,12 +3,14 @@
 // parte 13; ítem 40). Se abre desde la lista de Stock o escaneando el QR de
 // la etiqueta (?articulo=SKU), para cualquiera de la empresa. Los números son
 // los que calculó la planilla MRP en la última sincronización. Desde la ficha
-// se puede retirar o devolver ese artículo (parte 14).
+// se puede retirar o devolver ese artículo (parte 14). Dueño y Administración
+// ven además el historial de precios con fecha (costo de OT, parte A; 164).
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { sb } from "../lib/supabase";
 import { cantidadTexto, nivelSemaforo } from "../lib/stock";
 import { useEscape } from "../hooks/useEscape";
+import { ORIGENES_PRECIO, historialPrecios, textoPrecio } from "../lib/preciosArticulos";
 
 const RetirarMaterial = dynamic(() => import("./RetirarMaterial"), { ssr: false });
 
@@ -32,6 +34,49 @@ function Dato({ label, valor, unidad }) {
       <div className="text-[12px] text-gypi-dim">{label}</div>
       <div className="text-[18px] font-bold">{cantidadTexto(valor)}{valor !== null && valor !== undefined && unidad ? <span className="text-[13px] font-semibold text-gypi-dim"> {unidad}</span> : null}</div>
     </div>
+  );
+}
+
+const fechaCorta = (f) => (f ? f.split("-").reverse().join("/") : "");
+
+/** Historial de precios del artículo (v_precios_articulos, 164). */
+export function PreciosArticulo({ sku }) {
+  const [precios, setPrecios] = useState(null);
+  const [falla, setFalla] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    sb.get(`v_precios_articulos?sku=eq.${encodeURIComponent(sku)}&select=fecha,precio,moneda,tipo_cambio,precio_ars,origen,proveedor,comprobante&order=fecha.desc&limit=30`)
+      .then((rows) => { if (vivo) setPrecios(historialPrecios(rows || [])); })
+      .catch(() => { if (vivo) setFalla(true); });
+    return () => { vivo = false; };
+  }, [sku]);
+  if (falla) return null; // sin la migración 164 (o sin permiso) no se muestra
+  return (
+    <section aria-label="Precios" className="mb-3">
+      <h4 className="m-0 mb-1.5 text-[14px] font-bold">💲 Precios (sin IVA)</h4>
+      {precios === null && <div className="text-[13px] text-gypi-dim">Buscando precios…</div>}
+      {precios?.length === 0 && <div className="text-[13px] text-gypi-dim">Todavía no hay precios de este artículo. Salen de la hoja fact_ingresos_stock de la planilla MRP y de las facturas de las órdenes de compra.</div>}
+      {precios?.length > 0 && (
+        <ul className="m-0 p-0 list-none flex flex-col gap-1">
+          {precios.map((p, i) => {
+            const o = ORIGENES_PRECIO[p.origen] || { icono: "•", texto: p.origen };
+            return (
+              <li key={i} className="flex items-baseline gap-2 text-[13px] py-1 border-b border-gypi-border last:border-0">
+                <span className="w-[74px] shrink-0 text-gypi-dim">{fechaCorta(p.fecha)}</span>
+                <span className="flex-1 min-w-0">
+                  <span title={o.texto}>{o.icono}</span> {p.proveedor || o.texto}
+                  {p.comprobante ? <span className="text-gypi-dim"> · {p.comprobante}</span> : null}
+                </span>
+                <span className="text-right font-semibold whitespace-nowrap">
+                  {textoPrecio(p.precio_ars)}
+                  {p.moneda === "USD" && <span className="block text-[12px] font-normal text-gypi-dim">{textoPrecio(p.precio, "USD")}{p.tipo_cambio ? ` × ${p.tipo_cambio}` : " · sin tipo de cambio"}</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -101,6 +146,7 @@ export default function FichaArticulo({ sku, articulo: dado = null, usuario = nu
               </div>
             )}
             {(a.marca || a.color) && <div className="text-[13px] text-gypi-dim mb-3">{[a.marca, a.color].filter(Boolean).join(" · ")}</div>}
+            {(usuario?.rol === "gerencial" || usuario?.rol === "administrativo") && <PreciosArticulo sku={sku} />}
             {usuario && a.activo !== false && (
               <button onClick={() => setRetirando(true)} className="g-btn g-btn-primary w-full mb-3">📦 Retirar o devolver</button>
             )}

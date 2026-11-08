@@ -92,7 +92,7 @@ export function numeroPlanilla(texto) {
 }
 
 /** Índice de la columna de cada campo, según los títulos. */
-function columnas(titulos, campos) {
+export function columnas(titulos, campos) {
   const norm = titulos.map(normalizarTitulo);
   const out = {};
   for (const [campo, patrones] of Object.entries(campos)) {

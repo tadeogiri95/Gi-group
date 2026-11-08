@@ -123,21 +123,21 @@ export function PlanTrabajoLinks() {
 /** Libro MRP: links de las hojas publicadas como CSV. */
 export function PlanillaMrpLinks() {
   const toast = useToast();
-  const [cfg, setCfg] = useState({ inventario: "", articulos: "", necesidades: "", tablas: "", ultima_sync: null });
+  const [cfg, setCfg] = useState({ inventario: "", articulos: "", necesidades: "", tablas: "", ingresos: "", ultima_sync: null });
   const [sincronizando, setSincronizando] = useState(false);
 
   useEffect(() => {
     let vivo = true;
     sb.get(`config_sistema?clave=eq.${CLAVE_STOCK_CSV}&select=valor&limit=1`).then((rows) => {
       const v = rows?.[0]?.valor;
-      if (vivo && v) setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", necesidades: v.necesidades || "", tablas: v.tablas || "", ultima_sync: v.ultima_sync || null });
+      if (vivo && v) setCfg({ inventario: v.inventario || "", articulos: v.articulos || "", necesidades: v.necesidades || "", tablas: v.tablas || "", ingresos: v.ingresos || "", ultima_sync: v.ultima_sync || null });
     }).catch(() => { /* sin config todavía */ });
     return () => { vivo = false; };
   }, []);
 
   // Mismo guardado que tenía Stock → Planilla MRP: suma a lo que ya había
   const guardarYSincronizar = async () => {
-    const valor = { inventario: cfg.inventario.trim(), articulos: cfg.articulos.trim() || null, necesidades: cfg.necesidades.trim() || null, tablas: cfg.tablas.trim() || null };
+    const valor = { inventario: cfg.inventario.trim(), articulos: cfg.articulos.trim() || null, necesidades: cfg.necesidades.trim() || null, tablas: cfg.tablas.trim() || null, ingresos: cfg.ingresos.trim() || null };
     if (!valor.inventario) { toast.show("Pegá el link de la hoja INVENTARIO", AMBER); return; }
     setSincronizando(true);
     try {
@@ -146,7 +146,7 @@ export function PlanillaMrpLinks() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || "Los links se guardaron, pero no se pudo sincronizar");
       if (data.errores?.length) toast.show(`⚠️ ${data.articulos} artículos leídos, pero algunos no se guardaron. Probá de nuevo.`, AMBER);
-      else if (data.avisoNecesidades || data.avisoTablas) toast.show(`⚠️ ${data.articulos} artículos sincronizados. ${data.avisoNecesidades || data.avisoTablas}`, AMBER);
+      else if (data.avisoNecesidades || data.avisoTablas || data.avisoPrecios) toast.show(`⚠️ ${data.articulos} artículos sincronizados. ${data.avisoNecesidades || data.avisoTablas || data.avisoPrecios}`, AMBER);
       else toast.success(`✅ Links guardados y ${data.articulos} artículos sincronizados`);
       setCfg((c) => ({ ...c, ultima_sync: new Date().toISOString() }));
     } catch (e) {
@@ -171,6 +171,7 @@ export function PlanillaMrpLinks() {
       {campo("stock-art", "articulos", "Link de la hoja ARTICULOS (opcional: suma unidad, familia y marca)")}
       {campo("stock-nec", "necesidades", "Link de la hoja fact_necesidades_stock (opcional: material de cada OT)")}
       {campo("stock-tab", "tablas", "Link de la hoja TABLAS (opcional: listas para cargar artículos nuevos)")}
+      {campo("stock-ing", "ingresos", "Link de la hoja fact_ingresos_stock (opcional: precios con fecha para el costo de cada OT)")}
       <button onClick={guardarYSincronizar} disabled={sincronizando || !cfg.inventario.trim()} className="g-btn g-btn-primary w-full disabled:opacity-50">
         {sincronizando ? "Sincronizando…" : "Guardar y sincronizar"}
       </button>
