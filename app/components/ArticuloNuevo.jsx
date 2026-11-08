@@ -6,7 +6,7 @@
 // la planilla lo anota al final de ARTICULOS en su próxima vuelta.
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
-import { CATEGORIAS, LISTAS_SKU, nombreNormalizado, parecidos } from "../lib/articulosNuevos";
+import { CATEGORIAS, LISTAS_SKU, datosDeParecido, nombreNormalizado, parecidos } from "../lib/articulosNuevos";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 
 const VACIO = {
@@ -17,10 +17,14 @@ const VACIO = {
 const DESPLEGABLES = new Set(["division", "tipo", "unidad"]);
 
 /**
- * @param {{ articulos?: object[], nombreInicial?: string, onCreado: (articulo: object) => void, onCancelar: () => void }} props
+ * @param {{ articulos?: object[], nombreInicial?: string, inicial?: object, sugeridos?: object[], aviso?: string,
+ *   onCreado: (articulo: object) => void, onCancelar: () => void }} props
+ *   inicial: valores de arranque (por ejemplo el proveedor de la lista);
+ *   sugeridos: artículos parecidos para copiar sus datos (además de los del nombre).
  */
-export default function ArticuloNuevo({ articulos = [], nombreInicial = "", onCreado, onCancelar }) {
-  const [form, setForm] = useState(() => ({ ...VACIO, nombre_articulo: nombreInicial }));
+export default function ArticuloNuevo({ articulos = [], nombreInicial = "", inicial = null, sugeridos = [], aviso = "", onCreado, onCancelar }) {
+  const [form, setForm] = useState(() => ({ ...VACIO, nombre_articulo: nombreInicial, ...(inicial || {}) }));
+  const [copiado, setCopiado] = useState(null);
   const [listas, setListas] = useState(undefined);
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -37,6 +41,15 @@ export default function ArticuloNuevo({ articulos = [], nombreInicial = "", onCr
 
   const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
   const similares = useMemo(() => parecidos(articulos, form.nombre_articulo), [articulos, form.nombre_articulo]);
+  // Para copiar: los sugeridos (por ejemplo, parecidos a la descripción de la lista) y los del nombre, sin repetir
+  const paraCopiar = useMemo(() => {
+    const vistos = new Set();
+    return [...sugeridos, ...similares].filter((a) => a?.sku && !vistos.has(a.sku) && vistos.add(a.sku)).slice(0, 5);
+  }, [sugeridos, similares]);
+  const copiar = (a) => {
+    setForm((f) => ({ ...f, ...datosDeParecido(a) }));
+    setCopiado(a.nombre || a.sku);
+  };
   const completo = LISTAS_SKU.every((l) => form[l.campo].trim()) && form.nombre_articulo.trim().length >= 2;
   const vistaNombre = completo ? nombreNormalizado(form) : null;
 
@@ -87,6 +100,7 @@ export default function ArticuloNuevo({ articulos = [], nombreInicial = "", onCr
     <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
       <div className="text-[15px] font-bold mb-1">➕ Artículo nuevo</div>
       <div className="text-[12px] text-gypi-dim mb-2">Para lo que no está en la hoja ARTICULOS de la planilla MRP. Los mismos campos que allá.</div>
+      {aviso && <div className="text-[13px] mb-2">{aviso}</div>}
 
       {listas === undefined ? (
         <div role="status" className="text-[14px] text-gypi-dim mb-2">Cargando listas…</div>
@@ -101,6 +115,20 @@ export default function ArticuloNuevo({ articulos = [], nombreInicial = "", onCr
           {similares.length > 0 && (
             <div role="status" className="text-[12px] text-gypi-amber-ink mb-2">
               Ya hay parecidos: {similares.map((a) => a.nombre || a.sku).join(" · ")}. Revisá que no esté cargado.
+            </div>
+          )}
+          {paraCopiar.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[12px] text-gypi-dim mb-1">¿Es como alguno de estos pero de otra marca o color? Tocalo para copiar sus datos y cambiá lo que difiere:</div>
+              <div className="flex flex-wrap gap-1">
+                {paraCopiar.map((a) => (
+                  <button key={a.sku} type="button" onClick={() => copiar(a)}
+                    className="min-h-[36px] px-2 rounded-lg border border-gypi-border bg-gypi-bg cursor-pointer text-xs text-gypi-text text-left">
+                    📋 {a.nombre || a.sku}
+                  </button>
+                ))}
+              </div>
+              {copiado && <div role="status" className="text-[12px] text-gypi-green mt-1">Copié los datos de {copiado}. Revisá la marca, el color y el nombre.</div>}
             </div>
           )}
 
