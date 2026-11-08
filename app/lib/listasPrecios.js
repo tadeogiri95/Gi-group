@@ -136,10 +136,17 @@ export function detectarColumnas(grilla, { excel = false } = {}) {
     if (!roles.precio.length || !roles.descripcion.length) continue;
     const precio = mejorPrecio(roles.precio, fila);
     const tituloPrecio = normalizarTexto(fila[precio]);
+    // "Artículo" a veces es el código y "Descripción" el nombre: de las
+    // columnas que parecen descripción gana la de textos más largos (con
+    // espacios); otra corta y sin espacios pasa a ser el código si no hay.
+    const datos = filas.slice(f + 1, f + 301);
+    const ordenadas = [...roles.descripcion].sort((a, b) => puntajeTexto(datos, b, excel) - puntajeTexto(datos, a, excel));
+    const descripcion = ordenadas[0];
+    const codigoCorto = ordenadas.slice(1).find((i) => largoMedio(datos, i) <= 25);
     return {
       titulos: f,
-      descripcion: roles.descripcion[0],
-      codigo: roles.codigo[0] ?? -1,
+      descripcion,
+      codigo: roles.codigo[0] ?? codigoCorto ?? -1,
       precio,
       moneda: /\busd\b|\bu s s?\b|\bdolar(es)?\b|\bus\b/.test(tituloPrecio) ? "USD" : /\bars\b|\bpesos?\b/.test(tituloPrecio) ? "ARS" : null,
       conIva: /\bcon iva\b|\bc iva\b|\biva incluido\b|\bfinal\b/.test(tituloPrecio),
@@ -147,6 +154,30 @@ export function detectarColumnas(grilla, { excel = false } = {}) {
     };
   }
   return { ...adivinarColumnas(filas, { excel }), titulos: -1, moneda: null, conIva: false, porTitulos: false };
+}
+
+/** Largo medio de los textos (no números) de una columna. */
+function largoMedio(filas, i, excel = false) {
+  let n = 0, largo = 0;
+  for (const f of filas) {
+    const c = String(f?.[i] ?? "").trim();
+    if (!c || numeroCelda(c, { excel }) !== null) continue;
+    n++;
+    largo += c.length;
+  }
+  return n ? largo / n : 0;
+}
+
+/** Cuánto parece una columna un nombre de artículo: textos largos y con espacios. */
+function puntajeTexto(filas, i, excel) {
+  let n = 0, conEspacio = 0;
+  for (const f of filas) {
+    const c = String(f?.[i] ?? "").trim();
+    if (!c || numeroCelda(c, { excel }) !== null) continue;
+    n++;
+    if (/\s/.test(c)) conEspacio++;
+  }
+  return largoMedio(filas, i, excel) * (0.5 + (n ? conEspacio / n : 0));
 }
 
 /** Sin títulos: precio = la columna de números más a la derecha; descripción = la de textos más largos. */
@@ -184,7 +215,9 @@ export function renglonesDeGrilla(grilla, cols, { excel = false, max = MAX_RENGL
   let salteados = 0;
   let demas = 0;
   if (!cols || cols.descripcion < 0 || cols.precio < 0) return { renglones, salteados, demas };
-  const filas = (Array.isArray(grilla) ? grilla : []).slice(cols.titulos + 1);
+  const todas = Array.isArray(grilla) ? grilla : [];
+  const titulos = cols.titulos >= 0 ? todas[cols.titulos] || [] : [];
+  const filas = todas.slice(cols.titulos + 1);
   for (const f of filas) {
     if (!f || !f.some((c) => String(c).trim())) continue;
     const descripcion = String(f[cols.descripcion] ?? "").trim().slice(0, 200);
@@ -196,9 +229,26 @@ export function renglonesDeGrilla(grilla, cols, { excel = false, max = MAX_RENGL
       codigo: cols.codigo >= 0 ? String(f[cols.codigo] ?? "").trim().slice(0, 60) : "",
       cantidad: 1,
       precio: Math.round(precio * 10000) / 10000,
+      detalle: detalleDeFila(f, titulos, cols),
     });
   }
   return { renglones, salteados, demas };
+}
+
+/**
+ * El resto de la fila ("Rubro: Herrajes · Unidad: u · Precio c/IVA: 1.493"),
+ * para reconocer el artículo en Sin asociar aunque la descripción sea corta.
+ */
+export function detalleDeFila(fila, titulos, cols) {
+  const usadas = new Set([cols.descripcion, cols.codigo, cols.precio]);
+  const partes = [];
+  (fila || []).forEach((c, i) => {
+    const v = String(c ?? "").trim();
+    if (!v || usadas.has(i)) return;
+    const t = String(titulos?.[i] ?? "").trim();
+    partes.push(t ? `${t}: ${v}` : v);
+  });
+  return partes.join(" · ").slice(0, 600);
 }
 
 /** Proveedor probable por el nombre del archivo ("Lista Faplac 11-2026.xlsx" → "Faplac"). */

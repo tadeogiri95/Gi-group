@@ -222,7 +222,7 @@ function Editor({ inicial, articulos, onGuardada, onCancelar }) {
               <tbody>
                 {f.renglones.slice(0, 15).map((r, i) => (
                   <tr key={i} className="border-t border-gypi-border">
-                    <td className="py-1 pr-2">{r.descripcion}{r.sku ? <span className="text-gypi-green"> · ✓ {nombres.get(r.sku) || r.sku}</span> : null}</td>
+                    <td className="py-1 pr-2">{r.descripcion}{r.sku ? <span className="text-gypi-green"> · ✓ {nombres.get(r.sku) || r.sku}</span> : null}{r.detalle ? <div className="text-gypi-dim">{r.detalle}</div> : null}</td>
                     <td className="py-1 pr-2 text-gypi-dim">{r.codigo}</td>
                     <td className="py-1 text-right">{textoPrecio(num(r.precio), f.moneda)}</td>
                   </tr>
@@ -242,6 +242,7 @@ function Editor({ inicial, articulos, onGuardada, onCancelar }) {
                   <button type="button" aria-label={`Quitar renglón ${i + 1}`} onClick={() => setF((x) => ({ ...x, renglones: x.renglones.filter((_, j) => j !== i) }))}
                     className="min-w-[40px] min-h-[40px] rounded-lg border border-gypi-border bg-transparent cursor-pointer text-gypi-dim">✕</button>
                 </div>
+                {r.detalle && <div className="text-xs text-gypi-dim mt-1">{r.detalle}</div>}
                 <div className={`grid ${esLista ? "grid-cols-2" : "grid-cols-3"} gap-1.5 mt-1.5`}>
                   <input aria-label={`Código del renglón ${i + 1}`} className="g-input text-[13px]" value={r.codigo} placeholder="Código" onChange={(e) => cambiarRenglon(i, { codigo: e.target.value })} />
                   {!esLista && <input aria-label={`Cantidad del renglón ${i + 1}`} className="g-input text-[13px] text-right" inputMode="decimal" value={r.cantidad} placeholder="Cantidad" onChange={(e) => cambiarRenglon(i, { cantidad: e.target.value })} />}
@@ -307,6 +308,7 @@ function DetalleFactura({ id, articulos, onCambio }) {
       {visibles.map((r) => (
         <li key={r.id} className="text-xs">
           <span className="font-semibold">{r.descripcion}</span>{r.codigo ? ` · cód. ${r.codigo}` : ""} · {esLista ? "" : `${cantidadTexto(r.cantidad)} × `}{textoPrecio(Number(r.precio), d.factura.moneda)}
+          {r.detalle && <div className="text-gypi-dim">{r.detalle}</div>}
           {r.sku ? <div className="text-gypi-green">✓ {nombres.get(r.sku) || r.sku}</div>
             : r.asociado_como === "descartado" ? (
               <div className="text-gypi-dim">{COMO_ASOCIADO.descartado}{" "}
@@ -322,12 +324,17 @@ function DetalleFactura({ id, articulos, onCambio }) {
 
 /** Un renglón sin artículo: sugerencias, buscador y "No es del MRP". */
 function RenglonSinAsociar({ r, articulos, onAsociar, onDescartar }) {
-  const parecidos = useMemo(() => sugerirParecidos(r.descripcion, articulos, 3), [r.descripcion, articulos]);
+  // Si la descripción sola no se parece a nada (por ejemplo, es un código), se prueba con el resto de la fila
+  const parecidos = useMemo(() => {
+    const solo = sugerirParecidos(r.descripcion, articulos, 3);
+    return solo.length || !r.detalle ? solo : sugerirParecidos(`${r.descripcion} ${r.detalle}`, articulos, 3);
+  }, [r.descripcion, r.detalle, articulos]);
   const doc = r.facturas_sueltas || {};
   const esLista = doc.tipo === "lista";
   return (
     <li className="p-2.5 rounded-xl border border-gypi-red bg-gypi-red/10">
       <div className="text-[13px] font-semibold">{r.descripcion}{r.codigo ? <span className="text-xs text-gypi-dim"> · cód. {r.codigo}</span> : null}</div>
+      {r.detalle && <div className="text-xs text-gypi-text">{r.detalle}</div>}
       <div className="text-xs text-gypi-dim">
         {esLista ? "📋 " : "🧾 "}{doc.proveedor}{doc.numero ? ` · ${esLista ? "" : "N° "}${doc.numero}` : ""} · {fechaCorta(doc.fecha)} · {esLista ? "" : `${cantidadTexto(r.cantidad)} × `}{textoPrecio(Number(r.precio), doc.moneda)}
       </div>

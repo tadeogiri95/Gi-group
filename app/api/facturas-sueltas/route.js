@@ -39,7 +39,7 @@ import { ErrorIa, leerFacturaIa } from "../../lib/facturaIa";
 export const maxDuration = 60;
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const FALTA = "Para las facturas sueltas y listas de precios falta correr las migraciones 168 y 169 en Supabase.";
+const FALTA = "Para las facturas sueltas y listas de precios falta correr las migraciones 168, 169 y 170 en Supabase.";
 const faltaMigracion = (err) => /facturas_sueltas|asociaciones_articulos/.test(String(err?.message));
 const TANDA = 1000;
 const SIN_ASOCIAR = "sku=is.null&asociado_como=is.null";
@@ -113,7 +113,7 @@ export async function GET(request) {
         return NextResponse.json({ ok: true, factura, renglones });
       }
       if (params.get("vista") === "sin_asociar") {
-        const { data } = await sbGetAll(`facturas_sueltas_renglones?empresa_id=eq.${e}&${SIN_ASOCIAR}&select=id,descripcion,codigo,cantidad,precio,factura_id,facturas_sueltas!inner(tipo,proveedor,numero,fecha,moneda,anulada_at)&facturas_sueltas.anulada_at=is.null&order=id.desc`, { maxFilas: 5000 });
+        const { data } = await sbGetAll(`facturas_sueltas_renglones?empresa_id=eq.${e}&${SIN_ASOCIAR}&select=id,descripcion,codigo,detalle,cantidad,precio,factura_id,facturas_sueltas!inner(tipo,proveedor,numero,fecha,moneda,anulada_at)&facturas_sueltas.anulada_at=is.null&order=id.desc`, { maxFilas: 5000 });
         return NextResponse.json({ ok: true, renglones: data || [] });
       }
       const facturas = (await sbGet(`facturas_sueltas?empresa_id=eq.${e}&select=*,facturas_sueltas_renglones(cantidad,precio,sku,asociado_como)&order=created_at.desc,id.desc&limit=100`)) || [];
@@ -177,7 +177,7 @@ async function guardar(sesion, d) {
     const rec = r.sku ? { sku: r.sku, como: !r.manual && auto?.sku === r.sku ? auto.como : "manual" } : auto;
     const como = rec?.como || null;
     return {
-      empresa_id: e, factura_id: factura.id, orden: r.orden, descripcion: r.descripcion, codigo: r.codigo,
+      empresa_id: e, factura_id: factura.id, orden: r.orden, descripcion: r.descripcion, codigo: r.codigo, detalle: r.detalle,
       cantidad: r.cantidad, precio: r.precio, sku: rec?.sku || null, asociado_como: rec ? como : null,
       asociado_por_nombre: rec && como === "manual" ? nombre : null, asociado_at: rec ? ahora : null,
     };
