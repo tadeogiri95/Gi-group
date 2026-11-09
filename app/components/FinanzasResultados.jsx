@@ -7,13 +7,14 @@
 // ingresos, costo de ventas, utilidad bruta, gastos operativos, EBIT,
 // resultado financiero, impuestos y resultado neto. Cada sección se abre y se
 // cierra; el costo de materiales se estima con un % de las entregas mientras
-// no haya costo real.
+// no haya costo real. Con el ponderador (⚙ Compartidos) se ve cada división:
+// lo suyo entero y su % de lo compartido.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr } from "../lib/finanzasOperaciones";
 import { nombreMes } from "../lib/finanzasResultados";
-import { Modal, Spinner } from "./ui";
+import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const miles = (n) => (n == null ? "" : Math.round(Number(n) || 0).toLocaleString("es-AR"));
@@ -58,6 +59,84 @@ function ConfigMateriales({ valor, onCerrar, onGuardado }) {
   );
 }
 
+function ConfigPonderador({ divisiones, valor, onCerrar, onGuardado }) {
+  const toast = useToast();
+  const [v, setV] = useState(() => Object.fromEntries(divisiones.map((d) => [d, valor?.[d] != null ? String(valor[d]).replace(".", ",") : ""])));
+  const [error, setError] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const suma = Object.values(v).reduce((s, x) => s + (Number(String(x).replace(",", ".")) || 0), 0);
+  async function guardar(ponderador) {
+    setGuardando(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/finanzas/resultados", { method: "POST", body: JSON.stringify({ accion: "config", ponderador }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+      toast.success("Guardado");
+      onGuardado();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+  return (
+    <Modal open onClose={onCerrar} title="Gastos compartidos" maxWidth={440}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          Lo que no es de una división (no tiene OT ni centro de costo de esa división) se reparte con estos %. Tienen que sumar 100.
+        </p>
+        {divisiones.length === 0 && <p className="m-0 text-[13px] text-gypi-amber-ink">⚠ Las OT no tienen división cargada.</p>}
+        {divisiones.map((d) => (
+          <label key={d} className="flex items-center justify-between gap-2 text-[13px] font-semibold">
+            {d}
+            <span className="flex items-center gap-1">
+              <input className="g-input w-[90px] text-right" inputMode="decimal" aria-label={`Porcentaje de ${d}`} value={v[d]} onChange={(e) => setV((x) => ({ ...x, [d]: e.target.value }))} />
+              %
+            </span>
+          </label>
+        ))}
+        <p className={`m-0 text-[13px] font-semibold ${Math.abs(suma - 100) > 0.05 ? "text-gypi-amber-ink" : "text-gypi-text"}`}>Suman {pct(Math.round(suma * 10) / 10)}</p>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {Object.keys(valor || {}).length > 0 && <button type="button" className="g-btn g-btn-secondary" disabled={guardando} onClick={() => guardar({})}>Sacar el reparto</button>}
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !divisiones.length} onClick={() => guardar(v)}>{guardando ? "Guardando…" : "Guardar"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PorDivision({ filas }) {
+  return (
+    <section aria-label="Por división" className="mb-3">
+      <h3 className="m-0 mb-1 text-[14px] font-bold text-gypi-text">Por división, 12 meses (con su parte de lo compartido)</h3>
+      <div className="overflow-x-auto border border-gypi-border rounded-lg">
+        <table className="w-full border-collapse text-[13px]" aria-label="Resumen por división">
+          <thead>
+            <tr className="bg-gypi-surface">
+              {["División", "Compartidos", "Ingresos", "Costo de ventas", "Gastos", "Resultado neto", "% sobre ingresos"].map((t, i) => <th key={t} className={`${i ? "text-right" : "text-left"} px-2 py-1.5 whitespace-nowrap`}>{t}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((f) => (
+              <tr key={f.division || "todo"} className={`border-t border-gypi-border text-gypi-text ${f.division ? "" : "font-bold bg-gypi-surface"}`}>
+                <td className="px-2 py-1">{f.division || "Toda la empresa"}</td>
+                <td className="px-2 py-1 text-right font-mono">{f.division ? pct(f.pct) : ""}</td>
+                <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{miles(f.ingresos)}</td>
+                <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{miles(f.cmv)}</td>
+                <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{miles(f.gastos + f.financiero + f.impuestos)}</td>
+                <td className={`px-2 py-1 text-right font-mono whitespace-nowrap ${f.resultado < 0 ? "text-gypi-red" : ""}`}>{miles(f.resultado)}</td>
+                <td className="px-2 py-1 text-right font-mono">{Math.abs(f.ingresos) >= 0.01 ? pct(Math.round((f.resultado / f.ingresos) * 1000) / 10) : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 const ESTILO = {
   seccion: "bg-gypi-surface font-bold text-gypi-text cursor-pointer",
   grupo: "font-semibold text-gypi-text",
@@ -73,11 +152,13 @@ export default function FinanzasResultados() {
   const [cargando, setCargando] = useState(false);
   const [cerradas, setCerradas] = useState(() => new Set());
   const [config, setConfig] = useState(false);
+  const [reparto, setReparto] = useState(false);
+  const [division, setDivision] = useState("");
 
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
-      const res = await apiFetch(`/api/finanzas/resultados?hasta=${hasta}`);
+      const res = await apiFetch(`/api/finanzas/resultados?hasta=${hasta}${division ? `&division=${encodeURIComponent(division)}` : ""}`);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo armar el estado de resultados");
       setDatos(d);
@@ -87,13 +168,14 @@ export default function FinanzasResultados() {
     } finally {
       setCargando(false);
     }
-  }, [hasta]);
+  }, [hasta, division]);
   useEffect(() => { cargar(); }, [cargar]);
 
   const abrirCerrar = (id) => setCerradas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
+  const repartidas = Object.keys(datos.config?.ponderador || {});
   const visibles = datos.filas.filter((f) => f.tipo === "seccion" || f.tipo === "resultado" || f.tipo === "pct" || !cerradas.has(f.seccion));
 
   return (
@@ -105,8 +187,20 @@ export default function FinanzasResultados() {
         </label>
         <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA. Tocá una sección para abrirla o cerrarla.</p>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Materiales ({pct(datos.config?.materiales_pct)})</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setReparto(true)}>⚙ Compartidos</button>
         {cargando && <Spinner size={16} />}
       </div>
+
+      {repartidas.length > 0 && (
+        <>
+          <PorDivision filas={datos.por_division || []} />
+          <div className="flex flex-wrap items-center gap-2 mb-2" role="group" aria-label="Ver división">
+            <Chip active={!datos.division} onClick={() => setDivision("")}>Toda la empresa</Chip>
+            {repartidas.map((d) => <Chip key={d} active={datos.division === d} onClick={() => setDivision(d)}>{d}</Chip>)}
+          </div>
+          {datos.division && <p className="m-0 mb-2 text-[13px] text-gypi-dim">{datos.division}: lo suyo entero (por la OT o el centro de costo) más el {pct(datos.config.ponderador[datos.division])} de lo compartido.</p>}
+        </>
+      )}
 
       {!datos.clasificado && (
         <p className="m-0 mb-2 text-[13px] text-gypi-amber-ink">
@@ -158,6 +252,7 @@ export default function FinanzasResultados() {
           </ul>
         </details>
       )}
+      {reparto && <ConfigPonderador divisiones={datos.divisiones || []} valor={datos.config?.ponderador} onCerrar={() => setReparto(false)} onGuardado={() => { setReparto(false); setDivision(""); cargar(); }} />}
       {config && <ConfigMateriales valor={datos.config?.materiales_pct} onCerrar={() => setConfig(false)} onGuardado={() => { setConfig(false); cargar(); }} />}
     </div>
   );
