@@ -180,3 +180,96 @@ export function operacionSaldoInicial({ fecha, proveedor_id, nombre, deuda }, { 
     origen: ORIGEN_SALDO_INICIAL, origen_id: clave.slice(0, 60), estado: "confirmada",
   };
 }
+
+/* ─── Parte 3 del plan del 09/11: la cuenta de cada proveedor, compras sin
+   factura y notas de crédito ───────────────────────────────────────────
+   - La cuenta de cada proveedor (la del Estado de Resultados) se aprende de
+     lo que ya se cargó (el histórico del libro incluido): la cuenta del debe
+     que más se usó en sus compras. El dueño la confirma o la cambia, y queda
+     en config_sistema ("finanzas_cuentas_proveedores"). La usan la compra
+     automática de las facturas y la carga de compras a mano.
+   - Compra sin factura (remito, ticket): la cuenta del proveedor al debe
+     contra Proveedores, sin IVA, con "Sin factura" en la descripción.
+   - Nota de crédito del proveedor: al revés (Proveedores al debe), con su
+     IVA si lo tiene; resta de la deuda y del gasto. */
+
+export const CLAVE_CUENTAS_PROV = "finanzas_cuentas_proveedores";
+export const ORIGEN_COMPRA_MANUAL = "compra_manual";
+export const TIPO_COMPRA = "COMPRAS";
+export const CLASES_COMPRA = { sin_factura: "Compra sin factura", nota_credito: "Nota de crédito" };
+const CODIGO = /^\d{2}(\.\d{2,3})+$/;
+
+/** Lo guardado: { "p12": "04.02.01.001.003", … } (solo códigos válidos). */
+export function leerCuentasProveedores(valor) {
+  const c = valor?.cuentas && typeof valor.cuentas === "object" ? valor.cuentas : {};
+  return Object.fromEntries(Object.entries(c).filter(([k, v]) => /^[pe][A-Z0-9]*\d*$/i.test(k) && k.length <= 80 && CODIGO.test(String(v))).slice(0, 5000));
+}
+
+/**
+ * La cuenta que más usó cada proveedor en sus compras (el debe de lo que va
+ * al haber de Proveedores), sin contar cajas, bancos ni las otras cuentas
+ * que se pasen en excluir (Ajuste De Capital).
+ * @returns {Map<string, { cuenta: string, veces: number, de: number, total: number }>}
+ */
+export function cuentasAprendidas(ops, cuentasProv, { excluir = new Set() } = {}) {
+  const por = new Map();
+  for (const op of ops || []) {
+    if (op.anulada_at || !cuentasProv.has(op.cuenta_haber)) continue;
+    const d = op.cuenta_debe;
+    if (!d || cuentasProv.has(d) || excluir.has(d)) continue;
+    const clave = claveDe(op);
+    if (!clave) continue;
+    const m = por.get(clave) || new Map();
+    const x = m.get(d) || { cuenta: d, veces: 0, total: 0 };
+    x.veces++;
+    x.total += Number(op.total_ars) || 0;
+    m.set(d, x);
+    por.set(clave, m);
+  }
+  const out = new Map();
+  for (const [clave, m] of por) {
+    const lista = [...m.values()].sort((a, b) => b.veces - a.veces || b.total - a.total);
+    out.set(clave, { cuenta: lista[0].cuenta, veces: lista[0].veces, de: lista.reduce((s, x) => s + x.veces, 0), total: centavos(lista[0].total) });
+  }
+  return out;
+}
+
+/** La cuenta de un proveedor: la elegida por el dueño, si no la aprendida, si no null. */
+export function cuentaDeProveedor(clave, guardadas = {}, aprendidas = new Map()) {
+  return guardadas[clave] || aprendidas.get(clave)?.cuenta || null;
+}
+
+/**
+ * Valida una compra sin factura o una nota de crédito y arma la operación.
+ * @param {{ clase, fecha, proveedor_id, importe, iva?, numero?, cuenta, descripcion? }} d importe = total (con IVA)
+ * @param {{ cuentaProveedores: string, codigos: Set<string>, proveedores: Set<number>, ivaCredito?: string|null }} ctx
+ * @returns {{ op?: object, error?: string }}
+ */
+export function operacionCompraManual(d, { cuentaProveedores, codigos, proveedores, ivaCredito = null }) {
+  const clase = d?.clase;
+  if (!CLASES_COMPRA[clase]) return { error: "Elegí si es una compra sin factura o una nota de crédito" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || ""))) return { error: "Falta la fecha" };
+  const proveedorId = Number(d.proveedor_id);
+  if (!proveedores.has(proveedorId)) return { error: "Elegí un proveedor de la lista" };
+  const total = centavos(d.importe);
+  if (!(total > 0) || total >= 1e13) return { error: "El importe tiene que ser mayor a cero" };
+  const iva = clase === "nota_credito" ? centavos(d.iva) : 0;
+  if (iva < 0 || iva >= total) return { error: "El IVA tiene que ser menor que el total" };
+  if (iva > 0 && !ivaCredito) return { error: "Falta la cuenta \"IVA Crédito Fiscal\" en el plan de cuentas" };
+  const cuenta = String(d.cuenta || "");
+  if (!codigos.has(cuenta)) return { error: "Elegí la cuenta del gasto (la del Estado de Resultados)" };
+  if (cuenta === cuentaProveedores) return { error: "La cuenta del gasto no puede ser Proveedores" };
+  const numero = String(d.numero || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  const texto = String(d.descripcion || "").replace(/\s+/g, " ").trim().slice(0, 300);
+  const titulo = clase === "sin_factura" ? `Sin factura${numero ? ` (remito ${numero})` : ""}` : `Nota de crédito${numero ? ` N° ${numero}` : ""}`;
+  const nc = clase === "nota_credito";
+  return {
+    op: {
+      fecha: d.fecha, tipo: TIPO_COMPRA, proveedor_id: proveedorId, entidad: null,
+      neto: centavos(total - iva), iva, otros_impuestos: 0, total, moneda: "ARS", tipo_cambio: null, total_ars: total,
+      cuenta_debe: nc ? cuentaProveedores : cuenta, cuenta_haber: nc ? cuenta : cuentaProveedores,
+      descripcion: [titulo, texto].filter(Boolean).join(" · "), referencia: numero || null,
+      origen: ORIGEN_COMPRA_MANUAL, estado: "confirmada",
+    },
+  };
+}

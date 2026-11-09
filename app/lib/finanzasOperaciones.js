@@ -18,12 +18,14 @@
 //     no lo tiene, debe y haber iguales, dólares en una caja de pesos.
 //   - Nada se borra: se anula.
 
+import { CUENTA_PROVEEDORES } from "./finanzasProveedores";
+
 export const IVA_CREDITO = /^iva cr[eé]dito fiscal$/i;
 export const IVA_DEBITO = /^iva d[eé]bito fiscal$/i;
 export const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_OPERACIONES = 5000;
 /** De dónde salió una operación que no se cargó a mano (F2a). */
-export const ORIGENES = { factura_oc: "🧾 Factura de OC", factura_oc_otra: "🧾 Factura de OC (otro proveedor)", factura_suelta: "🧾 Factura suelta", saldo_inicial: "📥 Saldo inicial del libro", cheque: "🏦 Cheque", orden_pago: "💸 Orden de pago", mi_caja: "📱 Mi caja", cobro: "💵 Cobro", venta_ot: "🧾 Venta de OT", entrega_ot: "📦 Entrega de OT" };
+export const ORIGENES = { factura_oc: "🧾 Factura de OC", factura_oc_otra: "🧾 Factura de OC (otro proveedor)", factura_suelta: "🧾 Factura suelta", saldo_inicial: "📥 Saldo inicial del libro", cheque: "🏦 Cheque", orden_pago: "💸 Orden de pago", mi_caja: "📱 Mi caja", cobro: "💵 Cobro", venta_ot: "🧾 Venta de OT", entrega_ot: "📦 Entrega de OT", compra_manual: "📝 Compra sin factura o nota de crédito", libro: "📚 Histórico del libro" };
 
 const txt = (v, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const redondear = (n) => Math.round(n * 100) / 100;
@@ -103,6 +105,10 @@ export function asientoDe(op, { cuentas = [], tipos = [] } = {}) {
     };
   }
   if (venta) {
+    return { renglones: [r("debe", op.cuenta_debe, total), r("haber", op.cuenta_haber, neto + otros), r("haber", cuentaIva.codigo, iva)], aviso: null };
+  }
+  // Nota de crédito de un proveedor (Proveedores al debe): el IVA crédito vuelve al haber
+  if (CUENTA_PROVEEDORES.test(nombre(op.cuenta_debe).trim())) {
     return { renglones: [r("debe", op.cuenta_debe, total), r("haber", op.cuenta_haber, neto + otros), r("haber", cuentaIva.codigo, iva)], aviso: null };
   }
   return { renglones: [r("debe", op.cuenta_debe, neto + otros), r("debe", cuentaIva.codigo, iva), r("haber", op.cuenta_haber, total)], aviso: null };

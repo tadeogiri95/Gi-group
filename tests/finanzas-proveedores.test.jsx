@@ -10,7 +10,9 @@ import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   claveNombre, cuentasProveedores, efectoDeuda, saldosProveedores, movimientosProveedor, pendientesProveedor,
   emparejarProveedor, saldosDelLibro, fechaDelLibro, operacionSaldoInicial,
+  leerCuentasProveedores, cuentasAprendidas, cuentaDeProveedor, operacionCompraManual,
 } from "../app/lib/finanzasProveedores.js";
+import { asientoDe } from "../app/lib/finanzasOperaciones.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -29,8 +31,12 @@ const PROV = "02.01.02.001.001";
 const AJUSTE = "03.01.01.002.001";
 const MP = "01.01.04.001.002";
 const BANCO = "01.01.01.003.002";
+const FLETES = "04.02.03.001.004";
+const IVA_CF = "01.01.05.001.001";
 const CUENTAS = [
   { codigo: MP, nombre: "Materias Primas", activa: true },
+  { codigo: FLETES, nombre: "Fletes", activa: true },
+  { codigo: IVA_CF, nombre: "IVA Crédito Fiscal", activa: true },
   { codigo: BANCO, nombre: "Banco Credicoop CTA CTE", activa: true },
   { codigo: PROV, nombre: "Proveedores", activa: true },
   { codigo: AJUSTE, nombre: "Ajuste De Capital", activa: true },
@@ -112,6 +118,45 @@ test("saldo inicial — deuda al haber de Proveedores contra Ajuste De Capital; 
   assert.match(d.descripcion, /09\/11\/2026/);
 });
 
+test("parte 3 — la cuenta de cada proveedor sale de sus compras; la elegida manda", () => {
+  const ops = [
+    compra(1, "2026-06-01", 100), compra(2, "2026-06-02", 50, { cuenta_debe: FLETES }), compra(3, "2026-06-03", 70),
+    compra(4, "2026-06-04", 999, { cuenta_debe: AJUSTE }), compra(5, "2026-06-05", 10, { anulada_at: "2026-06-06" }),
+    compra(6, "2026-06-01", 30, { proveedor_id: null, entidad: "Fletes Juan", cuenta_debe: FLETES }), pago(7, "2026-06-09", 100),
+  ];
+  const a = cuentasAprendidas(ops, CP, { excluir: new Set([AJUSTE]) });
+  assert.deepEqual(a.get("p5"), { cuenta: MP, veces: 2, de: 3, total: 170 });
+  assert.equal(a.get("eFLETESJUAN").cuenta, FLETES);
+  assert.equal(cuentaDeProveedor("p5", { p5: FLETES }, a), FLETES, "la guardada gana");
+  assert.equal(cuentaDeProveedor("p5", {}, a), MP);
+  assert.equal(cuentaDeProveedor("p9", {}, a), null);
+  assert.deepEqual(leerCuentasProveedores({ cuentas: { p5: MP, p6: "cualquiera", "x;drop": MP } }), { p5: MP });
+  assert.deepEqual(leerCuentasProveedores(null), {});
+});
+
+test("parte 3 — compra sin factura y nota de crédito con su IVA", () => {
+  const ctx = { cuentaProveedores: PROV, codigos: new Set(CUENTAS.map((c) => c.codigo)), proveedores: new Set([5, 6]), ivaCredito: IVA_CF };
+  const sf = operacionCompraManual({ clase: "sin_factura", fecha: "2026-11-09", proveedor_id: 5, importe: 1210, iva: 210, numero: "R-12", cuenta: FLETES }, ctx).op;
+  assert.deepEqual([sf.cuenta_debe, sf.cuenta_haber, sf.total, sf.iva, sf.neto, sf.origen, sf.tipo], [FLETES, PROV, 1210, 0, 1210, "compra_manual", "COMPRAS"]);
+  assert.match(sf.descripcion, /^Sin factura \(remito R-12\)/);
+  assert.equal(efectoDeuda(sf, CP), 1210);
+  const nc = operacionCompraManual({ clase: "nota_credito", fecha: "2026-11-09", proveedor_id: 5, importe: 121, iva: 21, numero: "0001-55", cuenta: MP, descripcion: "devolución" }, ctx).op;
+  assert.deepEqual([nc.cuenta_debe, nc.cuenta_haber, nc.neto, nc.iva], [PROV, MP, 100, 21]);
+  assert.equal(nc.descripcion, "Nota de crédito N° 0001-55 · devolución");
+  assert.equal(efectoDeuda(nc, CP), -121, "baja la deuda");
+  const asiento = asientoDe(nc, { cuentas: CUENTAS });
+  const lado = (l) => asiento.renglones.filter((r) => r.lado === l).map((r) => [r.cuenta, r.importe]);
+  assert.deepEqual(lado("debe"), [[PROV, 121]]);
+  assert.deepEqual(lado("haber").sort(), [[IVA_CF, 21], [MP, 100]].sort(), "el IVA crédito vuelve al haber");
+  const mal = (d) => operacionCompraManual({ clase: "sin_factura", fecha: "2026-11-09", proveedor_id: 5, importe: 10, cuenta: MP, ...d }, ctx).error;
+  assert.match(mal({ clase: "otra" }), /compra sin factura o una nota/);
+  assert.match(mal({ proveedor_id: 99 }), /proveedor de la lista/);
+  assert.match(mal({ importe: 0 }), /mayor a cero/);
+  assert.match(mal({ cuenta: PROV }), /no puede ser Proveedores/);
+  assert.match(mal({ cuenta: "09.09" }), /cuenta del gasto/);
+  assert.match(mal({ clase: "nota_credito", iva: 10 }), /menor que el total/);
+});
+
 // ─── Servidor ───
 
 async function token(rol) {
@@ -121,11 +166,18 @@ const pedir = async (rol, metodo, body) => api[metodo](new Request("http://local
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ cuentas = CUENTAS } = {}) {
+function mockApi({ cuentas = CUENTAS, guardadas = null } = {}) {
   const escrito = [];
   const leido = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
+    {
+      match: (u) => u.includes("/rest/v1/config_sistema"),
+      respond: (u, o) => {
+        if (o?.method === "POST" || o?.method === "PATCH") { escrito.push({ url: u, metodo: o.method, body: JSON.parse(o.body) }); return { status: 201, body: [{}] }; }
+        return { status: 200, body: guardadas ? [{ clave: "finanzas_cuentas_proveedores", valor: { cuentas: guardadas } }] : [] };
+      },
+    },
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
     {
@@ -199,6 +251,28 @@ test("/api/finanzas/proveedores — controles: fecha, proveedor que no existe y 
   assert.equal(escrito.length, 0);
 });
 
+test("/api/finanzas/proveedores — guarda la cuenta de cada proveedor y carga una nota de crédito", async () => {
+  let m = mockApi({ guardadas: { p6: FLETES } });
+  const g = await pedir("gerencial", "GET");
+  assert.deepEqual((await g.json()).cuentas_guardadas, { p6: FLETES });
+  const res = await pedir("gerencial", "POST", { accion: "cuentas", cuentas: { p5: MP, p6: null, p99: MP } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, cuentas: 1 });
+  assert.equal(m.escrito[0].metodo, "PATCH");
+  assert.deepEqual(m.escrito[0].body.valor.cuentas, { p5: MP }, "p6 se borra y p99 no existe");
+  assert.equal((await pedir("gerencial", "POST", { accion: "cuentas", cuentas: { p5: PROV } })).status, 400);
+
+  m = mockApi();
+  const nc = await pedir("gerencial", "POST", { accion: "compra", clase: "nota_credito", fecha: "2026-11-09", proveedor_id: 5, importe: 121, iva: 21, cuenta: MP });
+  assert.equal(nc.status, 200);
+  const op = m.escrito[0].body;
+  assert.deepEqual([op.empresa_id, op.cuenta_debe, op.cuenta_haber, op.iva, op.origen], [E, PROV, MP, 21, "compra_manual"]);
+  assert.match(op.origen_id, /^cm[0-9a-f]{12}$/);
+  assert.equal((await pedir("gerencial", "POST", { accion: "compra", clase: "sin_factura", fecha: "2026-11-09", proveedor_id: 5, importe: 0, cuenta: MP })).status, 400);
+  assert.equal((await pedir("administrativo", "POST", { accion: "compra", clase: "sin_factura", fecha: "2026-11-09", proveedor_id: 5, importe: 10, cuenta: MP })).status, 403);
+  assert.equal(m.escrito.length, 1);
+});
+
 // ─── Pantalla ───
 
 test("Proveedores — lista con lo que les debemos, ficha con lo que falta pagar", async () => {
@@ -225,4 +299,37 @@ test("Proveedores — sin el libro copiado manda a Configuración", async () => 
   global.fetch = async () => new Response(JSON.stringify({ cuentas: [], proveedores: [], operaciones: [], cuentas_proveedores: [] }), { status: 200 });
   render(<FinanzasProveedores />);
   await waitFor(() => assert.ok(screen.getByText(/Primero copiá el libro/)));
+});
+
+test("Proveedores — cuenta sugerida de cada proveedor y compra sin factura desde la ficha", async () => {
+  const datos = {
+    cuentas: CUENTAS, proveedores: PROVEEDORES, cuentas_proveedores: [PROV], cuentas_guardadas: {},
+    operaciones: [compra(1, "2026-10-01", 1000), compra(2, "2026-10-02", 500, { cuenta_debe: FLETES }), compra(3, "2026-10-03", 200)],
+  };
+  const enviados = [];
+  global.fetch = async (u, o) => {
+    if (o?.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true, cuentas: 1 }), { status: 200 }); }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasProveedores />);
+  await waitFor(() => assert.ok(screen.getByText("ACERCO S A")));
+  fireEvent.click(screen.getByRole("button", { name: /Cuenta de cada proveedor/ }));
+  const sel = await screen.findByRole("combobox", { name: "Cuenta de ACERCO S A" });
+  assert.equal(sel.value, MP, "viene la que más usó");
+  assert.ok(screen.getByText(/Materias Primas \(2 de 3\)/));
+  fireEvent.click(screen.getByRole("button", { name: "Guardar (1)" }));
+  await waitFor(() => assert.deepEqual(enviados[0], { accion: "cuentas", cuentas: { p5: MP } }));
+
+  await waitFor(() => assert.equal(screen.queryByRole("combobox", { name: "Cuenta de ACERCO S A" }), null));
+  fireEvent.click(screen.getByText("ACERCO S A"));
+  fireEvent.click(await screen.findByRole("button", { name: "＋ Compra sin factura" }));
+  fireEvent.change(await screen.findByLabelText("Importe"), { target: { value: "1.500,50" } });
+  fireEvent.change(screen.getByLabelText("Número de remito o ticket"), { target: { value: "R-7" } });
+  assert.equal(screen.getByRole("combobox", { name: "Cuenta del gasto" }).value, MP);
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => assert.equal(enviados.length, 2));
+  assert.deepEqual(
+    { ...enviados[1], fecha: undefined },
+    { accion: "compra", clase: "sin_factura", proveedor_id: 5, fecha: undefined, importe: 1500.5, iva: 0, numero: "R-7", cuenta: MP, descripcion: "" },
+  );
 });
