@@ -188,7 +188,7 @@ test("/api/finanzas/libro — GET solo con la clave de la empresa; POST solo el 
   assert.equal(res.status, 200);
   const d = await res.json();
   assert.deepEqual([d.operaciones[0].valores.referencia, d.cheques[0].valores.referencia], ["GY-F-5", "GY-C-50"]);
-  assert.match(leidas[0], /anulada_at=is\.null&origen=neq\.saldo_inicial/);
+  assert.match(leidas[0], /anulada_at=is\.null&origen=not\.in\.\(saldo_inicial,libro\)/);
 
   const tok = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
   const post = async (rol) => api.POST(new Request("http://localhost/api/finanzas/libro", { method: "POST", headers: { Authorization: `Bearer ${await tok(rol)}` }, body: "{}" }));

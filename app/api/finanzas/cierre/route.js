@@ -15,7 +15,7 @@ import { saldosTesoreria } from "../../../lib/finanzasTesoreria";
 import { ORIGEN_SALDO_INICIAL, cuentasProveedores, saldosProveedores } from "../../../lib/finanzasProveedores";
 import { cuentasDeudores, saldosClientes } from "../../../lib/finanzasClientes";
 
-const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,total,moneda,total_ars,cuenta_debe,cuenta_haber,descripcion,origen,estado,anulada_at";
+const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,total,moneda,total_ars,cuenta_debe,cuenta_haber,descripcion,origen,origen_id,estado,anulada_at";
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
@@ -52,7 +52,7 @@ export async function GET(request) {
       nombres_cuentas: Object.fromEntries(cuentas.map((c) => [c.codigo, c.nombre])),
       operaciones: ops
         .filter((o) => o.origen !== ORIGEN_SALDO_INICIAL && o.fecha >= desde)
-        .map(({ id, fecha, tipo, entidad, total, moneda, cuenta_debe, cuenta_haber, descripcion }) => ({ id, fecha, tipo, entidad, total, moneda, cuenta_debe, cuenta_haber, descripcion })),
+        .map(({ id, fecha, tipo, entidad, total, moneda, cuenta_debe, cuenta_haber, descripcion, origen, origen_id }) => ({ id, fecha, tipo, entidad, total, moneda, cuenta_debe, cuenta_haber, descripcion, origen, origen_id })),
       para_revisar: revisar.length,
     });
   } catch (err) {

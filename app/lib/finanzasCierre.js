@@ -14,10 +14,10 @@
 //         total o cuentas (se cambió a mano en el libro).
 // Las operaciones para revisar de Gypi no cuentan: no van al libro hasta que
 // se confirman.
-import { PREFIJO_OPERACION } from "./finanzasLibro";
 import { claveNombre, emparejarProveedor, fechaDelLibro, saldosDelLibro } from "./finanzasProveedores";
 import { emparejarCliente, saldosClientesDelLibro } from "./finanzasClientes";
 import { saldosCajasDelLibro } from "./finanzasTesoreria";
+import { ORIGEN_LIBRO, PREFIJO_OPERACION, renglonesDelLibro } from "./finanzasHistorico";
 
 /** Diferencias de menos de un peso (redondeos) no se muestran. */
 export const TOLERANCIA = 1;
@@ -126,8 +126,12 @@ export function compararCierre({ gypi, grilla, desde, hasta }) {
     if (id) enLibro.set(id, f);
   }
   const corte = gypi.corte || "";
-  const soloLibro = libro.filas.filter((f) => f.confirmado && !idDeReferencia(f.ref) && enPeriodo(f.fecha) && (!corte || f.fecha > corte));
-  const soloGypi = [...deGypi.values()].filter((o) => enPeriodo(o.fecha) && !enLibro.has(Number(o.id)));
+  // Los renglones que se pasaron del libro a Gypi se reconocen por su contenido
+  const claves = new Map(renglonesDelLibro(grilla).filas.map((r) => [r.fila, r.clave]));
+  const pasadas = new Set((gypi.operaciones || []).filter((o) => o.origen === ORIGEN_LIBRO).map((o) => o.origen_id));
+  const clavesLibro = new Set(claves.values());
+  const soloLibro = libro.filas.filter((f) => f.confirmado && !idDeReferencia(f.ref) && enPeriodo(f.fecha) && (!corte || f.fecha > corte) && !pasadas.has(claves.get(f.fila)));
+  const soloGypi = [...deGypi.values()].filter((o) => enPeriodo(o.fecha) && (o.origen === ORIGEN_LIBRO ? !clavesLibro.has(o.origen_id) : !enLibro.has(Number(o.id))));
   const distintas = [];
   for (const [id, f] of enLibro) {
     const o = deGypi.get(id);
