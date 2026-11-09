@@ -32,6 +32,8 @@ export const TIPOS_COMPRA = new Set([
   "COMPRA MP", "COSTOS INDIRECTOS DE FABRICACIÓN", "GASTOS DE ADMINISTRACIÓN", "GASTOS DE MANTENIMIENTO",
   "GASTOS DE COMERCIALIZACIÓN", "GASTOS DE LOGÍSTICA", "GASTOS FINANCIEROS", "OTROS GASTOS", "TRABAJO TERCERIZADO",
   "INVERSIONES EN MAQUINARIA Y HERRAMENTAL", "INVERSIONES EN INFRAESTRUCTURA", "TARJETA DE CRÉDITO",
+  // Los mismos con los tipos nuevos (parte 2)
+  "COMPRAS", "TRABAJOS TERCERIZADOS", "MAQUINARIA Y HERRAMIENTAS", "INFRAESTRUCTURA",
 ].map((t) => sinAcentos(t)));
 const SIN_TIPO = "SIN TIPO";
 
@@ -98,8 +100,9 @@ export function renglonesDelLibro(grilla) {
       descripcion: c.descripcion >= 0 ? txt(f[c.descripcion], 400) : "",
       ref: c.ref >= 0 ? txt(f[c.ref], 120) : "",
     };
-    // La clave: el contenido del renglón y cuántas veces apareció igual
-    const base = hash([r.fecha, sinAcentos(r.tipo), claveNombre(r.entidad), r.centro_costo, r.neto.toFixed(2), r.total.toFixed(2), r.moneda, r.debe, r.haber, r.descripcion].join("|"));
+    // La clave: el contenido del renglón y cuántas veces apareció igual. Sin
+    // el tipo, que se puede reescribir con los tipos nuevos sin cambiar nada más.
+    const base = hash([r.fecha, claveNombre(r.entidad), r.centro_costo, r.neto.toFixed(2), r.total.toFixed(2), r.moneda, r.debe, r.haber, r.descripcion].join("|"));
     const n = (vistas.get(base) || 0) + 1;
     vistas.set(base, n);
     r.clave = `L${base}${n > 1 ? `-${n}` : ""}`;
