@@ -11,6 +11,7 @@
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
+import FinanzasLibroScript from "./FinanzasLibroScript";
 import { HOJA_OPERACIONES, TABLAS_FIN, TIPOS_TESORERIA, leerLibro } from "../lib/finanzas";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -328,6 +329,7 @@ export default function FinanzasConfig() {
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <CopiarLibro nombres={nombres} onCopiado={cargar} />
+      {!vacio && <FinanzasLibroScript />}
 
       {!vacio && (
         <section aria-label="Configuración de Finanzas">
