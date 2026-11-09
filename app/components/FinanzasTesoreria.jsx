@@ -9,6 +9,7 @@
 // corte; "Pasar plata" es una TRANSF INTERNA entre dos cajas.
 // F3b (176): lo que cargan los responsables desde 📱 Mi caja espera acá
 // ("Para revisar") y "⚙ Mi caja" elige qué tipos se les ofrecen.
+// F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -16,6 +17,7 @@ import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
 import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, saldosTesoreria, totalesTesoreria } from "../lib/finanzasTesoreria";
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
+import SubirExtracto from "./FinanzasExtracto";
 import { Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -191,7 +193,7 @@ function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
 
 /* ─── Ficha de una caja ──────────────────────────────────────────────── */
 
-function Ficha({ caja, datos, onCerrar, onTransferir }) {
+function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto }) {
   const movimientos = useMemo(() => movimientosDeCaja(datos.operaciones, caja), [datos, caja]);
   const responsable = datos.personal.find((p) => p.id === caja.responsable_id)?.nombre;
   return (
@@ -199,7 +201,10 @@ function Ficha({ caja, datos, onCerrar, onTransferir }) {
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className={`m-0 text-[22px] font-bold font-mono ${caja.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(caja.saldo, caja.moneda)}</p>
         <p className="m-0 text-[13px] text-gypi-dim">{responsable ? `Responsable: ${responsable} · ` : ""}{movimientos.length} movimientos</p>
-        <button type="button" className="g-btn g-btn-secondary self-start" onClick={onTransferir}>⇄ Pasar plata desde esta caja</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="g-btn g-btn-secondary" onClick={onTransferir}>⇄ Pasar plata desde esta caja</button>
+          {caja.tipo === "banco" && caja.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={onExtracto}>📥 Subir extracto</button>}
+        </div>
         {movimientos.length ? (
           <table className="w-full text-[13px] border-collapse" aria-label="Movimientos de la caja">
             <thead>
@@ -366,6 +371,7 @@ export default function FinanzasTesoreria() {
   const [inactivas, setInactivas] = useState(false);
   const [verRevisar, setVerRevisar] = useState(false);
   const [verConfig, setVerConfig] = useState(false);
+  const [extracto, setExtracto] = useState(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -440,7 +446,8 @@ export default function FinanzasTesoreria() {
         </label>
       )}
 
-      {cajaFicha && <Ficha caja={cajaFicha} datos={datos} onCerrar={() => setFicha(null)} onTransferir={() => { setTransferir(cajaFicha.cuenta); setFicha(null); }} />}
+      {cajaFicha && <Ficha caja={cajaFicha} datos={datos} onCerrar={() => setFicha(null)} onTransferir={() => { setTransferir(cajaFicha.cuenta); setFicha(null); }} onExtracto={() => { setExtracto(cajaFicha.cuenta); setFicha(null); }} />}
+      {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cargar(); }} />}
       {transferir !== null && <Transferir datos={datos} desdeInicial={transferir} onCerrar={() => setTransferir(null)} onHecho={() => { setTransferir(null); cargar(); }} />}
       {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cargar} />}
       {verConfig && <ConfigMiCaja datos={datos} onCerrar={() => setVerConfig(false)} onGuardado={() => { setVerConfig(false); cargar(); }} />}
