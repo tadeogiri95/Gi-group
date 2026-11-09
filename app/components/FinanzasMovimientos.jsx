@@ -1,0 +1,411 @@
+'use client';
+// app/components/FinanzasMovimientos.jsx — Finanzas → 📒 Movimientos (parte
+// F1b; tabla fin_operaciones de la migración 171; /api/finanzas/operaciones;
+// reglas en app/lib/finanzasOperaciones.js).
+//
+// Es T-OPERACIONES dentro de Gypi: la lista del período con filtros por tipo,
+// caja o banco, proveedor, OT y centro de costo, y "+ Nueva operación". Al
+// elegir el tipo se completan solas las cuentas; si un lado es una caja o un
+// banco se elige cuál. Muestra el asiento antes de guardar (con el IVA en su
+// cuenta) y no deja guardar lo que hoy marca CHK_CARGA. Nada se borra: una
+// operación mal cargada se anula y se carga de nuevo.
+// Solo el rol Dueño (la pantalla ni aparece para los demás).
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../lib/supabase";
+import { textoOt } from "../lib/nombreOt";
+import {
+  asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
+} from "../lib/finanzasOperaciones";
+import { Chip, Modal, Spinner } from "./ui";
+import { useToast } from "./ui/Toast";
+
+const OTRO = "__otro";
+const MAX_LISTA = 300;
+
+function campo(label, input, extra = "") {
+  return (
+    <label className={`flex flex-col gap-1 text-[13px] font-semibold text-gypi-text ${extra}`}>
+      {label}
+      {input}
+    </label>
+  );
+}
+
+const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
+const nombreCuenta = (codigo, cuentas) => cuentas.find((c) => c.codigo === codigo)?.nombre || codigo || "—";
+
+/* ─── Asiento ────────────────────────────────────────────────────────── */
+
+function Asiento({ op, datos }) {
+  const { renglones, aviso } = asientoDe(op, datos);
+  const usd = op.moneda === "USD" && Number(op.tipo_cambio) > 0;
+  return (
+    <div>
+      <table className="w-full text-[13px] border-collapse" aria-label="Asiento">
+        <thead>
+          <tr className="text-gypi-dim text-left">
+            <th className="font-semibold py-1">Cuenta</th>
+            <th className="font-semibold py-1 text-right">Debe</th>
+            <th className="font-semibold py-1 text-right">Haber</th>
+          </tr>
+        </thead>
+        <tbody>
+          {renglones.map((r, i) => (
+            <tr key={i} className="border-t border-gypi-border">
+              <td className={`py-1 ${r.lado === "haber" ? "pl-4" : ""}`}>
+                <span className="block text-gypi-text">{r.nombre || "Sin cuenta"}</span>
+                <span className="block text-[12px] text-gypi-dim font-mono">{r.cuenta || "—"}</span>
+              </td>
+              <td className="py-1 text-right font-mono">{r.lado === "debe" ? plata(r.importe, op.moneda) : ""}</td>
+              <td className="py-1 text-right font-mono">{r.lado === "haber" ? plata(r.importe, op.moneda) : ""}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {usd && <p className="mt-1 text-[12px] text-gypi-dim">En pesos: {plata(Number(op.total) * Number(op.tipo_cambio))} (dólar a {plata(op.tipo_cambio)}). Las cuentas corrientes van en pesos.</p>}
+      {aviso && <p className="mt-1 text-[12px] text-gypi-amber-ink">⚠ {aviso}</p>}
+    </div>
+  );
+}
+
+/* ─── Nueva operación ────────────────────────────────────────────────── */
+
+const VACIA = {
+  fecha: "", tipo: "", proveedor_id: "", entidad: "", proyecto_id: "", centro_costo: "",
+  neto: "", iva: "", otros_impuestos: "", moneda: "ARS", tipo_cambio: "",
+  cuenta_debe: "", cuenta_haber: "", descripcion: "", referencia: "",
+};
+
+function NuevaOperacion({ datos, onCerrar, onGuardada }) {
+  const toast = useToast();
+  const [f, setF] = useState({ ...VACIA, fecha: hoyAr() });
+  const [otroNombre, setOtroNombre] = useState(false);
+  const [cambiarCuentas, setCambiarCuentas] = useState(false);
+  const [errores, setErrores] = useState([]);
+  const [guardando, setGuardando] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  const tipo = datos.tipos.find((t) => t.codigo === f.tipo);
+  const cajasDebe = cajasDelLado(tipo?.cuenta_debe, datos.tesoreria);
+  const cajasHaber = cajasDelLado(tipo?.cuenta_haber, datos.tesoreria);
+  const tiposActivos = datos.tipos.filter((t) => t.activo !== false);
+  const grupos = [...new Set(tiposActivos.map((t) => t.grupo || "Otros"))];
+
+  const elegirTipo = (e) => {
+    const t = datos.tipos.find((x) => x.codigo === e.target.value);
+    setF((x) => ({ ...x, tipo: e.target.value, ...cuentasDelTipo(t, datos.tesoreria) }));
+    setErrores([]);
+  };
+
+  const neto = numero(f.neto) || 0;
+  const iva = numero(f.iva) || 0;
+  const otros = numero(f.otros_impuestos) || 0;
+  const total = Math.round((neto + iva + otros) * 100) / 100;
+  const vista = { ...f, neto, iva, otros_impuestos: otros, total, tipo_cambio: numero(f.tipo_cambio) || null };
+
+  const guardar = async () => {
+    const operacion = { ...f, proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: otroNombre ? f.entidad : "" };
+    const { errores: e } = validarOperacion(operacion, datos);
+    setErrores(e);
+    if (e.length) return;
+    setGuardando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "crear", operacion }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setErrores(d.errores || [d.error || "No se pudo guardar"]); return; }
+      toast.success("✅ Operación guardada");
+      onGuardada();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const selectCaja = (lado, cajas) => campo(
+    lado === "debe" ? "Caja o banco que recibe" : "Caja o banco que paga",
+    <select className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
+      <option value="">Elegí…</option>
+      {cajas.opciones.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}{c.moneda === "USD" ? " (USD)" : ""}</option>)}
+    </select>,
+  );
+  const selectCuenta = (lado) => campo(
+    lado === "debe" ? "Cuenta del debe" : "Cuenta del haber",
+    <select className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
+      <option value="">Elegí…</option>
+      {datos.cuentas.filter((c) => c.activa !== false || c.codigo === f[`cuenta_${lado}`]).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
+    </select>,
+  );
+
+  return (
+    <Modal open onClose={onCerrar} title="Nueva operación" maxWidth={640}>
+      <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-3">
+          {campo("Fecha", <input type="date" className="g-input w-full" value={f.fecha} onChange={set("fecha")} />)}
+          {campo("Tipo de operación", (
+            <select className="g-input w-full" value={f.tipo} onChange={elegirTipo}>
+              <option value="">Elegí…</option>
+              {grupos.map((g) => (
+                <optgroup key={g} label={g}>
+                  {tiposActivos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo}>{t.codigo}{t.nombre ? ` · ${t.nombre}` : ""}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          ))}
+        </div>
+        {tipo?.descripcion && <p className="-mt-1 text-[12px] text-gypi-dim">{tipo.descripcion}</p>}
+
+        {tipo && (
+          <>
+            {(cajasDebe || cajasHaber) && !cambiarCuentas && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {cajasDebe && selectCaja("debe", cajasDebe)}
+                {cajasHaber && selectCaja("haber", cajasHaber)}
+              </div>
+            )}
+            {cambiarCuentas ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {selectCuenta("debe")}
+                {selectCuenta("haber")}
+              </div>
+            ) : (
+              <p className="text-[13px] text-gypi-dim">
+                Debe: <b className="text-gypi-text">{nombreCuenta(f.cuenta_debe, datos.cuentas)}</b> · Haber: <b className="text-gypi-text">{nombreCuenta(f.cuenta_haber, datos.cuentas)}</b>{" "}
+                <button type="button" className="g-btn g-btn-secondary ml-1" onClick={() => setCambiarCuentas(true)}>Cambiar cuentas</button>
+              </p>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {campo(`Proveedor o cliente${tipo.pide_entidad ? " (obligatorio)" : ""}`, (
+                <select className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id} onChange={(e) => {
+                  if (e.target.value === OTRO) { setOtroNombre(true); return; }
+                  setOtroNombre(false);
+                  setF((x) => ({ ...x, proveedor_id: e.target.value }));
+                }}>
+                  <option value="">Ninguno</option>
+                  {datos.proveedores.filter((p) => p.activo !== false || String(p.id) === String(f.proveedor_id)).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  <option value={OTRO}>Otro (cliente u otro): escribir el nombre</option>
+                </select>
+              ))}
+              {otroNombre && campo("Nombre", <input className="g-input w-full" value={f.entidad} onChange={set("entidad")} placeholder="Cliente u otro" />)}
+              {campo(`OT${tipo.pide_ot ? " (obligatoria)" : ""}`, (
+                <select className="g-input w-full" value={f.proyecto_id} onChange={set("proyecto_id")}>
+                  <option value="">Sin OT</option>
+                  {datos.proyectos.map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>)}
+                </select>
+              ))}
+              {campo(`Centro de costo${tipo.pide_cc ? " (obligatorio)" : ""}`, (
+                <select className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}>
+                  <option value="">Sin centro de costo</option>
+                  {datos.centros.filter((c) => c.activo !== false).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo}{c.nombre && c.nombre !== c.codigo ? ` · ${c.nombre}` : ""}</option>)}
+                </select>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex gap-1.5" aria-label="Moneda">
+                <Chip active={f.moneda === "ARS"} onClick={() => setF((x) => ({ ...x, moneda: "ARS" }))}>Pesos</Chip>
+                <Chip active={f.moneda === "USD"} onClick={() => setF((x) => ({ ...x, moneda: "USD" }))}>Dólares</Chip>
+              </div>
+              {f.moneda === "USD" && campo("Tipo de cambio ($ por dólar)", <input className="g-input w-[160px]" inputMode="decimal" value={f.tipo_cambio} onChange={set("tipo_cambio")} placeholder="1450" />)}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {campo("Neto", <input className="g-input w-full" inputMode="decimal" value={f.neto} onChange={set("neto")} placeholder="0,00" />)}
+              {campo("IVA", <input className="g-input w-full" inputMode="decimal" value={f.iva} onChange={set("iva")} placeholder="0,00" />)}
+              {campo("Otros impuestos", <input className="g-input w-full" inputMode="decimal" value={f.otros_impuestos} onChange={set("otros_impuestos")} placeholder="0,00" />)}
+            </div>
+            <p className="text-[15px] font-bold text-gypi-text">Total: {plata(total, f.moneda)}</p>
+
+            {campo("Descripción", <textarea className="g-input w-full" rows={2} value={f.descripcion} onChange={set("descripcion")} />)}
+            {campo("Referencia (factura, recibo, número de transferencia)", <input className="g-input w-full" value={f.referencia} onChange={set("referencia")} />)}
+
+            {total > 0 && f.cuenta_debe && f.cuenta_haber && (
+              <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3">
+                <h3 className="m-0 mb-1 text-[13px] font-bold text-gypi-text">Así queda el asiento</h3>
+                <Asiento op={vista} datos={datos} />
+              </section>
+            )}
+          </>
+        )}
+
+        {errores.length > 0 && (
+          <ul role="alert" className="m-0 pl-5 text-[13px] text-gypi-red">
+            {errores.map((e) => <li key={e}>{e}</li>)}
+          </ul>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !tipo} onClick={guardar}>{guardando ? "Guardando…" : "Guardar operación"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Detalle y anular ───────────────────────────────────────────────── */
+
+function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
+  const toast = useToast();
+  const [confirmar, setConfirmar] = useState(false);
+  const [anulando, setAnulando] = useState(false);
+
+  const anular = async () => {
+    setAnulando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "anular", id: op.id }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo anular");
+      toast.success("Operación anulada");
+      onAnulada();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setAnulando(false);
+    }
+  };
+
+  const fila = (k, v) => v ? <p className="m-0 text-[13px]"><span className="text-gypi-dim">{k}:</span> <span className="text-gypi-text">{v}</span></p> : null;
+  return (
+    <Modal open onClose={onCerrar} title={`${op.tipo} · ${fechaCorta(op.fecha)}`} maxWidth={560}>
+      <div className="flex flex-col gap-2">
+        {op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-red">Anulada{op.anulada_por_nombre ? ` por ${op.anulada_por_nombre}` : ""} el {fechaCorta(op.anulada_at.slice(0, 10))}</p>}
+        {fila("Proveedor o cliente", nombres.entidad(op))}
+        {fila("OT", nombres.ot(op))}
+        {fila("Centro de costo", op.centro_costo)}
+        {fila("Descripción", op.descripcion)}
+        {fila("Referencia", op.referencia)}
+        {fila("Cargada por", op.cargada_por_nombre)}
+        <div className="mt-1"><Asiento op={op} datos={datos} /></div>
+        {!op.anulada_at && (
+          <div className="flex justify-end gap-2 mt-2">
+            {confirmar ? (
+              <>
+                <span className="self-center text-[13px] text-gypi-text">¿Anular esta operación? Queda tachada y no suma.</span>
+                <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfirmar(false)}>No</button>
+                <button type="button" className="g-btn g-btn-primary" disabled={anulando} onClick={anular}>{anulando ? "Anulando…" : "Sí, anular"}</button>
+              </>
+            ) : (
+              <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfirmar(true)}>Anular operación</button>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Pantalla ───────────────────────────────────────────────────────── */
+
+export default function FinanzasMovimientos() {
+  const [periodo, setPeriodo] = useState(() => ({ desde: inicioMes(hoyAr()), hasta: hoyAr() }));
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState(null);
+  const [filtros, setFiltros] = useState({ tipo: "", caja: "", proveedor: "", proyecto: "", centro: "", buscar: "", anuladas: false });
+  const [nueva, setNueva] = useState(false);
+  const [detalle, setDetalle] = useState(null);
+
+  const cargar = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/api/finanzas/operaciones?desde=${periodo.desde}&hasta=${periodo.hasta}`);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudieron cargar los movimientos");
+      setDatos(d);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [periodo]);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const nombres = useMemo(() => {
+    const prov = new Map((datos?.proveedores || []).map((p) => [String(p.id), p.nombre]));
+    const ots = new Map((datos?.proyectos || []).map((p) => [String(p.id), p]));
+    return {
+      entidad: (op) => (op.proveedor_id ? prov.get(String(op.proveedor_id)) : null) || op.entidad || "",
+      ot: (op) => (op.proyecto_id && ots.get(String(op.proyecto_id)) ? textoOt(ots.get(String(op.proyecto_id))) : ""),
+    };
+  }, [datos]);
+
+  const lista = useMemo(
+    () => filtrarOperaciones(datos?.operaciones, filtros, (op) => `${nombres.entidad(op)} ${nombres.ot(op)}`),
+    [datos, filtros, nombres],
+  );
+
+  if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
+  if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
+  if (!datos.tipos.length) {
+    return <p className="m-[18px] text-[14px] text-gypi-text">Primero copiá el libro en Finanzas → 🧾 Configuración: sin tipos de operación no se pueden cargar movimientos.</p>;
+  }
+
+  const setFiltro = (k) => (e) => setFiltros((x) => ({ ...x, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+  const caja = datos.tesoreria.find((t) => t.cuenta === filtros.caja);
+  const entro = caja ? lista.reduce((s, op) => s + Math.max(0, movimientoCaja(op, caja)), 0) : 0;
+  const salio = caja ? lista.reduce((s, op) => s + Math.max(0, -movimientoCaja(op, caja)), 0) : 0;
+  const filtro = (k, label, opciones) => (
+    <select className="g-input min-w-[150px] flex-1" aria-label={label} value={filtros[k]} onChange={setFiltro(k)}>
+      <option value="">{label}: todos</option>
+      {opciones}
+    </select>
+  );
+  const usadas = (k) => new Set((datos.operaciones || []).map((o) => String(o[k] ?? "")).filter(Boolean));
+  const provUsados = usadas("proveedor_id");
+  const otsUsadas = usadas("proyecto_id");
+
+  return (
+    <div className="flex-1 overflow-y-auto px-[18px] pb-6">
+      <div className="flex flex-wrap items-end gap-2 mb-2">
+        <button type="button" className="g-btn g-btn-primary" onClick={() => setNueva(true)}>+ Nueva operación</button>
+        {campo("Desde", <input type="date" className="g-input" value={periodo.desde} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, desde: e.target.value }))} />, "ml-auto")}
+        {campo("Hasta", <input type="date" className="g-input" value={periodo.hasta} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, hasta: e.target.value }))} />)}
+      </div>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {filtro("tipo", "Tipo", [...new Set((datos.operaciones || []).map((o) => o.tipo))].sort().map((t) => <option key={t} value={t}>{t}</option>))}
+        {filtro("caja", "Caja o banco", datos.tesoreria.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>))}
+        {filtro("proveedor", "Proveedor", datos.proveedores.filter((p) => provUsados.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>))}
+        {filtro("proyecto", "OT", datos.proyectos.filter((p) => otsUsadas.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>))}
+        {filtro("centro", "Centro de costo", datos.centros.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <input className="g-input flex-1 min-w-[180px]" aria-label="Buscar" placeholder="Buscar por descripción, proveedor u OT" value={filtros.buscar} onChange={setFiltro("buscar")} />
+        <label className="flex items-center gap-2 text-[13px] text-gypi-text cursor-pointer">
+          <input type="checkbox" checked={filtros.anuladas} onChange={setFiltro("anuladas")} /> Ver anuladas
+        </label>
+      </div>
+
+      <p className="mb-2 text-[13px] text-gypi-dim">
+        {lista.length} {lista.length === 1 ? "operación" : "operaciones"}
+        {caja && <> · Entró <b className="text-gypi-text">{plata(entro, caja.moneda)}</b> · Salió <b className="text-gypi-text">{plata(salio, caja.moneda)}</b> · Diferencia <b className="text-gypi-text">{plata(entro - salio, caja.moneda)}</b></>}
+      </p>
+      {datos.truncado && <p className="mb-2 text-[13px] text-gypi-amber-ink">⚠ Hay muchas operaciones en el período: se ven las primeras. Achicá las fechas.</p>}
+
+      <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Operaciones">
+        {lista.slice(0, MAX_LISTA).map((op) => {
+          const quien = nombres.entidad(op);
+          const ot = nombres.ot(op);
+          return (
+            <li key={op.id}>
+              <button type="button" onClick={() => setDetalle(op)}
+                className={`w-full text-left min-h-[48px] px-3 py-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer ${op.anulada_at ? "opacity-60" : ""}`}>
+                <span className={`flex items-baseline gap-2 text-[14px] text-gypi-text ${op.anulada_at ? "line-through" : ""}`}>
+                  <span className="text-gypi-dim font-mono text-[12px]">{fechaCorta(op.fecha)}</span>
+                  <span className="font-semibold flex-1 min-w-0 truncate">{op.tipo}{quien ? ` · ${quien}` : ""}</span>
+                  <span className="font-mono font-semibold">{plata(op.total, op.moneda)}</span>
+                </span>
+                <span className="block text-[12px] text-gypi-dim truncate">
+                  {nombreCuenta(op.cuenta_debe, datos.cuentas)} ← {nombreCuenta(op.cuenta_haber, datos.cuentas)}
+                  {ot ? ` · ${ot}` : ""}{op.descripcion ? ` · ${op.descripcion}` : ""}
+                </span>
+                {op.anulada_at && <span className="block text-[12px] font-semibold text-gypi-red">Anulada</span>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {lista.length > MAX_LISTA && <p className="mt-2 text-[13px] text-gypi-dim">Hay {lista.length - MAX_LISTA} más: usá los filtros o achicá las fechas.</p>}
+      {!lista.length && <p className="mt-2 text-[13px] text-gypi-dim">No hay operaciones en el período con esos filtros.</p>}
+
+      {nueva && <NuevaOperacion datos={datos} onCerrar={() => setNueva(false)} onGuardada={() => { setNueva(false); cargar(); }} />}
+      {detalle && <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); cargar(); }} />}
+    </div>
+  );
+}

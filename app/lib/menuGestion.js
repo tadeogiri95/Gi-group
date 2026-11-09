@@ -51,6 +51,7 @@ export const BOTONES_GESTION = {
     label: "Finanzas",
     detalle: "Cuentas, cajas, bancos y movimientos",
     opciones: [
+      { id: "fin-movimientos", label: "Movimientos", modulo: "finanzas", soloDueno: true },
       { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
     ],
   },

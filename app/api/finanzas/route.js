@@ -11,34 +11,14 @@
 // 09/11). Lee y escribe con el pase del usuario: la base también exige el rol
 // gerencial (RLS de la 171).
 import { NextResponse } from "next/server";
-import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
-import { safeErrorMessage } from "../../lib/validate";
 import { sbGetAll, sbHeaders } from "../../lib/sbHelpers";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { logger } from "../../lib/logger";
-import { TABLAS_FIN, esDuenoFinanzas, limpiarFila, limpiarFilas } from "../../lib/finanzas";
+import { TABLAS_FIN, limpiarFila, limpiarFilas } from "../../lib/finanzas";
+import { sesionDueno, errorFinanzas as errorDe } from "../../lib/finanzasApi";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const FALTA = "Para Finanzas falta correr la migración 171 en Supabase.";
-const faltaMigracion = (err) => /fin_(cuentas|tipos_operacion|tesoreria|centros_costo|operaciones)/.test(String(err?.message))
-  && /does not exist|42P01|PGRST20[05]|schema cache/.test(String(err?.message));
 const TANDA = 500;
-
-async function sesionDueno(request) {
-  const sesion = await validarToken(request);
-  if (!sesion?.empresa_id) return { response: respuestaNoAutorizado() };
-  if (!esDuenoFinanzas(sesion)) return { response: NextResponse.json({ error: "Finanzas es solo para el dueño" }, { status: 403 }) };
-  const sinModulo = await requireModulo(sesion.empresa_id, "finanzas");
-  if (sinModulo) return { response: sinModulo };
-  return { sesion };
-}
-
-function errorDe(err, donde) {
-  if (faltaMigracion(err)) return NextResponse.json({ error: FALTA, falta_migracion: true }, { status: 409 });
-  logger.error(`[finanzas] ${donde}`, err);
-  return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
-}
 
 /** Alta o reemplazo por clave: filas nuevas entran, las que ya están se actualizan. */
 async function upsert(sesion, tabla, filas) {
