@@ -7,11 +7,14 @@
 // aviso_firma). Solo avisa: no bloquea nada. Desde la parte 34 (133) avisa
 // también lo de la maquinaria (app/lib/maquinariaAlertasServidor.js) y lo de
 // cada vehículo le llega a su responsable de mantenimiento y al suplente.
+// Desde Finanzas F2b (174) también avisa a los Dueños los cheques que se
+// debitan o vencen hasta mañana (app/lib/finanzasChequesAviso.js).
 import { NextResponse } from "next/server";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { getModulosEmpresa } from "../../../lib/planEnforcement";
 import { revisarFlota } from "../../../lib/flotaAlertasServidor";
 import { revisarMaquinaria } from "../../../lib/maquinariaAlertasServidor";
+import { avisarCheques } from "../../../lib/finanzasChequesAviso";
 import { hoyArg } from "../../../lib/dates";
 import { logger } from "../../../lib/logger";
 import { conMonitoreoCron } from "../../../lib/cronMonitor";
@@ -40,6 +43,11 @@ async function ejecutar(request) {
         // Sin la 132 la maquinaria falla sola: la flota ya quedó avisada
         const r = await revisarMaquinaria(empresa, hoy).catch((err) => { logger.warn(`[flota-alertas] maquinaria empresa ${empresa.id}: ${err?.message}`); return null; });
         if (r?.maquinas) { alguna = true; avisados += r.avisados; push += r.push; }
+      }
+      if (modulos.includes("finanzas")) {
+        // Sin la 174 falla sola: lo demás ya quedó avisado
+        const r = await avisarCheques(empresa, hoy).catch((err) => { logger.warn(`[flota-alertas] cheques empresa ${empresa.id}: ${err?.message}`); return null; });
+        if (r) { alguna = true; avisados += r.cheques; push += r.push; }
       }
       if (alguna) revisadas++;
     } catch (e) {

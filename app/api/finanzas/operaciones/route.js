@@ -20,6 +20,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA, MAX_OPERACIONES, hoyAr, inicioMes, validarOperacion } from "../../../lib/finanzasOperaciones";
 
+const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
 const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
 
 async function listas(sesion) {
@@ -99,6 +100,8 @@ export async function POST(request) {
       if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
       const [op] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&select=id,origen,proveedor_id&limit=1`, { sesion })) || [];
       if (!op) return NextResponse.json({ error: "No encontré esa operación o está anulada" }, { status: 404 });
+      // Solo las compras que salieron de una factura: las de cheques o saldos iniciales tienen sus cuentas fijas
+      if (!ORIGENES_COMPRA.includes(op.origen)) return NextResponse.json({ error: "El tipo de esta operación no se cambia: sale de otra pantalla" }, { status: 400 });
       const [tipo] = (await sbGet(`fin_tipos_operacion?empresa_id=eq.${e}&codigo=eq.${encodeURIComponent(String(d.tipo || ""))}&select=codigo,cuenta_debe,cuenta_haber,activo&limit=1`, { sesion })) || [];
       if (!tipo || tipo.activo === false) return NextResponse.json({ error: "Ese tipo de operación no existe o está desactivado" }, { status: 400 });
       if (!tipo.cuenta_debe || !tipo.cuenta_haber) return NextResponse.json({ error: `${tipo.codigo} no tiene cuentas por defecto: completalas en Configuración` }, { status: 400 });
