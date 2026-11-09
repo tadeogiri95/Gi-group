@@ -67,7 +67,7 @@ function sinTitulos(nombre, primero) {
   return { filas: [], avisos: [`No encontré los títulos de la hoja ${nombre} (la columna "${primero}").`] };
 }
 
-/** dim_plan_cuentas → { filas: [{ codigo, nombre, rubro, naturaleza }], avisos }. */
+/** dim_plan_cuentas → { filas: [{ codigo, nombre, rubro, naturaleza, linea_eerr, atribucion }], avisos }. */
 export function cuentasDeHoja(grilla) {
   const t = titulosDe(grilla, "codigo");
   if (!t) return sinTitulos("dim_plan_cuentas", "codigo");
@@ -92,6 +92,9 @@ export function cuentasDeHoja(grilla) {
       nombre,
       rubro: txt(celda(f, t.col, "rubro"), 60) || null,
       naturaleza: nat === "D" || nat === "H" ? nat : null,
+      // El renglón del estado de resultados y si se prorratea entre divisiones (F6a)
+      linea_eerr: lineaEerr(celda(f, t.col, "clasificacion_eerr")),
+      atribucion: atribucionDe(celda(f, t.col, "atribucion_div")),
     });
   }
   return { filas, avisos: [...new Set(avisos)] };
@@ -263,6 +266,13 @@ export function leerLibro(hojas) {
 
 // ─── Lo que valida el servidor ──────────────────────────────────────────
 
+/** "CMV_MOD_SUE" (o vacío / "—" → null). */
+function lineaEerr(v) {
+  const s = txt(v, 40).toUpperCase().replace(/\s+/g, "_");
+  return /^[A-Z][A-Z0-9_]{1,39}$/.test(s) ? s : null;
+}
+const atribucionDe = (v) => ({ DIRECTO: "DIRECTO", PRORRATEO: "PRORRATEO" }[txt(v, 20).toUpperCase()] || null);
+
 const LIMPIAR = {
   cuentas: (f) => {
     const codigo = txt(f?.codigo, 40);
@@ -270,7 +280,15 @@ const LIMPIAR = {
     if (!CODIGO_CUENTA.test(codigo)) return { error: `"${codigo}" no es un código de cuenta` };
     if (!nombre) return { error: `La cuenta ${codigo} no tiene nombre` };
     const nat = txt(f?.naturaleza, 1).toUpperCase();
-    return { fila: { codigo, nombre, rubro: txt(f?.rubro, 60) || null, naturaleza: nat === "D" || nat === "H" ? nat : null, ...(typeof f?.activa === "boolean" ? { activa: f.activa } : {}) } };
+    return {
+      fila: {
+        codigo, nombre, rubro: txt(f?.rubro, 60) || null, naturaleza: nat === "D" || nat === "H" ? nat : null,
+        ...(typeof f?.activa === "boolean" ? { activa: f.activa } : {}),
+        // Solo si vienen (migración 179): editar una cuenta a mano no las borra
+        ...(f && "linea_eerr" in f ? { linea_eerr: lineaEerr(f.linea_eerr) } : {}),
+        ...(f && "atribucion" in f ? { atribucion: atribucionDe(f.atribucion) } : {}),
+      },
+    };
   },
   tipos: (f) => {
     const codigo = txt(f?.codigo, 80);
