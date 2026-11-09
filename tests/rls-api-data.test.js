@@ -138,6 +138,7 @@ const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"]
 // recepciones_compra, recepciones_compra_items → 115 (/api/compras, igual)
 // pedidos_compra_cambios → 121 (/api/compras, igual)
 // ordenes_compra_cotizaciones → 125 (/api/compras, igual)
+// ordenes_compra_facturas → 173 (/api/compras, igual)
 // vehiculos, vehiculo_papeles → 126 (/api/flota, igual)
 // vehiculo_checklists, flota_config → 127 (/api/flota, igual)
 // vehiculo_arreglos, vehiculo_mantenimientos → 129 (/api/flota, igual)
@@ -145,7 +146,7 @@ const SIN_RLS = ["v_resumen_diario", "v_scores_empleados", "plantas", "empresa"]
 // maquina_fallas → 134 (/api/maquinaria, igual)
 // precios_ot → 142 (solo select; la escribe la sincronización con service_role)
 // precios_articulos, v_precios_articulos → 164 (lee gestión; la escribe la sincronización de Stock)
-const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", "proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items", "pedidos_compra_cambios", "ordenes_compra_cotizaciones", "vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config", "vehiculo_arreglos", "vehiculo_mantenimientos", "maquinas", "maquina_tareas", "maquina_registros", "maquina_fallas", "precios_ot", "ajustes_tiempo_ot", "informes_produccion", "avance_manual_historial", "retrabajos_ot", "pausas_ot", "destinos_ot", "precios_articulos", "v_precios_articulos"];
+const MIGRACION_PROPIA = ["avance_etapas", "no_conformidades", "sueltos_ot", "bultos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "articulos_stock", "movimientos_stock", "necesidades_stock", "piezas_ot", "pasos_pieza", "v_avance_piezas", "proveedores", "pedidos_compra", "ordenes_compra", "ordenes_compra_items", "recepciones_compra", "recepciones_compra_items", "pedidos_compra_cambios", "ordenes_compra_cotizaciones", "ordenes_compra_facturas", "vehiculos", "vehiculo_papeles", "vehiculo_checklists", "flota_config", "vehiculo_arreglos", "vehiculo_mantenimientos", "maquinas", "maquina_tareas", "maquina_registros", "maquina_fallas", "precios_ot", "ajustes_tiempo_ot", "informes_produccion", "avance_manual_historial", "retrabajos_ot", "pausas_ot", "destinos_ot", "precios_articulos", "v_precios_articulos"];
 const PRIVILEGIO = { GET: "select", POST: "insert", PATCH: "update", DELETE: "delete" };
 
 test("089 — cada tabla del gateway tiene exactamente los permisos que usa", () => {
