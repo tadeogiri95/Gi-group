@@ -107,7 +107,8 @@ export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], p
   };
   return {
     operaciones: operaciones
-      .filter((op) => !op.anulada_at && op.origen !== "saldo_inicial")
+      // Lo que vino del libro (saldos y renglones pasados a Gypi) no vuelve
+      .filter((op) => !op.anulada_at && op.origen !== "saldo_inicial" && op.origen !== "libro")
       .map((op) => filaOperacion(op, ctx)),
     // Los anulados cargados en Gypi no van (si ya estaban, el script los borra)
     cheques: cheques.filter((ch) => ch.origen !== "libro" && ch.estado !== "anulado").map((ch) => filaCheque(ch, ctx)),

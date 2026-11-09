@@ -36,7 +36,7 @@ export async function GET(request) {
     if (!modulos.includes("finanzas")) return NextResponse.json({ error: "La empresa no tiene Finanzas" }, { status: 402 });
 
     const [operaciones, cheques, cuentas, proveedores, proyectos, empresas] = await Promise.all([
-      leer(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=neq.saldo_inicial&select=${COLUMNAS_OP}&order=fecha.asc,id.asc`, 50000),
+      leer(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=not.in.(saldo_inicial,libro)&select=${COLUMNAS_OP}&order=fecha.asc,id.asc`, 50000),
       // Sin la migración 174 no hay cheques
       sbGetAll(`fin_cheques?empresa_id=eq.${e}&select=*&order=id.asc`, { maxFilas: 20000 }).then((r) => r.data || []).catch(() => []),
       leer(`fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
