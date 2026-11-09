@@ -10,7 +10,8 @@
 // de varias formas. "Traer de las OT" suma los clientes de las OT que faltan;
 // "Cargar saldos iniciales" lee T-OPERACIONES del libro a una fecha de corte.
 // "🧾 Ventas de las OT" prende la venta y la entrega automática de cada OT
-// (F4b, app/lib/finanzasVentas.js).
+// (F4b, app/lib/finanzasVentas.js). Plan del 09/11: "📋 Cuenta por OT"
+// (parte 6, FinanzasOtClientes.jsx) y "🔗 Cliente y proveedor" (parte 5).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -23,6 +24,7 @@ import {
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
+import FinanzasOtClientes from "./FinanzasOtClientes";
 
 const MAX_LISTA = 300;
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
@@ -555,6 +557,7 @@ export default function FinanzasClientes() {
         <button type="button" className="g-btn g-btn-secondary" disabled={trayendo} onClick={traer}>{trayendo ? "Trayendo…" : "📋 Traer de las OT"}</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("iniciales")}>📥 Cargar saldos iniciales</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ventas")}>🧾 Ventas de las OT</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("por_ot")}>📋 Cuenta por OT</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("unificados")}>🔗 Cliente y proveedor</button>
       </div>
       <p className="m-0 mb-2 text-[13px] text-gypi-dim">
@@ -595,6 +598,7 @@ export default function FinanzasClientes() {
 
       {fichaActual && <Ficha saldo={fichaActual} datos={datos} cuentasDeu={cuentasDeu} onCerrar={() => setFicha(null)} onCambio={cargar} />}
       {modal === "nuevo" && <DatosCliente cliente={null} onCerrar={() => setModal(null)} onGuardado={() => { setModal(null); cargar(); }} />}
+      {modal === "por_ot" && <FinanzasOtClientes onCerrar={() => setModal(null)} />}
       {modal === "unificados" && <FinanzasUnificados onCerrar={() => setModal(null)} onCambio={cargar} />}
       {modal === "ventas" && <VentasOt config={datos.ventas_ot} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); cargar(); }} />}
       {modal === "iniciales" && <SaldosIniciales datos={datos} cuentasDeu={cuentasDeu} onCerrar={() => setModal(null)} onCargados={() => { setModal(null); cargar(); }} />}
