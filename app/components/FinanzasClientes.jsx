@@ -9,6 +9,8 @@
 // transferencia, cheque o e-cheq (a la cartera) y dólares, todo junto si pagó
 // de varias formas. "Traer de las OT" suma los clientes de las OT que faltan;
 // "Cargar saldos iniciales" lee T-OPERACIONES del libro a una fecha de corte.
+// "🧾 Ventas de las OT" prende la venta y la entrega automática de cada OT
+// (F4b, app/lib/finanzasVentas.js).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -213,6 +215,62 @@ function Unir({ cliente, datos, onCerrar, onHecho }) {
         <div className="flex justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
           <button type="button" className="g-btn g-btn-primary" disabled={guardando || !otro} onClick={unir}>{guardando ? "Uniendo…" : "Unir"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Ventas de las OT (F4b) ─────────────────────────────────────────── */
+
+/** Texto del resultado de una revisión de ventas. */
+export function textoResultadoVentas(r) {
+  if (!r || r.accion === "apagada") return "Ventas de las OT apagadas";
+  const partes = [
+    r.creadas ? `${r.creadas} anotadas` : null,
+    r.corregidas ? `${r.corregidas} con precio corregido` : null,
+    r.anuladas ? `${r.anuladas} anuladas` : null,
+    r.clientes_nuevos ? `${r.clientes_nuevos} clientes nuevos` : null,
+  ].filter(Boolean);
+  return partes.length ? `Ventas y entregas: ${partes.join(", ")}` : "Las ventas y entregas de las OT ya estaban al día";
+}
+
+function VentasOt({ config, onCerrar, onHecho }) {
+  const toast = useToast();
+  const [activo, setActivo] = useState(Boolean(config?.activo || !config?.desde));
+  const [desde, setDesde] = useState(config?.desde || hoyAr());
+  const [error, setError] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  async function enviar(body) {
+    setError(null);
+    setGuardando(true);
+    try {
+      const d = await postClientes(body);
+      toast.success(textoResultadoVentas(d.resultado));
+      onHecho();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+  return (
+    <Modal open onClose={onCerrar} title="🧾 Ventas de las OT" maxWidth={520}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0">Cuando una OT se carga en el Plan de trabajo con su PRECIO (sin IVA), Gypi anota la <b>venta</b>: el cliente queda debiendo, contra Ventas Generales.</p>
+        <p className="m-0">Cuando la OT se termina, anota la <b>entrega</b>: pasa de Ventas Generales a Entregas Generales. Eso es el ingreso del mes.</p>
+        <p className="m-0 text-[13px] text-gypi-dim">Si cambia el precio, se corrige; si se borra el precio o la OT se reabre, se anula. Se revisa en cada sincronización del Plan.</p>
+        {config?.error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {config.error}</p>}
+        <label className="flex items-center gap-2 font-semibold">
+          <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
+          Anotar las ventas y entregas de las OT
+        </label>
+        {activo && campo("Solo las OT cargadas desde", <input type="date" className="g-input w-full" value={desde} onChange={(e) => setDesde(e.target.value)} />)}
+        {activo && <p className="m-0 text-[13px] text-gypi-dim">Las OT de antes ya están en los saldos iniciales del libro: no se anotan de nuevo.</p>}
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {config?.activo && <button type="button" className="g-btn g-btn-secondary" disabled={guardando} onClick={() => enviar({ accion: "revisar_ventas" })}>🔄 Revisar ahora</button>}
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando || (activo && !desde)} onClick={() => enviar({ accion: "config_ventas", activo, desde: activo ? desde : null })}>{guardando ? "Guardando…" : "Guardar"}</button>
         </div>
       </div>
     </Modal>
@@ -494,7 +552,13 @@ export default function FinanzasClientes() {
         <button type="button" className="g-btn g-btn-primary" onClick={() => setModal("nuevo")}>＋ Cliente</button>
         <button type="button" className="g-btn g-btn-secondary" disabled={trayendo} onClick={traer}>{trayendo ? "Trayendo…" : "📋 Traer de las OT"}</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("iniciales")}>📥 Cargar saldos iniciales</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ventas")}>🧾 Ventas de las OT</button>
       </div>
+      <p className="m-0 mb-2 text-[13px] text-gypi-dim">
+        {datos.ventas_ot?.activo
+          ? `🧾 Las ventas y entregas de las OT se anotan solas (OT cargadas desde ${fechaCorta(datos.ventas_ot.desde)}).`
+          : "🧾 Las ventas de las OT todavía no se anotan solas."}
+      </p>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <Chip active={filtro === "deben"} onClick={() => setFiltro("deben")}>Nos deben ({cuantos("deben")})</Chip>
         <Chip active={filtro === "favor"} onClick={() => setFiltro("favor")}>A favor ({cuantos("favor")})</Chip>
@@ -528,6 +592,7 @@ export default function FinanzasClientes() {
 
       {fichaActual && <Ficha saldo={fichaActual} datos={datos} cuentasDeu={cuentasDeu} onCerrar={() => setFicha(null)} onCambio={cargar} />}
       {modal === "nuevo" && <DatosCliente cliente={null} onCerrar={() => setModal(null)} onGuardado={() => { setModal(null); cargar(); }} />}
+      {modal === "ventas" && <VentasOt config={datos.ventas_ot} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); cargar(); }} />}
       {modal === "iniciales" && <SaldosIniciales datos={datos} cuentasDeu={cuentasDeu} onCerrar={() => setModal(null)} onCargados={() => { setModal(null); cargar(); }} />}
     </div>
   );
