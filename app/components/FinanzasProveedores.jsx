@@ -1,0 +1,318 @@
+'use client';
+// app/components/FinanzasProveedores.jsx — Finanzas → 🏭 Proveedores (parte
+// F2a, 2; reemplaza CC_PROVEEDORES del libro; /api/finanzas/proveedores;
+// reglas en app/lib/finanzasProveedores.js). Sin migración.
+//
+// La cuenta corriente de cada proveedor sale de las operaciones que tocan la
+// cuenta Proveedores: lo comprado sube la deuda, lo pagado la baja. La ficha
+// muestra las facturas que faltan pagar (los pagos van a las más viejas) con
+// sus días, y los movimientos con el saldo renglón por renglón.
+// "Cargar saldos iniciales" lee T-OPERACIONES del libro hasta una fecha de
+// corte y carga el saldo de cada proveedor contra Ajuste De Capital.
+// Solo el rol Dueño (la pantalla ni aparece para los demás).
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../lib/supabase";
+import { hoyAr, plata } from "../lib/finanzasOperaciones";
+import {
+  ORIGEN_SALDO_INICIAL, emparejarProveedor, movimientosProveedor, pendientesProveedor, saldosDelLibro, saldosProveedores,
+} from "../lib/finanzasProveedores";
+import { Chip, Modal, Spinner } from "./ui";
+import { useToast } from "./ui/Toast";
+
+const MAX_LISTA = 300;
+const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
+const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** Texto del saldo: "Le debemos $ X", "A favor $ X" o "Al día". */
+export function textoSaldo(deuda) {
+  if (deuda >= 0.01) return { texto: `Le debemos ${plata(deuda, "ARS")}`, clase: "text-gypi-text" };
+  if (deuda <= -0.01) return { texto: `A favor ${plata(-deuda, "ARS")}`, clase: "text-gypi-green" };
+  return { texto: "Al día", clase: "text-gypi-dim" };
+}
+
+async function leerOperacionesDelLibro(file) {
+  const { hojasXlsx, leerHojaXlsx } = await import("../lib/leerXlsx");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const hoja = hojasXlsx(bytes).find((n) => normal(n) === "TOPERACIONES");
+  if (!hoja) return null;
+  return leerHojaXlsx(bytes, hoja, { maxFilas: 60000, maxCols: 60 }) || [];
+}
+
+/* ─── Saldos iniciales ───────────────────────────────────────────────── */
+
+function SaldosIniciales({ datos, cuentasProv, onCerrar, onCargados }) {
+  const toast = useToast();
+  const [grilla, setGrilla] = useState(null);
+  const [fecha, setFecha] = useState(hoyAr());
+  const [elegidos, setElegidos] = useState({});
+  const [leyendo, setLeyendo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  const yaCargados = (datos.operaciones || []).some((o) => o.origen === ORIGEN_SALDO_INICIAL);
+
+  const resultado = useMemo(() => (grilla ? saldosDelLibro(grilla, fecha, cuentasProv) : null), [grilla, fecha, cuentasProv]);
+  const filas = useMemo(() => (resultado?.filas || []).map((f) => {
+    const elegido = elegidos[f.nombre];
+    const proveedor_id = elegido !== undefined ? elegido : (emparejarProveedor(f.nombre, datos.proveedores)?.id ?? "");
+    return { ...f, proveedor_id };
+  }), [resultado, elegidos, datos.proveedores]);
+  const total = filas.reduce((s, f) => s + f.deuda, 0);
+
+  async function abrir(file) {
+    if (!file) return;
+    setLeyendo(true);
+    setError(null);
+    try {
+      const g = await leerOperacionesDelLibro(file);
+      if (!g) throw new Error("El archivo no tiene la hoja T-OPERACIONES.");
+      setGrilla(g);
+      setElegidos({});
+    } catch (e) {
+      setError(e.message || "No se pudo leer el archivo");
+    } finally {
+      setLeyendo(false);
+    }
+  }
+
+  async function cargar() {
+    setGuardando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/proveedores", {
+        method: "POST",
+        body: JSON.stringify({ accion: "saldos_iniciales", fecha, filas: filas.map((f) => ({ proveedor_id: f.proveedor_id ? Number(f.proveedor_id) : null, nombre: f.nombre, deuda: f.deuda })) }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudieron cargar los saldos");
+      toast.success(`Saldos iniciales cargados: ${d.cargados} proveedores`);
+      onCargados();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onCerrar} title="Cargar saldos iniciales" maxWidth={720}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0">
+          Subí el libro (.xlsx). Se suma todo lo de T-OPERACIONES que toca Proveedores hasta la fecha de corte, por proveedor,
+          y cada saldo entra como &quot;SALDO INICIAL&quot; contra Ajuste De Capital. Lo que cargues en Gypi después de esa fecha sigue desde ahí.
+        </p>
+        {yaCargados && <p className="m-0 text-[13px] text-gypi-amber-ink">⚠ Ya hay saldos iniciales cargados: los de los proveedores que cargues ahora se reemplazan.</p>}
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="g-btn g-btn-secondary cursor-pointer">
+            {leyendo ? "Leyendo…" : grilla ? "Elegir otro archivo" : "📂 Subir el libro"}
+            <input type="file" accept=".xlsx,.xlsm" className="sr-only" aria-label="Subir el libro contable" disabled={leyendo} onChange={(e) => { abrir(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+          <label className="flex flex-col gap-1 text-[13px] font-semibold ml-auto">
+            Fecha de corte (incluida)
+            <input type="date" className="g-input" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />
+          </label>
+        </div>
+        {(error || resultado?.error) && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error || resultado.error}</p>}
+        {resultado && !resultado.error && (
+          <>
+            <p className="m-0 text-[13px] text-gypi-dim">
+              {filas.length} proveedores con saldo al {fechaCorta(fecha)} · Total que les debemos <b className="text-gypi-text">{plata(total, "ARS")}</b>.
+              Elegí a qué proveedor de Gypi va cada uno; si no está en la lista queda con el nombre del libro.
+            </p>
+            <div className="max-h-[50vh] overflow-y-auto border border-gypi-border rounded-lg">
+              <table className="w-full text-[13px] border-collapse" aria-label="Saldos del libro">
+                <thead>
+                  <tr className="text-gypi-dim text-left">
+                    <th className="font-semibold p-2">En el libro</th>
+                    <th className="font-semibold p-2">Proveedor en Gypi</th>
+                    <th className="font-semibold p-2 text-right">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filas.map((f) => (
+                    <tr key={f.nombre} className="border-t border-gypi-border">
+                      <td className="p-2">
+                        {f.nombre}
+                        {f.variantes > 1 && <span className="block text-[12px] text-gypi-dim">escrito de {f.variantes} formas</span>}
+                      </td>
+                      <td className="p-2">
+                        <select className="g-input w-full" aria-label={`Proveedor para ${f.nombre}`} value={f.proveedor_id}
+                          onChange={(e) => setElegidos((x) => ({ ...x, [f.nombre]: e.target.value }))}>
+                          <option value="">— Nombre del libro —</option>
+                          {datos.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        </select>
+                      </td>
+                      <td className={`p-2 text-right font-mono ${textoSaldo(f.deuda).clase}`}>{plata(f.deuda, "ARS")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={!filas.length || guardando} onClick={cargar}>
+            {guardando ? "Cargando…" : `Cargar ${filas.length} saldos`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Ficha de un proveedor ──────────────────────────────────────────── */
+
+function Ficha({ saldo, datos, cuentasProv, onCerrar }) {
+  const [vista, setVista] = useState("pendientes");
+  const movimientos = useMemo(() => movimientosProveedor(datos.operaciones, saldo.clave, cuentasProv), [datos, saldo, cuentasProv]);
+  const pendientes = useMemo(() => pendientesProveedor(movimientos, hoyAr()), [movimientos]);
+  const s = textoSaldo(saldo.deuda);
+  return (
+    <Modal open onClose={onCerrar} title={saldo.nombre || "Proveedor"} maxWidth={640}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className={`m-0 text-[18px] font-bold ${s.clase}`}>{s.texto}</p>
+        <p className="m-0 text-[13px] text-gypi-dim">Comprado {plata(saldo.comprado, "ARS")} · Pagado {plata(saldo.pagado, "ARS")}</p>
+        <div className="flex gap-2">
+          <Chip active={vista === "pendientes"} onClick={() => setVista("pendientes")}>Falta pagar ({pendientes.length})</Chip>
+          <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos ({movimientos.length})</Chip>
+        </div>
+        {vista === "pendientes" ? (
+          pendientes.length ? (
+            <table className="w-full text-[13px] border-collapse" aria-label="Falta pagar">
+              <thead>
+                <tr className="text-gypi-dim text-left">
+                  <th className="font-semibold py-1">Compra</th>
+                  <th className="font-semibold py-1 text-right">Importe</th>
+                  <th className="font-semibold py-1 text-right">Falta</th>
+                  <th className="font-semibold py-1 text-right">Días</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendientes.map((p) => (
+                  <tr key={p.op.id} className="border-t border-gypi-border">
+                    <td className="py-1">
+                      <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(p.op.fecha)}</span> {p.op.tipo}
+                      {p.op.descripcion && <span className="block text-[12px] text-gypi-dim truncate">{p.op.descripcion}</span>}
+                    </td>
+                    <td className="py-1 text-right font-mono">{plata(p.importe, "ARS")}</td>
+                    <td className="py-1 text-right font-mono font-semibold">{plata(p.falta, "ARS")}</td>
+                    <td className={`py-1 text-right font-mono ${p.dias > 60 ? "text-gypi-red font-semibold" : p.dias > 30 ? "text-gypi-amber-ink" : ""}`}>{p.dias}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <p className="m-0 text-[13px] text-gypi-dim">No hay compras sin pagar.</p>
+        ) : (
+          <table className="w-full text-[13px] border-collapse" aria-label="Movimientos del proveedor">
+            <thead>
+              <tr className="text-gypi-dim text-left">
+                <th className="font-semibold py-1">Fecha</th>
+                <th className="font-semibold py-1 text-right">Compra</th>
+                <th className="font-semibold py-1 text-right">Pago</th>
+                <th className="font-semibold py-1 text-right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...movimientos].reverse().map((m) => (
+                <tr key={m.op.id} className="border-t border-gypi-border">
+                  <td className="py-1">
+                    <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
+                    {m.op.descripcion && <span className="block text-[12px] text-gypi-dim truncate">{m.op.descripcion}</span>}
+                  </td>
+                  <td className="py-1 text-right font-mono">{m.compra ? plata(m.compra, "ARS") : ""}</td>
+                  <td className="py-1 text-right font-mono">{m.pago ? plata(m.pago, "ARS") : ""}</td>
+                  <td className="py-1 text-right font-mono font-semibold">{plata(m.saldo, "ARS")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Pantalla ───────────────────────────────────────────────────────── */
+
+export default function FinanzasProveedores() {
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState(null);
+  const [buscar, setBuscar] = useState("");
+  const [filtro, setFiltro] = useState("deuda");
+  const [ficha, setFicha] = useState(null);
+  const [iniciales, setIniciales] = useState(false);
+
+  const cargar = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/finanzas/proveedores");
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudieron cargar los proveedores");
+      setDatos(d);
+      setError(null);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const cuentasProv = useMemo(() => new Set(datos?.cuentas_proveedores || []), [datos]);
+  const saldos = useMemo(() => (datos ? saldosProveedores(datos.operaciones, cuentasProv, datos.proveedores) : []), [datos, cuentasProv]);
+  const lista = useMemo(() => {
+    const b = normal(buscar);
+    return saldos.filter((s) => (filtro === "deuda" ? s.deuda >= 0.01 : filtro === "favor" ? s.deuda <= -0.01 : true) && (!b || normal(s.nombre).includes(b)));
+  }, [saldos, buscar, filtro]);
+
+  if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
+  if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
+  if (!cuentasProv.size) {
+    return <p className="m-[18px] text-[14px] text-gypi-text">Primero copiá el libro en Finanzas → 🧾 Configuración: falta la cuenta &quot;Proveedores&quot; en el plan de cuentas.</p>;
+  }
+
+  const debemos = saldos.reduce((s, x) => s + Math.max(0, x.deuda), 0);
+  const aFavor = saldos.reduce((s, x) => s + Math.max(0, -x.deuda), 0);
+  const cuantos = (f) => saldos.filter((s) => (f === "deuda" ? s.deuda >= 0.01 : s.deuda <= -0.01)).length;
+
+  return (
+    <div className="flex-1 overflow-y-auto px-[18px] pb-6">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <p className="m-0 text-[14px] text-gypi-text">
+          Les debemos <b>{plata(debemos, "ARS")}</b>{aFavor >= 0.01 && <> · A favor nuestro <b className="text-gypi-green">{plata(aFavor, "ARS")}</b></>}
+        </p>
+        <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <Chip active={filtro === "deuda"} onClick={() => setFiltro("deuda")}>Les debemos ({cuantos("deuda")})</Chip>
+        <Chip active={filtro === "favor"} onClick={() => setFiltro("favor")}>A favor ({cuantos("favor")})</Chip>
+        <Chip active={filtro === "todos"} onClick={() => setFiltro("todos")}>Todos ({saldos.length})</Chip>
+        <input className="g-input flex-1 min-w-[180px]" aria-label="Buscar proveedor" placeholder="Buscar proveedor" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
+      </div>
+      <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Proveedores">
+        {lista.slice(0, MAX_LISTA).map((s) => {
+          const t = textoSaldo(s.deuda);
+          return (
+            <li key={s.clave}>
+              <button type="button" onClick={() => setFicha(s)}
+                className="w-full text-left min-h-[48px] px-3 py-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer">
+                <span className="flex items-baseline gap-2 text-[14px] text-gypi-text">
+                  <span className="font-semibold flex-1 min-w-0 truncate">{s.nombre || "Sin nombre"}</span>
+                  <span className={`font-mono font-semibold ${t.clase}`}>{t.texto}</span>
+                </span>
+                <span className="block text-[12px] text-gypi-dim">
+                  Último movimiento {fechaCorta(s.ultimo)}{!s.proveedor_id && " · No está en la lista de proveedores"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {lista.length > MAX_LISTA && <p className="mt-2 text-[13px] text-gypi-dim">Hay {lista.length - MAX_LISTA} más: usá el buscador.</p>}
+      {!lista.length && (
+        <p className="mt-2 text-[13px] text-gypi-dim">
+          {saldos.length ? "Ningún proveedor con ese filtro." : "Todavía no hay compras ni pagos a proveedores. Empezá cargando los saldos iniciales del libro."}
+        </p>
+      )}
+
+      {ficha && <Ficha saldo={ficha} datos={datos} cuentasProv={cuentasProv} onCerrar={() => setFicha(null)} />}
+      {iniciales && <SaldosIniciales datos={datos} cuentasProv={cuentasProv} onCerrar={() => setIniciales(false)} onCargados={() => { setIniciales(false); cargar(); }} />}
+    </div>
+  );
+}
