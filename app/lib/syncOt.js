@@ -11,6 +11,7 @@ import { CLAVE_FECHA_OBJETIVO, normalizarModo, fechaObjetivo } from "./semanaObj
 import { resolverSemana } from "./semanaEditable";
 import { hoyArg } from "./dates";
 import { recalcularClases } from "./syncComplejidad";
+import { sincronizarVentasOt } from "./finanzasVentas";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -282,6 +283,12 @@ export async function syncEmpresa(empresaId, { minIntervaloMs = 0, sesion } = {}
       break;
     }
   }
+
+  // Finanzas F4b: la venta (OT cargada con precio) y la entrega (OT terminada)
+  // de cada OT. Solo si la empresa tiene Finanzas y el dueño lo prendió; nunca
+  // corta la sincronización.
+  const ventas = await sincronizarVentasOt(empresaId);
+  if (ventas.error) logger.warn(`[proyectos/sync-csv] ventas de las OT: ${ventas.error}`);
 
   // Clase de complejidad A/B/C de cada OT (159): con las placas recién
   // sincronizadas y las necesidades del MRP. Sin la migración no hace nada.

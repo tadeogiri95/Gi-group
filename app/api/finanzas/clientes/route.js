@@ -15,11 +15,16 @@
 //   POST { accion: "saldos_iniciales", fecha, filas: [{ cliente_id?, nombre, saldo }] }
 //       → el saldo de cada cliente a la fecha de corte contra Ajuste De Capital
 //       (los que no están en la lista se crean). Reemplaza el anterior.
+//   POST { accion: "config_ventas", activo, desde } → prende o apaga la venta y
+//       la entrega automática de las OT (F4b, app/lib/finanzasVentas.js) y la
+//       corre una vez.
+//   POST { accion: "revisar_ventas" } → la corre ahora (también corre sola en
+//       cada sincronización del Plan de trabajo).
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
@@ -29,6 +34,7 @@ import { operacionAlta } from "../../../lib/finanzasCheques";
 import {
   ORIGEN_COBRO, armarCobro, clientesNuevosDeOt, cuentasDeudores, emparejarCliente, operacionSaldoInicialCliente, unirClientes, validarCliente,
 } from "../../../lib/finanzasClientes";
+import { CLAVE_VENTAS_OT, configVentas, cuentasVentas, sincronizarVentasOt } from "../../../lib/finanzasVentas";
 
 const MAX_SALDOS = 2000;
 const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at";
@@ -60,7 +66,9 @@ export async function GET(request) {
     const operaciones = deu.length
       ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lista(deu)}),cuenta_haber.in.(${lista(deu)}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 60000)
       : [];
-    return NextResponse.json({ cuentas, clientes, tesoreria, proyectos, operaciones, cuentas_deudores: deu });
+    const ventasOt = await configVentas(e);
+    const faltanCuentas = cuentasVentas(cuentas).error || null;
+    return NextResponse.json({ cuentas, clientes, tesoreria, proyectos, operaciones, cuentas_deudores: deu, ventas_ot: { ...ventasOt, error: faltanCuentas } });
   } catch (err) {
     if (falta177(err)) return NextResponse.json({ error: FALTA_177, falta_migracion: true }, { status: 409 });
     return errorFinanzas(err, "clientes GET");
@@ -206,6 +214,35 @@ async function saldosIniciales(sesion, d) {
   return NextResponse.json({ ok: true, cargados: finales.length, clientes_nuevos: clientes.length - clientesAntes.length });
 }
 
+// Ventas de las OT (F4b): prender/apagar y desde qué fecha de carga
+async function configurarVentas(sesion, d) {
+  const e = sesion.empresa_id;
+  const activo = Boolean(d.activo);
+  const desde = String(d.desde || "");
+  if (activo && !FECHA.test(desde)) return NextResponse.json({ error: "Elegí desde qué fecha se anotan las ventas" }, { status: 400 });
+  if (activo) {
+    const { error } = cuentasVentas(await leerCuentas(sesion));
+    if (error) return NextResponse.json({ error }, { status: 400 });
+  }
+  const valor = { activo, desde: FECHA.test(desde) ? desde : null };
+  // config_sistema va con la clave de servicio, como Mi caja (F3b)
+  const ya = await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_VENTAS_OT}&select=clave&limit=1`, { silent: true, fallback: [] });
+  if (ya?.length) await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_VENTAS_OT}`, { valor });
+  else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_VENTAS_OT, valor });
+  const r = activo ? await sincronizarVentasOt(e) : { accion: "apagada" };
+  if (r.creadas || r.corregidas || r.anuladas) broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, ventas_ot: valor, resultado: r });
+}
+
+async function revisarVentas(sesion) {
+  const e = sesion.empresa_id;
+  const r = await sincronizarVentasOt(e);
+  if (r.accion === "apagada") return NextResponse.json({ error: "Primero prendé las ventas de las OT" }, { status: 400 });
+  if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+  if (r.creadas || r.corregidas || r.anuladas) broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, resultado: r });
+}
+
 export async function POST(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -220,6 +257,8 @@ export async function POST(request) {
     if (d.accion === "cobrar") return await cobrar(sesion, d);
     if (d.accion === "anular_cobro") return await anularCobro(sesion, d);
     if (d.accion === "saldos_iniciales") return await saldosIniciales(sesion, d);
+    if (d.accion === "config_ventas") return await configurarVentas(sesion, d);
+    if (d.accion === "revisar_ventas") return await revisarVentas(sesion);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     if (falta177(err)) return NextResponse.json({ error: FALTA_177, falta_migracion: true }, { status: 409 });
