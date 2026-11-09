@@ -1,0 +1,237 @@
+// app/lib/finanzasFlujo.js — Finanzas, parte F6b: el flujo de caja, como la
+// hoja FLUJO_V2 del libro, y lo que viene (como PREVISIÓN CHEQUES). Sin
+// migración: las líneas del flujo de cada tipo van en config_sistema
+// ("finanzas_flujo"), copiadas de la hoja dim_flujo del libro.
+//
+//   - Lo real: cada operación confirmada mueve la caja según sus cuentas
+//     (+ si la caja o el banco está al debe, − si está al haber; entre dos
+//     cajas no mueve). Va a la línea de su tipo (dim_flujo: COBRO TRANSF →
+//     ING_TRANSF, PAGO SUELDO → EGR_SUELDOS…); INVERSIONES DESARROLLISMO se
+//     abre por centro de costo. Por mes, en pesos y en dólares por separado,
+//     con la apertura (saldo antes del primer mes) y el cierre.
+//   - Lo que viene, por semana: cheques de terceros a depositar (+), e-cheq
+//     y cheques propios a debitar (−), órdenes de pago aprobadas o por
+//     aprobar (−) y sueldos confirmados sin pagar (−), desde el saldo de hoy.
+export const CLAVE_FLUJO = "finanzas_flujo";
+export const DESARROLLISMO = "INVERSIONES DESARROLLISMO";
+export const SEMANAS = 8;
+
+const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const txt = (v, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+const clave = (v) => txt(v, 200).toUpperCase();
+
+/** Los nombres de las líneas del libro (FLUJO_V2). */
+export const NOMBRES_LINEA = {
+  ING_TRANSF: "Cobros por transferencia", ING_EFECTIVO: "Cobros en efectivo", ING_ECHEQ: "E-cheqs recibidos cobrados", ING_AJUSTE: "Ajustes de caja positivos",
+  EGR_PROVEEDORES: "Pagos a proveedores (efectivo / transferencia)", EGR_ECHEQ: "E-cheqs emitidos pagados", EGR_SERVICIOS: "Servicios corrientes",
+  EGR_SUELDOS: "Sueldos, aportes y cargas", EGR_ADMIN: "Gastos de administración", EGR_LOGISTICA: "Gastos de logística", EGR_MANTENIMIENTO: "Gastos de mantenimiento",
+  EGR_BANCARIOS: "Gastos bancarios", EGR_COMERCIALIZACION: "Gastos de comercialización", EGR_HONORARIOS: "Honorarios", EGR_VIATICOS: "Viáticos",
+  EGR_TERCERIZADOS: "Trabajos tercerizados", EGR_TARJETAS: "Tarjetas de crédito", EGR_OTROS: "Otros gastos", EGR_IMPUESTOS: "Impuestos y cargas fiscales", EGR_AJUSTE: "Ajustes de caja negativos",
+  "VTA_BS USO": "Venta de bienes de uso", INV_MAQUINARIA: "Maquinaria y herramental", INV_INFRA: "Infraestructura",
+  ING_ALQUILERES: "Alquileres cobrados", ING_RENTA_FIN: "Renta financiera (intereses ganados)", ING_DESARR_VENTAS: "Cobros por ventas Desarrollismo",
+  APORTES_SOCIOS: "Aportes de socios", ING_DESARR_APORTES: "Aportes Desarrollismo", DIVIDENDOS: "Pago de dividendos", EGR_FINANCIEROS: "Gastos financieros",
+  TES_USD: "Compra y venta de dólares", TES_TITULOS: "Compra y venta de títulos", TES_APERTURA: "Apertura", TES_TRANSF_INTERNA: "Transferencias entre cajas", TES_MOV_INTERNO: "Depósitos, extracciones, plazos fijos y FCI",
+  "SIN CLASIFICAR": "⚠ Sin clasificar (el tipo no tiene línea)", "DESARR | SIN CC": "⚠ Desarrollismo sin centro de costo", "DESARR | CC NUEVA": "⚠ Desarrollismo con un centro de costo sin línea",
+};
+
+/** Las secciones del flujo, en orden. */
+export const SECCIONES_FLUJO = [
+  { id: "OPE", nombre: "Operativo" },
+  { id: "INV", nombre: "Inversiones" },
+  { id: "FIN", nombre: "Financiamiento" },
+  { id: "TES", nombre: "Movimientos de tesorería (entre cuentas propias)" },
+  { id: "SIN", nombre: "Sin clasificar" },
+];
+
+/** La sección de una línea del flujo. */
+export function seccionFlujo(linea) {
+  const l = clave(linea);
+  if (l === "SIN CLASIFICAR" || l === "DESARR | SIN CC" || l === "DESARR | CC NUEVA") return "SIN";
+  if (l.startsWith("TES_")) return "TES";
+  if (["APORTES_SOCIOS", "ING_DESARR_APORTES", "DIVIDENDOS", "EGR_FINANCIEROS"].includes(l)) return "FIN";
+  if (l.startsWith("INV_") || l.startsWith("DESARR") || ["VTA_BS USO", "ING_ALQUILERES", "ING_RENTA_FIN", "ING_DESARR_VENTAS"].includes(l)) return "INV";
+  return "OPE";
+}
+
+export const nombreLinea = (linea) => NOMBRES_LINEA[clave(linea)] || (String(linea).startsWith("DESARR | ") ? String(linea).slice(9) : String(linea));
+
+/**
+ * dim_flujo → { tipos: { COD_TIPO: linea }, centros: { CC: linea }, avisos }.
+ * Columnas cod_tipo_op / linea_flujo y, aparte, centro_costo / linea_flujo.
+ */
+export function flujoDeHoja(grilla) {
+  const avisos = [];
+  const tipos = {};
+  const centros = {};
+  const i = (grilla || []).slice(0, 20).findIndex((f) => (f || []).some((c) => txt(c).toLowerCase() === "cod_tipo_op"));
+  if (i < 0) return { tipos, centros, avisos: ["No encontré los títulos de la hoja dim_flujo (la columna \"cod_tipo_op\")."] };
+  const t = (grilla[i] || []).map((c) => txt(c).toLowerCase());
+  const cTipo = t.indexOf("cod_tipo_op");
+  const cLinea = t.indexOf("linea_flujo");
+  const cCc = t.indexOf("centro_costo");
+  const cLineaCc = cCc >= 0 ? t.indexOf("linea_flujo", cCc + 1) : -1;
+  if (cLinea < 0) return { tipos, centros, avisos: ["La hoja dim_flujo no tiene la columna linea_flujo."] };
+  for (const f of grilla.slice(i + 1)) {
+    const tipo = txt(f?.[cTipo], 80);
+    const linea = txt(f?.[cLinea], 60);
+    if (tipo && linea && !linea.startsWith("(")) tipos[clave(tipo)] = linea.trim();
+    if (cCc >= 0 && cLineaCc >= 0) {
+      const cc = txt(f?.[cCc], 60);
+      const lc = txt(f?.[cLineaCc], 60);
+      if (cc && lc) centros[clave(cc)] = lc;
+    }
+  }
+  if (!Object.keys(tipos).length) avisos.push("La hoja dim_flujo no tiene tipos con su línea.");
+  return { tipos, centros, avisos };
+}
+
+/** Valida lo que se guarda (lo que viene del navegador). */
+export function validarLineasFlujo(d = {}) {
+  const limpio = (o, max) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).slice(0, max)
+    .map(([k, v]) => [clave(k).slice(0, 80), txt(v, 60)]).filter(([k, v]) => k && v));
+  return { tipos: limpio(d.tipos, 500), centros: limpio(d.centros, 500) };
+}
+
+/** La línea del flujo de una operación. */
+export function lineaDe(op, lineas = {}) {
+  const tipo = clave(op.tipo);
+  if (tipo === DESARROLLISMO) {
+    if (!op.centro_costo) return "DESARR | SIN CC";
+    return lineas.centros?.[clave(op.centro_costo)] || "DESARR | CC NUEVA";
+  }
+  return lineas.tipos?.[tipo] || "SIN CLASIFICAR";
+}
+
+/** Cuánto mueve la caja una operación, por moneda: { ARS, USD }. */
+export function deltaCaja(op, cajas) {
+  // En pesos, el total en pesos; en dólares, el total de la operación
+  const importe = { ARS: Number(op.total_ars ?? op.total) || 0, USD: Number(op.total) || 0 };
+  const r = { ARS: 0, USD: 0 };
+  for (const m of ["ARS", "USD"]) {
+    const set = cajas[m];
+    const d = (set.has(op.cuenta_debe) ? 1 : 0) - (set.has(op.cuenta_haber) ? 1 : 0);
+    r[m] = centavos(importe[m] * d);
+  }
+  return r;
+}
+
+/** Las cuentas de caja y banco por moneda. */
+export const cajasPorMoneda = (tesoreria = []) => ({
+  ARS: new Set(tesoreria.filter((t) => t.moneda !== "USD").map((t) => t.cuenta)),
+  USD: new Set(tesoreria.filter((t) => t.moneda === "USD").map((t) => t.cuenta)),
+});
+
+/**
+ * El flujo real por mes.
+ * @returns {{ meses, monedas: { ARS: { apertura, filas, neto, cierre }, USD: … }, sin_clasificar: number, tipos_sin_linea: string[] }}
+ */
+export function flujoReal({ ops = [], tesoreria = [], lineas = {}, meses = [] }) {
+  const cajas = cajasPorMoneda(tesoreria);
+  const idx = new Map(meses.map((m, i) => [m, i]));
+  const primero = meses[0];
+  const out = {};
+  const sinLinea = new Set();
+  for (const mon of ["ARS", "USD"]) out[mon] = { apertura: 0, porLinea: new Map() };
+  for (const op of ops) {
+    if (op.anulada_at || op.estado === "para_revisar") continue;
+    const d = deltaCaja(op, cajas);
+    if (!d.ARS && !d.USD) continue;
+    const mes = String(op.fecha || "").slice(0, 7);
+    for (const mon of ["ARS", "USD"]) {
+      if (!d[mon]) continue;
+      if (mes < primero) { out[mon].apertura += d[mon]; continue; }
+      const i = idx.get(mes);
+      if (i == null) continue;
+      const linea = lineaDe(op, lineas);
+      if (seccionFlujo(linea) === "SIN") sinLinea.add(String(op.tipo));
+      const l = out[mon].porLinea.get(linea) || meses.map(() => 0);
+      l[i] += d[mon];
+      out[mon].porLinea.set(linea, l);
+    }
+  }
+  const monedas = {};
+  for (const mon of ["ARS", "USD"]) {
+    const filas = [];
+    const neto = meses.map(() => 0);
+    for (const sec of SECCIONES_FLUJO) {
+      const ls = [...out[mon].porLinea.entries()].filter(([l]) => seccionFlujo(l) === sec.id).sort(([a], [b]) => {
+        const orden = Object.keys(NOMBRES_LINEA);
+        const ia = orden.indexOf(clave(a)); const ib = orden.indexOf(clave(b));
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
+      });
+      if (!ls.length) continue;
+      const t = meses.map((_, i) => ls.reduce((s, [, v]) => s + v[i], 0));
+      t.forEach((v, i) => { neto[i] += v; });
+      filas.push({ tipo: "seccion", id: sec.id, nombre: sec.nombre, valores: t.map(centavos), total: centavos(t.reduce((s, v) => s + v, 0)) });
+      for (const [l, v] of ls) filas.push({ tipo: "linea", id: `${sec.id}|${l}`, seccion: sec.id, linea: l, nombre: nombreLinea(l), valores: v.map(centavos), total: centavos(v.reduce((s, x) => s + x, 0)) });
+    }
+    const apertura = centavos(out[mon].apertura);
+    const cierre = [];
+    let s = apertura;
+    for (const v of neto) { s += v; cierre.push(centavos(s)); }
+    monedas[mon] = { apertura, filas, neto: neto.map(centavos), cierre, hay: filas.length > 0 || Math.abs(apertura) >= 0.01 };
+  }
+  return { meses, monedas, tipos_sin_linea: [...sinLinea].sort() };
+}
+
+/** El lunes de la semana de una fecha (AAAA-MM-DD). */
+export function lunesDe(fecha) {
+  const d = new Date(`${fecha}T12:00:00Z`);
+  const dia = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dia);
+  return d.toISOString().slice(0, 10);
+}
+const sumarDias = (fecha, n) => { const d = new Date(`${fecha}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+
+/**
+ * Lo que viene, por semana desde hoy (lo vencido va en la primera).
+ * @param {{ hoy, saldoHoy, cheques, ordenes, sueldos: { fecha, importe, detalle }[] }} d
+ */
+export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], sueldos = [], semanas = SEMANAS }) {
+  const inicio = lunesDe(hoy);
+  const cols = Array.from({ length: semanas }, (_, i) => sumarDias(inicio, i * 7));
+  const col = (fecha) => {
+    if (!fecha || fecha < cols[0]) return 0;
+    const i = Math.floor((Date.parse(`${fecha}T12:00:00Z`) - Date.parse(`${cols[0]}T12:00:00Z`)) / (7 * 86400000));
+    return i < semanas ? i : null;
+  };
+  const filas = [
+    { id: "cheques_terceros", nombre: "Cheques de terceros a depositar", signo: 1 },
+    { id: "cheques_propios", nombre: "E-cheq y cheques propios a debitar", signo: -1 },
+    { id: "ordenes", nombre: "Órdenes de pago aprobadas o por aprobar", signo: -1 },
+    { id: "sueldos", nombre: "Sueldos por pagar", signo: -1 },
+  ].map((f) => ({ ...f, valores: cols.map(() => 0), detalle: cols.map(() => []), despues: 0 }));
+  const por = Object.fromEntries(filas.map((f) => [f.id, f]));
+  const poner = (id, fecha, importe, texto) => {
+    const f = por[id];
+    const i = col(fecha);
+    const v = centavos(importe) * f.signo;
+    if (i == null) { f.despues += v; return; }
+    f.valores[i] += v;
+    f.detalle[i].push({ fecha, importe: v, texto });
+  };
+  for (const ch of cheques) {
+    if (ch.clase === "tercero" && ch.estado === "en_cartera") poner("cheques_terceros", ch.fecha_pago, ch.importe, `${ch.banco || "Cheque"}${ch.numero ? ` N° ${ch.numero}` : ""}${ch.librador ? ` · ${ch.librador}` : ""}`);
+    if (ch.clase === "propio" && ch.estado === "pendiente") poner("cheques_propios", ch.fecha_pago, ch.importe, `${ch.beneficiario || "E-cheq"}${ch.numero ? ` N° ${ch.numero}` : ""}`);
+  }
+  for (const o of ordenes) {
+    if (["aprobada", "para_aprobar"].includes(o.estado)) poner("ordenes", o.fecha < hoy ? hoy : o.fecha, o.total, `OP N° ${o.numero} · ${o.proveedor_nombre}${o.estado === "para_aprobar" ? " (por aprobar)" : ""}`);
+  }
+  for (const s of sueldos) if (s.importe > 0) poner("sueldos", s.fecha < hoy ? hoy : s.fecha, s.importe, s.detalle);
+  const neto = cols.map((_, i) => filas.reduce((s, f) => s + f.valores[i], 0));
+  const saldo = [];
+  let s = Number(saldoHoy) || 0;
+  for (const v of neto) { s += v; saldo.push(centavos(s)); }
+  return {
+    semanas: cols, saldo_hoy: centavos(saldoHoy),
+    filas: filas.map((f) => ({ ...f, valores: f.valores.map(centavos), despues: centavos(f.despues) })),
+    neto: neto.map(centavos), saldo,
+    despues: centavos(filas.reduce((x, f) => x + f.despues, 0)),
+  };
+}
+
+/** El saldo de hoy de las cajas y bancos en pesos (todas las operaciones confirmadas). */
+export function saldoCajas(ops = [], tesoreria = [], moneda = "ARS") {
+  const cajas = cajasPorMoneda(tesoreria);
+  return centavos(ops.reduce((s, op) => (op.anulada_at || op.estado === "para_revisar" ? s : s + deltaCaja(op, cajas)[moneda]), 0));
+}
