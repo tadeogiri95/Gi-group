@@ -1,0 +1,113 @@
+// /api/finanzas/tesoreria — Finanzas, parte F3a: cajas y bancos (reglas en
+// app/lib/finanzasTesoreria.js). Sin migración.
+//
+//   GET → las cajas y bancos, sus operaciones (todas las fechas, sin las
+//       anuladas), los responsables y el plan de cuentas. El saldo y los
+//       movimientos los arma la pantalla.
+//   POST { accion: "saldos_iniciales", fecha, tipo_cambio?, filas: [{ cuenta, saldo }] }
+//       → el saldo de cada caja a la fecha de corte, contra Ajuste De
+//       Capital. Si ya tenía uno, se reemplaza (el viejo queda anulado).
+//   POST { accion: "transferir", desde, hacia, importe, fecha, tipo_cambio?, descripcion? }
+//       → TRANSF INTERNA entre dos cajas o bancos de la misma moneda.
+//
+// Solo el rol Dueño, con el pase del usuario (la base también lo exige).
+import { NextResponse } from "next/server";
+import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
+import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
+import { broadcastRefresh } from "../../../lib/broadcast";
+import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
+import { FECHA } from "../../../lib/finanzasOperaciones";
+import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
+import { cuentaAjusteDe, operacionSaldoInicialCaja, validarTransferencia } from "../../../lib/finanzasTesoreria";
+
+const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at";
+const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
+
+async function nombreEmpleado(sesion) {
+  if (!sesion.empleado_id) return null;
+  const [emp] = (await leer(sesion, `empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${sesion.empresa_id}&select=nombre&limit=1`)) || [];
+  return emp?.nombre ? String(emp.nombre).slice(0, 120) : null;
+}
+
+export async function GET(request) {
+  const { sesion, response } = await sesionDueno(request);
+  if (response) return response;
+  const e = sesion.empresa_id;
+  try {
+    const [tesoreria, cuentas, personal] = await Promise.all([
+      leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,responsable_id,activa&order=nombre.asc`),
+      leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
+      leer(sesion, `empleados?empresa_id=eq.${e}&activo=eq.true&select=id,nombre&order=nombre.asc`),
+    ]);
+    const lista = tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(",");
+    const operaciones = tesoreria.length
+      ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${encodeURIComponent(lista)}),cuenta_haber.in.(${encodeURIComponent(lista)}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 60000)
+      : [];
+    return NextResponse.json({ tesoreria, cuentas, personal, operaciones });
+  } catch (err) {
+    return errorFinanzas(err, "tesoreria GET");
+  }
+}
+
+async function saldosIniciales(sesion, d) {
+  const e = sesion.empresa_id;
+  if (!FECHA.test(String(d.fecha || ""))) return NextResponse.json({ error: "Falta la fecha de corte" }, { status: 400 });
+  const lista = Array.isArray(d.filas) ? d.filas.slice(0, 200) : [];
+  if (!lista.length) return NextResponse.json({ error: "No hay saldos para cargar" }, { status: 400 });
+  const [tesoreria, cuentas] = await Promise.all([
+    leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`),
+    leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
+  ]);
+  const cuentaAjuste = cuentaAjusteDe(cuentas);
+  if (!cuentaAjuste) return NextResponse.json({ error: "Falta la cuenta \"Ajuste De Capital\" en el plan de cuentas: copiá el libro en Configuración." }, { status: 400 });
+  const tc = Number(d.tipo_cambio);
+  const finales = [];
+  for (const [i, f] of lista.entries()) {
+    const caja = tesoreria.find((t) => t.cuenta === f?.cuenta);
+    const saldo = Number(f?.saldo);
+    if (!caja) return NextResponse.json({ error: `Fila ${i + 1}: esa caja no está en la lista de cajas y bancos` }, { status: 400 });
+    if (!Number.isFinite(saldo) || Math.abs(saldo) >= 1e13) return NextResponse.json({ error: `Fila ${i + 1}: revisá el saldo` }, { status: 400 });
+    if (Math.abs(saldo) < 0.01) continue;
+    if (caja.moneda === "USD" && !(tc > 0)) return NextResponse.json({ error: "Para las cajas en dólares falta el tipo de cambio" }, { status: 400 });
+    finales.push(operacionSaldoInicialCaja({ fecha: d.fecha, caja, saldo, tipo_cambio: tc }, cuentaAjuste));
+  }
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  // El saldo inicial anterior de cada una queda anulado (no se borra)
+  const claves = lista.map((f) => `"t${String(f.cuenta).replace(/"/g, "")}"`);
+  await sbPatch(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_SALDO_INICIAL}&anulada_at=is.null&origen_id=in.(${encodeURIComponent(claves.join(","))})`, {
+    anulada_at: ahora, anulada_por_nombre: "Gypi (saldo inicial reemplazado)", updated_at: ahora,
+  }, { sesion });
+  if (finales.length) {
+    await sbPost("fin_operaciones", finales.map((f) => ({ ...f, empresa_id: e, cargada_por_nombre: quien || "Gypi (copiado del libro)", created_at: ahora, updated_at: ahora })), { sesion });
+  }
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, cargados: finales.length });
+}
+
+async function transferir(sesion, d) {
+  const e = sesion.empresa_id;
+  const tesoreria = await leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`);
+  const { op, errores } = validarTransferencia(d, tesoreria);
+  if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const [o] = (await sbPost("fin_operaciones", { ...op, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion })) || [];
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, operacion: o });
+}
+
+export async function POST(request) {
+  const { sesion, response } = await sesionDueno(request);
+  if (response) return response;
+  const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
+  if (sinPlan) return sinPlan;
+  const d = await request.json().catch(() => null);
+  try {
+    if (d?.accion === "saldos_iniciales") return await saldosIniciales(sesion, d);
+    if (d?.accion === "transferir") return await transferir(sesion, d);
+    return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
+  } catch (err) {
+    return errorFinanzas(err, `tesoreria ${d?.accion}`);
+  }
+}
