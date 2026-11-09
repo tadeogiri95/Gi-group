@@ -71,13 +71,14 @@ const EscanearPiezas = dynamic(() => import("../components/EscanearPiezas"), { s
 const VALID_SCREENS = new Set([
   "home", "chat", "solicitudes", "mis-sols", "actividad",
   "historial-fichajes", "equipo", "config", "ger-actividad", "reglas",
-  "proyectos", "inventario", "mantenimiento",
+  "proyectos", "inventario", "mantenimiento", "finanzas",
   "documentos", "instalaciones", "cuenta",
 ]);
 // Botones de la barra de gestión con pestañas (menú nuevo, parte 32)
-const BOTONES = new Set(["proyectos", "inventario", "mantenimiento"]);
-// Permisos y Equipo se abren desde "Más": ahí la barra marca "Más"
-const DESDE_MAS = new Set(["solicitudes", "equipo"]);
+// Finanzas (171, solo el Dueño) no tiene botón en la barra de abajo: se abre desde Más
+const BOTONES = new Set(["proyectos", "inventario", "mantenimiento", "finanzas"]);
+// Permisos, Equipo y Finanzas se abren desde "Más": ahí la barra marca "Más"
+const DESDE_MAS = new Set(["solicitudes", "equipo", "finanzas"]);
 
 export default function HomeContent() {
   const searchParams = useSearchParams();
@@ -295,7 +296,7 @@ export default function HomeContent() {
 
   const getScreenSubtitle = () => {
     if (uIsGer) {
-      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", proyectos: "Órdenes de trabajo y reportes", inventario: "Stock y compras", mantenimiento: "Flota vehicular y maquinaria", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
+      const subtitles = { "ger-actividad": "Tareas del equipo", config: "Ajustes de la empresa", proyectos: "Órdenes de trabajo y reportes", inventario: "Stock y compras", mantenimiento: "Flota vehicular y maquinaria", finanzas: "Solo para el dueño", equipo: "Personas, horarios y reportes", solicitudes: "Permisos, vacaciones y avisos", "historial-fichajes": "Control de asistencia" };
       return subtitles[screen] || empresa?.nombre_corto || "Gypi";
     }
     const subtitles = { cuenta: "Horario, fichadas y documentos", instalaciones: "El reporte del día", mantenimiento: "Flota vehicular y maquinaria", actividad: "Lo que hacés en la jornada", "mis-sols": "Permisos, vacaciones y avisos", "historial-fichajes": "Mi asistencia", documentos: "Mi documentación" };
@@ -303,7 +304,7 @@ export default function HomeContent() {
   };
 
   const getScreenTitle = () => {
-    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Permisos", equipo: "Equipo", "mis-sols": "Mis permisos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", proyectos: "Producción", inventario: "Materiales", mantenimiento: "Mantenimiento", "historial-fichajes": "Fichajes", documentos: "Documentos" };
+    const titles = { cuenta: "Mi cuenta", instalaciones: "Instalaciones", solicitudes: "Permisos", equipo: "Equipo", "mis-sols": "Mis permisos", actividad: "Tareas", "ger-actividad": "Producción en vivo", config: "Más", proyectos: "Producción", inventario: "Materiales", mantenimiento: "Mantenimiento", finanzas: "Finanzas", "historial-fichajes": "Fichajes", documentos: "Documentos" };
     return titles[screen] || empresa?.nombre_corto || "Gypi";
   };
 

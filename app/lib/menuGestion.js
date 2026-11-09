@@ -45,6 +45,15 @@ export const BOTONES_GESTION = {
       { id: "maquinaria", label: "Maquinaria", modulo: "maquinaria" },
     ],
   },
+  // Finanzas (F1, 171): solo el rol Dueño, ni el Supervisor (pedido 09/11).
+  // No va en la barra de abajo del celular: se abre desde Más.
+  finanzas: {
+    label: "Finanzas",
+    detalle: "Cuentas, cajas, bancos y movimientos",
+    opciones: [
+      { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
+    ],
+  },
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el
@@ -52,12 +61,14 @@ export const BOTONES_GESTION = {
 export function opcionesBoton(boton, empresa, usuario = null) {
   return (BOTONES_GESTION[boton]?.opciones || [])
     .filter((o) => (!o.conTareas || conRegistroTareas(empresa)) && !moduloApagado(empresa, o.modulo))
-    .filter((o) => !o.soloGerencia || comoDueno(usuario));
+    .filter((o) => !o.soloGerencia || comoDueno(usuario))
+    .filter((o) => !o.soloDueno || usuario?.rol === "gerencial");
 }
 
-/** ¿Va el botón en la barra? Solo si la empresa tiene alguno de sus módulos. */
-export function conBoton(boton, empresa) {
-  return opcionesBoton(boton, empresa).some((o) => tieneModulo(empresa, o.modulo));
+/** ¿Va el botón en la barra? Solo si la empresa tiene alguno de sus módulos
+ *  (y, para los que son solo del Dueño, si el usuario es el Dueño). */
+export function conBoton(boton, empresa, usuario = null) {
+  return opcionesBoton(boton, empresa, usuario).some((o) => tieneModulo(empresa, o.modulo));
 }
 
 // Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
@@ -91,6 +102,8 @@ const SECCIONES = [
   { id: "ubicaciones", grupo: "empresa", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
   { id: "reglas", grupo: "empresa", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
   { id: "modulos", grupo: "empresa", icono: "🧩", label: "Módulos", detalle: "Prendé o apagá lo que usa la empresa" },
+  // Finanzas (F1, 171): en el celular se abre desde acá; solo el Dueño
+  { id: "finanzas", pantalla: "finanzas", grupo: "empresa", icono: "💰", label: "Finanzas", detalle: "Plan de cuentas, cajas, bancos y movimientos", soloDueno: true },
   { id: "facturacion", grupo: "empresa", icono: "💳", label: "Plan y facturación", detalle: "Tu plan, pagos y comprobantes", soloDueno: true },
   { id: "privacidad", grupo: "cuenta", icono: "👤", label: "Mi cuenta y privacidad", detalle: "Tus datos y cerrar sesión" },
 ];

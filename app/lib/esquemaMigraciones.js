@@ -87,6 +87,7 @@ export const MIGRACIONES = [
   { n: 168, archivo: "168_facturas_sueltas.sql", nombre: "Facturas sueltas y artículos sin asociar", tablas: { facturas_sueltas: [], facturas_sueltas_renglones: [], asociaciones_articulos: [] } },
   { n: 169, archivo: "169_listas_precios.sql", nombre: "Listas de precios de proveedores", tablas: { facturas_sueltas: ["tipo"] } },
   { n: 170, archivo: "170_detalle_renglon_lista.sql", nombre: "Fila completa de cada renglón de una lista", tablas: { facturas_sueltas_renglones: ["detalle"] } },
+  { n: 171, archivo: "171_finanzas_base.sql", nombre: "Finanzas: plan de cuentas, cajas y movimientos", tablas: { fin_cuentas: [], fin_tipos_operacion: [], fin_tesoreria: [], fin_centros_costo: [], fin_operaciones: [] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

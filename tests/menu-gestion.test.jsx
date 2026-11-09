@@ -52,7 +52,7 @@ test("botones — Proyectos: OT y Reportes; Inventario: Stock y Compras; Manteni
 
 test("Más — agrupado por tema: Personas, Cómo trabaja la planta, Empresa y Tu cuenta (auditoría 01/11)", () => {
   const todo = ids({ empresa: PLANTA, usuario: DUENO });
-  assert.deepEqual(todo, ["equipo", "permisos", "asistencia", "produccion", "planificacion", "planillas", "admin", "ubicaciones", "reglas", "modulos", "facturacion", "privacidad"]);
+  assert.deepEqual(todo, ["equipo", "permisos", "asistencia", "produccion", "planificacion", "planillas", "admin", "ubicaciones", "reglas", "modulos", "finanzas", "facturacion", "privacidad"]);
   for (const id of ["personal", "horarios", "calendario", "reportes", "documentacion"]) assert.ok(!todo.includes(id), id);
   const grupo = (id) => seccionesMas({ empresa: PLANTA, usuario: DUENO }).find((s) => s.id === id).grupo;
   assert.deepEqual(["produccion", "planificacion", "planillas"].map(grupo), ["planta", "planta", "planta"], "toda la configuración de la planta junta");
@@ -111,13 +111,14 @@ test("Más — sin Proyectos, las OT aparecen acá (con candado si no están en 
   assert.equal(ot.bloqueado, true);
 });
 
-test("Más — el supervisor ve lo mismo que el dueño menos facturación; administración, sin planificación", () => {
+test("Más — el supervisor ve lo mismo que el dueño menos facturación y Finanzas; administración, sin planificación", () => {
   assert.ok(!ids({ empresa: PLANTA, usuario: ADMIN }).includes("facturacion"));
   assert.ok(ids({ empresa: PLANTA, usuario: ADMIN }).includes("admin"));
   assert.ok(!ids({ empresa: PLANTA, usuario: ADMIN }).includes("planificacion"));
   const sup = ids({ empresa: PLANTA, usuario: SUPERVISOR });
   const dueno = ids({ empresa: PLANTA, usuario: DUENO });
-  assert.deepEqual(sup, dueno.filter((id) => id !== "facturacion"));
+  // Finanzas (171) es solo del Dueño: el Supervisor no entra (09/11)
+  assert.deepEqual(sup, dueno.filter((id) => id !== "facturacion" && id !== "finanzas"));
   for (const id of ["admin", "produccion", "planillas", "modulos", "planificacion"]) assert.ok(sup.includes(id), id);
   assert.equal(esSupervisor(SUPERVISOR), true);
   assert.equal(esSupervisor(ADMIN), false);
