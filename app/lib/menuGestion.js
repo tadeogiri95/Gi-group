@@ -59,6 +59,7 @@ export const BOTONES_GESTION = {
       { id: "fin-pagos", label: "Pagos", modulo: "finanzas", soloDueno: true },
       { id: "fin-cheques", label: "Cheques", modulo: "finanzas", soloDueno: true },
       { id: "fin-resultados", label: "Resultados", modulo: "finanzas", soloDueno: true },
+      { id: "fin-flujo", label: "Flujo de caja", modulo: "finanzas", soloDueno: true },
       { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
     ],
   },

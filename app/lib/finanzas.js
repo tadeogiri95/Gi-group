@@ -11,6 +11,8 @@
 // en lo demás pueda lo mismo que el Dueño (comoDueno): por eso acá se mira el
 // rol y no comoDueno().
 
+import { flujoDeHoja } from "./finanzasFlujo";
+
 /** ¿Puede entrar a Finanzas? Solo el Dueño. */
 export const esDuenoFinanzas = (u) => u?.rol === "gerencial";
 
@@ -231,6 +233,8 @@ export function sugerirCuentas(grillaOperaciones, tipos, { excluir = [], cuentas
   return out;
 }
 
+export const HOJA_FLUJO = "dim_flujo";
+
 /** Hoja del libro por nombre, sin mirar mayúsculas ni espacios. */
 export function hojaDe(hojas, nombre) {
   return (hojas || []).find((h) => clave(h.nombre) === clave(nombre)) || null;
@@ -261,7 +265,10 @@ export function leerLibro(hojas) {
   const gOps = hojaDe(hojas, HOJA_OPERACIONES)?.grilla;
   const excluir = cuentas.filas.filter((c) => /^ajuste de capital$/i.test(c.nombre)).map((c) => c.codigo);
   const sugerencias = gOps ? sugerirCuentas(gOps, tipos.filas, { excluir, cuentas: codigos }) : [];
-  return { cuentas, tipos, tesoreria, centros, sugerencias, faltan };
+  // Las líneas del flujo de caja de cada tipo (F6b); la hoja es opcional
+  const gFlujo = hojaDe(hojas, HOJA_FLUJO)?.grilla;
+  const flujo = gFlujo ? flujoDeHoja(gFlujo) : null;
+  return { cuentas, tipos, tesoreria, centros, sugerencias, faltan, flujo };
 }
 
 // ─── Lo que valida el servidor ──────────────────────────────────────────

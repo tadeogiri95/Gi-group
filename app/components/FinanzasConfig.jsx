@@ -12,12 +12,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import FinanzasLibroScript from "./FinanzasLibroScript";
-import { HOJA_OPERACIONES, TABLAS_FIN, TIPOS_TESORERIA, leerLibro } from "../lib/finanzas";
+import { HOJA_FLUJO, HOJA_OPERACIONES, TABLAS_FIN, TIPOS_TESORERIA, leerLibro } from "../lib/finanzas";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const ORDEN_COPIA = ["cuentas", "tesoreria", "centros", "tipos"];
-const HOJAS_LIBRO = [...Object.values(TABLAS_FIN).map((t) => t.hoja), HOJA_OPERACIONES];
+const HOJAS_LIBRO = [...Object.values(TABLAS_FIN).map((t) => t.hoja), HOJA_OPERACIONES, HOJA_FLUJO];
 const normal = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 async function leerExcel(file) {
@@ -49,6 +49,8 @@ function CopiarLibro({ nombres, onCopiado }) {
   const [elegidas, setElegidas] = useState(new Set(ORDEN_COPIA));
   const [sugeridas, setSugeridas] = useState(new Set());
   const [copiando, setCopiando] = useState(null);
+  const [conFlujo, setConFlujo] = useState(true);
+  const tiposFlujo = libro?.flujo ? Object.keys(libro.flujo.tipos).length : 0;
 
   const abrir = async (file) => {
     if (!file) return;
@@ -80,6 +82,12 @@ function CopiarLibro({ nombres, onCopiado }) {
           filas = filas.map((f) => (sug.has(f.codigo) ? { ...f, cuenta_debe: sug.get(f.codigo).cuenta_debe, cuenta_haber: sug.get(f.codigo).cuenta_haber } : f));
         }
         await postFin({ accion: "importar", tabla: t, filas });
+      }
+      if (conFlujo && tiposFlujo) {
+        setCopiando("Líneas del flujo de caja");
+        const res = await apiFetch("/api/finanzas/flujo", { method: "POST", body: JSON.stringify({ accion: "lineas", ...libro.flujo }) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || "No se pudieron guardar las líneas del flujo");
       }
       toast.success("✅ Listo: la configuración del libro quedó en Gypi");
       setLibro(null);
@@ -125,6 +133,16 @@ function CopiarLibro({ nombres, onCopiado }) {
                 )}
               </li>
             ))}
+            {libro.flujo && (
+              <li className="rounded-lg border border-gypi-border p-3">
+                <label className="flex items-center gap-2 text-[14px] text-gypi-text cursor-pointer">
+                  <input type="checkbox" checked={conFlujo && tiposFlujo > 0} disabled={!tiposFlujo} onChange={() => setConFlujo((x) => !x)} />
+                  <span className="font-semibold">Líneas del flujo de caja</span>
+                  <span className="text-gypi-dim">· {tiposFlujo} tipos (hoja {HOJA_FLUJO})</span>
+                </label>
+                {libro.flujo.avisos.length > 0 && <p className="m-0 mt-1 text-[13px] text-gypi-dim">⚠ {libro.flujo.avisos.join(" ")}</p>}
+              </li>
+            )}
           </ul>
 
           {elegidas.has("tipos") && (
@@ -160,7 +178,7 @@ function CopiarLibro({ nombres, onCopiado }) {
           )}
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className="g-btn g-btn-primary" disabled={!elegidas.size || !!copiando} onClick={copiar}>
+            <button type="button" className="g-btn g-btn-primary" disabled={(!elegidas.size && !(conFlujo && tiposFlujo)) || !!copiando} onClick={copiar}>
               {copiando ? `Copiando ${copiando}…` : "Copiar a Gypi"}
             </button>
             <button type="button" className="g-btn g-btn-secondary" disabled={!!copiando} onClick={() => setLibro(null)}>Cancelar</button>
