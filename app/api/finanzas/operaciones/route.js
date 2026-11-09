@@ -7,6 +7,10 @@
 //   POST { accion: "crear", operacion } → valida (cuentas, caja, dólares, lo
 //       que pide el tipo) y la guarda.
 //   POST { accion: "anular", id } → la marca anulada con quién y cuándo. No se borra.
+//       Solo las cargadas a mano: las de una factura se anulan con la factura.
+//   POST { accion: "cambiar_tipo", id, tipo, recordar } → cambia el tipo (y las
+//       cuentas) de una compra que salió de una factura; con recordar, queda
+//       como tipo del proveedor para las próximas (F2a, migración 172).
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
@@ -81,12 +85,31 @@ export async function POST(request) {
       const id = Number(d.id);
       if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
       const ahora = new Date().toISOString();
-      const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, {
+      // Las que salieron de una factura se anulan solas al anular la factura
+      const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&origen=eq.manual`, {
         anulada_at: ahora, anulada_por_nombre: await nombreEmpleado(sesion), updated_at: ahora,
       }, { sesion });
-      if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
+      if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación, ya estaba anulada o salió de una factura (se anula anulando la factura)" }, { status: 404 });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: filas[0] });
+    }
+    if (d.accion === "cambiar_tipo") {
+      // Compra que salió sola de una factura (F2a): el dueño elige el tipo y Gypi lo recuerda para el proveedor
+      const id = Number(d.id);
+      if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
+      const [op] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&select=id,origen,proveedor_id&limit=1`, { sesion })) || [];
+      if (!op) return NextResponse.json({ error: "No encontré esa operación o está anulada" }, { status: 404 });
+      const [tipo] = (await sbGet(`fin_tipos_operacion?empresa_id=eq.${e}&codigo=eq.${encodeURIComponent(String(d.tipo || ""))}&select=codigo,cuenta_debe,cuenta_haber,activo&limit=1`, { sesion })) || [];
+      if (!tipo || tipo.activo === false) return NextResponse.json({ error: "Ese tipo de operación no existe o está desactivado" }, { status: 400 });
+      if (!tipo.cuenta_debe || !tipo.cuenta_haber) return NextResponse.json({ error: `${tipo.codigo} no tiene cuentas por defecto: completalas en Configuración` }, { status: 400 });
+      const [fila] = (await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}`, {
+        tipo: tipo.codigo, cuenta_debe: tipo.cuenta_debe, cuenta_haber: tipo.cuenta_haber, estado: "confirmada", updated_at: new Date().toISOString(),
+      }, { sesion })) || [];
+      if (d.recordar && op.proveedor_id) {
+        await sbPatch(`proveedores?id=eq.${op.proveedor_id}&empresa_id=eq.${e}`, { fin_tipo: tipo.codigo }, { sesion });
+      }
+      broadcastRefresh(e, "fin_operaciones");
+      return NextResponse.json({ ok: true, operacion: fila });
     }
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {

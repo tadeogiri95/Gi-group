@@ -28,6 +28,8 @@ import { sbDelete, sbGet, sbGetAll, sbHeaders, sbPatch, sbPost } from "../../lib
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { SKU_VALIDO } from "../../lib/stock";
 import { logger } from "../../lib/logger";
+import { sincronizarCompra } from "../../lib/finanzasCompras";
+import { broadcastRefresh } from "../../lib/broadcast";
 import { logAudit } from "../../lib/audit";
 import { ipCliente } from "../../lib/ip";
 import {
@@ -159,6 +161,13 @@ async function leer(request, sesion, d) {
   return NextResponse.json({ ok: true, borrador });
 }
 
+/** Id del proveedor de la lista con ese nombre (sin importar mayúsculas), o null. */
+async function proveedorPorNombre(e, nombre) {
+  const lista = (await sbGet(`proveedores?empresa_id=eq.${e}&select=id,nombre`, { silent: true, fallback: [] })) || [];
+  const clave = String(nombre || "").trim().toLowerCase();
+  return lista.find((p) => String(p.nombre || "").trim().toLowerCase() === clave)?.id || null;
+}
+
 async function guardar(sesion, d) {
   const e = sesion.empresa_id;
   const v = validarFactura(d);
@@ -169,7 +178,18 @@ async function guardar(sesion, d) {
   if (malo) return NextResponse.json({ error: `El artículo ${malo.sku} no está en el MRP` }, { status: 400 });
   const ahora = new Date().toISOString();
 
-  const [factura] = (await sbPost("facturas_sueltas", { empresa_id: e, ...v.factura, cargada_por_nombre: nombre })) || [];
+  // El proveedor de la lista con el mismo nombre (172), para su cuenta corriente en Finanzas
+  const proveedorId = await proveedorPorNombre(e, v.factura.proveedor);
+  const fila = { empresa_id: e, ...v.factura, cargada_por_nombre: nombre };
+  let factura;
+  try {
+    [factura] = (await sbPost("facturas_sueltas", { ...fila, ...(proveedorId ? { proveedor_id: proveedorId } : {}) })) || [];
+  } catch (err) {
+    // Sin la migración 172 no están proveedor_id, iva ni otros_impuestos
+    if (!/proveedor_id|"iva"|otros_impuestos|column/i.test(String(err?.message))) throw err;
+    if (fila.iva || fila.otros_impuestos) return NextResponse.json({ error: "Para cargar el IVA de una factura suelta falta correr la migración 172 en Supabase." }, { status: 409 });
+    [factura] = (await sbPost("facturas_sueltas", fila)) || [];
+  }
   const filas = v.renglones.map((r) => {
     // El artículo que vino elegido se respeta; si coincide con lo que Gypi
     // reconoce, queda anotado cómo, y si no, cuenta como elegido a mano
@@ -186,6 +206,8 @@ async function guardar(sesion, d) {
   await recordar(renglones.filter((r) => r.asociado_como === "manual").flatMap((r) => filasAsociacion(e, factura.proveedor, r, r.sku, nombre)));
   await guardarPrecios(renglones.filter((r) => r.sku).map((r) => filaPrecioFactura(e, factura, r)));
   const asociados = renglones.filter((r) => r.sku).length;
+  // La compra en Finanzas (172): se crea sola
+  if ((await sincronizarCompra(e, { origen: "factura_suelta", id: factura.id })).accion !== "omitida") broadcastRefresh(e, "fin_operaciones");
   return NextResponse.json({ ok: true, id: factura.id, asociados, sinAsociar: renglones.length - asociados });
 }
 
@@ -250,6 +272,7 @@ async function anular(sesion, d) {
     const refs = renglones.slice(i, i + 200).map((r) => `FS-${r.id}`).join(",");
     await sbDelete(`precios_articulos?empresa_id=eq.${e}&origen=eq.factura&referencia=in.(${refs})`);
   }
+  if ((await sincronizarCompra(e, { origen: "factura_suelta", id })).accion === "anulada") broadcastRefresh(e, "fin_operaciones");
   return NextResponse.json({ ok: true });
 }
 

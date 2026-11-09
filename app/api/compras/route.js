@@ -57,6 +57,7 @@ import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
 import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
 import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, pedidosAlCerrar, precioEnPesos, precioEnStock } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
+import { sincronizarCompra } from "../../lib/finanzasCompras";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -486,6 +487,8 @@ async function anularOrden(sesion, id) {
   await liberarPedidos(sesion, `orden_id=eq.${oc.id}`);
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "pedidos_compra");
+  // Si tenía factura, la compra en Finanzas se anula (172)
+  if ((await sincronizarCompra(e, { origen: "factura_oc", id: oc.id })).accion === "anulada") broadcastRefresh(e, "fin_operaciones");
   return NextResponse.json({ ok: true, orden: fila || { ...oc, estado: "anulada" } });
 }
 
@@ -678,6 +681,8 @@ async function facturaOrden(sesion, d) {
   if (!r?.ok) return rechazoTransaccion(r);
   broadcastRefresh(e, "ordenes_compra");
   if (r.reemplazados) broadcastRefresh(e, "movimientos_stock");
+  // La compra en Finanzas (172): se crea o se corrige sola
+  if ((await sincronizarCompra(e, { origen: "factura_oc", id: oc.id })).accion !== "omitida") broadcastRefresh(e, "fin_operaciones");
   return NextResponse.json({ ok: true, orden: r.orden, reemplazados: r.reemplazados });
 }
 

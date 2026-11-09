@@ -20,7 +20,7 @@ import ArticuloNuevo from "./ArticuloNuevo";
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 const fechaCorta = (f) => (f ? String(f).split("-").reverse().join("/") : "");
 const renglonVacio = () => ({ descripcion: "", codigo: "", cantidad: "", precio: "", sku: null, manual: false });
-const facturaVacia = (tipo = "factura") => ({ tipo, proveedor: "", numero: "", fecha: hoy(), moneda: "ARS", tipo_cambio: "", observacion: "", carga: "manual", renglones: [renglonVacio()] });
+const facturaVacia = (tipo = "factura") => ({ tipo, proveedor: "", numero: "", fecha: hoy(), moneda: "ARS", tipo_cambio: "", iva: "", otros_impuestos: "", observacion: "", carga: "manual", renglones: [renglonVacio()] });
 const num = (v) => {
   const t = String(v ?? "").trim();
   if (!t) return 0;
@@ -267,10 +267,27 @@ function Editor({ inicial, articulos, onGuardada, onCancelar }) {
         </>
       )}
       {!esLista && (
-        <div className="flex items-baseline gap-2 mt-2">
-          <span className="flex-1 text-[13px] font-semibold">Neto sin IVA</span>
-          <span className="text-[15px] font-bold">{textoPrecio(neto, f.moneda)}</span>
-        </div>
+        <>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="flex-1 text-[13px] font-semibold">Neto sin IVA</span>
+            <span className="text-[15px] font-bold">{textoPrecio(neto, f.moneda)}</span>
+          </div>
+          <div className="flex items-end gap-2 mt-2">
+            <div className="flex-1 min-w-0">
+              <label className="g-label" htmlFor="fs-iva">IVA</label>
+              <input id="fs-iva" className="g-input w-full text-right" inputMode="decimal" value={f.iva ?? ""} placeholder="0" onChange={cambiar("iva")} />
+            </div>
+            <button type="button" className="g-btn g-btn-secondary" onClick={() => setF((x) => ({ ...x, iva: String(Math.round(neto * 21) / 100).replace(".", ",") }))}>21 %</button>
+            <div className="flex-1 min-w-0">
+              <label className="g-label" htmlFor="fs-otros">Otros impuestos</label>
+              <input id="fs-otros" className="g-input w-full text-right" inputMode="decimal" value={f.otros_impuestos ?? ""} placeholder="0" onChange={cambiar("otros_impuestos")} />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="flex-1 text-[13px] font-semibold">Total</span>
+            <span className="text-[15px] font-bold">{textoPrecio(neto + (num(f.iva) || 0) + (num(f.otros_impuestos) || 0), f.moneda)}</span>
+          </div>
+        </>
       )}
       <div className="flex gap-2 mt-2">
         <button type="button" onClick={guardar} disabled={guardando || !f.renglones.length} className="g-btn g-btn-primary flex-1">{guardando ? "Guardando…" : esLista ? "💾 Guardar lista" : "💾 Guardar factura"}</button>

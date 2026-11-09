@@ -291,3 +291,31 @@ test("Movimientos — sin el libro copiado manda a Configuración", async () => 
   render(<FinanzasMovimientos />);
   await waitFor(() => assert.ok(screen.getByText(/Primero copiá el libro/)));
 });
+
+test("/api/finanzas/operaciones — cambiar el tipo de una compra que salió de una factura la confirma", async () => {
+  const { escrito } = mockApi();
+  const res = await pedir("gerencial", "POST", { accion: "cambiar_tipo", id: 1, tipo: "COMPRA MP", recordar: true });
+  assert.equal(res.status, 200);
+  assert.equal(escrito[0].metodo, "PATCH");
+  assert.deepEqual([escrito[0].body.tipo, escrito[0].body.cuenta_debe, escrito[0].body.estado], ["COMPRA MP", "01.01.04.001.002", "confirmada"]);
+  assert.equal((await pedir("administrativo", "POST", { accion: "cambiar_tipo", id: 1, tipo: "COMPRA MP" })).status, 403);
+});
+
+test("Movimientos — una compra de factura muestra de dónde salió, para revisar, y no se anula a mano", async () => {
+  const datos = {
+    desde: "2026-11-01", hasta: "2026-11-09", truncado: false, ...CTX,
+    operaciones: [
+      { id: 4, fecha: "2026-11-05", tipo: "COMPRA MP", proveedor_id: 5, neto: 100, iva: 21, otros_impuestos: 0, total: 121, total_ars: 121, moneda: "ARS", cuenta_debe: "01.01.04.001.002", cuenta_haber: "02.01.02.001.001", origen: "factura_oc", estado: "para_revisar", descripcion: "Factura A-1 · OC 120" },
+      { id: 5, fecha: "2026-11-06", tipo: "PAGO TRANSF", proveedor_id: 5, neto: 50, total: 50, total_ars: 50, moneda: "ARS", cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.003.002", origen: "manual", estado: "confirmada" },
+    ],
+  };
+  global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
+  render(<FinanzasMovimientos />);
+  await waitFor(() => assert.ok(screen.getByText("🧾 Factura de OC")));
+  fireEvent.click(screen.getByLabelText("Solo para revisar (1)"));
+  await waitFor(() => assert.ok(screen.getByText("1 operación")));
+  fireEvent.click(screen.getByText("COMPRA MP · ACERCO S A"));
+  await waitFor(() => assert.ok(screen.getByLabelText("Tipo de compra")));
+  assert.ok(screen.getByRole("button", { name: "Confirmar tipo" }));
+  assert.equal(screen.queryByRole("button", { name: "Anular operación" }), null);
+});
