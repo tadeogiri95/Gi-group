@@ -6,6 +6,7 @@ export const SLUGS_RESERVADOS = new Set([
   "nosotros", "contacto", "docs", "reactivar", "monitoring", "demo", "login", "registro",
   "kiosco", "unirse", "offline", "manifest", "icons", "static", "_next",
   "ot", // página de la OT para el cliente (/ot/<código>, 04/11)
+  "op", // orden de pago para el CFO (/op/<token>, Finanzas F2b)
 ]);
 
 // Empresas que cambiaron de dirección: la vieja lleva a la nueva cuando ya no
