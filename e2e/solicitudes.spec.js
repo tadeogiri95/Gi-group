@@ -6,6 +6,10 @@
 // credenciales.
 import { test, expect } from "@playwright/test";
 
+// Pantalla de computadora más alta: con el grupo Finanzas el botón "Más" del
+// menú lateral queda al pie y, a 720 px, lo tapa el aviso de Next en modo dev.
+test.use({ viewport: { width: 1280, height: 900 } });
+
 const EMPRESA = {
   id: "11111111-1111-1111-1111-111111111111",
   nombre: "Empresa Smoke Test",
