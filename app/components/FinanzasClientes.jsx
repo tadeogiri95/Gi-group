@@ -22,6 +22,7 @@ import {
 } from "../lib/finanzasClientes";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
+import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
 
 const MAX_LISTA = 300;
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
@@ -316,6 +317,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
         ) : (
           <p className="m-0 text-[12px] text-gypi-dim">Este nombre no está en la lista de clientes: creá el cliente o sumalo como otro nombre de uno que ya esté.</p>
         )}
+        {saldo.cliente_id && <LineaUnificada clienteId={saldo.cliente_id} onCambio={onCambio} />}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex gap-2">
           <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos ({movimientos.length})</Chip>
@@ -553,6 +555,7 @@ export default function FinanzasClientes() {
         <button type="button" className="g-btn g-btn-secondary" disabled={trayendo} onClick={traer}>{trayendo ? "Trayendo…" : "📋 Traer de las OT"}</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("iniciales")}>📥 Cargar saldos iniciales</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ventas")}>🧾 Ventas de las OT</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("unificados")}>🔗 Cliente y proveedor</button>
       </div>
       <p className="m-0 mb-2 text-[13px] text-gypi-dim">
         {datos.ventas_ot?.activo
@@ -592,6 +595,7 @@ export default function FinanzasClientes() {
 
       {fichaActual && <Ficha saldo={fichaActual} datos={datos} cuentasDeu={cuentasDeu} onCerrar={() => setFicha(null)} onCambio={cargar} />}
       {modal === "nuevo" && <DatosCliente cliente={null} onCerrar={() => setModal(null)} onGuardado={() => { setModal(null); cargar(); }} />}
+      {modal === "unificados" && <FinanzasUnificados onCerrar={() => setModal(null)} onCambio={cargar} />}
       {modal === "ventas" && <VentasOt config={datos.ventas_ot} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); cargar(); }} />}
       {modal === "iniciales" && <SaldosIniciales datos={datos} cuentasDeu={cuentasDeu} onCerrar={() => setModal(null)} onCargados={() => { setModal(null); cargar(); }} />}
     </div>
