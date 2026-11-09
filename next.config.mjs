@@ -8,6 +8,8 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig = {
   reactStrictMode: true,
+  // El indicador de desarrollo abajo a la izquierda tapaba "Más" del menú lateral (e2e)
+  devIndicators: { position: "bottom-right" },
 
   images: {
     remotePatterns: [

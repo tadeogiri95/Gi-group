@@ -289,6 +289,7 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
   const [confirmar, setConfirmar] = useState(false);
   const [anulando, setAnulando] = useState(false);
   const automatica = op.origen && op.origen !== "manual";
+  const compra = ["factura_oc", "factura_oc_otra", "factura_suelta"].includes(op.origen);
 
   const anular = async () => {
     setAnulando(true);
@@ -319,8 +320,9 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
         {automatica && fila("Salió de", ORIGENES[op.origen] || op.origen)}
         {op.estado === "para_revisar" && !op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde.</p>}
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
-        {automatica && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
-        {automatica && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
+        {compra && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
+        {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {op.origen === "cheque" ? "Finanzas → Cheques" : "donde salió"}.</p>}
+        {compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
         {!op.anulada_at && !automatica && (
           <div className="flex justify-end gap-2 mt-2">
             {confirmar ? (

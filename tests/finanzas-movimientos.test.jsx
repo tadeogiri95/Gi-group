@@ -194,7 +194,7 @@ function mockApi({ anulada = false } = {}) {
           return { status: 201, body: [{ id: 33, ...JSON.parse(o.body) }] };
         }
         leido.push(u);
-        return { status: 200, body: [{ id: 1, fecha: "2026-11-02", tipo: "COMPRA MP", total: 100 }] };
+        return { status: 200, body: [{ id: 1, fecha: "2026-11-02", tipo: "COMPRA MP", total: 100, origen: "factura_oc" }] };
       },
     },
     {
