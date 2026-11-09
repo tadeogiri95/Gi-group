@@ -21,6 +21,7 @@ import RetirarMaterial from "../RetirarMaterial";
 import EscanearPiezas from "../EscanearPiezas";
 import ChecklistVehiculo from "../ChecklistVehiculo";
 import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
+import MiCaja, { useMiCaja, detalleMiCaja } from "../MiCaja";
 import AvisarFalla from "../AvisarFalla";
 import PlanSemana from "../PlanSemana";
 import VerPdfOt from "../VerPdfOt";
@@ -66,6 +67,9 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   // Parte 34 (133): lo que tiene a cargo como responsable de mantenimiento o suplente
   const mant = useMiMantenimiento(demo ? null : usuario?.id, { conFlota, conMaquinaria });
   const [verMant, setVerMant] = useState(false);
+  // 📱 Mi caja (Finanzas F3b, 176): solo para el responsable de una caja
+  const miCaja = useMiCaja(!demo && tieneModulo(empresa, "finanzas"));
+  const [verCaja, setVerCaja] = useState(false);
   // 📐 Mis planillas (parte 50): solo para las arquitectas de Diseño y Técnica
   const planillas = useMisPlanillas(conProyectos);
   const [verPlanillas, setVerPlanillas] = useState(false);
@@ -168,6 +172,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         {conMiMant && (
           <BotonAccion icono="🔧" titulo="Mi mantenimiento" detalle={detalleMiMantenimiento(mant.items)} destacado={resumenMant.vencidas > 0} onClick={() => setVerMant(true)} />
         )}
+        {miCaja.cajas.length > 0 && <BotonAccion icono="📱" titulo="Mi caja" detalle={detalleMiCaja(miCaja.cajas)} onClick={() => setVerCaja(true)} />}
         {/* Parte 35 (134): cualquiera avisa que una máquina tiene un problema */}
         {conMaquinaria && <BotonAccion icono="⚠️" titulo="Avisar una falla" detalle="Una máquina anda mal o se paró: avisá con foto" onClick={() => setAvisarFalla(true)} />}
         {misVehiculos.length > 0 && (
@@ -186,6 +191,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       {verPlanillas && <MisPlanillas datos={planillas} onClose={() => setVerPlanillas(false)} />}
       {verPdf && <VerPdfOt onClose={() => setVerPdf(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
+      {verCaja && <MiCaja datos={miCaja} onClose={() => setVerCaja(false)} onCambio={miCaja.cargar} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}
       {checklist && <ChecklistVehiculo vehiculos={misVehiculos} empresaNombre={empresa?.nombre || ""} onClose={() => setChecklist(false)} />}
       {retirar && <RetirarMaterial empresaId={usuario.empresa_id || empresa?.id} usuario={usuario} onClose={() => setRetirar(false)} />}

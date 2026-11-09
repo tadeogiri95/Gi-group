@@ -60,6 +60,7 @@ import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct }
 import NombreOt from "./components/NombreOt";
 import { mapaOts, otCompleta, textoOt } from "./lib/nombreOt";
 import MisPlanillas, { detalleMisPlanillas, useMisPlanillas } from "./components/MisPlanillas";
+import MiCaja, { detalleMiCaja, useMiCaja } from "./components/MiCaja";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -160,6 +161,25 @@ function TarjetaMisPlanillas() {
         </span>
       </button>
       {ver && <MisPlanillas datos={datos} onClose={() => setVer(false)} />}
+    </section>
+  );
+}
+
+/** 📱 Mi caja del que entra (Finanzas F3b, 176); nada si no es responsable de una caja. */
+function TarjetaMiCaja() {
+  const datos = useMiCaja(true);
+  const [ver, setVer] = useState(false);
+  if (!datos.cajas.length) return null;
+  return (
+    <section aria-label="Mi caja" className="card-hover g-card mb-4">
+      <button type="button" onClick={() => setVer(true)} className="w-full flex items-center gap-3 bg-transparent border-none p-0 cursor-pointer text-left font-body text-gypi-text">
+        <span aria-hidden="true" className="text-[26px]">📱</span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[16px] font-bold">Mi caja</span>
+          <span className="block text-[14px] text-gypi-dim">{detalleMiCaja(datos.cajas)}</span>
+        </span>
+      </button>
+      {ver && <MiCaja datos={datos} onClose={() => setVer(false)} onCambio={datos.cargar} />}
     </section>
   );
 }
@@ -732,6 +752,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── 📐 Mis planillas (parte 50): solo si quien entra es arquitecta de Diseño y Técnica ─── */}
       {!isDemo && conOt && <TarjetaMisPlanillas />}
+      {!isDemo && tieneModulo(empresa, "finanzas") && <TarjetaMiCaja />}
 
       {/* ─── Minuta de Buenos Días (parte M5): solo gerencia con el módulo ─── */}
       {!isDemo && <TarjetaMinuta empresa={empresa} goto={goto} />}
