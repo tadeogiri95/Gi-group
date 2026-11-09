@@ -203,10 +203,21 @@ export function validarFactura(d) {
       manual: Boolean(r?.manual),
     });
   }
+  // IVA y otros impuestos de la factura (172): solo van si hay, así una base
+  // sin la migración sigue guardando las facturas sin IVA y las listas
+  const impuestos = {};
+  if (!esLista) {
+    for (const [campo, label] of [["iva", "el IVA"], ["otros_impuestos", "otros impuestos"]]) {
+      const v = d?.[campo] === "" || d?.[campo] == null ? 0 : numero(d[campo]);
+      if (v === null || v < 0 || v >= 1e14) return { error: `Revisá ${label}` };
+      if (v > 0) impuestos[campo] = Math.round(v * 100) / 100;
+    }
+  }
   return {
     factura: {
       tipo,
       proveedor,
+      ...impuestos,
       numero: texto(d?.numero, 60),
       fecha,
       moneda,

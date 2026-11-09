@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { textoOt } from "../lib/nombreOt";
 import {
-  asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
+  ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
 } from "../lib/finanzasOperaciones";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -244,10 +244,51 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
 
 /* ─── Detalle y anular ───────────────────────────────────────────────── */
 
+/** Compra que salió de una factura: el dueño elige el tipo y Gypi lo recuerda para el proveedor. */
+function CambiarTipo({ op, datos, onCambiado }) {
+  const toast = useToast();
+  const [tipo, setTipo] = useState(op.tipo);
+  const [recordar, setRecordar] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const opciones = datos.tipos.filter((t) => t.activo !== false && t.cuenta_debe && t.cuenta_haber);
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "cambiar_tipo", id: op.id, tipo, recordar: recordar && !!op.proveedor_id }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo cambiar el tipo");
+      toast.success("✅ Tipo guardado");
+      onCambiado();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+  return (
+    <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3 flex flex-col gap-2">
+      {campo("Tipo de compra", (
+        <select className="g-input w-full" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          {opciones.map((t) => <option key={t.codigo} value={t.codigo}>{t.codigo}{t.nombre ? ` · ${t.nombre}` : ""}</option>)}
+        </select>
+      ))}
+      {op.proveedor_id && (
+        <label className="flex items-center gap-2 text-[13px] text-gypi-text cursor-pointer">
+          <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} /> Usar este tipo para las próximas facturas de este proveedor
+        </label>
+      )}
+      <button type="button" className="g-btn g-btn-primary self-end" disabled={guardando || (tipo === op.tipo && op.estado !== "para_revisar")} onClick={guardar}>
+        {guardando ? "Guardando…" : op.estado === "para_revisar" && tipo === op.tipo ? "Confirmar tipo" : "Guardar tipo"}
+      </button>
+    </section>
+  );
+}
+
 function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
   const toast = useToast();
   const [confirmar, setConfirmar] = useState(false);
   const [anulando, setAnulando] = useState(false);
+  const automatica = op.origen && op.origen !== "manual";
 
   const anular = async () => {
     setAnulando(true);
@@ -275,8 +316,12 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
         {fila("Descripción", op.descripcion)}
         {fila("Referencia", op.referencia)}
         {fila("Cargada por", op.cargada_por_nombre)}
+        {automatica && fila("Salió de", ORIGENES[op.origen] || op.origen)}
+        {op.estado === "para_revisar" && !op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde.</p>}
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
-        {!op.anulada_at && (
+        {automatica && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
+        {automatica && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
+        {!op.anulada_at && !automatica && (
           <div className="flex justify-end gap-2 mt-2">
             {confirmar ? (
               <>
@@ -300,7 +345,7 @@ export default function FinanzasMovimientos() {
   const [periodo, setPeriodo] = useState(() => ({ desde: inicioMes(hoyAr()), hasta: hoyAr() }));
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
-  const [filtros, setFiltros] = useState({ tipo: "", caja: "", proveedor: "", proyecto: "", centro: "", buscar: "", anuladas: false });
+  const [filtros, setFiltros] = useState({ revisar: false, tipo: "", caja: "", proveedor: "", proyecto: "", centro: "", buscar: "", anuladas: false });
   const [nueva, setNueva] = useState(false);
   const [detalle, setDetalle] = useState(null);
 
@@ -347,6 +392,7 @@ export default function FinanzasMovimientos() {
       {opciones}
     </select>
   );
+  const revisar = (datos.operaciones || []).filter((o) => o.estado === "para_revisar" && !o.anulada_at).length;
   const usadas = (k) => new Set((datos.operaciones || []).map((o) => String(o[k] ?? "")).filter(Boolean));
   const provUsados = usadas("proveedor_id");
   const otsUsadas = usadas("proyecto_id");
@@ -367,6 +413,11 @@ export default function FinanzasMovimientos() {
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <input className="g-input flex-1 min-w-[180px]" aria-label="Buscar" placeholder="Buscar por descripción, proveedor u OT" value={filtros.buscar} onChange={setFiltro("buscar")} />
+        {revisar > 0 && (
+          <label className="flex items-center gap-2 text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
+            <input type="checkbox" checked={filtros.revisar} onChange={setFiltro("revisar")} /> Solo para revisar ({revisar})
+          </label>
+        )}
         <label className="flex items-center gap-2 text-[13px] text-gypi-text cursor-pointer">
           <input type="checkbox" checked={filtros.anuladas} onChange={setFiltro("anuladas")} /> Ver anuladas
         </label>
@@ -395,6 +446,12 @@ export default function FinanzasMovimientos() {
                   {nombreCuenta(op.cuenta_debe, datos.cuentas)} ← {nombreCuenta(op.cuenta_haber, datos.cuentas)}
                   {ot ? ` · ${ot}` : ""}{op.descripcion ? ` · ${op.descripcion}` : ""}
                 </span>
+                {(ORIGENES[op.origen] || op.estado === "para_revisar") && (
+                  <span className="block text-[12px] text-gypi-dim">
+                    {ORIGENES[op.origen] || ""}
+                    {op.estado === "para_revisar" && !op.anulada_at && <b className="ml-1 text-gypi-amber-ink">· Para revisar</b>}
+                  </span>
+                )}
                 {op.anulada_at && <span className="block text-[12px] font-semibold text-gypi-red">Anulada</span>}
               </button>
             </li>

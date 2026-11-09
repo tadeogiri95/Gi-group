@@ -22,6 +22,8 @@ export const IVA_CREDITO = /^iva cr[eé]dito fiscal$/i;
 export const IVA_DEBITO = /^iva d[eé]bito fiscal$/i;
 export const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_OPERACIONES = 5000;
+/** De dónde salió una operación que no se cargó a mano (F2a). */
+export const ORIGENES = { factura_oc: "🧾 Factura de OC", factura_suelta: "🧾 Factura suelta" };
 
 const txt = (v, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const redondear = (n) => Math.round(n * 100) / 100;
@@ -210,7 +212,7 @@ export function movimientoCaja(op, caja) {
 /**
  * Filtra la lista de Movimientos.
  * @param {any[]} ops
- * @param {{ tipo?: string, caja?: string, proveedor?: string, proyecto?: string, centro?: string, buscar?: string, anuladas?: boolean }} filtros
+ * @param {{ revisar?: boolean, tipo?: string, caja?: string, proveedor?: string, proyecto?: string, centro?: string, buscar?: string, anuladas?: boolean }} filtros
  * @param {(op: any) => string} [textoDe] texto donde buscar (proveedor, OT, descripción)
  */
 export function filtrarOperaciones(ops, filtros = {}, textoDe = () => "") {
@@ -218,6 +220,7 @@ export function filtrarOperaciones(ops, filtros = {}, textoDe = () => "") {
   const q = normal(filtros.buscar).trim();
   return (ops || []).filter((op) => {
     if (!filtros.anuladas && op.anulada_at) return false;
+    if (filtros.revisar && op.estado !== "para_revisar") return false;
     if (filtros.tipo && op.tipo !== filtros.tipo) return false;
     if (filtros.caja && op.cuenta_debe !== filtros.caja && op.cuenta_haber !== filtros.caja) return false;
     if (filtros.proveedor && String(op.proveedor_id ?? "") !== String(filtros.proveedor)) return false;
