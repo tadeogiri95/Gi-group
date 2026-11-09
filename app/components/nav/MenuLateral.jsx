@@ -10,9 +10,10 @@ import { BOTONES_GESTION, conBoton, opcionesBoton } from '../../lib/menuGestion'
 
 const ICONO = {
   vivo: '🟢', ot: '📋', reportes: '📊', planificacion: '📅', minuta: '📝',
-  stock: '📦', compras: '🛒', flota: '🚚', maquinaria: '⚙️',
+  stock: '📦', compras: '🛒', flota: '🚚', maquinaria: '⚙️', 'fin-config': '🧾',
 };
-const BOTONES = ['proyectos', 'inventario', 'mantenimiento'];
+// Finanzas (171) solo aparece para el Dueño
+const BOTONES = ['proyectos', 'inventario', 'mantenimiento', 'finanzas'];
 
 /** La opción que está abierta en un botón: la elegida o la primera que la empresa tiene. */
 export function opcionAbierta(boton, empresa, usuario, seccion) {
@@ -25,7 +26,7 @@ export function opcionAbierta(boton, empresa, usuario, seccion) {
 export function gruposMenu(empresa, usuario, pend = 0) {
   const grupos = [{ id: 'inicio', items: [{ id: 'home', destino: 'home', pantalla: 'home', label: 'Inicio', icono: '🏠' }] }];
   for (const b of BOTONES) {
-    if (!conBoton(b, empresa)) continue;
+    if (!conBoton(b, empresa, usuario)) continue;
     grupos.push({
       id: b,
       titulo: BOTONES_GESTION[b].label,
