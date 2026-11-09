@@ -83,7 +83,7 @@ export default function FinanzasOtClientes({ onCerrar }) {
   const total = resumen.reduce((s, c) => s + c.r.saldo, 0);
 
   return (
-    <Modal open onClose={onCerrar} title="Cuenta por OT" maxWidth={820}>
+    <Modal open onClose={onCerrar} title="Cuenta por OT" maxWidth={1080}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0 text-[13px] text-gypi-dim">
           Cada OT con su presupuesto (PRECIO del Plan, sin IVA). Si no tiene, va el costo de materiales ÷ 0,3, en amarillo. Se restan todos los cobros; los que no tienen OT restan del total del cliente. Es para seguir lo que falta cobrar: no cambia la contabilidad.

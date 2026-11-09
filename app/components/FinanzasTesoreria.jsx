@@ -197,7 +197,7 @@ function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto }) {
   const movimientos = useMemo(() => movimientosDeCaja(datos.operaciones, caja), [datos, caja]);
   const responsable = datos.personal.find((p) => p.id === caja.responsable_id)?.nombre;
   return (
-    <Modal open onClose={onCerrar} title={caja.nombre} maxWidth={640}>
+    <Modal open onClose={onCerrar} title={caja.nombre} maxWidth={1080}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className={`m-0 text-[22px] font-bold font-mono ${caja.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(caja.saldo, caja.moneda)}</p>
         <p className="m-0 text-[13px] text-gypi-dim">{responsable ? `Responsable: ${responsable} · ` : ""}{movimientos.length} movimientos</p>
@@ -221,7 +221,7 @@ function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto }) {
                   <td className="py-1">
                     <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
                     {m.op.estado === "para_revisar" && <b className="ml-1 text-gypi-amber-ink">· Para revisar</b>}
-                    {m.op.descripcion && <span className="block text-[12px] text-gypi-dim truncate">{m.op.descripcion}</span>}
+                    {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
                     {m.op.comprobante_url && <a href={m.op.comprobante_url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-gypi-cyan underline">🧾 Ver ticket</a>}
                   </td>
                   <td className="py-1 text-right font-mono">{m.entra ? plata(m.entra, caja.moneda) : ""}</td>
