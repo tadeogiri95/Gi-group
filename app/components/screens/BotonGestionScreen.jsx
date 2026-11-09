@@ -27,6 +27,7 @@ import FinanzasMovimientos from "../FinanzasMovimientos";
 import FinanzasProveedores from "../FinanzasProveedores";
 import FinanzasCheques from "../FinanzasCheques";
 import FinanzasTesoreria from "../FinanzasTesoreria";
+import FinanzasClientes from "../FinanzasClientes";
 import FinanzasPagos from "../FinanzasPagos";
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
@@ -68,6 +69,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "fin-proveedores" && <FinanzasProveedores />}
         {!bloqueado && actual.id === "fin-cheques" && <FinanzasCheques />}
         {!bloqueado && actual.id === "fin-tesoreria" && <FinanzasTesoreria />}
+        {!bloqueado && actual.id === "fin-clientes" && <FinanzasClientes />}
         {!bloqueado && actual.id === "fin-pagos" && <FinanzasPagos />}
         {!bloqueado && actual.id === "fin-config" && <FinanzasConfig />}
       </div>
