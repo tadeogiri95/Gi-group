@@ -1,0 +1,257 @@
+// tests/finanzas-mi-caja.test.jsx — Finanzas, parte F3b (migración 176):
+// cada responsable carga en su caja lo que gastó y lo que recibió; entra
+// "para revisar" y el dueño lo confirma, le cambia el tipo o lo anula.
+import "./helpers/domSetup.js";
+import { test, before, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
+import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
+import {
+  leerConfigMiCaja, conceptosMiCaja, comprobanteValido, validarMovimientoMiCaja, cambioDeTipoMiCaja, resumenMiCaja, paraRevisarMiCaja, ORIGEN_MI_CAJA,
+} from "../app/lib/finanzasMiCaja.js";
+
+before(() => {
+  if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
+  process.env.SUPABASE_SERVICE_KEY = "test-service-key";
+});
+afterEach(() => cleanup());
+
+const { signAccessToken } = await import("../app/lib/jwt.ts");
+const api = await import("../app/api/mi-caja/route.js");
+const tesoreriaApi = await import("../app/api/finanzas/tesoreria/route.js");
+const { default: MiCaja } = await import("../app/components/MiCaja.jsx");
+const { default: FinanzasTesoreria } = await import("../app/components/FinanzasTesoreria.jsx");
+
+const E = "11111111-1111-1111-1111-111111111111";
+const JUAN = "22222222-2222-2222-2222-222222222222";
+const OTRO = "33333333-3333-3333-3333-333333333333";
+const CAJA_JUAN = { cuenta: "01.01.01.001.001.02", nombre: "Caja Juan", tipo: "caja", moneda: "ARS", activa: true, responsable_id: JUAN };
+const CAJA = { cuenta: "01.01.01.001.001.01", nombre: "Caja Principal", tipo: "caja", moneda: "ARS", activa: true, responsable_id: null };
+const TIPOS = [
+  { codigo: "GASTO COMBUSTIBLE", nombre: "Combustible", cuenta_debe: "05.02.01", cuenta_haber: null, activo: true },
+  { codigo: "GASTO VIATICOS", nombre: "Viáticos", cuenta_debe: "05.02.02", cuenta_haber: "01.01.01.001.001.01", activo: true },
+  { codigo: "COBRO CLIENTE", nombre: "Cobro a un cliente", cuenta_debe: null, cuenta_haber: "01.01.02.001.001", activo: true },
+  { codigo: "VIEJO", nombre: "Viejo", cuenta_debe: "05.09", cuenta_haber: null, activo: false },
+];
+const CONFIG = { gastos: ["GASTO COMBUSTIBLE", "GASTO VIATICOS", "VIEJO", "NO EXISTE"], ingresos: ["COBRO CLIENTE"] };
+const FOTO = `https://test.supabase.co/storage/v1/object/public/reportes-obra/${E}/0b9e3c1a-1111-4222-8333-444455556666.jpg`;
+const CTX = { caja: CAJA_JUAN, conceptos: conceptosMiCaja(CONFIG, TIPOS), supabaseUrl: "https://test.supabase.co", empresaId: E, hoy: "2026-11-09" };
+
+// ─── Reglas ───
+
+test("conceptos — solo los tipos elegidos, activos y con la cuenta del lado que corresponde", () => {
+  assert.deepEqual(leerConfigMiCaja({ gastos: ["A", "A", " ", 3] }), { gastos: ["A", "3"], ingresos: [] });
+  const c = conceptosMiCaja(CONFIG, TIPOS);
+  assert.deepEqual(c.gastos.map((x) => [x.nombre, x.cuenta]), [["Combustible", "05.02.01"], ["Viáticos", "05.02.02"]]);
+  assert.deepEqual(c.ingresos.map((x) => [x.nombre, x.cuenta]), [["Cobro a un cliente", "01.01.02.001.001"]]);
+});
+
+test("foto del ticket — solo una subida por /api/upload para la misma empresa", () => {
+  const ctx = { supabaseUrl: "https://test.supabase.co", empresaId: E };
+  assert.equal(comprobanteValido(null, ctx), true);
+  assert.equal(comprobanteValido(FOTO, ctx), true);
+  assert.equal(comprobanteValido(FOTO.replace(E, "99999999-9999-9999-9999-999999999999"), ctx), false);
+  assert.equal(comprobanteValido("https://malo.com/x.jpg", ctx), false);
+  assert.equal(comprobanteValido(`${FOTO}/../../otra.jpg`, ctx), false);
+});
+
+test("gasto — el tipo al debe y la caja al haber, para revisar; recibido al revés; el dueño entra confirmado", () => {
+  const { op, errores } = validarMovimientoMiCaja({ clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: "15000.5", fecha: "2026-11-08", descripcion: "camioneta", comprobante_url: FOTO }, CTX);
+  assert.deepEqual(errores, []);
+  assert.deepEqual([op.tipo, op.cuenta_debe, op.cuenta_haber, op.total, op.total_ars, op.estado, op.origen, op.comprobante_url, op.descripcion],
+    ["GASTO COMBUSTIBLE", "05.02.01", CAJA_JUAN.cuenta, 15000.5, 15000.5, "para_revisar", ORIGEN_MI_CAJA, FOTO, "Combustible · Caja Juan · camioneta"]);
+  const r = validarMovimientoMiCaja({ clase: "ingreso", concepto: "COBRO CLIENTE", importe: 1000, fecha: "2026-11-09" }, { ...CTX, confirmada: true });
+  assert.deepEqual([r.op.cuenta_debe, r.op.cuenta_haber, r.op.estado, r.op.comprobante_url], [CAJA_JUAN.cuenta, "01.01.02.001.001", "confirmada", null]);
+});
+
+test("gasto — lo que no corresponde se rechaza", () => {
+  const err = (f, ctx = CTX) => validarMovimientoMiCaja({ clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 10, fecha: "2026-11-09", ...f }, ctx).errores.join(" | ");
+  assert.match(err({ concepto: "COBRO CLIENTE" }), /en qué gastaste/i);
+  assert.match(err({ concepto: "VIEJO" }), /en qué gastaste/i);
+  assert.match(err({ importe: -5 }), /mayor a cero/);
+  assert.match(err({ fecha: "2026-11-10" }), /más adelante que hoy/);
+  assert.match(err({ comprobante_url: "https://otro.com/a.jpg" }), /foto del ticket/);
+  assert.match(err({}, { ...CTX, caja: { ...CAJA_JUAN, moneda: "USD" } }), /tipo de cambio/);
+  assert.match(err({ clase: "otra" }), /gasto o plata/);
+});
+
+test("cambiar el tipo — la caja queda donde estaba", () => {
+  const cajas = [CAJA_JUAN.cuenta, CAJA.cuenta];
+  assert.deepEqual(cambioDeTipoMiCaja({ cuenta_debe: "05.02.01", cuenta_haber: CAJA_JUAN.cuenta }, TIPOS[1], cajas), { tipo: "GASTO VIATICOS", cuenta_debe: "05.02.02" });
+  assert.deepEqual(cambioDeTipoMiCaja({ cuenta_debe: CAJA_JUAN.cuenta, cuenta_haber: "x" }, TIPOS[2], cajas), { tipo: "COBRO CLIENTE", cuenta_haber: "01.01.02.001.001" });
+  assert.equal(cambioDeTipoMiCaja({ cuenta_debe: CAJA_JUAN.cuenta, cuenta_haber: "x" }, TIPOS[0], cajas), null, "sin cuenta al haber no sirve");
+});
+
+const OPS = [
+  { id: 1, fecha: "2026-11-01", tipo: "TRANSF INTERNA", total: 50000, total_ars: 50000, cuenta_debe: CAJA_JUAN.cuenta, cuenta_haber: CAJA.cuenta, origen: "manual", estado: "confirmada" },
+  { id: 2, fecha: "2026-11-05", tipo: "GASTO COMBUSTIBLE", total: 15000, total_ars: 15000, cuenta_debe: "05.02.01", cuenta_haber: CAJA_JUAN.cuenta, origen: "mi_caja", estado: "para_revisar", comprobante_url: FOTO, descripcion: "Combustible · Caja Juan", cargada_por_nombre: "Juan" },
+  { id: 3, fecha: "2026-11-03", tipo: "GASTO VIATICOS", total: 5000, total_ars: 5000, cuenta_debe: "05.02.02", cuenta_haber: CAJA_JUAN.cuenta, origen: "mi_caja", estado: "confirmada" },
+];
+
+test("resumen — saldo, sin revisar y lo último primero", () => {
+  const r = resumenMiCaja(OPS, CAJA_JUAN, new Map([["GASTO COMBUSTIBLE", "Combustible"]]));
+  assert.deepEqual([r.saldo, r.para_revisar], [30000, 1]);
+  assert.deepEqual(r.movimientos.map((m) => [m.id, m.concepto, m.entra, m.sale, m.propia]), [[2, "Combustible", 0, 15000, true], [3, "GASTO VIATICOS", 0, 5000, true], [1, "TRANSF INTERNA", 50000, 0, false]]);
+  assert.deepEqual(paraRevisarMiCaja([...OPS, { ...OPS[1], id: 9, anulada_at: "x" }]).map((o) => o.id), [2]);
+});
+
+test("migración 176 — la foto del ticket en fin_operaciones, en un solo bloque", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/176_finanzas_mi_caja.sql", import.meta.url), "utf8");
+  assert.match(sql, /do \$mig\$/);
+  assert.match(sql, /add column if not exists comprobante_url text/);
+  assert.match(sql, /comprobante_url like 'https:\/\/%'/);
+});
+
+// ─── Servidor ───
+
+async function token(empleadoId, rol = "operativo") {
+  return (await signAccessToken({ empleadoId, empresaId: E, legajo: 7, rol })).token;
+}
+const pedir = async (ruta, empleadoId, rol, metodo, body) => ruta[metodo](new Request("http://localhost/api/x", {
+  method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(empleadoId, rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
+}));
+
+function mockApi({ modulos = [], ops = OPS } = {}) {
+  const escrito = [];
+  const leido = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: modulos }) },
+    { match: (u) => u.includes("/rest/v1/empleados?"), respond: (u) => { leido.push(u); return { status: 200, body: [{ id: JUAN, nombre: "Juan", legajo: 1 }] }; } },
+    {
+      match: (u) => u.includes("/rest/v1/fin_tesoreria"),
+      respond: (u) => ({ status: 200, body: [CAJA, CAJA_JUAN].filter((c) => !u.includes("responsable_id=eq.") || u.includes(`responsable_id=eq.${c.responsable_id}`)) }),
+    },
+    { match: (u) => u.includes("/rest/v1/fin_tipos_operacion"), respond: (u) => ({ status: 200, body: TIPOS.filter((t) => !u.includes("codigo=eq.") || u.includes(`codigo=eq.${encodeURIComponent(t.codigo)}`)) }) },
+    {
+      match: (u) => u.includes("/rest/v1/config_sistema"),
+      respond: (u, o) => {
+        if (o?.method === "POST" || o?.method === "PATCH") { escrito.push({ tabla: "config_sistema", metodo: o.method, body: JSON.parse(o.body) }); return { status: 201, body: [] }; }
+        return { status: 200, body: u.includes("select=clave") ? [] : [{ valor: CONFIG }] };
+      },
+    },
+    {
+      match: (u) => u.includes("/rest/v1/fin_operaciones"),
+      respond: (u, o) => {
+        if (o?.method === "POST" || o?.method === "PATCH") {
+          const body = JSON.parse(o.body);
+          escrito.push({ tabla: "fin_operaciones", url: u, metodo: o.method, body });
+          if (o.method === "PATCH") return { status: 200, body: u.includes("id=eq.404") ? [] : [{ id: 2, ...body }] };
+          return { status: 201, body: [{ id: 77, ...body }] };
+        }
+        leido.push(u);
+        return { status: 200, body: /[?&]id=eq\./.test(u) ? ops.filter((x) => u.includes(`id=eq.${x.id}&`)) : ops };
+      },
+    },
+  ]);
+  return { escrito, leido };
+}
+
+test("/api/mi-caja — sin caja a cargo no hay nada (ni error)", async () => {
+  mockApi();
+  let r = await pedir(api, OTRO, "operativo", "GET");
+  assert.deepEqual([r.status, (await r.json()).cajas], [200, []]);
+  r = await pedir(api, OTRO, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta });
+  assert.equal(r.status, 403);
+});
+
+test("/api/mi-caja — el responsable ve solo su caja con el saldo y los conceptos", async () => {
+  const { leido } = mockApi();
+  const r = await pedir(api, JUAN, "operativo", "GET");
+  const d = await r.json();
+  assert.equal(r.status, 200);
+  assert.deepEqual(d.cajas.map((c) => [c.nombre, c.saldo, c.para_revisar]), [["Caja Juan", 30000, 1]]);
+  assert.deepEqual(d.conceptos.gastos.map((c) => c.nombre), ["Combustible", "Viáticos"]);
+  const opsUrl = decodeURIComponent(leido.find((u) => u.includes("fin_operaciones")));
+  assert.match(opsUrl, /cuenta_debe\.in\.\("01\.01\.01\.001\.001\.02"\)/);
+  assert.doesNotMatch(opsUrl, /001\.001\.01"/, "no mira la Caja Principal");
+});
+
+test("/api/mi-caja — cargar un gasto: entra para revisar, con quién lo cargó, y avisa a los dueños", async () => {
+  const { escrito, leido } = mockApi();
+  const r = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 8000, fecha: "2026-11-01", comprobante_url: FOTO });
+  assert.equal(r.status, 200);
+  const [op] = escrito;
+  assert.deepEqual([op.metodo, op.body.estado, op.body.cuenta_haber, op.body.empresa_id, op.body.cargada_por_nombre, op.body.comprobante_url], ["POST", "para_revisar", CAJA_JUAN.cuenta, E, "Juan", FOTO]);
+  assert.ok(leido.some((u) => u.includes("rol=eq.gerencial")), "busca a los dueños para avisarles");
+  const ajena = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA.cuenta, clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 8000, fecha: "2026-11-01" });
+  assert.equal(ajena.status, 403);
+});
+
+test("/api/mi-caja — anular solo lo propio que el dueño no revisó", async () => {
+  const { escrito } = mockApi();
+  const r = await pedir(api, JUAN, "operativo", "POST", { accion: "anular", id: 2 });
+  assert.equal(r.status, 200);
+  const url = decodeURIComponent(escrito[0].url);
+  assert.match(url, /origen=eq\.mi_caja&estado=eq\.para_revisar&anulada_at=is\.null/);
+  assert.match(url, /cuenta_haber\.in\.\("01\.01\.01\.001\.001\.02"\)/);
+  assert.equal((await pedir(api, JUAN, "operativo", "POST", { accion: "anular", id: 404 })).status, 404);
+});
+
+test("/api/finanzas/tesoreria — el dueño confirma cambiando el tipo; solo el dueño elige los conceptos", async () => {
+  const { escrito } = mockApi();
+  assert.equal((await pedir(tesoreriaApi, JUAN, "administrativo", "POST", { accion: "revisar", id: 2 })).status, 403);
+  const r = await pedir(tesoreriaApi, JUAN, "gerencial", "POST", { accion: "revisar", id: 2, tipo: "GASTO VIATICOS" });
+  assert.equal(r.status, 200);
+  assert.deepEqual([escrito[0].body.estado, escrito[0].body.tipo, escrito[0].body.cuenta_debe, escrito[0].body.cuenta_haber], ["confirmada", "GASTO VIATICOS", "05.02.02", undefined]);
+  const c = await pedir(tesoreriaApi, JUAN, "gerencial", "POST", { accion: "config_mi_caja", gastos: ["GASTO COMBUSTIBLE", "COBRO CLIENTE"], ingresos: ["COBRO CLIENTE", "GASTO COMBUSTIBLE"] });
+  assert.equal(c.status, 200);
+  assert.deepEqual(escrito[1].body.valor, { gastos: ["GASTO COMBUSTIBLE"], ingresos: ["COBRO CLIENTE"] }, "cada tipo solo del lado donde tiene cuenta");
+});
+
+// Al final: el plan de la empresa queda guardado 5 minutos en memoria
+test("/api/mi-caja — con Finanzas apagado no hay nada", async () => {
+  mockApi({ modulos: [{ modulo: "finanzas", activo: false }] });
+  const otraEmpresa = "44444444-4444-4444-4444-444444444444";
+  const t = (await signAccessToken({ empleadoId: JUAN, empresaId: otraEmpresa, legajo: 7, rol: "operativo" })).token;
+  const r = await api.GET(new Request("http://localhost/api/mi-caja", { headers: { Authorization: `Bearer ${t}` } }));
+  assert.deepEqual([r.status, (await r.json()).cajas], [200, []]);
+});
+
+// ─── Pantallas ───
+
+test("Mi caja — saldo, cargar un gasto y anular lo que no revisó el dueño", async () => {
+  const datos = {
+    cajas: [resumenMiCaja(OPS, CAJA_JUAN, new Map([["GASTO COMBUSTIBLE", "Combustible"]]))],
+    conceptos: conceptosMiCaja(CONFIG, TIPOS), hoy: "2026-11-09", cargar: () => {},
+  };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    enviados.push(JSON.parse(o.body));
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  let cambios = 0;
+  render(<MiCaja datos={datos} onClose={() => {}} onCambio={() => { cambios++; }} />);
+  assert.ok(screen.getByText("$ 30.000,00"));
+  assert.ok(screen.getByText("Falta que el dueño lo revise"));
+  fireEvent.click(screen.getByText("➖ Gasté"));
+  fireEvent.change(screen.getByLabelText("Concepto"), { target: { value: "GASTO VIATICOS" } });
+  fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "2.500" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual([enviados[0].accion, enviados[0].cuenta, enviados[0].clase, enviados[0].concepto, enviados[0].importe, enviados[0].fecha], ["cargar", CAJA_JUAN.cuenta, "gasto", "GASTO VIATICOS", 2500, "2026-11-09"]);
+  await waitFor(() => assert.ok(screen.getByText(/Gasto cargado/)));
+  fireEvent.click(screen.getByRole("button", { name: "Anular" }));
+  await waitFor(() => assert.equal(enviados.length, 2));
+  assert.deepEqual(enviados[1], { accion: "anular", id: 2 });
+  assert.equal(cambios, 2);
+});
+
+test("Cajas y bancos — aviso de Mi caja para revisar y confirmar", async () => {
+  const datos = { tesoreria: [CAJA, CAJA_JUAN], cuentas: [], personal: [{ id: JUAN, nombre: "Juan" }], operaciones: OPS, tipos: TIPOS, mi_caja: CONFIG };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasTesoreria />);
+  fireEvent.click(await screen.findByText(/1 movimiento de Mi caja para revisar/));
+  assert.ok(screen.getByText("🧾 Ver ticket"));
+  fireEvent.change(screen.getByLabelText("Tipo del movimiento 2"), { target: { value: "GASTO VIATICOS" } });
+  fireEvent.click(screen.getByRole("button", { name: "✓ Confirmar" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual(enviados[0], { accion: "revisar", id: 2, tipo: "GASTO VIATICOS" });
+});

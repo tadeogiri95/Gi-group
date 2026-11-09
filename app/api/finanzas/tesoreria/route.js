@@ -9,18 +9,25 @@
 //       Capital. Si ya tenía uno, se reemplaza (el viejo queda anulado).
 //   POST { accion: "transferir", desde, hacia, importe, fecha, tipo_cambio?, descripcion? }
 //       → TRANSF INTERNA entre dos cajas o bancos de la misma moneda.
+//   F3b (Mi caja, 176):
+//   POST { accion: "config_mi_caja", gastos: [códigos], ingresos: [códigos] }
+//       → qué tipos de operación ofrece Mi caja a los responsables.
+//   POST { accion: "revisar", id, tipo? } → confirma lo que cargó un
+//       responsable; con tipo, se lo cambia (la caja queda donde estaba).
+//   POST { accion: "anular_mi_caja", id } → anula lo que cargó un responsable.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
-import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA } from "../../../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 import { cuentaAjusteDe, operacionSaldoInicialCaja, validarTransferencia } from "../../../lib/finanzasTesoreria";
+import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, leerConfigMiCaja } from "../../../lib/finanzasMiCaja";
 
-const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at";
+const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,created_at";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
 
 async function nombreEmpleado(sesion) {
@@ -34,16 +41,23 @@ export async function GET(request) {
   if (response) return response;
   const e = sesion.empresa_id;
   try {
-    const [tesoreria, cuentas, personal] = await Promise.all([
+    const [tesoreria, cuentas, personal, tipos, cfg] = await Promise.all([
       leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,responsable_id,activa&order=nombre.asc`),
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
       leer(sesion, `empleados?empresa_id=eq.${e}&activo=eq.true&select=id,nombre&order=nombre.asc`),
+      leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,cuenta_debe,cuenta_haber,activo&order=codigo.asc`),
+      sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_MI_CAJA}&select=valor&limit=1`, { silent: true, fallback: [] }),
     ]);
-    const lista = tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(",");
+    const lista = encodeURIComponent(tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(","));
+    const path = (cols) => `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista}))&select=${cols}&order=fecha.asc,id.asc`;
+    // La foto del ticket (176): sin la migración se ve todo menos la foto
     const operaciones = tesoreria.length
-      ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${encodeURIComponent(lista)}),cuenta_haber.in.(${encodeURIComponent(lista)}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 60000)
+      ? await leer(sesion, path(`${COLUMNAS},comprobante_url`), 60000).catch((err) => {
+        if (/comprobante_url/.test(String(err?.message))) return leer(sesion, path(COLUMNAS), 60000);
+        throw err;
+      })
       : [];
-    return NextResponse.json({ tesoreria, cuentas, personal, operaciones });
+    return NextResponse.json({ tesoreria, cuentas, personal, operaciones, tipos, mi_caja: leerConfigMiCaja(cfg?.[0]?.valor) });
   } catch (err) {
     return errorFinanzas(err, "tesoreria GET");
   }
@@ -97,6 +111,55 @@ async function transferir(sesion, d) {
   return NextResponse.json({ ok: true, operacion: o });
 }
 
+async function configMiCaja(sesion, d) {
+  const e = sesion.empresa_id;
+  const tipos = await leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,cuenta_debe,cuenta_haber,activo`);
+  const c = leerConfigMiCaja(d);
+  const valor = {
+    gastos: c.gastos.filter((k) => tipos.some((t) => t.codigo === k && t.cuenta_debe)),
+    ingresos: c.ingresos.filter((k) => tipos.some((t) => t.codigo === k && t.cuenta_haber)),
+  };
+  // config_sistema va con la clave de servicio, como el dato del CFO (F2b)
+  const ya = await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_MI_CAJA}&select=clave&limit=1`, { silent: true, fallback: [] });
+  if (ya?.length) await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_MI_CAJA}`, { valor });
+  else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_MI_CAJA, valor });
+  return NextResponse.json({ ok: true, mi_caja: valor });
+}
+
+async function revisar(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el movimiento" }, { status: 400 });
+  const [op] = (await leer(sesion, `fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&origen=eq.${ORIGEN_MI_CAJA}&anulada_at=is.null&select=id,tipo,cuenta_debe,cuenta_haber&limit=1`)) || [];
+  if (!op) return NextResponse.json({ error: "No encontré ese movimiento o ya está anulado" }, { status: 404 });
+  const cambios = { estado: "confirmada", updated_at: new Date().toISOString() };
+  if (d.tipo && d.tipo !== op.tipo) {
+    const [[tipo], tesoreria] = await Promise.all([
+      leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&codigo=eq.${encodeURIComponent(String(d.tipo))}&select=codigo,cuenta_debe,cuenta_haber,activo&limit=1`),
+      leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta`),
+    ]);
+    const cambio = tipo && tipo.activo !== false ? cambioDeTipoMiCaja(op, tipo, tesoreria.map((t) => t.cuenta)) : null;
+    if (!cambio) return NextResponse.json({ error: "Ese tipo no sirve para este movimiento: le falta la cuenta en Configuración" }, { status: 400 });
+    Object.assign(cambios, cambio);
+  }
+  const [fila] = (await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, cambios, { sesion })) || [];
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, operacion: fila });
+}
+
+async function anularMiCaja(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el movimiento" }, { status: 400 });
+  const ahora = new Date().toISOString();
+  const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&origen=eq.${ORIGEN_MI_CAJA}&anulada_at=is.null`, {
+    anulada_at: ahora, anulada_por_nombre: await nombreEmpleado(sesion), updated_at: ahora,
+  }, { sesion });
+  if (!filas?.length) return NextResponse.json({ error: "No encontré ese movimiento o ya está anulado" }, { status: 404 });
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true });
+}
+
 export async function POST(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -106,6 +169,9 @@ export async function POST(request) {
   try {
     if (d?.accion === "saldos_iniciales") return await saldosIniciales(sesion, d);
     if (d?.accion === "transferir") return await transferir(sesion, d);
+    if (d?.accion === "config_mi_caja") return await configMiCaja(sesion, d);
+    if (d?.accion === "revisar") return await revisar(sesion, d);
+    if (d?.accion === "anular_mi_caja") return await anularMiCaja(sesion, d);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     return errorFinanzas(err, `tesoreria ${d?.accion}`);
