@@ -321,7 +321,7 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
         {op.estado === "para_revisar" && !op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde.</p>}
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
         {compra && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
-        {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {op.origen === "cheque" ? "Finanzas → Cheques" : "donde salió"}.</p>}
+        {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {op.origen === "cheque" ? "Finanzas → Cheques" : op.origen === "orden_pago" ? "Finanzas → Pagos (anulando la orden)" : "donde salió"}.</p>}
         {compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
         {!op.anulada_at && !automatica && (
           <div className="flex justify-end gap-2 mt-2">

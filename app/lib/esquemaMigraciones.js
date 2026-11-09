@@ -91,6 +91,7 @@ export const MIGRACIONES = [
   { n: 172, archivo: "172_finanzas_compras.sql", nombre: "Finanzas: compras automáticas desde las facturas", tablas: { proveedores: ["fin_tipo"], facturas_sueltas: ["proveedor_id", "iva", "otros_impuestos"] } },
   { n: 173, archivo: "173_oc_otras_facturas.sql", nombre: "Otras facturas de una orden de compra, de otro proveedor", tablas: { ordenes_compra_facturas: [] } },
   { n: 174, archivo: "174_finanzas_cheques.sql", nombre: "Finanzas: cheques propios y de terceros", tablas: { fin_cheques: [] } },
+  { n: 175, archivo: "175_finanzas_ordenes_pago.sql", nombre: "Finanzas: órdenes de pago con aprobación del CFO", tablas: { fin_ordenes_pago: [] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

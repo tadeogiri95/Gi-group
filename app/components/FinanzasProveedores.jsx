@@ -17,6 +17,7 @@ import {
   ORIGEN_SALDO_INICIAL, emparejarProveedor, movimientosProveedor, pendientesProveedor, saldosDelLibro, saldosProveedores,
 } from "../lib/finanzasProveedores";
 import { Chip, Modal, Spinner } from "./ui";
+import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
 import { useToast } from "./ui/Toast";
 
 const MAX_LISTA = 300;
@@ -163,6 +164,20 @@ function SaldosIniciales({ datos, cuentasProv, onCerrar, onCargados }) {
 
 function Ficha({ saldo, datos, cuentasProv, onCerrar }) {
   const [vista, setVista] = useState("pendientes");
+  const [pagos, setPagos] = useState(null);
+  const [abriendo, setAbriendo] = useState(false);
+  const [errorPago, setErrorPago] = useState(null);
+  async function pagar() {
+    setErrorPago(null);
+    setAbriendo(true);
+    try {
+      setPagos(await leerDatosPagos());
+    } catch (e) {
+      setErrorPago(e.message);
+    } finally {
+      setAbriendo(false);
+    }
+  }
   const movimientos = useMemo(() => movimientosProveedor(datos.operaciones, saldo.clave, cuentasProv), [datos, saldo, cuentasProv]);
   const pendientes = useMemo(() => pendientesProveedor(movimientos, hoyAr()), [movimientos]);
   const s = textoSaldo(saldo.deuda);
@@ -171,6 +186,12 @@ function Ficha({ saldo, datos, cuentasProv, onCerrar }) {
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className={`m-0 text-[18px] font-bold ${s.clase}`}>{s.texto}</p>
         <p className="m-0 text-[13px] text-gypi-dim">Comprado {plata(saldo.comprado, "ARS")} · Pagado {plata(saldo.pagado, "ARS")}</p>
+        {saldo.proveedor_id ? (
+          <button type="button" className="g-btn g-btn-primary self-start" disabled={abriendo} onClick={pagar}>{abriendo ? "Abriendo…" : "💸 Pagar"}</button>
+        ) : (
+          <p className="m-0 text-[12px] text-gypi-dim">Para pagarle con una orden de pago, primero sumalo a la lista de proveedores.</p>
+        )}
+        {errorPago && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {errorPago}</p>}
         <div className="flex gap-2">
           <Chip active={vista === "pendientes"} onClick={() => setVista("pendientes")}>Falta pagar ({pendientes.length})</Chip>
           <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos ({movimientos.length})</Chip>
@@ -227,6 +248,10 @@ function Ficha({ saldo, datos, cuentasProv, onCerrar }) {
           </table>
         )}
       </div>
+      {pagos && (
+        <NuevaOrden datos={pagos} proveedorId={saldo.proveedor_id} pendientes={pendientes} onCerrar={() => setPagos(null)}
+          onGuardada={() => setPagos(null)} />
+      )}
     </Modal>
   );
 }
