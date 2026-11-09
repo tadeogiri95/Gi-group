@@ -16,7 +16,7 @@ afterEach(() => cleanup());
 
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/ot-clientes/route.js");
-const { default: FinanzasOtClientes } = await import("../app/components/FinanzasOtClientes.jsx");
+const { default: FinanzasOtClientes, ComposicionOt } = await import("../app/components/FinanzasOtClientes.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
 const EMP = "22222222-2222-2222-2222-222222222222";
@@ -113,4 +113,24 @@ test("Cuenta por OT — saldo por cliente, OT estimada en amarillo, con IVA y li
   assert.ok(screen.getByText(/Falta cobrar en total/).textContent.includes("4.090,00"));
   fireEvent.click(screen.getByRole("button", { name: /OT sin presupuesto \(1\)/ }));
   assert.ok(screen.getByRole("table", { name: "OT sin presupuesto" }).textContent.includes("7002"));
+});
+
+test("Ficha del cliente — las OT que componen la deuda, con IVA", async () => {
+  const cs = cuentasPorOt({
+    proyectos: PROYECTOS, precios: new Map([["7001", 1000], ["7003", 2000]]), materiales: new Map([["7002", { total: 300, sinPrecio: 2 }]]),
+    ops: OPS, cuentasDeu: new Set([DEU]), clientes: CLIENTES,
+  });
+  global.fetch = async () => new Response(JSON.stringify({ clientes: cs }), { status: 200 });
+  const c = cs[0];
+  const r = resumirCliente(c);
+  const { unmount } = render(<ComposicionOt clave={c.clave} />);
+  await waitFor(() => assert.ok(screen.getByText(/Según sus OT falta cobrar/)));
+  assert.equal(screen.getByRole("table", { name: "OT del cliente" }).querySelectorAll("tbody tr").length >= r.ots.length, true);
+  for (const o of r.ots) assert.ok(screen.getByRole("table", { name: "OT del cliente" }).textContent.includes(o.ot));
+  assert.ok(screen.getByText(/Según sus OT falta cobrar/).textContent.includes("sin IVA"));
+  fireEvent.click(screen.getByLabelText(/Con IVA/));
+  assert.ok(screen.getByText(/Según sus OT falta cobrar/).textContent.includes("con IVA"));
+  unmount();
+  render(<ComposicionOt clave="c999999" />);
+  await waitFor(() => assert.ok(screen.getByText(/no tiene OT en el Plan/)));
 });

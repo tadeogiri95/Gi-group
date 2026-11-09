@@ -316,8 +316,11 @@ test("Clientes — saldos, ficha y cobrar en efectivo", async () => {
   await waitFor(() => assert.ok(screen.getByText("BCG")));
   assert.ok(screen.getByText(/Nos debe \$ 120\.000,00/));
   fireEvent.click(screen.getByText("BCG"));
-  await waitFor(() => assert.ok(screen.getByRole("table", { name: "Movimientos del cliente" })));
-  fireEvent.click(screen.getByText(/Por OT \(1\)/));
+  // La ficha abre en las OT que componen la deuda (este cliente no tiene OT en la respuesta)
+  await waitFor(() => assert.ok(screen.getByText(/no tiene OT en el Plan/)));
+  fireEvent.click(screen.getByText(/^Movimientos \(/));
+  assert.ok(screen.getByRole("table", { name: "Movimientos del cliente" }));
+  fireEvent.click(screen.getByText(/Ventas anotadas por OT \(1\)/));
   assert.ok(screen.getByText("M-7100 · BCG · HOTEL AMANCAY"));
   fireEvent.click(screen.getByText("💵 Cobrar"));
   fireEvent.click(screen.getByRole("button", { name: "Efectivo" }));

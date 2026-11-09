@@ -55,6 +55,42 @@ function TablaOt({ r }) {
   );
 }
 
+/**
+ * En la ficha de un cliente: las OT que componen lo que falta cobrar (valor,
+ * cobrado y saldo de cada una), con IVA o sin IVA.
+ */
+export function ComposicionOt({ clave }) {
+  const [d, setD] = useState(null);
+  const [error, setError] = useState(null);
+  const [conIva, setConIva] = useState(false);
+  useEffect(() => {
+    apiFetch("/api/finanzas/ot-clientes")
+      .then(async (res) => {
+        const x = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(x.error || "No se pudo leer");
+        setD(x);
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+  const c = useMemo(() => (d?.clientes || []).find((x) => x.clave === clave) || null, [d, clave]);
+  const r = useMemo(() => (c ? resumirCliente(c, { conIva }) : null), [c, conIva]);
+  if (error) return <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>;
+  if (!d) return <Spinner size={18} />;
+  if (!r || !r.ots.length) return <p className="m-0 text-[13px] text-gypi-dim">Este cliente no tiene OT en el Plan de trabajo.</p>;
+  return (
+    <div className="flex flex-col gap-2" aria-label="OT que componen la deuda">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="m-0">Según sus OT falta cobrar <b>{plata(r.saldo, "ARS")}</b>{conIva ? " (con IVA)" : " (sin IVA)"}</p>
+        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={conIva} onChange={(e) => setConIva(e.target.checked)} /> Con IVA (21 %)</label>
+      </div>
+      <p className="m-0 text-[12px] text-gypi-dim">
+        {r.ots.length} OT · Valor {plata(r.valor, "ARS")} · Cobrado {plata(r.cobrado, "ARS")}{r.estimadas ? ` · ⚠ ${r.estimadas} estimadas (sin presupuesto: materiales ÷ 0,3)` : ""}
+      </p>
+      <TablaOt r={r} />
+    </div>
+  );
+}
+
 export default function FinanzasOtClientes({ onCerrar }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState(null);

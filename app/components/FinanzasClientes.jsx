@@ -24,7 +24,7 @@ import {
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
-import FinanzasOtClientes from "./FinanzasOtClientes";
+import FinanzasOtClientes, { ComposicionOt } from "./FinanzasOtClientes";
 
 const MAX_LISTA = 300;
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
@@ -284,7 +284,7 @@ function VentasOt({ config, onCerrar, onHecho }) {
 
 function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
   const toast = useToast();
-  const [vista, setVista] = useState("movimientos");
+  const [vista, setVista] = useState("deuda");
   const [modal, setModal] = useState(null);
   const [error, setError] = useState(null);
   const cliente = datos.clientes.find((c) => Number(c.id) === saldo.cliente_id);
@@ -321,11 +321,12 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
         )}
         {saldo.cliente_id && <LineaUnificada clienteId={saldo.cliente_id} onCambio={onCambio} />}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Chip active={vista === "deuda"} onClick={() => setVista("deuda")}>OT que componen la deuda</Chip>
           <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos ({movimientos.length})</Chip>
-          <Chip active={vista === "ot"} onClick={() => setVista("ot")}>Por OT ({porOt.length})</Chip>
+          <Chip active={vista === "ot"} onClick={() => setVista("ot")}>Ventas anotadas por OT ({porOt.length})</Chip>
         </div>
-        {vista === "ot" ? (
+        {vista === "deuda" ? <ComposicionOt clave={saldo.clave} /> : vista === "ot" ? (
           porOt.length ? (
             <table className="w-full text-[13px] border-collapse" aria-label="Por OT">
               <thead>
