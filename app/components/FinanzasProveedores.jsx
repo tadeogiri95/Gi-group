@@ -12,6 +12,7 @@
 // Parte 3 (09/11): "📚 Cuenta de cada proveedor" (la del Estado de
 // Resultados, aprendida de lo cargado y confirmada por el dueño) y, en la
 // ficha, cargar una compra sin factura o una nota de crédito.
+// Parte 4: "📄 Importar CSV del S.O.S" (app/components/FinanzasSos.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -21,6 +22,7 @@ import {
 } from "../lib/finanzasProveedores";
 import { Chip, Modal, Spinner } from "./ui";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
+import FinanzasSos from "./FinanzasSos";
 import { useToast } from "./ui/Toast";
 
 const MAX_LISTA = 300;
@@ -439,6 +441,7 @@ export default function FinanzasProveedores() {
   const [ficha, setFicha] = useState(null);
   const [iniciales, setIniciales] = useState(false);
   const [verCuentas, setVerCuentas] = useState(false);
+  const [sos, setSos] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -478,6 +481,7 @@ export default function FinanzasProveedores() {
           Les debemos <b>{plata(debemos, "ARS")}</b>{aFavor >= 0.01 && <> · A favor nuestro <b className="text-gypi-green">{plata(aFavor, "ARS")}</b></>}
         </p>
         <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setVerCuentas(true)}>📚 Cuenta de cada proveedor</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setSos(true)}>📄 Importar CSV del S.O.S</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -513,6 +517,7 @@ export default function FinanzasProveedores() {
       )}
 
       {ficha && <Ficha saldo={ficha} datos={datos} cuentasProv={cuentasProv} aprendidas={aprendidas} onCerrar={() => setFicha(null)} onCargada={() => { setFicha(null); cargar(); }} />}
+      {sos && <FinanzasSos onCerrar={() => setSos(false)} onImportado={() => { setSos(false); cargar(); }} />}
       {verCuentas && <CuentasDeProveedores datos={datos} cuentasProv={cuentasProv} aprendidas={aprendidas} onCerrar={() => setVerCuentas(false)} onGuardadas={() => { setVerCuentas(false); cargar(); }} />}
       {iniciales && <SaldosIniciales datos={datos} cuentasProv={cuentasProv} onCerrar={() => setIniciales(false)} onCargados={() => { setIniciales(false); cargar(); }} />}
     </div>
