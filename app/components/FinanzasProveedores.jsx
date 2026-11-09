@@ -9,12 +9,15 @@
 // sus días, y los movimientos con el saldo renglón por renglón.
 // "Cargar saldos iniciales" lee T-OPERACIONES del libro hasta una fecha de
 // corte y carga el saldo de cada proveedor contra Ajuste De Capital.
+// Parte 3 (09/11): "📚 Cuenta de cada proveedor" (la del Estado de
+// Resultados, aprendida de lo cargado y confirmada por el dueño) y, en la
+// ficha, cargar una compra sin factura o una nota de crédito.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
-import { hoyAr, plata } from "../lib/finanzasOperaciones";
+import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import {
-  ORIGEN_SALDO_INICIAL, emparejarProveedor, movimientosProveedor, pendientesProveedor, saldosDelLibro, saldosProveedores,
+  CLASES_COMPRA, CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL, cuentaDeProveedor, cuentasAprendidas, emparejarProveedor, movimientosProveedor, pendientesProveedor, saldosDelLibro, saldosProveedores,
 } from "../lib/finanzasProveedores";
 import { Chip, Modal, Spinner } from "./ui";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
@@ -160,10 +163,171 @@ function SaldosIniciales({ datos, cuentasProv, onCerrar, onCargados }) {
   );
 }
 
+/* ─── Parte 3: la cuenta de cada proveedor ───────────────────────────── */
+
+/** Las cuentas que se pueden elegir: todas menos Proveedores. */
+function opcionesCuenta(datos, cuentasProv) {
+  return (datos.cuentas || []).filter((c) => !cuentasProv.has(c.codigo) && c.activa !== false);
+}
+
+/** Lo que aprendió de las compras (sin saldos iniciales ni Ajuste De Capital). */
+export function aprendidasDe(datos, cuentasProv) {
+  const ajuste = new Set((datos.cuentas || []).filter((c) => CUENTA_AJUSTE_CAPITAL.test(String(c.nombre || "").trim())).map((c) => c.codigo));
+  const ops = (datos.operaciones || []).filter((op) => op.origen !== ORIGEN_SALDO_INICIAL);
+  return cuentasAprendidas(ops, cuentasProv, { excluir: ajuste });
+}
+
+function SelectCuenta({ value, onChange, opciones, label }) {
+  return (
+    <select className="g-input w-full" aria-label={label} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Sin elegir</option>
+      {opciones.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre} ({c.codigo})</option>)}
+    </select>
+  );
+}
+
+function CuentasDeProveedores({ datos, cuentasProv, aprendidas, onCerrar, onGuardadas }) {
+  const toast = useToast();
+  const guardadas = datos.cuentas_guardadas || {};
+  const opciones = useMemo(() => opcionesCuenta(datos, cuentasProv), [datos, cuentasProv]);
+  const nombreCuenta = useMemo(() => new Map((datos.cuentas || []).map((c) => [c.codigo, c.nombre])), [datos]);
+  const [elegidas, setElegidas] = useState(() => {
+    const o = {};
+    for (const p of datos.proveedores || []) {
+      const c = cuentaDeProveedor(`p${p.id}`, guardadas, aprendidas);
+      if (c) o[`p${p.id}`] = c;
+    }
+    return o;
+  });
+  const [buscar, setBuscar] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  const filas = useMemo(() => {
+    const b = normal(buscar);
+    return (datos.proveedores || [])
+      .filter((p) => p.activo !== false || guardadas[`p${p.id}`] || aprendidas.has(`p${p.id}`))
+      .filter((p) => !b || normal(p.nombre).includes(b))
+      .sort((a, b2) => Number(aprendidas.has(`p${b2.id}`)) - Number(aprendidas.has(`p${a.id}`)) || String(a.nombre).localeCompare(String(b2.nombre)));
+  }, [datos, buscar, guardadas, aprendidas]);
+  const cambios = Object.keys({ ...guardadas, ...elegidas }).filter((k) => (elegidas[k] || "") !== (guardadas[k] || ""));
+
+  async function guardar() {
+    setGuardando(true);
+    setError(null);
+    try {
+      const cuentas = Object.fromEntries(cambios.map((k) => [k, elegidas[k] || null]));
+      const res = await apiFetch("/api/finanzas/proveedores", { method: "POST", body: JSON.stringify({ accion: "cuentas", cuentas }) });
+      const x = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(x.error || "No se pudo guardar");
+      toast.success(`Listo: ${x.cuentas} proveedores con su cuenta`);
+      onGuardadas();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={guardando ? () => {} : onCerrar} title="Cuenta de cada proveedor" maxWidth={720}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          Es la cuenta del Estado de Resultados donde va lo que se le compra. Ya viene puesta la que más usaste con ese proveedor en el libro y en Gypi; cambiala si hace falta y apretá Guardar. La usan las facturas de las órdenes de compra y las compras sin factura.
+        </p>
+        <input className="g-input" aria-label="Buscar proveedor" placeholder="Buscar proveedor" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
+        <ul className="list-none m-0 p-0 flex flex-col gap-2 max-h-[50vh] overflow-y-auto" aria-label="Cuentas de proveedores">
+          {filas.slice(0, MAX_LISTA).map((p) => {
+            const k = `p${p.id}`;
+            const a = aprendidas.get(k);
+            return (
+              <li key={p.id} className="flex flex-col gap-1 border-b border-gypi-border pb-2">
+                <span className="font-semibold">{p.nombre}</span>
+                <SelectCuenta label={`Cuenta de ${p.nombre}`} value={elegidas[k]} opciones={opciones} onChange={(v) => setElegidas((o) => ({ ...o, [k]: v }))} />
+                <span className="text-[12px] text-gypi-dim">
+                  {guardadas[k] ? "✅ Guardada" : a ? "Sugerida, falta guardar" : "Sin compras para sugerir"}
+                  {a && ` · En sus compras: ${nombreCuenta.get(a.cuenta) || a.cuenta} (${a.veces} de ${a.de})`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        {filas.length > MAX_LISTA && <p className="m-0 text-[13px] text-gypi-dim">Hay {filas.length - MAX_LISTA} más: usá el buscador.</p>}
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" disabled={guardando} onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !cambios.length} onClick={guardar}>
+            {guardando ? "Guardando…" : `Guardar (${cambios.length})`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Parte 3: compra sin factura o nota de crédito ──────────────────── */
+
+function CompraManual({ clase, saldo, datos, cuentasProv, cuenta, onCerrar, onCargada }) {
+  const toast = useToast();
+  const opciones = useMemo(() => opcionesCuenta(datos, cuentasProv), [datos, cuentasProv]);
+  const [f, setF] = useState({ fecha: hoyAr(), importe: "", iva: "", numero: "", cuenta: cuenta || "", descripcion: "" });
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  const nc = clase === "nota_credito";
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  async function guardar() {
+    setError(null);
+    const importe = numero(f.importe);
+    const iva = nc ? numero(f.iva) : 0;
+    if (!(importe > 0)) return setError("Poné el importe total");
+    if (Number.isNaN(iva)) return setError("El IVA no es un número");
+    setGuardando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/proveedores", {
+        method: "POST",
+        body: JSON.stringify({ accion: "compra", clase, proveedor_id: saldo.proveedor_id, fecha: f.fecha, importe, iva, numero: f.numero, cuenta: f.cuenta, descripcion: f.descripcion }),
+      });
+      const x = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(x.error || "No se pudo guardar");
+      toast.success(nc ? "Nota de crédito cargada" : "Compra cargada");
+      onCargada();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={guardando ? () => {} : onCerrar} title={`${CLASES_COMPRA[clase]} · ${saldo.nombre}`} maxWidth={520}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          {nc ? "Baja lo que le debemos y el gasto de la cuenta. Si la nota trae IVA, ponelo aparte." : "Para lo que se compró con remito o ticket, sin factura: sube lo que le debemos, sin IVA."}
+        </p>
+        <label className="flex flex-col gap-1">Fecha<input type="date" className="g-input" value={f.fecha} onChange={set("fecha")} /></label>
+        <label className="flex flex-col gap-1">{nc ? "Total de la nota (con IVA)" : "Importe"}<input className="g-input" inputMode="decimal" value={f.importe} onChange={set("importe")} placeholder="0,00" /></label>
+        {nc && <label className="flex flex-col gap-1">IVA de la nota (si tiene)<input className="g-input" inputMode="decimal" value={f.iva} onChange={set("iva")} placeholder="0,00" /></label>}
+        <label className="flex flex-col gap-1">{nc ? "Número de la nota" : "Número de remito o ticket"}<input className="g-input" value={f.numero} onChange={set("numero")} maxLength={60} /></label>
+        <div className="flex flex-col gap-1">
+          <span>Cuenta del gasto</span>
+          <SelectCuenta label="Cuenta del gasto" value={f.cuenta} opciones={opciones} onChange={(v) => setF((x) => ({ ...x, cuenta: v }))} />
+        </div>
+        <label className="flex flex-col gap-1">Detalle (opcional)<input className="g-input" value={f.descripcion} onChange={set("descripcion")} maxLength={300} /></label>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" disabled={guardando} onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !f.cuenta} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /* ─── Ficha de un proveedor ──────────────────────────────────────────── */
 
-function Ficha({ saldo, datos, cuentasProv, onCerrar }) {
+function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
   const [vista, setVista] = useState("pendientes");
+  const [manual, setManual] = useState(null);
+  const cuenta = cuentaDeProveedor(saldo.clave, datos.cuentas_guardadas || {}, aprendidas);
+  const nombreCuenta = cuenta ? (datos.cuentas || []).find((c) => c.codigo === cuenta)?.nombre || cuenta : null;
   const [pagos, setPagos] = useState(null);
   const [abriendo, setAbriendo] = useState(false);
   const [errorPago, setErrorPago] = useState(null);
@@ -186,8 +350,13 @@ function Ficha({ saldo, datos, cuentasProv, onCerrar }) {
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className={`m-0 text-[18px] font-bold ${s.clase}`}>{s.texto}</p>
         <p className="m-0 text-[13px] text-gypi-dim">Comprado {plata(saldo.comprado, "ARS")} · Pagado {plata(saldo.pagado, "ARS")}</p>
+        {nombreCuenta && <p className="m-0 text-[13px]">Cuenta: <b>{nombreCuenta}</b>{!(datos.cuentas_guardadas || {})[saldo.clave] && <span className="text-gypi-dim"> (sugerida)</span>}</p>}
         {saldo.proveedor_id ? (
-          <button type="button" className="g-btn g-btn-primary self-start" disabled={abriendo} onClick={pagar}>{abriendo ? "Abriendo…" : "💸 Pagar"}</button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="g-btn g-btn-primary" disabled={abriendo} onClick={pagar}>{abriendo ? "Abriendo…" : "💸 Pagar"}</button>
+            <button type="button" className="g-btn g-btn-secondary" onClick={() => setManual("sin_factura")}>＋ Compra sin factura</button>
+            <button type="button" className="g-btn g-btn-secondary" onClick={() => setManual("nota_credito")}>＋ Nota de crédito</button>
+          </div>
         ) : (
           <p className="m-0 text-[12px] text-gypi-dim">Para pagarle con una orden de pago, primero sumalo a la lista de proveedores.</p>
         )}
@@ -252,6 +421,10 @@ function Ficha({ saldo, datos, cuentasProv, onCerrar }) {
         <NuevaOrden datos={pagos} proveedorId={saldo.proveedor_id} pendientes={pendientes} onCerrar={() => setPagos(null)}
           onGuardada={() => setPagos(null)} />
       )}
+      {manual && (
+        <CompraManual clase={manual} saldo={saldo} datos={datos} cuentasProv={cuentasProv} cuenta={cuenta}
+          onCerrar={() => setManual(null)} onCargada={() => { setManual(null); onCargada(); }} />
+      )}
     </Modal>
   );
 }
@@ -265,6 +438,7 @@ export default function FinanzasProveedores() {
   const [filtro, setFiltro] = useState("deuda");
   const [ficha, setFicha] = useState(null);
   const [iniciales, setIniciales] = useState(false);
+  const [verCuentas, setVerCuentas] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -280,6 +454,7 @@ export default function FinanzasProveedores() {
   useEffect(() => { cargar(); }, [cargar]);
 
   const cuentasProv = useMemo(() => new Set(datos?.cuentas_proveedores || []), [datos]);
+  const aprendidas = useMemo(() => (datos ? aprendidasDe(datos, cuentasProv) : new Map()), [datos, cuentasProv]);
   const saldos = useMemo(() => (datos ? saldosProveedores(datos.operaciones, cuentasProv, datos.proveedores) : []), [datos, cuentasProv]);
   const lista = useMemo(() => {
     const b = normal(buscar);
@@ -302,7 +477,8 @@ export default function FinanzasProveedores() {
         <p className="m-0 text-[14px] text-gypi-text">
           Les debemos <b>{plata(debemos, "ARS")}</b>{aFavor >= 0.01 && <> · A favor nuestro <b className="text-gypi-green">{plata(aFavor, "ARS")}</b></>}
         </p>
-        <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
+        <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setVerCuentas(true)}>📚 Cuenta de cada proveedor</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <Chip active={filtro === "deuda"} onClick={() => setFiltro("deuda")}>Les debemos ({cuantos("deuda")})</Chip>
@@ -336,7 +512,8 @@ export default function FinanzasProveedores() {
         </p>
       )}
 
-      {ficha && <Ficha saldo={ficha} datos={datos} cuentasProv={cuentasProv} onCerrar={() => setFicha(null)} />}
+      {ficha && <Ficha saldo={ficha} datos={datos} cuentasProv={cuentasProv} aprendidas={aprendidas} onCerrar={() => setFicha(null)} onCargada={() => { setFicha(null); cargar(); }} />}
+      {verCuentas && <CuentasDeProveedores datos={datos} cuentasProv={cuentasProv} aprendidas={aprendidas} onCerrar={() => setVerCuentas(false)} onGuardadas={() => { setVerCuentas(false); cargar(); }} />}
       {iniciales && <SaldosIniciales datos={datos} cuentasProv={cuentasProv} onCerrar={() => setIniciales(false)} onCargados={() => { setIniciales(false); cargar(); }} />}
     </div>
   );

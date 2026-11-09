@@ -12,7 +12,9 @@
 // Qué tipo de compra es: el que tiene el proveedor (proveedores.fin_tipo, se
 // guarda cuando el dueño lo cambia en Finanzas; un tipo viejo cuenta como el
 // nuevo que lo reemplaza). Si no tiene, COMPRAS (o COMPRA MP, o el primer
-// tipo del grupo COMPRAS) y la compra queda "para revisar".
+// tipo del grupo COMPRAS) y la compra queda "para revisar". Si el dueño
+// eligió la cuenta de ese proveedor (finanzas_cuentas_proveedores), va esa
+// cuenta al debe y la compra queda confirmada.
 // Las cuentas corrientes van en pesos: una factura en dólares se pasa a pesos
 // con su tipo de cambio; sin tipo de cambio no se crea la compra todavía.
 //
@@ -24,6 +26,7 @@ import { getModulosEmpresa } from "./planEnforcement";
 import { totalesFactura } from "./ordenesCompra";
 import { logger } from "./logger";
 import { MAPA_TIPOS, claveTipo } from "./finanzasTipos";
+import { CLAVE_CUENTAS_PROV, leerCuentasProveedores } from "./finanzasProveedores";
 
 export const TIPO_COMPRA_DEFECTO = "COMPRAS";
 
@@ -190,18 +193,21 @@ export async function sincronizarCompra(empresaId, { origen, id }) {
       return { accion: "corregida" };
     }
 
-    const [tipos, proveedores] = await Promise.all([
+    const [tipos, proveedores, cfgCuentas] = await Promise.all([
       sbGet(`fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,grupo,cuenta_debe,cuenta_haber,activo`),
       proveedorId ? sbGet(`proveedores?id=eq.${proveedorId}&empresa_id=eq.${e}&select=id,fin_tipo&limit=1`) : Promise.resolve([]),
+      proveedorId ? sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_CUENTAS_PROV}&select=valor&limit=1`, { silent: true, fallback: [] }) : Promise.resolve([]),
     ]);
     const { tipo, revisar } = tipoDeCompra(tipos || [], (proveedores || [])[0]);
+    // La cuenta que el dueño eligió para este proveedor manda sobre la del tipo
+    const cuentaProveedor = proveedorId ? leerCuentasProveedores(cfgCuentas?.[0]?.valor)[`p${proveedorId}`] || null : null;
     if (!tipo) {
       logger.warn(`[finanzas] sin tipo de compra con cuentas: no se creó la compra de ${origen} ${origenId}`);
       return { accion: "omitida" };
     }
     await sbPost("fin_operaciones", {
-      ...comun, empresa_id: e, tipo: tipo.codigo, cuenta_debe: tipo.cuenta_debe, cuenta_haber: tipo.cuenta_haber,
-      origen, origen_id: origenId, estado: revisar ? "para_revisar" : "confirmada", cargada_por_nombre: "Gypi", created_at: ahora,
+      ...comun, empresa_id: e, tipo: tipo.codigo, cuenta_debe: cuentaProveedor || tipo.cuenta_debe, cuenta_haber: tipo.cuenta_haber,
+      origen, origen_id: origenId, estado: revisar && !cuentaProveedor ? "para_revisar" : "confirmada", cargada_por_nombre: "Gypi", created_at: ahora,
     });
     return { accion: "creada" };
   } catch (err) {
