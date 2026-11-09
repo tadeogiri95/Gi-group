@@ -6,7 +6,7 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { estadoResultados, mesesHasta, nombreMes, finDeMes, importeResultado, seccionDe, configResultados } from "../app/lib/finanzasResultados.js";
+import { estadoResultados, mesesHasta, nombreMes, finDeMes, importeResultado, seccionDe, configResultados, validarPonderador, resumenDivisiones, divisionDeOp, claveDivision } from "../app/lib/finanzasResultados.js";
 import { cuentasDeHoja, limpiarFila } from "../app/lib/finanzas.js";
 
 before(() => {
@@ -63,8 +63,8 @@ test("meses, nombres y neto en pesos", () => {
   assert.equal(importeResultado({ neto: 100, total: 121, total_ars: 121000 }), 100000, "en USD, el neto al tipo de cambio");
   assert.equal(importeResultado({ neto: 0, total: 50, total_ars: 50 }), 50);
   assert.deepEqual([seccionDe("GO_ADM_SUE").seccion.id, seccionDe("GO_ADM_SUE").grupo, seccionDe("IMP_IVA").seccion.id, seccionDe("XYZ")], ["GO", "ADM", "IVA", null]);
-  assert.deepEqual(configResultados(null), { materiales_pct: 40 });
-  assert.deepEqual(configResultados({ materiales_pct: 0 }), { materiales_pct: 0 });
+  assert.deepEqual(configResultados(null), { materiales_pct: 40, ponderador: {} });
+  assert.deepEqual(configResultados({ materiales_pct: 0, ponderador: { MUEBLES: 80, ALUMINIO: 20 } }), { materiales_pct: 0, ponderador: { MUEBLES: 80, ALUMINIO: 20 } });
 });
 
 test("estado de resultados — renglones, materiales estimados, IVA aparte, resultados y %", () => {
@@ -108,11 +108,46 @@ test("plan de cuentas — trae clasificacion_eerr y atribucion_div; editar a man
   assert.equal(limpiarFila("cuentas", { codigo: "01.01.01.003.002", nombre: "Banco", linea_eerr: "go_adm" }).fila.linea_eerr, "GO_ADM");
 });
 
+// ─── Por división ───
+
+const CENTROS = [{ codigo: "ALUM", division: "Aluminio" }, { codigo: "GENERAL", division: "GENERAL" }];
+const PONDERADOR = { MUEBLES: 80, ALUMINIO: 20 };
+// Un sueldo de planta con centro de costo de Aluminio: va entero a Aluminio
+const OPS_DIV = [...OPS, op("2026-10-31", "04.02.01.007.001", "02.01.03.001.001", 50000, { centro_costo: "ALUM" })];
+
+test("ponderador: suman 100, de qué división es cada operación", () => {
+  assert.deepEqual(validarPonderador({ MUEBLES: "80", " ALUMINIO ": "20,0" }), { ponderador: { MUEBLES: 80, ALUMINIO: 20 } });
+  assert.match(validarPonderador({ MUEBLES: 80, ALUMINIO: 15 }).error, /sumar 100 \(ahora suman 95\)/);
+  assert.ok(validarPonderador({ MUEBLES: 120 }).error);
+  assert.deepEqual(validarPonderador({}), { ponderador: {} });
+  assert.equal(claveDivision(" Herrería "), "HERRERIA");
+  const ctx = { divisionOt: new Map([[1, "Muebles"]]), divisionCentro: new Map([["ALUM", "ALUMINIO"], ["GENERAL", "GENERAL"]]), divisiones: new Map([["MUEBLES", "MUEBLES"], ["ALUMINIO", "ALUMINIO"]]) };
+  assert.equal(divisionDeOp({ proyecto_id: 1, centro_costo: "ALUM" }, ctx), "MUEBLES", "la OT gana");
+  assert.equal(divisionDeOp({ centro_costo: "alum" }, ctx), "ALUMINIO");
+  assert.equal(divisionDeOp({ centro_costo: "GENERAL" }, ctx), "", "GENERAL no está en el ponderador: compartido");
+  assert.equal(divisionDeOp({}, ctx), "");
+});
+
+test("estado por división: lo suyo entero y su % de lo compartido", () => {
+  const base = { ops: OPS_DIV, cuentas: CUENTAS, proyectos: PROYECTOS, centros: CENTROS, hasta: "2026-10", ponderador: PONDERADOR };
+  const t = (r, id) => r.filas.find((f) => f.id === id).valores[11];
+  const muebles = estadoResultados({ ...base, division: "MUEBLES" });
+  // Entrega 1.000.000 suya; materiales 40 %; sueldos 300.000, adm. 100.000, banco 5.000 e impuesto 2.000 al 80 %
+  assert.deepEqual([t(muebles, "ING"), t(muebles, "CMV"), t(muebles, "GO"), t(muebles, "FIN"), t(muebles, "IMP"), t(muebles, "RDO_NETO")], [1000000, 640000, 80000, 4000, 1600, 274400]);
+  const alu = estadoResultados({ ...base, division: "ALUMINIO" });
+  // 20 % de los sueldos + los 50.000 de su centro de costo
+  assert.equal(t(alu, "CMV"), 110000);
+  assert.equal(t(alu, "RDO_NETO"), -131400);
+  const res = resumenDivisiones({ ...base, materialesPct: 40 });
+  assert.deepEqual(res.map((r) => [r.division, r.pct]), [["MUEBLES", 80], ["ALUMINIO", 20], ["", 100]]);
+  assert.equal(res[0].resultado + res[1].resultado, res[2].resultado, "las divisiones suman la empresa");
+});
+
 // ─── Servidor ───
 
 const token = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
 
-function mockApi({ falta179 = false } = {}) {
+function mockApi({ falta179 = false, ponderador = null } = {}) {
   const pedidos = [];
   const escrito = [];
   global.fetch = createFetchMock([
@@ -122,11 +157,12 @@ function mockApi({ falta179 = false } = {}) {
     { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => (falta179 ? { status: 400, body: { code: "42703", message: "column fin_cuentas.linea_eerr does not exist" } } : { status: 200, body: CUENTAS }) },
     { match: (u) => u.includes("/rest/v1/fin_operaciones"), respond: (u) => { pedidos.push(decodeURIComponent(u)); return { status: 200, body: OPS.filter((o) => !o.anulada_at) }; } },
     { match: (u) => u.includes("/rest/v1/proyectos"), respond: () => ({ status: 200, body: PROYECTOS }) },
+    { match: (u) => u.includes("/rest/v1/fin_centros_costo"), respond: () => ({ status: 200, body: CENTROS }) },
     {
       match: (u) => u.includes("/rest/v1/config_sistema"),
       respond: (u, o) => {
         if (o?.method === "POST" || o?.method === "PATCH") { escrito.push(JSON.parse(o.body)); return { status: 201, body: [] }; }
-        return { status: 200, body: [{ valor: { materiales_pct: 30 } }] };
+        return { status: 200, body: [{ valor: { materiales_pct: 30, ...(ponderador ? { ponderador } : {}) } }] };
       },
     },
   ]);
@@ -154,8 +190,21 @@ test("/api/finanzas/resultados — guardar el % de materiales", async () => {
   const { escrito } = mockApi();
   const post = async (body) => api.POST(new Request("http://localhost/api/finanzas/resultados", { method: "POST", headers: { Authorization: `Bearer ${await token("gerencial")}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }));
   assert.equal((await post({ accion: "config", materiales_pct: "35,5" })).status, 200);
-  assert.deepEqual(escrito[0].valor, { materiales_pct: 35.5 });
+  assert.deepEqual(escrito[0].valor, { materiales_pct: 35.5, ponderador: {} });
   assert.equal((await post({ accion: "config", materiales_pct: 120 })).status, 400);
+  assert.equal((await post({ accion: "config", ponderador: { MUEBLES: 80, ALUMINIO: 15 } })).status, 400);
+  assert.equal((await post({ accion: "config", ponderador: PONDERADOR })).status, 200);
+  assert.deepEqual(escrito[1].valor, { materiales_pct: 30, ponderador: PONDERADOR }, "el % de materiales queda como estaba");
+});
+
+test("/api/finanzas/resultados — una división y el resumen", async () => {
+  mockApi({ ponderador: PONDERADOR });
+  const r = await api.GET(new Request("http://localhost/api/finanzas/resultados?hasta=2026-10&division=ALUMINIO", { headers: { Authorization: `Bearer ${await token("gerencial")}` } }));
+  const d = await r.json();
+  assert.equal(d.division, "ALUMINIO");
+  assert.deepEqual(d.divisiones, ["ALUMINIO", "MUEBLES"]);
+  assert.equal(d.por_division.length, 3);
+  assert.equal(d.filas.find((f) => f.id === "ING").valores[11], 0, "la entrega de Muebles no está");
 });
 
 // ─── Pantalla ───
@@ -171,4 +220,22 @@ test("Resultados — muestra el estado y cierra una sección", async () => {
   assert.equal(screen.queryByText("Sueldos Administración"), null);
   assert.ok(screen.getByText(/1 operaciones para revisar/));
   assert.ok(screen.getByText(/1 cuentas de resultado/));
+});
+
+test("Resultados — resumen por división y elegir una", async () => {
+  const base = { ops: OPS_DIV, cuentas: CUENTAS, proyectos: PROYECTOS, centros: CENTROS, hasta: "2026-10", ponderador: PONDERADOR };
+  const pedidos = [];
+  global.fetch = async (u) => {
+    pedidos.push(String(u));
+    const division = String(u).includes("division=ALUMINIO") ? "ALUMINIO" : "";
+    return new Response(JSON.stringify({ hasta: "2026-10", config: { materiales_pct: 40, ponderador: PONDERADOR }, division, divisiones: ["ALUMINIO", "MUEBLES"], por_division: resumenDivisiones(base), ...estadoResultados({ ...base, division }) }), { status: 200 });
+  };
+  render(<FinanzasResultados />);
+  assert.ok(await screen.findByRole("table", { name: "Resumen por división" }));
+  assert.ok(screen.getByText("Toda la empresa", { selector: "td" }));
+  fireEvent.click(screen.getByRole("button", { name: "ALUMINIO" }));
+  assert.ok(await screen.findByText(/ALUMINIO: lo suyo entero/));
+  assert.ok(pedidos.some((p) => p.includes("division=ALUMINIO")));
+  fireEvent.click(screen.getByRole("button", { name: "⚙ Compartidos" }));
+  assert.equal(screen.getByLabelText("Porcentaje de MUEBLES").value, "80");
 });

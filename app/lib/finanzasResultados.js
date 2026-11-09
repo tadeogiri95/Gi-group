@@ -16,6 +16,11 @@
 //   - IMP_IVA (IVA a pagar / a favor) va aparte y no entra en el resultado.
 //   - Las operaciones anuladas no cuentan; las "para revisar" tampoco (se
 //     avisa cuántas hay).
+//   - Por división: cada operación es de la división de su OT o, si no tiene,
+//     de la de su centro de costo (dim_cc). Lo que no es de ninguna de las
+//     divisiones del ponderador es compartido y se reparte con el % que el
+//     Dueño le pone a cada una (config_sistema "finanzas_resultados",
+//     ponderador). Como el libro, los % deben sumar 100.
 export const CLAVE_RESULTADOS = "finanzas_resultados";
 export const MATERIALES_PCT = 40;
 export const MESES_VENTANA = 12;
@@ -80,6 +85,21 @@ export function seccionDe(linea) {
   return sec ? { seccion: sec, grupo: g || "" } : null;
 }
 
+/** "Herrería " → "HERRERIA", para comparar divisiones escritas distinto. */
+export const claveDivision = (d) => String(d || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * De qué división del ponderador es una operación: la de su OT, si no la de
+ * su centro de costo; "" = compartida.
+ * @param {Map<string,string>} divisiones clave → nombre, las del ponderador
+ */
+export function divisionDeOp(op, { divisionOt = new Map(), divisionCentro = new Map(), divisiones = new Map() }) {
+  const deOt = op.proyecto_id ? divisiones.get(claveDivision(divisionOt.get(Number(op.proyecto_id)))) : null;
+  if (deOt) return deOt;
+  const deCc = op.centro_costo ? divisiones.get(claveDivision(divisionCentro.get(claveDivision(op.centro_costo)))) : null;
+  return deCc || "";
+}
+
 /** ¿Es una cuenta de resultado? (rubro RESULTADO o código 04/05). */
 const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]\./.test(String(c.codigo || ""));
 
@@ -88,22 +108,31 @@ const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]
  * @param {{ ops: object[], cuentas: object[], proyectos?: object[], hasta: string, materialesPct?: number }} d
  * @returns {{ meses: string[], filas: object[], sin_linea: object[], para_revisar: number, clasificado: boolean, materiales_estimados: boolean }}
  */
-export function estadoResultados({ ops = [], cuentas = [], proyectos = [], hasta, materialesPct = MATERIALES_PCT }) {
+export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "" }) {
   const meses = mesesHasta(hasta);
   const idx = new Map(meses.map((m, i) => [m, i]));
   const porCodigo = new Map(cuentas.map((c) => [c.codigo, c]));
-  const division = new Map(proyectos.map((p) => [Number(p.id), String(p.division || "").trim()]));
+  const divisionOt = new Map(proyectos.map((p) => [Number(p.id), String(p.division || "").trim()]));
+  // Vista de una división: lo suyo entero y su % de lo compartido
+  const divisiones = new Map(Object.keys(ponderador || {}).map((d) => [claveDivision(d), d]));
+  const divisionCentro = new Map(centros.map((c) => [claveDivision(c.codigo), String(c.division || "")]));
+  const parte = division ? (Number(ponderador?.[division]) || 0) / 100 : 1;
+  const factor = (op) => {
+    if (!division) return 1;
+    const d = divisionDeOp(op, { divisionOt, divisionCentro, divisiones });
+    return d === division ? 1 : d ? 0 : parte;
+  };
   const cero = () => meses.map(() => 0);
   // renglón (cuenta + división) → valores por mes
   const lineas = new Map();
   const sinLinea = new Map();
   let paraRevisar = 0;
 
-  const sumar = (codigo, op, signo) => {
+  const sumar = (codigo, op, signo, f) => {
     const c = porCodigo.get(codigo);
     if (!c) return;
     const i = idx.get(String(op.fecha).slice(0, 7));
-    const v = importeResultado(op) * signo;
+    const v = importeResultado(op) * signo * f;
     const ubic = c.linea_eerr ? seccionDe(c.linea_eerr) : null;
     if (!ubic) {
       if (esDeResultado(c)) {
@@ -113,7 +142,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], hasta
       }
       return;
     }
-    const div = ubic.seccion.ingreso && op.proyecto_id ? division.get(Number(op.proyecto_id)) || "" : "";
+    const div = ubic.seccion.ingreso && op.proyecto_id ? divisionOt.get(Number(op.proyecto_id)) || "" : "";
     const k = `${codigo}|${div}`;
     let l = lineas.get(k);
     if (!l) {
@@ -128,8 +157,10 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], hasta
     if (op.anulada_at) continue;
     if (!idx.has(String(op.fecha || "").slice(0, 7))) continue;
     if (op.estado === "para_revisar") { paraRevisar += 1; continue; }
-    sumar(op.cuenta_debe, op, 1);
-    sumar(op.cuenta_haber, op, -1);
+    const f = factor(op);
+    if (!f) continue;
+    sumar(op.cuenta_debe, op, 1, f);
+    sumar(op.cuenta_haber, op, -1, f);
   }
 
   // Materiales estimados: un % de las entregas en lugar de las cuentas CMV_MAT
@@ -193,8 +224,46 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], hasta
   };
 }
 
+/**
+ * El ponderador como lo manda la pantalla: { "MUEBLES": "80", … } →
+ * { ponderador } o { error }. Vacío = sin repartir (se borra).
+ */
+export function validarPonderador(p) {
+  if (p == null) return { ponderador: {} };
+  if (typeof p !== "object" || Array.isArray(p)) return { error: "El ponderador no vino bien" };
+  const ponderador = {};
+  for (const [d, v] of Object.entries(p)) {
+    const nombre = String(d || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!nombre) continue;
+    const n = Number(String(v ?? "").replace(",", ".").trim() || 0);
+    if (!Number.isFinite(n) || n < 0 || n > 100) return { error: `El % de ${nombre} va de 0 a 100` };
+    ponderador[nombre] = Math.round(n * 10) / 10;
+  }
+  if (Object.keys(ponderador).length > 20) return { error: "Son demasiadas divisiones" };
+  const suma = Object.values(ponderador).reduce((s, n) => s + n, 0);
+  if (Object.keys(ponderador).length && Math.abs(suma - 100) > 0.05) return { error: `Los % tienen que sumar 100 (ahora suman ${String(Math.round(suma * 10) / 10).replace(".", ",")})` };
+  return { ponderador };
+}
+
 /** La configuración guardada, con el % de materiales por defecto. */
 export function configResultados(valor) {
   const n = Number(valor?.materiales_pct);
-  return { materiales_pct: Number.isFinite(n) && n >= 0 && n <= 100 ? n : MATERIALES_PCT };
+  const p = validarPonderador(valor?.ponderador);
+  return { materiales_pct: Number.isFinite(n) && n >= 0 && n <= 100 ? n : MATERIALES_PCT, ponderador: p.ponderador || {} };
+}
+
+/**
+ * El total de 12 meses de cada división (con su parte de lo compartido) y lo
+ * de toda la empresa, para el resumen de arriba.
+ */
+export function resumenDivisiones(d) {
+  const de = (r) => {
+    const t = (id) => r.filas.find((f) => f.id === id)?.total || 0;
+    return { ingresos: t("ING"), cmv: t("CMV"), gastos: t("GO"), financiero: t("FIN"), impuestos: t("IMP"), resultado: t("RDO_NETO") };
+  };
+  const divisiones = Object.keys(d.ponderador || {});
+  return [
+    ...divisiones.map((division) => ({ division, pct: d.ponderador[division], ...de(estadoResultados({ ...d, division })) })),
+    { division: "", pct: 100, ...de(estadoResultados({ ...d, division: "" })) },
+  ];
 }
