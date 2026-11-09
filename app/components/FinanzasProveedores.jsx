@@ -350,7 +350,7 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
   const pendientes = useMemo(() => pendientesProveedor(movimientos, hoyAr()), [movimientos]);
   const s = textoSaldo(saldo.deuda);
   return (
-    <Modal open onClose={onCerrar} title={saldo.nombre || "Proveedor"} maxWidth={640}>
+    <Modal open onClose={onCerrar} title={saldo.nombre || "Proveedor"} maxWidth={1080}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className={`m-0 text-[18px] font-bold ${s.clase}`}>{s.texto}</p>
         <p className="m-0 text-[13px] text-gypi-dim">Comprado {plata(saldo.comprado, "ARS")} · Pagado {plata(saldo.pagado, "ARS")}</p>
@@ -386,7 +386,7 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
                   <tr key={p.op.id} className="border-t border-gypi-border">
                     <td className="py-1">
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(p.op.fecha)}</span> {p.op.tipo}
-                      {p.op.descripcion && <span className="block text-[12px] text-gypi-dim truncate">{p.op.descripcion}</span>}
+                      {p.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{p.op.descripcion}</span>}
                     </td>
                     <td className="py-1 text-right font-mono">{plata(p.importe, "ARS")}</td>
                     <td className="py-1 text-right font-mono font-semibold">{plata(p.falta, "ARS")}</td>
@@ -411,7 +411,7 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
                 <tr key={m.op.id} className="border-t border-gypi-border">
                   <td className="py-1">
                     <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
-                    {m.op.descripcion && <span className="block text-[12px] text-gypi-dim truncate">{m.op.descripcion}</span>}
+                    {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
                   </td>
                   <td className="py-1 text-right font-mono">{m.compra ? plata(m.compra, "ARS") : ""}</td>
                   <td className="py-1 text-right font-mono">{m.pago ? plata(m.pago, "ARS") : ""}</td>

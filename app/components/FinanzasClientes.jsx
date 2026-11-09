@@ -306,7 +306,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
   const grupoDe = (op) => (op.origen === ORIGEN_COBRO ? String(op.origen_id || "").split(":")[0] : null);
 
   return (
-    <Modal open onClose={onCerrar} title={saldo.nombre || "Cliente"} maxWidth={680}>
+    <Modal open onClose={onCerrar} title={saldo.nombre || "Cliente"} maxWidth={1080}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className={`m-0 text-[18px] font-bold ${s.clase}`}>{s.texto}</p>
         <p className="m-0 text-[13px] text-gypi-dim">Vendido {plata(saldo.vendido, "ARS")} · Cobrado {plata(saldo.cobrado, "ARS")}{cliente?.telefono ? ` · Tel. ${cliente.telefono}` : ""}</p>
@@ -365,7 +365,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
                   <tr key={m.op.id} className="border-t border-gypi-border">
                     <td className="py-1">
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
-                      {m.op.descripcion && <span className="block text-[12px] text-gypi-dim truncate">{m.op.descripcion}</span>}
+                      {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
                       {m.op.proyecto_id && ots.get(Number(m.op.proyecto_id)) && <span className="block text-[12px] text-gypi-dim">OT {ots.get(Number(m.op.proyecto_id)).ot}</span>}
                       {grupo && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anular(grupo)}>Anular el cobro</button>}
                     </td>
