@@ -13,6 +13,7 @@
 // Resultados, aprendida de lo cargado y confirmada por el dueño) y, en la
 // ficha, cargar una compra sin factura o una nota de crédito.
 // Parte 4: "📄 Importar CSV del S.O.S" (app/components/FinanzasSos.jsx).
+// Parte 5: "🔗 Cliente y proveedor" y la cuenta unificada en la ficha.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -23,6 +24,7 @@ import {
 import { Chip, Modal, Spinner } from "./ui";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
 import FinanzasSos from "./FinanzasSos";
+import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
 import { useToast } from "./ui/Toast";
 
 const MAX_LISTA = 300;
@@ -362,6 +364,7 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
         ) : (
           <p className="m-0 text-[12px] text-gypi-dim">Para pagarle con una orden de pago, primero sumalo a la lista de proveedores.</p>
         )}
+        {saldo.proveedor_id && <LineaUnificada proveedorId={saldo.proveedor_id} onCambio={onCargada} />}
         {errorPago && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {errorPago}</p>}
         <div className="flex gap-2">
           <Chip active={vista === "pendientes"} onClick={() => setVista("pendientes")}>Falta pagar ({pendientes.length})</Chip>
@@ -442,6 +445,7 @@ export default function FinanzasProveedores() {
   const [iniciales, setIniciales] = useState(false);
   const [verCuentas, setVerCuentas] = useState(false);
   const [sos, setSos] = useState(false);
+  const [unificados, setUnificados] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -482,6 +486,7 @@ export default function FinanzasProveedores() {
         </p>
         <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setVerCuentas(true)}>📚 Cuenta de cada proveedor</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setSos(true)}>📄 Importar CSV del S.O.S</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setUnificados(true)}>🔗 Cliente y proveedor</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -517,6 +522,7 @@ export default function FinanzasProveedores() {
       )}
 
       {ficha && <Ficha saldo={ficha} datos={datos} cuentasProv={cuentasProv} aprendidas={aprendidas} onCerrar={() => setFicha(null)} onCargada={() => { setFicha(null); cargar(); }} />}
+      {unificados && <FinanzasUnificados onCerrar={() => setUnificados(false)} onCambio={cargar} />}
       {sos && <FinanzasSos onCerrar={() => setSos(false)} onImportado={() => { setSos(false); cargar(); }} />}
       {verCuentas && <CuentasDeProveedores datos={datos} cuentasProv={cuentasProv} aprendidas={aprendidas} onCerrar={() => setVerCuentas(false)} onGuardadas={() => { setVerCuentas(false); cargar(); }} />}
       {iniciales && <SaldosIniciales datos={datos} cuentasProv={cuentasProv} onCerrar={() => setIniciales(false)} onCargados={() => { setIniciales(false); cargar(); }} />}

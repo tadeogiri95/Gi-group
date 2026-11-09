@@ -25,7 +25,7 @@ export const IVA_DEBITO = /^iva d[eé]bito fiscal$/i;
 export const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_OPERACIONES = 5000;
 /** De dónde salió una operación que no se cargó a mano (F2a). */
-export const ORIGENES = { factura_oc: "🧾 Factura de OC", factura_oc_otra: "🧾 Factura de OC (otro proveedor)", factura_suelta: "🧾 Factura suelta", saldo_inicial: "📥 Saldo inicial del libro", cheque: "🏦 Cheque", orden_pago: "💸 Orden de pago", mi_caja: "📱 Mi caja", cobro: "💵 Cobro", venta_ot: "🧾 Venta de OT", entrega_ot: "📦 Entrega de OT", compra_manual: "📝 Compra sin factura o nota de crédito", libro: "📚 Histórico del libro", sos: "📄 CSV del S.O.S Contador" };
+export const ORIGENES = { factura_oc: "🧾 Factura de OC", factura_oc_otra: "🧾 Factura de OC (otro proveedor)", factura_suelta: "🧾 Factura suelta", saldo_inicial: "📥 Saldo inicial del libro", cheque: "🏦 Cheque", orden_pago: "💸 Orden de pago", mi_caja: "📱 Mi caja", cobro: "💵 Cobro", venta_ot: "🧾 Venta de OT", entrega_ot: "📦 Entrega de OT", compra_manual: "📝 Compra sin factura o nota de crédito", libro: "📚 Histórico del libro", sos: "📄 CSV del S.O.S Contador", compensacion: "⚖ Compensación cliente y proveedor" };
 
 const txt = (v, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const redondear = (n) => Math.round(n * 100) / 100;
