@@ -85,8 +85,8 @@ test("pagar — efectivo y transferencia contra Proveedores, el e-cheq nuevo y e
   const plan = generarPago({ ...ORDEN, ...orden }, CTX, "2026-11-10");
   assert.equal(plan.error, undefined);
   assert.deepEqual(plan.operaciones.map((o) => [o.tipo, o.cuenta_debe, o.cuenta_haber, o.total, o.origen, o.origen_id]), [
-    ["PAGO EFECTIVO", "02.01.02.001.001", "01.01.01.001.001.01", 100000, "orden_pago", "9:0"],
-    ["PAGO TRANSF", "02.01.02.001.001", "01.01.01.003.002", 200000, "orden_pago", "9:1"],
+    ["PAGO A PROVEEDORES", "02.01.02.001.001", "01.01.01.001.001.01", 100000, "orden_pago", "9:0"],
+    ["PAGO A PROVEEDORES", "02.01.02.001.001", "01.01.01.003.002", 200000, "orden_pago", "9:1"],
   ]);
   assert.equal(plan.operaciones[0].referencia, "OP 4");
   assert.deepEqual([plan.emitir[0].banco, plan.emitir[0].estado, plan.emitir[0].origen, plan.emitir[0].fecha_pago, plan.emitir[0].proveedor_id], ["Credicoop", "pendiente", "pago", "2026-12-15", 5]);
@@ -222,7 +222,7 @@ test("/api/finanzas/pagos — pagar solo aprobadas; genera operaciones, e-cheq y
   assert.match(marca.url, /estado=eq\.aprobada/, "se marca primero, para no pagar dos veces");
   assert.equal(marca.body.estado, "pagada");
   const ops = escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").flatMap((x) => (Array.isArray(x.body) ? x.body : [x.body]));
-  assert.deepEqual(ops.map((o) => o.tipo), ["PAGO EFECTIVO", "PAGO TRANSF", "PAGO ECHEQ A PROVEEDORES", "PAGO CHEQUE A PROVEEDORES"]);
+  assert.deepEqual(ops.map((o) => o.tipo), ["PAGO A PROVEEDORES", "PAGO A PROVEEDORES", "PAGO A PROVEEDORES", "PAGO A PROVEEDORES"]);
   const nuevo = escrito.find((x) => x.tabla === "fin_cheques" && x.metodo === "POST");
   assert.equal(nuevo.body.origen, "pago");
   const entrega = escrito.find((x) => x.tabla === "fin_cheques" && x.url.includes("id=eq.11&") && x.body.estado === "entregado");

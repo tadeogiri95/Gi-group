@@ -106,10 +106,10 @@ test("devengado: un DEVENG SUELDO por importe, al área del empleado, horas fuer
   const { ops, errores: e2 } = operacionesLiquidacion(liq, { conceptos, areas: { e2: ADM }, cuentaAPagar: APAGAR });
   assert.deepEqual(e2, []);
   assert.deepEqual(ops.map((o) => [o.tipo, o.cuenta_debe, o.cuenta_haber, o.total, o.origen_id]), [
-    ["DEVENG SUELDO", PROD, APAGAR, 850000, "l7:e1:basico"],
-    ["DEVENG SUELDO", HEX, APAGAR, 40000, "l7:e1:horas_extra"],
-    ["DEVENG SUELDO", APAGAR, "04.02.01.007.011", 5000, "l7:e1:bonos"],
-    ["DEVENG SUELDO", ADM, APAGAR, 900000, "l7:e2:basico"],
+    ["SUELDOS", PROD, APAGAR, 850000, "l7:e1:basico"],
+    ["SUELDOS", HEX, APAGAR, 40000, "l7:e1:horas_extra"],
+    ["SUELDOS", APAGAR, "04.02.01.007.011", 5000, "l7:e1:bonos"],
+    ["SUELDOS", ADM, APAGAR, 900000, "l7:e2:basico"],
   ]);
   assert.equal(ops[0].descripcion, "Sueldo básico · Octubre 2026 · Juan Pérez");
   assert.equal(ops[0].origen, "liquidacion");
@@ -120,7 +120,7 @@ test("devengado: un DEVENG SUELDO por importe, al área del empleado, horas fuer
 test("pagos: Sueldos A Pagar contra la caja, y lo pagado por empleado", () => {
   const liq = { id: 7, periodo: "Octubre 2026" };
   const op = operacionPagoSueldo({ liq, renglon: { empleado_id: "e1", nombre: "Juan Pérez" }, caja: { cuenta: BANCO }, importe: 500000, fecha: "2026-11-06", n: 1 }, APAGAR);
-  assert.deepEqual([op.tipo, op.cuenta_debe, op.cuenta_haber, op.total, op.origen, op.origen_id], ["PAGO SUELDO", APAGAR, BANCO, 500000, "pago_sueldo", "l7:e1:1"]);
+  assert.deepEqual([op.tipo, op.cuenta_debe, op.cuenta_haber, op.total, op.origen, op.origen_id], ["SUELDOS", APAGAR, BANCO, 500000, "pago_sueldo", "l7:e1:1"]);
   const pagado = pagadoPorEmpleado(7, [op, { ...op, origen_id: "l7:e1:2", total_ars: 100 }, { ...op, origen_id: "l7:e1:3", anulada_at: "x" }, { ...op, origen_id: "l70:e1:1" }]);
   assert.deepEqual(pagado, { e1: 500100 });
 });
@@ -212,7 +212,7 @@ test("/api/finanzas/sueldos — pagar: no más de lo que falta, desde un banco d
   const r = await pedir("gerencial", { accion: "pagar", id: 7, pagos: [{ empleado_id: "e1", importe: 50000, cuenta: BANCO, fecha: "2026-11-06" }, { empleado_id: "e2", importe: 900000, cuenta: BANCO, fecha: "2026-11-06" }] });
   assert.equal(r.status, 200);
   const ops = escrito.find((x) => x.tabla === "fin_operaciones").body;
-  assert.deepEqual(ops.map((o) => [o.tipo, o.cuenta_debe, o.cuenta_haber, o.total, o.origen_id]), [["PAGO SUELDO", APAGAR, BANCO, 50000, "l7:e1:2"], ["PAGO SUELDO", APAGAR, BANCO, 900000, "l7:e2:1"]]);
+  assert.deepEqual(ops.map((o) => [o.tipo, o.cuenta_debe, o.cuenta_haber, o.total, o.origen_id]), [["SUELDOS", APAGAR, BANCO, 50000, "l7:e1:2"], ["SUELDOS", APAGAR, BANCO, 900000, "l7:e2:1"]]);
 });
 
 test("/api/finanzas/sueldos — anular: no con pagos vivos; sin pagos anula el devengado", async () => {

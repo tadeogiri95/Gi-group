@@ -8,10 +8,10 @@
 //     (queda como dato). Cada importe tiene su cuenta; los que "van a la
 //     cuenta del área" (básico, presentismo) usan la cuenta de sueldo de cada
 //     empleado (Producción, Administración, Diseño…).
-//   - Confirmar: cada importe de cada empleado es un DEVENG SUELDO en su
+//   - Confirmar: cada importe de cada empleado es una operación SUELDOS (devengado) en su
 //     cuenta contra Sueldos A Pagar (un importe negativo, un descuento, va al
 //     revés). origen "liquidacion", origen_id "l<id>:<empleado>:<concepto>".
-//   - Pagar: PAGO SUELDO, Sueldos A Pagar contra la caja o el banco, por
+//   - Pagar: SUELDOS, Sueldos A Pagar contra la caja o el banco, por
 //     empleado. origen "pago_sueldo", origen_id "l<id>:<empleado>:<n>".
 // La configuración va en config_sistema ("finanzas_sueldos"):
 //   { conceptos: [{ codigo, nombre, clase, cuenta, usa_area, activo }], areas: { <empleado_id>: <cuenta> } }
@@ -20,8 +20,8 @@ import { claveNombre } from "./finanzasProveedores";
 export const CLAVE_SUELDOS = "finanzas_sueldos";
 export const ORIGEN_LIQUIDACION = "liquidacion";
 export const ORIGEN_PAGO_SUELDO = "pago_sueldo";
-export const TIPO_DEVENGADO = "DEVENG SUELDO";
-export const TIPO_PAGO = "PAGO SUELDO";
+export const TIPO_DEVENGADO = "SUELDOS";
+export const TIPO_PAGO = "SUELDOS";
 export const CUENTA_SUELDOS_A_PAGAR = /^sueldos a pagar$/i;
 export const CUENTA_AREA = /^sueldos,? jornales/i;
 export const MAX_CONCEPTOS = 40;
@@ -245,7 +245,7 @@ export function operacionesLiquidacion(liq, { conceptos = [], areas = {}, cuenta
   return { ops, errores: [...new Set(errores)] };
 }
 
-/** Lo pagado a cada empleado de una liquidación (operaciones PAGO SUELDO vivas). */
+/** Lo pagado a cada empleado de una liquidación (operaciones de pago de sueldos vivas). */
 export function pagadoPorEmpleado(liqId, ops = []) {
   const pre = `l${liqId}:`;
   const por = {};

@@ -84,7 +84,7 @@ test("saldo inicial — contra Ajuste De Capital; negativo al revés; USD con ti
 test("pasar plata — la que recibe al debe; misma moneda, dos distintas, activas; USD pide tipo de cambio", () => {
   const { op, errores } = validarTransferencia({ desde: CAJA.cuenta, hacia: CAJA_JUAN.cuenta, importe: "1500", fecha: "2026-11-09", descripcion: "para viáticos" }, TESORERIA);
   assert.deepEqual(errores, []);
-  assert.deepEqual([op.tipo, op.cuenta_debe, op.cuenta_haber, op.total, op.descripcion], ["TRANSF INTERNA", CAJA_JUAN.cuenta, CAJA.cuenta, 1500, "De Caja Principal a Caja Juan · para viáticos"]);
+  assert.deepEqual([op.tipo, op.cuenta_debe, op.cuenta_haber, op.total, op.descripcion], ["TRANSFERENCIA ENTRE CAJAS", CAJA_JUAN.cuenta, CAJA.cuenta, 1500, "De Caja Principal a Caja Juan · para viáticos"]);
   assert.match(validarTransferencia({ desde: CAJA.cuenta, hacia: DOLAR.cuenta, importe: 1, fecha: "2026-11-09" }, TESORERIA).errores.join(), /misma moneda/);
   assert.match(validarTransferencia({ desde: CAJA.cuenta, hacia: CAJA.cuenta, importe: 1, fecha: "2026-11-09" }, TESORERIA).errores.join(), /distintas/);
   assert.match(validarTransferencia({ desde: CAJA.cuenta, hacia: VIEJA.cuenta, importe: 1, fecha: "2026-11-09" }, TESORERIA).errores.join(), /a dónde va/);
@@ -154,7 +154,7 @@ test("/api/finanzas/tesoreria — pasar plata guarda una TRANSF INTERNA con qui�
   const { escrito } = mockApi();
   const res = await pedir("gerencial", "POST", { accion: "transferir", desde: BANCO.cuenta, hacia: CAJA.cuenta, importe: 5000, fecha: "2026-11-09" });
   assert.equal(res.status, 200);
-  assert.deepEqual([escrito[0].body.tipo, escrito[0].body.cuenta_debe, escrito[0].body.cuenta_haber, escrito[0].body.empresa_id, escrito[0].body.cargada_por_nombre], ["TRANSF INTERNA", CAJA.cuenta, BANCO.cuenta, E, "Tadeo"]);
+  assert.deepEqual([escrito[0].body.tipo, escrito[0].body.cuenta_debe, escrito[0].body.cuenta_haber, escrito[0].body.empresa_id, escrito[0].body.cargada_por_nombre], ["TRANSFERENCIA ENTRE CAJAS", CAJA.cuenta, BANCO.cuenta, E, "Tadeo"]);
   const mal = await pedir("gerencial", "POST", { accion: "transferir", desde: BANCO.cuenta, hacia: DOLAR.cuenta, importe: 5000, fecha: "2026-11-09" });
   assert.equal(mal.status, 400);
 });

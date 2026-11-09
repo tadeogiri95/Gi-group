@@ -121,8 +121,8 @@ test("cobrar — efectivo a una caja y transferencia a un banco, contra Deudores
   assert.deepEqual(r.errores, []);
   assert.equal(r.total, 3500.5);
   assert.deepEqual(r.ops.map((o) => [o.tipo, o.cuenta_debe, o.cuenta_haber, o.total_ars, o.cliente_id, o.entidad, o.proyecto_id, o.origen, o.origen_id]), [
-    ["COBRO EFECTIVO", CAJA.cuenta, DEU, 1000, 2, "BCG", 10, "cobro", "cb0123456789ab:0"],
-    ["COBRO TRANSF", BANCO.cuenta, DEU, 2500.5, 2, "BCG", 10, "cobro", "cb0123456789ab:1"],
+    ["COBRO A CLIENTES", CAJA.cuenta, DEU, 1000, 2, "BCG", 10, "cobro", "cb0123456789ab:0"],
+    ["COBRO A CLIENTES", BANCO.cuenta, DEU, 2500.5, 2, "BCG", 10, "cobro", "cb0123456789ab:1"],
   ]);
   assert.match(r.ops[0].descripcion, /Cobro a BCG · Efectivo a Caja Principal · seña/);
 });
@@ -139,7 +139,7 @@ test("cobrar — dólares como en el libro: la caja en USD contra Ajuste y el cl
 test("cobrar — cheque a la cartera; y lo que no corresponde se rechaza", () => {
   const r = armarCobro({ fecha: "2026-11-09", formas: [{ forma: "cheque", importe: 5000, tipo_cheque: "echeq_diferido", banco: "Galicia", numero: "77", fecha_pago: "2026-12-09" }] }, CTX);
   assert.deepEqual(r.errores, []);
-  assert.deepEqual([r.cheques[0].cheque.clase, r.cheques[0].cheque.estado, r.cheques[0].cheque.recibido_de, r.cheques[0].op.tipo, r.cheques[0].op.cliente_id], ["tercero", "en_cartera", "BCG", "RECEPCIÓN ECHEQ", 2]);
+  assert.deepEqual([r.cheques[0].cheque.clase, r.cheques[0].cheque.estado, r.cheques[0].cheque.recibido_de, r.cheques[0].op.tipo, r.cheques[0].op.cliente_id], ["tercero", "en_cartera", "BCG", "COBRO A CLIENTES", 2]);
   const err = (forma) => armarCobro({ fecha: "2026-11-09", formas: [forma] }, CTX).errores.join(" | ");
   assert.match(err({ forma: "efectivo", importe: 10, cuenta: BANCO.cuenta }), /caja donde entró/);
   assert.match(err({ forma: "transferencia", importe: 10, cuenta: CAJA.cuenta }), /banco donde entró/);
@@ -254,10 +254,10 @@ test("/api/finanzas/clientes — cobrar con cheque: el cheque a la cartera y su 
   const d = await r.json();
   assert.equal(d.total, 6000);
   const [efectivo, cheque, opCheque, union] = escrito;
-  assert.deepEqual([efectivo.tabla, efectivo.body[0].tipo, efectivo.body[0].cliente_id, efectivo.body[0].cargada_por_nombre], ["fin_operaciones", "COBRO EFECTIVO", 2, "Tadeo"]);
+  assert.deepEqual([efectivo.tabla, efectivo.body[0].tipo, efectivo.body[0].cliente_id, efectivo.body[0].cargada_por_nombre], ["fin_operaciones", "COBRO A CLIENTES", 2, "Tadeo"]);
   assert.deepEqual([cheque.tabla, cheque.body.estado, cheque.body.recibido_de, cheque.body.origen], ["fin_cheques", "en_cartera", "BCG", "manual"]);
   assert.deepEqual([opCheque.body.tipo, opCheque.body.cuenta_debe, opCheque.body.cuenta_haber, opCheque.body.cliente_id, opCheque.body.proyecto_id, opCheque.body.origen],
-    ["RECEPCIÓN CHEQUE FÍSICO", "01.01.01.002.001", DEU, 2, 10, "cobro"]);
+    ["COBRO A CLIENTES", "01.01.01.002.001", DEU, 2, 10, "cobro"]);
   assert.match(opCheque.body.origen_id, new RegExp(`^${d.grupo}:1$`));
   assert.deepEqual([union.tabla, union.body.op_alta_id], ["fin_cheques", 70]);
 });

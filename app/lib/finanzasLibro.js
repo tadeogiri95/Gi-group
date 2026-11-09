@@ -98,7 +98,7 @@ export function filaCheque(ch, { empresa = "", proveedores = new Map() } = {}) {
  * Lo que el script baja al libro.
  * @returns {{ operaciones: object[], cheques: object[], cheques_libro: { ref: string, estado: string, entregado_a: string }[] }}
  */
-export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], proveedores = [], proyectos = [], empresa = "" } = {}) {
+export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], proveedores = [], proyectos = [], empresa = "", tiposNuevos = null } = {}) {
   const ctx = {
     cuentas: new Map(cuentas.map((c) => [c.codigo, c.nombre])),
     proveedores: new Map(proveedores.map((p) => [Number(p.id), p.nombre])),
@@ -115,6 +115,9 @@ export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], p
     cheques_libro: cheques
       .filter((ch) => ch.origen === "libro" && ch.referencia)
       .map((ch) => ({ ref: String(ch.referencia), estado: estadoLibro(ch.estado), entregado_a: ch.estado === "entregado" ? txt(ch.entregado_a || ctx.proveedores.get(Number(ch.proveedor_id)), 120) : "" })),
+    // Los tipos nuevos (parte 2): el script los suma a dim_tipos_op y
+    // dim_flujo, y con reescribir = true pasa T-OPERACIONES una vez
+    ...(tiposNuevos ? { tipos_nuevos: tiposNuevos } : {}),
   };
 }
 
@@ -130,6 +133,10 @@ export function scriptLibro({ url, clave }) {
 // Gypi lleva su marca (GY-F-n en referencia_externa, GY-C-n en id_op_origen):
 // si cambia en Gypi se reescribe y si se anula se borra. Los renglones
 // cargados a mano no se tocan. Las fórmulas se copian del renglón de arriba.
+// También suma los tipos de operación nuevos a dim_tipos_op y dim_flujo y,
+// cuando en Gypi se aprieta "Pasar a los tipos nuevos", reescribe una sola
+// vez cod_tipo_op de T-OPERACIONES (antes deja una copia de respaldo de las
+// hojas, con "_bk_tipos_" y la fecha en el nombre).
 // Pegalo en un archivo nuevo de Apps Script, guardá y ejecutá
 // instalarLibroGypi una sola vez. Después corre solo cada 15 minutos.
 // La clave es privada: no compartas este código.
@@ -166,6 +173,7 @@ function pasarLibroGypi() {
   try {
     var r = gypiLibroPedir_();
     var libro = SpreadsheetApp.getActiveSpreadsheet();
+    if (r.tipos_nuevos) gypiLibroTipos_(libro, r.tipos_nuevos);
     var ops = libro.getSheetByName("T-OPERACIONES");
     if (ops) gypiLibroEspejo_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", r.operaciones || [], "fecha_operación");
     var ch = libro.getSheetByName("R-CHEQUES");
@@ -307,6 +315,144 @@ function gypiLibroEstados_(hoja, lista) {
     if (String(ests[i][0]).trim().toUpperCase() !== x.estado) hoja.getRange(i + 2, cEst).setValue(x.estado);
     if (ents && x.entregado_a && String(ents[i][0]).trim() !== x.entregado_a) hoja.getRange(i + 2, cEnt).setValue(x.entregado_a);
   }
+}
+
+// ── Tipos de operación nuevos ──────────────────────────────────────────
+function gypiLibroClaveTipo_(s) {
+  return String(s || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toUpperCase().replace(/\\s+/g, " ").trim();
+}
+
+function gypiLibroTipos_(libro, t) {
+  if (!t || !t.lista) return;
+  gypiLibroDimTipos_(libro, t);
+  gypiLibroDimFlujo_(libro, t.lista);
+  if (!t.reescribir) return;
+  var props = PropertiesService.getDocumentProperties();
+  if (Number(props.getProperty("gypi_tipos_version") || 0) >= Number(t.version)) return;
+  gypiLibroReescribirTipos_(libro, t, props);
+}
+
+// Los códigos que ya están en una columna (por clave, sin tildes)
+function gypiLibroCodigos_(hoja, c) {
+  var ya = {};
+  var u = gypiLibroUltima_(hoja, c);
+  if (u >= 2) hoja.getRange(2, c, u - 1, 1).getDisplayValues().forEach(function (x, i) { ya[gypiLibroClaveTipo_(x[0])] = i + 2; });
+  return { ya: ya, ultima: u };
+}
+
+// dim_tipos_op: los tipos nuevos que faltan, con las cuentas por defecto del primer tipo viejo que las tenga
+function gypiLibroDimTipos_(libro, t) {
+  var h = libro.getSheetByName("dim_tipos_op");
+  if (!h) return;
+  var col = gypiLibroTitulos_(h);
+  var cCod = col["cod_tipo_op"];
+  if (!cCod) return;
+  var c = gypiLibroCodigos_(h, cCod);
+  var copiar = ["subcuenta_debe_default", "nombre_debe", "subcuenta_haber_default", "nombre_haber"].filter(function (k) { return col[k]; });
+  var fila = c.ultima;
+  t.lista.forEach(function (x) {
+    if (c.ya[gypiLibroClaveTipo_(x.codigo)]) return;
+    fila++;
+    h.getRange(fila, cCod).setValue(x.codigo);
+    if (col["nombre"]) h.getRange(fila, col["nombre"]).setValue(x.nombre);
+    if (col["grupo"]) h.getRange(fila, col["grupo"]).setValue(x.grupo);
+    var fuente = (x.viejos || []).map(function (v) { return c.ya[gypiLibroClaveTipo_(v)]; }).filter(function (n) { return n; })[0];
+    if (fuente) copiar.forEach(function (k) {
+      var v = h.getRange(fuente, col[k]).getValue();
+      if (v !== "" && v !== null) h.getRange(fila, col[k]).setValue(v);
+    });
+    c.ya[gypiLibroClaveTipo_(x.codigo)] = fila;
+  });
+}
+
+// dim_flujo: la línea del flujo de cada tipo nuevo que falta (los que no mueven caja no van)
+function gypiLibroDimFlujo_(libro, lista) {
+  var h = libro.getSheetByName("dim_flujo");
+  if (!h) return;
+  var col = gypiLibroTitulos_(h);
+  var cCod = col["cod_tipo_op"], cLinea = col["linea_flujo"], cSigno = col["signo_esperado"];
+  if (!cCod || !cLinea) return;
+  var c = gypiLibroCodigos_(h, cCod);
+  var fila = c.ultima;
+  lista.forEach(function (x) {
+    if (!x.linea || c.ya[gypiLibroClaveTipo_(x.codigo)]) return;
+    fila++;
+    h.getRange(fila, cCod).setValue(x.codigo);
+    h.getRange(fila, cLinea).setValue(x.linea);
+    if (cSigno) h.getRange(fila, cSigno).setValue(x.signo);
+    c.ya[gypiLibroClaveTipo_(x.codigo)] = fila;
+  });
+}
+
+// Copia de respaldo con los valores (sin fórmulas, para que no recalcule)
+function gypiLibroRespaldo_(libro, nombre, sello) {
+  var h = libro.getSheetByName(nombre);
+  if (!h) return;
+  var bk = h.copyTo(libro).setName(nombre + "_bk_tipos_" + sello);
+  var r = bk.getDataRange();
+  r.copyTo(r, { contentsOnly: true });
+}
+
+function gypiLibroReescribirTipos_(libro, t, props) {
+  var ops = libro.getSheetByName("T-OPERACIONES");
+  if (!ops) return;
+  var col = gypiLibroTitulos_(ops);
+  var cT = col["cod_tipo_op"];
+  if (!cT) throw new Error("T-OPERACIONES no tiene la columna cod_tipo_op");
+  var ultima = ops.getLastRow();
+  if (ultima < 2) return;
+  var rT = ops.getRange(2, cT, ultima - 1, 1);
+  if (rT.getFormulas().some(function (f) { return f[0]; })) throw new Error("cod_tipo_op tiene fórmulas: no se reescribe");
+  var sello = Utilities.formatDate(new Date(), libro.getSpreadsheetTimeZone(), "yyyyMMdd_HHmm");
+  ["T-OPERACIONES", "dim_tipos_op", "dim_flujo", "FLUJO_V2"].forEach(function (n) { gypiLibroRespaldo_(libro, n, sello); });
+  // Con la copia hecha no se vuelve a intentar sola (si algo falla, queda la copia)
+  props.setProperty("gypi_tipos_version", String(t.version));
+
+  var mapa = {};
+  Object.keys(t.mapa).forEach(function (k) { mapa[gypiLibroClaveTipo_(k)] = t.mapa[k]; });
+  var tipos = rT.getValues();
+  var cambia = tipos.map(function (x) { var n = mapa[gypiLibroClaveTipo_(x[0])]; return n && n !== x[0] ? n : null; });
+
+  // Los renglones sin cuenta escrita toman la del tipo: se fija la de hoy antes de cambiarlo
+  var nombres = {}, repetidos = {};
+  var pc = libro.getSheetByName("dim_plan_cuentas");
+  if (pc && pc.getLastRow() >= 2) pc.getRange(2, 1, pc.getLastRow() - 1, 2).getDisplayValues().forEach(function (x) {
+    var nom = String(x[1]).trim();
+    if (!x[0] || !nom) return;
+    if (repetidos[nom] !== undefined) repetidos[nom] = true; else repetidos[nom] = false;
+    nombres[String(x[0]).trim()] = nom;
+  });
+  [["cuenta_debe_override", "cuenta_debe_final"], ["cuenta_haber_override", "cuenta_haber_final"]].forEach(function (par) {
+    var cO = col[par[0]], cF = col[par[1]];
+    if (!cO || !cF) return;
+    var over = ops.getRange(2, cO, ultima - 1, 1).getValues();
+    var fin = ops.getRange(2, cF, ultima - 1, 1).getDisplayValues();
+    for (var i = 0; i < over.length; i++) {
+      if (!cambia[i] || over[i][0] !== "") continue;
+      var nom = nombres[String(fin[i][0]).trim()];
+      if (nom && !repetidos[nom]) ops.getRange(i + 2, cO).setValue(nom);
+    }
+  });
+
+  var cambios = cambia.filter(function (x) { return x; }).length;
+  rT.setValues(tipos.map(function (x, i) { return [cambia[i] || x[0]]; }));
+
+  // La tabla de equivalencias, a la vista
+  var m = libro.getSheetByName("mapa_tipos") || libro.insertSheet("mapa_tipos");
+  m.clearContents();
+  var filas = [["tipo_viejo", "tipo_nuevo"]].concat(Object.keys(t.mapa).map(function (k) { return [k, t.mapa[k]]; }));
+  m.getRange(1, 1, filas.length, 2).setValues(filas);
+
+  // FLUJO_V2: los renglones que ahora juntan todas las formas de pago cambian de nombre
+  var f = libro.getSheetByName("FLUJO_V2");
+  if (f && t.lineas && f.getLastRow() >= 1) {
+    var bc = f.getRange(1, 2, f.getLastRow(), 2).getValues();
+    for (var j = 0; j < bc.length; j++) {
+      var nuevo = t.lineas[String(bc[j][0]).trim()];
+      if (nuevo && bc[j][1] !== nuevo) f.getRange(j + 1, 3).setValue(nuevo);
+    }
+  }
+  libro.toast("Tipos nuevos: se cambiaron " + cambios + " renglones. La copia de respaldo está en las hojas que terminan en _bk_tipos_" + sello + ".", "Gypi", 15);
 }
 
 function gypiLibroPedir_() {

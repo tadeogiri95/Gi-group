@@ -148,8 +148,8 @@ export default function FinanzasFlujo() {
                   <td />
                 </tr>
                 {visibles.map((f) => (
-                  <tr key={f.id} className={`border-t border-gypi-border text-gypi-text ${f.tipo === "seccion" ? "bg-gypi-surface font-bold" : ""}`}>
-                    <td className={`pr-2 py-1 sticky left-0 ${f.tipo === "seccion" ? "bg-gypi-surface pl-2" : "bg-gypi-bg pl-5"}`}>
+                  <tr key={f.id} className={`border-t border-gypi-border ${f.tipo === "forma" ? "text-gypi-dim text-[12px]" : "text-gypi-text"} ${f.tipo === "seccion" ? "bg-gypi-surface font-bold" : ""}`}>
+                    <td className={`pr-2 py-1 sticky left-0 ${f.tipo === "seccion" ? "bg-gypi-surface pl-2" : f.tipo === "forma" ? "bg-gypi-bg pl-9" : "bg-gypi-bg pl-5"}`}>
                       {f.tipo === "seccion" ? (
                         <button type="button" className="bg-transparent border-none p-0 font-bold text-gypi-text cursor-pointer text-left" aria-expanded={!cerradas.has(f.id)} onClick={() => abrirCerrar(f.id)}>
                           {cerradas.has(f.id) ? "▸ " : "▾ "}{f.nombre}

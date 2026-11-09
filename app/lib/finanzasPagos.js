@@ -9,14 +9,16 @@
 //   - borrador → para aprobar (se manda el link por WhatsApp al CFO) →
 //     aprobada o rechazada (lo decide el CFO en la página, sin usuario) →
 //     pagada (la marca el dueño: recién ahí se mueve la plata) · anulada.
-//   - Al pagarla: efectivo y transferencia son "PAGO EFECTIVO" y "PAGO TRANSF"
+//   - Al pagarla: efectivo y transferencia son "PAGO A PROVEEDORES"
 //     (Proveedores contra la caja o el banco); el e-cheq es un cheque propio
-//     nuevo (con su "PAGO ECHEQ A PROVEEDORES"); el cheque de terceros pasa a
+//     nuevo (con su "PAGO A PROVEEDORES"); el cheque de terceros pasa a
 //     entregado (con su operación), como en Finanzas → Cheques.
 import { BANCO_ECHEQ, cuentaBancoDe, cuentasCheques } from "./finanzasCheques";
 import { plata } from "./finanzasOperaciones";
 
 export const ORIGEN_ORDEN_PAGO = "orden_pago";
+/** El tipo de los pagos (la forma sale de la caja o el banco). */
+export const TIPO_PAGO_PROVEEDOR = "PAGO A PROVEEDORES";
 export const FORMAS_PAGO = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
@@ -146,7 +148,7 @@ export function generarPago(orden, { cuentas = [], tesoreria = [] } = {}, fecha)
       const caja = cajaValida(tesoreria, x.cuenta, x.forma === "efectivo" ? "caja" : "banco");
       if (!caja) return { error: `${x.cuenta_nombre || "La caja o el banco"} ya no está en la lista de cajas y bancos` };
       operaciones.push({
-        fecha, tipo: x.forma === "efectivo" ? "PAGO EFECTIVO" : "PAGO TRANSF",
+        fecha, tipo: TIPO_PAGO_PROVEEDOR,
         proveedor_id: orden.proveedor_id || null, entidad: orden.proveedor_id ? null : txt(orden.proveedor_nombre, 120),
         neto: x.importe, iva: 0, otros_impuestos: 0, total: x.importe, moneda: "ARS", tipo_cambio: null, total_ars: x.importe,
         cuenta_debe: c.proveedores, cuenta_haber: caja.cuenta,

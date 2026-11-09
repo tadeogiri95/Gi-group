@@ -8,12 +8,12 @@
 //   - Saldos iniciales: del libro (T-OPERACIONES) hasta la fecha de corte,
 //     por caja, como "SALDO INICIAL" contra Ajuste De Capital (como los de
 //     proveedores, F2a). origen saldo_inicial, origen_id "t<cuenta>".
-//   - Pasar plata entre cajas: "TRANSF INTERNA", la que recibe al debe y la
+//   - Pasar plata entre cajas: "TRANSFERENCIA ENTRE CAJAS", la que recibe al debe y la
 //     que da al haber. Solo entre cajas de la misma moneda.
 import { movimientoCaja } from "./finanzasOperaciones";
 import { CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL, TIPO_SALDO_INICIAL, fechaDelLibro } from "./finanzasProveedores";
 
-export const TIPO_TRANSFERENCIA = "TRANSF INTERNA";
+export const TIPO_TRANSFERENCIA = "TRANSFERENCIA ENTRE CAJAS";
 export const ORDEN_TIPOS = ["caja", "banco", "fci", "plazo_fijo", "otro"];
 export const NOMBRE_GRUPO = { caja: "Cajas", banco: "Bancos", fci: "Fondos comunes de inversión", plazo_fijo: "Plazos fijos", otro: "Otros" };
 

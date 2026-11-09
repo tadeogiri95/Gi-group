@@ -54,7 +54,7 @@ export async function GET(request) {
       leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(aprobada,para_aprobar)&select=id,numero,proveedor_nombre,fecha,estado,total`).catch(() => []),
     ]);
     const lin = validarLineasFlujo(lineas || {});
-    const real = flujoReal({ ops, tesoreria, lineas: lin, meses: mesesHasta(hasta) });
+    const real = flujoReal({ ops, tesoreria, cuentas, lineas: lin, meses: mesesHasta(hasta) });
     const previsto = flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos: await sueldosPorPagar(sesion, ops, cuentas) });
     return NextResponse.json({ hasta, hoy, ...real, previsto, lineas_cargadas: Object.keys(lin.tipos).length });
   } catch (err) {

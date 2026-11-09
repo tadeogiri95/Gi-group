@@ -8,7 +8,7 @@
 //     cliente; después se deposita (sube el banco), se entrega a un proveedor
 //     (baja su deuda) o vuelve rechazado ("Cheques rechazados").
 // Cada cambio de estado es una operación en Finanzas, como cargaba el libro
-// (PAGO ECHEQ A PROVEEDORES, PAGO ECHEQ, RECEPCIÓN ECHEQ, DEP CHEQUE…).
+// (PAGO A PROVEEDORES y COBRO A CLIENTES; la forma sale de las cuentas).
 // Los vivos de R-CHEQUES (ACTIVO y ENTREGADO) se copian sin operación.
 import { claveNombre, CUENTA_PROVEEDORES } from "./finanzasProveedores";
 import { fechaDelLibro } from "./finanzasProveedores";
@@ -119,11 +119,11 @@ export function operacionAlta(ch, cuentas, fecha) {
   const c = cuentasCheques(cuentas);
   if (ch.clase === "propio") {
     if (!c.proveedores || !c.diferidos) return { error: "Faltan las cuentas \"Proveedores\" o \"E-cheq diferidos a pagar\" en el plan de cuentas" };
-    return { op: opBase(ch, { fecha, accion: "alta", tipo: esEcheq(ch.tipo) ? "PAGO ECHEQ A PROVEEDORES" : "PAGO CHEQUE A PROVEEDORES", debe: c.proveedores, haber: c.diferidos, proveedor_id: ch.proveedor_id, descripcion: "Pago con cheque propio" }) };
+    return { op: opBase(ch, { fecha, accion: "alta", tipo: "PAGO A PROVEEDORES", debe: c.proveedores, haber: c.diferidos, proveedor_id: ch.proveedor_id, descripcion: "Pago con cheque propio" }) };
   }
   const valores = esEcheq(ch.tipo) ? c.valoresEcheq : c.valores;
   if (!valores || !c.deudores) return { error: "Faltan las cuentas \"Valores a depositar\" o \"Deudores por ventas\" en el plan de cuentas" };
-  return { op: opBase(ch, { fecha, accion: "alta", tipo: esEcheq(ch.tipo) ? "RECEPCIÓN ECHEQ" : "RECEPCIÓN CHEQUE FÍSICO", debe: valores, haber: c.deudores, entidad: ch.recibido_de, descripcion: `Cheque recibido de ${ch.recibido_de || "un cliente"}` }) };
+  return { op: opBase(ch, { fecha, accion: "alta", tipo: "COBRO A CLIENTES", debe: valores, haber: c.deudores, entidad: ch.recibido_de, descripcion: `Cheque recibido de ${ch.recibido_de || "un cliente"}` }) };
 }
 
 /**
@@ -153,7 +153,7 @@ export function cambioDeEstado(ch, accion, datos, { cuentas = [], tesoreria = []
     if (!c.diferidos) return { error: "Falta la cuenta \"E-cheq diferidos a pagar\" en el plan de cuentas" };
     return {
       cambios: { estado: "debitado", estado_fecha: fecha, cuenta_banco: banco },
-      op: opBase(ch, { fecha, accion, tipo: "PAGO ECHEQ", debe: c.diferidos, haber: banco, proveedor_id: null, entidad: ch.beneficiario, descripcion: `Débito del cheque a ${ch.beneficiario || "un proveedor"}` }),
+      op: opBase(ch, { fecha, accion, tipo: "PAGO A PROVEEDORES", debe: c.diferidos, haber: banco, proveedor_id: null, entidad: ch.beneficiario, descripcion: `Débito del cheque a ${ch.beneficiario || "un proveedor"}` }),
     };
   }
   if (accion === "depositado") {
@@ -162,7 +162,7 @@ export function cambioDeEstado(ch, accion, datos, { cuentas = [], tesoreria = []
     if (!valores) return { error: "Falta la cuenta \"Valores a depositar\" en el plan de cuentas" };
     return {
       cambios: { estado: "depositado", estado_fecha: fecha, cuenta_banco: banco },
-      op: opBase(ch, { fecha, accion, tipo: "DEP CHEQUE", debe: banco, haber: valores, entidad: ch.recibido_de || ch.librador, descripcion: "Depósito de cheque" }),
+      op: opBase(ch, { fecha, accion, tipo: "COBRO A CLIENTES", debe: banco, haber: valores, entidad: ch.recibido_de || ch.librador, descripcion: "Depósito de cheque" }),
     };
   }
   if (accion === "entregado") {
@@ -171,7 +171,7 @@ export function cambioDeEstado(ch, accion, datos, { cuentas = [], tesoreria = []
     if (!c.proveedores || !valores) return { error: "Faltan las cuentas \"Proveedores\" o \"Valores a depositar\" en el plan de cuentas" };
     return {
       cambios: { estado: "entregado", estado_fecha: fecha, proveedor_id: p.id, entregado_a: txt(p.nombre, 120) },
-      op: opBase(ch, { fecha, accion, tipo: esEcheq(ch.tipo) ? "PAGO ECHEQ A PROVEEDORES" : "PAGO CHEQUE A PROVEEDORES", debe: c.proveedores, haber: valores, proveedor_id: p.id, descripcion: "Pago con cheque de terceros" }),
+      op: opBase(ch, { fecha, accion, tipo: "PAGO A PROVEEDORES", debe: c.proveedores, haber: valores, proveedor_id: p.id, descripcion: "Pago con cheque de terceros" }),
     };
   }
   // Rechazado: vuelve el cheque; sale de donde estaba

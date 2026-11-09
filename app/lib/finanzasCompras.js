@@ -10,8 +10,9 @@
 // en una OC (173, "＋ Otra factura") es otra compra, de ese proveedor.
 //
 // Qué tipo de compra es: el que tiene el proveedor (proveedores.fin_tipo, se
-// guarda cuando el dueño lo cambia en Finanzas). Si no tiene, COMPRA MP (o el
-// primer tipo del grupo COMPRAS) y la compra queda "para revisar".
+// guarda cuando el dueño lo cambia en Finanzas; un tipo viejo cuenta como el
+// nuevo que lo reemplaza). Si no tiene, COMPRAS (o COMPRA MP, o el primer
+// tipo del grupo COMPRAS) y la compra queda "para revisar".
 // Las cuentas corrientes van en pesos: una factura en dólares se pasa a pesos
 // con su tipo de cambio; sin tipo de cambio no se crea la compra todavía.
 //
@@ -22,18 +23,27 @@ import { sbGet, sbPatch, sbPost } from "./sbHelpers";
 import { getModulosEmpresa } from "./planEnforcement";
 import { totalesFactura } from "./ordenesCompra";
 import { logger } from "./logger";
+import { MAPA_TIPOS, claveTipo } from "./finanzasTipos";
 
-export const TIPO_COMPRA_DEFECTO = "COMPRA MP";
+export const TIPO_COMPRA_DEFECTO = "COMPRAS";
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const conCuentas = (t) => t && t.activo !== false && t.cuenta_debe && t.cuenta_haber;
 
-/** El tipo de compra para un proveedor: el suyo, o COMPRA MP, o el primero de COMPRAS. */
+/** El tipo de compra para un proveedor: el suyo, o COMPRAS (o COMPRA MP), o el primero del grupo COMPRAS. */
 export function tipoDeCompra(tipos, proveedor) {
-  const suyo = tipos.find((t) => t.codigo === proveedor?.fin_tipo);
-  if (conCuentas(suyo)) return { tipo: suyo, revisar: false };
-  const defecto = tipos.find((t) => t.codigo === TIPO_COMPRA_DEFECTO);
-  if (conCuentas(defecto)) return { tipo: defecto, revisar: true };
+  const buscar = (codigo) => {
+    if (!codigo) return null;
+    const nuevo = MAPA_TIPOS[claveTipo(codigo)];
+    const t = tipos.find((x) => x.codigo === codigo);
+    const tn = nuevo ? tipos.find((x) => x.codigo === nuevo) : null;
+    // Si ya se pasó a los tipos nuevos, el viejo está apagado y va el nuevo
+    return conCuentas(t) ? t : conCuentas(tn) ? tn : null;
+  };
+  const suyo = buscar(proveedor?.fin_tipo);
+  if (suyo) return { tipo: suyo, revisar: false };
+  const defecto = buscar(TIPO_COMPRA_DEFECTO) || buscar("COMPRA MP");
+  if (defecto) return { tipo: defecto, revisar: true };
   const compras = tipos.find((t) => /compra/i.test(String(t.grupo || "")) && conCuentas(t));
   return compras ? { tipo: compras, revisar: true } : { tipo: null, revisar: true };
 }
