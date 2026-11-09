@@ -4,8 +4,8 @@
 //
 // Los sueldos se calculan afuera: acá se pasa la liquidación de cada período,
 // un renglón por empleado y una columna por concepto (se puede pegar desde
-// Excel). Al confirmarla cada importe va al libro como DEVENG SUELDO en su
-// cuenta contra Sueldos A Pagar; al pagar, PAGO SUELDO desde la caja o el
+// Excel). Al confirmarla cada importe va al libro como SUELDOS en su
+// cuenta contra Sueldos A Pagar; al pagar, SUELDOS desde la caja o el
 // banco de cada empleado. ⚙ Conceptos: sumar conceptos, su cuenta y la cuenta
 // de sueldo del área de cada empleado.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
@@ -201,7 +201,7 @@ function Editor({ datos, liquidacion, onCerrar, onCambio, onRecargar }) {
 
         {campo("Notas (opcional)", <input className="g-input w-full" aria-label="Notas" value={notas} maxLength={500} onChange={(e) => setNotas(e.target.value)} />)}
         <p className="m-0 text-[12px] text-gypi-dim">
-          Al confirmar, cada importe pasa al libro como DEVENG SUELDO en la cuenta de su concepto, contra Sueldos A Pagar. Las horas quedan como dato. Un importe negativo (un descuento) va al revés.
+          Al confirmar, cada importe pasa al libro como SUELDOS (devengado) en la cuenta de su concepto, contra Sueldos A Pagar. Las horas quedan como dato. Un importe negativo (un descuento) va al revés.
         </p>
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
@@ -473,7 +473,7 @@ export default function FinanzasSueldos() {
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Pasá la liquidación de cada período: va al libro como DEVENG SUELDO y después marcás lo pagado.</p>
+        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Pasá la liquidación de cada período: va al libro como SUELDOS y después marcás lo pagado.</p>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Conceptos</button>
         <button type="button" className="g-btn g-btn-primary" onClick={() => setAbierta("nueva")}>+ Liquidación</button>
       </div>

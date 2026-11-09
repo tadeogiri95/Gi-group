@@ -238,7 +238,7 @@ export function armarCobro(f = {}, { cliente, cuentas = [], tesoreria = [], proy
         fecha_emision: f.fecha, fecha_pago: x.fecha_pago, importe, recibido_de: cliente?.nombre, notas: nota,
       }, { tesoreria });
       if (e.length) { errores.push(`${n}${e[0]}`); return; }
-      cheques.push({ cheque, op: base({ tipo: String(x.tipo_cheque).startsWith("echeq") ? "RECEPCIÓN ECHEQ" : "RECEPCIÓN CHEQUE FÍSICO", origen_id: `${grupo}:${i}`, descripcion: desc(`${TIPOS_CHEQUE[cheque.tipo]} ${cheque.banco}${cheque.numero ? ` N° ${cheque.numero}` : ""}`) }) });
+      cheques.push({ cheque, op: base({ tipo: "COBRO A CLIENTES", origen_id: `${grupo}:${i}`, descripcion: desc(`${TIPOS_CHEQUE[cheque.tipo]} ${cheque.banco}${cheque.numero ? ` N° ${cheque.numero}` : ""}`) }) });
       total += importe;
       return;
     }
@@ -249,7 +249,7 @@ export function armarCobro(f = {}, { cliente, cuentas = [], tesoreria = [], proy
       if (!(tc > 0)) { errores.push(`${n}falta el tipo de cambio`); return; }
       if (!ajuste) { errores.push("Falta la cuenta \"Ajuste De Capital\" en el plan de cuentas"); return; }
       const pesos = centavos(importe * tc);
-      const tipo = caja.tipo === "banco" ? "COBRO TRANSF" : "COBRO EFECTIVO";
+      const tipo = "COBRO A CLIENTES";
       const d = desc(`USD ${usd(importe)} x $${usd(tc)}`);
       // Como en el libro: los dólares entran a la caja y el cliente baja en pesos
       ops.push(base({ tipo, neto: importe, total: importe, moneda: "USD", tipo_cambio: tc, total_ars: pesos, cuenta_debe: caja.cuenta, cuenta_haber: ajuste, origen_id: `${grupo}:${i}a`, descripcion: d }));
@@ -263,7 +263,7 @@ export function armarCobro(f = {}, { cliente, cuentas = [], tesoreria = [], proy
       return;
     }
     ops.push(base({
-      tipo: forma === "efectivo" ? "COBRO EFECTIVO" : "COBRO TRANSF", neto: importe, total: importe, moneda: "ARS", tipo_cambio: null, total_ars: importe,
+      tipo: "COBRO A CLIENTES", neto: importe, total: importe, moneda: "ARS", tipo_cambio: null, total_ars: importe,
       cuenta_debe: caja.cuenta, cuenta_haber: deudores, origen_id: `${grupo}:${i}`, descripcion: desc(`${FORMAS_COBRO[forma]} a ${caja.nombre}`),
     }));
     total += importe;

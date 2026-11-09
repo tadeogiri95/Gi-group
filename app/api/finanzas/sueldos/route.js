@@ -7,11 +7,11 @@
 //   POST { accion: "config", conceptos, areas } → guarda los conceptos.
 //   POST { accion: "guardar", id?, periodo, fecha, renglones, notas? } → nueva
 //       o corregida (solo en borrador).
-//   POST { accion: "confirmar", id } → un DEVENG SUELDO por importe.
+//   POST { accion: "confirmar", id } → una operación SUELDOS (devengado) por importe.
 //   POST { accion: "anular", id } → anula la liquidación y su devengado; no
 //       se puede si tiene pagos vivos (se anulan antes).
 //   POST { accion: "pagar", id, pagos: [{ empleado_id, cuenta, importe, fecha }] }
-//       → un PAGO SUELDO por empleado, desde la caja o el banco elegido.
+//       → una operación SUELDOS (pago) por empleado, desde la caja o el banco elegido.
 //   POST { accion: "anular_pago", op_id } → anula un pago de sueldo.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). Los

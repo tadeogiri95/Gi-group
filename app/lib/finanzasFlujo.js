@@ -5,13 +5,17 @@
 //
 //   - Lo real: cada operación confirmada mueve la caja según sus cuentas
 //     (+ si la caja o el banco está al debe, − si está al haber; entre dos
-//     cajas no mueve). Va a la línea de su tipo (dim_flujo: COBRO TRANSF →
-//     ING_TRANSF, PAGO SUELDO → EGR_SUELDOS…); INVERSIONES DESARROLLISMO se
-//     abre por centro de costo. Por mes, en pesos y en dólares por separado,
+//     cajas no mueve). Va a la línea de su tipo (dim_flujo, o la lista de
+//     tipos nuevos de finanzasTipos.js: COBRO A CLIENTES → ING_TRANSF,
+//     SUELDOS → EGR_SUELDOS…); un tipo viejo cuenta como su tipo nuevo.
+//     Cobros y pagos a proveedores se abren por forma de pago.
+//     INVERSIONES DESARROLLISMO se abre por centro de costo. Por mes, en pesos y en dólares por separado,
 //     con la apertura (saldo antes del primer mes) y el cierre.
 //   - Lo que viene, por semana: cheques de terceros a depositar (+), e-cheq
 //     y cheques propios a debitar (−), órdenes de pago aprobadas o por
 //     aprobar (−) y sueldos confirmados sin pagar (−), desde el saldo de hoy.
+import { LINEAS_RENOMBRADAS, MAPA_TIPOS, NOMBRE_FORMA, claveTipo, formaDePago, lineaDeLista } from "./finanzasTipos";
+
 export const CLAVE_FLUJO = "finanzas_flujo";
 export const DESARROLLISMO = "INVERSIONES DESARROLLISMO";
 export const SEMANAS = 8;
@@ -31,6 +35,9 @@ export const NOMBRES_LINEA = {
   ING_ALQUILERES: "Alquileres cobrados", ING_RENTA_FIN: "Renta financiera (intereses ganados)", ING_DESARR_VENTAS: "Cobros por ventas Desarrollismo",
   APORTES_SOCIOS: "Aportes de socios", ING_DESARR_APORTES: "Aportes Desarrollismo", DIVIDENDOS: "Pago de dividendos", EGR_FINANCIEROS: "Gastos financieros",
   TES_USD: "Compra y venta de dólares", TES_TITULOS: "Compra y venta de títulos", TES_APERTURA: "Apertura", TES_TRANSF_INTERNA: "Transferencias entre cajas", TES_MOV_INTERNO: "Depósitos, extracciones, plazos fijos y FCI",
+  // Con los tipos nuevos (parte 2) estos renglones juntan todas las formas de pago
+  ING_TRANSF: LINEAS_RENOMBRADAS.ING_TRANSF, ING_AJUSTE: LINEAS_RENOMBRADAS.ING_AJUSTE, EGR_PROVEEDORES: LINEAS_RENOMBRADAS.EGR_PROVEEDORES,
+  EGR_BANCARIOS: LINEAS_RENOMBRADAS.EGR_BANCARIOS, EGR_FINANCIEROS: LINEAS_RENOMBRADAS.EGR_FINANCIEROS,
   "SIN CLASIFICAR": "⚠ Sin clasificar (el tipo no tiene línea)", "DESARR | SIN CC": "⚠ Desarrollismo sin centro de costo", "DESARR | CC NUEVA": "⚠ Desarrollismo con un centro de costo sin línea",
 };
 
@@ -92,14 +99,23 @@ export function validarLineasFlujo(d = {}) {
   return { tipos: limpio(d.tipos, 500), centros: limpio(d.centros, 500) };
 }
 
-/** La línea del flujo de una operación. */
+/** Los renglones que se abren por forma de pago (efectivo, transferencia, cheque…). */
+export const LINEAS_CON_FORMA = new Set(["ING_TRANSF", "EGR_PROVEEDORES"]);
+
+/**
+ * La línea del flujo de una operación. Un tipo viejo cuenta como el tipo
+ * nuevo que lo reemplaza (aunque todavía no se haya pasado a los tipos
+ * nuevos). Primero la línea copiada de dim_flujo; si no está, la de la lista.
+ */
 export function lineaDe(op, lineas = {}) {
-  const tipo = clave(op.tipo);
+  const nuevo = MAPA_TIPOS[claveTipo(op.tipo)];
+  const tipo = clave(nuevo || op.tipo);
   if (tipo === DESARROLLISMO) {
     if (!op.centro_costo) return "DESARR | SIN CC";
     return lineas.centros?.[clave(op.centro_costo)] || "DESARR | CC NUEVA";
   }
-  return lineas.tipos?.[tipo] || "SIN CLASIFICAR";
+  if (nuevo) return lineas.tipos?.[tipo] || lineaDeLista(nuevo) || "SIN CLASIFICAR";
+  return lineas.tipos?.[tipo] || lineaDeLista(op.tipo) || "SIN CLASIFICAR";
 }
 
 /** Cuánto mueve la caja una operación, por moneda: { ARS, USD }. */
@@ -125,13 +141,13 @@ export const cajasPorMoneda = (tesoreria = []) => ({
  * El flujo real por mes.
  * @returns {{ meses, monedas: { ARS: { apertura, filas, neto, cierre }, USD: … }, sin_clasificar: number, tipos_sin_linea: string[] }}
  */
-export function flujoReal({ ops = [], tesoreria = [], lineas = {}, meses = [] }) {
+export function flujoReal({ ops = [], tesoreria = [], cuentas = [], lineas = {}, meses = [] }) {
   const cajas = cajasPorMoneda(tesoreria);
   const idx = new Map(meses.map((m, i) => [m, i]));
   const primero = meses[0];
   const out = {};
   const sinLinea = new Set();
-  for (const mon of ["ARS", "USD"]) out[mon] = { apertura: 0, porLinea: new Map() };
+  for (const mon of ["ARS", "USD"]) out[mon] = { apertura: 0, porLinea: new Map(), porForma: new Map() };
   for (const op of ops) {
     if (op.anulada_at || op.estado === "para_revisar") continue;
     const d = deltaCaja(op, cajas);
@@ -147,6 +163,14 @@ export function flujoReal({ ops = [], tesoreria = [], lineas = {}, meses = [] })
       const l = out[mon].porLinea.get(linea) || meses.map(() => 0);
       l[i] += d[mon];
       out[mon].porLinea.set(linea, l);
+      if (LINEAS_CON_FORMA.has(linea)) {
+        const formas = out[mon].porForma.get(linea) || new Map();
+        const forma = formaDePago(op, { tesoreria, cuentas });
+        const v = formas.get(forma) || meses.map(() => 0);
+        v[i] += d[mon];
+        formas.set(forma, v);
+        out[mon].porForma.set(linea, formas);
+      }
     }
   }
   const monedas = {};
@@ -163,7 +187,15 @@ export function flujoReal({ ops = [], tesoreria = [], lineas = {}, meses = [] })
       const t = meses.map((_, i) => ls.reduce((s, [, v]) => s + v[i], 0));
       t.forEach((v, i) => { neto[i] += v; });
       filas.push({ tipo: "seccion", id: sec.id, nombre: sec.nombre, valores: t.map(centavos), total: centavos(t.reduce((s, v) => s + v, 0)) });
-      for (const [l, v] of ls) filas.push({ tipo: "linea", id: `${sec.id}|${l}`, seccion: sec.id, linea: l, nombre: nombreLinea(l), valores: v.map(centavos), total: centavos(v.reduce((s, x) => s + x, 0)) });
+      for (const [l, v] of ls) {
+        filas.push({ tipo: "linea", id: `${sec.id}|${l}`, seccion: sec.id, linea: l, nombre: nombreLinea(l), valores: v.map(centavos), total: centavos(v.reduce((s, x) => s + x, 0)) });
+        // Abierto por forma de pago, si hay más de una
+        const formas = [...(out[mon].porForma.get(l) || new Map()).entries()];
+        if (formas.length > 1) {
+          formas.sort(([a], [b]) => Object.keys(NOMBRE_FORMA).indexOf(a) - Object.keys(NOMBRE_FORMA).indexOf(b));
+          for (const [f, fv] of formas) filas.push({ tipo: "forma", id: `${sec.id}|${l}|${f}`, seccion: sec.id, linea: l, forma: f, nombre: NOMBRE_FORMA[f] || f, valores: fv.map(centavos), total: centavos(fv.reduce((s, x) => s + x, 0)) });
+        }
+      }
     }
     const apertura = centavos(out[mon].apertura);
     const cierre = [];

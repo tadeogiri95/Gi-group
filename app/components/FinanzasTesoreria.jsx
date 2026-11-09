@@ -6,7 +6,7 @@
 // El saldo de cada caja y banco sale de las operaciones: lo que entra y lo que
 // sale. La ficha muestra los movimientos con el saldo renglón por renglón.
 // "Cargar saldos iniciales" lee T-OPERACIONES del libro hasta una fecha de
-// corte; "Pasar plata" es una TRANSF INTERNA entre dos cajas.
+// corte; "Pasar plata" es una TRANSFERENCIA ENTRE CAJAS entre dos cajas.
 // F3b (176): lo que cargan los responsables desde 📱 Mi caja espera acá
 // ("Para revisar") y "⚙ Mi caja" elige qué tipos se les ofrecen.
 // F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).

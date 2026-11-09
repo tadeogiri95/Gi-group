@@ -69,16 +69,16 @@ test("nuevo cheque — el propio pide proveedor y sale del Credicoop; el recibid
 
 test("alta — propio: Proveedores contra E-cheq diferidos; recibido: Valores contra el cliente", () => {
   const p = operacionAlta(PROPIO, CUENTAS, "2026-11-01").op;
-  assert.deepEqual([p.tipo, p.cuenta_debe, p.cuenta_haber, p.proveedor_id, p.total_ars, p.origen, p.origen_id], ["PAGO ECHEQ A PROVEEDORES", "02.01.02.001.001", "02.01.01.001.005", 5, 1600000, "cheque", "10:alta"]);
+  assert.deepEqual([p.tipo, p.cuenta_debe, p.cuenta_haber, p.proveedor_id, p.total_ars, p.origen, p.origen_id], ["PAGO A PROVEEDORES", "02.01.02.001.001", "02.01.01.001.005", 5, 1600000, "cheque", "10:alta"]);
   const t = operacionAlta(TERCERO, CUENTAS, "2026-11-01").op;
-  assert.deepEqual([t.tipo, t.cuenta_debe, t.cuenta_haber, t.entidad], ["RECEPCIÓN CHEQUE FÍSICO", "01.01.01.002.001", "01.01.02.001.001", "Municipalidad de Rio Ceballos"]);
+  assert.deepEqual([t.tipo, t.cuenta_debe, t.cuenta_haber, t.entidad], ["COBRO A CLIENTES", "01.01.01.002.001", "01.01.02.001.001", "Municipalidad de Rio Ceballos"]);
   assert.equal(operacionAlta({ ...TERCERO, tipo: "echeq_diferido" }, CUENTAS, "2026-11-01").op.cuenta_debe, "01.01.01.022.001", "el e-cheq va a Valores - E-Cheq");
   assert.match(operacionAlta(PROPIO, CUENTAS.filter((c) => !/diferidos/.test(c.nombre)), "2026-11-01").error, /E-cheq diferidos/);
 });
 
 test("cambios — debitado baja el banco, depositado lo sube, entregado baja la deuda del proveedor", () => {
   const d = cambioDeEstado(PROPIO, "debitado", { fecha: "2026-11-10" }, CTX);
-  assert.deepEqual([d.cambios.estado, d.op.tipo, d.op.cuenta_debe, d.op.cuenta_haber, d.op.origen_id], ["debitado", "PAGO ECHEQ", "02.01.01.001.005", "01.01.01.003.002", "10:debitado"]);
+  assert.deepEqual([d.cambios.estado, d.op.tipo, d.op.cuenta_debe, d.op.cuenta_haber, d.op.origen_id], ["debitado", "PAGO A PROVEEDORES", "02.01.01.001.005", "01.01.01.003.002", "10:debitado"]);
   const dep = cambioDeEstado(TERCERO, "depositado", { fecha: "2026-11-20", cuenta_banco: "01.01.01.003.004" }, CTX);
   assert.deepEqual([dep.op.cuenta_debe, dep.op.cuenta_haber, dep.cambios.cuenta_banco], ["01.01.01.003.004", "01.01.01.002.001", "01.01.01.003.004"]);
   assert.match(cambioDeEstado(TERCERO, "depositado", { fecha: "2026-11-20", cuenta_banco: "01.01.01.001.001.01" }, CTX).error, /banco/, "una caja no es un banco");
@@ -211,7 +211,7 @@ test("/api/finanzas/cheques — crear un propio guarda el cheque y su operación
   assert.equal(res.status, 200);
   const [ch, op, union] = escrito;
   assert.deepEqual([ch.tabla, ch.body.estado, ch.body.cargado_por_nombre, ch.body.empresa_id], ["fin_cheques", "pendiente", "Tadeo", E]);
-  assert.deepEqual([op.tabla, op.body.tipo, op.body.fecha, op.body.origen_id], ["fin_operaciones", "PAGO ECHEQ A PROVEEDORES", "2026-11-09", "50:alta"]);
+  assert.deepEqual([op.tabla, op.body.tipo, op.body.fecha, op.body.origen_id], ["fin_operaciones", "PAGO A PROVEEDORES", "2026-11-09", "50:alta"]);
   assert.deepEqual([union.tabla, union.body.op_alta_id], ["fin_cheques", 77]);
   mockApi({ cheques: [] });
   const mal = await pedir("gerencial", "POST", { accion: "crear", cheque: { clase: "propio", tipo: "echeq_diferido", importe: 1000, fecha_pago: "2026-12-09" } });
@@ -223,7 +223,7 @@ test("/api/finanzas/cheques — debitado: el cambio solo vale si el cheque sigue
   const res = await pedir("gerencial", "POST", { accion: "cambiar", id: 10, a: "debitado", fecha: "2026-11-10" });
   assert.equal(res.status, 200);
   assert.match(escrito[0].url, /id=eq\.10&.*estado=eq\.pendiente/);
-  assert.equal(escrito[1].body.tipo, "PAGO ECHEQ");
+  assert.equal(escrito[1].body.tipo, "PAGO A PROVEEDORES");
   assert.equal(escrito[2].body.op_cierre_id, 77);
   mockApi({ cheques: [{ ...PROPIO, estado: "debitado" }] });
   assert.equal((await pedir("gerencial", "POST", { accion: "cambiar", id: 10, a: "debitado", fecha: "2026-11-10" })).status, 400);

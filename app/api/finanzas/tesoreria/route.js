@@ -8,7 +8,7 @@
 //       → el saldo de cada caja a la fecha de corte, contra Ajuste De
 //       Capital. Si ya tenía uno, se reemplaza (el viejo queda anulado).
 //   POST { accion: "transferir", desde, hacia, importe, fecha, tipo_cambio?, descripcion? }
-//       → TRANSF INTERNA entre dos cajas o bancos de la misma moneda.
+//       → TRANSFERENCIA ENTRE CAJAS entre dos cajas o bancos de la misma moneda.
 //   F3b (Mi caja, 176):
 //   POST { accion: "config_mi_caja", gastos: [códigos], ingresos: [códigos] }
 //       → qué tipos de operación ofrece Mi caja a los responsables.

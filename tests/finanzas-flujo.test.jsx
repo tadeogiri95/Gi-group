@@ -73,7 +73,7 @@ test("flujo real — apertura, líneas por sección, neto y cierre por moneda", 
   const fila = (id) => a.filas.find((f) => f.id === id);
   assert.deepEqual(fila("OPE").valores, [3000, 0]);
   assert.deepEqual(fila("OPE|ING_TRANSF").valores, [5000, 0]);
-  assert.equal(fila("OPE|ING_TRANSF").nombre, "Cobros por transferencia");
+  assert.equal(fila("OPE|ING_TRANSF").nombre, "Cobros a clientes");
   assert.deepEqual(fila("INV").valores, [0, -300]);
   assert.equal(fila("INV|DESARR | NUMA").nombre, "NUMA");
   assert.deepEqual(fila("SIN").valores, [0, -60]);
@@ -166,7 +166,7 @@ test("Flujo de caja — lo que viene, el flujo por mes y dólares", async () => 
   const previsto = flujoPrevisto({ hoy: "2026-11-11", saldoHoy: 3640, sueldos: [{ fecha: "2026-11-05", importe: 6000, detalle: "Sueldos Octubre 2026" }] });
   global.fetch = async () => new Response(JSON.stringify({ hasta: "2026-10", ...real, previsto, lineas_cargadas: 4 }), { status: 200 });
   render(<FinanzasFlujo />);
-  assert.ok(await screen.findByText("Cobros por transferencia"));
+  assert.ok(await screen.findByText("Cobros a clientes"));
   assert.ok(screen.getByText("Saldo al cerrar el mes"));
   fireEvent.click(screen.getByRole("button", { name: /Sueldos por pagar, semana/ }));
   assert.ok(screen.getByText("Sueldos Octubre 2026"));
