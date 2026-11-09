@@ -42,6 +42,9 @@
 //   oc_factura            → N° y fecha de factura, tipo de cambio, otros impuestos y
 //                           por renglón cantidad, precio sin IVA e IVA % (122); los
 //                           ingresos con otro precio se reemplazan (comprador)
+//   oc_otra_factura_guardar → otra factura de la OC, de otro proveedor o una segunda
+//                           (173): proveedor, N°, fecha, renglones; no toca el stock
+//   oc_otra_factura_anular  → la anula (no se borra) y su compra en Finanzas también
 // Comprador = gerencia o Administración sin división asignada (un supervisor
 // de división pide y recibe, pero no compra). Con RLS_RUTAS=on todo va con el
 // pase del usuario ({ sesion }), salvo recibir, anular una recepción y la
@@ -488,7 +491,11 @@ async function anularOrden(sesion, id) {
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "pedidos_compra");
   // Si tenía factura, la compra en Finanzas se anula (172)
-  if ((await sincronizarCompra(e, { origen: "factura_oc", id: oc.id })).accion === "anulada") broadcastRefresh(e, "fin_operaciones");
+  let anuladas = (await sincronizarCompra(e, { origen: "factura_oc", id: oc.id })).accion === "anulada";
+  // Y las otras facturas de la orden (173), si las había
+  const otras = (await sbGet(`ordenes_compra_facturas?orden_id=eq.${oc.id}&empresa_id=eq.${e}&anulada_at=is.null&select=id`, { sesion, silent: true, fallback: [] })) || [];
+  for (const f of otras) if ((await sincronizarCompra(e, { origen: "factura_oc_otra", id: f.id })).accion === "anulada") anuladas = true;
+  if (anuladas) broadcastRefresh(e, "fin_operaciones");
   return NextResponse.json({ ok: true, orden: fila || { ...oc, estado: "anulada" } });
 }
 
@@ -686,6 +693,71 @@ async function facturaOrden(sesion, d) {
   return NextResponse.json({ ok: true, orden: r.orden, reemplazados: r.reemplazados });
 }
 
+/* ─── Otras facturas de una OC, de otro proveedor (173) ─────────────────── */
+
+function faltaMigracionOtrasFacturas(err) {
+  const m = String(err?.message);
+  return /ordenes_compra_facturas/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
+}
+
+/**
+ * Guarda (nueva o corregida) otra factura de la OC: la de un proveedor que
+ * facturó parte de la orden, o una segunda factura. Cada una es su propia
+ * compra en Finanzas. No toca el stock: el costo sigue saliendo de la OC.
+ */
+async function guardarOtraFactura(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const oc = await leerOrden(sesion, d.id);
+  if (!oc) return noEncontreOc();
+  if (oc.estado === "anulada") return NextResponse.json({ error: "Esa orden de compra está anulada" }, { status: 409 });
+  if (oc.estado === "borrador") return NextResponse.json({ error: "Primero mandá la orden de compra" }, { status: 409 });
+  const [items, provs] = await Promise.all([
+    sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=id,descripcion`, opts),
+    sbGet(`proveedores?id=eq.${d.proveedor_id}&empresa_id=eq.${e}&select=id,nombre&limit=1`, opts),
+  ]);
+  const proveedor = (provs || [])[0];
+  if (!proveedor) return NextResponse.json({ error: "Ese proveedor no está en la lista" }, { status: 400 });
+  const porId = new Map((items || []).map((it) => [it.id, it]));
+  const renglones = [];
+  for (const r of d.renglones) {
+    const it = porId.get(r.item_id);
+    if (!it) return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
+    renglones.push({ item_id: it.id, descripcion: String(it.descripcion || "").slice(0, 200), cantidad: r.cantidad, precio: r.precio, iva: r.iva });
+  }
+  const ahora = new Date().toISOString();
+  const fila = {
+    proveedor_id: proveedor.id, proveedor_nombre: String(proveedor.nombre || "").slice(0, 120) || "Proveedor",
+    numero: d.numero, fecha: d.fecha, tipo_cambio: oc.moneda === "USD" ? d.tipo_cambio : null,
+    otros_impuestos: d.otros_impuestos || 0, renglones, updated_at: ahora,
+  };
+  let guardada;
+  if (d.factura_id) {
+    [guardada] = (await sbPatch(`ordenes_compra_facturas?id=eq.${d.factura_id}&orden_id=eq.${oc.id}&empresa_id=eq.${e}&anulada_at=is.null`, fila, opts)) || [];
+    if (!guardada) return NextResponse.json({ error: "No encontré esa factura (¿la anularon?). Actualizá la pantalla." }, { status: 404 });
+  } else {
+    [guardada] = (await sbPost("ordenes_compra_facturas", {
+      ...fila, empresa_id: e, orden_id: oc.id, cargada_por: sesion.empleado_id || null, cargada_por_nombre: await nombreEmpleado(sesion), created_at: ahora,
+    }, opts)) || [];
+  }
+  broadcastRefresh(e, "ordenes_compra");
+  if (guardada?.id && (await sincronizarCompra(e, { origen: "factura_oc_otra", id: guardada.id })).accion !== "omitida") broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, factura: guardada || null });
+}
+
+/** Anula otra factura de la OC (no se borra); su compra en Finanzas se anula. */
+async function anularOtraFactura(sesion, facturaId) {
+  const e = sesion.empresa_id;
+  const ahora = new Date().toISOString();
+  const [f] = (await sbPatch(`ordenes_compra_facturas?id=eq.${facturaId}&empresa_id=eq.${e}&anulada_at=is.null`, {
+    anulada_at: ahora, anulada_por_nombre: (await nombreEmpleado(sesion)) || "Compras", updated_at: ahora,
+  }, { sesion })) || [];
+  if (!f) return NextResponse.json({ error: "No encontré esa factura (¿ya estaba anulada?)" }, { status: 404 });
+  broadcastRefresh(e, "ordenes_compra");
+  if ((await sincronizarCompra(e, { origen: "factura_oc_otra", id: f.id })).accion === "anulada") broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, factura: f });
+}
+
 /* ─── Orden "A cotizar" y pedidos de cotización (125) ──────────────────── */
 
 const noEsACotizar = () => NextResponse.json({ error: "Esa orden ya tiene proveedor: no está a cotizar" }, { status: 409 });
@@ -816,6 +888,8 @@ export async function POST(request) {
       if (d.accion === "oc_cotizacion_quitar") return await quitarCotizacion(sesion, d.id);
       if (d.accion === "oc_adjudicar") return await adjudicarOrden(sesion, d.id);
       if (d.accion === "recepcion_anular") return await anularRecepcion(sesion, d.id);
+      if (d.accion === "oc_otra_factura_guardar") return await guardarOtraFactura(sesion, d);
+      if (d.accion === "oc_otra_factura_anular") return await anularOtraFactura(sesion, d.factura_id);
       return await facturaOrden(sesion, d);
     } catch (err) {
       if (faltaMigracionUnidad(err)) {
@@ -823,6 +897,9 @@ export async function POST(request) {
       }
       if (faltaMigracionTransacciones(err)) {
         return NextResponse.json({ error: "Para recibir mercadería y cargar facturas falta correr la migración 130 en Supabase." }, { status: 409 });
+      }
+      if (faltaMigracionOtrasFacturas(err)) {
+        return NextResponse.json({ error: "Para cargar otra factura de la orden falta correr la migración 173 en Supabase." }, { status: 409 });
       }
       if (faltaMigracionCotizaciones(err)) {
         return NextResponse.json({ error: "Para pedir cotizaciones falta correr la migración 125 en Supabase." }, { status: 409 });

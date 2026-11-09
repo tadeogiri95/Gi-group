@@ -6,7 +6,8 @@
 // material o gasto por el neto, IVA crédito fiscal y otros impuestos contra
 // Proveedores por el total (el asiento lo arma asientoDe, F1b). Si se corrige
 // la factura, la compra se corrige; si se anula la factura o la OC, la compra
-// se anula. Administración no ve nada de esto.
+// se anula. Administración no ve nada de esto. Lo que facturó otro proveedor
+// en una OC (173, "＋ Otra factura") es otra compra, de ese proveedor.
 //
 // Qué tipo de compra es: el que tiene el proveedor (proveedores.fin_tipo, se
 // guarda cuando el dueño lo cambia en Finanzas). Si no tiene, COMPRA MP (o el
@@ -64,6 +65,30 @@ export function importesFacturaOc(oc, items) {
   };
 }
 
+/**
+ * Importes de otra factura de una OC (173: la facturó otro proveedor), en
+ * pesos, o null si está anulada, la OC está anulada, no tiene importe o es en
+ * dólares sin tipo de cambio. Los renglones traen su cantidad, precio e IVA.
+ */
+export function importesOtraFactura(f, oc, items = []) {
+  if (!f || f.anulada_at || !oc || oc.estado === "anulada") return null;
+  const renglones = Array.isArray(f.renglones) ? f.renglones : [];
+  const t = totalesFactura(renglones.map((r) => ({ cantidad: r.cantidad, precio: r.precio, iva: r.iva ?? 21 })), Number(f.otros_impuestos) || 0);
+  if (!(t.total > 0)) return null;
+  const tc = oc.moneda === "USD" ? Number(f.tipo_cambio) : 1;
+  if (!(tc > 0)) return null;
+  const porId = new Map((items || []).map((it) => [Number(it.id), it]));
+  const ots = [...new Set(renglones.map((r) => String(porId.get(Number(r.item_id))?.ot || "").trim()))];
+  return {
+    fecha: f.fecha || null,
+    numero: f.numero || null,
+    neto: centavos(t.neto * tc), iva: centavos(t.iva * tc), otros: centavos(t.otros * tc), total: centavos(t.total * tc),
+    usd: oc.moneda === "USD" ? { total: t.total, tc } : null,
+    ot: ots.length === 1 && ots[0] ? ots[0] : null,
+    descripcion: `Factura${f.numero ? ` ${f.numero}` : ""} · OC ${oc.numero} (otro proveedor)`,
+  };
+}
+
 /** Importes de una factura suelta, en pesos, o null si está anulada, es una lista de precios o no tiene importe. */
 export function importesFacturaSuelta(f, renglones) {
   if (!f || f.anulada_at || (f.tipo && f.tipo !== "factura")) return null;
@@ -89,7 +114,7 @@ const usdTexto = (usd) => (usd ? ` · USD ${usd.total.toLocaleString("es-AR", { 
 /**
  * La compra en Finanzas de una factura: crea, corrige o anula la operación.
  * @param {string} empresaId
- * @param {{ origen: "factura_oc" | "factura_suelta", id: number|string }} factura
+ * @param {{ origen: "factura_oc" | "factura_oc_otra" | "factura_suelta", id: number|string }} factura
  * @returns {Promise<{ accion: string }>} creada | corregida | anulada | nada | omitida
  */
 export async function sincronizarCompra(empresaId, { origen, id }) {
@@ -110,6 +135,13 @@ export async function sincronizarCompra(empresaId, { origen, id }) {
       importes = importesFacturaOc(oc, items);
       proveedorId = oc?.proveedor_id || null;
       proveedorNombre = oc?.proveedor_nombre || null;
+    } else if (origen === "factura_oc_otra") {
+      const [f] = (await sbGet(`ordenes_compra_facturas?id=eq.${Number(id)}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+      const [oc] = f ? (await sbGet(`ordenes_compra?id=eq.${f.orden_id}&empresa_id=eq.${e}&select=id,numero,estado,moneda&limit=1`)) || [] : [];
+      const items = oc ? (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=id,ot`)) || [] : [];
+      importes = importesOtraFactura(f, oc, items);
+      proveedorId = f?.proveedor_id || null;
+      proveedorNombre = f?.proveedor_nombre || null;
     } else {
       const [f] = (await sbGet(`facturas_sueltas?id=eq.${Number(id)}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
       const renglones = f ? (await sbGet(`facturas_sueltas_renglones?factura_id=eq.${f.id}&empresa_id=eq.${e}&select=cantidad,precio`)) || [] : [];

@@ -487,3 +487,15 @@ export function totalesFactura(renglones, otros = 0) {
   const extra = Number(otros) || 0;
   return { neto: centavos(neto), iva: centavos(iva), otros: centavos(extra), total: centavos(neto + iva + extra) };
 }
+
+/** Otras facturas (173): cuánto de un renglón queda por facturar: lo que llegó (o lo pedido) menos la factura de la OC y las otras. */
+export function faltaFacturar(it, oc, otras = [], sinFactura = null) {
+  const recibida = Number(it.cantidad_recibida);
+  const base = Number.isFinite(recibida) && recibida > 0 ? recibida : Number(it.cantidad) || 0;
+  const hayFactura = Boolean(oc.factura_numero || oc.factura_fecha);
+  const enLaOc = hayFactura ? (it.cantidad_facturada === null || it.cantidad_facturada === undefined ? base : Number(it.cantidad_facturada)) : 0;
+  const enOtras = otras
+    .filter((f) => !f.anulada_at && f.id !== sinFactura)
+    .reduce((s, f) => s + (f.renglones || []).filter((r) => Number(r.item_id) === Number(it.id)).reduce((t, r) => t + (Number(r.cantidad) || 0), 0), 0);
+  return Math.max(0, Math.round((base - enLaOc - enOtras) * 1000) / 1000);
+}

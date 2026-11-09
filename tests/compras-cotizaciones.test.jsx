@@ -78,7 +78,7 @@ test("validación, migración 125 y permisos de lectura", () => {
   assert.equal(autorizar("ordenes_compra_cotizaciones", "GET", { rol: "administrativo" }).ok, true);
   assert.equal(autorizar("ordenes_compra_cotizaciones", "POST", { rol: "gerencial" }).ok, false);
   const data = readFileSync(new URL("../app/api/data/route.js", import.meta.url), "utf8");
-  assert.match(data, /"recepciones_compra_items", "ordenes_compra_cotizaciones"\]/, "solo lectura por /api/data");
+  assert.match(data, /"recepciones_compra_items", "ordenes_compra_cotizaciones", "ordenes_compra_facturas"\]/, "solo lectura por /api/data");
 
   // Lo que está a cotizar no va a la planilla como EN TRÁNSITO
   const planilla = readFileSync(new URL("../app/api/stock/planilla/route.js", import.meta.url), "utf8");

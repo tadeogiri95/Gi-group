@@ -13,7 +13,7 @@ import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { faltaTabla, numeroWhatsapp } from "../lib/compras";
 import {
   ESTADOS_OC, ESTADOS_OC_ABIERTA, ESTADOS_OC_CERRABLE, MONEDAS, pendienteItem, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
-  ALICUOTAS_IVA, IVA_POR_DEFECTO, cantidadFacturaInicial, renglonFactura, totalesFactura,
+  ALICUOTAS_IVA, IVA_POR_DEFECTO, cantidadFacturaInicial, renglonFactura, totalesFactura, faltaFacturar,
   ocACotizar, estadoOcVisible, cotizacionMasBarata, textoCotizacion,
   factorItem, convertirUnidad, equivalenciaStock,
 } from "../lib/ordenesCompra";
@@ -156,6 +156,224 @@ function FacturaOrden({ oc, items, onGuardada }) {
         <div className="text-[12px] text-gypi-dim mt-1">Comparalo con el total del papel. Al stock entra el precio sin IVA.</div>
       </div>
       <button onClick={guardar} disabled={enviando} className="g-btn g-btn-secondary w-full mt-2">{enviando ? "Guardando…" : "Guardar factura"}</button>
+      {aviso && <div role="status" className="text-[13px] mt-2">✅ {aviso}</div>}
+      {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}
+    </div>
+  );
+}
+
+const AVISO_MIGRACION_173 = "Para cargar otra factura de la orden falta correr la migración 173 en Supabase.";
+
+/**
+ * Otras facturas de la OC (173): lo que facturó otro proveedor, o una segunda
+ * factura. Por renglón de la orden: si va, cantidad, precio sin IVA e IVA %.
+ * Cada una es su propia compra en Finanzas. No cambia el stock.
+ */
+function OtraFacturaForm({ oc, items, otras, factura, proveedores, onCerrar, onGuardada }) {
+  const usd = oc.moneda === "USD";
+  const plata = (n) => importeTexto(n, oc.moneda);
+  const [proveedorId, setProveedorId] = useState(factura ? String(factura.proveedor_id || "") : "");
+  const [numero, setNumero] = useState(factura?.numero || "");
+  const [fecha, setFecha] = useState(factura?.fecha || "");
+  const [tc, setTc] = useState(numTexto(factura?.tipo_cambio));
+  const [otros, setOtros] = useState(factura && Number(factura.otros_impuestos) ? numTexto(factura.otros_impuestos) : "");
+  const [renglones, setRenglones] = useState(() => Object.fromEntries(items.map((it) => {
+    const r = (factura?.renglones || []).find((x) => Number(x.item_id) === it.id);
+    return [it.id, r
+      ? { va: true, cantidad: numTexto(r.cantidad), precio: numTexto(r.precio), iva: String(r.iva ?? IVA_POR_DEFECTO) }
+      : { va: false, cantidad: numTexto(faltaFacturar(it, oc, otras, factura?.id ?? null)), precio: numTexto(it.precio_unitario), iva: String(it.iva_alicuota ?? IVA_POR_DEFECTO) }];
+  })));
+  const [error, setError] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const cambiar = (id, campo, valor) => setRenglones((r) => ({ ...r, [id]: { ...r[id], [campo]: valor } }));
+  const leidos = items.filter((it) => renglones[it.id].va).map((it) => {
+    const r = renglones[it.id];
+    return { it, cantidad: leerCantidadMovimiento(r.cantidad), precio: r.precio.trim() ? leerImporte(r.precio) : null, iva: Number(r.iva) };
+  });
+  const totales = totalesFactura(leidos, leerImporte(otros) || 0);
+
+  const guardar = async () => {
+    setError(null);
+    if (!proveedorId) { setError("Elegí el proveedor que facturó"); return; }
+    if (!fecha) { setError("Falta la fecha de la factura"); return; }
+    if (!leidos.length) { setError("Marcá al menos un renglón que vaya en esta factura"); return; }
+    for (const { it, cantidad, precio } of leidos) {
+      if (!(cantidad > 0)) { setError(`Revisá la cantidad de ${it.descripcion}`); return; }
+      if (precio === null) { setError(`Revisá el precio de ${it.descripcion}`); return; }
+    }
+    const tipoCambio = usd && tc.trim() ? leerImporte(tc) : null;
+    if (usd && tc.trim() && !tipoCambio) { setError("Revisá el tipo de cambio"); return; }
+    const otrosImp = otros.trim() ? leerImporte(otros) : 0;
+    if (otrosImp === null) { setError("Revisá otros impuestos"); return; }
+    setEnviando(true);
+    try {
+      await postCompras({
+        accion: "oc_otra_factura_guardar", id: oc.id, factura_id: factura?.id ?? null, proveedor_id: Number(proveedorId),
+        numero: numero.trim() || null, fecha, tipo_cambio: tipoCambio, otros_impuestos: otrosImp,
+        renglones: leidos.map(({ it, cantidad, precio, iva }) => ({ item_id: it.id, cantidad, precio, iva })),
+      });
+      await onGuardada(factura ? "Factura corregida." : "Factura guardada.");
+    } catch (e) {
+      setError(e.message);
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="pt-2 mt-2 border-t border-gypi-border">
+      <div className="text-[13px] font-semibold mb-1">{factura ? "Corregir factura" : "Otra factura"}</div>
+      <label className="g-label" htmlFor="otra-prov">Proveedor que facturó</label>
+      <select id="otra-prov" className="g-input w-full mb-2" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
+        <option value="">Elegí el proveedor</option>
+        {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+      </select>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="g-label" htmlFor="otra-numero">N° de factura</label>
+          <input id="otra-numero" className="g-input w-full mb-2" value={numero} maxLength={60} onChange={(e) => setNumero(e.target.value)} placeholder="Ej: A-0003-00001234" />
+        </div>
+        <div className="flex-1">
+          <label className="g-label" htmlFor="otra-fecha">Fecha de factura</label>
+          <input id="otra-fecha" type="date" className="g-input w-full mb-2" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </div>
+      </div>
+      {usd && (
+        <>
+          <label className="g-label" htmlFor="otra-tc">Tipo de cambio (pesos por dólar)</label>
+          <input id="otra-tc" className="g-input w-full mb-2" inputMode="decimal" value={tc} onChange={(e) => setTc(e.target.value)} placeholder="Ej: 1.050" />
+        </>
+      )}
+      <div className="text-[12px] text-gypi-dim mb-1">Marcá lo que va en esta factura. Precio unitario sin IVA{usd ? " en dólares" : ""}.</div>
+      {items.map((it) => {
+        const r = renglones[it.id];
+        const calc = r.va ? renglonFactura({ cantidad: leerCantidadMovimiento(r.cantidad), precio: r.precio.trim() ? leerImporte(r.precio) : null, iva: Number(r.iva) }) : null;
+        return (
+          <div key={it.id} className="py-2 border-t border-gypi-border">
+            <label className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer">
+              <input type="checkbox" checked={r.va} aria-label={`${it.descripcion} va en esta factura`} onChange={(e) => cambiar(it.id, "va", e.target.checked)} />
+              {it.descripcion}
+            </label>
+            {r.va && (
+              <>
+                <div className="flex gap-2 items-end mt-1">
+                  <div className="flex-1 min-w-0">
+                    <label className="g-label" htmlFor={`otra-cant-${it.id}`}>Cantidad{it.unidad ? ` (${it.unidad})` : ""}</label>
+                    <input id={`otra-cant-${it.id}`} aria-label={`Cantidad de ${it.descripcion} en la otra factura`} className="g-input w-full" inputMode="decimal"
+                      value={r.cantidad} onChange={(e) => cambiar(it.id, "cantidad", e.target.value)} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="g-label" htmlFor={`otra-precio-${it.id}`}>Precio s/IVA</label>
+                    <input id={`otra-precio-${it.id}`} aria-label={`Precio de ${it.descripcion} en la otra factura`} className="g-input w-full" inputMode="decimal"
+                      value={r.precio} onChange={(e) => cambiar(it.id, "precio", e.target.value)} />
+                  </div>
+                  <div className="w-[86px] shrink-0">
+                    <label className="g-label" htmlFor={`otra-iva-${it.id}`}>IVA</label>
+                    <select id={`otra-iva-${it.id}`} className="g-input w-full" value={r.iva} onChange={(e) => cambiar(it.id, "iva", e.target.value)}>
+                      {ALICUOTAS_IVA.map((a) => <option key={a} value={String(a)}>{numTexto(a)}%</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="text-[12px] text-gypi-dim mt-1">{calc ? `Neto ${plata(calc.neto)} · IVA ${plata(calc.iva)} · Total ${plata(calc.total)}` : "Falta cantidad o precio"}</div>
+              </>
+            )}
+          </div>
+        );
+      })}
+      <div className="pt-2 border-t border-gypi-border text-[13px]">
+        <div className="flex justify-between mb-1"><span>Subtotal neto</span><span>{plata(totales.neto)}</span></div>
+        <div className="flex justify-between mb-1"><span>IVA</span><span>{plata(totales.iva)}</span></div>
+        <div className="flex items-center gap-2 mb-1">
+          <label className="flex-1" htmlFor="otra-otros">Otros impuestos (percepciones, internos)</label>
+          <div className="w-[120px] shrink-0">
+            <input id="otra-otros" className="g-input w-full text-right" inputMode="decimal" value={otros} onChange={(e) => setOtros(e.target.value)} placeholder="0" />
+          </div>
+        </div>
+        <div className="flex justify-between font-bold text-[14px]"><span>Total de la factura</span><span>{plata(totales.total)}</span></div>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <button onClick={onCerrar} disabled={enviando} className="g-btn g-btn-secondary flex-1">Cancelar</button>
+        <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : "Guardar factura"}</button>
+      </div>
+      {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}
+    </div>
+  );
+}
+
+function OtrasFacturas({ oc, items }) {
+  const [otras, setOtras] = useState(null);
+  const [proveedores, setProveedores] = useState([]);
+  const [sinMigracion, setSinMigracion] = useState(false);
+  const [editando, setEditando] = useState(null); // "nueva" o la factura
+  const [anulando, setAnulando] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const [error, setError] = useState(null);
+  const plata = (n) => importeTexto(n, oc.moneda);
+
+  const cargar = useCallback(async () => {
+    try {
+      const filas = await sb.get(`ordenes_compra_facturas?orden_id=eq.${oc.id}&anulada_at=is.null&order=id.asc`);
+      setOtras(filas || []);
+    } catch (e) {
+      if (faltaTabla(e, "ordenes_compra_facturas")) setSinMigracion(true);
+      setOtras([]);
+    }
+  }, [oc.id]);
+  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    if (!editando || proveedores.length) return;
+    sbGetAll("proveedores?activo=eq.true&select=id,nombre&order=nombre.asc", { maxFilas: 5000 }).then((r) => setProveedores(r.data || [])).catch(() => {});
+  }, [editando, proveedores.length]);
+
+  const anular = async (f) => {
+    setError(null);
+    try {
+      await postCompras({ accion: "oc_otra_factura_anular", factura_id: f.id });
+      setAnulando(null);
+      setAviso("Factura anulada.");
+      await cargar();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const totalDe = (f) => totalesFactura((f.renglones || []).map((r) => ({ cantidad: r.cantidad, precio: r.precio, iva: r.iva })), Number(f.otros_impuestos) || 0).total;
+
+  if (otras === null) return null;
+  return (
+    <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
+      <div className="text-[14px] font-bold mb-1">🧾 Otras facturas de esta orden</div>
+      <div className="text-[12px] text-gypi-dim mb-2">
+        Si otro proveedor facturó parte de la orden, o llegó una segunda factura, cargala acá. En la factura de arriba dejá solo lo que facturó {oc.proveedor_nombre || "el proveedor de la orden"}.
+      </div>
+      {otras.length > 0 && (
+        <ul aria-label="Otras facturas" className="list-none m-0 p-0 mb-2">
+          {otras.map((f) => (
+            <li key={f.id} className="py-2 border-t border-gypi-border text-[13px]">
+              <div className="flex items-baseline gap-2">
+                <span className="font-semibold flex-1 min-w-0 truncate">{f.proveedor_nombre}{f.numero ? ` · ${f.numero}` : ""}</span>
+                <span className="font-semibold">{plata(totalDe(f))}</span>
+              </div>
+              <div className="text-[12px] text-gypi-dim">{fechaCorta(f.fecha)} · {(f.renglones || []).map((r) => r.descripcion).join(", ")}</div>
+              {anulando === f.id ? (
+                <div className="flex gap-2 mt-1">
+                  <button onClick={() => setAnulando(null)} className="g-btn g-btn-secondary flex-1">No</button>
+                  <button onClick={() => anular(f)} className="g-btn g-btn-primary flex-1">Sí, anular</button>
+                </div>
+              ) : (
+                <div className="flex gap-2 mt-1">
+                  <button onClick={() => { setEditando(f); setAviso(null); }} className="g-btn g-btn-secondary flex-1">✏ Corregir</button>
+                  <button onClick={() => { setAnulando(f.id); setAviso(null); }} className="g-btn g-btn-secondary flex-1">Anular</button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {editando ? (
+        <OtraFacturaForm key={editando === "nueva" ? "nueva" : editando.id} oc={oc} items={items} otras={otras} factura={editando === "nueva" ? null : editando} proveedores={proveedores}
+          onCerrar={() => setEditando(null)} onGuardada={async (msg) => { setEditando(null); setAviso(msg); await cargar(); }} />
+      ) : (
+        <button onClick={() => { if (sinMigracion) { setError(AVISO_MIGRACION_173); return; } setEditando("nueva"); setAviso(null); setError(null); }} className="g-btn g-btn-secondary w-full">＋ Otra factura</button>
+      )}
       {aviso && <div role="status" className="text-[13px] mt-2">✅ {aviso}</div>}
       {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}
     </div>
@@ -562,6 +780,7 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
           )}
 
           {!borrador && oc.estado !== "anulada" && items.length > 0 && <FacturaOrden key={`${oc.id}-${oc.updated_at}`} oc={oc} items={items} onGuardada={async () => { await onCambio(); await cargar(); }} />}
+          {!borrador && oc.estado !== "anulada" && items.length > 0 && <OtrasFacturas oc={oc} items={items} />}
 
           {aCotizar && <CotizacionesOrden oc={oc} ocVista={ocVista} items={vista} empresa={empresa} onCambio={onCambio} />}
 

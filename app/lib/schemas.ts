@@ -513,6 +513,24 @@ export const comprasBody = z.discriminatedUnion("accion", [
       iva_alicuota: z.number().refine((v) => [21, 10.5, 27, 0].includes(v), "IVA 21, 10,5, 27 o 0").optional(),
     }).strict()).max(200).optional(),
   }).strict(),
+  // Otra factura de la OC, de otro proveedor (173). Sin factura_id es nueva.
+  z.object({
+    accion: z.literal("oc_otra_factura_guardar"),
+    id: idCompras,
+    factura_id: idCompras.nullable().optional().transform((v) => v ?? null),
+    proveedor_id: idCompras,
+    numero: textoSuelto(60),
+    fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Falta la fecha de la factura"),
+    tipo_cambio: z.number().finite().positive().max(1e7).nullable().optional().transform((v) => v ?? null),
+    otros_impuestos: z.number().finite().min(0).max(1e12).nullable().optional().transform((v) => v ?? 0),
+    renglones: z.array(z.object({
+      item_id: idCompras,
+      cantidad: z.number().finite().positive().max(1e10),
+      precio: z.number().finite().min(0).max(1e12),
+      iva: z.number().refine((v) => [21, 10.5, 27, 0].includes(v), "IVA 21, 10,5, 27 o 0"),
+    }).strict()).min(1, "Elegí al menos un renglón").max(200),
+  }).strict(),
+  z.object({ accion: z.literal("oc_otra_factura_anular"), factura_id: idCompras }).strict(),
 ]);
 
 // ── /api/carga (104): acopio y carga de la OT ─────────────────────────────
