@@ -3,9 +3,10 @@
 // F6a; migración 179; /api/finanzas/resultados; reglas en
 // app/lib/finanzasResultados.js).
 //
-// El estado de resultados devengado de 12 meses, como la hoja EERR del libro:
-// ingresos, costo de ventas, utilidad bruta, gastos operativos, EBIT,
-// resultado financiero, impuestos y resultado neto. Cada sección se abre y se
+// El estado de resultados devengado de 12 meses, ordenado según NIIF (gastos
+// por función): ingresos por entregas, costo de ventas, ganancia bruta,
+// comercialización, administración, otros, resultado operativo, financieros,
+// impuesto a las ganancias y resultado del período. Cada sección se abre y se
 // cierra; el costo de materiales se estima con un % de las entregas mientras
 // no haya costo real. Con el ponderador (⚙ Compartidos) se ve cada división:
 // lo suyo entero y su % de lo compartido.
@@ -185,7 +186,7 @@ export default function FinanzasResultados() {
           Hasta el mes
           <input type="month" className="g-input" aria-label="Hasta el mes" value={hasta} onChange={(e) => e.target.value && setHasta(e.target.value)} />
         </label>
-        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA. Tocá una sección para abrirla o cerrarla.</p>
+        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA, ordenado según NIIF (gastos por función). Ingresos = entregas de las OT (precio del Plan, el mes en que se finaliza la OT): se compara lo producido contra los costos. Tocá una sección para abrirla o cerrarla.</p>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Materiales ({pct(datos.config?.materiales_pct)})</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setReparto(true)}>⚙ Compartidos</button>
         {cargando && <Spinner size={16} />}
@@ -207,6 +208,7 @@ export default function FinanzasResultados() {
           ⚠ Ninguna cuenta tiene su renglón del estado de resultados. Andá a Finanzas → Configuración → 📥 Copiar desde el libro y copiá de nuevo el plan de cuentas: así se trae la columna clasificacion_eerr.
         </p>
       )}
+      {datos.hay_entregas === false && <p className="m-0 mb-2 text-[13px] text-gypi-amber-ink">⚠ No hay entregas en estos meses. Las entregas se anotan solas al finalizar cada OT si está prendido Finanzas → 👥 Clientes → 🧾 Ventas de las OT.</p>}
       {datos.para_revisar > 0 && <p className="m-0 mb-2 text-[13px] text-gypi-amber-ink">⚠ Hay {datos.para_revisar} operaciones para revisar en estos meses que todavía no cuentan. Confirmalas en Movimientos.</p>}
 
       <div className="overflow-x-auto border border-gypi-border rounded-lg">
@@ -221,11 +223,12 @@ export default function FinanzasResultados() {
           <tbody>
             {visibles.map((f) => {
               const fondo = f.tipo === "seccion" || f.tipo === "resultado" ? "bg-gypi-surface" : "bg-gypi-bg";
+              const aparte = datos.filas.find((x) => x.tipo === "seccion" && x.id === (f.tipo === "seccion" ? f.id : f.seccion))?.aparte;
               const sangria = f.tipo === "linea" ? "pl-6" : f.tipo === "grupo" ? "pl-4" : "pl-2";
               const valor = f.tipo === "pct" ? pct : miles;
               const negativo = (n) => (f.tipo !== "pct" && n < 0 ? "text-gypi-red" : "");
               return (
-                <tr key={f.id} className={`border-t border-gypi-border ${ESTILO[f.tipo]}`} onClick={f.tipo === "seccion" ? () => abrirCerrar(f.id) : undefined}>
+                <tr key={f.id} className={`border-t border-gypi-border ${ESTILO[f.tipo]} ${aparte ? "italic opacity-80" : ""}`} onClick={f.tipo === "seccion" ? () => abrirCerrar(f.id) : undefined}>
                   <td className={`pr-2 py-1 sticky left-0 ${fondo} ${sangria}`}>
                     {f.tipo === "seccion" && <span aria-hidden="true">{cerradas.has(f.id) ? "▸ " : "▾ "}</span>}
                     {f.tipo === "seccion" ? <button type="button" className="bg-transparent border-none p-0 font-bold text-gypi-text cursor-pointer" aria-expanded={!cerradas.has(f.id)}>{f.nombre}</button> : f.nombre}

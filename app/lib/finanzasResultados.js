@@ -14,6 +14,16 @@
 //     CMV_MAT (Materias Primas es stock: la compra no es el consumo). Con 0 %
 //     se usan las cuentas.
 //   - IMP_IVA (IVA a pagar / a favor) va aparte y no entra en el resultado.
+//   - Ordenado según NIIF (NIC 1, gastos por función), 10/11: el ingreso son
+//     SOLO las entregas (ING_ENT, menos descuentos y notas de crédito), para
+//     comparar lo producido y entregado contra los costos. Las ventas (OT
+//     cargadas en el Plan, todavía sin entregar) se muestran aparte y no
+//     entran. Después: costo de ventas → ganancia bruta → gastos de
+//     comercialización (incluye logística, diseño, IIBB y comercio e
+//     industria) → gastos de administración (incluye los demás impuestos y
+//     tasas) → otros ingresos y gastos (alquileres, multas) → resultado
+//     operativo → resultados financieros → resultado antes del impuesto a las
+//     ganancias → impuesto a las ganancias → resultado del período.
 //   - Las operaciones anuladas no cuentan; las "para revisar" tampoco (se
 //     avisa cuántas hay).
 //   - Por división: cada operación es de la división de su OT o, si no tiene,
@@ -43,6 +53,50 @@ export const SECCIONES = [
   } },
   // IMP_IVA: impuestos de traslado; se muestran aparte y no entran en el resultado (como el libro)
   { id: "IVA", nombre: "Impuestos de traslado (IVA, no entra en el resultado)", aparte: true, grupos: {} },
+];
+
+/**
+ * Las secciones del estado según NIIF, en orden. Cada renglón del libro
+ * (sección y grupo de su clasificacion_eerr) va a una de estas con niifDe.
+ * "ingreso": se muestra haber − debe (positivo = gana).
+ */
+export const SECCIONES_NIIF = [
+  { id: "ING", nombre: "Ingresos por entregas", ingreso: true },
+  { id: "CMV", nombre: "Costo de ventas" },
+  { id: "COM", nombre: "Gastos de comercialización" },
+  { id: "ADM", nombre: "Gastos de administración" },
+  { id: "OTR", nombre: "Otros ingresos y gastos", ingreso: true },
+  { id: "FIN", nombre: "Resultados financieros (costo neto)" },
+  { id: "GAN", nombre: "Impuesto a las ganancias" },
+  { id: "VTA", nombre: "Ventas del período (OT cargadas, sin entregar: no entran, el ingreso es la entrega)", ingreso: true, aparte: true },
+  { id: "IVA", nombre: "Impuestos de traslado (IVA, no entra en el resultado)", aparte: true },
+];
+
+/** De la sección y el grupo del libro a la sección NIIF. */
+export function niifDe(seccion, grupo) {
+  const g = String(grupo || "").toUpperCase();
+  if (seccion === "ING") return g === "VTA" ? "VTA" : g === "ENT" || g === "NC" ? "ING" : "OTR";
+  if (seccion === "CMV") return "CMV";
+  if (seccion === "GO") return ["COM", "LOG", "DIS"].includes(g) ? "COM" : g === "MUL" ? "OTR" : "ADM";
+  if (seccion === "FIN") return "FIN";
+  if (seccion === "IMP") return g === "GAN" ? "GAN" : ["IIBB", "CI"].includes(g) ? "COM" : "ADM";
+  return seccion === "IVA" ? "IVA" : null;
+}
+
+/** El nombre del grupo (en Administración, "Impuestos: Débitos y créditos"…). */
+function nombreGrupo(seccion, grupo) {
+  const sec = SECCIONES.find((x) => x.id === seccion);
+  const n = sec?.grupos?.[grupo];
+  if (!n) return null;
+  return seccion === "IMP" ? `Impuestos: ${n.charAt(0).toLowerCase()}${n.slice(1)}` : n;
+}
+
+/** El orden de los grupos dentro de cada sección NIIF. */
+const ORDEN_GRUPOS = [
+  "ING_ENT", "ING_NC", "CMV_MAT", "CMV_TER", "CMV_MOD", "CMV_CIF",
+  "GO_COM", "GO_LOG", "GO_DIS", "IMP_IIBB", "IMP_CI",
+  "GO_ADM", "GO_REM", "GO_HON", "GO_SER", "GO_SEG", "GO_MAN", "GO_LEA", "IMP_DEB", "IMP_INM", "IMP_AUT", "IMP_OTR",
+  "ING_ALQ", "GO_MUL", "FIN_COM", "FIN_INT", "FIN_DIF", "IMP_GAN", "ING_VTA",
 ];
 
 /** "2026-10" → los 12 meses que terminan ahí, del más viejo al más nuevo. */
@@ -142,15 +196,17 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
       }
       return;
     }
+    const niif = niifDe(ubic.seccion.id, ubic.grupo);
+    const secNiif = SECCIONES_NIIF.find((x) => x.id === niif);
     const div = ubic.seccion.ingreso && op.proyecto_id ? divisionOt.get(Number(op.proyecto_id)) || "" : "";
     const k = `${codigo}|${div}`;
     let l = lineas.get(k);
     if (!l) {
-      l = { cuenta: codigo, linea: c.linea_eerr, division: div, nombre: div ? `${c.nombre} · ${div}` : c.nombre, seccion: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
+      l = { cuenta: codigo, linea: c.linea_eerr, division: div, nombre: div ? `${c.nombre} · ${div}` : c.nombre, seccion: niif, origen: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
       lineas.set(k, l);
     }
     // Ingresos: haber − debe; el resto: debe − haber
-    l.valores[i] += ubic.seccion.ingreso ? -v : v;
+    l.valores[i] += secNiif.ingreso ? -v : v;
   };
 
   for (const op of ops) {
@@ -167,14 +223,14 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
   const pct = Math.max(0, Math.min(100, Number(materialesPct) || 0));
   let estimados = false;
   if (pct > 0) {
-    for (const [k, l] of lineas) if (l.seccion === "CMV" && l.grupo === "MAT") lineas.delete(k);
+    for (const [k, l] of lineas) if (l.origen === "CMV" && l.grupo === "MAT") lineas.delete(k);
     const entregas = cero();
-    for (const l of lineas.values()) if (l.seccion === "ING" && l.grupo === "ENT") l.valores.forEach((v, i) => { entregas[i] += v; });
+    for (const l of lineas.values()) if (l.origen === "ING" && l.grupo === "ENT") l.valores.forEach((v, i) => { entregas[i] += v; });
     if (entregas.some((v) => Math.abs(v) >= 0.01)) {
       estimados = true;
       lineas.set("materiales|estimado", {
         cuenta: null, linea: "CMV_MAT", division: "", nombre: `Costo de materiales (estimado ${String(pct).replace(".", ",")} % de las entregas)`,
-        seccion: "CMV", grupo: "MAT", estimado: true, valores: entregas.map((v) => v * pct / 100),
+        seccion: "CMV", origen: "CMV", grupo: "MAT", estimado: true, valores: entregas.map((v) => v * pct / 100),
       });
     }
   }
@@ -184,36 +240,42 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
   const sumaDe = (lista) => { const t = cero(); for (const l of lista) l.valores.forEach((v, i) => { t[i] += v; }); return t; };
   const filas = [];
   const totales = {};
-  for (const sec of SECCIONES) {
+  const cero12 = cero();
+  for (const sec of SECCIONES_NIIF) {
     const deSec = [...lineas.values()].filter((l) => l.seccion === sec.id);
     if (sec.aparte && !deSec.length) continue;
     const tSec = sumaDe(deSec);
     totales[sec.id] = tSec;
-    filas.push({ tipo: "seccion", id: sec.id, nombre: sec.nombre, valores: redondear(tSec), total: total(tSec) });
-    const grupos = [...new Set(deSec.map((l) => l.grupo))].sort((a, b) => {
-      const orden = Object.keys(sec.grupos);
-      const ia = orden.indexOf(a); const ib = orden.indexOf(b);
+    filas.push({ tipo: "seccion", id: sec.id, nombre: sec.nombre, aparte: !!sec.aparte, valores: redondear(tSec), total: total(tSec) });
+    const claveG = (l) => `${l.origen}_${l.grupo}`;
+    const grupos = [...new Set(deSec.map(claveG))].sort((a, b) => {
+      const ia = ORDEN_GRUPOS.indexOf(a); const ib = ORDEN_GRUPOS.indexOf(b);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
     });
     for (const g of grupos) {
-      const deG = deSec.filter((l) => l.grupo === g).sort((a, b) => a.linea.localeCompare(b.linea) || String(a.cuenta).localeCompare(String(b.cuenta)) || a.division.localeCompare(b.division));
-      const conNombre = sec.grupos[g];
+      const deG = deSec.filter((l) => claveG(l) === g).sort((a, b) => a.linea.localeCompare(b.linea) || String(a.cuenta).localeCompare(String(b.cuenta)) || a.division.localeCompare(b.division));
+      const conNombre = nombreGrupo(deG[0].origen, deG[0].grupo);
       if (conNombre || deG.length > 1) {
         const tG = sumaDe(deG);
-        filas.push({ tipo: "grupo", id: `${sec.id}_${g}`, seccion: sec.id, nombre: conNombre || g || "Otros", valores: redondear(tG), total: total(tG) });
+        filas.push({ tipo: "grupo", id: `${sec.id}_${g}`, seccion: sec.id, nombre: conNombre || deG[0].grupo || "Otros", valores: redondear(tG), total: total(tG) });
       }
       for (const l of deG) {
-        filas.push({ tipo: "linea", id: `${l.cuenta || l.linea}|${l.division}`, seccion: sec.id, grupo: g, cuenta: l.cuenta, nombre: l.nombre, estimado: !!l.estimado, valores: redondear(l.valores), total: total(l.valores) });
+        filas.push({ tipo: "linea", id: `${l.cuenta || l.linea}|${l.division}`, seccion: sec.id, grupo: l.grupo, cuenta: l.cuenta, nombre: l.nombre, estimado: !!l.estimado, valores: redondear(l.valores), total: total(l.valores) });
       }
     }
     const resultado = (id, nombre, vals, base) => {
       filas.push({ tipo: "resultado", id, nombre, valores: redondear(vals), total: total(vals) });
       filas.push({ tipo: "pct", id: `${id}_PCT`, nombre: "% sobre ingresos", valores: vals.map((v, i) => (Math.abs(base[i]) >= 0.01 ? Math.round((v / base[i]) * 1000) / 10 : null)), total: Math.abs(total(base)) >= 0.01 ? Math.round((total(vals) / total(base)) * 1000) / 10 : null });
     };
-    const ing = totales.ING;
-    if (sec.id === "CMV") resultado("UTIL_BRU", "Utilidad bruta", ing.map((v, i) => v - tSec[i]), ing);
-    if (sec.id === "GO") resultado("EBIT", "Resultado operativo (EBIT)", ing.map((v, i) => v - totales.CMV[i] - tSec[i]), ing);
-    if (sec.id === "IMP") resultado("RDO_NETO", "Resultado neto", ing.map((v, i) => v - totales.CMV[i] - totales.GO[i] - totales.FIN[i] - tSec[i]), ing);
+    const t = (id) => totales[id] || cero12;
+    const ing = t("ING");
+    const bruta = () => ing.map((v, i) => v - t("CMV")[i]);
+    const operativo = () => bruta().map((v, i) => v - t("COM")[i] - t("ADM")[i] + t("OTR")[i]);
+    const antes = () => operativo().map((v, i) => v - t("FIN")[i]);
+    if (sec.id === "CMV") resultado("UTIL_BRU", "Ganancia bruta", bruta(), ing);
+    if (sec.id === "OTR") resultado("EBIT", "Resultado operativo", operativo(), ing);
+    if (sec.id === "FIN") resultado("RAI", "Resultado antes del impuesto a las ganancias", antes(), ing);
+    if (sec.id === "GAN") resultado("RDO_NETO", "Resultado del período", antes().map((v, i) => v - t("GAN")[i]), ing);
   }
   return {
     meses, filas,
@@ -221,6 +283,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     para_revisar: paraRevisar,
     clasificado: cuentas.some((c) => c.linea_eerr),
     materiales_estimados: estimados,
+    hay_entregas: [...lineas.values()].some((l) => l.origen === "ING" && l.grupo === "ENT" && l.valores.some((v) => Math.abs(v) >= 0.01)),
   };
 }
 
@@ -259,7 +322,7 @@ export function configResultados(valor) {
 export function resumenDivisiones(d) {
   const de = (r) => {
     const t = (id) => r.filas.find((f) => f.id === id)?.total || 0;
-    return { ingresos: t("ING"), cmv: t("CMV"), gastos: t("GO"), financiero: t("FIN"), impuestos: t("IMP"), resultado: t("RDO_NETO") };
+    return { ingresos: t("ING"), cmv: t("CMV"), gastos: centavos(t("COM") + t("ADM") - t("OTR")), financiero: t("FIN"), impuestos: t("GAN"), resultado: t("RDO_NETO") };
   };
   const divisiones = Object.keys(d.ponderador || {});
   return [

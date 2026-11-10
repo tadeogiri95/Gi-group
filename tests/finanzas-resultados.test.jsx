@@ -81,11 +81,15 @@ test("estado de resultados — renglones, materiales estimados, IVA aparte, resu
   assert.equal(oct("CMV"), 700000);
   assert.equal(oct("UTIL_BRU"), 300000);
   assert.equal(oct("UTIL_BRU_PCT"), 30);
-  assert.equal(oct("GO"), 100000);
-  assert.equal(oct("EBIT"), 200000);
+  // NIIF: el impuesto a los débitos y créditos va con los gastos de administración
+  assert.equal(oct("ADM"), 102000);
+  assert.equal(oct("COM"), 0);
+  assert.equal(oct("EBIT"), 198000);
   assert.equal(oct("FIN"), 5000, "sin la anulada ni la para revisar");
-  assert.equal(oct("IMP"), 2000);
+  assert.equal(oct("RAI"), 193000);
+  assert.equal(oct("GAN"), 0);
   assert.equal(oct("RDO_NETO"), 193000);
+  assert.ok(r.hay_entregas);
   assert.equal(oct("IVA"), 50000, "IVA aparte");
   assert.equal(r.para_revisar, 1);
   assert.deepEqual(r.sin_linea, [{ codigo: "04.02.01.001.006", nombre: "Comisiones Tarjetas", total: 700 }]);
@@ -95,6 +99,40 @@ test("estado de resultados — renglones, materiales estimados, IVA aparte, resu
   const real = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10", materialesPct: 0 });
   assert.ok(real.filas.some((f) => f.nombre === "Materias Primas"), "con 0 % se usan las cuentas");
   assert.equal(estadoResultados({ ops: OPS, cuentas: CUENTAS.map(({ linea_eerr: _l, ...c }) => c), hasta: "2026-10" }).clasificado, false);
+});
+
+test("NIIF — solo las entregas son ingreso; ventas aparte; gastos por función", () => {
+  const cuentas = [
+    ...CUENTAS,
+    { codigo: "04.01.01.001.001", nombre: "Ventas Generales", rubro: "RESULTADO", linea_eerr: "ING_VTA" },
+    { codigo: "04.01.02", nombre: "Alquileres ganados", rubro: "RESULTADO", linea_eerr: "ING_ALQ" },
+    { codigo: "04.02.05", nombre: "Combustibles y lubricantes", rubro: "RESULTADO", linea_eerr: "GO_LOG_COM" },
+    { codigo: "04.02.06", nombre: "Ingresos Brutos", rubro: "RESULTADO", linea_eerr: "IMP_IIBB" },
+    { codigo: "04.02.07", nombre: "Multas", rubro: "RESULTADO", linea_eerr: "GO_MUL" },
+    { codigo: "04.02.08", nombre: "Impuesto a las Ganancias", rubro: "RESULTADO", linea_eerr: "IMP_GAN" },
+  ];
+  const ops = [
+    op("2026-10-01", "01.01.02.001.001", "04.01.01.001.001", 800000), // OT cargada en el Plan
+    op("2026-10-05", "04.01.01.001.001", "04.01.01.001.002", 500000), // entrega
+    op("2026-10-06", "01.01.01.003.002", "04.01.02", 20000),
+    op("2026-10-07", "04.02.05", "01.01.01.003.002", 30000),
+    op("2026-10-08", "04.02.06", "01.01.01.003.002", 15000),
+    op("2026-10-09", "04.02.07", "01.01.01.003.002", 1000),
+    op("2026-10-10", "04.02.08", "01.01.01.003.002", 40000),
+  ];
+  const r = estadoResultados({ ops, cuentas, hasta: "2026-10", materialesPct: 0 });
+  const oct = (id) => r.filas.find((f) => f.id === id).valores[11];
+  assert.equal(oct("ING"), 500000, "solo la entrega");
+  assert.equal(oct("VTA"), 300000, "lo vendido sin entregar, aparte");
+  assert.ok(r.filas.find((f) => f.id === "VTA").aparte);
+  assert.equal(oct("COM"), 45000, "logística e ingresos brutos");
+  assert.equal(oct("OTR"), 19000, "alquiler menos multa");
+  assert.equal(oct("EBIT"), 474000);
+  assert.equal(oct("GAN"), 40000);
+  assert.equal(oct("RDO_NETO"), 434000);
+  const orden = r.filas.filter((f) => ["seccion", "resultado"].includes(f.tipo)).map((f) => f.id);
+  assert.deepEqual(orden, ["ING", "CMV", "UTIL_BRU", "COM", "ADM", "OTR", "EBIT", "FIN", "RAI", "GAN", "RDO_NETO", "VTA"]);
+  assert.ok(r.filas.some((f) => f.nombre === "Impuestos: ingresos brutos"));
 });
 
 test("plan de cuentas — trae clasificacion_eerr y atribucion_div; editar a mano no las borra", () => {
@@ -133,7 +171,7 @@ test("estado por división: lo suyo entero y su % de lo compartido", () => {
   const t = (r, id) => r.filas.find((f) => f.id === id).valores[11];
   const muebles = estadoResultados({ ...base, division: "MUEBLES" });
   // Entrega 1.000.000 suya; materiales 40 %; sueldos 300.000, adm. 100.000, banco 5.000 e impuesto 2.000 al 80 %
-  assert.deepEqual([t(muebles, "ING"), t(muebles, "CMV"), t(muebles, "GO"), t(muebles, "FIN"), t(muebles, "IMP"), t(muebles, "RDO_NETO")], [1000000, 640000, 80000, 4000, 1600, 274400]);
+  assert.deepEqual([t(muebles, "ING"), t(muebles, "CMV"), t(muebles, "ADM"), t(muebles, "FIN"), t(muebles, "GAN"), t(muebles, "RDO_NETO")], [1000000, 640000, 81600, 4000, 0, 274400]);
   const alu = estadoResultados({ ...base, division: "ALUMINIO" });
   // 20 % de los sueldos + los 50.000 de su centro de costo
   assert.equal(t(alu, "CMV"), 110000);
@@ -213,10 +251,12 @@ test("Resultados — muestra el estado y cierra una sección", async () => {
   const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10" }) };
   global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
   render(<FinanzasResultados />);
-  assert.ok(await screen.findByText("Resultado neto"));
-  assert.ok(screen.getByText("193.000"));
+  assert.ok(await screen.findByText("Resultado del período"));
+  assert.ok(screen.getByText("Ganancia bruta"));
+  assert.ok(screen.getAllByText("193.000").length >= 2);
+  assert.ok(screen.getByText(/Ingresos = entregas de las OT/));
   assert.ok(screen.getByText("Sueldos Administración"));
-  fireEvent.click(screen.getByRole("button", { name: "Gastos operativos" }));
+  fireEvent.click(screen.getByRole("button", { name: "Gastos de administración" }));
   assert.equal(screen.queryByText("Sueldos Administración"), null);
   assert.ok(screen.getByText(/1 operaciones para revisar/));
   assert.ok(screen.getByText(/1 cuentas de resultado/));
