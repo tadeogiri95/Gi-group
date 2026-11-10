@@ -170,7 +170,9 @@ test("menú — Finanzas solo para el Dueño: ni el Supervisor ni la oficina", (
     assert.ok(!seccionesMas({ empresa, usuario: u }).some((s) => s.id === "finanzas"));
     assert.ok(!gruposMenu(empresa, u).some((g) => g.id === "finanzas"));
   }
-  assert.ok(seccionesMas({ empresa, usuario: DUENO }).some((s) => s.id === "finanzas" && s.pantalla === "finanzas"));
+  // Desde el 10/11 va en la barra de abajo, no en Más
+  assert.equal(conBoton("finanzas", empresa, DUENO), true);
+  assert.ok(!seccionesMas({ empresa, usuario: DUENO }).some((s) => s.id === "finanzas"));
   assert.ok(gruposMenu(empresa, DUENO).some((g) => g.id === "finanzas"));
   // Apagado en Más → Módulos: no se ve ni para el Dueño
   const apagada = { ...empresa, modulos_apagados: ["finanzas"] };

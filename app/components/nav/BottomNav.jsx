@@ -13,6 +13,7 @@ const Icons = {
   clipboard: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>,
   box: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
   wrench: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
+  wallet: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7H5a2 2 0 0 1 0-4h13v4"/><path d="M3 5v14a2 2 0 0 0 2 2h15V7"/><circle cx="16" cy="14" r="1.5"/></svg>,
   history: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
 };
 
@@ -22,7 +23,7 @@ const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => mo
 
 export function getItems(role, pend, modulos, { instalador = false, mantenimiento = false } = {}) {
   // Gestión (menú nuevo, parte 32; nombres de la auditoría 01/11): Inicio · Producción · Materiales ·
-  // Mantenimiento · Más. Cada botón del medio aparece si la empresa tiene
+  // Mantenimiento · Finanzas (solo el Dueño) · Más. Cada botón del medio aparece si la empresa tiene
   // alguno de sus módulos. Permisos y Equipo pasaron a "Más", que lleva el
   // número de permisos pendientes.
   if (role === 'gerencial' || role === 'administrativo') {
@@ -31,7 +32,9 @@ export function getItems(role, pend, modulos, { instalador = false, mantenimient
       { id: 'home',          label: 'Inicio',        icon: Icons.home },
       conBoton('proyectos', empresa) && { id: 'proyectos', label: 'Producción', icon: Icons.clipboard },
       conBoton('inventario', empresa) && { id: 'inventario', label: 'Materiales', icon: Icons.box },
-      conBoton('mantenimiento', empresa) && { id: 'mantenimiento', label: 'Mantenimiento', icon: Icons.wrench },
+      conBoton('mantenimiento', empresa) && { id: 'mantenimiento', label: 'Mantenimiento', corto: 'Manten.', icon: Icons.wrench },
+      // Finanzas como un módulo más (pedido 10/11): solo el Dueño (rol gerencial)
+      conBoton('finanzas', empresa, { rol: role }) && { id: 'finanzas', label: 'Finanzas', icon: Icons.wallet },
       { id: 'config',        label: 'Más',           icon: Icons.menu, badge: pend },
     ].filter(Boolean);
   }
@@ -55,6 +58,10 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
   // El operario tiene pocas pestañas: botones y letra más grandes, fáciles de
   // tocar en la planta (revisión de la interfaz, 2026-10)
   const grande = role !== 'gerencial' && role !== 'administrativo';
+  // Con seis botones (el Dueño con Finanzas) no entran los nombres largos en
+  // un celular angosto: cada botón toma el ancho de su nombre y Mantenimiento
+  // se lee "Manten." (10/11; la letra no baja de 12 px)
+  const apretada = !grande && items.length > 5;
   return (
     // La barra ocupa su propio lugar al pie del shell (no flota encima): así
     // ninguna pantalla queda tapada abajo, sobre todo en la computadora, donde
@@ -62,7 +69,7 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
     <nav
       role="navigation"
       aria-label="Navegación principal"
-      className="safe-bottom shrink-0 relative w-full backdrop-blur-[20px] border-t border-gypi-border z-50 flex justify-around px-2 pt-1.5 pb-[22px]"
+      className={`safe-bottom shrink-0 relative w-full backdrop-blur-[20px] border-t border-gypi-border z-50 flex justify-around ${apretada ? 'px-0.5' : 'px-2'} pt-1.5 pb-[22px]`}
       style={{
         background: 'var(--color-nav-bg)',
         WebkitBackdropFilter: 'blur(20px)',
@@ -76,7 +83,7 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
             onClick={() => onChange(item.id)}
             aria-label={item.label}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex-1 ${grande ? 'min-h-[60px] text-[14px] gap-1' : 'min-h-[52px] text-xs gap-0.5'} bg-transparent border-none py-1 px-0 flex flex-col items-center cursor-pointer font-body transition-colors duration-150 ${
+            className={`${apretada ? 'flex-auto' : 'flex-1'} min-w-0 ${grande ? 'min-h-[60px] text-[14px] gap-1' : 'min-h-[52px] text-xs gap-0.5'} bg-transparent border-none py-1 px-0 flex flex-col items-center cursor-pointer font-body transition-colors duration-150 ${
               isActive ? 'text-gypi-text font-bold' : 'text-gypi-dim font-medium'
             }`}
           >
@@ -106,7 +113,7 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
                 </span>
               )}
             </div>
-            <span className="leading-none tracking-[0.01em]">{item.label}</span>
+            <span className={`leading-none ${apretada ? 'tracking-tight whitespace-nowrap' : 'tracking-[0.01em]'}`}>{apretada && item.corto ? item.corto : item.label}</span>
           </button>
         );
       })}

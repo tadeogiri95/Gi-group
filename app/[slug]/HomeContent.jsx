@@ -78,7 +78,7 @@ const VALID_SCREENS = new Set([
 // Finanzas (171, solo el Dueño) no tiene botón en la barra de abajo: se abre desde Más
 const BOTONES = new Set(["proyectos", "inventario", "mantenimiento", "finanzas"]);
 // Permisos, Equipo y Finanzas se abren desde "Más": ahí la barra marca "Más"
-const DESDE_MAS = new Set(["solicitudes", "equipo", "finanzas"]);
+const DESDE_MAS = new Set(["solicitudes", "equipo"]);
 
 export default function HomeContent() {
   const searchParams = useSearchParams();

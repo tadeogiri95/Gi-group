@@ -18,7 +18,7 @@ test("roles con nombres que la gente entiende", () => {
 });
 
 test("barra de abajo: gestión con sus cinco botones; el operario ve Inicio, Permisos y Mi cuenta", () => {
-  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"]);
+  assert.deepEqual(getItems("gerencial", 0).map((i) => i.label), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Finanzas", "Más"]);
   assert.deepEqual(getItems("operativo", 0).map((i) => i.label), ["Inicio", "Permisos", "Mi cuenta"]);
   assert.equal(VOCABULARIO.entrada, "Entrada");
 });
