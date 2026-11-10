@@ -46,7 +46,7 @@ export const BOTONES_GESTION = {
     ],
   },
   // Finanzas (F1, 171): solo el rol Dueño, ni el Supervisor (pedido 09/11).
-  // No va en la barra de abajo del celular: se abre desde Más.
+  // Desde el 10/11 va en la barra de abajo del celular como un módulo más.
   finanzas: {
     label: "Finanzas",
     detalle: "Cuentas, cajas, bancos y movimientos",
@@ -113,8 +113,7 @@ const SECCIONES = [
   { id: "ubicaciones", grupo: "empresa", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
   { id: "reglas", grupo: "empresa", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
   { id: "modulos", grupo: "empresa", icono: "🧩", label: "Módulos", detalle: "Prendé o apagá lo que usa la empresa" },
-  // Finanzas (F1, 171): en el celular se abre desde acá; solo el Dueño
-  { id: "finanzas", pantalla: "finanzas", grupo: "empresa", icono: "💰", label: "Finanzas", detalle: "Plan de cuentas, cajas, bancos y movimientos", soloDueno: true },
+  // Finanzas salió de acá el 10/11: tiene su botón en la barra de abajo
   { id: "facturacion", grupo: "empresa", icono: "💳", label: "Plan y facturación", detalle: "Tu plan, pagos y comprobantes", soloDueno: true },
   { id: "privacidad", grupo: "cuenta", icono: "👤", label: "Mi cuenta y privacidad", detalle: "Tus datos y cerrar sesión" },
 ];

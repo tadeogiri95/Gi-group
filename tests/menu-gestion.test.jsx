@@ -24,17 +24,20 @@ const ADMIN = { rol: "administrativo" };
 const SUPERVISOR = { rol: "administrativo", solo_su_division: true };
 const ids = (opciones) => seccionesMas(opciones).map((s) => s.id);
 
-test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento · Más; cada botón con sus módulos", () => {
+test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento · Finanzas · Más; cada botón con sus módulos", () => {
   const labels = (modulos) => getItems("gerencial", 0, modulos).map((i) => i.label);
-  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Finanzas", "Más"]);
+  // Finanzas es solo del Dueño: la oficina y el Supervisor no la ven en la barra
+  assert.deepEqual(getItems("administrativo", 0, PLANTA.modulos).map((i) => i.label), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"]);
   assert.deepEqual(labels(ASISTENCIA.modulos), ["Inicio", "Más"]);
   assert.equal(conBoton("proyectos", PLANTA), true);
   assert.equal(conBoton("proyectos", ASISTENCIA), false);
   // Lo apagado en Más → Módulos saca el botón entero si no le queda nada
   const sinInventario = PLANTA.modulos.filter((m) => m !== "stock" && m !== "compras");
-  assert.deepEqual(labels(sinInventario), ["Inicio", "Producción", "Mantenimiento", "Más"]);
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"], "queda Maquinaria");
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota" && m !== "maquinaria")), ["Inicio", "Producción", "Materiales", "Más"]);
+  assert.deepEqual(labels(sinInventario), ["Inicio", "Producción", "Mantenimiento", "Finanzas", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Finanzas", "Más"], "queda Maquinaria");
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota" && m !== "maquinaria")), ["Inicio", "Producción", "Materiales", "Finanzas", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "finanzas")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"], "Finanzas apagada");
   // Los permisos pendientes se ven sobre "Más"
   assert.equal(getItems("gerencial", 3, PLANTA.modulos).find((i) => i.id === "config").badge, 3);
 });
@@ -52,7 +55,7 @@ test("botones — Proyectos: OT y Reportes; Inventario: Stock y Compras; Manteni
 
 test("Más — agrupado por tema: Personas, Cómo trabaja la planta, Empresa y Tu cuenta (auditoría 01/11)", () => {
   const todo = ids({ empresa: PLANTA, usuario: DUENO });
-  assert.deepEqual(todo, ["equipo", "permisos", "asistencia", "produccion", "planificacion", "planillas", "admin", "ubicaciones", "reglas", "modulos", "finanzas", "facturacion", "privacidad"]);
+  assert.deepEqual(todo, ["equipo", "permisos", "asistencia", "produccion", "planificacion", "planillas", "admin", "ubicaciones", "reglas", "modulos", "facturacion", "privacidad"]);
   for (const id of ["personal", "horarios", "calendario", "reportes", "documentacion"]) assert.ok(!todo.includes(id), id);
   const grupo = (id) => seccionesMas({ empresa: PLANTA, usuario: DUENO }).find((s) => s.id === id).grupo;
   assert.deepEqual(["produccion", "planificacion", "planillas"].map(grupo), ["planta", "planta", "planta"], "toda la configuración de la planta junta");
