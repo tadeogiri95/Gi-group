@@ -13,6 +13,13 @@ import BotonFoto from "./BotonFoto";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : "");
 
+/** El detalle de un movimiento sin repetir el concepto ni el nombre de la
+ *  caja (lo que anotó el que lo cargó, o "De Caja Principal a …"). 10/11 */
+export function detalleMovimiento(m, nombreCaja = "") {
+  const fuera = new Set([String(m.concepto || "").trim(), String(nombreCaja || "").trim()]);
+  return String(m.descripcion || "").split(" · ").map((x) => x.trim()).filter((x) => x && !fuera.has(x)).join(" · ");
+}
+
 /** Las cajas a cargo del empleado. Sin cajas devuelve una lista vacía. */
 export function useMiCaja(activo = true) {
   const [datos, setDatos] = useState({ cajas: [] });
@@ -149,6 +156,7 @@ export default function MiCaja({ datos, onClose, onCambio }) {
                 <span className="font-mono text-[12px] text-gypi-dim pt-0.5">{fechaCorta(m.fecha)}</span>
                 <span className="flex-1 min-w-0">
                   <span className="block font-semibold">{m.concepto}</span>
+                  {detalleMovimiento(m, caja.nombre) && <span className="block text-[13px] text-gypi-dim break-words">{detalleMovimiento(m, caja.nombre)}</span>}
                   {m.estado === "para_revisar" && <span className="block text-[12px] text-gypi-amber-ink font-semibold">Falta que el dueño lo revise</span>}
                   {m.comprobante_url && <a href={m.comprobante_url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-gypi-cyan underline">🧾 Ticket</a>}
                   {m.propia && m.estado === "para_revisar" && (
@@ -164,7 +172,7 @@ export default function MiCaja({ datos, onClose, onCambio }) {
       {cargar && (
         <Cargar caja={caja} clase={cargar} conceptos={datos.conceptos || { gastos: [], ingresos: [] }} hoy={datos.hoy}
           onCerrar={() => setCargar(null)}
-          onHecho={() => { setCargar(null); setAviso(cargar === "gasto" ? "Gasto cargado: el dueño lo va a revisar" : "Listo: ya está en tu caja"); onCambio(); }} />
+          onHecho={() => { setCargar(null); setAviso(`${cargar === "gasto" ? "Gasto cargado" : "Plata recibida cargada"}: ya cuenta en tu saldo y el dueño lo va a revisar`); onCambio(); }} />
       )}
     </Modal>
   );
