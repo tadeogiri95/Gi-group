@@ -74,14 +74,39 @@ test("flujo real — apertura, líneas por sección, neto y cierre por moneda", 
   assert.deepEqual(fila("OPE").valores, [3000, 0]);
   assert.deepEqual(fila("OPE|ING_TRANSF").valores, [5000, 0]);
   assert.equal(fila("OPE|ING_TRANSF").nombre, "Cobros a clientes");
-  assert.deepEqual(fila("INV").valores, [0, -300]);
-  assert.equal(fila("INV|DESARR | NUMA").nombre, "NUMA");
-  assert.deepEqual(fila("SIN").valores, [0, -60]);
-  assert.deepEqual(a.neto, [3000, -360]);
+  // Todo Desarrollismo junto, abierto por centro de costo (también el que no tiene)
+  assert.deepEqual(fila("INV").valores, [0, -350]);
+  assert.equal(fila("INV|INV_DESARROLLISMO").nombre, "Inversiones Desarrollismo");
+  assert.deepEqual(fila("INV|INV_DESARROLLISMO").valores, [0, -350]);
+  assert.equal(fila("INV|INV_DESARROLLISMO|DESARR | NUMA").nombre, "NUMA");
+  assert.equal(fila("INV|INV_DESARROLLISMO|DESARR | NUMA").total, -300);
+  assert.equal(fila("INV|INV_DESARROLLISMO|DESARR | SIN CC").nombre, "⚠ Sin centro de costo");
+  assert.deepEqual(fila("SIN").valores, [0, -10]);
+  // Las demás líneas, abiertas en la cuenta de enfrente de la caja
+  assert.equal(fila("OPE|EGR_SUELDOS|02.01.03.001.001").tipo, "cuenta");
+  assert.equal(fila("OPE|EGR_SUELDOS|02.01.03.001.001").total, -2000);
+  assert.deepEqual(a.neto, [3000, -360], "el detalle no se cuenta dos veces");
   assert.deepEqual(a.cierre, [4000, 3640]);
   assert.deepEqual(r.monedas.USD.cierre, [0, -100]);
   assert.deepEqual(r.tipos_sin_linea, ["INVERSIONES DESARROLLISMO", "PAGO RARO"]);
   assert.equal(saldoCajas(OPS, TES), 3640);
+});
+
+test("flujo real — cuentas con nombre y Desarrollismo con cobros, aportes y centro nuevo", () => {
+  const cuentas = [{ codigo: "05.03.01", nombre: "Combustibles y lubricantes" }, { codigo: "05.03.02", nombre: "Movilidad" }];
+  const lin = { tipos: { "PAGO GASTOS DE LOGÍSTICA": "EGR_LOGISTICA", "COBRO VTA DES": "ING_DESARR_VENTAS" }, centros: { NUMA: "DESARR | NUMA" } };
+  const ops = [
+    op("2026-10-01", "PAGO GASTOS DE LOGÍSTICA", "05.03.01", CAJA, 100),
+    op("2026-10-02", "PAGO GASTOS DE LOGÍSTICA", "05.03.02", CAJA, 40),
+    op("2026-10-03", "PAGO GASTOS DE LOGÍSTICA", "05.03.01", BANCO, 60),
+    op("2026-10-04", "COBRO VTA DES", BANCO, "04.05", 500),
+    op("2026-10-05", "INVERSIONES DESARROLLISMO", "04.09", BANCO, 70, { centro_costo: "Campo" }),
+  ];
+  const f = flujoReal({ ops, tesoreria: TES, cuentas, lineas: lin, meses: ["2026-10"] }).monedas.ARS.filas;
+  const de = (l) => f.filter((x) => x.linea === l && x.tipo !== "linea").map((x) => [x.nombre, x.total]);
+  assert.deepEqual(de("EGR_LOGISTICA"), [["Combustibles y lubricantes", -160], ["Movilidad", -40]]);
+  assert.deepEqual(de("INV_DESARROLLISMO"), [["Cobros por ventas Desarrollismo", 500], ["Campo (⚠ sin línea en dim_flujo)", -70]]);
+  assert.equal(f.filter((x) => x.tipo === "linea" && x.linea === "INV_DESARROLLISMO").length, 1);
 });
 
 test("lo que viene — por semana, lo vencido en la primera, saldo proyectado", () => {
@@ -168,6 +193,11 @@ test("Flujo de caja — lo que viene, el flujo por mes y dólares", async () => 
   render(<FinanzasFlujo />);
   assert.ok(await screen.findByText("Cobros a clientes"));
   assert.ok(screen.getByText("Saldo al cerrar el mes"));
+  assert.ok(screen.getByText("Inversiones Desarrollismo"));
+  assert.ok(screen.getByText("NUMA"));
+  fireEvent.click(screen.getByLabelText(/Abrir cada línea en sus cuentas/));
+  assert.equal(screen.queryByText("NUMA"), null, "sin el detalle quedan las líneas");
+  assert.ok(screen.getByText("Inversiones Desarrollismo"));
   fireEvent.click(screen.getByRole("button", { name: /Sueldos por pagar, semana/ }));
   assert.ok(screen.getByText("Sueldos Octubre 2026"));
   fireEvent.click(screen.getByRole("button", { name: "Dólares" }));

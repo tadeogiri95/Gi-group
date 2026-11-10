@@ -9,7 +9,11 @@
 //     tipos nuevos de finanzasTipos.js: COBRO A CLIENTES → ING_TRANSF,
 //     SUELDOS → EGR_SUELDOS…); un tipo viejo cuenta como su tipo nuevo.
 //     Cobros y pagos a proveedores se abren por forma de pago.
-//     INVERSIONES DESARROLLISMO se abre por centro de costo. Por mes, en pesos y en dólares por separado,
+//     Todo lo de Desarrollismo (inversiones por centro de costo, cobros por
+//     ventas y aportes) va junto en "Inversiones Desarrollismo", abierto por
+//     centro de costo. Las demás líneas se abren en las cuentas que las
+//     componen (la cuenta de enfrente de la caja: Logística → Combustibles y
+//     lubricantes, Movilidad…). Por mes, en pesos y en dólares por separado,
 //     con la apertura (saldo antes del primer mes) y el cierre.
 //   - Lo que viene, por semana: cheques de terceros a depositar (+), e-cheq
 //     y cheques propios a debitar (−), órdenes de pago aprobadas o por
@@ -18,6 +22,8 @@ import { LINEAS_RENOMBRADAS, MAPA_TIPOS, NOMBRE_FORMA, claveTipo, formaDePago, l
 
 export const CLAVE_FLUJO = "finanzas_flujo";
 export const DESARROLLISMO = "INVERSIONES DESARROLLISMO";
+/** La línea que junta todo lo de Desarrollismo. */
+export const LINEA_DESARROLLISMO = "INV_DESARROLLISMO";
 export const SEMANAS = 8;
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -31,6 +37,7 @@ export const NOMBRES_LINEA = {
   EGR_SUELDOS: "Sueldos, aportes y cargas", EGR_ADMIN: "Gastos de administración", EGR_LOGISTICA: "Gastos de logística", EGR_MANTENIMIENTO: "Gastos de mantenimiento",
   EGR_BANCARIOS: "Gastos bancarios", EGR_COMERCIALIZACION: "Gastos de comercialización", EGR_HONORARIOS: "Honorarios", EGR_VIATICOS: "Viáticos",
   EGR_TERCERIZADOS: "Trabajos tercerizados", EGR_TARJETAS: "Tarjetas de crédito", EGR_OTROS: "Otros gastos", EGR_IMPUESTOS: "Impuestos y cargas fiscales", EGR_AJUSTE: "Ajustes de caja negativos",
+  INV_DESARROLLISMO: "Inversiones Desarrollismo",
   "VTA_BS USO": "Venta de bienes de uso", INV_MAQUINARIA: "Maquinaria y herramental", INV_INFRA: "Infraestructura",
   ING_ALQUILERES: "Alquileres cobrados", ING_RENTA_FIN: "Renta financiera (intereses ganados)", ING_DESARR_VENTAS: "Cobros por ventas Desarrollismo",
   APORTES_SOCIOS: "Aportes de socios", ING_DESARR_APORTES: "Aportes Desarrollismo", DIVIDENDOS: "Pago de dividendos", EGR_FINANCIEROS: "Gastos financieros",
@@ -118,6 +125,21 @@ export function lineaDe(op, lineas = {}) {
   return lineas.tipos?.[tipo] || lineaDeLista(op.tipo) || "SIN CLASIFICAR";
 }
 
+/** ¿Es de Desarrollismo? (inversiones por centro de costo, cobros por ventas o aportes) */
+export const esDeDesarrollismo = (linea) => {
+  const l = clave(linea);
+  return l.startsWith("DESARR") || l === "ING_DESARR_VENTAS" || l === "ING_DESARR_APORTES";
+};
+
+/** Debajo de "Inversiones Desarrollismo": { clave, nombre } del renglón de la operación. */
+export function centroDesarrollismo(op, linea) {
+  const l = clave(linea);
+  if (l === "ING_DESARR_VENTAS" || l === "ING_DESARR_APORTES") return { clave: l, nombre: NOMBRES_LINEA[l] };
+  if (l === "DESARR | SIN CC") return { clave: l, nombre: "⚠ Sin centro de costo" };
+  if (l === "DESARR | CC NUEVA") return { clave: `CC|${clave(op.centro_costo)}`, nombre: `${txt(op.centro_costo, 60)} (⚠ sin línea en dim_flujo)` };
+  return { clave: l, nombre: nombreLinea(linea) };
+}
+
 /** Cuánto mueve la caja una operación, por moneda: { ARS, USD }. */
 export function deltaCaja(op, cajas) {
   // En pesos, el total en pesos; en dólares, el total de la operación
@@ -143,11 +165,12 @@ export const cajasPorMoneda = (tesoreria = []) => ({
  */
 export function flujoReal({ ops = [], tesoreria = [], cuentas = [], lineas = {}, meses = [] }) {
   const cajas = cajasPorMoneda(tesoreria);
+  const nombreCuenta = new Map(cuentas.map((c) => [c.codigo, c.nombre]));
   const idx = new Map(meses.map((m, i) => [m, i]));
   const primero = meses[0];
   const out = {};
   const sinLinea = new Set();
-  for (const mon of ["ARS", "USD"]) out[mon] = { apertura: 0, porLinea: new Map(), porForma: new Map() };
+  for (const mon of ["ARS", "USD"]) out[mon] = { apertura: 0, porLinea: new Map(), porForma: new Map(), porDetalle: new Map() };
   for (const op of ops) {
     if (op.anulada_at || op.estado === "para_revisar") continue;
     const d = deltaCaja(op, cajas);
@@ -158,8 +181,10 @@ export function flujoReal({ ops = [], tesoreria = [], cuentas = [], lineas = {},
       if (mes < primero) { out[mon].apertura += d[mon]; continue; }
       const i = idx.get(mes);
       if (i == null) continue;
-      const linea = lineaDe(op, lineas);
-      if (seccionFlujo(linea) === "SIN") sinLinea.add(String(op.tipo));
+      const original = lineaDe(op, lineas);
+      if (seccionFlujo(original) === "SIN") sinLinea.add(String(op.tipo));
+      const desarr = esDeDesarrollismo(original);
+      const linea = desarr ? LINEA_DESARROLLISMO : original;
       const l = out[mon].porLinea.get(linea) || meses.map(() => 0);
       l[i] += d[mon];
       out[mon].porLinea.set(linea, l);
@@ -170,6 +195,19 @@ export function flujoReal({ ops = [], tesoreria = [], cuentas = [], lineas = {},
         v[i] += d[mon];
         formas.set(forma, v);
         out[mon].porForma.set(linea, formas);
+      } else {
+        // Debajo de la línea: el centro de costo (Desarrollismo) o la cuenta de enfrente de la caja
+        let det;
+        if (desarr) det = { ...centroDesarrollismo(op, original), tipo: "centro" };
+        else {
+          const contra = cajas[mon].has(op.cuenta_debe) ? op.cuenta_haber : op.cuenta_debe;
+          det = { clave: String(contra || ""), nombre: nombreCuenta.get(contra) || contra || "Sin cuenta", tipo: "cuenta" };
+        }
+        const detalles = out[mon].porDetalle.get(linea) || new Map();
+        const x = detalles.get(det.clave) || { ...det, valores: meses.map(() => 0) };
+        x.valores[i] += d[mon];
+        detalles.set(det.clave, x);
+        out[mon].porDetalle.set(linea, detalles);
       }
     }
   }
@@ -195,6 +233,11 @@ export function flujoReal({ ops = [], tesoreria = [], cuentas = [], lineas = {},
           formas.sort(([a], [b]) => Object.keys(NOMBRE_FORMA).indexOf(a) - Object.keys(NOMBRE_FORMA).indexOf(b));
           for (const [f, fv] of formas) filas.push({ tipo: "forma", id: `${sec.id}|${l}|${f}`, seccion: sec.id, linea: l, forma: f, nombre: NOMBRE_FORMA[f] || f, valores: fv.map(centavos), total: centavos(fv.reduce((s, x) => s + x, 0)) });
         }
+        // Abierto por centro de costo o por cuenta, de mayor a menor
+        const detalles = [...(out[mon].porDetalle.get(l) || new Map()).values()]
+          .map((x) => ({ ...x, total: centavos(x.valores.reduce((s, v) => s + v, 0)) }))
+          .sort((a, b) => Math.abs(b.total) - Math.abs(a.total) || a.nombre.localeCompare(b.nombre));
+        for (const x of detalles) filas.push({ tipo: x.tipo, id: `${sec.id}|${l}|${x.clave}`, seccion: sec.id, linea: l, nombre: x.nombre, valores: x.valores.map(centavos), total: x.total });
       }
     }
     const apertura = centavos(out[mon].apertura);
