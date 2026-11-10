@@ -36,11 +36,67 @@ export function useMiCaja(activo = true) {
   return { ...datos, cargar };
 }
 
-/** Texto corto para el botón: el saldo de cada caja. */
-export function detalleMiCaja(cajas = []) {
+/** Texto corto para el botón: el saldo de cada caja y lo que tiene que confirmar. */
+export function detalleMiCaja(cajas = [], paraConfirmar = []) {
   const saldos = cajas.map((c) => `${cajas.length > 1 ? `${c.nombre}: ` : "Saldo "}${plata(c.saldo, c.moneda)}`).join(" · ");
   const revisar = cajas.reduce((n, c) => n + c.para_revisar, 0);
-  return `${saldos}${revisar ? ` · ${revisar} sin revisar` : ""}`;
+  const n = paraConfirmar?.length || 0;
+  return `${n ? `💸 ${n === 1 ? "1 pase" : `${n} pases`} para confirmar · ` : ""}${saldos}${revisar ? ` · ${revisar} sin revisar` : ""}`;
+}
+
+/** Pasarle plata a otra persona: queda esperando que la otra confirme (10/11). */
+function Pasar({ caja, hoy, onCerrar, onHecho }) {
+  const [f, setF] = useState({ hacia: caja.destinos.length === 1 ? caja.destinos[0].cuenta : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "" });
+  const [error, setError] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const usd = caja.moneda === "USD";
+  const destino = caja.destinos.find((d) => d.cuenta === f.hacia);
+
+  async function guardar() {
+    setError(null);
+    setGuardando(true);
+    try {
+      const res = await apiFetch("/api/mi-caja", {
+        method: "POST",
+        body: JSON.stringify({ accion: "pasar", cuenta: caja.cuenta, ...f, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+      onHecho(destino?.persona);
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
+  const campo = (label, input) => <label className="flex flex-col gap-1 text-[14px] font-semibold text-gypi-text">{label}{input}</label>;
+  return (
+    <Modal open onClose={onCerrar} title="Le pasé plata a…" maxWidth={480}>
+      <div className="flex flex-col gap-3">
+        {campo("¿A quién?", (
+          <select className="g-input w-full" aria-label="A quién" value={f.hacia} onChange={set("hacia")}>
+            <option value="">Elegí…</option>
+            {caja.destinos.map((d) => <option key={d.cuenta} value={d.cuenta}>{d.persona} ({d.nombre})</option>)}
+          </select>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          {campo(usd ? "Importe (USD)" : "Importe", <input className="g-input w-[160px] text-right font-mono" inputMode="decimal" aria-label="Importe" value={f.importe} onChange={set("importe")} />)}
+          {campo("Fecha", <input type="date" className="g-input" aria-label="Fecha" max={hoy} value={f.fecha} onChange={set("fecha")} />)}
+          {usd && campo("Tipo de cambio", <input className="g-input w-[120px]" inputMode="decimal" aria-label="Tipo de cambio" value={f.tipo_cambio} onChange={set("tipo_cambio")} />)}
+        </div>
+        {campo("Detalle (opcional)", <input className="g-input w-full" aria-label="Detalle" maxLength={200} placeholder="Ej.: para gastos de la obra" value={f.descripcion} onChange={set("descripcion")} />)}
+        <p className="m-0 text-[13px] text-gypi-dim">
+          {destino ? `A ${destino.persona} le llega un aviso. ` : ""}La plata sale de tu caja cuando {destino ? destino.persona : "la otra persona"} confirme que la recibió.
+        </p>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !f.hacia || !f.importe} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
@@ -112,6 +168,8 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
 export default function MiCaja({ datos, onClose, onCambio }) {
   const [elegida, setElegida] = useState(datos.cajas[0]?.cuenta || "");
   const [cargar, setCargar] = useState(null);
+  const [pasar, setPasar] = useState(false);
+  const [resolviendo, setResolviendo] = useState(null);
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
   const caja = datos.cajas.find((c) => c.cuenta === elegida) || datos.cajas[0];
@@ -130,9 +188,40 @@ export default function MiCaja({ datos, onClose, onCambio }) {
     }
   }
 
+  async function resolver(id, accion) {
+    setError(null);
+    setAviso(null);
+    setResolviendo(id);
+    try {
+      const res = await apiFetch("/api/mi-caja", { method: "POST", body: JSON.stringify({ accion, id }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+      setAviso(accion === "recibir" ? "Listo: la plata ya está en tu caja" : accion === "rechazar" ? "Avisamos que no la recibiste: no se anotó nada" : "Cancelaste el pase");
+      onCambio();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setResolviendo(null);
+    }
+  }
+
+  const paraConfirmar = datos.para_confirmar || [];
+  const esperando = (datos.esperando || []).filter((p) => p.desde === caja.cuenta);
+  const destinos = caja.destinos || [];
+
   return (
     <Modal open onClose={onClose} title="📱 Mi caja" maxWidth={520}>
       <div className="flex flex-col gap-3 text-gypi-text">
+        {paraConfirmar.map((p) => (
+          <section key={p.id} aria-label="Pase para confirmar" className="p-3 rounded-[14px] bg-gypi-amber/10 border border-gypi-amber/30 flex flex-col gap-2">
+            <p className="m-0 text-[15px] font-bold">💸 {p.de_nombre} te pasó {plata(p.importe, p.moneda)}</p>
+            <p className="m-0 text-[13px] text-gypi-dim">El {fechaCorta(p.fecha)}{datos.cajas.length > 1 ? ` · a ${datos.cajas.find((c) => c.cuenta === p.hacia)?.nombre || "tu caja"}` : ""}{p.nota ? ` · ${p.nota}` : ""}. ¿La recibiste?</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="g-btn g-btn-primary min-h-[48px]" disabled={resolviendo === p.id} onClick={() => resolver(p.id, "recibir")}>✓ Sí, la recibí</button>
+              <button type="button" className="g-btn g-btn-secondary min-h-[48px]" disabled={resolviendo === p.id} onClick={() => resolver(p.id, "rechazar")}>No la recibí</button>
+            </div>
+          </section>
+        ))}
         {datos.cajas.length > 1 && (
           <select className="g-input w-full" aria-label="Caja" value={caja.cuenta} onChange={(e) => setElegida(e.target.value)}>
             {datos.cajas.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}</option>)}
@@ -145,7 +234,16 @@ export default function MiCaja({ datos, onClose, onCambio }) {
         <div className="grid grid-cols-2 gap-2">
           <button type="button" className="g-btn g-btn-primary min-h-[56px] text-[16px]" onClick={() => { setAviso(null); setCargar("gasto"); }}>➖ Gasté</button>
           <button type="button" className="g-btn g-btn-secondary min-h-[56px] text-[16px]" onClick={() => { setAviso(null); setCargar("ingreso"); }}>➕ Recibí plata</button>
+          {destinos.length > 0 && (
+            <button type="button" className="g-btn g-btn-secondary min-h-[48px] text-[15px] col-span-2" onClick={() => { setAviso(null); setPasar(true); }}>⇄ Le pasé plata a…</button>
+          )}
         </div>
+        {esperando.map((p) => (
+          <p key={p.id} className="m-0 text-[13px] text-gypi-amber-ink font-semibold">
+            ⏳ Esperando que {p.para_nombre} confirme {plata(p.importe, p.moneda)} ({fechaCorta(p.fecha)}){" "}
+            <button type="button" className="ml-1 text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" disabled={resolviendo === p.id} onClick={() => resolver(p.id, "cancelar")}>Cancelar</button>
+          </p>
+        ))}
         {aviso && <p role="status" className="m-0 text-[14px] text-gypi-green-ink font-semibold">✓ {aviso}</p>}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <h3 className="m-0 mt-1 text-[14px] font-bold text-gypi-dim">Últimos movimientos</h3>
@@ -169,6 +267,11 @@ export default function MiCaja({ datos, onClose, onCambio }) {
           </ul>
         ) : <p className="m-0 text-[14px] text-gypi-dim">Todavía no hay movimientos.</p>}
       </div>
+      {pasar && (
+        <Pasar caja={{ ...caja, destinos }} hoy={datos.hoy}
+          onCerrar={() => setPasar(false)}
+          onHecho={(persona) => { setPasar(false); setAviso(`Listo: cuando ${persona || "la otra persona"} confirme que la recibió, sale de tu caja`); onCambio(); }} />
+      )}
       {cargar && (
         <Cargar caja={caja} clase={cargar} conceptos={datos.conceptos || { gastos: [], ingresos: [] }} hoy={datos.hoy}
           onCerrar={() => setCargar(null)}

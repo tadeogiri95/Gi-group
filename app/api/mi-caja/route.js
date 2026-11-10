@@ -11,6 +11,14 @@
 //       dueños. Si la carga el dueño, entra confirmada.
 //   POST { accion: "anular", id } → anula una propia que el dueño todavía no
 //       revisó (para corregir un error). No se borra.
+//   Pases entre personas (10/11; reglas en app/lib/finanzasPases.js):
+//   POST { accion: "pasar", cuenta, hacia, importe, fecha, descripcion?, tipo_cambio? }
+//       → queda pendiente y se avisa al responsable de la otra caja.
+//   POST { accion: "recibir", id } → el que recibe confirma: se anota la
+//       transferencia entre las dos cajas, confirmada.
+//   POST { accion: "rechazar", id } → no la recibió: no se anota nada y se
+//       avisa al que la pasó y a los dueños.
+//   POST { accion: "cancelar", id } → el que la pasó la saca mientras está pendiente.
 //
 // La RLS de fin_operaciones es solo del rol gerencial: esta ruta va con la
 // clave de servicio y siempre filtra por la empresa y las cajas del que pide.
@@ -24,6 +32,7 @@ import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
 import { hoyAr, plata } from "../../lib/finanzasOperaciones";
 import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, conceptosMiCaja, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
+import { CLAVE_PASES, ORIGEN_PASE, destinosPase, guardarPases, leerPases, operacionDePase, pasesDe, validarPase } from "../../lib/finanzasPases";
 
 const COLUMNAS = "id,fecha,tipo,total,moneda,total_ars,cuenta_debe,cuenta_haber,descripcion,origen,estado,anulada_at";
 const sinTabla = (err) => /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(String(err?.message));
@@ -33,7 +42,7 @@ async function misCajas(sesion) {
   if (!sesion.empleado_id) return [];
   const { modulos } = await getModulosEmpresa(sesion.empresa_id);
   if (!modulos.includes("finanzas")) return [];
-  const { data } = await sbGetAll(`fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&responsable_id=eq.${sesion.empleado_id}&activa=eq.true&select=cuenta,nombre,tipo,moneda,activa&order=nombre.asc`, { maxFilas: 50 });
+  const { data } = await sbGetAll(`fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&responsable_id=eq.${sesion.empleado_id}&activa=eq.true&select=cuenta,nombre,tipo,moneda,activa,responsable_id&order=nombre.asc`, { maxFilas: 50 });
   return data || [];
 }
 
@@ -43,6 +52,27 @@ async function conceptos(empresaId) {
     sbGetAll(`fin_tipos_operacion?empresa_id=eq.${empresaId}&select=codigo,nombre,cuenta_debe,cuenta_haber,activo&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data),
   ]);
   return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos), tipos };
+}
+
+/** Todas las cajas activas con responsable y el nombre de cada uno (para elegir a quién pasarle). */
+async function cajasConResponsable(empresaId) {
+  const { data: tesoreria } = await sbGetAll(`fin_tesoreria?empresa_id=eq.${empresaId}&activa=eq.true&responsable_id=not.is.null&select=cuenta,nombre,tipo,moneda,activa,responsable_id&order=nombre.asc`, { maxFilas: 200 });
+  const ids = [...new Set((tesoreria || []).map((t) => t.responsable_id))];
+  const personal = ids.length
+    ? (await sbGetAll(`empleados?empresa_id=eq.${empresaId}&id=in.(${ids.join(",")})&select=id,nombre,legajo`, { maxFilas: 200 })).data || []
+    : [];
+  return { tesoreria: tesoreria || [], personal };
+}
+
+async function leerListaPases(empresaId) {
+  const [fila] = (await sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_PASES}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  return { pases: leerPases(fila?.valor), existe: !!fila };
+}
+
+async function escribirListaPases(empresaId, pases, existe) {
+  const valor = guardarPases(pases);
+  if (existe) await sbPatch(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_PASES}`, { valor });
+  else await sbPost("config_sistema", { empresa_id: empresaId, clave: CLAVE_PASES, valor });
 }
 
 const enLista = (cajas) => encodeURIComponent(cajas.map((c) => `"${String(c.cuenta).replace(/"/g, "")}"`).join(","));
@@ -65,7 +95,16 @@ export async function GET(request) {
         .then((r) => r.data),
     ]);
     const nombres = new Map(tipos.map((t) => [t.codigo, t.nombre || t.codigo]));
-    return NextResponse.json({ cajas: cajas.map((c) => resumenMiCaja(ops, c, nombres)), conceptos: lista, hoy: hoyAr() });
+    // Pases entre personas: nunca frenan Mi caja si algo falla
+    const [{ tesoreria, personal }, { pases }] = await Promise.all([
+      cajasConResponsable(e).catch(() => ({ tesoreria: [], personal: [] })),
+      leerListaPases(e).catch(() => ({ pases: [] })),
+    ]);
+    const deCadaUno = pasesDe(pases, cajas.map((c) => c.cuenta));
+    return NextResponse.json({
+      cajas: cajas.map((c) => ({ ...resumenMiCaja(ops, c, nombres), destinos: destinosPase(c, tesoreria, personal) })),
+      conceptos: lista, hoy: hoyAr(), ...deCadaUno,
+    });
   } catch (err) {
     if (sinTabla(err)) return NextResponse.json({ cajas: [] });
     logger.error("[mi-caja] GET", err);
@@ -110,6 +149,74 @@ async function cargar(sesion, d, cajas) {
   return NextResponse.json({ ok: true, operacion: o ? { id: o.id, estado: o.estado } : null });
 }
 
+async function legajosDe(empresaId, ids = []) {
+  const limpios = [...new Set(ids.filter(Boolean))];
+  if (!limpios.length) return [];
+  const { data } = await sbGetAll(`empleados?empresa_id=eq.${empresaId}&id=in.(${limpios.join(",")})&activo=eq.true&select=legajo`, { maxFilas: 50 });
+  return (data || []).map((x) => x.legajo);
+}
+
+async function avisar(empresaId, legajos, aviso) {
+  try { if (legajos.length) await enviarPushLegajos(empresaId, legajos, { ...aviso, data: { tipo: "mi_caja" } }); } catch { /* el aviso no frena */ }
+}
+
+async function pasar(sesion, d, cajas) {
+  const e = sesion.empresa_id;
+  const caja = cajas.find((c) => c.cuenta === d.cuenta);
+  if (!caja) return NextResponse.json({ error: "Esa caja no está a tu cargo" }, { status: 403 });
+  const [{ tesoreria, personal }, lista, quien] = await Promise.all([cajasConResponsable(e), leerListaPases(e), nombreEmpleado(sesion)]);
+  const ahora = new Date().toISOString();
+  const id = `pase-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const { pase, errores } = validarPase(d, { caja, destinos: destinosPase(caja, tesoreria, personal), quien, hoy: hoyAr(), id, ahora });
+  if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  await escribirListaPases(e, [pase, ...lista.pases], lista.existe);
+  broadcastRefresh(e, "fin_operaciones");
+  await avisar(e, await legajosDe(e, [pase.para_id]), {
+    title: `💸 ${quien || "Alguien"} te pasó ${plata(pase.importe, pase.moneda)}`,
+    body: "Abrí Mi caja y confirmá si la recibiste para que entre en tu caja.",
+  });
+  return NextResponse.json({ ok: true, pase: { id: pase.id } });
+}
+
+/** Recibir, rechazar o cancelar un pase pendiente. */
+async function resolverPase(sesion, d, cajas) {
+  const e = sesion.empresa_id;
+  const lista = await leerListaPases(e);
+  const pase = lista.pases.find((p) => p.id === d.id && p.estado === "pendiente");
+  const mias = new Set(cajas.map((c) => c.cuenta));
+  const cancelar = d.accion === "cancelar";
+  if (!pase || !mias.has(cancelar ? pase.desde : pase.hacia)) {
+    return NextResponse.json({ error: "Ese pase ya se resolvió o no es para vos" }, { status: 404 });
+  }
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  let operacion = null;
+  if (d.accion === "recibir") {
+    const { tesoreria } = await cajasConResponsable(e);
+    const { op, errores } = operacionDePase(pase, tesoreria);
+    if (!op) return NextResponse.json({ error: errores[0] || "Una de las cajas ya no está activa: pedile al dueño que lo cargue" }, { status: 409 });
+    // Dos toques seguidos no anotan dos veces
+    const [ya] = (await sbGet(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_PASE}&origen_id=eq.${encodeURIComponent(op.origen_id)}&anulada_at=is.null&select=id&limit=1`, { silent: true, fallback: [] })) || [];
+    const [o] = ya ? [ya] : (await sbPost("fin_operaciones", { ...op, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora })) || [];
+    operacion = o ? { id: o.id } : null;
+  }
+  const estado = d.accion === "recibir" ? "recibido" : cancelar ? "cancelado" : "rechazado";
+  const nuevo = { ...pase, estado, resuelto_at: ahora, resuelto_por: quien, op_id: operacion?.id ?? null };
+  await escribirListaPases(e, lista.pases.map((p) => (p.id === pase.id ? nuevo : p)), lista.existe);
+  broadcastRefresh(e, "fin_operaciones");
+  const monto = plata(pase.importe, pase.moneda);
+  if (estado === "recibido") {
+    await avisar(e, await legajosDe(e, [pase.de_id]), { title: `✓ ${pase.para_nombre} confirmó que recibió ${monto}`, body: "Ya salió de tu caja y entró en la suya." });
+  } else if (estado === "rechazado") {
+    const { data: duenos } = await sbGetAll(`empleados?empresa_id=eq.${e}&rol=eq.gerencial&activo=eq.true&select=legajo`, { maxFilas: 50 });
+    const legajos = [...new Set([...(await legajosDe(e, [pase.de_id])), ...(duenos || []).map((x) => x.legajo)])];
+    await avisar(e, legajos, { title: `⚠ ${pase.para_nombre} dice que no recibió ${monto}`, body: `${pase.de_nombre || pase.desde_nombre} lo había anotado el ${pase.fecha.split("-").reverse().join("/")}. No se anotó nada en las cajas.` });
+  } else {
+    await avisar(e, await legajosDe(e, [pase.para_id]), { title: `${pase.de_nombre || "Se"} canceló el pase de ${monto}`, body: "Ya no tenés que confirmarlo." });
+  }
+  return NextResponse.json({ ok: true, estado, operacion });
+}
+
 async function anular(sesion, d, cajas) {
   const id = Number(d.id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el movimiento" }, { status: 400 });
@@ -136,6 +243,8 @@ export async function POST(request) {
     if (!cajas.length) return NextResponse.json({ error: "No tenés ninguna caja a cargo" }, { status: 403 });
     if (d.accion === "cargar") return await cargar(sesion, d, cajas);
     if (d.accion === "anular") return await anular(sesion, d, cajas);
+    if (d.accion === "pasar") return await pasar(sesion, d, cajas);
+    if (["recibir", "rechazar", "cancelar"].includes(d.accion)) return await resolverPase(sesion, d, cajas);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     if (/comprobante_url/.test(String(err?.message))) return NextResponse.json({ error: "Para guardar la foto del ticket falta correr la migración 176 en Supabase." }, { status: 409 });

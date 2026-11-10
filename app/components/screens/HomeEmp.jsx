@@ -172,7 +172,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
         {conMiMant && (
           <BotonAccion icono="🔧" titulo="Mi mantenimiento" detalle={detalleMiMantenimiento(mant.items)} destacado={resumenMant.vencidas > 0} onClick={() => setVerMant(true)} />
         )}
-        {miCaja.cajas.length > 0 && <BotonAccion icono="📱" titulo="Mi caja" detalle={detalleMiCaja(miCaja.cajas)} onClick={() => setVerCaja(true)} />}
+        {miCaja.cajas.length > 0 && <BotonAccion icono="📱" titulo="Mi caja" detalle={detalleMiCaja(miCaja.cajas, miCaja.para_confirmar)} destacado={(miCaja.para_confirmar?.length || 0) > 0} onClick={() => setVerCaja(true)} />}
         {/* Parte 35 (134): cualquiera avisa que una máquina tiene un problema */}
         {conMaquinaria && <BotonAccion icono="⚠️" titulo="Avisar una falla" detalle="Una máquina anda mal o se paró: avisá con foto" onClick={() => setAvisarFalla(true)} />}
         {misVehiculos.length > 0 && (

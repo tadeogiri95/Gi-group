@@ -176,7 +176,7 @@ function TarjetaMiCaja() {
         <span aria-hidden="true" className="text-[26px]">📱</span>
         <span className="flex-1 min-w-0">
           <span className="block text-[16px] font-bold">Mi caja</span>
-          <span className="block text-[14px] text-gypi-dim">{detalleMiCaja(datos.cajas)}</span>
+          <span className="block text-[14px] text-gypi-dim">{detalleMiCaja(datos.cajas, datos.para_confirmar)}</span>
         </span>
       </button>
       {ver && <MiCaja datos={datos} onClose={() => setVer(false)} onCambio={datos.cargar} />}
