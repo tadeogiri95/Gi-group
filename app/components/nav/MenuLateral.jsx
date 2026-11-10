@@ -10,7 +10,7 @@ import { BOTONES_GESTION, conBoton, opcionesBoton } from '../../lib/menuGestion'
 
 const ICONO = {
   vivo: '🟢', ot: '📋', reportes: '📊', planificacion: '📅', minuta: '📝',
-  stock: '📦', compras: '🛒', flota: '🚚', maquinaria: '⚙️', 'fin-movimientos': '📒', 'fin-tesoreria': '💰', 'fin-clientes': '👥', 'fin-sueldos': '👷', 'fin-proveedores': '🏭', 'fin-pagos': '💸', 'fin-cheques': '🏦', 'fin-resultados': '📊', 'fin-flujo': '💵', 'fin-cierre': '🔍', 'fin-config': '🧾',
+  stock: '📦', compras: '🛒', flota: '🚚', maquinaria: '⚙️', 'fin-movimientos': '📒', 'fin-tesoreria': '💰', 'fin-clientes': '👥', 'fin-sueldos': '👷', 'fin-proveedores': '🏭', 'fin-pagos': '💸', 'fin-cheques': '🏦', 'fin-resultados': '📊', 'fin-flujo': '💵', 'fin-reporte': '📑', 'fin-cierre': '🔍', 'fin-config': '🧾',
 };
 // Finanzas (171) solo aparece para el Dueño
 const BOTONES = ['proyectos', 'inventario', 'mantenimiento', 'finanzas'];
