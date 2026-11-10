@@ -83,6 +83,7 @@ export default function FinanzasFlujo() {
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [cerradas, setCerradas] = useState(() => new Set(["TES"]));
+  const [conDetalle, setConDetalle] = useState(true);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -104,7 +105,7 @@ export default function FinanzasFlujo() {
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
   const m = datos.monedas[moneda];
   const abrirCerrar = (id) => setCerradas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const visibles = m.filas.filter((f) => f.tipo === "seccion" || !cerradas.has(f.seccion));
+  const visibles = m.filas.filter((f) => f.tipo === "seccion" || (!cerradas.has(f.seccion) && (conDetalle || ["seccion", "linea"].includes(f.tipo))));
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
@@ -124,6 +125,7 @@ export default function FinanzasFlujo() {
           </label>
           <Chip active={moneda === "ARS"} onClick={() => setMoneda("ARS")}>Pesos</Chip>
           <Chip active={moneda === "USD"} onClick={() => setMoneda("USD")}>Dólares</Chip>
+          <label className="flex items-center gap-2 text-[13px] text-gypi-text"><input type="checkbox" checked={conDetalle} onChange={(e) => setConDetalle(e.target.checked)} /> Abrir cada línea en sus cuentas</label>
           {cargando && <Spinner size={16} />}
         </div>
         {datos.tipos_sin_linea.length > 0 && (
@@ -147,9 +149,11 @@ export default function FinanzasFlujo() {
                   {datos.meses.map((x, i) => { const v = i ? m.cierre[i - 1] : m.apertura; return <td key={x} className={`px-2 py-1 text-right font-mono ${rojo(v)}`}>{miles(v)}</td>; })}
                   <td />
                 </tr>
-                {visibles.map((f) => (
-                  <tr key={f.id} className={`border-t border-gypi-border ${f.tipo === "forma" ? "text-gypi-dim text-[12px]" : "text-gypi-text"} ${f.tipo === "seccion" ? "bg-gypi-surface font-bold" : ""}`}>
-                    <td className={`pr-2 py-1 sticky left-0 ${f.tipo === "seccion" ? "bg-gypi-surface pl-2" : f.tipo === "forma" ? "bg-gypi-bg pl-9" : "bg-gypi-bg pl-5"}`}>
+                {visibles.map((f) => {
+                  const detalle = !["seccion", "linea"].includes(f.tipo);
+                  return (
+                  <tr key={f.id} className={`border-t border-gypi-border ${detalle ? "text-gypi-dim text-[12px]" : "text-gypi-text"} ${f.tipo === "seccion" ? "bg-gypi-surface font-bold" : ""} ${f.tipo === "linea" ? "font-semibold" : ""}`}>
+                    <td className={`pr-2 py-1 sticky left-0 ${f.tipo === "seccion" ? "bg-gypi-surface pl-2" : detalle ? "bg-gypi-bg pl-9" : "bg-gypi-bg pl-5"}`}>
                       {f.tipo === "seccion" ? (
                         <button type="button" className="bg-transparent border-none p-0 font-bold text-gypi-text cursor-pointer text-left" aria-expanded={!cerradas.has(f.id)} onClick={() => abrirCerrar(f.id)}>
                           {cerradas.has(f.id) ? "▸ " : "▾ "}{f.nombre}
@@ -159,7 +163,8 @@ export default function FinanzasFlujo() {
                     {f.valores.map((v, i) => <td key={i} className={`px-2 py-1 text-right font-mono whitespace-nowrap ${rojo(v)}`}>{v ? miles(v) : "–"}</td>)}
                     <td className={`px-2 py-1 text-right font-mono whitespace-nowrap font-semibold ${rojo(f.total)}`}>{miles(f.total)}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 <tr className="border-t-2 border-gypi-border bg-gypi-surface font-bold text-gypi-text">
                   <td className="px-2 py-1.5 sticky left-0 bg-gypi-surface">Flujo neto del mes</td>
                   {m.neto.map((v, i) => <td key={i} className={`px-2 py-1.5 text-right font-mono whitespace-nowrap ${rojo(v)}`}>{miles(v)}</td>)}
