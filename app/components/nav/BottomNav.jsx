@@ -59,7 +59,8 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
   // tocar en la planta (revisión de la interfaz, 2026-10)
   const grande = role !== 'gerencial' && role !== 'administrativo';
   // Con seis botones (el Dueño con Finanzas) no entran los nombres largos en
-  // un celular angosto: letra un poco más chica y "Manten." (10/11)
+  // un celular angosto: cada botón toma el ancho de su nombre y Mantenimiento
+  // se lee "Manten." (10/11; la letra no baja de 12 px)
   const apretada = !grande && items.length > 5;
   return (
     // La barra ocupa su propio lugar al pie del shell (no flota encima): así
@@ -82,7 +83,7 @@ export default function BottomNav({ active, onChange, role, pend, modulos, insta
             onClick={() => onChange(item.id)}
             aria-label={item.label}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex-1 min-w-0 ${grande ? 'min-h-[60px] text-[14px] gap-1' : apretada ? 'min-h-[52px] text-[11px] gap-0.5' : 'min-h-[52px] text-xs gap-0.5'} bg-transparent border-none py-1 px-0 flex flex-col items-center cursor-pointer font-body transition-colors duration-150 ${
+            className={`${apretada ? 'flex-auto' : 'flex-1'} min-w-0 ${grande ? 'min-h-[60px] text-[14px] gap-1' : 'min-h-[52px] text-xs gap-0.5'} bg-transparent border-none py-1 px-0 flex flex-col items-center cursor-pointer font-body transition-colors duration-150 ${
               isActive ? 'text-gypi-text font-bold' : 'text-gypi-dim font-medium'
             }`}
           >
