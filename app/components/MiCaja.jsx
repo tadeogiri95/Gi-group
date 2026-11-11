@@ -103,6 +103,42 @@ function Pasar({ caja, hoy, onCerrar, onHecho }) {
 }
 
 const MAX_CHIPS = 8;
+const LETRAS_TICKET = ["A", "B", "C", "M", "E", "X"];
+
+/** Comercio, CUIT y número de la factura: lo llena la foto y se puede corregir. */
+function DatosTicket({ f, setF, abierto, onAbrir }) {
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value, ...(k === "comercio" || k === "cuit" ? { proveedor_id: "" } : {}) }));
+  const iva = numero(f.iva);
+  return (
+    <details open={abierto} onToggle={(e) => onAbrir(e.currentTarget.open)} className="rounded-lg border border-gypi-border p-2">
+      <summary className="cursor-pointer text-[14px] font-semibold text-gypi-text">🧾 Comercio y número de factura{f.comercio ? `: ${f.comercio}` : " (opcional)"}</summary>
+      <div className="flex flex-col gap-2 mt-2">
+        <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">Comercio o proveedor
+          <input className="g-input w-full" aria-label="Comercio" maxLength={120} placeholder="Ej.: YPF, Ferretería Centro" value={f.comercio} onChange={set("comercio")} />
+        </label>
+        {f.proveedor_id && <span className="text-[12px] text-gypi-green-ink">✓ Está en la lista de proveedores</span>}
+        <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">CUIT
+          <input className="g-input w-[180px]" aria-label="CUIT" inputMode="numeric" maxLength={13} placeholder="30-12345678-9" value={f.cuit} onChange={set("cuit")} />
+        </label>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">Factura
+            <select className="g-input w-[110px]" aria-label="Letra" value={f.letra} onChange={set("letra")}>
+              <option value="">Ticket</option>
+              {LETRAS_TICKET.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">Punto de venta
+            <input className="g-input w-[90px]" aria-label="Punto de venta" inputMode="numeric" maxLength={5} value={f.punto_venta} onChange={set("punto_venta")} />
+          </label>
+          <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">Número
+            <input className="g-input w-[130px]" aria-label="Número" inputMode="numeric" maxLength={8} value={f.numero} onChange={set("numero")} />
+          </label>
+        </div>
+        {iva > 0 && <span className="text-[12px] text-gypi-dim">IVA discriminado: $ {iva.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>}
+      </div>
+    </details>
+  );
+}
 
 /** La lista larga, por grupo ("Gastos", "Compras", "Inversión"…), cada grupo en el orden de la lista. */
 function porGrupo(lista) {
@@ -121,7 +157,13 @@ function porGrupo(lista) {
 function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
   const gasto = clase === "gasto";
   const lista = conceptosPorUso(gasto ? conceptos.gastos : conceptos.ingresos, caja.movimientos);
-  const [f, setF] = useState({ concepto: lista.length === 1 ? lista[0].codigo : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "", comprobante_url: "" });
+  const [f, setF] = useState({
+    concepto: lista.length === 1 ? lista[0].codigo : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "", comprobante_url: "",
+    comercio: "", cuit: "", proveedor_id: "", letra: "", punto_venta: "", numero: "", neto: "", iva: "", otros_impuestos: "",
+  });
+  const [verDatos, setVerDatos] = useState(false);
+  const [repetido, setRepetido] = useState(null);
+  const [parecido, setParecido] = useState(null);
   const [otroDia, setOtroDia] = useState(false);
   const [leyendo, setLeyendo] = useState(false);
   const [lectura, setLectura] = useState(null);
@@ -143,30 +185,45 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
       const res = await apiFetch("/api/mi-caja", { method: "POST", body: JSON.stringify({ accion: "leer_ticket", cuenta: caja.cuenta, comprobante_url: url }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo leer el ticket");
+      const texto = (v) => (v == null ? "" : String(v));
       setF((x) => ({
         ...x,
         importe: x.importe || (d.importe ? String(d.importe).replace(".", ",") : ""),
         fecha: d.fecha && x.fecha === hoy ? d.fecha : x.fecha,
         concepto: x.concepto || d.concepto || "",
         descripcion: x.descripcion || d.descripcion || "",
+        comercio: x.comercio || texto(d.comercio),
+        cuit: x.cuit || texto(d.cuit),
+        proveedor_id: x.comercio ? x.proveedor_id : texto(d.proveedor_id),
+        letra: x.numero ? x.letra : texto(d.letra),
+        punto_venta: x.numero ? x.punto_venta : texto(d.punto_venta),
+        numero: x.numero || texto(d.numero),
+        neto: texto(d.neto), iva: texto(d.iva), otros_impuestos: texto(d.otros_impuestos),
       }));
       if (d.fecha && d.fecha !== hoy && d.fecha !== ayer) setOtroDia(true);
-      setLectura(d.importe || d.fecha || d.concepto ? "✓ Leí el ticket: revisá que esté bien." : "No pude leer el ticket: completalo a mano.");
+      if (d.comercio || d.numero) setVerDatos(true);
+      setRepetido(d.repetido || null);
+      setLectura(d.importe || d.fecha || d.concepto || d.comercio ? "✓ Leí el ticket: revisá que esté bien." : "No pude leer el ticket: completalo a mano.");
     } catch (e) {
       setLectura(`${e.message}`);
     }
     setLeyendo(false);
   }
 
-  async function guardar() {
+  async function guardar(igualConfirmado = false) {
     setError(null);
+    setParecido(null);
     setGuardando(true);
     try {
       const res = await apiFetch("/api/mi-caja", {
         method: "POST",
-        body: JSON.stringify({ accion: "cargar", cuenta: caja.cuenta, clase, ...f, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null }),
+        body: JSON.stringify({
+          accion: "cargar", cuenta: caja.cuenta, clase, ...f, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null,
+          neto: numero(f.neto), iva: numero(f.iva), otros_impuestos: numero(f.otros_impuestos), igual_confirmado: igualConfirmado || undefined,
+        }),
       });
       const d = await res.json().catch(() => ({}));
+      if (res.status === 409 && d.parecido) { setParecido(d.error); setGuardando(false); return; }
       if (!res.ok) throw new Error(d.error || "No se pudo guardar");
       onHecho();
     } catch (e) {
@@ -188,12 +245,12 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
               <div className="flex items-center gap-2">
                 <img src={f.comprobante_url} alt="Foto del ticket" className="w-16 h-16 object-cover rounded-lg border border-gypi-border" />
                 <span className="flex-1 text-[13px] text-gypi-dim" role="status">{leyendo ? "Leyendo el ticket…" : lectura}</span>
-                <button type="button" className="g-btn g-btn-secondary" onClick={() => { setF((x) => ({ ...x, comprobante_url: "" })); setLectura(null); }}>Sacar la foto</button>
+                <button type="button" className="g-btn g-btn-secondary" onClick={() => { setF((x) => ({ ...x, comprobante_url: "" })); setLectura(null); setRepetido(null); }}>Sacar la foto</button>
               </div>
             ) : (
               <div className="flex flex-col gap-1">
                 <BotonFoto label={gasto ? "📷 Sacar foto del ticket" : "📷 Foto del comprobante (opcional)"} onFoto={conFoto} />
-                {gasto && <span className="text-[12px] text-gypi-dim">Gypi lee el importe y la fecha. Si no tenés ticket, completá abajo.</span>}
+                {gasto && <span className="text-[12px] text-gypi-dim">Gypi lee el importe, la fecha, el comercio y el número de factura. Si no tenés ticket, completá abajo.</span>}
               </div>
             )}
             <div role="group" aria-label="Concepto">
@@ -228,13 +285,24 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
                 {otroDia && <input type="date" className="g-input" aria-label="Fecha del movimiento" max={hoy} value={f.fecha} onChange={set("fecha")} />}
               </div>
             </div>
-            {campo("Detalle (opcional)", <input className="g-input w-full" aria-label="Detalle" maxLength={300} placeholder={gasto ? "Ej.: nafta camioneta" : "Ej.: me la dio Tadeo"} value={f.descripcion} onChange={set("descripcion")} />)}
+            {campo(gasto ? "Qué compraste (opcional)" : "Detalle (opcional)", <input className="g-input w-full" aria-label="Detalle" maxLength={300} placeholder={gasto ? "Ej.: nafta camioneta" : "Ej.: me la dio Tadeo"} value={f.descripcion} onChange={set("descripcion")} />)}
+            {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} />}
           </>
+        )}
+        {repetido && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {repetido} No lo cargues de nuevo.</p>}
+        {parecido && (
+          <div role="alert" className="flex flex-col gap-2 p-2.5 rounded-lg border border-gypi-border">
+            <p className="m-0 text-[13px] text-gypi-text">⚠ {parecido}</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="g-btn g-btn-secondary" onClick={() => setParecido(null)}>No, es el mismo</button>
+              <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={() => guardar(true)}>Sí, es otro: guardar</button>
+            </div>
+          </div>
         )}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          {lista.length > 0 && <button type="button" className="g-btn g-btn-primary" disabled={guardando || leyendo || !f.concepto || !f.importe} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>}
+          {lista.length > 0 && <button type="button" className="g-btn g-btn-primary" disabled={guardando || leyendo || !f.concepto || !f.importe} onClick={() => guardar()}>{guardando ? "Guardando…" : "Guardar"}</button>}
         </div>
       </div>
     </Modal>

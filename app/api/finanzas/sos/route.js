@@ -21,7 +21,9 @@ import {
 import { TIPO_COMPRA_SOS, compararSos, leerCsvSos, operacionSos } from "../../../lib/finanzasSos";
 
 const MAX_TEXTO = 3_000_000;
-const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,total_ars,cuenta_debe,cuenta_haber,origen,origen_id,anulada_at";
+const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,total_ars,cuenta_debe,cuenta_haber,referencia,origen,origen_id,anulada_at";
+// Las que tienen número de comprobante aunque no toquen Proveedores (un ticket de Mi caja, un gasto pagado)
+const CON_NUMERO = "mi_caja,gasto,compra_manual,factura_oc,factura_oc_otra,factura_suelta";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 const sinAcentos = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 
@@ -35,10 +37,13 @@ async function leerTodo(sesion) {
     sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_CUENTAS_PROV}&select=valor&limit=1`, { silent: true, fallback: [] }),
   ]);
   const prov = [...cuentasProveedores(cuentas)];
-  const operaciones = prov.length
-    ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${prov.join(",")}),cuenta_haber.in.(${prov.join(",")}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 100000)
-    : [];
-  return { cuentas, proveedores, tesoreria, tipos, guardadas: leerCuentasProveedores(cfg?.[0]?.valor), prov, operaciones };
+  const [operaciones, conComprobante] = await Promise.all([
+    prov.length
+      ? leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${prov.join(",")}),cuenta_haber.in.(${prov.join(",")}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 100000)
+      : [],
+    leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&referencia=not.is.null&origen=in.(${CON_NUMERO})&select=${COLUMNAS}&order=fecha.asc,id.asc`, 100000),
+  ]);
+  return { cuentas, proveedores, tesoreria, tipos, guardadas: leerCuentasProveedores(cfg?.[0]?.valor), prov, operaciones, conComprobante };
 }
 
 /** Los renglones del CSV con su estado y la cuenta que van a llevar. */
@@ -46,7 +51,7 @@ function plan(texto, datos) {
   const { filas, errores } = leerCsvSos(texto);
   const cuentasProv = new Set(datos.prov);
   const comparadas = compararSos(filas, {
-    operaciones: datos.operaciones, proveedores: datos.proveedores, cuentasProv,
+    operaciones: datos.operaciones, proveedores: datos.proveedores, cuentasProv, conComprobante: datos.conComprobante,
     cajas: new Set(datos.tesoreria.map((t) => t.cuenta)),
   });
   const ajuste = new Set(datos.cuentas.filter((c) => CUENTA_AJUSTE_CAPITAL.test(String(c.nombre || "").trim())).map((c) => c.codigo));

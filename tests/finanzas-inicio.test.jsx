@@ -200,18 +200,37 @@ test("Mi caja — ayer, también al cambiar de mes y de año", () => {
   assert.equal(ayerDe("2027-01-01"), "2026-12-31");
 });
 
+const VACIA = { importe: null, fecha: null, concepto: null, descripcion: null, comercio: null, cuit: null, proveedor_id: null, letra: null, punto_venta: null, numero: null, neto: null, iva: null, otros_impuestos: null };
+
 test("Mi caja — la lectura del ticket solo llena lo que tiene sentido", () => {
   const esq = esquemaTicket(CONCEPTOS);
   assert.deepEqual(esq.properties.concepto.enum, ["NAFTA", "VIAT", "FERR", ""]);
-  assert.deepEqual(esq.required, ["importe", "fecha", "comercio", "concepto"]);
+  assert.deepEqual(esq.required, ["importe", "fecha", "comercio", "cuit", "letra", "punto_venta", "numero", "neto", "iva", "otros_impuestos", "detalle", "concepto"]);
   const ctx = { conceptos: CONCEPTOS, hoy: "2026-11-11" };
-  assert.deepEqual(propuestaTicket({ importe: 12500.456, fecha: "2026-11-10", comercio: "  YPF   Ruta 9 ", concepto: "NAFTA" }, ctx),
-    { importe: 12500.46, fecha: "2026-11-10", concepto: "NAFTA", descripcion: "YPF Ruta 9" });
-  assert.deepEqual(propuestaTicket({ importe: 0, fecha: "2026-12-01", comercio: "", concepto: "INVENTADO" }, ctx),
-    { importe: null, fecha: null, concepto: null, descripcion: null }, "fecha futura, concepto que no está y sin importe: nada");
+  assert.deepEqual(propuestaTicket({ importe: 12500.456, fecha: "2026-11-10", comercio: "  YPF   Ruta 9 ", detalle: "Nafta súper", concepto: "NAFTA" }, ctx),
+    { ...VACIA, importe: 12500.46, fecha: "2026-11-10", concepto: "NAFTA", descripcion: "Nafta súper", comercio: "YPF Ruta 9" });
+  assert.deepEqual(propuestaTicket({ importe: 0, fecha: "2026-12-01", comercio: "", concepto: "INVENTADO" }, ctx), VACIA, "fecha futura, concepto que no está y sin importe: nada");
   assert.equal(propuestaTicket({ importe: 10, fecha: "2024-01-01" }, ctx).fecha, null, "más de un año atrás: seguro la leyó mal");
   assert.equal(propuestaTicket({ importe: 10, fecha: "2026-02-30" }, ctx).fecha, null, "un día que no existe");
-  assert.deepEqual(propuestaTicket(null, ctx), { importe: null, fecha: null, concepto: null, descripcion: null });
+  assert.deepEqual(propuestaTicket(null, ctx), VACIA);
+});
+
+test("Mi caja — factura A del ticket: proveedor de la lista por CUIT, número e IVA si cierra con el total", () => {
+  const proveedores = [{ id: 7, nombre: "Ferretería Centro SRL", cuit: "30711222339" }];
+  const ctx = { conceptos: CONCEPTOS, hoy: "2026-11-11", proveedores };
+  const p = propuestaTicket({
+    importe: 12100, fecha: "2026-11-10", comercio: "FERRETERIA CENTRO", cuit: "30-71122233-9", letra: "A", punto_venta: "0004", numero: "00001234",
+    neto: 10000, iva: 2100, otros_impuestos: 0, detalle: "Tornillos y tarugos", concepto: "FERR",
+  }, ctx);
+  assert.deepEqual(p, {
+    importe: 12100, fecha: "2026-11-10", concepto: "FERR", descripcion: "Tornillos y tarugos", comercio: "Ferretería Centro SRL", cuit: "30-71122233-9",
+    proveedor_id: 7, letra: "A", punto_venta: "0004", numero: "00001234", neto: 10000, iva: 2100, otros_impuestos: null,
+  });
+  const noCierra = propuestaTicket({ importe: 12100, letra: "A", numero: "5", neto: 10000, iva: 3000 }, ctx);
+  assert.deepEqual([noCierra.neto, noCierra.iva], [null, null], "si no cierra con el total, sin IVA");
+  const b = propuestaTicket({ importe: 12100, letra: "B", numero: "5", neto: 10000, iva: 2100 }, ctx);
+  assert.equal(b.iva, null, "una B no discrimina IVA");
+  assert.equal(propuestaTicket({ importe: 100, comercio: "Kiosco", cuit: "123" }, ctx).cuit, null, "un CUIT que no tiene 11 números no sirve");
 });
 
 // ─── Mi caja fácil: API ───
@@ -251,7 +270,7 @@ test("/api/mi-caja leer_ticket — la IA lee la foto de su caja y no guarda nada
   const { ia, bajadas } = mockMiCaja();
   const r = await pedir(apiMiCaja, "operativo", "POST", { accion: "leer_ticket", cuenta: CAJA_JUAN.cuenta, comprobante_url: FOTO });
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), { ok: true, importe: 8400, fecha: null, concepto: "GASTO COMBUSTIBLE", descripcion: "Shell" });
+  assert.deepEqual(await r.json(), { ok: true, ...VACIA, importe: 8400, concepto: "GASTO COMBUSTIBLE", comercio: "Shell", repetido: null });
   assert.deepEqual(bajadas, [FOTO]);
   assert.equal(ia.length, 1);
   assert.equal(ia[0].messages[0].content[0].source.media_type, "image/jpeg");

@@ -39,6 +39,8 @@ import { MAX_ARCHIVO_B64, TIPOS_ARCHIVO } from "../../../lib/facturasSueltas";
 import { logAudit } from "../../../lib/audit";
 import { ipCliente } from "../../../lib/ip";
 import { grupoDeVinculo, vinculoValido } from "../../../lib/finanzasIntegracion";
+import { avisoRepetido } from "../../../lib/finanzasComprobantes";
+import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServidor";
 import { randomUUID } from "node:crypto";
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
@@ -89,14 +91,15 @@ async function facturaDelArreglo(url) {
   return { archivo, tipo };
 }
 
-/** La misma factura (número y proveedor, o número y nombre) ya cargada como gasto y sin anular. */
+/**
+ * La misma factura (número y proveedor, o número y nombre) ya cargada y sin
+ * anular: como gasto, en Mi caja, desde el S.O.S o como factura de una OC.
+ */
 async function facturaRepetida(sesion, gasto) {
-  if (!gasto?.con_factura || !String(gasto.numero || "").replace(/\D/g, "")) return null;
+  if (!String(gasto?.numero || "").replace(/\D/g, "")) return null;
   const proveedorId = Number(gasto.proveedor_id) || null;
-  const op = { referencia: textoComprobante(gasto).replace(/^Factura /, ""), proveedor_id: proveedorId, entidad: proveedorId ? null : String(gasto.entidad || "").trim() || null };
-  const quien = op.proveedor_id ? `proveedor_id=eq.${op.proveedor_id}` : op.entidad ? `entidad=ilike.${encodeURIComponent(op.entidad.replace(/[%_*,()]/g, ""))}` : "proveedor_id=is.null";
-  const [igual] = (await sbGet(`fin_operaciones?empresa_id=eq.${sesion.empresa_id}&origen=eq.${ORIGEN_GASTO}&referencia=eq.${encodeURIComponent(op.referencia)}&${quien}&anulada_at=is.null&select=id,fecha&limit=1`, { sesion, silent: true, fallback: [] })) || [];
-  return igual || null;
+  const referencia = gasto.con_factura ? textoComprobante(gasto).replace(/^Factura /, "") : String(gasto.numero);
+  return buscarComprobanteRepetido(sesion.empresa_id, { referencia, proveedor_id: proveedorId, entidad: proveedorId ? null : String(gasto.entidad || "").trim() || null }, { sesion });
 }
 
 /** Parte 6: la IA lee la factura y vuelve el formulario lleno. Nada se guarda hasta que el dueño lo aprueba. */
@@ -135,7 +138,7 @@ async function leerGasto(request, sesion, d) {
   });
   const propuesta = propuestaDeLectura(r.lectura, ctx);
   const repetida = await facturaRepetida(sesion, propuesta.inicial);
-  if (repetida) propuesta.avisos.unshift(`⚠ Esta factura ya está cargada (operación del ${repetida.fecha.slice(8, 10)}/${repetida.fecha.slice(5, 7)}/${repetida.fecha.slice(0, 4)}).`);
+  if (repetida) propuesta.avisos.unshift(`⚠ ${avisoRepetido(repetida, "Esta factura")}`);
   return NextResponse.json({ ok: true, ...propuesta });
 }
 
@@ -199,7 +202,7 @@ export async function POST(request) {
       const { ops, errores } = operacionesGasto(d.gasto || {}, ctx);
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
       const repetida = await facturaRepetida(sesion, d.gasto);
-      if (repetida) return NextResponse.json({ error: `Esa factura ya está cargada (operación del ${repetida.fecha.slice(8, 10)}/${repetida.fecha.slice(5, 7)}/${repetida.fecha.slice(0, 4)}). Si estaba mal, anulala y cargala de nuevo.` }, { status: 409 });
+      if (repetida) return NextResponse.json({ error: `${avisoRepetido(repetida, "Esa factura")} Si estaba mal, anulala y cargala de nuevo.` }, { status: 409 });
       let grupo = `g${randomUUID().replace(/-/g, "").slice(0, 12)}`;
       // Parte 9: unido a un arreglo de Flota o Maquinaria, con una clave fija
       if (d.gasto?.vinculo) {

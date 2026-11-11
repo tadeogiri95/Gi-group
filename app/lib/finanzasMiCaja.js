@@ -14,8 +14,14 @@
 //   - Entra a la caja en el momento como "para revisar" (origen mi_caja). El
 //     dueño la confirma, le cambia el tipo o la anula. Lo que carga el propio
 //     dueño entra confirmado.
-//   - Foto del ticket opcional (comprobante_url, subida por /api/upload).
+//   - Foto del ticket opcional (comprobante_url, subida por /api/upload). La
+//     IA lee el comercio (y lo une con un proveedor de la lista por CUIT o
+//     nombre), el número de factura, la fecha, el detalle y el IVA; el
+//     empleado lo ve todo lleno y lo puede corregir. El número va a
+//     referencia con el mismo formato que Cargar un gasto, así el mismo
+//     comprobante no entra dos veces (finanzasComprobantes).
 import { movimientoCaja } from "./finanzasOperaciones";
+import { LETRAS, proveedorDeFactura, textoComprobante } from "./finanzasGastos";
 import { TIPOS_NUEVOS, claveTipo, leyendaTipo, lineaDeLista } from "./finanzasTipos";
 
 export const CLAVE_MI_CAJA = "finanzas_mi_caja";
@@ -92,11 +98,12 @@ export function comprobanteValido(url, { supabaseUrl, empresaId }) {
 
 /**
  * Un gasto o plata recibida en Mi caja.
- * @param {{ clase: "gasto"|"ingreso", concepto: string, importe: any, fecha: string, descripcion?: string, comprobante_url?: string, tipo_cambio?: any }} f
- * @param {{ caja: any, conceptos: { gastos: any[], ingresos: any[] }, confirmada?: boolean, supabaseUrl?: string, empresaId?: string, hoy?: string }} ctx
+ * @param {{ clase: "gasto"|"ingreso", concepto: string, importe: any, fecha: string, descripcion?: string, comprobante_url?: string, tipo_cambio?: any,
+ *   comercio?: string, cuit?: string, proveedor_id?: any, letra?: string, punto_venta?: string, numero?: string, neto?: any, iva?: any, otros_impuestos?: any }} f
+ * @param {{ caja: any, conceptos: { gastos: any[], ingresos: any[] }, confirmada?: boolean, supabaseUrl?: string, empresaId?: string, hoy?: string, proveedores?: object[] }} ctx
  * @returns {{ op?: object, errores: string[] }}
  */
-export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = false, supabaseUrl, empresaId, hoy } = {}) {
+export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = false, supabaseUrl, empresaId, hoy, proveedores = [] } = {}) {
   const errores = [];
   if (!caja || caja.activa === false) errores.push("Esa caja no está a tu cargo");
   const gasto = f.clase === "gasto";
@@ -112,20 +119,60 @@ export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = 
   if (usd && !(tc > 0)) errores.push("En dólares falta el tipo de cambio");
   const comprobante = txt(f.comprobante_url, 500) || null;
   if (!comprobanteValido(comprobante, { supabaseUrl, empresaId })) errores.push("La foto del ticket no es válida: sacala de nuevo");
+  const cuit = soloDigitos(f.cuit);
+  if (cuit && cuit.length !== 11) errores.push("El CUIT tiene que tener 11 números");
   if (errores.length) return { errores };
   const nota = txt(f.descripcion, 300);
+  const comercio = txt(f.comercio, 120);
+  // El proveedor: el que se eligió (si es de la empresa), o el de la lista con ese CUIT o nombre
+  const elegido = f.proveedor_id ? proveedores.find((p) => Number(p.id) === Number(f.proveedor_id)) : null;
+  const proveedor = elegido || (comercio || cuit ? proveedorDeFactura({ emisor: comercio, cuit }, proveedores) : null);
+  const imp = importesTicket(f, importe);
+  const referencia = referenciaTicket(f);
+  const cuitTexto = !proveedor && cuit ? `CUIT ${cuitFormato(cuit)}` : "";
   return {
     errores,
     op: {
-      fecha: f.fecha, tipo: concepto.codigo, proveedor_id: null, entidad: null,
-      neto: importe, iva: 0, otros_impuestos: 0, total: importe, moneda: usd ? "USD" : "ARS", tipo_cambio: tc, total_ars: usd ? centavos(importe * tc) : importe,
+      fecha: f.fecha, tipo: concepto.codigo, proveedor_id: proveedor ? Number(proveedor.id) : null, entidad: proveedor ? null : comercio || null,
+      neto: imp.neto, iva: imp.iva, otros_impuestos: imp.otros, total: importe, moneda: usd ? "USD" : "ARS", tipo_cambio: tc, total_ars: usd ? centavos(importe * tc) : importe,
       cuenta_debe: gasto ? concepto.cuenta : caja.cuenta,
       cuenta_haber: gasto ? caja.cuenta : concepto.cuenta,
-      descripcion: txt(`${concepto.nombre} · ${caja.nombre}${nota ? ` · ${nota}` : ""}`, 500),
+      descripcion: txt([concepto.nombre, caja.nombre, proveedor?.nombre || comercio, cuitTexto, referencia ? (imp.letra ? `Factura ${referencia}` : `Comprobante ${referencia}`) : "", nota].filter(Boolean).join(" · "), 500),
+      referencia,
       origen: ORIGEN_MI_CAJA, estado: confirmada ? "confirmada" : "para_revisar",
       comprobante_url: comprobante,
     },
   };
+}
+
+const soloDigitos = (v) => String(v ?? "").replace(/\D/g, "");
+const cuitFormato = (c) => (c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : c);
+
+/**
+ * El número del comprobante como lo guarda Cargar un gasto: "A 00003-00012345"
+ * con letra; sin letra, el número tal cual. null si no hay número.
+ */
+export function referenciaTicket(f = {}) {
+  const numero = soloDigitos(f.numero).slice(-8);
+  if (!numero) return null;
+  const letra = LETRAS.includes(f.letra) ? f.letra : "";
+  if (letra) return textoComprobante({ con_factura: true, letra, punto_venta: soloDigitos(f.punto_venta).slice(-5), numero }).replace(/^Factura /, "");
+  const pv = soloDigitos(f.punto_venta).slice(-5);
+  return pv ? `${pv.padStart(5, "0")}-${numero.padStart(8, "0")}` : numero;
+}
+
+/**
+ * Neto, IVA y percepciones del ticket. Solo una factura A (o M) discrimina IVA,
+ * y solo si cierran con el total: si alguien corrigió el importe, todo va al neto.
+ */
+export function importesTicket(f = {}, total) {
+  const letra = LETRAS.includes(f.letra) ? f.letra : "";
+  const iva = centavos(f.iva);
+  const otros = centavos(f.otros_impuestos);
+  const neto = centavos(f.neto);
+  const cierra = neto > 0 && iva >= 0 && otros >= 0 && Math.abs(centavos(neto + iva + otros) - total) <= 1;
+  if (cierra && (iva === 0 || ["A", "M"].includes(letra))) return { neto: centavos(total - iva - otros), iva, otros, letra };
+  return { neto: total, iva: 0, otros: 0, letra };
 }
 
 /** Lo que le toca al tipo nuevo cuando el dueño lo cambia: la caja queda donde estaba. */
@@ -183,40 +230,73 @@ export function ayerDe(hoy) {
   return d.toISOString().slice(0, 10);
 }
 
-export const PROMPT_TICKET = `Leés la foto de un ticket, factura o recibo de un gasto chico que pagó un empleado de una fábrica de muebles en Argentina (nafta, peaje, ferretería, comida, estacionamiento) y devolvés:
+export const PROMPT_TICKET = `Leés la foto de un ticket, factura o recibo de un gasto que pagó un empleado de una fábrica de muebles en Argentina (nafta, peaje, ferretería, insumos, comida, estacionamiento, un repuesto) y devolvés sus datos para registrarlos en la contabilidad:
 - importe: el total pagado, como número (sin el signo $). 0 si no se ve.
-- fecha: la fecha del ticket en formato AAAA-MM-DD. Vacío si no se ve.
-- comercio: el nombre del comercio o de quien lo emite, en pocas palabras. Vacío si no se ve.
-- concepto: el código del concepto que mejor corresponde, de la lista que se te da. Vacío si ninguno corresponde.`;
+- fecha: la fecha del ticket o de la factura en formato AAAA-MM-DD. Vacío si no se ve.
+- comercio: la razón social o el nombre de quien lo emite (el comercio, no el cliente), en pocas palabras. Vacío si no se ve.
+- cuit: el CUIT de quien lo emite, solo los 11 dígitos. Vacío si no se ve.
+- letra: la letra de la factura (A, B, C, M, E o X). Vacío si es un ticket o un recibo sin letra.
+- punto_venta y numero: el punto de venta y el número del comprobante, solo dígitos (en "0003-00012345": punto_venta "0003", numero "00012345"; en un ticket fiscal, el número de ticket). Vacío si no se ven.
+- neto: el importe sin IVA, solo si la factura discrimina IVA (factura A o M). 0 si no lo discrimina.
+- iva: la suma de los IVA discriminados (21 %, 10,5 %, 27 %). 0 si no está discriminado.
+- otros_impuestos: percepciones, impuestos internos y otros tributos que figuran aparte. 0 si no hay.
+- detalle: qué se compró, en pocas palabras (por ejemplo "Nafta súper 40 litros", "Tornillos y tarugos", "Almuerzo 3 personas"). Vacío si no se ve.
+- concepto: el código del concepto que mejor corresponde, de la lista que se te da. Vacío si ninguno corresponde.
+Usá punto como separador decimal. Si algo no se puede leer, dejalo vacío o en 0; no inventes datos.`;
 
 /** El esquema de la lectura del ticket, con los conceptos de la caja como opciones. */
 export function esquemaTicket(conceptos = []) {
-  const codigos = [...new Set(conceptos.map((c) => String(c.codigo)).filter(Boolean))].slice(0, 100);
+  const codigos = [...new Set(conceptos.map((c) => String(c.codigo)).filter(Boolean))].slice(0, 200);
   return {
     type: "object",
     additionalProperties: false,
-    required: ["importe", "fecha", "comercio", "concepto"],
+    required: ["importe", "fecha", "comercio", "cuit", "letra", "punto_venta", "numero", "neto", "iva", "otros_impuestos", "detalle", "concepto"],
     properties: {
       importe: { type: "number" },
       fecha: { type: "string" },
       comercio: { type: "string" },
+      cuit: { type: "string" },
+      letra: { type: "string", enum: [...LETRAS, ""] },
+      punto_venta: { type: "string" },
+      numero: { type: "string" },
+      neto: { type: "number" },
+      iva: { type: "number" },
+      otros_impuestos: { type: "number" },
+      detalle: { type: "string" },
       concepto: { type: "string", enum: [...codigos, ""] },
     },
   };
 }
 
 /** Lo que leyó la IA, listo para llenar el formulario (solo lo que tiene sentido). */
-export function propuestaTicket(lectura = {}, { conceptos = [], hoy } = {}) {
+export function propuestaTicket(lectura = {}, { conceptos = [], hoy, proveedores = [] } = {}) {
   const importe = Number(lectura?.importe);
   const fecha = String(lectura?.fecha || "");
   const dia = new Date(`${fecha}T12:00:00Z`);
   const fechaOk = /^\d{4}-\d{2}-\d{2}$/.test(fecha) && !Number.isNaN(dia.getTime()) && dia.toISOString().slice(0, 10) === fecha
     && (!hoy || (fecha <= hoy && fecha >= `${Number(hoy.slice(0, 4)) - 1}${hoy.slice(4)}`));
   const concepto = conceptos.some((c) => c.codigo === lectura?.concepto) ? lectura.concepto : "";
+  const total = Number.isFinite(importe) && importe > 0 && importe < 1e10 ? centavos(importe) : null;
+  const comercio = txt(lectura?.comercio, 120);
+  const cuitDig = soloDigitos(lectura?.cuit);
+  const cuit = cuitDig.length === 11 ? cuitFormato(cuitDig) : "";
+  const proveedor = comercio || cuit ? proveedorDeFactura({ emisor: comercio, cuit }, proveedores) : null;
+  const letra = LETRAS.includes(lectura?.letra) ? lectura.letra : "";
+  const numero = soloDigitos(lectura?.numero).slice(-8);
+  const imp = total ? importesTicket({ letra, neto: lectura?.neto, iva: lectura?.iva, otros_impuestos: lectura?.otros_impuestos }, total) : { neto: 0, iva: 0, otros: 0 };
   return {
-    importe: Number.isFinite(importe) && importe > 0 && importe < 1e10 ? centavos(importe) : null,
+    importe: total,
     fecha: fechaOk ? fecha : null,
     concepto: concepto || null,
-    descripcion: txt(lectura?.comercio, 120) || null,
+    descripcion: txt(lectura?.detalle, 200) || null,
+    comercio: proveedor?.nombre || comercio || null,
+    cuit: cuit || null,
+    proveedor_id: proveedor ? Number(proveedor.id) : null,
+    letra: letra || null,
+    punto_venta: numero ? soloDigitos(lectura?.punto_venta).slice(-5) || null : null,
+    numero: numero || null,
+    neto: imp.iva || imp.otros ? imp.neto : null,
+    iva: imp.iva || null,
+    otros_impuestos: imp.otros || null,
   };
 }
