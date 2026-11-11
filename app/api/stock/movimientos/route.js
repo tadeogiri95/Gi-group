@@ -4,6 +4,9 @@
 // Body: { accion, ... }
 //   registrar → consumo o devolución: cualquiera de la empresa (el operario
 //               escanea el QR del artículo); ingreso o ajuste: solo gestión.
+//               Un ingreso cuyo comprobante de ese proveedor ya entró (una
+//               recepción de OC, una factura sin OC u otro ingreso) avisa con
+//               409 repetido y solo se carga con forzar (11/11, parte 6).
 //               El artículo tiene que estar en el stock copiado de la planilla
 //               y la OT, si viene, entre las OT de la empresa.
 //   registrar_varios → (11/11, parte 5) varios retiros o devoluciones juntos:
@@ -22,6 +25,7 @@ import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { puedeCargar, puedeAnular } from "../../../lib/movimientosStock";
 import { logger } from "../../../lib/logger";
+import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../../lib/stockIngresos";
 
 function faltaMigracion(err) {
   return String(err?.message).includes("movimientos_stock");
@@ -44,10 +48,14 @@ async function registrar(sesion, datos) {
     ot = proyecto.ot;
   }
 
+  const esIngreso = datos.tipo === "ingreso";
+  if (esIngreso && !datos.forzar) {
+    const repetido = await buscarIngresoRepetido(sbGet, e, { proveedor: datos.proveedor, comprobante: datos.comprobante }, opts);
+    if (repetido) return NextResponse.json({ error: avisoIngresoRepetido(repetido), repetido: true }, { status: 409 });
+  }
   const [empleado] = sesion.empleado_id
     ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] })) || []
     : [];
-  const esIngreso = datos.tipo === "ingreso";
   const fila = {
     empresa_id: e,
     tipo: datos.tipo,

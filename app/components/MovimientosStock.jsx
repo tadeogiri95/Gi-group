@@ -95,7 +95,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
     setEnviando(false);
   };
 
-  const guardar = async () => {
+  const guardar = async (forzar = false) => {
     if (esVarios(form.tipo)) { await guardarVarios(); return; }
     const esAjuste = form.tipo === "ajuste";
     const cantidad = leerCantidadMovimiento(form.cantidad, { conSigno: esAjuste });
@@ -114,9 +114,17 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
           comprobante: form.tipo === "ingreso" ? form.comprobante : null,
           precio_unitario: form.tipo === "ingreso" ? precio : null,
           notas: form.notas || null,
+          ...(forzar ? { forzar: true } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
+      // El comprobante ya entró (una recepción de OC, una factura u otro ingreso): se confirma antes de repetirlo
+      if (res.status === 409 && data.repetido) {
+        setEnviando(false);
+        if (window.confirm(`${data.error}\n\n¿Es otro ingreso y lo querés cargar igual?`)) await guardar(true);
+        else setError(`${data.error} Si es el mismo, no hace falta cargarlo de nuevo.`);
+        return;
+      }
       if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar");
       setForm(null);
       await cargar();
@@ -262,7 +270,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
           {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
           <div className="flex gap-2">
             <button onClick={() => setForm(null)} className="g-btn g-btn-secondary flex-1">Cancelar</button>
-            <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : esVarios(form.tipo) && form.renglones.length > 1 ? `Guardar los ${form.renglones.length}` : "Guardar"}</button>
+            <button onClick={() => guardar()} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : esVarios(form.tipo) && form.renglones.length > 1 ? `Guardar los ${form.renglones.length}` : "Guardar"}</button>
           </div>
         </div>
       )}

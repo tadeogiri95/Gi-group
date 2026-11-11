@@ -17,7 +17,12 @@
 //   POST { accion: "restaurar", renglon_id } → vuelve a Sin asociar.
 // Desde la 169 una "factura" puede ser una lista de precios (tipo 'lista'):
 // hasta 5000 renglones, cantidad 1; se guarda en tandas.
-//   POST { accion: "anular", id } → anula la factura y saca sus precios de la lista.
+//   POST { accion: "anular", id } → anula la factura y saca sus precios de la lista
+//        (y, si se había mandado al stock, anula esos ingresos).
+//   POST { accion: "stock", id, forzar? } → (11/11, parte 6) "📦 Mandar al
+//        stock": un ingreso por cada renglón con artículo del MRP. Si ya entró
+//        ese comprobante de ese proveedor (por ejemplo con una recepción de
+//        OC), avisa (409 repetido) y solo lo carga con forzar.
 //
 // Dueño y Administración (gestión). Lee y escribe con la clave del servidor
 // después de verificar el rol, filtrando siempre por su empresa.
@@ -37,6 +42,8 @@ import {
   reconocerRenglon, validarFactura,
 } from "../../lib/facturasSueltas";
 import { ErrorIa, leerFacturaIa } from "../../lib/facturaIa";
+import { requireModuloSesion } from "../../lib/accesosServidor";
+import { avisoIngresoRepetido, buscarIngresoRepetido, ingresosDeFactura, marcaFacturaSuelta } from "../../lib/stockIngresos";
 
 export const maxDuration = 60;
 
@@ -119,6 +126,12 @@ export async function GET(request) {
         return NextResponse.json({ ok: true, renglones: data || [] });
       }
       const facturas = (await sbGet(`facturas_sueltas?empresa_id=eq.${e}&select=*,facturas_sueltas_renglones(cantidad,precio,sku,asociado_como)&order=created_at.desc,id.desc&limit=100`)) || [];
+      // Las que ya se mandaron al stock (parte 6)
+      const marcas = facturas.filter((f) => f.tipo !== "lista").map((f) => `"${marcaFacturaSuelta(f.id)}"`);
+      const enStock = marcas.length
+        ? new Set(((await sbGet(`movimientos_stock?empresa_id=eq.${e}&tipo=eq.ingreso&anulado=eq.false&notas=in.(${encodeURIComponent(marcas.join(","))})&select=notas`, { silent: true, fallback: [] })) || []).map((m) => m.notas))
+        : new Set();
+      for (const f of facturas) f.en_stock = enStock.has(marcaFacturaSuelta(f.id));
       const sinAsociar = await contar(`facturas_sueltas_renglones?empresa_id=eq.${e}&${SIN_ASOCIAR}&select=id,facturas_sueltas!inner(anulada_at)&facturas_sueltas.anulada_at=is.null`);
       return NextResponse.json({ ok: true, facturas, sinAsociar });
     } catch (err) {
@@ -273,7 +286,45 @@ async function anular(sesion, d) {
     await sbDelete(`precios_articulos?empresa_id=eq.${e}&origen=eq.factura&referencia=in.(${refs})`);
   }
   if ((await sincronizarCompra(e, { origen: "factura_suelta", id })).accion === "anulada") broadcastRefresh(e, "fin_operaciones");
-  return NextResponse.json({ ok: true });
+  // Si sus materiales se habían mandado al stock, esos ingresos se anulan también
+  const sacados = (await sbPatch(`movimientos_stock?empresa_id=eq.${e}&tipo=eq.ingreso&anulado=eq.false&notas=eq.${encodeURIComponent(marcaFacturaSuelta(id))}`,
+    { anulado: true, anulado_por: sesion.empleado_id || null, anulado_at: new Date().toISOString() }, { silent: true, fallback: [] })) || [];
+  if (sacados.length) broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, stock_anulados: sacados.length });
+}
+
+async function mandarAlStock(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d?.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Factura inválida" }, { status: 400 });
+  const sinModulo = await requireModuloSesion(sesion, "stock");
+  if (sinModulo) return sinModulo;
+  const [factura] = (await sbGet(`facturas_sueltas?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+  if (!factura) return NextResponse.json({ error: "No encontré esa factura" }, { status: 404 });
+  if (factura.anulada_at) return NextResponse.json({ error: "Esa factura está anulada" }, { status: 409 });
+  if (factura.tipo === "lista") return NextResponse.json({ error: "Una lista de precios no trae materiales" }, { status: 400 });
+  const marca = marcaFacturaSuelta(id);
+  const [ya] = (await sbGet(`movimientos_stock?empresa_id=eq.${e}&tipo=eq.ingreso&anulado=eq.false&notas=eq.${encodeURIComponent(marca)}&select=id&limit=1`, { silent: true, fallback: [] })) || [];
+  if (ya) return NextResponse.json({ error: "Esta factura ya está en el stock", ya_en_stock: true }, { status: 409 });
+  const { data: renglones } = await sbGetAll(`facturas_sueltas_renglones?factura_id=eq.${id}&empresa_id=eq.${e}&select=id,descripcion,cantidad,precio,sku,asociado_como&order=orden.asc,id.asc`, { maxFilas: 1000 });
+  const skus = [...new Set((renglones || []).map((r) => r.sku).filter(Boolean))];
+  if (!skus.length) return NextResponse.json({ error: "Ningún renglón está asociado a un artículo del stock: asocialos primero (Sin asociar)." }, { status: 400 });
+  if (!d.forzar) {
+    const repetido = await buscarIngresoRepetido(sbGet, e, { proveedor: factura.proveedor, comprobante: factura.numero });
+    if (repetido) return NextResponse.json({ error: avisoIngresoRepetido(repetido), repetido: true }, { status: 409 });
+  }
+  const articulos = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=in.(${encodeURIComponent(skus.map((s) => `"${s}"`).join(","))})&select=sku,nombre,unidad,division`)) || [];
+  const { filas, sinArticulo } = ingresosDeFactura(factura, renglones || [], articulos, {
+    empleado_id: sesion.empleado_id, legajo: sesion.legajo, empleado_nombre: await nombreDe(sesion),
+  });
+  try {
+    await sbPost("movimientos_stock", filas);
+  } catch (err) {
+    if (/movimientos_stock/.test(String(err?.message))) return NextResponse.json({ error: "Para mandar al stock falta correr la migración 107 en Supabase." }, { status: 409 });
+    throw err;
+  }
+  broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, cargados: filas.length, sin_articulo: sinArticulo });
 }
 
 export async function POST(request) {
@@ -289,6 +340,7 @@ export async function POST(request) {
         case "descartar": return await descartar(sesion, d);
         case "restaurar": return await restaurar(sesion, d);
         case "anular": return await anular(sesion, d);
+        case "stock": return await mandarAlStock(sesion, d);
         default: return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
       }
     } catch (err) {

@@ -369,6 +369,8 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
     comprobante: textoSuelto(60),
     precio_unitario: z.number().finite().min(0).max(1e11).nullable().optional().transform((v) => v ?? null),
     notas: textoSuelto(300),
+    // 11/11 (parte 6): cargar igual un ingreso cuyo comprobante ya entró
+    forzar: z.boolean().optional(),
   }).strict().refine((m) => m.tipo === "ajuste" || m.cantidad > 0, { message: "La cantidad tiene que ser mayor a cero", path: ["cantidad"] }),
   z.object({ accion: z.literal("anular"), id: z.number().int().positive() }).strict(),
   // 11/11 (parte 5): varios retiros o devoluciones juntos, cada uno con su OT

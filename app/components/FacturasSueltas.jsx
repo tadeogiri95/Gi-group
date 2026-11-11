@@ -6,7 +6,8 @@
 // (app/lib/listasPrecios.js), siempre con vista previa. Cada renglón se
 // reconoce con un artículo del MRP; lo que no, queda "Sin asociar" hasta
 // elegirlo (Gypi lo recuerda para ese proveedor) o marcarlo "No es del MRP".
-// Solo suman precio a la lista de precios: no mueven stock.
+// Suman precio a la lista de precios; con "📦 Mandar al stock" (11/11) sus
+// materiales entran al stock (app/lib/stockIngresos.js).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, sbGetAll } from "../lib/supabase";
 import { sugerirArticulos, cantidadTexto } from "../lib/stock";
@@ -531,9 +532,27 @@ export default function FacturasSueltas() {
 
   const anular = async (f) => {
     const que = f.tipo === "lista" ? "la lista" : "la factura";
-    if (!window.confirm(`¿Anular ${que} de ${f.proveedor}${f.numero ? ` N° ${f.numero}` : ""}? Sus precios salen de la lista de precios.`)) return;
+    if (!window.confirm(`¿Anular ${que} de ${f.proveedor}${f.numero ? ` N° ${f.numero}` : ""}? Sus precios salen de la lista de precios${f.en_stock ? " y sus materiales salen del stock" : ""}.`)) return;
     try {
       await post({ accion: "anular", id: f.id }, "No se pudo anular");
+      recargar();
+    } catch (e) {
+      toast.error(e.message);
+    }
+  };
+
+  // 11/11 (parte 6): una compra sin orden de compra manda sus materiales al stock
+  const mandarAlStock = async (f, forzar = false) => {
+    if (!forzar && !window.confirm(`¿Mandar al stock los materiales de ${f.proveedor}${f.numero ? ` N° ${f.numero}` : ""}? Entra un ingreso por cada renglón asociado a un artículo.`)) return;
+    try {
+      const res = await apiFetch("/api/facturas-sueltas", { method: "POST", body: JSON.stringify({ accion: "stock", id: f.id, ...(forzar ? { forzar: true } : {}) }) });
+      const d = await res.json().catch(() => ({}));
+      if (res.status === 409 && d.repetido) {
+        if (window.confirm(`${d.error}\n\n¿Son otros materiales y los querés mandar igual?`)) await mandarAlStock(f, true);
+        return;
+      }
+      if (!res.ok || d.error) throw new Error(d.error || "No se pudo mandar al stock");
+      toast.success(`📦 ${d.cargados} artículo(s) entraron al stock${d.sin_articulo ? `. ${d.sin_articulo} renglón(es) sin asociar no entraron` : ""}.`);
       recargar();
     } catch (e) {
       toast.error(e.message);
@@ -595,7 +614,7 @@ export default function FacturasSueltas() {
 
   return (
     <div>
-      <div className="text-xs text-gypi-dim mb-2">Facturas que no pasaron por una orden de compra y listas de precios de proveedores (PDF, foto o Excel). Su precio entra a la lista de precios de cada artículo; no mueven stock.</div>
+      <div className="text-xs text-gypi-dim mb-2">Facturas que no pasaron por una orden de compra y listas de precios de proveedores (PDF, foto o Excel). Su precio entra a la lista de precios de cada artículo y la compra entra sola a Finanzas. Con 📦 Mandar al stock, los materiales de la factura entran al stock (si llegaron con una orden de compra ya entraron al recibirla).</div>
       {editor ? (
         <Editor key={`${editor.carga}|${editor.proveedor}|${editor.planilla?.archivo || ""}`} inicial={editor} articulos={articulos}
           onGuardada={() => { setEditor(null); setVista("facturas"); recargar(); }} onCancelar={() => setEditor(null)} />
@@ -639,6 +658,9 @@ export default function FacturasSueltas() {
                   </div>
                   <div className="flex gap-2 mt-1">
                     <button type="button" onClick={() => setAbierta(abierta === f.id ? null : f.id)} className="min-h-[36px] bg-transparent border-none cursor-pointer text-xs text-gypi-dim underline p-0">{abierta === f.id ? "Ocultar renglones" : "Ver renglones"}</button>
+                    {!f.anulada_at && !esLista && (f.en_stock
+                      ? <span className="min-h-[36px] inline-flex items-center text-xs font-semibold text-gypi-green-ink">📦 En el stock</span>
+                      : asociados > 0 && <button type="button" onClick={() => mandarAlStock(f)} className="min-h-[36px] bg-transparent border-none cursor-pointer text-xs font-semibold text-gypi-amber-ink underline p-0">📦 Mandar al stock</button>)}
                     {!f.anulada_at && <button type="button" onClick={() => anular(f)} className="min-h-[36px] bg-transparent border-none cursor-pointer text-xs text-gypi-red underline p-0">Anular</button>}
                   </div>
                   {abierta === f.id && <DetalleFactura id={f.id} articulos={articulos} onCambio={recargar} />}
