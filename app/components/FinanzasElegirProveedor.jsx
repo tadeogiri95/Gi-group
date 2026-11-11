@@ -3,32 +3,24 @@
 // Finanzas (pagos, cheques) con la agenda de personas (parte 4 del plan del
 // 11/11). Muestra los proveedores de Gypi y, abajo, la gente de la agenda que
 // todavía no es proveedor: al elegir a alguien de ahí, Gypi lo da de alta como
-// proveedor y queda elegido.
+// proveedor y queda elegido. Al final, "➕ Nuevo proveedor" (11/11) da de alta
+// uno que no está en ningún lado (AltaPersona.jsx).
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
+import { agendaLeida, leerAgenda, olvidarAgenda } from "../lib/agendaCache";
 import { SelectBuscable } from "./ui";
 import { useToast } from "./ui/Toast";
+import { VentanaAltaPersona } from "./AltaPersona";
 
-let agendaGuardada = null;
-let pedido = null;
-
-/** Se olvida la agenda leída (después de cambiar algo en 📇 Personas). */
-export function olvidarAgenda() {
-  agendaGuardada = null;
-  pedido = null;
-}
+export { olvidarAgenda };
 
 /** La agenda de personas (se lee una vez por pantalla abierta). */
 export function useAgenda() {
-  const [agenda, setAgenda] = useState(agendaGuardada || []);
+  const [agenda, setAgenda] = useState(agendaLeida() || []);
   useEffect(() => {
-    if (agendaGuardada) return undefined;
+    if (agendaLeida()) return undefined;
     let vivo = true;
-    pedido = pedido || apiFetch("/api/finanzas/personas")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => (Array.isArray(d?.agenda) ? d.agenda : []))
-      .catch(() => []);
-    pedido.then((a) => { agendaGuardada = a; if (vivo) setAgenda(a); });
+    leerAgenda().then((a) => { if (vivo) setAgenda(a); });
     return () => { vivo = false; };
   }, []);
   return agenda;
@@ -44,6 +36,7 @@ export default function ElegirProveedor({ value, onChange, proveedores = [], vac
   const agenda = useAgenda();
   const [extra, setExtra] = useState([]);
   const [creando, setCreando] = useState(false);
+  const [alta, setAlta] = useState(null);
   const lista = [...proveedores, ...extra.filter((x) => !proveedores.some((p) => Number(p.id) === Number(x.id)))];
   const deAgenda = agenda.filter((e) => !e.proveedor_id);
 
@@ -69,7 +62,9 @@ export default function ElegirProveedor({ value, onChange, proveedores = [], vac
   };
 
   return (
-    <SelectBuscable className="g-input w-full" {...rest} value={value} disabled={disabled || creando} onChange={elegir}>
+    <>
+    <SelectBuscable className="g-input w-full" {...rest} value={value} disabled={disabled || creando} onChange={elegir}
+      nuevo={{ etiqueta: "Nuevo proveedor", onElegir: (nombre) => setAlta({ nombre }) }}>
       <option value="">{creando ? "Dando de alta…" : vacio}</option>
       <optgroup label="Proveedores">
         {lista.filter((p) => p.activo !== false || String(p.id) === String(value)).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
@@ -80,5 +75,11 @@ export default function ElegirProveedor({ value, onChange, proveedores = [], vac
         </optgroup>
       )}
     </SelectBuscable>
+    <VentanaAltaPersona abierta={!!alta} onCerrar={() => setAlta(null)} nombre={alta?.nombre || ""} rol="proveedor"
+      onCreada={(p) => {
+        setExtra((x) => [...x, { id: p.proveedor_id, nombre: p.nombre, activo: true }]);
+        onChange({ target: { value: String(p.proveedor_id) } });
+      }} />
+    </>
   );
 }

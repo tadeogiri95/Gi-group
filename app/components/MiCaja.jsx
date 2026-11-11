@@ -11,6 +11,7 @@ import { numero, plata, separaIva } from "../lib/finanzasOperaciones";
 import Modal from "./ui/Modal";
 import SelectBuscable from "./ui/SelectBuscable";
 import BotonFoto from "./BotonFoto";
+import BotonNuevaPersona from "./AltaPersona";
 import { Chip } from "./ui";
 import { ayerDe, conceptosPorUso } from "../lib/finanzasMiCaja";
 
@@ -123,6 +124,12 @@ function DatosTicket({ f, setF, abierto, onAbrir, separa = true }) {
           <input className="g-input w-full" aria-label="Comercio" maxLength={120} placeholder="Ej.: YPF, Ferretería Centro" value={f.comercio} onChange={set("comercio")} />
         </label>
         {f.proveedor_id && <span className="text-[12px] text-gypi-green-ink">✓ Está en la lista de proveedores</span>}
+        {!f.proveedor_id && f.comercio.trim() && (
+          <BotonNuevaPersona rol="proveedor" nombre={f.comercio.trim()} cuit={f.cuit} className="self-start"
+            onCreada={(p) => setF((x) => ({ ...x, proveedor_id: String(p.proveedor_id), comercio: p.nombre, cuit: x.cuit || p.cuit || "" }))}>
+            ➕ Dar de alta como proveedor
+          </BotonNuevaPersona>
+        )}
         <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">CUIT
           <input className="g-input w-[180px]" aria-label="CUIT" inputMode="numeric" maxLength={13} placeholder="30-12345678-9" value={f.cuit} onChange={set("cuit")} />
         </label>

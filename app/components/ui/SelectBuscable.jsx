@@ -50,9 +50,17 @@ export function filtrarOpciones(opciones, texto) {
   });
 }
 
+/** El renglón "➕ Nuevo…" del final (prop nuevo). */
+const NUEVO = '__nuevo__';
+
+/**
+ * nuevo (opcional, 11/11): { etiqueta, onElegir(texto) } agrega al final de la
+ * lista un renglón "➕ etiqueta: «lo escrito»" para dar de alta lo que no está
+ * (un proveedor o un cliente nuevo) sin cambiar de pantalla.
+ */
 export default function SelectBuscable({
   value, onChange, children, className = 'g-input w-full', disabled = false, id, placeholder,
-  'aria-label': ariaLabel, ...rest
+  'aria-label': ariaLabel, nuevo, ...rest
 }) {
   // El ancho (w-*, min-w-*, max-w-*, flex-1…) va a la caja de afuera; el
   // casillero de adentro siempre ocupa todo
@@ -72,12 +80,17 @@ export default function SelectBuscable({
   const [activa, setActiva] = useState(0);
   const lista = useRef(null);
 
-  const visibles = useMemo(() => filtrarOpciones(opciones, texto), [opciones, texto]);
+  const encontradas = useMemo(() => filtrarOpciones(opciones, texto), [opciones, texto]);
+  const escrito = texto.trim();
+  const visibles = nuevo
+    ? [...encontradas, { value: NUEVO, label: `➕ ${nuevo.etiqueta}${escrito ? `: «${escrito}»` : ''}`, grupo: null, disabled: false }]
+    : encontradas;
 
   const elegir = (o) => {
     if (!o || o.disabled) return;
     setAbierta(false);
     setTexto('');
+    if (o.value === NUEVO) { nuevo?.onElegir?.(escrito); return; }
     if (o.value !== String(value ?? '')) onChange?.({ target: { value: o.value } });
   };
 
@@ -147,7 +160,7 @@ export default function SelectBuscable({
           aria-label={ariaLabel ? `Opciones de ${ariaLabel}` : 'Opciones'}
           className="absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gypi-border bg-gypi-bg shadow-lg py-1 m-0 list-none"
         >
-          {visibles.length === 0 && <li className="px-3 py-2 text-[13px] text-gypi-dim">No hay coincidencias</li>}
+          {encontradas.length === 0 && <li className="px-3 py-2 text-[13px] text-gypi-dim">No hay coincidencias</li>}
           {visibles.map((o, i) => {
             const titulo = o.grupo && (i === 0 || visibles[i - 1].grupo !== o.grupo);
             const marcada = o.value === String(value ?? '');

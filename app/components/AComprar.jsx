@@ -12,6 +12,7 @@ import { ESTADOS_OC_ABIERTA, MONEDAS, NOMBRE_A_COTIZAR, agruparPorProveedor, con
 import { faltaTabla } from "../lib/compras";
 import { Chip } from "./ui";
 import UnidadCompra from "./UnidadCompra";
+import { OPCION_NUEVA, VentanaAltaPersona } from "./AltaPersona";
 import { useOts } from "../hooks/useOts";
 import { otCompleta, textoOt } from "../lib/nombreOt";
 
@@ -33,6 +34,7 @@ export default function AComprar({ empresaId, onCreadas }) {
   const porOt = useOts();
   const [lineas, setLineas] = useState(null);
   const [proveedores, setProveedores] = useState([]);
+  const [altaPara, setAltaPara] = useState(null);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [elegidas, setElegidas] = useState(() => new Set());
   const [cambios, setCambios] = useState({});
@@ -171,12 +173,17 @@ export default function AComprar({ empresaId, onCreadas }) {
   return (
     <div>
       {faltaMigracion && <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">{AVISO_MIGRACION_114}</div>}
+      <VentanaAltaPersona abierta={!!altaPara} onCerrar={() => setAltaPara(null)} rol="proveedor"
+        onCreada={(p) => {
+          setProveedores((x) => (x.some((q) => q.id === p.proveedor_id) ? x : [...x, { id: p.proveedor_id, nombre: p.nombre }].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))));
+          if (altaPara) cambiar(altaPara, "proveedor_id", p.proveedor_id);
+        }} />
       <div className="text-[13px] text-gypi-dim mb-2">
         Tildá lo que vas a comprar y elegí el proveedor. Se arma una orden de compra por proveedor, con el último precio sin IVA.
         Lo que dejes sin proveedor va a una orden &quot;A cotizar&quot; para pedirle precio a varios.
       </div>
       {!proveedores.length && (
-        <div role="alert" className="text-[13px] text-gypi-red mb-2">No hay proveedores cargados. Cargalos en la pestaña Proveedores.</div>
+        <div role="alert" className="text-[13px] text-gypi-red mb-2">No hay proveedores cargados. Cargalos en la pestaña Proveedores o con ➕ Nuevo proveedor al elegir uno.</div>
       )}
       <div role="group" aria-label="Qué mostrar" className="flex gap-1.5 mb-2 flex-wrap">
         {FILTROS.map((f) => (
@@ -214,9 +221,10 @@ export default function AComprar({ empresaId, onCreadas }) {
               {elegidas.has(l.clave) && (
                 <div className="flex gap-2 mt-2 flex-wrap">
                   <select aria-label={`Proveedor de ${l.descripcion}`} className="g-input flex-1 min-w-[140px]" value={l.proveedor_id || ""}
-                    onChange={(e) => cambiar(l.clave, "proveedor_id", e.target.value ? Number(e.target.value) : null)}>
+                    onChange={(e) => (e.target.value === OPCION_NUEVA ? setAltaPara(l.clave) : cambiar(l.clave, "proveedor_id", e.target.value ? Number(e.target.value) : null))}>
                     <option value="">Sin proveedor (a cotizar)</option>
                     {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    <option value={OPCION_NUEVA}>➕ Nuevo proveedor…</option>
                   </select>
                   <div className="flex gap-2 w-full">
                     <div className="flex-1 min-w-0">
