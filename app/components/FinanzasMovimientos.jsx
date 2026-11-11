@@ -9,6 +9,8 @@
 // banco se elige cuál. Muestra el asiento antes de guardar (con el IVA en su
 // cuenta) y no deja guardar lo que hoy marca CHK_CARGA. Nada se borra: una
 // operación mal cargada se anula y se carga de nuevo.
+// "🧾 Cargar gasto o factura" (parte 5 del 11/11) carga un gasto devengado en
+// su mes, con su deuda y su pago: FinanzasCargarGasto.jsx.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -16,6 +18,8 @@ import { textoOt } from "../lib/nombreOt";
 import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
 import { armarAgenda, opcionesAgenda } from "../lib/finanzasPersonas";
 import { useAgenda } from "./FinanzasElegirProveedor";
+import CargarGasto from "./FinanzasCargarGasto";
+import { ORIGEN_GASTO } from "../lib/finanzasGastos";
 import {
   ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
 } from "../lib/finanzasOperaciones";
@@ -299,7 +303,8 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
   const toast = useToast();
   const [confirmar, setConfirmar] = useState(false);
   const [anulando, setAnulando] = useState(false);
-  const automatica = op.origen && op.origen !== "manual";
+  const gasto = op.origen === ORIGEN_GASTO;
+  const automatica = op.origen && op.origen !== "manual" && !gasto;
   const compra = ["factura_oc", "factura_oc_otra", "factura_suelta"].includes(op.origen);
 
   const anular = async () => {
@@ -328,7 +333,7 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
         {fila("Descripción", op.descripcion)}
         {fila("Referencia", op.referencia)}
         {fila("Cargada por", op.cargada_por_nombre)}
-        {automatica && fila("Salió de", ORIGENES[op.origen] || op.origen)}
+        {(automatica || gasto) && fila("Salió de", ORIGENES[op.origen] || op.origen)}
         {op.estado === "para_revisar" && !op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde.</p>}
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
         {compra && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
@@ -338,7 +343,7 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
           <div className="flex justify-end gap-2 mt-2">
             {confirmar ? (
               <>
-                <span className="self-center text-[13px] text-gypi-text">¿Anular esta operación? Queda tachada y no suma.</span>
+                <span className="self-center text-[13px] text-gypi-text">{gasto ? "¿Anular este gasto? Se anula junto con su pago, si lo cargaste. Queda tachado y no suma." : "¿Anular esta operación? Queda tachada y no suma."}</span>
                 <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfirmar(false)}>No</button>
                 <button type="button" className="g-btn g-btn-primary" disabled={anulando} onClick={anular}>{anulando ? "Anulando…" : "Sí, anular"}</button>
               </>
@@ -360,6 +365,7 @@ export default function FinanzasMovimientos() {
   const [error, setError] = useState(null);
   const [filtros, setFiltros] = useState({ revisar: false, tipo: "", caja: "", proveedor: "", proyecto: "", centro: "", buscar: "", anuladas: false });
   const [nueva, setNueva] = useState(false);
+  const [cargarGasto, setCargarGasto] = useState(false);
   const [detalle, setDetalle] = useState(null);
 
   const cargar = useCallback(async () => {
@@ -414,6 +420,7 @@ export default function FinanzasMovimientos() {
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <div className="flex flex-wrap items-end gap-2 mb-2">
         <button type="button" className="g-btn g-btn-primary" onClick={() => setNueva(true)}>+ Nueva operación</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setCargarGasto(true)}>🧾 Cargar gasto o factura</button>
         {campo("Desde", <input type="date" className="g-input" value={periodo.desde} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, desde: e.target.value }))} />, "ml-auto")}
         {campo("Hasta", <input type="date" className="g-input" value={periodo.hasta} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, hasta: e.target.value }))} />)}
       </div>
@@ -475,6 +482,7 @@ export default function FinanzasMovimientos() {
       {!lista.length && <p className="mt-2 text-[13px] text-gypi-dim">No hay operaciones en el período con esos filtros.</p>}
 
       {nueva && <NuevaOperacion datos={datos} onCerrar={() => setNueva(false)} onGuardada={() => { setNueva(false); cargar(); }} />}
+      {cargarGasto && <CargarGasto datos={datos} onCerrar={() => setCargarGasto(false)} onGuardada={() => { setCargarGasto(false); cargar(); }} />}
       {detalle && <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); cargar(); }} />}
     </div>
   );
