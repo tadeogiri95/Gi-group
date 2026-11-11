@@ -15,6 +15,7 @@ import {
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import { fechaDebito } from "../lib/finanzasDiasHabiles";
+import ElegirProveedor from "./FinanzasElegirProveedor";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -79,10 +80,7 @@ function NuevoCheque({ clase, datos, onCerrar, onGuardado }) {
         {clase === "propio" ? (
           <>
             {campo("Proveedor", (
-              <SelectBuscable className="g-input w-full" aria-label="Proveedor" value={f.proveedor_id} onChange={set("proveedor_id")}>
-                <option value="">Elegí el proveedor</option>
-                {datos.proveedores.filter((p) => p.activo !== false).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </SelectBuscable>
+              <ElegirProveedor aria-label="Proveedor" value={f.proveedor_id} proveedores={datos.proveedores} onChange={set("proveedor_id")} />
             ))}
             {campo("Banco que lo debita", (
               <SelectBuscable className="g-input w-full" aria-label="Banco que lo debita" value={f.cuenta_banco} onChange={set("cuenta_banco")}>
@@ -174,10 +172,7 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
               </SelectBuscable>
             ))}
             {accion === "entregado" && campo("Proveedor", (
-              <SelectBuscable className="g-input w-full" aria-label="Proveedor que lo recibe" value={proveedor} onChange={(e) => setProveedor(e.target.value)}>
-                <option value="">Elegí el proveedor</option>
-                {datos.proveedores.filter((p) => p.activo !== false).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </SelectBuscable>
+              <ElegirProveedor aria-label="Proveedor que lo recibe" value={proveedor} proveedores={datos.proveedores} onChange={(e) => setProveedor(e.target.value)} />
             ))}
             {accion === "anular" && <p className="m-0 text-[13px] text-gypi-dim">El cheque queda anulado y su operación también. No se borra.</p>}
             {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
