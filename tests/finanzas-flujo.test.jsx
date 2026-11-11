@@ -116,7 +116,7 @@ test("lo que viene — por semana, lo vencido en la primera, saldo proyectado", 
     hoy: "2026-11-11", saldoHoy: 10000,
     cheques: [
       { clase: "tercero", estado: "en_cartera", fecha_pago: "2026-11-05", importe: 3000, banco: "Galicia", numero: "1" },
-      { clase: "propio", estado: "pendiente", fecha_pago: "2026-11-20", importe: 4000, beneficiario: "Acerco" },
+      { clase: "propio", estado: "pendiente", fecha_pago: "2026-11-18", importe: 4000, beneficiario: "Acerco" },
       { clase: "propio", estado: "pendiente", fecha_pago: "2027-03-01", importe: 1 },
     ],
     ordenes: [{ estado: "aprobada", fecha: "2026-11-01", total: 500, numero: 7, proveedor_nombre: "Acerco" }, { estado: "borrador", fecha: "2026-11-12", total: 9 }],

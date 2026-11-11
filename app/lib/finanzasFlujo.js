@@ -19,6 +19,7 @@
 //     y cheques propios a debitar (−), órdenes de pago aprobadas o por
 //     aprobar (−) y sueldos confirmados sin pagar (−), desde el saldo de hoy.
 import { LINEAS_RENOMBRADAS, MAPA_TIPOS, NOMBRE_FORMA, claveTipo, formaDePago, lineaDeLista } from "./finanzasTipos";
+import { fechaDebito } from "./finanzasDiasHabiles";
 
 export const CLAVE_FLUJO = "finanzas_flujo";
 export const DESARROLLISMO = "INVERSIONES DESARROLLISMO";
@@ -258,11 +259,13 @@ export function lunesDe(fecha) {
 }
 const sumarDias = (fecha, n) => { const d = new Date(`${fecha}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
+const dm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : "");
+
 /**
  * Lo que viene, por semana desde hoy (lo vencido va en la primera).
  * @param {{ hoy, saldoHoy, cheques, ordenes, sueldos: { fecha, importe, detalle }[] }} d
  */
-export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], sueldos = [], semanas = SEMANAS }) {
+export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], sueldos = [], semanas = SEMANAS, feriados = null }) {
   const inicio = lunesDe(hoy);
   const cols = Array.from({ length: semanas }, (_, i) => sumarDias(inicio, i * 7));
   const col = (fecha) => {
@@ -271,7 +274,7 @@ export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], s
     return i < semanas ? i : null;
   };
   const filas = [
-    { id: "cheques_terceros", nombre: "Cheques de terceros a depositar", signo: 1 },
+    { id: "cheques_terceros", nombre: "Cheques de terceros a acreditar", signo: 1 },
     { id: "cheques_propios", nombre: "E-cheq y cheques propios a debitar", signo: -1 },
     { id: "ordenes", nombre: "Órdenes de pago aprobadas o por aprobar", signo: -1 },
     { id: "sueldos", nombre: "Sueldos por pagar", signo: -1 },
@@ -286,8 +289,11 @@ export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], s
     f.detalle[i].push({ fecha, importe: v, texto });
   };
   for (const ch of cheques) {
-    if (ch.clase === "tercero" && ch.estado === "en_cartera") poner("cheques_terceros", ch.fecha_pago, ch.importe, `${ch.banco || "Cheque"}${ch.numero ? ` N° ${ch.numero}` : ""}${ch.librador ? ` · ${ch.librador}` : ""}`);
-    if (ch.clase === "propio" && ch.estado === "pendiente") poner("cheques_propios", ch.fecha_pago, ch.importe, `${ch.beneficiario || "E-cheq"}${ch.numero ? ` N° ${ch.numero}` : ""}`);
+    // La plata se mueve el día hábil siguiente al depósito (finanzasDiasHabiles.js)
+    const mueve = fechaDebito(ch.fecha_pago, feriados) || ch.fecha_pago;
+    const vence = ` · vence ${dm(ch.fecha_pago)}`;
+    if (ch.clase === "tercero" && ch.estado === "en_cartera") poner("cheques_terceros", mueve < hoy ? hoy : mueve, ch.importe, `${ch.banco || "Cheque"}${ch.numero ? ` N° ${ch.numero}` : ""}${ch.librador ? ` · ${ch.librador}` : ""}${vence}`);
+    if (ch.clase === "propio" && ch.estado === "pendiente") poner("cheques_propios", mueve < hoy ? hoy : mueve, ch.importe, `${ch.beneficiario || "E-cheq"}${ch.numero ? ` N° ${ch.numero}` : ""}${vence}`);
   }
   for (const o of ordenes) {
     if (["aprobada", "para_aprobar"].includes(o.estado)) poner("ordenes", o.fecha < hoy ? hoy : o.fecha, o.total, `OP N° ${o.numero} · ${o.proveedor_nombre}${o.estado === "para_aprobar" ? " (por aprobar)" : ""}`);

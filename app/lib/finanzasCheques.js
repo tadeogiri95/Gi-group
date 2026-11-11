@@ -12,6 +12,7 @@
 // Los vivos de R-CHEQUES (ACTIVO y ENTREGADO) se copian sin operación.
 import { claveNombre, CUENTA_PROVEEDORES } from "./finanzasProveedores";
 import { fechaDelLibro } from "./finanzasProveedores";
+import { fechaDebito } from "./finanzasDiasHabiles";
 
 export const TIPOS_CHEQUE = {
   echeq_diferido: "E-cheq de pago diferido",
@@ -255,10 +256,11 @@ const dias = (desde, hasta) => Math.round((Date.parse(`${hasta}T12:00:00Z`) - Da
 
 /**
  * Calendario por semana desde hoy (como PREVISIÓN CHEQUES): cuánto se
- * debita de los propios y cuánto vence de los de terceros en cartera.
+ * debita de los propios y cuánto se acredita de los de terceros en cartera,
+ * el día hábil siguiente al depósito (finanzasDiasHabiles.js).
  * @returns {{ etiqueta: string, desde: number, hasta: number|null, debitar: number, cobrar: number, cantidad: number }[]}
  */
-export function calendarioCheques(cheques = [], hoy, semanas = 8) {
+export function calendarioCheques(cheques = [], hoy, semanas = 8, feriados = null) {
   const tramos = [{ etiqueta: "Vencidos", desde: -Infinity, hasta: -1 }, { etiqueta: "Hoy", desde: 0, hasta: 0 }];
   for (let s = 0; s < semanas; s++) tramos.push({ etiqueta: `${s * 7 + 1} a ${s * 7 + 7} días`, desde: s * 7 + 1, hasta: s * 7 + 7 });
   tramos.push({ etiqueta: "Más adelante", desde: semanas * 7 + 1, hasta: Infinity });
@@ -267,7 +269,7 @@ export function calendarioCheques(cheques = [], hoy, semanas = 8) {
     const debita = ch.clase === "propio" && ch.estado === "pendiente";
     const cobra = ch.clase === "tercero" && ch.estado === "en_cartera";
     if (!debita && !cobra) continue;
-    const d = dias(hoy, ch.fecha_pago);
+    const d = dias(hoy, fechaDebito(ch.fecha_pago, feriados) || ch.fecha_pago);
     const t = filas.find((x) => d >= x.desde && d <= x.hasta);
     if (!t) continue;
     if (debita) t.debitar += Number(ch.importe) || 0; else t.cobrar += Number(ch.importe) || 0;

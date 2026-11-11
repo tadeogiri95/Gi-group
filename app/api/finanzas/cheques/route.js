@@ -13,7 +13,9 @@
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
-import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
+import { feriadosFinanzas } from "../../../lib/finanzasDiasHabiles";
+import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
@@ -54,11 +56,13 @@ export async function GET(request) {
   const e = sesion.empresa_id;
   const anulados = new URL(request.url).searchParams.get("anulados") === "1";
   try {
-    const [ctx, cheques] = await Promise.all([
+    const [ctx, cheques, planificacion] = await Promise.all([
       contexto(sesion),
       leer(sesion, `fin_cheques?empresa_id=eq.${e}${anulados ? "" : "&estado=neq.anulado"}&select=*&order=fecha_pago.asc,id.asc`, 20000),
+      sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`, { silent: true, fallback: [] }).then((r) => r?.[0]?.valor || null).catch(() => null),
     ]);
-    return NextResponse.json({ ...ctx, cheques });
+    // Los días sin bancos, para saber cuándo se debita o acredita cada cheque
+    return NextResponse.json({ ...ctx, cheques, feriados: [...feriadosFinanzas(planificacion)].sort() });
   } catch (err) {
     return error(err, "cheques GET");
   }

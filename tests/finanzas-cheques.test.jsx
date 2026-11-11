@@ -119,7 +119,7 @@ test("libro — copia ACTIVO y ENTREGADO; propio es el que libra la empresa", ()
 
 test("calendario y aviso — por semana desde hoy; avisa lo que vence hasta mañana una sola vez", () => {
   const cheques = [
-    { ...PROPIO, fecha_pago: "2026-11-08" }, { ...PROPIO, id: 12, fecha_pago: "2026-11-10" }, { ...TERCERO, fecha_pago: "2026-11-20" },
+    { ...PROPIO, fecha_pago: "2026-11-05" }, { ...PROPIO, id: 12, fecha_pago: "2026-11-10" }, { ...TERCERO, fecha_pago: "2026-11-20" },
     { ...TERCERO, id: 13, estado: "depositado", fecha_pago: "2026-11-10" },
   ];
   const cal = calendarioCheques(cheques, "2026-11-09");
