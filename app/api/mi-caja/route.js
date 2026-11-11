@@ -31,6 +31,11 @@
 //       con pocos días de diferencia, pregunta (409 parecido) y se guarda con
 //       igual_confirmado: true.
 //
+// El titular de la cuenta (11/11, pedido de Tadeo) carga en cualquier caja o
+// banco activo, no solo en los suyos: en Mi caja elige la caja de la lista y
+// lo que carga entra confirmado. Los pases entre personas siguen siendo solo
+// de las cajas que tiene a cargo (no ve ni confirma los pases de otros).
+//
 // La RLS de fin_operaciones es solo del rol gerencial: esta ruta va con la
 // clave de servicio y siempre filtra por la empresa y las cajas del que pide.
 import { NextResponse } from "next/server";
@@ -50,19 +55,38 @@ import { MAX_ARCHIVO_B64 } from "../../lib/facturasSueltas";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { logAudit } from "../../lib/audit";
 import { ipCliente } from "../../lib/ip";
+import { accesoSesion } from "../../lib/accesosServidor";
 import { CLAVE_PASES, ORIGEN_PASE, destinosPase, guardarPases, leerPases, operacionDePase, pasesDe, validarPase } from "../../lib/finanzasPases";
 
 const COLUMNAS = "id,fecha,tipo,total,moneda,total_ars,cuenta_debe,cuenta_haber,descripcion,origen,estado,anulada_at";
 const sinTabla = (err) => /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(String(err?.message));
 
-/** Las cajas activas a cargo del que pide (null si no corresponde mirar). */
+/** Las cajas y bancos donde carga el titular: todos los activos (no plazos fijos ni FCI). */
+const TIPOS_TITULAR = ["caja", "banco"];
+
+/**
+ * Las cajas activas donde puede cargar el que pide: las que tiene a cargo
+ * (propia: true) y, si es el titular, además todas las cajas y bancos de la
+ * empresa (las suyas primero). Sin el módulo, ninguna.
+ */
 async function misCajas(sesion) {
   if (!sesion.empleado_id) return [];
   const { modulos } = await getModulosEmpresa(sesion.empresa_id);
   if (!modulos.includes("finanzas")) return [];
-  const { data } = await sbGetAll(`fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&responsable_id=eq.${sesion.empleado_id}&activa=eq.true&select=cuenta,nombre,tipo,moneda,activa,responsable_id&order=nombre.asc`, { maxFilas: 50 });
-  return data || [];
+  const columnas = "select=cuenta,nombre,tipo,moneda,activa,responsable_id&order=nombre.asc";
+  const [{ data }, titular] = await Promise.all([
+    sbGetAll(`fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&responsable_id=eq.${sesion.empleado_id}&activa=eq.true&${columnas}`, { maxFilas: 50 }),
+    accesoSesion(sesion).then((a) => a.titular).catch(() => false),
+  ]);
+  const propias = (data || []).map((c) => ({ ...c, propia: true }));
+  if (!titular) return propias;
+  const { data: todas } = await sbGetAll(`fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&activa=eq.true&tipo=in.(${TIPOS_TITULAR.join(",")})&${columnas}`, { maxFilas: 200 });
+  const ya = new Set(propias.map((c) => c.cuenta));
+  return [...propias, ...(todas || []).filter((c) => !ya.has(c.cuenta)).map((c) => ({ ...c, propia: false }))];
 }
+
+/** Solo las que tiene a cargo: para los pases entre personas. */
+const soloPropias = (cajas) => cajas.filter((c) => c.propia !== false);
 
 /** Los proveedores de la empresa, para unir el comercio del ticket con uno de la lista. */
 async function proveedoresDe(empresaId) {
@@ -124,9 +148,10 @@ export async function GET(request) {
       cajasConResponsable(e).catch(() => ({ tesoreria: [], personal: [] })),
       leerListaPases(e).catch(() => ({ pases: [] })),
     ]);
-    const deCadaUno = pasesDe(pases, cajas.map((c) => c.cuenta));
+    const deCadaUno = pasesDe(pases, soloPropias(cajas).map((c) => c.cuenta));
     return NextResponse.json({
-      cajas: cajas.map((c) => ({ ...resumenMiCaja(ops, c, nombres), destinos: destinosPase(c, tesoreria, personal) })),
+      cajas: cajas.map((c) => ({ ...resumenMiCaja(ops, c, nombres), propia: c.propia !== false, destinos: c.propia !== false ? destinosPase(c, tesoreria, personal) : [] })),
+      titular: cajas.some((c) => c.propia === false),
       conceptos: lista, hoy: hoyAr(), ...deCadaUno,
     });
   } catch (err) {
@@ -159,7 +184,7 @@ async function cargar(sesion, d, cajas) {
   if (!caja) return NextResponse.json({ error: "Esa caja no está a tu cargo" }, { status: 403 });
   const [{ lista }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
   const { op, errores } = validarMovimientoMiCaja(d, {
-    caja, conceptos: lista, confirmada: sesion.rol === "gerencial",
+    caja, conceptos: lista, confirmada: sesion.rol === "gerencial" || caja.propia === false,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e, hoy: hoyAr(), proveedores,
   });
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
@@ -320,9 +345,9 @@ export async function POST(request) {
     if (!cajas.length) return NextResponse.json({ error: "No tenés ninguna caja a cargo" }, { status: 403 });
     if (d.accion === "cargar") return await cargar(sesion, d, cajas);
     if (d.accion === "anular") return await anular(sesion, d, cajas);
-    if (d.accion === "pasar") return await pasar(sesion, d, cajas);
+    if (d.accion === "pasar") return await pasar(sesion, d, soloPropias(cajas));
     if (d.accion === "leer_ticket") return await leerTicket(request, sesion, d, cajas);
-    if (["recibir", "rechazar", "cancelar"].includes(d.accion)) return await resolverPase(sesion, d, cajas);
+    if (["recibir", "rechazar", "cancelar"].includes(d.accion)) return await resolverPase(sesion, d, soloPropias(cajas));
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     if (/comprobante_url/.test(String(err?.message))) return NextResponse.json({ error: "Para guardar la foto del ticket falta correr la migración 176 en Supabase." }, { status: 409 });

@@ -41,7 +41,13 @@ export function useMiCaja(activo = true) {
 
 /** Texto corto para el botón: el saldo de cada caja y lo que tiene que confirmar. */
 export function detalleMiCaja(cajas = [], paraConfirmar = []) {
-  const saldos = cajas.map((c) => `${cajas.length > 1 ? `${c.nombre}: ` : "Saldo "}${plata(c.saldo, c.moneda)}`).join(" · ");
+  // El titular ve todas las cajas y bancos (11/11): con muchas, solo las suyas y cuántas hay
+  const mias = cajas.filter((c) => c.propia !== false);
+  const otras = cajas.length - mias.length;
+  const saldos = [
+    ...mias.map((c) => `${cajas.length > 1 ? `${c.nombre}: ` : "Saldo "}${plata(c.saldo, c.moneda)}`),
+    ...(otras ? [`cargás en ${otras === 1 ? "1 caja o banco más" : `${otras} cajas y bancos más`}`] : []),
+  ].join(" · ");
   const revisar = cajas.reduce((n, c) => n + c.para_revisar, 0);
   const n = paraConfirmar?.length || 0;
   return `${n ? `💸 ${n === 1 ? "1 pase" : `${n} pases`} para confirmar · ` : ""}${saldos}${revisar ? ` · ${revisar} sin revisar` : ""}`;
@@ -368,9 +374,23 @@ export default function MiCaja({ datos, onClose, onCambio }) {
           </section>
         ))}
         {datos.cajas.length > 1 && (
-          <SelectBuscable className="g-input w-full" aria-label="Caja" value={caja.cuenta} onChange={(e) => setElegida(e.target.value)}>
-            {datos.cajas.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}</option>)}
-          </SelectBuscable>
+          <div className="flex flex-col gap-1">
+            {datos.titular && <span className="text-[13px] text-gypi-dim">Como titular cargás en cualquier caja o banco: elegí cuál.</span>}
+            <SelectBuscable className="g-input w-full" aria-label="Caja" value={caja.cuenta} onChange={(e) => setElegida(e.target.value)}>
+              {datos.titular ? (
+                <>
+                  {datos.cajas.some((c) => c.propia !== false) && (
+                    <optgroup label="A tu cargo">
+                      {datos.cajas.filter((c) => c.propia !== false).map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}</option>)}
+                    </optgroup>
+                  )}
+                  <optgroup label="Cajas y bancos de la empresa">
+                    {datos.cajas.filter((c) => c.propia === false).map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}{c.moneda === "USD" ? " (USD)" : ""}</option>)}
+                  </optgroup>
+                </>
+              ) : datos.cajas.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}</option>)}
+            </SelectBuscable>
+          </div>
         )}
         <div>
           <div className="text-[14px] text-gypi-dim">{caja.nombre}</div>
@@ -420,7 +440,7 @@ export default function MiCaja({ datos, onClose, onCambio }) {
       {cargar && (
         <Cargar caja={caja} clase={cargar} conceptos={datos.conceptos || { gastos: [], ingresos: [] }} hoy={datos.hoy}
           onCerrar={() => setCargar(null)}
-          onHecho={() => { setCargar(null); setAviso(`${cargar === "gasto" ? "Gasto cargado" : "Plata recibida cargada"}: ya cuenta en tu saldo y el dueño lo va a revisar`); onCambio(); }} />
+          onHecho={() => { setCargar(null); setAviso(`${cargar === "gasto" ? "Gasto cargado" : "Plata recibida cargada"}${caja.propia === false ? ` en ${caja.nombre}: ya está confirmado` : ": ya cuenta en tu saldo y el dueño lo va a revisar"}`); onCambio(); }} />
       )}
     </Modal>
   );

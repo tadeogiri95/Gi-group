@@ -20,9 +20,10 @@ before(() => {
 afterEach(() => cleanup());
 
 const { signAccessToken } = await import("../app/lib/jwt.ts");
+const { invalidarCacheAccesos } = await import("../app/lib/accesosServidor.js");
 const api = await import("../app/api/mi-caja/route.js");
 const tesoreriaApi = await import("../app/api/finanzas/tesoreria/route.js");
-const { default: MiCaja, detalleMovimiento } = await import("../app/components/MiCaja.jsx");
+const { default: MiCaja, detalleMovimiento, detalleMiCaja } = await import("../app/components/MiCaja.jsx");
 const { default: FinanzasTesoreria } = await import("../app/components/FinanzasTesoreria.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
@@ -134,11 +135,12 @@ const pedir = async (ruta, empleadoId, rol, metodo, body) => ruta[metodo](new Re
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(empleadoId, rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ modulos = [], ops = OPS, repetidas = [], parecidas = [], proveedores = [] } = {}) {
+function mockApi({ modulos = [], ops = OPS, repetidas = [], parecidas = [], proveedores = [], accesos = null } = {}) {
   const escrito = [];
   const leido = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
+    ...(accesos ? [{ match: (u) => u.includes("/rest/v1/accesos_personas"), respond: () => ({ status: 200, body: accesos }) }] : []),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: modulos }) },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: (u) => { leido.push(u); return { status: 200, body: [{ id: JUAN, nombre: "Juan", legajo: 1 }] }; } },
@@ -192,6 +194,26 @@ test("/api/mi-caja — el responsable ve solo su caja con el saldo y los concept
   const opsUrl = decodeURIComponent(leido.find((u) => u.includes("fin_operaciones")));
   assert.match(opsUrl, /cuenta_debe\.in\.\("01\.01\.01\.001\.001\.02"\)/);
   assert.doesNotMatch(opsUrl, /001\.001\.01"/, "no mira la Caja Principal");
+});
+
+test("/api/mi-caja — el titular carga en cualquier caja o banco, confirmado; los pases siguen siendo solo de las suyas (11/11)", async () => {
+  const DUENO = "44444444-4444-4444-4444-444444444444";
+  invalidarCacheAccesos(E);
+  const { escrito, leido } = mockApi({ accesos: [{ empleado_id: DUENO, es_titular: true, puede_configurar: true, modulos_ocultos: [] }] });
+  let r = await pedir(api, DUENO, "gerencial", "GET");
+  const d = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(d.titular, true);
+  assert.deepEqual(d.cajas.map((c) => [c.nombre, c.propia, c.destinos.length]), [["Caja Principal", false, 0], ["Caja Juan", false, 0]]);
+  assert.ok(leido.some((u) => u.includes("fin_operaciones")), "lee el saldo de todas");
+  r = await pedir(api, DUENO, "gerencial", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 8000, fecha: "2026-11-01" });
+  assert.equal(r.status, 200);
+  const op = escrito.find((x) => x.tabla === "fin_operaciones").body;
+  assert.deepEqual([op.cuenta_haber, op.estado], [CAJA_JUAN.cuenta, "confirmada"]);
+  // Pasarle plata a alguien desde una caja que no tiene a cargo: no
+  r = await pedir(api, DUENO, "gerencial", "POST", { accion: "pasar", cuenta: CAJA_JUAN.cuenta, hacia: CAJA.cuenta, importe: 100, fecha: "2026-11-01" });
+  assert.equal(r.status, 403);
+  invalidarCacheAccesos(E);
 });
 
 test("/api/mi-caja — cargar un gasto: entra para revisar, con quién lo cargó, y avisa a los dueños", async () => {
@@ -312,6 +334,37 @@ test("Mi caja — saldo, cargar un gasto y anular lo que no revisó el dueño", 
   await waitFor(() => assert.equal(enviados.length, 2));
   assert.deepEqual(enviados[1], { accion: "anular", id: 2 });
   assert.equal(cambios, 2);
+});
+
+test("Mi caja — el titular elige cualquier caja o banco y lo que carga queda confirmado (11/11)", async () => {
+  const nombres = new Map();
+  const datos = {
+    titular: true,
+    cajas: [
+      { ...resumenMiCaja(OPS, CAJA_JUAN, nombres), propia: true, destinos: [] },
+      { ...resumenMiCaja(OPS, CAJA, nombres), propia: false, destinos: [] },
+    ],
+    conceptos: conceptosMiCaja(CONFIG, TIPOS), hoy: "2026-11-09", cargar: () => {},
+  };
+  assert.match(detalleMiCaja(datos.cajas), /^Caja Juan: \$ 30\.000,00 · cargás en 1 caja o banco más/);
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    enviados.push(JSON.parse(o.body));
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  render(<MiCaja datos={datos} onClose={() => {}} onCambio={() => {}} />);
+  assert.ok(screen.getByText(/Como titular cargás en cualquier caja o banco/));
+  const caja = screen.getByLabelText("Caja");
+  fireEvent.focus(caja);
+  assert.deepEqual(screen.getAllByRole("option").map((o) => o.textContent), ["Caja Juan", "Caja Principal"]);
+  fireEvent.change(caja, { target: { value: CAJA.cuenta } });
+  fireEvent.click(screen.getByText("➖ Gasté"));
+  fireEvent.click(screen.getByRole("button", { name: "Viáticos" }));
+  fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "1000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.equal(enviados[0].cuenta, CAJA.cuenta);
+  await waitFor(() => assert.ok(screen.getByText(/en Caja Principal: ya está confirmado/)));
 });
 
 test("Mi caja — el detalle de cada movimiento sin repetir concepto ni caja", () => {
