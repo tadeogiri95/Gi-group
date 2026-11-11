@@ -10,10 +10,25 @@ import { sugerirArticulos } from "../lib/stock";
 import ArticuloNuevo from "./ArticuloNuevo";
 import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
 import { useOts } from "../hooks/useOts";
+import { textoOt } from "../lib/nombreOt";
 import BotonNuevaPersona from "./AltaPersona";
 
 const CUANTOS = 100;
-const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "" };
+const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "", renglones: [], otTodos: "" };
+
+/** Retiros y devoluciones (11/11, parte 5): varios artículos juntos, cada uno con su OT. */
+export const esVarios = (tipo) => tipo === "consumo" || tipo === "devolucion";
+
+/** Agrega el artículo a la lista (si ya estaba, no lo repite) con la OT de todos. */
+export function agregarRenglon(form, articulo) {
+  if (form.renglones.some((r) => r.articulo.sku === articulo.sku)) return { ...form, texto: "" };
+  return { ...form, texto: "", renglones: [...form.renglones, { articulo, cantidad: "", ot: form.otTodos }] };
+}
+
+/** Cambia la OT de todos: los renglones que tenían la de antes (o ninguna) pasan a la nueva. */
+export function cambiarOtTodos(form, ot) {
+  return { ...form, otTodos: ot, renglones: form.renglones.map((r) => (r.ot === form.otTodos || !r.ot ? { ...r, ot } : r)) };
+}
 
 function fechaHora(iso) {
   return iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "";
@@ -57,7 +72,31 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
   );
   const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
 
+  const cambiarRenglon = (i, campo) => (e) => setForm((f) => ({ ...f, renglones: f.renglones.map((r, j) => (j === i ? { ...r, [campo]: e.target.value } : r)) }));
+  const sacarRenglon = (i) => setForm((f) => ({ ...f, renglones: f.renglones.filter((_, j) => j !== i) }));
+  const elegirArticulo = (a) => setForm((f) => (esVarios(f.tipo) ? agregarRenglon(f, a) : { ...f, articulo: a }));
+
+  const guardarVarios = async () => {
+    if (!form.renglones.length) { setError("Agregá al menos un artículo"); return; }
+    const renglones = form.renglones.map((r) => ({ sku: r.articulo.sku, cantidad: leerCantidadMovimiento(r.cantidad), ot: r.ot.trim() || null }));
+    const sinCantidad = renglones.findIndex((r) => !r.cantidad);
+    if (sinCantidad >= 0) { setError(`Poné la cantidad de ${form.renglones[sinCantidad].articulo.nombre || form.renglones[sinCantidad].articulo.sku}`); return; }
+    setEnviando(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/stock/movimientos", { method: "POST", body: JSON.stringify({ accion: "registrar_varios", tipo: form.tipo, renglones, notas: form.notas || null }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar");
+      setForm(null);
+      await cargar();
+    } catch (e) {
+      setError(e.message);
+    }
+    setEnviando(false);
+  };
+
   const guardar = async () => {
+    if (esVarios(form.tipo)) { await guardarVarios(); return; }
     const esAjuste = form.tipo === "ajuste";
     const cantidad = leerCantidadMovimiento(form.cantidad, { conSigno: esAjuste });
     if (!form.articulo) { setError("Elegí el artículo"); return; }
@@ -108,20 +147,51 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
           Más → Planillas conectadas (auditoría 01/11, PR 3) */}
 
       {!form ? (
-        <button onClick={() => { setForm({ ...VACIO }); setError(null); }} className="g-btn g-btn-primary w-full mb-3">＋ Cargar ingreso, ajuste o devolución</button>
+        <button onClick={() => { setForm({ ...VACIO }); setError(null); }} className="g-btn g-btn-primary w-full mb-3">＋ Cargar retiro, devolución, ingreso o ajuste</button>
       ) : (
         <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
           <div className="flex gap-1.5 flex-wrap mb-3" role="group" aria-label="Tipo de movimiento">
             {Object.values(TIPOS_MOVIMIENTO).map((t) => (
-              <button key={t.id} onClick={() => setForm((f) => ({ ...f, tipo: t.id }))} aria-pressed={form.tipo === t.id}
+              <button key={t.id} onClick={() => setForm((f) => (esVarios(t.id) && f.articulo && !f.renglones.length
+                ? { ...agregarRenglon({ ...f, articulo: null }, f.articulo), tipo: t.id, renglones: [{ articulo: f.articulo, cantidad: f.cantidad, ot: f.otTodos }] }
+                : { ...f, tipo: t.id }))} aria-pressed={form.tipo === t.id}
                 className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-bold cursor-pointer ${form.tipo === t.id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
                 {t.icono} {t.nombre}
               </button>
             ))}
           </div>
 
-          <label className="g-label" htmlFor="mov-articulo">Artículo</label>
-          {form.articulo ? (
+          {esVarios(form.tipo) && (
+            <>
+              <label className="g-label" htmlFor="mov-ot-todos">OT para todos (opcional)</label>
+              <input id="mov-ot-todos" className="g-input w-full mb-1" list="mov-ots" value={form.otTodos} onChange={(e) => setForm((f) => cambiarOtTodos(f, e.target.value))} placeholder="Ej: M-7495" maxLength={40} />
+              <div className="text-[12px] text-gypi-dim mb-2">Con OT, lo que se retira suma al costo de esa OT. Cada artículo puede ir a otra OT.</div>
+              {form.renglones.length > 0 && (
+                <ul aria-label="Artículos a cargar" className="list-none p-0 m-0 mb-2 flex flex-col gap-2">
+                  {form.renglones.map((r, i) => (
+                    <li key={r.articulo.sku} className="p-2 rounded-lg border border-gypi-border bg-gypi-bg">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0 text-[14px] font-semibold truncate">{r.articulo.nombre || r.articulo.sku} <span className="text-gypi-dim font-normal">· {r.articulo.sku}</span></div>
+                        <button onClick={() => sacarRenglon(i)} aria-label={`Sacar ${r.articulo.nombre || r.articulo.sku}`} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Sacar</button>
+                      </div>
+                      <div className="flex gap-2">
+                        <label className="flex-1 min-w-0 flex flex-col gap-1 text-[12px] font-semibold text-gypi-dim">Cantidad{r.articulo.unidad ? ` (${r.articulo.unidad})` : ""}
+                          <input aria-label={`Cantidad de ${r.articulo.nombre || r.articulo.sku}`} className="g-input w-full" inputMode="decimal" value={r.cantidad} onChange={cambiarRenglon(i, "cantidad")} placeholder="Ej: 10" />
+                        </label>
+                        <label className="flex-1 min-w-0 flex flex-col gap-1 text-[12px] font-semibold text-gypi-dim">OT (opcional)
+                          <input aria-label={`OT de ${r.articulo.nombre || r.articulo.sku}`} className="g-input w-full" list="mov-ots" value={r.ot} onChange={cambiarRenglon(i, "ot")} placeholder="Sin OT" maxLength={40} />
+                        </label>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <datalist id="mov-ots">{[...porOt.values()].slice(0, 300).map((o) => <option key={o.ot} value={String(o.ot)}>{textoOt(o)}</option>)}</datalist>
+            </>
+          )}
+
+          <label className="g-label" htmlFor="mov-articulo">{esVarios(form.tipo) ? (form.renglones.length ? "Agregar otro artículo" : "Artículo") : "Artículo"}</label>
+          {form.articulo && !esVarios(form.tipo) ? (
             <div className="flex items-center gap-2 mb-2">
               <div className="flex-1 min-w-0 text-[14px] font-semibold truncate">{form.articulo.nombre || form.articulo.sku} <span className="text-gypi-dim font-normal">· {form.articulo.sku}</span></div>
               <button onClick={() => setForm((f) => ({ ...f, articulo: null }))} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Cambiar</button>
@@ -133,7 +203,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
                 <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mb-2 flex flex-col gap-1">
                   {sugeridos.lista.map((a) => (
                     <li key={a.sku}>
-                      <button onClick={() => setForm((f) => ({ ...f, articulo: a }))} className="w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
+                      <button onClick={() => elegirArticulo(a)} className="w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
                         <b>{a.nombre || a.sku}</b> <span className="text-gypi-dim">· {a.sku}</span>
                       </button>
                     </li>
@@ -145,7 +215,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
               )}
               {puedeCrear && form.texto.trim() && (creando ? (
                 <ArticuloNuevo articulos={articulos} nombreInicial={form.texto.trim()} onCancelar={() => setCreando(false)}
-                  onCreado={(a) => { setCreando(false); onArticuloNuevo?.(a); setForm((f) => ({ ...f, articulo: a })); }} />
+                  onCreado={(a) => { setCreando(false); onArticuloNuevo?.(a); elegirArticulo(a); }} />
               ) : (
                 <button onClick={() => setCreando(true)} className="min-h-[44px] mb-2 px-0 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
                   ➕ No está: cargarlo como artículo nuevo
@@ -154,8 +224,10 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
             </>
           )}
 
+          {!esVarios(form.tipo) && (<>
           <label className="g-label" htmlFor="mov-cantidad">Cantidad{form.articulo?.unidad ? ` (${form.articulo.unidad})` : ""}{form.tipo === "ajuste" ? ". Con signo menos si resta" : ""}</label>
           <input id="mov-cantidad" className="g-input w-full mb-2" inputMode="decimal" value={form.cantidad} onChange={cambiar("cantidad")} placeholder={form.tipo === "ajuste" ? "Ej: -3 o 2,5" : "Ej: 10"} />
+          </>)}
 
           {form.tipo === "ingreso" && (
             <>
@@ -184,19 +256,13 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
               </div>
             </>
           )}
-          {(form.tipo === "consumo" || form.tipo === "devolucion") && (
-            <>
-              <label className="g-label" htmlFor="mov-ot">OT (opcional)</label>
-              <input id="mov-ot" className="g-input w-full mb-2" value={form.ot} onChange={cambiar("ot")} placeholder="Ej: M-7495" maxLength={40} />
-            </>
-          )}
           <label className="g-label" htmlFor="mov-notas">Notas (opcional)</label>
           <input id="mov-notas" className="g-input w-full mb-3" value={form.notas} onChange={cambiar("notas")} maxLength={300} />
 
           {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
           <div className="flex gap-2">
             <button onClick={() => setForm(null)} className="g-btn g-btn-secondary flex-1">Cancelar</button>
-            <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : "Guardar"}</button>
+            <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : esVarios(form.tipo) && form.renglones.length > 1 ? `Guardar los ${form.renglones.length}` : "Guardar"}</button>
           </div>
         </div>
       )}

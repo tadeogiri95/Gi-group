@@ -355,6 +355,7 @@ export const pasoPiezaBody = z.discriminatedUnion("accion", [
 ]);
 
 // ── /api/stock/movimientos (107): retiros, ingresos, ajustes y devoluciones ──
+export const MAX_RENGLONES_MOVIMIENTO = 50;
 const skuMovimiento = z.string().trim().min(1).max(60).regex(/^[\w.-]+$/, "Código de artículo inválido");
 const cantidadMovimiento = z.number().finite().refine((n) => n !== 0 && Math.abs(n) < 1e10, { message: "Cantidad inválida" });
 export const movimientoStockBody = z.discriminatedUnion("accion", [
@@ -370,6 +371,17 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
     notas: textoSuelto(300),
   }).strict().refine((m) => m.tipo === "ajuste" || m.cantidad > 0, { message: "La cantidad tiene que ser mayor a cero", path: ["cantidad"] }),
   z.object({ accion: z.literal("anular"), id: z.number().int().positive() }).strict(),
+  // 11/11 (parte 5): varios retiros o devoluciones juntos, cada uno con su OT
+  z.object({
+    accion: z.literal("registrar_varios"),
+    tipo: z.enum(["consumo", "devolucion"]),
+    renglones: z.array(z.object({
+      sku: skuMovimiento,
+      cantidad: cantidadMovimiento.refine((n) => n > 0, { message: "La cantidad tiene que ser mayor a cero" }),
+      ot: otSuelto.nullable().optional().transform((v) => v || null),
+    }).strict()).min(1, "Agregá al menos un artículo").max(MAX_RENGLONES_MOVIMIENTO, `Son muchos: cargá hasta ${MAX_RENGLONES_MOVIMIENTO} por vez`),
+    notas: textoSuelto(300),
+  }).strict(),
 ]);
 
 // ── /api/stock/articulos (124): artículo nuevo con los campos de ARTICULOS ──
