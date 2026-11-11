@@ -7,7 +7,7 @@ import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { safeErrorMessage } from "../../../lib/validate";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { sbGet } from "../../../lib/sbHelpers";
-import { requireModulo } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { linkClienteOt } from "../../../lib/linkClienteOt";
 import { logger } from "../../../lib/logger";
 
@@ -18,7 +18,7 @@ export async function POST(request) {
     if (!ROLES_GESTION.has(sesion.rol)) {
       return NextResponse.json({ error: "Solo la oficina puede sacar el link para el cliente" }, { status: 403 });
     }
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModuloSesion(sesion, "proyectos");
     if (sinModulo) return sinModulo;
     const body = await request.json().catch(() => ({}));
     const ot = String(body?.ot ?? "").trim();

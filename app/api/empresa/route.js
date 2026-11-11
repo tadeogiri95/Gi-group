@@ -9,6 +9,8 @@ import { CAMPOS_EMPRESA_SOLO_DUENO } from "../../lib/dataPolicy";
 import { ipCliente } from "../../lib/ip";
 import { comoDueno } from "../../lib/alcance";
 import { getModulosEmpresa } from "../../lib/planEnforcement";
+import { accesoSesion, rechazarSiNoConfigura } from "../../lib/accesosServidor";
+import { modulosDePersona } from "../../lib/accesos";
 import { sbHeaders } from "../../lib/sbHelpers";
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -96,11 +98,17 @@ export async function GET(request) {
     // Módulos que tiene la empresa (ítem 36): la app arma el menú con esto.
     // Si no se pueden calcular, no se mandan y la app muestra todo (el servidor bloquea igual).
     // Los que la empresa apagó (Más → Módulos) no se muestran ni con candado.
-    let modulos, apagados;
+    // Lo que el titular le ocultó a esta persona (Más → Accesos, 181) se ve
+    // como apagado; acceso dice si es el titular y si puede configurar.
+    let modulos, apagados, acceso;
     try {
       ({ modulos, apagados } = await getModulosEmpresa(sesion.empresa_id, { plan: data[0].plan_activo || "free" }));
+      acceso = await accesoSesion(sesion);
+      ({ modulos, modulos_apagados: apagados } = modulosDePersona({ modulos, apagados }, acceso.ocultos));
     } catch { /* sin módulos en la respuesta */ }
-    return NextResponse.json(modulos ? { ...data[0], modulos, modulos_apagados: apagados } : data[0], {
+    const cuerpo = modulos ? { ...data[0], modulos, modulos_apagados: apagados } : data[0];
+    if (modulos && acceso) cuerpo.acceso = { titular: acceso.titular, puede_configurar: acceso.puede_configurar };
+    return NextResponse.json(cuerpo, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (err) {
@@ -118,6 +126,9 @@ export async function PATCH(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
+    // Datos, apariencia, reglas e IA: solo el titular o quien él designe (181)
+    const sinConfigurar = await rechazarSiNoConfigura(sesion);
+    if (sinConfigurar) return sinConfigurar;
 
     const rawBody = await request.json();
     const parsed = validateBody(empresaPatchBody, rawBody);

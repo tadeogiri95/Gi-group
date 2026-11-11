@@ -65,7 +65,7 @@ function ColorRow({ label, value, onChange }) {
   );
 }
 
-export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [], grupo = null }) {
+export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divisiones: divisionesProp = [], etapas: etapasProp = [], grupo = null, soloLectura = false }) {
   const [tab, setTab] = useState(grupo === "produccion" ? "divisiones" : "general");
   const { usuario, causasParada, setCausasParada, checklistLiberacion, setChecklistLiberacion, checklistCarga, setChecklistCarga, checklistInstalacion, setChecklistInstalacion, defectos, setDefectos } = useAuth();
   // Los costos los ve solo el dueño (OP parte 8)
@@ -610,7 +610,8 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
 
       {/* Content */}
       <div role="tabpanel" aria-label={`Contenido de ${TABS.find(t => t.key === tab)?.label || tab}`} className="flex-1 overflow-y-auto px-[18px] pb-[110px]">
-        {renderTab()}
+        {/* Sin permiso para configurar (181): se mira sin cambiar nada */}
+        <fieldset disabled={!!soloLectura} className="contents border-0 p-0 m-0 min-w-0">{renderTab()}</fieldset>
       </div>
     </div>
   );

@@ -9,7 +9,7 @@
 // pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
-import { requireModulo } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { informeDeEmpresa } from "../../../lib/informeProduccionServidor";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
@@ -26,7 +26,7 @@ export async function GET(request) {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
     if (!ROLES_PERMITIDOS.has(sesion.rol)) return json({ error: "Solo gerencia y administración ven el informe de producción" }, 403);
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModuloSesion(sesion, "proyectos");
     if (sinModulo) return sinModulo;
     const e = sesion.empresa_id;
     const q = new URL(request.url).searchParams;

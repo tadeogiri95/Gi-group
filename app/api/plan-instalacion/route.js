@@ -16,7 +16,8 @@ import { planInstalacionBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbDelete } from "../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { logger } from "../../lib/logger";
 import { hoyArg } from "../../lib/dates";
 import { nombreInstalador } from "../../lib/planInstalacion";
@@ -29,7 +30,7 @@ const TANDA = 1000;
 async function entrar(request) {
   const sesion = await validarToken(request);
   if (!sesion?.empresa_id) return { response: respuestaNoAutorizado() };
-  const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+  const sinModulo = await requireModuloSesion(sesion, "proyectos");
   if (sinModulo) return { response: sinModulo };
   return { sesion };
 }

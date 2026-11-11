@@ -7,7 +7,8 @@ import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { safeErrorMessage } from "../../../lib/validate";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { broadcastRefresh } from "../../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { syncStockEmpresa, faltaMigracionStock } from "../../../lib/syncStock";
 import { logger } from "../../../lib/logger";
 
@@ -23,7 +24,7 @@ export async function POST(request) {
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
     // Stock es un módulo propio (viene con las OT y se puede apagar aparte, 131)
-    const sinModulo = await requireModulo(sesion.empresa_id, "stock");
+    const sinModulo = await requireModuloSesion(sesion, "stock");
     if (sinModulo) return sinModulo;
     try {
       const resultado = await syncStockEmpresa(sesion.empresa_id, { sesion });

@@ -17,7 +17,7 @@ import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { safeErrorMessage } from "../../../lib/validate";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { sbGet, sbPost, sbPatch } from "../../../lib/sbHelpers";
-import { requireModulo } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { generarClave, empresaDeClave, claveValida } from "../../../lib/planillaMrp";
 import { CLAVE_PDF_OT, MAX_PDFS, idCarpeta, limpiarArchivos, scriptCarpetaPdf } from "../../../lib/pdfOt";
@@ -32,7 +32,7 @@ export async function GET(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModuloSesion(sesion, "proyectos");
     if (sinModulo) return sinModulo;
     const v = await leerConfig(sesion.empresa_id);
     return NextResponse.json({
@@ -78,7 +78,7 @@ export async function POST(request) {
     if (!ROLES_GESTION.has(sesion.rol)) {
       return NextResponse.json({ error: "Solo el encargado puede conectar la carpeta" }, { status: 403 });
     }
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModuloSesion(sesion, "proyectos");
     if (sinModulo) return sinModulo;
     const body = await request.json().catch(() => ({}));
     const carpeta = idCarpeta(body?.carpeta);

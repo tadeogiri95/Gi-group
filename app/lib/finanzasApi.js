@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "./auth";
 import { safeErrorMessage } from "./validate";
-import { requireModulo } from "./planEnforcement";
+import { requireModuloSesion } from "./accesosServidor";
 import { logger } from "./logger";
 import { esDuenoFinanzas } from "./finanzas";
 
@@ -18,7 +18,7 @@ export async function sesionDueno(request) {
   const sesion = await validarToken(request);
   if (!sesion?.empresa_id) return { response: respuestaNoAutorizado() };
   if (!esDuenoFinanzas(sesion)) return { response: NextResponse.json({ error: "Finanzas es solo para el dueño" }, { status: 403 }) };
-  const sinModulo = await requireModulo(sesion.empresa_id, "finanzas");
+  const sinModulo = await requireModuloSesion(sesion, "finanzas");
   if (sinModulo) return { response: sinModulo };
   return { sesion };
 }

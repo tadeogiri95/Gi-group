@@ -9,7 +9,7 @@
 // de plan "reportes" (mismo gate que reportes_obra en planEnforcement.js).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
-import { requireModulo } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { sbGetAll } from "../../../lib/sbHelpers";
 import { safeErrorMessage } from "../../../lib/validate";
 import { logger } from "../../../lib/logger";
@@ -57,7 +57,7 @@ export async function GET(request) {
     }
 
     // ─── Gate: la liquidación es parte del módulo "reportes" (ítem 36) ───
-    const sinModulo = await requireModulo(empresaId, "reportes");
+    const sinModulo = await requireModuloSesion(sesion, "reportes");
     if (sinModulo) return sinModulo;
 
     // Todas las páginas: Supabase corta cada respuesta en 1000 filas sin avisar

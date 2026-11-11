@@ -16,6 +16,7 @@ import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { TABLAS_FIN, limpiarFila, limpiarFilas } from "../../lib/finanzas";
 import { sesionDueno, errorFinanzas as errorDe } from "../../lib/finanzasApi";
+import { rechazarSiNoConfigura } from "../../lib/accesosServidor";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const TANDA = 500;
@@ -60,6 +61,9 @@ export async function POST(request) {
   if (response) return response;
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
+  // Plan de cuentas, tipos, cajas y centros: configuración (181)
+  const sinConfigurar = await rechazarSiNoConfigura(sesion);
+  if (sinConfigurar) return sinConfigurar;
   const d = await request.json().catch(() => null);
   if (!d || typeof d !== "object") return NextResponse.json({ error: "Pedido inválido" }, { status: 400 });
   if (!TABLAS_FIN[d.tabla]) return NextResponse.json({ error: "Tabla desconocida" }, { status: 400 });

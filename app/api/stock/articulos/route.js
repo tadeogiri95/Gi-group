@@ -16,7 +16,8 @@ import { articuloNuevoBody } from "../../../lib/schemas";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { sbGet, sbGetAll, sbPost } from "../../../lib/sbHelpers";
 import { broadcastRefresh } from "../../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { CLAVE_TABLAS_MRP, armarSku, nombreNormalizado, siguienteNumero } from "../../../lib/articulosNuevos";
 import { logger } from "../../../lib/logger";
 
@@ -55,7 +56,7 @@ export async function POST(request) {
     if (parsed.response) return parsed.response;
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
-    const sinModulo = await requireModulo(sesion.empresa_id, "stock");
+    const sinModulo = await requireModuloSesion(sesion, "stock");
     if (sinModulo) return sinModulo;
 
     const e = sesion.empresa_id;

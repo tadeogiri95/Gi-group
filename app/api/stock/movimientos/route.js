@@ -14,7 +14,8 @@ import { validateBody, safeErrorMessage } from "../../../lib/validate";
 import { movimientoStockBody } from "../../../lib/schemas";
 import { sbGet, sbPost, sbPatch } from "../../../lib/sbHelpers";
 import { broadcastRefresh } from "../../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { puedeCargar, puedeAnular } from "../../../lib/movimientosStock";
 import { logger } from "../../../lib/logger";
 
@@ -90,7 +91,7 @@ export async function POST(request) {
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
     // Stock es un módulo propio (viene con las OT y se puede apagar aparte, 131)
-    const sinModulo = await requireModulo(sesion.empresa_id, "stock");
+    const sinModulo = await requireModuloSesion(sesion, "stock");
     if (sinModulo) return sinModulo;
     try {
       return parsed.data.accion === "anular" ? await anular(sesion, parsed.data.id) : await registrar(sesion, parsed.data);
