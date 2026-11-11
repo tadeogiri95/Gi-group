@@ -92,7 +92,7 @@ export function operacionesGasto(d = {}, ctx = {}) {
 
   const cuentaGasto = txt(d.cuenta_gasto, 40);
   if (!codigos.has(cuentaGasto)) errores.push("Elegí la cuenta del gasto.");
-  else if (cajas.has(cuentaGasto) || cuentaGasto.startsWith("02")) errores.push("La cuenta del gasto no puede ser una caja, un banco ni una deuda.");
+  else if (cajas.has(cuentaGasto) || cuentaGasto.startsWith("02") || cuentaGasto.startsWith("03")) errores.push("La cuenta del gasto no puede ser una caja, un banco, una deuda ni una cuenta del patrimonio (como Ajuste De Capital).");
 
   const cuentaDeuda = proveedor ? cuentaProv : txt(d.cuenta_deuda, 40);
   if (proveedor && !cuentaProv) errores.push("Falta la cuenta \"Proveedores\" en el plan de cuentas.");
