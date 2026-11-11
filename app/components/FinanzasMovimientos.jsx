@@ -14,6 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { textoOt } from "../lib/nombreOt";
 import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
+import { armarAgenda, opcionesAgenda } from "../lib/finanzasPersonas";
+import { useAgenda } from "./FinanzasElegirProveedor";
 import {
   ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
 } from "../lib/finanzasOperaciones";
@@ -33,6 +35,9 @@ function campo(label, input, extra = "") {
 }
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
+/** La agenda (parte 4): la de 📇 Personas o, sin la 180, solo los proveedores. */
+const agendaDe = (datos, agenda) => (agenda?.length ? agenda : armarAgenda({ proveedores: datos.proveedores || [] }));
+
 /** El nombre de un tipo por su código ("COBRO A CLIENTES" → "Cobro a clientes"). */
 const nombreDeTipo = (codigo, tipos) => nombreTipo(tipos.find((t) => t.codigo === codigo) || { codigo });
 const nombreCuenta = (codigo, cuentas) => cuentas.find((c) => c.codigo === codigo)?.nombre || codigo || "—";
@@ -81,6 +86,7 @@ const VACIA = {
 
 function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   const toast = useToast();
+  const agenda = useAgenda();
   const [f, setF] = useState({ ...VACIA, fecha: hoyAr() });
   const [otroNombre, setOtroNombre] = useState(false);
   const [cambiarCuentas, setCambiarCuentas] = useState(false);
@@ -107,7 +113,7 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   const vista = { ...f, neto, iva, otros_impuestos: otros, total, tipo_cambio: numero(f.tipo_cambio) || null };
 
   const guardar = async () => {
-    const operacion = { ...f, proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: otroNombre ? f.entidad : "" };
+    const operacion = { ...f, proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad };
     const { errores: e } = validarOperacion(operacion, datos);
     setErrores(e);
     if (e.length) return;
@@ -180,14 +186,16 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {campo(`Proveedor o cliente${tipo.pide_entidad ? " (obligatorio)" : ""}`, (
-                <SelectBuscable className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id} onChange={(e) => {
-                  if (e.target.value === OTRO) { setOtroNombre(true); return; }
+                <SelectBuscable className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id ? `p${f.proveedor_id}` : f.entidad ? `n${f.entidad}` : ""} onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === OTRO) { setOtroNombre(true); setF((x) => ({ ...x, proveedor_id: "", entidad: "" })); return; }
                   setOtroNombre(false);
-                  setF((x) => ({ ...x, proveedor_id: e.target.value }));
+                  // p<id>: un proveedor de la lista; n<nombre>: un cliente o alguien de la agenda
+                  setF((x) => ({ ...x, proveedor_id: v.startsWith("p") ? v.slice(1) : "", entidad: v.startsWith("n") ? v.slice(1) : "" }));
                 }}>
                   <option value="">Ninguno</option>
-                  {datos.proveedores.filter((p) => p.activo !== false || String(p.id) === String(f.proveedor_id)).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                  <option value={OTRO}>Otro (cliente u otro): escribir el nombre</option>
+                  {opcionesAgenda(agendaDe(datos, agenda)).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  <option value={OTRO}>Otro: escribir el nombre</option>
                 </SelectBuscable>
               ))}
               {otroNombre && campo("Nombre", <input className="g-input w-full" value={f.entidad} onChange={set("entidad")} placeholder="Cliente u otro" />)}

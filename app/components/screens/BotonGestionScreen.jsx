@@ -34,6 +34,7 @@ import FinanzasFlujo from "../FinanzasFlujo";
 import FinanzasReporte from "../FinanzasReporte";
 import FinanzasCierre from "../FinanzasCierre";
 import FinanzasPagos from "../FinanzasPagos";
+import FinanzasPersonas from "../FinanzasPersonas";
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
@@ -81,6 +82,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "fin-reporte" && <FinanzasReporte />}
         {!bloqueado && actual.id === "fin-cierre" && <FinanzasCierre />}
         {!bloqueado && actual.id === "fin-pagos" && <FinanzasPagos />}
+        {!bloqueado && actual.id === "fin-personas" && <FinanzasPersonas />}
         {!bloqueado && actual.id === "fin-config" && <FinanzasConfig />}
       </div>
     </div>

@@ -18,6 +18,7 @@ import {
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
+import ElegirProveedor from "./FinanzasElegirProveedor";
 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -102,10 +103,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
         <div className="flex flex-wrap gap-2">
           <div className="flex-1 min-w-[200px]">
             {campo("Proveedor", (
-              <SelectBuscable className="g-input w-full" aria-label="Proveedor" value={proveedor} disabled={!!proveedorId} onChange={(e) => setProveedor(e.target.value)}>
-                <option value="">Elegí…</option>
-                {datos.proveedores.filter((p) => p.activo !== false || String(p.id) === proveedor).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </SelectBuscable>
+              <ElegirProveedor aria-label="Proveedor" vacio="Elegí…" value={proveedor} disabled={!!proveedorId} proveedores={datos.proveedores} onChange={(e) => setProveedor(e.target.value)} />
             ))}
           </div>
           {campo("Fecha", <input type="date" className="g-input" aria-label="Fecha de la orden" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />)}
