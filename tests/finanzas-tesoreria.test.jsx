@@ -193,7 +193,7 @@ test("Cajas y bancos — grupos con saldo, ficha con movimientos y pasar plata",
   const tabla = await screen.findByRole("table", { name: "Movimientos de la caja" });
   assert.equal(tabla.querySelectorAll("tbody tr").length, 3);
   fireEvent.click(screen.getByText("⇄ Pasar plata desde esta caja"));
-  assert.equal(screen.getByLabelText("Sale de").value, CAJA.cuenta);
+  assert.equal(screen.getByLabelText("Sale de").value, CAJA.nombre);
   fireEvent.change(screen.getByLabelText("Va a"), { target: { value: CAJA_JUAN.cuenta } });
   fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "1.500,50" } });
   fireEvent.click(screen.getByRole("button", { name: "Pasar la plata" }));

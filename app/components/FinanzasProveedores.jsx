@@ -21,7 +21,7 @@ import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import {
   CLASES_COMPRA, CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL, cuentaDeProveedor, cuentasAprendidas, emparejarProveedor, movimientosProveedor, pendientesProveedor, saldosDelLibro, saldosProveedores,
 } from "../lib/finanzasProveedores";
-import { Chip, Modal, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
 import FinanzasSos from "./FinanzasSos";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
@@ -142,11 +142,11 @@ function SaldosIniciales({ datos, cuentasProv, onCerrar, onCargados }) {
                         {f.variantes > 1 && <span className="block text-[12px] text-gypi-dim">escrito de {f.variantes} formas</span>}
                       </td>
                       <td className="p-2">
-                        <select className="g-input w-full" aria-label={`Proveedor para ${f.nombre}`} value={f.proveedor_id}
+                        <SelectBuscable className="g-input w-full" aria-label={`Proveedor para ${f.nombre}`} value={f.proveedor_id}
                           onChange={(e) => setElegidos((x) => ({ ...x, [f.nombre]: e.target.value }))}>
                           <option value="">— Nombre del libro —</option>
                           {datos.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                        </select>
+                        </SelectBuscable>
                       </td>
                       <td className={`p-2 text-right font-mono ${textoSaldo(f.deuda).clase}`}>{plata(f.deuda, "ARS")}</td>
                     </tr>
@@ -183,10 +183,10 @@ export function aprendidasDe(datos, cuentasProv) {
 
 function SelectCuenta({ value, onChange, opciones, label }) {
   return (
-    <select className="g-input w-full" aria-label={label} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+    <SelectBuscable className="g-input w-full" aria-label={label} value={value || ""} onChange={(e) => onChange(e.target.value)}>
       <option value="">Sin elegir</option>
       {opciones.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre} ({c.codigo})</option>)}
-    </select>
+    </SelectBuscable>
   );
 }
 

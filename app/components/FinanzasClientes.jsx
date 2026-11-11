@@ -21,7 +21,7 @@ import { TIPOS_CHEQUE } from "../lib/finanzasCheques";
 import {
   FORMAS_COBRO, ORIGEN_COBRO, emparejarCliente, movimientosCliente, saldoPorOt, saldosClientes, saldosClientesDelLibro,
 } from "../lib/finanzasClientes";
-import { Chip, Modal, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
 import FinanzasOtClientes, { ComposicionOt } from "./FinanzasOtClientes";
@@ -98,10 +98,10 @@ export function Cobrar({ datos, cliente, proyectoId = "", onCerrar, onHecho }) {
         <div className="flex flex-wrap gap-2">
           {campo("Fecha", <input type="date" className="g-input" aria-label="Fecha del cobro" value={fecha} onChange={(e) => setFecha(e.target.value)} />)}
           {campo("OT (opcional)", (
-            <select className="g-input w-full" aria-label="OT del cobro" value={ot} onChange={(e) => setOt(e.target.value)}>
+            <SelectBuscable className="g-input w-full" aria-label="OT del cobro" value={ot} onChange={(e) => setOt(e.target.value)}>
               <option value="">Sin OT</option>
               {otsCliente.slice(0, 300).map((p) => <option key={p.id} value={p.id}>{nombreOt(p)}</option>)}
-            </select>
+            </SelectBuscable>
           ), "flex-1 min-w-[200px]")}
         </div>
         {formas.map((x, i) => (
@@ -114,18 +114,18 @@ export function Cobrar({ datos, cliente, proyectoId = "", onCerrar, onHecho }) {
               {campo(x.forma === "dolares" ? "Importe (USD)" : "Importe", <input className="g-input w-[150px] text-right font-mono" inputMode="decimal" aria-label={`Importe ${i + 1}`} value={x.importe} onChange={(e) => set(i, "importe", e.target.value)} />)}
               {x.forma === "dolares" && campo("Tipo de cambio", <input className="g-input w-[120px]" inputMode="decimal" aria-label={`Tipo de cambio ${i + 1}`} value={x.tipo_cambio} onChange={(e) => set(i, "tipo_cambio", e.target.value)} />)}
               {x.forma !== "cheque" && campo(x.forma === "efectivo" ? "Caja" : x.forma === "dolares" ? "Caja o banco en dólares" : "Banco", (
-                <select className="g-input w-full" aria-label={`Dónde entró ${i + 1}`} value={x.cuenta} onChange={(e) => set(i, "cuenta", e.target.value)}>
+                <SelectBuscable className="g-input w-full" aria-label={`Dónde entró ${i + 1}`} value={x.cuenta} onChange={(e) => set(i, "cuenta", e.target.value)}>
                   <option value="">Elegí…</option>
                   {opcionesCaja(x.forma).map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-                </select>
+                </SelectBuscable>
               ), "flex-1 min-w-[180px]")}
             </div>
             {x.forma === "cheque" && (
               <div className="flex flex-wrap gap-2">
                 {campo("Tipo", (
-                  <select className="g-input" aria-label={`Tipo de cheque ${i + 1}`} value={x.tipo_cheque} onChange={(e) => set(i, "tipo_cheque", e.target.value)}>
+                  <SelectBuscable className="g-input" aria-label={`Tipo de cheque ${i + 1}`} value={x.tipo_cheque} onChange={(e) => set(i, "tipo_cheque", e.target.value)}>
                     {Object.entries(TIPOS_CHEQUE).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
-                  </select>
+                  </SelectBuscable>
                 ))}
                 {campo("Banco", <input className="g-input w-[140px]" aria-label={`Banco del cheque ${i + 1}`} maxLength={60} value={x.banco} onChange={(e) => set(i, "banco", e.target.value)} />)}
                 {campo("Número", <input className="g-input w-[120px]" aria-label={`Número del cheque ${i + 1}`} maxLength={40} value={x.numero} onChange={(e) => set(i, "numero", e.target.value)} />)}
@@ -210,10 +210,10 @@ function Unir({ cliente, datos, onCerrar, onHecho }) {
     <Modal open onClose={onCerrar} title={`Unir con ${cliente.nombre}`} maxWidth={480}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0">Elegí el cliente repetido. Su nombre pasa a ser otro nombre de {cliente.nombre} y sus movimientos se suman acá.</p>
-        <select className="g-input w-full" aria-label="Cliente repetido" value={otro} onChange={(e) => setOtro(e.target.value)}>
+        <SelectBuscable className="g-input w-full" aria-label="Cliente repetido" value={otro} onChange={(e) => setOtro(e.target.value)}>
           <option value="">Elegí…</option>
           {opciones.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-        </select>
+        </SelectBuscable>
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
@@ -472,10 +472,10 @@ function SaldosIniciales({ datos, cuentasDeu, onCerrar, onCargados }) {
                     <tr key={f.nombre} className="border-t border-gypi-border">
                       <td className="p-2">{f.nombre}{f.variantes > 1 && <span className="block text-[12px] text-gypi-dim">escrito de {f.variantes} formas</span>}</td>
                       <td className="p-2">
-                        <select className="g-input w-full" aria-label={`Cliente para ${f.nombre}`} value={f.cliente_id} onChange={(e) => setElegidos((x) => ({ ...x, [f.nombre]: e.target.value }))}>
+                        <SelectBuscable className="g-input w-full" aria-label={`Cliente para ${f.nombre}`} value={f.cliente_id} onChange={(e) => setElegidos((x) => ({ ...x, [f.nombre]: e.target.value }))}>
                           <option value="">— Crear con este nombre —</option>
                           {vivos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
+                        </SelectBuscable>
                       </td>
                       <td className={`p-2 text-right font-mono ${textoSaldoCliente(f.saldo).clase}`}>{plata(f.saldo, "ARS")}</td>
                     </tr>

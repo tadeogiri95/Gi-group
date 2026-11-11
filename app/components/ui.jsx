@@ -18,6 +18,7 @@ export { default as ListItem } from './ui/ListItem';
 export { default as Field } from './ui/Field';
 export { default as Stat } from './ui/Stat';
 export { default as FilaDeslizable } from './ui/FilaDeslizable';
+export { default as SelectBuscable } from './ui/SelectBuscable';
 
 // ============================================
 // BUTTON

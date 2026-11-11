@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
-import { Modal, Spinner } from "./ui";
+import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const RUTA = "/api/finanzas/unificados";
@@ -142,14 +142,14 @@ export default function FinanzasUnificados({ onCerrar, onCambio }) {
             <div className="flex flex-col gap-2">
               <p className="m-0 text-[13px] font-bold text-gypi-dim">Unir a mano</p>
               <div className="flex flex-wrap gap-2">
-                <select className="g-input flex-1 min-w-[180px]" aria-label="Cliente" value={cli} onChange={(e) => setCli(e.target.value)}>
+                <SelectBuscable className="g-input flex-1 min-w-[180px]" aria-label="Cliente" value={cli} onChange={(e) => setCli(e.target.value)}>
                   <option value="">Cliente…</option>
                   {d.clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
-                <select className="g-input flex-1 min-w-[180px]" aria-label="Proveedor" value={prov} onChange={(e) => setProv(e.target.value)}>
+                </SelectBuscable>
+                <SelectBuscable className="g-input flex-1 min-w-[180px]" aria-label="Proveedor" value={prov} onChange={(e) => setProv(e.target.value)}>
                   <option value="">Proveedor…</option>
                   {d.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                </select>
+                </SelectBuscable>
                 <button type="button" className="g-btn g-btn-secondary" disabled={ocupado || !cli || !prov}
                   onClick={() => accion({ accion: "unir", cliente_id: Number(cli), proveedor_id: Number(prov) }, "Unidos").then(() => { setCli(""); setProv(""); })}>Unir</button>
               </div>

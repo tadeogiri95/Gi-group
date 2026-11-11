@@ -15,7 +15,7 @@ import FinanzasLibroScript from "./FinanzasLibroScript";
 import FinanzasHistorico from "./FinanzasHistorico";
 import FinanzasTipos from "./FinanzasTipos";
 import { HOJA_FLUJO, HOJA_OPERACIONES, TABLAS_FIN, TIPOS_TESORERIA, leerLibro } from "../lib/finanzas";
-import { Chip, Modal, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import { leyendaTipo } from "../lib/finanzasTipos";
 
@@ -231,10 +231,10 @@ function EditarFila({ tabla, fila, nueva, cuentas, personal, onCerrar, onGuardad
     </label>
   );
   const elegirCuenta = (k) => (
-    <select className="g-input w-full" value={f[k] || ""} onChange={set(k)}>
+    <SelectBuscable className="g-input w-full" value={f[k] || ""} onChange={set(k)}>
       <option value="">Sin cuenta por defecto</option>
       {cuentas.filter((c) => c.activa !== false || c.codigo === f[k]).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
-    </select>
+    </SelectBuscable>
   );
 
   return (
@@ -259,13 +259,13 @@ function EditarFila({ tabla, fila, nueva, cuentas, personal, onCerrar, onGuardad
         </>}
         {tabla === "tesoreria" && <>
           {campo("Nombre", input("nombre"))}
-          {campo("Tipo", <select className="g-input w-full" value={f.tipo || "caja"} onChange={set("tipo")}>{Object.entries(TIPOS_TESORERIA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>)}
-          {campo("Moneda", <select className="g-input w-full" value={f.moneda || "ARS"} onChange={set("moneda")}><option value="ARS">Pesos</option><option value="USD">Dólares</option></select>)}
+          {campo("Tipo", <SelectBuscable className="g-input w-full" value={f.tipo || "caja"} onChange={set("tipo")}>{Object.entries(TIPOS_TESORERIA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</SelectBuscable>)}
+          {campo("Moneda", <SelectBuscable className="g-input w-full" value={f.moneda || "ARS"} onChange={set("moneda")}><option value="ARS">Pesos</option><option value="USD">Dólares</option></SelectBuscable>)}
           {campo("Responsable (para que la cargue desde su celular más adelante)", (
-            <select className="g-input w-full" value={f.responsable_id || ""} onChange={set("responsable_id")}>
+            <SelectBuscable className="g-input w-full" value={f.responsable_id || ""} onChange={set("responsable_id")}>
               <option value="">Sin responsable</option>
               {personal.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            </SelectBuscable>
           ))}
           {casilla("activa", "Activa")}
         </>}

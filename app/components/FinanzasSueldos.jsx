@@ -14,7 +14,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyAr, plata } from "../lib/finanzasOperaciones";
 import { cuentasParaPagar, fechaCorta } from "../lib/finanzasPagos";
 import { CLASES, numeroSueldo, pagadoPorEmpleado, renglonesDePegado, totalesLiquidacion } from "../lib/finanzasSueldos";
-import { Chip, Modal, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const ESTADOS = { borrador: "📝 Borrador", confirmada: "✅ Confirmada", anulada: "🚫 Anulada" };
@@ -192,10 +192,10 @@ function Editor({ datos, liquidacion, onCerrar, onCambio, onRecargar }) {
         </div>
 
         <div className="flex flex-wrap gap-2 items-center">
-          <select className="g-input flex-1 min-w-[200px]" aria-label="Sumar empleado" value={sumar} onChange={(e) => { const emp = activos.find((x) => String(x.id) === e.target.value); if (emp) agregar([emp]); setSumar(""); }}>
+          <SelectBuscable className="g-input flex-1 min-w-[200px]" aria-label="Sumar empleado" value={sumar} onChange={(e) => { const emp = activos.find((x) => String(x.id) === e.target.value); if (emp) agregar([emp]); setSumar(""); }}>
             <option value="">+ Sumar un empleado…</option>
             {faltan.map((e) => <option key={e.id} value={e.id}>{e.nombre}{e.division ? ` · ${e.division}` : ""}</option>)}
-          </select>
+          </SelectBuscable>
           {faltan.length > 0 && <button type="button" className="g-btn g-btn-secondary" onClick={() => agregar(faltan)}>+ Todos los activos ({faltan.length})</button>}
         </div>
 
@@ -273,10 +273,10 @@ function Detalle({ datos, liquidacion, onCerrar, onCambio, onCopiar }) {
               {campo("Fecha del pago", <input type="date" className="g-input" aria-label="Fecha del pago" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />)}
               <div className="flex-1 min-w-[200px]">
                 {campo("Desde (para todos)", (
-                  <select className="g-input w-full" aria-label="Caja o banco para todos" value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
+                  <SelectBuscable className="g-input w-full" aria-label="Caja o banco para todos" value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
                     <option value="">Elegí la caja o el banco</option>
                     {lugares.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-                  </select>
+                  </SelectBuscable>
                 ))}
               </div>
             </div>
@@ -291,10 +291,10 @@ function Detalle({ datos, liquidacion, onCerrar, onCambio, onCopiar }) {
                       <span className="text-gypi-dim">falta {plata(falta(e))}</span>
                     </label>
                     <input className="g-input w-[130px] text-right font-mono" inputMode="decimal" aria-label={`Importe para ${e.nombre}`} value={f.importe} onChange={(ev) => cambiar(e.empleado_id, "importe", ev.target.value)} />
-                    <select className="g-input w-[170px]" aria-label={`Desde dónde se le paga a ${e.nombre}`} value={f.cuenta} onChange={(ev) => cambiar(e.empleado_id, "cuenta", ev.target.value)}>
+                    <SelectBuscable className="g-input w-[170px]" aria-label={`Desde dónde se le paga a ${e.nombre}`} value={f.cuenta} onChange={(ev) => cambiar(e.empleado_id, "cuenta", ev.target.value)}>
                       <option value="">{cuenta ? `Igual que todos` : "Elegí…"}</option>
                       {lugares.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-                    </select>
+                    </SelectBuscable>
                   </li>
                 );
               })}
@@ -388,14 +388,14 @@ function Conceptos({ datos, onCerrar, onGuardado }) {
           {conceptos.map((c, i) => (
             <li key={c.codigo || i} className={`flex flex-wrap items-center gap-2 p-2 rounded-lg border border-gypi-border ${c.activo ? "bg-gypi-surface" : "opacity-60"}`}>
               <input className="g-input flex-1 min-w-[150px]" aria-label={`Nombre del concepto ${i + 1}`} value={c.nombre} maxLength={60} onChange={(e) => cambiar(i, "nombre", e.target.value)} />
-              <select className="g-input w-[130px]" aria-label={`Clase de ${c.nombre}`} value={c.clase} disabled={c.base} onChange={(e) => cambiar(i, "clase", e.target.value)}>
+              <SelectBuscable className="g-input w-[130px]" aria-label={`Clase de ${c.nombre}`} value={c.clase} disabled={c.base} onChange={(e) => cambiar(i, "clase", e.target.value)}>
                 {Object.entries(CLASES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
+              </SelectBuscable>
               {c.clase === "importe" && (
-                <select className="g-input flex-1 min-w-[200px]" aria-label={`Cuenta de ${c.nombre}`} value={c.cuenta || ""} onChange={(e) => cambiar(i, "cuenta", e.target.value || null)}>
+                <SelectBuscable className="g-input flex-1 min-w-[200px]" aria-label={`Cuenta de ${c.nombre}`} value={c.cuenta || ""} onChange={(e) => cambiar(i, "cuenta", e.target.value || null)}>
                   <option value="">Sin cuenta</option>
                   {cuentas.map((x) => <option key={x.codigo} value={x.codigo}>{x.nombre}</option>)}
-                </select>
+                </SelectBuscable>
               )}
               {c.clase === "importe" && (
                 <label className="flex items-center gap-1 text-[12px]"><input type="checkbox" checked={!!c.usa_area} onChange={(e) => cambiar(i, "usa_area", e.target.checked)} /> Al área</label>
@@ -413,20 +413,20 @@ function Conceptos({ datos, onCerrar, onGuardado }) {
           <legend className="text-[13px] font-semibold px-1">Cuenta de sueldo de cada empleado (área)</legend>
           {!datos.cuentas_area.length && <p className="m-0 text-[13px] text-gypi-amber-ink">No encontré cuentas “Sueldos, Jornales…” en el plan de cuentas.</p>}
           <div className="flex flex-wrap gap-2 items-center">
-            <select className="g-input flex-1 min-w-[220px]" aria-label="Cuenta para los que no tienen" value={todos} onChange={(e) => setTodos(e.target.value)}>
+            <SelectBuscable className="g-input flex-1 min-w-[220px]" aria-label="Cuenta para los que no tienen" value={todos} onChange={(e) => setTodos(e.target.value)}>
               <option value="">Poner a los que no tienen…</option>
               {datos.cuentas_area.map((x) => <option key={x.codigo} value={x.codigo}>{x.nombre}</option>)}
-            </select>
+            </SelectBuscable>
             <button type="button" className="g-btn g-btn-secondary" disabled={!todos} onClick={() => setAreas((a) => ({ ...Object.fromEntries(activos.map((e) => [String(e.id), todos])), ...a }))}>Poner</button>
           </div>
           <ul className="list-none m-0 p-0 flex flex-col gap-1 max-h-[35vh] overflow-y-auto" aria-label="Cuenta por empleado">
             {activos.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center gap-2 text-[13px]">
                 <span className="flex-1 min-w-[150px]">{e.nombre}{e.division ? <span className="text-gypi-dim"> · {e.division}</span> : null}</span>
-                <select className="g-input w-[300px] max-w-full" aria-label={`Cuenta de sueldo de ${e.nombre}`} value={areas[String(e.id)] || ""} onChange={(ev) => setAreas((a) => { const n = { ...a }; if (ev.target.value) n[String(e.id)] = ev.target.value; else delete n[String(e.id)]; return n; })}>
+                <SelectBuscable className="g-input w-[300px] max-w-full" aria-label={`Cuenta de sueldo de ${e.nombre}`} value={areas[String(e.id)] || ""} onChange={(ev) => setAreas((a) => { const n = { ...a }; if (ev.target.value) n[String(e.id)] = ev.target.value; else delete n[String(e.id)]; return n; })}>
                   <option value="">La del concepto</option>
                   {datos.cuentas_area.map((x) => <option key={x.codigo} value={x.codigo}>{x.nombre}</option>)}
-                </select>
+                </SelectBuscable>
               </li>
             ))}
           </ul>

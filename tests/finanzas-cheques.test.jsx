@@ -295,7 +295,7 @@ test("Cheques — por debitar, en cartera, calendario y marcar debitado", async 
   fireEvent.click(screen.getByText(/Por debitar \(1\)/));
   fireEvent.click(await screen.findByText("ANTONIO F PEPERMANS SA"));
   fireEvent.click(screen.getByRole("button", { name: "Debitado" }));
-  assert.equal(screen.getByLabelText("Banco").value, "01.01.01.003.002", "propone el banco del cheque");
+  assert.equal(screen.getByLabelText("Banco").value, "Banco Credicoop CTA CTE", "propone el banco del cheque");
   fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual([enviados[0].accion, enviados[0].id, enviados[0].a, enviados[0].cuenta_banco], ["cambiar", 10, "debitado", "01.01.01.003.002"]);
