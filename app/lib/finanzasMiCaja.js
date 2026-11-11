@@ -2,9 +2,13 @@
 // Cada responsable de una caja (fin_tesoreria.responsable_id) carga desde el
 // celular lo que gastó y la plata que recibió.
 //
-//   - El dueño elige en Cajas y bancos qué tipos de operación se ofrecen
-//     (config_sistema finanzas_mi_caja = { gastos: [códigos], ingresos: [códigos] }).
-//     El responsable ve el nombre del tipo; la cuenta la pone el tipo.
+//   - Se ofrecen todos los tipos de gasto y de plata que entra (11/11, pedido
+//     de Tadeo: antes era una lista que armaba el dueño y, al pasar a los tipos
+//     nuevos, quedaron solo los de desarrollismo). El dueño puede esconder los
+//     que no quiere en Cajas y bancos (config_sistema finanzas_mi_caja =
+//     { ocultos: { gastos: [códigos], ingresos: [códigos] } }). La lista vieja
+//     ({ gastos, ingresos }) ya no se usa. El responsable ve el nombre del
+//     tipo; la cuenta la pone el tipo.
 //   - Un gasto: la cuenta del tipo al debe y la caja al haber. Plata recibida:
 //     la caja al debe y la cuenta del tipo al haber.
 //   - Entra a la caja en el momento como "para revisar" (origen mi_caja). El
@@ -12,7 +16,7 @@
 //     dueño entra confirmado.
 //   - Foto del ticket opcional (comprobante_url, subida por /api/upload).
 import { movimientoCaja } from "./finanzasOperaciones";
-import { leyendaTipo } from "./finanzasTipos";
+import { TIPOS_NUEVOS, claveTipo, leyendaTipo, lineaDeLista } from "./finanzasTipos";
 
 export const CLAVE_MI_CAJA = "finanzas_mi_caja";
 export const ORIGEN_MI_CAJA = "mi_caja";
@@ -23,29 +27,59 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const txt = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const lista = (v) => [...new Set((Array.isArray(v) ? v : []).map((c) => txt(c, 40)).filter(Boolean))].slice(0, 60);
 
-/** La configuración guardada, limpia. */
+/** La configuración guardada, limpia: los tipos que el dueño escondió. */
 export function leerConfigMiCaja(valor) {
-  return { gastos: lista(valor?.gastos), ingresos: lista(valor?.ingresos) };
+  const o = valor?.ocultos;
+  return { ocultos: { gastos: lista(o?.gastos), ingresos: lista(o?.ingresos) } };
+}
+
+// Qué tipos son un gasto o plata que entra, por su renglón del flujo. Los de
+// tesorería (pases entre cajas, plazo fijo, dólares), las ventas y los
+// ajustes contables no se cargan desde una caja chica.
+const LINEA_GASTO = /^(EGR_|INV_|DIVIDENDOS$)/;
+const LINEA_INGRESO = /^(ING_|APORTES_SOCIOS$|VTA_|EGR_FINANCIEROS$)/;
+const GASTO_SIN_LINEA = new Set(["INVERSIONES DESARROLLISMO"]);
+// Un tipo propio de la empresa (que no está en la lista): por las palabras.
+const NO_CAJA = /TESORER|TRANSFER|PLAZO FIJO|\bFCI\b|TITULO|DOLAR|VENTA|APERTURA|SALDO INICIAL|RECLASIF|AMORTIZ|DEPREC|COMPENSAC|RECHAZ|NC CLIENTE/;
+const PALABRAS_GASTO = /GASTO|COMPRA|PAGO|IMPUEST|SUELDO|SERVICIO|HONORARIO|VIATICO|COMBUSTIBLE|INVERSION|MANTENIMIENTO|FLETE|INSUMO|EGRESO|RETIRO/;
+const PALABRAS_INGRESO = /COBRO|INGRESO|APORTE|RENDIMIENTO|ANTICIPO|REINTEGRO|DEVOLUCION/;
+const ORDEN = new Map(TIPOS_NUEVOS.map((t, i) => [claveTipo(t.codigo), i]));
+
+function ladosDe(t) {
+  const k = claveTipo(t.codigo);
+  const linea = lineaDeLista(t.codigo);
+  if (linea || ORDEN.has(k)) return { gasto: LINEA_GASTO.test(linea || "") || GASTO_SIN_LINEA.has(k), ingreso: LINEA_INGRESO.test(linea || "") };
+  const texto = claveTipo(`${t.codigo} ${t.grupo || ""} ${t.nombre || ""}`);
+  if (NO_CAJA.test(texto)) return { gasto: false, ingreso: false };
+  return { gasto: PALABRAS_GASTO.test(texto), ingreso: PALABRAS_INGRESO.test(texto) };
 }
 
 /** Los tipos que sirven para cada lado: el gasto necesita la cuenta al debe; lo recibido, al haber. */
 export function tiposParaMiCaja(tipos = []) {
-  const vivos = tipos.filter((t) => t.activo !== false);
+  const vivos = tipos
+    .filter((t) => t && t.activo !== false && t.codigo)
+    .map((t) => ({ t, lados: ladosDe(t), orden: ORDEN.get(claveTipo(t.codigo)) ?? 999 }))
+    .sort((a, b) => a.orden - b.orden || String(a.t.nombre || a.t.codigo).localeCompare(String(b.t.nombre || b.t.codigo), "es"));
   return {
-    gastos: vivos.filter((t) => t.cuenta_debe),
-    ingresos: vivos.filter((t) => t.cuenta_haber),
+    gastos: vivos.filter((x) => x.lados.gasto && x.t.cuenta_debe).map((x) => x.t),
+    ingresos: vivos.filter((x) => x.lados.ingreso && x.t.cuenta_haber).map((x) => x.t),
   };
 }
 
-/** Lo que ve el responsable: nombre del tipo y la cuenta que usa. */
+/** "INVERSIÓN" → "Inversión": el grupo del tipo, para ordenar la lista larga. */
+const grupoDe = (t) => {
+  const g = txt(t.grupo || TIPOS_NUEVOS.find((n) => claveTipo(n.codigo) === claveTipo(t.codigo))?.grupo, 40).toLowerCase();
+  return g ? g[0].toUpperCase() + g.slice(1) : "Otros";
+};
+
+/** Lo que ve el responsable: todos los tipos de gasto y de plata que entra, menos los que escondió el dueño. */
 export function conceptosMiCaja(config, tipos = []) {
-  const c = leerConfigMiCaja(config);
+  const { ocultos } = leerConfigMiCaja(config);
   const sirven = tiposParaMiCaja(tipos);
-  const armar = (codigos, de, lado) => codigos
-    .map((codigo) => de.find((t) => t.codigo === codigo))
-    .filter(Boolean)
-    .map((t) => ({ codigo: t.codigo, nombre: txt(t.nombre, 80) || t.codigo, cuenta: t[lado], leyenda: leyendaTipo(t) }));
-  return { gastos: armar(c.gastos, sirven.gastos, "cuenta_debe"), ingresos: armar(c.ingresos, sirven.ingresos, "cuenta_haber") };
+  const armar = (de, lado, fuera) => de
+    .filter((t) => !fuera.includes(t.codigo))
+    .map((t) => ({ codigo: t.codigo, nombre: txt(t.nombre, 80) || t.codigo, cuenta: t[lado], leyenda: leyendaTipo(t), grupo: grupoDe(t) }));
+  return { gastos: armar(sirven.gastos, "cuenta_debe", ocultos.gastos), ingresos: armar(sirven.ingresos, "cuenta_haber", ocultos.ingresos) };
 }
 
 /** ¿Es una foto subida por /api/upload para esta empresa? */

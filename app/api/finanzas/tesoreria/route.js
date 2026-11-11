@@ -10,8 +10,8 @@
 //   POST { accion: "transferir", desde, hacia, importe, fecha, tipo_cambio?, descripcion? }
 //       → TRANSFERENCIA ENTRE CAJAS entre dos cajas o bancos de la misma moneda.
 //   F3b (Mi caja, 176):
-//   POST { accion: "config_mi_caja", gastos: [códigos], ingresos: [códigos] }
-//       → qué tipos de operación ofrece Mi caja a los responsables.
+//   POST { accion: "config_mi_caja", ocultos: { gastos: [códigos], ingresos: [códigos] } }
+//       → qué tipos de operación esconde Mi caja (el resto se ofrece).
 //   POST { accion: "revisar", id, tipo? } → confirma lo que cargó un
 //       responsable; con tipo, se lo cambia (la caja queda donde estaba).
 //   POST { accion: "anular_mi_caja", id } → anula lo que cargó un responsable.
@@ -25,7 +25,7 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA } from "../../../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 import { cuentaAjusteDe, operacionSaldoInicialCaja, validarTransferencia } from "../../../lib/finanzasTesoreria";
-import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, leerConfigMiCaja } from "../../../lib/finanzasMiCaja";
+import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, leerConfigMiCaja, tiposParaMiCaja } from "../../../lib/finanzasMiCaja";
 
 const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,created_at";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
@@ -45,7 +45,7 @@ export async function GET(request) {
       leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,responsable_id,activa&order=nombre.asc`),
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
       leer(sesion, `empleados?empresa_id=eq.${e}&activo=eq.true&select=id,nombre&order=nombre.asc`),
-      leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,cuenta_debe,cuenta_haber,activo&order=codigo.asc`),
+      leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,grupo,cuenta_debe,cuenta_haber,activo&order=codigo.asc`),
       sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_MI_CAJA}&select=valor&limit=1`, { silent: true, fallback: [] }),
     ]);
     const lista = encodeURIComponent(tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(","));
@@ -113,11 +113,14 @@ async function transferir(sesion, d) {
 
 async function configMiCaja(sesion, d) {
   const e = sesion.empresa_id;
-  const tipos = await leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,cuenta_debe,cuenta_haber,activo`);
-  const c = leerConfigMiCaja(d);
+  const tipos = await leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,grupo,cuenta_debe,cuenta_haber,activo`);
+  const { ocultos } = leerConfigMiCaja(d);
+  const sirven = tiposParaMiCaja(tipos || []);
   const valor = {
-    gastos: c.gastos.filter((k) => tipos.some((t) => t.codigo === k && t.cuenta_debe)),
-    ingresos: c.ingresos.filter((k) => tipos.some((t) => t.codigo === k && t.cuenta_haber)),
+    ocultos: {
+      gastos: ocultos.gastos.filter((k) => sirven.gastos.some((t) => t.codigo === k)),
+      ingresos: ocultos.ingresos.filter((k) => sirven.ingresos.some((t) => t.codigo === k)),
+    },
   };
   // config_sistema va con la clave de servicio, como el dato del CFO (F2b)
   const ya = await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_MI_CAJA}&select=clave&limit=1`, { silent: true, fallback: [] });

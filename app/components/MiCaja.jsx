@@ -104,6 +104,17 @@ function Pasar({ caja, hoy, onCerrar, onHecho }) {
 
 const MAX_CHIPS = 8;
 
+/** La lista larga, por grupo ("Gastos", "Compras", "Inversión"…), cada grupo en el orden de la lista. */
+function porGrupo(lista) {
+  const grupos = new Map();
+  for (const c of lista) {
+    const g = c.grupo || "Otros";
+    if (!grupos.has(g)) grupos.set(g, []);
+    grupos.get(g).push(c);
+  }
+  return [...grupos.entries()];
+}
+
 /** Gasté / Recibí plata (parte 10 del 11/11: muy fácil). Primero la foto del
  *  ticket (Gypi lee importe, fecha y concepto), los conceptos en botones con
  *  los más usados primero y la fecha en Hoy / Ayer / Otro día. */
@@ -195,7 +206,11 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
               {resto.length > 0 && (
                 <SelectBuscable className="g-input w-full mt-1.5" aria-label="Otro concepto" value={resto.some((c) => c.codigo === f.concepto) ? f.concepto : ""} onChange={set("concepto")}>
                   <option value="">Otro…</option>
-                  {resto.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                  {porGrupo(resto).map(([g, cs]) => (
+                    <optgroup key={g} label={g}>
+                      {cs.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                    </optgroup>
+                  ))}
                 </SelectBuscable>
               )}
               {elegido?.leyenda && <p className="mt-1 mb-0 text-[12px] leading-snug text-gypi-dim">ℹ {elegido.leyenda}</p>}

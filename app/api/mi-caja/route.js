@@ -3,7 +3,7 @@
 // una caja (fin_tesoreria.responsable_id), sin entrar a Finanzas.
 //
 //   GET → sus cajas activas, con el saldo, los últimos movimientos y los
-//       conceptos que eligió el dueño. Sin cajas a cargo (o sin el módulo, o
+//       conceptos (los tipos de gasto e ingreso que el dueño no escondió). Sin cajas a cargo (o sin el módulo, o
 //       sin la 171) devuelve { cajas: [] } y la pantalla no muestra nada.
 //   POST { accion: "cargar", cuenta, clase: "gasto"|"ingreso", concepto,
 //       importe, fecha, descripcion?, comprobante_url?, tipo_cambio? }
@@ -58,7 +58,7 @@ async function misCajas(sesion) {
 async function conceptos(empresaId) {
   const [cfg, tipos] = await Promise.all([
     sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_MI_CAJA}&select=valor&limit=1`, { silent: true, fallback: [] }),
-    sbGetAll(`fin_tipos_operacion?empresa_id=eq.${empresaId}&select=codigo,nombre,cuenta_debe,cuenta_haber,activo&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data),
+    sbGetAll(`fin_tipos_operacion?empresa_id=eq.${empresaId}&select=codigo,nombre,grupo,descripcion,cuenta_debe,cuenta_haber,activo&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data),
   ]);
   return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos), tipos };
 }

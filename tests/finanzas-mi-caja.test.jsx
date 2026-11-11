@@ -10,6 +10,7 @@ import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   leerConfigMiCaja, conceptosMiCaja, comprobanteValido, validarMovimientoMiCaja, cambioDeTipoMiCaja, resumenMiCaja, paraRevisarMiCaja, ORIGEN_MI_CAJA,
 } from "../app/lib/finanzasMiCaja.js";
+import { TIPOS_NUEVOS } from "../app/lib/finanzasTipos.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -41,11 +42,31 @@ const CTX = { caja: CAJA_JUAN, conceptos: conceptosMiCaja(CONFIG, TIPOS), supaba
 
 // ─── Reglas ───
 
-test("conceptos — solo los tipos elegidos, activos y con la cuenta del lado que corresponde", () => {
-  assert.deepEqual(leerConfigMiCaja({ gastos: ["A", "A", " ", 3] }), { gastos: ["A", "3"], ingresos: [] });
+test("conceptos — todos los tipos de gasto e ingreso activos, con la cuenta del lado que corresponde, menos los escondidos", () => {
+  assert.deepEqual(leerConfigMiCaja({ ocultos: { gastos: ["A", "A", " ", 3] } }), { ocultos: { gastos: ["A", "3"], ingresos: [] } });
+  assert.deepEqual(leerConfigMiCaja({ gastos: ["A"] }), { ocultos: { gastos: [], ingresos: [] } }, "la lista vieja de elegidos ya no recorta");
   const c = conceptosMiCaja(CONFIG, TIPOS);
   assert.deepEqual(c.gastos.map((x) => [x.nombre, x.cuenta]), [["Combustible", "05.02.01"], ["Viáticos", "05.02.02"]]);
   assert.deepEqual(c.ingresos.map((x) => [x.nombre, x.cuenta]), [["Cobro a un cliente", "01.01.02.001.001"]]);
+  const sinViaticos = conceptosMiCaja({ ocultos: { gastos: ["GASTO VIATICOS"] } }, TIPOS);
+  assert.deepEqual(sinViaticos.gastos.map((x) => x.codigo), ["GASTO COMBUSTIBLE"]);
+});
+
+test("conceptos — con los tipos nuevos aparecen todos los gastos e ingresos, no solo desarrollismo", () => {
+  const tipos = TIPOS_NUEVOS.map((t) => ({ codigo: t.codigo, nombre: t.nombre, grupo: t.grupo, cuenta_debe: "05.01", cuenta_haber: "04.01", activo: true }));
+  // la config vieja que quedó de antes de pasar a los tipos nuevos
+  const c = conceptosMiCaja({ gastos: ["INVERSIONES DESARROLLISMO"], ingresos: ["APORTES DESARROLLISMO"] }, tipos);
+  const g = c.gastos.map((x) => x.codigo);
+  const i = c.ingresos.map((x) => x.codigo);
+  for (const k of ["COMPRAS", "SERVICIOS", "GASTOS DE LOGÍSTICA", "GASTOS DE MANTENIMIENTO", "VIÁTICOS", "IMPUESTOS", "SUELDOS", "OTROS GASTOS", "MAQUINARIA Y HERRAMIENTAS", "INVERSIONES DESARROLLISMO", "AJUSTE DE CAJA NEGATIVO"]) assert.ok(g.includes(k), `falta el gasto ${k}`);
+  for (const k of ["COBRO A CLIENTES", "ANTICIPO DE CLIENTES", "OTROS INGRESOS", "APORTE DE SOCIOS", "APORTES DESARROLLISMO", "AJUSTE DE CAJA POSITIVO"]) assert.ok(i.includes(k), `falta el ingreso ${k}`);
+  for (const k of ["TRANSFERENCIA ENTRE CAJAS", "PLAZO FIJO", "DÓLARES", "VENTA", "AMORTIZACIONES", "APERTURA", "RECLASIF"]) {
+    assert.ok(!g.includes(k) && !i.includes(k), `${k} no se carga desde una caja chica`);
+  }
+  assert.ok(!i.includes("COMPRAS") && !g.includes("COBRO A CLIENTES"), "cada uno de su lado");
+  assert.equal(g[0], "PAGO A PROVEEDORES", "en el orden de la lista");
+  assert.equal(c.gastos.find((x) => x.codigo === "COMPRAS").grupo, "Compras");
+  assert.ok(c.gastos.find((x) => x.codigo === "COMPRAS").leyenda, "con su leyenda");
 });
 
 test("foto del ticket — solo una subida por /api/upload para la misma empresa", () => {
@@ -197,9 +218,9 @@ test("/api/finanzas/tesoreria — el dueño confirma cambiando el tipo; solo el 
   const r = await pedir(tesoreriaApi, JUAN, "gerencial", "POST", { accion: "revisar", id: 2, tipo: "GASTO VIATICOS" });
   assert.equal(r.status, 200);
   assert.deepEqual([escrito[0].body.estado, escrito[0].body.tipo, escrito[0].body.cuenta_debe, escrito[0].body.cuenta_haber], ["confirmada", "GASTO VIATICOS", "05.02.02", undefined]);
-  const c = await pedir(tesoreriaApi, JUAN, "gerencial", "POST", { accion: "config_mi_caja", gastos: ["GASTO COMBUSTIBLE", "COBRO CLIENTE"], ingresos: ["COBRO CLIENTE", "GASTO COMBUSTIBLE"] });
+  const c = await pedir(tesoreriaApi, JUAN, "gerencial", "POST", { accion: "config_mi_caja", ocultos: { gastos: ["GASTO COMBUSTIBLE", "COBRO CLIENTE"], ingresos: ["COBRO CLIENTE", "GASTO COMBUSTIBLE"] } });
   assert.equal(c.status, 200);
-  assert.deepEqual(escrito[1].body.valor, { gastos: ["GASTO COMBUSTIBLE"], ingresos: ["COBRO CLIENTE"] }, "cada tipo solo del lado donde tiene cuenta");
+  assert.deepEqual(escrito[1].body.valor, { ocultos: { gastos: ["GASTO COMBUSTIBLE"], ingresos: ["COBRO CLIENTE"] } }, "se esconde cada tipo solo del lado donde se ofrece");
 });
 
 // Al final: el plan de la empresa queda guardado 5 minutos en memoria
@@ -261,4 +282,24 @@ test("Cajas y bancos — aviso de Mi caja para revisar y confirmar", async () =>
   fireEvent.click(screen.getByRole("button", { name: "✓ Confirmar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual(enviados[0], { accion: "revisar", id: 2, tipo: "GASTO VIATICOS" });
+});
+
+test("Cajas y bancos — ⚙ Mi caja: todo tildado de entrada; destildar esconde", async () => {
+  const datos = { tesoreria: [CAJA, CAJA_JUAN], cuentas: [], personal: [], operaciones: [], tipos: TIPOS, mi_caja: { ocultos: { gastos: ["GASTO VIATICOS"], ingresos: [] } } };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasTesoreria />);
+  fireEvent.click(await screen.findByRole("button", { name: "⚙ Mi caja" }));
+  const combustible = screen.getByRole("checkbox", { name: "Combustible" });
+  assert.equal(combustible.checked, true, "un tipo que nadie tocó se ofrece");
+  assert.equal(screen.getByRole("checkbox", { name: "Viáticos" }).checked, false, "el escondido queda destildado");
+  assert.equal(screen.getByRole("checkbox", { name: "Cobro a un cliente" }).checked, true);
+  assert.ok(screen.getByText("Gastos (1 de 2)"));
+  fireEvent.click(combustible);
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual(enviados[0], { accion: "config_mi_caja", ocultos: { gastos: ["GASTO VIATICOS", "GASTO COMBUSTIBLE"], ingresos: [] } });
 });
