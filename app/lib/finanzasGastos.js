@@ -11,12 +11,19 @@
 // (o el primero, si el gasto es de un mes que todavía no empezó).
 // Si ya se pagó, se carga también el pago (Debe la deuda / Haber la caja o el
 // banco) con el mismo tipo, así en el flujo de caja cae en su renglón.
+//
+// Parte 6: subir la factura (PDF o foto) → la IA de Gypi la lee (PROMPT_GASTO,
+// esquemaGasto) → propuestaDeLectura arma el formulario ya lleno, con avisos,
+// y el dueño lo revisa y lo guarda (o lo corrige).
+import { cajasDelLado } from "./finanzasOperaciones";
+import { clavePersona } from "./finanzasPersonas";
 
 export const ORIGEN_GASTO = "gasto";
 export const LETRAS = ["A", "B", "C", "M", "E", "X"];
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
 const CUENTA_PROVEEDORES = /^proveedores$/i;
+const ACREEDORES = /^acreedores varios$/i;
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const txt = (v, n = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -46,6 +53,19 @@ export function textoComprobante({ con_factura: conFactura, letra, punto_venta: 
 /** Las cuentas de deuda que se pueden elegir (pasivo: códigos que empiezan con 02). */
 export function cuentasDeuda(cuentas = []) {
   return cuentas.filter((c) => String(c.codigo).startsWith("02") && c.activa !== false);
+}
+
+/** Los tipos que sirven para un gasto: los que no tienen una caja, una deuda ni un cliente al debe. */
+export function tiposDeGasto(tipos = [], tesoreria = []) {
+  return tipos.filter((t) => t.activo !== false && !cajasDelLado(t.cuenta_debe, tesoreria)
+    && !String(t.cuenta_debe || "").startsWith("02") && !String(t.cuenta_debe || "").startsWith("01.01.02"));
+}
+
+/** La deuda que propone un tipo: su cuenta del haber si es un pasivo; si no, Acreedores Varios. */
+export function deudaDelTipo(tipo, cuentas = []) {
+  const deudas = cuentasDeuda(cuentas);
+  if (tipo?.cuenta_haber && deudas.some((c) => c.codigo === tipo.cuenta_haber)) return tipo.cuenta_haber;
+  return deudas.find((c) => ACREEDORES.test(String(c.nombre || "").trim()))?.codigo || "";
 }
 
 /**
@@ -125,4 +145,115 @@ export function operacionesGasto(d = {}, ctx = {}) {
     });
   }
   return { ops, errores: [] };
+}
+
+/* ─── Parte 6: la factura leída por la IA ─────────────────────────────── */
+
+export const PROMPT_GASTO = `Leés facturas, tickets y comprobantes de gastos de una fábrica de muebles en Argentina (servicios, impuestos, honorarios, alquileres, insumos) y devolvés sus datos para registrarlos en la contabilidad.
+- letra: la letra del comprobante (A, B, C, M, E o X). Vacío si no es una factura (un ticket, un recibo o una boleta de impuestos).
+- punto_venta y numero: el punto de venta y el número del comprobante, solo dígitos (en "0003-00012345": punto_venta "0003", numero "00012345"). Vacío si no se ven.
+- fecha: fecha de emisión en formato AAAA-MM-DD. Vacío si no se ve.
+- emisor: razón social de quien emite el comprobante (no la del cliente que paga). cuit_emisor: su CUIT, solo los 11 dígitos; vacío si no se ve.
+- periodo: el mes al que corresponde el gasto, en formato AAAA-MM, si el comprobante lo dice (período facturado, mes de consumo, período fiscal del impuesto, honorarios de tal mes). Si el período abarca dos meses, el mes en que termina. Vacío si no lo dice.
+- neto: el importe sin IVA (neto gravado más no gravado más exento). En una factura B, C o un ticket que no discrimina IVA, el total menos las percepciones e impuestos aparte.
+- iva: la suma de todos los IVA discriminados (21 %, 10,5 %, 27 %). 0 si no está discriminado.
+- otros_impuestos: la suma de percepciones (IVA, Ingresos Brutos, Ganancias), impuestos internos y otros tributos que figuran aparte. 0 si no hay.
+- total: el importe total del comprobante.
+- moneda: "USD" si los importes están en dólares, si no "ARS".
+- concepto: qué se paga, en pocas palabras (por ejemplo "Energía eléctrica planta", "Honorarios contables octubre").
+- tipo_sugerido: el código del tipo de gasto que mejor corresponde, de la lista que se te da. Vacío si ninguno corresponde.
+Usá punto como separador decimal en los números. Si algo no se puede leer, dejalo vacío o en 0; no inventes datos.`;
+
+/** El esquema de lo que devuelve la IA, con los tipos de gasto de la empresa para elegir. */
+export function esquemaGasto(tipos = []) {
+  const codigos = [...new Set(tipos.map((t) => String(t.codigo)).filter(Boolean))].slice(0, 200);
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["letra", "punto_venta", "numero", "fecha", "emisor", "cuit_emisor", "periodo", "neto", "iva", "otros_impuestos", "total", "moneda", "concepto", "tipo_sugerido"],
+    properties: {
+      letra: { type: "string", enum: [...LETRAS, ""] },
+      punto_venta: { type: "string" },
+      numero: { type: "string" },
+      fecha: { type: "string" },
+      emisor: { type: "string" },
+      cuit_emisor: { type: "string" },
+      periodo: { type: "string" },
+      neto: { type: "number" },
+      iva: { type: "number" },
+      otros_impuestos: { type: "number" },
+      total: { type: "number" },
+      moneda: { type: "string", enum: ["ARS", "USD"] },
+      concepto: { type: "string" },
+      tipo_sugerido: { type: "string", enum: [...codigos, ""] },
+    },
+  };
+}
+
+/** La lista de tipos que va en el pedido a la IA: código, nombre y para qué se usa. */
+export function tiposParaIa(tipos = [], leyenda = () => "") {
+  return tipos.map((t) => `- ${t.codigo}${t.nombre && t.nombre !== t.codigo ? ` (${t.nombre})` : ""}${leyenda(t) ? `: ${leyenda(t)}` : ""}`).join("\n");
+}
+
+const soloDigitos = (v) => String(v ?? "").replace(/\D/g, "");
+
+/** El proveedor de la factura: por CUIT, o por el nombre (sin importar el orden de las palabras ni S.A./SRL). */
+export function proveedorDeFactura({ emisor, cuit }, proveedores = []) {
+  const c = soloDigitos(cuit);
+  if (c.length === 11) {
+    const porCuit = proveedores.find((p) => soloDigitos(p.cuit) === c);
+    if (porCuit) return porCuit;
+  }
+  const clave = clavePersona(emisor || "");
+  return clave ? proveedores.find((p) => clavePersona(p.nombre || "") === clave) || null : null;
+}
+
+/**
+ * Lo que leyó la IA, como formulario de gasto ya lleno (siempre se revisa antes de guardar).
+ * @param {object} l la lectura (esquemaGasto)
+ * @param {{ tipos, cuentas, tesoreria, proveedores }} ctx
+ * @returns {{ inicial: object, avisos: string[], proveedor_nuevo: { nombre: string, cuit: string } | null }}
+ */
+export function propuestaDeLectura(l = {}, ctx = {}) {
+  const { tipos = [], cuentas = [], tesoreria = [], proveedores = [] } = ctx;
+  const avisos = [];
+  const deGasto = tiposDeGasto(tipos, tesoreria);
+  const fecha = FECHA.test(String(l.fecha || "")) ? l.fecha : "";
+  const periodo = MES.test(String(l.periodo || "")) ? l.periodo : "";
+  const emisor = txt(l.emisor);
+  const cuitDig = soloDigitos(l.cuit_emisor);
+  const cuit = cuitDig.length === 11 ? `${cuitDig.slice(0, 2)}-${cuitDig.slice(2, 10)}-${cuitDig.slice(10)}` : "";
+  const proveedor = emisor || cuit ? proveedorDeFactura({ emisor, cuit }, proveedores) : null;
+  // El tipo: el que tiene guardado el proveedor; si no, el que sugiere la IA
+  const tipo = deGasto.find((t) => t.codigo === proveedor?.fin_tipo) || deGasto.find((t) => t.codigo === l.tipo_sugerido) || null;
+  const letra = LETRAS.includes(l.letra) ? l.letra : "";
+  const conFactura = Boolean(letra);
+  const neto = centavos(l.neto);
+  const iva = ["A", "M"].includes(letra) ? centavos(l.iva) : 0;
+  // En una B o C con IVA leído, el IVA va dentro del neto
+  const netoFinal = !["A", "M"].includes(letra) && centavos(l.iva) > 0 ? centavos(neto + centavos(l.iva)) : neto;
+  const otros = centavos(l.otros_impuestos);
+  const total = centavos(l.total);
+  const suma = centavos(netoFinal + iva + otros);
+
+  if (!fecha) avisos.push("No pude leer la fecha: completala.");
+  if (!(netoFinal > 0)) avisos.push("No pude leer los importes: completalos.");
+  else if (total > 0 && Math.abs(total - suma) > 1) avisos.push(`El total de la factura (${total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}) no da con neto + IVA + percepciones (${suma.toLocaleString("es-AR", { minimumFractionDigits: 2 })}): revisá los importes.`);
+  if (l.moneda === "USD") avisos.push("La factura está en dólares: pasá los importes a pesos con el tipo de cambio del día.");
+  if (!tipo) avisos.push("Elegí el tipo de gasto.");
+  if (periodo && fecha && periodo !== fecha.slice(0, 7)) avisos.push(`La factura dice que el gasto es de ${periodo.slice(5, 7)}/${periodo.slice(0, 4)}: va a ese mes.`);
+  const proveedorNuevo = !proveedor && emisor ? { nombre: emisor, cuit } : null;
+  if (proveedorNuevo) avisos.push(`${emisor}${cuit ? ` (CUIT ${cuit})` : ""} no está en tus proveedores.`);
+
+  const inicial = {
+    tipo: tipo?.codigo || "", cuenta_gasto: tipo?.cuenta_debe || "",
+    con_factura: conFactura, letra: letra || "A", punto_venta: soloDigitos(l.punto_venta).slice(-5), numero: soloDigitos(l.numero).slice(-8) || txt(l.numero, 40),
+    fecha_factura: fecha, mes: periodo || fecha.slice(0, 7),
+    proveedor_id: proveedor ? String(proveedor.id) : "",
+    entidad: proveedor ? "" : emisor,
+    cuenta_deuda: deudaDelTipo(tipo, cuentas),
+    neto: netoFinal ? String(netoFinal) : "", iva: iva ? String(iva) : "", otros_impuestos: otros ? String(otros) : "",
+    descripcion: txt(l.concepto, 300),
+  };
+  return { inicial, avisos, proveedor_nuevo: proveedorNuevo };
 }

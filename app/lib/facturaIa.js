@@ -7,10 +7,21 @@ import { ESQUEMA_FACTURA, PROMPT_FACTURA } from "./facturasSueltas";
 export class ErrorIa extends Error {}
 
 /**
+ * La factura de proveedor con sus renglones (facturas sueltas, costo de OT).
  * @param {{ base64: string, tipo: string }} archivo
  * @returns {Promise<{ lectura: object, uso: object, modelo: string }>}
  */
-export async function leerFacturaIa({ base64, tipo }) {
+export function leerFacturaIa({ base64, tipo }) {
+  return leerDocumentoIa({ base64, tipo, sistema: PROMPT_FACTURA, esquema: ESQUEMA_FACTURA });
+}
+
+/**
+ * Cualquier documento con su propio pedido y esquema (también lo usa el gasto
+ * devengado de Finanzas: app/lib/finanzasGastos.js).
+ * @param {{ base64: string, tipo: string, sistema: string, esquema: object, maxTokens?: number }} d
+ * @returns {Promise<{ lectura: object, uso: object, modelo: string }>}
+ */
+export async function leerDocumentoIa({ base64, tipo, sistema, esquema, maxTokens = 16000 }) {
   if (!process.env.ANTHROPIC_API_KEY) throw new ErrorIa("La IA no está configurada");
   const adjunto = tipo === "application/pdf"
     ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
@@ -26,9 +37,9 @@ export async function leerFacturaIa({ base64, tipo }) {
       },
       body: JSON.stringify({
         model: MODELO_IA,
-        max_tokens: 16000,
-        system: PROMPT_FACTURA,
-        output_config: { format: { type: "json_schema", schema: ESQUEMA_FACTURA } },
+        max_tokens: maxTokens,
+        system: sistema,
+        output_config: { format: { type: "json_schema", schema: esquema } },
         messages: [{ role: "user", content: [adjunto, { type: "text", text: "Leé este documento." }] }],
       }),
       signal: AbortSignal.timeout(55000),
