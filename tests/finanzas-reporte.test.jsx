@@ -5,7 +5,8 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { periodoReporte, reporteFinanciero, htmlReporte } from "../app/lib/finanzasReporte.js";
+import { periodoReporte, reporteFinanciero, htmlReporte, errorPeriodo, mesesEntre, tramoDe, serieFlujo, svgBarras, svgFlujo } from "../app/lib/finanzasReporte.js";
+import { cajasPorMoneda } from "../app/lib/finanzasFlujo.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -103,6 +104,64 @@ test("reporte semanal — solo lo de esa semana", () => {
   assert.equal(reporteFinanciero({ ...base, tipo: "dia", fecha: "2026-10-07" }), null);
 });
 
+// ─── Parte 11 del 11/11: entre fechas, gráficos, color y PDF ───
+
+test("entre fechas — hasta 12 meses; dice por qué no vale", () => {
+  assert.deepEqual(periodoReporte("rango", "2026-09-15", "2026-10-20"), { tipo: "rango", desde: "2026-09-15", hasta: "2026-10-20", titulo: "Del 15/09/2026 al 20/10/2026" });
+  assert.equal(periodoReporte("rango", "2026-10-20", "2026-09-15"), null);
+  assert.equal(periodoReporte("rango", "2026-01-01", "2027-01-01"), null, "13 meses");
+  assert.ok(periodoReporte("rango", "2026-01-01", "2026-12-31"));
+  assert.equal(periodoReporte("rango", "2026-02-30", "2026-03-10"), null);
+  assert.equal(errorPeriodo("2026-10-20", "2026-09-15"), "La fecha hasta es anterior a la fecha desde");
+  assert.equal(errorPeriodo("2026-01-01", "2027-03-01"), "Elegí hasta 12 meses");
+  assert.equal(errorPeriodo("", "2026-03-01"), "Elegí las dos fechas");
+  assert.equal(errorPeriodo("2026-01-01", "2026-03-01"), "");
+  assert.deepEqual(mesesEntre("2026-11-20", "2027-02-03"), ["2026-11", "2026-12", "2027-01", "2027-02"]);
+});
+
+test("entre fechas — el flujo cuenta todos los meses del medio", () => {
+  const r = reporteFinanciero({ ...base, tipo: "rango", fecha: "2026-09-01", hasta: "2026-11-30" });
+  assert.equal(r.titulo, "Del 01/09/2026 al 30/11/2026");
+  assert.deepEqual([r.flujo.ARS.apertura, r.flujo.ARS.neto], [0, 100000 + 135000 + 999999]);
+  assert.equal(r.tramo, "semana");
+  assert.equal(reporteFinanciero({ ...base, tipo: "rango", fecha: "2026-10-01", hasta: "2026-09-01" }), null);
+});
+
+test("gráfico de plata — por día, semana o mes, sin los pases entre cajas propias", () => {
+  assert.deepEqual([tramoDe("semana"), tramoDe("mes"), tramoDe("rango", "2026-10-01", "2026-10-14"), tramoDe("rango", "2026-10-01", "2026-12-31"), tramoDe("rango", "2026-01-01", "2026-12-31")], ["dia", "semana", "dia", "semana", "mes"]);
+  const cajas = cajasPorMoneda(TES);
+  const ops = [
+    op("2026-10-05", "COBRO", BANCO, DEU, 1000),
+    op("2026-10-07", "PASE", CAJA, BANCO, 300),
+    op("2026-10-07", "GASTO", COMB, CAJA, 200),
+  ];
+  const sem = serieFlujo({ ops, cajas, desde: "2026-10-05", hasta: "2026-10-11", tramo: "dia", apertura: 50 });
+  assert.equal(sem.length, 7);
+  assert.deepEqual(sem.slice(0, 3).map((t) => [t.etiqueta, t.entro, t.salio, t.saldo]), [["lu 05", 1000, 0, 1050], ["ma 06", 0, 0, 1050], ["mi 07", 0, 200, 850]]);
+  const mes = serieFlujo({ ops, cajas, desde: "2026-10-01", hasta: "2026-10-31", tramo: "semana" });
+  assert.deepEqual(mes.map((t) => t.etiqueta), ["01/10", "05/10", "12/10", "19/10", "26/10"], "la primera semana arranca el 1");
+  assert.deepEqual([mes[1].entro, mes[1].salio], [1000, 200]);
+  const anio = serieFlujo({ ops, cajas, desde: "2026-09-15", hasta: "2026-11-02", tramo: "mes" });
+  assert.deepEqual(anio.map((t) => t.etiqueta), ["sep 26", "oct 26", "nov 26"]);
+});
+
+test("reporte a color con gráficos — barras, columnas y colores que salen al imprimir", () => {
+  const r = reporteFinanciero({ ...base, tipo: "mes", fecha: "2026-10-15" });
+  assert.deepEqual(r.grafico_resultados.map((g) => [g.id, g.total]), [["ING", 300000], ["GAS", -65000], ["RDO_NETO", 235000]]);
+  const html = htmlReporte(r);
+  assert.match(html, /print-color-adjust:exact/);
+  assert.equal((html.match(/<svg class="graf"/g) || []).length, 4, "resultados, flujo, fondos y cheques");
+  assert.equal((html.match(/<section/g) || []).length, 5, "cada parte en su sección (el PDF no la parte)");
+  assert.match(html, /Lo que entró y salió por semana/);
+  assert.match(html, /<title>05\/10 · entró \$ 200\.000,00<\/title>/);
+  assert.equal(svgFlujo([]), "");
+  assert.equal(svgBarras([]), "");
+  const b = svgBarras([{ nombre: "A <b>", valor: 100, color: "#000" }, { nombre: "B", valor: -50, color: "#111" }]);
+  assert.ok(b.includes("A &lt;b&gt;"), "escapa los nombres");
+  assert.match(b, /<line /, "con negativos, la línea del cero");
+  assert.match(htmlReporte(reporteFinanciero({ ...base, tipo: "rango", fecha: "2026-10-01", hasta: "2026-10-10" })), /<h1>Reporte financiero<\/h1>/);
+});
+
 const token = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
 
 test("/api/finanzas/reporte — solo el Dueño; lee hasta el fin del período", async () => {
@@ -131,6 +190,12 @@ test("/api/finanzas/reporte — solo el Dueño; lee hasta el fin del período", 
   assert.equal(d.empresa, "Gi");
   assert.equal(d.cuentas_a_pagar.total, 80000);
   assert.match(pedidos[0], /fecha=lte\.2026-10-31/);
+  const rango = await pedir("gerencial", "tipo=rango&fecha=2026-09-01&hasta=2026-10-31");
+  assert.equal(rango.status, 200);
+  assert.equal((await rango.json()).titulo, "Del 01/09/2026 al 31/10/2026");
+  const mal = await pedir("gerencial", "tipo=rango&fecha=2026-01-01&hasta=2027-06-01");
+  assert.equal(mal.status, 400);
+  assert.equal((await mal.json()).error, "Elegí hasta 12 meses");
 });
 
 test("Reporte financiero — elegir período, generar y ver", async () => {
@@ -144,6 +209,31 @@ test("Reporte financiero — elegir período, generar y ver", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Generar reporte/ }));
   await waitFor(() => assert.ok(screen.getByTitle("Reporte financiero")));
   assert.match(pedidos[0], /tipo=semana&fecha=2026-10-07/);
-  assert.ok(screen.getByRole("button", { name: /Imprimir o guardar PDF/ }));
+  assert.ok(screen.getByRole("button", { name: /Descargar PDF a color/ }));
+  assert.ok(screen.getByRole("button", { name: /Imprimir/ }));
   assert.match(screen.getByTitle("Reporte financiero").getAttribute("srcdoc"), /Posición de fondos/);
+});
+
+test("Reporte financiero — ◀ ▶ pasan de mes y Entre fechas pide desde y hasta", async () => {
+  const pedidos = [];
+  const r = reporteFinanciero({ ...base, tipo: "rango", fecha: "2026-09-01", hasta: "2026-10-31" });
+  global.fetch = async (u) => { pedidos.push(String(u)); return new Response(JSON.stringify({ ...r, empresa: "Gi" }), { status: 200 }); };
+  render(<FinanzasReporte />);
+  fireEvent.change(screen.getByLabelText("Fecha del período"), { target: { value: "2026-10-15" } });
+  fireEvent.click(screen.getByRole("button", { name: "Mes anterior" }));
+  assert.ok(screen.getByText("Septiembre 2026"));
+  fireEvent.click(screen.getByRole("button", { name: "Mes siguiente" }));
+  fireEvent.click(screen.getByRole("button", { name: "Mes siguiente" }));
+  assert.ok(screen.getByText("Noviembre 2026"));
+  fireEvent.click(screen.getByRole("button", { name: "Entre fechas" }));
+  fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-11-01" } });
+  fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-10-01" } });
+  assert.ok(screen.getByText(/La fecha hasta es anterior/));
+  assert.ok(screen.getByRole("button", { name: /Generar reporte/ }).disabled);
+  fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-09-01" } });
+  fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-10-31" } });
+  assert.ok(screen.getByText("Del 01/09/2026 al 31/10/2026"));
+  fireEvent.click(screen.getByRole("button", { name: /Generar reporte/ }));
+  await waitFor(() => assert.ok(screen.getByTitle("Reporte financiero")));
+  assert.match(pedidos[0], /tipo=rango&fecha=2026-09-01&hasta=2026-10-31/);
 });
