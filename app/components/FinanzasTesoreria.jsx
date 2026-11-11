@@ -8,7 +8,7 @@
 // "Cargar saldos iniciales" lee T-OPERACIONES del libro hasta una fecha de
 // corte; "Pasar plata" es una TRANSFERENCIA ENTRE CAJAS entre dos cajas.
 // F3b (176): lo que cargan los responsables desde 📱 Mi caja espera acá
-// ("Para revisar") y "⚙ Mi caja" elige qué tipos se les ofrecen.
+// ("Para revisar") y "⚙ Mi caja" esconde los tipos que no se les ofrecen.
 // F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).
 // Parte 8 del 11/11: 🏦 Plazos fijos (FinanzasPlazosFijos.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
@@ -245,12 +245,13 @@ function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto }) {
 function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
   const toast = useToast();
   const sirven = useMemo(() => tiposParaMiCaja(datos.tipos || []), [datos.tipos]);
-  const [elegidos, setElegidos] = useState({ gastos: new Set(datos.mi_caja?.gastos || []), ingresos: new Set(datos.mi_caja?.ingresos || []) });
+  // Se guardan los que el dueño escondió: un tipo nuevo aparece solo.
+  const [ocultos, setOcultos] = useState({ gastos: new Set(datos.mi_caja?.ocultos?.gastos || []), ingresos: new Set(datos.mi_caja?.ocultos?.ingresos || []) });
   const [buscar, setBuscar] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
   const b = normal(buscar);
-  const alternar = (lado, codigo) => setElegidos((x) => {
+  const alternar = (lado, codigo) => setOcultos((x) => {
     const nuevo = new Set(x[lado]);
     if (nuevo.has(codigo)) nuevo.delete(codigo); else nuevo.add(codigo);
     return { ...x, [lado]: nuevo };
@@ -260,7 +261,7 @@ function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
     setGuardando(true);
     setError(null);
     try {
-      await postTesoreria({ accion: "config_mi_caja", gastos: [...elegidos.gastos], ingresos: [...elegidos.ingresos] });
+      await postTesoreria({ accion: "config_mi_caja", ocultos: { gastos: [...ocultos.gastos], ingresos: [...ocultos.ingresos] } });
       toast.success("Listo: Mi caja ya ofrece esos tipos");
       onGuardado();
     } catch (e) {
@@ -271,12 +272,12 @@ function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
 
   const listaDe = (lado, titulo) => (
     <fieldset className="border border-gypi-border rounded-lg p-2 m-0 min-w-0">
-      <legend className="px-1 text-[13px] font-bold">{titulo} ({elegidos[lado].size})</legend>
+      <legend className="px-1 text-[13px] font-bold">{titulo} ({sirven[lado].filter((t) => !ocultos[lado].has(t.codigo)).length} de {sirven[lado].length})</legend>
       <ul className="list-none m-0 p-0 max-h-[30vh] overflow-y-auto">
         {sirven[lado].filter((t) => !b || normal(`${t.codigo} ${t.nombre}`).includes(b)).map((t) => (
           <li key={t.codigo}>
             <label className="flex items-center gap-2 py-1 text-[13px] cursor-pointer">
-              <input type="checkbox" checked={elegidos[lado].has(t.codigo)} onChange={() => alternar(lado, t.codigo)} />
+              <input type="checkbox" checked={!ocultos[lado].has(t.codigo)} onChange={() => alternar(lado, t.codigo)} />
               <span className="flex-1 min-w-0">{t.nombre || t.codigo}</span>
             </label>
           </li>
@@ -290,7 +291,8 @@ function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0">
           Cada responsable de una caja la ve en su celular (📱 Mi caja) y carga lo que gastó y la plata que recibió.
-          Elegí qué tipos de operación le aparecen: él ve el nombre y la cuenta la pone el tipo. Lo que carga te queda &quot;Para revisar&quot; acá.
+          Le aparecen todos los tipos de gasto y de plata que entra: él ve el nombre y la cuenta la pone el tipo. Destildá los que no quieras que vea.
+          Lo que carga te queda &quot;Para revisar&quot; acá.
         </p>
         <input className="g-input w-full" placeholder="Buscar tipo…" aria-label="Buscar tipo" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
         {listaDe("gastos", "Gastos")}
