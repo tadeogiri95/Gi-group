@@ -3,7 +3,7 @@
 // app/lib/finanzasBanco.js y app/lib/finanzasExtracto.js). Sin migración.
 //
 //   POST multipart { file, cuenta } → lee el extracto (resumen en PDF, Excel
-//       .xlsx, CSV o el ".xls" que es una tabla HTML) y devuelve cada renglón
+//       .xlsx o .xls, CSV o el ".xls" que es una tabla HTML) y devuelve cada renglón
 //       con la operación de Gypi que le corresponde o la sugerencia de tipo,
 //       lo de Gypi que no apareció en el banco y el control del saldo.
 //   POST { accion: "confirmar", cuenta, filas: [{ fecha, descripcion,
@@ -22,7 +22,7 @@ import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA } from "../../../lib/finanzasOperaciones";
-import { claseDeArchivo, grillaDeCsv, grillaDeHtml, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
+import { claseDeArchivo, grillaDeArchivo, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
 import {
   CLAVE_REGLAS_BANCO, DIAS_EMPAREJAR, MAX_MOVIMIENTOS, ORIGEN_BANCO, controlSaldo, emparejarExtracto, entidadDe, juntarReglas,
   operacionDeMovimiento, reglasDeConfirmados, sugerir,
@@ -71,18 +71,12 @@ async function paginasDelPdf(bytes) {
 }
 
 async function extractoDe(bytes) {
-  const clase = claseDeArchivo(bytes);
-  if (clase === "pdf") return movimientosDePdf(await paginasDelPdf(bytes));
-  if (clase === "xls") return { movimientos: [], error: "Es un Excel viejo (.xls): abrilo y guardalo como .xlsx o .csv, y subilo de nuevo." };
-  if (clase === "xlsx") {
-    const { hojasXlsx, leerHojaXlsx } = await import("../../../lib/leerXlsx");
-    const [hoja] = hojasXlsx(bytes);
-    return hoja ? movimientosDeGrilla(leerHojaXlsx(bytes, hoja, { maxFilas: MAX_MOVIMIENTOS + 50, maxCols: 30 }) || []) : { movimientos: [], error: "El Excel no tiene hojas" };
+  if (claseDeArchivo(bytes) === "pdf") return movimientosDePdf(await paginasDelPdf(bytes));
+  try {
+    return movimientosDeGrilla((await grillaDeArchivo(bytes, { maxFilas: MAX_MOVIMIENTOS + 50, maxCols: 30 })) || []);
+  } catch {
+    return { movimientos: [], error: "No pude leer ese archivo: probá guardarlo como .xlsx o .csv y subirlo de nuevo." };
   }
-  // El CSV del banco puede venir en latin1 (Windows): si no es UTF-8 válido, se lee así
-  let texto;
-  try { texto = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { texto = new TextDecoder("latin1").decode(bytes); }
-  return movimientosDeGrilla(clase === "html" ? grillaDeHtml(texto) : grillaDeCsv(texto));
 }
 
 async function leerExtracto(sesion, request) {

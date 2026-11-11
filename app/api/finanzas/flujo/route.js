@@ -2,7 +2,8 @@
 // lo que viene por semana (reglas en app/lib/finanzasFlujo.js). Sin migración.
 //
 //   GET ?hasta=AAAA-MM → los 12 meses hasta ese mes (por defecto, el mes en
-//       curso) en pesos y en dólares, y las próximas 8 semanas en pesos.
+//       curso) en pesos y en dólares, y las próximas 8 semanas en pesos (con
+//       los intereses de los plazos fijos al vencer).
 //   POST { accion: "lineas", tipos, centros } → las líneas del flujo de cada
 //       tipo de operación (y de cada centro de costo de Desarrollismo),
 //       copiadas de la hoja dim_flujo del libro.
@@ -18,6 +19,7 @@ import { mesesHasta } from "../../../lib/finanzasResultados";
 import { feriadosFinanzas } from "../../../lib/finanzasDiasHabiles";
 import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { CLAVE_FLUJO, flujoPrevisto, flujoReal, saldoCajas, validarLineasFlujo } from "../../../lib/finanzasFlujo";
+import { CLAVE_PLAZOS_FIJOS, interesesPorCobrar, leerGuardados, listaPlazos, pathOpsPlazos } from "../../../lib/finanzasPlazosFijos";
 import { CLAVE_SUELDOS, ORIGEN_PAGO_SUELDO, leerConfigSueldos, pagadoPorEmpleado, totalesLiquidacion } from "../../../lib/finanzasSueldos";
 
 const COLUMNAS = "id,fecha,tipo,centro_costo,total,total_ars,cuenta_debe,cuenta_haber,estado,anulada_at,origen,origen_id";
@@ -39,6 +41,15 @@ async function sueldosPorPagar(sesion, ops, cuentas) {
   }).filter((s) => s.importe > 0);
 }
 
+/** Los intereses de los plazos fijos que faltan cobrar (parte 8 del 11/11). */
+async function interesesPlazos(sesion, tesoreria, hoy) {
+  const guardados = leerGuardados(await config(sesion.empresa_id, CLAVE_PLAZOS_FIJOS));
+  if (!guardados.length) return [];
+  const cuentasPf = tesoreria.filter((t) => t.tipo === "plazo_fijo").map((t) => t.cuenta);
+  const ops = await leer(sesion, pathOpsPlazos(sesion.empresa_id, cuentasPf, hoy), 20000);
+  return interesesPorCobrar(listaPlazos(guardados, ops, cuentasPf, hoy), hoy);
+}
+
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -58,7 +69,8 @@ export async function GET(request) {
     ]);
     const lin = validarLineasFlujo(lineas || {});
     const real = flujoReal({ ops, tesoreria, cuentas, lineas: lin, meses: mesesHasta(hasta) });
-    const previsto = flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos: await sueldosPorPagar(sesion, ops, cuentas), feriados: feriadosFinanzas(planificacion) });
+    const [sueldos, intereses] = await Promise.all([sueldosPorPagar(sesion, ops, cuentas), interesesPlazos(sesion, tesoreria, hoy).catch(() => [])]);
+    const previsto = flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos, intereses, feriados: feriadosFinanzas(planificacion) });
     return NextResponse.json({ hasta, hoy, ...real, previsto, lineas_cargadas: Object.keys(lin.tipos).length });
   } catch (err) {
     return errorFinanzas(err, "flujo GET");

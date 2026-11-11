@@ -10,6 +10,7 @@
 // F3b (176): lo que cargan los responsables desde 📱 Mi caja espera acá
 // ("Para revisar") y "⚙ Mi caja" elige qué tipos se les ofrecen.
 // F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).
+// Parte 8 del 11/11: 🏦 Plazos fijos (FinanzasPlazosFijos.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -18,6 +19,7 @@ import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
 import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, saldosTesoreria, totalesTesoreria } from "../lib/finanzasTesoreria";
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
 import SubirExtracto from "./FinanzasExtracto";
+import PlazosFijos from "./FinanzasPlazosFijos";
 import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -440,6 +442,7 @@ export default function FinanzasTesoreria() {
           </section>
         );
       })}
+      {datos.tesoreria.some((t) => t.tipo === "plazo_fijo" && t.activa !== false) && <PlazosFijos onCambio={cargar} />}
       {saldos.some((s) => s.activa === false) && (
         <label className="flex items-center gap-2 text-[13px] text-gypi-dim">
           <input type="checkbox" checked={inactivas} onChange={(e) => setInactivas(e.target.checked)} /> Ver las inactivas

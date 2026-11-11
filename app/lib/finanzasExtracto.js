@@ -254,7 +254,7 @@ export function grillaDeHtml(html) {
 
 /**
  * Qué clase de archivo es, por los primeros bytes: "pdf", "xlsx" (zip),
- * "xls" (Excel viejo, no se puede leer), "html" o "csv".
+ * "xls" (Excel viejo, se lee con leerXls.js), "html" o "csv".
  */
 export function claseDeArchivo(bytes) {
   const b = bytes || new Uint8Array();
@@ -264,4 +264,26 @@ export function claseDeArchivo(bytes) {
   if (b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0) return "xls";
   if (ascii.startsWith("<") && /<(table|html|tr)\b/.test(ascii + String.fromCharCode(...b.subarray(512, 4096)).toLowerCase())) return "html";
   return "csv";
+}
+
+/**
+ * La primera hoja de un archivo del banco como grilla de textos: .xlsx, .xls
+ * (Excel viejo), HTML o CSV (en UTF-8 o, si no lo es, latin1 de Windows).
+ * null si es un PDF.
+ */
+export async function grillaDeArchivo(bytes, { maxFilas = 5000, maxCols = 60 } = {}) {
+  const clase = claseDeArchivo(bytes);
+  if (clase === "pdf") return null;
+  if (clase === "xlsx") {
+    const { hojasXlsx, leerHojaXlsx } = await import("./leerXlsx");
+    const [hoja] = hojasXlsx(bytes);
+    return hoja ? leerHojaXlsx(bytes, hoja, { maxFilas, maxCols }) || [] : [];
+  }
+  if (clase === "xls") {
+    const { leerHojaXls } = await import("./leerXls");
+    return leerHojaXls(bytes, null, { maxFilas, maxCols }) || [];
+  }
+  let texto;
+  try { texto = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { texto = new TextDecoder("latin1").decode(bytes); }
+  return (clase === "html" ? grillaDeHtml(texto) : grillaDeCsv(texto)).slice(0, maxFilas);
 }
