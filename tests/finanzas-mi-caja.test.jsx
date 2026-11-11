@@ -21,7 +21,7 @@ afterEach(() => cleanup());
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/mi-caja/route.js");
 const tesoreriaApi = await import("../app/api/finanzas/tesoreria/route.js");
-const { default: MiCaja } = await import("../app/components/MiCaja.jsx");
+const { default: MiCaja, detalleMovimiento } = await import("../app/components/MiCaja.jsx");
 const { default: FinanzasTesoreria } = await import("../app/components/FinanzasTesoreria.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
@@ -238,6 +238,13 @@ test("Mi caja — saldo, cargar un gasto y anular lo que no revisó el dueño", 
   await waitFor(() => assert.equal(enviados.length, 2));
   assert.deepEqual(enviados[1], { accion: "anular", id: 2 });
   assert.equal(cambios, 2);
+});
+
+test("Mi caja — el detalle de cada movimiento sin repetir concepto ni caja", () => {
+  assert.equal(detalleMovimiento({ concepto: "Combustible", descripcion: "Combustible · Caja Juan · nafta camioneta" }, "Caja Juan"), "nafta camioneta");
+  assert.equal(detalleMovimiento({ concepto: "Transferencia entre cajas y bancos", descripcion: "De Caja Principal a Caja Juan · para obra" }, "Caja Juan"), "De Caja Principal a Caja Juan · para obra");
+  assert.equal(detalleMovimiento({ concepto: "Combustible", descripcion: "Combustible · Caja Juan" }, "Caja Juan"), "");
+  assert.equal(detalleMovimiento({ concepto: "X" }, "Caja Juan"), "");
 });
 
 test("Cajas y bancos — aviso de Mi caja para revisar y confirmar", async () => {
