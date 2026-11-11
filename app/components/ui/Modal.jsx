@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useEscape } from '../../hooks/useEscape';
 
 export default function Modal({
@@ -51,7 +52,10 @@ export default function Modal({
 
   if (!open) return null;
 
-  return (
+  // 11/11: va al final de la página (portal). Adentro de una tarjeta que se
+  // mueve al pasar el mouse o tocarla (card-hover usa transform), un
+  // position:fixed queda atrapado en la tarjeta y la ventana se ve cortada.
+  const ventana = (
     <div
       ref={dialogRef}
       role="dialog"
@@ -95,4 +99,5 @@ export default function Modal({
       </div>
     </div>
   );
+  return typeof document !== 'undefined' && document.body ? createPortal(ventana, document.body) : ventana;
 }
