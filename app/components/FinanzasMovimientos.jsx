@@ -35,7 +35,7 @@ const MAX_LISTA = 300;
 
 function campo(label, input, extra = "") {
   return (
-    <label className={`flex flex-col gap-1 text-[13px] font-semibold text-gypi-text ${extra}`}>
+    <label className={`flex flex-col gap-1 text-[13px] lg:text-[14px] font-semibold text-gypi-text ${extra}`}>
       {label}
       {input}
     </label>
@@ -156,9 +156,9 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   );
 
   return (
-    <Modal open onClose={onCerrar} title="Nueva operación" maxWidth={640}>
-      <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-3">
+    <Modal open onClose={onCerrar} title="Nueva operación" grande>
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-[170px_1fr] gap-3">
           {campo("Fecha", <input type="date" className="g-input w-full" value={f.fecha} onChange={set("fecha")} />)}
           {campo("Tipo de operación", (
             <SelectBuscable className="g-input w-full" value={f.tipo} onChange={elegirTipo}>
@@ -171,40 +171,46 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
             </SelectBuscable>
           ))}
         </div>
-        {tipo && leyendaTipo(tipo) && <p className="-mt-1 text-[12px] leading-snug text-gypi-dim" aria-label="Qué comprende este tipo">ℹ {leyendaTipo(tipo)}</p>}
+        {tipo && leyendaTipo(tipo) && <p className="-mt-2 m-0 text-[13px] leading-snug text-gypi-dim" aria-label="Qué comprende este tipo">ℹ {leyendaTipo(tipo)}</p>}
 
+        {/* En la computadora, dos columnas: a la izquierda de dónde sale y a
+            quién; a la derecha cuánto y el detalle (11/11, ventana grande). */}
         {tipo && (
-          <>
-            {(cajasDebe || cajasHaber) && !cambiarCuentas && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {cajasDebe && selectCaja("debe", cajasDebe)}
-                {cajasHaber && selectCaja("haber", cajasHaber)}
-              </div>
-            )}
-            {elegir && !cambiarCuentas && (
-              <div className="flex flex-col gap-1.5">
-                <p className="m-0 text-[13px] font-semibold text-gypi-text">{elegir.pregunta}{elegir.obligatoria ? " (obligatorio)" : ""}</p>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label={elegir.pregunta}>
-                  {elegir.opciones.map((o) => (
-                    <Chip key={o.codigo} active={f[`cuenta_${elegir.lado}`] === o.codigo} onClick={() => setF((x) => ({ ...x, [`cuenta_${elegir.lado}`]: o.codigo }))}>{o.etiqueta}</Chip>
-                  ))}
-                  <Chip onClick={() => setCambiarCuentas(true)}>Otra cuenta…</Chip>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4 items-start">
+            <section className="flex flex-col gap-3" aria-label="Cuentas y a quién">
+              <h3 className="g-overline m-0 text-gypi-dim">Cuentas y a quién</h3>
+              {(cajasDebe || cajasHaber) && !cambiarCuentas && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {cajasDebe && selectCaja("debe", cajasDebe)}
+                  {cajasHaber && selectCaja("haber", cajasHaber)}
                 </div>
-              </div>
-            )}
-            {cambiarCuentas ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {selectCuenta("debe")}
-                {selectCuenta("haber")}
-              </div>
-            ) : (
-              <p className="text-[13px] text-gypi-dim">
-                Debe: <b className="text-gypi-text">{nombreCuenta(f.cuenta_debe, datos.cuentas)}</b> · Haber: <b className="text-gypi-text">{nombreCuenta(f.cuenta_haber, datos.cuentas)}</b>{" "}
-                <button type="button" className="g-btn g-btn-secondary ml-1" onClick={() => setCambiarCuentas(true)}>Cambiar cuentas</button>
-              </p>
-            )}
+              )}
+              {elegir && !cambiarCuentas && (
+                <div className="flex flex-col gap-1.5">
+                  <p className="m-0 text-[13px] lg:text-[14px] font-semibold text-gypi-text">{elegir.pregunta}{elegir.obligatoria ? " (obligatorio)" : ""}</p>
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label={elegir.pregunta}>
+                    {elegir.opciones.map((o) => (
+                      <Chip key={o.codigo} active={f[`cuenta_${elegir.lado}`] === o.codigo} onClick={() => setF((x) => ({ ...x, [`cuenta_${elegir.lado}`]: o.codigo }))}>{o.etiqueta}</Chip>
+                    ))}
+                    <Chip onClick={() => setCambiarCuentas(true)}>Otra cuenta…</Chip>
+                  </div>
+                </div>
+              )}
+              {cambiarCuentas ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {selectCuenta("debe")}
+                  {selectCuenta("haber")}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 rounded-lg bg-gypi-surface px-3 py-2 text-[13px] lg:text-[14px] text-gypi-dim">
+                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <span>Debe: <b className="text-gypi-text">{nombreCuenta(f.cuenta_debe, datos.cuentas)}</b></span>
+                    <span>Haber: <b className="text-gypi-text">{nombreCuenta(f.cuenta_haber, datos.cuentas)}</b></span>
+                  </div>
+                  <button type="button" className="g-btn g-btn-secondary shrink-0" onClick={() => setCambiarCuentas(true)}>Cambiar cuentas</button>
+                </div>
+              )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {campo(`Proveedor o cliente${tipo.pide_entidad ? " (obligatorio)" : ""}`, (
                 <SelectBuscable className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id ? `p${f.proveedor_id}` : f.entidad ? `n${f.entidad}` : ""} onChange={(e) => {
                   const v = e.target.value;
@@ -219,52 +225,57 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
                 </SelectBuscable>
               ))}
               {otroNombre && campo("Nombre", <input className="g-input w-full" value={f.entidad} onChange={set("entidad")} placeholder="Cliente u otro" />)}
-              {campo(`OT${tipo.pide_ot ? " (obligatoria)" : ""}`, (
-                <SelectBuscable className="g-input w-full" value={f.proyecto_id} onChange={set("proyecto_id")}>
-                  <option value="">Sin OT</option>
-                  {datos.proyectos.map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>)}
-                </SelectBuscable>
-              ))}
-              {campo(`Centro de costo${tipo.pide_cc ? " (obligatorio)" : ""}`, (
-                <SelectBuscable className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}>
-                  <option value="">Sin centro de costo</option>
-                  {datos.centros.filter((c) => c.activo !== false).map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre && c.nombre.toUpperCase() !== c.codigo.toUpperCase() ? `${c.codigo} · ${c.nombre}` : c.codigo}</option>)}
-                </SelectBuscable>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="flex gap-1.5" aria-label="Moneda">
-                <Chip active={f.moneda === "ARS"} onClick={() => setF((x) => ({ ...x, moneda: "ARS" }))}>Pesos</Chip>
-                <Chip active={f.moneda === "USD"} onClick={() => setF((x) => ({ ...x, moneda: "USD" }))}>Dólares</Chip>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {campo(`OT${tipo.pide_ot ? " (obligatoria)" : ""}`, (
+                  <SelectBuscable className="g-input w-full" value={f.proyecto_id} onChange={set("proyecto_id")}>
+                    <option value="">Sin OT</option>
+                    {datos.proyectos.map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>)}
+                  </SelectBuscable>
+                ))}
+                {campo(`Centro de costo${tipo.pide_cc ? " (obligatorio)" : ""}`, (
+                  <SelectBuscable className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}>
+                    <option value="">Sin centro de costo</option>
+                    {datos.centros.filter((c) => c.activo !== false).map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre && c.nombre.toUpperCase() !== c.codigo.toUpperCase() ? `${c.codigo} · ${c.nombre}` : c.codigo}</option>)}
+                  </SelectBuscable>
+                ))}
               </div>
-              {f.moneda === "USD" && campo("Tipo de cambio ($ por dólar)", <input className="g-input w-[160px]" inputMode="decimal" value={f.tipo_cambio} onChange={set("tipo_cambio")} placeholder="1450" />)}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {campo("Neto", <input className="g-input w-full" inputMode="decimal" value={f.neto} onChange={set("neto")} placeholder="0,00" />)}
-              {campo("IVA", <input className="g-input w-full" inputMode="decimal" value={f.iva} onChange={set("iva")} placeholder="0,00" />)}
-              {campo("Otros impuestos", <input className="g-input w-full" inputMode="decimal" value={f.otros_impuestos} onChange={set("otros_impuestos")} placeholder="0,00" />)}
-            </div>
-            <p className="text-[15px] font-bold text-gypi-text">Total: {plata(total, f.moneda)}</p>
+            </section>
 
-            {campo("Descripción", <textarea className="g-input w-full" rows={2} value={f.descripcion} onChange={set("descripcion")} />)}
-            {campo("Referencia (factura, recibo, número de transferencia)", <input className="g-input w-full" value={f.referencia} onChange={set("referencia")} />)}
+            <section className="flex flex-col gap-3" aria-label="Importe y detalle">
+              <h3 className="g-overline m-0 text-gypi-dim">Importe y detalle</h3>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex gap-1.5" aria-label="Moneda">
+                  <Chip active={f.moneda === "ARS"} onClick={() => setF((x) => ({ ...x, moneda: "ARS" }))}>Pesos</Chip>
+                  <Chip active={f.moneda === "USD"} onClick={() => setF((x) => ({ ...x, moneda: "USD" }))}>Dólares</Chip>
+                </div>
+                {f.moneda === "USD" && campo("Tipo de cambio ($ por dólar)", <input className="g-input w-[160px]" inputMode="decimal" value={f.tipo_cambio} onChange={set("tipo_cambio")} placeholder="1450" />)}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {campo("Neto", <input className="g-input w-full" inputMode="decimal" value={f.neto} onChange={set("neto")} placeholder="0,00" />)}
+                {campo("IVA", <input className="g-input w-full" inputMode="decimal" value={f.iva} onChange={set("iva")} placeholder="0,00" />)}
+                {campo("Otros impuestos", <input className="g-input w-full" inputMode="decimal" value={f.otros_impuestos} onChange={set("otros_impuestos")} placeholder="0,00" />)}
+              </div>
+              <p className="m-0 text-[16px] lg:text-[18px] font-bold text-gypi-text">Total: {plata(total, f.moneda)}</p>
 
-            {total > 0 && f.cuenta_debe && f.cuenta_haber && (
-              <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3">
-                <h3 className="m-0 mb-1 text-[13px] font-bold text-gypi-text">Así queda el asiento</h3>
-                <Asiento op={vista} datos={datos} />
-              </section>
-            )}
-          </>
+              {campo("Descripción", <textarea className="g-input w-full" rows={2} value={f.descripcion} onChange={set("descripcion")} />)}
+              {campo("Referencia (factura, recibo, número de transferencia)", <input className="g-input w-full" value={f.referencia} onChange={set("referencia")} />)}
+
+              {total > 0 && f.cuenta_debe && f.cuenta_haber && (
+                <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3">
+                  <h3 className="m-0 mb-1 text-[13px] lg:text-[14px] font-bold text-gypi-text">Así queda el asiento</h3>
+                  <Asiento op={vista} datos={datos} />
+                </section>
+              )}
+            </section>
+          </div>
         )}
 
         {errores.length > 0 && (
-          <ul role="alert" className="m-0 pl-5 text-[13px] text-gypi-red">
+          <ul role="alert" className="m-0 pl-5 text-[13px] lg:text-[14px] text-gypi-red">
             {errores.map((e) => <li key={e}>{e}</li>)}
           </ul>
         )}
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 border-t border-gypi-border pt-3">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
           <button type="button" className="g-btn g-btn-primary" disabled={guardando || !tipo} onClick={guardar}>{guardando ? "Guardando…" : "Guardar operación"}</button>
         </div>

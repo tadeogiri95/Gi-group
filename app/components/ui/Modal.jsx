@@ -8,9 +8,14 @@ export default function Modal({
   onClose,
   title,
   children,
-  maxWidth = 480,
+  maxWidth,
   closable = true,
+  // 11/11 (pedido de Tadeo): formularios largos de Finanzas. En la
+  // computadora la ventana es mucho más ancha y alta, para que el formulario
+  // vaya en dos columnas y se vea entero; en el celular es la misma de siempre.
+  grande = false,
 }) {
+  const ancho = maxWidth ?? (grande ? 1120 : 480);
   const dialogRef = useRef(null);
   const contentRef = useRef(null);
 
@@ -70,14 +75,14 @@ export default function Modal({
 
       <div
         ref={contentRef}
-        style={{ maxWidth }}
-        className="modal-content-responsive relative w-full max-h-[90dvh] bg-gypi-bg rounded-t-[20px] border border-gypi-border border-b-0 flex flex-col overflow-hidden animate-[slideInUp_0.2s_ease]"
+        style={{ maxWidth: ancho }}
+        className={`modal-content-responsive ${grande ? "modal-grande" : ""} relative w-full max-h-[90dvh] bg-gypi-bg rounded-t-[20px] border border-gypi-border border-b-0 flex flex-col overflow-hidden animate-[slideInUp_0.2s_ease]`}
       >
         {(title || closable) && (
           <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gypi-border shrink-0 relative">
             <div className="show-mobile-only absolute top-2 left-1/2 -translate-x-1/2 w-9 h-1 rounded-sm bg-gypi-mute" />
 
-            <h2 className="m-0 text-[17px] font-bold text-gypi-text font-heading">{title || ''}</h2>
+            <h2 className="modal-titulo m-0 text-[17px] font-bold text-gypi-text font-heading">{title || ''}</h2>
 
             {closable && (
               <button
@@ -93,7 +98,7 @@ export default function Modal({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-5 pt-4 pb-6">
+        <div className="modal-cuerpo flex-1 overflow-y-auto px-5 pt-4 pb-6">
           {children}
         </div>
       </div>
