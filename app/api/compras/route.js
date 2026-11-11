@@ -56,7 +56,8 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { comprasBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch, sbDelete, sbRpc } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambiosPedido, formatoCuit } from "../../lib/compras";
 import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, pedidosAlCerrar, precioEnPesos, precioEnStock } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
@@ -844,7 +845,7 @@ async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
   // Compras es un módulo propio (viene con las OT y se puede apagar aparte, 131)
-  return requireModulo(sesion.empresa_id, "compras");
+  return requireModuloSesion(sesion, "compras");
 }
 
 export async function GET(request) {

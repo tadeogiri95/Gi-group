@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { safeErrorMessage } from "../../lib/validate";
 import { sbGetAll } from "../../lib/sbHelpers";
-import { requireModulo } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { logger } from "../../lib/logger";
 import { hoyArg } from "../../lib/dates";
 import { CLAVE_PLANIFICACION } from "../../lib/planificacion";
@@ -26,7 +26,7 @@ export async function GET(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModuloSesion(sesion, "proyectos");
     if (sinModulo) return sinModulo;
     if (!sesion.empleado_id) return json(NADA);
     const e = sesion.empresa_id;

@@ -10,7 +10,8 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { safeErrorMessage } from "../../../lib/validate";
-import { rechazarSiSinPlan, requireModulo } from "../../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { puedeEditarFlota } from "../../../lib/flota";
 import { esResponsableMantenimiento } from "../../../lib/mantenimientoServidor";
 import { contenidoCoincide } from "../../../lib/fileSignature";
@@ -40,7 +41,7 @@ export async function POST(request) {
     }
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
-    const sinModulo = await requireModulo(sesion.empresa_id, "flota");
+    const sinModulo = await requireModuloSesion(sesion, "flota");
     if (sinModulo) return sinModulo;
 
     const form = await request.formData().catch(() => null);

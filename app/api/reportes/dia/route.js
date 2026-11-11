@@ -5,7 +5,7 @@
 // Con RLS_RUTAS=on las consultas van con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
-import { requireModulo } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { reporteDiarioDeEmpresa } from "../../../lib/reporteDiarioServidor";
 import { safeErrorMessage } from "../../../lib/validate";
 import { hoyArg } from "../../../lib/dates";
@@ -21,7 +21,7 @@ export async function GET(request) {
     if (!ROLES_PERMITIDOS.has(sesion.rol)) {
       return NextResponse.json({ error: "Solo gerencial o administrativo puede ver el reporte del día" }, { status: 403 });
     }
-    const sinModulo = await requireModulo(sesion.empresa_id, "actividad");
+    const sinModulo = await requireModuloSesion(sesion, "actividad");
     if (sinModulo) return sinModulo;
 
     const fecha = new URL(request.url).searchParams.get("fecha") || hoyArg();

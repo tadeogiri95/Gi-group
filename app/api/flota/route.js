@@ -41,7 +41,8 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { flotaBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion, rechazarSiNoConfigura } from "../../lib/accesosServidor";
 import { normalizarPatente, puedeEditarFlota } from "../../lib/flota";
 import { contarEstados, plantillaDe } from "../../lib/checklistVehiculo";
 import { arreglosDeChecklist, ultimoService } from "../../lib/arreglosFlota";
@@ -306,7 +307,7 @@ async function chequeos(sesion) {
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return sinPlan;
   // Flota es un módulo propio (viene con las OT y se puede apagar aparte, 131)
-  return requireModulo(sesion.empresa_id, "flota");
+  return requireModuloSesion(sesion, "flota");
 }
 
 async function crearArreglo(sesion, d) {
@@ -488,7 +489,12 @@ export async function POST(request) {
       if (d.accion === "papel_borrar") return await borrarPapel(sesion, d.id);
       if (d.accion === "papel_archivo") return await linkArchivo(sesion, d.id);
       if (d.accion === "checklist_crear") return await crearChecklist(sesion, d);
-      if (d.accion === "checklist_plantilla_guardar") return await guardarPlantilla(sesion, d);
+      if (d.accion === "checklist_plantilla_guardar") {
+        // La plantilla del checklist es configuración (⚙ Checklist, 181)
+        const sinConfigurar = await rechazarSiNoConfigura(sesion);
+        if (sinConfigurar) return sinConfigurar;
+        return await guardarPlantilla(sesion, d);
+      }
       if (d.accion === "arreglo_crear") return await crearArreglo(sesion, d);
       if (d.accion === "arreglo_editar") return await editarArreglo(sesion, d);
       if (d.accion === "arreglo_descartar") return await descartarArreglo(sesion, d);

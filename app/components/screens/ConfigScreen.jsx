@@ -8,6 +8,7 @@ import { MODULO_SECCION_GESTION, seccionBloqueada } from "../../lib/modulos";
 import { seccionesMas, GRUPOS } from "../../lib/menuGestion";
 import ListItem from "../ui/ListItem";
 import { Spinner } from "../ui";
+import { MENSAJE_SIN_CONFIGURAR } from "../../lib/accesos";
 
 // Cada sección se baja recién cuando se abre (app liviana): antes "Más"
 // descargaba el código de las 10 pantallas juntas (~200 KB) para mostrar una lista.
@@ -19,6 +20,7 @@ const ReglasScreen = perezosa(() => import("./ReglasScreen"));
 const AdminEmpresaScreen = perezosa(() => import("../../admin_empresa_screen"));
 const AsistenciaReglasScreen = perezosa(() => import("./AsistenciaReglasScreen"));
 const ModulosScreen = perezosa(() => import("./ModulosScreen"));
+const AccesosScreen = perezosa(() => import("./AccesosScreen"));
 const PlanillasConectadas = perezosa(() => import("../PlanillasConectadas"));
 const ParametrosPlanificacion = perezosa(() => import("../PlanificacionScreen").then((m) => m.ParametrosPlanificacion));
 import CerrarSesion from "../CerrarSesion";
@@ -105,6 +107,10 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
   }
 
   const id = seccion.id;
+  // Sin permiso para configurar (Más → Accesos, 181) se mira sin cambiar nada.
+  // Ubicaciones no se traba entera: tiene filtros y el mapa; el servidor no guarda.
+  const soloLectura = !!seccion.soloLectura;
+  const trabar = soloLectura && id !== "ubicaciones" && id !== "admin" && id !== "produccion";
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="px-[18px] pb-1 shrink-0">
@@ -115,18 +121,24 @@ export default function ConfigScreen({ ctx, reload, usuario, empresa, onUpdateEm
       </div>
       <div role="region" aria-label={seccion.label} className="flex-1 overflow-hidden flex flex-col">
         {seccionBloqueada(id, empresa) && <ModuloBloqueado modulo={MODULO_SECCION_GESTION[id]} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
-        {!seccionBloqueada(id, empresa) && <>
+        {soloLectura && (
+          <div role="status" className="mx-[18px] mb-2 px-3 py-2 rounded-lg bg-gypi-amber/15 text-gypi-amber-ink text-[13px] font-semibold shrink-0">
+            🔒 Solo lectura. {MENSAJE_SIN_CONFIGURAR}
+          </div>
+        )}
+        {!seccionBloqueada(id, empresa) && <fieldset disabled={trabar} className="contents border-0 p-0 m-0 min-w-0">
         {id === "proyectos"     && <ProyectosScreen empresaId={empresaId} />}
         {id === "ubicaciones"   && <GeolocalizacionScreen empresaId={empresaId} />}
         {id === "asistencia"    && <AsistenciaReglasScreen />}
         {id === "reglas"        && <ReglasScreen ctx={ctx} reload={reload} usuario={usuario} />}
-        {id === "admin"         && <AdminEmpresaScreen grupo="empresa" empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
-        {id === "produccion"    && <AdminEmpresaScreen grupo="produccion" empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
+        {id === "admin"         && <AdminEmpresaScreen grupo="empresa" soloLectura={soloLectura} empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
+        {id === "produccion"    && <AdminEmpresaScreen grupo="produccion" soloLectura={soloLectura} empresa={empresa} empresaId={usuario?.empresa_id} onUpdate={onUpdateEmpresa} divisiones={divisiones} etapas={etapas} />}
         {id === "planificacion" && <ParametrosPlanificacion empresaId={empresaId} />}
         {id === "planillas"     && <PlanillasConectadas empresa={empresa} />}
         {id === "modulos"       && <ModulosScreen onUpdateEmpresa={onUpdateEmpresa} />}
+        {id === "accesos"       && <AccesosScreen />}
         {id === "privacidad"    && <PrivacidadPanel usuario={usuario} empresa={empresa} />}
-        </>}
+        </fieldset>}
       </div>
     </div>
   );

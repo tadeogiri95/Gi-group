@@ -22,7 +22,8 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { planProduccionBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { logger } from "../../lib/logger";
 import { hoyArg } from "../../lib/dates";
 import { comoDueno } from "../../lib/alcance";
@@ -40,7 +41,7 @@ const diaAntes = (f) => new Date(Date.parse(`${f}T00:00:00Z`) - DIA_MS).toISOStr
 async function entrar(request) {
   const sesion = await validarToken(request);
   if (!sesion?.empresa_id) return { response: respuestaNoAutorizado() };
-  const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+  const sinModulo = await requireModuloSesion(sesion, "proyectos");
   if (sinModulo) return { response: sinModulo };
   return { sesion };
 }

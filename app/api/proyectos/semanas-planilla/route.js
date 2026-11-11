@@ -15,7 +15,7 @@ import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { safeErrorMessage } from "../../../lib/validate";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { sbGet, sbPost, sbPatch } from "../../../lib/sbHelpers";
-import { requireModulo } from "../../../lib/planEnforcement";
+import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { CLAVE_PLANILLA_PLAN, generarClave, empresaDeClave, claveValida, semanasParaPlanilla, scriptPlanPlanilla } from "../../../lib/planillaPlan";
 import { broadcastRefresh } from "../../../lib/broadcast";
@@ -87,7 +87,7 @@ export async function POST(request) {
     if (!ROLES_GESTION.has(sesion.rol)) {
       return NextResponse.json({ error: "Solo el encargado puede conectar la planilla" }, { status: 403 });
     }
-    const sinModulo = await requireModulo(sesion.empresa_id, "proyectos");
+    const sinModulo = await requireModuloSesion(sesion, "proyectos");
     if (sinModulo) return sinModulo;
 
     const e = sesion.empresa_id;

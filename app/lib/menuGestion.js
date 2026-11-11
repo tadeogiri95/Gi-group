@@ -6,6 +6,7 @@
 // no se ve y lo que el rol no puede usar no se muestra (Facturación es solo
 // del dueño).
 import { seccionBloqueada, seccionApagada, tieneModulo, moduloApagado, conRegistroTareas } from "./modulos";
+import { puedeConfigurar, esTitular } from "./accesos";
 
 // Botones de la barra de gestión que agrupan pantallas en pestañas (menú
 // nuevo, parte 32): Proyectos (OT y reportes de producción), Inventario
@@ -110,18 +111,23 @@ export function comoDueno(usuario) {
 // Producción, las OT quedan acá.
 // conProyectos: solo si la empresa tiene las OT; soloGerencia: Dueño y
 // supervisores; soloDueno: solo el dueño (el pago del plan).
+// Accesos por persona (181): config = es configuración (quien no puede
+// configurar la ve en solo lectura); soloConfigura: solo quien configura;
+// soloTitular: solo el titular de la cuenta.
 const SECCIONES = [
   { id: "equipo", pantalla: "equipo", grupo: "personas", icono: "👥", label: "Equipo y horarios", detalle: "Personas, turnos, calendario, reportes y documentos" },
   { id: "permisos", pantalla: "solicitudes", grupo: "personas", icono: "📨", label: "Permisos", detalle: "Vacaciones, faltas y avisos del personal", conPendientes: true },
-  { id: "asistencia", grupo: "personas", icono: "⏱️", label: "Reglas de asistencia y permisos", detalle: "Tolerancia, bloqueos y tipos de permiso" },
+  { id: "asistencia", grupo: "personas", icono: "⏱️", label: "Reglas de asistencia y permisos", detalle: "Tolerancia, bloqueos y tipos de permiso", config: true },
   { id: "proyectos", grupo: "planta", icono: "📋", label: "OT", detalle: "Órdenes de trabajo", soloSinProyectos: true },
-  { id: "produccion", grupo: "planta", icono: "🏭", label: "Producción", detalle: "Divisiones, etapas, rutas, paradas, liberación, carga, defectos" },
-  { id: "planificacion", grupo: "planta", icono: "📅", label: "Planificación", detalle: "Tiempos, máquinas, feriados y capacidad", conProyectos: true, soloGerencia: true },
-  { id: "planillas", grupo: "planta", icono: "🔗", label: "Planillas conectadas", detalle: "Plan de trabajo, MRP y scripts, todo en un lugar", conProyectos: true },
-  { id: "admin", grupo: "empresa", icono: "🏢", label: "Datos y apariencia", detalle: "Nombre, logo, colores y resumen semanal" },
-  { id: "ubicaciones", grupo: "empresa", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar" },
-  { id: "reglas", grupo: "empresa", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo" },
-  { id: "modulos", grupo: "empresa", icono: "🧩", label: "Módulos", detalle: "Prendé o apagá lo que usa la empresa" },
+  { id: "produccion", grupo: "planta", icono: "🏭", label: "Producción", detalle: "Divisiones, etapas, rutas, paradas, liberación, carga, defectos", config: true },
+  { id: "planificacion", grupo: "planta", icono: "📅", label: "Planificación", detalle: "Tiempos, máquinas, feriados y capacidad", conProyectos: true, soloGerencia: true, config: true },
+  { id: "planillas", grupo: "planta", icono: "🔗", label: "Planillas conectadas", detalle: "Plan de trabajo, MRP y scripts, todo en un lugar", conProyectos: true, config: true },
+  { id: "admin", grupo: "empresa", icono: "🏢", label: "Datos y apariencia", detalle: "Nombre, logo, colores y resumen semanal", config: true },
+  { id: "ubicaciones", grupo: "empresa", icono: "📍", label: "Ubicaciones y plantas", detalle: "Dónde se puede fichar", config: true },
+  { id: "reglas", grupo: "empresa", icono: "💬", label: "Asistente", detalle: "Cómo responde el asistente al equipo", config: true },
+  { id: "modulos", grupo: "empresa", icono: "🧩", label: "Módulos", detalle: "Prendé o apagá lo que usa la empresa", soloConfigura: true },
+  // Accesos por persona (181): solo el titular de la cuenta
+  { id: "accesos", grupo: "empresa", icono: "🔐", label: "Accesos", detalle: "Qué módulos ve cada persona y quién configura", soloTitular: true },
   // Finanzas salió de acá el 10/11: tiene su botón en la barra de abajo
   { id: "facturacion", grupo: "empresa", icono: "💳", label: "Plan y facturación", detalle: "Tu plan, pagos y comprobantes", soloDueno: true },
   { id: "privacidad", grupo: "cuenta", icono: "👤", label: "Mi cuenta y privacidad", detalle: "Tus datos y cerrar sesión" },
@@ -137,13 +143,16 @@ export const GRUPOS = [
 /** Secciones visibles para esta empresa y este usuario, con su candado. */
 export function seccionesMas({ empresa, usuario } = {}) {
   const proyectos = conBoton("proyectos", empresa);
+  const configura = puedeConfigurar(empresa, usuario);
   return SECCIONES
     .filter((s) => !(s.soloSinProyectos && proyectos))
     .filter((s) => !(s.conProyectos && !proyectos))
     .filter((s) => !(s.soloGerencia && !comoDueno(usuario)))
     .filter((s) => !(s.soloDueno && usuario?.rol !== "gerencial"))
+    .filter((s) => !(s.soloConfigura && !configura))
+    .filter((s) => !(s.soloTitular && !esTitular(empresa)))
     .filter((s) => !seccionApagada(s.id, empresa))
-    .map((s) => ({ ...s, bloqueado: seccionBloqueada(s.id, empresa) }));
+    .map((s) => ({ ...s, bloqueado: seccionBloqueada(s.id, empresa), soloLectura: !!s.config && !configura }));
 }
 
 export function seccionPorId(id, opciones) {

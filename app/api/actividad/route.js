@@ -17,7 +17,8 @@ import { unaSolaVez } from "../../lib/operacionesOffline";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 
 async function procesar(sesion, datos) {
   const { accion, momento } = datos;
@@ -89,7 +90,7 @@ export async function POST(request) {
     // Las tareas son parte del módulo "actividad" (Planta; ítem 36). Terminar
     // una que quedó abierta se deja siempre (p. ej. si la empresa cambió de plan).
     if (parsed.data.accion === "iniciar") {
-      const sinModulo = await requireModulo(sesion.empresa_id, "actividad");
+      const sinModulo = await requireModuloSesion(sesion, "actividad");
       if (sinModulo) return sinModulo;
     }
     return await unaSolaVez(sesion, parsed.data.op_id, "actividad", () => procesar(sesion, parsed.data));

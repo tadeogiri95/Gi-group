@@ -10,6 +10,7 @@ import { validarToken } from "../../lib/auth";
 import { getModulosEmpresa, invalidarCachePlan } from "../../lib/planEnforcement";
 import { MODULOS, SIEMPRE_PRENDIDOS } from "../../lib/modulos";
 import { logAudit } from "../../lib/audit";
+import { rechazarSiNoConfigura } from "../../lib/accesosServidor";
 import { ipCliente } from "../../lib/ip";
 import { safeErrorMessage } from "../../lib/validate";
 
@@ -22,6 +23,9 @@ async function sesionDeGestion(request) {
   if (!["gerencial", "administrativo"].includes(sesion.rol)) {
     return { respuesta: NextResponse.json({ error: "Sin permisos" }, { status: 403 }) };
   }
+  // Prender o apagar módulos es configuración: titular o quien él designe (181)
+  const sinConfigurar = await rechazarSiNoConfigura(sesion);
+  if (sinConfigurar) return { respuesta: sinConfigurar };
   return { sesion };
 }
 

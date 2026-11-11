@@ -32,7 +32,8 @@ import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { minutasBody } from "../../lib/schemas";
 import { sbGet, sbGetAll, sbPost, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpers";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, sigueAbierto } from "../../lib/minutas";
 import { precargaMinuta } from "../../lib/minutasPrecargaServidor";
 import { logger } from "../../lib/logger";
@@ -60,7 +61,7 @@ async function entrar(request) {
   if (!(await comoDueno(sesion))) return { response: json({ error: "La minuta es del Dueño y los supervisores" }, 403) };
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return { response: sinPlan };
-  const sinModulo = await requireModulo(sesion.empresa_id, "minutas");
+  const sinModulo = await requireModuloSesion(sesion, "minutas");
   if (sinModulo) return { response: sinModulo };
   return { sesion };
 }
