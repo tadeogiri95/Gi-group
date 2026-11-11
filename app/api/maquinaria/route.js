@@ -36,7 +36,8 @@ import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { maquinariaBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { normalizarCodigo, puedeEditarMaquinaria, tareasDePlantilla, tipoMaquina } from "../../lib/maquinaria";
 import { contarEstados } from "../../lib/checklistVehiculo";
 import { ACCIONES_RESPONSABLE, CAMPOS_MAQUINA, aCargoDe, destinatarios } from "../../lib/mantenimiento";
@@ -385,7 +386,7 @@ export async function POST(request) {
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
     // Maquinaria es un módulo propio (viene con las OT y se puede apagar aparte, 132)
-    const sinModulo = await requireModulo(sesion.empresa_id, "maquinaria");
+    const sinModulo = await requireModuloSesion(sesion, "maquinaria");
     if (sinModulo) return sinModulo;
     const d = parsed.data;
     try {

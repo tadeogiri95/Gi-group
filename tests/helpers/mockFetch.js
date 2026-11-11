@@ -50,5 +50,12 @@ export function authPassHandlers() {
       match: (url) => url.includes("select=id,solo_su_division"),
       respond: () => ({ status: 200, body: [{ solo_su_division: false }] }),
     },
+    // Accesos por persona (181, lib/accesosServidor.js): por defecto como
+    // antes de la migración (nada oculto; la gestión configura). Los tests
+    // de accesos ponen su propio handler antes.
+    {
+      match: (url) => url.includes("/rest/v1/accesos_personas"),
+      respond: () => ({ status: 404, body: { code: "PGRST205", message: "Could not find the table 'public.accesos_personas' in the schema cache" } }),
+    },
   ];
 }

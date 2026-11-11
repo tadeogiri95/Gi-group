@@ -21,7 +21,8 @@ import { piezasBody } from "../../lib/schemas";
 import { sbGet, sbPatch, sbDelete, sbHeaders } from "../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { ordenarEtapas, guardarPiezas, leerDestinos, aplicarDestinos } from "../../lib/piezasServidor";
 import { moduloDe } from "../../lib/piezas";
 import { logger } from "../../lib/logger";
@@ -119,7 +120,7 @@ export async function POST(request) {
     if (parsed.response) return parsed.response;
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
-    const sinModulo = await requireModulo(sesion.empresa_id, "actividad");
+    const sinModulo = await requireModuloSesion(sesion, "actividad");
     if (sinModulo) return sinModulo;
     try {
       return await procesar(sesion, parsed.data);

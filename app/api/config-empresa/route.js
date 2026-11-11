@@ -10,6 +10,7 @@ import { sbGet, sbPost, sbPatch } from "../../lib/sbHelpers";
 import { configPostBody, configPatchBody } from "../../lib/schemas";
 import { validateBody, isUUID, safeErrorMessage } from "../../lib/validate";
 import { logger } from "../../lib/logger";
+import { rechazarSiNoConfigura } from "../../lib/accesosServidor";
 import { ordenarPlantas } from "../../lib/plantas";
 import { CLAVE_CAUSAS, normalizarCausas } from "../../lib/causas";
 import { CLAVE_CHECKLIST, normalizarChecklist } from "../../lib/avance";
@@ -132,6 +133,9 @@ export async function POST(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
+    // Configuración de la planta: titular o quien él designe (181)
+    const sinConfigurar = await rechazarSiNoConfigura(sesion);
+    if (sinConfigurar) return sinConfigurar;
     const empresaId = sesion.empresa_id;
 
     const rawBody = await request.json();
@@ -222,6 +226,9 @@ export async function PATCH(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
+    // Configuración de la planta: titular o quien él designe (181)
+    const sinConfigurar = await rechazarSiNoConfigura(sesion);
+    if (sinConfigurar) return sinConfigurar;
     const empresaId = sesion.empresa_id;
 
     const rawBody = await request.json();
@@ -354,6 +361,9 @@ export async function DELETE(request) {
     if (!["gerencial", "administrativo"].includes(sesion.rol)) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
     }
+    // Configuración de la planta: titular o quien él designe (181)
+    const sinConfigurar = await rechazarSiNoConfigura(sesion);
+    if (sinConfigurar) return sinConfigurar;
     const empresaId = sesion.empresa_id;
 
     const { searchParams } = new URL(request.url);

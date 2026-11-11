@@ -21,7 +21,8 @@ import { cargaBody } from "../../lib/schemas";
 import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { CLAVE_CHECKLIST_CARGA, estadoCarga } from "../../lib/carga";
 import { normalizarChecklist } from "../../lib/avance";
 import { logger } from "../../lib/logger";
@@ -153,7 +154,7 @@ export async function POST(request) {
     if (parsed.response) return parsed.response;
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
     if (sinPlan) return sinPlan;
-    const sinModulo = await requireModulo(sesion.empresa_id, "actividad");
+    const sinModulo = await requireModuloSesion(sesion, "actividad");
     if (sinModulo) return sinModulo;
     try {
       return await procesar(sesion, parsed.data);

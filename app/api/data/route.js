@@ -15,7 +15,8 @@ import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { CAMPOS_PERMITIDOS } from "../../lib/schemas";
 import { comoDueno } from "../../lib/alcance";
 import { diasEntre, MAX_DIAS_SOLICITUD } from "../../lib/tiposSolicitud";
-import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD } from "../../lib/dataPolicy";
+import { autorizar, aplicarFiltroPropio, prepararBodyPost, validarPatch, validarConsulta, REFERENCIAS, TIPOS_SOLICITUD, TABLAS_CONFIGURACION } from "../../lib/dataPolicy";
+import { rechazarSiNoConfigura } from "../../lib/accesosServidor";
 import { rlsActivo, rlsRutasActivo, configRlsFaltante, headersUsuario } from "../../lib/supabaseUsuario";
 import { TABLAS_OT, filasDeCambio } from "../../lib/historialOt";
 import { logAuditVarios } from "../../lib/audit";
@@ -387,6 +388,10 @@ export async function POST(request) {
     const auth = autorizar(pathCheck.tabla, method || "GET", sesion);
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    if (method && method !== "GET" && TABLAS_CONFIGURACION.has(pathCheck.tabla)) {
+      const sinConfigurar = await rechazarSiNoConfigura(sesion);
+      if (sinConfigurar) return sinConfigurar;
     }
     if ((method === "POST" || method === "PATCH") && !CAMPOS_PERMITIDOS[pathCheck.tabla]?.[method]) {
       return NextResponse.json({ error: `Operación no permitida sobre "${pathCheck.tabla}"` }, { status: 403 });

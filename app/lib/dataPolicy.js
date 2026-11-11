@@ -118,6 +118,13 @@ export const POLICY = {
 };
 
 // Campos de empresa que definen el comportamiento de la IA: solo el dueño.
+// Tablas de configuración (Más → Cómo trabaja la planta y Empresa): las
+// cambia solo el titular de la cuenta o quien él designe (181, Más → Accesos).
+// config_sistema guarda planillas conectadas, parámetros de planificación y
+// la configuración de la Minuta; geo_zonas son las ubicaciones; reglas_bot,
+// las del asistente.
+export const TABLAS_CONFIGURACION = new Set(["empresa", "config_sistema", "geo_zonas", "reglas_bot"]);
+
 export const CAMPOS_EMPRESA_SOLO_DUENO = ["prompt_ia_obra", "prompt_ia_chat", "reglas_asistencia"];
 
 function valorSesion(sesion, from) {

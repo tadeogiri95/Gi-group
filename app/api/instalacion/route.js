@@ -16,7 +16,8 @@ import { reporteInstalacionBody } from "../../lib/schemas";
 import { sbGet, sbGetAll, sbPost } from "../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
-import { rechazarSiSinPlan, requireModulo } from "../../lib/planEnforcement";
+import { rechazarSiSinPlan } from "../../lib/planEnforcement";
+import { requireModuloSesion } from "../../lib/accesosServidor";
 import { avanceInstalacion } from "../../lib/instalacion";
 import { hoyArg } from "../../lib/dates";
 import { logger } from "../../lib/logger";
@@ -37,7 +38,7 @@ async function entrar(request) {
   if (!sesion?.empresa_id) return { response: respuestaNoAutorizado() };
   const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
   if (sinPlan) return { response: sinPlan };
-  const sinModulo = await requireModulo(sesion.empresa_id, "actividad");
+  const sinModulo = await requireModuloSesion(sesion, "actividad");
   if (sinModulo) return { response: sinModulo };
   const gestion = ROLES_GESTION.has(sesion.rol);
   if (!gestion) {
