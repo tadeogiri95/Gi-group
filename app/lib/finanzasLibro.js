@@ -98,7 +98,7 @@ export function filaCheque(ch, { empresa = "", proveedores = new Map() } = {}) {
  * Lo que el script baja al libro.
  * @returns {{ operaciones: object[], cheques: object[], cheques_libro: { ref: string, estado: string, entregado_a: string }[] }}
  */
-export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], proveedores = [], proyectos = [], empresa = "", tiposNuevos = null } = {}) {
+export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], proveedores = [], proyectos = [], empresa = "", tiposNuevos = null, cambiosCuentas = null } = {}) {
   const ctx = {
     cuentas: new Map(cuentas.map((c) => [c.codigo, c.nombre])),
     proveedores: new Map(proveedores.map((p) => [Number(p.id), p.nombre])),
@@ -118,6 +118,8 @@ export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], p
     // Los tipos nuevos (parte 2): el script los suma a dim_tipos_op y
     // dim_flujo, y con reescribir = true pasa T-OPERACIONES una vez
     ...(tiposNuevos ? { tipos_nuevos: tiposNuevos } : {}),
+    // Los cambios de cuentas aprobados el 11/11 (el script los aplica una vez por versión)
+    ...(cambiosCuentas ? { cambios_cuentas: cambiosCuentas } : {}),
   };
 }
 
@@ -137,6 +139,11 @@ export function scriptLibro({ url, clave }) {
 // cuando en Gypi se aprieta "Pasar a los tipos nuevos", reescribe una sola
 // vez cod_tipo_op de T-OPERACIONES (antes deja una copia de respaldo de las
 // hojas, con "_bk_tipos_" y la fecha en el nombre).
+// Una sola vez también arregla el plan de cuentas (códigos y nombres
+// repetidos, cuentas nuevas), las cuentas por defecto de los tipos y suma a
+// CHK_CARGA el control de Ajuste De Capital. Antes deja su copia de respaldo
+// (hojas que terminan en "_bk_cuentas_") y lo que hizo queda en la hoja
+// gypi_cambios_cuentas.
 // Pegalo en un archivo nuevo de Apps Script, guardá y ejecutá
 // instalarLibroGypi una sola vez. Después corre solo cada 15 minutos.
 // La clave es privada: no compartas este código.
@@ -174,6 +181,7 @@ function pasarLibroGypi() {
     var r = gypiLibroPedir_();
     var libro = SpreadsheetApp.getActiveSpreadsheet();
     if (r.tipos_nuevos) gypiLibroTipos_(libro, r.tipos_nuevos);
+    if (r.cambios_cuentas) gypiLibroCuentas_(libro, r.cambios_cuentas);
     var ops = libro.getSheetByName("T-OPERACIONES");
     if (ops) gypiLibroEspejo_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", r.operaciones || [], "fecha_operación");
     var ch = libro.getSheetByName("R-CHEQUES");
@@ -385,10 +393,10 @@ function gypiLibroDimFlujo_(libro, lista) {
 }
 
 // Copia de respaldo con los valores (sin fórmulas, para que no recalcule)
-function gypiLibroRespaldo_(libro, nombre, sello) {
+function gypiLibroRespaldo_(libro, nombre, sello, sufijo) {
   var h = libro.getSheetByName(nombre);
   if (!h) return;
-  var bk = h.copyTo(libro).setName(nombre + "_bk_tipos_" + sello);
+  var bk = h.copyTo(libro).setName(nombre + (sufijo || "_bk_tipos_") + sello);
   var r = bk.getDataRange();
   r.copyTo(r, { contentsOnly: true });
 }
@@ -453,6 +461,249 @@ function gypiLibroReescribirTipos_(libro, t, props) {
     }
   }
   libro.toast("Tipos nuevos: se cambiaron " + cambios + " renglones. La copia de respaldo está en las hojas que terminan en _bk_tipos_" + sello + ".", "Gypi", 15);
+}
+
+// ── Cambios de cuentas (buenas prácticas, aprobados el 11/11) ──────────
+// Se aplican una sola vez por versión. Antes, copia de respaldo de las hojas
+// que toca (terminan en _bk_cuentas_ y la fecha). Lo que hizo queda en la
+// hoja gypi_cambios_cuentas.
+function gypiLibroCuentas_(libro, c) {
+  if (!c || !c.version) return;
+  var props = PropertiesService.getDocumentProperties();
+  if (Number(props.getProperty("gypi_cuentas_version") || 0) >= Number(c.version)) return;
+  var pc = libro.getSheetByName("dim_plan_cuentas");
+  var ops = libro.getSheetByName("T-OPERACIONES");
+  if (!pc || !ops) return;
+  var colP = gypiLibroTitulos_(pc);
+  var cCod = colP["codigo"], cNom = colP["nombre"];
+  if (!cCod || !cNom) throw new Error("dim_plan_cuentas no tiene las columnas codigo y nombre");
+  var sello = Utilities.formatDate(new Date(), libro.getSpreadsheetTimeZone(), "yyyyMMdd_HHmm");
+  ["dim_plan_cuentas", "dim_tipos_op", "T-OPERACIONES", "CHK_CARGA"].forEach(function (n) { gypiLibroRespaldo_(libro, n, sello, "_bk_cuentas_"); });
+  // Con la copia hecha no se vuelve a intentar sola (si algo falla, queda la copia)
+  props.setProperty("gypi_cuentas_version", String(c.version));
+  var log = [];
+  var anota = function (cambio, que, resultado) { log.push([cambio, que, resultado]); };
+  try {
+    var colO = gypiLibroTitulos_(ops);
+    // Los nombres de cuenta escritos a mano en las operaciones (el libro los busca por nombre)
+    var usados = {};
+    ["cuenta_debe_override", "cuenta_haber_override"].forEach(function (t) {
+      var cc = colO[t];
+      if (!cc || ops.getLastRow() < 2) return;
+      ops.getRange(2, cc, ops.getLastRow() - 1, 1).getDisplayValues().forEach(function (x) {
+        var n = String(x[0]).trim();
+        if (n) usados[n] = (usados[n] || 0) + 1;
+      });
+    });
+    var plan = function () {
+      var n = pc.getLastRow();
+      var v = n >= 2 ? pc.getRange(2, 1, n - 1, pc.getLastColumn()).getDisplayValues() : [];
+      return v.map(function (x, i) { return { fila: i + 2, codigo: String(x[cCod - 1]).trim(), nombre: String(x[cNom - 1]).trim() }; });
+    };
+    var buscar = function (p, codigo, nombre) {
+      for (var i = 0; i < p.length; i++) if (p[i].codigo === codigo && p[i].nombre === nombre) return p[i];
+      return null;
+    };
+    var conCodigo = function (p, codigo) { return p.some(function (x) { return x.codigo === codigo; }); };
+    var primera = function (p, nombre) {
+      var k = gypiLibroClaveTipo_(nombre);
+      for (var i = 0; i < p.length; i++) if (gypiLibroClaveTipo_(p[i].nombre) === k) return p[i].fila;
+      return 0;
+    };
+
+    // 1) Cada cuenta con su código propio
+    var p = plan();
+    (c.recodificar || []).forEach(function (x) {
+      var f = buscar(p, x.de, x.nombre);
+      if (!f) return anota("1. Código propio", x.nombre, "No está con el código " + x.de + ": no se tocó");
+      if (conCodigo(p, x.a)) return anota("1. Código propio", x.nombre, "El código " + x.a + " ya es de otra cuenta: no se tocó");
+      pc.getRange(f.fila, cCod).setValue(x.a);
+      f.codigo = x.a;
+      anota("1. Código propio", x.nombre, x.de + " → " + x.a);
+    });
+
+    // 2) Las que se sacan (solo si ninguna operación las usa), de abajo para arriba
+    var sacar = [];
+    (c.sacar || []).forEach(function (x) {
+      var f = buscar(p, x.codigo, x.nombre);
+      if (!f) return anota("2. Se saca", x.nombre, "No está: nada que sacar");
+      if (usados[x.nombre]) return anota("2. Se saca", x.nombre, "La usan " + usados[x.nombre] + " operaciones: no se sacó");
+      sacar.push(f.fila);
+      anota("2. Se saca", x.nombre, "Sacada del plan (queda " + x.queda + ")");
+    });
+    sacar.sort(function (a, b) { return b - a; }).forEach(function (fila) { pc.deleteRow(fila); });
+
+    // 3) Nombres repetidos: cambia la que no toman las operaciones
+    p = plan();
+    (c.renombrar || []).forEach(function (x) {
+      var f = buscar(p, x.codigo, x.nombre);
+      if (!f) return anota("3. Nombre propio", x.codigo + " " + x.nombre, "No está así: no se tocó");
+      if (primera(p, x.nuevo)) return anota("3. Nombre propio", x.codigo + " " + x.nombre, "Ya hay una cuenta " + x.nuevo + ": no se tocó");
+      if (primera(p, x.nombre) === f.fila && usados[x.nombre]) return anota("3. Nombre propio", x.codigo + " " + x.nombre, "Es la que usan las operaciones: no se tocó");
+      pc.getRange(f.fila, cNom).setValue(x.nuevo);
+      f.nombre = x.nuevo;
+      anota("3. Nombre propio", x.codigo, x.nombre + " → " + x.nuevo);
+    });
+
+    // 4) Cuentas nuevas, abajo de su vecina y con la clasificación de una parecida
+    (c.nuevas || []).forEach(function (x) {
+      var q = plan();
+      if (primera(q, x.nombre)) return anota("4. Cuenta nueva", x.nombre, "Ya estaba");
+      if (conCodigo(q, x.codigo)) return anota("4. Cuenta nueva", x.nombre, "El código " + x.codigo + " ya es de otra cuenta: no se agregó");
+      var despues = 0;
+      q.forEach(function (y) { if (y.codigo === x.despues) despues = y.fila; });
+      var base = x.como ? primera(q, x.como) : 0;
+      var ancho = pc.getLastColumn();
+      var valores = base ? pc.getRange(base, 1, 1, ancho).getValues()[0] : [];
+      while (valores.length < ancho) valores.push("");
+      var fila;
+      if (despues) { pc.insertRowAfter(despues); fila = despues + 1; } else fila = pc.getLastRow() + 1;
+      valores[cCod - 1] = x.codigo;
+      valores[cNom - 1] = x.nombre;
+      if (colP["rubro"]) valores[colP["rubro"] - 1] = x.rubro;
+      if (colP["nota_mapeo"]) valores[colP["nota_mapeo"] - 1] = "Agregada por Gypi";
+      pc.getRange(fila, 1, 1, ancho).setValues([valores]);
+      anota("4. Cuenta nueva", x.nombre, "Agregada con el código " + x.codigo);
+    });
+
+    // 5) Cuentas por defecto de los tipos
+    gypiLibroCuentasTipos_(libro, pc, ops, colO, c.tipos || [], anota);
+
+    // 6) CHK_CARGA: las que van contra Ajuste De Capital sin ser apertura, saldos ni socios
+    gypiLibroChkAjuste_(libro, pc, colO, c.ajuste, anota);
+  } catch (err) {
+    anota("Error", "", String(err && err.message || err) + ". Quedó la copia de respaldo _bk_cuentas_" + sello);
+    throw err;
+  } finally {
+    var h = libro.getSheetByName("gypi_cambios_cuentas") || libro.insertSheet("gypi_cambios_cuentas");
+    h.clearContents();
+    var filas = [["Cambio", "Cuenta o tipo", "Qué pasó"]].concat(log);
+    h.getRange(1, 1, filas.length, 3).setValues(filas);
+    libro.toast("Cambios de cuentas: el detalle está en la hoja gypi_cambios_cuentas y la copia de respaldo en las hojas que terminan en _bk_cuentas_" + sello + ".", "Gypi", 20);
+  }
+}
+
+function gypiLibroCuentasTipos_(libro, pc, ops, colO, lista, anota) {
+  var h = libro.getSheetByName("dim_tipos_op");
+  if (!h || !lista.length) return;
+  var col = gypiLibroTitulos_(h);
+  var cT = col["cod_tipo_op"];
+  if (!cT) return;
+  var colP = gypiLibroTitulos_(pc);
+  var pv = pc.getLastRow() >= 2 ? pc.getRange(2, 1, pc.getLastRow() - 1, pc.getLastColumn()).getDisplayValues() : [];
+  var porNombre = {}, porCodigo = {}, repetido = {};
+  pv.forEach(function (x) {
+    var cod = String(x[colP["codigo"] - 1]).trim(), nom = String(x[colP["nombre"] - 1]).trim();
+    if (!cod || !nom) return;
+    var k = gypiLibroClaveTipo_(nom);
+    if (porNombre[k] && porNombre[k].codigo !== cod) repetido[k] = true;
+    else porNombre[k] = { codigo: cod, nombre: nom };
+    if (porCodigo[cod] === undefined) porCodigo[cod] = nom;
+  });
+  var filasTipo = {};
+  var ut = gypiLibroUltima_(h, cT);
+  if (ut >= 2) h.getRange(2, cT, ut - 1, 1).getDisplayValues().forEach(function (x, i) {
+    var k = gypiLibroClaveTipo_(x[0]);
+    if (k && !filasTipo[k]) filasTipo[k] = i + 2;
+  });
+  var lados = [
+    ["debe", "subcuenta_debe_default", "nombre_debe", "cuenta_debe_override", "cuenta_debe_final"],
+    ["haber", "subcuenta_haber_default", "nombre_haber", "cuenta_haber_override", "cuenta_haber_final"]
+  ];
+  var cambios = {};
+  lista.forEach(function (t) {
+    var k = gypiLibroClaveTipo_(t.codigo);
+    if (!filasTipo[k]) return anota("5. Cuentas del tipo", t.codigo, "El tipo no está en dim_tipos_op");
+    var x = {};
+    lados.forEach(function (l) {
+      var n = t[l[0]];
+      if (!n) return;
+      var kn = gypiLibroClaveTipo_(n);
+      if (!porNombre[kn] || repetido[kn]) { anota("5. Cuentas del tipo", t.codigo + " (" + l[0] + ")", "No encontré una sola cuenta " + n + ": no se tocó"); return; }
+      x[l[0]] = porNombre[kn];
+    });
+    if (x.debe || x.haber) cambios[k] = { codigo: t.codigo, fila: filasTipo[k], x: x };
+  });
+  if (!Object.keys(cambios).length) return;
+
+  // Los renglones de esos tipos sin cuenta escrita: se les escribe la que tienen hoy
+  var ultima = ops.getLastRow();
+  var cTipo = colO["cod_tipo_op"];
+  var fijados = 0, corregidos = 0;
+  if (cTipo && ultima >= 2) {
+    var tiposOps = ops.getRange(2, cTipo, ultima - 1, 1).getDisplayValues();
+    lados.forEach(function (l) {
+      var cO = colO[l[3]], cF = colO[l[4]];
+      if (!cO || !cF) return;
+      var rO = ops.getRange(2, cO, ultima - 1, 1);
+      var over = rO.getValues();
+      var formulas = rO.getFormulas();
+      var fin = ops.getRange(2, cF, ultima - 1, 1).getDisplayValues();
+      var filas = [];
+      for (var i = 0; i < over.length; i++) {
+        var ct = cambios[gypiLibroClaveTipo_(tiposOps[i][0])];
+        if (!ct || !ct.x[l[0]] || over[i][0] !== "" || formulas[i][0]) continue;
+        var cod = String(fin[i][0]).trim();
+        if (cod === ct.x[l[0]].codigo) continue;
+        var nom = porCodigo[cod];
+        if (nom && !repetido[gypiLibroClaveTipo_(nom)]) { over[i][0] = nom; filas.push(i); fijados++; } else corregidos++;
+      }
+      if (!filas.length) return;
+      if (formulas.some(function (f) { return f[0]; })) filas.forEach(function (i) { ops.getRange(i + 2, cO).setValue(over[i][0]); });
+      else rO.setValues(over);
+    });
+  }
+
+  Object.keys(cambios).forEach(function (k) {
+    var ct = cambios[k];
+    lados.forEach(function (l) {
+      var cu = ct.x[l[0]], cCodigo = col[l[1]], cNombre = col[l[2]];
+      if (!cu || !cCodigo) return;
+      var antes = h.getRange(ct.fila, cCodigo).getDisplayValue();
+      if (antes === cu.codigo) return;
+      h.getRange(ct.fila, cCodigo).setValue(cu.codigo);
+      if (cNombre) h.getRange(ct.fila, cNombre).setValue(cu.nombre);
+      anota("5. Cuentas del tipo", ct.codigo + " (" + l[0] + ")", (antes || "vacío") + " → " + cu.codigo + " " + cu.nombre);
+    });
+  });
+  if (fijados || corregidos) anota("5. Cuentas del tipo", "T-OPERACIONES", fijados + " renglones viejos quedaron con la cuenta que tenían" + (corregidos ? "; " + corregidos + " apuntaban a una cuenta que no existe y pasan a la nueva" : ""));
+}
+
+function gypiLibroLetra_(n) {
+  var s = "";
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+function gypiLibroChkAjuste_(libro, pc, colO, aj, anota) {
+  var h = libro.getSheetByName("CHK_CARGA");
+  if (!aj) return;
+  if (!h) return anota("6. CHK_CARGA", aj.nombre, "No está la hoja CHK_CARGA");
+  var colP = gypiLibroTitulos_(pc);
+  var codigo = "";
+  if (pc.getLastRow() >= 2) pc.getRange(2, 1, pc.getLastRow() - 1, pc.getLastColumn()).getDisplayValues().forEach(function (x) {
+    if (!codigo && gypiLibroClaveTipo_(x[colP["nombre"] - 1]) === gypiLibroClaveTipo_(aj.nombre)) codigo = String(x[colP["codigo"] - 1]).trim();
+  });
+  if (!codigo) return anota("6. CHK_CARGA", aj.nombre, "No encontré la cuenta en el plan");
+  var letra = function (t) { return colO[t] ? gypiLibroLetra_(colO[t]) : ""; };
+  var F = letra("fecha_operación"), T = letra("estado"), U = letra("cuenta_debe_final"), V = letra("cuenta_haber_final"), E = letra("cod_tipo_op");
+  if (!F || !T || !U || !V || !E) return anota("6. CHK_CARGA", aj.nombre, "T-OPERACIONES no tiene las columnas que hacen falta");
+  var b = h.getRange(1, 2, Math.max(1, h.getLastRow()), 1).getDisplayValues();
+  var filaErr = 0;
+  for (var i = 0; i < b.length; i++) {
+    var t = String(b[i][0]).trim();
+    if (t === "[AJUSTE DE CAPITAL]") return anota("6. CHK_CARGA", aj.nombre, "Ya estaba");
+    // Abajo del total (no es una alerta de la columna chk_carga, se cuenta aparte)
+    if (/^total filas con alerta/i.test(t) || (t === "[CUENTA ERROR]" && !filaErr)) filaErr = i + 1;
+  }
+  if (!filaErr) return anota("6. CHK_CARGA", aj.nombre, "No encontré el renglón [CUENTA ERROR] para poner el nuevo abajo");
+  var r = function (L) { return "'T-OPERACIONES'!$" + L + "$2:$" + L; };
+  var formula = "=ARRAYFORMULA(SUMPRODUCT((" + r(F) + '>=$C$2)*(' + r(T) + '="CONFIRMADO")*(((IFERROR(' + r(U) + '&"","")="' + codigo + '")+(IFERROR(' + r(V) + '&"","")="' + codigo + '"))>0)*NOT(REGEXMATCH(UPPER(' + r(E) + '&""),"' + aj.permitidos + '"))))';
+  h.insertRowAfter(filaErr);
+  h.getRange(filaErr + 1, 2).setValue("[AJUSTE DE CAPITAL]");
+  h.getRange(filaErr + 1, 3).setFormula(formula);
+  h.getRange(filaErr + 1, 4).setValue("Va contra Ajuste De Capital y no es apertura, saldo inicial ni movimiento con socios (no entra en el total de arriba). Cambiar la contrapartida: Proveedores, Acreedores Varios, la cuenta a pagar que corresponda o Faltantes y Sobrantes de Caja.");
+  anota("6. CHK_CARGA", aj.nombre, "Agregado el control [AJUSTE DE CAPITAL] (cuenta " + codigo + ")");
 }
 
 function gypiLibroPedir_() {

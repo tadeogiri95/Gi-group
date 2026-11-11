@@ -179,6 +179,7 @@ test("/api/finanzas/libro — GET solo con la clave de la empresa; POST solo el 
     { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: CUENTAS }) },
     { match: (u) => u.includes("/rest/v1/proveedores"), respond: () => ({ status: 200, body: [{ id: 3, nombre: "EGGER" }] }) },
     { match: (u) => u.includes("/rest/v1/proyectos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/fin_tipos_operacion"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/empleados"), respond: () => ({ status: 200, body: [{ id: EMP, nombre: "Tadeo" }] }) },
   ]);
   const get = (k) => api.GET(new Request("http://localhost/api/finanzas/libro", { headers: { Authorization: `Bearer ${k}` } }));
@@ -189,6 +190,7 @@ test("/api/finanzas/libro — GET solo con la clave de la empresa; POST solo el 
   const d = await res.json();
   assert.deepEqual([d.operaciones[0].valores.referencia, d.cheques[0].valores.referencia], ["GY-F-5", "GY-C-50"]);
   assert.match(leidas[0], /anulada_at=is\.null&origen=not\.in\.\(saldo_inicial,libro\)/);
+  assert.equal(d.cambios_cuentas, undefined, "un plan sin las cuentas repetidas de la propuesta no recibe cambios");
 
   const tok = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
   const post = async (rol) => api.POST(new Request("http://localhost/api/finanzas/libro", { method: "POST", headers: { Authorization: `Bearer ${await tok(rol)}` }, body: "{}" }));
