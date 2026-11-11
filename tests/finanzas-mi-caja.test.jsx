@@ -217,6 +217,13 @@ test("/api/mi-caja — el ticket con factura: proveedor de la lista, número e I
   assert.match(op.descripcion, /Combustible · Caja Juan · Ferretería Centro SRL · Factura A 00004-00001234 · Tornillos/);
 });
 
+test("mi caja — en impuestos o sueldos el IVA no se separa: todo va al importe (11/11)", () => {
+  const conceptos = { gastos: [{ codigo: "IMPUESTOS", nombre: "Impuestos", cuenta: "05.03.01", grupo: "Impuestos" }], ingresos: [] };
+  const { op, errores } = validarMovimientoMiCaja({ clase: "gasto", concepto: "IMPUESTOS", importe: 12100, fecha: "2026-11-08", letra: "A", neto: 10000, iva: 2100 }, { ...CTX, conceptos });
+  assert.deepEqual(errores, []);
+  assert.deepEqual([op.neto, op.iva, op.otros_impuestos, op.total], [12100, 0, 0, 12100]);
+});
+
 test("/api/mi-caja — el mismo comprobante no entra dos veces, venga de donde venga", async () => {
   // ya cargado como gasto por el dueño, escrito con otro formato
   const { escrito } = mockApi({

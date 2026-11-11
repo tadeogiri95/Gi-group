@@ -23,9 +23,7 @@ import { useAgenda } from "./FinanzasElegirProveedor";
 import CargarGasto from "./FinanzasCargarGasto";
 import { CostosMantenimiento } from "./FinanzasIntegracion";
 import { ORIGEN_GASTO } from "../lib/finanzasGastos";
-import {
-  ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
-} from "../lib/finanzasOperaciones";
+import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -111,18 +109,25 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
 
   const elegirTipo = (e) => {
     const t = datos.tipos.find((x) => x.codigo === e.target.value);
-    setF((x) => ({ ...x, tipo: e.target.value, ...cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria)) }));
+    setF((x) => {
+      // Un tipo sin IVA junta lo que estaba en neto, IVA y otros en un solo importe
+      const junto = t && !separaIva(t) && (numero(x.iva) || numero(x.otros_impuestos))
+        ? { neto: String(Math.round(((numero(x.neto) || 0) + (numero(x.iva) || 0) + (numero(x.otros_impuestos) || 0)) * 100) / 100).replace(".", ","), iva: "", otros_impuestos: "" }
+        : {};
+      return { ...x, ...junto, tipo: e.target.value, ...cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria)) };
+    });
     setErrores([]);
   };
 
+  const conIva = !tipo || separaIva(tipo);
   const neto = numero(f.neto) || 0;
-  const iva = numero(f.iva) || 0;
-  const otros = numero(f.otros_impuestos) || 0;
+  const iva = conIva ? numero(f.iva) || 0 : 0;
+  const otros = conIva ? numero(f.otros_impuestos) || 0 : 0;
   const total = Math.round((neto + iva + otros) * 100) / 100;
   const vista = { ...f, neto, iva, otros_impuestos: otros, total, tipo_cambio: numero(f.tipo_cambio) || null };
 
   const guardar = async () => {
-    const operacion = { ...f, proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad };
+    const operacion = { ...f, ...(conIva ? {} : { iva: "", otros_impuestos: "" }), proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad };
     const { errores: e } = validarOperacion(operacion, datos);
     setErrores(e);
     if (e.length) return;
@@ -250,11 +255,18 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
                 </div>
                 {f.moneda === "USD" && campo("Tipo de cambio ($ por dólar)", <input className="g-input w-[160px]" inputMode="decimal" value={f.tipo_cambio} onChange={set("tipo_cambio")} placeholder="1450" />)}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {campo("Neto", <input className="g-input w-full" inputMode="decimal" value={f.neto} onChange={set("neto")} placeholder="0,00" />)}
-                {campo("IVA", <input className="g-input w-full" inputMode="decimal" value={f.iva} onChange={set("iva")} placeholder="0,00" />)}
-                {campo("Otros impuestos", <input className="g-input w-full" inputMode="decimal" value={f.otros_impuestos} onChange={set("otros_impuestos")} placeholder="0,00" />)}
-              </div>
+              {conIva ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {campo("Neto", <input className="g-input w-full" inputMode="decimal" value={f.neto} onChange={set("neto")} placeholder="0,00" />)}
+                  {campo("IVA", <input className="g-input w-full" inputMode="decimal" value={f.iva} onChange={set("iva")} placeholder="0,00" />)}
+                  {campo("Otros impuestos", <input className="g-input w-full" inputMode="decimal" value={f.otros_impuestos} onChange={set("otros_impuestos")} placeholder="0,00" />)}
+                </div>
+              ) : (
+                <>
+                  {campo("Importe", <input className="g-input w-full sm:w-[260px]" inputMode="decimal" value={f.neto} onChange={set("neto")} placeholder="0,00" />)}
+                  <p className="-mt-1 m-0 text-[12px] lg:text-[13px] text-gypi-dim">En {String(tipo.grupo || "este tipo").toLowerCase()} no se separa el IVA: va el importe total. El IVA se carga en la compra o la venta.</p>
+                </>
+              )}
               <p className="m-0 text-[16px] lg:text-[18px] font-bold text-gypi-text">Total: {plata(total, f.moneda)}</p>
 
               {campo("Descripción", <textarea className="g-input w-full" rows={2} value={f.descripcion} onChange={set("descripcion")} />)}

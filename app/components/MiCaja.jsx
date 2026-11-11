@@ -7,7 +7,7 @@
 // dueño para revisar. Mientras el dueño no lo revisó lo puede anular.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
-import { numero, plata } from "../lib/finanzasOperaciones";
+import { numero, plata, separaIva } from "../lib/finanzasOperaciones";
 import Modal from "./ui/Modal";
 import SelectBuscable from "./ui/SelectBuscable";
 import BotonFoto from "./BotonFoto";
@@ -106,7 +106,7 @@ const MAX_CHIPS = 8;
 const LETRAS_TICKET = ["A", "B", "C", "M", "E", "X"];
 
 /** Comercio, CUIT y número de la factura: lo llena la foto y se puede corregir. */
-function DatosTicket({ f, setF, abierto, onAbrir }) {
+function DatosTicket({ f, setF, abierto, onAbrir, separa = true }) {
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value, ...(k === "comercio" || k === "cuit" ? { proveedor_id: "" } : {}) }));
   const iva = numero(f.iva);
   return (
@@ -134,7 +134,7 @@ function DatosTicket({ f, setF, abierto, onAbrir }) {
             <input className="g-input w-[130px]" aria-label="Número" inputMode="numeric" maxLength={8} value={f.numero} onChange={set("numero")} />
           </label>
         </div>
-        {iva > 0 && <span className="text-[12px] text-gypi-dim">IVA discriminado: $ {iva.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>}
+        {separa && iva > 0 && <span className="text-[12px] text-gypi-dim">IVA discriminado: $ {iva.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>}
       </div>
     </details>
   );
@@ -286,7 +286,7 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
               </div>
             </div>
             {campo(gasto ? "Qué compraste (opcional)" : "Detalle (opcional)", <input className="g-input w-full" aria-label="Detalle" maxLength={300} placeholder={gasto ? "Ej.: nafta camioneta" : "Ej.: me la dio Tadeo"} value={f.descripcion} onChange={set("descripcion")} />)}
-            {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} />}
+            {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} separa={separaIva(lista.find((c) => c.codigo === f.concepto))} />}
           </>
         )}
         {repetido && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {repetido} No lo cargues de nuevo.</p>}

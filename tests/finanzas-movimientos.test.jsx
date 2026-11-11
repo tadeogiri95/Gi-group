@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
-  numero, cajasDelLado, cuentasDelTipo, asientoDe, validarOperacion, movimientoCaja, filtrarOperaciones, hoyAr, inicioMes,
+  numero, cajasDelLado, cuentasDelTipo, asientoDe, validarOperacion, movimientoCaja, filtrarOperaciones, hoyAr, inicioMes, separaIva,
 } from "../app/lib/finanzasOperaciones.js";
 
 before(() => {
@@ -112,6 +112,15 @@ test("guardar — compra correcta: total = neto + IVA, en pesos", () => {
   assert.equal(op.entidad, null);
   assert.equal(op.origen, "manual");
   assert.equal(op.tipo_cambio, null);
+});
+
+test("IVA solo en compras, ventas, gastos e inversión (11/11)", () => {
+  for (const g of ["COMPRAS", "VENTAS", "GASTOS", "INVERSIÓN", "Otros", "", undefined]) assert.equal(separaIva({ grupo: g }), true, `con IVA: ${g}`);
+  for (const g of ["COBROS", "PAGOS", "SUELDOS", "IMPUESTOS", "TESORERÍA", "FINANCIACIÓN", "AJUSTES", "Impuestos"]) assert.equal(separaIva({ grupo: g }), false, `sin IVA: ${g}`);
+  // Un pago con IVA cargado: todo queda en un solo importe, no se pierde nada
+  const { op, errores } = validarOperacion({ ...base, tipo: "PAGO TRANSF", centro_costo: "", neto: "1000", iva: "210", otros_impuestos: "30", cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.003.002" }, CTX);
+  assert.deepEqual(errores, []);
+  assert.deepEqual([op.neto, op.iva, op.otros_impuestos, op.total], [1240, 0, 0, 1240]);
 });
 
 test("guardar — lo que hoy marca CHK_CARGA no se puede guardar", () => {
@@ -281,6 +290,9 @@ test("Movimientos — lista del período y nueva operación con el asiento a la 
   assert.ok(screen.getByRole("region", { name: "Cuentas y a quién" }));
   assert.ok(screen.getByRole("region", { name: "Importe y detalle" }));
   assert.ok(screen.getByLabelText("Caja o banco que paga"), "pide elegir la caja");
+  // Un pago no separa el IVA: un solo importe
+  assert.ok(screen.getByLabelText("Importe"));
+  assert.equal(screen.queryByLabelText("IVA"), null);
   fireEvent.click(screen.getByRole("button", { name: "Guardar operación" }));
   await waitFor(() => assert.match(screen.getByRole("alert").textContent, /Elegí la caja o el banco del haber/));
 

@@ -20,7 +20,7 @@
 //     empleado lo ve todo lleno y lo puede corregir. El número va a
 //     referencia con el mismo formato que Cargar un gasto, así el mismo
 //     comprobante no entra dos veces (finanzasComprobantes).
-import { movimientoCaja } from "./finanzasOperaciones";
+import { movimientoCaja, separaIva } from "./finanzasOperaciones";
 import { LETRAS, proveedorDeFactura, textoComprobante } from "./finanzasGastos";
 import { TIPOS_NUEVOS, claveTipo, leyendaTipo, lineaDeLista } from "./finanzasTipos";
 
@@ -127,7 +127,8 @@ export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = 
   // El proveedor: el que se eligió (si es de la empresa), o el de la lista con ese CUIT o nombre
   const elegido = f.proveedor_id ? proveedores.find((p) => Number(p.id) === Number(f.proveedor_id)) : null;
   const proveedor = elegido || (comercio || cuit ? proveedorDeFactura({ emisor: comercio, cuit }, proveedores) : null);
-  const imp = importesTicket(f, importe);
+  // 11/11: en sueldos, impuestos o pagos no se separa el IVA
+  const imp = separaIva(concepto) ? importesTicket(f, importe) : { neto: importe, iva: 0, otros: 0, letra: importesTicket(f, importe).letra };
   const referencia = referenciaTicket(f);
   const cuitTexto = !proveedor && cuit ? `CUIT ${cuitFormato(cuit)}` : "";
   return {
