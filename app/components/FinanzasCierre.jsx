@@ -7,6 +7,7 @@
 // último día del mes (cajas y bancos, proveedores, clientes) y las
 // operaciones del mes: las cargadas a mano en el libro, las de Gypi que no
 // bajaron y las que se cambiaron en el libro.
+// Parte 9 del 11/11: al pie, el stock valorizado contra la contabilidad.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -15,6 +16,7 @@ import { fechaCorta } from "../lib/finanzasPagos";
 import { finDeMes, nombreMes } from "../lib/finanzasResultados";
 import { compararCierre } from "../lib/finanzasCierre";
 import { Spinner } from "./ui";
+import { StockValorizado } from "./FinanzasIntegracion";
 
 const normal = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z]/g, "");
 const plata = (n, moneda = "ARS") => `${moneda === "USD" ? "US$" : "$"} ${(Number(n) || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -222,6 +224,7 @@ export default function FinanzasCierre() {
           )}
         </>
       )}
+      <StockValorizado />
     </div>
   );
 }

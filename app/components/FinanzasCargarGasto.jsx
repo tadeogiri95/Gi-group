@@ -54,7 +54,7 @@ function Renglones({ op, datos }) {
   ));
 }
 
-export default function CargarGasto({ datos, inicial = {}, onCerrar, onGuardada }) {
+export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCerrar, onGuardada }) {
   const toast = useToast();
   const hoy = hoyAr();
   const [f, setF] = useState(() => ({
@@ -99,6 +99,19 @@ export default function CargarGasto({ datos, inicial = {}, onCerrar, onGuardada 
   };
 
   // Parte 6: la factura leída por la IA llena el formulario como propuesta
+  const leer = async (cuerpo) => {
+    const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "leer_gasto", ...cuerpo }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || d.error) throw new Error(d.error || "No se pudo leer la factura");
+    const ini = d.inicial || {};
+    setF((x) => ({ ...x, cuenta_gasto: "", proveedor_id: "", entidad: "", neto: "", iva: "", otros_impuestos: "", ...ini, fecha_factura: ini.fecha_factura || x.fecha_factura, mes: ini.mes || x.mes, vinculo: x.vinculo, descripcion: ini.descripcion || x.descripcion }));
+    setAQuien(ini.proveedor_id || (d.proveedor_nuevo && ini.con_factura) ? "proveedor" : "cuenta");
+    setAvisos(Array.isArray(d.avisos) ? d.avisos : []);
+    setProveedorNuevo(d.proveedor_nuevo || null);
+    setCambiarCuenta(false);
+    setMostrarErrores(false);
+    setLeida(true);
+  };
   const subir = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -107,17 +120,18 @@ export default function CargarGasto({ datos, inicial = {}, onCerrar, onGuardada 
     try {
       const { base64, tipo: tipoArchivo } = await leerArchivo(file);
       if (!base64 || base64.length > MAX_ARCHIVO_B64) throw new Error("El archivo es muy grande: hasta 3 MB. Probá con una foto o un PDF más liviano.");
-      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "leer_gasto", archivo: base64, tipo: tipoArchivo }) });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok || d.error) throw new Error(d.error || "No se pudo leer la factura");
-      const ini = d.inicial || {};
-      setF((x) => ({ ...x, cuenta_gasto: "", proveedor_id: "", entidad: "", neto: "", iva: "", otros_impuestos: "", ...ini, fecha_factura: ini.fecha_factura || x.fecha_factura, mes: ini.mes || x.mes }));
-      setAQuien(ini.proveedor_id || (d.proveedor_nuevo && ini.con_factura) ? "proveedor" : "cuenta");
-      setAvisos(Array.isArray(d.avisos) ? d.avisos : []);
-      setProveedorNuevo(d.proveedor_nuevo || null);
-      setCambiarCuenta(false);
-      setMostrarErrores(false);
-      setLeida(true);
+      await leer({ archivo: base64, tipo: tipoArchivo });
+    } catch (err) {
+      toast.error(err.message || "No se pudo leer la factura");
+    } finally {
+      setLeyendo(false);
+    }
+  };
+  // Parte 9: la factura que ya se subió al arreglo de Flota o Maquinaria
+  const leerDelArreglo = async () => {
+    setLeyendo(true);
+    try {
+      await leer({ vinculo: f.vinculo });
     } catch (err) {
       toast.error(err.message || "No se pudo leer la factura");
     } finally {
@@ -183,8 +197,19 @@ export default function CargarGasto({ datos, inicial = {}, onCerrar, onGuardada 
   return (
     <Modal open onClose={onCerrar} title="Cargar gasto o factura" maxWidth={680}>
       <div className="flex flex-col gap-3">
+        {arreglo && (
+          <p className="m-0 text-[13px] text-gypi-text" aria-label="Arreglo de origen">
+            Viene de <b>{arreglo.titulo}</b> ({arreglo.fecha.split("-").reverse().join("/")}). Queda unido al arreglo: no se carga dos veces.
+          </p>
+        )}
         <div className="flex flex-col gap-2 rounded-lg border border-gypi-border bg-gypi-surface p-3">
-          <label className={`g-btn g-btn-primary cursor-pointer self-start ${leyendo ? "opacity-60 pointer-events-none" : ""}`}>
+          {arreglo?.factura_url && !leida && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="g-btn g-btn-primary" disabled={leyendo} onClick={leerDelArreglo}>{leyendo ? "Leyendo la factura…" : "📎 Leer la factura del arreglo"}</button>
+              <a href={arreglo.factura_url} target="_blank" rel="noopener noreferrer" className="text-[13px] text-gypi-cyan-ink underline">🧾 Ver la factura</a>
+            </div>
+          )}
+          <label className={`g-btn ${arreglo?.factura_url && !leida ? "g-btn-secondary" : "g-btn-primary"} cursor-pointer self-start ${leyendo ? "opacity-60 pointer-events-none" : ""}`}>
             {leyendo ? "Leyendo la factura…" : leida ? "📎 Subir otra factura" : "📎 Subir la factura (PDF o foto)"}
             <input type="file" accept="application/pdf,image/*" className="sr-only" aria-label="Subir la factura" disabled={leyendo} onChange={subir} />
           </label>

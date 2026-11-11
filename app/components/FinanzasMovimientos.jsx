@@ -11,6 +11,8 @@
 // operación mal cargada se anula y se carga de nuevo.
 // "🧾 Cargar gasto o factura" (parte 5 del 11/11) carga un gasto devengado en
 // su mes, con su deuda y su pago: FinanzasCargarGasto.jsx.
+// Parte 9: aviso de los costos de Flota y Maquinaria para pasar a Finanzas
+// (FinanzasIntegracion.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -19,6 +21,7 @@ import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
 import { armarAgenda, opcionesAgenda } from "../lib/finanzasPersonas";
 import { useAgenda } from "./FinanzasElegirProveedor";
 import CargarGasto from "./FinanzasCargarGasto";
+import { CostosMantenimiento } from "./FinanzasIntegracion";
 import { ORIGEN_GASTO } from "../lib/finanzasGastos";
 import {
   ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
@@ -424,6 +427,7 @@ export default function FinanzasMovimientos() {
         {campo("Desde", <input type="date" className="g-input" value={periodo.desde} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, desde: e.target.value }))} />, "ml-auto")}
         {campo("Hasta", <input type="date" className="g-input" value={periodo.hasta} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, hasta: e.target.value }))} />)}
       </div>
+      <CostosMantenimiento datosGasto={datos} onCargado={cargar} />
       <div className="flex flex-wrap gap-2 mb-2">
         {filtro("tipo", "Tipo", [...new Set((datos.operaciones || []).map((o) => o.tipo))].map((t) => [t, nombreDeTipo(t, datos.tipos)]).sort((a, b) => a[1].localeCompare(b[1], "es")).map(([t, n]) => <option key={t} value={t}>{n}</option>))}
         {filtro("caja", "Caja o banco", datos.tesoreria.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>))}
