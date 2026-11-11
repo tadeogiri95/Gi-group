@@ -125,3 +125,64 @@ export function resumenMiCaja(ops = [], caja, nombresTipo = new Map()) {
 export const paraRevisarMiCaja = (ops = []) => ops
   .filter((o) => o.origen === ORIGEN_MI_CAJA && o.estado === "para_revisar" && !o.anulada_at)
   .sort((a, b) => (a.fecha === b.fecha ? Number(a.id) - Number(b.id) : a.fecha < b.fecha ? -1 : 1));
+
+// ── Mi caja fácil (parte 10 del plan del 11/11) ─────────────────────────────
+
+/** Los conceptos con los más usados en esta caja primero (empate: el orden del dueño). */
+export function conceptosPorUso(lista = [], movimientos = []) {
+  const usos = new Map();
+  for (const m of movimientos) {
+    const k = String(m?.concepto || "");
+    if (k) usos.set(k, (usos.get(k) || 0) + 1);
+  }
+  return lista
+    .map((c, i) => ({ c, i, n: usos.get(c.nombre) || usos.get(c.codigo) || 0 }))
+    .sort((a, b) => b.n - a.n || a.i - b.i)
+    .map((x) => x.c);
+}
+
+/** El día anterior a una fecha AAAA-MM-DD. */
+export function ayerDe(hoy) {
+  const d = new Date(`${hoy}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return hoy;
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+export const PROMPT_TICKET = `Leés la foto de un ticket, factura o recibo de un gasto chico que pagó un empleado de una fábrica de muebles en Argentina (nafta, peaje, ferretería, comida, estacionamiento) y devolvés:
+- importe: el total pagado, como número (sin el signo $). 0 si no se ve.
+- fecha: la fecha del ticket en formato AAAA-MM-DD. Vacío si no se ve.
+- comercio: el nombre del comercio o de quien lo emite, en pocas palabras. Vacío si no se ve.
+- concepto: el código del concepto que mejor corresponde, de la lista que se te da. Vacío si ninguno corresponde.`;
+
+/** El esquema de la lectura del ticket, con los conceptos de la caja como opciones. */
+export function esquemaTicket(conceptos = []) {
+  const codigos = [...new Set(conceptos.map((c) => String(c.codigo)).filter(Boolean))].slice(0, 100);
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["importe", "fecha", "comercio", "concepto"],
+    properties: {
+      importe: { type: "number" },
+      fecha: { type: "string" },
+      comercio: { type: "string" },
+      concepto: { type: "string", enum: [...codigos, ""] },
+    },
+  };
+}
+
+/** Lo que leyó la IA, listo para llenar el formulario (solo lo que tiene sentido). */
+export function propuestaTicket(lectura = {}, { conceptos = [], hoy } = {}) {
+  const importe = Number(lectura?.importe);
+  const fecha = String(lectura?.fecha || "");
+  const dia = new Date(`${fecha}T12:00:00Z`);
+  const fechaOk = /^\d{4}-\d{2}-\d{2}$/.test(fecha) && !Number.isNaN(dia.getTime()) && dia.toISOString().slice(0, 10) === fecha
+    && (!hoy || (fecha <= hoy && fecha >= `${Number(hoy.slice(0, 4)) - 1}${hoy.slice(4)}`));
+  const concepto = conceptos.some((c) => c.codigo === lectura?.concepto) ? lectura.concepto : "";
+  return {
+    importe: Number.isFinite(importe) && importe > 0 && importe < 1e10 ? centavos(importe) : null,
+    fecha: fechaOk ? fecha : null,
+    concepto: concepto || null,
+    descripcion: txt(lectura?.comercio, 120) || null,
+  };
+}

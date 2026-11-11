@@ -19,6 +19,10 @@
 //   POST { accion: "rechazar", id } → no la recibió: no se anota nada y se
 //       avisa al que la pasó y a los dueños.
 //   POST { accion: "cancelar", id } → el que la pasó la saca mientras está pendiente.
+//   Mi caja fácil (parte 10 del plan del 11/11):
+//   POST { accion: "leer_ticket", cuenta, comprobante_url } → la IA lee la
+//       foto del ticket (ya subida) y devuelve importe, fecha, comercio y
+//       concepto para llenar el formulario. No guarda nada.
 //
 // La RLS de fin_operaciones es solo del rol gerencial: esta ruta va con la
 // clave de servicio y siempre filtra por la empresa y las cajas del que pide.
@@ -31,7 +35,12 @@ import { enviarPushLegajos } from "../../lib/pushGerencia";
 import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
 import { hoyAr, plata } from "../../lib/finanzasOperaciones";
-import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, conceptosMiCaja, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
+import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, PROMPT_TICKET, comprobanteValido, conceptosMiCaja, esquemaTicket, propuestaTicket, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
+import { ErrorIa, leerDocumentoIa } from "../../lib/facturaIa";
+import { MAX_ARCHIVO_B64 } from "../../lib/facturasSueltas";
+import { checkRateLimit } from "../../lib/rateLimitMemory";
+import { logAudit } from "../../lib/audit";
+import { ipCliente } from "../../lib/ip";
 import { CLAVE_PASES, ORIGEN_PASE, destinosPase, guardarPases, leerPases, operacionDePase, pasesDe, validarPase } from "../../lib/finanzasPases";
 
 const COLUMNAS = "id,fecha,tipo,total,moneda,total_ars,cuenta_debe,cuenta_haber,descripcion,origen,estado,anulada_at";
@@ -231,6 +240,44 @@ async function anular(sesion, d, cajas) {
   return NextResponse.json({ ok: true });
 }
 
+const TIPO_FOTO = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
+
+/** La IA lee la foto del ticket y vuelve el formulario lleno; el empleado revisa y guarda. */
+async function leerTicket(request, sesion, d, cajas) {
+  const e = sesion.empresa_id;
+  if (!cajas.some((c) => c.cuenta === d.cuenta)) return NextResponse.json({ error: "Esa caja no está a tu cargo" }, { status: 403 });
+  const url = String(d.comprobante_url || "");
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const tipo = TIPO_FOTO[(url.match(/\.([a-z]+)$/i)?.[1] || "").toLowerCase()];
+  if (!url || !tipo || !comprobanteValido(url, { supabaseUrl, empresaId: e })) return NextResponse.json({ error: "Sacá la foto del ticket de nuevo" }, { status: 400 });
+  if (checkRateLimit(`mi-caja-ticket:${sesion.empleado_id || sesion.legajo}`, 20, 60 * 60 * 1000).limited) {
+    return NextResponse.json({ error: "Leíste muchos tickets seguidos: cargá este a mano." }, { status: 429 });
+  }
+  const res = await fetch(url).catch(() => null);
+  if (!res?.ok) return NextResponse.json({ error: "No se pudo bajar la foto del ticket" }, { status: 400 });
+  const archivo = Buffer.from(await res.arrayBuffer()).toString("base64");
+  if (archivo.length > MAX_ARCHIVO_B64) return NextResponse.json({ error: "La foto es muy grande para leerla: cargalo a mano" }, { status: 400 });
+  const { lista } = await conceptos(e);
+  const opciones = lista.gastos;
+  let r;
+  try {
+    r = await leerDocumentoIa({
+      base64: archivo, tipo, maxTokens: 500, esquema: esquemaTicket(opciones),
+      sistema: `${PROMPT_TICKET}\n\nConceptos:\n${opciones.map((c) => `- ${c.codigo}${c.nombre !== c.codigo ? ` (${c.nombre})` : ""}${c.leyenda ? `: ${c.leyenda}` : ""}`).join("\n")}`,
+    });
+  } catch (err) {
+    if (err instanceof ErrorIa) return NextResponse.json({ error: `${err.message} Cargalo a mano.` }, { status: 502 });
+    throw err;
+  }
+  logAudit({
+    empresa_id: e, actor_id: sesion.empleado_id, actor_legajo: sesion.legajo, actor_rol: sesion.rol,
+    accion: "chat_ia", entidad: "fin_mi_caja",
+    datos_despues: { tipo: "ticket_mi_caja", tokens_input: r.uso.input_tokens, tokens_output: r.uso.output_tokens, model: r.modelo },
+    ip: ipCliente(request),
+  });
+  return NextResponse.json({ ok: true, ...propuestaTicket(r.lectura, { conceptos: opciones, hoy: hoyAr() }) });
+}
+
 export async function POST(request) {
   const sesion = await validarToken(request);
   if (!sesion?.empresa_id) return respuestaNoAutorizado();
@@ -244,6 +291,7 @@ export async function POST(request) {
     if (d.accion === "cargar") return await cargar(sesion, d, cajas);
     if (d.accion === "anular") return await anular(sesion, d, cajas);
     if (d.accion === "pasar") return await pasar(sesion, d, cajas);
+    if (d.accion === "leer_ticket") return await leerTicket(request, sesion, d, cajas);
     if (["recibir", "rechazar", "cancelar"].includes(d.accion)) return await resolverPase(sesion, d, cajas);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {

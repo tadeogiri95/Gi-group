@@ -228,7 +228,7 @@ test("Mi caja — saldo, cargar un gasto y anular lo que no revisó el dueño", 
   assert.ok(screen.getByText("$ 30.000,00"));
   assert.ok(screen.getByText("Falta que el dueño lo revise"));
   fireEvent.click(screen.getByText("➖ Gasté"));
-  fireEvent.change(screen.getByLabelText("Concepto"), { target: { value: "GASTO VIATICOS" } });
+  fireEvent.click(screen.getByRole("button", { name: "Viáticos" }));
   fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "2.500" } });
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
