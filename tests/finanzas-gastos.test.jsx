@@ -114,7 +114,7 @@ test("gasto — lo que no se puede guardar", () => {
   const err = (d) => operacionesGasto({ ...LUZ, ...d }, CTX).errores.join(" | ");
   assert.match(err({ tipo: "" }), /Elegí el tipo de gasto/);
   assert.match(err({ cuenta_gasto: "01.01.01.003.002" }), /no puede ser una caja/);
-  assert.match(err({ cuenta_gasto: "02.01.02.003.001" }), /ni una deuda/);
+  assert.match(err({ cuenta_gasto: "02.01.02.003.001" }), /una deuda/);
   assert.match(err({ proveedor_id: "" }), /Elegí el proveedor o la cuenta/);
   assert.match(err({ proveedor_id: "", cuenta_deuda: "04.02.01.001.010" }), /Elegí el proveedor o la cuenta/);
   assert.match(err({ proveedor_id: "", cuenta_deuda: "02.01.03.009.001" }), /Elegí el proveedor o la cuenta/, "una deuda desactivada no");

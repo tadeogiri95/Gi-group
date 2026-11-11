@@ -19,6 +19,7 @@
 //   - Nada se borra: se anula.
 
 import { CUENTA_PROVEEDORES } from "./finanzasProveedores";
+import { usoAjusteCapital } from "./finanzasBuenasPracticas";
 
 export const IVA_CREDITO = /^iva cr[eé]dito fiscal$/i;
 export const IVA_DEBITO = /^iva d[eé]bito fiscal$/i;
@@ -155,6 +156,9 @@ export function validarOperacion(f, ctx) {
     else if (cuentas.find((x) => x.codigo === c)?.activa === false) errores.push(`La cuenta ${c} del ${lado} está desactivada.`);
   }
   if (cuentaDebe && cuentaDebe === cuentaHaber) errores.push("El debe y el haber son la misma cuenta: un pase entre cajas necesita las dos.");
+  // Parte 7 del 11/11: Ajuste De Capital no es comodín (solo apertura, saldos y socios)
+  const ajuste = usoAjusteCapital({ tipo: tipo?.codigo, cuenta_debe: cuentaDebe, cuenta_haber: cuentaHaber }, cuentas);
+  if (ajuste) errores.push(ajuste);
 
   const cajaDe = (c) => tesoreria.find((t) => t.cuenta === c);
   const cajas = [cajaDe(cuentaDebe), cajaDe(cuentaHaber)].filter(Boolean);

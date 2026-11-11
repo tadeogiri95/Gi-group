@@ -84,7 +84,7 @@ export default function CargarGasto({ datos, inicial = {}, onCerrar, onGuardada 
   const grupos = [...new Set(tipos.map((t) => t.grupo || "Otros"))];
   const tipo = datos.tipos.find((t) => t.codigo === f.tipo);
   const cajasTesoreria = new Set(datos.tesoreria.map((t) => t.cuenta));
-  const cuentasGasto = datos.cuentas.filter((c) => (c.activa !== false || c.codigo === f.cuenta_gasto) && !cajasTesoreria.has(c.codigo) && !String(c.codigo).startsWith("02"));
+  const cuentasGasto = datos.cuentas.filter((c) => (c.activa !== false || c.codigo === f.cuenta_gasto) && !cajasTesoreria.has(c.codigo) && !/^0[23]/.test(String(c.codigo)));
   const deudas = cuentasDeuda(datos.cuentas);
   const cajasPago = datos.tesoreria.filter((t) => t.activa !== false && t.moneda !== "USD");
   const discrimina = f.con_factura && ["A", "M"].includes(f.letra);
