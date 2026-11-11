@@ -22,6 +22,19 @@ import { CUENTA_PROVEEDORES } from "./finanzasProveedores";
 import { usoAjusteCapital } from "./finanzasBuenasPracticas";
 import { errorAmortizacion } from "./finanzasCuentaElegir";
 
+// 11/11 (pedido de Tadeo): el IVA se separa solo en compras, ventas, gastos e
+// inversión. En cobros, pagos, sueldos, impuestos, tesorería, financiación y
+// ajustes hay un solo importe: un pago cancela una deuda que ya tiene su IVA.
+// Un grupo que no está en la lista (tipos viejos sin grupo) sigue mostrando
+// el IVA, como antes.
+const GRUPOS_SIN_IVA = ["COBROS", "PAGOS", "SUELDOS", "IMPUESTOS", "TESORERIA", "FINANCIACION", "AJUSTES"];
+const grupoClave = (g) => String(g || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+
+/** ¿Este tipo de operación separa el IVA (neto + IVA + otros impuestos)? */
+export function separaIva(tipo) {
+  return !GRUPOS_SIN_IVA.includes(grupoClave(tipo?.grupo));
+}
+
 export const IVA_CREDITO = /^iva cr[eé]dito fiscal$/i;
 export const IVA_DEBITO = /^iva d[eé]bito fiscal$/i;
 export const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -131,10 +144,16 @@ export function validarOperacion(f, ctx) {
   if (!tipo) errores.push("Falta el tipo de operación.");
   else if (tipo.activo === false) errores.push(`El tipo ${tipo.codigo} está desactivado.`);
 
-  const neto = numero(f?.neto);
-  const iva = numero(f?.iva);
-  const otros = numero(f?.otros_impuestos);
+  let neto = numero(f?.neto);
+  let iva = numero(f?.iva);
+  let otros = numero(f?.otros_impuestos);
   if ([neto, iva, otros].some((n) => Number.isNaN(n))) errores.push("Algún importe no es un número.");
+  // Sin IVA (pagos, cobros…): todo va en un solo importe, no se pierde nada
+  else if (tipo && !separaIva(tipo)) {
+    neto = redondear((neto || 0) + (iva || 0) + (otros || 0));
+    iva = 0;
+    otros = 0;
+  }
   else if ([neto, iva, otros].some((n) => n < 0)) errores.push("Los importes van en positivo: el debe y el haber dicen para qué lado va.");
   const total = redondear((neto || 0) + (iva || 0) + (otros || 0));
   if (!(total > 0) && !errores.some((e) => e.includes("importe"))) errores.push("Falta el importe.");
