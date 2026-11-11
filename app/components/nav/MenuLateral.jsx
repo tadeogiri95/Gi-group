@@ -6,12 +6,9 @@
 // Mantenimiento) con sus opciones a la vista, y Equipo, Permisos y Más.
 // Las opciones que la empresa no contrató se ven con 🔒, como en las pestañas.
 import { tieneModulo } from '../../lib/modulos';
-import { BOTONES_GESTION, conBoton, opcionesBoton } from '../../lib/menuGestion';
+import { BOTONES_GESTION, ICONO_GESTION, conBoton, opcionesBoton } from '../../lib/menuGestion';
 
-const ICONO = {
-  vivo: '🟢', ot: '📋', reportes: '📊', planificacion: '📅', minuta: '📝',
-  stock: '📦', compras: '🛒', flota: '🚚', maquinaria: '⚙️', 'fin-movimientos': '📒', 'fin-tesoreria': '💰', 'fin-clientes': '👥', 'fin-sueldos': '👷', 'fin-proveedores': '🏭', 'fin-personas': '📇', 'fin-pagos': '💸', 'fin-cheques': '🏦', 'fin-resultados': '📊', 'fin-flujo': '💵', 'fin-reporte': '📑', 'fin-cierre': '🔍', 'fin-config': '🧾',
-};
+const ICONO = ICONO_GESTION;
 // Finanzas (171) solo aparece para el Dueño
 const BOTONES = ['proyectos', 'inventario', 'mantenimiento', 'finanzas'];
 

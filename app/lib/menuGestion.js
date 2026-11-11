@@ -51,14 +51,16 @@ export const BOTONES_GESTION = {
     label: "Finanzas",
     detalle: "Cuentas, cajas, bancos y movimientos",
     opciones: [
+      // Parte 10 del 11/11: Inicio primero y el resto por tema (finanzasInicio.js)
+      { id: "fin-inicio", label: "Inicio", modulo: "finanzas", soloDueno: true },
       { id: "fin-movimientos", label: "Movimientos", modulo: "finanzas", soloDueno: true },
       { id: "fin-tesoreria", label: "Cajas y bancos", modulo: "finanzas", soloDueno: true },
-      { id: "fin-clientes", label: "Clientes", modulo: "finanzas", soloDueno: true },
-      { id: "fin-sueldos", label: "Sueldos", modulo: "finanzas", soloDueno: true },
-      { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
-      { id: "fin-personas", label: "Personas", modulo: "finanzas", soloDueno: true },
       { id: "fin-pagos", label: "Pagos", modulo: "finanzas", soloDueno: true },
       { id: "fin-cheques", label: "Cheques", modulo: "finanzas", soloDueno: true },
+      { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
+      { id: "fin-clientes", label: "Clientes", modulo: "finanzas", soloDueno: true },
+      { id: "fin-sueldos", label: "Sueldos", modulo: "finanzas", soloDueno: true },
+      { id: "fin-personas", label: "Personas", modulo: "finanzas", soloDueno: true },
       { id: "fin-resultados", label: "Resultados", modulo: "finanzas", soloDueno: true },
       { id: "fin-flujo", label: "Flujo de caja", modulo: "finanzas", soloDueno: true },
       { id: "fin-reporte", label: "Reporte financiero", modulo: "finanzas", soloDueno: true },
@@ -66,6 +68,12 @@ export const BOTONES_GESTION = {
       { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
     ],
   },
+};
+
+/** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
+export const ICONO_GESTION = {
+  vivo: "🟢", ot: "📋", reportes: "📊", planificacion: "📅", minuta: "📝",
+  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-resultados": "📊", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-config": "🧾",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el
