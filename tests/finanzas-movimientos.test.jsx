@@ -273,7 +273,13 @@ test("Movimientos — lista del período y nueva operación con el asiento a la 
   await waitFor(() => assert.ok(screen.getByText("Anulada")));
 
   fireEvent.click(screen.getByRole("button", { name: "+ Nueva operación" }));
+  // 11/11: ventana grande en la computadora (más ancha, en dos columnas)
+  const ventana = screen.getByRole("dialog", { name: "Nueva operación" }).lastElementChild;
+  assert.ok(ventana.className.includes("modal-grande"), "usa la ventana grande");
+  assert.equal(ventana.style.maxWidth, "1120px");
   fireEvent.change(screen.getByLabelText("Tipo de operación"), { target: { value: "PAGO EFECTIVO" } });
+  assert.ok(screen.getByRole("region", { name: "Cuentas y a quién" }));
+  assert.ok(screen.getByRole("region", { name: "Importe y detalle" }));
   assert.ok(screen.getByLabelText("Caja o banco que paga"), "pide elegir la caja");
   fireEvent.click(screen.getByRole("button", { name: "Guardar operación" }));
   await waitFor(() => assert.match(screen.getByRole("alert").textContent, /Elegí la caja o el banco del haber/));

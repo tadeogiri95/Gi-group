@@ -528,6 +528,14 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { cursor: not-allo
     margin: auto !important;
     max-height: 80dvh !important;
   }
+  /* Ventana grande (11/11): casi toda la pantalla de la computadora, letra un
+     poco más grande y más aire alrededor del formulario. */
+  .modal-grande {
+    width: calc(100vw - 64px) !important;
+    max-height: 92dvh !important;
+  }
+  .modal-grande .modal-titulo { font-size: 20px; }
+  .modal-grande .modal-cuerpo { padding: 20px 28px 28px; font-size: 15px; }
 }
 
 /* ── Scrollbar hidden (already global, but class for opt-in) ── */
