@@ -18,6 +18,7 @@ import { sesionDueno } from "../../../lib/finanzasApi";
 import { CLAVE_LIBRO_FIN, claveValida, datosParaLibro, empresaDeClave, generarClave, scriptLibro } from "../../../lib/finanzasLibro";
 import { logger } from "../../../lib/logger";
 import { CLAVE_TIPOS, tiposParaLibro } from "../../../lib/finanzasTipos";
+import { cambiosCuentasLibro } from "../../../lib/finanzasLibroCuentas";
 
 const noAutorizado = () => NextResponse.json({ error: "Clave inválida" }, { status: 401 });
 const COLUMNAS_OP = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,moneda,cuenta_debe,cuenta_haber,descripcion,referencia,origen,estado,cargada_por_nombre,anulada_at,created_at,updated_at";
@@ -36,7 +37,7 @@ export async function GET(request) {
     const { modulos } = await getModulosEmpresa(e);
     if (!modulos.includes("finanzas")) return NextResponse.json({ error: "La empresa no tiene Finanzas" }, { status: 402 });
 
-    const [operaciones, cheques, cuentas, proveedores, proyectos, empresas, cfgTipos] = await Promise.all([
+    const [operaciones, cheques, cuentas, proveedores, proyectos, empresas, cfgTipos, tipos] = await Promise.all([
       leer(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=not.in.(saldo_inicial,libro)&select=${COLUMNAS_OP}&order=fecha.asc,id.asc`, 50000),
       // Sin la migración 174 no hay cheques
       sbGetAll(`fin_cheques?empresa_id=eq.${e}&select=*&order=id.asc`, { maxFilas: 20000 }).then((r) => r.data || []).catch(() => []),
@@ -45,13 +46,17 @@ export async function GET(request) {
       leer(`proyectos?empresa_id=eq.${e}&select=id,ot`),
       sbGet(`empresa?id=eq.${e}&select=nombre,razon_social&limit=1`, { silent: true, fallback: [] }),
       sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_TIPOS}&select=valor&limit=1`, { silent: true, fallback: [] }),
+      // Si falla, el libro igual recibe las operaciones (los cambios de cuentas van sin las recomendadas)
+      leer(`fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,cuenta_debe,cuenta_haber,activo`).catch(() => []),
     ]);
     sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`, {
       valor: { ...cfg.valor, ultima_lectura: new Date().toISOString() },
     }, { silent: true }).catch(() => {});
     const empresa = empresas?.[0]?.razon_social || empresas?.[0]?.nombre || "";
     const tiposNuevos = tiposParaLibro({ reescribir: Boolean(cfgTipos?.[0]?.valor?.pasado_at) });
-    return NextResponse.json(datosParaLibro({ operaciones, cheques, cuentas, proveedores, proyectos, empresa, tiposNuevos }));
+    // Los 6 cambios de cuentas al libro (aprobados el 11/11): el script los aplica una vez
+    const cambiosCuentas = cambiosCuentasLibro({ cuentas, tipos });
+    return NextResponse.json(datosParaLibro({ operaciones, cheques, cuentas, proveedores, proyectos, empresa, tiposNuevos, cambiosCuentas }));
   } catch (err) {
     logger.error("[finanzas/libro] GET error", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
