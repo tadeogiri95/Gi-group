@@ -10,8 +10,12 @@
 //       su pago, si ya se pagó): reglas en app/lib/finanzasGastos.js.
 //       Con proveedor sin tipo guardado, el tipo queda guardado para la próxima.
 //       Una factura con el mismo número y proveedor no se carga dos veces.
+//       Con gasto.vinculo ("v:<id>" mantenimiento de un vehículo, "m:<id>" falla
+//       de una máquina; parte 9) el gasto queda unido a ese arreglo y no se
+//       puede cargar dos veces.
 //   POST { accion: "leer_gasto", archivo, tipo } → la IA lee la factura (PDF o
 //       foto) y devuelve el formulario del gasto ya lleno para revisar (parte 6).
+//       Con vinculo en vez de archivo, lee la factura que se subió al arreglo.
 //   POST { accion: "proveedor_nuevo", nombre, cuit } → da de alta el proveedor
 //       que trajo la factura (o usa el que ya tiene ese nombre).
 //   POST { accion: "anular", id } → la marca anulada con quién y cuándo. No se borra.
@@ -34,6 +38,7 @@ import { ErrorIa, leerDocumentoIa } from "../../../lib/facturaIa";
 import { MAX_ARCHIVO_B64, TIPOS_ARCHIVO } from "../../../lib/facturasSueltas";
 import { logAudit } from "../../../lib/audit";
 import { ipCliente } from "../../../lib/ip";
+import { grupoDeVinculo, vinculoValido } from "../../../lib/finanzasIntegracion";
 import { randomUUID } from "node:crypto";
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
@@ -59,6 +64,31 @@ async function nombreEmpleado(sesion) {
   return emp?.nombre ? String(emp.nombre).slice(0, 120) : null;
 }
 
+/** El arreglo de Flota o Maquinaria al que se une un gasto (parte 9), o null. */
+async function costoVinculado(sesion, v) {
+  const e = sesion.empresa_id;
+  const path = v.modulo === "vehiculo"
+    ? `vehiculo_mantenimientos?id=eq.${v.id}&empresa_id=eq.${e}&select=id,costo,factura_url&limit=1`
+    : `maquina_fallas?id=eq.${v.id}&empresa_id=eq.${e}&estado=eq.resuelta&select=id,costo,factura_url&limit=1`;
+  const [fila] = (await sbGet(path, { sesion, silent: true, fallback: [] })) || [];
+  return fila || null;
+}
+
+/** La factura que se subió al arreglo, en base64 (solo del almacenamiento público de Gypi). */
+async function facturaDelArreglo(url) {
+  const base = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/`;
+  if (!url || !String(url).startsWith(base) || /\.\.|[?#]/.test(String(url).slice(base.length))) return { error: "Ese arreglo no tiene una factura que Gypi pueda leer" };
+  const res = await fetch(url).catch(() => null);
+  if (!res?.ok) return { error: "No se pudo bajar la factura del arreglo" };
+  const tipoHeader = String(res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  const porNombre = /\.pdf$/i.test(url) ? "application/pdf" : /\.png$/i.test(url) ? "image/png" : /\.webp$/i.test(url) ? "image/webp" : /\.jpe?g$/i.test(url) ? "image/jpeg" : "";
+  const tipo = TIPOS_ARCHIVO.includes(tipoHeader) ? tipoHeader : porNombre;
+  if (!TIPOS_ARCHIVO.includes(tipo)) return { error: "La factura del arreglo no es un PDF ni una foto" };
+  const archivo = Buffer.from(await res.arrayBuffer()).toString("base64");
+  if (archivo.length > MAX_ARCHIVO_B64) return { error: "La factura del arreglo es muy grande (hasta 3 MB)" };
+  return { archivo, tipo };
+}
+
 /** La misma factura (número y proveedor, o número y nombre) ya cargada como gasto y sin anular. */
 async function facturaRepetida(sesion, gasto) {
   if (!gasto?.con_factura || !String(gasto.numero || "").replace(/\D/g, "")) return null;
@@ -71,8 +101,16 @@ async function facturaRepetida(sesion, gasto) {
 
 /** Parte 6: la IA lee la factura y vuelve el formulario lleno. Nada se guarda hasta que el dueño lo aprueba. */
 async function leerGasto(request, sesion, d) {
-  const tipo = String(d?.tipo ?? "");
-  const archivo = typeof d?.archivo === "string" ? d.archivo : "";
+  let tipo = String(d?.tipo ?? "");
+  let archivo = typeof d?.archivo === "string" ? d.archivo : "";
+  if (d?.vinculo) {
+    const v = vinculoValido(d.vinculo);
+    const item = v ? await costoVinculado(sesion, v) : null;
+    if (!item) return NextResponse.json({ error: "No encontré ese arreglo" }, { status: 404 });
+    const f = await facturaDelArreglo(item.factura_url);
+    if (f.error) return NextResponse.json({ error: f.error }, { status: 400 });
+    ({ tipo, archivo } = f);
+  }
   if (!TIPOS_ARCHIVO.includes(tipo)) return NextResponse.json({ error: "Subí la factura en PDF o una foto (JPG, PNG o WEBP)" }, { status: 400 });
   if (!archivo || archivo.length > MAX_ARCHIVO_B64 || !/^[A-Za-z0-9+/=]+$/.test(archivo.slice(0, 2000))) {
     return NextResponse.json({ error: "El archivo es muy grande (hasta 3 MB) o no se pudo leer" }, { status: 400 });
@@ -162,8 +200,16 @@ export async function POST(request) {
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
       const repetida = await facturaRepetida(sesion, d.gasto);
       if (repetida) return NextResponse.json({ error: `Esa factura ya está cargada (operación del ${repetida.fecha.slice(8, 10)}/${repetida.fecha.slice(5, 7)}/${repetida.fecha.slice(0, 4)}). Si estaba mal, anulala y cargala de nuevo.` }, { status: 409 });
+      let grupo = `g${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      // Parte 9: unido a un arreglo de Flota o Maquinaria, con una clave fija
+      if (d.gasto?.vinculo) {
+        const v = vinculoValido(d.gasto.vinculo);
+        if (!v || !(await costoVinculado(sesion, v))) return NextResponse.json({ error: "No encontré ese arreglo de Flota o Maquinaria" }, { status: 404 });
+        grupo = grupoDeVinculo(v);
+        const [ya] = (await sbGet(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_GASTO}&origen_id=eq.${grupo}&anulada_at=is.null&select=fecha&limit=1`, { sesion, silent: true, fallback: [] })) || [];
+        if (ya) return NextResponse.json({ error: `Ese arreglo ya está cargado en Finanzas (operación del ${ya.fecha.slice(8, 10)}/${ya.fecha.slice(5, 7)}/${ya.fecha.slice(0, 4)}).` }, { status: 409 });
+      }
       const ahora = new Date().toISOString();
-      const grupo = `g${randomUUID().replace(/-/g, "").slice(0, 12)}`;
       const quien = await nombreEmpleado(sesion);
       const filas = await sbPost("fin_operaciones", ops.map((op, i) => ({
         ...op, empresa_id: e, origen_id: i ? `${grupo}-p` : grupo, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
