@@ -21,10 +21,15 @@
 //      tienen hoy (se escribe su nombre antes de cambiar el tipo).
 //   6. CHK_CARGA cuenta las operaciones contra Ajuste De Capital que no son de
 //      apertura, saldos ni socios.
+// Versión 2 (11/11, Tadeo): costos indirectos de fabricación y depreciación
+// apuntaban a Agua Potable y a Plazo Fijos Largo Plazo. Quedan Gastos De
+// Fabricación y Maquinarias y herramientas- Amort.Acum. por defecto; al cargar
+// se elige la cuenta (finanzasCuentaElegir.js). Si el libro ya tiene la
+// versión 1 (el plan de Gypi ya no tiene los repetidos), solo van los tipos.
 import { TIPOS_PATRIMONIO, cuentasRecomendadas } from "./finanzasBuenasPracticas";
 
 /** Si cambia la lista, subir la versión: el script la vuelve a aplicar una vez. */
-export const VERSION_CAMBIOS_CUENTAS = 1;
+export const VERSION_CAMBIOS_CUENTAS = 2;
 
 /** 1. Cuentas con código repetido → su código propio (todos libres en el libro del 08/11). */
 export const RECODIFICAR = [
@@ -75,6 +80,10 @@ export const ARREGLOS_TIPOS = [
   { codigo: "PAGO TRIANGULAR", haber: "Cuenta Particular Titular O Socio", motivo: "Lo que paga un socio por la empresa va a su cuenta particular, no a Ajuste De Capital." },
   { codigo: "PROV SAC", haber: "Provisión SAC A Pagar", motivo: "Apuntaba a Cargas Sociales A Pagar." },
   { codigo: "PROV VAC", haber: "Provisión Vacaciones A Pagar", motivo: "Apuntaba a Percepción Imp. Munic. A Pagar." },
+  // Versión 2
+  { v: 2, codigo: "COSTOS INDIRECTOS DE FABRICACIÓN", debe: "Gastos De Fabricacion", motivo: "Apuntaba a Agua Potable. Al cargar se elige la cuenta del costo (insumos, electricidad, mantenimiento…)." },
+  { v: 2, codigo: "DEPREC", haber: "Maquinarias y herramientas- Amort.Acum.", motivo: "Apuntaba a Plazo Fijos Largo Plazo. Al cargar se elige el bien que se amortiza (máquinas, rodados, inmuebles…)." },
+  { v: 2, codigo: "AMORTIZACIONES", haber: "Maquinarias y herramientas- Amort.Acum.", motivo: "Venía de DEPREC, que apuntaba a Plazo Fijos Largo Plazo. Al cargar se elige el bien que se amortiza." },
 ];
 
 const sinTildes = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
@@ -85,13 +94,26 @@ export function planConRepetidos(cuentas = []) {
   return [...RECODIFICAR.map((x) => `${x.de}|${sinTildes(x.nombre)}`), ...RENOMBRAR.map((x) => `${x.codigo}|${sinTildes(x.nombre)}`)].some((k) => hay.has(k));
 }
 
+/** ¿El plan ya tiene la versión 1 aplicada? (alguna cuenta con su código nuevo) */
+export function planArreglado(cuentas = []) {
+  const hay = new Set(cuentas.map((c) => `${String(c.codigo || "").trim()}|${sinTildes(c.nombre)}`));
+  return RECODIFICAR.some((x) => hay.has(`${x.a}|${sinTildes(x.nombre)}`));
+}
+
 /**
- * Lo que el script aplica en el libro, o null si el plan ya no tiene nada
- * de la propuesta (otra empresa, o el libro ya arreglado y copiado a Gypi).
+ * Lo que el script aplica en el libro, o null si el plan no es el del libro
+ * de la propuesta (otra empresa). Con el libro ya arreglado y copiado a
+ * Gypi van solo los tipos (lo demás ya está hecho).
  * @param {{ cuentas: { codigo, nombre, activa? }[], tipos: { codigo, cuenta_debe, cuenta_haber, activo? }[] }} d  lo de Gypi (copiado del libro)
  */
 export function cambiosCuentasLibro({ cuentas = [], tipos = [] } = {}) {
-  if (!planConRepetidos(cuentas)) return null;
+  const completo = planConRepetidos(cuentas);
+  if (!completo && !planArreglado(cuentas)) return null;
+  // Libro con la versión 1 ya aplicada: solo los tipos de la versión nueva
+  if (!completo) {
+    const tipos = ARREGLOS_TIPOS.filter((a) => a.v === VERSION_CAMBIOS_CUENTAS).map((a) => ({ codigo: a.codigo, debe: a.debe || null, haber: a.haber || null, motivo: a.motivo }));
+    return { version: VERSION_CAMBIOS_CUENTAS, recodificar: [], sacar: [], renombrar: [], nuevas: [], tipos, ajuste: null };
+  }
   // Las recomendadas de Gypi, contando las cuentas nuevas que el script agrega antes
   const conNuevas = [...cuentas, ...NUEVAS.filter((n) => !cuentas.some((c) => c.codigo === n.codigo)).map((n) => ({ codigo: n.codigo, nombre: n.nombre }))];
   const nombre = new Map(conNuevas.map((c) => [c.codigo, c.nombre]));

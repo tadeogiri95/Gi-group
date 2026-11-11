@@ -26,6 +26,7 @@ import { ORIGEN_GASTO } from "../lib/finanzasGastos";
 import {
   ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
 } from "../lib/finanzasOperaciones";
+import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -104,12 +105,13 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   const tipo = datos.tipos.find((t) => t.codigo === f.tipo);
   const cajasDebe = cajasDelLado(tipo?.cuenta_debe, datos.tesoreria);
   const cajasHaber = cajasDelLado(tipo?.cuenta_haber, datos.tesoreria);
+  const elegir = cuentaParaElegir(tipo, datos.cuentas);
   const tiposActivos = datos.tipos.filter((t) => t.activo !== false);
   const grupos = [...new Set(tiposActivos.map((t) => t.grupo || "Otros"))];
 
   const elegirTipo = (e) => {
     const t = datos.tipos.find((x) => x.codigo === e.target.value);
-    setF((x) => ({ ...x, tipo: e.target.value, ...cuentasDelTipo(t, datos.tesoreria) }));
+    setF((x) => ({ ...x, tipo: e.target.value, ...cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria)) }));
     setErrores([]);
   };
 
@@ -177,6 +179,17 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {cajasDebe && selectCaja("debe", cajasDebe)}
                 {cajasHaber && selectCaja("haber", cajasHaber)}
+              </div>
+            )}
+            {elegir && !cambiarCuentas && (
+              <div className="flex flex-col gap-1.5">
+                <p className="m-0 text-[13px] font-semibold text-gypi-text">{elegir.pregunta}{elegir.obligatoria ? " (obligatorio)" : ""}</p>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={elegir.pregunta}>
+                  {elegir.opciones.map((o) => (
+                    <Chip key={o.codigo} active={f[`cuenta_${elegir.lado}`] === o.codigo} onClick={() => setF((x) => ({ ...x, [`cuenta_${elegir.lado}`]: o.codigo }))}>{o.etiqueta}</Chip>
+                  ))}
+                  <Chip onClick={() => setCambiarCuentas(true)}>Otra cuenta…</Chip>
+                </div>
               </div>
             )}
             {cambiarCuentas ? (

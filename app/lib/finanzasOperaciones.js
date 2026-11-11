@@ -20,6 +20,7 @@
 
 import { CUENTA_PROVEEDORES } from "./finanzasProveedores";
 import { usoAjusteCapital } from "./finanzasBuenasPracticas";
+import { errorAmortizacion } from "./finanzasCuentaElegir";
 
 export const IVA_CREDITO = /^iva cr[eé]dito fiscal$/i;
 export const IVA_DEBITO = /^iva d[eé]bito fiscal$/i;
@@ -159,6 +160,9 @@ export function validarOperacion(f, ctx) {
   // Parte 7 del 11/11: Ajuste De Capital no es comodín (solo apertura, saldos y socios)
   const ajuste = usoAjusteCapital({ tipo: tipo?.codigo, cuenta_debe: cuentaDebe, cuenta_haber: cuentaHaber }, cuentas);
   if (ajuste) errores.push(ajuste);
+  // 11/11: la amortización va contra la amortización acumulada del bien
+  const amort = tipo ? errorAmortizacion(tipo, cuentaHaber, cuentas) : null;
+  if (amort) errores.push(amort);
 
   const cajaDe = (c) => tesoreria.find((t) => t.cuenta === c);
   const cajas = [cajaDe(cuentaDebe), cajaDe(cuentaHaber)].filter(Boolean);

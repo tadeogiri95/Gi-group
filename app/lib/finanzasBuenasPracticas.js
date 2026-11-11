@@ -52,6 +52,9 @@ export const CUENTAS_RECOMENDADAS = {
   "AJUSTE DE CAJA POSITIVO": { haber: L(["faltantes y sobrantes de caja", "sobrantes de caja", "otros ingresos"], "04"), motivo: "Lo que sobra en la caja es un resultado, no capital." },
   "AJUSTE DE CAJA NEGATIVO": { debe: L(["faltantes y sobrantes de caja", "faltantes de caja"], "04"), motivo: "Lo que falta en la caja es una pérdida, no capital." },
   "MAQUINARIA Y HERRAMIENTAS": { debe: L(["maquinarias y herramientas- valor costo", "maquinarias y herramientas - valor costo"], "01.02"), haber: DEUDA("proveedores"), motivo: "Una máquina es un bien de uso (activo que se amortiza), no un gasto." },
+  // 11/11: el haber es la amortización acumulada del bien (se elige al cargar; por defecto, máquinas)
+  AMORTIZACIONES: { debe: L(["amortizaciones del ejercicio"], "vacio"), haber: L(["maquinarias y herramientas- amort.acum.", "maquinarias y herramientas - amort.acum."], "01.02.02"), motivo: "La amortización baja el valor del bien: va contra su amortización acumulada (al cargar se elige el bien)." },
+  DEPREC: { debe: L(["amortizaciones del ejercicio"], "vacio"), haber: L(["maquinarias y herramientas- amort.acum.", "maquinarias y herramientas - amort.acum."], "01.02.02"), motivo: "La amortización baja el valor del bien: va contra su amortización acumulada (al cargar se elige el bien)." },
   INFRAESTRUCTURA: { debe: L(["instalaciones - valor costo"], "01.02"), haber: DEUDA("proveedores"), motivo: "Una obra en la planta es un bien de uso (activo que se amortiza), no un gasto." },
 };
 
