@@ -83,6 +83,61 @@ export const TIPOS_NUEVOS = [
   T("SALDO INICIAL", "Saldo inicial", "AJUSTES", null),
 ];
 
+/**
+ * La leyenda de cada tipo: qué comprende, en pocas palabras, y un ejemplo.
+ * Se muestra en letra chica debajo del desplegable al cargar una operación,
+ * para que alguien nuevo sepa cuál elegir. Si el dueño escribió otra en
+ * Configuración (columna descripcion de la tabla), manda la suya.
+ */
+export const LEYENDAS = {
+  "COBRO A CLIENTES": "Plata que entra de un cliente por una venta u OT, en efectivo, transferencia o cheque. Baja lo que el cliente debe. Ej.: el cliente transfiere la seña de una cocina.",
+  "ANTICIPO DE CLIENTES": "Plata que un cliente paga antes de la entrega. Todavía no es venta: queda como anticipo hasta que se entrega la OT. Ej.: 50 % adelantado al firmar el presupuesto.",
+  "OTROS INGRESOS": "Entradas de plata que no son ventas ni cobros de clientes: reintegros, recuperos de gastos, devoluciones de un proveedor. Ej.: el seguro devuelve un siniestro.",
+  "PAGO A PROVEEDORES": "Pago de una factura o deuda que ya está cargada en la cuenta del proveedor, con efectivo, transferencia o cheque. Ej.: transferencia a Bosques por la factura de placas.",
+  "COMPRAS": "Compra de materiales o insumos para producir, con o sin factura. Queda como deuda con el proveedor hasta que se paga. Ej.: factura de herrajes de Häfele.",
+  "TRABAJOS TERCERIZADOS": "Trabajos que hace otro taller para la empresa: pintura, laqueado, corte, mecanizado, vidrios. Ej.: laqueado de frentes en un taller externo.",
+  "SUELDOS": "Sueldos, jornales, horas extra, bonos, vacaciones y aguinaldo del personal, y su pago. Ej.: liquidación de la quincena.",
+  "IMPUESTOS": "Impuestos y tasas: IVA a pagar, Ingresos Brutos, Ganancias, cargas sociales (F.931), municipales, impuesto al cheque. Ej.: VEP de IIBB del mes con el número del contador.",
+  "SERVICIOS": "Servicios del local y la planta: luz, gas, agua, internet, teléfono, alquiler, seguridad, limpieza. Ej.: factura de EPEC.",
+  "GASTOS DE LOGÍSTICA": "Todo lo que cuesta mover la mercadería y la gente: combustible, peajes, fletes, mantenimiento de vehículos, seguros de flota. Ej.: carga de gasoil de la camioneta.",
+  "GASTOS DE MANTENIMIENTO": "Arreglos y repuestos de máquinas, herramientas y edificio que no los mejoran ni los agrandan. Ej.: cambio de correa de la seccionadora.",
+  "GASTOS DE ADMINISTRACIÓN": "Gastos de la oficina y la gestión: librería, software, sistemas, cafetería, trámites, cuotas de cámaras. Ej.: suscripción mensual de un programa.",
+  "GASTOS DE COMERCIALIZACIÓN": "Gastos para vender: publicidad, redes, muestras, catálogos, comisiones de venta, exposiciones. Ej.: campaña en Instagram.",
+  "HONORARIOS": "Pagos a profesionales independientes: contador, abogado, arquitecto, diseñador, consultores. Ej.: honorarios mensuales del estudio contable.",
+  "VIÁTICOS": "Comidas, alojamiento y traslados del personal fuera de la planta (por ejemplo en una instalación en otra ciudad). Ej.: almuerzo del equipo en una obra.",
+  "GASTOS BANCARIOS Y FINANCIEROS": "Comisiones, mantenimiento de cuenta, intereses que se pagan y diferencia de cambio. Ej.: comisión mensual del Credicoop.",
+  "TARJETA DE CRÉDITO": "Pago del resumen de una tarjeta de la empresa. Ej.: pago del resumen Visa del mes.",
+  "OTROS GASTOS": "Gastos que no entran en ningún otro tipo. Usarlo poco: si se repite, conviene un tipo propio. Ej.: multa de tránsito.",
+  "AJUSTE DE CAJA POSITIVO": "Al contar la caja sobra plata que no está anotada. Solo para corregir diferencias. Ej.: arqueo con $2.000 de más.",
+  "AJUSTE DE CAJA NEGATIVO": "Al contar la caja falta plata que no está anotada. Solo para corregir diferencias. Ej.: arqueo con $1.500 de menos.",
+  "MAQUINARIA Y HERRAMIENTAS": "Compra de máquinas o herramientas que duran más de un año (bienes de uso), o mejoras que las agrandan. Ej.: compra de una canteadora.",
+  "INFRAESTRUCTURA": "Obras y mejoras del edificio o la planta que duran años: ampliaciones, instalación eléctrica nueva, techos. Ej.: ampliación del galpón.",
+  "VENTA BS USO": "Venta de una máquina, vehículo u otro bien de uso de la empresa. Ej.: venta de la camioneta vieja.",
+  "INVERSIONES DESARROLLISMO": "Plata que se pone en un desarrollo inmobiliario, separada por centro de costo (cada obra). Ej.: pago de materiales para el edificio en construcción.",
+  "COBRO POR VENTAS DESARROLLISMO": "Plata que entra por la venta de unidades de un desarrollo inmobiliario. Ej.: cuota de un comprador de un departamento.",
+  "APORTES DESARROLLISMO": "Plata que aportan los socios o inversores para un desarrollo inmobiliario. Ej.: aporte de un inversor para la obra.",
+  "RENDIMIENTOS INMOBILIARIOS": "Alquileres u otras ganancias que dejan los inmuebles. Ej.: cobro del alquiler de un local.",
+  "RENDIMIENTOS FINANCIEROS": "Intereses y ganancias de inversiones: plazos fijos, fondos comunes, cauciones. Ej.: intereses de un plazo fijo que venció.",
+  "APORTE DE SOCIOS": "Plata que los socios ponen en la empresa. Ej.: un socio deposita para cubrir sueldos.",
+  "RETIRO DE SOCIOS Y DIVIDENDOS": "Plata que los socios sacan de la empresa, a cuenta de ganancias o como dividendos. Ej.: retiro mensual de un socio.",
+  "PRÉSTAMOS": "Préstamos que toma la empresa (entra la plata) y las cuotas que se devuelven (capital). Ej.: acreditación de un préstamo del banco.",
+  "PAGO TRIANGULAR": "Un socio paga algo de la empresa con su plata. Queda como deuda de la empresa con el socio. Ej.: un socio paga un proveedor con su tarjeta.",
+  "TRANSFERENCIA ENTRE CAJAS": "Pasar plata de una caja o banco propio a otro, sin gastar ni cobrar. Ej.: extraer efectivo del banco para la caja chica.",
+  "PLAZO FIJO": "Constituir un plazo fijo (sale del banco) o rescatarlo (vuelve al banco). El interés va aparte, en Rendimientos financieros. Ej.: plazo fijo a 30 días en el Credicoop.",
+  "FCI": "Suscribir (poner) o rescatar (sacar) plata de un fondo común de inversión. Ej.: rescate del fondo para pagar sueldos.",
+  "TÍTULOS PÚBLICOS": "Compra y venta de bonos o títulos. Ej.: compra de bonos en el banco.",
+  "DÓLARES": "Compra o venta de dólares con pesos de la empresa. Ej.: compra de USD 1.000 en el banco.",
+  "VENTA": "Venta de una OT cuando se carga en el Plan de trabajo, y su entrega cuando se termina. Gypi la carga sola. Ej.: OT 7961 cocina Riofrío.",
+  "NC CLIENTE": "Nota de crédito a un cliente: baja lo que debe por un descuento, devolución o error de facturación. Ej.: descuento por demora en la entrega.",
+  "AMORTIZACIONES": "Desgaste anual de máquinas, vehículos y edificio. No mueve plata; lo calcula el contador. Ej.: amortización anual de la seccionadora.",
+  "COMPENSACIÓN DE SALDOS": "Cuando alguien es cliente y proveedor a la vez, se cancela una deuda contra la otra sin mover plata. Ej.: el cliente también nos vendió vidrios.",
+  "CHEQUE RECHAZADO": "Un cheque que recibimos y el banco rechazó. Vuelve la deuda al cliente. Ej.: e-cheq rechazado sin fondos.",
+  "RECLASIF": "Corrige una operación cargada en una cuenta equivocada, pasándola a la correcta. No mueve plata. Ej.: un gasto de logística cargado como administración.",
+  "APERTURA": "Saldos con los que arrancan las cuentas al empezar a usar el sistema. Ej.: saldo de los bancos al 31/05.",
+  "SALDO INICIAL": "Saldo con el que arranca una caja, un proveedor o un cliente en Gypi. Ej.: lo que se le debía a un proveedor al empezar.",
+};
+
+const LEYENDA_POR_CLAVE = new Map(Object.entries(LEYENDAS).map(([c, l]) => [claveTipo(c), l]));
 const POR_CODIGO = new Map(TIPOS_NUEVOS.map((t) => [claveTipo(t.codigo), t]));
 /** Tipo viejo (clave) → código nuevo. */
 export const MAPA_TIPOS = Object.fromEntries(TIPOS_NUEVOS.flatMap((t) => t.viejos.map((v) => [claveTipo(v), t.codigo])));
@@ -134,6 +189,25 @@ export function tipoNuevo(op, { cuentas = {}, cajas = new Set() } = {}) {
   if (cuentas.sueldos && d === cuentas.sueldos && cajas.has(h)) return "SUELDOS";
   if (cuentas.deudores && h === cuentas.deudores && cajas.has(d)) return "COBRO A CLIENTES";
   return op?.tipo ? String(op.tipo).trim() : SIN_TIPO;
+}
+
+/**
+ * Cómo se muestra un tipo en pantalla: solo su nombre ("Cobro a clientes").
+ * Antes salía "COBRO A CLIENTES · Cobro a clientes", el mismo texto dos veces.
+ */
+export function nombreTipo(t) {
+  if (!t) return "";
+  const nombre = String(t.nombre || "").trim();
+  return nombre || tipoDeLista(t.codigo)?.nombre || String(t.codigo || "");
+}
+
+/** La leyenda de un tipo: la que escribió el dueño o la de la lista. */
+export function leyendaTipo(t) {
+  if (!t) return "";
+  const propia = String(t.descripcion || "").trim();
+  if (propia) return propia;
+  const k = claveTipo(t.codigo);
+  return LEYENDA_POR_CLAVE.get(MAPA_TIPOS[k] ? claveTipo(MAPA_TIPOS[k]) : k) || "";
 }
 
 /** La línea del flujo de un tipo (viejo o nuevo) según la lista. */

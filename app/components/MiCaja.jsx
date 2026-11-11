@@ -138,6 +138,9 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
                 {lista.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
               </select>
             ))}
+            {lista.find((c) => c.codigo === f.concepto)?.leyenda && (
+              <p className="-mt-2 m-0 text-[12px] leading-snug text-gypi-dim">ℹ {lista.find((c) => c.codigo === f.concepto).leyenda}</p>
+            )}
             <div className="flex flex-wrap gap-2">
               {campo(usd ? "Importe (USD)" : "Importe", <input className="g-input w-[160px] text-right font-mono" inputMode="decimal" aria-label="Importe" value={f.importe} onChange={set("importe")} />)}
               {campo("Fecha", <input type="date" className="g-input" aria-label="Fecha" max={hoy} value={f.fecha} onChange={set("fecha")} />)}

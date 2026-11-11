@@ -297,3 +297,13 @@ test("Tipos nuevos — botón en Configuración, muestra las equivalencias y pas
   assert.deepEqual(pedidos, ["GET", "POST"]);
   assert.equal(pasado, true);
 });
+
+test("Tipos — cada tipo de la lista tiene su leyenda y se muestra por su nombre", async () => {
+  const { LEYENDAS, leyendaTipo, nombreTipo } = await import("../app/lib/finanzasTipos.js");
+  for (const t of TIPOS_NUEVOS) assert.ok(LEYENDAS[t.codigo]?.length > 30, `falta la leyenda de ${t.codigo}`);
+  assert.equal(nombreTipo({ codigo: "COBRO A CLIENTES", nombre: "Cobro a clientes" }), "Cobro a clientes");
+  assert.equal(nombreTipo({ codigo: "COBRO A CLIENTES" }), "Cobro a clientes", "sin nombre usa el de la lista");
+  assert.equal(nombreTipo({ codigo: "MI TIPO" }), "MI TIPO");
+  assert.match(leyendaTipo({ codigo: "PAGO GASTOS DE LOGÍSTICA" }), /combustible/, "un tipo viejo usa la leyenda del nuevo");
+  assert.equal(leyendaTipo({ codigo: "IMPUESTOS", descripcion: "  Propia  " }), "Propia");
+});

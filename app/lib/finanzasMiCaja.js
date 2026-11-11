@@ -12,6 +12,7 @@
 //     dueño entra confirmado.
 //   - Foto del ticket opcional (comprobante_url, subida por /api/upload).
 import { movimientoCaja } from "./finanzasOperaciones";
+import { leyendaTipo } from "./finanzasTipos";
 
 export const CLAVE_MI_CAJA = "finanzas_mi_caja";
 export const ORIGEN_MI_CAJA = "mi_caja";
@@ -43,7 +44,7 @@ export function conceptosMiCaja(config, tipos = []) {
   const armar = (codigos, de, lado) => codigos
     .map((codigo) => de.find((t) => t.codigo === codigo))
     .filter(Boolean)
-    .map((t) => ({ codigo: t.codigo, nombre: txt(t.nombre, 80) || t.codigo, cuenta: t[lado] }));
+    .map((t) => ({ codigo: t.codigo, nombre: txt(t.nombre, 80) || t.codigo, cuenta: t[lado], leyenda: leyendaTipo(t) }));
   return { gastos: armar(c.gastos, sirven.gastos, "cuenta_debe"), ingresos: armar(c.ingresos, sirven.ingresos, "cuenta_haber") };
 }
 
