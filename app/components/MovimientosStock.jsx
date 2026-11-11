@@ -12,6 +12,7 @@ import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento 
 import { useOts } from "../hooks/useOts";
 import { textoOt } from "../lib/nombreOt";
 import BotonNuevaPersona from "./AltaPersona";
+import RemitosFoto from "./RemitosFoto";
 
 const CUANTOS = 100;
 const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "", renglones: [], otTodos: "" };
@@ -43,6 +44,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [conRemito, setConRemito] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -154,7 +156,9 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
       {/* El código para que la planilla MRP traiga los movimientos está en
           Más → Planillas conectadas (auditoría 01/11, PR 3) */}
 
-      {!form ? (
+      {/* Ingreso por foto del remito, para revisar (11/11, parte 7) */}
+      {!form && <RemitosFoto articulos={articulos} onIngreso={cargar} onAbierto={setConRemito} />}
+      {conRemito ? null : !form ? (
         <button onClick={() => { setForm({ ...VACIO }); setError(null); }} className="g-btn g-btn-primary w-full mb-3">＋ Cargar retiro, devolución, ingreso o ajuste</button>
       ) : (
         <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
