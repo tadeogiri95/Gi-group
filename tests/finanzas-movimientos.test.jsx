@@ -331,7 +331,8 @@ test("Movimientos — el tipo se ve una sola vez (sin MAYÚSCULAS · minúsculas
   await waitFor(() => assert.ok(screen.getByRole("button", { name: "+ Nueva operación" })));
   fireEvent.click(screen.getByRole("button", { name: "+ Nueva operación" }));
   const select = screen.getByLabelText("Tipo de operación");
-  const textos = [...select.querySelectorAll("option")].map((o) => o.textContent);
+  fireEvent.focus(select);
+  const textos = screen.getAllByRole("option").map((o) => o.textContent);
   assert.ok(textos.includes("Gastos de logística"));
   assert.ok(!textos.some((t) => t.includes("GASTOS DE LOGÍSTICA")), "no repite el código en mayúsculas");
   fireEvent.change(select, { target: { value: "GASTOS DE LOGÍSTICA" } });

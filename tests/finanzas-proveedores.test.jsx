@@ -315,7 +315,7 @@ test("Proveedores — cuenta sugerida de cada proveedor y compra sin factura des
   await waitFor(() => assert.ok(screen.getByText("ACERCO S A")));
   fireEvent.click(screen.getByRole("button", { name: /Cuenta de cada proveedor/ }));
   const sel = await screen.findByRole("combobox", { name: "Cuenta de ACERCO S A" });
-  assert.equal(sel.value, MP, "viene la que más usó");
+  assert.equal(sel.value, `Materias Primas (${MP})`, "viene la que más usó");
   assert.ok(screen.getByText(/Materias Primas \(2 de 3\)/));
   fireEvent.click(screen.getByRole("button", { name: "Guardar (1)" }));
   await waitFor(() => assert.deepEqual(enviados[0], { accion: "cuentas", cuentas: { p5: MP } }));
@@ -325,7 +325,7 @@ test("Proveedores — cuenta sugerida de cada proveedor y compra sin factura des
   fireEvent.click(await screen.findByRole("button", { name: "＋ Compra sin factura" }));
   fireEvent.change(await screen.findByLabelText("Importe"), { target: { value: "1.500,50" } });
   fireEvent.change(screen.getByLabelText("Número de remito o ticket"), { target: { value: "R-7" } });
-  assert.equal(screen.getByRole("combobox", { name: "Cuenta del gasto" }).value, MP);
+  assert.equal(screen.getByRole("combobox", { name: "Cuenta del gasto" }).value, `Materias Primas (${MP})`);
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => assert.equal(enviados.length, 2));
   assert.deepEqual(

@@ -17,7 +17,7 @@ import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
 import {
   ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
 } from "../lib/finanzasOperaciones";
-import { Chip, Modal, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const OTRO = "__otro";
@@ -127,17 +127,17 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
 
   const selectCaja = (lado, cajas) => campo(
     lado === "debe" ? "Caja o banco que recibe" : "Caja o banco que paga",
-    <select className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
+    <SelectBuscable className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
       <option value="">Elegí…</option>
       {cajas.opciones.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}{c.moneda === "USD" ? " (USD)" : ""}</option>)}
-    </select>,
+    </SelectBuscable>,
   );
   const selectCuenta = (lado) => campo(
     lado === "debe" ? "Cuenta del debe" : "Cuenta del haber",
-    <select className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
+    <SelectBuscable className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
       <option value="">Elegí…</option>
       {datos.cuentas.filter((c) => c.activa !== false || c.codigo === f[`cuenta_${lado}`]).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
-    </select>,
+    </SelectBuscable>,
   );
 
   return (
@@ -146,14 +146,14 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
         <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-3">
           {campo("Fecha", <input type="date" className="g-input w-full" value={f.fecha} onChange={set("fecha")} />)}
           {campo("Tipo de operación", (
-            <select className="g-input w-full" value={f.tipo} onChange={elegirTipo}>
+            <SelectBuscable className="g-input w-full" value={f.tipo} onChange={elegirTipo}>
               <option value="">Elegí…</option>
               {grupos.map((g) => (
                 <optgroup key={g} label={g}>
                   {tiposActivos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo}>{nombreTipo(t)}</option>)}
                 </optgroup>
               ))}
-            </select>
+            </SelectBuscable>
           ))}
         </div>
         {tipo && leyendaTipo(tipo) && <p className="-mt-1 text-[12px] leading-snug text-gypi-dim" aria-label="Qué comprende este tipo">ℹ {leyendaTipo(tipo)}</p>}
@@ -180,7 +180,7 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {campo(`Proveedor o cliente${tipo.pide_entidad ? " (obligatorio)" : ""}`, (
-                <select className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id} onChange={(e) => {
+                <SelectBuscable className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id} onChange={(e) => {
                   if (e.target.value === OTRO) { setOtroNombre(true); return; }
                   setOtroNombre(false);
                   setF((x) => ({ ...x, proveedor_id: e.target.value }));
@@ -188,20 +188,20 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
                   <option value="">Ninguno</option>
                   {datos.proveedores.filter((p) => p.activo !== false || String(p.id) === String(f.proveedor_id)).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   <option value={OTRO}>Otro (cliente u otro): escribir el nombre</option>
-                </select>
+                </SelectBuscable>
               ))}
               {otroNombre && campo("Nombre", <input className="g-input w-full" value={f.entidad} onChange={set("entidad")} placeholder="Cliente u otro" />)}
               {campo(`OT${tipo.pide_ot ? " (obligatoria)" : ""}`, (
-                <select className="g-input w-full" value={f.proyecto_id} onChange={set("proyecto_id")}>
+                <SelectBuscable className="g-input w-full" value={f.proyecto_id} onChange={set("proyecto_id")}>
                   <option value="">Sin OT</option>
                   {datos.proyectos.map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>)}
-                </select>
+                </SelectBuscable>
               ))}
               {campo(`Centro de costo${tipo.pide_cc ? " (obligatorio)" : ""}`, (
-                <select className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}>
+                <SelectBuscable className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}>
                   <option value="">Sin centro de costo</option>
                   {datos.centros.filter((c) => c.activo !== false).map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre && c.nombre.toUpperCase() !== c.codigo.toUpperCase() ? `${c.codigo} · ${c.nombre}` : c.codigo}</option>)}
-                </select>
+                </SelectBuscable>
               ))}
             </div>
 
@@ -271,9 +271,9 @@ function CambiarTipo({ op, datos, onCambiado }) {
   return (
     <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3 flex flex-col gap-2">
       {campo("Tipo de compra", (
-        <select className="g-input w-full" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+        <SelectBuscable className="g-input w-full" value={tipo} onChange={(e) => setTipo(e.target.value)}>
           {opciones.map((t) => <option key={t.codigo} value={t.codigo}>{nombreTipo(t)}</option>)}
-        </select>
+        </SelectBuscable>
       ))}
       {op.proveedor_id && (
         <label className="flex items-center gap-2 text-[13px] text-gypi-text cursor-pointer">
@@ -392,10 +392,10 @@ export default function FinanzasMovimientos() {
   const entro = caja ? lista.reduce((s, op) => s + Math.max(0, movimientoCaja(op, caja)), 0) : 0;
   const salio = caja ? lista.reduce((s, op) => s + Math.max(0, -movimientoCaja(op, caja)), 0) : 0;
   const filtro = (k, label, opciones) => (
-    <select className="g-input min-w-[150px] flex-1" aria-label={label} value={filtros[k]} onChange={setFiltro(k)}>
+    <SelectBuscable className="g-input min-w-[150px] flex-1" aria-label={label} value={filtros[k]} onChange={setFiltro(k)}>
       <option value="">{label}: todos</option>
       {opciones}
-    </select>
+    </SelectBuscable>
   );
   const revisar = (datos.operaciones || []).filter((o) => o.estado === "para_revisar" && !o.anulada_at).length;
   const usadas = (k) => new Set((datos.operaciones || []).map((o) => String(o[k] ?? "")).filter(Boolean));

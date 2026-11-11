@@ -12,7 +12,7 @@ import { emparejarProveedor } from "../lib/finanzasProveedores";
 import {
   ACCIONES, BANCO_ECHEQ, ESTADOS_CHEQUE, NOMBRE_ACCION, TIPOS_CHEQUE, calendarioCheques, chequesDelLibro, cuentaBancoDe,
 } from "../lib/finanzasCheques";
-import { Chip, Modal, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
@@ -71,23 +71,23 @@ function NuevoCheque({ clase, datos, onCerrar, onGuardado }) {
     <Modal open onClose={onCerrar} title={clase === "propio" ? "Cheque propio a un proveedor" : "Cheque recibido"} maxWidth={560}>
       <div className="flex flex-col gap-3">
         {campo("Tipo", (
-          <select className="g-input w-full" aria-label="Tipo de cheque" value={f.tipo} onChange={set("tipo")}>
+          <SelectBuscable className="g-input w-full" aria-label="Tipo de cheque" value={f.tipo} onChange={set("tipo")}>
             {Object.entries(TIPOS_CHEQUE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
+          </SelectBuscable>
         ))}
         {clase === "propio" ? (
           <>
             {campo("Proveedor", (
-              <select className="g-input w-full" aria-label="Proveedor" value={f.proveedor_id} onChange={set("proveedor_id")}>
+              <SelectBuscable className="g-input w-full" aria-label="Proveedor" value={f.proveedor_id} onChange={set("proveedor_id")}>
                 <option value="">Elegí el proveedor</option>
                 {datos.proveedores.filter((p) => p.activo !== false).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
+              </SelectBuscable>
             ))}
             {campo("Banco que lo debita", (
-              <select className="g-input w-full" aria-label="Banco que lo debita" value={f.cuenta_banco} onChange={set("cuenta_banco")}>
+              <SelectBuscable className="g-input w-full" aria-label="Banco que lo debita" value={f.cuenta_banco} onChange={set("cuenta_banco")}>
                 <option value="">Elegí el banco</option>
                 {bancos.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-              </select>
+              </SelectBuscable>
             ))}
           </>
         ) : (
@@ -167,16 +167,16 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
             <p className="m-0 text-[14px] font-semibold">{NOMBRE_ACCION[accion]}</p>
             {campo("Fecha", <input type="date" className="g-input w-full" aria-label="Fecha del cambio" value={fecha} onChange={(e) => setFecha(e.target.value)} />)}
             {(accion === "debitado" || accion === "depositado") && campo(accion === "debitado" ? "Banco que lo debitó" : "Banco donde lo depositaste", (
-              <select className="g-input w-full" aria-label="Banco" value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
+              <SelectBuscable className="g-input w-full" aria-label="Banco" value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
                 <option value="">Elegí el banco</option>
                 {bancos.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-              </select>
+              </SelectBuscable>
             ))}
             {accion === "entregado" && campo("Proveedor", (
-              <select className="g-input w-full" aria-label="Proveedor que lo recibe" value={proveedor} onChange={(e) => setProveedor(e.target.value)}>
+              <SelectBuscable className="g-input w-full" aria-label="Proveedor que lo recibe" value={proveedor} onChange={(e) => setProveedor(e.target.value)}>
                 <option value="">Elegí el proveedor</option>
                 {datos.proveedores.filter((p) => p.activo !== false).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
+              </SelectBuscable>
             ))}
             {accion === "anular" && <p className="m-0 text-[13px] text-gypi-dim">El cheque queda anulado y su operación también. No se borra.</p>}
             {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}

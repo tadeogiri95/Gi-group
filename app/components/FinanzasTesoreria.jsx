@@ -18,7 +18,7 @@ import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
 import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, saldosTesoreria, totalesTesoreria } from "../lib/finanzasTesoreria";
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
 import SubirExtracto from "./FinanzasExtracto";
-import { Modal, Spinner } from "./ui";
+import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
@@ -164,16 +164,16 @@ function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
     <Modal open onClose={onCerrar} title="Pasar plata entre cajas" maxWidth={480}>
       <div className="flex flex-col gap-3">
         {campo("Sale de", (
-          <select className="g-input w-full" aria-label="Sale de" value={f.desde} onChange={set("desde")}>
+          <SelectBuscable className="g-input w-full" aria-label="Sale de" value={f.desde} onChange={set("desde")}>
             <option value="">Elegí…</option>
             {vivas.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-          </select>
+          </SelectBuscable>
         ))}
         {campo("Va a", (
-          <select className="g-input w-full" aria-label="Va a" value={f.hacia} onChange={set("hacia")}>
+          <SelectBuscable className="g-input w-full" aria-label="Va a" value={f.hacia} onChange={set("hacia")}>
             <option value="">Elegí…</option>
             {opciones(f.desde).map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-          </select>
+          </SelectBuscable>
         ))}
         <div className="flex flex-wrap gap-2">
           {campo(usd ? "Importe (USD)" : "Importe", <input className="g-input w-[160px] text-right font-mono" inputMode="decimal" aria-label="Importe" value={f.importe} onChange={set("importe")} />)}
@@ -344,10 +344,10 @@ function RevisarMiCaja({ datos, pendientes, onCerrar, onCambio }) {
                 <span className="text-[12px] text-gypi-dim">{fechaCorta(op.fecha)} · {op.descripcion}</span>
                 {op.comprobante_url && <a href={op.comprobante_url} target="_blank" rel="noopener noreferrer" className="text-[13px] text-gypi-cyan underline self-start">🧾 Ver ticket</a>}
                 <span className="flex flex-wrap items-center gap-2">
-                  <select className="g-input flex-1 min-w-[180px]" aria-label={`Tipo del movimiento ${op.id}`} value={tipos[op.id] || op.tipo} onChange={(e) => setTipos((x) => ({ ...x, [op.id]: e.target.value }))}>
+                  <SelectBuscable className="g-input flex-1 min-w-[180px]" aria-label={`Tipo del movimiento ${op.id}`} value={tipos[op.id] || op.tipo} onChange={(e) => setTipos((x) => ({ ...x, [op.id]: e.target.value }))}>
                     {!opciones.some((t) => t.codigo === op.tipo) && <option value={op.tipo}>{nombreTipo(op.tipo)}</option>}
                     {opciones.map((t) => <option key={t.codigo} value={t.codigo}>{t.nombre || t.codigo}</option>)}
-                  </select>
+                  </SelectBuscable>
                   <button type="button" className="g-btn g-btn-primary" disabled={ocupado === op.id} onClick={() => hacer(op, "revisar")}>✓ Confirmar</button>
                   <button type="button" className="g-btn g-btn-secondary" disabled={ocupado === op.id} onClick={() => hacer(op, "anular_mi_caja")}>Anular</button>
                 </span>

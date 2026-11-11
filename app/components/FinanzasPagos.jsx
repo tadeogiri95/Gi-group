@@ -16,7 +16,7 @@ import { numeroWhatsapp } from "../lib/compras";
 import {
   ESTADOS_ORDEN, FORMAS_PAGO, accionesOrden, cuentasParaPagar, fechaCorta, imprimirOrdenPago, textoForma, textoWhatsappCfo,
 } from "../lib/finanzasPagos";
-import { Chip, Modal, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -102,10 +102,10 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
         <div className="flex flex-wrap gap-2">
           <div className="flex-1 min-w-[200px]">
             {campo("Proveedor", (
-              <select className="g-input w-full" aria-label="Proveedor" value={proveedor} disabled={!!proveedorId} onChange={(e) => setProveedor(e.target.value)}>
+              <SelectBuscable className="g-input w-full" aria-label="Proveedor" value={proveedor} disabled={!!proveedorId} onChange={(e) => setProveedor(e.target.value)}>
                 <option value="">Elegí…</option>
                 {datos.proveedores.filter((p) => p.activo !== false || String(p.id) === proveedor).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
+              </SelectBuscable>
             ))}
           </div>
           {campo("Fecha", <input type="date" className="g-input" aria-label="Fecha de la orden" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />)}
@@ -136,10 +136,10 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
             <div key={i} className="flex flex-wrap items-end gap-2 p-2 rounded-lg border border-gypi-border bg-gypi-surface">
               <span className="w-full text-[13px] font-semibold">{FORMAS_PAGO[f.forma]}</span>
               {(f.forma === "efectivo" || f.forma === "transferencia") && (
-                <select className="g-input flex-1 min-w-[160px]" aria-label={f.forma === "efectivo" ? "Caja" : "Banco"} value={f.cuenta} onChange={cambiar(i, "cuenta")}>
+                <SelectBuscable className="g-input flex-1 min-w-[160px]" aria-label={f.forma === "efectivo" ? "Caja" : "Banco"} value={f.cuenta} onChange={cambiar(i, "cuenta")}>
                   <option value="">{f.forma === "efectivo" ? "Elegí la caja" : "Elegí el banco"}</option>
                   {(f.forma === "efectivo" ? cajas : bancos).map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-                </select>
+                </SelectBuscable>
               )}
               {f.forma === "echeq" && (
                 <>
@@ -148,12 +148,12 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
                 </>
               )}
               {f.forma === "cheque_tercero" ? (
-                <select className="g-input flex-1 min-w-[220px]" aria-label="Cheque de la cartera" value={f.cheque_id} onChange={cambiar(i, "cheque_id")}>
+                <SelectBuscable className="g-input flex-1 min-w-[220px]" aria-label="Cheque de la cartera" value={f.cheque_id} onChange={cambiar(i, "cheque_id")}>
                   <option value="">Elegí un cheque en cartera</option>
                   {datos.cheques.filter((c) => !usados.has(String(c.id)) || String(c.id) === String(f.cheque_id)).map((c) => (
                     <option key={c.id} value={c.id}>{plata(c.importe, "ARS")} · {c.banco || "Cheque"}{c.numero ? ` N° ${c.numero}` : ""} · vence {fechaCorta(c.fecha_pago)}</option>
                   ))}
-                </select>
+                </SelectBuscable>
               ) : (
                 <input className="g-input w-[150px] text-right font-mono" inputMode="decimal" aria-label={`Importe en ${FORMAS_PAGO[f.forma]}`} placeholder="Importe" value={f.importe} onChange={cambiar(i, "importe")} />
               )}

@@ -282,6 +282,7 @@ test("pantalla — lista las órdenes y arma una nueva con el total de las forma
   assert.ok(await screen.findByText("EGGER ARGENTINA"));
   assert.ok(screen.getByText(/Aprueba:/));
   fireEvent.click(screen.getByRole("button", { name: "+ Orden de pago" }));
+  fireEvent.focus(await screen.findByLabelText("Proveedor"));
   await screen.findByRole("option", { name: "EGGER ARGENTINA" });
   fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "5" } });
   fireEvent.click(screen.getByRole("button", { name: "+ Efectivo" }));

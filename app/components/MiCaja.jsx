@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { numero, plata } from "../lib/finanzasOperaciones";
 import Modal from "./ui/Modal";
+import SelectBuscable from "./ui/SelectBuscable";
 import BotonFoto from "./BotonFoto";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : "");
@@ -75,10 +76,10 @@ function Pasar({ caja, hoy, onCerrar, onHecho }) {
     <Modal open onClose={onCerrar} title="Le pasé plata a…" maxWidth={480}>
       <div className="flex flex-col gap-3">
         {campo("¿A quién?", (
-          <select className="g-input w-full" aria-label="A quién" value={f.hacia} onChange={set("hacia")}>
+          <SelectBuscable className="g-input w-full" aria-label="A quién" value={f.hacia} onChange={set("hacia")}>
             <option value="">Elegí…</option>
             {caja.destinos.map((d) => <option key={d.cuenta} value={d.cuenta}>{d.persona} ({d.nombre})</option>)}
-          </select>
+          </SelectBuscable>
         ))}
         <div className="flex flex-wrap gap-2">
           {campo(usd ? "Importe (USD)" : "Importe", <input className="g-input w-[160px] text-right font-mono" inputMode="decimal" aria-label="Importe" value={f.importe} onChange={set("importe")} />)}
@@ -133,10 +134,10 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
         ) : (
           <>
             {campo(clase === "gasto" ? "¿En qué?" : "¿De dónde vino?", (
-              <select className="g-input w-full" aria-label="Concepto" value={f.concepto} onChange={set("concepto")}>
+              <SelectBuscable className="g-input w-full" aria-label="Concepto" value={f.concepto} onChange={set("concepto")}>
                 <option value="">Elegí…</option>
                 {lista.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
-              </select>
+              </SelectBuscable>
             ))}
             {lista.find((c) => c.codigo === f.concepto)?.leyenda && (
               <p className="-mt-2 m-0 text-[12px] leading-snug text-gypi-dim">ℹ {lista.find((c) => c.codigo === f.concepto).leyenda}</p>
@@ -226,9 +227,9 @@ export default function MiCaja({ datos, onClose, onCambio }) {
           </section>
         ))}
         {datos.cajas.length > 1 && (
-          <select className="g-input w-full" aria-label="Caja" value={caja.cuenta} onChange={(e) => setElegida(e.target.value)}>
+          <SelectBuscable className="g-input w-full" aria-label="Caja" value={caja.cuenta} onChange={(e) => setElegida(e.target.value)}>
             {datos.cajas.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}</option>)}
-          </select>
+          </SelectBuscable>
         )}
         <div>
           <div className="text-[14px] text-gypi-dim">{caja.nombre}</div>
