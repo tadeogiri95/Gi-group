@@ -7,7 +7,9 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { finDeMes, fechaDevengado, textoComprobante, cuentasDeuda, operacionesGasto, ORIGEN_GASTO } from "../app/lib/finanzasGastos.js";
+import {
+  finDeMes, fechaDevengado, textoComprobante, cuentasDeuda, operacionesGasto, ORIGEN_GASTO, tiposDeGasto, deudaDelTipo, esquemaGasto, proveedorDeFactura, propuestaDeLectura,
+} from "../app/lib/finanzasGastos.js";
 import { asientoDe } from "../app/lib/finanzasOperaciones.js";
 
 before(() => {
@@ -20,7 +22,6 @@ afterEach(() => cleanup());
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/operaciones/route.js");
 const { default: FinanzasMovimientos } = await import("../app/components/FinanzasMovimientos.jsx");
-const { tiposDeGasto, deudaDelTipo } = await import("../app/components/FinanzasCargarGasto.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
 const EMP = "22222222-2222-2222-2222-222222222222";
@@ -143,14 +144,23 @@ const pedir = async (rol, body) => api.POST(new Request("http://localhost/api/fi
   method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, body: JSON.stringify(body),
 }));
 
-function mockApi({ op = { origen: "gasto", origen_id: "gabcdef012345-p" } } = {}) {
+function mockApi({ op = { origen: "gasto", origen_id: "gabcdef012345-p" }, repetida = null, lectura = null } = {}) {
   const escrito = [];
+  const ia = [];
   const tabla = { fin_tipos_operacion: TIPOS, fin_cuentas: CUENTAS, fin_tesoreria: TESORERIA, fin_centros_costo: CENTROS, proveedores: PROVEEDORES, proyectos: PROYECTOS };
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ id: EMP, nombre: "Tadeo" }] }) },
+    {
+      match: (u) => u.includes("api.anthropic.com"),
+      respond: (u, o) => {
+        ia.push(JSON.parse(o.body));
+        return { status: 200, body: { content: [{ type: "text", text: JSON.stringify(lectura) }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, model: "m" } };
+      },
+    },
+    { match: (u, o) => u.includes("/rest/v1/fin_operaciones") && u.includes("referencia=eq.") && !o?.method, respond: () => ({ status: 200, body: repetida ? [repetida] : [] }) },
     {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
       respond: (u, o) => {
@@ -162,8 +172,20 @@ function mockApi({ op = { origen: "gasto", origen_id: "gabcdef012345-p" } } = {}
         return { status: 200, body: [op] };
       },
     },
-    { match: (u) => /\/rest\/v1\/(fin_|proveedores|proyectos)/.test(u), respond: (u) => ({ status: 200, body: tabla[u.split("/rest/v1/")[1].split("?")[0]] || [] }) },
+    {
+      match: (u) => /\/rest\/v1\/(fin_|proveedores|proyectos)/.test(u),
+      respond: (u, o) => {
+        if (o?.method === "POST" || o?.method === "PATCH") {
+          const body = JSON.parse(o.body);
+          escrito.push({ url: u, metodo: o.method, body });
+          return { status: 201, body: [{ id: 88, ...body }] };
+        }
+        if (u.includes("proveedores?") && u.includes("nombre=ilike.")) return { status: 200, body: [] };
+        return { status: 200, body: tabla[u.split("/rest/v1/")[1].split("?")[0]] || [] };
+      },
+    },
   ]);
+  escrito.ia = ia;
   return escrito;
 }
 
@@ -183,6 +205,16 @@ test("/api/finanzas/operaciones gasto — valida en el servidor y guarda el gast
   assert.equal(filas[1].origen_id, `${filas[0].origen_id}-p`);
   assert.deepEqual(filas.map((f) => [f.empresa_id, f.cargada_por_nombre, f.origen]), [[E, "Tadeo", "gasto"], [E, "Tadeo", "gasto"]]);
   assert.equal(filas[1].cuenta_haber, "01.01.01.001.001.01");
+  const recordado = escrito.find((x) => x.url.includes("/proveedores?id=eq.5"));
+  assert.deepEqual(recordado?.body, { fin_tipo: "SERVICIOS" }, "EPEC no tenía tipo: queda guardado para la próxima");
+});
+
+test("/api/finanzas/operaciones gasto — la misma factura del mismo proveedor no se carga dos veces", async () => {
+  const escrito = mockApi({ repetida: { id: 12, fecha: "2026-10-31" } });
+  const res = await pedir("gerencial", { accion: "gasto", gasto: LUZ });
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /ya está cargada \(operación del 31\/10\/2026\)/);
+  assert.equal(escrito.filter((x) => x.metodo === "POST").length, 0);
 });
 
 test("/api/finanzas/operaciones anular — un gasto se anula junto con su pago; una de factura sigue sin poder anularse a mano", async () => {
@@ -263,4 +295,118 @@ test("Movimientos — un gasto devengado se puede anular desde el detalle (con s
   await waitFor(() => assert.ok(screen.getByText("🧾 Gasto devengado", { selector: "span.text-gypi-text" })));
   fireEvent.click(screen.getByRole("button", { name: "Anular operación" }));
   assert.ok(screen.getByText(/Se anula junto con su pago/));
+});
+
+// ─── Parte 6: subir la factura ───
+
+const LECTURA = {
+  letra: "A", punto_venta: "0003", numero: "00001234", fecha: "2026-11-05", emisor: "Empresa Provincial de Energía de Córdoba", cuit_emisor: "30-99901234-5",
+  periodo: "2026-10", neto: 1000, iva: 210, otros_impuestos: 30, total: 1240, moneda: "ARS", concepto: "Energía eléctrica planta", tipo_sugerido: "SERVICIOS",
+};
+const EPEC = { id: 5, nombre: "EPEC", cuit: "30999012345", activo: true };
+
+test("factura leída — el esquema trae los tipos de gasto para elegir", () => {
+  const esq = esquemaGasto(tiposDeGasto(TIPOS, TESORERIA));
+  assert.deepEqual(esq.properties.tipo_sugerido.enum, ["SERVICIOS", "IIBB", ""]);
+  assert.ok(esq.required.includes("periodo"));
+  assert.equal(esq.additionalProperties, false);
+});
+
+test("factura leída — el proveedor se encuentra por CUIT o por el nombre en cualquier orden", () => {
+  assert.equal(proveedorDeFactura({ emisor: "Otra cosa", cuit: "30-99901234-5" }, [EPEC])?.id, 5);
+  assert.equal(proveedorDeFactura({ emisor: "Giri Tadeo" }, [{ id: 7, nombre: "TADEO GIRI" }])?.id, 7);
+  assert.equal(proveedorDeFactura({ emisor: "Aceros S.A." }, [{ id: 8, nombre: "ACEROS" }])?.id, 8);
+  assert.equal(proveedorDeFactura({ emisor: "Nadie" }, [EPEC]), null);
+});
+
+test("factura leída — propuesta: proveedor por CUIT, su tipo guardado, mes del período y avisos", () => {
+  const ctx = { ...CTX, proveedores: [{ ...EPEC, fin_tipo: "IIBB" }] };
+  const { inicial, avisos, proveedor_nuevo: nuevo } = propuestaDeLectura(LECTURA, ctx);
+  assert.equal(nuevo, null);
+  assert.deepEqual(
+    [inicial.tipo, inicial.proveedor_id, inicial.letra, inicial.punto_venta, inicial.numero, inicial.fecha_factura, inicial.mes, inicial.neto, inicial.iva, inicial.otros_impuestos],
+    ["IIBB", "5", "A", "0003", "00001234", "2026-11-05", "2026-10", "1000", "210", "30"],
+  );
+  assert.ok(avisos.some((a) => /es de 10\/2026: va a ese mes/.test(a)));
+  assert.deepEqual(operacionesGasto(inicial, ctx).errores, [], "la propuesta se puede guardar tal cual");
+
+  const sinProv = propuestaDeLectura({ ...LECTURA, cuit_emisor: "", total: 999 }, CTX);
+  assert.equal(sinProv.inicial.tipo, "SERVICIOS", "sin proveedor, el tipo que sugiere la IA");
+  assert.deepEqual(sinProv.proveedor_nuevo, { nombre: "Empresa Provincial de Energía de Córdoba", cuit: "" });
+  assert.ok(sinProv.avisos.some((a) => /no está en tus proveedores/.test(a)));
+  assert.ok(sinProv.avisos.some((a) => /no da con neto \+ IVA/.test(a)));
+});
+
+test("factura leída — una B con IVA leído lo suma al neto; un ticket va sin factura; en dólares avisa", () => {
+  const b = propuestaDeLectura({ ...LECTURA, letra: "B", iva: 210 }, CTX).inicial;
+  assert.deepEqual([b.letra, b.neto, b.iva, b.con_factura], ["B", "1210", "", true]);
+  const ticket = propuestaDeLectura({ ...LECTURA, letra: "", iva: 0, total: 1030 }, CTX);
+  assert.equal(ticket.inicial.con_factura, false);
+  assert.ok(propuestaDeLectura({ ...LECTURA, moneda: "USD" }, CTX).avisos.some((a) => /dólares/.test(a)));
+  assert.ok(propuestaDeLectura({ ...LECTURA, fecha: "", neto: 0, tipo_sugerido: "" }, CTX).avisos.join(" ").match(/fecha.*importes.*tipo de gasto/));
+});
+
+test("/api/finanzas/operaciones leer_gasto — la IA lee la factura con los tipos de la empresa y vuelve la propuesta (no guarda nada)", async () => {
+  process.env.ANTHROPIC_API_KEY = "clave-de-prueba";
+  const escrito = mockApi({ lectura: LECTURA, repetida: { id: 12, fecha: "2026-10-31" } });
+  assert.equal((await pedir("gerencial", { accion: "leer_gasto", archivo: "QUJD", tipo: "text/plain" })).status, 400);
+  const res = await pedir("gerencial", { accion: "leer_gasto", archivo: "JVBERi0xLjQK", tipo: "application/pdf" });
+  assert.equal(res.status, 200);
+  const d = await res.json();
+  assert.equal(d.inicial.tipo, "SERVICIOS");
+  assert.equal(d.inicial.mes, "2026-10");
+  assert.match(d.avisos[0], /ya está cargada/);
+  const pedido = escrito.ia[0];
+  assert.match(pedido.system, /Tipos de gasto de la empresa:\n- SERVICIOS \(Servicios\)/);
+  assert.doesNotMatch(pedido.system, /PAGO TRANSF/, "solo los tipos de gasto");
+  assert.deepEqual(pedido.output_config.format.schema.properties.tipo_sugerido.enum, ["SERVICIOS", "IIBB", ""]);
+  assert.equal(escrito.filter((x) => x.metodo === "POST" && x.url.includes("fin_operaciones")).length, 0);
+  assert.equal((await pedir("administrativo", { accion: "leer_gasto", archivo: "JVBERi0xLjQK", tipo: "application/pdf" })).status, 403);
+});
+
+test("/api/finanzas/operaciones proveedor_nuevo — da de alta el proveedor de la factura con su CUIT", async () => {
+  const escrito = mockApi();
+  const res = await pedir("gerencial", { accion: "proveedor_nuevo", nombre: "  Energía   Córdoba ", cuit: "30999012345" });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).proveedor.id, 88);
+  const alta = escrito.find((x) => x.url.includes("/proveedores") && x.metodo === "POST");
+  assert.deepEqual([alta.body.nombre, alta.body.cuit, alta.body.empresa_id], ["Energía Córdoba", "30-99901234-5", E]);
+  assert.equal((await pedir("gerencial", { accion: "proveedor_nuevo", nombre: "" })).status, 400);
+});
+
+test("Movimientos — 📎 subir la factura deja la propuesta para revisar y se da de alta el proveedor", async () => {
+  const datos = { desde: "2026-11-01", hasta: "2026-11-11", truncado: false, ...CTX, proveedores: [], operaciones: [] };
+  const enviado = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") {
+      const b = JSON.parse(o.body);
+      enviado.push(b);
+      if (b.accion === "leer_gasto") {
+        return new Response(JSON.stringify({ ok: true, ...propuestaDeLectura({ ...LECTURA, cuit_emisor: "" }, { ...CTX, proveedores: [] }) }), { status: 200 });
+      }
+      if (b.accion === "proveedor_nuevo") return new Response(JSON.stringify({ ok: true, proveedor: { id: 21, nombre: b.nombre } }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasMovimientos />);
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" })));
+  fireEvent.click(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" }));
+  const archivo = new File([new Uint8Array([37, 80, 68, 70])], "luz.pdf", { type: "application/pdf" });
+  fireEvent.change(screen.getByLabelText("Subir la factura"), { target: { files: [archivo] } });
+  await waitFor(() => assert.ok(screen.getByText(/Esta es la propuesta de Gypi/)));
+  assert.equal(enviado[0].accion, "leer_gasto");
+  assert.equal(enviado[0].tipo, "application/pdf");
+  assert.ok(enviado[0].archivo.length > 0);
+  assert.equal(screen.getByLabelText("Neto (sin IVA)").value, "1000");
+  assert.equal(screen.getByLabelText("Mes del gasto").value, "2026-10");
+  assert.match(screen.getByLabelText("Avisos de la factura").textContent, /no está en tus proveedores/);
+
+  fireEvent.click(screen.getByRole("button", { name: /Dar de alta a Empresa Provincial/ }));
+  await waitFor(() => assert.equal(screen.getByLabelText("Proveedor del gasto").value, "Empresa Provincial de Energía de Córdoba"));
+  assert.doesNotMatch(screen.getByLabelText("Avisos de la factura").textContent, /no está en tus proveedores/);
+  fireEvent.change(screen.getByLabelText("Centro de costo (obligatorio)"), { target: { value: "PLANTA" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar gasto" }));
+  await waitFor(() => assert.equal(enviado.at(-1).accion, "gasto"));
+  assert.deepEqual([String(enviado.at(-1).gasto.proveedor_id), enviado.at(-1).gasto.tipo, enviado.at(-1).gasto.mes], ["21", "SERVICIOS", "2026-10"]);
 });

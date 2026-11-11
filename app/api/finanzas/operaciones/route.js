@@ -8,6 +8,12 @@
 //       que pide el tipo) y la guarda.
 //   POST { accion: "gasto", gasto } → un gasto devengado con o sin factura (y
 //       su pago, si ya se pagó): reglas en app/lib/finanzasGastos.js.
+//       Con proveedor sin tipo guardado, el tipo queda guardado para la próxima.
+//       Una factura con el mismo número y proveedor no se carga dos veces.
+//   POST { accion: "leer_gasto", archivo, tipo } → la IA lee la factura (PDF o
+//       foto) y devuelve el formulario del gasto ya lleno para revisar (parte 6).
+//   POST { accion: "proveedor_nuevo", nombre, cuit } → da de alta el proveedor
+//       que trajo la factura (o usa el que ya tiene ese nombre).
 //   POST { accion: "anular", id } → la marca anulada con quién y cuándo. No se borra.
 //       Solo las cargadas a mano: las de una factura se anulan con la factura.
 //       Un gasto se anula junto con su pago.
@@ -22,7 +28,12 @@ import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA, MAX_OPERACIONES, hoyAr, inicioMes, validarOperacion } from "../../../lib/finanzasOperaciones";
-import { ORIGEN_GASTO, operacionesGasto } from "../../../lib/finanzasGastos";
+import { ORIGEN_GASTO, PROMPT_GASTO, esquemaGasto, operacionesGasto, propuestaDeLectura, textoComprobante, tiposDeGasto, tiposParaIa } from "../../../lib/finanzasGastos";
+import { leyendaTipo } from "../../../lib/finanzasTipos";
+import { ErrorIa, leerDocumentoIa } from "../../../lib/facturaIa";
+import { MAX_ARCHIVO_B64, TIPOS_ARCHIVO } from "../../../lib/facturasSueltas";
+import { logAudit } from "../../../lib/audit";
+import { ipCliente } from "../../../lib/ip";
 import { randomUUID } from "node:crypto";
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
@@ -36,7 +47,7 @@ async function listas(sesion) {
     leer(`fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,rubro,activa&order=codigo.asc`),
     leer(`fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa&order=cuenta.asc`),
     leer(`fin_centros_costo?empresa_id=eq.${e}&select=codigo,nombre,division,activo&order=codigo.asc`),
-    leer(`proveedores?empresa_id=eq.${e}&select=id,nombre,activo&order=nombre.asc,id.asc`),
+    leer(`proveedores?empresa_id=eq.${e}&select=id,nombre,cuit,fin_tipo,activo&order=nombre.asc,id.asc`),
     leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado&order=id.desc`),
   ]);
   return { tipos, cuentas, tesoreria, centros, proveedores, proyectos };
@@ -46,6 +57,64 @@ async function nombreEmpleado(sesion) {
   if (!sesion.empleado_id) return null;
   const [emp] = (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${sesion.empresa_id}&select=nombre&limit=1`, { sesion, silent: true, fallback: [] })) || [];
   return emp?.nombre ? String(emp.nombre).slice(0, 120) : null;
+}
+
+/** La misma factura (número y proveedor, o número y nombre) ya cargada como gasto y sin anular. */
+async function facturaRepetida(sesion, gasto) {
+  if (!gasto?.con_factura || !String(gasto.numero || "").replace(/\D/g, "")) return null;
+  const proveedorId = Number(gasto.proveedor_id) || null;
+  const op = { referencia: textoComprobante(gasto).replace(/^Factura /, ""), proveedor_id: proveedorId, entidad: proveedorId ? null : String(gasto.entidad || "").trim() || null };
+  const quien = op.proveedor_id ? `proveedor_id=eq.${op.proveedor_id}` : op.entidad ? `entidad=ilike.${encodeURIComponent(op.entidad.replace(/[%_*,()]/g, ""))}` : "proveedor_id=is.null";
+  const [igual] = (await sbGet(`fin_operaciones?empresa_id=eq.${sesion.empresa_id}&origen=eq.${ORIGEN_GASTO}&referencia=eq.${encodeURIComponent(op.referencia)}&${quien}&anulada_at=is.null&select=id,fecha&limit=1`, { sesion, silent: true, fallback: [] })) || [];
+  return igual || null;
+}
+
+/** Parte 6: la IA lee la factura y vuelve el formulario lleno. Nada se guarda hasta que el dueño lo aprueba. */
+async function leerGasto(request, sesion, d) {
+  const tipo = String(d?.tipo ?? "");
+  const archivo = typeof d?.archivo === "string" ? d.archivo : "";
+  if (!TIPOS_ARCHIVO.includes(tipo)) return NextResponse.json({ error: "Subí la factura en PDF o una foto (JPG, PNG o WEBP)" }, { status: 400 });
+  if (!archivo || archivo.length > MAX_ARCHIVO_B64 || !/^[A-Za-z0-9+/=]+$/.test(archivo.slice(0, 2000))) {
+    return NextResponse.json({ error: "El archivo es muy grande (hasta 3 MB) o no se pudo leer" }, { status: 400 });
+  }
+  const ctx = await listas(sesion);
+  const deGasto = tiposDeGasto(ctx.tipos, ctx.tesoreria);
+  let r;
+  try {
+    r = await leerDocumentoIa({
+      base64: archivo, tipo, maxTokens: 2000, esquema: esquemaGasto(deGasto),
+      sistema: `${PROMPT_GASTO}\n\nTipos de gasto de la empresa:\n${tiposParaIa(deGasto, leyendaTipo)}`,
+    });
+  } catch (err) {
+    if (err instanceof ErrorIa) return NextResponse.json({ error: `${err.message} Podés cargar el gasto a mano.` }, { status: 502 });
+    throw err;
+  }
+  logAudit({
+    empresa_id: sesion.empresa_id, actor_id: sesion.empleado_id, actor_legajo: sesion.legajo, actor_rol: sesion.rol,
+    accion: "chat_ia", entidad: "fin_gasto",
+    datos_despues: { tipo: "factura_gasto", tokens_input: r.uso.input_tokens, tokens_output: r.uso.output_tokens, model: r.modelo },
+    ip: ipCliente(request),
+  });
+  const propuesta = propuestaDeLectura(r.lectura, ctx);
+  const repetida = await facturaRepetida(sesion, propuesta.inicial);
+  if (repetida) propuesta.avisos.unshift(`⚠ Esta factura ya está cargada (operación del ${repetida.fecha.slice(8, 10)}/${repetida.fecha.slice(5, 7)}/${repetida.fecha.slice(0, 4)}).`);
+  return NextResponse.json({ ok: true, ...propuesta });
+}
+
+/** El proveedor que trajo la factura: se da de alta (o se usa el que ya tiene ese nombre). */
+async function proveedorNuevo(sesion, d) {
+  const nombre = String(d?.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!nombre) return NextResponse.json({ error: "Falta el nombre del proveedor" }, { status: 400 });
+  const cuitDig = String(d?.cuit ?? "").replace(/\D/g, "");
+  const cuit = cuitDig.length === 11 ? `${cuitDig.slice(0, 2)}-${cuitDig.slice(2, 10)}-${cuitDig.slice(10)}` : null;
+  const e = sesion.empresa_id;
+  const [igual] = (await sbGet(`proveedores?empresa_id=eq.${e}&nombre=ilike.${encodeURIComponent(nombre.replace(/[%_*,()]/g, ""))}&select=id,nombre&limit=1`, { sesion, silent: true, fallback: [] })) || [];
+  if (igual) return NextResponse.json({ ok: true, proveedor: igual });
+  const ahora = new Date().toISOString();
+  const [fila] = (await sbPost("proveedores", { empresa_id: e, nombre, cuit, activo: true, created_at: ahora, updated_at: ahora }, { sesion })) || [];
+  if (!fila?.id) return NextResponse.json({ error: "No se pudo dar de alta el proveedor" }, { status: 500 });
+  broadcastRefresh(e, "proveedores");
+  return NextResponse.json({ ok: true, proveedor: { id: fila.id, nombre: fila.nombre || nombre } });
 }
 
 export async function GET(request) {
@@ -88,17 +157,25 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, operacion: fila });
     }
     if (d.accion === "gasto") {
-      const { ops, errores } = operacionesGasto(d.gasto || {}, await listas(sesion));
+      const ctx = await listas(sesion);
+      const { ops, errores } = operacionesGasto(d.gasto || {}, ctx);
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+      const repetida = await facturaRepetida(sesion, d.gasto);
+      if (repetida) return NextResponse.json({ error: `Esa factura ya está cargada (operación del ${repetida.fecha.slice(8, 10)}/${repetida.fecha.slice(5, 7)}/${repetida.fecha.slice(0, 4)}). Si estaba mal, anulala y cargala de nuevo.` }, { status: 409 });
       const ahora = new Date().toISOString();
       const grupo = `g${randomUUID().replace(/-/g, "").slice(0, 12)}`;
       const quien = await nombreEmpleado(sesion);
       const filas = await sbPost("fin_operaciones", ops.map((op, i) => ({
         ...op, empresa_id: e, origen_id: i ? `${grupo}-p` : grupo, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
       })), { sesion });
+      // El proveedor sin tipo guardado se queda con este para la próxima factura
+      const prov = ops[0].proveedor_id ? ctx.proveedores.find((p) => Number(p.id) === ops[0].proveedor_id) : null;
+      if (prov && !prov.fin_tipo) await sbPatch(`proveedores?id=eq.${prov.id}&empresa_id=eq.${e}`, { fin_tipo: ops[0].tipo }, { sesion, silent: true }).catch(() => null);
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operaciones: filas });
     }
+    if (d.accion === "leer_gasto") return await leerGasto(request, sesion, d);
+    if (d.accion === "proveedor_nuevo") return await proveedorNuevo(sesion, d);
     if (d.accion === "anular") {
       const id = Number(d.id);
       if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
