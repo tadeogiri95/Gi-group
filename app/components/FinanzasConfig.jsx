@@ -17,6 +17,7 @@ import FinanzasTipos from "./FinanzasTipos";
 import { HOJA_FLUJO, HOJA_OPERACIONES, TABLAS_FIN, TIPOS_TESORERIA, leerLibro } from "../lib/finanzas";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
+import { leyendaTipo } from "../lib/finanzasTipos";
 
 const ORDEN_COPIA = ["cuentas", "tesoreria", "centros", "tipos"];
 const HOJAS_LIBRO = [...Object.values(TABLAS_FIN).map((t) => t.hoja), HOJA_OPERACIONES, HOJA_FLUJO];
@@ -253,7 +254,7 @@ function EditarFila({ tabla, fila, nueva, cuentas, personal, onCerrar, onGuardad
           {casilla("pide_entidad", "Pide proveedor o cliente")}
           {casilla("pide_ot", "Pide OT")}
           {casilla("pide_cc", "Pide centro de costo")}
-          {campo("Para qué se usa", <textarea className="g-input w-full" rows={2} value={f.descripcion ?? ""} onChange={set("descripcion")} />)}
+          {campo("Para qué se usa (leyenda en letra chica al cargar)", <textarea className="g-input w-full" rows={3} value={f.descripcion ?? ""} onChange={set("descripcion")} placeholder={leyendaTipo({ codigo: f[clave] }) || "Qué comprende este tipo y un ejemplo"} />)}
           {casilla("activo", "Activo")}
         </>}
         {tabla === "tesoreria" && <>

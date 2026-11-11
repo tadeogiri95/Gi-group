@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { textoOt } from "../lib/nombreOt";
+import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
 import {
   ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion,
 } from "../lib/finanzasOperaciones";
@@ -32,6 +33,8 @@ function campo(label, input, extra = "") {
 }
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
+/** El nombre de un tipo por su código ("COBRO A CLIENTES" → "Cobro a clientes"). */
+const nombreDeTipo = (codigo, tipos) => nombreTipo(tipos.find((t) => t.codigo === codigo) || { codigo });
 const nombreCuenta = (codigo, cuentas) => cuentas.find((c) => c.codigo === codigo)?.nombre || codigo || "—";
 
 /* ─── Asiento ────────────────────────────────────────────────────────── */
@@ -147,13 +150,13 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
               <option value="">Elegí…</option>
               {grupos.map((g) => (
                 <optgroup key={g} label={g}>
-                  {tiposActivos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo}>{t.codigo}{t.nombre ? ` · ${t.nombre}` : ""}</option>)}
+                  {tiposActivos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo}>{nombreTipo(t)}</option>)}
                 </optgroup>
               ))}
             </select>
           ))}
         </div>
-        {tipo?.descripcion && <p className="-mt-1 text-[12px] text-gypi-dim">{tipo.descripcion}</p>}
+        {tipo && leyendaTipo(tipo) && <p className="-mt-1 text-[12px] leading-snug text-gypi-dim" aria-label="Qué comprende este tipo">ℹ {leyendaTipo(tipo)}</p>}
 
         {tipo && (
           <>
@@ -197,7 +200,7 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
               {campo(`Centro de costo${tipo.pide_cc ? " (obligatorio)" : ""}`, (
                 <select className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}>
                   <option value="">Sin centro de costo</option>
-                  {datos.centros.filter((c) => c.activo !== false).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo}{c.nombre && c.nombre !== c.codigo ? ` · ${c.nombre}` : ""}</option>)}
+                  {datos.centros.filter((c) => c.activo !== false).map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre && c.nombre.toUpperCase() !== c.codigo.toUpperCase() ? `${c.codigo} · ${c.nombre}` : c.codigo}</option>)}
                 </select>
               ))}
             </div>
@@ -269,7 +272,7 @@ function CambiarTipo({ op, datos, onCambiado }) {
     <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3 flex flex-col gap-2">
       {campo("Tipo de compra", (
         <select className="g-input w-full" value={tipo} onChange={(e) => setTipo(e.target.value)}>
-          {opciones.map((t) => <option key={t.codigo} value={t.codigo}>{t.codigo}{t.nombre ? ` · ${t.nombre}` : ""}</option>)}
+          {opciones.map((t) => <option key={t.codigo} value={t.codigo}>{nombreTipo(t)}</option>)}
         </select>
       ))}
       {op.proveedor_id && (
@@ -308,7 +311,7 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
 
   const fila = (k, v) => v ? <p className="m-0 text-[13px]"><span className="text-gypi-dim">{k}:</span> <span className="text-gypi-text">{v}</span></p> : null;
   return (
-    <Modal open onClose={onCerrar} title={`${op.tipo} · ${fechaCorta(op.fecha)}`} maxWidth={560}>
+    <Modal open onClose={onCerrar} title={`${nombreDeTipo(op.tipo, datos.tipos)} · ${fechaCorta(op.fecha)}`} maxWidth={560}>
       <div className="flex flex-col gap-2">
         {op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-red">Anulada{op.anulada_por_nombre ? ` por ${op.anulada_por_nombre}` : ""} el {fechaCorta(op.anulada_at.slice(0, 10))}</p>}
         {fila("Proveedor o cliente", nombres.entidad(op))}
@@ -407,7 +410,7 @@ export default function FinanzasMovimientos() {
         {campo("Hasta", <input type="date" className="g-input" value={periodo.hasta} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, hasta: e.target.value }))} />)}
       </div>
       <div className="flex flex-wrap gap-2 mb-2">
-        {filtro("tipo", "Tipo", [...new Set((datos.operaciones || []).map((o) => o.tipo))].sort().map((t) => <option key={t} value={t}>{t}</option>))}
+        {filtro("tipo", "Tipo", [...new Set((datos.operaciones || []).map((o) => o.tipo))].map((t) => [t, nombreDeTipo(t, datos.tipos)]).sort((a, b) => a[1].localeCompare(b[1], "es")).map(([t, n]) => <option key={t} value={t}>{n}</option>))}
         {filtro("caja", "Caja o banco", datos.tesoreria.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>))}
         {filtro("proveedor", "Proveedor", datos.proveedores.filter((p) => provUsados.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>))}
         {filtro("proyecto", "OT", datos.proyectos.filter((p) => otsUsadas.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>))}
@@ -441,7 +444,7 @@ export default function FinanzasMovimientos() {
                 className={`w-full text-left min-h-[48px] px-3 py-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer ${op.anulada_at ? "opacity-60" : ""}`}>
                 <span className={`flex items-baseline gap-2 text-[14px] text-gypi-text ${op.anulada_at ? "line-through" : ""}`}>
                   <span className="text-gypi-dim font-mono text-[12px]">{fechaCorta(op.fecha)}</span>
-                  <span className="font-semibold flex-1 min-w-0 truncate">{op.tipo}{quien ? ` · ${quien}` : ""}</span>
+                  <span className="font-semibold flex-1 min-w-0 truncate">{nombreDeTipo(op.tipo, datos.tipos)}{quien ? ` · ${quien}` : ""}</span>
                   <span className="font-mono font-semibold">{plata(op.total, op.moneda)}</span>
                 </span>
                 <span className="block text-[12px] text-gypi-dim truncate">

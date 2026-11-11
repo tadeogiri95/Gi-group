@@ -319,3 +319,23 @@ test("Movimientos — una compra de factura muestra de dónde salió, para revis
   assert.ok(screen.getByRole("button", { name: "Confirmar tipo" }));
   assert.equal(screen.queryByRole("button", { name: "Anular operación" }), null);
 });
+
+test("Movimientos — el tipo se ve una sola vez (sin MAYÚSCULAS · minúsculas) y con su leyenda", async () => {
+  const tipos = [
+    ...TIPOS,
+    { codigo: "GASTOS DE LOGÍSTICA", nombre: "Gastos de logística", grupo: "GASTOS", cuenta_debe: "04.02.01.001.062", cuenta_haber: "01.01.01.001.001", activo: true },
+    { codigo: "SERVICIOS", nombre: "Servicios", grupo: "GASTOS", cuenta_debe: "04.02.01.001.062", cuenta_haber: "01.01.01.001.001", descripcion: "Luz, gas y agua de la planta.", activo: true },
+  ];
+  global.fetch = async () => new Response(JSON.stringify({ desde: "2026-11-01", hasta: "2026-11-09", truncado: false, ...CTX, tipos, operaciones: [] }), { status: 200 });
+  render(<FinanzasMovimientos />);
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "+ Nueva operación" })));
+  fireEvent.click(screen.getByRole("button", { name: "+ Nueva operación" }));
+  const select = screen.getByLabelText("Tipo de operación");
+  const textos = [...select.querySelectorAll("option")].map((o) => o.textContent);
+  assert.ok(textos.includes("Gastos de logística"));
+  assert.ok(!textos.some((t) => t.includes("GASTOS DE LOGÍSTICA")), "no repite el código en mayúsculas");
+  fireEvent.change(select, { target: { value: "GASTOS DE LOGÍSTICA" } });
+  assert.match(screen.getByLabelText("Qué comprende este tipo").textContent, /combustible, peajes, fletes/);
+  fireEvent.change(select, { target: { value: "SERVICIOS" } });
+  assert.match(screen.getByLabelText("Qué comprende este tipo").textContent, /Luz, gas y agua de la planta/, "manda la leyenda propia");
+});
