@@ -15,6 +15,8 @@ import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { mesesHasta } from "../../../lib/finanzasResultados";
+import { feriadosFinanzas } from "../../../lib/finanzasDiasHabiles";
+import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { CLAVE_FLUJO, flujoPrevisto, flujoReal, saldoCajas, validarLineasFlujo } from "../../../lib/finanzasFlujo";
 import { CLAVE_SUELDOS, ORIGEN_PAGO_SUELDO, leerConfigSueldos, pagadoPorEmpleado, totalesLiquidacion } from "../../../lib/finanzasSueldos";
 
@@ -45,17 +47,18 @@ export async function GET(request) {
   const hoy = hoyAr();
   const hasta = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(pedido || "")) ? pedido : hoy.slice(0, 7);
   try {
-    const [ops, tesoreria, cuentas, lineas, cheques, ordenes] = await Promise.all([
+    const [ops, tesoreria, cuentas, lineas, cheques, ordenes, planificacion] = await Promise.all([
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&select=${COLUMNAS}&order=fecha.asc,id.asc`, 300000),
       leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`),
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa`),
       config(e, CLAVE_FLUJO),
       leer(sesion, `fin_cheques?empresa_id=eq.${e}&estado=in.(pendiente,en_cartera)&select=id,clase,estado,fecha_pago,importe,banco,numero,librador,beneficiario`, 20000).catch(() => []),
       leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(aprobada,para_aprobar)&select=id,numero,proveedor_nombre,fecha,estado,total`).catch(() => []),
+      config(e, CLAVE_PLANIFICACION),
     ]);
     const lin = validarLineasFlujo(lineas || {});
     const real = flujoReal({ ops, tesoreria, cuentas, lineas: lin, meses: mesesHasta(hasta) });
-    const previsto = flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos: await sueldosPorPagar(sesion, ops, cuentas) });
+    const previsto = flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos: await sueldosPorPagar(sesion, ops, cuentas), feriados: feriadosFinanzas(planificacion) });
     return NextResponse.json({ hasta, hoy, ...real, previsto, lineas_cargadas: Object.keys(lin.tipos).length });
   } catch (err) {
     return errorFinanzas(err, "flujo GET");

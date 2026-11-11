@@ -110,10 +110,10 @@ export function validarOrden(f = {}, { proveedores = [], tesoreria = [], cheques
   };
 }
 
-/** "Efectivo · Caja Principal", "E-cheq Credicoop · se debita el 10/12/26"… */
+/** "Efectivo · Caja Principal", "E-cheq Credicoop · vence el 10/12/26"… */
 export function textoForma(x) {
   if (x.forma === "efectivo" || x.forma === "transferencia") return `${FORMAS_PAGO[x.forma]}${x.cuenta_nombre ? ` · ${x.cuenta_nombre}` : ""}`;
-  if (x.forma === "echeq") return `${FORMAS_PAGO.echeq}${x.numero ? ` N° ${x.numero}` : ""} · se debita el ${fechaCorta(x.fecha_pago)}`;
+  if (x.forma === "echeq") return `${FORMAS_PAGO.echeq}${x.numero ? ` N° ${x.numero}` : ""} · vence el ${fechaCorta(x.fecha_pago)}`;
   return [`Cheque${x.banco ? ` ${x.banco}` : " de terceros"}${x.numero ? ` N° ${x.numero}` : ""}`, x.fecha_pago ? `vence el ${fechaCorta(x.fecha_pago)}` : null, x.librador].filter(Boolean).join(" · ");
 }
 

@@ -14,6 +14,7 @@ import {
 } from "../lib/finanzasCheques";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
+import { fechaDebito } from "../lib/finanzasDiasHabiles";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -100,7 +101,7 @@ function NuevoCheque({ clase, datos, onCerrar, onGuardado }) {
           {campo("Banco del cheque", <input className="g-input w-full" aria-label="Banco del cheque" value={f.banco} maxLength={60} onChange={set("banco")} />)}
           {campo("Número", <input className="g-input w-full" aria-label="Número del cheque" value={f.numero} maxLength={40} onChange={set("numero")} />)}
           {campo("Importe", <input className="g-input w-full" aria-label="Importe" inputMode="decimal" value={f.importe} onChange={set("importe")} placeholder="0,00" />)}
-          {campo("Fecha de pago", <input type="date" className="g-input w-full" aria-label="Fecha de pago" value={f.fecha_pago} onChange={set("fecha_pago")} />)}
+          {campo("Vence el", <input type="date" className="g-input w-full" aria-label="Fecha de pago" value={f.fecha_pago} onChange={set("fecha_pago")} />)}
           {campo("Fecha de emisión", <input type="date" className="g-input w-full" aria-label="Fecha de emisión" value={f.fecha_emision} onChange={set("fecha_emision")} />)}
         </div>
         {campo("Notas", <input className="g-input w-full" aria-label="Notas" value={f.notas} maxLength={300} onChange={set("notas")} />)}
@@ -146,7 +147,7 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
     <Modal open onClose={onCerrar} title={`${TIPOS_CHEQUE[ch.tipo]}${ch.numero ? ` N° ${ch.numero}` : ""}`} maxWidth={520}>
       <div className="flex flex-col gap-2 text-gypi-text">
         <p className="m-0 text-[20px] font-bold">{plata(ch.importe, "ARS")}</p>
-        <p className="m-0 text-[13px] text-gypi-dim">{ESTADOS_CHEQUE[ch.estado]?.nombre} · paga el {fechaCorta(ch.fecha_pago)}</p>
+        <p className="m-0 text-[13px] text-gypi-dim">{ESTADOS_CHEQUE[ch.estado]?.nombre} · vence el {fechaCorta(ch.fecha_pago)}</p>
         <div>
           {fila("Banco", ch.banco)}
           {fila(ch.clase === "propio" ? "Para" : "Recibido de", ch.clase === "propio" ? prov?.nombre || ch.beneficiario : ch.recibido_de)}
@@ -305,7 +306,8 @@ export default function FinanzasCheques() {
     const prov = new Map((datos?.proveedores || []).map((p) => [Number(p.id), p.nombre]));
     return base.filter((c) => normal([c.numero, c.banco, c.librador, c.beneficiario, c.recibido_de, c.entregado_a, prov.get(Number(c.proveedor_id))].join(" ")).includes(b));
   }, [cheques, vista, buscar, datos]);
-  const calendario = useMemo(() => calendarioCheques(cheques, hoy), [cheques, hoy]);
+  const feriados = useMemo(() => new Set(datos?.feriados || []), [datos]);
+  const calendario = useMemo(() => calendarioCheques(cheques, hoy, 8, feriados), [cheques, hoy, feriados]);
 
   if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
@@ -333,7 +335,7 @@ export default function FinanzasCheques() {
             <tr className="text-gypi-dim text-left">
               <th className="font-semibold py-1">Cuándo</th>
               <th className="font-semibold py-1 text-right">Se debita</th>
-              <th className="font-semibold py-1 text-right">Vence en cartera</th>
+              <th className="font-semibold py-1 text-right">Se acredita (en cartera)</th>
             </tr>
           </thead>
           <tbody>
@@ -368,6 +370,7 @@ export default function FinanzasCheques() {
                     </span>
                     <span className="block text-[12px] text-gypi-dim truncate">
                       {TIPOS_CHEQUE[c.tipo]}{c.banco ? ` · ${c.banco}` : ""}{c.numero ? ` N° ${c.numero}` : ""} · <span className={w.clase}>{w.texto}</span>
+                      {ESTADOS_CHEQUE[c.estado]?.vivo && fechaDebito(c.fecha_pago, feriados) && ` · se ${c.clase === "propio" ? "debita" : "acredita"} el ${fechaCorta(fechaDebito(c.fecha_pago, feriados))}`}
                     </span>
                   </button>
                 </li>

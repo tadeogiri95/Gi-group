@@ -105,7 +105,7 @@ test("CFO — ve qué se paga y con qué, sin cuentas; el WhatsApp lleva el link
   const w = textoWhatsappCfo(o, `https://x/op/${TOKEN}`, { empresa: "Gi", cfo: "Juan" });
   assert.match(w, /Hola Juan/);
   assert.match(w, new RegExp(`https://x/op/${TOKEN}`));
-  assert.match(textoForma({ forma: "echeq", fecha_pago: "2026-12-15" }), /E-cheq Credicoop · se debita el 15\/12\/26/);
+  assert.match(textoForma({ forma: "echeq", fecha_pago: "2026-12-15" }), /E-cheq Credicoop · vence el 15\/12\/26/);
   assert.match(htmlOrdenPago({ empresa: {}, orden: { ...o, proveedor_nombre: "<b>x</b>" } }), /&lt;b&gt;x&lt;\/b&gt;/);
 });
 

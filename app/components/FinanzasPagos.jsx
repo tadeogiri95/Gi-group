@@ -143,7 +143,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
               )}
               {f.forma === "echeq" && (
                 <>
-                  {campo("Se debita el", <input type="date" className="g-input" aria-label="Fecha de pago del e-cheq" value={f.fecha_pago} onChange={cambiar(i, "fecha_pago")} />)}
+                  {campo("Vence el", <input type="date" className="g-input" aria-label="Fecha de pago del e-cheq" value={f.fecha_pago} onChange={cambiar(i, "fecha_pago")} />)}
                   {campo("N° (si ya lo tenés)", <input className="g-input w-[130px]" aria-label="Número del e-cheq" value={f.numero} maxLength={40} onChange={cambiar(i, "numero")} />)}
                 </>
               )}
