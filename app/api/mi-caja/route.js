@@ -21,8 +21,15 @@
 //   POST { accion: "cancelar", id } → el que la pasó la saca mientras está pendiente.
 //   Mi caja fácil (parte 10 del plan del 11/11):
 //   POST { accion: "leer_ticket", cuenta, comprobante_url } → la IA lee la
-//       foto del ticket (ya subida) y devuelve importe, fecha, comercio y
-//       concepto para llenar el formulario. No guarda nada.
+//       foto del ticket (ya subida) y devuelve importe, fecha, comercio (unido
+//       a un proveedor de la lista por CUIT o nombre), CUIT, letra, punto de
+//       venta, número, IVA, detalle y concepto para llenar el formulario, y
+//       avisa si ese comprobante ya está cargado. No guarda nada.
+//   En "cargar" (11/11): el mismo comprobante del mismo proveedor, cargado
+//       por cualquier camino (Mi caja, gasto, S.O.S, factura de OC), no entra
+//       dos veces (409). Sin número, si en la caja hay otro del mismo importe
+//       con pocos días de diferencia, pregunta (409 parecido) y se guarda con
+//       igual_confirmado: true.
 //
 // La RLS de fin_operaciones es solo del rol gerencial: esta ruta va con la
 // clave de servicio y siempre filtra por la empresa y las cajas del que pide.
@@ -35,7 +42,9 @@ import { enviarPushLegajos } from "../../lib/pushGerencia";
 import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
 import { hoyAr, plata } from "../../lib/finanzasOperaciones";
-import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, PROMPT_TICKET, comprobanteValido, conceptosMiCaja, esquemaTicket, propuestaTicket, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
+import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, PROMPT_TICKET, comprobanteValido, conceptosMiCaja, esquemaTicket, propuestaTicket, referenciaTicket, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
+import { avisoRepetido, fechaDma } from "../../lib/finanzasComprobantes";
+import { buscarComprobanteRepetido, buscarMovimientoParecido } from "../../lib/finanzasComprobantesServidor";
 import { ErrorIa, leerDocumentoIa } from "../../lib/facturaIa";
 import { MAX_ARCHIVO_B64 } from "../../lib/facturasSueltas";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
@@ -53,6 +62,12 @@ async function misCajas(sesion) {
   if (!modulos.includes("finanzas")) return [];
   const { data } = await sbGetAll(`fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&responsable_id=eq.${sesion.empleado_id}&activa=eq.true&select=cuenta,nombre,tipo,moneda,activa,responsable_id&order=nombre.asc`, { maxFilas: 50 });
   return data || [];
+}
+
+/** Los proveedores de la empresa, para unir el comercio del ticket con uno de la lista. */
+async function proveedoresDe(empresaId) {
+  const { data } = await sbGetAll(`proveedores?empresa_id=eq.${empresaId}&select=id,nombre,cuit,activo&order=id.asc`, { maxFilas: 10000 }).catch(() => ({ data: [] }));
+  return (data || []).filter((p) => p.activo !== false);
 }
 
 async function conceptos(empresaId) {
@@ -142,12 +157,24 @@ async function cargar(sesion, d, cajas) {
   const e = sesion.empresa_id;
   const caja = cajas.find((c) => c.cuenta === d.cuenta);
   if (!caja) return NextResponse.json({ error: "Esa caja no está a tu cargo" }, { status: 403 });
-  const { lista } = await conceptos(e);
+  const [{ lista }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
   const { op, errores } = validarMovimientoMiCaja(d, {
     caja, conceptos: lista, confirmada: sesion.rol === "gerencial",
-    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e, hoy: hoyAr(),
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e, hoy: hoyAr(), proveedores,
   });
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  if (op.referencia) {
+    const repetido = await buscarComprobanteRepetido(e, op);
+    if (repetido) return NextResponse.json({ error: `${avisoRepetido(repetido, "Este ticket")} Si es otro, revisá el número.`, repetido: true }, { status: 409 });
+  } else if (!d.igual_confirmado) {
+    const igual = await buscarMovimientoParecido(e, op, caja.cuenta);
+    if (igual) {
+      return NextResponse.json({
+        error: `Ya hay uno igual en esta caja: ${plata(igual.total, op.moneda)} del ${fechaDma(igual.fecha)}${igual.descripcion ? ` (${String(igual.descripcion).slice(0, 80)})` : ""}. ¿Es otro?`,
+        parecido: true,
+      }, { status: 409 });
+    }
+  }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   const fila = { ...op, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora };
@@ -257,12 +284,12 @@ async function leerTicket(request, sesion, d, cajas) {
   if (!res?.ok) return NextResponse.json({ error: "No se pudo bajar la foto del ticket" }, { status: 400 });
   const archivo = Buffer.from(await res.arrayBuffer()).toString("base64");
   if (archivo.length > MAX_ARCHIVO_B64) return NextResponse.json({ error: "La foto es muy grande para leerla: cargalo a mano" }, { status: 400 });
-  const { lista } = await conceptos(e);
+  const [{ lista }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
   const opciones = lista.gastos;
   let r;
   try {
     r = await leerDocumentoIa({
-      base64: archivo, tipo, maxTokens: 500, esquema: esquemaTicket(opciones),
+      base64: archivo, tipo, maxTokens: 900, esquema: esquemaTicket(opciones),
       sistema: `${PROMPT_TICKET}\n\nConceptos:\n${opciones.map((c) => `- ${c.codigo}${c.nombre !== c.codigo ? ` (${c.nombre})` : ""}${c.leyenda ? `: ${c.leyenda}` : ""}`).join("\n")}`,
     });
   } catch (err) {
@@ -275,7 +302,10 @@ async function leerTicket(request, sesion, d, cajas) {
     datos_despues: { tipo: "ticket_mi_caja", tokens_input: r.uso.input_tokens, tokens_output: r.uso.output_tokens, model: r.modelo },
     ip: ipCliente(request),
   });
-  return NextResponse.json({ ok: true, ...propuestaTicket(r.lectura, { conceptos: opciones, hoy: hoyAr() }) });
+  const p = propuestaTicket(r.lectura, { conceptos: opciones, hoy: hoyAr(), proveedores });
+  const referencia = referenciaTicket(p);
+  const repetido = referencia ? await buscarComprobanteRepetido(e, { referencia, proveedor_id: p.proveedor_id, entidad: p.proveedor_id ? null : p.comercio }) : null;
+  return NextResponse.json({ ok: true, ...p, repetido: repetido ? avisoRepetido(repetido, "Este ticket") : null });
 }
 
 export async function POST(request) {

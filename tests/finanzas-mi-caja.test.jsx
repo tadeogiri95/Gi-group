@@ -134,7 +134,7 @@ const pedir = async (ruta, empleadoId, rol, metodo, body) => ruta[metodo](new Re
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(empleadoId, rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ modulos = [], ops = OPS } = {}) {
+function mockApi({ modulos = [], ops = OPS, repetidas = [], parecidas = [], proveedores = [] } = {}) {
   const escrito = [];
   const leido = [];
   global.fetch = createFetchMock([
@@ -154,6 +154,9 @@ function mockApi({ modulos = [], ops = OPS } = {}) {
         return { status: 200, body: u.includes("select=clave") ? [] : [{ valor: CONFIG }] };
       },
     },
+    { match: (u) => u.includes("/rest/v1/proveedores"), respond: (u) => { leido.push(u); return { status: 200, body: proveedores }; } },
+    { match: (u, o) => u.includes("/rest/v1/fin_operaciones") && u.includes("referencia=ilike.") && !o?.method, respond: (u) => { leido.push(u); return { status: 200, body: repetidas }; } },
+    { match: (u, o) => u.includes("/rest/v1/fin_operaciones") && u.includes("&total=eq.") && !o?.method, respond: (u) => { leido.push(u); return { status: 200, body: parecidas }; } },
     {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
       respond: (u, o) => {
@@ -200,6 +203,49 @@ test("/api/mi-caja — cargar un gasto: entra para revisar, con quién lo cargó
   assert.ok(leido.some((u) => u.includes("rol=eq.gerencial")), "busca a los dueños para avisarles");
   const ajena = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA.cuenta, clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 8000, fecha: "2026-11-01" });
   assert.equal(ajena.status, 403);
+});
+
+test("/api/mi-caja — el ticket con factura: proveedor de la lista, número e IVA quedan en la operación", async () => {
+  const { escrito } = mockApi({ proveedores: [{ id: 7, nombre: "Ferretería Centro SRL", cuit: "30711222339", activo: true }] });
+  const r = await pedir(api, JUAN, "operativo", "POST", {
+    accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 12100, fecha: "2026-11-01",
+    comercio: "FERRETERIA CENTRO", cuit: "30-71122233-9", letra: "A", punto_venta: "4", numero: "1234", neto: 10000, iva: 2100, descripcion: "Tornillos",
+  });
+  assert.equal(r.status, 200);
+  const op = escrito[0].body;
+  assert.deepEqual([op.proveedor_id, op.entidad, op.referencia, op.neto, op.iva, op.total], [7, null, "A 00004-00001234", 10000, 2100, 12100]);
+  assert.match(op.descripcion, /Combustible · Caja Juan · Ferretería Centro SRL · Factura A 00004-00001234 · Tornillos/);
+});
+
+test("/api/mi-caja — el mismo comprobante no entra dos veces, venga de donde venga", async () => {
+  // ya cargado como gasto por el dueño, escrito con otro formato
+  const { escrito } = mockApi({
+    proveedores: [{ id: 7, nombre: "Ferretería Centro SRL", cuit: "30711222339", activo: true }],
+    repetidas: [{ id: 50, fecha: "2026-10-30", origen: "gasto", referencia: "A 00004-00001234", proveedor_id: 7, entidad: null }],
+  });
+  const r = await pedir(api, JUAN, "operativo", "POST", {
+    accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 12100, fecha: "2026-11-01",
+    comercio: "Ferretería Centro", letra: "A", punto_venta: "0004", numero: "00001234",
+  });
+  assert.equal(r.status, 409);
+  assert.match((await r.json()).error, /Este ticket ya está cargado \(del 30\/10\/2026, como gasto\)/);
+  assert.equal(escrito.length, 0);
+});
+
+test("/api/mi-caja — sin número: si hay otro igual en la caja pregunta, y con «es otro» lo guarda", async () => {
+  const igual = { id: 51, fecha: "2026-10-31", total: 8000, cuenta_debe: "05.02.01", cuenta_haber: CAJA_JUAN.cuenta, descripcion: "Combustible · Caja Juan · nafta" };
+  const { escrito, leido } = mockApi({ parecidas: [igual] });
+  const carga = { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "gasto", concepto: "GASTO COMBUSTIBLE", importe: 8000, fecha: "2026-11-01" };
+  const r = await pedir(api, JUAN, "operativo", "POST", carga);
+  assert.equal(r.status, 409);
+  const d = await r.json();
+  assert.equal(d.parecido, true);
+  assert.match(d.error, /Ya hay uno igual en esta caja: .*8\.000.* del 31\/10\/2026 \(Combustible · Caja Juan · nafta\)\. ¿Es otro\?/);
+  assert.match(decodeURIComponent(leido.find((u) => u.includes("&total=eq."))), /cuenta_haber=eq\.01\.01\.01\.001\.001\.02&total=eq\.8000&fecha=gte\.2026-10-28&fecha=lte\.2026-11-05/);
+  assert.equal(escrito.length, 0);
+  const ok = await pedir(api, JUAN, "operativo", "POST", { ...carga, igual_confirmado: true });
+  assert.equal(ok.status, 200);
+  assert.equal(escrito.length, 1);
 });
 
 test("/api/mi-caja — anular solo lo propio que el dueño no revisó", async () => {

@@ -160,7 +160,7 @@ function mockApi({ op = { origen: "gasto", origen_id: "gabcdef012345-p" }, repet
         return { status: 200, body: { content: [{ type: "text", text: JSON.stringify(lectura) }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, model: "m" } };
       },
     },
-    { match: (u, o) => u.includes("/rest/v1/fin_operaciones") && u.includes("referencia=eq.") && !o?.method, respond: () => ({ status: 200, body: repetida ? [repetida] : [] }) },
+    { match: (u, o) => u.includes("/rest/v1/fin_operaciones") && u.includes("referencia=ilike.") && !o?.method, respond: () => ({ status: 200, body: repetida ? [repetida] : [] }) },
     {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
       respond: (u, o) => {
@@ -210,10 +210,11 @@ test("/api/finanzas/operaciones gasto — valida en el servidor y guarda el gast
 });
 
 test("/api/finanzas/operaciones gasto — la misma factura del mismo proveedor no se carga dos veces", async () => {
-  const escrito = mockApi({ repetida: { id: 12, fecha: "2026-10-31" } });
+  // cargada antes desde Mi caja, con el número escrito de otra forma
+  const escrito = mockApi({ repetida: { id: 12, fecha: "2026-10-31", origen: "mi_caja", referencia: "A 00003-00001234", proveedor_id: 5 } });
   const res = await pedir("gerencial", { accion: "gasto", gasto: LUZ });
   assert.equal(res.status, 409);
-  assert.match((await res.json()).error, /ya está cargada \(operación del 31\/10\/2026\)/);
+  assert.match((await res.json()).error, /Esa factura ya está cargada \(del 31\/10\/2026, en Mi caja\)/);
   assert.equal(escrito.filter((x) => x.metodo === "POST").length, 0);
 });
 
@@ -348,7 +349,7 @@ test("factura leída — una B con IVA leído lo suma al neto; un ticket va sin 
 
 test("/api/finanzas/operaciones leer_gasto — la IA lee la factura con los tipos de la empresa y vuelve la propuesta (no guarda nada)", async () => {
   process.env.ANTHROPIC_API_KEY = "clave-de-prueba";
-  const escrito = mockApi({ lectura: LECTURA, repetida: { id: 12, fecha: "2026-10-31" } });
+  const escrito = mockApi({ lectura: LECTURA, repetida: { id: 12, fecha: "2026-10-31", origen: "sos", referencia: "FC A-00003-00001234", proveedor_id: null, entidad: "EMPRESA PROVINCIAL DE ENERGIA DE CORDOBA" } });
   assert.equal((await pedir("gerencial", { accion: "leer_gasto", archivo: "QUJD", tipo: "text/plain" })).status, 400);
   const res = await pedir("gerencial", { accion: "leer_gasto", archivo: "JVBERi0xLjQK", tipo: "application/pdf" });
   assert.equal(res.status, 200);

@@ -7,6 +7,8 @@
 //
 //   - Cada comprobante tiene su clave (CUIT + clase + letra + punto de venta +
 //     número): el mismo CSV cargado dos veces no duplica nada (origen "sos").
+//   - El mismo número del mismo proveedor ya cargado por otro camino (Mi caja,
+//     Cargar un gasto, una factura de OC) queda "ya está" (finanzasComprobantes).
 //   - Lo que ya está cargado de otra forma (el libro, una factura de OC, una
 //     compra a mano) se reconoce por proveedor, importe con signo (la nota de
 //     crédito resta) y fecha cerca (15 días). Si coincide solo el importe y la
@@ -15,6 +17,7 @@
 //     existe en el plan, y queda "para revisar".
 //   - Los proveedores que no están en la lista se suman con su CUIT.
 import { claveNombre, efectoDeuda, emparejarProveedor } from "./finanzasProveedores";
+import { comprobanteRepetido, mismoNombre } from "./finanzasComprobantes";
 
 export const ORIGEN_SOS = "sos";
 export const TIPO_COMPRA_SOS = "COMPRAS";
@@ -112,16 +115,7 @@ export function leerCsvSos(texto) {
   return { filas, errores };
 }
 
-/** Mismo nombre escrito distinto: "GUZMAN FELIPE OMAR" = "FELIPE OMAR GUZMAN"; "BROCANELLI S." = "BROCANELLI SA". */
-export function mismoNombre(a, b) {
-  const ka = claveNombre(a);
-  const kb = claveNombre(b);
-  if (!ka || !kb) return false;
-  if (ka === kb) return true;
-  if (ka.length >= 6 && kb.length >= 6 && (ka.startsWith(kb) || kb.startsWith(ka))) return true;
-  const palabras = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w.length > 1).sort().join(" ");
-  return palabras(a).length >= 6 && palabras(a) === palabras(b);
-}
+export { mismoNombre };
 
 /** El proveedor de la lista: por CUIT, si no por nombre. */
 export function proveedorDeSos(fila, proveedores = []) {
@@ -142,9 +136,10 @@ const esCaja = (c, cajas) => cajas.has(c) || String(c || "").startsWith("01.01.0
  *   dudosa:    hay una compra con el mismo importe y fecha cerca, de otro nombre (se elige)
  *   nueva:     no está (se carga)
  * @param {object[]} filas de leerCsvSos
- * @param {{ operaciones: object[], proveedores: object[], cuentasProv: Set<string>, cajas?: Set<string> }} ctx
+ * @param {{ operaciones: object[], proveedores: object[], cuentasProv: Set<string>, cajas?: Set<string>, conComprobante?: object[] }} ctx
+ *   conComprobante: las que no tocan Proveedores pero tienen número (Mi caja, un gasto pagado)
  */
-export function compararSos(filas, { operaciones = [], proveedores = [], cuentasProv, cajas = new Set() }) {
+export function compararSos(filas, { operaciones = [], proveedores = [], cuentasProv, cajas = new Set(), conComprobante = [] }) {
   const nombreProv = new Map(proveedores.map((p) => [Number(p.id), p.nombre]));
   const importadas = new Map();
   const libres = [];
@@ -170,6 +165,14 @@ export function compararSos(filas, { operaciones = [], proveedores = [], cuentas
 
   // 1. El mismo comprobante ya importado
   for (const f of out) if (importadas.has(f.clave)) { f.estado = "importada"; f.op_id = importadas.get(f.clave).id; }
+  // 1b. El mismo número del mismo proveedor, cargado por otro camino (Mi caja,
+  // Cargar un gasto, una factura de OC): aunque no toque Proveedores
+  const conNumero = [...operaciones, ...conComprobante].filter((op) => op.referencia && op.origen !== ORIGEN_SOS && !op.anulada_at);
+  for (const f of out) {
+    if (f.estado) continue;
+    const op = comprobanteRepetido({ referencia: `${f.clase} ${f.comprobante}`, proveedor_id: f.proveedor_id, entidad: f.nombre }, conNumero, proveedores);
+    if (op && !usadas.has(op.id)) { usadas.add(op.id); Object.assign(f, { estado: "ya_esta", op_id: op.id, op_nombre: op.proveedor_id ? nombreProv.get(Number(op.proveedor_id)) || op.entidad : op.entidad, op_fecha: op.fecha }); }
+  }
   // 2. Mismo proveedor, importe y fecha cerca
   for (const f of out) {
     if (f.estado) continue;
