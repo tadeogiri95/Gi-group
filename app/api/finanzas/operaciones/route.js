@@ -6,8 +6,11 @@
 //       cuentas, cajas y bancos, centros de costo, proveedores y OT.
 //   POST { accion: "crear", operacion } → valida (cuentas, caja, dólares, lo
 //       que pide el tipo) y la guarda.
+//   POST { accion: "gasto", gasto } → un gasto devengado con o sin factura (y
+//       su pago, si ya se pagó): reglas en app/lib/finanzasGastos.js.
 //   POST { accion: "anular", id } → la marca anulada con quién y cuándo. No se borra.
 //       Solo las cargadas a mano: las de una factura se anulan con la factura.
+//       Un gasto se anula junto con su pago.
 //   POST { accion: "cambiar_tipo", id, tipo, recordar } → cambia el tipo (y las
 //       cuentas) de una compra que salió de una factura; con recordar, queda
 //       como tipo del proveedor para las próximas (F2a, migración 172).
@@ -19,6 +22,8 @@ import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA, MAX_OPERACIONES, hoyAr, inicioMes, validarOperacion } from "../../../lib/finanzasOperaciones";
+import { ORIGEN_GASTO, operacionesGasto } from "../../../lib/finanzasGastos";
+import { randomUUID } from "node:crypto";
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
 const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
@@ -82,14 +87,34 @@ export async function POST(request) {
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: fila });
     }
+    if (d.accion === "gasto") {
+      const { ops, errores } = operacionesGasto(d.gasto || {}, await listas(sesion));
+      if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+      const ahora = new Date().toISOString();
+      const grupo = `g${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      const quien = await nombreEmpleado(sesion);
+      const filas = await sbPost("fin_operaciones", ops.map((op, i) => ({
+        ...op, empresa_id: e, origen_id: i ? `${grupo}-p` : grupo, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
+      })), { sesion });
+      broadcastRefresh(e, "fin_operaciones");
+      return NextResponse.json({ ok: true, operaciones: filas });
+    }
     if (d.accion === "anular") {
       const id = Number(d.id);
       if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
       const ahora = new Date().toISOString();
+      const marca = { anulada_at: ahora, anulada_por_nombre: await nombreEmpleado(sesion), updated_at: ahora };
+      // Un gasto (parte 5) se anula junto con su pago
+      const [suya] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&select=origen,origen_id&limit=1`, { sesion, silent: true, fallback: [] })) || [];
+      if (suya?.origen === ORIGEN_GASTO && /^g[0-9a-f]{12}/.test(String(suya.origen_id || ""))) {
+        const grupo = String(suya.origen_id).slice(0, 13);
+        const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.${ORIGEN_GASTO}&origen_id=in.(${grupo},${grupo}-p)`, marca, { sesion });
+        if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
+      }
       // Las que salieron de una factura se anulan solas al anular la factura
-      const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&origen=eq.manual`, {
-        anulada_at: ahora, anulada_por_nombre: await nombreEmpleado(sesion), updated_at: ahora,
-      }, { sesion });
+      const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&origen=eq.manual`, marca, { sesion });
       if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación, ya estaba anulada o salió de una factura (se anula anulando la factura)" }, { status: 404 });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: filas[0] });
