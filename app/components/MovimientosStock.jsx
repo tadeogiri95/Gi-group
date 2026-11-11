@@ -5,11 +5,12 @@
 // anula lo que se cargó mal. La planilla MRP los trae sola (parte 15). Un
 // artículo que no está en la planilla se carga como nuevo (124).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { sb, apiFetch } from "../lib/supabase";
+import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
 import ArticuloNuevo from "./ArticuloNuevo";
 import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
 import { useOts } from "../hooks/useOts";
+import BotonNuevaPersona from "./AltaPersona";
 
 const CUANTOS = 100;
 const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "" };
@@ -39,6 +40,16 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
     }
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
+
+  // Los proveedores de Compras, para elegir en el ingreso (11/11: ➕ Nuevo si no está)
+  const [proveedores, setProveedores] = useState([]);
+  const ingresando = form?.tipo === "ingreso";
+  useEffect(() => {
+    if (!ingresando || proveedores.length) return;
+    sbGetAll("proveedores?activo=eq.true&select=id,nombre&order=nombre.asc", { maxFilas: 5000 }).then((r) => setProveedores(r.data || [])).catch(() => {});
+  }, [ingresando, proveedores.length]);
+  const provEscrito = (form?.proveedor || "").trim();
+  const provConocido = !provEscrito || proveedores.some((p) => p.nombre.toLowerCase() === provEscrito.toLowerCase());
 
   const sugeridos = useMemo(
     () => (form && !form.articulo && form.texto.trim() ? sugerirArticulos(articulos, form.texto) : { lista: [], resto: 0 }),
@@ -149,7 +160,18 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
           {form.tipo === "ingreso" && (
             <>
               <label className="g-label" htmlFor="mov-proveedor">Proveedor</label>
-              <input id="mov-proveedor" className="g-input w-full mb-2" value={form.proveedor} onChange={cambiar("proveedor")} maxLength={120} />
+              <input id="mov-proveedor" className="g-input w-full mb-2" list="mov-proveedores" value={form.proveedor} onChange={cambiar("proveedor")} maxLength={120} placeholder="Escribí para buscar" />
+              <datalist id="mov-proveedores">{proveedores.map((p) => <option key={p.id} value={p.nombre} />)}</datalist>
+              {!provConocido && (
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="text-[12px] text-gypi-dim">No está en la lista de proveedores.</span>
+                  <BotonNuevaPersona rol="proveedor" nombre={provEscrito}
+                    onCreada={(p) => {
+                      setProveedores((x) => [...x, { id: p.proveedor_id, nombre: p.nombre }]);
+                      setForm((f) => ({ ...f, proveedor: p.nombre }));
+                    }}>➕ Dar de alta como proveedor</BotonNuevaPersona>
+                </div>
+              )}
               <div className="flex gap-2">
                 <div className="flex-1">
                   <label className="g-label" htmlFor="mov-comprobante">N° de comprobante</label>

@@ -19,6 +19,7 @@ import {
 } from "../lib/ordenesCompra";
 import { AVISO_MIGRACION_114 } from "./AComprar";
 import UnidadCompra from "./UnidadCompra";
+import { OPCION_NUEVA, VentanaAltaPersona } from "./AltaPersona";
 import { useOts } from "../hooks/useOts";
 import { otCompleta, textoOt } from "../lib/nombreOt";
 
@@ -173,6 +174,9 @@ function OtraFacturaForm({ oc, items, otras, factura, proveedores, onCerrar, onG
   const usd = oc.moneda === "USD";
   const plata = (n) => importeTexto(n, oc.moneda);
   const [proveedorId, setProveedorId] = useState(factura ? String(factura.proveedor_id || "") : "");
+  const [nuevos, setNuevos] = useState([]);
+  const [alta, setAlta] = useState(false);
+  const lista = [...proveedores, ...nuevos.filter((n) => !proveedores.some((p) => p.id === n.id))];
   const [numero, setNumero] = useState(factura?.numero || "");
   const [fecha, setFecha] = useState(factura?.fecha || "");
   const [tc, setTc] = useState(numTexto(factura?.tipo_cambio));
@@ -223,10 +227,13 @@ function OtraFacturaForm({ oc, items, otras, factura, proveedores, onCerrar, onG
     <div className="pt-2 mt-2 border-t border-gypi-border">
       <div className="text-[13px] font-semibold mb-1">{factura ? "Corregir factura" : "Otra factura"}</div>
       <label className="g-label" htmlFor="otra-prov">Proveedor que facturó</label>
-      <select id="otra-prov" className="g-input w-full mb-2" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
+      <select id="otra-prov" className="g-input w-full mb-2" value={proveedorId} onChange={(e) => (e.target.value === OPCION_NUEVA ? setAlta(true) : setProveedorId(e.target.value))}>
         <option value="">Elegí el proveedor</option>
-        {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        {lista.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        <option value={OPCION_NUEVA}>➕ Nuevo proveedor…</option>
       </select>
+      <VentanaAltaPersona abierta={alta} onCerrar={() => setAlta(false)} rol="proveedor"
+        onCreada={(p) => { setNuevos((x) => [...x, { id: p.proveedor_id, nombre: p.nombre }]); setProveedorId(String(p.proveedor_id)); }} />
       <div className="flex gap-2">
         <div className="flex-1">
           <label className="g-label" htmlFor="otra-numero">N° de factura</label>
@@ -394,6 +401,7 @@ function CotizacionesOrden({ oc, ocVista, items, empresa, onCambio }) {
   const [proveedores, setProveedores] = useState([]);
   const [forms, setForms] = useState({});
   const [elegido, setElegido] = useState("");
+  const [alta, setAlta] = useState(false);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -476,10 +484,16 @@ function CotizacionesOrden({ oc, ocVista, items, empresa, onCambio }) {
       ) : (
         <>
           <div className="flex gap-2 mb-2">
-            <select aria-label="Proveedor para pedir cotización" className="g-input flex-1 min-w-0" value={elegido} onChange={(e) => setElegido(e.target.value)}>
+            <select aria-label="Proveedor para pedir cotización" className="g-input flex-1 min-w-0" value={elegido} onChange={(e) => (e.target.value === OPCION_NUEVA ? setAlta(true) : setElegido(e.target.value))}>
               <option value="">Elegí proveedor…</option>
               {proveedores.filter((p) => !pedidos.has(p.id)).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              <option value={OPCION_NUEVA}>➕ Nuevo proveedor…</option>
             </select>
+            <VentanaAltaPersona abierta={alta} onCerrar={() => setAlta(false)} rol="proveedor"
+              onCreada={(p) => {
+                setProveedores((x) => (x.some((q) => q.id === p.proveedor_id) ? x : [...x, { id: p.proveedor_id, nombre: p.nombre }]));
+                setElegido(String(p.proveedor_id));
+              }} />
             <button onClick={agregar} disabled={enviando} className="g-btn g-btn-secondary">Agregar</button>
           </div>
           {!cotizaciones.length ? (

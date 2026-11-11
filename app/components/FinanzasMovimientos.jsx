@@ -20,6 +20,7 @@ import { textoOt } from "../lib/nombreOt";
 import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
 import { armarAgenda, opcionesAgenda } from "../lib/finanzasPersonas";
 import { useAgenda } from "./FinanzasElegirProveedor";
+import { VentanaAltaPersona } from "./AltaPersona";
 import CargarGasto from "./FinanzasCargarGasto";
 import { CostosMantenimiento } from "./FinanzasIntegracion";
 import { ORIGEN_GASTO } from "../lib/finanzasGastos";
@@ -43,6 +44,15 @@ function campo(label, input, extra = "") {
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 /** La agenda (parte 4): la de 📇 Personas o, sin la 180, solo los proveedores. */
 const agendaDe = (datos, agenda) => (agenda?.length ? agenda : armarAgenda({ proveedores: datos.proveedores || [] }));
+
+/** La agenda más los que se dieron de alta recién con ➕ Nuevo (todavía no vuelven en la lista). */
+const conNuevas = (lista, nuevas) => {
+  const igual = (e, n) => e.clave === n.clave || (n.proveedor_id && n.proveedor_id === e.proveedor_id) || (n.cliente_id && n.cliente_id === e.cliente_id);
+  return [...lista.map((e) => ({ ...e, ...nuevas.find((n) => igual(e, n)) })), ...nuevas.filter((n) => !lista.some((e) => igual(e, n)))];
+};
+
+/** En los cobros y las ventas el que se da de alta es, casi siempre, un cliente. */
+const esDeCliente = (tipo) => /^(COBROS|VENTAS)$/.test(String(tipo?.grupo || "").toUpperCase());
 
 /** El nombre de un tipo por su código ("COBRO A CLIENTES" → "Cobro a clientes"). */
 const nombreDeTipo = (codigo, tipos) => nombreTipo(tipos.find((t) => t.codigo === codigo) || { codigo });
@@ -95,6 +105,8 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   const agenda = useAgenda();
   const [f, setF] = useState({ ...VACIA, fecha: hoyAr() });
   const [otroNombre, setOtroNombre] = useState(false);
+  const [alta, setAlta] = useState(null);
+  const [nuevas, setNuevas] = useState([]);
   const [cambiarCuentas, setCambiarCuentas] = useState(false);
   const [errores, setErrores] = useState([]);
   const [guardando, setGuardando] = useState(false);
@@ -217,7 +229,8 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
               )}
 
               {campo(`Proveedor o cliente${tipo.pide_entidad ? " (obligatorio)" : ""}`, (
-                <SelectBuscable className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id ? `p${f.proveedor_id}` : f.entidad ? `n${f.entidad}` : ""} onChange={(e) => {
+                <SelectBuscable className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id ? `p${f.proveedor_id}` : f.entidad ? `n${f.entidad}` : ""}
+                  nuevo={{ etiqueta: "Nuevo cliente o proveedor", onElegir: (nombre) => setAlta({ nombre }) }} onChange={(e) => {
                   const v = e.target.value;
                   if (v === OTRO) { setOtroNombre(true); setF((x) => ({ ...x, proveedor_id: "", entidad: "" })); return; }
                   setOtroNombre(false);
@@ -225,10 +238,18 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
                   setF((x) => ({ ...x, proveedor_id: v.startsWith("p") ? v.slice(1) : "", entidad: v.startsWith("n") ? v.slice(1) : "" }));
                 }}>
                   <option value="">Ninguno</option>
-                  {opcionesAgenda(agendaDe(datos, agenda)).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  <option value={OTRO}>Otro: escribir el nombre</option>
+                  {opcionesAgenda(conNuevas(agendaDe(datos, agenda), nuevas)).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  <option value={OTRO}>Otro: escribir el nombre sin darlo de alta</option>
                 </SelectBuscable>
               ))}
+              <VentanaAltaPersona abierta={!!alta} onCerrar={() => setAlta(null)} nombre={alta?.nombre || ""}
+                rol={esDeCliente(tipo) ? "cliente" : "proveedor"} roles={esDeCliente(tipo) ? ["cliente", "proveedor"] : ["proveedor", "cliente"]}
+                onCreada={(p) => {
+                  setNuevas((x) => [...x.filter((n) => n.clave !== p.clave), p]);
+                  setOtroNombre(false);
+                  // Un proveedor queda con su id; un cliente, con su nombre (como los de la agenda)
+                  setF((x) => ({ ...x, proveedor_id: p.proveedor_id ? String(p.proveedor_id) : "", entidad: p.proveedor_id ? "" : p.nombre }));
+                }} />
               {otroNombre && campo("Nombre", <input className="g-input w-full" value={f.entidad} onChange={set("entidad")} placeholder="Cliente u otro" />)}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {campo(`OT${tipo.pide_ot ? " (obligatoria)" : ""}`, (
