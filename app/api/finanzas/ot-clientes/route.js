@@ -66,7 +66,9 @@ export async function GET(request) {
     const [cuentas, clientes, proyectos, preciosFilas] = await Promise.all([
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
       leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=id.asc`, 10000),
-      leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado,created_at&order=id.desc`, 20000),
+      // Con el cliente unido a la OT (184); sin la migración, solo el nombre
+      leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000)
+        .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado,created_at&order=id.desc`, 20000)),
       sbGet(`precios_ot?empresa_id=eq.${e}&select=ot,precio`, { sesion, silent: true, fallback: [] }),
     ]);
     const cuentasDeu = cuentasDeudores(cuentas);
@@ -75,7 +77,7 @@ export async function GET(request) {
       ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${deu.join(",")}),cuenta_haber.in.(${deu.join(",")}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 60000)
       : [];
     const precios = new Map((preciosFilas || []).map((f) => [String(f.ot), Number(f.precio) || 0]));
-    const sinPresupuesto = proyectos.filter((p) => !(precios.get(String(p.ot)) > 0) && String(p.cliente || "").trim());
+    const sinPresupuesto = proyectos.filter((p) => !(precios.get(String(p.ot)) > 0) && (String(p.cliente || "").trim() || p.cliente_id));
     const materiales = await materialesDe(sesion, sinPresupuesto);
     const clientesOt = cuentasPorOt({ proyectos, precios, materiales, ops, cuentasDeu, clientes });
     return NextResponse.json({ clientes: clientesOt, sin_deudores: !deu.length });

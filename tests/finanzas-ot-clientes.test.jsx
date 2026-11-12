@@ -50,22 +50,24 @@ test("valor de la OT — presupuesto; si no, materiales ÷ 0,3 estimado; materia
   assert.deepEqual(m, { total: 350, sinPrecio: 1, articulos: 3 });
 });
 
-test("cuenta por OT — OT por nombre o alias del cliente, cobros a su OT o sin OT; con IVA y desde", () => {
+test("cuenta por OT — OT por nombre o alias del cliente, cobros a su OT o sin OT; con IVA y desde; manda el cliente de la OT", () => {
   const precios = new Map([["7001", 1000], ["7003", 2000]]);
   const materiales = new Map([["7002", { total: 300, sinPrecio: 0 }]]);
   const cs = cuentasPorOt({ proyectos: PROYECTOS, precios, materiales, ops: OPS, cuentasDeu: new Set([DEU]), clientes: CLIENTES });
   const hotel = cs.find((c) => c.clave === "c1");
   assert.deepEqual(hotel.ots.map((o) => [o.ot, o.valor, o.estimado]), [["7001", 1000, false], ["7002", 1000, true]]);
-  assert.equal(hotel.cobros.length, 2, "la venta no es cobro");
+  assert.equal(hotel.cobros.length, 3, "la venta no es cobro; el cobro de su OT cargado a Casa Sur va al Hotel (12/11, parte 6)");
+  assert.equal(hotel.cobros.find((x) => x.id === 4).proyecto_id, 101);
+  assert.ok("a_nombre_de" in hotel.cobros.find((x) => x.id === 4));
   const r = resumirCliente(hotel);
-  assert.deepEqual([r.valor, r.cobrado, r.saldo, r.sin_ot, r.estimadas], [2000, 700, 1300, 200, 1]);
-  assert.deepEqual(r.ots.find((o) => o.ot === "7001").saldo, 500);
+  assert.deepEqual([r.valor, r.cobrado, r.saldo, r.sin_ot, r.estimadas], [2000, 750, 1250, 200, 1]);
+  assert.deepEqual(r.ots.find((o) => o.ot === "7001").saldo, 450);
   const conIva = resumirCliente(hotel, { conIva: true });
-  assert.deepEqual([conIva.valor, conIva.saldo], [2420, 1720]);
+  assert.deepEqual([conIva.valor, conIva.saldo], [2420, 1670]);
   const desde = resumirCliente(hotel, { desde: "2026-10-01" });
-  assert.deepEqual([desde.ots.length, desde.cobrado, desde.saldo], [1, 200, 800]);
+  assert.deepEqual([desde.ots.length, desde.cobrado, desde.saldo], [1, 250, 750]);
   const sur = resumirCliente(cs.find((c) => c.clave === "c2"));
-  assert.deepEqual([sur.sin_ot, sur.saldo], [50, 1950], "un cobro con OT de otro cliente cuenta como sin OT");
+  assert.deepEqual([sur.sin_ot, sur.saldo], [0, 2000], "el cobro de una OT de otro cliente no le resta a Casa Sur");
   assert.equal(cs.length, 2, "la OT sin cliente no aparece");
 });
 

@@ -26,7 +26,7 @@ import { getModulosEmpresa } from "./planEnforcement";
 import { logger } from "./logger";
 import { textoOt } from "./nombreOt";
 import { claveNombre } from "./finanzasProveedores";
-import { cuentasDeudores, emparejarCliente } from "./finanzasClientes";
+import { ORIGEN_COBRO, clienteDeOt, cuentasDeudores, emparejarCliente, indiceClientes } from "./finanzasClientes";
 import { FECHA, hoyAr } from "./finanzasOperaciones";
 
 export const CLAVE_VENTAS_OT = "finanzas_ventas_ot";
@@ -97,6 +97,8 @@ export function planVentas({ proyectos = [], precios, operaciones = [], clientes
   const crear = [];
   const corregir = [];
   const anular = [];
+  const indice = indiceClientes(clientes);
+  const nombreDe = new Map(clientes.map((c) => [Number(c.id), c.nombre]));
 
   for (const p of proyectos) {
     const id = `p${p.id}`;
@@ -118,13 +120,20 @@ export function planVentas({ proyectos = [], precios, operaciones = [], clientes
     }
     const importe = { neto: precio, iva: 0, otros_impuestos: 0, total: precio, total_ars: precio };
     const cambio = (o) => Math.abs(centavos(o.total) - precio) >= 0.01;
-    if (venta && cambio(venta)) corregir.push({ id: venta.id, cambios: importe });
-    if (entrega && cambio(entrega)) corregir.push({ id: entrega.id, cambios: importe });
+    // Manda el cliente de la OT (parte 6): si en la OT cambió, la venta y la entrega lo siguen
+    const delOt = clienteDeOt(p, clientes, indice);
+    const otroCliente = (o) => delOt && o.cliente_id !== undefined && indice.destino(o.cliente_id) !== delOt;
+    const deCliente = delOt ? { cliente_id: delOt, entidad: txt(nombreDe.get(delOt), 120) || null } : {};
+    for (const o of [venta, entrega]) {
+      if (!o) continue;
+      const c = { ...(cambio(o) ? importe : {}), ...(otroCliente(o) ? deCliente : {}) };
+      if (Object.keys(c).length) corregir.push({ id: o.id, cambios: c });
+    }
     if (entrega && !cerrada) anular.push({ id: entrega.id, motivo: "Gypi (la OT se volvió a abrir)" });
 
     if (!enRango) continue;
     const nombreCliente = txt(p.cliente, 120);
-    const cliente = emparejarCliente(nombreCliente, clientes);
+    const cliente = delOt ? { id: delOt, nombre: nombreDe.get(delOt) } : null;
     const comun = {
       fecha, tipo: TIPO_VENTA, proveedor_id: null,
       cliente_id: cliente ? Number(cliente.id) : null,
@@ -158,6 +167,61 @@ export function planVentas({ proyectos = [], precios, operaciones = [], clientes
   return { crear, corregir, anular, clientesNuevos: [...nuevos.values()].sort((a, b) => a.localeCompare(b)) };
 }
 
+/**
+ * Qué OT quedan unidas a qué cliente (proyectos.cliente_id, 184) y qué cobros
+ * de una OT se pasan al cliente de la OT (parte 6: manda el de la OT). Pura.
+ * @param {object[]} proyectos con id, ot, cliente, cliente_id
+ * @param {object[]} clientes fin_clientes
+ * @param {object[]} [cobros] operaciones de cobro con id, proyecto_id, cliente_id
+ * @returns {{ ligar: Map<number|null, number[]>, cobros: {id: number, cambios: object}[] }}
+ *   ligar: cliente_id → ids de OT a unir (null = soltar)
+ */
+export function planClientesOt(proyectos = [], clientes = [], cobros = []) {
+  const indice = indiceClientes(clientes);
+  const nombreDe = new Map(clientes.map((c) => [Number(c.id), c.nombre]));
+  const ligar = new Map();
+  const delOt = new Map();
+  for (const p of proyectos) {
+    const id = clienteDeOt(p, clientes, indice);
+    delOt.set(Number(p.id), id);
+    if (p.cliente_id === undefined) continue; // sin la 184
+    const ahora = p.cliente_id == null ? null : Number(p.cliente_id);
+    // Una OT sin nombre de cliente que ya tenía uno queda como estaba
+    if (id === ahora || (id == null && !String(p.cliente || "").trim())) continue;
+    if (id == null && ahora != null && clientes.some((c) => Number(c.id) === ahora)) continue;
+    if (!ligar.has(id)) ligar.set(id, []);
+    ligar.get(id).push(Number(p.id));
+  }
+  const cambiosCobros = [];
+  for (const op of cobros) {
+    const id = delOt.get(Number(op.proyecto_id));
+    if (!id || !op.cliente_id || indice.destino(op.cliente_id) === id) continue;
+    cambiosCobros.push({ id: op.id, cambios: { cliente_id: id, entidad: txt(nombreDe.get(id), 120) || null } });
+  }
+  return { ligar, cobros: cambiosCobros };
+}
+
+/**
+ * Une cada OT a su cliente y pasa al cliente de la OT los cobros que se
+ * cargaron con la OT a nombre de otro. Sin la 184 solo hace lo segundo.
+ */
+async function ligarClientesOt(e, clientes) {
+  const base = `proyectos?empresa_id=eq.${e}&order=id.asc&select=id,ot,cliente`;
+  const proyectos = await leer(`${base},cliente_id`).catch(() => leer(base));
+  const cobros = await leer(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_COBRO}&anulada_at=is.null&proyecto_id=not.is.null&select=id,proyecto_id,cliente_id&order=id.asc`).catch(() => []);
+  const plan = planClientesOt(proyectos, clientes, cobros);
+  const ahora = new Date().toISOString();
+  let ligadas = 0;
+  for (const [clienteId, ids] of plan.ligar) {
+    for (let i = 0; i < ids.length; i += 200) {
+      await sbPatch(`proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 200).join(",")})`, { cliente_id: clienteId }, { silent: true });
+    }
+    ligadas += ids.length;
+  }
+  for (const { id, cambios } of plan.cobros) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { ...cambios, updated_at: ahora });
+  return { ligadas, cobros_pasados: plan.cobros.length };
+}
+
 const leer = (path, maxFilas = 20000) => sbGetAll(path, { maxFilas }).then((r) => r.data);
 
 /** Lee la configuración de la empresa (con la llave del servidor). */
@@ -176,16 +240,22 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
     const { modulos } = await getModulosEmpresa(e);
     if (!modulos.includes("finanzas")) return { accion: "omitida" };
     const config = await configVentas(e);
-    if (!config.activo) return { accion: "apagada" };
+    if (!config.activo) {
+      // Aunque no se anoten las ventas, cada OT queda unida a su cliente (184)
+      const clientes = await leer(`fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=id.asc`).catch(() => null);
+      if (clientes) await ligarClientesOt(e, clientes).catch((err) => logger.warn(`[finanzas] no se pudieron unir las OT a sus clientes en ${e}`, err));
+      return { accion: "apagada" };
+    }
 
     const [cuentasPlan, centros, clientesAntes, proyectos, preciosFilas, operaciones] = await Promise.all([
       leer(`fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
       leer(`fin_centros_costo?empresa_id=eq.${e}&select=codigo,division,activo&order=codigo.asc`),
       leer(`fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=id.asc`),
       // Las de antes de "desde" igual se leen si tienen venta (para corregir o anular)
-      leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,division,estado,created_at&order=id.asc`),
+      leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,division,estado,created_at&order=id.asc`)
+        .catch(() => leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,division,estado,created_at&order=id.asc`)),
       leer(`precios_ot?empresa_id=eq.${e}&select=ot,precio&order=ot.asc`),
-      leer(`fin_operaciones?empresa_id=eq.${e}&origen=in.(${ORIGEN_VENTA},${ORIGEN_ENTREGA})&select=id,origen,origen_id,total,anulada_at,anulada_por_nombre&order=id.asc`),
+      leer(`fin_operaciones?empresa_id=eq.${e}&origen=in.(${ORIGEN_VENTA},${ORIGEN_ENTREGA})&select=id,origen,origen_id,total,cliente_id,anulada_at,anulada_por_nombre&order=id.asc`),
     ]);
     const cuentas = cuentasVentas(cuentasPlan);
     if (cuentas.error) return { accion: "omitida", error: cuentas.error };
@@ -209,9 +279,14 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
     for (let i = 0; i < filas.length; i += 500) await sbPost("fin_operaciones", filas.slice(i, i + 500));
     for (const { id, cambios } of plan.corregir) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { ...cambios, updated_at: ahora });
     for (const { id, motivo } of plan.anular) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: motivo, updated_at: ahora });
+    // Cada OT unida a su cliente y sus cobros a ese cliente (parte 6; 184)
+    const ligado = await ligarClientesOt(e, clientes).catch((err) => {
+      logger.warn(`[finanzas] no se pudieron unir las OT a sus clientes en ${e}`, err);
+      return { ligadas: 0, cobros_pasados: 0 };
+    });
     return {
       accion: "hecha", creadas: filas.length, corregidas: plan.corregir.length, anuladas: plan.anular.length,
-      clientes_nuevos: clientes.length - clientesAntes.length,
+      clientes_nuevos: clientes.length - clientesAntes.length, ...ligado,
     };
   } catch (err) {
     // Sin las migraciones 171/177 o la base no respondió: la sync del Plan sigue igual

@@ -13,7 +13,7 @@
 //   - Con IVA: el valor de las OT × 1,21 (los cobros ya son lo cobrado).
 //   - Todas las OT, con un "desde" opcional que también recorta los cobros.
 import { claveNombre } from "./finanzasProveedores";
-import { claveCliente, efectoCliente, indiceClientes } from "./finanzasClientes";
+import { claveCliente, clienteDeOt, efectoCliente, indiceClientes } from "./finanzasClientes";
 import { elegirPrecio, fechaCargaOt } from "./costoMateriales";
 
 export const FACTOR_ESTIMADO = 0.3;
@@ -67,8 +67,9 @@ export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales =
   const otDe = new Map();
   for (const p of proyectos) {
     const k = claveNombre(p.cliente);
-    if (!k) continue;
-    const id = indice.porNombre.get(k);
+    // Manda el cliente de la OT (parte 6): el que tiene unido, o el de su nombre
+    const id = clienteDeOt(p, clientes, indice);
+    if (!k && !id) continue;
     const clave = id ? `c${id}` : `e${k}`;
     const v = valorOt(precios.get(String(p.ot)), materiales.get(String(p.ot)));
     const ot = {
@@ -82,11 +83,16 @@ export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales =
   for (const op of ops) {
     const ef = efectoCliente(op, cuentasDeu);
     if (ef >= 0) continue;
-    const clave = claveCliente(op, indice);
+    const pid = op.proyecto_id ? Number(op.proyecto_id) : null;
+    const propia = claveCliente(op, indice);
+    // El cobro de una OT va a la cuenta del cliente de la OT, aunque se haya cargado a otro nombre
+    const clave = (pid && otDe.get(pid)) || propia;
     if (!clave) continue;
     const s = de(clave, clave.startsWith("c") ? nombreDe.get(Number(clave.slice(1))) || op.entidad || "" : String(op.entidad || "").trim());
-    const pid = op.proyecto_id ? Number(op.proyecto_id) : null;
-    s.cobros.push({ id: op.id, fecha: op.fecha, importe: centavos(-ef), proyecto_id: pid && otDe.get(pid) === clave ? pid : null, tipo: op.tipo || "", descripcion: op.descripcion || "" });
+    s.cobros.push({
+      id: op.id, fecha: op.fecha, importe: centavos(-ef), proyecto_id: pid && otDe.get(pid) === clave ? pid : null, tipo: op.tipo || "", descripcion: op.descripcion || "",
+      ...(propia && propia !== clave ? { a_nombre_de: String(op.entidad || "").trim() || null } : {}),
+    });
   }
   return [...por.values()].filter((s) => s.ots.length);
 }

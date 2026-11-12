@@ -19,7 +19,7 @@ import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
 import { TIPOS_CHEQUE } from "../lib/finanzasCheques";
 import {
-  FORMAS_COBRO, ORIGEN_COBRO, emparejarCliente, movimientosCliente, saldoPorOt, saldosClientes, saldosClientesDelLibro,
+  FORMAS_COBRO, ORIGEN_COBRO, clienteDeOt, emparejarCliente, movimientosCliente, saldoPorOt, saldosClientes, saldosClientesDelLibro,
 } from "../lib/finanzasClientes";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -70,7 +70,8 @@ export function Cobrar({ datos, cliente, proyectoId = "", onCerrar, onHecho }) {
   const vivas = datos.tesoreria.filter((t) => t.activa !== false);
   const opcionesCaja = (forma) => vivas.filter((t) => (forma === "dolares" ? t.moneda === "USD" : t.moneda !== "USD" && (forma === "efectivo" ? t.tipo === "caja" : t.tipo !== "caja")));
   const otsCliente = useMemo(() => {
-    const mias = datos.proyectos.filter((p) => emparejarCliente(p.cliente, [cliente]));
+    // Las OT de este cliente: manda el cliente de la OT (184)
+    const mias = datos.proyectos.filter((p) => clienteDeOt(p, datos.clientes) === Number(cliente.id));
     return mias.length ? mias : datos.proyectos;
   }, [datos.proyectos, cliente]);
   const set = (i, k, v) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v, ...(k === "forma" ? { cuenta: "" } : {}) } : x)));

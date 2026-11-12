@@ -55,7 +55,11 @@ async function nombreEmpleado(sesion) {
 const leerClientes = (sesion) => leer(sesion, `fin_clientes?empresa_id=eq.${sesion.empresa_id}&select=${COLS_CLIENTE}&order=nombre.asc,id.asc`);
 const leerCuentas = (sesion) => leer(sesion, `fin_cuentas?empresa_id=eq.${sesion.empresa_id}&select=codigo,nombre,activa&order=codigo.asc`);
 const leerTesoreria = (sesion) => leer(sesion, `fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&select=cuenta,nombre,tipo,moneda,activa&order=nombre.asc`);
-const leerProyectos = (sesion) => leer(sesion, `proyectos?empresa_id=eq.${sesion.empresa_id}&select=id,ot,cliente,obra,descripcion,estado&order=id.desc`, 10000);
+// Con el cliente unido a la OT (184); sin la migración, solo el nombre
+const leerProyectos = (sesion) => {
+  const base = `proyectos?empresa_id=eq.${sesion.empresa_id}&order=id.desc&select=id,ot,cliente,obra,descripcion,estado`;
+  return leer(sesion, `${base},cliente_id`, 10000).catch(() => leer(sesion, base, 10000));
+};
 
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
@@ -130,7 +134,7 @@ async function cobrar(sesion, d) {
   const [clientes, cuentas, tesoreria, proyectos] = await Promise.all([leerClientes(sesion), leerCuentas(sesion), leerTesoreria(sesion), leerProyectos(sesion)]);
   const cliente = clientes.find((c) => Number(c.id) === Number(d.cliente_id));
   const grupo = `cb${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-  const { ops, cheques, total, errores } = armarCobro(d, { cliente, cuentas, tesoreria, proyectos, grupo });
+  const { ops, cheques, total, errores } = armarCobro(d, { cliente, cuentas, tesoreria, proyectos, clientes, grupo });
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
