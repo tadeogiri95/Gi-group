@@ -8,6 +8,9 @@
 //     de gasto viene lleno (tipo, importe, fecha, detalle, taller) y, si tiene
 //     factura, Gypi la puede leer. El gasto queda unido al arreglo con un
 //     origen_id fijo (g + a|b + id en hexadecimal), así nunca se carga dos veces.
+//   - Si ese costo ya se cargó a mano (antes de que existiera esta unión), el
+//     Dueño lo quita con "Ya está cargado": queda anotado en config_sistema
+//     (finanzas_costos_quitados) y se puede volver a mostrar.
 //   - El stock valorizado (stock × último precio de compra, de Planta → Stock)
 //     contra el saldo de las cuentas de bienes de cambio en Gypi.
 import { clavePersona } from "./finanzasPersonas";
@@ -17,6 +20,8 @@ export const TIPO_MAQUINA = "GASTOS DE MANTENIMIENTO";
 const PREFIJO = { vehiculo: "a", maquina: "b" };
 const MODULO = { a: "vehiculo", b: "maquina" };
 export const MESES_ATRAS = 12;
+export const CLAVE_QUITADOS = "finanzas_costos_quitados";
+const MAX_QUITADOS = 1000;
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const txt = (v, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -47,11 +52,29 @@ const nombreVehiculo = (v) => txt([v?.marca, v?.modelo].filter(Boolean).join(" "
 const nombreMaquina = (m) => txt(m ? `${m.codigo ? `${m.codigo} · ` : ""}${m.nombre || ""}` : "Máquina", 100);
 const QUE = { service: "Service", reparacion: "Reparación", arreglo: "Arreglo" };
 
+/** Lo guardado en config_sistema → { "v:12": { at, por } } (solo vínculos válidos). */
+export function leerQuitados(valor) {
+  const out = {};
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return out;
+  for (const [k, v] of Object.entries(valor)) if (vinculoValido(k)) out[k] = { at: txt(v?.at, 40) || null, por: txt(v?.por, 120) || null };
+  return out;
+}
+
+/** Suma o saca un vínculo de la lista de quitados (los más viejos se van si pasa de 1000). */
+export function cambiarQuitados(valor, vinculo, quitar, { at, por } = {}) {
+  const lista = leerQuitados(valor);
+  delete lista[vinculo];
+  if (quitar) lista[vinculo] = { at: at || null, por: por || null };
+  const claves = Object.keys(lista);
+  return Object.fromEntries(claves.slice(Math.max(0, claves.length - MAX_QUITADOS)).map((k) => [k, lista[k]]));
+}
+
 /**
  * Los costos de Flota y Maquinaria que todavía no están en Finanzas (y cuántos ya).
- * @returns {{ pendientes: object[], cargados: { n: number, total: number } }}
+ * Los que el Dueño marcó "Ya está cargado" van aparte, en quitados.
+ * @returns {{ pendientes: object[], quitados: object[], cargados: { n: number, total: number } }}
  */
-export function costosMantenimiento({ mantenimientos = [], fallas = [], vehiculos = [], maquinas = [], ops = [] }) {
+export function costosMantenimiento({ mantenimientos = [], fallas = [], vehiculos = [], maquinas = [], ops = [], quitados = {} }) {
   const ya = new Set();
   let n = 0;
   let total = 0;
@@ -77,7 +100,12 @@ export function costosMantenimiento({ mantenimientos = [], fallas = [], vehiculo
       detalle: txt([f.descripcion, f.detalle].filter(Boolean).join(": "), 300), taller: "", factura_url: f.factura_url || null,
     })),
   ].filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.fecha)).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  return { pendientes, cargados: { n, total: centavos(total) } };
+  const q = quitados || {};
+  return {
+    pendientes: pendientes.filter((p) => !q[p.vinculo]),
+    quitados: pendientes.filter((p) => q[p.vinculo]).map((p) => ({ ...p, quitado: q[p.vinculo] })),
+    cargados: { n, total: centavos(total) },
+  };
 }
 
 /**
