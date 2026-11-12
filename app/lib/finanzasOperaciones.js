@@ -243,6 +243,22 @@ export function movimientoCaja(op, caja) {
 }
 
 /**
+ * Qué le pasó a la plata en una operación, para la lista de Movimientos
+ * (11/11, revisión de interfaz): entró a una caja, salió de una, pasó de una
+ * a otra, o no tocó ninguna (una compra a cuenta corriente, un ajuste).
+ * @returns {{ como: "entra"|"sale"|"pase"|null, texto: string|null }}
+ */
+export function ladoCaja(op, tesoreria = []) {
+  const porCuenta = new Map((tesoreria || []).map((t) => [t.cuenta, t]));
+  const debe = porCuenta.get(op?.cuenta_debe);
+  const haber = porCuenta.get(op?.cuenta_haber);
+  if (debe && haber) return { como: "pase", texto: `De ${haber.nombre} a ${debe.nombre}` };
+  if (debe) return { como: "entra", texto: `Entró a ${debe.nombre}` };
+  if (haber) return { como: "sale", texto: `Salió de ${haber.nombre}` };
+  return { como: null, texto: null };
+}
+
+/**
  * Filtra la lista de Movimientos.
  * @param {any[]} ops
  * @param {{ revisar?: boolean, tipo?: string, caja?: string, proveedor?: string, proyecto?: string, centro?: string, buscar?: string, anuladas?: boolean }} filtros

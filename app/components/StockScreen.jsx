@@ -127,24 +127,23 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       {vista === "movimientos" ? <MovimientosStock usuario={usuario} articulos={articulos} onArticuloNuevo={(n) => setArticulos((prev) => [...prev.filter((x) => x.sku !== n.sku), n])} /> : (<>
       {/* Los links del libro MRP se configuran en Más → Planillas conectadas
           (auditoría 01/11, PR 3); el supervisor no los ve */}
-      {onPlanillas && (
-        <button onClick={onPlanillas}
-          className="w-full min-h-[44px] mb-3 flex items-center justify-between px-3 rounded-[10px] border border-gypi-border bg-gypi-surface text-[14px] font-semibold text-gypi-text cursor-pointer">
-          <span>🔗 Planilla MRP {cfg.inventario ? "· conectada" : "· sin conectar"}</span>
-          <span className="text-[12px] text-gypi-dim">Más → Planillas conectadas ›</span>
-        </button>
-      )}
-
-      <div className="flex items-center gap-2 mb-3">
-        <div className="flex-1 text-[13px] text-gypi-dim">
-          {cfg.ultima_sync ? `Sincronizado el ${new Date(cfg.ultima_sync).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}. Se actualiza solo cada mañana.` : "Todavía no se sincronizó."}
+      {/* Planilla y sincronización en una fila (11/11, revisión de interfaz): en el
+          celular los artículos quedaban debajo de la pantalla */}
+      <div className="flex items-center gap-2 mb-3 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">
+        <div className="flex-1 min-w-0 text-[13px] text-gypi-dim">
+          {onPlanillas ? (
+            <button onClick={onPlanillas} className="p-0 bg-transparent border-none text-[13px] font-semibold text-gypi-text cursor-pointer font-body text-left">
+              🔗 Planilla MRP {cfg.inventario ? "· conectada" : "· sin conectar"} ›
+            </button>
+          ) : <span className="font-semibold text-gypi-text">🔗 Planilla MRP</span>}
+          <div>{cfg.ultima_sync ? `Sincronizado el ${new Date(cfg.ultima_sync).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}` : "Todavía no se sincronizó."}</div>
           {syncAtrasada(cfg.ultima_sync) && (
             <div className="text-gypi-amber-ink font-bold">⚠️ Hace más de un día que no se sincroniza: tocá Sincronizar.</div>
           )}
-          <div>{AVISO_DEMORA_GOOGLE}</div>
+          {sincronizando && <div>{AVISO_DEMORA_GOOGLE}</div>}
         </div>
-        <button onClick={sincronizar} disabled={sincronizando}
-          className="min-h-[44px] px-3 rounded-lg border-none bg-gypi-green/15 text-gypi-green text-[13px] font-bold cursor-pointer">
+        <button onClick={sincronizar} disabled={sincronizando} title={AVISO_DEMORA_GOOGLE}
+          className="min-h-[44px] px-3 rounded-lg border-none bg-gypi-green/15 text-gypi-green text-[13px] font-bold cursor-pointer shrink-0">
           {sincronizando ? "Sincronizando…" : "🔄 Sincronizar"}
         </button>
       </div>
@@ -153,15 +152,19 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
         <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">Para ver el stock falta correr la migración 106 en Supabase.</div>
       )}
 
-      {puedeCrear && (nuevo ? (
+      {puedeCrear && nuevo && (
         <ArticuloNuevo articulos={articulos} nombreInicial={texto} onCancelar={() => setNuevo(false)}
           onCreado={(a) => { setNuevo(false); setArticulos((prev) => [...prev.filter((x) => x.sku !== a.sku), a]); setTexto(a.nombre || a.sku); }} />
-      ) : (
-        <button onClick={() => setNuevo(true)} className="g-btn g-btn-secondary w-full mb-3">➕ Artículo nuevo (no está en la planilla)</button>
-      ))}
+      )}
 
-      <input type="search" value={texto} onChange={(e) => setTexto(e.target.value)} aria-label="Buscar artículo"
-        placeholder="Buscar por nombre, código o familia" className="g-input w-full mb-2" />
+      <div className="flex gap-2 mb-2">
+        <input type="search" value={texto} onChange={(e) => setTexto(e.target.value)} aria-label="Buscar artículo"
+          placeholder="Buscar por nombre, código o familia" className="g-input flex-1 min-w-0" />
+        {puedeCrear && !nuevo && (
+          <button onClick={() => setNuevo(true)} title="Artículo nuevo (no está en la planilla)" aria-label="Artículo nuevo (no está en la planilla)"
+            className="g-btn g-btn-secondary shrink-0">➕ Nuevo</button>
+        )}
+      </div>
       <div className="flex gap-1.5 flex-wrap mb-3" role="group" aria-label="Filtros">
         <Chip active={urgentes} onClick={() => { setUrgentes((u) => !u); setNegativos(false); }}>🔴 Urgentes ({urgentesTotal})</Chip>
         {negativosTotal > 0 && <Chip active={negativos} onClick={() => { setNegativos((n) => !n); setUrgentes(false); }}>⚠ Stock negativo ({negativosTotal})</Chip>}
@@ -176,8 +179,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
         </p>
       )}
 
-      {/* Etiquetas */}
-      <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
+      {/* Etiquetas: aparecen al tildar un artículo (11/11, revisión de interfaz) */}
+      {elegidos.size > 0 && (
+      <div className="p-3 mb-3 rounded-[10px] border border-gypi-amber bg-gypi-surface">
         <div className="flex items-center gap-2 mb-2">
           <div className="flex-1 text-[14px] font-semibold">🏷 Etiquetas con QR {elegidos.size ? `· ${elegidos.size} elegidas` : ""}</div>
           {elegidos.size > 0 && <button onClick={() => setElegidos(new Set())} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] text-gypi-dim cursor-pointer">Ninguna</button>}
@@ -194,6 +198,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
         </div>
         <div className="text-[12px] text-gypi-dim mt-2">El QR abre la ficha del artículo. El operario lo escanea para registrar lo que retira.</div>
       </div>
+      )}
 
       {cargando ? (
         <div className="text-[14px] text-gypi-dim">Cargando artículos…</div>
@@ -205,6 +210,15 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
             {filtrados.length === articulos.length ? `${articulos.length} artículos` : `${filtrados.length} de ${articulos.length} artículos`}
             {filtrados.length > MOSTRAR ? `. Se muestran los primeros ${MOSTRAR}: buscá para ver otros.` : ""}
           </div>
+          {!elegidos.size && (
+            <div className="flex flex-wrap items-center gap-x-2 mb-2 text-[12px] text-gypi-dim">
+              <span>🏷 Etiquetas con QR: tildá los artículos, o</span>
+              <button onClick={elegirFiltrados} disabled={!filtrados.length}
+                className="min-h-[32px] p-0 bg-transparent border-none text-[12px] font-semibold text-gypi-amber-ink cursor-pointer">
+                Elegir {Math.min(filtrados.length, MAX_ETIQUETAS_ARTICULO)} de la lista
+              </button>
+            </div>
+          )}
           <ul className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
             {filtrados.slice(0, MOSTRAR).map((a) => (
               <li key={a.sku} className="flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">

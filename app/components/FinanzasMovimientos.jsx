@@ -24,7 +24,7 @@ import { VentanaAltaPersona } from "./AltaPersona";
 import CargarGasto from "./FinanzasCargarGasto";
 import { CostosMantenimiento } from "./FinanzasIntegracion";
 import { ORIGEN_GASTO } from "../lib/finanzasGastos";
-import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
+import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, ladoCaja, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -56,6 +56,9 @@ const esDeCliente = (tipo) => /^(COBROS|VENTAS)$/.test(String(tipo?.grupo || "")
 
 /** El nombre de un tipo por su código ("COBRO A CLIENTES" → "Cobro a clientes"). */
 const nombreDeTipo = (codigo, tipos) => nombreTipo(tipos.find((t) => t.codigo === codigo) || { codigo });
+// Entra en verde con +, sale en rojo con −; los pases y lo que no toca una caja, sin color
+const SIGNO_LADO = { entra: "+ ", sale: "− " };
+const COLOR_LADO = { entra: "text-gypi-green", sale: "text-gypi-red" };
 const nombreCuenta = (codigo, cuentas) => cuentas.find((c) => c.codigo === codigo)?.nombre || codigo || "—";
 
 /* ─── Asiento ────────────────────────────────────────────────────────── */
@@ -424,6 +427,8 @@ export default function FinanzasMovimientos() {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const [filtros, setFiltros] = useState({ revisar: false, tipo: "", caja: "", proveedor: "", proyecto: "", centro: "", buscar: "", anuladas: false });
+  // Los filtros se pliegan: en el celular la lista quedaba debajo de 10 casillas (11/11, revisión de interfaz)
+  const [verFiltros, setVerFiltros] = useState(false);
   const [nueva, setNueva] = useState(false);
   const [cargarGasto, setCargarGasto] = useState(false);
   const [detalle, setDetalle] = useState(null);
@@ -472,6 +477,7 @@ export default function FinanzasMovimientos() {
     </SelectBuscable>
   );
   const revisar = (datos.operaciones || []).filter((o) => o.estado === "para_revisar" && !o.anulada_at).length;
+  const activos = ["tipo", "caja", "proveedor", "proyecto", "centro"].filter((k) => filtros[k]).length;
   const usadas = (k) => new Set((datos.operaciones || []).map((o) => String(o[k] ?? "")).filter(Boolean));
   const provUsados = usadas("proveedor_id");
   const otsUsadas = usadas("proyecto_id");
@@ -485,6 +491,7 @@ export default function FinanzasMovimientos() {
         {campo("Hasta", <input type="date" className="g-input" value={periodo.hasta} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, hasta: e.target.value }))} />)}
       </div>
       <CostosMantenimiento datosGasto={datos} onCargado={cargar} />
+      {verFiltros && (
       <div className="flex flex-wrap gap-2 mb-2">
         {filtro("tipo", "Tipo", [...new Set((datos.operaciones || []).map((o) => o.tipo))].map((t) => [t, nombreDeTipo(t, datos.tipos)]).sort((a, b) => a[1].localeCompare(b[1], "es")).map(([t, n]) => <option key={t} value={t}>{n}</option>))}
         {filtro("caja", "Caja o banco", datos.tesoreria.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>))}
@@ -492,8 +499,13 @@ export default function FinanzasMovimientos() {
         {filtro("proyecto", "OT", datos.proyectos.filter((p) => otsUsadas.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>))}
         {filtro("centro", "Centro de costo", datos.centros.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>))}
       </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <input className="g-input flex-1 min-w-[180px]" aria-label="Buscar" placeholder="Buscar por descripción, proveedor u OT" value={filtros.buscar} onChange={setFiltro("buscar")} />
+        <button type="button" onClick={() => setVerFiltros((v) => !v)} aria-expanded={verFiltros}
+          className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-semibold cursor-pointer ${activos ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
+          ⚙ Filtros{activos ? ` (${activos})` : ""}
+        </button>
         {revisar > 0 && (
           <label className="flex items-center gap-2 text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
             <input type="checkbox" checked={filtros.revisar} onChange={setFiltro("revisar")} /> Solo para revisar ({revisar})
@@ -514,6 +526,7 @@ export default function FinanzasMovimientos() {
         {lista.slice(0, MAX_LISTA).map((op) => {
           const quien = nombres.entidad(op);
           const ot = nombres.ot(op);
+          const lado = ladoCaja(op, datos.tesoreria);
           return (
             <li key={op.id}>
               <button type="button" onClick={() => setDetalle(op)}
@@ -521,10 +534,10 @@ export default function FinanzasMovimientos() {
                 <span className={`flex items-baseline gap-2 text-[14px] text-gypi-text ${op.anulada_at ? "line-through" : ""}`}>
                   <span className="text-gypi-dim font-mono text-[12px]">{fechaCorta(op.fecha)}</span>
                   <span className="font-semibold flex-1 min-w-0 truncate">{nombreDeTipo(op.tipo, datos.tipos)}{quien ? ` · ${quien}` : ""}</span>
-                  <span className="font-mono font-semibold">{plata(op.total, op.moneda)}</span>
+                  <span className={`font-mono font-semibold ${COLOR_LADO[lado.como] || ""}`}>{SIGNO_LADO[lado.como] || ""}{plata(op.total, op.moneda)}</span>
                 </span>
                 <span className="block text-[12px] text-gypi-dim truncate">
-                  {nombreCuenta(op.cuenta_debe, datos.cuentas)} ← {nombreCuenta(op.cuenta_haber, datos.cuentas)}
+                  {lado.texto || `${nombreCuenta(op.cuenta_debe, datos.cuentas)} ← ${nombreCuenta(op.cuenta_haber, datos.cuentas)}`}
                   {ot ? ` · ${ot}` : ""}{op.descripcion ? ` · ${op.descripcion}` : ""}
                 </span>
                 {(ORIGENES[op.origen] || op.estado === "para_revisar") && (
