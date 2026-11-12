@@ -9,6 +9,7 @@ import { apiFetch } from "../lib/supabase";
 import { fmtPesos } from "../lib/costo";
 import { textoHoras } from "../lib/horasOt";
 import { textoPct } from "../lib/margenOt";
+import { repartirHora } from "../lib/costoHoraDesglose";
 
 const pesos = (v) => (v == null ? "—" : fmtPesos(v));
 const fechaCorta = (f) => (f ? String(f).split("-").reverse().join("/") : "");
@@ -25,6 +26,18 @@ function horasDe(f) {
   if (f.id !== "planta" && f.id !== "instalacion") return null;
   if (f.horasPrevistas == null && f.horasReales == null) return null;
   return `${textoHoras(f.horasPrevistas)} previstas · ${textoHoras(f.horasReales)} reales`;
+}
+
+/** La mano de obra real repartida en las tres partes de la hora (parte 10). */
+function ManoDeObraRepartida({ d }) {
+  const total = (d.renglones || []).filter((f) => ["planta", "retrabajo", "instalacion"].includes(f.id)).reduce((s, f) => s + (Number(f.real) || 0), 0);
+  const partes = d.hora?.desglose ? repartirHora(total, d.hora.desglose) : [];
+  if (!(total > 0) || !partes.length) return null;
+  return (
+    <div className="text-xs text-gypi-dim mt-2" aria-label="Mano de obra repartida">
+      Mano de obra real {fmtPesos(total)}: {partes.map((p) => `${p.nombre} ${fmtPesos(p.importe)}`).join(" · ")}
+    </div>
+  );
 }
 
 /** Precio, ganancia y margen contra el mínimo (parte 4). */
@@ -124,6 +137,7 @@ export default function CostoRealOt({ ot }) {
             </tr>
           </tbody>
         </table>
+        <ManoDeObraRepartida d={datos} />
         {datos.avisos.length > 0 && <div className="text-xs font-semibold text-gypi-amber-ink mt-2">⚠ {datos.avisos.join(" · ")}</div>}
         <div className="text-xs text-gypi-dim mt-1">Instalación: 8 h por persona por cada día previsto o con reporte. Las facturas de OC no se suman como gasto: su material ya está en el stock o en las compras sin stock.</div>
         {hayDetalle && (

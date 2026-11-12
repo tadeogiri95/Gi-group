@@ -17,6 +17,8 @@ import { logger } from "../../lib/logger";
 import { faltaMigracionCosto } from "../../lib/costoMaterialesServidor";
 import { costoRealDeOt, preciosYMinimo } from "../../lib/costoRealServidor";
 import { margen } from "../../lib/margenOt";
+import { sbGet } from "../../lib/sbHelpers";
+import { CLAVE_DESGLOSE, leerDesglose } from "../../lib/costoHoraDesglose";
 
 export const maxDuration = 30;
 
@@ -36,6 +38,8 @@ export async function GET(request) {
       // Margen (parte 4): precio del Plan contra el costo real y el previsto
       const { precios, minimo } = await preciosYMinimo(sesion.empresa_id, [ot]);
       const precio = precios.get(ot) ?? null;
+      // La hora en sus tres partes (parte 10), para repartir la mano de obra
+      const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${sesion.empresa_id}&clave=eq.${CLAVE_DESGLOSE}&select=valor&limit=1`, { silent: true, fallback: [] }).catch(() => [])) || [];
       return NextResponse.json({
         ok: true, ot, ...r.comparativa,
         precio, margen_minimo: minimo,
@@ -43,6 +47,7 @@ export async function GET(request) {
         margen_previsto: margen({ precio, costo: r.comparativa.previsto, minimo }),
         fuera: fuera?.filas || [], compras: compras?.filas || [], gastos: gastos?.filas || [],
         retrabajo_horas: retrabajo || 0, instalacion: instalacion || null,
+        hora: { desglose: leerDesglose(cfg?.valor) },
       });
     } catch (err) {
       const falta = faltaMigracionCosto(err);

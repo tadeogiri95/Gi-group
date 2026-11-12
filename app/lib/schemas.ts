@@ -651,9 +651,12 @@ export const planInstalacionBody = z.object({
 }).strict();
 
 // ── /api/costo-hora (102): costo de la hora de mano de obra, solo el dueño ─
+const pesosHora = z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100);
+// Parte 10 de la auditoría del 12/11: la hora se carga en tres partes (la suma es el costo de la hora)
 export const costoHoraBody = z.object({
-  costo_hora: z.number().min(0).max(99999999).transform((n) => Math.round(n * 100) / 100),
-}).strict();
+  costo_hora: pesosHora.optional(),
+  desglose: z.object({ mano_obra: pesosHora, burden: pesosHora, gac: pesosHora }).strict().optional(),
+}).strict().refine((d) => d.costo_hora != null || d.desglose != null, { message: "Falta el costo de la hora" });
 
 // ── /api/kiosco (D7, ítem 19) ──────────────────────────────────────────────
 export const kioscoActivarBody = z.object({
