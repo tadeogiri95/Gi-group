@@ -98,6 +98,10 @@ test("migración 102 — costo de la hora que solo lee y cambia el dueño", () =
 });
 
 test("esquema — el costo es un número entre 0 y 99.999.999, con centavos", () => {
+  assert.deepEqual(costoHoraBody.parse({ desglose: { mano_obra: 9500.555, burden: 3000, gac: 0 } }).desglose, { mano_obra: 9500.56, burden: 3000, gac: 0 });
+  assert.ok(!costoHoraBody.safeParse({}).success, "sin nada no");
+  assert.ok(!costoHoraBody.safeParse({ desglose: { mano_obra: 1, burden: 1 } }).success, "las tres partes");
+  assert.ok(!costoHoraBody.safeParse({ desglose: { mano_obra: -1, burden: 0, gac: 0 } }).success);
   assert.equal(costoHoraBody.parse({ costo_hora: 9500.555 }).costo_hora, 9500.56);
   assert.ok(!costoHoraBody.safeParse({ costo_hora: -1 }).success);
   assert.ok(!costoHoraBody.safeParse({ costo_hora: "9500" }).success);
@@ -192,6 +196,30 @@ test("/api/costo-hora — el dueño lo lee y lo guarda en su empresa", async () 
   assert.equal(escrito.length, 0);
 });
 
+test("/api/costo-hora — las tres partes: guarda la suma como costo de la hora y el desglose (parte 10)", async () => {
+  const escrito = mockCosto({ fila: { empresa_id: E, costo_hora: 9000 } });
+  const cfg = [];
+  const base = global.fetch;
+  global.fetch = async (u, o = {}) => {
+    if (String(u).includes("/rest/v1/config_sistema")) {
+      if (o.method && o.method !== "GET") { cfg.push({ metodo: o.method, url: String(u), body: JSON.parse(o.body) }); return new Response("[]", { status: 201 }); }
+      return new Response(JSON.stringify(cfg.length ? [{ clave: "costo_hora_desglose", valor: cfg[cfg.length - 1].body.valor }] : []), { status: 200 });
+    }
+    return base(u, o);
+  };
+  let res = await api.POST(req(await token("gerencial"), { desglose: { mano_obra: 9500, burden: 3000, gac: 1500 } }));
+  assert.equal(res.status, 200);
+  const d = await res.json();
+  assert.equal(d.costo_hora, 14000);
+  assert.deepEqual(d.desglose, { mano_obra: 9500, burden: 3000, gac: 1500 });
+  assert.equal(escrito[0].body.costo_hora, 14000, "todos los cálculos usan la suma");
+  assert.equal(cfg[0].metodo, "POST");
+  assert.equal(cfg[0].body.empresa_id, E);
+  assert.equal(cfg[0].body.clave, "costo_hora_desglose");
+  res = await api.GET(req(await token("gerencial")));
+  assert.deepEqual((await res.json()).desglose, { mano_obra: 9500, burden: 3000, gac: 1500 });
+});
+
 test("/api/costo-hora — sin la migración 102 la lectura sigue y guardar avisa qué falta", async () => {
   mockCosto({ falla: 'relation "public.costos_empresa" does not exist' });
   let res = await api.GET(req(await token("gerencial")));
@@ -247,27 +275,31 @@ test("indicadores — sin costo (supervisor) no aparece ningún peso", async () 
   assert.equal(screen.queryAllByText(/\$/).length, 0);
 });
 
-test("Configuración → Costo — carga el valor y guarda el nuevo", async () => {
+test("Configuración → Costo — la hora en tres partes: Mano de obra, Burden y GAC (parte 10)", async () => {
   const pedidos = [];
   global.fetch = async (url, opts = {}) => {
     if (opts.method === "POST") {
       pedidos.push(JSON.parse(opts.body));
-      return new Response(JSON.stringify({ ok: true, costo_hora: 9500 }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, costo_hora: 14000, desglose: { mano_obra: 9500, burden: 3000, gac: 1500 } }), { status: 200 });
     }
-    return new Response(JSON.stringify({ costo_hora: 9000 }), { status: 200 });
+    return new Response(JSON.stringify({ costo_hora: 9000, desglose: null }), { status: 200 });
   };
   const avisos = [];
   render(<CostoEditor avisar={(m) => avisos.push(m)} />);
-  await waitFor(() => assert.ok(screen.getByText("Ahora: $ 9.000 por hora.")));
-  const input = screen.getByLabelText("Costo de la hora ($)");
-  assert.equal(input.value, "9000");
-  assert.ok(screen.getByText("Guardar costo").disabled, "sin cambios no se guarda");
-  fireEvent.change(input, { target: { value: "9.500" } });
-  fireEvent.click(screen.getByText("Guardar costo"));
+  await waitFor(() => assert.ok(screen.getByText(/Guardada: \$ 9\.000 por hora\. Todavía sin desglose/)));
+  const mo = screen.getByLabelText("Mano de obra ($ por hora)");
+  assert.equal(mo.value, "9000", "lo cargado antes queda como mano de obra: la suma da lo mismo");
+  assert.equal(screen.getByLabelText("Costo Burden ($ por hora)").value, "");
+  fireEvent.change(mo, { target: { value: "9.500" } });
+  fireEvent.change(screen.getByLabelText("Costo Burden ($ por hora)"), { target: { value: "3000" } });
+  fireEvent.change(screen.getByLabelText("GAC ($ por hora)"), { target: { value: "1500,00" } });
+  assert.match(screen.getByText("Hora completa").parentElement.textContent, /\$ 14\.000/);
+  fireEvent.click(screen.getByText("Guardar costo de la hora"));
   await waitFor(() => assert.equal(avisos.length, 1));
-  assert.deepEqual(pedidos, [{ costo_hora: 9500 }]);
-  assert.ok(screen.getByText("Ahora: $ 9.500 por hora."));
-  fireEvent.change(input, { target: { value: "nueve mil" } });
-  assert.ok(screen.getByText(/Escribí solo el número/));
-  assert.ok(screen.getByText("Guardar costo").disabled);
+  assert.deepEqual(pedidos, [{ desglose: { mano_obra: 9500, burden: 3000, gac: 1500 } }]);
+  assert.ok(screen.getByText("Guardada: $ 14.000 por hora."));
+  assert.ok(screen.getByText("Guardar costo de la hora").disabled, "sin cambios no se guarda");
+  fireEvent.change(screen.getByLabelText("GAC ($ por hora)"), { target: { value: "mil" } });
+  assert.ok(screen.getByText(/Escribí solo el número en GAC/));
+  assert.ok(screen.getByText("Guardar costo de la hora").disabled);
 });
