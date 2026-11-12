@@ -57,10 +57,14 @@ const NUEVO = '__nuevo__';
  * nuevo (opcional, 11/11): { etiqueta, onElegir(texto) } agrega al final de la
  * lista un renglón "➕ etiqueta: «lo escrito»" para dar de alta lo que no está
  * (un proveedor o un cliente nuevo) sin cambiar de pantalla.
+ *
+ * listaAncha (opcional, 12/11): la lista se abre más ancha que el casillero
+ * (hasta 34rem, sin pasarse de la pantalla) y cada opción se lee entera, para
+ * nombres largos como las cuentas ("01.01.01.003.002 · BANCO CREDICOOP…").
  */
 export default function SelectBuscable({
   value, onChange, children, className = 'g-input w-full', disabled = false, id, placeholder,
-  'aria-label': ariaLabel, nuevo, ...rest
+  'aria-label': ariaLabel, nuevo, listaAncha = false, ...rest
 }) {
   // El ancho (w-*, min-w-*, max-w-*, flex-1…) va a la caja de afuera; el
   // casillero de adentro siempre ocupa todo
@@ -158,7 +162,7 @@ export default function SelectBuscable({
           id={idLista}
           role="listbox"
           aria-label={ariaLabel ? `Opciones de ${ariaLabel}` : 'Opciones'}
-          className="absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gypi-border bg-gypi-bg shadow-lg py-1 m-0 list-none"
+          className={`absolute z-50 left-0 mt-1 overflow-y-auto rounded-lg border border-gypi-border bg-gypi-bg shadow-lg py-1 m-0 list-none ${listaAncha ? 'min-w-full w-max max-w-[min(34rem,calc(100vw-2rem))] max-h-80' : 'right-0 max-h-64'}`}
         >
           {encontradas.length === 0 && <li className="px-3 py-2 text-[13px] text-gypi-dim">No hay coincidencias</li>}
           {visibles.map((o, i) => {
@@ -170,7 +174,7 @@ export default function SelectBuscable({
                 <li role="option" data-i={i} aria-selected={marcada} aria-disabled={o.disabled || undefined}
                   onMouseDown={(e) => { e.preventDefault(); elegir(o); }}
                   onMouseEnter={() => setActiva(i)}
-                  className={`px-3 py-2 min-h-[40px] text-[14px] text-gypi-text cursor-pointer ${i === activa ? 'bg-gypi-surface' : ''} ${o.disabled ? 'opacity-50' : ''} ${marcada ? 'font-semibold' : ''}`}>
+                  className={`px-3 py-2 min-h-[40px] text-[14px] text-gypi-text cursor-pointer ${listaAncha ? 'whitespace-normal break-words leading-snug' : ''} ${i === activa ? 'bg-gypi-surface' : ''} ${o.disabled ? 'opacity-50' : ''} ${marcada ? 'font-semibold' : ''}`}>
                   {o.label}
                 </li>
               </Fragment>

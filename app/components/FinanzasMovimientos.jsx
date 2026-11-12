@@ -165,14 +165,14 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
 
   const selectCaja = (lado, cajas) => campo(
     lado === "debe" ? "Caja o banco que recibe" : "Caja o banco que paga",
-    <SelectBuscable className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
+    <SelectBuscable className="g-input w-full" listaAncha value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
       <option value="">Elegí…</option>
       {cajas.opciones.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}{c.moneda === "USD" ? " (USD)" : ""}</option>)}
     </SelectBuscable>,
   );
   const selectCuenta = (lado) => campo(
     lado === "debe" ? "Cuenta del debe" : "Cuenta del haber",
-    <SelectBuscable className="g-input w-full" value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
+    <SelectBuscable className="g-input w-full" listaAncha value={f[`cuenta_${lado}`]} onChange={set(`cuenta_${lado}`)}>
       <option value="">Elegí…</option>
       {datos.cuentas.filter((c) => c.activa !== false || c.codigo === f[`cuenta_${lado}`]).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
     </SelectBuscable>,
@@ -203,7 +203,7 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
             <section className="flex flex-col gap-3" aria-label="Cuentas y a quién">
               <h3 className="g-overline m-0 text-gypi-dim">Cuentas y a quién</h3>
               {(cajasDebe || cajasHaber) && !cambiarCuentas && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
                   {cajasDebe && selectCaja("debe", cajasDebe)}
                   {cajasHaber && selectCaja("haber", cajasHaber)}
                 </div>
@@ -219,8 +219,9 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
                   </div>
                 </div>
               )}
+              {/* Debe y haber uno debajo del otro, a todo el ancho: en dos columnas el nombre de la cuenta se cortaba (12/11) */}
               {cambiarCuentas ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
                   {selectCuenta("debe")}
                   {selectCuenta("haber")}
                 </div>
