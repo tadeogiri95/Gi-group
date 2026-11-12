@@ -1,8 +1,8 @@
 'use client';
 // app/components/CostoFinalOt.jsx — 🧾 Costo final de la OT en su detalle
 // (costo de OT, parte C; /api/costo-final). Solo Dueño y Supervisor.
-// Costo final = materiales + costo de la hora × horas-persona, calculado al
-// cerrarse la OT, con su constancia (se imprime o guarda como PDF). Si la OT
+// Costo final = el costo real (💲 Costo previsto y real, auditoría 12/11
+// parte 3), calculado al cerrarse la OT, con su constancia (se imprime o guarda como PDF). Si la OT
 // se reabre, la constancia queda anulada en el historial.
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -69,10 +69,12 @@ export default function CostoFinalOt({ proyecto }) {
   if (!datos?.ok) return null;
   const v = datos.vigente;
   const avisos = v?.detalle?.avisos || [];
+  const cmp = v?.detalle?.comparativa || null;
+  const gastos = cmp?.renglones?.find((f) => f.id === "gastos")?.real || 0;
 
   return (
     <section aria-label="Costo final" className="mb-4">
-      <div className="g-label mb-1">🧾 Costo final (materiales + mano de obra)</div>
+      <div className="g-label mb-1">🧾 Costo final (constancia al cerrar la OT)</div>
       {v ? (
         <div className="bg-gypi-surface rounded-xl p-3 border border-gypi-border">
           <div className="flex items-baseline gap-2">
@@ -80,8 +82,19 @@ export default function CostoFinalOt({ proyecto }) {
             <span className="text-[18px] font-bold">{fmtPesos(v.total)}</span>
           </div>
           <div className="text-xs text-gypi-dim mt-1 flex flex-col gap-0.5">
-            <span>Materiales: {fmtPesos(v.materiales)}</span>
-            <span>Mano de obra: {textoHoras(v.horas_persona)} × {v.costo_hora != null ? fmtPesos(v.costo_hora) : "—"} la hora = {v.mano_obra != null ? fmtPesos(v.mano_obra) : "—"}</span>
+            {cmp ? (
+              <>
+                <span>Previsto: {fmtPesos(cmp.previsto)}{cmp.diferencia ? <span className={cmp.diferencia > 0 ? "text-gypi-red font-semibold" : "text-gypi-green font-semibold"}> · {cmp.diferencia > 0 ? "+" : ""}{fmtPesos(cmp.diferencia)}{cmp.pct != null ? ` (${cmp.pct} %)` : ""}</span> : null}</span>
+                <span>Materiales (MRP, de más y compras sin stock): {fmtPesos(v.materiales)}</span>
+                <span>Mano de obra (planta, retrabajo e instalación): {v.mano_obra != null ? fmtPesos(v.mano_obra) : "—"}</span>
+                {gastos ? <span>Gastos de Finanzas con la OT: {fmtPesos(gastos)}</span> : null}
+              </>
+            ) : (
+              <>
+                <span>Materiales: {fmtPesos(v.materiales)}</span>
+                <span>Mano de obra: {textoHoras(v.horas_persona)} × {v.costo_hora != null ? fmtPesos(v.costo_hora) : "—"} la hora = {v.mano_obra != null ? fmtPesos(v.mano_obra) : "—"}</span>
+              </>
+            )}
             <span>{MOTIVOS_COSTO[v.motivo] || ""} · cerrada el {fechaHora(v.cerrada_at)} · calculado el {fechaHora(v.calculado_at)}{v.calculado_por_nombre ? ` (${v.calculado_por_nombre})` : ""}</span>
           </div>
           {avisos.length > 0 && <div className="text-xs font-semibold text-gypi-red mt-1">⚠ {avisos.join(" · ")}</div>}

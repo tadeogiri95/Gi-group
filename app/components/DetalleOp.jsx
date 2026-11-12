@@ -28,6 +28,7 @@ import { hoyArg } from "../lib/dates";
 import MaterialOt from "./MaterialOt";
 import CostoMaterialesOt from "./CostoMaterialesOt";
 import CostoFinalOt from "./CostoFinalOt";
+import CostoRealOt from "./CostoRealOt";
 import HorasOt from "./HorasOt";
 import AvanceManualOt from "./AvanceManualOt";
 import { CambiosTiempoOt } from "./AjusteTiempo";
@@ -273,6 +274,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
         )}
 
         <MaterialOt ot={proyecto?.ot} empresaId={empresaId} />
+        {verCostos && <CostoRealOt ot={proyecto?.ot} />}
         {verCostos && <CostoFinalOt proyecto={proyecto} />}
         {verCostos && <CostoMaterialesOt ot={proyecto?.ot} />}
         {puedeCambiarSemana && <HorasOt ot={proyecto?.ot} />}

@@ -5,7 +5,8 @@
 import { sbGet, sbPatch, sbPost } from "./sbHelpers";
 import { logger } from "./logger";
 import { costoMaterialesDeOt } from "./costoMaterialesServidor";
-import { horasDeOt } from "./horasOtServidor";
+import { costoHoraDe, costosRealesDeOts } from "./costoRealServidor";
+import { fechaCargaOt } from "./costoMateriales";
 import { armarConstancia, filaCalculada, separarCostos } from "./costoFinal";
 
 export const FALTA_167 = "Para el costo final falta correr la migración 167 en Supabase.";
@@ -20,15 +21,17 @@ export async function costosDeOt(e, ot) {
   return (await sbGet(`${filtroOt(e, ot)}&select=*&order=created_at.desc,id.desc&limit=50`)) || [];
 }
 
-/** Foto de todo lo que entra en el costo final en este momento. */
+/** Foto de todo lo que entra en el costo final en este momento (el costo real, auditoría 12/11 parte 3). */
 export async function constanciaDeOt(e, ot) {
-  const [materiales, horas, [costo]] = await Promise.all([
-    costoMaterialesDeOt(e, ot),
-    // Sin la 166 o sin datos de horas igual se calcula, con mano de obra en blanco
-    horasDeOt(e, ot).catch((err) => { logger.warn(`[costo-final] horas ${ot}: ${err?.message}`); return null; }),
-    sbGet(`costos_empresa?empresa_id=eq.${e}&select=costo_hora&limit=1`).catch(() => []).then((r) => r || []),
-  ]);
-  return armarConstancia({ materiales, horas, costoHora: costo?.costo_hora ?? null });
+  const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&select=*&limit=1`)) || [];
+  if (!proyecto) {
+    // La OT ya no está en la lista: queda lo del MRP y nada más
+    const materiales = await costoMaterialesDeOt(e, ot);
+    return armarConstancia({ materiales, horas: null, costoHora: await costoHoraDe(e) });
+  }
+  const costoHora = await costoHoraDe(e);
+  const r = (await costosRealesDeOts(e, [proyecto], { costoHora })).get(String(proyecto.ot));
+  return armarConstancia({ materiales: { fecha_ot: fechaCargaOt(proyecto), ...r.materiales }, horas: r.horas, costoHora, real: { comparativa: r.comparativa, extras: r.extras } });
 }
 
 /** Completa un costo pendiente (el que anotó la base al cerrar la OT). */

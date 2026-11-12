@@ -3,7 +3,7 @@
 //
 //   GET ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD → una fila por OT que entró a Gypi
 //       en esas fechas (hora argentina). Las cerradas con costo final usan su
-//       constancia; las demás, el costo de hoy (provisorio).
+//       constancia; las demás, el costo real de hoy (provisorio), con su previsto.
 //
 // Solo el Dueño y el Supervisor (comoDueno). Lee con la clave del servidor
 // después de verificarlo acá, filtrando siempre por su empresa.
@@ -14,8 +14,8 @@ import { sbGet, sbGetAll } from "../../lib/sbHelpers";
 import { comoDueno } from "../../lib/alcance";
 import { logger } from "../../lib/logger";
 import { fechaCargaOt } from "../../lib/costoMateriales";
-import { costoMaterialesDeOts, faltaMigracionCosto } from "../../lib/costoMaterialesServidor";
-import { horasDeOts } from "../../lib/horasOtServidor";
+import { faltaMigracionCosto } from "../../lib/costoMaterialesServidor";
+import { costosRealesDeOts } from "../../lib/costoRealServidor";
 import { filaReporte } from "../../lib/costoReporte";
 
 export const maxDuration = 60;
@@ -54,16 +54,14 @@ export async function GET(request) {
       const finalDe = new Map();
       for (const f of finales) if (!finalDe.has(String(f.ot))) finalDe.set(String(f.ot), f);
       const abiertas = proyectos.filter((p) => !finalDe.has(String(p.ot)));
-      const [materiales, horas] = await Promise.all([
-        costoMaterialesDeOts(e, abiertas),
-        // Sin la 166 (o sin datos de horas) el reporte sigue, sin horas
-        horasDeOts(e, abiertas).catch((err) => { logger.warn(`[costo-reporte] horas: ${err?.message}`); return new Map(); }),
-      ]);
+      // El costo real de las abiertas (auditoría 12/11, parte 3): MRP, de más, compras sin stock, horas, retrabajo, instalación y gastos
+      const reales = await costosRealesDeOts(e, abiertas, { costoHora: costo?.costo_hora ?? null });
       const filas = proyectos.map((p) => {
         const ot = String(p.ot);
+        const r = reales.get(ot);
         return filaReporte({
           proyecto: p, fechaOt: fechaCargaOt(p), final: finalDe.get(ot) || null,
-          materiales: materiales.get(ot) || null, horas: horas.get(ot) || null, costoHora: costo?.costo_hora ?? null,
+          materiales: r?.materiales || null, horas: r?.horas || null, costoHora: costo?.costo_hora ?? null, comparativa: r?.comparativa || null,
         });
       });
       return NextResponse.json({ ok: true, filas, truncado: (todos || []).length > MAX_OTS });
