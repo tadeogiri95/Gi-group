@@ -12,7 +12,8 @@
 // F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).
 // Parte 8 del 11/11: 🏦 Plazos fijos (FinanzasPlazosFijos.jsx).
 // 12/11: tocando un movimiento de la ficha se ve su detalle, y se corrige o se
-// anula (finanzasCorregir.js).
+// anula (finanzasCorregir.js); 📈 Inversiones: el FCI con el saldo real y los
+// títulos con láminas y cotización (FinanzasInversiones.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -22,6 +23,7 @@ import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, sald
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
 import SubirExtracto from "./FinanzasExtracto";
 import PlazosFijos from "./FinanzasPlazosFijos";
+import Inversiones from "./FinanzasInversiones";
 import { Detalle } from "./FinanzasMovimientos";
 import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -454,6 +456,7 @@ export default function FinanzasTesoreria() {
         );
       })}
       {datos.tesoreria.some((t) => t.tipo === "plazo_fijo" && t.activa !== false) && <PlazosFijos onCambio={cargar} />}
+      {(datos.tesoreria.some((t) => t.tipo === "fci" && t.activa !== false) || (datos.cuentas || []).some((c) => /T[IÍ]TULOS? P[UÚ]BLICOS/i.test(c.nombre || ""))) && <Inversiones onCambio={cargar} />}
       {saldos.some((s) => s.activa === false) && (
         <label className="flex items-center gap-2 text-[13px] text-gypi-dim">
           <input type="checkbox" checked={inactivas} onChange={(e) => setInactivas(e.target.checked)} /> Ver las inactivas
