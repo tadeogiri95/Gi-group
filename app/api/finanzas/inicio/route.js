@@ -5,7 +5,8 @@
 //       en el mes y lo que hay que hacer: cheques que se debitan esta semana,
 //       cheques para depositar, órdenes de pago para aprobar o pagar, plazos
 //       fijos vencidos, Mi caja y operaciones para revisar, y costos de Flota
-//       y Maquinaria para pasar a Finanzas. Lo que falla (una tabla de un
+//       y Maquinaria para pasar a Finanzas, y órdenes de compra recibidas
+//       sin factura (11/11). Lo que falla (una tabla de un
 //       módulo que la empresa no tiene) queda en cero.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
@@ -21,6 +22,7 @@ import { ORIGEN_GASTO } from "../../../lib/finanzasGastos";
 import { costosMantenimiento } from "../../../lib/finanzasIntegracion";
 import { CLAVE_PLAZOS_FIJOS, leerGuardados, pathOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
 import { pendientesFinanzas } from "../../../lib/finanzasInicio";
+import { ESTADOS_OC_RECIBIDA, faltaFacturaOc } from "../../../lib/ordenesCompra";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 const leerSiHay = (sesion, path, maxFilas) => leer(sesion, path, maxFilas).catch(() => []);
@@ -39,7 +41,7 @@ export async function GET(request) {
     const tesoreria = await leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`);
     const lista = encodeURIComponent(tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(","));
     const cuentasPf = tesoreria.filter((t) => t.tipo === "plazo_fijo").map((t) => t.cuenta);
-    const [ops, revisar, ordenes, cheques, planificacion, mantenimientos, fallas, gastos, plazos, opsPlazos] = await Promise.all([
+    const [ops, revisar, ordenes, cheques, planificacion, mantenimientos, fallas, gastos, plazos, opsPlazos, recibidas] = await Promise.all([
       tesoreria.length ? leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista}))&select=fecha,total,total_ars,cuenta_debe,cuenta_haber,estado&order=fecha.asc`, 100000) : [],
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&estado=eq.para_revisar&anulada_at=is.null&select=id,origen`, 2000),
       leerSiHay(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(para_aprobar,aprobada)&select=id,estado,total`),
@@ -50,6 +52,8 @@ export async function GET(request) {
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_GASTO}&anulada_at=is.null&or=(origen_id.like.ga*,origen_id.like.gb*)&select=origen_id,total,anulada_at`, 20000),
       config(e, CLAVE_PLAZOS_FIJOS),
       cuentasPf.length ? leerSiHay(sesion, pathOpsPlazos(e, cuentasPf, hoy), 20000) : [],
+      // Órdenes de compra con mercadería recibida y sin factura (sin el módulo Compras queda vacío)
+      leerSiHay(sesion, `ordenes_compra?empresa_id=eq.${e}&estado=in.(${ESTADOS_OC_RECIBIDA.join(",")})&select=id,estado,factura_numero,factura_fecha`, 2000),
     ]);
     const confirmadas = ops.filter((o) => o.estado !== "para_revisar");
     const totales = totalesTesoreria(saldosTesoreria(confirmadas, tesoreria));
@@ -67,6 +71,7 @@ export async function GET(request) {
     const pendientes = pendientesFinanzas({
       hoy, revisar, ordenes, cheques, feriados: feriadosFinanzas(planificacion),
       costos: costos.length, costosTotal: costos.reduce((s, c) => s + c.costo, 0),
+      sinFactura: recibidas.filter(faltaFacturaOc).length,
       plazosVencidos: guardados.length ? vencidosPendientes(guardados, opsPlazos, cuentasPf, hoy).length : 0,
     });
     return NextResponse.json({

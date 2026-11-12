@@ -12,7 +12,7 @@ import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { leerCantidadMovimiento } from "../lib/movimientosStock";
 import { faltaTabla, numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_OC, ESTADOS_OC_ABIERTA, ESTADOS_OC_CERRABLE, MONEDAS, pendienteItem, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
+  ESTADOS_OC, ESTADOS_OC_ABIERTA, ESTADOS_OC_CERRABLE, faltaFacturaOc, MONEDAS, pendienteItem, importeTexto, leerImporte, imprimirOrdenCompra, ocAtrasada, textoOrdenCompra, totalOrden,
   ALICUOTAS_IVA, IVA_POR_DEFECTO, cantidadFacturaInicial, renglonFactura, totalesFactura, faltaFacturar,
   ocACotizar, estadoOcVisible, cotizacionMasBarata, textoCotizacion,
   factorItem, convertirUnidad, equivalenciaStock,
@@ -846,10 +846,10 @@ function DetalleOrden({ oc, empresa, onVolver, onCambio }) {
   );
 }
 
-export default function OrdenesCompra({ empresaId, empresa = null, abrirId = null }) {
+export default function OrdenesCompra({ empresaId, empresa = null, abrirId = null, filtroInicial = "abiertas" }) {
   const [ordenes, setOrdenes] = useState(null);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
-  const [filtro, setFiltro] = useState("abiertas");
+  const [filtro, setFiltro] = useState(filtroInicial);
   const [abierta, setAbierta] = useState(abrirId);
 
   const cargar = useCallback(async () => {
@@ -870,6 +870,7 @@ export default function OrdenesCompra({ empresaId, empresa = null, abrirId = nul
     if (filtro === "abiertas") return ESTADOS_OC_ABIERTA.includes(o.estado);
     if (filtro === "atrasadas") return ocAtrasada(o);
     if (filtro === "a_cotizar") return ocACotizar(o);
+    if (filtro === "sin_factura") return faltaFacturaOc(o);
     return !filtro || o.estado === filtro;
   }), [ordenes, filtro]);
   const actual = (ordenes || []).find((o) => o.id === abierta);
@@ -883,6 +884,7 @@ export default function OrdenesCompra({ empresaId, empresa = null, abrirId = nul
         <option value="abiertas">Abiertas</option>
         <option value="atrasadas">⚠️ Atrasadas</option>
         <option value="a_cotizar">📨 A cotizar</option>
+        <option value="sin_factura">🧾 Recibidas sin factura</option>
         {Object.values(ESTADOS_OC).map((s) => <option key={s.id} value={s.id}>{s.icono} {s.nombre}</option>)}
         <option value="">Todas</option>
       </select>
@@ -899,7 +901,7 @@ export default function OrdenesCompra({ empresaId, empresa = null, abrirId = nul
                 <button onClick={() => setAbierta(o.id)} className={`w-full text-left p-2 rounded-[10px] border bg-gypi-surface cursor-pointer font-body text-gypi-text ${ocAtrasada(o) ? "border-gypi-red" : "border-gypi-border"} ${o.estado === "anulada" ? "opacity-60" : ""}`}>
                   <div className="text-[14px] font-semibold">OC N° {o.numero} · {o.proveedor_nombre}</div>
                   <div className="text-[12px] text-gypi-dim">
-                    {est.icono} {est.nombre}{ocAtrasada(o) ? " · ⚠️ Atrasada" : ""} · {fechaCorta(o.created_at)}
+                    {est.icono} {est.nombre}{ocAtrasada(o) ? " · ⚠️ Atrasada" : ""}{faltaFacturaOc(o) ? " · 🧾 Falta la factura" : ""} · {fechaCorta(o.created_at)}
                     {o.fecha_prometida ? ` · Entrega ${fechaCorta(o.fecha_prometida)}` : ""}{o.moneda === "USD" ? " · Dólares" : ""}
                   </div>
                 </button>

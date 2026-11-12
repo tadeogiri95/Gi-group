@@ -21,6 +21,14 @@ export const ESTADOS_OC = {
 /** OC que todavía esperan material (el MRP no tiene que volver a sugerirlo). */
 export const ESTADOS_OC_ABIERTA = ["borrador", "enviada", "recibida_parcial"];
 
+/**
+ * Llegó mercadería y todavía no se cargó la factura (11/11, conexión del plan
+ * Finanzas e Inventario): sin factura la compra no entra a Finanzas ni a lo
+ * que se le debe al proveedor.
+ */
+export const ESTADOS_OC_RECIBIDA = ["recibida_parcial", "recibida", "cerrada_faltantes"];
+export const faltaFacturaOc = (oc) => ESTADOS_OC_RECIBIDA.includes(oc?.estado) && !String(oc?.factura_numero || "").trim() && !oc?.factura_fecha;
+
 export const MONEDAS = { ARS: { id: "ARS", simbolo: "$" }, USD: { id: "USD", simbolo: "US$" } };
 
 /**
