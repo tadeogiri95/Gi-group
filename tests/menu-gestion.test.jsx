@@ -44,7 +44,7 @@ test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento
 
 test("botones — Proyectos: OT y Reportes; Inventario: Stock y Compras; Mantenimiento: Flota vehicular", () => {
   const labels = (boton, empresa = PLANTA) => opcionesBoton(boton, empresa).map((o) => o.label);
-  assert.deepEqual(labels("proyectos"), ["OT", "Reportes"]);
+  assert.deepEqual(labels("proyectos"), ["OT", "Reportes", "Instalaciones"]);
   assert.deepEqual(labels("inventario"), ["Stock", "Compras"]);
   assert.deepEqual(labels("mantenimiento"), ["Flota vehicular", "Maquinaria"]);
   // Los enlaces viejos a Planta van al botón nuevo

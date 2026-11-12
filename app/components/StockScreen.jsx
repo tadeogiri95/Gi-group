@@ -162,7 +162,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
           placeholder="Buscar por nombre, código o familia" className="g-input flex-1 min-w-0" />
         {puedeCrear && !nuevo && (
           <button onClick={() => setNuevo(true)} title="Artículo nuevo (no está en la planilla)" aria-label="Artículo nuevo (no está en la planilla)"
-            className="g-btn g-btn-secondary shrink-0">➕ Nuevo</button>
+            className="g-btn g-btn-primary shrink-0">＋ Nuevo</button>
         )}
       </div>
       <div className="flex gap-1.5 flex-wrap mb-3" role="group" aria-label="Filtros">

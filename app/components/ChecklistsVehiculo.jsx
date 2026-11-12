@@ -16,7 +16,7 @@ export function fechaHoraCorta(iso) {
 
 export function ListaChecklists({ checklists, vehiculos = [], conPatente = true, onVer }) {
   const porId = new Map(vehiculos.map((v) => [v.id, v]));
-  if (!checklists.length) return <div className="text-[14px] text-gypi-dim">Todavía no hay checklists.</div>;
+  if (!checklists.length) return <div className="text-[14px] text-gypi-dim">Todavía no hay revisiones hechas. Las cargan los choferes desde su Inicio.</div>;
   return (
     <ul aria-label="Checklists" className="list-none m-0 p-0 flex flex-col gap-1.5">
       {checklists.map((c) => (

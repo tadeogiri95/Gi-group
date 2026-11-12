@@ -36,6 +36,20 @@ import FinanzasCierre from "../FinanzasCierre";
 import FinanzasPagos from "../FinanzasPagos";
 import FinanzasPersonas from "../FinanzasPersonas";
 import FinanzasInicio from "../FinanzasInicio";
+import { GRUPOS_FINANZAS } from "../../lib/finanzasInicio";
+
+/**
+ * Las pestañas de arriba en el celular. En Finanzas no van las 14 (auditoría
+ * 12/11, parte 13): en su Inicio ninguna (las tarjetas por tema son el menú);
+ * en otra pantalla, Inicio y las de su mismo tema.
+ */
+export function pestanasCelular(boton, opciones, actualId) {
+  if (boton !== "finanzas") return opciones;
+  if (actualId === "fin-inicio") return [];
+  const grupo = GRUPOS_FINANZAS.find((g) => g.opciones.includes(actualId));
+  if (!grupo) return opciones;
+  return opciones.filter((o) => o.id === "fin-inicio" || grupo.opciones.includes(o.id));
+}
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
@@ -49,6 +63,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
   if (!primera) return null;
   const actual = OPCIONES.find((o) => o.id === opcion) || primera;
   const bloqueado = !tieneModulo(empresa, actual.modulo);
+  const pestanas = pestanasCelular(boton, OPCIONES, actual.id);
   const empresaId = usuario?.empresa_id || empresa?.id;
   // Links de las planillas: en Más → Planillas conectadas (auditoría 01/11).
   // Solo la oficina (no el responsable de mantenimiento).
@@ -58,13 +73,16 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* En la computadora las opciones están en el menú de la izquierda (auditoría 01/11, PR 5) */}
-      <div className="solo-cel shrink-0">
-        <Pestanas label={BOTONES_GESTION[boton].label} opciones={OPCIONES} actual={actual.id} onElegir={setOpcion} bloqueada={(o) => !tieneModulo(empresa, o.modulo)} />
-      </div>
+      {pestanas.length > 0 && (
+        <div className="solo-cel shrink-0">
+          <Pestanas label={BOTONES_GESTION[boton].label} opciones={pestanas} actual={actual.id} onElegir={setOpcion} bloqueada={(o) => !tieneModulo(empresa, o.modulo)} />
+        </div>
+      )}
       <div role="tabpanel" aria-label={actual.label} className="flex-1 overflow-hidden flex flex-col">
         {bloqueado && <ModuloBloqueado modulo={actual.modulo} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} />}
+        {!bloqueado && actual.id === "instalaciones" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} vistaInicial="gantt" ganttTipo="instalacion" />}
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} onPlanillas={onPlanillas} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota" ? "alertas" : "vehiculos"} />}

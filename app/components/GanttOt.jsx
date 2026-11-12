@@ -901,7 +901,8 @@ const CLAVE_TIPO = "gypi_gantt_tipo";
  * de ese mismo plan. El de producción queda armado aunque se mire el otro.
  */
 export default function GanttOt(props) {
-  const [tipo, setTipo] = useState(() => { try { const t = localStorage.getItem(CLAVE_TIPO); return t === "instalacion" || t === "diseno" ? t : "produccion"; } catch { return "produccion"; } });
+  // tipoInicial: lo pide el menú (Producción → 🔧 Instalaciones); si no, el último elegido
+  const [tipo, setTipo] = useState(() => { if (props.tipoInicial) return props.tipoInicial; try { const t = localStorage.getItem(CLAVE_TIPO); return t === "instalacion" || t === "diseno" ? t : "produccion"; } catch { return "produccion"; } });
   const cambiar = (t) => { setTipo(t); try { localStorage.setItem(CLAVE_TIPO, t); } catch { /* sin almacenamiento */ } };
   const [vivo, setVivo] = useState(null);
   // Diseño y Técnica (parte 49): Producción espera que termine Técnica
