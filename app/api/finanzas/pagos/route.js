@@ -14,6 +14,16 @@
 //       que generó (si ningún e-cheq se debitó ni un cheque volvió rechazado).
 //   POST { accion: "cfo", nombre, telefono } → guarda a quién se le manda.
 //
+// Resumen de órdenes de pago (12/11, migración 186; app/lib/finanzasResumenPago.js):
+//   GET también trae los resúmenes y su link para el CFO.
+//   POST { accion: "resumen_crear", resumen: { ordenes, fecha, notas }, comprobantes?, mandar? }
+//       → junta varias órdenes; comprobantes = { <id orden>: url de la foto }.
+//   POST { accion: "resumen_mandar", id } → link del resumen para el CFO; las
+//       órdenes en borrador o rechazadas pasan a esperar su aprobación.
+//   POST { accion: "resumen_anular", id } → las órdenes quedan libres.
+//   POST { accion: "comprobante", id, url } → foto del comprobante de una
+//       orden (opcional; url vacía la quita).
+//
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). El
 // dato del CFO va en config_sistema.
 import crypto from "node:crypto";
@@ -25,14 +35,21 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cambioDeEstado, operacionAlta } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { CLAVE_CFO, accionesOrden, generarPago, validarOrden } from "../../../lib/finanzasPagos";
+import { validarResumen } from "../../../lib/finanzasResumenPago";
+import { comprobanteValido } from "../../../lib/finanzasMiCaja";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const FALTA_175 = "Para las órdenes de pago falta correr la migración 175 en Supabase.";
 const falta175 = (err) => /fin_ordenes_pago/.test(String(err?.message)) && /does not exist|42P01|PGRST20[05]|schema cache/.test(String(err?.message));
 
+const FALTA_186 = "Para el resumen de órdenes de pago falta correr la migración 186 en Supabase.";
+const falta186 = (err) => /fin_resumenes_pago|resumen_id|comprobante_url/.test(String(err?.message)) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(String(err?.message));
+
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
 const nuevoToken = () => crypto.randomBytes(24).toString("base64url");
-const linkCfo = (request, token) => `${(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/+$/, "")}/op/${token}`;
+const baseApp = (request) => (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/+$/, "");
+const linkCfo = (request, token) => `${baseApp(request)}/op/${token}`;
+const linkResumen = (request, token) => `${baseApp(request)}/op/resumen/${token}`;
 
 async function nombreEmpleado(sesion) {
   if (!sesion.empleado_id) return null;
@@ -58,6 +75,7 @@ async function leerOrden(sesion, id) {
 }
 
 function error(err, donde) {
+  if (falta186(err)) return NextResponse.json({ error: FALTA_186, falta_migracion: 186 }, { status: 409 });
   if (falta175(err)) return NextResponse.json({ error: FALTA_175, falta_migracion: 175 }, { status: 409 });
   return errorFinanzas(err, donde);
 }
@@ -70,11 +88,13 @@ export async function GET(request) {
   const e = sesion.empresa_id;
   const anuladas = new URL(request.url).searchParams.get("anuladas") === "1";
   try {
-    const [ctx, ordenes, empresas, cfg] = await Promise.all([
+    const [ctx, ordenes, empresas, cfg, resumenes] = await Promise.all([
       contexto(sesion),
       leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}${anuladas ? "" : "&estado=neq.anulada"}&select=*&order=numero.desc`, 5000),
       sbGet(`empresa?id=eq.${e}&select=nombre,razon_social,logo_url&limit=1`, { silent: true, fallback: [] }),
       sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_CFO}&select=valor&limit=1`, { silent: true, fallback: [] }),
+      // Sin la 186 (o si falla esta lectura) la pantalla sigue andando, solo sin resúmenes
+      leer(sesion, `fin_resumenes_pago?empresa_id=eq.${e}&estado=neq.anulado&select=*&order=numero.desc`, 2000).catch((err) => (falta186(err) ? null : [])),
     ]);
     const { cuentas: _c, ...resto } = ctx;
     return NextResponse.json({
@@ -82,6 +102,9 @@ export async function GET(request) {
       empresa: empresas?.[0] || {},
       cfo: { nombre: cfg?.[0]?.valor?.nombre || "", telefono: cfg?.[0]?.valor?.telefono || "" },
       links: Object.fromEntries((ordenes || []).filter((o) => o.token && o.estado === "para_aprobar").map((o) => [o.id, linkCfo(request, o.token)])),
+      resumenes: resumenes || [],
+      falta_186: resumenes === null,
+      links_resumen: Object.fromEntries((resumenes || []).filter((r) => r.token).map((r) => [r.id, linkResumen(request, r.token)])),
     });
   } catch (err) {
     return error(err, "pagos GET");
@@ -236,6 +259,107 @@ async function anular(sesion, d) {
   return NextResponse.json({ ok: true, orden: hecha });
 }
 
+/* ─── Resumen de órdenes de pago (186) ─── */
+
+async function leerResumen(sesion, id) {
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const [r] = (await leer(sesion, `fin_resumenes_pago?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=*&limit=1`)) || [];
+  return r || null;
+}
+
+const urlValida = (url, sesion) => comprobanteValido(url, { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: sesion.empresa_id });
+
+async function crearResumen(request, sesion, d) {
+  const e = sesion.empresa_id;
+  const ordenes = await leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=neq.anulada&select=id,numero,estado,resumen_id`, 5000);
+  const { resumen, ids, errores } = validarResumen(d.resumen || {}, ordenes);
+  if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  const comprobantes = d.comprobantes && typeof d.comprobantes === "object" ? d.comprobantes : {};
+  for (const id of ids) {
+    const url = comprobantes[id];
+    if (url && !urlValida(url, sesion)) return NextResponse.json({ error: "Una foto de comprobante no es válida: subila de nuevo" }, { status: 400 });
+  }
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  let hecho = null;
+  for (let intento = 0; intento < 3 && !hecho; intento++) {
+    const [ultimo] = (await leer(sesion, `fin_resumenes_pago?empresa_id=eq.${e}&select=numero&order=numero.desc&limit=1`)) || [];
+    try {
+      [hecho] = (await sbPost("fin_resumenes_pago", {
+        ...resumen, empresa_id: e, numero: (Number(ultimo?.numero) || 0) + 1, estado: "armado",
+        cargado_por_nombre: quien, created_at: ahora, updated_at: ahora,
+      }, { sesion })) || [];
+    } catch (err) {
+      if (!/23505|duplicate key/.test(String(err?.message)) || intento === 2) throw err;
+    }
+  }
+  if (!hecho?.id) return NextResponse.json({ error: "No se pudo guardar el resumen" }, { status: 500 });
+  // Las órdenes entran solo si siguen libres (si otro resumen las tomó, quedan afuera)
+  const tomadas = (await sbPatch(`fin_ordenes_pago?empresa_id=eq.${e}&id=in.(${ids.join(",")})&resumen_id=is.null&estado=neq.anulada`, { resumen_id: hecho.id, updated_at: ahora }, { sesion })) || [];
+  for (const o of tomadas) {
+    const url = comprobantes[o.id];
+    if (url) await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}`, { comprobante_url: url, updated_at: ahora }, { sesion });
+  }
+  refrescar(e, "fin_ordenes_pago", "fin_resumenes_pago");
+  const afuera = ids.length - tomadas.length;
+  if (d.mandar === true) {
+    const r = await mandarResumen(request, sesion, { id: hecho.id });
+    const j = await r.json();
+    return NextResponse.json({ ...j, afuera }, { status: r.status });
+  }
+  return NextResponse.json({ ok: true, resumen: hecho, afuera });
+}
+
+async function mandarResumen(request, sesion, d) {
+  const e = sesion.empresa_id;
+  const r = await leerResumen(sesion, Number(d.id));
+  if (!r) return NextResponse.json({ error: "No encontré ese resumen" }, { status: 404 });
+  if (r.estado === "anulado") return NextResponse.json({ error: "Ese resumen está anulado" }, { status: 400 });
+  const ahora = new Date().toISOString();
+  // Las órdenes en borrador o rechazadas pasan a esperar al CFO, cada una con su link
+  const ordenes = await leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&resumen_id=eq.${r.id}&select=id,estado`, 500);
+  if (!ordenes.some((o) => o.estado !== "anulada")) return NextResponse.json({ error: "El resumen no tiene órdenes vivas" }, { status: 400 });
+  for (const o of ordenes.filter((x) => ["borrador", "rechazada"].includes(x.estado))) {
+    await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
+      estado: "para_aprobar", token: nuevoToken(), enviada_at: ahora, decidida_at: null, decidida_por_nombre: null, decision_nota: null, updated_at: ahora,
+    }, { sesion });
+  }
+  const [hecho] = (await sbPatch(`fin_resumenes_pago?id=eq.${r.id}&empresa_id=eq.${e}&estado=neq.anulado`, {
+    estado: "enviado", token: r.token || nuevoToken(), enviado_at: ahora, updated_at: ahora,
+  }, { sesion })) || [];
+  if (!hecho) return NextResponse.json({ error: "El resumen cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  refrescar(e, "fin_ordenes_pago", "fin_resumenes_pago");
+  return NextResponse.json({ ok: true, resumen: hecho, url: linkResumen(request, hecho.token) });
+}
+
+async function anularResumen(sesion, d) {
+  const e = sesion.empresa_id;
+  const r = await leerResumen(sesion, Number(d.id));
+  if (!r) return NextResponse.json({ error: "No encontré ese resumen" }, { status: 404 });
+  if (r.estado === "anulado") return NextResponse.json({ error: "Ese resumen ya está anulado" }, { status: 400 });
+  const ahora = new Date().toISOString();
+  const [hecho] = (await sbPatch(`fin_resumenes_pago?id=eq.${r.id}&empresa_id=eq.${e}&estado=neq.anulado`, {
+    estado: "anulado", token: null, anulado_at: ahora, anulado_por_nombre: await nombreEmpleado(sesion), updated_at: ahora,
+  }, { sesion })) || [];
+  if (!hecho) return NextResponse.json({ error: "El resumen cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  // Las órdenes siguen como estaban, libres para otro resumen
+  await sbPatch(`fin_ordenes_pago?empresa_id=eq.${e}&resumen_id=eq.${r.id}`, { resumen_id: null, updated_at: ahora }, { sesion });
+  refrescar(e, "fin_ordenes_pago", "fin_resumenes_pago");
+  return NextResponse.json({ ok: true, resumen: hecho });
+}
+
+async function guardarComprobante(sesion, d) {
+  const e = sesion.empresa_id;
+  const o = await leerOrden(sesion, Number(d.id));
+  if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
+  if (o.estado === "anulada") return NextResponse.json({ error: "La orden está anulada" }, { status: 400 });
+  const url = d.url ? String(d.url) : null;
+  if (url && !urlValida(url, sesion)) return NextResponse.json({ error: "La foto del comprobante no es válida: subila de nuevo" }, { status: 400 });
+  const [hecha] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}`, { comprobante_url: url, updated_at: new Date().toISOString() }, { sesion })) || [];
+  refrescar(e, "fin_ordenes_pago");
+  return NextResponse.json({ ok: true, orden: hecha || { ...o, comprobante_url: url } });
+}
+
 async function guardarCfo(sesion, d) {
   const e = sesion.empresa_id;
   const valor = {
@@ -260,6 +384,10 @@ export async function POST(request) {
     if (d?.accion === "pagar") return await pagar(sesion, d);
     if (d?.accion === "anular") return await anular(sesion, d);
     if (d?.accion === "cfo") return await guardarCfo(sesion, d);
+    if (d?.accion === "resumen_crear") return await crearResumen(request, sesion, d);
+    if (d?.accion === "resumen_mandar") return await mandarResumen(request, sesion, d);
+    if (d?.accion === "resumen_anular") return await anularResumen(sesion, d);
+    if (d?.accion === "comprobante") return await guardarComprobante(sesion, d);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     return error(err, `pagos ${d?.accion}`);
