@@ -164,16 +164,15 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
       <FilaDeslizable role="group" aria-label="Ver" activa={vista} className="gap-1.5 mb-3">
         <Chip active={vista === "vehiculos"} onClick={() => setVista("vehiculos")}>🚚 Vehículos</Chip>
         <Chip active={vista === "alertas"} onClick={() => setVista("alertas")}>🔔 Alertas{todasUrgentes.length ? ` (${todasUrgentes.length})` : ""}</Chip>
-        <Chip active={vista === "checklists"} onClick={() => setVista("checklists")}>📋 Checklists</Chip>
+        <Chip active={vista === "checklists" || vista === "plantilla"} onClick={() => setVista("checklists")}>📋 Revisiones hechas</Chip>
         <Chip active={vista === "choferes"} onClick={() => setVista("choferes")}>🪪 Choferes</Chip>
         {oficina && <Chip active={vista === "costos"} onClick={() => setVista("costos")}>💲 Costos</Chip>}
-        {editable && <Chip active={vista === "plantilla"} onClick={() => setVista("plantilla")}>⚙ Checklist</Chip>}
       </FilaDeslizable>
       {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
 
       {vista === "vehiculos" && (
         <>
-          {editable && <button onClick={() => setNuevo(true)} className="g-btn g-btn-primary w-full mb-3">＋ Agregar vehículo</button>}
+          {editable && <button onClick={() => setNuevo(true)} className="g-btn g-btn-primary mb-3">＋ Agregar vehículo</button>}
           <div className="flex gap-2 mb-2 items-center">
             <input aria-label="Buscar vehículo" className="g-input flex-1 min-w-0" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar patente, marca o chofer" />
             <label className="flex items-center gap-1 text-[13px] text-gypi-dim min-h-[44px]">
@@ -249,8 +248,20 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
         </>
       )}
 
-      {vista === "checklists" && <ListaChecklists checklists={checklists.slice(0, 200)} vehiculos={vehiculos || []} onVer={setVerChecklist} />}
-      {vista === "plantilla" && editable && <PlantillaChecklist />}
+      {/* Auditoría 12/11 (parte 13): "📋 Checklists" y "⚙ Checklist" se confundían.
+          Una sola pestaña con lo que cargaron los choferes; el modelo se edita con ⚙ adentro. */}
+      {vista === "checklists" && (
+        <>
+          {editable && <button type="button" onClick={() => setVista("plantilla")} className="g-btn g-btn-secondary mb-3">⚙ Editar los puntos a revisar</button>}
+          <ListaChecklists checklists={checklists.slice(0, 200)} vehiculos={vehiculos || []} onVer={setVerChecklist} />
+        </>
+      )}
+      {vista === "plantilla" && editable && (
+        <>
+          <button type="button" onClick={() => setVista("checklists")} className="g-btn g-btn-secondary mb-3">← Volver a las revisiones hechas</button>
+          <PlantillaChecklist />
+        </>
+      )}
 
       {vista === "costos" && oficina && (
         <>

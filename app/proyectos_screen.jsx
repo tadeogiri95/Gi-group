@@ -176,7 +176,9 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
+// vistaInicial / ganttTipo: Producción → 🔧 Instalaciones abre directo el
+// Gantt de instalación (auditoría 12/11, parte 13)
+export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaInicial = "lista", ganttTipo = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, checklistInstalacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(comoDueno(usuario));
@@ -220,7 +222,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
   const esGestionOt = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
   // OT tocada en la lista: se abre con todos sus botones (auditoría 22/10)
   const [acciones, setAcciones] = useState(null);
-  const [vista, setVista] = useState("lista");
+  const [vista, setVista] = useState(vistaInicial);
   const [csvFilas, setCsvFilas] = useState(null);
   const [csvRawText, setCsvRawText] = useState(null);
   const [csvProgreso, setCsvProgreso] = useState("");
@@ -531,7 +533,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
 
       {/* Acciones de todos los días: grandes y con texto (revisión de la interfaz, 2026-10) */}
       <div className="flex gap-2 mb-2.5">
-        <button onClick={() => setModal({})} className="flex-1 min-h-[48px] rounded-xl border-none bg-gypi-green/15 text-gypi-green text-[15px] font-bold cursor-pointer">+ Nueva OT</button>
+        <button onClick={() => setModal({})} className="g-btn g-btn-primary flex-1 min-h-[48px] text-[15px]">+ Nueva OT</button>
         <button onClick={sincronizar} disabled={syncLoading} title={AVISO_DEMORA_GOOGLE} className="flex-1 min-h-[48px] rounded-xl border border-gypi-border bg-gypi-surface text-gypi-text text-[15px] font-bold cursor-pointer disabled:opacity-60">
           {syncLoading ? "Sincronizando…" : "🔄 Actualizar y sincronizar"}
         </button>
@@ -597,6 +599,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null }) {
         <NoConformidades empresaId={empresaId} proyectos={proyectos} etapas={etapasCtx || []} defectos={defectos || []} />
       ) : vista === "gantt" && !loading ? (
         <GanttOt
+          tipoInicial={ganttTipo}
           proyectos={filtrados.filter(p => p.estado !== "cerrado")}
           etapas={etapasCtx || []}
           divisiones={divisionesCtx || []}

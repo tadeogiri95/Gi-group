@@ -24,6 +24,9 @@ export const BOTONES_GESTION = {
       { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
       { id: "ot", label: "OT", modulo: "proyectos" },
       { id: "reportes", label: "Reportes", modulo: "actividad" },
+      // Auditoría 12/11 (parte 13): las instalaciones con lugar propio, abre
+      // directo el 🔧 Gantt de instalación (antes estaba escondido dentro de OT)
+      { id: "instalaciones", label: "Instalaciones", modulo: "proyectos" },
       // Planificación de la producción (parte 38): la arman el Dueño y los supervisores
       { id: "planificacion", label: "Planificación", modulo: "proyectos", soloGerencia: true },
       // Minuta de la reunión de Buenos Días (Minuta, parte M1, 150): Dueño y supervisores
@@ -73,7 +76,7 @@ export const BOTONES_GESTION = {
 
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
-  vivo: "🟢", ot: "📋", reportes: "📊", planificacion: "📅", minuta: "📝",
+  vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
   stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-resultados": "📊", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-config": "🧾",
 };
 
@@ -93,7 +96,7 @@ export function conBoton(boton, empresa, usuario = null) {
 }
 
 // Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
-const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", minuta: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
+const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", instalaciones: "proyectos", minuta: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
 
 export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;
