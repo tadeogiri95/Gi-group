@@ -44,6 +44,8 @@ import {
 import { ErrorIa, leerFacturaIa } from "../../lib/facturaIa";
 import { requireModuloSesion } from "../../lib/accesosServidor";
 import { avisoIngresoRepetido, buscarIngresoRepetido, ingresosDeFactura, marcaFacturaSuelta } from "../../lib/stockIngresos";
+import { buscarFacturaRepetida } from "../../lib/facturaUnicaServidor";
+import { avisoFacturaRepetida } from "../../lib/facturaUnica";
 
 export const maxDuration = 60;
 
@@ -193,6 +195,11 @@ async function guardar(sesion, d) {
 
   // El proveedor de la lista con el mismo nombre (172), para su cuenta corriente en Finanzas
   const proveedorId = await proveedorPorNombre(e, v.factura.proveedor);
+  // Una factura, una sola vez (auditoría 12/11, parte 1): las listas de precios no cuentan
+  if (v.factura.tipo !== "lista" && v.factura.numero && !d.forzar) {
+    const repetida = await buscarFacturaRepetida(e, { numero: v.factura.numero, proveedor_id: proveedorId, proveedor_nombre: v.factura.proveedor });
+    if (repetida) return NextResponse.json({ error: avisoFacturaRepetida(repetida), repetida: true }, { status: 409 });
+  }
   const fila = { empresa_id: e, ...v.factura, cargada_por_nombre: nombre };
   let factura;
   try {

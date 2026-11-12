@@ -514,6 +514,8 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({
     accion: z.literal("oc_factura"),
     id: idCompras,
+    // 12/11 (auditoría, parte 1): guardar igual una factura cuyo número ya está cargado
+    forzar: z.boolean().optional(),
     factura_numero: textoSuelto(60),
     factura_fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().transform((v) => v || null),
     tipo_cambio: z.number().finite().positive().max(1e7).nullable().optional().transform((v) => v ?? null),
@@ -531,6 +533,7 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({
     accion: z.literal("oc_otra_factura_guardar"),
     id: idCompras,
+    forzar: z.boolean().optional(),
     factura_id: idCompras.nullable().optional().transform((v) => v ?? null),
     proveedor_id: idCompras,
     numero: textoSuelto(60),
