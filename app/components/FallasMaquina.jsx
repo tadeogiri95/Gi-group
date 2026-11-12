@@ -11,6 +11,7 @@ import { fallasPendientes, textoHoras } from "../lib/fallasMaquinaria";
 import { Chip } from "./ui";
 import BotonFoto from "./BotonFoto";
 import ElegirTaller from "./ElegirTaller";
+import PedirParaProblema from "./PedirParaProblema";
 
 async function postFalla(body) {
   const res = await apiFetch("/api/maquinaria", { method: "POST", body: JSON.stringify(body) });
@@ -81,6 +82,7 @@ export function ListaFallas({ fallas = [], maquinas = [], empleados = [], editab
               ) : (
                 <div className="flex gap-1.5 mt-2 flex-wrap">
                   {puedeArreglar(f, m) && <button onClick={() => setArreglando(f)} className="g-btn g-btn-primary flex-1">🔧 Cargar arreglo</button>}
+                  <PedirParaProblema origen="falla_maquina" origenId={f.id} texto={`${m?.codigo ? `${m.codigo} · ` : ""}${f.descripcion}`} />
                   {editable && !f.parada && <button onClick={() => accion({ accion: "falla_editar", id: f.id, responsable_id: f.responsable_id || null, parada: true })} className="g-btn g-btn-secondary">🔴 Quedó parada</button>}
                   {editable && <button onClick={() => { setDescartando(f.id); setMotivo(""); }} className="g-btn g-btn-secondary">Descartar</button>}
                   {editable && (

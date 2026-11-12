@@ -15,6 +15,7 @@ import FirmaDedo from "./FirmaDedo";
 import NoConformeForm from "./NoConformeForm";
 import { useEscape } from "../hooks/useEscape";
 import { TituloOt } from "./NombreOt";
+import PedirParaProblema from "./PedirParaProblema";
 
 const BOTON_TILDE = "min-h-[44px] px-2.5 rounded-lg border text-xs font-bold cursor-pointer";
 
@@ -230,6 +231,7 @@ export default function ActaOt({ ot, empresaId, empresa = null, checklist = [], 
                     {p.fecha ? `Se resuelve el ${fechaCorta(p.fecha)}` : "Sin fecha"}
                     {p.foto_url && <> · <a href={p.foto_url} target="_blank" rel="noreferrer" className="text-gypi-cyan">📷 foto</a></>}
                   </div>
+                  {!p.resuelto && <div className="mt-1.5"><PedirParaProblema origen="pendiente_obra" origenId={p.id} texto={p.descripcion} ot={otStr} /></div>}
                 </div>
                 {cerrada ? (
                   <Tilde activo={p.resuelto} disabled={guardando} onClick={() => resolverPendiente(p)} label={`Resuelto: ${p.descripcion}`} texto="Resuelto" />
