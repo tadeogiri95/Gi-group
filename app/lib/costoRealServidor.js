@@ -8,6 +8,7 @@ import { logger } from "./logger";
 import { elegirPrecio, fechaCargaOt, filaPrecioFijo } from "./costoMateriales";
 import { costoMaterialesDeOts, guardarFijos, preciosDe } from "./costoMaterialesServidor";
 import { horasDeOts } from "./horasOtServidor";
+import { CLAVE_MARGEN, margenMinimoDe } from "./margenOt";
 import { comprasDirectas, costoPrevistoReal, gastosOt, horasInstalacion, horasRetrabajo, materialesFuera } from "./costoReal";
 
 const MAX_LOTE = 60;
@@ -93,6 +94,20 @@ export async function extrasDeOts(e, proyectos, materiales) {
   return out;
 }
 
+/**
+ * Precio de cada OT (PRECIO del Plan, sin IVA; precios_ot, 142) y el margen
+ * mínimo de la empresa (auditoría 12/11, parte 4). Sin la 142, sin precios.
+ * @returns {Promise<{ precios: Map<string, number>, minimo: number }>}
+ */
+export async function preciosYMinimo(e, ots = []) {
+  const precios = new Map();
+  for (const t of trozos([...new Set(ots.map(String))], 150)) {
+    for (const r of (await leer(`precios_ot?empresa_id=eq.${e}&ot=in.(${lista(t)})&precio=not.is.null&select=ot,precio`)).data || []) precios.set(String(r.ot), Number(r.precio));
+  }
+  const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_MARGEN}&select=valor&limit=1`, { silent: true, fallback: [] }).catch(() => [])) || [];
+  return { precios, minimo: margenMinimoDe(cfg?.valor) };
+}
+
 /** Costo de la hora de la empresa (Costos), o null. */
 export async function costoHoraDe(e) {
   const [c] = (await sbGet(`costos_empresa?empresa_id=eq.${e}&select=costo_hora&limit=1`).catch(() => [])) || [];
@@ -127,4 +142,21 @@ export async function costoRealDeOt(e, ot) {
   const [p] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&select=*&limit=1`)) || [];
   if (!p) return null;
   return (await costosRealesDeOts(e, [p])).get(String(p.ot)) || null;
+}
+
+/**
+ * Solo los materiales reales de cada OT (MRP + retirado de más + compras sin
+ * stock), para el estado de resultados (parte 4).
+ * @returns {Promise<Map<string, number>>} por código de OT
+ */
+export async function materialesRealesDeOts(e, proyectos) {
+  const materiales = await costoMaterialesDeOts(e, proyectos);
+  const extras = await extrasDeOts(e, proyectos, materiales);
+  const out = new Map();
+  for (const p of proyectos || []) {
+    const ot = String(p.ot);
+    const x = extras.get(ot) || {};
+    out.set(ot, Math.round(((materiales.get(ot)?.total || 0) + (x.fuera?.total || 0) + (x.compras?.total || 0)) * 100) / 100);
+  }
+  return out;
 }

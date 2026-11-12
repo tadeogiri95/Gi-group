@@ -7,6 +7,8 @@
 //   POST { accion: "config", materiales_pct?, ponderador? } → el % de las
 //       entregas con que se estima el costo de materiales (0 = no estimar) y
 //       el % de lo compartido que va a cada división (suman 100).
+//       materiales_real?: true usa el costo real de materiales de cada OT
+//       entregada (auditoría 12/11, parte 4); las demás entregas, el %.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). La
 // configuración va en config_sistema.
@@ -15,13 +17,34 @@ import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
+import { logger } from "../../../lib/logger";
+import { materialesRealesDeOts } from "../../../lib/costoRealServidor";
 import { CLAVE_RESULTADOS, configResultados, estadoResultados, finDeMes, mesesHasta, resumenDivisiones, validarPonderador } from "../../../lib/finanzasResultados";
+
+export const maxDuration = 60;
 
 const FALTA_179 = "Para el estado de resultados falta correr la migración 179 en Supabase.";
 const falta179 = (err) => /linea_eerr|atribucion/.test(String(err?.message)) && /does not exist|42703|PGRST20[045]|schema cache/.test(String(err?.message));
 const COLUMNAS = "id,fecha,cuenta_debe,cuenta_haber,neto,total,total_ars,proyecto_id,centro_costo,estado,anulada_at";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
+
+/** Materiales reales (MRP + de más + compras sin stock) de las OT con entregas en la ventana, por id de OT. */
+async function materialesDeEntregas(e, ops, cuentas) {
+  const ent = new Set(cuentas.filter((c) => /^ING_ENT/i.test(String(c.linea_eerr || ""))).map((c) => c.codigo));
+  const ids = [...new Set(ops.filter((o) => o.proyecto_id && (ent.has(o.cuenta_haber) || ent.has(o.cuenta_debe))).map((o) => Number(o.proyecto_id)))].slice(0, 400);
+  if (!ids.length) return new Map();
+  try {
+    const proyectos = [];
+    for (let i = 0; i < ids.length; i += 150) proyectos.push(...((await sbGetAll(`proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 150).join(",")})&select=*`, { maxFilas: 1000 })).data || []));
+    const reales = await materialesRealesDeOts(e, proyectos);
+    return new Map(proyectos.map((p) => [Number(p.id), reales.get(String(p.ot)) || 0]));
+  } catch (err) {
+    // Sin las migraciones del costo o la base no respondió: queda el %
+    logger.warn(`[finanzas] resultados: materiales reales ${err?.message}`);
+    return null;
+  }
+}
 
 async function leerConfig(e) {
   const cfg = await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_RESULTADOS}&select=valor&limit=1`, { silent: true, fallback: [] });
@@ -44,7 +67,9 @@ export async function GET(request) {
       leerConfig(e),
       leer(sesion, `fin_centros_costo?empresa_id=eq.${e}&select=codigo,division`).catch(() => []),
     ]);
-    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador };
+    // Costo real de materiales de cada OT entregada (auditoría 12/11, parte 4), si el Dueño lo eligió
+    const materialesOt = config.materiales_real ? await materialesDeEntregas(e, ops || [], cuentas || []) : null;
+    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt };
     const pedida = q.get("division") || "";
     const division = Object.keys(config.ponderador).includes(pedida) ? pedida : "";
     const estado = estadoResultados({ ...base, division });
@@ -72,6 +97,7 @@ export async function POST(request) {
     if (!Number.isFinite(n) || n < 0 || n > 100) return NextResponse.json({ error: "El % de materiales va de 0 a 100" }, { status: 400 });
     cambios.materiales_pct = Math.round(n * 10) / 10;
   }
+  if ("materiales_real" in d) cambios.materiales_real = d.materiales_real === true;
   if ("ponderador" in d) {
     const p = validarPonderador(d.ponderador);
     if (p.error) return NextResponse.json({ error: p.error }, { status: 400 });
@@ -81,6 +107,7 @@ export async function POST(request) {
   try {
     // Lo que no vino queda como estaba
     const valor = { ...(await leerConfig(e)), ...cambios };
+    if (!valor.materiales_real) delete valor.materiales_real;
     const ya = await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_RESULTADOS}&select=clave&limit=1`, { silent: true, fallback: [] });
     if (ya?.length) await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_RESULTADOS}`, { valor });
     else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_RESULTADOS, valor });

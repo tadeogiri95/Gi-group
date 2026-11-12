@@ -161,8 +161,8 @@ test("reporte — costo real y previsto por OT, desvío y planilla", () => {
   const t = totalesReporte([abierta, final, vieja]);
   assert.deepEqual([t.previsto, t.real_comparado, t.desvio, t.total], [750160, 780200, 30040, 780350]);
   const planilla = planillaReporte([abierta]);
-  assert.deepEqual(planilla[0].slice(-5), ["Gastos de la OT", "Costo final", "Costo previsto", "Desvío", "% real/previsto"]);
-  assert.deepEqual(planilla[1].slice(-4), ["780000", "750000", "30000", 104]);
+  assert.deepEqual(planilla[0].slice(-9, -4), ["Gastos de la OT", "Costo final", "Costo previsto", "Desvío", "% real/previsto"]);
+  assert.deepEqual(planilla[1].slice(-8, -4), ["780000", "750000", "30000", 104]);
 });
 
 // ─── Ruta ───

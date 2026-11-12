@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { fmtPesos } from "../lib/costo";
 import { textoHoras } from "../lib/horasOt";
+import { textoPct } from "../lib/margenOt";
 
 const pesos = (v) => (v == null ? "—" : fmtPesos(v));
 const fechaCorta = (f) => (f ? String(f).split("-").reverse().join("/") : "");
@@ -24,6 +25,27 @@ function horasDe(f) {
   if (f.id !== "planta" && f.id !== "instalacion") return null;
   if (f.horasPrevistas == null && f.horasReales == null) return null;
   return `${textoHoras(f.horasPrevistas)} previstas · ${textoHoras(f.horasReales)} reales`;
+}
+
+/** Precio, ganancia y margen contra el mínimo (parte 4). */
+function Margen({ d }) {
+  if (d.precio == null) return <div className="text-xs text-gypi-dim mb-2">Sin PRECIO en el Plan de trabajo: no se puede calcular el margen.</div>;
+  const m = d.margen;
+  const p = d.margen_previsto;
+  if (!m) return null;
+  return (
+    <div className={`rounded-lg p-2.5 mb-2 border ${m.bajo ? "border-gypi-red bg-gypi-red/10" : "border-gypi-border"}`} role={m.bajo ? "alert" : undefined}>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div><div className="text-xs text-gypi-dim">Precio sin IVA</div><div className="text-[14px] font-bold">{fmtPesos(m.precio)}</div></div>
+        <div><div className="text-xs text-gypi-dim">Ganancia</div><div className={`text-[14px] font-bold ${m.ganancia < 0 ? "text-gypi-red" : ""}`}>{fmtPesos(m.ganancia)}</div></div>
+        <div><div className="text-xs text-gypi-dim">Margen</div><div className={`text-[14px] font-bold ${m.bajo ? "text-gypi-red" : "text-gypi-green"}`}>{textoPct(m.pct)}</div></div>
+      </div>
+      <div className={`text-xs mt-1 ${m.bajo ? "font-semibold text-gypi-red" : "text-gypi-dim"}`}>
+        {m.bajo ? `⚠ Por debajo del mínimo de ${textoPct(d.margen_minimo)}` : `Mínimo ${textoPct(d.margen_minimo)}`}
+        {p ? ` · con el costo previsto era ${textoPct(p.pct)}` : ""}
+      </div>
+    </div>
+  );
 }
 
 export default function CostoRealOt({ ot }) {
@@ -71,6 +93,7 @@ export default function CostoRealOt({ ot }) {
             {pasado ? "⚠ Se gastó " : "✓ Va "}{fmtPesos(Math.abs(datos.diferencia))} {pasado ? "más" : "menos"} de lo previsto{datos.pct != null ? ` (${datos.pct} % de lo previsto)` : ""}
           </div>
         )}
+        <Margen d={datos} />
         <table className="w-full text-[13px] border-collapse">
           <thead>
             <tr className="text-xs text-gypi-dim text-left">
