@@ -11,6 +11,8 @@
 // ("Para revisar") y "⚙ Mi caja" esconde los tipos que no se les ofrecen.
 // F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).
 // Parte 8 del 11/11: 🏦 Plazos fijos (FinanzasPlazosFijos.jsx).
+// 12/11: tocando un movimiento de la ficha se ve su detalle, y se corrige o se
+// anula (finanzasCorregir.js).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -20,6 +22,7 @@ import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, sald
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
 import SubirExtracto from "./FinanzasExtracto";
 import PlazosFijos from "./FinanzasPlazosFijos";
+import { Detalle } from "./FinanzasMovimientos";
 import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -195,8 +198,9 @@ function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
 
 /* ─── Ficha de una caja ──────────────────────────────────────────────── */
 
-function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto }) {
+function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto, onCambio }) {
   const movimientos = useMemo(() => movimientosDeCaja(datos.operaciones, caja), [datos, caja]);
+  const [detalle, setDetalle] = useState(null);
   const responsable = datos.personal.find((p) => p.id === caja.responsable_id)?.nombre;
   return (
     <Modal open onClose={onCerrar} title={caja.nombre} maxWidth={1080}>
@@ -221,7 +225,10 @@ function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto }) {
               {[...movimientos].reverse().slice(0, MAX_MOVIMIENTOS).map((m) => (
                 <tr key={m.op.id} className="border-t border-gypi-border">
                   <td className="py-1">
-                    <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
+                    <button type="button" onClick={() => setDetalle(m.op)} aria-label={`Ver ${m.op.tipo} del ${fechaCorta(m.op.fecha)}`}
+                      className="p-0 border-none bg-transparent text-left cursor-pointer text-gypi-text underline decoration-gypi-border underline-offset-2">
+                      <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
+                    </button>
                     {m.op.estado === "para_revisar" && <b className="ml-1 text-gypi-amber-ink">· Para revisar</b>}
                     {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
                     {m.op.comprobante_url && <a href={m.op.comprobante_url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-gypi-cyan underline">🧾 Ver ticket</a>}
@@ -235,7 +242,9 @@ function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto }) {
           </table>
         ) : <p className="m-0 text-[13px] text-gypi-dim">Sin movimientos todavía.</p>}
         {movimientos.length > MAX_MOVIMIENTOS && <p className="m-0 text-[12px] text-gypi-dim">Se ven los últimos {MAX_MOVIMIENTOS}. El resto está en Movimientos, filtrando por esta caja.</p>}
+        {movimientos.length > 0 && <p className="m-0 text-[12px] text-gypi-dim">Tocá un movimiento para verlo, corregirlo o anularlo.</p>}
       </div>
+      {detalle && <Detalle op={detalle} datos={datos} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); onCambio(); }} />}
     </Modal>
   );
 }
@@ -451,7 +460,7 @@ export default function FinanzasTesoreria() {
         </label>
       )}
 
-      {cajaFicha && <Ficha caja={cajaFicha} datos={datos} onCerrar={() => setFicha(null)} onTransferir={() => { setTransferir(cajaFicha.cuenta); setFicha(null); }} onExtracto={() => { setExtracto(cajaFicha.cuenta); setFicha(null); }} />}
+      {cajaFicha && <Ficha caja={cajaFicha} datos={datos} onCambio={cargar} onCerrar={() => setFicha(null)} onTransferir={() => { setTransferir(cajaFicha.cuenta); setFicha(null); }} onExtracto={() => { setExtracto(cajaFicha.cuenta); setFicha(null); }} />}
       {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cargar(); }} />}
       {transferir !== null && <Transferir datos={datos} desdeInicial={transferir} onCerrar={() => setTransferir(null)} onHecho={() => { setTransferir(null); cargar(); }} />}
       {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cargar} />}

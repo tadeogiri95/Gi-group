@@ -12,6 +12,9 @@
 //       interés) y guarda la lista, unida por certificado: nada se repite.
 //   POST { accion: "vencidos" } → registra el vencimiento y el interés de los
 //       plazos guardados que ya vencieron (siempre vuelven a la cuenta).
+//   POST { accion: "anular_repetidos" } → anula las operaciones que cargó Gypi
+//       y que también están en el libro (12/11; plazosRepetidos en
+//       finanzasCorregir.js). El libro borra el renglón de Gypi y queda el suyo.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
@@ -24,6 +27,14 @@ import {
   CLAVE_PLAZOS_FIJOS, MAX_PLAZOS, contextoPlazos, cuentasPorDefecto, leerGuardados, listaPlazos, operacionPlazo,
   pathOpsPlazos, planPlazosFijos, plazoValido, unirPlazos, vencidosPendientes,
 } from "../../../lib/finanzasPlazosFijos";
+import { plazosRepetidos } from "../../../lib/finanzasCorregir";
+
+const CUENTA_ORIGEN = { libro: "copiada del libro", manual: "cargada a mano", banco: "del extracto del banco" };
+/** Lo que se muestra de cada par repetido. */
+const parRepetido = ({ gypi, otra }) => ({
+  id: gypi.id, fecha: gypi.fecha, total: gypi.total, tipo: gypi.tipo, descripcion: gypi.descripcion,
+  otra: { id: otra.id, fecha: otra.fecha, total: otra.total, descripcion: otra.descripcion, origen: CUENTA_ORIGEN[otra.origen] || "cargada en otra pantalla" },
+});
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 
@@ -71,6 +82,7 @@ export async function GET(request) {
       hoy,
       plazos: listaPlazos(guardados, ops, cuentasPf, hoy),
       pendientes: vencidosPendientes(guardados, ops, cuentasPf, hoy),
+      repetidos: plazosRepetidos(ops).map(parRepetido),
       bancos: vivas.filter((t) => t.tipo === "banco").map((t) => ({ cuenta: t.cuenta, nombre: t.nombre })),
       cuentas_pf: vivas.filter((t) => t.tipo === "plazo_fijo").map((t) => ({ cuenta: t.cuenta, nombre: t.nombre })),
       por_defecto: cuentasPorDefecto(tesoreria, guardados[0] ? tesoreria.find((t) => t.cuenta === guardados[0].cuenta_pf)?.nombre || "" : ""),
@@ -141,6 +153,23 @@ async function vencidos(sesion) {
   return NextResponse.json({ ok: true, cargadas: ops.length, plazos: pendientes.length });
 }
 
+async function anularRepetidos(sesion) {
+  const base = await leerTodo(sesion);
+  const ids = plazosRepetidos(base.ops).map((p) => p.gypi.id);
+  if (!ids.length) return NextResponse.json({ ok: true, anuladas: 0 });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  let anuladas = 0;
+  for (let i = 0; i < ids.length; i += 200) {
+    const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${sesion.empresa_id}&origen=eq.plazo_fijo&anulada_at=is.null&id=in.(${ids.slice(i, i + 200).join(",")})`, {
+      anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} (repetida con el libro)`.slice(0, 120), updated_at: ahora,
+    }, { sesion });
+    anuladas += filas?.length || 0;
+  }
+  broadcastRefresh(sesion.empresa_id, "fin_operaciones");
+  return NextResponse.json({ ok: true, anuladas });
+}
+
 export async function POST(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -151,6 +180,7 @@ export async function POST(request) {
     if (d?.accion === "ver") return await ver(sesion, d);
     if (d?.accion === "cargar") return await cargar(sesion, d);
     if (d?.accion === "vencidos") return await vencidos(sesion);
+    if (d?.accion === "anular_repetidos") return await anularRepetidos(sesion);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     if (/23505|duplicate/i.test(String(err?.message))) return NextResponse.json({ error: "Alguno de esos plazos fijos ya se cargó recién: actualizá y probá de nuevo." }, { status: 409 });
