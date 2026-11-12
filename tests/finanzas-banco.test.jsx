@@ -6,6 +6,7 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
+import { zipSync, strToU8 } from "fflate";
 import {
   importeAr, fechaExtracto, movimientosDePdf, movimientosDeGrilla, grillaDeCsv, grillaDeHtml, claseDeArchivo,
 } from "../app/lib/finanzasExtracto.js";
@@ -431,4 +432,50 @@ test("Subir extracto — saldo por origen, repetidos para anular y \"Dejar como 
   } finally {
     window.confirm = viejo;
   }
+});
+
+/** Un libro .xlsx mínimo con la hoja T-OPERACIONES (textos compartidos, como Excel). */
+function libroXlsx(filas) {
+  const comp = [];
+  const idx = (v) => { let i = comp.indexOf(v); if (i < 0) { comp.push(v); i = comp.length - 1; } return i; };
+  const col = (n) => String.fromCharCode(65 + n);
+  const xml = filas.map((f, r) => `<row r="${r + 1}">${f.map((v, c) => (v === "" ? "" : `<c r="${col(c)}${r + 1}" t="s"><v>${idx(String(v))}</v></c>`)).join("")}</row>`).join("");
+  return zipSync({
+    "xl/workbook.xml": strToU8('<workbook xmlns:r="x"><sheets><sheet name="T-OPERACIONES" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+    "xl/_rels/workbook.xml.rels": strToU8('<Relationships><Relationship Id="rId1" Type="x" Target="worksheets/sheet1.xml"/></Relationships>'),
+    "xl/worksheets/sheet1.xml": strToU8(`<?xml version="1.0"?><worksheet><sheetData>${xml}</sheetData></worksheet>`),
+    "xl/sharedStrings.xml": strToU8(`<sst>${comp.map((t) => `<si><t xml:space="preserve">${t}</t></si>`).join("")}</sst>`),
+  });
+}
+
+test("Aprender del libro — dice cuánto aprendió y vuelve a sugerir en el extracto abierto (12/11)", async () => {
+  let lecturas = 0;
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.body instanceof FormData) {
+      lecturas++;
+      const reglas = lecturas > 1 ? 1 : 0;
+      return new Response(JSON.stringify({
+        ok: true, desde: "2026-09-01", hasta: "2026-09-30", reglas, control: null, sin_banco: [], saldo_gypi: null, repetidos: [],
+        filas: [{ fecha: "2026-09-01", comprobante: null, descripcion: "Impuesto Ley 25.413", importe: -95.5, marca: "m1", op: null, ya: false, sugerencia: reglas ? { tipo: "PAGO IMPUESTO", contra: IMP, por: "texto", entidad: "" } : null }],
+      }), { status: 200 });
+    }
+    enviados.push(JSON.parse(o.body));
+    return new Response(JSON.stringify({ ok: true, reglas: 1 }), { status: 200 });
+  };
+  const datos = { cuentas: [{ codigo: IMP, nombre: "Impuesto Debitos Y Creditos Bancarios" }, { codigo: BANCO, nombre: "Banco" }], tipos: [{ codigo: "PAGO IMPUESTO", cuenta_debe: IMP, cuenta_haber: BANCO }] };
+  render(<SubirExtracto caja={{ cuenta: BANCO, nombre: "Credicoop" }} datos={datos} onCerrar={() => {}} onCargado={() => {}} />);
+  fireEvent.change(screen.getByLabelText("Archivo del extracto"), { target: { files: [new File(["x"], "e.csv")] } });
+  await waitFor(() => assert.ok(screen.getByText(/Todavía no aprendí/)));
+  assert.equal(screen.getByLabelText("Tipo del renglón 1").value, "");
+  const libro = libroXlsx([
+    ["cod_tipo_op", "id_entidad", "descripcion", "cuenta_debe_final", "cuenta_haber_final"],
+    ["PAGO IMPUESTO", "", "Impuesto Ley 25.413 Alic Gral s/Debitos", IMP, BANCO],
+  ]);
+  fireEvent.change(screen.getByLabelText("Libro contable"), { target: { files: [new File([libro], "libro.xlsx")] } });
+  await waitFor(() => assert.match(screen.getByRole("status").textContent, /Aprendí de 1 movimientos de Credicoop/));
+  assert.match(screen.getByRole("status").textContent, /volví a sugerir/);
+  assert.equal(enviados[0].accion, "aprender");
+  await waitFor(() => assert.equal(screen.getByLabelText("Tipo del renglón 1").value, "PAGO IMPUESTO"), "la sugerencia aparece sin volver a subir el extracto");
+  assert.equal(lecturas, 2);
 });

@@ -142,6 +142,9 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
   const toast = useToast();
   const [leyendo, setLeyendo] = useState(false);
   const [aprendiendo, setAprendiendo] = useState(false);
+  // Lo que aprendió del libro, a la vista (antes era un aviso que se iba y parecía que no pasaba nada)
+  const [aprendido, setAprendido] = useState(null);
+  const [errorLibro, setErrorLibro] = useState(null);
   const [res, setRes] = useState(null);
   const [filas, setFilas] = useState([]);
   const [error, setError] = useState(null);
@@ -185,7 +188,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
 
   async function aprenderDelLibro(file) {
     if (!file) return;
-    setError(null);
+    setErrorLibro(null);
+    setAprendido(null);
     setAprendiendo(true);
     try {
       const { hojasXlsx, leerHojaXlsx } = await import("../lib/leerXlsx");
@@ -200,10 +204,12 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
       if (err) throw new Error(err);
       if (!usadas) throw new Error(`En el libro no hay movimientos de ${caja.nombre}`);
       const d = await postBanco({ accion: "aprender", cuenta: caja.cuenta, reglas });
-      toast.success(`Aprendí de ${usadas} movimientos del libro (${d.reglas} textos del banco)`);
-      setRes((r) => (r ? { ...r, reglas: d.reglas } : r));
+      toast.success(`Aprendí de ${usadas} movimientos del libro`);
+      setAprendido({ usadas, reglas: d.reglas, conExtracto: Boolean(res) });
+      // Con el extracto abierto, las sugerencias se vuelven a calcular con lo aprendido
+      if (res && archivo) await subir(archivo);
     } catch (e) {
-      setError(e.message);
+      setErrorLibro(e.message);
     }
     setAprendiendo(false);
   }
@@ -288,14 +294,22 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
             {!res.reglas && <p className="m-0 text-[13px] text-gypi-amber-ink">Todavía no aprendí cómo cargás este banco: subí el libro con &quot;📘 Aprender del libro&quot; y las sugerencias salen solas.</p>}
           </>
         )}
-        <details className="rounded-lg border border-gypi-border p-2 text-[13px] text-gypi-dim">
+        <details className="rounded-lg border border-gypi-border p-2 text-[13px] text-gypi-dim" open={Boolean(res && !res.reglas) || aprendiendo || Boolean(aprendido) || Boolean(errorLibro)}>
           <summary className="cursor-pointer font-semibold">📘 Aprender del libro contable (opcional)</summary>
           <p className="m-0 mt-2">Esto NO es para el extracto: acá va el libro contable (.xlsx con la hoja T-OPERACIONES), para que Gypi aprenda cómo cargás cada movimiento del banco.</p>
           <label className="flex flex-wrap items-center gap-2 mt-2">
             Libro contable:
-            <input type="file" accept=".xlsx,.xlsm" aria-label="Libro contable" disabled={aprendiendo} onChange={(e) => aprenderDelLibro(e.target.files?.[0])} />
-            {aprendiendo && <Spinner />}
+            <input type="file" accept=".xlsx,.xlsm" aria-label="Libro contable" disabled={aprendiendo}
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; aprenderDelLibro(f); }} />
           </label>
+          {aprendiendo && <p className="m-0 mt-2 flex items-center gap-2 text-gypi-text"><Spinner /> Leyendo el libro… puede tardar un minuto si es grande.</p>}
+          {errorLibro && <p role="alert" className="m-0 mt-2 text-[13px] text-gypi-red">⚠ {errorLibro}</p>}
+          {aprendido && (
+            <p role="status" className="m-0 mt-2 p-2 rounded-lg bg-gypi-green/10 text-gypi-text">
+              ✅ Aprendí de <b>{aprendido.usadas}</b> movimientos de {caja.nombre} en el libro ({aprendido.reglas} textos del banco reconocidos).
+              {aprendido.conExtracto ? " Ya volví a sugerir el tipo en los movimientos de abajo." : " Ahora subí el extracto: los tipos vienen sugeridos."}
+            </p>
+          )}
         </details>
 
         {res && pendientes.length > 0 && (
