@@ -18,7 +18,11 @@
 //   - Lo que viene, por semana: cheques de terceros a depositar (+), e-cheq
 //     y cheques propios a debitar (−), órdenes de pago aprobadas o por
 //     aprobar (−), sueldos confirmados sin pagar (−) e intereses de plazos
-//     fijos al vencer (+, parte 8 del 11/11), desde el saldo de hoy.
+//     fijos al vencer (+, parte 8 del 11/11), desde el saldo de hoy. Desde la
+//     auditoría del 12/11 (parte 11) también los cobros de cada OT para su
+//     entrega, las facturas de proveedores sin orden de pago (con los días de
+//     su condición de pago) y las órdenes de compra abiertas sin factura
+//     (finanzasFlujoAdelante.js).
 import { LINEAS_RENOMBRADAS, MAPA_TIPOS, NOMBRE_FORMA, claveTipo, formaDePago, lineaDeLista } from "./finanzasTipos";
 import { fechaDebito } from "./finanzasDiasHabiles";
 
@@ -266,7 +270,7 @@ const dm = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : "");
  * Lo que viene, por semana desde hoy (lo vencido va en la primera).
  * @param {{ hoy, saldoHoy, cheques, ordenes, sueldos: { fecha, importe, detalle }[] }} d
  */
-export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], sueldos = [], intereses = [], semanas = SEMANAS, feriados = null }) {
+export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], sueldos = [], intereses = [], cobros = [], aPagar = [], ocs = [], semanas = SEMANAS, feriados = null }) {
   const inicio = lunesDe(hoy);
   const cols = Array.from({ length: semanas }, (_, i) => sumarDias(inicio, i * 7));
   const col = (fecha) => {
@@ -280,11 +284,15 @@ export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], s
     { id: "ordenes", nombre: "Órdenes de pago aprobadas o por aprobar", signo: -1 },
     { id: "sueldos", nombre: "Sueldos por pagar", signo: -1 },
     { id: "intereses", nombre: "Intereses de plazos fijos", signo: 1 },
+    // Auditoría del 12/11, parte 11 (app/lib/finanzasFlujoAdelante.js)
+    { id: "cobros", nombre: "Cobros de clientes por OT (para la entrega)", signo: 1 },
+    { id: "a_pagar", nombre: "Facturas de proveedores a pagar (sin orden de pago)", signo: -1 },
+    { id: "ocs", nombre: "Órdenes de compra abiertas (a facturar)", signo: -1 },
   ].map((f) => ({ ...f, valores: cols.map(() => 0), detalle: cols.map(() => []), despues: 0 }));
   const por = Object.fromEntries(filas.map((f) => [f.id, f]));
   const poner = (id, fecha, importe, texto) => {
     const f = por[id];
-    const i = col(fecha);
+    const i = fecha ? col(fecha) : null;
     const v = centavos(importe) * f.signo;
     if (i == null) { f.despues += v; return; }
     f.valores[i] += v;
@@ -303,6 +311,9 @@ export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], s
   for (const s of sueldos) if (s.importe > 0) poner("sueldos", s.fecha < hoy ? hoy : s.fecha, s.importe, s.detalle);
   // El interés entra el día que vence el plazo fijo (lo depositado vuelve al banco y no cambia el saldo)
   for (const x of intereses) if (x.importe > 0) poner("intereses", x.fecha < hoy ? hoy : x.fecha, x.importe, x.detalle);
+  for (const x of cobros) if (x.importe > 0) poner("cobros", x.fecha && x.fecha < hoy ? hoy : x.fecha, x.importe, x.texto);
+  for (const x of aPagar) if (x.importe > 0) poner("a_pagar", x.fecha < hoy ? hoy : x.fecha, x.importe, x.texto);
+  for (const x of ocs) if (x.importe > 0) poner("ocs", x.fecha < hoy ? hoy : x.fecha, x.importe, x.texto);
   const neto = cols.map((_, i) => filas.reduce((s, f) => s + f.valores[i], 0));
   const saldo = [];
   let s = Number(saldoHoy) || 0;

@@ -39,7 +39,8 @@ function Previsto({ p }) {
   return (
     <section aria-label="Lo que viene" className="mb-4">
       <h2 className="m-0 mb-1 text-[16px] font-bold text-gypi-text">Lo que viene (pesos)</h2>
-      <p className="m-0 mb-2 text-[13px] text-gypi-dim">Desde el saldo de hoy de cajas y bancos: <b className={`text-gypi-text ${rojo(p.saldo_hoy)}`}>$ {miles(p.saldo_hoy)}</b>. Lo vencido entra en la primera semana. Tocá un importe para ver el detalle.</p>
+      <p className="m-0 mb-2 text-[13px] text-gypi-dim">Desde el saldo de hoy de cajas y bancos: <b className={`text-gypi-text ${rojo(p.saldo_hoy)}`}>$ {miles(p.saldo_hoy)}</b>. Lo vencido entra en la primera semana. Los cobros salen de lo que falta cobrar de cada OT, para su entrega; las facturas de proveedores vencen con los días de su condición de pago (Compras → Proveedores). Tocá un importe para ver el detalle.</p>
+      {p.avisos?.length > 0 && <p className="m-0 mb-2 text-[13px] font-semibold text-gypi-amber-ink">⚠ {p.avisos.join(" · ")}</p>}
       <div className="overflow-x-auto border border-gypi-border rounded-lg">
         <table className="w-full border-collapse text-[13px]" aria-label="Lo que viene">
           <thead>

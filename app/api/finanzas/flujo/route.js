@@ -19,10 +19,11 @@ import { mesesHasta } from "../../../lib/finanzasResultados";
 import { feriadosFinanzas } from "../../../lib/finanzasDiasHabiles";
 import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { CLAVE_FLUJO, flujoPrevisto, flujoReal, saldoCajas, validarLineasFlujo } from "../../../lib/finanzasFlujo";
+import { cobrosDeOts, pagosAProveedores, pagosDeOcAbiertas } from "../../../lib/finanzasFlujoAdelante";
 import { CLAVE_PLAZOS_FIJOS, interesesPorCobrar, leerGuardados, listaPlazos, pathOpsPlazos } from "../../../lib/finanzasPlazosFijos";
 import { CLAVE_SUELDOS, ORIGEN_PAGO_SUELDO, leerConfigSueldos, pagadoPorEmpleado, totalesLiquidacion } from "../../../lib/finanzasSueldos";
 
-const COLUMNAS = "id,fecha,tipo,centro_costo,total,total_ars,cuenta_debe,cuenta_haber,estado,anulada_at,origen,origen_id";
+const COLUMNAS = "id,fecha,tipo,centro_costo,total,total_ars,cuenta_debe,cuenta_haber,estado,anulada_at,origen,origen_id,proveedor_id,cliente_id,entidad,proyecto_id,referencia";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 const config = async (e, clave) => (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${clave}&select=valor&limit=1`, { silent: true, fallback: [] }))?.[0]?.valor || null;
@@ -64,17 +65,48 @@ export async function GET(request) {
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa`),
       config(e, CLAVE_FLUJO),
       leer(sesion, `fin_cheques?empresa_id=eq.${e}&estado=in.(pendiente,en_cartera)&select=id,clase,estado,fecha_pago,importe,banco,numero,librador,beneficiario`, 20000).catch(() => []),
-      leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(aprobada,para_aprobar)&select=id,numero,proveedor_nombre,fecha,estado,total`).catch(() => []),
+      leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(aprobada,para_aprobar)&select=id,numero,proveedor_id,proveedor_nombre,fecha,estado,total`).catch(() => []),
       config(e, CLAVE_PLANIFICACION),
     ]);
     const lin = validarLineasFlujo(lineas || {});
     const real = flujoReal({ ops, tesoreria, cuentas, lineas: lin, meses: mesesHasta(hasta) });
     const [sueldos, intereses] = await Promise.all([sueldosPorPagar(sesion, ops, cuentas), interesesPlazos(sesion, tesoreria, hoy).catch(() => [])]);
-    const previsto = flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos, intereses, feriados: feriadosFinanzas(planificacion) });
+    const adelante = await loQueSeSabe(sesion, { ops, cuentas, ordenes, hoy });
+    const previsto = {
+      ...flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos, intereses, ...adelante, feriados: feriadosFinanzas(planificacion) }),
+      avisos: adelante.avisos,
+    };
     return NextResponse.json({ hasta, hoy, ...real, previsto, lineas_cargadas: Object.keys(lin.tipos).length });
   } catch (err) {
     return errorFinanzas(err, "flujo GET");
   }
+}
+
+/**
+ * Lo que ya se sabe que viene (auditoría del 12/11, parte 11): cobros de cada
+ * OT para su entrega, facturas de proveedores sin orden de pago y OC abiertas.
+ * Si algo no se puede leer, el flujo sigue sin eso.
+ */
+async function loQueSeSabe(sesion, { ops, cuentas, ordenes, hoy }) {
+  const e = sesion.empresa_id;
+  const avisos = [];
+  const [proveedores, proyectos, ocs] = await Promise.all([
+    leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre,plazo_dias,condicion_pago`).catch(() => []),
+    leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,fecha_entrega,estado`, 20000).catch(() => []),
+    leer(sesion, `ordenes_compra?empresa_id=eq.${e}&estado=in.(enviada,recibida_parcial)&select=id,numero,proveedor_id,proveedor_nombre,moneda,estado,fecha_prometida,enviada_at,created_at,factura_numero,factura_fecha,anulada_at`, 2000).catch(() => []),
+  ]);
+  const ids = ocs.map((o) => Number(o.id)).filter(Boolean);
+  const items = ids.length
+    ? await leer(sesion, `ordenes_compra_items?empresa_id=eq.${e}&orden_id=in.(${ids.slice(0, 500).join(",")})&select=orden_id,cantidad,precio_unitario,iva_alicuota`, 20000).catch(() => [])
+    : [];
+  const { pagos, en_dolares: enDolares } = pagosDeOcAbiertas({ ocs, items, proveedores, hoy });
+  if (enDolares) avisos.push(`${enDolares} orden${enDolares === 1 ? "" : "es"} de compra en dólares no ${enDolares === 1 ? "entra" : "entran"}: todavía no ${enDolares === 1 ? "tiene" : "tienen"} tipo de cambio`);
+  return {
+    cobros: cobrosDeOts({ ops, cuentas, proyectos, hoy }).cobros,
+    aPagar: pagosAProveedores({ ops, cuentas, proveedores, ordenes, hoy }),
+    ocs: pagos,
+    avisos,
+  };
 }
 
 export async function POST(request) {
