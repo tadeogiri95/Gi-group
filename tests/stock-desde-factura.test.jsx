@@ -104,7 +104,7 @@ test("/api/facturas-sueltas — 📦 Mandar al stock carga un ingreso por rengl�
   assert.deepEqual([d.cargados, d.sin_articulo], [1, 1]);
   const alta = escrito.find((x) => x.tabla === "movimientos_stock" && x.metodo === "POST");
   assert.deepEqual(alta.body.map((f) => [f.sku, f.cantidad, f.precio_unitario, f.notas, f.empresa_id]), [["1.10", 10, 50000, "Factura sin OC N° 12", E]]);
-  assert.ok(leido.some((u) => /comprobante=ilike\.0003-00012&proveedor=ilike\.FAPLAC/.test(u)), "mira si ya entró");
+  assert.ok(leido.some((u) => /comprobante=ilike\.\*12\*/.test(u)), "mira si ya entró");
 });
 
 test("/api/facturas-sueltas — si ya llegó con una orden de compra avisa, y con forzar la manda igual", async () => {

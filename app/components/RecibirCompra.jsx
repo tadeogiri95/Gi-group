@@ -14,6 +14,7 @@ import { ESTADOS_OC, ESTADOS_OC_RECIBIBLE, equivalenciaStock, factorItem, ocACot
 import { faltaTabla } from "../lib/compras";
 import { useOts } from "../hooks/useOts";
 import { otCompleta, textoOt } from "../lib/nombreOt";
+import AvisoFacturaRepetida from "./AvisoFacturaRepetida";
 
 const numTexto = (n) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 const cantTexto = (n) => Number(n).toLocaleString("es-AR", { maximumFractionDigits: 3 });
@@ -23,7 +24,7 @@ export const AVISO_MIGRACION_115 = "Para recibir con remito falta correr la migr
 async function postCompras(body) {
   const res = await apiFetch("/api/compras", { method: "POST", body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar");
+  if (!res.ok || !data.ok) throw Object.assign(new Error(data.error || "No se pudo guardar"), { repetido: !!data.repetido });
   return data;
 }
 
@@ -37,6 +38,7 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
   const [foto, setFoto] = useState(null);
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [repetido, setRepetido] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const recibible = ESTADOS_OC_RECIBIBLE.includes(oc.estado);
 
@@ -72,9 +74,10 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
     setEnviando(false);
   };
 
-  const registrar = async () => {
+  const registrar = async (forzar = false) => {
     setError(null);
     setAviso(null);
+    setRepetido(null);
     if (!remito.trim()) { setError("Poné el N° de remito"); return; }
     const lineas = [];
     for (const it of items) {
@@ -87,7 +90,7 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
     if (!lineas.length) { setError("Poné cuánto llegó de al menos un renglón"); return; }
     setEnviando(true);
     try {
-      const data = await postCompras({ accion: "recepcion_crear", orden_id: oc.id, remito: remito.trim(), foto_url: foto, notas: notas.trim() || null, items: lineas });
+      const data = await postCompras({ accion: "recepcion_crear", orden_id: oc.id, remito: remito.trim(), foto_url: foto, notas: notas.trim() || null, items: lineas, ...(forzar ? { forzar: true } : {}) });
       setAviso(`Recepción guardada${data.ingresos ? ` y ${data.ingresos} ingreso${data.ingresos === 1 ? "" : "s"} de stock cargado${data.ingresos === 1 ? "" : "s"}` : ""}. ${data.estado === "recibida" ? "La orden quedó recibida completa." : "La orden quedó recibida en parte."}`);
       setRemito("");
       setNotas("");
@@ -95,7 +98,8 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
       await onCambio();
       await cargar();
     } catch (e) {
-      setError(e.message);
+      if (e.repetido) setRepetido(e.message);
+      else setError(e.message);
     }
     setEnviando(false);
   };
@@ -162,7 +166,10 @@ function RecibirOrden({ oc, comprador, onVolver, onCambio }) {
                 {foto ? "Cambiar la foto" : "📷 Foto del remito (opcional)"}
                 <input type="file" accept="image/*" capture="environment" className="hidden" aria-label="Foto del remito" disabled={enviando} onChange={(e) => subirFoto(e.target.files?.[0])} />
               </label>
-              <button onClick={registrar} disabled={enviando} className="g-btn g-btn-primary w-full">{enviando ? "Guardando…" : "📦 Registrar lo que llegó"}</button>
+              <button onClick={() => registrar()} disabled={enviando} className="g-btn g-btn-primary w-full">{enviando ? "Guardando…" : "📦 Registrar lo que llegó"}</button>
+              <AvisoFacturaRepetida mensaje={repetido} enviando={enviando} titulo="⚠ Esta entrega ya parece cargada"
+                textoIgual="Es otra entrega: recibirla igual" onCargarIgual={() => registrar(true)}
+                onRevisar={() => { setRepetido(null); document.getElementById("rec-remito")?.focus(); }} />
             </div>
           )}
 
