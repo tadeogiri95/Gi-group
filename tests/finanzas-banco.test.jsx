@@ -11,7 +11,7 @@ import {
 } from "../app/lib/finanzasExtracto.js";
 import {
   cuitDe, nombreDe, claveTexto, reglasDelLibro, reglasDeConfirmados, sugerir, marcasExtracto, emparejarExtracto, operacionDeMovimiento,
-  controlSaldo, entidadDe, juntarReglas,
+  controlSaldo, entidadDe, juntarReglas, saldoPorOrigen, repetidosEnCuenta, parecidosEnGypi,
 } from "../app/lib/finanzasBanco.js";
 
 before(() => {
@@ -321,4 +321,114 @@ test("SubirExtracto — el archivo del banco en 📘 Aprender del libro da un av
   fireEvent.change(screen.getByLabelText("Libro contable"), { target: { files: [new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3])], "libro.xlsx")] } });
   await waitFor(() => assert.equal(screen.getByRole("alert").textContent, `⚠ ${LIBRO_ILEGIBLE}`));
   assert.equal(pedidos, 0, "no manda nada al servidor");
+});
+
+// ─── Cotejar el saldo y los repetidos (12/11) ───
+
+const PF = "01.01.01.099.001";
+const op = (id, fecha, total, debe, haber, origen = "manual", extra = {}) => ({ id, fecha, tipo: "X", total, total_ars: total, cuenta_debe: debe, cuenta_haber: haber, origen, ...extra });
+
+test("saldo de Gypi por origen — muestra de dónde sale la diferencia con el banco", () => {
+  const ops = [
+    op(1, "2026-08-31", 9000000, BANCO, "03.01", "saldo_inicial"),
+    op(2, "2026-09-05", 1798837.65, BANCO, PF, "libro"),
+    op(3, "2026-09-05", 1798837.65, BANCO, PF, "banco"),
+    op(4, "2026-09-10", 500, COM, BANCO, "banco"),
+    op(5, "2026-10-02", 999, BANCO, PF, "manual"),
+    op(6, "2026-09-11", 7, BANCO, PF, "manual", { anulada_at: "2026-09-12" }),
+  ];
+  const r = saldoPorOrigen(ops, BANCO, "2026-09-30");
+  assert.equal(r.saldo, 9000000 + 1798837.65 * 2 - 500);
+  assert.deepEqual(r.origenes.map((o) => [o.origen, o.n, o.saldo]), [["saldo_inicial", 1, 9000000], ["libro", 1, 1798837.65], ["banco", 2, 1798337.65]]);
+  assert.equal(r.origenes[1].nombre, "Copiadas del libro (histórico)");
+});
+
+test("repetidos en la cuenta — mismo importe y hasta 3 días; queda la del libro, si no la del extracto", () => {
+  const ops = [
+    op(1, "2026-11-12", 1798837.65, BANCO, PF, "banco"),
+    op(2, "2026-11-12", 1798837.65, BANCO, PF, "libro"),
+    op(3, "2026-11-13", 1798837.65, BANCO, PF, "manual"),
+    op(4, "2026-12-12", 1798837.65, BANCO, PF, "banco"), // un mes después: otro plazo, no es repetido
+    op(5, "2026-11-01", 600, COM, BANCO, "banco"),
+    op(6, "2026-11-02", 600, COM, BANCO, "manual"),
+    op(7, "2026-11-02", 600, BANCO, COM, "manual"), // entra, no sale: otro sentido
+    op(8, "2026-11-01", 9000000, BANCO, "03.01", "saldo_inicial"),
+    op(9, "2026-11-01", 9000000, BANCO, "03.01", "manual"),
+  ];
+  const g = repetidosEnCuenta(ops, BANCO);
+  assert.deepEqual(g.map((x) => [x.ops.map((o) => o.id), x.queda]), [[[1, 2, 3], 2], [[5, 6], 5]], "el más grande primero; la apertura no cuenta");
+  assert.equal(g[1].importe, -600);
+});
+
+test("parecido en Gypi — el renglón del banco sin pareja encuentra la de Gypi con otra fecha o importe", () => {
+  const filas = [
+    { fecha: "2026-11-12", importe: -150000, op: null },
+    { fecha: "2026-11-12", importe: 5000, op: null },
+    { fecha: "2026-11-12", importe: -10, op: { id: 99 } },
+  ];
+  const sinBanco = [op(1, "2026-11-10", 145000, PROV, BANCO), op(2, "2026-11-12", 5000, PROV, BANCO), op(3, "2026-11-30", 5000, BANCO, PROV)];
+  const p = parecidosEnGypi(filas, sinBanco, BANCO);
+  assert.equal(p.get(0).id, 1, "5% menos y 2 días antes");
+  assert.equal(p.has(1), false, "sale y no entra, o a más de 7 días");
+  assert.equal(p.has(2), false);
+});
+
+test("Subir extracto — saldo por origen, repetidos para anular y \"Dejar como dice el banco\"", async () => {
+  const gypi = op(41, "2026-11-10", 145000, PROV, BANCO, "manual", { tipo: "PAGO TRANSF" });
+  const respuesta = {
+    ok: true, desde: "2026-11-01", hasta: "2026-11-30", reglas: 5, control: { calculado: 9000000, final: 9000000, ok: true },
+    filas: [
+      { fecha: "2026-11-12", comprobante: null, descripcion: "Transf. a proveedor", importe: -150000, marca: "m1", op: null, ya: false, sugerencia: null, parecido: gypi },
+      { fecha: "2026-11-12", comprobante: null, descripcion: "Vencimiento Plazo Fijo", importe: 1798837.65, marca: "m2", op: op(1, "2026-11-11", 1798837.65, BANCO, PF, "banco", { tipo: "RESCATE PLAZO FIJO" }), ya: true, sugerencia: null },
+    ],
+    sin_banco: [op(3, "2026-11-13", 1798837.65, BANCO, PF, "manual", { tipo: "RESCATE PLAZO FIJO" })],
+    saldo_gypi: { saldo: 337000000, origenes: [{ origen: "libro", nombre: "Copiadas del libro (histórico)", n: 900, saldo: 330000000 }, { origen: "banco", nombre: "Cargadas del extracto", n: 50, saldo: 7000000 }] },
+    repetidos: [{ importe: 1798837.65, queda: 1, ops: [op(1, "2026-11-11", 1798837.65, BANCO, PF, "banco"), op(3, "2026-11-13", 1798837.65, BANCO, PF, "manual")] }],
+  };
+  const enviados = [];
+  let lecturas = 0;
+  global.fetch = async (url, o = {}) => {
+    if (o.body instanceof FormData) { lecturas++; return new Response(JSON.stringify(respuesta), { status: 200 }); }
+    const b = JSON.parse(o.body);
+    enviados.push(b);
+    return new Response(JSON.stringify({ ok: true, anuladas: (b.ids || []).length }), { status: 200 });
+  };
+  const viejo = window.confirm;
+  window.confirm = () => true;
+  try {
+    const datos = { cuentas: [{ codigo: BANCO, nombre: "Banco" }, { codigo: PF, nombre: "Plazo fijo" }, { codigo: PROV, nombre: "Proveedores" }], tipos: [] };
+    render(<SubirExtracto caja={{ cuenta: BANCO, nombre: "Credicoop" }} datos={datos} onCerrar={() => {}} onCargado={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Archivo del extracto"), { target: { files: [new File(["x"], "e.csv")] } });
+    await waitFor(() => assert.ok(screen.getByText(/Saldo de Gypi al 30\/11\/26/)));
+    assert.ok(screen.getByText(/el banco dice/), "la diferencia con el banco se ve");
+    assert.ok(screen.getByText("Copiadas del libro (histórico)"));
+    assert.ok(screen.getByText(/parece repetida/), "la de Gypi sin pareja se marca como repetida");
+
+    // Dejar como dice el banco: corrige fecha e importe y vuelve a leer
+    fireEvent.click(screen.getByRole("button", { name: "Dejar como dice el banco" }));
+    await waitFor(() => assert.equal(enviados.length, 1));
+    assert.deepEqual(enviados[0], { accion: "corregir", id: 41, cambios: { fecha: "2026-11-12", total: 150000 } });
+    await waitFor(() => assert.equal(lecturas, 2));
+
+    // La del extracto ya cargada con otra fecha: un toque la deja con la del banco
+    fireEvent.click(screen.getByRole("button", { name: /Ver los 1 que ya están/ }));
+    assert.ok(screen.getByText(/en Gypi dice 11\/11\/26/));
+    assert.ok(screen.getByRole("button", { name: "📅 Poner la fecha del banco" }));
+
+    // Repetidos: tildar las que sobran y anular
+    fireEvent.click(screen.getByText(/Posibles repetidos en Gypi/));
+    fireEvent.click(screen.getByRole("button", { name: "Tildar las que sobran" }));
+    assert.equal(screen.getByLabelText("Anular la operación 3").checked, true);
+    assert.equal(screen.getByLabelText("Anular la operación 1").checked, false, "la ⭐ queda");
+    fireEvent.click(screen.getByRole("button", { name: "🗑 Anular 1 elegidas" }));
+    await waitFor(() => assert.equal(enviados.length, 2));
+    assert.deepEqual(enviados[1], { accion: "anular_varias", ids: [3] });
+    await waitFor(() => assert.equal(lecturas, 3));
+
+    // Corregir o anular desde el extracto abre el detalle de la operación
+    fireEvent.click(screen.getAllByRole("button", { name: "✏ Corregir o anular" })[0]);
+    assert.ok(screen.getByRole("button", { name: "✏ Corregir" }));
+  } finally {
+    window.confirm = viejo;
+  }
 });

@@ -25,13 +25,14 @@ import { FECHA } from "../../../lib/finanzasOperaciones";
 import { claseDeArchivo, grillaDeArchivo, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
 import {
   CLAVE_REGLAS_BANCO, DIAS_EMPAREJAR, MAX_MOVIMIENTOS, ORIGEN_BANCO, controlSaldo, emparejarExtracto, entidadDe, juntarReglas,
-  operacionDeMovimiento, reglasDeConfirmados, sugerir,
+  operacionDeMovimiento, parecidosEnGypi, reglasDeConfirmados, repetidosEnCuenta, saldoPorOrigen, sugerir,
 } from "../../../lib/finanzasBanco";
 
 export const runtime = "nodejs";
 
 const MAX_BYTES = 4 * 1024 * 1024;
-const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,total,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,anulada_at";
+// Todo lo de la operación: desde el extracto se abre su detalle para corregirla o anularla (12/11)
+const COLUMNAS = "*";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
 const mover = (fecha, d) => new Date(Date.parse(`${fecha}T12:00:00Z`) + d * 86400000).toISOString().slice(0, 10);
 
@@ -104,15 +105,19 @@ async function leerExtracto(sesion, request) {
   const desde = mover(fechas[0], -DIAS_EMPAREJAR);
   const hasta = mover(fechas[fechas.length - 1], DIAS_EMPAREJAR);
   const c = encodeURIComponent(`"${cuenta.replace(/"/g, "")}"`);
-  const [operaciones, reglasTodas, proveedores, clientes] = await Promise.all([
-    leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=gte.${desde}&fecha=lte.${hasta}&or=(cuenta_debe.in.(${c}),cuenta_haber.in.(${c}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 20000),
+  // Toda la cuenta hasta el fin del extracto: para el saldo de Gypi y los repetidos
+  const [todas, reglasTodas, proveedores, clientes] = await Promise.all([
+    leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=lte.${hasta}&or=(cuenta_debe.in.(${c}),cuenta_haber.in.(${c}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 50000),
     leerReglas(e),
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre&order=nombre.asc`, 5000).catch(() => []),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo&order=nombre.asc`, 5000).catch(() => []),
   ]);
   const reglas = reglasTodas?.[cuenta] || {};
+  const operaciones = todas.filter((o) => o.fecha >= desde);
   const { filas, sin_banco } = emparejarExtracto(ext.movimientos, operaciones, cuenta);
-  const ops = (o) => (o ? { id: o.id, fecha: o.fecha, tipo: o.tipo, descripcion: o.descripcion, entidad: o.entidad, origen: o.origen } : null);
+  const parecidos = parecidosEnGypi(filas, sin_banco, cuenta);
+  const finExtracto = ext.hasta || fechas[fechas.length - 1];
+  const ops = (o) => (o ? { ...o, empresa_id: undefined } : null);
   return NextResponse.json({
     ok: true,
     banco: { cuenta: banco.cuenta, nombre: banco.nombre },
@@ -120,15 +125,18 @@ async function leerExtracto(sesion, request) {
     desde: ext.desde || fechas[0], hasta: ext.hasta || fechas[fechas.length - 1],
     control: controlSaldo(ext),
     reglas: Object.keys(reglas).length,
-    filas: filas.map((f) => {
+    filas: filas.map((f, i) => {
       const s = f.op ? null : sugerir(f, reglas);
       return {
         fecha: f.fecha, comprobante: f.comprobante, descripcion: f.descripcion, importe: f.importe, marca: f.marca,
-        op: ops(f.op), ya: f.ya,
+        op: ops(f.op), ya: f.ya, parecido: ops(parecidos.get(i)),
         sugerencia: s ? { tipo: s.tipo, contra: s.contra, por: s.por, ...entidadDe(s.entidad, { proveedores, clientes }) } : null,
       };
     }),
     sin_banco: sin_banco.map(ops),
+    // Cómo se arma el saldo de Gypi al último día del extracto, y lo que parece cargado dos veces
+    saldo_gypi: saldoPorOrigen(todas, cuenta, finExtracto),
+    repetidos: repetidosEnCuenta(todas, cuenta).map((g) => ({ ...g, ops: g.ops.map(ops) })),
   });
 }
 

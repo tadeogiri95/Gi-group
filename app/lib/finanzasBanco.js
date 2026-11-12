@@ -283,3 +283,109 @@ export function entidadDe(nombre, { proveedores = [], clientes = [] } = {}) {
   if (c) return { cliente_id: Number(c.id), entidad: c.nombre };
   return { entidad: txt(nombre, 120) };
 }
+
+/* ─── Cotejar el saldo y encontrar repetidos (12/11) ─────────────────── */
+
+/** Cómo se llama cada origen en pantalla. */
+export const NOMBRE_ORIGEN = {
+  saldo_inicial: "Saldo inicial (apertura)", libro: "Copiadas del libro (histórico)", banco: "Cargadas del extracto",
+  manual: "Cargadas a mano en Gypi", plazo_fijo: "Plazos fijos", fci: "FCI", titulos: "Títulos", mi_caja: "Mi caja",
+  cheque: "Cheques", pago: "Pagos", orden_pago: "Órdenes de pago", cobro: "Cobros", pago_sueldo: "Sueldos", gasto: "Gastos",
+};
+
+/**
+ * El saldo de la cuenta en Gypi hasta una fecha, y de dónde sale: cuánto
+ * suma cada origen (apertura, histórico del libro, extracto, a mano…).
+ * @returns {{ saldo: number, origenes: { origen: string, nombre: string, n: number, saldo: number }[] }}
+ */
+export function saldoPorOrigen(ops = [], cuenta, hasta) {
+  const por = new Map();
+  let saldo = 0;
+  for (const o of ops) {
+    if (o.anulada_at || (hasta && o.fecha > hasta)) continue;
+    const m = movimientoEnCuenta(o, cuenta);
+    if (!m) continue;
+    saldo += m;
+    const k = o.origen || "manual";
+    const x = por.get(k) || { origen: k, nombre: NOMBRE_ORIGEN[k] || k, n: 0, saldo: 0 };
+    x.n++;
+    x.saldo += m;
+    por.set(k, x);
+  }
+  return {
+    saldo: centavos(saldo),
+    origenes: [...por.values()].map((x) => ({ ...x, saldo: centavos(x.saldo) })).sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo)),
+  };
+}
+
+/**
+ * De qué origen conviene quedarse cuando hay dos iguales: la copiada del
+ * libro (si se anula la de Gypi, el libro borra su renglón GY-F y quedan bien
+ * los dos lados), después la del extracto, después la más vieja.
+ */
+const PREFERIDO = { libro: 0, banco: 1, saldo_inicial: 9 };
+
+/**
+ * Operaciones de la cuenta que parecen la misma cargada dos veces: el mismo
+ * importe (al centavo, mismo sentido) y hasta `diasMax` días entre una y la
+ * siguiente. En cada grupo se propone con cuál quedarse (PREFERIDO) y anular
+ * las otras; el Dueño elige.
+ * @returns {{ importe: number, ops: object[], queda: number }[]}
+ */
+export function repetidosEnCuenta(ops = [], cuenta, { diasMax = 3, max = 150 } = {}) {
+  const porImporte = new Map();
+  for (const o of ops) {
+    if (o.anulada_at || o.origen === "saldo_inicial") continue;
+    const m = movimientoEnCuenta(o, cuenta);
+    if (!m) continue;
+    const k = Math.round(m * 100);
+    if (!porImporte.has(k)) porImporte.set(k, []);
+    porImporte.get(k).push(o);
+  }
+  const grupos = [];
+  for (const [k, lista] of porImporte) {
+    if (lista.length < 2) continue;
+    lista.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.id - b.id);
+    let actual = [lista[0]];
+    const cerrar = () => {
+      if (actual.length < 2) return;
+      const queda = [...actual].sort((a, b) => (PREFERIDO[a.origen] ?? 5) - (PREFERIDO[b.origen] ?? 5) || a.id - b.id)[0];
+      grupos.push({ importe: k / 100, ops: actual, queda: queda.id });
+    };
+    for (const o of lista.slice(1)) {
+      if (dias(actual[actual.length - 1].fecha, o.fecha) <= diasMax) actual.push(o);
+      else { cerrar(); actual = [o]; }
+    }
+    cerrar();
+  }
+  // Los más grandes primero: son los que más desarman el saldo
+  return grupos.sort((a, b) => Math.abs(b.importe) * (b.ops.length - 1) - Math.abs(a.importe) * (a.ops.length - 1)).slice(0, max);
+}
+
+/**
+ * Para cada renglón del banco que no está en Gypi, la operación de Gypi sin
+ * pareja que más se le parece: mismo sentido, hasta 7 días y hasta un 20% de
+ * diferencia en el importe. Suele ser la misma cargada con otra fecha o mal
+ * el importe: "Dejar como dice el banco" la corrige. Cada una se usa una vez.
+ */
+export function parecidosEnGypi(filas = [], sinBanco = [], cuenta) {
+  const usadas = new Set();
+  const salida = new Map();
+  for (const [i, f] of filas.entries()) {
+    if (f.op) continue;
+    let mejor = null;
+    for (const o of sinBanco) {
+      if (usadas.has(o.id)) continue;
+      const m = movimientoEnCuenta(o, cuenta);
+      if (!m || Math.sign(m) !== Math.sign(f.importe)) continue;
+      const dif = Math.abs(Math.abs(m) - Math.abs(f.importe));
+      if (dif > Math.abs(f.importe) * 0.2) continue;
+      const d = dias(o.fecha, f.fecha);
+      if (d > DIAS_EMPAREJAR) continue;
+      const puntos = dif / Math.abs(f.importe) + d / 100;
+      if (!mejor || puntos < mejor.puntos) mejor = { o, puntos };
+    }
+    if (mejor) { usadas.add(mejor.o.id); salida.set(i, mejor.o); }
+  }
+  return salida;
+}
