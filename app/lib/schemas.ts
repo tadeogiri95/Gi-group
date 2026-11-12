@@ -505,6 +505,8 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({
     accion: z.literal("recepcion_crear"),
     orden_id: idCompras,
+    // 12/11 (auditoría, parte 2): recibir igual una entrega cuyo remito ya entró
+    forzar: z.boolean().optional(),
     remito: z.string().trim().min(1, "Poné el N° de remito").max(60),
     foto_url: z.string().trim().url().max(500).nullable().optional().transform((v) => v || null),
     notas: textoSuelto(300),

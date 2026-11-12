@@ -64,6 +64,7 @@ import { logger } from "../../lib/logger";
 import { sincronizarCompra } from "../../lib/finanzasCompras";
 import { buscarFacturaRepetida } from "../../lib/facturaUnicaServidor";
 import { avisoFacturaRepetida } from "../../lib/facturaUnica";
+import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../lib/stockIngresos";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -611,6 +612,15 @@ async function crearRecepcion(sesion, d) {
   for (const l of d.items) {
     if (!porId.has(l.item_id)) return NextResponse.json({ error: "Un renglón no es de esta orden de compra. Actualizá la pantalla." }, { status: 409 });
     llegan.set(l.item_id, redondear3((llegan.get(l.item_id) || 0) + l.cantidad));
+  }
+
+  // Una entrega, una sola vez (auditoría 12/11, parte 2): si ese remito (o la
+  // factura de la OC) ya entró al stock por otro lado, avisa; con forzar sigue
+  if (!d.forzar) {
+    const proveedor = oc.proveedor_nombre;
+    const repetido = await buscarIngresoRepetido(sbGet, e, { proveedor, comprobante: d.remito }, opts)
+      || (oc.factura_numero ? await buscarIngresoRepetido(sbGet, e, { proveedor, comprobante: oc.factura_numero, excluirNotas: `OC N° ${oc.numero}` }, opts) : null);
+    if (repetido) return NextResponse.json({ error: `${avisoIngresoRepetido(repetido)} Si es otra entrega, revisá el número; si es la misma, no la recibas de nuevo.`, repetido: true }, { status: 409 });
   }
 
   // Nombre, unidad y división del ingreso de stock salen de la planilla

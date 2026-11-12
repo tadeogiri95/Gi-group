@@ -426,3 +426,72 @@ test("accesos — Recibir para jefes y comprador", () => {
   assert.match(src, /\["recibir", "📦 Recibir"\], \["proveedores", "🏭 Proveedores"\], \["reportes", "📊 Reportes"\]\]/);
   assert.match(src, /vista === "recibir" && permisos\.puede_pedir/);
 });
+
+// ─── Una entrega, una sola vez (auditoría 12/11, parte 2) ───
+
+test("/api/compras recepcion_crear — si el remito ya entró al stock (escrito distinto) avisa y no guarda; con forzar la recibe", async () => {
+  const movs = [{ id: 9, proveedor: "ALUAR", comprobante: "4-12345", notas: "cargado a mano", created_at: "2026-11-10T12:00:00Z" }];
+  let escrito = mockRuta({ movs });
+  let res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "0004-00012345", items: [{ item_id: 1, cantidad: 1 }] }));
+  assert.equal(res.status, 409);
+  const d = await res.json();
+  assert.equal(d.repetido, true);
+  assert.match(d.error, /Ya entró al stock el comprobante 4-12345 de ALUAR .*Si es otra entrega/);
+  assert.equal(escrito.length, 0, "no guarda nada");
+  escrito = mockRuta({ movs });
+  res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "0004-00012345", items: [{ item_id: 1, cantidad: 1 }], forzar: true }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito.map((x) => x.tabla), ["rpc:compras_recibir"]);
+});
+
+test("/api/compras recepcion_crear — mira también los remitos de otras recepciones; otro proveedor u otro número no avisa", async () => {
+  const recepciones = [{ id: 3, remito: "R-0077", created_at: "2026-11-09T12:00:00Z", ordenes_compra: { numero: 6, proveedor_nombre: "Aluar" } }];
+  mockRuta({ recepciones });
+  let res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "77", items: [{ item_id: 1, cantidad: 1 }] }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /remito de la OC N° 6/);
+  mockRuta({ recepciones: [{ ...recepciones[0], ordenes_compra: { numero: 6, proveedor_nombre: "Faplac" } }] });
+  res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "77", items: [{ item_id: 1, cantidad: 1 }] }));
+  assert.equal(res.status, 200, "otro proveedor");
+  mockRuta({ recepciones });
+  res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "78", items: [{ item_id: 1, cantidad: 1 }] }));
+  assert.equal(res.status, 200, "otro número");
+});
+
+test("/api/compras recepcion_crear — la factura de la misma OC no cuenta como repetida", async () => {
+  const oc = { ...OC, factura_numero: "A-0003-00001234" };
+  mockRuta({ oc, movs: [{ id: 9, proveedor: "Aluar", comprobante: "A-0003-00001234", notas: "OC N° 8", created_at: "2026-11-10T12:00:00Z" }] });
+  let res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-2", items: [{ item_id: 1, cantidad: 1 }] }));
+  assert.equal(res.status, 200);
+  mockRuta({ oc, movs: [{ id: 9, proveedor: "Aluar", comprobante: "A-0003-00001234", notas: "Factura sin OC N° 4", created_at: "2026-11-10T12:00:00Z" }] });
+  res = await api.POST(req(await token("gerencial"), { accion: "recepcion_crear", orden_id: 101, remito: "R-2", items: [{ item_id: 1, cantidad: 1 }] }));
+  assert.equal(res.status, 409, "la misma factura ya entró sin OC");
+});
+
+test("Recibir — si la entrega ya parece cargada avisa, y 'recibirla igual' la manda con forzar", async () => {
+  const enviados = [];
+  let veces = 0;
+  global.fetch = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    if (String(url).includes("/api/compras")) {
+      enviados.push(body);
+      if (veces++ === 0) return new Response(JSON.stringify({ error: "Ya entró al stock el comprobante 4-12345 de Aluar (cargado a mano). Si es otra entrega, revisá el número; si es la misma, no la recibas de nuevo.", repetido: true }), { status: 409 });
+      return new Response(JSON.stringify({ ok: true, estado: "recibida_parcial", ingresos: 1 }), { status: 200 });
+    }
+    const path = body?.path || "";
+    const data = path.startsWith("ordenes_compra_items") ? [PERFIL, TORNILLOS] : path.startsWith("ordenes_compra") ? [OC] : [];
+    return new Response(JSON.stringify({ data }), { status: 200 });
+  };
+  render(<RecibirCompra empresaId={E} />);
+  fireEvent.click(await screen.findByText("OC N° 8 · Aluar"));
+  await screen.findByLabelText("Llegó ahora de Perfil 0277");
+  fireEvent.change(screen.getByLabelText("N° de remito"), { target: { value: "0004-00012345" } });
+  fireEvent.click(screen.getByText("📦 Registrar lo que llegó"));
+  await screen.findByText("⚠ Esta entrega ya parece cargada");
+  assert.ok(screen.getByText(/Ya entró al stock el comprobante 4-12345/));
+  fireEvent.click(screen.getByText("Es otra entrega: recibirla igual"));
+  await waitFor(() => assert.equal(enviados.length, 2));
+  assert.equal(enviados[0].forzar, undefined);
+  assert.equal(enviados[1].forzar, true);
+  await screen.findByText(/Recepción guardada/);
+});
