@@ -46,6 +46,7 @@ import { fallasDeRegistro, sigueParada } from "../../lib/fallasMaquinaria";
 import { enviarPushGerencia, enviarPushLegajos } from "../../lib/pushGerencia";
 import { logger } from "../../lib/logger";
 import { tallerDe } from "../../lib/tallerServidor";
+import { pasarMantenimientoAFinanzas } from "../../lib/finanzasMantenimiento";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -338,6 +339,8 @@ async function resolverFalla(sesion, d) {
     cerrado_por: sesion.empleado_id || null, cerrado_nombre: await nombreDe(sesion), cerrado_at: new Date().toISOString(),
   }, { sesion });
   await quizasVuelveAServicio(sesion, m, f.id);
+  // Con costo, el gasto pasa solo a Finanzas "para revisar" (auditoría 12/11, parte 9)
+  if (Number(d.costo) > 0 && (await pasarMantenimientoAFinanzas(e, { modulo: "maquina", id: f.id })).accion === "creada") broadcastRefresh(e, "fin_operaciones");
   broadcastRefresh(e, "maquina_fallas");
   return NextResponse.json({ ok: true });
 }

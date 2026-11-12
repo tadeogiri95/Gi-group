@@ -51,6 +51,7 @@ import { esResponsableMantenimiento } from "../../lib/mantenimientoServidor";
 import { logger } from "../../lib/logger";
 import { esRutaDeLaEmpresa, linkPdf } from "../../lib/flotaArchivos";
 import { tallerDe } from "../../lib/tallerServidor";
+import { anularMantenimientoEnFinanzas, pasarMantenimientoAFinanzas } from "../../lib/finanzasMantenimiento";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -403,6 +404,8 @@ async function crearMantenimiento(sesion, d) {
     await sbPatch(`vehiculos?id=eq.${veh.id}&empresa_id=eq.${e}`, { km: d.km, km_at: new Date().toISOString() }, opts);
   }
   if (!arreglo && d.tipo === "service") await actualizarService(sesion, veh.id);
+  // Con costo, el gasto pasa solo a Finanzas "para revisar" (auditoría 12/11, parte 9)
+  if (m?.id && Number(d.costo) > 0 && (await pasarMantenimientoAFinanzas(e, { modulo: "vehiculo", id: m.id })).accion === "creada") broadcastRefresh(e, "fin_operaciones");
   broadcastRefresh(e, "vehiculo_mantenimientos");
   return NextResponse.json({ ok: true, mantenimiento: m });
 }
@@ -414,6 +417,8 @@ async function borrarMantenimiento(sesion, id) {
   // Un arreglo resuelto vuelve a quedar pendiente
   await sbPatch(`vehiculo_arreglos?mantenimiento_id=eq.${m.id}&empresa_id=eq.${e}`, { estado: "pendiente", mantenimiento_id: null, cerrado_por: null, cerrado_at: null }, { sesion });
   await sbDelete(`vehiculo_mantenimientos?id=eq.${m.id}&empresa_id=eq.${e}`, { sesion });
+  // El gasto que Gypi pasó a Finanzas se anula con él (si nadie lo pagó)
+  if ((await anularMantenimientoEnFinanzas(e, { modulo: "vehiculo", id: m.id })).accion === "anulada") broadcastRefresh(e, "fin_operaciones");
   if (m.tipo === "service") await actualizarService(sesion, m.vehiculo_id);
   broadcastRefresh(e, "vehiculo_mantenimientos");
   return NextResponse.json({ ok: true });

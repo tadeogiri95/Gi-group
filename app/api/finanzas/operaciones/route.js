@@ -45,7 +45,7 @@ import { ErrorIa, leerDocumentoIa } from "../../../lib/facturaIa";
 import { MAX_ARCHIVO_B64, TIPOS_ARCHIVO } from "../../../lib/facturasSueltas";
 import { logAudit } from "../../../lib/audit";
 import { ipCliente } from "../../../lib/ip";
-import { grupoDeVinculo, vinculoValido } from "../../../lib/finanzasIntegracion";
+import { esDeMantenimiento, grupoDeVinculo, vinculoValido } from "../../../lib/finanzasIntegracion";
 import { avisoRepetido } from "../../../lib/finanzasComprobantes";
 import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServidor";
 import { randomUUID } from "node:crypto";
@@ -296,15 +296,18 @@ export async function POST(request) {
       // Compra que salió sola de una factura (F2a): el dueño elige el tipo y Gypi lo recuerda para el proveedor
       const id = Number(d.id);
       if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
-      const [op] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&select=id,origen,proveedor_id&limit=1`, { sesion })) || [];
+      const [op] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&select=id,origen,origen_id,proveedor_id,cargada_por_nombre&limit=1`, { sesion })) || [];
       if (!op) return NextResponse.json({ error: "No encontré esa operación o está anulada" }, { status: 404 });
       // Solo las compras que salieron de una factura: las de cheques o saldos iniciales tienen sus cuentas fijas
-      if (!ORIGENES_COMPRA.includes(op.origen)) return NextResponse.json({ error: "El tipo de esta operación no se cambia: sale de otra pantalla" }, { status: 400 });
+      // y los gastos que Gypi pasó solos desde Mantenimiento (parte 9 de la auditoría del 12/11)
+      const deMantenimiento = esDeMantenimiento(op);
+      if (!ORIGENES_COMPRA.includes(op.origen) && !deMantenimiento) return NextResponse.json({ error: "El tipo de esta operación no se cambia: sale de otra pantalla" }, { status: 400 });
       const [tipo] = (await sbGet(`fin_tipos_operacion?empresa_id=eq.${e}&codigo=eq.${encodeURIComponent(String(d.tipo || ""))}&select=codigo,cuenta_debe,cuenta_haber,activo&limit=1`, { sesion })) || [];
       if (!tipo || tipo.activo === false) return NextResponse.json({ error: "Ese tipo de operación no existe o está desactivado" }, { status: 400 });
       if (!tipo.cuenta_debe || !tipo.cuenta_haber) return NextResponse.json({ error: `${tipo.codigo} no tiene cuentas por defecto: completalas en Configuración` }, { status: 400 });
+      // Un gasto de Mantenimiento cambia solo la cuenta del gasto: la deuda (proveedor o acreedor) queda
       const [fila] = (await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}`, {
-        tipo: tipo.codigo, cuenta_debe: tipo.cuenta_debe, cuenta_haber: tipo.cuenta_haber, estado: "confirmada", updated_at: new Date().toISOString(),
+        tipo: tipo.codigo, cuenta_debe: tipo.cuenta_debe, ...(deMantenimiento ? {} : { cuenta_haber: tipo.cuenta_haber }), estado: "confirmada", updated_at: new Date().toISOString(),
       }, { sesion })) || [];
       if (d.recordar && op.proveedor_id) {
         await sbPatch(`proveedores?id=eq.${op.proveedor_id}&empresa_id=eq.${e}`, { fin_tipo: tipo.codigo }, { sesion });
