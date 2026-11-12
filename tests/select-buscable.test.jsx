@@ -68,3 +68,25 @@ test("SelectBuscable — con el mouse y con flechas", () => {
   fireEvent.keyDown(input, { key: "Enter" });
   assert.deepEqual(elegidos, ["C", "A"], "la flecha baja a la segunda");
 });
+
+test("SelectBuscable — con listaAncha la lista se abre más ancha que el casillero y las cuentas se leen enteras (12/11)", () => {
+  const { rerender } = render(
+    <SelectBuscable aria-label="Cuenta del debe" value="" onChange={() => {}}>
+      <option value="">Elegí…</option>
+      <option value="01.01.01.003.002">01.01.01.003.002 · BANCO CREDICOOP CTA CTE</option>
+    </SelectBuscable>,
+  );
+  fireEvent.focus(screen.getByRole("combobox", { name: "Cuenta del debe" }));
+  let lista = screen.getByRole("listbox");
+  assert.match(lista.className, /right-0/, "sin listaAncha, del ancho del casillero (como siempre)");
+  rerender(
+    <SelectBuscable aria-label="Cuenta del debe" listaAncha value="" onChange={() => {}}>
+      <option value="">Elegí…</option>
+      <option value="01.01.01.003.002">01.01.01.003.002 · BANCO CREDICOOP CTA CTE</option>
+    </SelectBuscable>,
+  );
+  lista = screen.getByRole("listbox");
+  assert.doesNotMatch(lista.className, /right-0/);
+  assert.match(lista.className, /min-w-full w-max max-w-\[min\(34rem,calc\(100vw-2rem\)\)\]/);
+  assert.match(screen.getByRole("option", { name: /BANCO CREDICOOP/ }).className, /whitespace-normal/);
+});

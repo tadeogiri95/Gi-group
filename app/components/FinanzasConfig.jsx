@@ -231,7 +231,7 @@ function EditarFila({ tabla, fila, nueva, cuentas, personal, onCerrar, onGuardad
     </label>
   );
   const elegirCuenta = (k) => (
-    <SelectBuscable className="g-input w-full" value={f[k] || ""} onChange={set(k)}>
+    <SelectBuscable className="g-input w-full" listaAncha value={f[k] || ""} onChange={set(k)}>
       <option value="">Sin cuenta por defecto</option>
       {cuentas.filter((c) => c.activa !== false || c.codigo === f[k]).map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
     </SelectBuscable>

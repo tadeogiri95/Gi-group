@@ -251,7 +251,7 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
               </p>
             )}
             {tipo && (cambiarCuenta || !f.cuenta_gasto ? campo("Cuenta del gasto", (
-              <SelectBuscable className="g-input w-full" value={f.cuenta_gasto} onChange={set("cuenta_gasto")}>
+              <SelectBuscable className="g-input w-full" listaAncha value={f.cuenta_gasto} onChange={set("cuenta_gasto")}>
                 <option value="">Elegí…</option>
                 {cuentasGasto.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
               </SelectBuscable>
