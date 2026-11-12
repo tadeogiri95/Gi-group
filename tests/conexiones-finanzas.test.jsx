@@ -49,3 +49,39 @@ test("Compras → Órdenes: el filtro 🧾 Recibidas sin factura y la marca en c
   assert.match(screen.getByText("OC N° 40 · FAPLAC").parentElement.textContent, /🧾 Falta la factura/);
   assert.equal(screen.getByLabelText("Qué órdenes ver").value, "sin_factura");
 });
+
+// ─── Saldo de cada OC en Pagos ───
+
+const { saldosPorOc } = await import("../app/lib/finanzasProveedores.js");
+const { SaldoPorOc } = await import("../app/components/FinanzasPagos.jsx");
+const PROV = "02.01.01";
+const OPS = [
+  { id: 1, fecha: "2026-10-01", proveedor_id: 7, total_ars: 1000, cuenta_debe: "05.01.01", cuenta_haber: PROV, origen: "factura_oc", origen_id: "40", descripcion: "Factura A 1-1 · OC 40" },
+  { id: 2, fecha: "2026-10-05", proveedor_id: 7, total_ars: 200, cuenta_debe: "05.01.01", cuenta_haber: PROV, origen: "factura_oc_otra", origen_id: "3", descripcion: "Factura B 2-9 · OC 40 (otro proveedor)" },
+  { id: 3, fecha: "2026-10-10", proveedor_id: 7, total_ars: 500, cuenta_debe: "05.01.01", cuenta_haber: PROV, origen: "factura_oc", origen_id: "41", descripcion: "Factura A 1-2 · OC 41" },
+  { id: 4, fecha: "2026-10-20", proveedor_id: 7, total_ars: 1100, cuenta_debe: PROV, cuenta_haber: "01.01.01.001.002", origen: "orden_pago", descripcion: "Pago" },
+  { id: 5, fecha: "2026-10-02", proveedor_id: 8, total_ars: 300, cuenta_debe: "05.01.01", cuenta_haber: PROV, origen: "factura_suelta", descripcion: "Factura suelta 9" },
+];
+
+test("saldo por OC — junta las facturas de cada OC y aplica los pagos a lo más viejo", () => {
+  const s = saldosPorOc(OPS, new Set([PROV]), [{ id: 7, nombre: "FAPLAC" }]);
+  assert.deepEqual(s.map((x) => [x.numero, x.proveedor, x.facturado, x.pagado, x.falta]), [
+    [41, "FAPLAC", 500, 0, 500],
+    [40, "FAPLAC", 1200, 1100, 100],
+  ], "1.100 pagados van a lo más viejo: la OC 40 (1.000 + 100 de los 200); la factura suelta no es de una OC");
+});
+
+test("Pagos → 📄 Saldo por orden de compra: lo que falta, y las pagadas a pedido", async () => {
+  global.fetch = async () => new Response(JSON.stringify({ operaciones: OPS, cuentas_proveedores: [PROV], proveedores: [{ id: 7, nombre: "FAPLAC" }] }), { status: 200 });
+  render(<SaldoPorOc />);
+  await waitFor(() => screen.getByLabelText("Saldo por orden de compra"));
+  assert.ok(screen.getByText("OC N° 41"));
+  assert.ok(screen.getByText("OC N° 40"), "la 40 todavía debe 100");
+  assert.equal(screen.queryByText("✅ Pagada"), null);
+  cleanup();
+  global.fetch = async () => new Response(JSON.stringify({ operaciones: [...OPS, { id: 6, fecha: "2026-10-25", proveedor_id: 7, total_ars: 600, cuenta_debe: PROV, cuenta_haber: "01.01.01.001.002", origen: "orden_pago" }], cuentas_proveedores: [PROV], proveedores: [{ id: 7, nombre: "FAPLAC" }] }), { status: 200 });
+  render(<SaldoPorOc />);
+  await waitFor(() => screen.getByText(/Todas las órdenes de compra facturadas están pagadas/));
+  screen.getByLabelText("Ver también las pagadas").click();
+  await waitFor(() => assert.equal(screen.getAllByText("✅ Pagada").length, 2));
+});

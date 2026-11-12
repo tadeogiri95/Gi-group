@@ -19,6 +19,7 @@ import {
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import ElegirProveedor from "./FinanzasElegirProveedor";
+import { saldosPorOc } from "../lib/finanzasProveedores";
 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -334,6 +335,67 @@ export async function leerDatosPagos(anuladas = false) {
   return d;
 }
 
+/**
+ * Cuánto se pagó de cada orden de compra (11/11, conexión del plan Finanzas
+ * e Inventario): lo facturado de la OC, lo pagado y lo que falta.
+ */
+export function SaldoPorOc({ buscar = "" }) {
+  const [filas, setFilas] = useState(null);
+  const [error, setError] = useState(null);
+  const [todas, setTodas] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    apiFetch("/api/finanzas/proveedores")
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || "No se pudieron leer las compras");
+        if (vivo) setFilas(saldosPorOc(d.operaciones || [], new Set(d.cuentas_proveedores || []), d.proveedores || []));
+      })
+      .catch((e) => { if (vivo) setError(e.message); });
+    return () => { vivo = false; };
+  }, []);
+  if (error) return <p role="alert" className="m-0 text-[14px] text-gypi-red">⚠ {error}</p>;
+  if (!filas) return <div className="py-6 flex justify-center"><Spinner /></div>;
+  const b = normal(buscar);
+  const visibles = filas.filter((x) => (todas || x.falta > 0.009) && (!b || normal(`${x.numero} ${x.proveedor}`).includes(b)));
+  const falta = visibles.reduce((s, x) => s + x.falta, 0);
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-[13px] text-gypi-dim">
+        <span className="flex-1 min-w-[200px]">Lo facturado de cada orden de compra, lo pagado y lo que falta. Los pagos al proveedor se aplican a sus compras más viejas primero.</span>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={todas} onChange={(e) => setTodas(e.target.checked)} /> Ver también las pagadas</label>
+      </div>
+      {visibles.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px] border-collapse" aria-label="Saldo por orden de compra">
+            <thead>
+              <tr className="text-gypi-dim text-left">
+                <th className="font-semibold py-1">Orden de compra</th>
+                <th className="font-semibold py-1 text-right">Facturado</th>
+                <th className="font-semibold py-1 text-right">Pagado</th>
+                <th className="font-semibold py-1 text-right">Falta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map((x) => (
+                <tr key={`${x.clave}|${x.numero}`} className="border-t border-gypi-border">
+                  <td className="py-1"><b>OC N° {x.numero}</b> · {x.proveedor} <span className="block text-[12px] text-gypi-dim">Factura del {fechaCorta(x.desde)}</span></td>
+                  <td className="py-1 text-right font-mono">{plata(x.facturado, "ARS")}</td>
+                  <td className="py-1 text-right font-mono">{plata(x.pagado, "ARS")}</td>
+                  <td className={`py-1 text-right font-mono font-semibold ${x.falta > 0.009 ? "" : "text-gypi-green"}`}>{x.falta > 0.009 ? plata(x.falta, "ARS") : "✅ Pagada"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="m-0 mt-2 text-[13px]">Falta pagar: <b>{plata(falta, "ARS")}</b></p>
+        </div>
+      ) : (
+        <p className="m-0 text-[13px] text-gypi-dim">{filas.length ? "Todas las órdenes de compra facturadas están pagadas." : "Todavía no hay facturas de órdenes de compra en Finanzas."}</p>
+      )}
+    </div>
+  );
+}
+
 const FILTROS = {
   pendientes: { nombre: "Por resolver", estados: ["borrador", "para_aprobar", "aprobada", "rechazada"] },
   aprobada: { nombre: "Para pagar", estados: ["aprobada"] },
@@ -350,6 +412,7 @@ export default function FinanzasPagos() {
   const [nueva, setNueva] = useState(false);
   const [abierta, setAbierta] = useState(null);
   const [cfo, setCfo] = useState(false);
+  const [porOc, setPorOc] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -382,12 +445,16 @@ export default function FinanzasPagos() {
         <button type="button" className="g-btn g-btn-primary" onClick={() => setNueva(true)}>+ Orden de pago</button>
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {Object.entries(FILTROS).map(([k, f]) => <Chip key={k} active={filtro === k} onClick={() => setFiltro(k)}>{f.nombre} ({cuantas(k)})</Chip>)}
+        {Object.entries(FILTROS).map(([k, f]) => <Chip key={k} active={!porOc && filtro === k} onClick={() => { setPorOc(false); setFiltro(k); }}>{f.nombre} ({cuantas(k)})</Chip>)}
+        <Chip active={porOc} onClick={() => setPorOc(true)}>📄 Saldo por orden de compra</Chip>
         <input className="g-input flex-1 min-w-[160px]" aria-label="Buscar orden" placeholder="Buscar proveedor o N°" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
-        <label className="flex items-center gap-1 text-[13px] text-gypi-dim">
-          <input type="checkbox" checked={anuladas} onChange={(e) => setAnuladas(e.target.checked)} /> Ver anuladas
-        </label>
+        {!porOc && (
+          <label className="flex items-center gap-1 text-[13px] text-gypi-dim">
+            <input type="checkbox" checked={anuladas} onChange={(e) => setAnuladas(e.target.checked)} /> Ver anuladas
+          </label>
+        )}
       </div>
+      {porOc ? <SaldoPorOc buscar={buscar} /> : (<>
       <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Órdenes de pago">
         {lista.map((o) => {
           const est = ESTADOS_ORDEN[o.estado] || { nombre: o.estado, icono: "" };
@@ -413,6 +480,7 @@ export default function FinanzasPagos() {
           {(datos.ordenes || []).length ? "Ninguna orden con ese filtro." : "Todavía no hay órdenes de pago. Armá la primera con \"+ Orden de pago\" o desde la ficha del proveedor (💸 Pagar)."}
         </p>
       )}
+      </>)}
 
       {nueva && <NuevaOrden datos={datos} onCerrar={() => setNueva(false)} onGuardada={(o) => { setNueva(false); setAbierta(o.id); cargar(); }} />}
       {orden && <Detalle orden={orden} datos={datos} url={datos.links?.[orden.id]} onCerrar={() => setAbierta(null)} onCambio={cargar} />}
