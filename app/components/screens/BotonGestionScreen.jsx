@@ -72,7 +72,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "planificacion" && <PlanificacionScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "minuta" && <MinutaScreen empresa={empresa} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
-        {!bloqueado && actual.id === "fin-inicio" && <FinanzasInicio opciones={OPCIONES} onIr={(id) => (onIr ? onIr(`${boton}:${id}`) : setOpcion(id))} />}
+        {!bloqueado && actual.id === "fin-inicio" && <FinanzasInicio opciones={OPCIONES} onIr={(id) => (onIr ? onIr(id.includes(":") ? id : `${boton}:${id}`) : setOpcion(id))} />}
         {!bloqueado && actual.id === "fin-movimientos" && <FinanzasMovimientos />}
         {!bloqueado && actual.id === "fin-proveedores" && <FinanzasProveedores />}
         {!bloqueado && actual.id === "fin-cheques" && <FinanzasCheques />}

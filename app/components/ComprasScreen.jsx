@@ -26,6 +26,7 @@ import ArticuloNuevo from "./ArticuloNuevo";
 import FilaDeslizable from "./ui/FilaDeslizable";
 import { useOts } from "../hooks/useOts";
 import { otCompleta, textoOt } from "../lib/nombreOt";
+import { ESTADOS_OC_RECIBIDA, faltaFacturaOc } from "../lib/ordenesCompra";
 
 const CUANTOS = 300;
 const VACIO = { texto: "", articulo: null, descripcion: "", unidad: "", cantidad: "", ot: "", para_fecha: "", notas: "" };
@@ -396,6 +397,16 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
   }, [empresaId, permisos, usuario?.id]);
   useEffect(() => { cargar(); }, [cargar]);
 
+  // Órdenes recibidas sin factura (11/11): sin factura la compra no entra a Finanzas
+  const [sinFactura, setSinFactura] = useState(0);
+  const [filtroOrdenes, setFiltroOrdenes] = useState(null);
+  useEffect(() => {
+    if (!comprador) return;
+    sb.get(`ordenes_compra?estado=in.(${ESTADOS_OC_RECIBIDA.join(",")})&select=id,estado,factura_numero,factura_fecha&limit=1000`)
+      .then((rows) => setSinFactura((rows || []).filter(faltaFacturaOc).length))
+      .catch(() => {});
+  }, [comprador, vista]);
+
   // Catálogo y OT para el formulario, cada vez que se abre: así aparecen los
   // artículos que trajo una sincronización hecha con Compras abierto
   useEffect(() => {
@@ -448,7 +459,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
       {permisos.puede_pedir && (
         <FilaDeslizable role="tablist" aria-label="Compras" activa={vista} className="gap-1.5 mb-3">
           {(comprador ? [...PESTANAS_COMPRADOR, ...(gestion ? [PESTANA_FACTURAS] : [])] : PESTANAS_JEFE).map(([id, label]) => (
-            <button key={id} role="tab" aria-selected={vista === id} onClick={() => { setVista(id); setOrdenNueva(null); setCreadas(null); }}
+            <button key={id} role="tab" aria-selected={vista === id} onClick={() => { setVista(id); setOrdenNueva(null); setCreadas(null); setFiltroOrdenes(null); }}
               className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-bold cursor-pointer ${vista === id ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
               {label}
             </button>
@@ -460,6 +471,12 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
         <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">{AVISO_MIGRACION_113}</div>
       )}
 
+      {comprador && sinFactura > 0 && !(vista === "ordenes" && filtroOrdenes === "sin_factura") && (
+        <button onClick={() => { setVista("ordenes"); setFiltroOrdenes("sin_factura"); setOrdenNueva(null); setCreadas(null); }}
+          className="w-full min-h-[44px] mb-3 px-3 py-2 rounded-[10px] border border-gypi-amber bg-gypi-amber/10 text-left text-[14px] font-semibold text-gypi-amber-ink cursor-pointer font-body">
+          🧾 {sinFactura === 1 ? "1 orden recibida sin factura" : `${sinFactura} órdenes recibidas sin factura`}: cargala para que la compra entre a Finanzas ›
+        </button>
+      )}
       {creadas?.length > 0 && vista === "ordenes" && (
         <div role="status" className="p-3 mb-3 rounded-[10px] bg-gypi-green/10 text-[14px]">
           ✅ Armé {creadas.length === 1 ? "la orden" : "las órdenes"} {creadas.map((o) => `N° ${o.numero} (${o.proveedor_nombre})`).join(", ")}. Revisalas y mandalas al proveedor.
@@ -470,7 +487,7 @@ export default function ComprasScreen({ empresaId, empresa = null, usuario = nul
       ) : vista === "acomprar" && comprador ? (
         <AComprar empresaId={empresaId} onCreadas={(lista) => { setCreadas(lista); setOrdenNueva(lista.length === 1 ? lista[0].id : null); setVista("ordenes"); cargar(); }} />
       ) : vista === "ordenes" && comprador ? (
-        <OrdenesCompra empresaId={empresaId} empresa={empresa} abrirId={ordenNueva} />
+        <OrdenesCompra key={filtroOrdenes || "abiertas"} empresaId={empresaId} empresa={empresa} abrirId={ordenNueva} filtroInicial={filtroOrdenes || "abiertas"} />
       ) : vista === "proveedores" && comprador ? (
         <ProveedoresCompras empresaId={empresaId} />
       ) : vista === "reportes" && comprador ? (

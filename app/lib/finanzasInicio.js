@@ -39,7 +39,7 @@ const sumarDias = (fecha, n) => { const d = new Date(`${fecha}T12:00:00Z`); d.se
  * pantalla (ir) y dice cuántos son y por cuánto.
  * @returns {{ id, texto, ir, cantidad, importe?, tono: "rojo"|"ambar"|"normal" }[]}
  */
-export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = [], costos = 0, costosTotal = 0, plazosVencidos = 0, feriados = null }) {
+export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = [], costos = 0, costosTotal = 0, plazosVencidos = 0, feriados = null, sinFactura = 0 }) {
   const out = [];
   const plural = (n, uno, varios) => (n === 1 ? uno : varios.replace("N", String(n)));
   const miCaja = revisar.filter((o) => o.origen === "mi_caja");
@@ -83,6 +83,9 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
   }
   if (otras.length) {
     out.push({ id: "revisar", ir: "fin-movimientos", cantidad: otras.length, tono: "normal", texto: plural(otras.length, "1 operación para revisar", "N operaciones para revisar") });
+  }
+  if (sinFactura > 0) {
+    out.push({ id: "sin_factura", ir: "inventario:compras", cantidad: sinFactura, tono: "ambar", texto: plural(sinFactura, "1 orden de compra recibida sin factura: cargala en Compras para que entre a Finanzas", "N órdenes de compra recibidas sin factura: cargalas en Compras para que entren a Finanzas") });
   }
   if (costos > 0) {
     out.push({ id: "costos", ir: "fin-movimientos", cantidad: costos, importe: centavos(costosTotal), tono: "normal", texto: plural(costos, "1 costo de Flota o Maquinaria para pasar a Finanzas", "N costos de Flota y Maquinaria para pasar a Finanzas") });
