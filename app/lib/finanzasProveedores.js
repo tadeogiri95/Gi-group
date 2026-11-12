@@ -96,6 +96,42 @@ export function pendientesProveedor(movimientos, hoy) {
   return compras.filter((c) => c.falta > 0.009).map((c) => ({ ...c, dias: dias(c.op.fecha, hoy) }));
 }
 
+/**
+ * Cuánto se pagó de cada orden de compra (11/11, conexión del plan Finanzas
+ * e Inventario). Las compras que salieron de la factura de una OC (o de otra
+ * factura de esa OC) se juntan por el número de la OC; lo pagado sale de
+ * aplicar los pagos del proveedor a sus compras más viejas primero, igual
+ * que en la ficha del proveedor.
+ * @returns {{ numero: number, proveedor: string, clave: string, facturado: number, pagado: number, falta: number, desde: string }[]}
+ */
+export function saldosPorOc(ops, cuentasProv, proveedores = []) {
+  const nombres = new Map(proveedores.map((p) => [`p${p.id}`, p.nombre]));
+  const claves = [...new Set((ops || []).filter((op) => esDeOc(op)).map(claveDe).filter(Boolean))];
+  const por = new Map();
+  for (const clave of claves) {
+    const movs = movimientosProveedor(ops, clave, cuentasProv);
+    const falta = new Map(pendientesProveedor(movs, "2000-01-01").map((p) => [p.op.id, p.falta]));
+    for (const m of movs) {
+      if (!(m.compra > 0) || !esDeOc(m.op)) continue;
+      const numero = numeroOc(m.op);
+      const k = `${clave}|${numero}`;
+      const x = por.get(k) || { numero, clave, proveedor: nombres.get(clave) || m.op.entidad || "", facturado: 0, falta: 0, desde: m.op.fecha };
+      x.facturado += m.compra;
+      x.falta += falta.get(m.op.id) || 0;
+      if (m.op.fecha < x.desde) x.desde = m.op.fecha;
+      por.set(k, x);
+    }
+  }
+  return [...por.values()]
+    .map((x) => ({ ...x, facturado: centavos(x.facturado), falta: centavos(x.falta), pagado: centavos(x.facturado - x.falta) }))
+    .sort((a, b) => b.falta - a.falta || b.numero - a.numero);
+}
+
+const ORIGENES_OC = new Set(["factura_oc", "factura_oc_otra"]);
+/** "Factura A 1-2 · OC 40" → 40 (la descripción la arma Gypi al pasar la factura). */
+const numeroOc = (op) => Number(String(op?.descripcion || "").match(/·\s*OC\s+(\d+)/)?.[1]) || null;
+const esDeOc = (op) => ORIGENES_OC.has(op?.origen) && Boolean(numeroOc(op));
+
 /** El proveedor de la lista que tiene ese nombre (comparando sin mayúsculas, puntos ni espacios), o null. */
 export function emparejarProveedor(nombre, proveedores = []) {
   const k = claveNombre(nombre);
