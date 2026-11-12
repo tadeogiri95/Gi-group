@@ -7,6 +7,8 @@
 // Credicoop, .xlsx o .csv): Gypi carga solo lo que falta, sin repetir, con el
 // interés aparte. Cuando un plazo vence, un botón registra que la plata
 // volvió al banco y el interés (en el mes en que vence).
+// 12/11: si un plazo quedó dos veces (lo cargó Gypi y también está en el
+// libro), un aviso deja anular las de Gypi de un toque.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
@@ -244,12 +246,62 @@ function Vencidos({ pendientes, onCerrar, onHecho }) {
   );
 }
 
+const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
+
+/** Los plazos que quedaron dos veces: se anula la que cargó Gypi y queda la del libro. */
+function Repetidos({ repetidos, onCerrar, onHecho }) {
+  const toast = useToast();
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState(null);
+  async function anular() {
+    setOcupado(true);
+    setError(null);
+    try {
+      const d = await postPf({ accion: "anular_repetidos" });
+      toast.success(`✅ ${d.anuladas === 1 ? "Se anuló 1 repetida" : `Se anularon ${d.anuladas} repetidas`}`);
+      onHecho();
+    } catch (e) {
+      setError(e.message);
+      setOcupado(false);
+    }
+  }
+  return (
+    <Modal open onClose={ocupado ? () => {} : onCerrar} title="Plazos fijos repetidos" maxWidth={680}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          Estas operaciones las cargó Gypi y también están en el libro, con el mismo importe y las mismas cuentas.
+          Se anula la de Gypi (queda tachada y el libro borra su renglón) y queda la tuya.
+        </p>
+        <ul className="list-none m-0 p-0 flex flex-col gap-2" aria-label="Repetidas">
+          {repetidos.map((r) => (
+            <li key={r.id} className="text-[13px] border-b border-gypi-border pb-2">
+              <span className="flex flex-wrap gap-x-2">
+                <b className="font-mono">{plata(r.total)}</b>
+                <span>{r.tipo}</span>
+                <span className="text-gypi-dim">{fechaCorta(r.fecha)}</span>
+              </span>
+              <span className="block text-gypi-red">Se anula: {r.descripcion || "la de Gypi"}</span>
+              <span className="block text-gypi-dim">Queda la {r.otra.origen} del {fechaCorta(r.otra.fecha)}{r.otra.descripcion ? `: ${r.otra.descripcion}` : ""}</span>
+            </li>
+          ))}
+        </ul>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" disabled={ocupado} onClick={onCerrar}>Cerrar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={ocupado} onClick={anular}>{ocupado ? "Anulando…" : `Anular las ${repetidos.length} de Gypi`}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function FinanzasPlazosFijos({ onCambio }) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const [importar, setImportar] = useState(false);
   const [verVencidos, setVerVencidos] = useState(false);
   const [terminados, setTerminados] = useState(false);
+  const [verRepetidos, setVerRepetidos] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -266,7 +318,7 @@ export default function FinanzasPlazosFijos({ onCambio }) {
 
   const vigentes = useMemo(() => (datos?.plazos || []).filter((p) => p.situacion !== "terminado"), [datos]);
   const viejos = useMemo(() => (datos?.plazos || []).filter((p) => p.situacion === "terminado"), [datos]);
-  const hecho = () => { setImportar(false); setVerVencidos(false); cargar(); onCambio?.(); };
+  const hecho = () => { setImportar(false); setVerVencidos(false); setVerRepetidos(false); cargar(); onCambio?.(); };
   const visibles = terminados ? [...vigentes, ...viejos] : vigentes;
   const depositado = vigentes.filter((p) => p.situacion !== "sin_cargar" && p.moneda !== "USD").reduce((s, p) => s + p.depositado, 0);
   const intereses = vigentes.filter((p) => p.situacion !== "sin_cargar" && p.moneda !== "USD").reduce((s, p) => s + p.interes, 0);
@@ -282,6 +334,12 @@ export default function FinanzasPlazosFijos({ onCambio }) {
       </div>
       {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
       {!datos && !error && <Spinner size={18} />}
+      {datos?.repetidos?.length > 0 && (
+        <button type="button" onClick={() => setVerRepetidos(true)}
+          className="w-full mb-2 p-3 rounded-lg border border-gypi-red/40 bg-gypi-red/10 text-left text-[14px] font-semibold text-gypi-red cursor-pointer">
+          ⚠ {datos.repetidos.length === 1 ? "1 operación de plazo fijo está" : `${datos.repetidos.length} operaciones de plazos fijos están`} dos veces (en Gypi y en el libro): revisar y anular las repetidas
+        </button>
+      )}
       {datos?.pendientes.length > 0 && (
         <button type="button" onClick={() => setVerVencidos(true)}
           className="w-full mb-2 p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-left text-[14px] font-semibold text-gypi-amber-ink cursor-pointer">
@@ -326,6 +384,7 @@ export default function FinanzasPlazosFijos({ onCambio }) {
         </label>
       )}
       {importar && <Importar datos={datos} onCerrar={() => setImportar(false)} onCargado={hecho} />}
+      {verRepetidos && <Repetidos repetidos={datos.repetidos} onCerrar={() => setVerRepetidos(false)} onHecho={hecho} />}
       {verVencidos && <Vencidos pendientes={datos.pendientes} onCerrar={() => setVerVencidos(false)} onHecho={hecho} />}
     </section>
   );

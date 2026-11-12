@@ -19,8 +19,15 @@
 //   POST { accion: "proveedor_nuevo", nombre, cuit } → da de alta el proveedor
 //       que trajo la factura (o usa el que ya tiene ese nombre).
 //   POST { accion: "anular", id } → la marca anulada con quién y cuándo. No se borra.
-//       Solo las cargadas a mano: las de una factura se anulan con la factura.
+//       Las cargadas a mano, copiadas del libro, de plazos fijos, del extracto,
+//       saldos iniciales, Mi caja, FCI y títulos (12/11; finanzasCorregir.js):
+//       las de una factura, un cheque o una orden se anulan desde donde salieron.
 //       Un gasto se anula junto con su pago.
+//   POST { accion: "anular_varias", ids } → lo mismo, varias juntas (los plazos
+//       fijos repetidos, 12/11).
+//   POST { accion: "corregir", id, cambios } → anula la operación ("corregida")
+//       y carga una nueva con la fecha, el importe, las cuentas, la descripción
+//       o la referencia cambiadas (12/11).
 //   POST { accion: "cambiar_tipo", id, tipo, recordar } → cambia el tipo (y las
 //       cuentas) de una compra que salió de una factura; con recordar, queda
 //       como tipo del proveedor para las próximas (F2a, migración 172).
@@ -42,9 +49,12 @@ import { grupoDeVinculo, vinculoValido } from "../../../lib/finanzasIntegracion"
 import { avisoRepetido } from "../../../lib/finanzasComprobantes";
 import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServidor";
 import { randomUUID } from "node:crypto";
+import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
+
+const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO).join(",")})`;
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
-const COLUMNAS = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
+const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
 
 async function listas(sesion) {
   const e = sesion.empresa_id;
@@ -239,11 +249,48 @@ export async function POST(request) {
         broadcastRefresh(e, "fin_operaciones");
         return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
       }
-      // Las que salieron de una factura se anulan solas al anular la factura
-      const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&origen=eq.manual`, marca, { sesion });
-      if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación, ya estaba anulada o salió de una factura (se anula anulando la factura)" }, { status: 404 });
+      // Las que salieron de una factura, un cheque o una orden se anulan desde ahí
+      const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&${ANULABLES}`, marca, { sesion });
+      if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación, ya estaba anulada o salió de otra pantalla (se anula desde ahí)" }, { status: 404 });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: filas[0] });
+    }
+    if (d.accion === "anular_varias") {
+      const ids = [...new Set((Array.isArray(d.ids) ? d.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+      if (!ids.length) return NextResponse.json({ error: "Faltan las operaciones" }, { status: 400 });
+      if (ids.length > MAX_ANULAR_JUNTAS) return NextResponse.json({ error: `Hasta ${MAX_ANULAR_JUNTAS} por vez` }, { status: 400 });
+      const ahora = new Date().toISOString();
+      const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&${ANULABLES}&id=in.(${ids.join(",")})`, {
+        anulada_at: ahora, anulada_por_nombre: await nombreEmpleado(sesion), updated_at: ahora,
+      }, { sesion });
+      broadcastRefresh(e, "fin_operaciones");
+      return NextResponse.json({ ok: true, anuladas: filas?.length || 0 });
+    }
+    if (d.accion === "corregir") {
+      const id = Number(d.id);
+      if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
+      const [op] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&select=*&limit=1`, { sesion })) || [];
+      if (!op) return NextResponse.json({ error: "No encontré esa operación o ya está anulada" }, { status: 404 });
+      if (!puedeCorregir(op)) return NextResponse.json({ error: "Esta operación sale de otra pantalla: se corrige desde ahí" }, { status: 400 });
+      const cuentas = (await sbGetAll(`fin_cuentas?empresa_id=eq.${e}&select=codigo`, { sesion, maxFilas: 5000 })).data || [];
+      const { nueva, errores } = operacionCorregida(op, d.cambios || {}, { cuentas });
+      if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+      const ahora = new Date().toISOString();
+      const quien = await nombreEmpleado(sesion);
+      // Primero se anula la vieja (si otro la anuló recién, no se carga la nueva)
+      const anulada = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, {
+        anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} ${MARCA_CORREGIDA}`.slice(0, 120), updated_at: ahora,
+      }, { sesion });
+      if (!anulada?.length) return NextResponse.json({ error: "Esa operación ya estaba anulada" }, { status: 409 });
+      try {
+        const [fila] = await sbPost("fin_operaciones", { ...nueva, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: fila, anulada: id });
+      } catch (err) {
+        // Si la nueva no se pudo guardar, la vieja vuelve a estar viva
+        await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}`, { anulada_at: null, anulada_por_nombre: null, updated_at: new Date().toISOString() }, { sesion, silent: true }).catch(() => null);
+        throw err;
+      }
     }
     if (d.accion === "cambiar_tipo") {
       // Compra que salió sola de una factura (F2a): el dueño elige el tipo y Gypi lo recuerda para el proveedor

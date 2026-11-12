@@ -24,6 +24,8 @@ import { VentanaAltaPersona } from "./AltaPersona";
 import CargarGasto from "./FinanzasCargarGasto";
 import { CostosMantenimiento } from "./FinanzasIntegracion";
 import { ORIGEN_GASTO } from "../lib/finanzasGastos";
+import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
+import CorregirOperacion from "./FinanzasCorregir";
 import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, ladoCaja, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
@@ -362,12 +364,27 @@ function CambiarTipo({ op, datos, onCambiado }) {
   );
 }
 
-function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
+/** "Anulada por Tadeo" o, si se corrigió, "Corregida por Tadeo (la nueva está aparte)". */
+function textoAnulada(op) {
+  const quien = String(op.anulada_por_nombre || "");
+  if (quien.endsWith(MARCA_CORREGIDA)) {
+    const n = quien.slice(0, -MARCA_CORREGIDA.length).trim();
+    return `Corregida${n ? ` por ${n}` : ""} (la corrección es otra operación)`;
+  }
+  return `Anulada${quien ? ` por ${quien}` : ""}`;
+}
+
+const SIN_NOMBRES = { entidad: (op) => op.entidad || null, ot: () => null };
+
+// 12/11: también se corrige (✏) y se anula lo copiado del libro, los plazos
+// fijos, el extracto, los saldos iniciales y Mi caja (finanzasCorregir.js).
+export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada }) {
   const toast = useToast();
   const [confirmar, setConfirmar] = useState(false);
   const [anulando, setAnulando] = useState(false);
+  const [corrigiendo, setCorrigiendo] = useState(false);
   const gasto = op.origen === ORIGEN_GASTO;
-  const automatica = op.origen && op.origen !== "manual" && !gasto;
+  const automatica = !puedeAnular(op) && !op.anulada_at;
   const compra = ["factura_oc", "factura_oc_otra", "factura_suelta"].includes(op.origen);
 
   const anular = async () => {
@@ -389,21 +406,23 @@ function Detalle({ op, datos, nombres, onCerrar, onAnulada }) {
   return (
     <Modal open onClose={onCerrar} title={`${nombreDeTipo(op.tipo, datos.tipos)} · ${fechaCorta(op.fecha)}`} maxWidth={560}>
       <div className="flex flex-col gap-2">
-        {op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-red">Anulada{op.anulada_por_nombre ? ` por ${op.anulada_por_nombre}` : ""} el {fechaCorta(op.anulada_at.slice(0, 10))}</p>}
+        {op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-red">{textoAnulada(op)} el {fechaCorta(op.anulada_at.slice(0, 10))}</p>}
         {fila("Proveedor o cliente", nombres.entidad(op))}
         {fila("OT", nombres.ot(op))}
         {fila("Centro de costo", op.centro_costo)}
         {fila("Descripción", op.descripcion)}
         {fila("Referencia", op.referencia)}
         {fila("Cargada por", op.cargada_por_nombre)}
-        {(automatica || gasto) && fila("Salió de", ORIGENES[op.origen] || op.origen)}
+        {op.origen && op.origen !== "manual" && fila("Salió de", ORIGENES[op.origen] || op.origen)}
         {op.estado === "para_revisar" && !op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde.</p>}
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
         {compra && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
-        {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {op.origen === "cheque" ? "Finanzas → Cheques" : op.origen === "orden_pago" ? "Finanzas → Pagos (anulando la orden)" : "donde salió"}.</p>}
+        {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {dondeSeCambia(op)}.</p>}
+        {corrigiendo && <CorregirOperacion op={op} cuentas={datos.cuentas || []} onCancelar={() => setCorrigiendo(false)} onCorregida={onAnulada} />}
         {compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
-        {!op.anulada_at && !automatica && (
-          <div className="flex justify-end gap-2 mt-2">
+        {!op.anulada_at && !automatica && !corrigiendo && (
+          <div className="flex flex-wrap justify-end gap-2 mt-2">
+            {!confirmar && puedeCorregir(op) && <button type="button" className="g-btn g-btn-secondary" onClick={() => setCorrigiendo(true)}>✏ Corregir</button>}
             {confirmar ? (
               <>
                 <span className="self-center text-[13px] text-gypi-text">{gasto ? "¿Anular este gasto? Se anula junto con su pago, si lo cargaste. Queda tachado y no suma." : "¿Anular esta operación? Queda tachada y no suma."}</span>

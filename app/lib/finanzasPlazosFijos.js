@@ -187,9 +187,10 @@ const esInteres = (op) => /RENDIMIENTOS FINANCIEROS/i.test(String(op.tipo || "")
 
 /**
  * Qué parte de cada plazo ya está en Gypi: la constitución, el vencimiento y el
- * interés (o null). Un interés del libro se reconoce por el importe (±1
- * centavo) hasta 3 días antes o después del vencimiento; cada operación sirve
- * para un solo plazo.
+ * interés (o null). Un interés del libro se reconoce por el importe (hasta $1
+ * de diferencia) hasta 5 días antes o después del vencimiento, y un rescate
+ * sin certificado por el capital y la fecha; cada operación sirve para un
+ * solo plazo.
  * @returns {Map<string, { c: object|null, r: object|null, i: object|null }>}
  */
 export function estadoDePlazos(plazos = [], ops = [], cuentasPf = []) {
@@ -202,10 +203,14 @@ export function estadoDePlazos(plazos = [], ops = [], cuentasPf = []) {
     const buscar = (paso, cond) => vivas.find((o) => !usadas.has(o.id) && (o.origen === ORIGEN_PLAZO_FIJO ? o.origen_id === id(paso) : cond(o))) || null;
     const c = buscar("c", (o) => tieneCert(o, p.certificado) && pfs.has(o.cuenta_debe));
     if (c) usadas.add(c.id);
-    const r = buscar("r", (o) => tieneCert(o, p.certificado) && pfs.has(o.cuenta_haber));
+    // 12/11: el rescate del libro sin el número de certificado se reconoce por
+    // el capital y la fecha; el interés, con hasta $1 de diferencia y 5 días
+    // (el banco a veces lo acredita al día hábil siguiente)
+    const r = buscar("r", (o) => tieneCert(o, p.certificado) && pfs.has(o.cuenta_haber))
+      || buscar("r", (o) => pfs.has(o.cuenta_haber) && !/\d{6,}/.test(String(o.descripcion || "")) && Math.abs(centavos(o.total) - p.depositado) <= 0.011 && Math.abs(dias(o.fecha, p.vencimiento)) <= 3);
     if (r) usadas.add(r.id);
     const i = p.interes > 0
-      ? buscar("i", (o) => esInteres(o) && (tieneCert(o, p.certificado) || (Math.abs(centavos(o.total) - p.interes) <= 0.011 && Math.abs(dias(o.fecha, p.vencimiento)) <= 3)))
+      ? buscar("i", (o) => esInteres(o) && (tieneCert(o, p.certificado) || (Math.abs(centavos(o.total) - p.interes) <= 1 && Math.abs(dias(o.fecha, p.vencimiento)) <= 5)))
       : null;
     if (i) usadas.add(i.id);
     out.set(p.certificado, { c, r, i });
