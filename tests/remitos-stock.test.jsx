@@ -224,7 +224,7 @@ test("/api/stock/remitos descartar y listar — cada uno lo suyo; sin la migraci
 test("pantalla — aEditor y cuerpoRemito van y vuelven sin perder datos", () => {
   const ed = aEditor({ ...PENDIENTE, renglones: [{ descripcion: "Melamina", codigo: "M18", cantidad: 2.5, sku: "1.10" }] });
   assert.equal(ed.renglones[0].cantidad, "2,5");
-  assert.deepEqual(cuerpoRemito(ed).renglones, [{ descripcion: "Melamina", codigo: "M18", cantidad: "2,5", sku: "1.10" }]);
+  assert.deepEqual(cuerpoRemito(ed).renglones, [{ descripcion: "Melamina", codigo: "M18", cantidad: "2,5", sku: "1.10", como: null }]);
 });
 
 test("pantalla — la oficina revisa un remito pendiente, elige el artículo que falta y lo confirma", async () => {

@@ -12,8 +12,14 @@
 //   - si el proveedor tiene una orden de compra abierta con esos artículos, se
 //     avisa que conviene recibir la OC (Compras → Recibir);
 //   - si ese comprobante de ese proveedor ya entró, se avisa (stockIngresos).
+//
+// 12/11 (pedido de Tadeo): cada renglón tiene que quedar con un artículo del
+// MRP. Si no se reconoce igual, se busca el más parecido por palabras y
+// medidas (parecidosArticulo): si uno gana claro se pone solo, marcado
+// "parecido" para revisar; si no, se ofrecen los tres más parecidos. El
+// remito también se carga a mano, eligiendo los artículos del MRP.
 import { clavePersona } from "./finanzasPersonas";
-import { reconocerRenglon } from "./facturasSueltas";
+import { normalizarTexto, reconocerRenglon } from "./facturasSueltas";
 
 export const MAX_RENGLONES_REMITO = 200;
 export const ESTADOS_REMITO = { para_revisar: "🕓 Para revisar", confirmado: "✅ En el stock", descartado: "🗑 Descartado" };
@@ -59,6 +65,125 @@ export const ESQUEMA_REMITO = {
   },
 };
 
+/* ─── El artículo más parecido ───────────────────────────────────────── */
+
+const VACIAS = new Set(["de", "del", "la", "el", "los", "las", "y", "con", "para", "en", "x", "por", "un", "una", "c", "p", "s", "u", "uni", "unid", "unidad", "unidades", "cm", "mm", "mts", "mt", "m", "kg", "gr", "grs", "lt", "lts", "l"]);
+
+/**
+ * Las palabras que cuentan de un texto: sin acentos ni palabras vacías, las
+ * medidas pegadas a su unidad separadas ("18mm" → "18"), "22x0,45" → "22" y
+ * "0.45", y los centímetros también en milímetros ("45 cm" → "45" y "450").
+ */
+export function palabrasArticulo(textoLibre) {
+  let t = String(textoLibre ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  t = t.replace(/(\d),(\d)/g, "$1.$2").replace(/(\d)\s*x\s*(?=\d)/g, "$1 ");
+  t = t.replace(/(\d+(?:\.\d+)?)\s*cm\b/g, (_, n) => `${n} ${Math.round(Number(n) * 10 * 100) / 100}`);
+  const out = [];
+  for (let w of t.split(/[^a-z0-9.]+/)) {
+    w = w.replace(/^\.+|\.+$/g, "");
+    const u = w.match(/^(\d+(?:\.\d+)?)[a-z]+$/);
+    if (u) w = u[1];
+    if (w.includes(".") && !/^\d+\.\d+$/.test(w)) { out.push(...w.split(".").filter((x) => x && !VACIAS.has(x))); continue; }
+    if (w && !VACIAS.has(w)) out.push(w);
+  }
+  return [...new Set(out)];
+}
+
+const esNumero = (w) => /^\d/.test(w);
+/** ¿Una letra tras otra, en orden, empezando igual? ("bca" en "blanca") */
+const abrevia = (w, a) => {
+  if (w[0] !== a[0]) return false;
+  let k = 0;
+  for (const ch of a) if (ch === w[k]) k += 1;
+  return k === w.length;
+};
+/** ¿La palabra del remito está en el artículo? 1 igual; 0,7 si empieza igual; 0,5 si es una abreviatura. */
+function coincide(w, delArticulo) {
+  if (delArticulo.has(w)) return 1;
+  if (esNumero(w) || w.length < 3) return 0;
+  let mejor = 0;
+  for (const a of delArticulo) {
+    if (esNumero(a) || a.length < 3) continue;
+    if (w.length >= 4 && (a.startsWith(w) || w.startsWith(a) || (w.length >= 5 && a.length >= 5 && w.slice(0, 5) === a.slice(0, 5)))) return 0.7;
+    if (w.length < a.length && abrevia(w, a)) mejor = 0.5;
+  }
+  return mejor;
+}
+
+const cacheParecidos = new WeakMap();
+function indiceParecidos(articulos) {
+  let ix = cacheParecidos.get(articulos);
+  if (!ix) {
+    ix = articulos.filter((a) => a && a.sku && a.activo !== false).map((a) => ({ a, p: new Set(palabrasArticulo(a.nombre)) }));
+    cacheParecidos.set(articulos, ix);
+  }
+  return ix;
+}
+
+/**
+ * Los artículos del MRP más parecidos a lo que dice el renglón, con un puntaje
+ * de 0 a 1: cuenta lo que coincide de los dos lados, y una medida (18, 450…)
+ * que está en uno y no en el otro resta, para no confundir 18 mm con 15 mm.
+ * @returns {{ sku: string, nombre: string, puntaje: number }[]}
+ */
+export function parecidosArticulo(descripcion, articulos = [], max = 3) {
+  const del = palabrasArticulo(descripcion);
+  if (!del.length) return [];
+  const out = [];
+  for (const { a, p } of indiceParecidos(articulos)) {
+    if (!p.size) continue;
+    // Las medidas pesan más; una del remito que no está en el artículo pesa
+    // poco (el remito suele traer el largo, el espesor y más), pero una medida
+    // del artículo que no está en el remito resta: 18 mm no es 15 mm.
+    let suma = 0;
+    let pesoRemito = 0;
+    for (const w of del) {
+      const c = coincide(w, p);
+      if (esNumero(w)) { suma += c * 1.5; pesoRemito += c ? 1.5 : 0.5; } else { suma += c; pesoRemito += 1; }
+    }
+    if (!suma) continue;
+    let pesoArticulo = 0;
+    let numerosMal = 0;
+    for (const w of p) {
+      if (!esNumero(w)) pesoArticulo += 1;
+      else if (del.includes(w)) pesoArticulo += 1.5;
+      else { pesoArticulo += 1.5; numerosMal += 1; }
+    }
+    const puntaje = (2 * suma) / (pesoRemito + pesoArticulo) - 0.15 * numerosMal;
+    if (puntaje > 0.2) out.push({ sku: a.sku, nombre: a.nombre || a.sku, puntaje: Math.round(Math.min(1, puntaje) * 100) / 100 });
+  }
+  return out.sort((x, y) => y.puntaje - x.puntaje || String(x.nombre).localeCompare(String(y.nombre), "es")).slice(0, max);
+}
+
+/** Con cuánto gana el más parecido para ponerlo solo. */
+export const PARECIDO_SEGURO = 0.6;
+export const PARECIDO_VENTAJA = 0.15;
+
+/**
+ * El artículo de un renglón: el reconocido (memoria, código o nombre igual) o,
+ * si uno gana claro, el más parecido. Con las opciones para elegir.
+ */
+export function articuloDeRenglon(renglon, { articulos = [], asociaciones = [] } = {}) {
+  const rec = renglon.descripcion || renglon.codigo ? reconocerRenglon(renglon, { articulos, asociaciones }) : null;
+  if (rec) return { sku: rec.sku, como: rec.como, opciones: [] };
+  const opciones = parecidosArticulo(renglon.descripcion, articulos);
+  const [primero, segundo] = opciones;
+  if (primero && primero.puntaje >= PARECIDO_SEGURO && primero.puntaje - (segundo?.puntaje || 0) >= PARECIDO_VENTAJA) {
+    return { sku: primero.sku, como: "parecido", opciones };
+  }
+  return { sku: null, como: null, opciones };
+}
+
+/** Cómo se eligió el artículo, en palabras (para la pantalla). */
+export const COMO_ARTICULO = {
+  memoria: "elegido antes para este proveedor",
+  sku: "por el código",
+  codigo: "por el código del proveedor",
+  nombre: "mismo nombre",
+  parecido: "el más parecido: revisalo",
+  mano: "elegido a mano",
+};
+
 /**
  * Lo que leyó la IA, como borrador con el artículo reconocido de cada renglón.
  * @param {object} lectura
@@ -68,8 +193,8 @@ export function borradorRemito(lectura, { articulos = [], asociaciones = [] } = 
   const renglones = (Array.isArray(lectura?.renglones) ? lectura.renglones : []).slice(0, MAX_RENGLONES_REMITO)
     .map((r) => {
       const base = { descripcion: texto(r?.descripcion, 200), codigo: texto(r?.codigo, 60), cantidad: cantidad(r?.cantidad) ?? "" };
-      const rec = base.descripcion ? reconocerRenglon(base, { articulos, asociaciones }) : null;
-      return { ...base, sku: rec?.sku || null, como: rec?.como || null };
+      const rec = articuloDeRenglon(base, { articulos, asociaciones });
+      return { ...base, sku: rec.sku, como: rec.como, opciones: rec.opciones };
     })
     .filter((r) => r.descripcion);
   return {
@@ -94,6 +219,7 @@ export function validarRemito(d = {}, { skus = null, sinCantidades = false } = {
     codigo: texto(r?.codigo, 60) || null,
     cantidad: cantidad(r?.cantidad),
     sku: texto(r?.sku, 60) || null,
+    ...(r?.sku && COMO_ARTICULO[r?.como] ? { como: r.como } : {}),
   })).filter((r) => r.descripcion || r.sku);
   if (!renglones.length) errores.push("El remito no tiene renglones");
   renglones.forEach((r, i) => {

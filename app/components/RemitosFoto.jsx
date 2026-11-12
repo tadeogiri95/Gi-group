@@ -7,9 +7,14 @@
 // número, fecha y renglones, y Gypi reconoce el artículo de cada uno. Se
 // corrige lo que haga falta y queda "para revisar" (como Mi caja). La oficina
 // lo revisa y lo confirma: recién ahí entra al stock.
+// 12/11: cada renglón va con un artículo del MRP. Si Gypi no lo reconoce igual,
+// pone el más parecido (marcado para revisar) o muestra los más parecidos
+// para elegir de un toque. "✍ Cargar a mano" arma el remito sin foto,
+// eligiendo los artículos del MRP.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
+import { COMO_ARTICULO, parecidosArticulo } from "../lib/remitosStock";
 import BotonFoto from "./BotonFoto";
 
 const PARA_TEXTO = 6;
@@ -19,6 +24,7 @@ export function aEditor(r) {
   return {
     id: r.id || null,
     origen: r.origen === "ticket" ? "ticket" : "remito",
+    a_mano: !!r.a_mano,
     foto_url: r.foto_url || null,
     proveedor: r.proveedor || "",
     numero: r.numero || "",
@@ -30,6 +36,8 @@ export function aEditor(r) {
       codigo: x.codigo || "",
       cantidad: x.cantidad === null || x.cantidad === undefined || x.cantidad === "" ? "" : String(x.cantidad).replace(".", ","),
       sku: x.sku || null,
+      como: x.sku ? x.como || null : null,
+      opciones: Array.isArray(x.opciones) ? x.opciones : null,
       texto: "",
     })),
   };
@@ -43,7 +51,7 @@ export function cuerpoRemito(ed) {
     fecha: ed.fecha || null,
     notas: ed.notas || null,
     foto_url: ed.foto_url || null,
-    renglones: ed.renglones.map((r) => ({ descripcion: r.descripcion, codigo: r.codigo || null, cantidad: r.cantidad, sku: r.sku || null })),
+    renglones: ed.renglones.map((r) => ({ descripcion: r.descripcion, codigo: r.codigo || null, cantidad: r.cantidad, sku: r.sku || null, como: r.sku ? r.como || null : null })),
   };
 }
 
@@ -99,7 +107,14 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
   const cambiar = (campo) => (e) => setEd((x) => ({ ...x, [campo]: e.target.value }));
   const cambiarRenglon = (i, cambios) => setEd((x) => ({ ...x, renglones: x.renglones.map((r, j) => (j === i ? { ...r, ...cambios } : r)) }));
   const sacarRenglon = (i) => setEd((x) => ({ ...x, renglones: x.renglones.filter((_, j) => j !== i) }));
-  const agregarRenglon = () => setEd((x) => ({ ...x, renglones: [...x.renglones, { descripcion: "", codigo: "", cantidad: "", sku: null, texto: "" }] }));
+  const renglonVacio = () => ({ descripcion: "", codigo: "", cantidad: "", sku: null, como: null, opciones: null, texto: "" });
+  const agregarRenglon = () => setEd((x) => ({ ...x, renglones: [...x.renglones, renglonVacio()] }));
+  // Elegido de la lista del MRP: a mano sin descripción, la descripción es el nombre del artículo
+  const elegir = (i, art, como = "mano") => setEd((x) => ({
+    ...x,
+    renglones: x.renglones.map((r, j) => (j === i ? { ...r, sku: art.sku, como, texto: "", descripcion: r.descripcion || art.nombre || art.sku } : r)),
+  }));
+  const aMano = () => abrir({ ...aEditor({ a_mano: true, renglones: [], fecha: new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }) }), renglones: [renglonVacio()] });
 
   const puedeConfirmar = !!datos?.puede_confirmar;
   const sinArticulo = ed ? ed.renglones.filter((r) => !r.sku).length : 0;
@@ -154,6 +169,7 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
       <div className="mb-3">
         <div className="flex flex-col">
           <BotonFoto label={leyendo ? "Leyendo el remito…" : "📷 Ingreso por foto del remito"} disabled={leyendo} onFoto={leer} />
+          <button type="button" onClick={aMano} disabled={leyendo} className="g-btn g-btn-secondary mt-2">✍ Cargar un remito a mano</button>
         </div>
         {leyendo && <div role="status" className="text-[12px] text-gypi-dim mt-1">Gypi está leyendo el remito. Tarda unos segundos.</div>}
         {hecho && <div role="status" className="text-[13px] text-gypi-green mt-2">{hecho}</div>}
@@ -184,11 +200,11 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
   return (
     <section aria-label="Remito por foto" className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
       <div className="flex items-center gap-2 mb-2">
-        <div className="flex-1 text-[15px] font-bold">{ed.id ? (ed.origen === "ticket" ? "🕓 Ticket de Mi caja para revisar" : "🕓 Remito para revisar") : "📷 Remito leído"}</div>
+        <div className="flex-1 text-[15px] font-bold">{ed.id ? (ed.origen === "ticket" ? "🕓 Ticket de Mi caja para revisar" : "🕓 Remito para revisar") : ed.a_mano ? "✍ Remito a mano" : "📷 Remito leído"}</div>
         {ed.foto_url && <a href={ed.foto_url} target="_blank" rel="noopener noreferrer" className="text-[13px] font-semibold text-gypi-amber-ink">Ver foto</a>}
       </div>
       {ed.id && ed.cargado_por_nombre && <div className="text-[12px] text-gypi-dim mb-2">Lo cargó {ed.cargado_por_nombre}.</div>}
-      {!ed.id && <div className="text-[12px] text-gypi-dim mb-2">Revisá lo que leyó Gypi y corregí lo que haga falta.</div>}
+      {!ed.id && <div className="text-[12px] text-gypi-dim mb-2">{ed.a_mano ? "Elegí cada artículo de la lista del MRP y poné la cantidad." : "Revisá lo que leyó Gypi y corregí lo que haga falta."}</div>}
       {avisos.map((a) => <div key={a} role="alert" className="p-2 mb-2 rounded-lg bg-gypi-amber/15 text-gypi-amber-ink text-[13px]">⚠ {a}</div>)}
 
       <label className="g-label" htmlFor="rem-proveedor">Proveedor</label>
@@ -209,12 +225,13 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
         {ed.renglones.map((r, i) => {
           const a = r.sku ? porSku.get(r.sku) : null;
           const sug = !r.sku && r.texto.trim() ? sugerirArticulos(articulos, r.texto, PARA_TEXTO) : { lista: [], resto: 0 };
+          const opciones = !r.sku && !r.texto.trim() ? (r.opciones || parecidosArticulo(r.descripcion, articulos)).filter((o) => porSku.has(o.sku)) : [];
           const nombre = r.descripcion || `Renglón ${i + 1}`;
           return (
             <li key={i} className={`p-2 rounded-lg border bg-gypi-bg ${r.sku ? "border-gypi-border" : "border-gypi-amber"}`}>
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
-                  <input aria-label={`Descripción del renglón ${i + 1}`} className="g-input w-full text-[13px]" value={r.descripcion} onChange={(e) => cambiarRenglon(i, { descripcion: e.target.value })} placeholder="Como figura en el remito" maxLength={200} />
+                  <input aria-label={`Descripción del renglón ${i + 1}`} className="g-input w-full text-[13px]" value={r.descripcion} onChange={(e) => cambiarRenglon(i, { descripcion: e.target.value, ...(r.sku ? {} : { opciones: null }) })} placeholder={ed.a_mano ? "Descripción (opcional)" : "Como figura en el remito"} maxLength={200} />
                   {r.codigo && <div className="text-[12px] text-gypi-dim mt-0.5">Código del proveedor: {r.codigo}</div>}
                 </div>
                 <button onClick={() => sacarRenglon(i)} aria-label={`Sacar ${nombre}`} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Sacar</button>
@@ -223,17 +240,34 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
               <div className="md:flex-1 min-w-0">
               {r.sku ? (
                 <div className="flex items-center gap-2 mt-1">
-                  <div className="flex-1 min-w-0 text-[13px] truncate">📦 <b>{a?.nombre || r.sku}</b> <span className="text-gypi-dim">· {r.sku}</span></div>
-                  <button onClick={() => cambiarRenglon(i, { sku: null, texto: "" })} aria-label={`Cambiar el artículo de ${nombre}`} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Cambiar</button>
+                  <div className="flex-1 min-w-0 text-[13px]">
+                    <div className="truncate">📦 <b>{a?.nombre || r.sku}</b> <span className="text-gypi-dim">· {r.sku}</span></div>
+                    {r.como && COMO_ARTICULO[r.como] && <div className={`text-[12px] ${r.como === "parecido" ? "text-gypi-amber-ink font-semibold" : "text-gypi-dim"}`}>{r.como === "parecido" ? "🔎 " : "✓ "}{COMO_ARTICULO[r.como]}</div>}
+                  </div>
+                  <button onClick={() => cambiarRenglon(i, { sku: null, como: null, opciones: null, texto: "" })} aria-label={`Cambiar el artículo de ${nombre}`} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">Cambiar</button>
                 </div>
               ) : (
                 <div className="mt-1">
-                  <input aria-label={`Buscar el artículo de ${nombre}`} className="g-input w-full" value={r.texto} onChange={(e) => cambiarRenglon(i, { texto: e.target.value })} placeholder="Buscá el artículo del stock: nombre o código" />
+                  {opciones.length > 0 && (
+                    <div className="mb-1">
+                      <div className="text-[12px] font-semibold text-gypi-amber-ink">¿Es alguno de estos del MRP?</div>
+                      <ul aria-label={`Parecidos a ${nombre}`} className="list-none p-0 m-0 mt-1 flex flex-col gap-1">
+                        {opciones.map((x) => (
+                          <li key={x.sku}>
+                            <button type="button" onClick={() => elegir(i, porSku.get(x.sku) || x, "parecido")} className="w-full min-h-[44px] text-left bg-gypi-surface rounded-lg px-2 border border-gypi-amber/60 cursor-pointer font-body text-gypi-text text-[13px]">
+                              <b>{porSku.get(x.sku)?.nombre || x.nombre || x.sku}</b> <span className="text-gypi-dim">· {x.sku}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <input aria-label={`Buscar el artículo de ${nombre}`} className="g-input w-full" value={r.texto} onChange={(e) => cambiarRenglon(i, { texto: e.target.value })} placeholder={opciones.length ? "Si no es ninguno, buscalo en el MRP: nombre o código" : "Buscá el artículo del MRP: nombre o código"} />
                   {sug.lista.length > 0 && (
                     <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mt-1 flex flex-col gap-1">
                       {sug.lista.map((x) => (
                         <li key={x.sku}>
-                          <button onClick={() => cambiarRenglon(i, { sku: x.sku, texto: "" })} className="w-full min-h-[44px] text-left bg-gypi-surface rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
+                          <button onClick={() => elegir(i, x)} className="w-full min-h-[44px] text-left bg-gypi-surface rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
                             <b>{x.nombre || x.sku}</b> <span className="text-gypi-dim">· {x.sku}</span>
                           </button>
                         </li>
@@ -241,7 +275,7 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
                     </ul>
                   )}
                   {sug.resto > 0 && <div className="text-[12px] text-gypi-dim mt-1">Hay {sug.resto} más: escribí otra palabra.</div>}
-                  {!r.texto.trim() && <div className="text-[12px] text-gypi-amber-ink mt-1">Elegí el artículo, o sacá el renglón si no va al stock.</div>}
+                  {!r.texto.trim() && !opciones.length && <div className="text-[12px] text-gypi-amber-ink mt-1">Elegí el artículo del MRP, o sacá el renglón si no va al stock.</div>}
                 </div>
               )}
               </div>
