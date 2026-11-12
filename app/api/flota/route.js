@@ -50,6 +50,7 @@ import { ACCIONES_RESPONSABLE, CAMPOS_VEHICULO, puedeChecklistVehiculo } from ".
 import { esResponsableMantenimiento } from "../../lib/mantenimientoServidor";
 import { logger } from "../../lib/logger";
 import { esRutaDeLaEmpresa, linkPdf } from "../../lib/flotaArchivos";
+import { tallerDe } from "../../lib/tallerServidor";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -383,8 +384,12 @@ async function crearMantenimiento(sesion, d) {
   const [emp] = sesion.empleado_id
     ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] })) || []
     : [];
+  // El taller sale de la lista de proveedores (183); el texto queda por lo cargado antes
+  const taller = await tallerDe(sesion, d.donde === "interno" ? {} : d);
+  if (taller.error) return NextResponse.json({ error: taller.error }, { status: 400 });
   const [m] = (await sbPost("vehiculo_mantenimientos", {
-    empresa_id: e, vehiculo_id: veh.id, tipo: arreglo ? "arreglo" : d.tipo, fecha: d.fecha, km: d.km, donde: d.donde, taller: d.taller,
+    empresa_id: e, vehiculo_id: veh.id, tipo: arreglo ? "arreglo" : d.tipo, fecha: d.fecha, km: d.km, donde: d.donde, taller: taller.taller,
+    ...(taller.proveedor_id ? { proveedor_id: taller.proveedor_id } : {}),
     detalle: d.detalle, repuestos: d.repuestos, costo: d.costo, factura_url: d.factura_url, fotos: d.fotos,
     cargado_por: sesion.empleado_id || null, cargado_nombre: emp?.nombre || null,
   }, opts)) || [];

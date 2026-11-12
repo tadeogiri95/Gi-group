@@ -431,7 +431,10 @@ const cantidadOc = z.number().finite().positive().max(1e10);
 const factorOc = z.number().finite().positive().max(1e6);
 const precioOc = z.number().finite().min(0).max(1e12).nullable().optional().transform((v) => v ?? null);
 export const comprasBody = z.discriminatedUnion("accion", [
-  z.object({ accion: z.literal("proveedor_guardar"), id: idCompras.optional(), ...datosProveedor }).strict(),
+  // es_otro: el que lo carga confirma que no es ninguno de los parecidos (183)
+  z.object({ accion: z.literal("proveedor_guardar"), id: idCompras.optional(), ...datosProveedor, es_otro: z.boolean().optional() }).strict(),
+  // Unir un proveedor repetido al que queda (183)
+  z.object({ accion: z.literal("proveedores_unir"), queda: idCompras, sale: idCompras }).strict().refine((p) => p.queda !== p.sale, { message: "Elegí dos proveedores distintos", path: ["sale"] }),
   z.object({ accion: z.literal("proveedor_baja"), id: idCompras, activo: z.boolean() }).strict(),
   z.object({ accion: z.literal("proveedores_importar"), nombres: z.array(z.string().trim().min(1).max(120)).min(1).max(500) }).strict(),
   z.object({ accion: z.literal("pedido_crear"), ...datosPedido }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
@@ -1049,6 +1052,8 @@ export const flotaBody = z.discriminatedUnion("accion", [
     km: z.number().int().min(0).max(9999999).nullable().optional().transform((v) => v ?? null),
     donde: z.enum(["taller", "interno"]).nullable().optional().transform((v) => v ?? null),
     taller: textoSuelto(120),
+    // El taller de la lista de proveedores (183)
+    proveedor_id: idFlota.nullable().optional().transform((v) => v ?? null),
     detalle: z.string().trim().min(1, "Escribí qué se hizo").max(1000),
     repuestos: textoSuelto(1000),
     costo: z.number().finite().min(0).max(999999999).nullable().optional().transform((v) => v ?? null),
@@ -1169,6 +1174,8 @@ export const maquinariaBody = z.discriminatedUnion("accion", [
     id: idFlota,
     detalle: z.string().trim().min(1, "Escribí qué se hizo").max(1000),
     donde: z.enum(["interno", "externo"]).default("interno"),
+    // Quién la arregló afuera, de la lista de proveedores (183)
+    proveedor_id: idFlota.nullable().optional().transform((v) => v ?? null),
     repuestos: textoSuelto(1000),
     costo: z.number().finite().min(0).max(999999999).nullable().optional().transform((v) => v ?? null),
     factura_url: urlFoto.nullable().optional().transform((v) => v || null),

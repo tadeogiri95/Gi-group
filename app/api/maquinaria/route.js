@@ -45,6 +45,7 @@ import { esResponsableMantenimiento } from "../../lib/mantenimientoServidor";
 import { fallasDeRegistro, sigueParada } from "../../lib/fallasMaquinaria";
 import { enviarPushGerencia, enviarPushLegajos } from "../../lib/pushGerencia";
 import { logger } from "../../lib/logger";
+import { tallerDe } from "../../lib/tallerServidor";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -328,8 +329,12 @@ async function resolverFalla(sesion, d) {
   const puede = gestiona(sesion) || aCargoDe(m, sesion.empleado_id, CAMPOS_MAQUINA) || (f.responsable_id && f.responsable_id === sesion.empleado_id);
   if (!puede) return NextResponse.json({ error: "La arreglan el responsable de mantenimiento de la máquina, el suplente o la oficina" }, { status: 403 });
   if (f.estado !== "pendiente") return NextResponse.json({ error: "Esa falla ya está cerrada" }, { status: 409 });
+  // Quién la arregló afuera, de la lista de proveedores (183)
+  const taller = d.donde === "externo" && d.proveedor_id ? await tallerDe(sesion, d) : {};
+  if (taller.error) return NextResponse.json({ error: taller.error }, { status: 400 });
   await sbPatch(`maquina_fallas?id=eq.${f.id}&empresa_id=eq.${e}`, {
     estado: "resuelta", detalle: d.detalle, donde: d.donde, repuestos: d.repuestos, costo: d.costo, factura_url: d.factura_url, fotos: d.fotos,
+    ...(taller.proveedor_id ? { proveedor_id: taller.proveedor_id } : {}),
     cerrado_por: sesion.empleado_id || null, cerrado_nombre: await nombreDe(sesion), cerrado_at: new Date().toISOString(),
   }, { sesion });
   await quizasVuelveAServicio(sesion, m, f.id);

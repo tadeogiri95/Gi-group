@@ -6,6 +6,9 @@
 //   proveedor_guardar     → alta o edición (comprador)
 //   proveedor_baja        → dar de baja o reactivar (comprador)
 //   proveedores_importar  → nombres pegados de la planilla; agrega los que faltan (comprador)
+//   proveedores_unir      → el repetido pasa al que queda con todo lo suyo (Dueño o Supervisor; 183)
+//                           (proveedor_guardar no deja crear otro con el mismo CUIT o nombre,
+//                           y pregunta si hay uno parecido: es_otro = true para seguir)
 //   pedido_crear          → pedido de material (gestión: jefes de taller,
 //                           gerencia, dueños, Administración; operarios no)
 //   pedidos_crear         → varios pedidos de una vez, pegados de la hoja INVENTARIO
@@ -65,6 +68,11 @@ import { sincronizarCompra } from "../../lib/finanzasCompras";
 import { buscarFacturaRepetida } from "../../lib/facturaUnicaServidor";
 import { avisoFacturaRepetida } from "../../lib/facturaUnica";
 import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../lib/stockIngresos";
+import { datosAgendaDeProveedor, moverCuentaProveedor, moverParProveedor, proveedorCorto, proveedorRepetido, sugerirUniones } from "../../lib/proveedoresUnicos";
+import { clavePersona, cuitLimpio } from "../../lib/finanzasPersonas";
+import { CLAVE_CUENTAS_PROV } from "../../lib/finanzasProveedores";
+import { CLAVE_UNIFICADOS, leerPares } from "../../lib/finanzasUnificados";
+import { comoDueno } from "../../lib/alcance";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -123,10 +131,27 @@ function faltaMigracionRecepcion(err) {
   return /recepciones_compra|factura_numero|factura_fecha|tipo_cambio/.test(m) && /does not exist|42P01|42703|PGRST20[05]|schema cache/.test(m);
 }
 
+const FALTA_183 = "Para unir proveedores repetidos falta correr la migración 183 en Supabase.";
+
 const soloComprador = () => NextResponse.json({ error: "Los proveedores los maneja Administración" }, { status: 403 });
 
 async function esComprador(sesion) {
   return puedeComprar(sesion.rol);
+}
+
+/** Los proveedores de la empresa para buscar repetidos (con unido_a si ya corrió la 183). */
+async function proveedoresDe(sesion) {
+  const e = sesion.empresa_id;
+  const base = `proveedores?empresa_id=eq.${e}&order=id.asc&limit=10000&select=id,nombre,cuit,contacto,whatsapp,email,plazo_dias,condicion_pago,activo`;
+  const conUnido = await sbGet(`${base},unido_a`, { sesion, silent: true, fallback: null });
+  return conUnido || (await sbGet(base, { sesion })) || [];
+}
+
+/** La agenda (fin_personas) sigue al proveedor corregido en Compras; sin la 180 no hace nada. */
+async function agendaSigueAlProveedor(sesion, p) {
+  const datos = datosAgendaDeProveedor(p);
+  if (!p?.id || !Object.keys(datos).length) return;
+  await sbPatch(`fin_personas?empresa_id=eq.${sesion.empresa_id}&proveedor_id=eq.${p.id}`, { ...datos, updated_at: new Date().toISOString() }, { sesion, silent: true });
 }
 
 async function guardarProveedor(sesion, d) {
@@ -143,10 +168,23 @@ async function guardarProveedor(sesion, d) {
     notas: d.notas,
     updated_at: new Date().toISOString(),
   };
+  // ¿Ya está? Mismo CUIT o el mismo nombre escrito distinto: no se crea otro (183)
+  const { igual, parecidos } = proveedorRepetido(fila, await proveedoresDe(sesion), d.id);
+  if (igual) {
+    const como = cuitLimpio(fila.cuit) && cuitLimpio(fila.cuit) === cuitLimpio(igual.cuit) ? `con el CUIT ${igual.cuit}` : "con ese nombre";
+    return NextResponse.json({
+      error: `Ya está ${igual.nombre} ${como}${igual.activo === false ? " (dado de baja: reactivalo)" : ""}. Si son el mismo, unilos.`,
+      tipo: "repetido", igual: proveedorCorto(igual),
+    }, { status: 409 });
+  }
+  if (parecidos.length && !d.es_otro) {
+    return NextResponse.json({ error: "Hay proveedores con un nombre parecido", tipo: "parecidos", parecidos: parecidos.map(proveedorCorto) }, { status: 409 });
+  }
   try {
     if (d.id) {
       const [p] = (await sbPatch(`proveedores?id=eq.${d.id}&empresa_id=eq.${e}`, fila, opts)) || [];
       if (!p) return NextResponse.json({ error: "No encontré ese proveedor" }, { status: 404 });
+      await agendaSigueAlProveedor(sesion, p);
       broadcastRefresh(e, "proveedores");
       return NextResponse.json({ ok: true, proveedor: p });
     }
@@ -161,6 +199,58 @@ async function guardarProveedor(sesion, d) {
   }
 }
 
+/** Lee un valor de config_sistema (o null). */
+async function leerConfig(e, clave) {
+  const [r] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${clave}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  return r?.valor ?? null;
+}
+
+/**
+ * Une un proveedor repetido al que queda (183): todo lo del repetido pasa al
+ * que queda en una transacción de la base; después, la cuenta del proveedor y
+ * el par cliente-proveedor de config_sistema. Solo Dueño o Supervisor.
+ */
+async function unirProveedores(sesion, d) {
+  if (!(await comoDueno(sesion))) return NextResponse.json({ error: "Unir proveedores lo hacen el Dueño o el Supervisor" }, { status: 403 });
+  const e = sesion.empresa_id;
+  let r;
+  try {
+    r = await sbRpc("compras_unir_proveedores", { p_empresa: e, p_queda: d.queda, p_sale: d.sale });
+  } catch (err) {
+    if (/compras_unir_proveedores/.test(String(err?.message)) && /PGRST202|42883|Could not find the function/.test(String(err?.message))) {
+      return NextResponse.json({ error: FALTA_183 }, { status: 409 });
+    }
+    throw err;
+  }
+  if (!r?.ok) {
+    const textos = { mismo: "Elegí dos proveedores distintos", no_existe: "No encontré uno de los dos proveedores", ya_unido: "Ese proveedor ya está unido a otro" };
+    return NextResponse.json({ error: textos[r?.tipo] || "No se pudo unir" }, { status: r?.tipo === "no_existe" ? 404 : 409 });
+  }
+  // La cuenta del proveedor y el par cliente-proveedor (config_sistema)
+  const cuentas = await leerConfig(e, CLAVE_CUENTAS_PROV);
+  if (cuentas?.cuentas && `p${d.sale}` in cuentas.cuentas) {
+    const valor = { ...cuentas, cuentas: moverCuentaProveedor(cuentas.cuentas, d.queda, d.sale), actualizado_at: new Date().toISOString() };
+    await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_CUENTAS_PROV}`, { valor }, { silent: true });
+  }
+  const unificados = await leerConfig(e, CLAVE_UNIFICADOS);
+  const pares = leerPares(unificados);
+  if (pares.some((p) => p.proveedor_id === d.sale)) {
+    const valor = { ...unificados, pares: moverParProveedor(pares, d.queda, d.sale) };
+    await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_UNIFICADOS}`, { valor }, { silent: true });
+  }
+  broadcastRefresh(e, "proveedores");
+  broadcastRefresh(e, "ordenes_compra");
+  broadcastRefresh(e, "finanzas");
+  return NextResponse.json({ ok: true, movidos: r.movidos || 0 });
+}
+
+/** Proveedores que parecen el mismo (mismo CUIT o nombre), para unirlos. */
+async function repetidos(sesion) {
+  const lista = await proveedoresDe(sesion);
+  const migracion = lista.length === 0 || "unido_a" in lista[0];
+  return { ok: true, repetidos: sugerirUniones(lista), ...(migracion ? {} : { falta_migracion: FALTA_183 }) };
+}
+
 async function bajaProveedor(sesion, { id, activo }) {
   const e = sesion.empresa_id;
   const [p] = (await sbPatch(`proveedores?id=eq.${id}&empresa_id=eq.${e}`, { activo, updated_at: new Date().toISOString() }, { sesion })) || [];
@@ -173,13 +263,15 @@ async function importarProveedores(sesion, nombres) {
   const e = sesion.empresa_id;
   const opts = { sesion };
   const existentes = (await sbGet(`proveedores?empresa_id=eq.${e}&select=nombre&limit=5000`, opts)) || [];
-  const ya = new Set(existentes.map((p) => String(p.nombre).toLowerCase()));
+  // "MADERAS CORDOBA SA" y "Maderas Córdoba S.A." son el mismo (183)
+  const clave = (n) => clavePersona(n) || String(n).toLowerCase();
+  const ya = new Set(existentes.map((p) => clave(p.nombre)));
   const nuevos = [];
   for (const n of nombres) {
     const nombre = n.replace(/\s+/g, " ").trim();
-    const clave = nombre.toLowerCase();
-    if (!nombre || ya.has(clave)) continue;
-    ya.add(clave);
+    const k = clave(nombre);
+    if (!nombre || ya.has(k)) continue;
+    ya.add(k);
     nuevos.push({ empresa_id: e, nombre });
   }
   if (nuevos.length) await sbPost("proveedores", nuevos, opts);
@@ -877,7 +969,14 @@ export async function GET(request) {
   try {
     const sesion = await validarToken(request);
     if (!sesion?.empresa_id) return respuestaNoAutorizado();
-    return NextResponse.json({ comprador: await esComprador(sesion), puede_pedir: puedePedir(sesion.rol) });
+    const comprador = await esComprador(sesion);
+    if (new URL(request.url).searchParams.get("repetidos")) {
+      if (!comprador) return soloComprador();
+      const bloqueo = await chequeos(sesion);
+      if (bloqueo) return bloqueo;
+      return NextResponse.json({ ...(await repetidos(sesion)), puede_unir: await comoDueno(sesion) });
+    }
+    return NextResponse.json({ comprador, puede_pedir: puedePedir(sesion.rol) });
   } catch (err) {
     logger.error("[compras] GET error", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
@@ -904,6 +1003,7 @@ export async function POST(request) {
       if (d.accion === "proveedor_guardar") return await guardarProveedor(sesion, d);
       if (d.accion === "proveedor_baja") return await bajaProveedor(sesion, d);
       if (d.accion === "proveedores_importar") return await importarProveedores(sesion, d.nombres);
+      if (d.accion === "proveedores_unir") return await unirProveedores(sesion, d);
       if (d.accion === "oc_crear") return await crearOrdenes(sesion, d);
       if (d.accion === "oc_guardar") return await guardarOrden(sesion, d);
       if (d.accion === "oc_enviar") return await enviarOrden(sesion, d.id);
