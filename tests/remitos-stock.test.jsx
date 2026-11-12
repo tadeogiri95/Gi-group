@@ -3,6 +3,7 @@
 import "./helpers/domSetup.js";
 import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
@@ -261,4 +262,32 @@ test("pantalla — quien no es de la oficina solo lo manda a revisar", async () 
   await waitFor(() => screen.getByText("🕓 Remitos para revisar (1)"));
   fireEvent.click(screen.getByText("Ver"));
   assert.equal(screen.queryByText("✅ Confirmar ingreso"), null);
+});
+
+// ─── Ticket de materiales de Mi caja (conexión del plan, 11/11) ───
+
+test("/api/stock/remitos ticket — los materiales del ticket de Mi caja quedan para revisar", async () => {
+  process.env.ANTHROPIC_API_KEY = "test-key";
+  const lectura = { proveedor: "CORRALON EL TALA", numero: "", fecha: "", renglones: [{ descripcion: "Tornillo 4x50", codigo: "", cantidad: 0 }, { descripcion: "MELAMINA BLANCA 18MM", codigo: "", cantidad: 2 }] };
+  const { escrito } = mockApi({
+    remito: null,
+    anthropic: { status: 200, body: { model: "m", stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "text", text: JSON.stringify(lectura) }] } },
+  });
+  const r = await pedir("operativo", { accion: "ticket", foto_url: FOTO, proveedor: "El Tala", numero: "0003-123", fecha: "2026-11-11" });
+  const d = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.deepEqual([d.estado, d.renglones], ["para_revisar", 2]);
+  const alta = escrito.find((x) => x.tabla === "remitos_stock");
+  assert.deepEqual([alta.body.origen, alta.body.proveedor, alta.body.numero, alta.body.fecha, alta.body.notas], ["ticket", "El Tala", "0003-123", "2026-11-11", "Ticket de Mi caja"]);
+  assert.deepEqual(alta.body.renglones.map((x) => [x.cantidad, x.sku]), [[null, "4.20"], [2, "1.10"]], "sin cantidad igual queda: la pone la oficina");
+  assert.equal(escrito.filter((x) => x.tabla === "movimientos_stock").length, 0, "no entra al stock hasta que se confirme");
+  assert.match(validarRemito({ proveedor: "X", renglones: [{ descripcion: "a", sku: "1.10" }] }, { skus: new Set(["1.10"]) }).errores.join(), /poné la cantidad/, "al confirmar sí hace falta");
+});
+
+test("Mi caja — con Stock, el gasto con foto ofrece mandar los materiales al stock", () => {
+  const src = readFileSync(new URL("../app/components/MiCaja.jsx", import.meta.url), "utf8");
+  assert.match(src, /📦 Son materiales para el stock/);
+  assert.match(src, /accion: "ticket"/);
+  const api = readFileSync(new URL("../app/api/mi-caja/route.js", import.meta.url), "utf8");
+  assert.match(api, /con_stock: !\(await requireModuloSesion\(sesion, "stock"\)/);
 });

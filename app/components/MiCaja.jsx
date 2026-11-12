@@ -59,6 +59,9 @@ function Pasar({ caja, hoy, onCerrar, onHecho }) {
   const [f, setF] = useState({ hacia: caja.destinos.length === 1 ? caja.destinos[0].cuenta : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "" });
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  // Ticket de materiales: además del gasto, los materiales van al stock para revisar (11/11)
+  const [alStock, setAlStock] = useState(false);
+  const [guardado, setGuardado] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const usd = caja.moneda === "USD";
   const destino = caja.destinos.find((d) => d.cuenta === f.hacia);
@@ -167,7 +170,7 @@ function porGrupo(lista) {
 /** Gasté / Recibí plata (parte 10 del 11/11: muy fácil). Primero la foto del
  *  ticket (Gypi lee importe, fecha y concepto), los conceptos en botones con
  *  los más usados primero y la fecha en Hoy / Ayer / Otro día. */
-function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
+function Cargar({ caja, clase, conceptos, hoy, conStock = false, onCerrar, onHecho }) {
   const gasto = clase === "gasto";
   const lista = conceptosPorUso(gasto ? conceptos.gastos : conceptos.ingresos, caja.movimientos);
   const [f, setF] = useState({
@@ -182,6 +185,9 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
   const [lectura, setLectura] = useState(null);
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  // Ticket de materiales: además del gasto, los materiales van al stock para revisar (11/11)
+  const [alStock, setAlStock] = useState(false);
+  const [guardado, setGuardado] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const usd = caja.moneda === "USD";
   const ayer = ayerDe(hoy);
@@ -238,6 +244,22 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
       const d = await res.json().catch(() => ({}));
       if (res.status === 409 && d.parecido) { setParecido(d.error); setGuardando(false); return; }
       if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+      if (gasto && alStock && f.comprobante_url) {
+        setGuardado(true);
+        const r = await apiFetch("/api/stock/remitos", {
+          method: "POST",
+          body: JSON.stringify({
+            accion: "ticket", foto_url: f.comprobante_url, proveedor: f.comercio || null,
+            numero: [f.punto_venta, f.numero].filter(Boolean).join("-") || null, fecha: f.fecha || null,
+          }),
+        }).catch(() => null);
+        const t = r ? await r.json().catch(() => ({})) : {};
+        if (!r?.ok || !t.ok) {
+          setError(`El gasto se guardó, pero los materiales no fueron al stock: ${t.error || "revisá la conexión"} `);
+          setGuardando(false);
+          return;
+        }
+      }
       onHecho();
     } catch (e) {
       setError(e.message);
@@ -312,10 +334,20 @@ function Cargar({ caja, clase, conceptos, hoy, onCerrar, onHecho }) {
             </div>
           </div>
         )}
+        {gasto && conStock && f.comprobante_url && !guardado && (
+          <label className="flex items-start gap-2 text-[13px] text-gypi-text cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={alStock} onChange={(e) => setAlStock(e.target.checked)} />
+            <span>📦 Son materiales para el stock: Gypi lee los artículos del ticket y quedan para revisar en Stock → Movimientos.</span>
+          </label>
+        )}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex justify-end gap-2">
-          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          {lista.length > 0 && <button type="button" className="g-btn g-btn-primary" disabled={guardando || leyendo || !f.concepto || !f.importe} onClick={() => guardar()}>{guardando ? "Guardando…" : "Guardar"}</button>}
+          {guardado ? (
+            <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={onHecho}>{guardando ? "Mandando al stock…" : "Listo"}</button>
+          ) : (<>
+            <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+            {lista.length > 0 && <button type="button" className="g-btn g-btn-primary" disabled={guardando || leyendo || !f.concepto || !f.importe} onClick={() => guardar()}>{guardando ? (alStock ? "Guardando y mandando al stock…" : "Guardando…") : "Guardar"}</button>}
+          </>)}
         </div>
       </div>
     </Modal>
@@ -445,7 +477,7 @@ export default function MiCaja({ datos, onClose, onCambio }) {
           onHecho={(persona) => { setPasar(false); setAviso(`Listo: cuando ${persona || "la otra persona"} confirme que la recibió, sale de tu caja`); onCambio(); }} />
       )}
       {cargar && (
-        <Cargar caja={caja} clase={cargar} conceptos={datos.conceptos || { gastos: [], ingresos: [] }} hoy={datos.hoy}
+        <Cargar caja={caja} clase={cargar} conceptos={datos.conceptos || { gastos: [], ingresos: [] }} hoy={datos.hoy} conStock={Boolean(datos.con_stock)}
           onCerrar={() => setCargar(null)}
           onHecho={() => { setCargar(null); setAviso(`${cargar === "gasto" ? "Gasto cargado" : "Plata recibida cargada"}${caja.propia === false ? ` en ${caja.nombre}: ya está confirmado` : ": ya cuenta en tu saldo y el dueño lo va a revisar"}`); onCambio(); }} />
       )}

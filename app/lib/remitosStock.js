@@ -81,10 +81,11 @@ export function borradorRemito(lectura, { articulos = [], asociaciones = [] } = 
 }
 
 /**
- * Lo que manda la pantalla, limpio, con los errores en palabras.
+ * Lo que manda la pantalla, limpio, con los errores en palabras. Con
+ * sinCantidades (ticket de Mi caja) un renglón sin cantidad no es error.
  * @returns {{ remito: object, errores: string[] }}
  */
-export function validarRemito(d = {}, { skus = null } = {}) {
+export function validarRemito(d = {}, { skus = null, sinCantidades = false } = {}) {
   const errores = [];
   const lista = Array.isArray(d.renglones) ? d.renglones : [];
   if (lista.length > MAX_RENGLONES_REMITO) errores.push(`Hasta ${MAX_RENGLONES_REMITO} renglones por remito`);
@@ -96,7 +97,8 @@ export function validarRemito(d = {}, { skus = null } = {}) {
   })).filter((r) => r.descripcion || r.sku);
   if (!renglones.length) errores.push("El remito no tiene renglones");
   renglones.forEach((r, i) => {
-    if (!r.cantidad) errores.push(`Renglón ${i + 1}: poné la cantidad`);
+    // Un ticket de Mi caja queda para revisar aunque la IA no haya leído alguna cantidad: la oficina la pone al confirmar
+    if (!r.cantidad && !sinCantidades) errores.push(`Renglón ${i + 1}: poné la cantidad`);
     if (r.sku && skus && !skus.has(r.sku)) errores.push(`Renglón ${i + 1}: ese artículo no está en el stock`);
   });
   const fecha = FECHA.test(String(d.fecha ?? "")) ? d.fecha : null;
