@@ -340,12 +340,14 @@ test("preseleccion, modulosPorOt y fmtH", () => {
   assert.equal(fmtH(12.46), "12,5 h");
 });
 
-function mockCarga({ proyectos, empleados, cfg }) {
+function mockCarga({ proyectos, empleados, cfg, solicitudes = [], maquinas = [] }) {
   global.fetch = async (url, opts) => {
     const body = opts?.body ? JSON.parse(opts.body) : {};
     const path = body.path || "";
     const lista = (data) => new Response(JSON.stringify({ data: path.includes("offset=0") || !path.includes("offset=") ? data : [] }), { status: 200 });
     if (path.startsWith("proyectos")) return lista(proyectos);
+    if (path.startsWith("solicitudes")) return lista(solicitudes);
+    if (path.startsWith("maquinas")) return lista(maquinas);
     if (path.startsWith("empleados")) return lista(empleados);
     if (path.startsWith("config_sistema") && path.includes("clave=eq.planificacion")) return lista(cfg);
     return lista([]);
@@ -391,6 +393,31 @@ test("📊 Carga — vienen tildadas las OT con semana; la semana elegida muestr
   assert.match(carga.textContent, /Ese período ya pasó/);
   fireEvent.click(screen.getByLabelText("Planificar OT M-7473"));
   assert.match(carga.textContent, /Elegí las OT que querés planificar/);
+});
+
+test("📊 Carga — vacaciones y máquinas paradas bajan la capacidad solas y avisan (12/11, parte 7)", async () => {
+  lunes26();
+  const lun = { in: "08:00", out: "10:00" };
+  const dias = { lun, mar: lun, mie: lun, jue: lun, vie: lun };
+  mockCarga({
+    proyectos: [OT(1, "M-7473", { ...OT_A, division: "Muebles", estado: "activo", fecha_objetivo: "2026-10-31", semana_objetivo: 44 })],
+    empleados: [
+      { id: "e1", legajo: 1, nombre: "Ana Gómez", rol: "operativo", division: "Muebles", diagrama: dias },
+      { id: "e2", legajo: 2, nombre: "Luis Díaz", rol: "operativo", division: "Muebles", diagrama: dias },
+    ],
+    solicitudes: [{ legajo: 2, tipo: "vacaciones", estado: "aprobado", fecha: "2026-10-28", fecha_hasta: "2026-10-30" }],
+    maquinas: [{ id: 1, codigo: "CNC-01", nombre: "CNC", tipo: "cnc", estado: "parada", activo: true }],
+    cfg: [{ valor: { ...PARAMS, maquinas_cnc: 2 } }],
+  });
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
+  const avisos = await screen.findByLabelText("Lo que baja la capacidad");
+  assert.match(avisos.textContent, /Luis Díaz no está del 28\/10 al 30\/10 \(3 días\)/);
+  assert.match(avisos.textContent, /CNC-01 parada: Mecanizado queda con 1 máquina hasta que vuelva a servicio/);
+  // 2 operarios × 2 h × 5 días = 20 h, menos 3 días de Luis = 14 h
+  assert.match(screen.getByText("Horas de la planta").parentElement.textContent, /14 h/);
+  const maq = within(screen.getByLabelText("Horas de máquina"));
+  assert.ok(maq.getByText("1 parada"));
 });
 
 test("📊 Carga — switch: según fechas objetivo pide horas extra por semana; según capacidad da la fecha estimada", async () => {

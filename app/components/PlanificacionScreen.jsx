@@ -54,6 +54,7 @@ import { errorInstalacion } from "../lib/instalacionPlan";
 import { CLASES_DT, errorDisenoTecnica } from "../lib/disenoTecnicaPlan";
 import { limiteProduccion } from "../lib/planInstalacion";
 import { feriadosDe } from "../lib/secuencia";
+import { TIPOS_FUERA, ausenciasDe, avisosCapacidad, maquinasParadas } from "../lib/capacidadReal";
 import NombreOt from "./NombreOt";
 import { textoOt } from "../lib/nombreOt";
 
@@ -182,20 +183,24 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
     let vivo = true;
     (async () => {
       try {
-        const [proy, emp, av, pz, cfgModo, paus] = await Promise.all([
+        const hoyIso = hoyArg();
+        const [proy, emp, av, pz, cfgModo, paus, sols, maqs] = await Promise.all([
           sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&order=id.asc`, { maxFilas: 20000 }),
-          leerOperariosPlanta(`empresa_id=eq.${empresaId}&`, "id,nombre,rol,division,diagrama,activo"),
+          leerOperariosPlanta(`empresa_id=eq.${empresaId}&`, "id,legajo,nombre,rol,division,diagrama,activo"),
           leerAvanceYHoras(empresaId).catch(() => ({ avance: [], piezas: [] })),
           sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&modulo=not.is.null&select=ot,modulo`, { maxFilas: 50000 }).catch(() => ({ data: [] })),
           sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`).catch(() => null),
           // OT en pausa (151): no se planifican; sin la migración, ninguna
           sbGetAll(`pausas_ot?empresa_id=eq.${empresaId}&hasta=is.null&select=ot`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
+          // Capacidad real (12/11, parte 7): vacaciones y ausencias aprobadas de acá en adelante, y máquinas paradas
+          sbGetAll(`solicitudes?empresa_id=eq.${empresaId}&estado=eq.aprobado&tipo=in.(${TIPOS_FUERA.join(",")})&or=(fecha_hasta.gte.${hoyIso},fecha.gte.${hoyIso})&select=empleado_id,legajo,tipo,estado,fecha,fecha_hasta&order=id.asc`, { maxFilas: 5000 }).catch(() => ({ data: [] })),
+          sbGetAll(`maquinas?empresa_id=eq.${empresaId}&estado=neq.en_servicio&select=id,codigo,nombre,tipo,estado,division,activo&order=id.asc`, { maxFilas: 2000 }).catch(() => ({ data: [] })),
         ]);
         if (!vivo) return;
         // Igual que el Gantt: la semana arranca el domingo, salvo que la empresa cuente de lunes
         setModo(normalizarModo(cfgModo?.[0]?.valor?.modo) === "semana_domingo" ? "semana_domingo" : "semana_lunes");
         setModoEmpresa(normalizarModo(cfgModo?.[0]?.valor?.modo));
-        setDatos({ proyectos: proy.data || [], pausadas: otsEnPausa(paus.data), empleados: emp.data || [], avance: av.avance || [], piezasEscaneo: av.piezasEscaneo || av.piezas || [], modulos: modulosPorOt(pz.data) });
+        setDatos({ proyectos: proy.data || [], pausadas: otsEnPausa(paus.data), empleados: emp.data || [], avance: av.avance || [], piezasEscaneo: av.piezasEscaneo || av.piezas || [], modulos: modulosPorOt(pz.data), solicitudes: sols.data || [], maquinas: maqs.data || [] });
       } catch (e) {
         if (vivo) setError(e.message || "No se pudieron leer los datos.");
       }
@@ -266,7 +271,11 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const operarios = useMemo(() => operariosDePlanta(datos?.empleados, divisiones, division), [datos, divisiones, division]);
   // Plan día por día de las OT elegidas, en el orden de prioridad, desde hoy
   // hasta que terminan (se calcula un año de grilla)
-  const capacidadAnio = useMemo(() => capacidadPlanta(operarios, diasDesde(hoy, 366)), [operarios, hoy]);
+  // Sin los feriados ni las vacaciones o ausencias aprobadas (12/11, parte 7)
+  const ausencias = useMemo(() => ausenciasDe(datos?.solicitudes, operarios), [datos, operarios]);
+  const feriados = useMemo(() => feriadosDe(params), [params]);
+  const paradas = useMemo(() => maquinasParadas(datos?.maquinas, division), [datos, division]);
+  const capacidadAnio = useMemo(() => capacidadPlanta(operarios, diasDesde(hoy, 366), { ausencias, feriados }), [operarios, hoy, ausencias, feriados]);
   // Solo las OT tildadas, en el orden de prioridad (un solo criterio, 29/10)
   const otsPlan = useMemo(() => ots.filter((p) => elegidas?.has(p.id)), [ots, elegidas]);
   // Fecha límite de producción (parte 45): la semana menos los días de instalación
@@ -285,8 +294,14 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const yaPaso = per.hasta < hoy;
   // Con "Según fechas objetivo" se suman los días de horas extra que el plan pone en el período
   const diasExtraPeriodo = base === "objetivo" && plan && !yaPaso ? plan.diasExtra.filter((d) => d.fecha >= desdeVisible && d.fecha <= per.hasta).length : 0;
-  const capacidad = useMemo(() => conHorasExtra(capacidadPlanta(operarios, yaPaso ? [] : diasDelPeriodo(desdeVisible, per.hasta)), diasExtraPeriodo, capacidadAnio.porDia),
-    [operarios, yaPaso, desdeVisible, per.hasta, diasExtraPeriodo, capacidadAnio]);
+  const capacidad = useMemo(() => ({
+    ...conHorasExtra(capacidadPlanta(operarios, yaPaso ? [] : diasDelPeriodo(desdeVisible, per.hasta), { ausencias, feriados }), diasExtraPeriodo, capacidadAnio.porDia),
+    paradas,
+  }), [operarios, yaPaso, desdeVisible, per.hasta, diasExtraPeriodo, capacidadAnio, ausencias, feriados, paradas]);
+  const avisosCap = useMemo(() => (yaPaso ? [] : avisosCapacidad({
+    operarios, ausencias, dias: diasDelPeriodo(desdeVisible, per.hasta), paradas, feriados,
+    cantidades: { corte: params.maquinas_corte || 1, canteado: 1, mecanizado: params.maquinas_cnc || 1 },
+  })), [yaPaso, operarios, ausencias, desdeVisible, per.hasta, paradas, feriados, params]);
   const carga = useMemo(() => ({
     ...cargaPeriodo({ ots: plan ? [trabajoDelPeriodo(plan.segmentos, desdeVisible, per.hasta, params.eficiencia)] : [], params, capacidad }),
     ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => horas.get(p.id)),
@@ -470,6 +485,12 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
           <Dato label="Horas que hacen falta" valor={fmtH(carga.necesarias)} />
           <Dato label="Horas de la planta" valor={fmtH(carga.disponibles)} />
         </div>
+        {avisosCap.length > 0 && (
+          <div role="status" aria-label="Lo que baja la capacidad" className="rounded-lg border border-gypi-amber bg-gypi-amber/10 p-2 mb-2 text-[13px]">
+            <div className="font-semibold text-gypi-amber-ink mb-0.5">⚠ La capacidad ya descuenta:</div>
+            <ul className="m-0 pl-4">{avisosCap.map((a) => <li key={a}>{a}</li>)}</ul>
+          </div>
+        )}
         {capacidad.horasExtra > 0 && (
           <div className="text-[13px] text-gypi-amber-ink mb-1">Las horas de la planta incluyen {fmtH(capacidad.horasExtra)} de horas extra ({capacidad.diasExtra === 1 ? "1 día" : `${capacidad.diasExtra} días`}) que el plan suma para llegar a las semanas.</div>
         )}
@@ -496,7 +517,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
               const dif = m.disponibles - m.necesarias;
               return (
                 <tr key={m.id} className="border-t border-gypi-border">
-                  <td className="py-1.5">{m.nombre}{m.cantidad > 1 ? ` (${m.cantidad})` : ""}</td>
+                  <td className="py-1.5">{m.nombre}{m.cantidad > 1 ? ` (${m.cantidad})` : ""}{m.paradas > 0 && <span className="block text-xs text-gypi-red">{m.paradas === 1 ? "1 parada" : `${m.paradas} paradas`}</span>}</td>
                   <td className="text-right">{fmtH(m.necesarias)}</td>
                   <td className="text-right">{fmtH(m.disponibles)}</td>
                   <td className={`text-right font-bold ${dif < -0.05 ? "text-gypi-red" : "text-gypi-green"}`}>{dif < -0.05 ? `Faltan ${fmtH(-dif)}` : `Sobran ${fmtH(dif)}`}</td>

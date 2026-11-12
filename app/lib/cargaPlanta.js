@@ -14,7 +14,8 @@
 //   Armado     = gabinetes × min por gabinete (módulos de la OT, o las
 //                etiquetas de módulo, o placas × gabinetes por placa del tipo)
 // Capacidad = horario semanal de los operarios de la división que no son
-// instaladores (sin descontar francos ni licencias). La eficiencia se aplica
+// instaladores, sin los feriados ni las vacaciones o ausencias aprobadas; las
+// máquinas paradas no suman (auditoría 12/11, parte 7). La eficiencia se aplica
 // a las horas de trabajo: con 85 %, una hora de reloj rinde 51 minutos.
 import { buscarDivision } from "./rutas";
 import { ETAPAS_PLAN, relacionesTipo } from "./planificacion";
@@ -147,16 +148,20 @@ export function personalPlanta(operarios, params) {
 
 /**
  * Capacidad del período en horas de reloj.
- * gente: suma de los turnos de cada operario.
+ * gente: suma de los turnos de cada operario (sin los feriados ni los días que
+ * cada uno está de vacaciones o ausente con aviso aprobado).
  * maquina: horas en que la planta está abierta (del primero que entra al
  * último que sale, cada día); una máquina trabaja como mucho eso.
  */
-export function capacidadPlanta(operarios, dias) {
+export function capacidadPlanta(operarios, dias, { ausencias = null, feriados = null } = {}) {
   let gente = 0, maquina = 0;
   const porDia = [];
   for (const fecha of dias) {
     let g = 0, ini = null, fin = null;
+    // Feriados y vacaciones o ausencias aprobadas no suman (12/11, parte 7; app/lib/capacidadReal.js)
+    const feriado = Boolean(feriados?.has(fecha));
     for (const e of operarios) {
+      if (feriado || ausencias?.get(e.id)?.has(fecha)) continue;
       const t = turno(e, fecha);
       if (!t) continue;
       g += t.out - t.in;
@@ -279,9 +284,12 @@ export function cargaPeriodo({ ots, params, capacidad }) {
   const extra = Math.max(0, necesarias - disponibles);
 
   const maquinas = MAQUINAS.map((m) => {
-    const disp = capacidad.maquina * m.cantidad(params);
+    // Las máquinas paradas o fuera de servicio no trabajan (12/11, parte 7)
+    const paradas = Math.min(m.cantidad(params), capacidad.paradas?.[m.id] || 0);
+    const cantidad = m.cantidad(params) - paradas;
+    const disp = capacidad.maquina * cantidad;
     const nec = porEtapa[m.id].maquina;
-    return { id: m.id, nombre: m.nombre, cantidad: m.cantidad(params), necesarias: nec, disponibles: disp, extra: Math.max(0, nec - disp), uso: disp > 0 ? nec / disp : (nec > 0 ? Infinity : 0) };
+    return { id: m.id, nombre: m.nombre, cantidad, paradas, necesarias: nec, disponibles: disp, extra: Math.max(0, nec - disp), uso: disp > 0 ? nec / disp : (nec > 0 ? Infinity : 0) };
   });
 
   // Cuello de botella: lo más cargado entre la gente y cada máquina
