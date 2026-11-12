@@ -9,13 +9,19 @@
 //        /api/stock/planilla), y solo si la empresa tiene Finanzas.
 // POST → el Dueño genera una clave nueva (la anterior deja de andar) y
 //        recibe el código para pegar en Apps Script. Se muestra una sola vez.
+// POST { accion: "estado", errores, avisos, repetidos, borrados } con la
+//        clave del script (12/11): cómo salió la vuelta. Queda en
+//        config_sistema para que el Dueño lo vea en Configuración.
+// POST { accion: "borrar_repetidos", repetidos: [{ fila, copias, firma }] } →
+//        el Dueño confirma qué copias del libro borrar; el script las borra
+//        en la próxima vuelta (antes vuelve a mirar que sigan iguales).
 import { NextResponse } from "next/server";
 import { safeErrorMessage } from "../../../lib/validate";
 import { sbGet, sbGetAll, sbPost, sbPatch } from "../../../lib/sbHelpers";
 import { getModulosEmpresa } from "../../../lib/planEnforcement";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { sesionDueno } from "../../../lib/finanzasApi";
-import { CLAVE_LIBRO_FIN, claveValida, datosParaLibro, empresaDeClave, generarClave, scriptLibro } from "../../../lib/finanzasLibro";
+import { CLAVE_LIBRO_FIN, claveValida, datosParaLibro, empresaDeClave, estadoValido, generarClave, scriptLibro } from "../../../lib/finanzasLibro";
 import { logger } from "../../../lib/logger";
 import { CLAVE_TIPOS, tiposParaLibro } from "../../../lib/finanzasTipos";
 import { cambiosCuentasLibro } from "../../../lib/finanzasLibroCuentas";
@@ -49,24 +55,79 @@ export async function GET(request) {
       // Si falla, el libro igual recibe las operaciones (los cambios de cuentas van sin las recomendadas)
       leer(`fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,cuenta_debe,cuenta_haber,activo`).catch(() => []),
     ]);
-    sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`, {
+    await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`, {
       valor: { ...cfg.valor, ultima_lectura: new Date().toISOString() },
     }, { silent: true }).catch(() => {});
     const empresa = empresas?.[0]?.razon_social || empresas?.[0]?.nombre || "";
     const tiposNuevos = tiposParaLibro({ reescribir: Boolean(cfgTipos?.[0]?.valor?.pasado_at) });
     // Los 6 cambios de cuentas al libro (aprobados el 11/11): el script los aplica una vez
     const cambiosCuentas = cambiosCuentasLibro({ cuentas, tipos });
-    return NextResponse.json(datosParaLibro({ operaciones, cheques, cuentas, proveedores, proyectos, empresa, tiposNuevos, cambiosCuentas }));
+    const borrar = Array.isArray(cfg.valor?.borrar) ? cfg.valor.borrar : [];
+    return NextResponse.json({
+      ...datosParaLibro({ operaciones, cheques, cuentas, proveedores, proyectos, empresa, tiposNuevos, cambiosCuentas }),
+      ...(borrar.length ? { borrar_repetidos: borrar } : {}),
+    });
   } catch (err) {
     logger.error("[finanzas/libro] GET error", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
+/** El script cuenta cómo salió la vuelta (con su clave, sin sesión). */
+async function estadoDelScript(request) {
+  try {
+    return await guardarEstado(request);
+  } catch (err) {
+    logger.error("[finanzas/libro] estado error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
+  }
+}
+
+async function guardarEstado(request) {
+  const clave = (request.headers.get("authorization") || "").slice(7).trim();
+  const e = empresaDeClave(clave);
+  if (!e) return noAutorizado();
+  const rl = checkRateLimit(`finanzas-libro-estado:${e}`, 30, 60_000);
+  if (rl.limited) return NextResponse.json({ error: "Demasiados pedidos" }, { status: 429 });
+  const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  if (!claveValida(clave, cfg?.valor?.hash)) return noAutorizado();
+  const d = await request.json().catch(() => null);
+  if (d?.accion !== "estado") return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
+  const estado = estadoValido(d);
+  const valor = { ...cfg.valor, estado: { ...estado, at: new Date().toISOString() } };
+  // Lo que el script ya borró deja de estar pedido, y también lo que ya no
+  // aparece igual (si el libro cambió, el Dueño lo vuelve a confirmar)
+  if (Array.isArray(cfg.valor?.borrar)) {
+    const siguen = new Set(estado.repetidos.map((r) => `${r.fila}|${r.firma}`));
+    valor.borrar = cfg.valor.borrar.filter((b) => siguen.has(`${b.fila}|${b.firma}`));
+  }
+  await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`, { valor });
+  return NextResponse.json({ ok: true });
+}
+
+async function borrarRepetidos(sesion, d) {
+  const e = sesion.empresa_id;
+  const filtro = `config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`;
+  const [cfg] = (await sbGet(`${filtro}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  if (!cfg?.valor?.hash) return NextResponse.json({ error: "El libro no está conectado" }, { status: 400 });
+  const conocidos = new Map((cfg.valor.estado?.repetidos || []).map((r) => [`${r.fila}|${r.firma}`, r]));
+  // Solo lo que el script mostró como repetido
+  const borrar = (Array.isArray(d.repetidos) ? d.repetidos : [])
+    .map((r) => conocidos.get(`${Number(r?.fila)}|${String(r?.firma || "")}`))
+    .filter(Boolean)
+    .map((r) => ({ fila: r.fila, copias: r.copias, firma: r.firma }));
+  if (!borrar.length) return NextResponse.json({ error: "Elegí qué repetidos borrar" }, { status: 400 });
+  await sbPatch(filtro, { valor: { ...cfg.valor, borrar } });
+  return NextResponse.json({ ok: true, pedidos: borrar.length, copias: borrar.reduce((s, r) => s + r.copias, 0) });
+}
+
 export async function POST(request) {
+  if ((request.headers.get("authorization") || "").startsWith("Bearer gyp_")) return estadoDelScript(request);
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
   try {
+    const d = await request.json().catch(() => ({}));
+    if (d?.accion === "borrar_repetidos") return await borrarRepetidos(sesion, d);
     const e = sesion.empresa_id;
     const { clave, hash } = generarClave(e);
     const valor = { hash, creada_at: new Date().toISOString(), ultima_lectura: null };
