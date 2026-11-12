@@ -21,16 +21,17 @@ import { useToast } from "./ui/Toast";
 const miles = (n) => (n == null ? "" : Math.round(Number(n) || 0).toLocaleString("es-AR"));
 const pct = (n) => (n == null ? "" : `${String(n).replace(".", ",")} %`);
 
-function ConfigMateriales({ valor, onCerrar, onGuardado }) {
+function ConfigMateriales({ valor, real: realGuardado = false, onCerrar, onGuardado }) {
   const toast = useToast();
   const [v, setV] = useState(String(valor ?? 40).replace(".", ","));
+  const [real, setReal] = useState(!!realGuardado);
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   async function guardar() {
     setGuardando(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/finanzas/resultados", { method: "POST", body: JSON.stringify({ accion: "config", materiales_pct: v }) });
+      const res = await apiFetch("/api/finanzas/resultados", { method: "POST", body: JSON.stringify({ accion: "config", materiales_pct: v, materiales_real: real }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo guardar");
       toast.success("Guardado");
@@ -46,8 +47,12 @@ function ConfigMateriales({ valor, onCerrar, onGuardado }) {
         <p className="m-0 text-[13px] text-gypi-dim">
           Mientras no haya cuentas de materiales (CMV_MAT) con movimientos, se estima como un % de las entregas, igual que el libro. Con 0 no se estima.
         </p>
+        <label className="flex items-start gap-2 text-[13px]">
+          <input type="checkbox" className="mt-1" checked={real} onChange={(e) => setReal(e.target.checked)} />
+          <span><span className="font-semibold">Usar el costo real de cada OT entregada</span><br /><span className="text-gypi-dim">Lo del MRP, lo retirado de más y las compras sin stock de cada OT (💲 Costo por OT). Las entregas de OT sin materiales en Gypi siguen con el %.</span></span>
+        </label>
         <label className="flex flex-col gap-1 text-[13px] font-semibold">
-          % de las entregas
+          {real ? "% de las entregas sin costo en Gypi" : "% de las entregas"}
           <input className="g-input w-[120px] text-right" inputMode="decimal" aria-label="Porcentaje de materiales" value={v} onChange={(e) => setV(e.target.value)} />
         </label>
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
@@ -187,7 +192,7 @@ export default function FinanzasResultados() {
           <input type="month" className="g-input" aria-label="Hasta el mes" value={hasta} onChange={(e) => e.target.value && setHasta(e.target.value)} />
         </label>
         <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA, ordenado según NIIF (gastos por función). Ingresos = entregas de las OT (precio del Plan, el mes en que se finaliza la OT): se compara lo producido contra los costos. Tocá una sección para abrirla o cerrarla.</p>
-        <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Materiales ({pct(datos.config?.materiales_pct)})</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Materiales ({datos.config?.materiales_real ? "costo real" : pct(datos.config?.materiales_pct)})</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setReparto(true)}>⚙ Compartidos</button>
         {cargando && <Spinner size={16} />}
       </div>
@@ -256,7 +261,7 @@ export default function FinanzasResultados() {
         </details>
       )}
       {reparto && <ConfigPonderador divisiones={datos.divisiones || []} valor={datos.config?.ponderador} onCerrar={() => setReparto(false)} onGuardado={() => { setReparto(false); setDivision(""); cargar(); }} />}
-      {config && <ConfigMateriales valor={datos.config?.materiales_pct} onCerrar={() => setConfig(false)} onGuardado={() => { setConfig(false); cargar(); }} />}
+      {config && <ConfigMateriales valor={datos.config?.materiales_pct} real={datos.config?.materiales_real} onCerrar={() => setConfig(false)} onGuardado={() => { setConfig(false); cargar(); }} />}
     </div>
   );
 }

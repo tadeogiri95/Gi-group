@@ -9,17 +9,18 @@
 // cada fila trae también el previsto.
 import { textoOt } from "./nombreOt";
 import { resumenReal } from "./costoReal";
+import { MARGEN_MINIMO, margen } from "./margenOt";
 
 const r1 = (n) => Math.round(n * 10) / 10;
 const r2 = (n) => Math.round(n * 100) / 100;
 const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /**
- * @param {{ proyecto: object, materiales?: object|null, horas?: object|null, costoHora?: number|null, final?: object|null, fechaOt?: string|null, comparativa?: object|null }} d
+ * @param {{ proyecto: object, materiales?: object|null, horas?: object|null, costoHora?: number|null, final?: object|null, fechaOt?: string|null, comparativa?: object|null, precio?: number|null, minimo?: number }} d
  *   final: costos_finales_ot vigente (estado calculado) de la OT, si la hay
  *   comparativa: costoPrevistoReal de la OT abierta (app/lib/costoReal.js)
  */
-export function filaReporte({ proyecto, materiales = null, horas = null, costoHora = null, final = null, fechaOt = null, comparativa = null }) {
+export function filaReporte({ proyecto, materiales = null, horas = null, costoHora = null, final = null, fechaOt = null, comparativa = null, precio = null, minimo = MARGEN_MINIMO }) {
   const base = {
     ot: String(proyecto.ot),
     cliente: proyecto.cliente || null,
@@ -69,6 +70,12 @@ export function filaReporte({ proyecto, materiales = null, horas = null, costoHo
   fila.gastos = cmp ? num(cmp.renglones?.find((x) => x.id === "gastos")?.real) || 0 : null;
   fila.desvio = fila.previsto != null && fila.total != null ? r2(fila.total - fila.previsto) : null;
   fila.desvio_pct = fila.previsto > 0 && fila.total != null ? Math.round((fila.total / fila.previsto) * 100) : null;
+  // Margen (auditoría 12/11, parte 4): precio del Plan sin IVA contra el costo real
+  const m = margen({ precio, costo: fila.total, minimo });
+  fila.precio = num(precio);
+  fila.ganancia = m ? m.ganancia : null;
+  fila.margen = m ? m.pct : null;
+  fila.margen_bajo = !!m?.bajo;
   const p = fila.horas_presupuestadas, r = fila.horas_reales;
   fila.diferencia = p != null && r != null ? r1(r - p) : null;
   fila.pct = p > 0 && r != null ? Math.round((r / p) * 100) : null;
@@ -82,6 +89,16 @@ function previstoTotal(filas) {
   const p = r2(con.reduce((s, f) => s + f.previsto, 0));
   const r = r2(con.reduce((s, f) => s + f.total, 0));
   return { previsto: p, real_comparado: r, desvio: r2(r - p), desvio_pct: p > 0 ? Math.round((r / p) * 100) : null };
+}
+
+/** Precio, ganancia y margen de las filas con precio; cuántas bajo el mínimo. */
+function margenTotal(filas) {
+  const con = filas.filter((f) => f.precio > 0 && f.total != null);
+  const bajas = filas.filter((f) => f.margen_bajo).length;
+  if (!con.length) return { precio: null, ganancia: null, margen: null, con_precio: 0, margen_bajo: bajas };
+  const p = r2(con.reduce((s, f) => s + f.precio, 0));
+  const g = r2(p - con.reduce((s, f) => s + f.total, 0));
+  return { precio: p, ganancia: g, margen: Math.round((g / p) * 1000) / 10, con_precio: con.length, margen_bajo: bajas };
 }
 
 /** Totales de las filas (los vacíos no suman). */
@@ -103,6 +120,7 @@ export function totalesReporte(filas = []) {
     mano_obra: suma("mano_obra") != null ? r2(suma("mano_obra")) : null,
     total: suma("total") != null ? r2(suma("total")) : null,
     ...previstoTotal(filas),
+    ...margenTotal(filas),
   };
 }
 
@@ -111,13 +129,14 @@ const n = (v, d = 2) => (v === null || v === undefined ? "" : Number(v).toLocale
 /** Planilla para Excel (CSV con los números en formato argentino). */
 export function planillaReporte(filas = [], { nombreDivision = (d) => d ?? "" } = {}) {
   const t = totalesReporte(filas);
-  const enc = ["OT", "División", "Fecha de carga", "Costo", "Materiales", "Artículos sin precio", "Horas presupuestadas", "Horas reales", "Diferencia", "% real/presup.", "Costo de la hora", "Mano de obra", "Gastos de la OT", "Costo final", "Costo previsto", "Desvío", "% real/previsto"];
+  const enc = ["OT", "División", "Fecha de carga", "Costo", "Materiales", "Artículos sin precio", "Horas presupuestadas", "Horas reales", "Diferencia", "% real/presup.", "Costo de la hora", "Mano de obra", "Gastos de la OT", "Costo final", "Costo previsto", "Desvío", "% real/previsto", "Precio sin IVA", "Ganancia", "Margen %", "Bajo el mínimo"];
   const fila = (f) => [
     textoOt({ ot: f.ot, cliente: f.cliente, obra: f.obra, descripcion: f.descripcion }) || f.ot,
     nombreDivision(f.division), f.fecha_ot ? f.fecha_ot.split("-").reverse().join("/") : "",
     f.costo === "final" ? "Final (OT cerrada)" : "Provisorio",
     n(f.materiales), f.sin_precio || "", n(f.horas_presupuestadas, 1), n(f.horas_reales, 1), n(f.diferencia, 1), f.pct ?? "",
     n(f.costo_hora), n(f.mano_obra), n(f.gastos), n(f.total), n(f.previsto), n(f.desvio), f.desvio_pct ?? "",
+    n(f.precio), n(f.ganancia), n(f.margen, 1), f.margen_bajo ? "Sí" : "",
   ];
-  return [enc, ...filas.map(fila), ["Total", "", "", `${t.finales} de ${t.ots} finales`, n(t.materiales), t.sin_precio || "", n(t.horas_presupuestadas, 1), n(t.horas_reales, 1), n(t.diferencia, 1), t.pct ?? "", "", n(t.mano_obra), "", n(t.total), n(t.previsto), n(t.desvio), t.desvio_pct ?? ""]];
+  return [enc, ...filas.map(fila), ["Total", "", "", `${t.finales} de ${t.ots} finales`, n(t.materiales), t.sin_precio || "", n(t.horas_presupuestadas, 1), n(t.horas_reales, 1), n(t.diferencia, 1), t.pct ?? "", "", n(t.mano_obra), "", n(t.total), n(t.previsto), n(t.desvio), t.desvio_pct ?? "", n(t.precio), n(t.ganancia), n(t.margen, 1), t.margen_bajo || ""]];
 }

@@ -4,7 +4,8 @@
 //   GET ?ot=M-7471 → renglones previsto/real (materiales del MRP, retirado de
 //       más o fuera del MRP, compras sin stock, mano de obra en planta,
 //       retrabajo, instalación, gastos de Finanzas con la OT), totales, avisos
-//       y el detalle de lo que suma fuera del MRP.
+//       y el detalle de lo que suma fuera del MRP. Con el precio de la OT,
+//       el margen real y el previsto contra el mínimo (parte 4).
 //
 // Solo el Dueño y el Supervisor (comoDueno). Lee con la clave del servidor
 // después de verificarlo acá, filtrando siempre por su empresa.
@@ -14,7 +15,8 @@ import { safeErrorMessage } from "../../lib/validate";
 import { comoDueno } from "../../lib/alcance";
 import { logger } from "../../lib/logger";
 import { faltaMigracionCosto } from "../../lib/costoMaterialesServidor";
-import { costoRealDeOt } from "../../lib/costoRealServidor";
+import { costoRealDeOt, preciosYMinimo } from "../../lib/costoRealServidor";
+import { margen } from "../../lib/margenOt";
 
 export const maxDuration = 30;
 
@@ -31,8 +33,14 @@ export async function GET(request) {
       const r = await costoRealDeOt(sesion.empresa_id, ot);
       if (!r) return NextResponse.json({ error: "No se encontró la OT" }, { status: 404 });
       const { fuera, compras, gastos, retrabajo, instalacion } = r.extras;
+      // Margen (parte 4): precio del Plan contra el costo real y el previsto
+      const { precios, minimo } = await preciosYMinimo(sesion.empresa_id, [ot]);
+      const precio = precios.get(ot) ?? null;
       return NextResponse.json({
         ok: true, ot, ...r.comparativa,
+        precio, margen_minimo: minimo,
+        margen: margen({ precio, costo: r.comparativa.real, minimo }),
+        margen_previsto: margen({ precio, costo: r.comparativa.previsto, minimo }),
         fuera: fuera?.filas || [], compras: compras?.filas || [], gastos: gastos?.filas || [],
         retrabajo_horas: retrabajo || 0, instalacion: instalacion || null,
       });

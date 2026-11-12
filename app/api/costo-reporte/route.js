@@ -10,12 +10,13 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { safeErrorMessage } from "../../lib/validate";
-import { sbGet, sbGetAll } from "../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPatch, sbPost } from "../../lib/sbHelpers";
 import { comoDueno } from "../../lib/alcance";
 import { logger } from "../../lib/logger";
 import { fechaCargaOt } from "../../lib/costoMateriales";
 import { faltaMigracionCosto } from "../../lib/costoMaterialesServidor";
-import { costosRealesDeOts } from "../../lib/costoRealServidor";
+import { costosRealesDeOts, preciosYMinimo } from "../../lib/costoRealServidor";
+import { CLAVE_MARGEN, minimoValido } from "../../lib/margenOt";
 import { filaReporte } from "../../lib/costoReporte";
 
 export const maxDuration = 60;
@@ -44,7 +45,7 @@ export async function GET(request) {
     try {
       const { data: todos } = await sbGetAll(`proyectos?empresa_id=eq.${e}&ot=not.is.null&created_at=gte.${ini}&created_at=lt.${fin}&select=*&order=created_at.asc,id.asc`, { maxFilas: MAX_OTS + 1 });
       const proyectos = (todos || []).slice(0, MAX_OTS);
-      if (!proyectos.length) return NextResponse.json({ ok: true, filas: [], truncado: false });
+      if (!proyectos.length) return NextResponse.json({ ok: true, filas: [], truncado: false, margen_minimo: (await preciosYMinimo(e, [])).minimo });
       const lista = proyectos.map((p) => `%22${encodeURIComponent(String(p.ot))}%22`).join(",");
       const [finales, [costo]] = await Promise.all([
         // Sin la 167 no hay costos finales: todo provisorio
@@ -55,16 +56,20 @@ export async function GET(request) {
       for (const f of finales) if (!finalDe.has(String(f.ot))) finalDe.set(String(f.ot), f);
       const abiertas = proyectos.filter((p) => !finalDe.has(String(p.ot)));
       // El costo real de las abiertas (auditoría 12/11, parte 3): MRP, de más, compras sin stock, horas, retrabajo, instalación y gastos
-      const reales = await costosRealesDeOts(e, abiertas, { costoHora: costo?.costo_hora ?? null });
+      const [reales, { precios, minimo }] = await Promise.all([
+        costosRealesDeOts(e, abiertas, { costoHora: costo?.costo_hora ?? null }),
+        preciosYMinimo(e, proyectos.map((p) => String(p.ot))),
+      ]);
       const filas = proyectos.map((p) => {
         const ot = String(p.ot);
         const r = reales.get(ot);
         return filaReporte({
           proyecto: p, fechaOt: fechaCargaOt(p), final: finalDe.get(ot) || null,
           materiales: r?.materiales || null, horas: r?.horas || null, costoHora: costo?.costo_hora ?? null, comparativa: r?.comparativa || null,
+          precio: precios.get(ot) ?? null, minimo,
         });
       });
-      return NextResponse.json({ ok: true, filas, truncado: (todos || []).length > MAX_OTS });
+      return NextResponse.json({ ok: true, filas, margen_minimo: minimo, truncado: (todos || []).length > MAX_OTS });
     } catch (err) {
       const falta = faltaMigracionCosto(err);
       if (falta) return NextResponse.json({ ok: false, falta_migracion: falta });
@@ -72,6 +77,29 @@ export async function GET(request) {
     }
   } catch (err) {
     logger.error("[costo-reporte] GET", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
+  }
+}
+
+// POST { accion: "margen_minimo", minimo } → guarda el margen mínimo de la
+// empresa (auditoría 12/11, parte 4; config_sistema "costos_margen").
+export async function POST(request) {
+  try {
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    if (!(await comoDueno(sesion))) return NextResponse.json({ error: "Solo el dueño y los supervisores cambian el margen mínimo" }, { status: 403 });
+    const d = await request.json().catch(() => null);
+    if (d?.accion !== "margen_minimo") return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
+    if (!minimoValido(d.minimo)) return NextResponse.json({ error: "El margen mínimo va de 0 a 100 %" }, { status: 400 });
+    const e = sesion.empresa_id;
+    const valor = { minimo: Math.round(Number(d.minimo) * 10) / 10 };
+    const filtro = `config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_MARGEN}`;
+    const ya = await sbGet(`${filtro}&select=clave&limit=1`, { silent: true, fallback: [] });
+    if (ya?.length) await sbPatch(filtro, { valor });
+    else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_MARGEN, valor });
+    return NextResponse.json({ ok: true, margen_minimo: valor.minimo });
+  } catch (err) {
+    logger.error("[costo-reporte] POST", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

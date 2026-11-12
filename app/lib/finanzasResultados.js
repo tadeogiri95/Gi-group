@@ -13,6 +13,11 @@
 //     defecto; config_sistema "finanzas_resultados") en lugar de las cuentas
 //     CMV_MAT (Materias Primas es stock: la compra no es el consumo). Con 0 %
 //     se usan las cuentas.
+//   - Desde el 12/11 (auditoría, parte 4) el Dueño puede elegir el costo real
+//     de materiales de cada OT entregada (MRP + retirado de más + compras sin
+//     stock; app/lib/costoReal.js) en lugar del %: a cada entrega le toca la
+//     parte de los materiales de su OT. Las entregas de OT sin materiales
+//     en Gypi siguen con el %.
 //   - IMP_IVA (IVA a pagar / a favor) va aparte y no entra en el resultado.
 //   - Ordenado según NIIF (NIC 1, gastos por función), 10/11: el ingreso son
 //     SOLO las entregas (ING_ENT, menos descuentos y notas de crédito), para
@@ -162,7 +167,7 @@ const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]
  * @param {{ ops: object[], cuentas: object[], proyectos?: object[], hasta: string, materialesPct?: number }} d
  * @returns {{ meses: string[], filas: object[], sin_linea: object[], para_revisar: number, clasificado: boolean, materiales_estimados: boolean }}
  */
-export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "" }) {
+export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null }) {
   const meses = mesesHasta(hasta);
   const idx = new Map(meses.map((m, i) => [m, i]));
   const porCodigo = new Map(cuentas.map((c) => [c.codigo, c]));
@@ -180,6 +185,8 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
   // renglón (cuenta + división) → valores por mes
   const lineas = new Map();
   const sinLinea = new Map();
+  // Entregas de cada OT por mes (para el costo real de materiales)
+  const entregaOt = new Map();
   let paraRevisar = 0;
 
   const sumar = (codigo, op, signo, f) => {
@@ -207,6 +214,11 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     }
     // Ingresos: haber − debe; el resto: debe − haber
     l.valores[i] += secNiif.ingreso ? -v : v;
+    if (ubic.seccion.id === "ING" && ubic.grupo === "ENT" && op.proyecto_id) {
+      const pid = Number(op.proyecto_id);
+      if (!entregaOt.has(pid)) entregaOt.set(pid, cero());
+      entregaOt.get(pid)[i] += -v;
+    }
   };
 
   for (const op of ops) {
@@ -222,16 +234,36 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
   // Materiales estimados: un % de las entregas en lugar de las cuentas CMV_MAT
   const pct = Math.max(0, Math.min(100, Number(materialesPct) || 0));
   let estimados = false;
-  if (pct > 0) {
+  if (pct > 0 || materialesOt) {
     for (const [k, l] of lineas) if (l.origen === "CMV" && l.grupo === "MAT") lineas.delete(k);
     const entregas = cero();
     for (const l of lineas.values()) if (l.origen === "ING" && l.grupo === "ENT") l.valores.forEach((v, i) => { entregas[i] += v; });
     if (entregas.some((v) => Math.abs(v) >= 0.01)) {
       estimados = true;
-      lineas.set("materiales|estimado", {
-        cuenta: null, linea: "CMV_MAT", division: "", nombre: `Costo de materiales (estimado ${String(pct).replace(".", ",")} % de las entregas)`,
-        seccion: "CMV", origen: "CMV", grupo: "MAT", estimado: true, valores: entregas.map((v) => v * pct / 100),
-      });
+      // Con el costo real: cada entrega de una OT con materiales lleva su parte; las demás, el %
+      const real = cero();
+      const conReal = cero();
+      if (materialesOt) {
+        for (const [pid, vals] of entregaOt) {
+          const mat = Number(materialesOt.get(pid)) || 0;
+          const tot = vals.reduce((a, b) => a + b, 0);
+          if (mat <= 0 || tot <= 0.01) continue;
+          vals.forEach((v, i) => { real[i] += mat * (v / tot); conReal[i] += v; });
+        }
+      }
+      const porPct = entregas.map((v, i) => (v - conReal[i]) * pct / 100);
+      if (materialesOt && real.some((v) => Math.abs(v) >= 0.01)) {
+        lineas.set("materiales|real", {
+          cuenta: null, linea: "CMV_MAT", division: "", nombre: "Costo de materiales (real de cada OT entregada)",
+          seccion: "CMV", origen: "CMV", grupo: "MAT", estimado: true, valores: real,
+        });
+      }
+      if (porPct.some((v) => Math.abs(v) >= 0.01)) {
+        lineas.set("materiales|estimado", {
+          cuenta: null, linea: "CMV_MAT", division: "", nombre: materialesOt ? `Costo de materiales (estimado ${String(pct).replace(".", ",")} % de las entregas sin costo en Gypi)` : `Costo de materiales (estimado ${String(pct).replace(".", ",")} % de las entregas)`,
+          seccion: "CMV", origen: "CMV", grupo: "MAT", estimado: true, valores: porPct,
+        });
+      }
     }
   }
 
@@ -312,7 +344,7 @@ export function validarPonderador(p) {
 export function configResultados(valor) {
   const n = Number(valor?.materiales_pct);
   const p = validarPonderador(valor?.ponderador);
-  return { materiales_pct: Number.isFinite(n) && n >= 0 && n <= 100 ? n : MATERIALES_PCT, ponderador: p.ponderador || {} };
+  return { materiales_pct: Number.isFinite(n) && n >= 0 && n <= 100 ? n : MATERIALES_PCT, ponderador: p.ponderador || {}, ...(valor?.materiales_real === true ? { materiales_real: true } : {}) };
 }
 
 /**
