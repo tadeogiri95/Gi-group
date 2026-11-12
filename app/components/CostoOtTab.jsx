@@ -58,7 +58,7 @@ export default function CostoOtTab({ fechaDesde, fechaHasta, labelPeriodo = "", 
   return (
     <section aria-label="Costo por OT">
       <div className="text-xs text-gypi-dim mb-2">
-        OT que entraron a Gypi en {labelPeriodo || "el período"}. Las cerradas muestran su costo final (la constancia del cierre); las demás, el de hoy, provisorio. Sin IVA.
+        OT que entraron a Gypi en {labelPeriodo || "el período"}. Costo real (MRP, retirado de más, compras sin stock, horas, retrabajo, instalación y gastos de Finanzas) al lado del previsto. Las cerradas muestran su constancia; las demás, el de hoy, provisorio. Sin IVA.
       </div>
       {filas.length === 0 ? (
         <div className="bg-gypi-surface rounded-2xl p-6 text-center border border-gypi-border text-[13px] text-gypi-dim">No entraron OT en este período.</div>
@@ -68,6 +68,9 @@ export default function CostoOtTab({ fechaDesde, fechaHasta, labelPeriodo = "", 
             <Stat value={pesos(t.total)} label={`Costo total de ${t.ots} OT`} />
             <Stat value={pesos(t.materiales)} label={t.sin_precio ? `Materiales (${t.sin_precio} sin precio)` : "Materiales"} tone={t.sin_precio ? "atencion" : "normal"} />
             <Stat value={pesos(t.mano_obra)} label="Mano de obra" />
+            {t.previsto != null && (
+              <Stat value={`${pesos(t.real_comparado)} / ${pesos(t.previsto)}`} label={t.desvio_pct != null ? `Real / previsto (${t.desvio_pct} %)` : "Real / previsto"} tone={t.desvio_pct == null ? "normal" : t.desvio_pct <= 100 ? "bien" : "mal"} />
+            )}
             <Stat value={`${textoHoras(t.horas_reales)} / ${textoHoras(t.horas_presupuestadas)}`} label={t.pct != null ? `Horas reales / presupuestadas (${t.pct} %)` : "Horas reales / presupuestadas"} tone={t.pct == null ? "normal" : t.pct <= 100 ? "bien" : "mal"} />
           </section>
           <button type="button" onClick={exportar} className="g-btn g-btn-secondary mb-3">⬇ Exportar a Excel</button>
@@ -88,6 +91,8 @@ export default function CostoOtTab({ fechaDesde, fechaHasta, labelPeriodo = "", 
                 <div className="text-xs text-gypi-dim flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
                   <span>Materiales {pesos(f.materiales)}{f.sin_precio ? <span className="text-gypi-red"> ({f.sin_precio} sin precio)</span> : null}</span>
                   <span>Mano de obra {pesos(f.mano_obra)}</span>
+                  {f.gastos ? <span>Gastos {pesos(f.gastos)}</span> : null}
+                  {f.previsto != null && <span>Previsto {pesos(f.previsto)}{f.desvio ? <span className={f.desvio > 0 ? "text-gypi-red" : "text-gypi-green"}> ({f.desvio > 0 ? "+" : ""}{pesos(f.desvio)})</span> : null}</span>}
                   <span>Horas {textoHoras(f.horas_reales)} de {textoHoras(f.horas_presupuestadas)} <Diferencia f={f} /></span>
                 </div>
               </li>

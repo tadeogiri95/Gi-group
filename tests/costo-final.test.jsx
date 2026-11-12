@@ -104,12 +104,12 @@ function mockApi({ costos = [], estado = "cerrado", supervisor = false } = {}) {
     { match: (u) => u.includes("select=id,solo_su_division"), respond: () => ({ status: 200, body: [{ id: EMP, solo_su_division: supervisor }] }) },
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/proyectos?"), respond: () => ({ status: 200, body: [{ ot: "M-7471", estado, created_at: "2026-04-15T15:00:00Z" }] }) },
-    { match: (u) => u.includes("/rest/v1/necesidades_stock?"), respond: () => ({ status: 200, body: [{ sku: "A", nombre: "MELAMINA", cantidad: 10 }] }) },
-    { match: (u) => u.includes("/rest/v1/precios_fijos_ot?"), respond: () => ({ status: 200, body: [{ sku: "A", fecha: "2026-01-01", precio: 70000, precio_ars: 70000, moneda: "ARS", origen: "mrp" }] }) },
+    { match: (u) => u.includes("/rest/v1/necesidades_stock?"), respond: () => ({ status: 200, body: [{ ot: "M-7471", sku: "A", nombre: "MELAMINA", cantidad: 10 }] }) },
+    { match: (u) => u.includes("/rest/v1/precios_fijos_ot?"), respond: () => ({ status: 200, body: [{ ot: "M-7471", sku: "A", fecha: "2026-01-01", precio: 70000, precio_ars: 70000, moneda: "ARS", origen: "mrp" }] }) },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ nombre: "Tadeo" }] }) },
     { match: (u) => u.includes("/rest/v1/costos_empresa?"), respond: () => ({ status: 200, body: [{ costo_hora: 5000 }] }) },
     { match: (u) => u.includes("/rest/v1/horas_ot?"), respond: () => ({ status: 200, body: [{ ot: "M-7471", etapa: "total", reales: 12, presupuestadas: 10 }] }) },
-    vacio(/\/rest\/v1\/(movimientos_stock|articulos_stock|etapas|divisiones|config_sistema|v_avance_piezas|avance_etapas|avance_manual_historial|pausas_ot|pasos_pieza|registro_actividades)\?/),
+    vacio(/\/rest\/v1\/(movimientos_stock|ordenes_compra_items|fin_operaciones|fin_cuentas|retrabajos_ot|reportes_instalacion|modulos_instalados|articulos_stock|etapas|divisiones|config_sistema|v_avance_piezas|avance_etapas|avance_manual_historial|pausas_ot|pasos_pieza|registro_actividades)\?/),
     {
       match: (u) => u.includes("/rest/v1/costos_finales_ot"),
       respond: (u, o) => {

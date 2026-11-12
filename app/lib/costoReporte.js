@@ -3,17 +3,23 @@
 // horas-persona presupuestadas y reales, mano de obra y costo final. Las OT
 // cerradas con costo calculado muestran su constancia (no cambia); las demás,
 // el costo de hoy, provisorio.
+//
+// Desde el 12/11 (auditoría, parte 3) el costo es el real (con lo retirado
+// de más, compras sin stock, retrabajo, instalación y gastos de Finanzas) y
+// cada fila trae también el previsto.
 import { textoOt } from "./nombreOt";
+import { resumenReal } from "./costoReal";
 
 const r1 = (n) => Math.round(n * 10) / 10;
 const r2 = (n) => Math.round(n * 100) / 100;
 const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /**
- * @param {{ proyecto: object, materiales?: object|null, horas?: object|null, costoHora?: number|null, final?: object|null, fechaOt?: string|null }} d
+ * @param {{ proyecto: object, materiales?: object|null, horas?: object|null, costoHora?: number|null, final?: object|null, fechaOt?: string|null, comparativa?: object|null }} d
  *   final: costos_finales_ot vigente (estado calculado) de la OT, si la hay
+ *   comparativa: costoPrevistoReal de la OT abierta (app/lib/costoReal.js)
  */
-export function filaReporte({ proyecto, materiales = null, horas = null, costoHora = null, final = null, fechaOt = null }) {
+export function filaReporte({ proyecto, materiales = null, horas = null, costoHora = null, final = null, fechaOt = null, comparativa = null }) {
   const base = {
     ot: String(proyecto.ot),
     cliente: proyecto.cliente || null,
@@ -53,11 +59,29 @@ export function filaReporte({ proyecto, materiales = null, horas = null, costoHo
       mano_obra: manoObra,
       total: mat != null || manoObra != null ? r2((mat || 0) + (manoObra || 0)) : null,
     };
+    if (comparativa) {
+      const res = resumenReal(comparativa);
+      Object.assign(fila, { materiales: res.materiales, mano_obra: res.mano_obra, total: res.total });
+    }
   }
+  const cmp = final ? final.detalle?.comparativa || null : comparativa;
+  fila.previsto = cmp ? num(cmp.previsto) : null;
+  fila.gastos = cmp ? num(cmp.renglones?.find((x) => x.id === "gastos")?.real) || 0 : null;
+  fila.desvio = fila.previsto != null && fila.total != null ? r2(fila.total - fila.previsto) : null;
+  fila.desvio_pct = fila.previsto > 0 && fila.total != null ? Math.round((fila.total / fila.previsto) * 100) : null;
   const p = fila.horas_presupuestadas, r = fila.horas_reales;
   fila.diferencia = p != null && r != null ? r1(r - p) : null;
   fila.pct = p > 0 && r != null ? Math.round((r / p) * 100) : null;
   return fila;
+}
+
+/** Previsto y desvío de las filas que tienen previsto (las demás no se comparan). */
+function previstoTotal(filas) {
+  const con = filas.filter((f) => f.previsto != null && f.total != null);
+  if (!con.length) return { previsto: null, real_comparado: null, desvio: null, desvio_pct: null };
+  const p = r2(con.reduce((s, f) => s + f.previsto, 0));
+  const r = r2(con.reduce((s, f) => s + f.total, 0));
+  return { previsto: p, real_comparado: r, desvio: r2(r - p), desvio_pct: p > 0 ? Math.round((r / p) * 100) : null };
 }
 
 /** Totales de las filas (los vacíos no suman). */
@@ -78,6 +102,7 @@ export function totalesReporte(filas = []) {
     pct: p > 0 && r != null ? Math.round((r / p) * 100) : null,
     mano_obra: suma("mano_obra") != null ? r2(suma("mano_obra")) : null,
     total: suma("total") != null ? r2(suma("total")) : null,
+    ...previstoTotal(filas),
   };
 }
 
@@ -86,13 +111,13 @@ const n = (v, d = 2) => (v === null || v === undefined ? "" : Number(v).toLocale
 /** Planilla para Excel (CSV con los números en formato argentino). */
 export function planillaReporte(filas = [], { nombreDivision = (d) => d ?? "" } = {}) {
   const t = totalesReporte(filas);
-  const enc = ["OT", "División", "Fecha de carga", "Costo", "Materiales", "Artículos sin precio", "Horas presupuestadas", "Horas reales", "Diferencia", "% real/presup.", "Costo de la hora", "Mano de obra", "Costo final"];
+  const enc = ["OT", "División", "Fecha de carga", "Costo", "Materiales", "Artículos sin precio", "Horas presupuestadas", "Horas reales", "Diferencia", "% real/presup.", "Costo de la hora", "Mano de obra", "Gastos de la OT", "Costo final", "Costo previsto", "Desvío", "% real/previsto"];
   const fila = (f) => [
     textoOt({ ot: f.ot, cliente: f.cliente, obra: f.obra, descripcion: f.descripcion }) || f.ot,
     nombreDivision(f.division), f.fecha_ot ? f.fecha_ot.split("-").reverse().join("/") : "",
     f.costo === "final" ? "Final (OT cerrada)" : "Provisorio",
     n(f.materiales), f.sin_precio || "", n(f.horas_presupuestadas, 1), n(f.horas_reales, 1), n(f.diferencia, 1), f.pct ?? "",
-    n(f.costo_hora), n(f.mano_obra), n(f.total),
+    n(f.costo_hora), n(f.mano_obra), n(f.gastos), n(f.total), n(f.previsto), n(f.desvio), f.desvio_pct ?? "",
   ];
-  return [enc, ...filas.map(fila), ["Total", "", "", `${t.finales} de ${t.ots} finales`, n(t.materiales), t.sin_precio || "", n(t.horas_presupuestadas, 1), n(t.horas_reales, 1), n(t.diferencia, 1), t.pct ?? "", "", n(t.mano_obra), n(t.total)]];
+  return [enc, ...filas.map(fila), ["Total", "", "", `${t.finales} de ${t.ots} finales`, n(t.materiales), t.sin_precio || "", n(t.horas_presupuestadas, 1), n(t.horas_reales, 1), n(t.diferencia, 1), t.pct ?? "", "", n(t.mano_obra), "", n(t.total), n(t.previsto), n(t.desvio), t.desvio_pct ?? ""]];
 }
