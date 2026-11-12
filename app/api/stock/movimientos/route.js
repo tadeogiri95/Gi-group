@@ -6,6 +6,10 @@
 //               escanea el QR del artículo); ingreso o ajuste: solo gestión.
 //               El artículo tiene que estar en el stock copiado de la planilla
 //               y la OT, si viene, entre las OT de la empresa.
+//   registrar_varios → (11/11, parte 5) varios retiros o devoluciones juntos:
+//               { tipo, renglones: [{ sku, cantidad, ot? }], notas? }. Se
+//               revisa todo antes y se guardan todos o ninguno. Con OT, cada
+//               uno suma al costo de esa OT (costoMaterialesServidor).
 //   anular    → gestión, cualquiera; el resto, solo los suyos recién cargados.
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
@@ -66,6 +70,46 @@ async function registrar(sesion, datos) {
   return NextResponse.json({ ok: true, movimiento: creado || fila });
 }
 
+const enLista = (vals) => `in.(${[...new Set(vals)].map((v) => `"${String(v).replace(/["\\]/g, "")}"`).join(",")})`;
+
+async function registrarVarios(sesion, datos) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  if (!puedeCargar(datos.tipo, sesion.rol)) return NextResponse.json({ error: "Ese movimiento lo carga la oficina" }, { status: 403 });
+  const skus = datos.renglones.map((r) => r.sku);
+  const ots = datos.renglones.map((r) => r.ot).filter(Boolean);
+  const [articulos, proyectos, empleados] = await Promise.all([
+    sbGet(`articulos_stock?empresa_id=eq.${e}&sku=${encodeURIComponent(enLista(skus))}&select=sku,nombre,unidad,division,activo`, opts),
+    ots.length ? sbGet(`proyectos?empresa_id=eq.${e}&ot=${encodeURIComponent(enLista(ots))}&select=ot`, opts) : Promise.resolve([]),
+    sesion.empleado_id ? sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] }) : Promise.resolve([]),
+  ]);
+  const porSku = new Map((articulos || []).map((a) => [a.sku, a]));
+  const otsOk = new Set((proyectos || []).map((p) => String(p.ot)));
+  const errores = [];
+  datos.renglones.forEach((r, i) => {
+    const a = porSku.get(r.sku);
+    if (!a) errores.push(`Renglón ${i + 1}: el artículo ${r.sku} no está en el stock`);
+    else if (a.activo === false) errores.push(`Renglón ${i + 1}: ${a.nombre || r.sku} ya no está en la planilla MRP`);
+    if (r.ot && !otsOk.has(String(r.ot))) errores.push(`Renglón ${i + 1}: no encontré la OT ${r.ot}`);
+  });
+  if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  const quien = {
+    empleado_id: sesion.empleado_id || null,
+    legajo: Number.isInteger(sesion.legajo) ? sesion.legajo : null,
+    empleado_nombre: empleados?.[0]?.nombre ? String(empleados[0].nombre).slice(0, 120) : null,
+  };
+  const filas = datos.renglones.map((r) => {
+    const a = porSku.get(r.sku);
+    return {
+      empresa_id: e, tipo: datos.tipo, sku: a.sku, nombre: a.nombre ?? null, unidad: a.unidad ?? null, division: a.division ?? null,
+      cantidad: r.cantidad, ot: r.ot ? String(r.ot) : null, proveedor: null, comprobante: null, precio_unitario: null, notas: datos.notas, ...quien,
+    };
+  });
+  await sbPost("movimientos_stock", filas, opts);
+  broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, cargados: filas.length });
+}
+
 async function anular(sesion, id) {
   const e = sesion.empresa_id;
   const opts = { sesion };
@@ -94,7 +138,9 @@ export async function POST(request) {
     const sinModulo = await requireModuloSesion(sesion, "stock");
     if (sinModulo) return sinModulo;
     try {
-      return parsed.data.accion === "anular" ? await anular(sesion, parsed.data.id) : await registrar(sesion, parsed.data);
+      if (parsed.data.accion === "anular") return await anular(sesion, parsed.data.id);
+      if (parsed.data.accion === "registrar_varios") return await registrarVarios(sesion, parsed.data);
+      return await registrar(sesion, parsed.data);
     } catch (err) {
       if (faltaMigracion(err)) {
         return NextResponse.json({ error: "Para cargar movimientos falta correr la migración 107 en Supabase." }, { status: 409 });
