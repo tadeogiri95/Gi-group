@@ -56,14 +56,27 @@ test("renglón de R-CHEQUES — estado como el libro; los copiados del libro sol
 
 // ─── El script, contra una hoja de mentira ───
 
+// Una regla de lista desplegable de mentira (como DataValidation de Apps Script)
+const regla = (lista, allowInvalid = false) => ({
+  lista, allowInvalid,
+  getAllowInvalid: () => allowInvalid,
+  getCriteriaType: () => "VALUE_IN_LIST",
+  getCriteriaValues: () => [lista],
+  copy: () => { let a = allowInvalid; const b = { setAllowInvalid: (x) => { a = x; return b; }, build: () => regla(lista, a) }; return b; },
+});
+
 class Hoja {
-  constructor(nombre, filas, formulas = {}) {
+  constructor(nombre, filas, formulas = {}, reglas = {}) {
     this.nombre = nombre;
     this.v = filas.map((f) => [...f]);
     this.f = this.v.map((f, i) => f.map((_, j) => formulas[`${i + 1},${j + 1}`] || ""));
     this.notas = new Map();
     this.ancho = filas[0].length;
+    this.reglas = reglas; // columna → regla (para todos los renglones de datos)
+    this.propias = new Map(); // "r,c" → regla cambiada en esa celda
+    this.fallarNotas = false;
   }
+  regla(r, c) { return r < 2 ? null : this.propias.has(`${r},${c}`) ? this.propias.get(`${r},${c}`) : this.reglas[c] || null; }
   getName() { return this.nombre; }
   getMaxRows() { return this.v.length; }
   getLastColumn() { return this.ancho; }
@@ -78,22 +91,42 @@ class Hoja {
     for (const [k, val] of this.notas) { const [a, b] = k.split(",").map(Number); if (a < r) nuevas.set(k, val); else if (a > r) nuevas.set(`${a - 1},${b}`, val); }
     this.notas = nuevas;
   }
+  deleteRows(r, n) { for (let k = 0; k < n; k++) this.deleteRow(r); }
   getRange(r, c, nr = 1, nc = 1) {
     const h = this;
     const celdas = (fn) => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => fn(r + i, c + j)));
     const asegurar = (fila) => { while (h.v.length < fila) h.insertRowsAfter(0, 1); };
+    const poner = (a, b, x) => {
+      const rg = h.regla(a, b);
+      if (rg && !rg.allowInvalid && x !== "" && !rg.lista.includes(x)) {
+        throw new Error(`Los datos que ingresaste en la celda ${String.fromCharCode(64 + b)}${a} infringen las reglas de validación de datos establecidas. Ingresa uno de los siguientes valores: ${rg.lista.join(", ")}.`);
+      }
+      h.v[a - 1][b - 1] = x; h.f[a - 1][b - 1] = "";
+    };
     return {
       getValues: () => celdas((a, b) => h.v[a - 1]?.[b - 1] ?? ""),
       getDisplayValues: () => celdas((a, b) => { const x = h.v[a - 1]?.[b - 1] ?? ""; return x instanceof Date ? x.toISOString().slice(0, 10) : String(x); }),
       getFormulas: () => celdas((a, b) => h.f[a - 1]?.[b - 1] ?? ""),
       getNotes: () => celdas((a, b) => h.notas.get(`${a},${b}`) || ""),
-      setValues: (m) => { asegurar(r + nr - 1); m.forEach((fila, i) => fila.forEach((x, j) => { h.v[r + i - 1][c + j - 1] = x; h.f[r + i - 1][c + j - 1] = ""; })); },
+      getDataValidations: () => celdas((a, b) => h.regla(a, b)),
+      setDataValidations: (m) => m.forEach((fila, i) => fila.forEach((x, j) => h.propias.set(`${r + i},${c + j}`, x))),
+      setValues: (m) => { asegurar(r + nr - 1); m.forEach((fila, i) => fila.forEach((x, j) => poner(r + i, c + j, x))); },
       setValue: (x) => { h.v[r - 1][c - 1] = x; },
       setNote: (x) => { h.notas.set(`${r},${c}`, x); },
-      setNotes: (m) => m.forEach((fila, i) => h.notas.set(`${r + i},${c}`, fila[0])),
+      setNotes: (m) => { if (h.fallarNotas) throw new Error("Falla de prueba"); m.forEach((fila, i) => h.notas.set(`${r + i},${c}`, fila[0])); },
+      clearNote: () => { for (let i = 0; i < nr; i++) h.notas.delete(`${r + i},${c}`); },
       clearContent: () => celdas((a, b) => { h.v[a - 1][b - 1] = ""; h.f[a - 1][b - 1] = ""; }),
-      copyTo: (dest) => dest._pegar(h.v[r - 1], h.f[r - 1]),
-      _pegar: (vals, forms) => { asegurar(r + nr - 1); for (let i = 0; i < nr; i++) { h.v[r + i - 1] = [...vals]; h.f[r + i - 1] = [...forms]; } },
+      // Solo lo que se pide: formato (nada acá), listas desplegables o fórmulas
+      copyTo: (dest, tipo) => dest._pegar(r, c, nc, tipo),
+      _pegar: (rf, cf, ncf, tipo) => {
+        asegurar(r + nr - 1);
+        for (let i = 0; i < nr; i++) {
+          for (let j = 0; j < ncf; j++) {
+            if (tipo === "PASTE_FORMULA") { const fo = h.f[rf - 1][cf + j - 1]; if (fo) { h.f[r + i - 1][c + j - 1] = fo; h.v[r + i - 1][c + j - 1] = ""; } }
+            if (tipo === "PASTE_DATA_VALIDATION" && h.propias.has(`${rf},${cf + j}`)) h.propias.set(`${r + i},${c + j}`, h.propias.get(`${rf},${cf + j}`));
+          }
+        }
+      },
     };
   }
 }
@@ -122,7 +155,12 @@ function libroDePrueba() {
 function correrScript(hojas, respuesta) {
   const pedidos = [];
   const globales = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: (n) => hojas[n] || null }) },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ({ getSheetByName: (n) => hojas[n] || null }),
+      flush: () => {},
+      CopyPasteType: { PASTE_FORMAT: "PASTE_FORMAT", PASTE_DATA_VALIDATION: "PASTE_DATA_VALIDATION", PASTE_FORMULA: "PASTE_FORMULA" },
+      DataValidationCriteria: { VALUE_IN_LIST: "VALUE_IN_LIST", VALUE_IN_RANGE: "VALUE_IN_RANGE" },
+    },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     UrlFetchApp: { fetch: (url, o) => { pedidos.push({ url, o }); return { getResponseCode: () => 200, getContentText: () => JSON.stringify(respuesta) }; } },
     ScriptApp: {},
@@ -132,6 +170,9 @@ function correrScript(hojas, respuesta) {
   fn(...Object.values(globales))();
   return pedidos;
 }
+
+/** Lo que el script le contó a Gypi al terminar la vuelta. */
+const estadoEnviado = (pedidos) => JSON.parse(pedidos.find((p) => p.o.method === "post").o.payload);
 
 test("script — agrega lo nuevo con las fórmulas de arriba, reescribe lo cambiado y borra lo anulado", () => {
   const { ops, cheques } = libroDePrueba();
@@ -162,6 +203,70 @@ test("script — agrega lo nuevo con las fórmulas de arriba, reescribe lo cambi
   const antes = JSON.stringify([ops.v, cheques.v]);
   correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, respuesta);
   assert.equal(JSON.stringify([ops.v, cheques.v]), antes);
+});
+
+test("script — un dato fuera de la lista desplegable no frena el pase ni deja copias (12/11)", () => {
+  const { ops, cheques } = libroDePrueba();
+  // Como el libro real: la columna usuario (D) solo acepta "Tadeo"
+  ops.reglas[4] = regla(["Tadeo"]);
+  const op = { ...OP, id: 9, cargada_por_nombre: "Gypi (de Mantenimiento)", updated_at: "v9" };
+  const respuesta = datosParaLibro({ operaciones: [OP, op], cheques: [], cuentas: CUENTAS });
+  const antes = ops.getLastRow();
+  const pedidos = correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, respuesta);
+  const est = estadoEnviado(pedidos);
+  assert.deepEqual(est.errores, []);
+  assert.equal(est.avisos.length, 1);
+  assert.match(est.avisos[0], /Gypi \(de Mantenimiento\)/);
+  const marcas = ops.v.slice(1).map((f) => f[18]).filter(Boolean);
+  assert.deepEqual(marcas, ["HORAS", "GY-F-5", "GY-F-9"], "entró una sola vez");
+  assert.equal(ops.getLastRow(), antes, "uno borrado (GY-F-6) y uno nuevo");
+  assert.equal(ops.v[3][3], "Gypi (de Mantenimiento)");
+  assert.equal(ops.regla(4, 4).allowInvalid, true, "en ese renglón la lista pasa a advertencia");
+  assert.equal(ops.regla(2, 4).allowInvalid, false, "los renglones a mano no se tocan");
+  // Vueltas siguientes: nada se repite
+  const foto = JSON.stringify(ops.v);
+  correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, respuesta);
+  correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, respuesta);
+  assert.equal(JSON.stringify(ops.v), foto);
+});
+
+test("script — si algo falla al agregar, se deshace y el error llega a Gypi (sin renglones repetidos)", () => {
+  const { ops, cheques } = libroDePrueba();
+  ops.fallarNotas = true;
+  const respuesta = datosParaLibro({ operaciones: [OP, { ...OP, id: 7, updated_at: "v7" }, { ...OP, id: 8, updated_at: "v8" }], cheques: [CHEQUE], cuentas: CUENTAS });
+  for (let k = 0; k < 3; k++) {
+    const est = estadoEnviado(correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, respuesta));
+    assert.match(est.errores[0], /T-OPERACIONES: Falla de prueba/);
+  }
+  const conDatos = ops.v.slice(1).filter((f) => f[2] !== "" || f[18] !== "");
+  assert.deepEqual(conDatos.map((f) => f[18]), ["HORAS", "GY-F-5"], "los renglones agregados quedaron vacíos, ni copias del de arriba");
+  assert.equal(cheques.v[2][14], "GY-C-50", "R-CHEQUES pasa igual");
+});
+
+test("script — borra sus propias marcas repetidas y lista las copias a mano para confirmar", () => {
+  const { ops, cheques } = libroDePrueba();
+  const copia = fila(TITULOS_OPS, { C: 90, "fecha_operación": new Date(2026, 10, 12), usuario: "Tadeo", cod_tipo_op: "RESCATE PLAZO FIJO", importe_neto: 1798837.65, descripcion: "Vencimiento Plazo Fijo (Exento) Operacion: 17546006", estado: "CONFIRMADO" });
+  ops.v.splice(4, 1, [...ops.v[2]], copia, { ...copia, 0: 91 }, { ...copia, 0: 92 });
+  ops.v = ops.v.map((f) => (Array.isArray(f) ? f : TITULOS_OPS.map((_, i) => f[i])));
+  ops.f = ops.v.map((f) => f.map(() => ""));
+  const respuesta = datosParaLibro({ operaciones: [OP], cheques: [], cuentas: CUENTAS });
+  const est = estadoEnviado(correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, respuesta));
+  assert.deepEqual(ops.v.slice(1).map((f) => f[18]).filter((m) => m.startsWith("GY")), ["GY-F-5"], "el GY-F-5 repetido se borró");
+  assert.equal(est.repetidos.length, 1);
+  const [r] = est.repetidos;
+  assert.equal(r.copias, 2);
+  assert.match(r.descripcion, /17546006/);
+  assert.equal(ops.v[r.fila - 1][0], 90, "el primero de los iguales");
+
+  // El Dueño confirma: se borran las 2 copias y queda el primero
+  const est2 = estadoEnviado(correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, { ...respuesta, borrar_repetidos: [{ fila: r.fila, copias: r.copias, firma: r.firma }] }));
+  assert.equal(est2.borrados.length, 1);
+  assert.equal(est2.repetidos.length, 0);
+  assert.equal(ops.v.filter((f) => /17546006/.test(f[17])).length, 1);
+  // Un pedido viejo que ya no coincide no borra nada
+  const foto = JSON.stringify(ops.v);
+  correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, { ...respuesta, borrar_repetidos: [{ fila: r.fila, copias: 2, firma: r.firma }] });
+  assert.equal(JSON.stringify(ops.v), foto);
 });
 
 // ─── Servidor ───
@@ -198,4 +303,43 @@ test("/api/finanzas/libro — GET solo con la clave de la empresa; POST solo el 
   const ok = await post("gerencial");
   assert.equal(ok.status, 200);
   assert.match((await ok.json()).script, /function instalarLibroGypi\(\)/);
+});
+
+test("/api/finanzas/libro — el script cuenta cómo salió y el Dueño confirma qué copias borrar", async () => {
+  const { clave, hash } = generarClave(E);
+  let valor = { hash };
+  const parches = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (u) => u.includes(`/rest/v1/config_sistema`),
+      respond: (u, o) => {
+        if (o?.method === "PATCH") { valor = JSON.parse(o.body).valor; parches.push(valor); return { status: 200, body: [] }; }
+        return { status: 200, body: [{ clave: CLAVE_LIBRO_FIN, valor }] };
+      },
+    },
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ nombre: "Gi", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+  ]);
+  const rep = { fila: 8132, copias: 26, firma: "2026-11-12 | Tadeo | RESCATE", fecha: "12/11/2026", descripcion: "Vencimiento Plazo Fijo", total: "$1.798.837,65" };
+  const estado = (k, cuerpo) => api.POST(new Request("http://localhost/api/finanzas/libro", { method: "POST", headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) }));
+  assert.equal((await estado(generarClave(E).clave, { accion: "estado" })).status, 401, "otra clave no sirve");
+  const r = await estado(clave, { accion: "estado", errores: ["T-OPERACIONES: Exception: Los datos que ingresaste en la celda D8281 infringen las reglas"], avisos: [], repetidos: [rep, { fila: 1, copias: 1, firma: "x" }], borrados: [] });
+  assert.equal(r.status, 200);
+  assert.equal(valor.hash, hash, "la clave sigue");
+  assert.equal(valor.estado.repetidos.length, 1, "el renglón de títulos no cuenta");
+  assert.match(valor.estado.errores[0], /D8281/);
+
+  const tok = (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol: "gerencial" })).token;
+  const pedir = (repetidos) => api.POST(new Request("http://localhost/api/finanzas/libro", { method: "POST", headers: { Authorization: `Bearer ${tok}` }, body: JSON.stringify({ accion: "borrar_repetidos", repetidos }) }));
+  assert.equal((await pedir([{ fila: 5, firma: "inventado" }])).status, 400, "solo lo que mostró el script");
+  const ok = await pedir([{ fila: 8132, firma: rep.firma }]);
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).copias, 26);
+  assert.deepEqual(valor.borrar, [{ fila: 8132, copias: 26, firma: rep.firma }]);
+
+  // El script los borró: deja de estar pedido
+  await estado(clave, { accion: "estado", errores: [], avisos: [], repetidos: [], borrados: [rep] });
+  assert.deepEqual(valor.borrar, []);
+  assert.equal(valor.estado.borrados.length, 1);
 });

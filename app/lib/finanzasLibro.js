@@ -123,6 +123,27 @@ export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], p
   };
 }
 
+const lista = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
+
+/**
+ * Lo que el script cuenta de cada vuelta (12/11), limpio para guardar:
+ * errores y avisos como texto, los repetidos que encontró en T-OPERACIONES
+ * (renglones sin marca de Gypi iguales al de arriba) y los que borró.
+ */
+export function estadoValido(d = {}) {
+  const repetido = (r) => ({
+    fila: Math.trunc(Number(r?.fila)), copias: Math.trunc(Number(r?.copias)), firma: txt(r?.firma, 400),
+    fecha: txt(r?.fecha, 30), descripcion: txt(r?.descripcion, 200), total: txt(r?.total, 40),
+  });
+  const bueno = (r) => r.fila >= 2 && r.copias >= 1 && r.copias <= 5000 && r.firma;
+  return {
+    errores: lista(d.errores, 10).map((x) => txt(x, 500)).filter(Boolean),
+    avisos: lista(d.avisos, 50).map((x) => txt(x, 300)).filter(Boolean),
+    repetidos: lista(d.repetidos, 200).map(repetido).filter(bueno),
+    borrados: lista(d.borrados, 200).map(repetido).filter(bueno),
+  };
+}
+
 /**
  * Código para pegar en Apps Script del libro (Extensiones → Apps Script).
  * instalarLibroGypi() se corre una vez: pide permiso, deja la tarea de cada
@@ -134,7 +155,12 @@ export function scriptLibro({ url, clave }) {
 // Gypi (compras, pagos, cheques…) y a R-CHEQUES los cheques. Cada renglón de
 // Gypi lleva su marca (GY-F-n en referencia_externa, GY-C-n en id_op_origen):
 // si cambia en Gypi se reescribe y si se anula se borra. Los renglones
-// cargados a mano no se tocan. Las fórmulas se copian del renglón de arriba.
+// cargados a mano no se tocan. Las fórmulas se copian del renglón de arriba
+// (solo las fórmulas: nunca se copia un renglón con sus datos). Si un dato no
+// está en la lista desplegable de su columna entra igual, con el triángulo
+// rojo, y se avisa en Gypi. Si algo falla, lo agregado se deshace y el error
+// se ve en Gypi (Configuración → Pasar Gypi al libro), junto con los
+// renglones repetidos del libro para borrar las copias.
 // También suma los tipos de operación nuevos a dim_tipos_op y dim_flujo y,
 // cuando en Gypi se aprieta "Pasar a los tipos nuevos", reescribe una sola
 // vez cod_tipo_op de T-OPERACIONES (antes deja una copia de respaldo de las
@@ -177,21 +203,42 @@ function instalarLibroGypi() {
 function pasarLibroGypi() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return;
+  // Lo que pasó en esta vuelta vuelve a Gypi (Configuración → Pasar Gypi al libro)
+  var estado = { errores: [], avisos: [], repetidos: [], borrados: [] };
   try {
     var r = gypiLibroPedir_();
     var libro = SpreadsheetApp.getActiveSpreadsheet();
     if (r.tipos_nuevos) gypiLibroTipos_(libro, r.tipos_nuevos);
     if (r.cambios_cuentas) gypiLibroCuentas_(libro, r.cambios_cuentas);
     var ops = libro.getSheetByName("T-OPERACIONES");
-    if (ops) gypiLibroEspejo_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", r.operaciones || [], "fecha_operación");
+    if (ops) {
+      gypiLibroIntentar_(estado, "T-OPERACIONES", function () {
+        gypiLibroBorrarRepetidos_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", "fecha_operación", r.borrar_repetidos || [], estado);
+        gypiLibroEspejo_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", r.operaciones || [], "fecha_operación", estado);
+      });
+      gypiLibroIntentar_(estado, "T-OPERACIONES", function () {
+        estado.repetidos = gypiLibroRepetidos_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", "fecha_operación");
+      });
+    }
     var ch = libro.getSheetByName("R-CHEQUES");
     if (ch) {
-      gypiLibroEspejo_(ch, GYPI_COLS_CHEQUES, "id_op_origen", "GY-C-", (r.cheques || []).map(function (c) { c.valores.cant = 1; return c; }), "vencimiento");
-      gypiLibroEstados_(ch, r.cheques_libro || []);
+      gypiLibroIntentar_(estado, "R-CHEQUES", function () {
+        gypiLibroEspejo_(ch, GYPI_COLS_CHEQUES, "id_op_origen", "GY-C-", (r.cheques || []).map(function (c) { c.valores.cant = 1; return c; }), "vencimiento", estado);
+        gypiLibroEstados_(ch, r.cheques_libro || []);
+        SpreadsheetApp.flush();
+      });
     }
+  } catch (e) {
+    estado.errores.push(String(e && e.message || e));
   } finally {
+    try { gypiLibroAvisar_(estado); } catch (e2) { /* Gypi no contestó: se avisa en la próxima vuelta */ }
     lock.releaseLock();
   }
+}
+
+// Si una hoja falla, se anota y se sigue con la otra
+function gypiLibroIntentar_(estado, nombre, fn) {
+  try { fn(); } catch (e) { estado.errores.push(nombre + ": " + String(e && e.message || e)); }
 }
 
 function gypiLibroNorm_(s) { return String(s).replace(/\\s+/g, " ").trim().toLowerCase(); }
@@ -241,7 +288,43 @@ function gypiLibroEscribir_(hoja, fila, tramos, items) {
   });
 }
 
-function gypiLibroEspejo_(hoja, cols, tituloMarca, prefijo, items, tituloFecha) {
+// Las listas desplegables de las columnas que escribe Gypi pasan a "mostrar
+// advertencia" en esos renglones: el dato entra igual (con el triángulo rojo)
+// en vez de frenar todo el pase. Lo que quedó fuera de la lista se avisa.
+function gypiLibroAflojar_(hoja, fila, n, tramos, items, estado) {
+  tramos.forEach(function (t) {
+    var rango = hoja.getRange(fila, t.desde, n, t.ks.length);
+    var reglas = rango.getDataValidations();
+    var cambio = false;
+    for (var i = 0; i < reglas.length; i++) {
+      for (var j = 0; j < reglas[i].length; j++) {
+        var regla = reglas[i][j];
+        if (!regla) continue;
+        if (estado && items && !gypiLibroEnLista_(regla, gypiLibroValor_(t.ks[j], items[i].valores[t.ks[j]]))) {
+          estado.avisos.push("Renglón " + (fila + i) + " (" + hoja.getName() + "): \\"" + items[i].valores[t.ks[j]] + "\\" no está en la lista de la columna " + t.ks[j]);
+        }
+        if (regla.getAllowInvalid()) continue;
+        reglas[i][j] = regla.copy().setAllowInvalid(true).build();
+        cambio = true;
+      }
+    }
+    if (cambio) rango.setDataValidations(reglas);
+  });
+}
+
+function gypiLibroEnLista_(regla, v) {
+  if (v === "" || v === null || v === undefined) return true;
+  var tipo = regla.getCriteriaType();
+  var crit = regla.getCriteriaValues();
+  var lista = null;
+  if (tipo === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) lista = crit[0] || [];
+  else if (tipo === SpreadsheetApp.DataValidationCriteria.VALUE_IN_RANGE && crit[0]) lista = crit[0].getDisplayValues().map(function (x) { return x[0]; });
+  if (!lista) return true;
+  var s = String(v).trim();
+  return lista.some(function (x) { return String(x).trim() === s; });
+}
+
+function gypiLibroEspejo_(hoja, cols, tituloMarca, prefijo, items, tituloFecha, estado) {
   var col = gypiLibroTitulos_(hoja);
   var cMarca = col[gypiLibroNorm_(tituloMarca)];
   var cFecha = col[gypiLibroNorm_(tituloFecha)];
@@ -250,13 +333,20 @@ function gypiLibroEspejo_(hoja, cols, tituloMarca, prefijo, items, tituloFecha) 
   var vivos = {};
   items.forEach(function (it) { vivos[prefijo + it.id] = it; });
 
-  // 1) Borrar los renglones de Gypi que ya no están (anulados), de abajo para arriba
+  // 1) Borrar los renglones de Gypi que ya no están (anulados) y los de Gypi
+  //    repetidos (queda el de más arriba), de abajo para arriba
   var ultima = gypiLibroUltima_(hoja, cMarca);
   if (ultima >= 2) {
     var marcas = hoja.getRange(2, cMarca, ultima - 1, 1).getDisplayValues();
+    var cuantas = {};
+    marcas.forEach(function (x) { var m = String(x[0]).trim(); cuantas[m] = (cuantas[m] || 0) + 1; });
     for (var i = marcas.length - 1; i >= 0; i--) {
       var m = String(marcas[i][0]).trim();
-      if (m.indexOf(prefijo) === 0 && !vivos[m]) hoja.deleteRow(i + 2);
+      if (m.indexOf(prefijo) !== 0) continue;
+      if (!vivos[m] || cuantas[m] > 1) {
+        hoja.deleteRow(i + 2);
+        cuantas[m]--;
+      }
     }
   }
 
@@ -273,36 +363,131 @@ function gypiLibroEspejo_(hoja, cols, tituloMarca, prefijo, items, tituloFecha) 
       if (!it) continue;
       ya[mk] = true;
       if (notas[j][0] === it.v) continue;
+      gypiLibroAflojar_(hoja, j + 2, 1, tramos, [it], estado);
       gypiLibroEscribir_(hoja, j + 2, tramos, [it]);
       hoja.getRange(j + 2, cMarca).setNote(it.v);
     }
   }
+  SpreadsheetApp.flush();
 
-  // 3) Agregar los nuevos al final, con las fórmulas del último renglón
+  // 3) Agregar los nuevos al final. Primero los datos y después las fórmulas
+  //    del último renglón: nunca se copia un renglón con sus datos (antes, si
+  //    algo fallaba en el medio, quedaba el último renglón repetido).
   var nuevos = items.filter(function (it) { return !ya[prefijo + it.id]; });
   if (!nuevos.length) return;
   var fin = Math.max(gypiLibroUltima_(hoja, cFecha), gypiLibroUltima_(hoja, cMarca));
   var desde = fin + 1;
-  if (hoja.getMaxRows() < fin + nuevos.length) hoja.insertRowsAfter(hoja.getMaxRows(), fin + nuevos.length - hoja.getMaxRows());
+  var n = nuevos.length;
+  if (hoja.getMaxRows() < fin + n) hoja.insertRowsAfter(hoja.getMaxRows(), fin + n - hoja.getMaxRows());
   var ancho = hoja.getLastColumn();
-  if (fin >= 2) {
-    hoja.getRange(fin, 1, 1, ancho).copyTo(hoja.getRange(desde, 1, nuevos.length, ancho));
-    // De lo copiado quedan solo las fórmulas: los datos sueltos del renglón de arriba se borran
-    var escritas = {};
-    tramos.forEach(function (t) { for (var q = 0; q < t.ks.length; q++) escritas[t.desde + q] = true; });
-    var formulas = hoja.getRange(fin, 1, 1, ancho).getFormulas()[0];
-    for (var c = 1; c <= ancho; c++) {
-      if (!formulas[c - 1] && !escritas[c]) hoja.getRange(desde, c, nuevos.length, 1).clearContent();
+  var numerar = cMarca !== 1 && cFecha !== 1 && fin >= 2;
+  try {
+    if (fin >= 2) {
+      var modelo = hoja.getRange(fin, 1, 1, ancho);
+      var destino = hoja.getRange(desde, 1, n, ancho);
+      modelo.copyTo(destino, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      modelo.copyTo(destino, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
     }
+    gypiLibroAflojar_(hoja, desde, n, tramos, nuevos, estado);
+    // Numeración de la primera columna (C o |): sigue la del libro
+    if (numerar) {
+      var nums = hoja.getRange(2, 1, fin - 1, 1).getValues().map(function (x) { return Number(x[0]) || 0; });
+      var max = Math.max.apply(null, nums.concat([0]));
+      hoja.getRange(desde, 1, n, 1).setValues(nuevos.map(function (_, k) { return [max + k + 1]; }));
+    }
+    gypiLibroEscribir_(hoja, desde, tramos, nuevos);
+    hoja.getRange(desde, cMarca, n, 1).setNotes(nuevos.map(function (it) { return [it.v]; }));
+    // Las fórmulas del renglón de arriba, solo en las columnas que no escribe Gypi
+    if (fin >= 2) {
+      var escritas = {};
+      tramos.forEach(function (t) { for (var q = 0; q < t.ks.length; q++) escritas[t.desde + q] = true; });
+      var formulas = hoja.getRange(fin, 1, 1, ancho).getFormulas()[0];
+      for (var c = 1; c <= ancho; c++) {
+        if (formulas[c - 1] && !escritas[c] && !(numerar && c === 1)) {
+          hoja.getRange(fin, c).copyTo(hoja.getRange(desde, c, n, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+        }
+      }
+    }
+    // Los errores de una celda salen recién al guardar: se fuerza acá para poder deshacer
+    SpreadsheetApp.flush();
+  } catch (e) {
+    // Deshacer: los renglones agregados quedan vacíos (nada a medias ni repetido)
+    try {
+      tramos.forEach(function (t) { hoja.getRange(desde, t.desde, n, t.ks.length).clearContent(); });
+      if (numerar) hoja.getRange(desde, 1, n, 1).clearContent();
+      hoja.getRange(desde, cMarca, n, 1).clearNote();
+      SpreadsheetApp.flush();
+    } catch (e2) { /* lo que no se pudo limpiar lo muestra la lista de repetidos */ }
+    throw e;
   }
-  // Numeración de la primera columna (C o |): sigue la del libro
-  if (cMarca !== 1 && cFecha !== 1 && fin >= 2) {
-    var nums = hoja.getRange(2, 1, fin - 1, 1).getValues().map(function (x) { return Number(x[0]) || 0; });
-    var max = Math.max.apply(null, nums.concat([0]));
-    hoja.getRange(desde, 1, nuevos.length, 1).setValues(nuevos.map(function (_, k) { return [max + k + 1]; }));
+}
+
+// Lo que identifica a un renglón: las columnas que escribe Gypi (sin la marca)
+function gypiLibroFirmas_(hoja, cols, col, cMarca, desde, hasta) {
+  var nums = cols.map(function (c) { return col[c[0]]; }).filter(function (x) { return x && x !== cMarca; });
+  var ancho = hoja.getLastColumn();
+  var v = hoja.getRange(desde, 1, hasta - desde + 1, ancho).getDisplayValues();
+  return v.map(function (f) {
+    return { marca: String(f[cMarca - 1]).trim(), firma: nums.map(function (k) { return String(f[k - 1]).trim(); }).join(" | ").slice(0, 400), fila: f };
+  });
+}
+
+// Renglones cargados a mano (sin marca de Gypi) iguales al de arriba en todo:
+// pueden ser copias que dejó un pase cortado. Se listan en Gypi; se borran
+// solo los que el Dueño confirme.
+function gypiLibroRepetidos_(hoja, cols, tituloMarca, prefijo, tituloFecha) {
+  var col = gypiLibroTitulos_(hoja);
+  var cMarca = col[gypiLibroNorm_(tituloMarca)];
+  var cFecha = col[gypiLibroNorm_(tituloFecha)];
+  var cDesc = col["descripcion"];
+  var cTotal = col["total"];
+  var fin = gypiLibroUltima_(hoja, cFecha);
+  if (fin < 3) return [];
+  var filas = gypiLibroFirmas_(hoja, cols, col, cMarca, 2, fin);
+  var lista = [];
+  var i = 0;
+  while (i < filas.length) {
+    var k = i + 1;
+    while (k < filas.length && filas[k].firma === filas[i].firma && filas[k].marca.indexOf(prefijo) !== 0 && filas[i].marca.indexOf(prefijo) !== 0) k++;
+    if (k - i > 1 && String(filas[i].fila[cFecha - 1]).trim()) {
+      lista.push({
+        fila: i + 2, copias: k - i - 1, firma: filas[i].firma,
+        fecha: String(filas[i].fila[cFecha - 1]), descripcion: cDesc ? String(filas[i].fila[cDesc - 1]).slice(0, 200) : "",
+        total: cTotal ? String(filas[i].fila[cTotal - 1]) : "",
+      });
+    }
+    i = k;
   }
-  gypiLibroEscribir_(hoja, desde, tramos, nuevos);
-  hoja.getRange(desde, cMarca, nuevos.length, 1).setNotes(nuevos.map(function (it) { return [it.v]; }));
+  return lista.slice(0, 200);
+}
+
+// Borra las copias que el Dueño confirmó en Gypi (queda el primer renglón).
+// Antes vuelve a mirar que sigan siendo iguales: si algo cambió, no toca nada.
+function gypiLibroBorrarRepetidos_(hoja, cols, tituloMarca, prefijo, tituloFecha, pedidos, estado) {
+  if (!pedidos.length) return;
+  var col = gypiLibroTitulos_(hoja);
+  var cMarca = col[gypiLibroNorm_(tituloMarca)];
+  var fin = gypiLibroUltima_(hoja, col[gypiLibroNorm_(tituloFecha)]);
+  var orden = pedidos.slice().sort(function (a, b) { return b.fila - a.fila; });
+  orden.forEach(function (p) {
+    var fila = Number(p.fila), copias = Number(p.copias);
+    if (!(fila >= 2) || !(copias >= 1) || fila + copias > fin) return;
+    var filas = gypiLibroFirmas_(hoja, cols, col, cMarca, fila, fila + copias);
+    var iguales = filas.every(function (x) { return x.firma === p.firma && x.marca.indexOf(prefijo) !== 0; });
+    if (!iguales) return;
+    hoja.deleteRows(fila + 1, copias);
+    estado.borrados.push({ fila: fila, copias: copias, firma: p.firma });
+  });
+  SpreadsheetApp.flush();
+}
+
+// Le cuenta a Gypi cómo salió la vuelta
+function gypiLibroAvisar_(estado) {
+  UrlFetchApp.fetch(GYPI_LIBRO_URL, {
+    method: "post", contentType: "application/json", muteHttpExceptions: true,
+    headers: { Authorization: "Bearer " + GYPI_LIBRO_CLAVE },
+    payload: JSON.stringify({ accion: "estado", errores: estado.errores, avisos: estado.avisos.slice(0, 50), repetidos: estado.repetidos, borrados: estado.borrados }),
+  });
 }
 
 // Cheques copiados del libro a Gypi: se actualiza el estado y "ENTREGADO A"
