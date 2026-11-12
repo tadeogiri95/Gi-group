@@ -6,7 +6,8 @@
 //   - CostosMantenimiento (en Movimientos): los services, reparaciones y
 //     arreglos de vehículos y las fallas de máquinas con costo que todavía no
 //     están en Finanzas. Cada uno abre "Cargar gasto" ya lleno y queda unido
-//     al arreglo (no se carga dos veces).
+//     al arreglo (no se carga dos veces). Si ya se cargó a mano, "Ya está
+//     cargado" lo saca de la lista (y "Ver quitados" lo trae de vuelta).
 //   - StockValorizado (en Cierre): stock × último precio de compra contra el
 //     saldo de las cuentas de bienes de cambio en Gypi.
 import { useCallback, useEffect, useState } from "react";
@@ -40,21 +41,47 @@ export function CostosMantenimiento({ datosGasto, onCargado }) {
   const { datos, cargar } = useIntegracion();
   const [abierto, setAbierto] = useState(false);
   const [item, setItem] = useState(null);
+  const [verQuitados, setVerQuitados] = useState(false);
+  const [cambiando, setCambiando] = useState(null);
+  const [error, setError] = useState(null);
   const pendientes = datos?.mantenimiento?.pendientes || [];
-  if (!pendientes.length && !item) return null;
+  const quitados = datos?.mantenimiento?.quitados || [];
+  if (!pendientes.length && !quitados.length && !item) return null;
   const total = pendientes.reduce((s, p) => s + p.costo, 0);
+
+  async function cambiar(p, accion) {
+    setError(null);
+    setCambiando(p.vinculo);
+    try {
+      const res = await apiFetch("/api/finanzas/integracion", { method: "POST", body: JSON.stringify({ accion, vinculo: p.vinculo }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+      await cargar();
+      onCargado?.();
+    } catch (e) {
+      setError(e.message);
+    }
+    setCambiando(null);
+  }
 
   return (
     <>
-      <button type="button" onClick={() => setAbierto(true)}
-        className="w-full mb-3 p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-left text-[14px] font-semibold text-gypi-amber-ink cursor-pointer">
-        🔧 {pendientes.length === 1 ? "1 costo" : `${pendientes.length} costos`} de Flota y Maquinaria para pasar a Finanzas ({plata(total)})
-      </button>
+      {pendientes.length > 0 ? (
+        <button type="button" onClick={() => setAbierto(true)}
+          className="w-full mb-3 p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-left text-[14px] font-semibold text-gypi-amber-ink cursor-pointer">
+          🔧 {pendientes.length === 1 ? "1 costo" : `${pendientes.length} costos`} de Flota y Maquinaria para pasar a Finanzas ({plata(total)})
+        </button>
+      ) : (
+        <button type="button" onClick={() => { setAbierto(true); setVerQuitados(true); }}
+          className="mb-3 p-0 bg-transparent border-0 text-left text-[13px] text-gypi-dim underline cursor-pointer">
+          🔧 Costos de Flota y Maquinaria quitados ({quitados.length})
+        </button>
+      )}
       {abierto && !item && (
         <Modal open onClose={() => setAbierto(false)} title="Costos de Flota y Maquinaria" maxWidth={640}>
           <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
             <p className="m-0 text-[13px] text-gypi-dim">
-              Services, reparaciones y arreglos con costo de los últimos 12 meses que todavía no están en Finanzas. Tocá Cargar: el gasto viene lleno para revisar y queda unido al arreglo.
+              Services, reparaciones y arreglos con costo de los últimos 12 meses que todavía no están en Finanzas. Tocá Cargar: el gasto viene lleno para revisar y queda unido al arreglo. Si ya lo cargaste a mano, tocá Ya está cargado y sale de la lista.
               {datos.mantenimiento.cargados.n > 0 && ` Ya cargados: ${datos.mantenimiento.cargados.n} (${plata(datos.mantenimiento.cargados.total)}).`}
             </p>
             <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Costos para pasar a Finanzas">
@@ -65,10 +92,33 @@ export function CostosMantenimiento({ datosGasto, onCargado }) {
                     <span className="block text-[12px] text-gypi-dim">{fechaCorta(p.fecha)}{p.taller ? ` · ${p.taller}` : ""}{p.detalle ? ` · ${p.detalle}` : ""}{p.factura_url ? " · 🧾 con factura" : ""}</span>
                   </span>
                   <b className="font-mono">{plata(p.costo)}</b>
+                  <button type="button" className="g-btn g-btn-secondary" aria-label={`Ya está cargado ${p.titulo}`} disabled={cambiando === p.vinculo} onClick={() => cambiar(p, "quitar")}>Ya está cargado</button>
                   <button type="button" className="g-btn g-btn-primary" aria-label={`Cargar ${p.titulo}`} onClick={() => setItem(p)}>Cargar</button>
                 </li>
               ))}
             </ul>
+            {!pendientes.length && <p className="m-0 text-[13px] text-gypi-dim">No quedan costos para pasar a Finanzas.</p>}
+            {quitados.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <button type="button" className="self-start p-0 bg-transparent border-0 text-[13px] text-gypi-dim underline cursor-pointer" aria-expanded={verQuitados} onClick={() => setVerQuitados((v) => !v)}>
+                  {verQuitados ? "Ocultar" : "Ver"} los que marcaste como ya cargados ({quitados.length})
+                </button>
+                {verQuitados && (
+                  <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Costos quitados">
+                    {quitados.map((p) => (
+                      <li key={p.vinculo} className="flex flex-wrap items-center gap-2 rounded-lg border border-gypi-border p-2 text-gypi-dim">
+                        <span className="flex-1 min-w-[200px]">
+                          <span className="block">{p.titulo}</span>
+                          <span className="block text-[12px]">{fechaCorta(p.fecha)} · {plata(p.costo)}{p.quitado?.por ? ` · quitado por ${p.quitado.por}` : ""}</span>
+                        </span>
+                        <button type="button" className="g-btn g-btn-secondary" aria-label={`Volver a mostrar ${p.titulo}`} disabled={cambiando === p.vinculo} onClick={() => cambiar(p, "devolver")}>Volver a mostrar</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
             <div className="flex justify-end"><button type="button" className="g-btn g-btn-secondary" onClick={() => setAbierto(false)}>Cerrar</button></div>
           </div>
         </Modal>

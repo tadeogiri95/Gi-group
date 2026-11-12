@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
-  costosMantenimiento, gastoDeCosto, grupoDeVinculo, stockValorizado, vinculoDeGrupo, vinculoValido,
+  cambiarQuitados, costosMantenimiento, gastoDeCosto, grupoDeVinculo, leerQuitados, stockValorizado, vinculoDeGrupo, vinculoValido,
 } from "../app/lib/finanzasIntegracion.js";
 
 before(() => {
@@ -121,9 +121,10 @@ async function token(rol) {
   return (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
 }
 
-function mockServidor({ yaCargado = false, sinFlota = false } = {}) {
+function mockServidor({ yaCargado = false, sinFlota = false, quitados = null } = {}) {
   const escrito = [];
   const leido = [];
+  const config = [];
   const tabla = {
     fin_tipos_operacion: TIPOS, fin_cuentas: CUENTAS, fin_tesoreria: TESORERIA, fin_centros_costo: [], proveedores: PROVEEDORES, proyectos: [],
     vehiculos: VEHICULOS, maquinas: MAQUINAS, vehiculo_mantenimientos: MANTENIMIENTOS, maquina_fallas: FALLAS.filter((f) => f.estado === "resuelta"),
@@ -133,6 +134,13 @@ function mockServidor({ yaCargado = false, sinFlota = false } = {}) {
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    {
+      match: (u) => u.includes("/rest/v1/config_sistema"),
+      respond: (u, o) => {
+        if (o?.method === "POST" || o?.method === "PATCH") { config.push({ method: o.method, body: JSON.parse(o.body) }); return { status: 201, body: [] }; }
+        return { status: 200, body: quitados ? [{ valor: quitados }] : [] };
+      },
+    },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ id: EMP, nombre: "Tadeo" }] }) },
     {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
@@ -156,7 +164,7 @@ function mockServidor({ yaCargado = false, sinFlota = false } = {}) {
       },
     },
   ]);
-  return { escrito, leido };
+  return { escrito, leido, config };
 }
 
 test("/api/finanzas/integracion — solo el Dueño; costos pendientes con el gasto lleno y el stock; sin Flota esa parte vacía", async () => {
@@ -250,4 +258,64 @@ test("Stock valorizado — tarjetas y barras por familia; sin stock no aparece",
   const { container } = render(<StockValorizado />);
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(container.textContent, "");
+});
+
+// ─── "Ya está cargado": quitar sugerencias que se cargaron a mano ───
+
+test("quitados — se guardan por vínculo, solo los válidos, y salen de los pendientes", () => {
+  assert.deepEqual(leerQuitados({ "v:12": { at: "x", por: "Tadeo" }, basura: {}, "m:0": {} }), { "v:12": { at: "x", por: "Tadeo" } });
+  assert.deepEqual(leerQuitados(null), {});
+  const v = cambiarQuitados(null, "m:7", true, { at: "2026-11-12", por: "Tadeo" });
+  assert.deepEqual(v, { "m:7": { at: "2026-11-12", por: "Tadeo" } });
+  assert.deepEqual(cambiarQuitados(v, "m:7", false), {});
+  const r = costosMantenimiento({ mantenimientos: MANTENIMIENTOS, fallas: FALLAS, vehiculos: VEHICULOS, maquinas: MAQUINAS, quitados: v });
+  assert.deepEqual(r.pendientes.map((p) => p.vinculo), ["v:12", "v:14"]);
+  assert.deepEqual(r.quitados.map((p) => [p.vinculo, p.quitado.por]), [["m:7", "Tadeo"]]);
+});
+
+test("/api/finanzas/integracion POST — quitar y devolver solo el Dueño; los quitados no vuelven a salir", async () => {
+  const pedir = async (rol, body) => apiIntegracion.POST(new Request("http://localhost/api/finanzas/integracion", {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, body: JSON.stringify(body),
+  }));
+  let { config } = mockServidor();
+  assert.equal((await pedir("administrativo", { accion: "quitar", vinculo: "v:12" })).status, 403);
+  assert.equal((await pedir("gerencial", { accion: "quitar", vinculo: "nada" })).status, 400);
+  assert.equal((await pedir("gerencial", { accion: "borrar", vinculo: "v:12" })).status, 400);
+  assert.equal((await pedir("gerencial", { accion: "quitar", vinculo: "v:12" })).status, 200);
+  assert.equal(config[0].method, "POST");
+  assert.equal(config[0].body.clave, "finanzas_costos_quitados");
+  assert.equal(config[0].body.valor["v:12"].por, "Tadeo");
+
+  ({ config } = mockServidor({ quitados: { "v:12": { at: "x", por: "Tadeo" } } }));
+  const get = await (await apiIntegracion.GET(new Request("http://localhost/api/finanzas/integracion", { headers: { Authorization: `Bearer ${await token("gerencial")}` } }))).json();
+  assert.deepEqual(get.mantenimiento.pendientes.map((p) => p.vinculo), ["m:7"]);
+  assert.deepEqual(get.mantenimiento.quitados.map((p) => p.vinculo), ["v:12"]);
+  assert.equal((await pedir("gerencial", { accion: "devolver", vinculo: "v:12" })).status, 200);
+  assert.deepEqual([config[0].method, config[0].body.valor], ["PATCH", {}]);
+});
+
+test("Costos de Flota y Maquinaria — Ya está cargado lo saca de la lista y se puede volver a mostrar", async () => {
+  const todos = costosMantenimiento({ mantenimientos: MANTENIMIENTOS, fallas: FALLAS, vehiculos: VEHICULOS, maquinas: MAQUINAS }).pendientes;
+  let quitados = {};
+  const enviado = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") {
+      const b = JSON.parse(o.body);
+      enviado.push(b);
+      quitados = cambiarQuitados(quitados, b.vinculo, b.accion === "quitar", { por: "Tadeo" });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    const r = costosMantenimiento({ mantenimientos: MANTENIMIENTOS, fallas: FALLAS, vehiculos: VEHICULOS, maquinas: MAQUINAS, quitados });
+    return new Response(JSON.stringify({ hoy: "2026-11-12", mantenimiento: { ...r, cargados: { n: 0, total: 0 } }, stock: null }), { status: 200 });
+  };
+  render(<CostosMantenimiento datosGasto={DATOS_GASTO} />);
+  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`${todos.length} costos de Flota y Maquinaria`) }));
+  fireEvent.click(screen.getByRole("button", { name: "Ya está cargado 🚚 Service · Ford Ranger AB123CD" }));
+  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: "Cargar 🚚 Service · Ford Ranger AB123CD" })));
+  assert.deepEqual(enviado[0], { accion: "quitar", vinculo: "v:12" });
+  fireEvent.click(screen.getByRole("button", { name: /Ver los que marcaste como ya cargados \(1\)/ }));
+  assert.match(screen.getByLabelText("Costos quitados").textContent, /Service · Ford Ranger.*quitado por Tadeo/);
+  fireEvent.click(screen.getByRole("button", { name: "Volver a mostrar 🚚 Service · Ford Ranger AB123CD" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Cargar 🚚 Service · Ford Ranger AB123CD" })));
+  assert.deepEqual(enviado[1], { accion: "devolver", vinculo: "v:12" });
 });
