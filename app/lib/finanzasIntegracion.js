@@ -20,6 +20,10 @@ export const TIPO_MAQUINA = "GASTOS DE MANTENIMIENTO";
 const PREFIJO = { vehiculo: "a", maquina: "b" };
 const MODULO = { a: "vehiculo", b: "maquina" };
 export const MESES_ATRAS = 12;
+/** Quién figura como "cargada por" en los gastos que Gypi pasa solo desde Mantenimiento (auditoría 12/11, parte 9). */
+export const CARGADA_POR = "Gypi (de Mantenimiento)";
+/** ¿Esta operación la creó Gypi desde Mantenimiento? (el devengado, no su pago) */
+export const esDeMantenimiento = (op) => op?.origen === "gasto" && op?.cargada_por_nombre === CARGADA_POR && !String(op?.origen_id || "").endsWith("-p");
 export const CLAVE_QUITADOS = "finanzas_costos_quitados";
 const MAX_QUITADOS = 1000;
 

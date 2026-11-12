@@ -81,7 +81,7 @@ export function CostosMantenimiento({ datosGasto, onCargado }) {
         <Modal open onClose={() => setAbierto(false)} title="Costos de Flota y Maquinaria" maxWidth={640}>
           <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
             <p className="m-0 text-[13px] text-gypi-dim">
-              Services, reparaciones y arreglos con costo de los últimos 12 meses que todavía no están en Finanzas. Tocá Cargar: el gasto viene lleno para revisar y queda unido al arreglo. Si ya lo cargaste a mano, tocá Ya está cargado y sale de la lista.
+              Services, reparaciones y arreglos con costo de los últimos 12 meses que todavía no están en Finanzas (los nuevos pasan solos a Movimientos como Para revisar). Tocá Cargar: el gasto viene lleno para revisar y queda unido al arreglo. Si ya lo cargaste a mano, tocá Ya está cargado y sale de la lista.
               {datos.mantenimiento.cargados.n > 0 && ` Ya cargados: ${datos.mantenimiento.cargados.n} (${plata(datos.mantenimiento.cargados.total)}).`}
             </p>
             <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Costos para pasar a Finanzas">

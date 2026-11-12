@@ -23,7 +23,8 @@ import { useAgenda } from "./FinanzasElegirProveedor";
 import { VentanaAltaPersona } from "./AltaPersona";
 import CargarGasto from "./FinanzasCargarGasto";
 import { CostosMantenimiento } from "./FinanzasIntegracion";
-import { ORIGEN_GASTO } from "../lib/finanzasGastos";
+import { ORIGEN_GASTO, tiposDeGasto } from "../lib/finanzasGastos";
+import { esDeMantenimiento } from "../lib/finanzasIntegracion";
 import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
 import CorregirOperacion from "./FinanzasCorregir";
 import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, ladoCaja, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
@@ -330,7 +331,8 @@ function CambiarTipo({ op, datos, onCambiado }) {
   const [tipo, setTipo] = useState(op.tipo);
   const [recordar, setRecordar] = useState(true);
   const [guardando, setGuardando] = useState(false);
-  const opciones = datos.tipos.filter((t) => t.activo !== false && t.cuenta_debe && t.cuenta_haber);
+  const deMantenimiento = esDeMantenimiento(op);
+  const opciones = (deMantenimiento ? tiposDeGasto(datos.tipos, datos.tesoreria || []) : datos.tipos).filter((t) => t.activo !== false && t.cuenta_debe && t.cuenta_haber);
   const guardar = async () => {
     setGuardando(true);
     try {
@@ -347,7 +349,7 @@ function CambiarTipo({ op, datos, onCambiado }) {
   };
   return (
     <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3 flex flex-col gap-2">
-      {campo("Tipo de compra", (
+      {campo(deMantenimiento ? "Tipo de gasto" : "Tipo de compra", (
         <SelectBuscable className="g-input w-full" value={tipo} onChange={(e) => setTipo(e.target.value)}>
           {opciones.map((t) => <option key={t.codigo} value={t.codigo}>{nombreTipo(t)}</option>)}
         </SelectBuscable>
@@ -386,6 +388,7 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada 
   const gasto = op.origen === ORIGEN_GASTO;
   const automatica = !puedeAnular(op) && !op.anulada_at;
   const compra = ["factura_oc", "factura_oc_otra", "factura_suelta"].includes(op.origen);
+  const deMantenimiento = esDeMantenimiento(op);
 
   const anular = async () => {
     setAnulando(true);
@@ -414,9 +417,15 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada 
         {fila("Referencia", op.referencia)}
         {fila("Cargada por", op.cargada_por_nombre)}
         {op.origen && op.origen !== "manual" && fila("Salió de", ORIGENES[op.origen] || op.origen)}
-        {op.estado === "para_revisar" && !op.anulada_at && <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde.</p>}
+        {op.estado === "para_revisar" && !op.anulada_at && (
+          <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">
+            {deMantenimiento
+              ? "Para revisar: Gypi lo pasó solo desde Mantenimiento. Mirá el tipo y el importe y confirmalo. Si tenía factura con IVA, anulalo: vuelve a aparecer en el aviso 🔧 de Flota y Maquinaria para cargarlo con la factura."
+              : "Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde."}
+          </p>
+        )}
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
-        {compra && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
+        {(compra || deMantenimiento) && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
         {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {dondeSeCambia(op)}.</p>}
         {corrigiendo && <CorregirOperacion op={op} cuentas={datos.cuentas || []} onCancelar={() => setCorrigiendo(false)} onCorregida={onAnulada} />}
         {compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
