@@ -10,7 +10,8 @@
 //                           (proveedor_guardar no deja crear otro con el mismo CUIT o nombre,
 //                           y pregunta si hay uno parecido: es_otro = true para seguir)
 //   pedido_crear          → pedido de material (gestión: jefes de taller,
-//                           gerencia, dueños, Administración; operarios no)
+//                           gerencia, dueños, Administración; operarios no); con origen y
+//                           origen_id sale de un pendiente de obra, una falla o un arreglo (185)
 //   pedidos_crear         → varios pedidos de una vez, pegados de la hoja INVENTARIO
 //                           (un pedido por artículo; misma OT, fecha y observación)
 //   pedido_anular         → el comprador, cualquiera pendiente; quien lo pidió, el suyo pendiente
@@ -73,6 +74,7 @@ import { clavePersona, cuitLimpio } from "../../lib/finanzasPersonas";
 import { CLAVE_CUENTAS_PROV } from "../../lib/finanzasProveedores";
 import { CLAVE_UNIFICADOS, leerPares } from "../../lib/finanzasUnificados";
 import { comoDueno } from "../../lib/alcance";
+import { ORIGENES_PEDIDO } from "../../lib/pedidoProblema";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -314,6 +316,15 @@ async function crearPedido(sesion, d) {
   if (!puedePedir(sesion.rol)) {
     return NextResponse.json({ error: "Los pedidos de material los hacen los jefes de taller y la oficina" }, { status: 403 });
   }
+  // Desde un problema (185): el problema tiene que ser de la empresa; el pendiente de obra trae su OT
+  let origen = {};
+  if (d.origen) {
+    const { tabla } = ORIGENES_PEDIDO[d.origen];
+    const [prob] = (await sbGet(`${tabla}?id=eq.${d.origen_id}&empresa_id=eq.${e}&select=*&limit=1`, opts)) || [];
+    if (!prob) return NextResponse.json({ error: "No encontré ese problema" }, { status: 404 });
+    origen = { origen: d.origen, origen_id: d.origen_id };
+    if (d.origen === "pendiente_obra" && !d.ot && prob.ot) d = { ...d, ot: prob.ot };
+  }
   const { articulo, datos, error } = await datosDelPedido(sesion, d);
   if (error) return error;
   const [empleado] = sesion.empleado_id
@@ -326,8 +337,17 @@ async function crearPedido(sesion, d) {
     estado: "pendiente",
     empleado_id: sesion.empleado_id || null,
     empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
+    ...origen,
   };
-  const [creado] = (await sbPost("pedidos_compra", fila, opts)) || [];
+  let creado;
+  try {
+    [creado] = (await sbPost("pedidos_compra", fila, opts)) || [];
+  } catch (err) {
+    if (origen.origen && /origen/.test(String(err?.message)) && /42703|PGRST204|schema cache/.test(String(err?.message))) {
+      return NextResponse.json({ error: "Para pedir material desde un problema falta correr la migración 185 en Supabase." }, { status: 409 });
+    }
+    throw err;
+  }
   broadcastRefresh(e, "pedidos_compra");
   return NextResponse.json({ ok: true, pedido: creado || fila });
 }

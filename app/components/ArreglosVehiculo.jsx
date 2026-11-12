@@ -11,6 +11,7 @@ import { DONDE, PRIORIDADES, TIPOS_MANTENIMIENTO, nombrePrioridad, textoCosto } 
 import { Chip } from "./ui";
 import BotonFoto from "./BotonFoto";
 import ElegirTaller from "./ElegirTaller";
+import PedirParaProblema from "./PedirParaProblema";
 
 async function postFlota(body) {
   const res = await apiFetch("/api/flota", { method: "POST", body: JSON.stringify(body) });
@@ -72,6 +73,7 @@ export function ListaArreglos({ arreglos, empleados = [], editable, puedeResolve
               {(editable || puedeResolver(a)) && (
                 <div className="flex gap-1.5 flex-wrap mt-2">
                   {puedeResolver(a) && <button onClick={() => onResolver(a)} className="g-btn g-btn-primary">✔ Resolver</button>}
+                  <PedirParaProblema origen="arreglo_vehiculo" origenId={a.id} texto={a.descripcion} />
                   {editable && (
                     <>
                       <button onClick={() => accion({ accion: "arreglo_editar", id: a.id, prioridad: a.prioridad === "no_circula" ? "pronto" : "no_circula", responsable_id: a.responsable_id || null })}

@@ -437,7 +437,12 @@ export const comprasBody = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("proveedores_unir"), queda: idCompras, sale: idCompras }).strict().refine((p) => p.queda !== p.sale, { message: "Elegí dos proveedores distintos", path: ["sale"] }),
   z.object({ accion: z.literal("proveedor_baja"), id: idCompras, activo: z.boolean() }).strict(),
   z.object({ accion: z.literal("proveedores_importar"), nombres: z.array(z.string().trim().min(1).max(120)).min(1).max(500) }).strict(),
-  z.object({ accion: z.literal("pedido_crear"), ...datosPedido }).strict().refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
+  z.object({
+    accion: z.literal("pedido_crear"), ...datosPedido,
+    // Desde un problema: pendiente de obra, falla de máquina o arreglo de vehículo (185)
+    origen: z.enum(["pendiente_obra", "falla_maquina", "arreglo_vehiculo"]).optional(),
+    origen_id: idCompras.optional(),
+  }).strict().refine((p) => !p.origen === !p.origen_id, { message: "Falta de qué problema es el pedido", path: ["origen_id"] }).refine((p) => p.sku || p.descripcion, { message: "Elegí un artículo o escribí qué necesitás", path: ["descripcion"] }),
   // Varios pedidos de una vez, pegados de la hoja INVENTARIO: un pedido por artículo
   z.object({
     accion: z.literal("pedidos_crear"),
